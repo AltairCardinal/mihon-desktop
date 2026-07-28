@@ -467,7 +467,6 @@ private fun desktopPaths(appDir: File) =
         coversDir = File(appDir, "covers"),
         logsDir = File(appDir, "logs"),
         backupsDir = File(appDir, "backups"),
-        testScreenshotsDir = File(appDir, "test-screenshots"),
     )
 
 // ── Extension layer ────────────────────────────────────────────────────────────

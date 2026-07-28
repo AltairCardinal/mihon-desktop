@@ -137,21 +137,6 @@ class RobotSmokeTestSuite {
     }
 
     @Test
-    fun `screenshot result has expected fields`() {
-        val result = ScreenshotResult(
-            success = true,
-            path = "/tmp/screenshot.png",
-            width = 1920,
-            height = 1080,
-        )
-
-        assertTrue(result.success)
-        assertEquals("/tmp/screenshot.png", result.path)
-        assertEquals(1920, result.width)
-        assertEquals(1080, result.height)
-    }
-
-    @Test
     fun `action result has expected fields`() {
         val result = ActionResult(
             success = true,

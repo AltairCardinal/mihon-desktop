@@ -224,13 +224,6 @@ function Wait-ParserRejected([int]$HttpPort, [int]$AfterCursor) {
     throw "Running URI reached no new ParserRejected terminal action"
 }
 
-function Capture-Screenshot([int]$HttpPort, [string]$Name) {
-    $response = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "http://127.0.0.1:$HttpPort/test/screenshot" `
-        -ContentType "application/json" -Body (@{ name = $Name } | ConvertTo-Json -Compress) -TimeoutSec 15
-    $result = $response.Content | ConvertFrom-Json
-    (Invoke-RunnerPolicy "screenshot" $result).screenshot
-}
-
 function Initialize-Task151NativeWindow {
     if (-not ("Task151NativeWindow" -as [type])) {
         Add-Type @"
@@ -883,7 +876,12 @@ function Invoke-CaptureAcceptance {
         $clearLease = $clearCapture.lease
         try {
             $feedback = Invoke-MihonWindowFeedbackCapture $clearLease {
-                Capture-Screenshot ($Port + 1) "task152-windows-window-privacy-feedback"
+                [ordered]@{
+                    path = Invoke-BoundedMihonWindowCapture `
+                        $clearLease `
+                        "task152-windows-window-privacy-feedback" `
+                        -KeepTopmost
+                }
             }
         } finally {
             $clearLease = $null
@@ -1038,7 +1036,7 @@ function New-AcceptanceToken {
 
 function Start-TestApp([int]$HttpPort, [string]$Token = "") {
     Assert-NoExistingAppProcesses
-    $arguments = @("--test-mode", "--test-http-port=$HttpPort", "--screenshot-dir=$EvidenceDir")
+    $arguments = @("--test-mode", "--test-http-port=$HttpPort")
     if ($Token) { $arguments += "--platform-acceptance-token=$Token" }
     $process = Start-Process -FilePath $Executable -ArgumentList $arguments -PassThru
     try {

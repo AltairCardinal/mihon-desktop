@@ -1,7 +1,6 @@
 package mihon.test.desktop.robot
 
 import mihon.test.desktop.DesktopTestClient
-import mihon.test.desktop.ScreenshotResult
 import mihon.test.desktop.SourceBrowseTestSnapshot
 
 /**
@@ -124,13 +123,6 @@ class LibraryRobot(private val client: DesktopTestClient) {
     }
 
     /**
-     * Capture screenshot of the library screen.
-     */
-    fun capture(name: String = "library"): ScreenshotResult {
-        return client.screenshot(name)
-    }
-
-    /**
      * Select a category tab.
      */
     fun selectCategory(index: Int): LibraryRobot {
@@ -184,12 +176,6 @@ class MangaDetailRobot(private val client: DesktopTestClient) {
         return this
     }
 
-    /**
-     * Capture screenshot of manga detail.
-     */
-    fun capture(name: String = "manga_detail"): ScreenshotResult {
-        return client.screenshot(name)
-    }
 }
 
 /**
@@ -221,12 +207,6 @@ class SettingsRobot(private val client: DesktopTestClient) {
         return this
     }
 
-    /**
-     * Capture screenshot of settings.
-     */
-    fun capture(name: String = "settings"): ScreenshotResult {
-        return client.screenshot(name)
-    }
 }
 
 /**
@@ -258,10 +238,4 @@ class BrowseRobot(private val client: DesktopTestClient) {
         return MangaDetailRobot(client)
     }
 
-    /**
-     * Capture screenshot of browse screen.
-     */
-    fun capture(name: String = "browse"): ScreenshotResult {
-        return client.screenshot(name)
-    }
 }

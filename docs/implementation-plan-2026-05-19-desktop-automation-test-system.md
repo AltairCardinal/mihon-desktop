@@ -6,6 +6,10 @@
 - **版本**: 1.0
 - **状态**: 草案，待审批
 
+> 维护说明（2026-07-28）：本文是历史草案。其中 Screenshot Service、截图 HTTP API、
+> Robot/视觉回归截图客户端和 `--screenshot-dir` 已从当前实现移除；不得据此恢复需要
+> macOS 屏幕录制权限的能力。当前接口以 `docs/automation/API_REFERENCE.md` 为准。
+
 ---
 
 ## 一、系统架构概述

@@ -1,7 +1,6 @@
 package mihon.test.desktop.robot
 
 import mihon.test.desktop.DesktopTestClient
-import mihon.test.desktop.ScreenshotResult
 
 /**
  * Robot for History tab interactions.
@@ -73,10 +72,4 @@ class HistoryRobot(private val client: DesktopTestClient) {
         return getHistoryCount() == 0
     }
 
-    /**
-     * Capture screenshot of the history screen.
-     */
-    fun capture(name: String = "history"): ScreenshotResult {
-        return client.screenshot(name)
-    }
 }

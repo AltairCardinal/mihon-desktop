@@ -151,14 +151,6 @@ curl -X POST http://localhost:8080/test/action/open_manga_detail \
 
 ## Utilities
 
-### `POST /screenshot`
-
-```json
-{"name": "library-home"}
-```
-
-截图保存到测试模式启动时指定的 `--screenshot-dir`。
-
 ### `POST /reset`
 
 清空测试状态、导航 pending 状态和 reader/download/update/history 状态。
@@ -166,3 +158,5 @@ curl -X POST http://localhost:8080/test/action/open_manga_detail \
 ### `GET /history`
 
 返回测试动作历史。
+
+`POST /screenshot` 已移除并返回 `404 Not Found`。Test Mode 不提供读取桌面屏幕像素的 API。

@@ -1,7 +1,6 @@
 package mihon.test.desktop.robot
 
 import mihon.test.desktop.DesktopTestClient
-import mihon.test.desktop.ScreenshotResult
 
 /**
  * Robot for Download management screen interactions.
@@ -106,10 +105,4 @@ class DownloadsRobot(private val client: DesktopTestClient) {
         return state.downloadsPaused ?: false
     }
 
-    /**
-     * Capture screenshot of the downloads screen.
-     */
-    fun capture(name: String = "downloads"): ScreenshotResult {
-        return client.screenshot(name)
-    }
 }

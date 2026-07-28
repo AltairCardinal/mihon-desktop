@@ -1,7 +1,6 @@
 package mihon.test.desktop.robot
 
 import mihon.test.desktop.DesktopTestClient
-import mihon.test.desktop.ScreenshotResult
 
 /**
  * Robot for Updates tab interactions.
@@ -122,10 +121,4 @@ class UpdatesRobot(private val client: DesktopTestClient) {
         return (state.updateCount ?: 0) > 0
     }
 
-    /**
-     * Capture screenshot of the updates screen.
-     */
-    fun capture(name: String = "updates"): ScreenshotResult {
-        return client.screenshot(name)
-    }
 }

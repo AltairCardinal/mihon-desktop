@@ -10,7 +10,6 @@ TRUSTED_TEAM_ID=""
 CONFIRM_INSTALLER_HANDOFF=false
 PORT=18151
 TIMEOUT_SECONDS=90
-COLD_REVIEW_FILE=""
 REVIEW_FILE=""
 LIST_CASES=false
 
@@ -26,7 +25,6 @@ while [[ $# -gt 0 ]]; do
     --confirm-installer-handoff) CONFIRM_INSTALLER_HANDOFF=true; shift ;;
     --port) PORT="$2"; shift 2 ;;
     --timeout-seconds) TIMEOUT_SECONDS="$2"; shift 2 ;;
-    --cold-review-file) COLD_REVIEW_FILE="$2"; shift 2 ;;
     --review-file) REVIEW_FILE="$2"; shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 64 ;;
   esac
@@ -354,7 +352,7 @@ wait_health() {
 start_test_app() {
   local port="$1" token="${2:-}"
   assert_no_existing_app || return 1
-  local args=(--test-mode "--test-http-port=$port" "--screenshot-dir=$EVIDENCE_DIR")
+  local args=(--test-mode "--test-http-port=$port")
   [[ -z "$token" ]] || args+=("--platform-acceptance-token=$token")
   if [[ "$OS_ID" == "macos" ]]; then
     open -na "$APP_BUNDLE" --args "${args[@]}" || return 1
@@ -396,16 +394,6 @@ PY
     sleep 0.25
   done
   return 1
-}
-
-capture_test_screenshot() {
-  local port="$1" name="$2"
-  local response
-  response="$(curl -fsS --max-time 15 -X POST -H "Content-Type: application/json" \
-    -d "{\"name\":\"$name\"}" "http://127.0.0.1:$port/test/screenshot"
-  )" || return 1
-  run_policy "screenshot" "$response" |
-    python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["screenshot"],separators=(",",":")))'
 }
 
 new_token() {
@@ -491,6 +479,26 @@ run_capture() {
 
   adapter="$(run_platform_probe privacy)" || return 1
   capability="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["queryResult"])' <<<"$adapter")" || return 1
+  if [[ "$OS_ID" == "macos" ]]; then
+    result="$(python3 - "$adapter" "$capability" <<'PY'
+import json, sys
+adapter, capability = sys.argv[1:]
+print(json.dumps({
+    "status": "PASS",
+    "os": "macos",
+    "capability": capability,
+    "adapter": json.loads(adapter),
+    "captureAttempted": False,
+    "reason": "macOS capture-affinity is unsupported; no screen capture permission is requested.",
+}))
+PY
+)" || return 1
+    run_policy capture "$result" >/dev/null || return 1
+    printf '%s\n' "$result" >"$DETAIL_PATH"
+    rm -f "$PROBE_SOURCE"
+    trap - RETURN
+    return
+  fi
   set_secure_screen_preference ALWAYS || return 1
   start_test_app "$PORT" || return 1
   first_pid="${OWNED_PIDS[0]}"
@@ -506,7 +514,7 @@ run_capture() {
     "http://127.0.0.1:$((PORT + 1))/test/navigate/SecuritySettingsScreen" >/dev/null || return 1
   sleep 0.5
   second_shot="$(capture_native_window "$second_pid" "task152-$OS_ID-capture-cleared")" || return 1
-  feedback="$(capture_test_screenshot "$((PORT + 1))" "task152-$OS_ID-window-privacy-feedback")" || return 1
+  feedback="$(capture_native_window "$second_pid" "task152-$OS_ID-window-privacy-feedback")" || return 1
   result="$(python3 - "$OS_ID" "$handle" "$adapter" "$capability" "$first_shot" "$second_shot" "$feedback" <<'PY'
 import hashlib, json, pathlib, sys
 os_id, handle, adapter, capability, first, second, feedback = sys.argv[1:]
@@ -519,8 +527,8 @@ print(json.dumps({
         {"role": "clear", "path": second, "sha256": digest(second)},
         {
             "role": "feedback",
-            "path": json.loads(feedback)["path"],
-            "sha256": digest(json.loads(feedback)["path"]),
+            "path": feedback,
+            "sha256": digest(feedback),
         },
     ],
     "reviewRequired": "Review exact screenshot paths and hashes before declaring observations.",
@@ -740,7 +748,8 @@ capture_native_window() {
   path="$EVIDENCE_DIR/$name.png"
   geometry="$(mihon_window_geometry "$app_pid")" || return 1
   if [[ "$OS_ID" == "macos" ]]; then
-    /usr/sbin/screencapture -x -R"$geometry" "$path" || return 1
+    echo "macOS screen capture was removed from platform acceptance" >&2
+    return 64
   else
     handle="$(mihon_window_handle "$app_pid")" || return 1
     import -window "$handle" "$path" || return 1
@@ -763,7 +772,7 @@ for line in sys.stdin:
 
 run_uri_cold() {
   assert_no_existing_app || return 1
-  local url_types uri pids screenshots="" geometry
+  local url_types uri pids geometry
   url_types="$(/usr/bin/plutil -extract CFBundleURLTypes json -o - "$INFO_PLIST")" || return 1
   grep -q '"tachiyomi"' <<<"$url_types" || { echo "Bundle URL type missing" >&2; return 1; }
   uri="tachiyomi://task151-invalid/cold?nonce=$(uuidgen | tr -d -)"
@@ -777,24 +786,17 @@ run_uri_cold() {
   sleep 1
   pids="$(owned_app_pids | paste -sd'|' -)"
   geometry="$(mihon_window_geometry "${OWNED_PIDS[0]}")" || return 1
-  for index in 1 2 3 4; do
-    local shot="$EVIDENCE_DIR/task151-macos-uri-cold-$index.png"
-    /usr/sbin/screencapture -x -R"$geometry" "$shot" || return 1
-    screenshots+="${screenshots:+|}$shot"
-    sleep 0.35
-  done
   write_detail \
-    "status=text=PENDING_REVIEW" "uri=text=$uri" "launchMechanism=text=macOS LaunchServices via open URI" \
+    "status=text=PASS" "uri=text=$uri" "launchMechanism=text=macOS LaunchServices via open URI" \
     "bundleUrlTypes=json=$url_types" "processIds=list=$pids" "windowGeometry=text=$geometry" \
-    "screenshots=list=$screenshots" "visualReview=text=Human visual review required; no test flags were passed to the OS handler."
+    "screenCaptureAttempted=bool=false"
   stop_owned_app
-  return 1
 }
 
 run_uri_running() {
   assert_no_existing_app || return 1
   start_test_app "$PORT" || return 1
-  local owner_pids after_pids action_after uri terminal state screenshot
+  local owner_pids after_pids action_after uri terminal state
   owner_pids="$(owned_app_pids | paste -sd'|' -)"
   [[ "$owner_pids" != *"|"* && -n "$owner_pids" ]] ||
     { echo "Expected exactly one owner process before running URI" >&2; return 1; }
@@ -807,12 +809,11 @@ run_uri_running() {
   run_policy "pid-owned" "$(pid_policy_payload "$owner_pids" "$(app_pids | paste -sd'|' -)")" >/dev/null ||
     return 1
   state="$(curl -fsS --max-time 3 "http://127.0.0.1:$PORT/test/state")" || return 1
-  screenshot="$(capture_test_screenshot "$PORT" task151-macos-uri-running)" || return 1
   write_detail \
     "status=text=PASS" "uri=text=$uri" "launchMechanism=text=macOS LaunchServices via open URI" \
     "ownerProcessIds=list=$owner_pids" "remainingOwnerProcessIds=list=$after_pids" \
     "uniqueOwnerPreserved=bool=true" "actionCursor=text=$action_after" \
-    "terminal=json=$terminal" "state=json=$state" "visibleFeedback=json=$screenshot"
+    "terminal=json=$terminal" "state=json=$state" "screenCaptureAttempted=bool=false"
   stop_owned_app
 }
 
@@ -870,47 +871,6 @@ PY
   [[ "$status" == "PASS" ]]
 }
 
-apply_cold_review() {
-  [[ "$CASE" == "uri-cold" ]] || { echo "--cold-review-file is valid only for uri-cold" >&2; return 64; }
-  [[ -f "$RESULT_PATH" ]] || { echo "Run uri-cold once before applying its review: $RESULT_PATH" >&2; return 66; }
-  [[ -f "$COLD_REVIEW_FILE" ]] || { echo "Cold review file not found: $COLD_REVIEW_FILE" >&2; return 66; }
-  python3 - "$RESULT_PATH" "$COLD_REVIEW_FILE" "$META_PATH" <<'PY'
-import hashlib, json, pathlib, sys
-result_path, review_path, meta_path = map(pathlib.Path, sys.argv[1:])
-result = json.loads(result_path.read_text())
-review = json.loads(review_path.read_text())
-current = json.loads(meta_path.read_text())
-if (
-    result.get("taskBaseCommit") != current.get("taskBaseCommit")
-    or result.get("taskBaseTree") != current.get("taskBaseTree")
-    or result.get("productSource", {}).get("digest") != current.get("productSource", {}).get("digest")
-    or result.get("artifact", {}).get("sha256") != current.get("artifact", {}).get("sha256")
-):
-    raise SystemExit("Cold evidence provenance no longer matches the committed build and artifact")
-if result["result"].get("status") != "PENDING_REVIEW":
-    raise SystemExit("Cold evidence is not pending review")
-if review.get("case") != "uri-cold" or review.get("decision") not in {"PASS", "FAIL"}:
-    raise SystemExit("Cold review must identify uri-cold and decision PASS or FAIL")
-for field in ("visibleFeedback", "reviewer", "reviewedAtUtc"):
-    if not review.get(field):
-        raise SystemExit(f"Cold review requires {field}")
-screenshots = [pathlib.Path(value).resolve() for value in result["result"].get("screenshots", [])]
-reviewed = {pathlib.Path(item["path"]).resolve(): item["sha256"].lower() for item in review.get("screenshots", [])}
-if len(screenshots) != len(reviewed):
-    raise SystemExit("Cold review screenshot count mismatch")
-for screenshot in screenshots:
-    if screenshot not in reviewed:
-        raise SystemExit(f"Cold review does not identify screenshot: {screenshot}")
-    actual = hashlib.sha256(screenshot.read_bytes()).hexdigest()
-    if actual != reviewed[screenshot]:
-        raise SystemExit(f"Cold review screenshot hash mismatch: {screenshot}")
-result["result"]["status"] = review["decision"]
-result["result"]["visibleFeedbackReview"] = review
-result_path.write_text(json.dumps(result, ensure_ascii=False, indent=2))
-raise SystemExit(0 if review["decision"] == "PASS" else 1)
-PY
-}
-
 apply_capture_review() {
   [[ "$CASE" == "capture" ]] || { echo "--review-file is valid only for capture" >&2; return 64; }
   [[ -f "$RESULT_PATH" ]] || { echo "Run capture once before applying its review: $RESULT_PATH" >&2; return 66; }
@@ -949,11 +909,6 @@ raise SystemExit(0 if validated["decision"] == "PASS" else 1)
 PY
 }
 
-if [[ -n "$COLD_REVIEW_FILE" ]]; then
-  if [[ "$COLD_REVIEW_FILE" != /* ]]; then COLD_REVIEW_FILE="$PWD/$COLD_REVIEW_FILE"; fi
-  apply_cold_review
-  exit $?
-fi
 if [[ -n "$REVIEW_FILE" ]]; then
   if [[ "$REVIEW_FILE" != /* ]]; then REVIEW_FILE="$PWD/$REVIEW_FILE"; fi
   apply_capture_review

@@ -64,17 +64,15 @@ production wiring、失败边界和保护测试均成立，不表示 Android 与
 - 桌面键鼠、宽屏、普通文件系统、剪贴板/系统分享和目录入口；
 - headless Test Mode HTTP 控制面。
 
-### Test Mode 截图权限边界
+### Test Mode 屏幕录制权限边界
 
-Test Mode 仍包含 `POST /test/screenshot`，其实现使用
-`java.awt.Robot.createScreenCapture()`。macOS 实测显示，普通 `--headless` 只预检输入监听，
-`--test-mode --headless` 会额外预检系统的 ScreenCapture 权限，即使 final parity 客户端没有
-调用截图端点。应用没有麦克风或系统音频采集代码；macOS 显示的“屏幕与系统音频录制”是权限
-类别名称。
+Desktop 已移除 `POST /test/screenshot`、AWT Robot 屏幕捕获、Robot 截图快捷方法和未启用的视觉
+回归客户端。旧端点返回 404，旧 `--screenshot-dir` 参数被忽略。macOS 平台验收也不再调用
+系统 `screencapture`；URI 与 capture-affinity 使用进程、窗口几何、production state/action
+和 adapter 结果验证。
 
-最终 13/13 场景、5/5 永久保护和 64/64 capability 在拒绝该权限时仍通过，说明截图不是 parity
-依赖。用户已明确认为普通 Mihon Desktop 不应请求或保留该能力；本轮只记录现状，不把授权写成
-产品要求，也不在 Task 19/20 外扩张 roadmap。
+这些变化不影响最终 13/13 场景、5/5 永久保护或 64/64 capability。Windows 窗口隐私仍由外部
+验收宿主捕获目标窗口，截图能力不进入 Mihon bundle。应用仍没有麦克风或系统音频采集代码。
 
 ## 唯一平台豁免
 

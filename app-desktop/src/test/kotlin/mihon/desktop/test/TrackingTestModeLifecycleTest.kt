@@ -56,7 +56,6 @@ class TrackingTestModeLifecycleTest {
             testMode = true,
             httpPort = 0,
             headless = true,
-            screenshotDir = tempDir.resolve("screenshots").absolutePath,
         )
         try {
             assertSame(Injekt.get<DesktopNetworkHelper>(), Injekt.get<DesktopNetworkMaintenancePort>())

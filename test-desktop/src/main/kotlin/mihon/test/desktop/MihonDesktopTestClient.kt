@@ -26,7 +26,6 @@ import mihon.test.desktop.robot.MoreRobot
 import mihon.test.desktop.robot.ReaderRobot
 import mihon.test.desktop.robot.SettingsRobot
 import mihon.test.desktop.robot.UpdatesRobot
-import mihon.test.desktop.visual.VisualTestClient
 import org.slf4j.LoggerFactory
 import java.time.Instant
 
@@ -60,9 +59,6 @@ class DesktopTestClient(
     val updates = UpdatesRobot(this)
     val history = HistoryRobot(this)
     val more = MoreRobot(this)
-
-    // Visual testing
-    val visual = VisualTestClient(this)
 
     // Data management
     val data = TestDataClient(this)
@@ -186,24 +182,6 @@ class DesktopTestClient(
             }
             runCatching { json.decodeFromString<ActionResult>(response.bodyAsText()) }
                 .getOrElse { ActionResult(success = false, action = action, error = response.status.toString()) }
-        }
-    }
-
-    /**
-     * Capture a screenshot.
-     */
-    fun screenshot(name: String): ScreenshotResult {
-        return runBlocking {
-            val body = """{"name": "$name"}"""
-            val response = http.post("$baseUrl/test/screenshot") {
-                contentType(ContentType.Application.Json)
-                setBody(body)
-            }
-            if (response.status == HttpStatusCode.OK) {
-                json.decodeFromString<ScreenshotResult>(response.bodyAsText())
-            } else {
-                ScreenshotResult(success = false, error = response.status.toString())
-            }
         }
     }
 
@@ -385,14 +363,4 @@ data class SourceExtensionTestSnapshot(
     val errors: Map<String, SourceExtensionStoredAppError>,
     val repositoryErrors: List<SourceExtensionRepositoryError>,
     val pendingTrust: SourceExtensionTrustSnapshot? = null,
-)
-
-@Serializable
-data class ScreenshotResult(
-    val success: Boolean,
-    val path: String? = null,
-    val width: Int? = null,
-    val height: Int? = null,
-    val error: String? = null,
-    val timestamp: String = Instant.now().toString(),
 )

@@ -393,6 +393,8 @@ macOS 本机或通过 `ssh mbp` / `ssh mbp-lan` 使用应用包内可执行文�
 - `GET /test/state`：获取应用状态
 - `POST /test/navigate/{screen}`：导航
 - `POST /test/action/{action}`：执行动作
-- `POST /test/screenshot`：截图
+
+Test Mode 不提供截图 API，也不得读取桌面屏幕像素；视觉验证应使用不需要系统录屏权限的
+离屏测试，或由平台外部验收工具完成。
 
 详见 `docs/automation/TEST_GUIDE.md`。

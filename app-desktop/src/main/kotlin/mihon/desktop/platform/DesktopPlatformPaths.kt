@@ -12,7 +12,6 @@ data class DesktopPlatformPaths(
     val coversDir: File,
     val logsDir: File,
     val backupsDir: File,
-    val testScreenshotsDir: File,
     val instanceStateFile: File = File(configDir, "desktop-instance.json"),
 ) {
     companion object {
@@ -64,7 +63,6 @@ data class DesktopPlatformPaths(
                 coversDir = File(localRoot, "covers"),
                 logsDir = logsRoot,
                 backupsDir = File(localRoot, "backups"),
-                testScreenshotsDir = File(localRoot, "test-screenshots"),
             ).also { paths ->
                 if (createDirectories) {
                     paths.defaultDirectories().forEach { it.mkdirs() }
@@ -81,6 +79,5 @@ data class DesktopPlatformPaths(
         coversDir,
         logsDir,
         backupsDir,
-        testScreenshotsDir,
     )
 }

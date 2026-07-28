@@ -101,7 +101,7 @@ Desktop 独有增强层只能依赖共享契约，不得复制共享业务规则
 | Webtoon 自动滚动 | Desktop viewer 增强 | 自动滚动开关、速度档位或停止行为丢失 |
 | 普通文件系统与 CBZ 工作流 | Desktop storage adapter | 无法选择、打开目录或生成可外部读取的 CBZ |
 | FlareSolverr 可选路径 | Desktop challenge adapter 的后备实现 | 原版式浏览器挑战接入后强制删除 FlareSolverr |
-| Headless/Test Mode HTTP 控制面 | Desktop 测试基础设施 | 导航、动作、状态、截图 API 失效 |
+| Headless/Test Mode HTTP 控制面 | Desktop 测试基础设施 | 导航、动作、状态 API 失效；不得依赖系统录屏权限 |
 | 自由窗口与宽屏布局 | Desktop UI 层 | 窗口缩放后布局退化为移动端固定宽度 |
 | APK→JAR 能力 | Desktop 扩展平台 adapter 的兼容后备 | 新扩展架构接入时失去转换安装能力 |
 

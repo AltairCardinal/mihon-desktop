@@ -116,6 +116,11 @@ auto-scroll、APK-to-JAR。
 
 ### macOS 权限与发布边界
 
+> 2026-07-28 后续处理：以下 TCC 记录描述本报告验收时的历史产物。当前实现已经移除
+> `ScreenshotService`、`POST /test/screenshot`、客户端截图入口和 macOS 自动化截图命令；
+> Test Mode 不再包含屏幕像素读取能力。后续构建 `0.11.14.52.e68e7df` 的 Desktop JVM
+> 结果为 2,294 通过、0 失败、1 个 Windows-only 跳过，Robot/client 为 27/27。
+
 macOS 14.8.4 的 TCC 日志显示，本轮未签名 bundle 在普通 `--headless` 启动时预检
 `kTCCServiceListenEvent`；加入 `--test-mode` 后还会预检
 `kTCCServiceScreenCapture`。仓库中唯一读取屏幕像素的 Mihon production-bundle 代码是
@@ -140,8 +145,8 @@ bundle 未签名，因此 TCC 将其标识为 `InvalidCode`，这会使权限主
 - Linux 只保留防御性 fallback/Unsupported，不是产品、发行或验收平台。
 - 正式签名、公证和发布安装交接属于 release operations，不是本次 repository-local
   parity closure 门禁。
-- Test Mode 截图不是 final parity 场景依赖；macOS ScreenCapture 预检按上节记录为真实
-  产品/自动化边界，不伪装为通过权限能力。
+- 报告验收时的 Test Mode 截图不是 final parity 场景依赖；该历史能力现已移除，macOS
+  自动化也不再请求 ScreenCapture。
 
 ## 已执行命令
 
@@ -170,4 +175,4 @@ bash scripts/desktop-final-parity-test.sh
 - ID 85 Widget 是唯一 capability `EXEMPT`；没有第二项产品豁免。
 - Linux 仍只保留防御性 fallback，不是发行或验收平台。
 - 正式签名、公证和发布安装交接属于 release operations。
-- Test Mode 截图权限预检不影响已完成的 parity 验收，但不属于普通用户应授权的产品能力。
+- Test Mode 截图能力已在后续变更中移除；普通用户和 macOS 自动化均不应授权屏幕录制。

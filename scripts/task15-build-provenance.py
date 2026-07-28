@@ -249,11 +249,28 @@ def capture_screenshots(payload: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
 
 def validate_capture_runtime(payload: Dict[str, Any]) -> Dict[str, Any]:
     os_name = payload.get("os")
-    if payload.get("status") != "PENDING_REVIEW" or os_name not in {
+    if os_name not in {
         "windows",
         "macos",
         "linux",
     }:
+        raise ValueError("capture runtime has an unsupported OS")
+    if os_name == "macos":
+        adapter = payload.get("adapter")
+        if (
+            payload.get("status") != "PASS"
+            or payload.get("capability") != "Unsupported"
+            or payload.get("captureAttempted") is not False
+            or not isinstance(adapter, dict)
+            or adapter.get("identity") != "DesktopWindowPrivacy"
+            or adapter.get("os") != "macos"
+            or adapter.get("queryResult") != "Unsupported"
+            or adapter.get("reason") != "macos_capture_affinity_unavailable"
+            or "screenshots" in payload
+        ):
+            raise ValueError("macOS capture acceptance must pass without attempting screen capture")
+        return {"status": "VALID", "capability": payload["capability"]}
+    if payload.get("status") != "PENDING_REVIEW":
         raise ValueError("capture runtime must remain pending human review")
     if int(payload.get("windowHandle", 0)) <= 0:
         raise ValueError("capture result is missing a real window handle")
@@ -278,10 +295,7 @@ def validate_capture_runtime(payload: Dict[str, Any]) -> Dict[str, Any]:
         ):
             raise ValueError("Windows adapter and affinity evidence are inconsistent")
     else:
-        expected_reason = {
-            "macos": "macos_capture_affinity_unavailable",
-            "linux": "linux_capture_affinity_unavailable",
-        }[os_name]
+        expected_reason = "linux_capture_affinity_unavailable"
         if (
             payload.get("capability") != "Unsupported"
             or adapter.get("queryResult") != "Unsupported"
@@ -592,10 +606,6 @@ def policy(args: argparse.Namespace) -> Dict[str, Any]:
         if record.get("params", {}).get("target") != "ParserRejected":
             raise ValueError("rejection target is not ParserRejected")
         return {"status": "VALID", "record": record}
-    if args.kind == "screenshot":
-        if payload.get("success") is not True:
-            raise ValueError("screenshot result is not successful")
-        return {"status": "VALID", "screenshot": payload}
     if args.kind == "pid-empty":
         pids = pid_values("pids")
         if pids:
@@ -965,7 +975,6 @@ def parser() -> argparse.ArgumentParser:
         "--kind",
         choices=(
             "terminal",
-            "screenshot",
             "pid-empty",
             "pid-owned",
             "pid-cleanup",

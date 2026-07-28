@@ -25,7 +25,6 @@ import mihon.desktop.test.http.TrackingTestBridge
 import mihon.desktop.test.http.UpdatesTestModeBridge
 import mihon.desktop.test.http.UpdatesTestModeController
 import mihon.desktop.test.http.testHttpServer
-import mihon.desktop.test.screenshot.ScreenshotService
 import mihon.desktop.test.state.applicationState
 import mihon.desktop.tracking.TrackingTestModeController
 import mihon.desktop.ui.settings.SecuritySettingsController
@@ -44,7 +43,6 @@ import java.util.concurrent.CountDownLatch
  *
  * Test mode enables:
  * - HTTP API server for test control (port 8080)
- * - Screenshot capture service
  * - Navigation tracking
  * - Application state inspection
  */
@@ -80,9 +78,6 @@ object TestMode {
         synchronized(lifecycleLock) {
             activeRun = run
         }
-
-        // Initialize screenshot service
-        ScreenshotService.initialize(args.screenshotDir)
 
         // Initialize test state
         applicationState.testMode = true
@@ -341,7 +336,6 @@ object TestMode {
             },
             { activeServer?.stop(SERVER_STOP_GRACE_MS, SERVER_STOP_TIMEOUT_MS) },
             { activeJob?.cancel() },
-            ScreenshotService::disable,
             { applicationState.testMode = false },
             applicationState::reset,
             { isStarted = false },
@@ -421,13 +415,11 @@ class TestArgumentsBuilder {
     var httpPort: Int = TestArguments.DEFAULT_HTTP_PORT
     var jmxPort: Int = TestArguments.DEFAULT_JMX_PORT
     var headless: Boolean = false
-    var screenshotDir: String = TestArguments.DEFAULT_SCREENSHOT_DIR
 
     fun build(): TestArguments = TestArguments(
         testMode = testMode,
         httpPort = httpPort,
         jmxPort = jmxPort,
         headless = headless,
-        screenshotDir = screenshotDir,
     )
 }

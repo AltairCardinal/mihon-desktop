@@ -119,7 +119,7 @@ result="`$(capture_native_window 42 task152-contract)"
 "@
     & $Bash $CaptureFixtureScript
     if ($LASTEXITCODE -ne 0) {
-        throw "Unix capture function did not reach its screenshot command under set -u"
+        throw "Linux capture function did not reach its external window capture command under set -u"
     }
     $InstallerExitFixtureScript = Join-Path $TempRoot "installer-result-exit-contract.sh"
     Set-Content -LiteralPath $InstallerExitFixtureScript -Encoding ascii -Value @"
@@ -187,8 +187,6 @@ object AppVersion {
         @{ action = "ExternalActionFailed"; params = @{} }
     ) } $false
 
-    Invoke-Policy "screenshot" @{ success = $true; path = "window.png" } | Out-Null
-    Invoke-Policy "screenshot" @{ success = $false; error = "capture failed" } $false
     Invoke-Policy "pid-empty" @{ pids = @() } | Out-Null
     Invoke-Policy "pid-empty" @{ pids = $null } | Out-Null
     Invoke-Policy "pid-empty" @{ pids = [object[]](, $null) } | Out-Null
@@ -312,25 +310,30 @@ object AppVersion {
     Invoke-Policy "capture-review" @{ runtime = $windowsCapture; review = $wrongFeedbackReview } $false
 
     Invoke-Policy "capture" @{
-        status = "PENDING_REVIEW"
+        status = "PASS"
         os = "macos"
         capability = "Unsupported"
-        windowHandle = 456
+        captureAttempted = $false
         adapter = @{
             identity = "DesktopWindowPrivacy"
             os = "macos"
             queryResult = "Unsupported"
             reason = "macos_capture_affinity_unavailable"
         }
-        screenshots = @($captureFiles.protected, $captureFiles.clear, $captureFiles.feedback)
     } | Out-Null
     Invoke-Policy "capture" @{
-        status = "PENDING_REVIEW"
+        status = "PASS"
         os = "macos"
         capability = "Unsupported"
-        windowHandle = 456
-        screenshots = @($captureFiles.protected, $captureFiles.clear, $captureFiles.feedback)
+        captureAttempted = $false
     } $false
+
+    $macRunnerSource = Get-Content -Raw -LiteralPath $MacRunner
+    foreach ($forbidden in @("/usr/sbin/screencapture", "/test/screenshot", "--screenshot-dir")) {
+        if ($macRunnerSource.Contains($forbidden)) {
+            throw "macOS runner retained removed screen capture dependency: $forbidden"
+        }
+    }
 
     $installerArtifact = Join-Path $TempRoot "mihon-desktop-windows-x86_64-v1.2.3.msi"
     Set-Content -LiteralPath $installerArtifact -Encoding utf8 -NoNewline -Value "signed-installer-fixture"

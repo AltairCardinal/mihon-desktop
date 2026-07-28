@@ -8,13 +8,11 @@ data class TestArguments(
     val httpPort: Int = DEFAULT_HTTP_PORT,
     val jmxPort: Int = DEFAULT_JMX_PORT,
     val headless: Boolean = false,
-    val screenshotDir: String = DEFAULT_SCREENSHOT_DIR,
     val platformAcceptanceToken: String? = null,
 ) {
     companion object {
         const val DEFAULT_HTTP_PORT = 8080
         const val DEFAULT_JMX_PORT = 9999
-        val DEFAULT_SCREENSHOT_DIR: String = TestArtifactPaths.defaultScreenshotDir().toString()
 
         /**
          * Parse command-line arguments.
@@ -24,7 +22,6 @@ data class TestArguments(
             var httpPort = DEFAULT_HTTP_PORT
             var jmxPort = DEFAULT_JMX_PORT
             var headless = false
-            var screenshotDir = DEFAULT_SCREENSHOT_DIR
             var platformAcceptanceToken: String? = null
 
             for (arg in args) {
@@ -37,9 +34,6 @@ data class TestArguments(
                         jmxPort = arg.substringAfter("=").toIntOrNull() ?: DEFAULT_JMX_PORT
                     }
                     arg == "--headless" -> headless = true
-                    arg.startsWith("--screenshot-dir=") -> {
-                        screenshotDir = arg.substringAfter("=")
-                    }
                     arg.startsWith("--platform-acceptance-token=") -> {
                         platformAcceptanceToken = arg.substringAfter("=")
                     }
@@ -51,7 +45,6 @@ data class TestArguments(
                 httpPort = httpPort,
                 jmxPort = jmxPort,
                 headless = headless,
-                screenshotDir = screenshotDir,
                 platformAcceptanceToken = platformAcceptanceToken,
             )
         }

@@ -58,14 +58,6 @@ class ExampleE2ETest {
         assertThat(client.getState().currentScreen).isEqualTo("SettingsScreen")
     }
 
-    // Screenshot Tests
-    @Test
-    fun `capture screenshot`() {
-        client.library.open()
-        val result = client.screenshot("library_test")
-        assertThat(result.success).isTrue()
-    }
-
     // Downloads Tests
     @Test
     fun `pause downloads`() {
@@ -109,9 +101,6 @@ class ExampleE2ETest {
  *
  * // History Robot
  * client.history.open().search("manga").selectEntry(0)
- *
- * // Visual Testing
- * client.visual.assertMatchesBaseline("library_main")
  *
  * client.close()
  * ```

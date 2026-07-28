@@ -20,7 +20,6 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonObject
 import mihon.desktop.test.navigation.TestNavigationController
-import mihon.desktop.test.screenshot.ScreenshotService
 import mihon.desktop.test.state.applicationState
 import mihon.desktop.test.state.downloadState
 import mihon.desktop.test.state.historyState
@@ -107,19 +106,6 @@ private val nestedScreenActions = mapOf(
 )
 
 internal fun nestedTestScreenAction(screenId: String): String? = nestedScreenActions[screenId]
-
-internal fun screenshotResponse(
-    path: String?,
-    timestamp: Instant = Instant.now(),
-): JsonObject = buildJsonObject {
-    put("success", JsonPrimitive(path != null))
-    if (path != null) {
-        put("path", JsonPrimitive(path))
-    } else {
-        put("error", JsonPrimitive("Screenshot capture failed"))
-    }
-    put("timestamp", JsonPrimitive(timestamp.toString()))
-}
 
 internal fun currentTestStateJson(updateModel: DesktopUpdateScreenModel? = null): String {
     val state = applicationState
@@ -260,7 +246,6 @@ private fun actionJson(
 internal fun Application.testHttpServer(
     updateModel: DesktopUpdateScreenModel? = runCatching { Injekt.get<DesktopUpdateScreenModel>() }.getOrNull(),
     platformAcceptanceController: DesktopPlatformAcceptanceController? = null,
-    screenshotCapture: (String) -> String? = ScreenshotService::capture,
 ) {
     routing {
         // Health check
@@ -831,25 +816,6 @@ internal fun Application.testHttpServer(
                     ),
                 )
             }
-        }
-
-        // Capture screenshot
-        post("/test/screenshot") {
-            val body = try {
-                call.receiveText()
-            } catch (e: Exception) {
-                """{"name": "screenshot"}"""
-            }
-
-            val params = parseJsonBody(body)
-            val name = params["name"] ?: "screenshot"
-
-            val path = screenshotCapture(name)
-            call.respondText(
-                text = screenshotResponse(path).toString(),
-                contentType = ContentType.Application.Json,
-                status = if (path != null) HttpStatusCode.OK else HttpStatusCode.InternalServerError,
-            )
         }
 
         // Reader navigation endpoints

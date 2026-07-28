@@ -1,6 +1,6 @@
 # Desktop Automation Verification
 
-本文件只记录可复现的验证命令，不保存一次性截图结论。
+本文件只记录可复现的验证命令。
 
 ## 当前验证命令
 
@@ -16,8 +16,8 @@
 
 预期：通过。若失败，优先修复测试编译或真实断言失败。
 
-## 验证资产策略
+## 屏幕权限策略
 
-- 本地截图目录：`/tmp/mihon-screens`
-- CI 截图：上传为 workflow artifact
-- 仓库中不保存 PNG/JPG 截图
+- Test Mode 不提供截图 API，也不创建截图目录。
+- macOS 自动化不调用系统截图命令。
+- Windows 窗口隐私验收的外部截图只作为临时证据，不进入 Mihon bundle 或仓库。

@@ -22,9 +22,9 @@
 |---|---:|---:|---:|
 | Android `testReleaseUnitTest` | 231 | 0 | 0 |
 | Windows Desktop `jvmTest` | 2,293 | 0 | 3 |
-| `test-desktop:test` | 28 | 0 | 0 |
+| `test-desktop:test` | 27 | 0 | 0 |
 | Windows Desktop smoke | 92 | 0 | 0 |
-| macOS build-script Desktop `jvmTest` | 2,295 | 0 | 1 |
+| macOS build-script Desktop `jvmTest` | 2,294 | 0 | 1 |
 | Windows final runtime families/protections | 18 | 0 | 0 |
 | macOS final runtime families/protections | 18 | 0 | 0 |
 
@@ -52,9 +52,9 @@ capability mapping。
 - ID 85 Widget 为唯一平台 `EXEMPT`，不是测试缺口。
 - live extension compatibility 仍取决于本机是否存在真实扩展 JAR；固定 APK fixture 与
   consumer-driven compat inventory 已提供 repository-local 保护。
-- Test Mode 的 `/test/screenshot` 使用 AWT Robot。macOS 在 Test Mode 启动链预检
-  ScreenCapture 权限，但 final parity 场景不调用截图，并在权限拒绝时全绿。该能力不应被视为
-  普通用户功能或 parity 必需项。
+- Test Mode 的 AWT Robot 截图服务和 `/test/screenshot` 已移除；旧端点由集成测试锁定为 404，
+  旧 `--screenshot-dir` 参数被忽略。macOS 验收不再调用系统截图命令，普通运行和 Test Mode
+  均不要求屏幕录制权限。
 - Linux、正式签名、公证和 release handoff 不在当前产品/仓库验收边界。
 
 ## 合入门槛

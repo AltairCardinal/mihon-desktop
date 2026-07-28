@@ -1,7 +1,6 @@
 package mihon.test.desktop.robot
 
 import mihon.test.desktop.DesktopTestClient
-import mihon.test.desktop.ScreenshotResult
 import mihon.test.desktop.SourceExtensionTestSnapshot
 
 /**
@@ -59,12 +58,6 @@ class MoreRobot(private val client: DesktopTestClient) {
         return BackupRobot(client)
     }
 
-    /**
-     * Capture screenshot of the more screen.
-     */
-    fun capture(name: String = "more"): ScreenshotResult {
-        return client.screenshot(name)
-    }
 }
 
 /**
@@ -101,12 +94,6 @@ class ExtensionsRobot(private val client: DesktopTestClient) {
         return this
     }
 
-    /**
-     * Capture screenshot of extensions screen.
-     */
-    fun capture(name: String = "extensions"): ScreenshotResult {
-        return client.screenshot(name)
-    }
 }
 
 /**
@@ -138,12 +125,6 @@ class MigrationRobot(private val client: DesktopTestClient) {
         return this
     }
 
-    /**
-     * Capture screenshot of migration screen.
-     */
-    fun capture(name: String = "migration"): ScreenshotResult {
-        return client.screenshot(name)
-    }
 }
 
 /**
@@ -159,12 +140,6 @@ class AboutRobot(private val client: DesktopTestClient) {
         return this
     }
 
-    /**
-     * Capture screenshot of about screen.
-     */
-    fun capture(name: String = "about"): ScreenshotResult {
-        return client.screenshot(name)
-    }
 }
 
 /**
@@ -196,10 +171,4 @@ class BackupRobot(private val client: DesktopTestClient) {
         return this
     }
 
-    /**
-     * Capture screenshot of backup screen.
-     */
-    fun capture(name: String = "backup"): ScreenshotResult {
-        return client.screenshot(name)
-    }
 }

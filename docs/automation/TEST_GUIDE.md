@@ -27,8 +27,7 @@ app-desktop/tmp/mihon-dist/main/app/Mihon Desktop/Mihon Desktop.exe
 ```bash
 "/Applications/Mihon Desktop.app" \
   --test-mode \
-  --test-http-port=8080 \
-  --screenshot-dir=/tmp/mihon-screens
+  --test-http-port=8080
 ```
 
 无界面模式仅适合 HTTP 状态/API 测试：
@@ -52,7 +51,7 @@ app-desktop/tmp/mihon-dist/main/app/Mihon Desktop/Mihon Desktop.exe
 - HTTP/API 变更必须覆盖成功、空数据、错误状态和 malformed body。
 - 导航变更必须验证 Tab 与 Screen 类型，以及 pending 状态不会互相覆盖。
 - Reader API 必须验证 UI 状态与 `/test/reader/state` 一致。
-- 截图只作为本地调试产物，不提交到仓库。
+- Test Mode 不读取屏幕像素；视觉问题使用不需要系统录屏权限的 Compose 离屏测试或人工检查。
 
 ## 常用命令
 
