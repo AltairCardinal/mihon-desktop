@@ -1,6 +1,8 @@
 package mihon.desktop.extension
 
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.SourceFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -252,7 +254,7 @@ class KeiyoushiAllExtensionsCompatibilityTest {
                     rootMessage(error),
                 )
             }
-            return try {
+            val result = try {
                 if (loaded.isNotEmpty()) {
                     KeiyoushiSurveyResult.success(entry, loaded.size)
                 } else {
@@ -261,7 +263,7 @@ class KeiyoushiAllExtensionsCompatibilityTest {
                         entry,
                         KeiyoushiSurveyStatus.LOAD_FAILED,
                         diagnostic?.let { "${it.errorType}: ${it.message}" }
-                            ?: "Production loader returned no sources",
+                            ?: diagnoseEmptyLoad(converted, extensionClass),
                     )
                 }
             } finally {
@@ -270,6 +272,13 @@ class KeiyoushiAllExtensionsCompatibilityTest {
                     .filterIsInstance<AutoCloseable>()
                     .forEach { runCatching(it::close) }
             }
+            retainFailedJarForDiagnosis(
+                entry = entry,
+                converted = converted,
+                surveyRoot = surveyRoot,
+                retain = !result.isCompatible,
+            )
+            return result
         } catch (error: Throwable) {
             return KeiyoushiSurveyResult.failure(
                 entry,
@@ -300,6 +309,59 @@ class KeiyoushiAllExtensionsCompatibilityTest {
             }
         }
         throw IOException("Unable to fetch $INDEX_URL after $NETWORK_ATTEMPTS attempts", lastFailure)
+    }
+
+    private fun retainFailedJarForDiagnosis(
+        entry: KeiyoushiSurveyEntry,
+        converted: File,
+        surveyRoot: File,
+        retain: Boolean,
+    ) {
+        val target = File(surveyRoot, "failed-jars/${entry.pkg}-${entry.code}.jar")
+        if (retain) {
+            target.parentFile.mkdirs()
+            Files.copy(converted.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        } else {
+            target.delete()
+        }
+    }
+
+    private fun diagnoseEmptyLoad(
+        jar: File,
+        extensionClass: String?,
+    ): String {
+        val classNames = extensionClass
+            ?.split(':')
+            ?.map(String::trim)
+            ?.filter(String::isNotEmpty)
+            .orEmpty()
+        if (classNames.isEmpty()) {
+            return "APK manifest declares no extension class and JAR scan found no sources"
+        }
+
+        ExtensionClassLoader(jar.toURI().toURL(), javaClass.classLoader).use { classLoader ->
+            return classNames.joinToString(separator = "; ") { className ->
+                try {
+                    val candidate = classLoader.loadClass(className)
+                    when {
+                        Source::class.java.isAssignableFrom(candidate) -> {
+                            candidate.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
+                            "$className constructed as Source but production loader discarded it"
+                        }
+                        SourceFactory::class.java.isAssignableFrom(candidate) -> {
+                            val factory = candidate.getDeclaredConstructor()
+                                .apply { isAccessible = true }
+                                .newInstance() as SourceFactory
+                            val sources = factory.createSources()
+                            "$className factory created ${sources.size} source(s) but production loader discarded them"
+                        }
+                        else -> "$className does not implement Source or SourceFactory"
+                    }
+                } catch (error: Throwable) {
+                    "$className -> ${rootMessage(error)}"
+                }
+            }.take(MAX_DIAGNOSTIC_LENGTH)
+        }
     }
 
     private fun readResumableResults(
@@ -370,7 +432,16 @@ class KeiyoushiAllExtensionsCompatibilityTest {
 
     private fun rootMessage(error: Throwable): String {
         val root = generateSequence(error) { it.cause }.last()
-        return "${root.javaClass.name}: ${root.message ?: root.javaClass.simpleName}"
+        val stack = root.stackTrace
+            .take(MAX_DIAGNOSTIC_STACK_FRAMES)
+            .joinToString(separator = "\n") { "  at $it" }
+        return buildString {
+            append("${root.javaClass.name}: ${root.message ?: root.javaClass.simpleName}")
+            if (stack.isNotEmpty()) {
+                append('\n')
+                append(stack)
+            }
+        }
     }
 
     private data class IndexResponse(
@@ -391,5 +462,7 @@ class KeiyoushiAllExtensionsCompatibilityTest {
         const val NETWORK_ATTEMPTS = 2
         const val REPORT_FLUSH_INTERVAL = 10
         const val REPORT_SCHEMA_VERSION = 1
+        const val MAX_DIAGNOSTIC_LENGTH = 2_000
+        const val MAX_DIAGNOSTIC_STACK_FRAMES = 8
     }
 }
