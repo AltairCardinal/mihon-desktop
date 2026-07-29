@@ -182,7 +182,7 @@ class DesktopDiWiringTest {
     @Test
     fun `desktop DI routes task notifications through the registered in app fallback`(@TempDir tempDir: File) =
         runBlocking {
-            val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+            val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
             try {
                 val service = Injekt.get<DesktopNotificationService>()
                 val notifier = Injekt.get<DesktopSystemNotifier>()
@@ -199,7 +199,7 @@ class DesktopDiWiringTest {
 
     @Test
     fun `desktop DI shares one OAuth broker and production tracker clients with UI`(@TempDir tempDir: File) = runBlocking {
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
         try {
             val broker = Injekt.get<DesktopTrackerOAuthCallbackBroker>()
             val registry = Injekt.get<TrackerServiceRegistry>()
@@ -230,7 +230,7 @@ class DesktopDiWiringTest {
 
     @Test
     fun `desktop DI exposes one dependency notice provider instance to UI`(@TempDir tempDir: File) = runBlocking {
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
         try {
             val provider = Injekt.get<DependencyNoticeProvider>()
 
@@ -247,7 +247,7 @@ class DesktopDiWiringTest {
     @OptIn(ExperimentalComposeUiApi::class)
     @Test
     fun `owner UI boundary provides the owner graph dependencies`(@TempDir tempDir: File) = runBlocking {
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
         val owner = DesktopOwnerIngressDependencies(Injekt.get(), DesktopUiDependencies.fromInjekt())
         val scene = ImageComposeScene(100, 100, coroutineContext = coroutineContext) {}
         var rendered: DesktopUiDependencies? = null
@@ -264,7 +264,7 @@ class DesktopDiWiringTest {
 
     @Test
     fun `owner graph retains the UI navigator instance selected from DI`(@TempDir tempDir: File) = runBlocking {
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
         try {
             val uiDependencies = DesktopUiDependencies.fromInjekt()
             val ownerDependencies = DesktopOwnerIngressDependencies(Injekt.get(), uiDependencies)
@@ -279,7 +279,7 @@ class DesktopDiWiringTest {
 
     @Test
     fun `desktop DI shares the production updater controller with UI`(@TempDir tempDir: File) = runBlocking {
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
         try {
             assertNotNull(Injekt.get<ReleaseService>())
             assertNotNull(Injekt.get<GetApplicationRelease>())
@@ -305,7 +305,7 @@ class DesktopDiWiringTest {
         System.setProperty(runtimeWindowsProperty, "runtime-only publisher")
         System.setProperty(runtimeMacProperty, "RUNTIME1234")
 
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
         try {
             val trust = Injekt.get<InstallerTrust>()
             val installer = Injekt.get<DesktopUpdateInstaller>()
@@ -332,11 +332,11 @@ class DesktopDiWiringTest {
 
     @Test
     fun `reinitializing test DI permanently retires the old updater graph`(@TempDir tempDir: File) = runBlocking {
-        val first = initDesktopDIForTest(tempDir.resolve("updater-first"), DesktopPreferenceStore())
+        val first = initDesktopDIForTest(tempDir.resolve("updater-first"), isolatedDesktopPreferenceStore())
         val oldModel = Injekt.get<DesktopUpdateScreenModel>()
         val oldController = Injekt.get<DesktopUpdateController>()
         val oldRuntime = Injekt.get<DesktopAppRuntime>()
-        val second = initDesktopDIForTest(tempDir.resolve("updater-second"), DesktopPreferenceStore())
+        val second = initDesktopDIForTest(tempDir.resolve("updater-second"), isolatedDesktopPreferenceStore())
         try {
             assertTrue(oldModel !== Injekt.get<DesktopUpdateScreenModel>())
             assertTrue(oldController !== Injekt.get<DesktopUpdateController>())
@@ -359,7 +359,7 @@ class DesktopDiWiringTest {
         }
         val context = initDesktopDIForTest(
             tempDir,
-            DesktopPreferenceStore(),
+            isolatedDesktopPreferenceStore(),
             credentialBackendFactory = { namespace ->
                 namespaces += namespace
                 backend
@@ -391,7 +391,7 @@ class DesktopDiWiringTest {
             launchTimeoutMillis = 1_000,
             terminalTimeoutMillis = 60_000,
         )
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(), nativeSharePort = port)
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore(), nativeSharePort = port)
         try {
             assertSame(port, Injekt.get<DesktopNativeSharePort>())
             val service = Injekt.get<DesktopShareService>()
@@ -470,7 +470,7 @@ class DesktopDiWiringTest {
 
     @Test
     fun `desktop DI binds the started Android compat Application exact type`(@TempDir tempDir: File) = runBlocking {
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
         try {
             val application = Injekt.get<Application>()
 

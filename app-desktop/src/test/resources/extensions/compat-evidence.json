@@ -327,5 +327,33 @@
     "test": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt",
     "status": "required",
     "removalCondition": "Remove only when converted APK extensions no longer expose the fixed-main Source ABI."
+  },
+  {
+    "symbol": "android.text.Spannable",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk@sha256:eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/compat/AndroidExtensionAbiCompatibilityTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the current extension API no longer resolves a Spannable value through Linkify.addLinks."
+  },
+  {
+    "symbol": "android.text.SpannableString",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk@sha256:eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/compat/AndroidExtensionAbiCompatibilityTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the current extension API no longer constructs the SpannableString verifier shape used by Linkify."
+  },
+  {
+    "symbol": "android.text.util.Linkify",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk@sha256:eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/compat/AndroidExtensionAbiCompatibilityTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when the current extension API no longer invokes Linkify.addLinks with the WEB_URLS mask."
+  },
+  {
+    "symbol": "android.webkit.CookieManager",
+    "fixture": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk@sha256:eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236",
+    "test": "app-desktop/src/test/kotlin/mihon/desktop/compat/AndroidExtensionAbiCompatibilityTest.kt",
+    "status": "required",
+    "removalCondition": "Remove when current extension clients no longer require process-local CookieManager singleton set/get/removal semantics."
   }
 ]

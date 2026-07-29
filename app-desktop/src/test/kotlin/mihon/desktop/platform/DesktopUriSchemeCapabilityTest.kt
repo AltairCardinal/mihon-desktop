@@ -7,6 +7,7 @@ import mihon.desktop.DesktopOwnerIngressDependencies
 import mihon.desktop.DesktopRuntimeService
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.di.initDesktopDIForTest
+import mihon.desktop.di.isolatedDesktopPreferenceStore
 import mihon.desktop.startProductionDesktopApplication
 import mihon.domain.platform.ExternalAction
 import mihon.domain.platform.ExternalActionInput
@@ -19,7 +20,6 @@ import org.junit.jupiter.api.io.TempDir
 import org.w3c.dom.Element
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
-import tachiyomi.core.common.preference.DesktopPreferenceStore
 
 class DesktopUriSchemeCapabilityTest {
     @Test
@@ -62,7 +62,7 @@ class DesktopUriSchemeCapabilityTest {
 
     @Test
     fun `production owner registers URI scheme once and starts runtime window`(@TempDir tempDir: File) = runBlocking {
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
         val broker = DesktopExternalActionBroker(File(tempDir, "owner-instance.json"))
         val ownerRegistrar = RecordingRegistrar()
         val runtimeService = RecordingRuntimeService()
@@ -133,7 +133,7 @@ class DesktopUriSchemeCapabilityTest {
 
     @Test
     fun `production registration exception is structured while owner runtime window still start`(@TempDir tempDir: File) = runBlocking {
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
         val broker = DesktopExternalActionBroker(File(tempDir, "registration-instance.json"))
         val runtimeService = RecordingRuntimeService()
         val runtime = runtime(runtimeService)

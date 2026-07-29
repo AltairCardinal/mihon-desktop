@@ -14,6 +14,7 @@ import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.di.initDesktopDIForTest
+import mihon.desktop.di.isolatedDesktopPreferenceStore
 import mihon.desktop.platform.DesktopExternalActionTarget
 import mihon.desktop.test.state.TestState
 import mihon.desktop.test.state.applicationState
@@ -31,7 +32,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
-import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.manga.model.Manga
@@ -122,7 +122,7 @@ class ExternalActionFeedbackWiringTest {
 
     @Test
     fun `Home consumes cold start rejection and renders localized feedback`(@TempDir tempDir: File) = runTest {
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(), startDownloadWorker = false)
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore(), startDownloadWorker = false)
         val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
         try {
             applicationState.reset()
@@ -155,7 +155,7 @@ class ExternalActionFeedbackWiringTest {
 
     @Test
     fun `Home consumes a successful action while rejection Snackbar remains visible`(@TempDir tempDir: File) = runTest {
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(), startDownloadWorker = false)
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore(), startDownloadWorker = false)
         val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
         try {
             applicationState.reset()
@@ -193,7 +193,7 @@ class ExternalActionFeedbackWiringTest {
 
     @Test
     fun `Home drops oldest external feedback under sustained load`(@TempDir tempDir: File) = runTest {
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(), startDownloadWorker = false)
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore(), startDownloadWorker = false)
         val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
         try {
             applicationState.reset()
@@ -253,7 +253,7 @@ class ExternalActionFeedbackWiringTest {
 
     @Test
     fun `production DI chapter destination reuses the complete reader request`(@TempDir tempDir: File) = runTest {
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(), startDownloadWorker = false)
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore(), startDownloadWorker = false)
         try {
             val manga = Injekt.get<MangaRepository>().insertNetworkManga(
                 listOf(Manga.create().copy(source = 9, url = "/manga", title = "Manga")),

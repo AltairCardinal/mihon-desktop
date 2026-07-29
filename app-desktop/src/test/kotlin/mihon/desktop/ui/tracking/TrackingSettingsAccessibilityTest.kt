@@ -61,11 +61,11 @@ class TrackingSettingsAccessibilityTest {
             }
 
             clickService(scene, "Password service")
-            awaitText(scene, MR.strings.password.localized())
+            awaitText(scene, MR.strings.username.localized())
             assertPasswordField(MR.strings.username.localized(), scene, expected = false)
             assertPasswordField(MR.strings.password.localized(), scene, expected = true)
             click(scene, MR.strings.action_cancel.localized())
-            await(scene, "password dialog dismissal") { MR.strings.password.localized() !in text(scene) }
+            await(scene, "password dialog dismissal") { MR.strings.username.localized() !in text(scene) }
 
             clickService(scene, "API service")
             awaitText(scene, MR.strings.desktop_tracking_api_key.localized())
@@ -153,9 +153,9 @@ class TrackingSettingsAccessibilityTest {
     }
 
     private fun assertPasswordField(label: String, scene: ImageComposeScene, expected: Boolean) {
-        val field = nodes(scene, true)
-            .filter { it.config.contains(SemanticsActions.SetText) }
-            .single { label in subtreeText(it) }
+        val fields = nodes(scene, true).filter { it.config.contains(SemanticsActions.SetText) }
+        val field = fields.singleOrNull { label in subtreeText(it) }
+            ?: error("No editable field matched '$label': ${fields.map { it.config }}")
         assertEquals(expected, field.config.contains(SemanticsProperties.Password), label)
     }
 

@@ -27,6 +27,7 @@ import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.platform.OperatingSystem
 import mihon.desktop.platform.AwtDesktopOpenUriEventPort
 import mihon.desktop.di.initDesktopDIForTest
+import mihon.desktop.di.isolatedDesktopPreferenceStore
 import mihon.desktop.test.TestArguments
 import mihon.desktop.test.TestModeRun
 import mihon.desktop.test.completeTestModeStop
@@ -369,7 +370,7 @@ class DesktopAppRuntimeTest {
         val stateFile = File(tempDir, "instance.json")
         val owner = DesktopExternalActionBroker(stateFile)
         val port = QueuingOpenUriPort()
-        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
         val uiDependencies = DesktopUiDependencies.fromInjekt()
         var ownerFactoryCalls = 0
         val ownerEntered = CompletableDeferred<Unit>()

@@ -31,6 +31,7 @@ import mihon.desktop.APP_VERSION
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.di.initDesktopDIForTest
+import mihon.desktop.di.isolatedDesktopPreferenceStore
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.license.DependencyNoticeProvider
 import mihon.desktop.platform.DesktopPlatformPaths
@@ -50,7 +51,6 @@ import tachiyomi.domain.release.model.ReleaseTarget
 import tachiyomi.domain.release.model.ReleaseVariant
 import tachiyomi.domain.release.model.Release
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
-import tachiyomi.core.common.preference.DesktopPreferenceStore
 import mihon.domain.license.model.DependencyNotice
 import mihon.domain.license.model.LicenseNoticeFailureReason
 import mihon.domain.license.model.LicenseNoticeResult
@@ -67,14 +67,14 @@ import java.util.concurrent.CountDownLatch
 class AboutUpdateWiringTest {
     @Test
     fun `about routes real injected dependency notices to their first license content`(@TempDir tempDir: Path) = runBlocking {
-        val context = initDesktopDIForTest(tempDir.toFile(), DesktopPreferenceStore())
+        val context = initDesktopDIForTest(tempDir.toFile(), isolatedDesktopPreferenceStore())
         val dependencies = DesktopUiDependencies.fromInjekt()
         val notices = (dependencies.dependencyNoticeProvider.getNotices() as LicenseNoticeResult.Success).notices
         val coroutinesIndex = notices.indexOfFirst { "kotlinx-coroutines-core" in it.name }
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
         lateinit var navigator: Navigator
         try {
-            assertEquals(192, notices.size)
+            assertEquals(195, notices.size)
             assertTrue(coroutinesIndex >= 0)
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {

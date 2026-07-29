@@ -5,6 +5,7 @@ import java.io.File
 import kotlinx.coroutines.runBlocking
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.di.initDesktopDIForTest
+import mihon.desktop.di.isolatedDesktopPreferenceStore
 import mihon.desktop.updates.UpdatesScreenModelFactory
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -15,7 +16,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
-import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.domain.updates.interactor.GetUpdates
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -40,7 +40,7 @@ class DesktopPrivacyCapabilitiesTest {
     @Test
     fun `desktop DI and UI share capabilities without registering unsupported privacy runtime`(@TempDir tempDir: File) =
         runBlocking {
-            val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore())
+            val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
             try {
                 val capabilities = Injekt.get<DesktopPrivacyCapabilities>()
                 val uiDependencies = DesktopUiDependencies.fromInjekt()
