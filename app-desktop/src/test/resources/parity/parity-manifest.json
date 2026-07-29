@@ -3043,7 +3043,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt", "symbol": "private fun handleIntentAction", "line": 513}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt", "symbol": "private fun handleIntentAction", "line": 397}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/platform/ExternalAction.kt", "symbol": "sealed interface ExternalAction", "line": 10}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "symbol": "internal fun wireDesktopOpenUriEvents", "line": 544}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "symbol": "internal fun wireDesktopOpenUriEvents", "line": 546}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt#macOS open URI bridge drains queued events once and uses the shared ViewUri ingress", "productionMarkers": ["wireDesktopOpenUriEvents"]}]
     },
     "statusDecision": {"task": "Task 18", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt": ["macOS open URI bridge drains queued events once and uses the shared ViewUri ingress"]}},

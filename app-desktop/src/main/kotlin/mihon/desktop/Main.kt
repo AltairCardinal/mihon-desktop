@@ -172,7 +172,9 @@ private suspend fun runDesktopComposeWindowEventLoop(
                     }
                 }
             },
-            title = "Mihon Desktop $APP_VERSION",
+            title = "Mihon Desktop $APP_VERSION", icon = androidx.compose.runtime.remember {
+                androidx.compose.ui.graphics.painter.BitmapPainter(loadDesktopAppIcon())
+            },
             state = rememberWindowState(width = 1024.dp, height = 768.dp),
         ) {
             BindDesktopWindowLifecycle(window, owner.appLock, owner.windowPrivacyController)

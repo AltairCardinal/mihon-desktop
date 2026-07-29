@@ -463,6 +463,7 @@ compose.desktop {
             }
 
             windows {
+                iconFile.set(project.file("src/main/resources/icons/mihon-desktop.ico"))
                 menuGroup = "Mihon"
                 upgradeUuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
             }
