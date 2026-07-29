@@ -538,7 +538,7 @@
       "DESKTOP_CONSUMER": [
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopSystemNotifier.kt", "symbol": "class DesktopSystemNotifier", "line": 5},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/privacy/DesktopPrivacyCapabilities.kt", "symbol": "val production = DesktopPrivacyCapabilities(", "line": 20},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)", "line": 871}
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)", "line": 872}
       ],
       "FIXTURE": [
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopSystemNotifierTest.kt#falls back to in-app notification when system delivery is unavailable", "productionMarkers": ["DesktopSystemNotifier("]},
@@ -1775,7 +1775,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt", "symbol": "class CloudflareInterceptor(", "line": 25}],
       "CURRENT_ANDROID": [{"path": "core/common/src/androidMain/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt", "symbol": "class CloudflareInterceptor(", "line": 25}],
       "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/network/DesktopCloudflareInterceptor.kt", "symbol": "typealias DesktopCloudflareInterceptor", "line": 61}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopNetworkHelper.kt", "symbol": "class DesktopNetworkHelper(", "line": 27}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopNetworkHelper.kt", "symbol": "class DesktopNetworkHelper(", "line": 30}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/network/DesktopChallengeRecoveryPolicyTest.kt#production client exposes upstream cloudflare interceptor runtime contract", "productionMarkers": ["DesktopNetworkHelper(", "simpleName == \"CloudflareInterceptor\""]}]
     },
     "deviations": [
@@ -2239,7 +2239,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "symbol": "filterChaptersForDownload.await(manga, newChapters)", "line": 268}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "symbol": "filterChaptersForDownload.await(manga, newChapters)", "line": 294}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/chapter/interactor/FilterChaptersForDownload.kt", "symbol": "class FilterChaptersForDownload", "line": 16}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "filterChaptersForDownload.await(manga, chapters)", "line": 894}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "filterChaptersForDownload.await(manga, chapters)", "line": 895}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt#开启后保留候选数量与上游排序且正确处理空列表", "productionMarkers": ["filter.await"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt#reinitializing test DI replaces every binding and scheduler context", "productionMarkers": ["Injekt.get<LibraryUpdateScheduler>().runNow().join()", "PersistentDownloadStore("]}]
     },
     "protectionTests": [
@@ -3296,7 +3296,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "presentation-core/src/main/java/tachiyomi/presentation/core/util/Modifier.kt", "symbol": "fun Modifier.runOnEnterKeyPressed", "line": 55}],
       "CURRENT_ANDROID": [{"path": "presentation-core/src/main/java/tachiyomi/presentation/core/util/Modifier.kt", "symbol": "fun Modifier.runOnEnterKeyPressed", "line": 55}],
       "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SettingsComposables.kt", "symbol": "internal fun Modifier.desktopSettingsEnterKey", "line": 27}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/GeneralSettingsScreen.kt", "symbol": "SwitchSettingsItem(", "line": 62}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/GeneralSettingsScreen.kt", "symbol": "SwitchSettingsItem(", "line": 68}],
       "FIXTURE": [
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt#Backup production button activates once on key down and respects disabled state", "productionMarkers": ["DesktopSettingsButton("]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsAccessibilityContractTest.kt#General and Appearance rows expose one action role state and disabled semantics", "productionMarkers": ["GeneralSettingsScreen()", "AppearanceSettingsScreen()"]}

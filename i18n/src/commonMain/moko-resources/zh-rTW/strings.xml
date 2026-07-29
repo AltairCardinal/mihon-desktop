@@ -1045,6 +1045,13 @@
     <string name="desktop_general_google_dns">Google（dns.google）</string>
     <string name="desktop_general_page_transition_summary">翻頁時顯示動畫</string>
     <string name="desktop_general_system_dns">系統 DNS（關閉）</string>
+    <string name="desktop_general_proxy_title">網路代理</string>
+    <string name="desktop_general_proxy_summary">讓擴充套件倉庫、漫畫來源、圖片、下載及其他桌面端網路要求透過所設定的代理。</string>
+    <string name="desktop_general_proxy_enabled">使用網路代理</string>
+    <string name="desktop_general_proxy_restart_summary">變更將於下次啟動時生效</string>
+    <string name="desktop_general_proxy_url">代理位址</string>
+    <string name="desktop_general_proxy_supported_types">支援：http://主機:連接埠、socks5://主機:連接埠</string>
+    <string name="desktop_general_proxy_invalid">請輸入含明確連接埠的有效 HTTP 或 SOCKS5 代理位址；暫不支援需要驗證的代理。</string>
     <string name="desktop_language_follow_system">跟隨系統語言</string>
     <string name="desktop_ui_continue">繼續</string>
     <string name="desktop_library_excluded_categories">不參與更新的分類</string>

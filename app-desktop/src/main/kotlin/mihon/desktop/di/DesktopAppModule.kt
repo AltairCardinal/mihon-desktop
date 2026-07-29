@@ -403,6 +403,7 @@ private fun registerDesktopNetwork(
         cacheDir = paths.networkCacheDir,
         cookieStorageFile = paths.cookiesFile,
         dohProvider = dohProvider,
+        proxyConfig = appPreferences.proxyRuntimeConfig(),
         challengeManager = challengeManager,
     )
     authenticatedSessionCommitter = DesktopAuthenticatedSessionCommitter(networkHelper.cookieJar)

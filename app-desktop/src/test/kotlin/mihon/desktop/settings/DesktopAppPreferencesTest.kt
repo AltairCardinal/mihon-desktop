@@ -2,8 +2,10 @@ package mihon.desktop.settings
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import java.net.Proxy
 
 /** RED — DesktopAppPreferences and ThemeMode do not exist yet. */
 class DesktopAppPreferencesTest {
@@ -87,5 +89,54 @@ class DesktopAppPreferencesTest {
     @Test
     fun `hide missing chapter indicators uses original Mihon preference key`() {
         assertEquals("pref_hide_missing_chapter_indicators", prefs().hideMissingChapterIndicators.key())
+    }
+
+    @Test
+    fun `network proxy is disabled by default`() {
+        val preferences = prefs()
+
+        assertFalse(preferences.proxyEnabled.get())
+        assertEquals("", preferences.proxyUrl.get())
+        assertNull(preferences.proxyRuntimeConfig())
+    }
+
+    @Test
+    fun `enabled HTTP proxy URL produces runtime config`() {
+        val preferences = prefs()
+        preferences.proxyEnabled.set(true)
+        preferences.proxyUrl.set(" http://127.0.0.1:10808 ")
+
+        assertEquals(
+            DesktopProxyRuntimeConfig(Proxy.Type.HTTP, "127.0.0.1", 10808),
+            preferences.proxyRuntimeConfig(),
+        )
+    }
+
+    @Test
+    fun `enabled SOCKS5 proxy URL produces runtime config`() {
+        val preferences = prefs()
+        preferences.proxyEnabled.set(true)
+        preferences.proxyUrl.set("socks5://localhost:7891")
+
+        assertEquals(
+            DesktopProxyRuntimeConfig(Proxy.Type.SOCKS, "localhost", 7891),
+            preferences.proxyRuntimeConfig(),
+        )
+    }
+
+    @Test
+    fun `invalid or authenticated proxy URL is rejected`() {
+        val preferences = prefs()
+        preferences.proxyEnabled.set(true)
+
+        listOf(
+            "127.0.0.1:10808",
+            "ftp://127.0.0.1:10808",
+            "http://user:password@127.0.0.1:10808",
+            "http://127.0.0.1:70000",
+        ).forEach { value ->
+            preferences.proxyUrl.set(value)
+            assertNull(preferences.proxyRuntimeConfig(), value)
+        }
     }
 }

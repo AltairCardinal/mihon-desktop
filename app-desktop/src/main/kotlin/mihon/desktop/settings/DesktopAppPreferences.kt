@@ -8,6 +8,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import java.net.URI
+import java.net.Proxy
 import java.util.Locale
 import java.util.prefs.Preferences
 
@@ -19,6 +20,26 @@ enum class ReaderDefaultMode { PAGER, WEBTOON }
 enum class DohProvider { OFF, GOOGLE, CLOUDFLARE, ADGUARD }
 
 data class FlareSolverrRuntimeConfig(val baseUrl: HttpUrl)
+
+data class DesktopProxyRuntimeConfig(
+    val type: Proxy.Type,
+    val host: String,
+    val port: Int,
+)
+
+internal fun parseDesktopProxyUrl(value: String): DesktopProxyRuntimeConfig? {
+    val uri = runCatching { URI(value.trim()) }.getOrNull() ?: return null
+    if (uri.rawUserInfo != null || uri.rawQuery != null || uri.rawFragment != null) return null
+    if (uri.rawPath.orEmpty().let { it.isNotEmpty() && it != "/" }) return null
+    val host = uri.host?.takeIf(String::isNotBlank) ?: return null
+    val port = uri.port.takeIf { it in 1..65535 } ?: return null
+    val type = when (uri.scheme?.lowercase(Locale.ROOT)) {
+        "http" -> Proxy.Type.HTTP
+        "socks", "socks5" -> Proxy.Type.SOCKS
+        else -> return null
+    }
+    return DesktopProxyRuntimeConfig(type, host, port)
+}
 
 /** Interval for automatic library updates. [OFF] disables automatic updates. */
 enum class LibraryUpdateInterval(val hours: Long) {
@@ -180,6 +201,19 @@ class DesktopAppPreferences(
             serializer = { it.name },
             deserializer = { DohProvider.valueOf(it) },
         ).migrate("doh_provider") { runCatching { DohProvider.valueOf(it) }.getOrNull() }
+    }
+
+    val proxyEnabled: Preference<Boolean> by lazy {
+        boolean(key = "network_proxy_enabled", default = false)
+    }
+
+    val proxyUrl: Preference<String> by lazy {
+        string(key = "network_proxy_url", default = "")
+    }
+
+    fun proxyRuntimeConfig(): DesktopProxyRuntimeConfig? {
+        if (!proxyEnabled.get()) return null
+        return parseDesktopProxyUrl(proxyUrl.get())
     }
 
     val flareSolverrEnabled: Preference<Boolean> by lazy {

@@ -128,6 +128,13 @@
     <string name="desktop_general_page_transition_summary">翻页时显示动画</string>
     <string name="desktop_general_doh_restart_summary">下次启动时生效</string>
     <string name="desktop_general_system_dns">系统 DNS（关闭）</string>
+    <string name="desktop_general_proxy_title">网络代理</string>
+    <string name="desktop_general_proxy_summary">让插件仓库、漫画源、图片、下载及其他桌面端网络请求通过所配置的代理。</string>
+    <string name="desktop_general_proxy_enabled">使用网络代理</string>
+    <string name="desktop_general_proxy_restart_summary">更改将在下次启动时生效</string>
+    <string name="desktop_general_proxy_url">代理地址</string>
+    <string name="desktop_general_proxy_supported_types">支持：http://主机:端口、socks5://主机:端口</string>
+    <string name="desktop_general_proxy_invalid">请输入带明确端口的有效 HTTP 或 SOCKS5 代理地址；暂不支持需要身份验证的代理。</string>
     <string name="desktop_general_google_dns">Google（dns.google）</string>
     <string name="desktop_general_cloudflare_dns">Cloudflare（1.1.1.1）</string>
     <string name="desktop_general_adguard_dns">AdGuard DNS 服务</string>

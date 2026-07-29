@@ -3,6 +3,7 @@ package mihon.desktop.ui.settings
 import mihon.desktop.LocalDesktopUiDependencies
 
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -11,6 +12,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -24,6 +26,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.DohProvider
+import mihon.desktop.settings.parseDesktopProxyUrl
 import tachiyomi.i18n.MR
 
 class GeneralSettingsScreen : Screen {
@@ -37,8 +40,11 @@ class GeneralSettingsScreen : Screen {
         val incognito by prefs.incognitoMode.changes().collectAsState(initial = prefs.incognitoMode.get())
         val pageTurnAnim by prefs.pageTurnAnimation.changes().collectAsState(initial = prefs.pageTurnAnimation.get())
         val doh by prefs.dohProvider.changes().collectAsState(initial = prefs.dohProvider.get())
+        val proxyEnabled by prefs.proxyEnabled.changes().collectAsState(initial = prefs.proxyEnabled.get())
+        val proxyUrl by prefs.proxyUrl.changes().collectAsState(initial = prefs.proxyUrl.get())
         val incognitoTitle = MR.strings.pref_incognito_mode.localized()
         val dnsTitle = MR.strings.pref_dns_over_https.localized()
+        val proxyTitle = MR.strings.desktop_general_proxy_title.localized()
 
         Scaffold(
             topBar = {
@@ -72,6 +78,47 @@ class GeneralSettingsScreen : Screen {
                     checked = pageTurnAnim,
                     onCheckedChange = { prefs.pageTurnAnimation.set(it) },
                 )
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                Text(
+                    text = proxyTitle,
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.desktopSettingsAnchor(proxyTitle).padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+                Text(
+                    text = MR.strings.desktop_general_proxy_summary.localized(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
+                SwitchSettingsItem(
+                    title = MR.strings.desktop_general_proxy_enabled.localized(),
+                    subtitle = MR.strings.desktop_general_proxy_restart_summary.localized(),
+                    checked = proxyEnabled,
+                    onCheckedChange = { prefs.proxyEnabled.set(it) },
+                )
+                if (proxyEnabled) {
+                    val proxyUrlValid = parseDesktopProxyUrl(proxyUrl) != null
+                    OutlinedTextField(
+                        value = proxyUrl,
+                        onValueChange = { prefs.proxyUrl.set(it) },
+                        label = { Text(MR.strings.desktop_general_proxy_url.localized()) },
+                        placeholder = { Text("http://127.0.0.1:10808") },
+                        supportingText = {
+                            Text(
+                                if (proxyUrlValid) {
+                                    MR.strings.desktop_general_proxy_supported_types.localized()
+                                } else {
+                                    MR.strings.desktop_general_proxy_invalid.localized()
+                                },
+                            )
+                        },
+                        isError = !proxyUrlValid,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 

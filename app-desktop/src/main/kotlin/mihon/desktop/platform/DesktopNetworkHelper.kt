@@ -13,6 +13,7 @@ import mihon.desktop.network.CF_CLEARANCE_COOKIE_NAME
 import mihon.desktop.network.CookieImportResult
 import mihon.desktop.network.validateCloudflareCookieInput
 import mihon.desktop.settings.DohProvider
+import mihon.desktop.settings.DesktopProxyRuntimeConfig
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import okhttp3.Cache
@@ -22,12 +23,15 @@ import okhttp3.OkHttpClient
 import okhttp3.dnsoverhttps.DnsOverHttps
 import java.io.File
 import java.net.URI
+import java.net.InetSocketAddress
+import java.net.Proxy
 import java.util.concurrent.TimeUnit
 
 class DesktopNetworkHelper(
     cacheDir: File = DesktopPlatformPaths.current().networkCacheDir,
     cookieStorageFile: File = DesktopPlatformPaths.current().cookiesFile,
     dohProvider: DohProvider = DohProvider.OFF,
+    proxyConfig: DesktopProxyRuntimeConfig? = null,
     challengeManager: CloudflareChallengeManager? = null,
 ) : AutoCloseable, DesktopExtensionCookiePort, DesktopNetworkMaintenancePort {
 
@@ -50,6 +54,9 @@ class DesktopNetworkHelper(
         .addInterceptor(UncaughtExceptionInterceptor())
         .addInterceptor(UserAgentInterceptor(::defaultUserAgentProvider))
         .apply {
+            proxyConfig?.let {
+                proxy(Proxy(it.type, InetSocketAddress(it.host, it.port)))
+            }
             challengeManager?.let {
                 addInterceptor(DesktopCloudflareInterceptor(it))
                 addNetworkInterceptor(DesktopCloudflareCredentialInterceptor(it))

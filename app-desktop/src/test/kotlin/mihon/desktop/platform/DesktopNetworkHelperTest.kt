@@ -18,6 +18,9 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.File
+import java.net.InetSocketAddress
+import java.net.Proxy
+import mihon.desktop.settings.DesktopProxyRuntimeConfig
 
 class DesktopNetworkHelperTest {
 
@@ -46,6 +49,18 @@ class DesktopNetworkHelperTest {
         val cacheDir = createTempCacheDir()
         val helper = DesktopNetworkHelper(cacheDir = cacheDir)
         assertNotNull(helper.client.cache)
+    }
+
+    @Test
+    fun `client uses configured HTTP proxy for extension and source requests`() {
+        val helper = DesktopNetworkHelper(
+            cacheDir = createTempCacheDir(),
+            proxyConfig = DesktopProxyRuntimeConfig(Proxy.Type.HTTP, "127.0.0.1", 10808),
+        )
+
+        assertEquals(Proxy.Type.HTTP, helper.client.proxy?.type())
+        assertEquals(InetSocketAddress("127.0.0.1", 10808), helper.client.proxy?.address())
+        helper.close()
     }
 
     @Test

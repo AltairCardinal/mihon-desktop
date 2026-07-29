@@ -158,6 +158,8 @@ import uy.kohesive.injekt.api.get
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
+import java.net.InetSocketAddress
+import java.net.Proxy
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
 import okhttp3.OkHttpClient
@@ -179,6 +181,25 @@ import okio.Buffer
 
 @Isolated
 class DesktopDiWiringTest {
+    @Test
+    fun `desktop DI applies persisted proxy to shared production client`(@TempDir tempDir: File) = runBlocking {
+        val store = isolatedDesktopPreferenceStore()
+        DesktopAppPreferences(store).apply {
+            proxyEnabled.set(true)
+            proxyUrl.set("http://127.0.0.1:10808")
+        }
+
+        val context = initDesktopDIForTest(tempDir, store)
+        try {
+            val proxy = Injekt.get<DesktopNetworkHelper>().client.proxy
+            assertEquals(Proxy.Type.HTTP, proxy?.type())
+            assertEquals(InetSocketAddress("127.0.0.1", 10808), proxy?.address())
+            assertNotNull(Injekt.get<DesktopExtensionApi>())
+        } finally {
+            context.closeAndJoin()
+        }
+    }
+
     @Test
     fun `desktop DI routes task notifications through the registered in app fallback`(@TempDir tempDir: File) =
         runBlocking {

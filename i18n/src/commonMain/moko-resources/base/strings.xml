@@ -373,6 +373,13 @@
     <string name="desktop_general_page_transition_summary">Show page-flip animation when navigating</string>
     <string name="desktop_general_doh_restart_summary">Takes effect on next launch</string>
     <string name="desktop_general_system_dns">System DNS (off)</string>
+    <string name="desktop_general_proxy_title">Network proxy</string>
+    <string name="desktop_general_proxy_summary">Routes extension repositories, sources, images, downloads, and other Desktop network requests through the configured proxy.</string>
+    <string name="desktop_general_proxy_enabled">Use network proxy</string>
+    <string name="desktop_general_proxy_restart_summary">Changes take effect on next launch</string>
+    <string name="desktop_general_proxy_url">Proxy URL</string>
+    <string name="desktop_general_proxy_supported_types">Supported formats: http://host:port and socks5://host:port</string>
+    <string name="desktop_general_proxy_invalid">Enter a valid HTTP or SOCKS5 proxy URL with an explicit port. Authenticated proxies are not supported.</string>
     <string name="desktop_general_google_dns">Google (dns.google)</string>
     <string name="desktop_general_cloudflare_dns">Cloudflare (1.1.1.1)</string>
     <string name="desktop_general_adguard_dns">AdGuard DNS</string>
