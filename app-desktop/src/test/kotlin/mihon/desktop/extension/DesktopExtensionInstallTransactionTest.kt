@@ -52,8 +52,29 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.objectweb.asm.ClassReader
+import org.objectweb.asm.ClassVisitor
+import org.objectweb.asm.ClassWriter
+import org.objectweb.asm.MethodVisitor
+import org.objectweb.asm.Opcodes
 
 class DesktopExtensionInstallTransactionTest {
+    @Test
+    fun `native JAR install wires authenticated Page ABI adaptation before runtime load`(
+        @TempDir directory: Path,
+    ) = runBlocking {
+        val bytes = sourceJarWithPageClient(FixtureNewSource::class.java)
+
+        val result = install(bytes, directory, FixtureNewSource.ID)
+
+        assertInstanceOf(DesktopExtensionApi.InstallResult.Success::class.java, result)
+        val installed = directory.resolve("$PACKAGE.jar").toFile()
+        java.util.jar.JarFile(installed).use { jar ->
+            val descriptor = jar.getInputStream(jar.getJarEntry("PageClient.class")).use(::pageConstructorDescriptor)
+            assertEquals(PAGE_OBJECT_DEFAULT_DESCRIPTOR, descriptor)
+        }
+    }
+
     @Test
     fun `same package concurrent installs share one application transaction`(@TempDir directory: Path) = runBlocking {
         val bytes = sourceJar(FixtureNewSource::class.java)
@@ -1068,6 +1089,69 @@ class DesktopExtensionInstallTransactionTest {
         return zip(path to classBytes, SERVICE to source.name.toByteArray())
     }
 
+    private fun sourceJarWithPageClient(source: Class<out Source>): ByteArray {
+        val path = source.name.replace('.', '/') + ".class"
+        val classBytes = checkNotNull(source.classLoader.getResourceAsStream(path)).use { it.readBytes() }
+        return zip(
+            path to classBytes,
+            SERVICE to source.name.toByteArray(),
+            "PageClient.class" to pageConstructorCaller(),
+        )
+    }
+
+    private fun pageConstructorCaller(): ByteArray {
+        val writer = ClassWriter(0)
+        writer.visit(Opcodes.V11, Opcodes.ACC_PUBLIC, "PageClient", null, "java/lang/Object", null)
+        writer.visitMethod(Opcodes.ACC_PUBLIC, "create", "()V", null, null).apply {
+            visitCode()
+            visitInsn(Opcodes.ICONST_0)
+            visitInsn(Opcodes.ACONST_NULL)
+            visitInsn(Opcodes.ACONST_NULL)
+            visitInsn(Opcodes.ACONST_NULL)
+            visitInsn(Opcodes.ICONST_0)
+            visitInsn(Opcodes.ACONST_NULL)
+            visitMethodInsn(
+                Opcodes.INVOKESPECIAL,
+                PAGE_OWNER,
+                "<init>",
+                PAGE_URI_DEFAULT_DESCRIPTOR,
+                false,
+            )
+            visitInsn(Opcodes.RETURN)
+            visitMaxs(6, 1)
+            visitEnd()
+        }
+        writer.visitEnd()
+        return writer.toByteArray()
+    }
+
+    private fun pageConstructorDescriptor(input: java.io.InputStream): String {
+        var found = ""
+        ClassReader(input).accept(
+            object : ClassVisitor(Opcodes.ASM9) {
+                override fun visitMethod(
+                    access: Int,
+                    name: String?,
+                    descriptor: String?,
+                    signature: String?,
+                    exceptions: Array<out String>?,
+                ): MethodVisitor = object : MethodVisitor(Opcodes.ASM9) {
+                    override fun visitMethodInsn(
+                        opcode: Int,
+                        owner: String?,
+                        name: String?,
+                        methodDescriptor: String?,
+                        isInterface: Boolean,
+                    ) {
+                        if (owner == PAGE_OWNER && name == "<init>") found = methodDescriptor.orEmpty()
+                    }
+                }
+            },
+            0,
+        )
+        return found
+    }
+
     private fun classOnlyJar(type: Class<*>): ByteArray {
         val path = type.name.replace('.', '/') + ".class"
         val classBytes = checkNotNull(type.classLoader.getResourceAsStream(path)).use { it.readBytes() }
@@ -1260,6 +1344,11 @@ class DesktopExtensionInstallTransactionTest {
     }
 
     private companion object {
+        const val PAGE_OWNER = "eu/kanade/tachiyomi/source/model/Page"
+        const val PAGE_URI_DEFAULT_DESCRIPTOR =
+            "(ILjava/lang/String;Ljava/lang/String;Landroid/net/Uri;ILkotlin/jvm/internal/DefaultConstructorMarker;)V"
+        const val PAGE_OBJECT_DEFAULT_DESCRIPTOR =
+            "(ILjava/lang/String;Ljava/lang/String;Ljava/lang/Object;ILkotlin/jvm/internal/DefaultConstructorMarker;)V"
         const val PACKAGE = "mihon.desktop.extension"
         const val SERVICE = "META-INF/services/eu.kanade.tachiyomi.source.Source"
         const val MINIMAL_DEX_BASE64 =

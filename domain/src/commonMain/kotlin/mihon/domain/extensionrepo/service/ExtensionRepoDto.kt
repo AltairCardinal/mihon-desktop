@@ -1,5 +1,6 @@
 package mihon.domain.extensionrepo.service
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import mihon.domain.extension.model.ExtensionArtifact
 import mihon.domain.extension.model.ExtensionCatalogEntry
@@ -9,6 +10,8 @@ import mihon.domain.extensionrepo.model.ExtensionRepo
 
 @Serializable
 data class ExtensionRepoMetaDto(
+    @SerialName("index_v2")
+    val indexV2Url: String? = null,
     val meta: ExtensionRepoDto,
 )
 

@@ -234,7 +234,11 @@ internal class DesktopExtensionInstallPort(
         )
         val candidate = File(install.transactionDirectory, "candidate.jar")
         when {
-            content.hasJvmClasses -> fileSystem.copy(install.download, candidate)
+            content.hasJvmClasses -> {
+                if (!DefaultJvmExtensionArtifactAdapter.adaptIfRequired(install.download, candidate)) {
+                    fileSystem.copy(install.download, candidate)
+                }
+            }
             content.hasDex -> {
                 install.extensionClass = ManifestClassExtractor.extractFromApk(install.download)
                     ?.takeIf(String::isNotBlank)

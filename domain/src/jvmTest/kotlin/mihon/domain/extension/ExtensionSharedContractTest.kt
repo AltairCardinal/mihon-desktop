@@ -129,14 +129,14 @@ class ExtensionSharedContractTest {
     @Test
     fun `lib version compatibility preserves the fixed-main fixture inclusive boundary for both consumers`() {
         assertEquals(ExtensionCompatibility.Compatible, artifact(versionName = "1.4.0").compatibility())
-        assertEquals(ExtensionCompatibility.Compatible, artifact(versionName = "1.5.99").compatibility())
+        assertEquals(ExtensionCompatibility.Compatible, artifact(versionName = "1.6.99").compatibility())
         assertInstanceOf(
             ExtensionCompatibility.UnsupportedLib::class.java,
             artifact(versionName = "1.3.9").compatibility(),
         )
         assertInstanceOf(
             ExtensionCompatibility.UnsupportedLib::class.java,
-            artifact(versionName = "1.6.0").compatibility(),
+            artifact(versionName = "1.7.0").compatibility(),
         )
     }
 

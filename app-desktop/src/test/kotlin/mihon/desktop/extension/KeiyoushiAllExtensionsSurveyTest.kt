@@ -13,7 +13,7 @@ class KeiyoushiAllExtensionsSurveyTest {
             KeiyoushiSurveyEntry(
                 name = "English",
                 pkg = "ext.english",
-                apk = "english.apk",
+                artifactUrl = "https://repo.example/jar/english.jar",
                 lang = "en",
                 code = 1,
                 version = "1.4.1",
@@ -21,7 +21,7 @@ class KeiyoushiAllExtensionsSurveyTest {
             KeiyoushiSurveyEntry(
                 name = "Chinese",
                 pkg = "ext.chinese",
-                apk = "chinese.apk",
+                artifactUrl = "https://repo.example/jar/chinese.jar",
                 lang = "zh",
                 code = 2,
                 version = "1.4.2",
@@ -29,7 +29,7 @@ class KeiyoushiAllExtensionsSurveyTest {
             KeiyoushiSurveyEntry(
                 name = "New API",
                 pkg = "ext.new-api",
-                apk = "new-api.apk",
+                artifactUrl = "https://repo.example/jar/new-api.jar",
                 lang = "all",
                 code = 3,
                 version = "1.6.0",
@@ -45,8 +45,8 @@ class KeiyoushiAllExtensionsSurveyTest {
     @Test
     fun `coverage requires exactly one result for every planned artifact`() {
         val entries = listOf(
-            KeiyoushiSurveyEntry("One", "ext.one", "one.apk", "en", 1, "1.4.1"),
-            KeiyoushiSurveyEntry("Two", "ext.two", "two.apk", "ja", 2, "1.4.2"),
+            KeiyoushiSurveyEntry("One", "ext.one", "https://repo.example/jar/one.jar", "en", 1, "1.4.1"),
+            KeiyoushiSurveyEntry("Two", "ext.two", "https://repo.example/jar/two.jar", "ja", 2, "1.4.2"),
         )
 
         assertFalse(
@@ -65,7 +65,14 @@ class KeiyoushiAllExtensionsSurveyTest {
 
     @Test
     fun `zero loaded sources is not a successful compatibility result`() {
-        val entry = KeiyoushiSurveyEntry("Empty", "ext.empty", "empty.apk", "en", 1, "1.4.1")
+        val entry = KeiyoushiSurveyEntry(
+            "Empty",
+            "ext.empty",
+            "https://repo.example/jar/empty.jar",
+            "en",
+            1,
+            "1.4.1",
+        )
 
         assertFalse(KeiyoushiSurveyResult.success(entry, sourcesLoaded = 0).isCompatible)
         assertTrue(KeiyoushiSurveyResult.success(entry, sourcesLoaded = 1).isCompatible)

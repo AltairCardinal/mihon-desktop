@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 internal data class KeiyoushiSurveyEntry(
     val name: String,
     val pkg: String,
-    val apk: String,
+    val artifactUrl: String,
     val lang: String,
     val code: Long,
     val version: String,
@@ -17,7 +17,6 @@ internal data class KeiyoushiSurveyEntry(
 internal enum class KeiyoushiSurveyStatus {
     COMPATIBLE,
     DOWNLOAD_FAILED,
-    CONVERSION_FAILED,
     LOAD_FAILED,
 }
 
@@ -25,7 +24,7 @@ internal enum class KeiyoushiSurveyStatus {
 internal data class KeiyoushiSurveyResult(
     val name: String,
     val pkg: String,
-    val apk: String,
+    val artifactUrl: String,
     val lang: String,
     val code: Long,
     val version: String,
@@ -34,7 +33,7 @@ internal data class KeiyoushiSurveyResult(
     val detail: String = "",
 ) {
     val artifactId: String
-        get() = artifactId(pkg, code, apk)
+        get() = artifactId(pkg, code, artifactUrl)
 
     val isCompatible: Boolean
         get() = status == KeiyoushiSurveyStatus.COMPATIBLE && sourcesLoaded > 0
@@ -78,7 +77,7 @@ internal data class KeiyoushiSurveyResult(
         ) = KeiyoushiSurveyResult(
             name = entry.name,
             pkg = entry.pkg,
-            apk = entry.apk,
+            artifactUrl = entry.artifactUrl,
             lang = entry.lang,
             code = entry.code,
             version = entry.version,
@@ -108,7 +107,7 @@ internal object KeiyoushiAllExtensionsSurvey {
         planned: List<KeiyoushiSurveyEntry>,
         results: List<KeiyoushiSurveyResult>,
     ): Boolean {
-        val expectedIds = planned.map { artifactId(it.pkg, it.code, it.apk) }
+        val expectedIds = planned.map { artifactId(it.pkg, it.code, it.artifactUrl) }
         val actualIds = results.map(KeiyoushiSurveyResult::artifactId)
         return expectedIds.size == expectedIds.toSet().size &&
             actualIds.size == actualIds.toSet().size &&
@@ -116,4 +115,4 @@ internal object KeiyoushiAllExtensionsSurvey {
     }
 }
 
-private fun artifactId(pkg: String, code: Long, apk: String): String = "$pkg:$code:$apk"
+private fun artifactId(pkg: String, code: Long, artifactUrl: String): String = "$pkg:$code:$artifactUrl"

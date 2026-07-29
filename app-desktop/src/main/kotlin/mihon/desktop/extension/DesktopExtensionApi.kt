@@ -30,6 +30,7 @@ import mihon.domain.extension.service.TrustMismatch
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
 import mihon.domain.extensionrepo.service.ExtensionRepoIndexEntryDto
+import mihon.domain.extensionrepo.service.ExtensionRepoMetaDto
 import mihon.domain.extensionrepo.service.toCatalogEntry
 import okhttp3.OkHttpClient
 import java.util.UUID
@@ -97,9 +98,26 @@ class DesktopExtensionApi(
     }
 
     private suspend fun fetchRepository(repo: ExtensionRepo): RepositoryFetchResult {
-        val response = client.newCall(GET("${repo.baseUrl}/index.min.json")).awaitSuccess()
-        val entries = json.decodeFromString<List<ExtensionRepoIndexEntryDto>>(response.body.string())
-            .map { it.toCatalogEntry(repo) }
+        val manifest = client.newCall(GET("${repo.baseUrl}/repo.json")).awaitSuccess().use { response ->
+            json.decodeFromString<ExtensionRepoMetaDto>(response.body.string())
+        }
+        require(
+            manifest.meta.signingKeyFingerprint.normalizedFingerprint() ==
+                repo.signingKeyFingerprint.normalizedFingerprint(),
+        ) {
+            "Repository metadata signing key does not match the trusted repository identity"
+        }
+        val indexV2Url = manifest.indexV2Url
+        val entries = if (indexV2Url != null) {
+            client.newCall(GET(indexV2Url)).awaitSuccess().use { response ->
+                DesktopExtensionRepoV2Catalog.decode(response.body.bytes(), repo)
+            }
+        } else {
+            client.newCall(GET("${repo.baseUrl}/index.min.json")).awaitSuccess().use { response ->
+                json.decodeFromString<List<ExtensionRepoIndexEntryDto>>(response.body.string())
+                    .map { it.toCatalogEntry(repo) }
+            }
+        }
         return RepositoryFetchResult.Success(repo.toIdentity(), entries)
     }
 
@@ -308,3 +326,5 @@ class DesktopExtensionApi(
         private const val MAX_ICON_BYTES = 2 * 1024 * 1024
     }
 }
+
+private fun String.normalizedFingerprint(): String = replace(":", "").trim().lowercase()

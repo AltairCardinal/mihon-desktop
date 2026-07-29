@@ -1312,7 +1312,7 @@
       "gap": "NONE",
       "behaviorMethods": {
         "app/src/test/java/eu/kanade/tachiyomi/extension/api/ExtensionApiSharedCatalogTest.kt": ["Android production API preserves successful repository when another repository fails", "Android production API maps malformed and HTTP repository failures"],
-        "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionApiSharedCatalogTest.kt": ["Desktop production API preserves successful repository when another repository fails", "Desktop production API maps malformed and HTTP repository failures"]
+        "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionApiSharedCatalogTest.kt": ["Desktop production API prefers signed JVM artifact from repository v2 index", "Desktop production API preserves successful repository when another repository fails", "Desktop production API maps malformed and HTTP repository failures"]
       }
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #33: 扩展发现",
@@ -1330,6 +1330,7 @@
     ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionRepoV2Catalog.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/ExtensionsScreenModel.kt",
@@ -1338,8 +1339,11 @@
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/extension/api/ExtensionApi.kt", "symbol": "class ExtensionApi", "line": 28}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/extension/api/ExtensionApi.kt", "symbol": "private val catalogService", "line": 37}],
-      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionCatalogService.kt", "symbol": "class ExtensionCatalogService", "line": 33}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt", "symbol": "private val catalogService", "line": 54}],
+      "SHARED_OR_ADAPTER": [
+        {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionCatalogService.kt", "symbol": "class ExtensionCatalogService", "line": 33},
+        {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionRepoV2Catalog.kt", "symbol": "internal object DesktopExtensionRepoV2Catalog", "line": 22}
+      ],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt", "symbol": "private val catalogService", "line": 55}],
       "FIXTURE": [
         {"artifact": "app/src/test/java/eu/kanade/tachiyomi/extension/api/ExtensionApiSharedCatalogTest.kt#Android production API preserves successful repository when another repository fails", "productionMarkers": ["api.refreshCatalog()", "api.findExtensions()"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionApiSharedCatalogTest.kt#Desktop production API maps malformed and HTTP repository failures", "productionMarkers": ["assertFailure", "MockResponse"]}
@@ -1369,7 +1373,7 @@
       "behaviorMethods": {
         "domain/src/jvmTest/kotlin/mihon/domain/extension/ExtensionInstallCoordinatorTest.kt": ["successful install emits stages in order and only installs after reload", "reload failure rolls back artifact and metadata then verifies old runtime"],
         "app/src/test/java/eu/kanade/tachiyomi/extension/AndroidExtensionInstallSecurityRollbackTest.kt": ["downloaded digest repository continuity and signer are enforced", "download HTTP taxonomy remains distinct"],
-        "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt": ["jvm jar installs through production api loader and manager", "http 404 maps to Server with status code"]
+        "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt": ["native JAR install wires authenticated Page ABI adaptation before runtime load", "jvm jar installs through production api loader and manager", "http 404 maps to Server with status code"]
       }
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #34: 扩展安装",
@@ -1390,23 +1394,28 @@
       "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/extension/JvmExtensionArtifactAdapter.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/extension/ApkToJarConverter.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstaller.kt", "symbol": "class ExtensionInstaller", "line": 35}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstaller.kt", "symbol": "private val coordinator = ExtensionInstallCoordinator", "line": 112}],
-      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionInstallCoordinator.kt", "symbol": "class ExtensionInstallCoordinator", "line": 30}],
+      "SHARED_OR_ADAPTER": [
+        {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionInstallCoordinator.kt", "symbol": "class ExtensionInstallCoordinator", "line": 30},
+        {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/JvmExtensionArtifactAdapter.kt", "symbol": "internal object DefaultJvmExtensionArtifactAdapter", "line": 13}
+      ],
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt", "symbol": "private val installCoordinator = ExtensionInstallCoordinator", "line": 49}],
       "FIXTURE": [
-        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt#jvm jar installs through production api loader and manager", "productionMarkers": ["install(bytes, directory", "DesktopExtensionLoader"]}
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt#jvm jar installs through production api loader and manager", "productionMarkers": ["install(bytes, directory", "DesktopExtensionLoader"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt#native JAR install wires authenticated Page ABI adaptation before runtime load", "productionMarkers": ["sourceJarWithPageClient", "PAGE_OBJECT_DEFAULT_DESCRIPTOR"]}
       ]
     },
     "deviations": [
       { "classification": "SECURITY_ENHANCEMENT", "description": "SHA continuity, snapshots and rollback/runtime restore are explicit cross-platform additions." },
-      { "classification": "PLATFORM_ADAPTER", "description": "Desktop APK-to-JAR is a platform adapter; fixed-main install/update/cancel remains the core." }
+      { "classification": "PLATFORM_ADAPTER", "description": "Desktop prioritizes authenticated repository JVM JARs and applies a narrow Page ABI runtime adaptation; APK-to-JAR remains a Legacy platform fallback while fixed-main install/update/cancel remains the core." }
     ],
     "desktopImplementation": "Desktop current implementation to characterize and align: 扩展安装",
-    "protectionTests": ["domain/src/jvmTest/kotlin/mihon/domain/extension/ExtensionInstallCoordinatorTest.kt", "app/src/test/java/eu/kanade/tachiyomi/extension/AndroidExtensionInstallSecurityRollbackTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/extension/ApkToJarConverterTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt"],
+    "protectionTests": ["domain/src/jvmTest/kotlin/mihon/domain/extension/ExtensionInstallCoordinatorTest.kt", "app/src/test/java/eu/kanade/tachiyomi/extension/AndroidExtensionInstallSecurityRollbackTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/extension/ApkToJarConverterTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/extension/JvmExtensionArtifactAdapterTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt"],
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1442,16 +1451,17 @@
     ],
     "sharedImplementationPaths": [],
     "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt"],
-    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/extension/ApkToJarConverter.kt", "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt", "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/extension/ApkToJarConverter.kt", "app-desktop/src/main/kotlin/mihon/desktop/extension/JvmExtensionArtifactAdapter.kt", "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt", "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt"],
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "private suspend fun loadExtension", "line": 226}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "private suspend fun loadExtension", "line": 226}],
       "SHARED_OR_ADAPTER": [
         {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/ApkToJarConverter.kt", "symbol": "fun convert", "line": 30},
+        {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/JvmExtensionArtifactAdapter.kt", "symbol": "fun adaptIfRequired", "line": 14},
         {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "symbol": "private fun loadFromJar", "line": 66}
       ],
       "DESKTOP_CONSUMER": [
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt", "symbol": "apkConverter.convert", "line": 243},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt", "symbol": "apkConverter.convert", "line": 247},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt", "symbol": "loader.loadExtensions", "line": 56}
       ],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt#immutable ManHuaGui APK loads through the production converter and loader", "productionMarkers": ["ApkToJarConverter().convert", "DesktopExtensionLoader(tempDir.toFile())"]}]
@@ -1468,7 +1478,7 @@
       { "classification": "PLATFORM_ADAPTER", "description": "DesktopExtensionLoader contains the JVM ExtensionClassLoader and ServiceLoader/compat path." }
     ],
     "desktopImplementation": "Desktop current implementation to characterize and align: 扩展加载",
-    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt"],
+    "protectionTests": ["app-desktop/src/test/kotlin/mihon/desktop/extension/RealExtensionCompatEvidenceTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/extension/JvmExtensionArtifactAdapterTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/extension/KeiyoushiAllExtensionsCompatibilityTest.kt"],
     "verificationScope": "VERIFIED: fixed/current Android loading ownership and the Desktop converter, loader, classloader and immutable ManHuaGui production fixture are bound; TEMP-COMPAT is retained only under the recorded per-symbol removal condition.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -1518,7 +1528,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/extension/ExtensionManager.kt", "symbol": "fun trust", "line": 278}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstaller.kt", "symbol": "private val trustPolicy", "line": 609}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionTrustPolicy.kt", "symbol": "class ExtensionTrustPolicy", "line": 36}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt", "symbol": "private val trustPolicy", "line": 55}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt", "symbol": "private val trustPolicy", "line": 56}],
       "FIXTURE": [
         {"artifact": "app/src/test/java/eu/kanade/tachiyomi/extension/AndroidExtensionInstallSecurityRollbackTest.kt#untrusted confirmation remains a failed terminal state", "productionMarkers": ["coordinator(port(gateway, server), this)", "ExtensionInstallState.Failed"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt#trust confirmation resumes exactly the pending request", "productionMarkers": ["api.beginInstall", "api.confirmTrust"]}
@@ -1765,7 +1775,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt", "symbol": "class CloudflareInterceptor(", "line": 25}],
       "CURRENT_ANDROID": [{"path": "core/common/src/androidMain/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt", "symbol": "class CloudflareInterceptor(", "line": 25}],
       "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/network/DesktopCloudflareInterceptor.kt", "symbol": "typealias DesktopCloudflareInterceptor", "line": 61}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopNetworkHelper.kt", "symbol": "class DesktopNetworkHelper(", "line": 29}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopNetworkHelper.kt", "symbol": "class DesktopNetworkHelper(", "line": 27}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/network/DesktopChallengeRecoveryPolicyTest.kt#production client exposes upstream cloudflare interceptor runtime contract", "productionMarkers": ["DesktopNetworkHelper(", "simpleName == \"CloudflareInterceptor\""]}]
     },
     "deviations": [
@@ -3527,7 +3537,7 @@
       "DESKTOP_CONSUMER": [
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "AndroidCompat.initialize", "line": 207},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "AndroidCompat.startApp", "line": 209},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt", "symbol": "apkConverter.convert", "line": 243},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt", "symbol": "apkConverter.convert", "line": 247},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "symbol": "ServiceLoader.load(Source::class.java", "line": 75}
       ],
       "FIXTURE": [

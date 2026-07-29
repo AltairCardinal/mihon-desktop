@@ -3,7 +3,7 @@ package mihon.domain.extension.model
 import mihon.domain.extensionrepo.model.ExtensionRepo
 
 const val EXTENSION_LIB_VERSION_MIN = 1.4
-const val EXTENSION_LIB_VERSION_MAX = 1.5
+const val EXTENSION_LIB_VERSION_MAX = 1.6
 
 data class RepositoryIdentity(
     val baseUrl: String,

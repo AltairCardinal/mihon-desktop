@@ -440,13 +440,23 @@ class DesktopProductCapabilityContractTest {
             33 to
                 mapOf(
                     "app/src/test/java/eu/kanade/tachiyomi/extension/api/ExtensionApiSharedCatalogTest.kt" to setOf("Android production API preserves successful repository when another repository fails", "Android production API maps malformed and HTTP repository failures"),
-                    "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionApiSharedCatalogTest.kt" to setOf("Desktop production API preserves successful repository when another repository fails", "Desktop production API maps malformed and HTTP repository failures"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionApiSharedCatalogTest.kt" to
+                        setOf(
+                            "Desktop production API prefers signed JVM artifact from repository v2 index",
+                            "Desktop production API preserves successful repository when another repository fails",
+                            "Desktop production API maps malformed and HTTP repository failures",
+                        ),
                 ),
             34 to
                 mapOf(
                     "domain/src/jvmTest/kotlin/mihon/domain/extension/ExtensionInstallCoordinatorTest.kt" to setOf("successful install emits stages in order and only installs after reload", "reload failure rolls back artifact and metadata then verifies old runtime"),
                     "app/src/test/java/eu/kanade/tachiyomi/extension/AndroidExtensionInstallSecurityRollbackTest.kt" to setOf("downloaded digest repository continuity and signer are enforced", "download HTTP taxonomy remains distinct"),
-                    "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt" to setOf("jvm jar installs through production api loader and manager", "http 404 maps to Server with status code"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt" to
+                        setOf(
+                            "native JAR install wires authenticated Page ABI adaptation before runtime load",
+                            "jvm jar installs through production api loader and manager",
+                            "http 404 maps to Server with status code",
+                        ),
                 ),
             35 to
                 mapOf(
@@ -1427,6 +1437,7 @@ class DesktopProductCapabilityContractTest {
                     "domain/src/jvmTest/kotlin/mihon/domain/extension/ExtensionInstallCoordinatorTest.kt",
                     "app/src/test/java/eu/kanade/tachiyomi/extension/AndroidExtensionInstallSecurityRollbackTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/extension/ApkToJarConverterTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/extension/JvmExtensionArtifactAdapterTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionInstallTransactionTest.kt",
                 ),
             40 to

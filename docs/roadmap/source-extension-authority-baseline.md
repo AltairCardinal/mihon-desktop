@@ -24,7 +24,7 @@
 | 30 全局搜索 | UI `GlobalSearchScreen` → `GlobalSearchScreenModel` / `SearchScreenModel` → `NetworkToLocalManga`；presentation `GlobalSearchScreen` / `GlobalSearchCardRow` 观察完整 `SManga` 映射 | `GlobalSearchSourcePolicy`、`SourceMangaSearchService`、`SourceQueryState`、common canonical manga mapping | 当前 UI、ScreenModel 与 presentation consumer | Desktop `GlobalSearchScreen` / `DesktopSourceQueryCoordinators` → `SaveSourceMangaForDetails` | generation、CAS publication、typed error 与防重复打开是保留增强；不得替代 fixed-main canonical persistence、观察、完整结果和带 query 导航。状态为 `WIRED`。 |
 | 32 扩展仓库 | `ExtensionReposScreenModel` → extension-repo interactors | `ExtensionRepoRepository`、`ExtensionRepoService` | `ExtensionReposScreenModel` | `ExtensionRepoScreen`、`DesktopExtensionApi` | shared repo 模型是迁移输出；repo fingerprint 去重必须以固定 main 的仓库操作为核心并单列连续性增强。 |
 | 33 扩展发现 | `ExtensionManager.findAvailableExtensions` → `ExtensionApi`；安装后 `ExtensionLoader` | `ExtensionCatalogService` | `ExtensionManager`、`ExtensionApi`、`ExtensionLoader` | `DesktopExtensionApi`、`DesktopExtensionManager`、`DesktopExtensionLoader` | PackageManager/签名与 ClassLoader/JAR 是各自 adapter；兼容性诊断是跨端增强，不能倒推原始语义。 |
-| 34 扩展安装 | `ExtensionManager.installExtension/updateExtension/cancelInstallUpdateExtension` → `ExtensionInstaller` | `ExtensionInstallCoordinator`、`ExtensionInstallPort` | `ExtensionManager`、`ExtensionInstaller` | `DesktopExtensionApi`、`DesktopExtensionManager`、`DesktopExtensionInstallPort`、APK→JAR | 原始基本安装、更新、取消必须逐项对照；SHA、snapshot、rollback/runtime restore 是保留的跨平台安全增强。 |
+| 34 扩展安装 | `ExtensionManager.installExtension/updateExtension/cancelInstallUpdateExtension` → `ExtensionInstaller` | `ExtensionInstallCoordinator`、`ExtensionInstallPort` | `ExtensionManager`、`ExtensionInstaller` | `DesktopExtensionApi`、`DesktopExtensionManager`、`DesktopExtensionInstallPort`、signed JAR、APK→JAR Legacy fallback | 原始基本安装、更新、取消必须逐项对照；Desktop 优先仓库 v2 的签名 JAR，APK→JAR 仅为旧仓库后备；SHA、snapshot、rollback/runtime restore 是保留的跨平台安全增强。 |
 | 35 扩展加载 | `ExtensionLoader` → PackageManager、签名、私有 APK | 无 | `ExtensionLoader` | `DesktopExtensionLoader`、`ExtensionClassLoader`、ServiceLoader/compat | Android package/signature 与 Desktop JAR/compat 都是 platform adapter；缺真实 fixture 的 compat 能力仍为待偿还技术债。 |
 | 36 扩展安全/信任 | `ExtensionLoader` 不受信任结果 → `ExtensionManager.trust` | `ExtensionTrustPolicy`、`RepositoryIdentity` | `ExtensionLoader`、`ExtensionManager.trust` | `DesktopExtensionInstallPort`、metadata sidecar、Desktop loader | 原始签名信任和基本 trust 为核心；repo fingerprint/SHA continuity 是安全增强，不能声称固定 main 已有。 |
 | 37 扩展详情与更新 | `GetExtensionsByType` / `GetExtensionSources` → ScreenModels；presentation `ExtensionsScreen` / `ExtensionDetailsScreen`；UI `ExtensionsTab` / details route → `ExtensionManager` | `ExtensionPresentationStore` 的分类、搜索、刷新、逐包安装终态与 enabled-first 规则 | 当前 interactor、ScreenModel、presentation 与 UI consumer | `ExtensionListScreen` / `ExtensionDetailsScreen` → Desktop `ExtensionsScreenModel` / typed port → manager adapter | fixed-main 分类、搜索、反馈、源启停及 model-routed 动作已由两端消费；文件信息、打开目录、APK→JAR、artifact signer 与 rollback 是保留的 Desktop 平台/安全边界。状态为 `WIRED`。 |
@@ -64,7 +64,8 @@ Task 6B 的差异分类结果：`ExtensionManager` 的异步初始化，以及�
 ## Desktop 产品边界与现有保护网
 
 - 用户入口保持 Browse → Sources / Global Search，以及 Browse → Extensions → Installed/Available → Extension details。
-- Desktop 保留预编译 JAR、APK→JAR、原子替换/reload、文件摘要和仓库信息、Open folder、键鼠/宽屏、显式 FlareSolverr 后备与 Test Mode。
+- Desktop 优先加载仓库 v2 提供且签名可验证的 JAR；APK→JAR 只作为没有 JAR 的 Legacy fallback。两条路径均保留原子替换/reload、文件摘要和仓库信息；Open folder、键鼠/宽屏、显式 FlareSolverr 后备与 Test Mode 保持。
+- 制品选择、信任边界和失败处理以 `docs/architecture/desktop-extension-artifacts.md` 为维护权威。
 - Android-only AAR、QuickJS 或没有真实 fixture 调用的 compat API 不承诺支持；文件工具仅承担 Desktop side effect，不进入共享业务层。
 
 ## 固定 main 路径清单（CI 可携带）

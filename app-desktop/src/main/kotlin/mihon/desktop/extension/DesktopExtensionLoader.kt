@@ -155,14 +155,15 @@ open class DesktopExtensionLoader(
     }
 
     /**
-     * Scans all top-level class entries in [jarFile] and returns instances of
-     * classes that concretely implement [Source].
+     * Scans all top-level class entries in [jarFile] and returns instances from
+     * concrete [Source] and [SourceFactory] implementations.
      *
      * Inner/anonymous classes (names containing '$') are skipped to avoid
      * spurious instantiation attempts on compiler-generated artefacts.
      */
     internal fun scanJarForSources(jarFile: File, classLoader: ClassLoader): List<Source> {
         val sourceInterface = Source::class.java
+        val sourceFactoryInterface = SourceFactory::class.java
         val result = mutableListOf<Source>()
         try {
             JarFile(jarFile).use { jar ->
@@ -172,7 +173,9 @@ open class DesktopExtensionLoader(
                         val className = entry.name.removeSuffix(".class").replace('/', '.')
                         try {
                             val cls = classLoader.loadClass(className)
-                            if (sourceInterface.isAssignableFrom(cls) &&
+                            if (
+                                (sourceInterface.isAssignableFrom(cls) ||
+                                    sourceFactoryInterface.isAssignableFrom(cls)) &&
                                 !cls.isInterface &&
                                 !Modifier.isAbstract(cls.modifiers)
                             ) {
@@ -180,8 +183,10 @@ open class DesktopExtensionLoader(
                                     .firstOrNull { it.parameterCount == 0 }
                                     ?: return@forEach
                                 ctor.isAccessible = true
-                                val instance = ctor.newInstance() as? Source ?: return@forEach
-                                result.add(instance)
+                                when (val instance = ctor.newInstance()) {
+                                    is Source -> result.add(instance)
+                                    is SourceFactory -> result.addAll(instance.createSources())
+                                }
                             }
                         } catch (_: Throwable) {
                             // Skip classes that cannot be loaded or instantiated

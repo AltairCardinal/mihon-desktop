@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.net.URL
+import java.util.jar.JarEntry
+import java.util.jar.JarOutputStream
 
 class DesktopExtensionLoaderTest {
 
@@ -57,6 +59,24 @@ class DesktopExtensionLoaderTest {
         )
 
         assertEquals(listOf(2L, 3L), sources.map(Source::id))
+    }
+
+    @Test
+    fun `jar scan expands source factory when native jar has no service descriptor or sidecar`() {
+        val jar = File(tempDir, "factory.jar")
+        JarOutputStream(jar.outputStream()).use { output ->
+            listOf(ManifestSourceFactory::class.java, TestSource::class.java).forEach { type ->
+                val resource = type.name.replace('.', '/') + ".class"
+                output.putNextEntry(JarEntry(resource))
+                type.classLoader.getResourceAsStream(resource)!!.use { it.copyTo(output) }
+                output.closeEntry()
+            }
+        }
+        ExtensionClassLoader(jar.toURI().toURL(), javaClass.classLoader).use { classLoader ->
+            val sources = DesktopExtensionLoader(tempDir).scanJarForSources(jar, classLoader)
+
+            assertEquals(listOf(2L, 3L), sources.map(Source::id))
+        }
     }
 
     @Test

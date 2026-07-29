@@ -12,6 +12,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import mihon.desktop.BuildInfo
 import mihon.desktop.di.initDesktopDIForTest
+import mihon.domain.extensionrepo.model.ExtensionRepo
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Tag
@@ -29,9 +30,9 @@ import java.util.concurrent.TimeUnit
 import java.util.zip.ZipFile
 
 /**
- * Downloads and loads every artifact in the current Keiyoushi index.
+ * Downloads and loads every signed JVM artifact in the current Keiyoushi v2 index.
  *
- * The APK cache and an in-progress report survive Gradle worker restarts. A report is only
+ * The JAR cache and an in-progress report survive Gradle worker restarts. A report is only
  * resumed when it was produced by the same index, Git revision, and operating system.
  *
  * Run on Windows with:
@@ -69,7 +70,7 @@ class KeiyoushiAllExtensionsCompatibilityTest {
         ).apply { mkdirs() }
         val indexResponse = fetchIndex()
         val planned = KeiyoushiAllExtensionsSurvey.plan(indexResponse.entries)
-        val reportFile = File(surveyRoot, "windows-report.json")
+        val reportFile = File(surveyRoot, "windows-jar-report.json")
         val resumed = readResumableResults(
             reportFile = reportFile,
             indexSha256 = indexResponse.sha256,
@@ -84,7 +85,7 @@ class KeiyoushiAllExtensionsCompatibilityTest {
         )
         println("Cache/report directory: ${surveyRoot.absolutePath}")
 
-        val downloads = downloadArtifacts(pending, File(surveyRoot, "apk"))
+        val downloads = downloadArtifacts(pending, File(surveyRoot, "jar"))
         val preferences = IsolatedDesktopPreferenceStore.create()
         val previousInjekt = Injekt
         val diContext = initDesktopDIForTest(
@@ -99,7 +100,7 @@ class KeiyoushiAllExtensionsCompatibilityTest {
                         status = KeiyoushiSurveyStatus.DOWNLOAD_FAILED,
                         detail = download.detail,
                     )
-                    is DownloadResult.Ready -> testArtifact(entry, download.apk, surveyRoot)
+                    is DownloadResult.Ready -> testArtifact(entry, download.jar, surveyRoot)
                 }
                 resultsById[result.artifactId] = result
 
@@ -170,13 +171,13 @@ class KeiyoushiAllExtensionsCompatibilityTest {
         cacheDirectory: File,
     ): DownloadResult {
         val identityHash = sha256(artifactId(entry).toByteArray()).take(16)
-        val target = File(cacheDirectory, "$identityHash-${File(entry.apk).name}")
+        val target = File(cacheDirectory, "$identityHash-${entry.artifactUrl.substringAfterLast('/')}")
         if (isReadableArchive(target)) {
             return DownloadResult.Ready(target)
         }
         target.delete()
 
-        val url = "$REPOSITORY_BASE/apk/${entry.apk}"
+        val url = entry.artifactUrl
         var lastFailure = "download did not run"
         repeat(NETWORK_ATTEMPTS) { attempt ->
             val partial = File(target.parentFile, "${target.name}.part")
@@ -191,7 +192,7 @@ class KeiyoushiAllExtensionsCompatibilityTest {
                     }
                 }
                 if (!isReadableArchive(partial)) {
-                    throw IOException("Downloaded artifact is not a readable ZIP/APK")
+                    throw IOException("Downloaded artifact is not a readable JAR")
                 }
                 Files.move(
                     partial.toPath(),
@@ -209,44 +210,35 @@ class KeiyoushiAllExtensionsCompatibilityTest {
 
     private fun testArtifact(
         entry: KeiyoushiSurveyEntry,
-        apk: File,
+        jar: File,
         surveyRoot: File,
     ): KeiyoushiSurveyResult {
         val workDirectory = File(surveyRoot, "work/${sha256(artifactId(entry).toByteArray()).take(16)}")
         workDirectory.deleteRecursively()
         workDirectory.mkdirs()
         try {
-            val extensionClass = ManifestClassExtractor.extractFromApk(apk)
-            val converted = try {
-                ApkToJarConverter().convert(apk, workDirectory)
+            try {
+                DefaultDesktopArtifactAuthenticator.authenticate(
+                    jar,
+                    KEIYOUSHI_SIGNING_KEY,
+                    isApk = false,
+                )
             } catch (error: Throwable) {
                 return KeiyoushiSurveyResult.failure(
                     entry,
-                    KeiyoushiSurveyStatus.CONVERSION_FAILED,
+                    KeiyoushiSurveyStatus.LOAD_FAILED,
                     rootMessage(error),
                 )
-            } ?: return KeiyoushiSurveyResult.failure(
-                entry,
-                KeiyoushiSurveyStatus.CONVERSION_FAILED,
-                "APK converter returned no JAR",
-            )
-
-            writeExtensionMeta(
-                converted,
-                ExtensionMeta(
-                    pkgName = entry.pkg,
-                    versionCode = entry.code,
-                    versionName = entry.version,
-                    source = ExtensionOrigin.CONVERTED_APK,
-                    name = entry.name,
-                    language = entry.lang,
-                    isNsfw = entry.nsfw != 0,
-                    extensionClass = extensionClass,
-                ),
-            )
-            val loader = DesktopExtensionLoader(workDirectory)
+            }
+            val adaptedJar = File(workDirectory, "runtime.jar")
+            val runtimeJar = if (DefaultJvmExtensionArtifactAdapter.adaptIfRequired(jar, adaptedJar)) {
+                adaptedJar
+            } else {
+                jar
+            }
+            val loader = DesktopExtensionLoader(runtimeJar.parentFile)
             val loaded = try {
-                loader.loadFromSingleJar(converted)
+                loader.loadFromSingleJar(runtimeJar)
             } catch (error: Throwable) {
                 return KeiyoushiSurveyResult.failure(
                     entry,
@@ -263,7 +255,7 @@ class KeiyoushiAllExtensionsCompatibilityTest {
                         entry,
                         KeiyoushiSurveyStatus.LOAD_FAILED,
                         diagnostic?.let { "${it.errorType}: ${it.message}" }
-                            ?: diagnoseEmptyLoad(converted, extensionClass),
+                            ?: diagnoseEmptyLoad(runtimeJar),
                     )
                 }
             } finally {
@@ -274,7 +266,7 @@ class KeiyoushiAllExtensionsCompatibilityTest {
             }
             retainFailedJarForDiagnosis(
                 entry = entry,
-                converted = converted,
+                jar = runtimeJar,
                 surveyRoot = surveyRoot,
                 retain = !result.isCompatible,
             )
@@ -301,7 +293,19 @@ class KeiyoushiAllExtensionsCompatibilityTest {
                     response.body.bytes()
                 }
                 return IndexResponse(
-                    entries = json.decodeFromString(bytes.decodeToString()),
+                    entries = DesktopExtensionRepoV2Catalog.decode(bytes, KEIYOUSHI_REPOSITORY)
+                        .map { catalogEntry ->
+                            val artifact = catalogEntry.artifact
+                            KeiyoushiSurveyEntry(
+                                name = artifact.name,
+                                pkg = artifact.packageName,
+                                artifactUrl = artifact.downloadUrl,
+                                lang = artifact.language,
+                                code = artifact.versionCode,
+                                version = artifact.versionName,
+                                nsfw = if (artifact.isNsfw) 1 else 0,
+                            )
+                        },
                     sha256 = sha256(bytes),
                 )
             } catch (error: Throwable) {
@@ -313,14 +317,14 @@ class KeiyoushiAllExtensionsCompatibilityTest {
 
     private fun retainFailedJarForDiagnosis(
         entry: KeiyoushiSurveyEntry,
-        converted: File,
+        jar: File,
         surveyRoot: File,
         retain: Boolean,
     ) {
         val target = File(surveyRoot, "failed-jars/${entry.pkg}-${entry.code}.jar")
         if (retain) {
             target.parentFile.mkdirs()
-            Files.copy(converted.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            Files.copy(jar.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
         } else {
             target.delete()
         }
@@ -328,39 +332,42 @@ class KeiyoushiAllExtensionsCompatibilityTest {
 
     private fun diagnoseEmptyLoad(
         jar: File,
-        extensionClass: String?,
     ): String {
-        val classNames = extensionClass
-            ?.split(':')
-            ?.map(String::trim)
-            ?.filter(String::isNotEmpty)
-            .orEmpty()
-        if (classNames.isEmpty()) {
-            return "APK manifest declares no extension class and JAR scan found no sources"
-        }
-
         ExtensionClassLoader(jar.toURI().toURL(), javaClass.classLoader).use { classLoader ->
-            return classNames.joinToString(separator = "; ") { className ->
-                try {
-                    val candidate = classLoader.loadClass(className)
-                    when {
-                        Source::class.java.isAssignableFrom(candidate) -> {
+            val classNames = ZipFile(jar).use { archive ->
+                archive.entries().asSequence()
+                    .filter { !it.isDirectory && it.name.endsWith(".class") && '$' !in it.name }
+                    .map { it.name.removeSuffix(".class").replace('/', '.') }
+                    .toList()
+            }
+            return classNames.mapNotNull { className ->
+                val candidate = runCatching { classLoader.loadClass(className) }.getOrNull()
+                    ?: return@mapNotNull null
+                when {
+                    Source::class.java.isAssignableFrom(candidate) &&
+                        !candidate.isInterface &&
+                        !java.lang.reflect.Modifier.isAbstract(candidate.modifiers) -> {
+                        runCatching {
                             candidate.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
                             "$className constructed as Source but production loader discarded it"
-                        }
-                        SourceFactory::class.java.isAssignableFrom(candidate) -> {
+                        }.getOrElse { "$className -> ${rootMessage(it)}" }
+                    }
+                    SourceFactory::class.java.isAssignableFrom(candidate) &&
+                        !candidate.isInterface &&
+                        !java.lang.reflect.Modifier.isAbstract(candidate.modifiers) -> {
+                        runCatching {
                             val factory = candidate.getDeclaredConstructor()
                                 .apply { isAccessible = true }
                                 .newInstance() as SourceFactory
                             val sources = factory.createSources()
                             "$className factory created ${sources.size} source(s) but production loader discarded them"
-                        }
-                        else -> "$className does not implement Source or SourceFactory"
+                        }.getOrElse { "$className -> ${rootMessage(it)}" }
                     }
-                } catch (error: Throwable) {
-                    "$className -> ${rootMessage(error)}"
+                    else -> null
                 }
-            }.take(MAX_DIAGNOSTIC_LENGTH)
+            }.joinToString(separator = "; ")
+                .ifBlank { "No concrete Source or SourceFactory could be instantiated" }
+                .take(MAX_DIAGNOSTIC_LENGTH)
         }
     }
 
@@ -423,7 +430,7 @@ class KeiyoushiAllExtensionsCompatibilityTest {
         }.getOrDefault(false)
 
     private fun artifactId(entry: KeiyoushiSurveyEntry): String =
-        "${entry.pkg}:${entry.code}:${entry.apk}"
+        "${entry.pkg}:${entry.code}:${entry.artifactUrl}"
 
     private fun sha256(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256")
@@ -450,18 +457,26 @@ class KeiyoushiAllExtensionsCompatibilityTest {
     )
 
     private sealed interface DownloadResult {
-        data class Ready(val apk: File) : DownloadResult
+        data class Ready(val jar: File) : DownloadResult
         data class Failed(val detail: String) : DownloadResult
     }
 
     private companion object {
         const val INDEX_URL =
-            "https://raw.githubusercontent.com/keiyoushi/extensions/main/index.min.json"
-        const val REPOSITORY_BASE = "https://raw.githubusercontent.com/keiyoushi/extensions/main"
+            "https://github.com/keiyoushi/extensions/raw/repo/index.pb"
+        const val KEIYOUSHI_SIGNING_KEY =
+            "9add655a78e96c4ec7a53ef89dccb557cb5d767489fac5e785d671a5a75d4da2"
+        val KEIYOUSHI_REPOSITORY = ExtensionRepo(
+            baseUrl = "https://raw.githubusercontent.com/keiyoushi/extensions/repo",
+            name = "Keiyoushi",
+            shortName = "KEI",
+            website = "https://keiyoushi.github.io",
+            signingKeyFingerprint = KEIYOUSHI_SIGNING_KEY,
+        )
         const val DOWNLOAD_CONCURRENCY = 8
         const val NETWORK_ATTEMPTS = 2
         const val REPORT_FLUSH_INTERVAL = 10
-        const val REPORT_SCHEMA_VERSION = 1
+        const val REPORT_SCHEMA_VERSION = 2
         const val MAX_DIAGNOSTIC_LENGTH = 2_000
         const val MAX_DIAGNOSTIC_STACK_FRAMES = 8
     }

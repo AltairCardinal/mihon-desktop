@@ -4,10 +4,12 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import mihon.desktop.domain.fakes.FakeExtensionRepoRepository
 import mihon.domain.error.AppError
+import mihon.domain.extension.model.ExtensionCompatibility
 import mihon.domain.extension.service.ExtensionCatalogService
 import mihon.domain.extension.service.TrustMismatch
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import okio.Buffer
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -17,6 +19,7 @@ import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.nio.file.Path
 import java.security.MessageDigest
+import java.util.Base64
 
 class DesktopExtensionApiSharedCatalogTest {
 
@@ -24,8 +27,55 @@ class DesktopExtensionApiSharedCatalogTest {
     lateinit var tempDir: Path
 
     @Test
+    fun `Desktop production API prefers signed JVM artifact from repository v2 index`() = runBlocking {
+        MockWebServer().also { it.start() }.use { server ->
+            val indexUrl = server.url("/index.pb")
+            server.enqueue(
+                MockResponse(
+                    body = """{"index_v2":"$indexUrl","meta":{"name":"repo","shortName":"R","website":"https://repo.example","signingKeyFingerprint":"repo-fingerprint"}}""",
+                ),
+            )
+            server.enqueue(MockResponse.Builder().body(Buffer().write(V2_INDEX_GZIP)).build())
+
+            val catalog = api(repository(server, "repo")).refreshCatalog()
+
+            val artifact = catalog.entries.single().artifact
+            assertEquals("https://repo.example/jar/example.jar", artifact.downloadUrl)
+            assertEquals("https://repo.example/icon.png", artifact.iconUrl)
+            assertEquals("Example Source", artifact.sources.single().name)
+            assertEquals(ExtensionCompatibility.Compatible, catalog.entries.single().compatibility)
+            assertEquals("/repo.json", server.takeRequest().url.encodedPath)
+            assertEquals("/index.pb", server.takeRequest().url.encodedPath)
+        }
+    }
+
+    @Test
+    fun `Desktop production API rejects v2 index whose signing key differs from trusted repository`() = runBlocking {
+        MockWebServer().also { it.start() }.use { server ->
+            val indexUrl = server.url("/index.pb")
+            server.enqueue(
+                MockResponse(
+                    body = """{"index_v2":"$indexUrl","meta":{"name":"repo","shortName":"R","website":"https://repo.example","signingKeyFingerprint":"trusted-fingerprint"}}""",
+                ),
+            )
+            server.enqueue(MockResponse.Builder().body(Buffer().write(V2_INDEX_GZIP)).build())
+            val repository = TestRepository(
+                baseUrl = server.url("/").toString().removeSuffix("/"),
+                name = "repo",
+                fingerprint = "trusted-fingerprint",
+            )
+
+            val catalog = api(repository).refreshCatalog()
+
+            assertTrue(catalog.entries.isEmpty())
+            assertInstanceOf(AppError.MalformedData::class.java, catalog.failures.single().error)
+        }
+    }
+
+    @Test
     fun `Desktop production API preserves successful repository when another repository fails`() = runBlocking {
         withServers { successful, failed ->
+            successful.enqueue(legacyManifest("success"))
             successful.enqueue(MockResponse(body = INDEX_JSON))
             failed.enqueue(MockResponse(code = 500, body = "server error"))
             val api = api(
@@ -39,6 +89,7 @@ class DesktopExtensionApiSharedCatalogTest {
             assertEquals(1, catalog.failures.size)
             assertEquals(500, (catalog.failures.single().error as AppError.Server).statusCode)
 
+            successful.enqueue(legacyManifest("success"))
             successful.enqueue(MockResponse(body = INDEX_JSON))
             failed.enqueue(MockResponse(code = 500, body = "server error"))
             val available = api.findAvailableExtensions().single()
@@ -51,7 +102,7 @@ class DesktopExtensionApiSharedCatalogTest {
 
     @Test
     fun `Desktop production API distinguishes a successful empty repository`() = runBlocking {
-        withServer(MockResponse(body = "[]")) { server ->
+        withServer(legacyManifest("empty"), MockResponse(body = "[]")) { server ->
             val catalog = api(repository(server, "empty")).refreshCatalog()
 
             assertTrue(catalog.isCompleteEmpty)
@@ -281,6 +332,18 @@ class DesktopExtensionApiSharedCatalogTest {
         }
     }
 
+    private suspend fun withServer(
+        first: MockResponse,
+        second: MockResponse,
+        block: suspend (MockWebServer) -> Unit,
+    ) {
+        MockWebServer().also { it.start() }.use { server ->
+            server.enqueue(first)
+            server.enqueue(second)
+            block(server)
+        }
+    }
+
     private suspend fun withServers(block: suspend (MockWebServer, MockWebServer) -> Unit) {
         MockWebServer().also { it.start() }.use { first ->
             MockWebServer().also { it.start() }.use { second -> block(first, second) }
@@ -293,7 +356,14 @@ class DesktopExtensionApiSharedCatalogTest {
         .digest(this)
         .joinToString("") { "%02x".format(it) }
 
+    private fun legacyManifest(name: String) = MockResponse(
+        body = """{"meta":{"name":"$name","shortName":"$name","website":"https://$name.example","signingKeyFingerprint":"$name-fingerprint"}}""",
+    )
+
     private companion object {
+        val V2_INDEX_GZIP: ByteArray = Base64.getDecoder().decode(
+            "H4sIAAAAAAAC/+PiCkotyC/OLMkvqpQSKAKyddMy89JTiwqKMvNKVrE9YeR6yMjF7lqRmFuQkyqkkVqql52Yl5iSqleSmJyRWZmfm6mXWlGSmlecmZ+nlwpEEJVSOVwqGSUlBcVW+vogU2Hi+okF2fpQth6QLSSLVVVmMtC0grz0VfLYTclKLIKbAmQrMRvqmWkwGbECKT0jC0YnPQ4tIT6ooxWC80uLklOlmFLzlMRgphWDxWDmAQBGh0XiBgEAAA==",
+        )
         const val INDEX_JSON =
             """[{"name":"Tachiyomi: Example","pkg":"eu.kanade.tachiyomi.extension.en.example","apk":"example.apk","lang":"en","code":42,"version":"1.4.7","nsfw":0,"sha256":"0123456789abcdef","sources":[{"id":7,"lang":"en","name":"Example Source","baseUrl":"https://source.example"}]}]"""
     }
