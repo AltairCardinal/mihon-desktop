@@ -1,5 +1,8 @@
 package mihon.desktop.ui.reader
 
+import tachiyomi.i18n.MR
+import java.util.Locale
+
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -121,7 +124,7 @@ internal fun SinglePagePagerViewer(
         val sourceBounds = vp?.sourceBounds
         ZoomablePageBox(
             url = pageUrls[realIndex],
-            pageLabel = "Page ${realIndex + 1}",
+            pageLabel = MR.strings.desktop_ui_page_number.localized(Locale.getDefault(), realIndex + 1),
             zoomState = zoomState,
             onZoomChange = onZoomChange,
             cropBorders = cropBorders,

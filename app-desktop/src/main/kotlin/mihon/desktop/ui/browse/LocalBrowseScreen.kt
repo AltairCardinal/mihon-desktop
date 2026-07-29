@@ -1,5 +1,8 @@
 package mihon.desktop.ui.browse
 
+import tachiyomi.i18n.MR
+import java.util.Locale
+
 import mihon.desktop.LocalDesktopUiDependencies
 
 import androidx.compose.foundation.background
@@ -104,7 +107,11 @@ class LocalMangaBrowseScreen : Screen {
             val dir = if (System.getProperty("os.name").lowercase().contains("mac")) {
                 System.setProperty("apple.awt.fileDialogForDirectories", "true")
                 try {
-                    val dialog = FileDialog(null as java.awt.Frame?, "选择漫画根目录", FileDialog.LOAD)
+                val dialog = FileDialog(
+                    null as java.awt.Frame?,
+                    MR.strings.desktop_ui_select_manga_root_directory.localized(),
+                    FileDialog.LOAD,
+                )
                     dialog.isVisible = true
                     val d = dialog.directory ?: return
                     val f = dialog.file ?: return
@@ -115,7 +122,7 @@ class LocalMangaBrowseScreen : Screen {
             } else {
                 val chooser = JFileChooser().apply {
                     fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-                    dialogTitle = "Select manga root directory"
+                    dialogTitle = MR.strings.desktop_ui_select_manga_root_directory.localized()
                 }
                 if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
                     chooser.selectedFile
@@ -129,18 +136,18 @@ class LocalMangaBrowseScreen : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Local Source") },
+                    title = { Text(MR.strings.desktop_ui_local_source.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
                         }
                     },
                     actions = {
                         IconButton(onClick = { pickDirectory() }) {
-                            Icon(Icons.Default.FolderOpen, contentDescription = "Pick directory")
+                            Icon(Icons.Default.FolderOpen, contentDescription = MR.strings.desktop_ui_pick_directory.localized())
                         }
                         IconButton(onClick = { navigator.push(LocalSourceSettingsScreen()) }) {
-                            Icon(Icons.Default.Settings, contentDescription = "Settings")
+                            Icon(Icons.Default.Settings, contentDescription = MR.strings.label_settings.localized())
                         }
                     },
                 )
@@ -168,12 +175,12 @@ class LocalMangaBrowseScreen : Screen {
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Text(
-                                "Select a directory containing manga",
+                                MR.strings.desktop_ui_select_a_directory_containing_manga.localized(),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Button(onClick = { pickDirectory() }) {
-                                Text("Pick directory")
+                                Text(MR.strings.desktop_ui_pick_directory.localized())
                             }
                         }
                     }
@@ -181,13 +188,13 @@ class LocalMangaBrowseScreen : Screen {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                "No manga found",
+                                MR.strings.desktop_ui_no_manga_found.localized(),
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                "in $rootDir",
+                                MR.strings.desktop_ui_in_directory.localized(Locale.getDefault(), rootDir),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -325,7 +332,7 @@ data class LocalChapterScreen(
                     title = { Text(mangaName) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
                         }
                     },
                 )
@@ -342,7 +349,7 @@ data class LocalChapterScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        "No chapters found",
+                        MR.strings.no_chapters_error.localized(),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

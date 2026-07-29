@@ -1,5 +1,8 @@
 package mihon.desktop.ui.library
 
+import tachiyomi.i18n.MR
+import java.util.Locale
+
 import cafe.adriel.voyager.core.model.ScreenModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -341,14 +344,14 @@ class LibraryScreenModel(
         }
         startBackgroundUpdate?.let { start ->
             setIsUpdating(true)
-            setUpdateStatusText("Checking for updates...")
+            setUpdateStatusText(MR.strings.desktop_ui_checking_for_updates.localized())
             try {
                 start().join()
                 setUpdateStatusText(
                     when (backgroundUpdateStatus?.invoke()) {
-                        TaskStatus.Failed -> "Library update failed"
-                        TaskStatus.Cancelled -> "Library update cancelled"
-                        else -> "Library update finished"
+                        TaskStatus.Failed -> MR.strings.desktop_ui_library_update_failed.localized()
+                        TaskStatus.Cancelled -> MR.strings.desktop_ui_library_update_cancelled.localized()
+                        else -> MR.strings.desktop_ui_library_update_finished.localized()
                     },
                 )
             } finally {
@@ -361,7 +364,7 @@ class LibraryScreenModel(
         val autoDownload = downloadPreferences?.autoDownloadNewChapters?.get() == true
 
         setIsUpdating(true)
-        setUpdateStatusText("Checking for updates...")
+        setUpdateStatusText(MR.strings.desktop_ui_checking_for_updates.localized())
         var totalNew = 0
         try {
             for (item in items) {
@@ -385,7 +388,11 @@ class LibraryScreenModel(
                 }
             }
             setUpdateStatusText(
-                if (totalNew > 0) "$totalNew new chapter(s) found" else "Library is up to date",
+                if (totalNew > 0) {
+                    MR.strings.desktop_ui_new_chapters_found.localized(Locale.getDefault(), totalNew)
+                } else {
+                    MR.strings.desktop_ui_library_up_to_date.localized()
+                },
             )
         } finally {
             setIsUpdating(false)
@@ -433,7 +440,7 @@ class LibraryScreenModel(
         queue: List<DownloadItem> = emptyList(),
     ): LibraryBatchDownloadResult {
         if (items.isEmpty()) {
-            _state.update { it.copy(batchCategoryResultMessage = "No manga selected") }
+            _state.update { it.copy(batchCategoryResultMessage = MR.strings.desktop_ui_no_manga_selected.localized()) }
             return LibraryBatchDownloadResult()
         }
         val bookmarkedByManga = requireNotNull(getBookmarkedChaptersByMangaId) {
@@ -486,7 +493,14 @@ class LibraryScreenModel(
             }
         }
         _state.update {
-            it.copy(batchCategoryResultMessage = "${result.queued} queued, ${result.skipped} skipped, ${result.failures} failed")
+            it.copy(
+                batchCategoryResultMessage = MR.strings.desktop_ui_download_batch_result.localized(
+                    Locale.getDefault(),
+                    result.queued,
+                    result.skipped,
+                    result.failures,
+                ),
+            )
         }
         return result
     }
@@ -529,9 +543,13 @@ class LibraryScreenModel(
         _state.update {
             it.copy(
                 batchCategoryResultMessage = if (result.failures.isEmpty()) {
-                    "${result.succeededIds.size} updated"
+                    MR.strings.desktop_ui_items_updated.localized(Locale.getDefault(), result.succeededIds.size)
                 } else {
-                    "${result.succeededIds.size} updated, ${result.failures.size} failed"
+                    MR.strings.desktop_ui_items_updated_failed.localized(
+                        Locale.getDefault(),
+                        result.succeededIds.size,
+                        result.failures.size,
+                    )
                 },
             )
         }

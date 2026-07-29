@@ -1,5 +1,7 @@
 package mihon.desktop.ui.updates
 
+import tachiyomi.i18n.MR
+
 import mihon.desktop.LocalDesktopUiDependencies
 
 import androidx.compose.foundation.background
@@ -109,10 +111,10 @@ class UpcomingScreen : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Upcoming") },
+                    title = { Text(MR.strings.label_upcoming.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
                         }
                     },
                 )
@@ -146,7 +148,7 @@ class UpcomingScreen : Screen {
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                text = "No upcoming releases from your library",
+                                text = MR.strings.desktop_ui_no_upcoming_releases_from_your_library.localized(),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center,
@@ -206,7 +208,7 @@ private fun UpcomingCalendar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onPrevMonth) {
-                Icon(Icons.AutoMirrored.Filled.NavigateBefore, contentDescription = "Previous month")
+                Icon(Icons.AutoMirrored.Filled.NavigateBefore, contentDescription = MR.strings.desktop_ui_previous_month.localized())
             }
             Text(
                 text = selectedYearMonth.month.getDisplayName(TextStyle.FULL, Locale.getDefault()) +
@@ -217,7 +219,7 @@ private fun UpcomingCalendar(
                 fontWeight = FontWeight.SemiBold,
             )
             IconButton(onClick = onNextMonth) {
-                Icon(Icons.AutoMirrored.Filled.NavigateNext, contentDescription = "Next month")
+                Icon(Icons.AutoMirrored.Filled.NavigateNext, contentDescription = MR.strings.desktop_ui_next_month.localized())
             }
         }
 
@@ -307,15 +309,13 @@ private fun CalendarDayCell(
     }
 }
 
-private val DateFormatter = DateTimeFormatter.ofPattern("EEE, MMM d")
-
 @Composable
 private fun UpcomingDateHeader(date: LocalDate, count: Int) {
     val today = LocalDate.now()
     val label = when (date) {
-        today -> "Today"
-        today.plusDays(1) -> "Tomorrow"
-        else -> date.format(DateFormatter)
+        today -> MR.strings.relative_time_today.localized()
+        today.plusDays(1) -> MR.strings.desktop_ui_tomorrow.localized()
+        else -> date.format(DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault()))
     }
     Row(
         modifier = Modifier

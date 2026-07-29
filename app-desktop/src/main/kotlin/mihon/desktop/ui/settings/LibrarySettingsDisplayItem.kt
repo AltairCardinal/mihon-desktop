@@ -1,5 +1,8 @@
 package mihon.desktop.ui.settings
 
+import tachiyomi.i18n.MR
+import java.util.Locale
+
 import mihon.desktop.settings.DesktopAppPreferences
 
 internal data class CheckboxSettingsItem(
@@ -12,9 +15,10 @@ internal data class CheckboxSettingsItem(
 internal fun missingChapterIndicatorSettingsItem(
     prefs: DesktopAppPreferences,
     checked: Boolean = prefs.hideMissingChapterIndicators.get(),
+    locale: Locale = Locale.getDefault(),
 ): CheckboxSettingsItem {
     return CheckboxSettingsItem(
-        title = "隐藏缺话提示",
+        title = MR.strings.desktop_ui_hide_missing_chapter_indicators.localized(locale),
         checked = checked,
         onClick = {
             prefs.hideMissingChapterIndicators.set(!checked)

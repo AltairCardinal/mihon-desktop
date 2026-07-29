@@ -222,6 +222,8 @@ tasks.withType<Test> {
     }
     systemProperty("java.io.tmpdir", testTempDir.absolutePath)
     systemProperty("java.awt.headless", "true")
+    systemProperty("user.language", "en")
+    systemProperty("user.country", "US")
     systemProperty("mihon.test.expectedInstallerWindowsPublisher", installerWindowsPublisher)
     systemProperty("mihon.test.expectedInstallerMacTeamId", installerMacTeamId)
     if (includeLiveNetworkTests) {

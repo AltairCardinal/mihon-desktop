@@ -1,5 +1,7 @@
 package mihon.desktop.ui.reader
 
+import tachiyomi.i18n.MR
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
@@ -387,7 +389,7 @@ private fun ReaderPageLoaderEffect(
                 initialPage = initialPage,
             )
         } catch (e: Exception) {
-            model.setLoadError(e.message ?: "Unknown error loading pages")
+                model.setLoadError(e.message ?: MR.strings.desktop_ui_unknown_page_load_error.localized())
         }
     }
 
@@ -519,8 +521,24 @@ private fun ReaderViewport(
             if (state.showUI) {
                 TopAppBar(
                     title = { Text(chapterTitle, maxLines = 1, style = MaterialTheme.typography.bodyMedium, color = Color.White) },
-                    navigationIcon = { IconButton(onClick = { navigator.pop() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White) } },
-                    actions = { IconButton(onClick = { model.toggleSettings() }) { Icon(Icons.Default.Settings, "Reader Settings", tint = Color.White) } },
+                navigationIcon = {
+                    IconButton(onClick = { navigator.pop() }) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            MR.strings.desktop_ui_back.localized(),
+                            tint = Color.White,
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { model.toggleSettings() }) {
+                        Icon(
+                            Icons.Default.Settings,
+                            MR.strings.desktop_ui_reader_settings.localized(),
+                            tint = Color.White,
+                        )
+                    }
+                },
                     modifier = Modifier.align(Alignment.TopCenter),
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha = 0.7f)),
                 )

@@ -106,7 +106,14 @@ class GlobalSearchAuthorityWiringTest {
             scene.render()
             scene.render()
             val partial = semantics(scene)
-            listOf("Content source (1)", "Empty source (0)", "Failure source (0)", "Loading source (0)", "3 / 4", "Searching").forEach {
+            listOf(
+                "Content source (1)",
+                "Empty source (0)",
+                "Failure source (0)",
+                "Loading source (0)",
+                "3 / 4",
+                MR.strings.desktop_ui_searching.localized(),
+            ).forEach {
                 assertTrue(partial.contains(it), "missing partial-search feedback: $it")
             }
             assertTrue(partial.contains(MR.strings.loading.localized()))

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
+import java.util.Locale
 
 class MangaDetailActionsTest {
 
@@ -91,7 +92,7 @@ class MangaDetailActionsTest {
         val chapter = chapter(id = 7, name = "Release title", chapterNumber = 12.5)
 
         assertEquals("Release title", chapterDisplayTitle(chapter, Manga.CHAPTER_DISPLAY_NAME))
-        assertEquals("Chapter 12.5", chapterDisplayTitle(chapter, Manga.CHAPTER_DISPLAY_NUMBER))
+        assertEquals("Ch. 12.5", chapterDisplayTitle(chapter, Manga.CHAPTER_DISPLAY_NUMBER, Locale.ENGLISH))
     }
 }
 

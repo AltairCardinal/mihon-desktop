@@ -68,7 +68,7 @@ class AppearanceSettingsScreen : Screen {
         val amoledTitle = MR.strings.pref_dark_theme_pure_black.localized()
         val gridTitle = MR.strings.desktop_appearance_library_grid.localized()
         val languageTitle = MR.strings.pref_app_language.localized()
-        val defaultLanguageLabel = MR.strings.label_default.localized()
+        val defaultLanguageLabel = MR.strings.desktop_language_follow_system.localized()
         val languageOptions = localeAdapter.availableLanguages()
         val activeLanguageName = if (activeLanguageTag.isEmpty()) {
             defaultLanguageLabel
@@ -188,7 +188,7 @@ class AppearanceSettingsScreen : Screen {
                     LazyColumn(modifier = Modifier.heightIn(max = 560.dp)) {
                         item {
                             LanguageSettingsItem(
-                                title = MR.strings.label_default.localized(),
+                                title = MR.strings.desktop_language_follow_system.localized(),
                                 subtitle = null,
                                 selected = activeLanguageTag.isEmpty(),
                                 onClick = {
@@ -233,7 +233,7 @@ internal fun DesktopLocaleFeedbackHost(
         val message = when (val result = feedback.result) {
             is DesktopLocaleApplyResult.Applied -> {
                 val selected = if (result.languageTag.isEmpty()) {
-                    MR.strings.label_default.localized()
+                    MR.strings.desktop_language_follow_system.localized()
                 } else {
                     localeAdapter.availableLanguages()
                         .first { it.languageTag == result.languageTag }

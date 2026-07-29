@@ -1,5 +1,8 @@
 package mihon.desktop.ui.migration
 
+import tachiyomi.i18n.MR
+import java.util.Locale
+
 import mihon.desktop.LocalDesktopUiDependencies
 
 import androidx.compose.foundation.clickable
@@ -70,7 +73,7 @@ data class MigrationMangaScreen(
                     title = { Text(sourceName) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, MR.strings.desktop_ui_back.localized())
                         }
                     },
                     actions = {
@@ -79,7 +82,14 @@ data class MigrationMangaScreen(
                                 val queued = manga.orEmpty().filter { it.id in selectedIds }
                                     .map { BatchMigrationRequest(it.id, it.title) }
                                 navigator.push(MigrationBatchQueueScreen(batchMigrationController.submit(queued)))
-                            }) { Text("Queue (${selectedIds.size})") }
+                            }) {
+                                Text(
+                                    MR.strings.desktop_ui_queue_count.localized(
+                                        Locale.getDefault(),
+                                        selectedIds.size,
+                                    ),
+                                )
+                            }
                         }
                     },
                 )
@@ -96,7 +106,7 @@ data class MigrationMangaScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        "No manga from this source",
+                        MR.strings.desktop_ui_no_manga_from_this_source.localized(),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

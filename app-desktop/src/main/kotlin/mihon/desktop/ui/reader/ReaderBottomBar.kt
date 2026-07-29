@@ -1,5 +1,7 @@
 package mihon.desktop.ui.reader
 
+import tachiyomi.i18n.MR
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -115,7 +117,7 @@ internal fun ReaderBottomBar(
                 disabledContentColor = Color.White.copy(alpha = 0.3f),
             ),
         ) {
-            Icon(Icons.Default.SkipPrevious, contentDescription = "Previous Chapter")
+            Icon(Icons.Default.SkipPrevious, contentDescription = MR.strings.desktop_ui_previous_chapter.localized())
         }
 
         // Centre: page counter + optional Adjust Spread + slider
@@ -137,7 +139,7 @@ internal fun ReaderBottomBar(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                        contentDescription = "Adjust Spread",
+                        contentDescription = MR.strings.desktop_ui_adjust_spread.localized(),
                         tint = Color.White,
                     )
                 }
@@ -169,7 +171,7 @@ internal fun ReaderBottomBar(
                 disabledContentColor = Color.White.copy(alpha = 0.3f),
             ),
         ) {
-            Icon(Icons.Default.SkipNext, contentDescription = "Next Chapter")
+            Icon(Icons.Default.SkipNext, contentDescription = MR.strings.desktop_ui_next_chapter.localized())
         }
     }
 }

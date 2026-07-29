@@ -430,10 +430,10 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Global Search") },
+                    title = { Text(MR.strings.desktop_ui_global_search.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
                         }
                     },
                 )
@@ -455,7 +455,7 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
                     OutlinedTextField(
                         value = query,
                         onValueChange = { query = it },
-                        placeholder = { Text("Search all sources...") },
+                        placeholder = { Text(MR.strings.desktop_ui_search_all_sources.localized()) },
                         singleLine = true,
                         modifier = Modifier
                             .weight(1f)
@@ -469,7 +469,7 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
                             },
                     )
                     IconButton(onClick = { launchSearch(query) }) {
-                        Icon(Icons.Default.Search, contentDescription = "Search")
+                        Icon(Icons.Default.Search, contentDescription = MR.strings.action_search.localized())
                     }
                 }
                 Row(
@@ -510,7 +510,7 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
                     ) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                         Text(
-                            "Searching…",
+                            MR.strings.desktop_ui_searching.localized(),
                             modifier = Modifier.padding(start = 8.dp),
                             style = MaterialTheme.typography.bodySmall,
                         )

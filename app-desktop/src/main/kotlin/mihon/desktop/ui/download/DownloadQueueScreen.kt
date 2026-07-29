@@ -1,5 +1,8 @@
 package mihon.desktop.ui.download
 
+import tachiyomi.i18n.MR
+import java.util.Locale
+
 import mihon.desktop.LocalDesktopUiDependencies
 
 import androidx.compose.foundation.layout.Arrangement
@@ -88,7 +91,7 @@ class DownloadQueueScreen : Screen {
                 TopAppBar(
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Download Queue")
+                            Text(MR.strings.desktop_ui_download_queue.localized())
                             if (queue.isNotEmpty()) {
                                 Text(
                                     text = "  (${queue.size})",
@@ -100,7 +103,7 @@ class DownloadQueueScreen : Screen {
                     },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
                         }
                     },
                     actions = {
@@ -108,35 +111,35 @@ class DownloadQueueScreen : Screen {
                             // Sort button — direct action icon (mirrors Android AppBar.Action)
                             Box {
                                 IconButton(onClick = { showSortMenu = true }) {
-                                    Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort")
+                                    Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = MR.strings.action_sort.localized())
                                 }
                                 DropdownMenu(
                                     expanded = showSortMenu,
                                     onDismissRequest = { showSortMenu = false },
                                 ) {
                                     DropdownMenuItem(
-                                        text = { Text("Upload date \u2014 Newest") },
+                                        text = { Text(MR.strings.desktop_ui_upload_date_newest.localized()) },
                                         onClick = {
                                             showSortMenu = false
                                             model.sort(DownloadQueueOrder.UPLOAD_DATE_NEWEST)
                                         },
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Upload date \u2014 Oldest") },
+                                        text = { Text(MR.strings.desktop_ui_upload_date_oldest.localized()) },
                                         onClick = {
                                             showSortMenu = false
                                             model.sort(DownloadQueueOrder.UPLOAD_DATE_OLDEST)
                                         },
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Chapter number \u2014 Ascending") },
+                                        text = { Text(MR.strings.desktop_ui_chapter_number_ascending.localized()) },
                                         onClick = {
                                             showSortMenu = false
                                             model.sort(DownloadQueueOrder.CHAPTER_NUMBER_ASCENDING)
                                         },
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Chapter number \u2014 Descending") },
+                                        text = { Text(MR.strings.desktop_ui_chapter_number_descending.localized()) },
                                         onClick = {
                                             showSortMenu = false
                                             model.sort(DownloadQueueOrder.CHAPTER_NUMBER_DESCENDING)
@@ -148,7 +151,7 @@ class DownloadQueueScreen : Screen {
                             // Overflow menu (⋮) — mirrors Android AppBar.OverflowAction
                             Box {
                                 IconButton(onClick = { showOverflowMenu = true }) {
-                                    Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                                    Icon(Icons.Default.MoreVert, contentDescription = MR.strings.action_menu_overflow_description.localized())
                                 }
                                 DropdownMenu(
                                     expanded = showOverflowMenu,
@@ -156,7 +159,7 @@ class DownloadQueueScreen : Screen {
                                 ) {
                                     if (hasErrors) {
                                         DropdownMenuItem(
-                                            text = { Text("Retry failed") },
+                                            text = { Text(MR.strings.desktop_ui_retry_failed.localized()) },
                                             leadingIcon = {
                                                 Icon(Icons.Default.Refresh, contentDescription = null)
                                             },
@@ -166,7 +169,7 @@ class DownloadQueueScreen : Screen {
                                             },
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("Clear errors") },
+                                            text = { Text(MR.strings.desktop_ui_clear_errors.localized()) },
                                             leadingIcon = {
                                                 Icon(Icons.Default.Close, contentDescription = null)
                                             },
@@ -179,7 +182,7 @@ class DownloadQueueScreen : Screen {
                                     }
                                     DropdownMenuItem(
                                         text = {
-                                            Text("Cancel all", color = MaterialTheme.colorScheme.error)
+                                            Text(MR.strings.action_cancel_all.localized(), color = MaterialTheme.colorScheme.error)
                                         },
                                         onClick = {
                                             model.cancelAll()
@@ -196,7 +199,15 @@ class DownloadQueueScreen : Screen {
             floatingActionButton = {
                 if (queue.isNotEmpty()) {
                     ExtendedFloatingActionButton(
-                        text = { Text(if (isPaused) "Resume" else "Pause") },
+                        text = {
+                            Text(
+                                if (isPaused) {
+                                    MR.strings.action_resume.localized()
+                                } else {
+                                    MR.strings.action_pause.localized()
+                                },
+                            )
+                        },
                         icon = {
                             Icon(
                                 imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
@@ -220,7 +231,7 @@ class DownloadQueueScreen : Screen {
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            text = "No downloads in queue",
+                            text = MR.strings.desktop_ui_no_downloads_in_queue.localized(),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 8.dp),
@@ -232,7 +243,7 @@ class DownloadQueueScreen : Screen {
                     // Paused banner
                     if (isPaused) {
                         Text(
-                            text = "Downloads paused",
+                            text = MR.strings.download_notifier_download_paused.localized(),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
@@ -272,7 +283,7 @@ class DownloadQueueScreen : Screen {
                                         dragHandle = {
                                             Icon(
                                                 imageVector = Icons.Default.DragHandle,
-                                                contentDescription = "Drag to reorder",
+                                                contentDescription = MR.strings.desktop_ui_drag_to_reorder.localized(),
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 modifier = Modifier.draggableHandle(),
                                             )
@@ -297,16 +308,21 @@ private fun DownloadItemCard(
     dragHandle: (@Composable () -> Unit)? = null,
 ) {
     val statusLabel = when (item.status) {
-        DownloadStatus.QUEUED -> "Waiting\u2026"
+        DownloadStatus.QUEUED -> MR.strings.desktop_ui_download_waiting.localized()
         DownloadStatus.DOWNLOADING ->
             if (item.pageUrls.isNotEmpty()) {
-                "Downloading ${item.progress} / ${item.pageUrls.size} pages"
+                MR.strings.desktop_ui_download_progress.localized(
+                    Locale.getDefault(),
+                    item.progress,
+                    item.pageUrls.size,
+                )
             } else {
-                "Downloading\u2026"
+                MR.strings.desktop_ui_downloading.localized()
             }
-        DownloadStatus.DONE -> "Done"
-        DownloadStatus.ERROR -> item.failure?.let(::downloadFailureMessage) ?: "下载失败，请重试"
-        DownloadStatus.CANCELLED -> "Cancelled"
+        DownloadStatus.DONE -> MR.strings.desktop_ui_download_done.localized()
+        DownloadStatus.ERROR -> item.failure?.let(::downloadFailureMessage)
+            ?: MR.strings.desktop_ui_download_failed.localized()
+        DownloadStatus.CANCELLED -> MR.strings.cancelled.localized()
     }
     val statusColor = when (item.status) {
         DownloadStatus.QUEUED -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -352,7 +368,7 @@ private fun DownloadItemCard(
                         IconButton(onClick = { onCancel(item.chapterId) }) {
                             Icon(
                                 Icons.Default.Close,
-                                contentDescription = "Cancel this download",
+                                contentDescription = MR.strings.desktop_ui_cancel_this_download.localized(),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -361,7 +377,7 @@ private fun DownloadItemCard(
                         IconButton(onClick = { onRetry(item.chapterId) }) {
                             Icon(
                                 Icons.Default.Refresh,
-                                contentDescription = "Retry",
+                                contentDescription = MR.strings.action_retry.localized(),
                                 tint = MaterialTheme.colorScheme.error,
                             )
                         }
@@ -395,14 +411,22 @@ private fun DownloadItemCard(
     }
 }
 
-internal fun downloadFailureMessage(error: AppError): String = when (error) {
-    is AppError.MalformedData -> "\u6e90\u8fd4\u56de\u7684\u9875\u9762\u6570\u636e\u65e0\u6548\uff0c\u8bf7\u66f4\u65b0\u6e90\u6216\u7a0d\u540e\u91cd\u8bd5"
-    is AppError.Unknown -> "\u6e90\u4e0d\u53ef\u7528\u6216\u53d1\u751f\u672a\u77e5\u9519\u8bef\uff0c\u8bf7\u68c0\u67e5\u6e90\u8bbe\u7f6e\u540e\u91cd\u8bd5"
-    is AppError.Network -> "网络连接失败，请检查网络后重试"
-    is AppError.Authentication -> "服务器拒绝访问，请检查登录或源设置后重试"
-    is AppError.RateLimited -> error.retryAfterSeconds?.let { "请求过于频繁，请在 ${it} 秒后重试" } ?: "请求过于频繁，请稍后重试"
-    is AppError.Server -> "服务器错误（HTTP ${error.statusCode}），请稍后重试"
-    is AppError.Permission -> "没有写入权限，请检查下载路径后重试"
-    is AppError.Storage -> "磁盘空间不足或无法写入，请检查下载路径后重试"
-    else -> "下载失败，请重试"
+internal fun downloadFailureMessage(
+    error: AppError,
+    locale: Locale = Locale.getDefault(),
+): String = when (error) {
+    is AppError.MalformedData -> MR.strings.desktop_ui_download_malformed_error.localized(locale)
+    is AppError.Unknown -> MR.strings.desktop_ui_download_unknown_error.localized(locale)
+    is AppError.Network -> MR.strings.desktop_ui_download_network_error.localized(locale)
+    is AppError.Authentication -> MR.strings.desktop_ui_download_auth_error.localized(locale)
+    is AppError.RateLimited -> error.retryAfterSeconds?.let {
+        MR.strings.desktop_ui_download_rate_limited_seconds.localized(locale, it)
+    } ?: MR.strings.desktop_ui_download_rate_limited.localized(locale)
+    is AppError.Server -> MR.strings.desktop_ui_download_server_error.localized(
+        locale,
+        error.statusCode,
+    )
+    is AppError.Permission -> MR.strings.desktop_ui_download_permission_error.localized(locale)
+    is AppError.Storage -> MR.strings.desktop_ui_download_storage_error.localized(locale)
+    else -> MR.strings.desktop_ui_download_retry_error.localized(locale)
 }

@@ -1,5 +1,7 @@
 package mihon.desktop.ui.more
 
+import tachiyomi.i18n.MR
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,10 +49,10 @@ class StatsScreen : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Statistics") },
+                    title = { Text(MR.strings.label_stats.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, MR.strings.action_bar_up_description.localized())
                         }
                     },
                 )
@@ -58,7 +60,7 @@ class StatsScreen : Screen {
         ) { padding ->
             when (val current = state) {
                 StatsUiState.Loading -> Centered(Modifier.padding(padding)) { CircularProgressIndicator() }
-                is StatsUiState.Error -> Centered(Modifier.padding(padding)) { Text("Unable to load statistics") }
+                is StatsUiState.Error -> Centered(Modifier.padding(padding)) { Text(MR.strings.desktop_ui_unable_to_load_statistics.localized()) }
                 is StatsUiState.Content -> StatsContent(current.stats, Modifier.padding(padding))
             }
         }
@@ -76,29 +78,29 @@ private fun Centered(modifier: Modifier, content: @Composable () -> Unit) = Colu
 private fun StatsContent(stats: LibraryStats, modifier: Modifier) {
     LazyColumn(modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         item {
-            StatsSection("Library")
+            StatsSection(MR.strings.label_library.localized())
             StatsRow {
-                StatsOverviewItem(stats.mangaCount.toString(), "Titles", Icons.Default.CollectionsBookmark)
-                StatsOverviewItem(stats.readChapters.toString(), "Chapters read", Icons.Default.MenuBook)
-                StatsOverviewItem(stats.startedCount.toString(), "Started", Icons.Default.LocalLibrary)
+                StatsOverviewItem(stats.mangaCount.toString(), MR.strings.desktop_ui_titles.localized(), Icons.Default.CollectionsBookmark)
+                StatsOverviewItem(stats.readChapters.toString(), MR.strings.desktop_ui_chapters_read.localized(), Icons.Default.MenuBook)
+                StatsOverviewItem(stats.startedCount.toString(), MR.strings.desktop_ui_started.localized(), Icons.Default.LocalLibrary)
             }
             HorizontalDivider()
         }
         item {
-            StatsSection("Titles")
+            StatsSection(MR.strings.desktop_ui_titles.localized())
             StatsRow {
-                StatsItem(stats.startedCount.toString(), "Started")
-                StatsItem(stats.bySource.size.toString(), "Sources")
-                StatsItem((stats.mangaCount - stats.startedCount).toString(), "Not started")
+                StatsItem(stats.startedCount.toString(), MR.strings.desktop_ui_started.localized())
+                StatsItem(stats.bySource.size.toString(), MR.strings.label_sources.localized())
+                StatsItem((stats.mangaCount - stats.startedCount).toString(), MR.strings.desktop_ui_not_started.localized())
             }
             HorizontalDivider()
         }
         item {
-            StatsSection("Chapters")
+            StatsSection(MR.strings.chapters.localized())
             StatsRow {
-                StatsItem(stats.totalChapters.toString(), "Total")
-                StatsItem(stats.readChapters.toString(), "Read")
-                StatsItem((stats.totalChapters - stats.readChapters).toString(), "Unread")
+                StatsItem(stats.totalChapters.toString(), MR.strings.desktop_ui_total.localized())
+                StatsItem(stats.readChapters.toString(), MR.strings.label_read_chapters.localized())
+                StatsItem((stats.totalChapters - stats.readChapters).toString(), MR.strings.unread.localized())
             }
         }
     }

@@ -1,5 +1,7 @@
 package mihon.desktop.ui.authors
 
+import tachiyomi.i18n.MR
+
 import mihon.desktop.LocalDesktopUiDependencies
 
 import androidx.compose.foundation.clickable
@@ -61,6 +63,7 @@ import tachiyomi.domain.creator.model.MangaCreator
 import tachiyomi.domain.creator.interactor.CreatorDetails
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
+import java.util.Locale
 
 object AuthorsTab : Tab {
 
@@ -71,7 +74,7 @@ object AuthorsTab : Tab {
             return remember {
                 TabOptions(
                     index = 3u,
-                    title = "Authors",
+                    title = MR.strings.desktop_ui_authors.localized(),
                     icon = icon,
                 )
             }
@@ -103,7 +106,7 @@ class AuthorsRootScreen : Screen {
 
         Scaffold(
             topBar = {
-                TopAppBar(title = { Text("Authors") })
+                TopAppBar(title = { Text(MR.strings.desktop_ui_authors.localized()) })
             },
         ) { padding ->
             Column(
@@ -114,7 +117,7 @@ class AuthorsRootScreen : Screen {
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
-                    placeholder = { Text("Search authors") },
+                    placeholder = { Text(MR.strings.desktop_ui_search_authors.localized()) },
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -123,7 +126,7 @@ class AuthorsRootScreen : Screen {
 
                 if (filteredCreators.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No authors indexed yet")
+                        Text(MR.strings.desktop_ui_no_authors_indexed_yet.localized())
                     }
                 } else {
                     LazyColumn(
@@ -133,7 +136,7 @@ class AuthorsRootScreen : Screen {
                         if (followedIds.isNotEmpty()) {
                             item {
                                 Text(
-                                    text = "Followed",
+                                    text = MR.strings.desktop_ui_followed.localized(),
                                     style = MaterialTheme.typography.titleSmall,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                 )
@@ -146,7 +149,7 @@ class AuthorsRootScreen : Screen {
 
                         item {
                             Text(
-                                text = "All authors",
+                                text = MR.strings.desktop_ui_all_authors.localized(),
                                 style = MaterialTheme.typography.titleSmall,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                             )
@@ -202,7 +205,7 @@ data class AuthorDetailScreen(
             }
             mangaTitles = mangaLinks.associate { link ->
                 link.mangaId to runCatching { desktopDependencies.getMangaTitle(link.mangaId) }
-                    .getOrDefault("Manga #${link.mangaId}")
+                    .getOrDefault(MR.strings.desktop_ui_manga_number.localized(Locale.getDefault(), link.mangaId))
             }
         }
 
@@ -211,10 +214,10 @@ data class AuthorDetailScreen(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(creator?.displayName ?: "Author") },
+                    title = { Text(creator?.displayName ?: MR.strings.author.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
                         }
                     },
                     actions = {
@@ -226,7 +229,7 @@ data class AuthorDetailScreen(
                                     applyDetails(discoverCreatorWorks.await(creatorId, sourceManager.getCatalogueSources()))
                                     mangaTitles = mangaLinks.associate { link ->
                                         link.mangaId to runCatching { desktopDependencies.getMangaTitle(link.mangaId) }
-                                            .getOrDefault("Manga #${link.mangaId}")
+                                            .getOrDefault(MR.strings.desktop_ui_manga_number.localized(Locale.getDefault(), link.mangaId))
                                     }
                                     checking = false
                                 }
@@ -235,7 +238,7 @@ data class AuthorDetailScreen(
                             if (checking) {
                                 CircularProgressIndicator()
                             } else {
-                                Icon(Icons.Default.Refresh, contentDescription = "Check new works")
+                                Icon(Icons.Default.Refresh, contentDescription = MR.strings.desktop_ui_check_new_works.localized())
                             }
                         }
                     },
@@ -255,14 +258,14 @@ data class AuthorDetailScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text(creator?.displayName ?: "Unknown author", style = MaterialTheme.typography.titleLarge)
+                        Text(creator?.displayName ?: MR.strings.unknown_author.localized(), style = MaterialTheme.typography.titleLarge)
                         Text(
-                            "${candidates.size} discovered candidate${if (candidates.size == 1) "" else "s"}",
+                            MR.strings.desktop_ui_discovered_candidate_count.localized(Locale.getDefault(), candidates.size),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            "${mangaLinks.size} archived source link${if (mangaLinks.size == 1) "" else "s"}",
+                            MR.strings.desktop_ui_archived_source_link_count.localized(Locale.getDefault(), mangaLinks.size),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -278,7 +281,7 @@ data class AuthorDetailScreen(
                             }
                         },
                     ) {
-                        Text(if (isFollowed) "Unfollow" else "Follow")
+                        Text(if (isFollowed) MR.strings.desktop_ui_unfollow.localized() else MR.strings.desktop_ui_follow.localized())
                     }
                 }
 
@@ -286,14 +289,14 @@ data class AuthorDetailScreen(
 
                 if (candidates.isEmpty() && mangaLinks.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No discovered works yet")
+                        Text(MR.strings.desktop_ui_no_discovered_works_yet.localized())
                     }
                 } else {
                     LazyColumn(Modifier.fillMaxSize()) {
                         if (candidates.isNotEmpty()) {
                             item {
                                 Text(
-                                    text = "Discovered works",
+                                    text = MR.strings.desktop_ui_discovered_works.localized(),
                                     style = MaterialTheme.typography.titleSmall,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                 )
@@ -304,7 +307,13 @@ data class AuthorDetailScreen(
                                         Text(candidate.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     },
                                     supportingContent = {
-                                        Text("${candidate.languageTag.uppercase()} · source ${candidate.source}")
+                                        Text(
+                                            MR.strings.desktop_ui_source_id.localized(
+                                                Locale.getDefault(),
+                                                candidate.languageTag.uppercase(),
+                                                candidate.source,
+                                            ),
+                                        )
                                     },
                                     leadingContent = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null) },
                                     modifier = Modifier.clickable {
@@ -337,16 +346,28 @@ data class AuthorDetailScreen(
                         if (mangaLinks.isNotEmpty()) {
                             item {
                                 Text(
-                                    text = "Archived works",
+                                    text = MR.strings.desktop_ui_archived_works.localized(),
                                     style = MaterialTheme.typography.titleSmall,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                 )
                             }
                             items(mangaLinks, key = { "${it.mangaId}-${it.role}" }) { link ->
                                 ListItem(
-                                    headlineContent = { Text(mangaTitles[link.mangaId] ?: "Manga #${link.mangaId}") },
+                                    headlineContent = {
+                                        Text(
+                                            mangaTitles[link.mangaId]
+                                                ?: MR.strings.desktop_ui_manga_number.localized(Locale.getDefault(), link.mangaId),
+                                        )
+                                    },
                                     supportingContent = {
-                                        Text("${link.role.name.lowercase()} · ${link.evidence} · confidence ${link.confidence}")
+                                        Text(
+                                            MR.strings.desktop_ui_role_confidence.localized(
+                                                Locale.getDefault(),
+                                                link.role.name.lowercase(),
+                                                link.evidence,
+                                                link.confidence.toString(),
+                                            ),
+                                        )
                                     },
                                     modifier = Modifier.clickable {
                                         navigator.push(MangaDetailScreen(link.mangaId))
@@ -395,10 +416,10 @@ data class WorkCompareScreen(val workId: Long) : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(candidate?.title ?: "Work comparison") },
+                    title = { Text(candidate?.title ?: MR.strings.desktop_ui_work_comparison.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
                         }
                     },
                 )
@@ -413,29 +434,34 @@ data class WorkCompareScreen(val workId: Long) : Screen {
             ) {
                 val item = candidate
                 if (item == null) {
-                    Text("Work candidate was not found", style = MaterialTheme.typography.titleLarge)
+                    Text(MR.strings.desktop_ui_work_candidate_was_not_found.localized(), style = MaterialTheme.typography.titleLarge)
                 } else {
                     Text(item.title, style = MaterialTheme.typography.titleLarge)
                     Text(
-                        "${sourceManager.getOrStub(item.source).name} · ${item.languageTag.uppercase()} · ${item.state.name.lowercase()}",
+                        MR.strings.desktop_ui_source_language_state.localized(
+                            Locale.getDefault(),
+                            sourceManager.getOrStub(item.source).name,
+                            item.languageTag.uppercase(),
+                            item.state.name.lowercase(),
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     HorizontalDivider()
-                    Text("Author: ${item.authorText ?: "Unknown"}")
-                    Text("Artist: ${item.artistText ?: "Unknown"}")
-                    Text("Language evidence: ${item.languageEvidence} (${item.languageConfidence})")
-                    Text("Source URL: ${item.url}")
-                    Text("First seen: ${item.firstSeenAt}")
-                    Text("Last seen: ${item.lastSeenAt}")
+                    Text(MR.strings.desktop_ui_author_value.localized(Locale.getDefault(), item.authorText ?: MR.strings.unknown.localized()))
+                    Text(MR.strings.desktop_ui_artist_value.localized(Locale.getDefault(), item.artistText ?: MR.strings.unknown.localized()))
+                    Text(MR.strings.desktop_ui_language_evidence.localized(Locale.getDefault(), item.languageEvidence, item.languageConfidence.toString()))
+                    Text(MR.strings.desktop_ui_source_url.localized(Locale.getDefault(), item.url))
+                    Text(MR.strings.desktop_ui_first_seen.localized(Locale.getDefault(), item.firstSeenAt.toString()))
+                    Text(MR.strings.desktop_ui_last_seen.localized(Locale.getDefault(), item.lastSeenAt.toString()))
                     Text(
-                        "Chapter grouping and confirmed cross-source versions will be shown here once this candidate is merged into a canonical work.",
+                        MR.strings.desktop_ui_chapter_grouping_and_confirmed_cross_source_versions_wil.localized(),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 TextButton(onClick = { navigator.pop() }) {
-                    Text("Back")
+                    Text(MR.strings.action_bar_up_description.localized())
                 }
             }
         }
@@ -447,7 +473,7 @@ private fun AuthorListItem(creator: Creator, followed: Boolean, onClick: () -> U
     ListItem(
         headlineContent = { Text(creator.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = {
-            Text(if (followed) "Followed" else "Not followed")
+            Text(if (followed) MR.strings.desktop_ui_followed.localized() else MR.strings.not_selected.localized())
         },
         leadingContent = { Icon(Icons.Default.Person, contentDescription = null) },
         modifier = Modifier

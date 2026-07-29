@@ -1,5 +1,8 @@
 package mihon.desktop.ui.library
 
+import tachiyomi.i18n.MR
+import java.util.Locale
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -111,4 +114,7 @@ private fun MissingChapterCountRow(count: Int) {
     }
 }
 
-internal fun missingChapterCountText(count: Int): String = "缺少 $count 话"
+internal fun missingChapterCountText(
+    count: Int,
+    locale: Locale = Locale.getDefault(),
+): String = MR.strings.desktop_ui_missing_chapter_count.localized(locale, count)

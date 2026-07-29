@@ -61,7 +61,7 @@ class SourceBrowseFilterParityTest {
             assertEquals("", defaultApply.query)
             assertTrue(selected(scene, filter))
 
-            click(scene, "Search")
+            click(scene, MR.strings.action_search.localized(locale))
             setText(scene, "hero")
             submitText(scene)
             source.assertNextSearchRuntimeTypes()

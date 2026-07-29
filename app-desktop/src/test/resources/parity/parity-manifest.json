@@ -652,7 +652,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModel.kt", "symbol": "CategoryScreenModel", "line": 24}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModel.kt", "symbol": "private val createCategoryWithName", "line": 26}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/CreateCategoryWithName.kt", "symbol": "class CreateCategoryWithName", "line": 10}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "private val createCategory", "line": 75}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "private val createCategory", "line": 78}],
       "FIXTURE": [
         {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModelBehaviorTest.kt#production interactors drive category CRUD ordering and preference cleanup", "productionMarkers": ["screenModel(repository)", "model.createCategory", "model.renameCategory", "model.changeOrder", "model.deleteCategory"]},
         {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/category/CategoryScreenModelBehaviorTest.kt#each failed production mutation emits the explicit internal error boundary", "productionMarkers": ["model.createCategory", "model.renameCategory", "model.changeOrder", "model.deleteCategory"]},
@@ -779,9 +779,9 @@
       ],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "symbol": "class SetMangaCategories", "line": 7}],
       "DESKTOP_CONSUMER": [
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryTab.kt", "symbol": "internal fun librarySelectionActions(", "line": 121},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "internal suspend fun enqueueDownloads(", "line": 430},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 526}
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryTab.kt", "symbol": "internal fun librarySelectionActions(", "line": 123},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "internal suspend fun enqueueDownloads(", "line": 437},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 540}
       ],
       "FIXTURE": [
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt#selection action bar exposes invert download and migrate entries", "productionMarkers": ["librarySelectionActions", "SelectionActionBar"]},
@@ -850,14 +850,14 @@
         {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "symbol": "class SetMangaCategories", "line": 7}
       ],
       "DESKTOP_CONSUMER": [
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt", "symbol": "categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY", "line": 773},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt", "symbol": "suspend fun toggleLibrary", "line": 265},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt", "symbol": "MangaCategoryDialogMode.ADD_TO_LIBRARY -> model.toggleLibrary", "line": 344},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 526}
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt", "symbol": "categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY", "line": 829},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt", "symbol": "suspend fun toggleLibrary", "line": 267},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt", "symbol": "MangaCategoryDialogMode.ADD_TO_LIBRARY -> model.toggleLibrary", "line": 354},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 540}
       ],
       "FIXTURE": [
         {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModelSharedMutationWiringTest.kt#Android add with categories delegates one atomic shared membership request", "productionMarkers": ["screenModel(", "model.moveMangaToCategoriesAndAddToLibrary", "UpdateLibraryMembership"]},
-        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailLibraryEntryWiringTest.kt#real MangaDetailScreen add action mounts category dialog and commits selection", "productionMarkers": ["Navigator(MangaDetailScreen", "click(scene, \"Add to library\")", "assertEquals"]}
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailLibraryEntryWiringTest.kt#real MangaDetailScreen add action mounts category dialog and commits selection", "productionMarkers": ["Navigator(MangaDetailScreen", "click(scene, addToLibrary)", "assertEquals"]}
       ]
     },
     "group": "书库与详情",
@@ -955,7 +955,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt", "symbol": "fun bookmarkChapters", "line": 824}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt", "symbol": "fun bookmarkChapters", "line": 838}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/chapter/interactor/BatchUpdateChapters.kt", "symbol": "class BatchUpdateChapters", "line": 5}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt", "symbol": "suspend fun markSelectedBookmark", "line": 244}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt", "symbol": "suspend fun markSelectedBookmark", "line": 246}],
       "FIXTURE": [
         {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModelSharedMutationWiringTest.kt#Android bookmark batch continues after write failure and shows localized result", "productionMarkers": ["screenModel(", "model.bookmarkChapters", "model.snackbarHostState.currentSnackbarData", "mutation.join()", "assertEquals"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt#markSelectedBookmark uses true when any selected chapter is not bookmarked", "productionMarkers": ["model.markSelectedBookmark", "assertEquals"]}
@@ -1014,7 +1014,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaCoverScreenModel.kt", "symbol": "fun editCover", "line": 120}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaCoverScreenModel.kt", "symbol": "fun editCover", "line": 120}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/UpdateCustomCover.kt", "symbol": "class UpdateCustomCover", "line": 11}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaCoverAdapter.kt", "symbol": "suspend fun chooseAndUpdate", "line": 22}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaCoverAdapter.kt", "symbol": "suspend fun chooseAndUpdate", "line": 24}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailScreenModelTest.kt#cover permission failure is visible and does not refresh cache", "productionMarkers": ["model.chooseCustomCover"]}]
     },
     "protectionTests": [
@@ -1151,7 +1151,7 @@
         {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/NetworkToLocalManga.kt", "symbol": "class NetworkToLocalManga(", "line": 6}
       ],
       "DESKTOP_CONSUMER": [
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt", "symbol": "internal class DesktopSourceLastUsedRecorder(", "line": 158},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt", "symbol": "internal class DesktopSourceLastUsedRecorder(", "line": 159},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt", "symbol": "class SourceBrowseQueryCoordinator(", "line": 80}
       ],
       "FIXTURE": [{"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModelBehaviorTest.kt#production Pager publishes shared service content without calling source directly", "productionMarkers": ["model.mangaPagerFlowFlow"]}]
@@ -1726,7 +1726,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewScreen.kt", "symbol": "class WebViewScreen(", "line": 12}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/presentation/webview/WebViewScreenContent.kt", "symbol": "fun WebViewScreenContent(", "line": 69}],
       "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/network/DesktopBrowserLoginAdapter.kt", "symbol": "class DesktopBrowserLoginAdapter", "line": 69}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt", "symbol": "fun recover()", "line": 342}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt", "symbol": "fun recover()", "line": 343}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceLoginTestModeWiringTest.kt#source browse installs observation after real open login recovery", "productionMarkers": ["SourceBrowseScreen("]}]
     },
     "verificationScope": "VERIFIED: fixed/current Android embedded login, shared authentication outcome, Desktop external-browser adapter, real cookie commit/rollback and source-browse feedback are bound.",
@@ -2070,7 +2070,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt", "symbol": "private fun getCombinedPaint", "line": 812}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt", "symbol": "readerPreferences.grayscale().changes()", "line": 908}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt", "symbol": "internal fun buildAndroidLayerFilterParams", "line": 27}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt", "symbol": "data class ReaderColorFilterParams", "line": 241}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "ReaderViewportColorLayer(state.colorFilter)", "line": 487}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "internal fun ReaderViewportColorLayer", "line": 533}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun Modifier.readerColorTransform", "line": 49}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun readerColorMatrix", "line": 59}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "ReaderViewportColorLayer(state.colorFilter)", "line": 489}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "internal fun ReaderViewportColorLayer", "line": 551}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun Modifier.readerColorTransform", "line": 52}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun readerColorMatrix", "line": 62}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt#mounted reader viewport color layer renders disabled grayscale and invert pixels", "productionMarkers": ["renderColorLayer(", "assertPixel("]}]
     },
     "protectionTests": [

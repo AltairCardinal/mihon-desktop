@@ -1,5 +1,8 @@
 package mihon.desktop.ui.migration
 
+import tachiyomi.i18n.MR
+import java.util.Locale
+
 import mihon.desktop.LocalDesktopUiDependencies
 
 import androidx.compose.foundation.clickable
@@ -60,16 +63,21 @@ class MigrationSourceScreen : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Migrate Manga") },
+                    title = { Text(MR.strings.label_migration.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, MR.strings.desktop_ui_back.localized())
                         }
                     },
                     actions = {
                         migrationQueues.values.lastOrNull()?.let { queue ->
                             TextButton(onClick = { navigator.push(MigrationBatchQueueScreen(queue.id)) }) {
-                                Text("Migration queues (${migrationQueues.size})")
+                                Text(
+                                    MR.strings.desktop_ui_migration_queues.localized(
+                                        Locale.getDefault(),
+                                        migrationQueues.size,
+                                    ),
+                                )
                             }
                         }
                     },
@@ -87,7 +95,7 @@ class MigrationSourceScreen : Screen {
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        "No sources with library manga",
+                        MR.strings.desktop_ui_no_sources_with_library_manga.localized(),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

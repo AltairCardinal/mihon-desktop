@@ -1,5 +1,8 @@
 package mihon.desktop.ui.library
 
+import tachiyomi.i18n.MR
+import java.util.Locale
+
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
 
@@ -71,7 +74,11 @@ internal fun chaptersForDownloadAction(
 internal fun nextUnreadChapter(chapters: List<Chapter>): Chapter? =
     chapters.sortedBy { it.sourceOrder }.firstOrNull { !it.read }
 
-internal fun chapterDisplayTitle(chapter: Chapter, displayMode: Long): String {
+internal fun chapterDisplayTitle(
+    chapter: Chapter,
+    displayMode: Long,
+    locale: Locale = Locale.getDefault(),
+): String {
     if (displayMode != Manga.CHAPTER_DISPLAY_NUMBER) return chapter.name
     val number = chapter.chapterNumber
     val formatted = if (number % 1.0 == 0.0) {
@@ -79,5 +86,5 @@ internal fun chapterDisplayTitle(chapter: Chapter, displayMode: Long): String {
     } else {
         number.toString().trimEnd('0').trimEnd('.')
     }
-    return "Chapter $formatted"
+    return MR.strings.desktop_ui_chapter_number.localized(locale, formatted)
 }

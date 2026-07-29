@@ -1,5 +1,7 @@
 package mihon.desktop.ui.library
 
+import tachiyomi.i18n.MR
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -69,7 +71,7 @@ fun CategoryManagementDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Manage Categories") },
+        title = { Text(MR.strings.desktop_ui_manage_categories.localized()) },
         text = {
             Column {
                 // Add new category
@@ -81,7 +83,7 @@ fun CategoryManagementDialog(
                     OutlinedTextField(
                         value = newName,
                         onValueChange = { newName = it },
-                        placeholder = { Text("New category") },
+                        placeholder = { Text(MR.strings.desktop_ui_new_category.localized()) },
                         singleLine = true,
                         modifier = Modifier.weight(1f),
                     )
@@ -94,7 +96,7 @@ fun CategoryManagementDialog(
                         },
                         enabled = newName.isNotBlank(),
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "Add")
+                        Icon(Icons.Default.Add, contentDescription = MR.strings.action_add.localized())
                     }
                 }
 
@@ -113,7 +115,7 @@ fun CategoryManagementDialog(
                                 // Drag handle
                                 Icon(
                                     imageVector = Icons.Default.DragHandle,
-                                    contentDescription = "Drag to reorder",
+                                    contentDescription = MR.strings.desktop_ui_drag_to_reorder.localized(),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.draggableHandle(),
                                 )
@@ -130,7 +132,7 @@ fun CategoryManagementDialog(
                                             onRename(cat.id, editingName)
                                             editingId = null
                                         }
-                                    }) { Text("Save") }
+                                    }) { Text(MR.strings.action_save.localized()) }
                                 } else {
                                     Text(
                                         cat.name,
@@ -141,14 +143,14 @@ fun CategoryManagementDialog(
                                         editingId = cat.id
                                         editingName = cat.name
                                     }) {
-                                        Icon(Icons.Default.Edit, contentDescription = "Rename")
+                                        Icon(Icons.Default.Edit, contentDescription = MR.strings.desktop_ui_rename.localized())
                                     }
                                     IconButton(onClick = {
                                         scope.launch {
                                             onDelete(cat.id)
                                         }
                                     }) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Delete")
+                                        Icon(Icons.Default.Delete, contentDescription = MR.strings.action_delete.localized())
                                     }
                                 }
                             }
@@ -158,7 +160,7 @@ fun CategoryManagementDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Done") }
+            TextButton(onClick = onDismiss) { Text(MR.strings.desktop_ui_done.localized()) }
         },
     )
 }

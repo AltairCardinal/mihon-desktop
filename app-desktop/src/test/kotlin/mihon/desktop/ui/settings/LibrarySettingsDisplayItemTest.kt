@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import java.util.Locale
 
 class LibrarySettingsDisplayItemTest {
 
@@ -13,7 +14,7 @@ class LibrarySettingsDisplayItemTest {
 
     @Test
     fun `missing chapter indicator row exposes label and unchecked default`() {
-        val item = missingChapterIndicatorSettingsItem(prefs())
+        val item = missingChapterIndicatorSettingsItem(prefs(), locale = Locale.forLanguageTag("zh-CN"))
 
         assertEquals("隐藏缺话提示", item.title)
         assertFalse(item.checked)

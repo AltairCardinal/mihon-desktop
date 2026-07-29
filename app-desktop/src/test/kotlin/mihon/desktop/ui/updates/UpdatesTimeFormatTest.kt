@@ -6,6 +6,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
+import java.util.Locale
 
 class UpdatesTimeFormatTest {
 
@@ -20,21 +21,21 @@ class UpdatesTimeFormatTest {
     @Test
     fun `today returns HH-mm time string`() {
         val today = LocalDate.now()
-        val result = formatUpdateTime(epochOf(today, 10, 5), zone)
+        val result = formatUpdateTime(epochOf(today, 10, 5), zone, Locale.ENGLISH)
         assertEquals("10:05", result)
     }
 
     @Test
     fun `yesterday returns Yesterday`() {
         val yesterday = LocalDate.now().minusDays(1)
-        val result = formatUpdateTime(epochOf(yesterday), zone)
+        val result = formatUpdateTime(epochOf(yesterday), zone, Locale.ENGLISH)
         assertEquals("Yesterday", result)
     }
 
     @Test
     fun `within 7 days returns non-time non-yesterday string`() {
         val twoDaysAgo = LocalDate.now().minusDays(2)
-        val result = formatUpdateTime(epochOf(twoDaysAgo), zone)
+        val result = formatUpdateTime(epochOf(twoDaysAgo), zone, Locale.ENGLISH)
         // Not a time (no colon), not "Yesterday", not empty
         assert(!result.contains(":")) { "Should not be a time string, got '$result'" }
         assert(result != "Yesterday") { "Should not be 'Yesterday', got '$result'" }
@@ -46,8 +47,8 @@ class UpdatesTimeFormatTest {
         val today = LocalDate.now()
         val oldDate = today.minusDays(10)
         val recentDate = today.minusDays(3)
-        val oldResult = formatUpdateTime(epochOf(oldDate), zone)
-        val recentResult = formatUpdateTime(epochOf(recentDate), zone)
+        val oldResult = formatUpdateTime(epochOf(oldDate), zone, Locale.ENGLISH)
+        val recentResult = formatUpdateTime(epochOf(recentDate), zone, Locale.ENGLISH)
         // Old date format must differ from recent day-name format
         assert(oldResult != recentResult) { "Old ('$oldResult') should differ from recent ('$recentResult')" }
         assert(!oldResult.contains(":")) { "Old date should not be a time, got '$oldResult'" }

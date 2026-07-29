@@ -1,5 +1,7 @@
 package mihon.desktop.ui.library
 
+import tachiyomi.i18n.MR
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -145,7 +147,7 @@ object LibraryTab : Tab {
             return remember {
                 TabOptions(
                     index = 0u,
-                    title = "Library",
+                    title = MR.strings.label_library.localized(),
                     icon = icon,
                 )
             }
@@ -372,7 +374,7 @@ class LibraryRootScreen : Screen {
                             Tab(
                                 selected = index == selectedCategoryIndex,
                                 onClick = { model.setSelectedCategoryIndex(index) },
-                                text = { Text(cat?.name ?: "All") },
+                                text = { Text(cat?.name ?: MR.strings.all.localized()) },
                             )
                         }
                     }
@@ -401,7 +403,7 @@ class LibraryRootScreen : Screen {
                 } else if (displayedItems.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
-                            "No manga match your filters",
+                            MR.strings.desktop_ui_no_manga_match_your_filters.localized(),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

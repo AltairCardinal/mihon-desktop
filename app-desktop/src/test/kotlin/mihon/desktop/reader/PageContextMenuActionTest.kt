@@ -10,9 +10,11 @@ import org.jetbrains.skia.Color
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image
 import mihon.desktop.ui.reader.pageContextMenuLabels
+import tachiyomi.i18n.MR
 import java.awt.image.BufferedImage
 import java.io.File
 import java.nio.file.Files
+import java.util.Locale
 
 /**
  * RED — PageSaveHelper does not exist yet.
@@ -73,13 +75,23 @@ class PageContextMenuActionTest {
 
     @Test
     fun `reader context menu image actions use Chinese labels in share copy save order`() {
+        val locale = Locale.forLanguageTag("zh-CN")
         assertEquals(
-            listOf("分享图片", "复制到剪贴板", "保存图片", "设为封面"),
-            pageContextMenuLabels(includeSetAsCover = true),
+            listOf(
+                MR.strings.action_share.localized(locale),
+                MR.strings.action_copy_to_clipboard.localized(locale),
+                MR.strings.action_save.localized(locale),
+                MR.strings.set_as_cover.localized(locale),
+            ),
+            pageContextMenuLabels(includeSetAsCover = true, locale = locale),
         )
         assertEquals(
-            listOf("分享图片", "复制到剪贴板", "保存图片"),
-            pageContextMenuLabels(includeSetAsCover = false),
+            listOf(
+                MR.strings.action_share.localized(locale),
+                MR.strings.action_copy_to_clipboard.localized(locale),
+                MR.strings.action_save.localized(locale),
+            ),
+            pageContextMenuLabels(includeSetAsCover = false, locale = locale),
         )
     }
 

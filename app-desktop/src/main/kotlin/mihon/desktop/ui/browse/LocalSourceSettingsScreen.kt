@@ -1,5 +1,7 @@
 package mihon.desktop.ui.browse
 
+import tachiyomi.i18n.MR
+
 import mihon.desktop.LocalDesktopUiDependencies
 
 import androidx.compose.foundation.layout.Arrangement
@@ -70,7 +72,11 @@ class LocalSourceSettingsScreen : Screen {
             val dir = if (System.getProperty("os.name").lowercase().contains("mac")) {
                 System.setProperty("apple.awt.fileDialogForDirectories", "true")
                 try {
-                    val dialog = FileDialog(null as java.awt.Frame?, "选择漫画根目录", FileDialog.LOAD)
+                    val dialog = FileDialog(
+                        null as java.awt.Frame?,
+                        MR.strings.desktop_ui_select_manga_root_directory.localized(),
+                        FileDialog.LOAD,
+                    )
                     dialog.isVisible = true
                     val d = dialog.directory ?: return
                     val f = dialog.file ?: return
@@ -81,7 +87,7 @@ class LocalSourceSettingsScreen : Screen {
             } else {
                 val chooser = JFileChooser().apply {
                     fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-                    dialogTitle = "Select manga root directory"
+                    dialogTitle = MR.strings.desktop_ui_select_manga_root_directory.localized()
                 }
                 if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
                     chooser.selectedFile
@@ -95,10 +101,10 @@ class LocalSourceSettingsScreen : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("本地源设置") },
+                    title = { Text(MR.strings.desktop_ui_local_source_settings.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
                         }
                     },
                 )
@@ -109,14 +115,14 @@ class LocalSourceSettingsScreen : Screen {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 // Root directory
-                Text("漫画根目录", style = MaterialTheme.typography.titleMedium)
+                Text(MR.strings.desktop_ui_manga_root_directory.localized(), style = MaterialTheme.typography.titleMedium)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        text = currentDir.ifEmpty { "未设置" },
+                        text = currentDir.ifEmpty { MR.strings.desktop_ui_not_set.localized() },
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (currentDir.isEmpty()) {
                             MaterialTheme.colorScheme.onSurfaceVariant
@@ -127,16 +133,19 @@ class LocalSourceSettingsScreen : Screen {
                     )
                     OutlinedButton(onClick = { pickDirectory() }) {
                         Icon(Icons.Default.FolderOpen, contentDescription = null)
-                        Text("选择", modifier = Modifier.padding(start = 4.dp))
+                        Text(MR.strings.desktop_ui_select.localized(), modifier = Modifier.padding(start = 4.dp))
                     }
                 }
 
                 Spacer(Modifier.height(8.dp))
 
                 // Scan depth
-                Text("递归扫描深度", style = MaterialTheme.typography.titleMedium)
+                Text(MR.strings.desktop_ui_recursive_scan_depth.localized(), style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "当前深度: ${depthSlider.toInt()}",
+                    MR.strings.desktop_ui_current_depth.localized(
+                        java.util.Locale.getDefault(),
+                        depthSlider.toInt(),
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Slider(
@@ -152,13 +161,19 @@ class LocalSourceSettingsScreen : Screen {
                 Spacer(Modifier.height(8.dp))
 
                 // Scan status
-                Text("扫描状态", style = MaterialTheme.typography.titleMedium)
+                Text(MR.strings.desktop_ui_scan_status.localized(), style = MaterialTheme.typography.titleMedium)
                 val stateText = when (scanState) {
-                    is LocalSourceScanService.ScanState.Idle -> "空闲"
-                    is LocalSourceScanService.ScanState.Scanning -> "扫描中..."
-                    is LocalSourceScanService.ScanState.Watching -> "监听中 (${mangaList.size} 部漫画)"
+                    is LocalSourceScanService.ScanState.Idle -> MR.strings.desktop_ui_idle.localized()
+                    is LocalSourceScanService.ScanState.Scanning -> MR.strings.desktop_ui_scanning.localized()
+                    is LocalSourceScanService.ScanState.Watching -> MR.strings.desktop_ui_watching_manga.localized(
+                        java.util.Locale.getDefault(),
+                        mangaList.size,
+                    )
                     is LocalSourceScanService.ScanState.Error ->
-                        "错误: ${(scanState as LocalSourceScanService.ScanState.Error).message}"
+                        MR.strings.desktop_ui_error_reason.localized(
+                            java.util.Locale.getDefault(),
+                            (scanState as LocalSourceScanService.ScanState.Error).message,
+                        )
                 }
                 Text(stateText, style = MaterialTheme.typography.bodyMedium)
 
@@ -170,7 +185,7 @@ class LocalSourceSettingsScreen : Screen {
                     enabled = currentDir.isNotEmpty(),
                 ) {
                     Icon(Icons.Default.Refresh, contentDescription = null)
-                    Text("立即重新扫描", modifier = Modifier.padding(start = 4.dp))
+                    Text(MR.strings.desktop_ui_rescan_now.localized(), modifier = Modifier.padding(start = 4.dp))
                 }
             }
         }

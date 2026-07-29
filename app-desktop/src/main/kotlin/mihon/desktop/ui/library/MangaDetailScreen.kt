@@ -1,5 +1,8 @@
 package mihon.desktop.ui.library
 
+import tachiyomi.i18n.MR
+import java.util.Locale
+
 import mihon.desktop.LocalDesktopUiDependencies
 
 import androidx.compose.animation.core.animateFloatAsState
@@ -95,6 +98,7 @@ import mihon.desktop.reader.externalChapterUrlOrNull
 import mihon.desktop.reader.readingModeFromViewerFlags
 import mihon.desktop.ui.browse.GlobalSearchScreen
 import mihon.desktop.ui.reader.DesktopReaderScreen
+import mihon.desktop.ui.reader.readingModeLabel
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.creator.model.CreatorRole
@@ -234,14 +238,14 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                     title = { Text(manga?.title ?: "…", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
                         }
                     },
                     actions = {
                         if (manga != null) {
                             Box {
                                 IconButton(onClick = { downloadMenuExpanded = true }) {
-                                    Icon(Icons.Default.CloudDownload, contentDescription = "Download chapters")
+                                    Icon(Icons.Default.CloudDownload, contentDescription = MR.strings.desktop_ui_download_chapters.localized())
                                 }
                                 DropdownMenu(
                                     expanded = downloadMenuExpanded,
@@ -264,64 +268,74 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
 
                         if (mangaUrl != null) {
                             IconButton(onClick = { openExternalLink(mangaUrl) }) {
-                                Icon(Icons.Default.OpenInBrowser, contentDescription = "Open in browser")
+                                Icon(Icons.Default.OpenInBrowser, contentDescription = MR.strings.action_open_in_browser.localized())
                             }
                             IconButton(onClick = linkActions!!.copyLink) {
-                                Icon(Icons.Default.Link, contentDescription = "Copy link")
+                                Icon(Icons.Default.Link, contentDescription = MR.strings.action_copy_link.localized())
                             }
                             IconButton(onClick = linkActions!!.share) {
-                                Icon(Icons.Default.Share, contentDescription = "Share link")
+                                Icon(Icons.Default.Share, contentDescription = MR.strings.desktop_ui_share_link.localized())
                             }
                         }
 
                         // Mark all as read
-                        TextButton(onClick = { model.setMarkAllReadConfirm(true) }) { Text("Mark all read") }
+                        TextButton(onClick = { model.setMarkAllReadConfirm(true) }) { Text(MR.strings.desktop_ui_mark_all_read.localized()) }
 
                         // Select all chapters / close selection mode
                         if (selectionState.isActive) {
                             IconButton(onClick = { selectionState.selectAll(displayedChapters.map { it.id }) }) {
-                                Icon(Icons.Default.SelectAll, contentDescription = "Select all")
+                                Icon(Icons.Default.SelectAll, contentDescription = MR.strings.action_select_all.localized())
                             }
                             IconButton(onClick = { selectionState.clear() }) {
-                                Icon(Icons.Default.Close, contentDescription = "Clear selection")
+                                Icon(Icons.Default.Close, contentDescription = MR.strings.desktop_ui_clear_selection.localized())
                             }
                         }
 
                         // Chapter filter/sort
                         Box {
                             IconButton(onClick = { model.toggleFilterMenu() }) {
-                                Icon(Icons.Default.FilterList, contentDescription = "Filter chapters")
+                                Icon(Icons.Default.FilterList, contentDescription = MR.strings.desktop_ui_filter_chapters.localized())
                             }
                             DropdownMenu(expanded = showFilterMenu, onDismissRequest = { model.toggleFilterMenu() }) {
                                 DropdownMenuItem(
-                                    text = { Text("── Filter ──") },
+                                    text = { Text(MR.strings.desktop_ui_filter.localized()) },
                                     onClick = {},
                                     enabled = false,
                                 )
                                 DropdownMenuItem(
-                                    text = { Text(if (filterShowRead) "✓ Show Read" else "  Show Read") },
+                                    text = {
+                                        Text("${if (filterShowRead) "✓" else " "} ${MR.strings.desktop_ui_show_read.localized()}")
+                                    },
                                     onClick = { model.setFilterShowRead(!filterShowRead) },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text(if (filterShowUnread) "✓ Show Unread" else "  Show Unread") },
+                                    text = {
+                                        Text("${if (filterShowUnread) "✓" else " "} ${MR.strings.desktop_ui_show_unread.localized()}")
+                                    },
                                     onClick = { model.setFilterShowUnread(!filterShowUnread) },
                                 )
                                 DropdownMenuItem(
                                     text = {
-                                        Text(if (filterShowBookmarked) "✓ Bookmarked only" else "  Bookmarked only")
+                                        Text(
+                                            "${if (filterShowBookmarked) "✓" else " "} " +
+                                                MR.strings.desktop_ui_bookmarked_only.localized(),
+                                        )
                                     },
                                     onClick = { model.setFilterShowBookmarked(!filterShowBookmarked) },
                                 )
                                 DropdownMenuItem(
                                     text = {
-                                        Text(if (filterShowDownloaded) "✓ Downloaded only" else "  Downloaded only")
+                                        Text(
+                                            "${if (filterShowDownloaded) "✓" else " "} " +
+                                                MR.strings.desktop_ui_downloaded_only.localized(),
+                                        )
                                     },
                                     onClick = { model.setFilterShowDownloaded(!filterShowDownloaded) },
                                 )
                                 if (availableScanlators.isNotEmpty()) {
                                     HorizontalDivider()
                                     DropdownMenuItem(
-                                        text = { Text("── Scanlators ──") },
+                                        text = { Text(MR.strings.desktop_ui_scanlators.localized()) },
                                         onClick = {},
                                         enabled = false,
                                     )
@@ -344,16 +358,16 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 }
                                 HorizontalDivider()
                                 DropdownMenuItem(
-                                    text = { Text("── Sort ──") },
+                                    text = { Text(MR.strings.desktop_ui_sort.localized()) },
                                     onClick = {},
                                     enabled = false,
                                 )
                                 ChapterSortMode.entries.forEach { mode ->
                                     val label = when (mode) {
-                                        ChapterSortMode.BY_SOURCE_ORDER -> "Source order"
-                                        ChapterSortMode.BY_CHAPTER_NUMBER -> "Chapter number"
-                                        ChapterSortMode.BY_DATE_UPLOAD -> "Upload date"
-                                        ChapterSortMode.BY_ALPHABET -> "Alphabet"
+                                        ChapterSortMode.BY_SOURCE_ORDER -> MR.strings.desktop_ui_source_order.localized()
+                                        ChapterSortMode.BY_CHAPTER_NUMBER -> MR.strings.show_chapter_number.localized()
+                                        ChapterSortMode.BY_DATE_UPLOAD -> MR.strings.desktop_ui_upload_date.localized()
+                                        ChapterSortMode.BY_ALPHABET -> MR.strings.desktop_ui_alphabet.localized()
                                     }
                                     val arrow = if (mode ==
                                         chapterSortMode
@@ -376,12 +390,17 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 }
                                 HorizontalDivider()
                                 DropdownMenuItem(
-                                    text = { Text("── Display ──") },
+                                    text = { Text(MR.strings.desktop_ui_display.localized()) },
                                     onClick = {},
                                     enabled = false,
                                 )
                                 DropdownMenuItem(
-                                    text = { Text(if (manga?.displayMode == Manga.CHAPTER_DISPLAY_NAME) "✓ Title" else "  Title") },
+                                    text = {
+                                        Text(
+                                            "${if (manga?.displayMode == Manga.CHAPTER_DISPLAY_NAME) "✓" else " "} " +
+                                                MR.strings.desktop_ui_title.localized(),
+                                        )
+                                    },
                                     onClick = {
                                         manga?.let { m ->
                                             scope.launch {
@@ -393,7 +412,10 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 )
                                 DropdownMenuItem(
                                     text = {
-                                        Text(if (manga?.displayMode == Manga.CHAPTER_DISPLAY_NUMBER) "✓ Chapter number" else "  Chapter number")
+                                        Text(
+                                            "${if (manga?.displayMode == Manga.CHAPTER_DISPLAY_NUMBER) "✓" else " "} " +
+                                                MR.strings.show_chapter_number.localized(),
+                                        )
                                     },
                                     onClick = {
                                         manga?.let { m ->
@@ -421,18 +443,18 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     model.setIsUpdating(false)
                                 }
                             }) {
-                                Icon(Icons.Default.Refresh, contentDescription = "Check for updates")
+                                Icon(Icons.Default.Refresh, contentDescription = MR.strings.check_for_updates.localized())
                             }
                         }
 
                         // Migrate to another source
                         IconButton(onClick = { model.setShowMigrateSourcePicker(true) }) {
-                            Icon(Icons.Default.SwapHoriz, contentDescription = "Migrate source")
+                            Icon(Icons.Default.SwapHoriz, contentDescription = MR.strings.desktop_ui_migrate_source.localized())
                         }
 
                         // Notes
                         IconButton(onClick = { model.setShowNotesDialog(true) }) {
-                            Icon(Icons.Default.Note, contentDescription = "Notes")
+                            Icon(Icons.Default.Note, contentDescription = MR.strings.action_notes.localized())
                         }
                     },
                 )
@@ -493,7 +515,15 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 val ch = nextUnread
                 if (ch != null && manga != null && !selectionState.isActive) {
                     ExtendedFloatingActionButton(
-                        text = { Text(if (chapters.any { it.read }) "Resume" else "Start") },
+                        text = {
+                            Text(
+                                if (chapters.any { it.read }) {
+                                    MR.strings.action_resume.localized()
+                                } else {
+                                    MR.strings.action_start.localized()
+                                },
+                            )
+                        },
                         icon = { Icon(Icons.Default.PlayArrow, contentDescription = null) },
                         onClick = {
                             val externalUrl = ch.url.externalChapterUrlOrNull()
@@ -531,16 +561,23 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             deleteConfirmChapter?.let { ch ->
                 AlertDialog(
                     onDismissRequest = { model.setDeleteConfirmChapter(null) },
-                    title = { Text("Delete download?") },
-                    text = { Text("Delete local files for \"${ch.name}\"? You can re-download it later.") },
+                    title = { Text(MR.strings.desktop_ui_delete_download_bba9a9de.localized()) },
+                    text = {
+                        Text(
+                            MR.strings.desktop_ui_delete_chapter_files.localized(
+                                Locale.getDefault(),
+                                ch.name,
+                            ),
+                        )
+                    },
                     confirmButton = {
                         TextButton(onClick = {
                             manga?.let { model.deleteChapterDownload(it, ch) }
                             model.setDeleteConfirmChapter(null)
-                        }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                        }) { Text(MR.strings.action_delete.localized(), color = MaterialTheme.colorScheme.error) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { model.setDeleteConfirmChapter(null) }) { Text("Cancel") }
+                        TextButton(onClick = { model.setDeleteConfirmChapter(null) }) { Text(MR.strings.action_cancel.localized()) }
                     },
                 )
             }
@@ -549,18 +586,25 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             if (markAllReadConfirm) {
                 AlertDialog(
                     onDismissRequest = { model.setMarkAllReadConfirm(false) },
-                    title = { Text("Mark all as read?") },
-                    text = { Text("Mark all ${chapters.size} chapters as read?") },
+                    title = { Text(MR.strings.desktop_ui_mark_all_as_read_b69f52ab.localized()) },
+                    text = {
+                        Text(
+                            MR.strings.desktop_ui_mark_chapters_read.localized(
+                                Locale.getDefault(),
+                                chapters.size,
+                            ),
+                        )
+                    },
                     confirmButton = {
                         TextButton(onClick = {
                             scope.launch {
                                 model.markAllRead(chapters)
                             }
                             model.setMarkAllReadConfirm(false)
-                        }) { Text("Mark all read") }
+                        }) { Text(MR.strings.desktop_ui_mark_all_read.localized()) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { model.setMarkAllReadConfirm(false) }) { Text("Cancel") }
+                        TextButton(onClick = { model.setMarkAllReadConfirm(false) }) { Text(MR.strings.action_cancel.localized()) }
                     },
                 )
             }
@@ -598,10 +642,10 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 }
                 AlertDialog(
                     onDismissRequest = { model.setShowMigrateSourcePicker(false) },
-                    title = { Text("Migrate to source") },
+                    title = { Text(MR.strings.desktop_ui_migrate_to_source.localized()) },
                     text = {
                         if (availableSources.isEmpty()) {
-                            Text("No other sources installed.")
+                            Text(MR.strings.desktop_ui_no_other_sources_installed.localized())
                         } else {
                             LazyColumn {
                                 items(availableSources) { src ->
@@ -626,7 +670,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         }
                     },
                     confirmButton = {
-                        TextButton(onClick = { model.setShowMigrateSourcePicker(false) }) { Text("Cancel") }
+                        TextButton(onClick = { model.setShowMigrateSourcePicker(false) }) { Text(MR.strings.action_cancel.localized()) }
                     },
                 )
             }
@@ -641,9 +685,14 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                     },
                     title = {
                         if (migrateSearching) {
-                            Text("Searching\u2026")
+                            Text(MR.strings.desktop_ui_searching.localized())
                         } else {
-                            Text("Select match (${searchResults.size} results)")
+                            Text(
+                                MR.strings.desktop_ui_select_match_count.localized(
+                                    Locale.getDefault(),
+                                    searchResults.size,
+                                ),
+                            )
                         }
                     },
                     text = {
@@ -652,7 +701,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 CircularProgressIndicator()
                             }
                         } else if (searchResults.isEmpty()) {
-                            Text("No results found. Try migrating manually.")
+                            Text(MR.strings.desktop_ui_no_results_found_try_migrating_manually.localized())
                         } else {
                             LazyColumn {
                                 items(searchResults) { result: SManga ->
@@ -679,7 +728,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         TextButton(onClick = {
                             model.setMigrateSearchResults(null)
                             model.setMigrateTargetSourceId(null)
-                        }) { Text("Cancel") }
+                        }) { Text(MR.strings.action_cancel.localized()) }
                     },
                 )
             }
@@ -689,8 +738,15 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
             if (confirmItem != null) {
                 AlertDialog(
                     onDismissRequest = { model.setMigrateConfirmItem(null) },
-                    title = { Text("Confirm migration") },
-                    text = { Text("Migrate to \"${confirmItem.title}\"? This will update the manga URL and source.") },
+                    title = { Text(MR.strings.desktop_ui_confirm_migration.localized()) },
+                    text = {
+                        Text(
+                            MR.strings.desktop_ui_confirm_migrate_to.localized(
+                                Locale.getDefault(),
+                                confirmItem.title,
+                            ),
+                        )
+                    },
                     confirmButton = {
                         TextButton(onClick = {
                             val targetSourceId = migrateTargetSourceId ?: return@TextButton
@@ -700,10 +756,10 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             model.setMigrateConfirmItem(null)
                             model.setMigrateSearchResults(null)
                             model.setMigrateTargetSourceId(null)
-                        }) { Text("Migrate") }
+                        }) { Text(MR.strings.action_migrate.localized()) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { model.setMigrateConfirmItem(null) }) { Text("Cancel") }
+                        TextButton(onClick = { model.setMigrateConfirmItem(null) }) { Text(MR.strings.action_cancel.localized()) }
                     },
                 )
             }
@@ -794,14 +850,14 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text("Reading mode:", style = MaterialTheme.typography.bodyMedium)
+                        Text(MR.strings.desktop_ui_reading_mode_e073e5df.localized(), style = MaterialTheme.typography.bodyMedium)
                         Box {
                             TextButton(onClick = { expanded = true }) {
-                                Text(currentOverride?.displayName ?: "Default")
+                                Text(currentOverride?.let(::readingModeLabel) ?: MR.strings.label_default.localized())
                             }
                             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                                 DropdownMenuItem(
-                                    text = { Text("Default") },
+                                    text = { Text(MR.strings.label_default.localized()) },
                                     onClick = {
                                         expanded = false
                                         scope.launch {
@@ -810,7 +866,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text(ReadingMode.LTR.displayName) },
+                                    text = { Text(readingModeLabel(ReadingMode.LTR)) },
                                     onClick = {
                                         expanded = false
                                         scope.launch {
@@ -819,7 +875,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text(ReadingMode.RTL.displayName) },
+                                    text = { Text(readingModeLabel(ReadingMode.RTL)) },
                                     onClick = {
                                         expanded = false
                                         scope.launch {
@@ -828,7 +884,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text(ReadingMode.WEBTOON.displayName) },
+                                    text = { Text(readingModeLabel(ReadingMode.WEBTOON)) },
                                     onClick = {
                                         expanded = false
                                         scope.launch {

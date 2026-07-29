@@ -1,5 +1,7 @@
 package mihon.desktop.ui.library
 
+import tachiyomi.i18n.MR
+
 import mihon.desktop.LocalDesktopUiDependencies
 
 import androidx.compose.foundation.layout.Column
@@ -37,7 +39,7 @@ fun MangaNotesDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Notes") },
+        title = { Text(MR.strings.action_notes.localized()) },
         text = {
             Column {
                 Text(
@@ -50,7 +52,7 @@ fun MangaNotesDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 120.dp),
-                    placeholder = { Text("Write notes about this manga…") },
+                    placeholder = { Text(MR.strings.desktop_ui_write_notes_about_this_manga.localized()) },
                     maxLines = 10,
                 )
             }
@@ -61,10 +63,10 @@ fun MangaNotesDialog(
                     updateMangaNotes(manga.id, notes)
                 }
                 onDismiss()
-            }) { Text("Save") }
+            }) { Text(MR.strings.action_save.localized()) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
         },
     )
 }

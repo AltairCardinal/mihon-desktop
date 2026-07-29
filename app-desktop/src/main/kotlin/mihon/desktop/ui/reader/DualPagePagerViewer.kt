@@ -1,5 +1,8 @@
 package mihon.desktop.ui.reader
 
+import tachiyomi.i18n.MR
+import java.util.Locale
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -221,7 +224,10 @@ internal fun DualPagePagerViewer(
                                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                                     ZoomablePageBox(
                                         url = pageUrls[pageIndex],
-                                        pageLabel = "Page ${pageIndex + 1} (L)",
+                                        pageLabel = MR.strings.desktop_ui_page_left.localized(
+                                            Locale.getDefault(),
+                                            pageIndex + 1,
+                                        ),
                                         zoomState = zoomState,
                                         onZoomChange = onZoomChange,
                                         splitHalf = leftHalf,
@@ -240,7 +246,10 @@ internal fun DualPagePagerViewer(
                                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                                     ZoomablePageBox(
                                         url = pageUrls[pageIndex],
-                                        pageLabel = "Page ${pageIndex + 1} (R)",
+                                        pageLabel = MR.strings.desktop_ui_page_right.localized(
+                                            Locale.getDefault(),
+                                            pageIndex + 1,
+                                        ),
                                         zoomState = zoomState,
                                         onZoomChange = onZoomChange,
                                         splitHalf = rightHalf,
@@ -261,7 +270,10 @@ internal fun DualPagePagerViewer(
                             // Landscape spread: full-width, centred.
                             ZoomablePageBox(
                                 url = pageUrls[pageIndex],
-                                pageLabel = "Page ${pageIndex + 1}",
+                                pageLabel = MR.strings.desktop_ui_page_number.localized(
+                                    Locale.getDefault(),
+                                    pageIndex + 1,
+                                ),
                                 zoomState = zoomState,
                                 onZoomChange = onZoomChange,
                                 cropBorders = cropBorders,
@@ -284,7 +296,10 @@ internal fun DualPagePagerViewer(
                         // Touch area is full screen, but image is aligned to one side.
                         ZoomablePageBox(
                             url = pageUrls[pageIndex],
-                            pageLabel = "Page ${pageIndex + 1}",
+                                pageLabel = MR.strings.desktop_ui_page_number.localized(
+                                    Locale.getDefault(),
+                                    pageIndex + 1,
+                                ),
                             zoomState = zoomState,
                             onZoomChange = onZoomChange,
                             cropBorders = cropBorders,
@@ -309,7 +324,10 @@ internal fun DualPagePagerViewer(
                         // Touch area is full screen, but image is aligned to one side.
                         ZoomablePageBox(
                             url = pageUrls[pageIndex],
-                            pageLabel = "Page ${pageIndex + 1}",
+                            pageLabel = MR.strings.desktop_ui_page_number.localized(
+                                Locale.getDefault(),
+                                pageIndex + 1,
+                            ),
                             zoomState = zoomState,
                             onZoomChange = onZoomChange,
                             cropBorders = cropBorders,
@@ -369,7 +387,10 @@ internal fun DualPagePagerViewer(
                         Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                             ZoomablePageBox(
                                 url = pageUrls[leftPage],
-                                pageLabel = "Page ${leftPage + 1}",
+                                pageLabel = MR.strings.desktop_ui_page_number.localized(
+                                    Locale.getDefault(),
+                                    leftPage + 1,
+                                ),
                                 zoomState = zoomState,
                                 onZoomChange = onZoomChange,
                                 cropBorders = cropBorders,
@@ -392,7 +413,10 @@ internal fun DualPagePagerViewer(
                         Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                             ZoomablePageBox(
                                 url = pageUrls[rightPage],
-                                pageLabel = "Page ${rightPage + 1}",
+                                pageLabel = MR.strings.desktop_ui_page_number.localized(
+                                    Locale.getDefault(),
+                                    rightPage + 1,
+                                ),
                                 zoomState = zoomState,
                                 onZoomChange = onZoomChange,
                                 cropBorders = cropBorders,

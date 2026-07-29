@@ -1,5 +1,7 @@
 package mihon.desktop.ui.library
 
+import tachiyomi.i18n.MR
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -42,7 +44,14 @@ class DesktopCoverFilePicker : CoverFilePicker {
     private suspend fun chooseFile(): File? = suspendCancellableCoroutine { continuation ->
         SwingUtilities.invokeLater {
             val chooser = JFileChooser().apply {
-                fileFilter = FileNameExtensionFilter("Image files", "jpg", "jpeg", "png", "webp", "gif")
+                fileFilter = FileNameExtensionFilter(
+                    MR.strings.desktop_ui_image_files.localized(),
+                    "jpg",
+                    "jpeg",
+                    "png",
+                    "webp",
+                    "gif",
+                )
             }
             val selected = if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) chooser.selectedFile else null
             if (continuation.isActive) continuation.resume(selected)

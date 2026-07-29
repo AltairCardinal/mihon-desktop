@@ -27,17 +27,21 @@ class DesktopLocaleAdapterTest {
     }
 
     @Test
-    fun `empty application language follows the captured system locale`() {
+    fun `empty application language follows supported system locale and defaults to simplified Chinese`() {
         val preference = DesktopAppPreferences(InMemoryPreferenceStore()).appLanguage
         val applied = mutableListOf<Locale>()
-        val adapter = DesktopLocaleAdapter(preference, Locale.CANADA_FRENCH, applied::add)
+        val adapter = DesktopLocaleAdapter(preference, Locale.TAIWAN, applied::add)
 
         val result = adapter.applyPersisted()
 
         assertInstanceOf(DesktopLocaleApplyResult.Applied::class.java, result)
         assertEquals("", adapter.activeLanguageTag.value)
-        assertEquals(listOf(Locale.CANADA_FRENCH), applied)
+        assertEquals(listOf(Locale.forLanguageTag("zh-TW")), applied)
         assertFalse(preference.isSet())
+
+        val unsupportedSystemApplied = mutableListOf<Locale>()
+        DesktopLocaleAdapter(preference, Locale.CANADA_FRENCH, unsupportedSystemApplied::add).applyPersisted()
+        assertEquals(listOf(Locale.forLanguageTag("zh-CN")), unsupportedSystemApplied)
     }
 
     @Test
@@ -80,7 +84,7 @@ class DesktopLocaleAdapterTest {
     }
 
     @Test
-    fun `invalid or unavailable persisted tag safely falls back to system`() {
+    fun `invalid or unavailable persisted tag safely falls back to resolved system language`() {
         listOf("not_a_tag", "en-US").forEach { stored ->
             val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
             preferences.appLanguage.set(stored)
@@ -92,7 +96,7 @@ class DesktopLocaleAdapterTest {
             assertInstanceOf(DesktopLocaleApplyResult.Fallback::class.java, result)
             assertEquals("", preferences.appLanguage.get())
             assertEquals("", adapter.activeLanguageTag.value)
-            assertEquals(Locale.JAPAN, applied.last())
+            assertEquals(Locale.forLanguageTag("zh-CN"), applied.last())
         }
     }
 
@@ -114,7 +118,7 @@ class DesktopLocaleAdapterTest {
             assertEquals(stored, delegate.get())
             assertEquals(expectedActive, adapter.activeLanguageTag.value)
             assertEquals(
-                if (expectedActive.isEmpty()) Locale.US else Locale.forLanguageTag(expectedActive),
+                if (expectedActive.isEmpty()) Locale.ENGLISH else Locale.forLanguageTag(expectedActive),
                 jvmLocale,
             )
         }
@@ -191,35 +195,34 @@ class DesktopLocaleAdapterTest {
     }
 
     @Test
-    fun `language list is the fixed main app locale list and keeps default separate`() {
+    fun `language list exposes simplified Chinese traditional Chinese and English in priority order`() {
         val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
         val adapter = DesktopLocaleAdapter(preferences.appLanguage, Locale.US, Locale::setDefault)
-        val expected = listOf(
-            "am", "ar", "as", "be", "bg", "bn", "ca", "ceb", "cs", "cv", "da", "de", "el", "en",
-            "eo", "es", "eu", "fa", "fi", "fil", "fr", "gl", "he", "hi", "hr", "hu", "in", "it",
-            "ja", "jv", "ka-GE", "kk", "km", "kn", "ko", "lt", "lv", "ml", "mr", "ms", "my",
-            "nb-NO", "ne", "nl", "nn", "pl", "pt", "pt-BR", "ro", "ru", "sa", "sah", "sc", "sdh",
-            "sk", "sq", "sr", "sv", "ta", "te", "th", "tr", "uk", "uz", "vi", "zh-CN", "zh-TW",
-        )
+        val expected = listOf("zh-CN", "zh-TW", "en")
 
-        assertEquals(67, expected.size)
         assertEquals(expected, adapter.authoritativeLanguageTags)
+        assertEquals(expected, adapter.availableLanguages().map { it.languageTag })
         assertFalse(adapter.availableLanguages().any { it.languageTag.isEmpty() })
-        assertTrue(adapter.availableLanguages().any { it.languageTag == "en" })
-        assertTrue(adapter.availableLanguages().any { it.languageTag == "zh-CN" })
-        assertTrue(adapter.availableLanguages().any { it.languageTag == "zh-TW" })
         assertFalse(adapter.availableLanguages().any { it.languageTag == "all" })
         assertFalse(adapter.availableLanguages().any { it.languageTag == "other" })
-        assertTrue(adapter.availableLanguages().any { it.languageTag == "in" })
-        assertFalse(adapter.availableLanguages().any { it.languageTag == "id" })
-        assertEquals(
-            adapter.availableLanguages().map { it.displayName }.sorted(),
-            adapter.availableLanguages().map { it.displayName },
-        )
 
         adapter.select("id")
-        assertEquals("in", preferences.appLanguage.get())
-        assertEquals("in", adapter.activeLanguageTag.value)
+        assertFalse(preferences.appLanguage.isSet())
+        assertEquals("", adapter.activeLanguageTag.value)
+    }
+
+    @Test
+    fun `core desktop UI resources resolve in all three supported languages`() {
+        val simplified = Locale.forLanguageTag("zh-CN")
+        val traditional = Locale.forLanguageTag("zh-TW")
+        val english = Locale.ENGLISH
+
+        assertEquals("书架更新完成", MR.strings.desktop_ui_library_update_finished.localized(simplified))
+        assertEquals("書庫更新完成", MR.strings.desktop_ui_library_update_finished.localized(traditional))
+        assertEquals("Library update finished", MR.strings.desktop_ui_library_update_finished.localized(english))
+        assertEquals("跟随系统语言", MR.strings.desktop_language_follow_system.localized(simplified))
+        assertEquals("跟隨系統語言", MR.strings.desktop_language_follow_system.localized(traditional))
+        assertEquals("Follow system language", MR.strings.desktop_language_follow_system.localized(english))
     }
 
     @OptIn(ExperimentalComposeUiApi::class)

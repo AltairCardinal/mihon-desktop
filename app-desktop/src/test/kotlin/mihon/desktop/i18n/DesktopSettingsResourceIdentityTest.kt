@@ -106,6 +106,7 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.category.interactor.GetCategories
@@ -128,8 +129,14 @@ import java.util.Locale
 @OptIn(ExperimentalComposeUiApi::class)
 @org.junit.jupiter.api.parallel.Isolated
 class DesktopSettingsResourceIdentityTest {
+    private val originalLocale = Locale.getDefault()
     private val english = Locale.US
     private val chinese = Locale.forLanguageTag("zh-CN")
+
+    @AfterEach
+    fun restoreLocale() {
+        Locale.setDefault(originalLocale)
+    }
 
     @Test
     fun `desktop settings resources provide base and simplified Chinese copy`() {
@@ -566,7 +573,7 @@ class DesktopSettingsResourceIdentityTest {
                     appearance.text,
                     MR.strings.pref_category_appearance.localized(locale),
                     MR.strings.pref_app_language.localized(locale),
-                    MR.strings.label_default.localized(locale),
+                    MR.strings.desktop_language_follow_system.localized(locale),
                     MR.strings.pref_category_theme.localized(locale),
                     MR.strings.theme_system.localized(locale),
                     MR.strings.theme_light.localized(locale),
@@ -610,8 +617,8 @@ class DesktopSettingsResourceIdentityTest {
             dependencies,
             english,
             MR.strings.pref_app_language.localized(english),
-            MR.strings.label_default.localized(english),
-            expectedTextAfterClicks = "${MR.strings.pref_app_language.localized(chinese)}: ${MR.strings.label_default.localized(chinese)}",
+            MR.strings.desktop_language_follow_system.localized(english),
+            expectedTextAfterClicks = "${MR.strings.pref_app_language.localized(chinese)}: ${MR.strings.desktop_language_follow_system.localized(chinese)}",
             useLocalizedHost = true,
         )
 
@@ -620,13 +627,13 @@ class DesktopSettingsResourceIdentityTest {
         assertEntry(
             applied,
             MR.strings.pref_app_language.localized(chinese),
-            MR.strings.label_default.localized(chinese),
+            MR.strings.desktop_language_follow_system.localized(chinese),
         )
         assertCopy(
             applied.text,
             MR.strings.pref_app_language.localized(chinese),
-            MR.strings.label_default.localized(chinese),
-            "${MR.strings.pref_app_language.localized(chinese)}: ${MR.strings.label_default.localized(chinese)}",
+            MR.strings.desktop_language_follow_system.localized(chinese),
+            "${MR.strings.pref_app_language.localized(chinese)}: ${MR.strings.desktop_language_follow_system.localized(chinese)}",
         )
 
         preferences.appLanguage.set("en")
@@ -643,7 +650,7 @@ class DesktopSettingsResourceIdentityTest {
             failingDependencies,
             english,
             MR.strings.pref_app_language.localized(english),
-            MR.strings.label_default.localized(english),
+            MR.strings.desktop_language_follow_system.localized(english),
             useLocalizedHost = true,
         )
 
@@ -679,9 +686,9 @@ class DesktopSettingsResourceIdentityTest {
             repeat(3) { scene.render(); yield() }
             click(scene, MR.strings.pref_app_language.localized(english))
             repeat(3) { scene.render(); yield() }
-            click(scene, MR.strings.label_default.localized(english))
+            click(scene, MR.strings.desktop_language_follow_system.localized(english))
             val expectedFeedback =
-                "${MR.strings.pref_app_language.localized(chinese)}: ${MR.strings.label_default.localized(chinese)}"
+                "${MR.strings.pref_app_language.localized(chinese)}: ${MR.strings.desktop_language_follow_system.localized(chinese)}"
             awaitText(scene, expectedFeedback)
             val rendered = RenderedCopy(textCopy(scene), descriptionCopy(scene), entryCopy(scene), selectedEntryCopy(scene))
 
@@ -692,7 +699,7 @@ class DesktopSettingsResourceIdentityTest {
             assertEntry(
                 rendered,
                 MR.strings.pref_app_language.localized(chinese),
-                MR.strings.label_default.localized(chinese),
+                MR.strings.desktop_language_follow_system.localized(chinese),
             )
             assertCopy(
                 rendered.text,

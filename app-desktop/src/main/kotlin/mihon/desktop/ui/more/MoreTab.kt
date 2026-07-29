@@ -1,5 +1,7 @@
 package mihon.desktop.ui.more
 
+import tachiyomi.i18n.MR
+
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.runtime.Composable
@@ -18,7 +20,7 @@ object MoreTab : Tab {
         get() {
             val icon = rememberVectorPainter(Icons.Default.MoreHoriz)
             return remember {
-                TabOptions(index = 4u, title = "More", icon = icon)
+                TabOptions(index = 4u, title = MR.strings.label_more.localized(), icon = icon)
             }
         }
 

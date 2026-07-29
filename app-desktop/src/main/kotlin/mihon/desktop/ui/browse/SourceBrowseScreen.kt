@@ -85,6 +85,7 @@ import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.SourceLoginState
 import tachiyomi.i18n.MR
+import java.util.Locale
 
 data class SourceBrowseUiState(
     val items: List<SManga> = emptyList(),
@@ -395,15 +396,15 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(source?.name ?: "Browse") },
+                    title = { Text(source?.name ?: MR.strings.browse.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, MR.strings.desktop_ui_back.localized())
                         }
                     },
                     actions = {
                         IconButton(onClick = { searchActive = true }) {
-                            Icon(Icons.Default.Search, "Search")
+                            Icon(Icons.Default.Search, MR.strings.action_search.localized())
                         }
                     },
                 )
@@ -431,7 +432,14 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
                                 },
                                 expanded = false,
                                 onExpandedChange = { searchActive = it },
-                                placeholder = { Text("Search ${source?.name ?: ""}…") },
+                                placeholder = {
+                                    Text(
+                                        MR.strings.desktop_ui_search_source.localized(
+                                            Locale.getDefault(),
+                                            source?.name.orEmpty(),
+                                        ),
+                                    )
+                                },
                             )
                         },
                         expanded = false,

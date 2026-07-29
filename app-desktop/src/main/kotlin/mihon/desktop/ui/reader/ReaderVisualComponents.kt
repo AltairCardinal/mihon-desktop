@@ -1,5 +1,8 @@
 package mihon.desktop.ui.reader
 
+import tachiyomi.i18n.MR
+import java.util.Locale
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -128,7 +131,7 @@ internal fun LoadingState() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(color = Color.White)
-            Text("Loading pages…", color = Color.White, modifier = Modifier.padding(top = 12.dp), style = MaterialTheme.typography.bodySmall)
+            Text(MR.strings.transition_pages_loading.localized(), color = Color.White, modifier = Modifier.padding(top = 12.dp), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -137,10 +140,10 @@ internal fun LoadingState() {
 internal fun ErrorState(message: String, onRetry: () -> Unit, onBack: () -> Unit) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-            Text("Failed to load pages", color = Color.White, style = MaterialTheme.typography.titleMedium)
+            Text(MR.strings.desktop_ui_failed_to_load_pages.localized(), color = Color.White, style = MaterialTheme.typography.titleMedium)
             Text(message, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
-            Button(onClick = onRetry, modifier = Modifier.padding(top = 16.dp)) { Text("Retry") }
-            Button(onClick = onBack, modifier = Modifier.padding(top = 8.dp)) { Text("Go Back") }
+            Button(onClick = onRetry, modifier = Modifier.padding(top = 16.dp)) { Text(MR.strings.action_retry.localized()) }
+            Button(onClick = onBack, modifier = Modifier.padding(top = 8.dp)) { Text(MR.strings.desktop_ui_go_back.localized()) }
         }
     }
 }
@@ -160,12 +163,12 @@ internal fun ChapterTransitionFeedback(
                 CircularProgressIndicator(color = Color.White, modifier = Modifier.padding(top = 12.dp))
             }
             if (presentation.showRetry && onRetry != null) {
-                Button(onClick = onRetry, modifier = Modifier.padding(top = 12.dp)) { Text("Retry") }
+                Button(onClick = onRetry, modifier = Modifier.padding(top = 12.dp)) { Text(MR.strings.action_retry.localized()) }
             }
             if (presentation.showContinue && onContinue != null) {
-                Button(onClick = onContinue, modifier = Modifier.padding(top = 12.dp)) { Text("Continue") }
+                Button(onClick = onContinue, modifier = Modifier.padding(top = 12.dp)) { Text(MR.strings.desktop_ui_continue.localized()) }
             }
-            Button(onClick = onDismiss, modifier = Modifier.padding(top = 12.dp)) { Text("Dismiss") }
+            Button(onClick = onDismiss, modifier = Modifier.padding(top = 12.dp)) { Text(MR.strings.desktop_ui_dismiss.localized()) }
         }
     }
 }
@@ -182,17 +185,29 @@ internal data class ChapterTransitionPresentation(
 internal fun chapterTransitionPresentation(
     transition: ReaderChapterTransitionModel,
 ): ChapterTransitionPresentation {
-    val direction = if (transition.direction == ReaderTransitionDirection.NEXT) "next" else "previous"
+    val direction = if (transition.direction == ReaderTransitionDirection.NEXT) {
+        MR.strings.desktop_ui_next.localized()
+    } else {
+        MR.strings.desktop_ui_previous.localized()
+    }
     val target = transition.to?.name
     val isBoundary = target == null
     val state = transition.state
     val message = when {
-        isBoundary -> "No $direction chapter available"
+        isBoundary -> MR.strings.desktop_ui_no_direction_chapter.localized(Locale.getDefault(), direction)
         state is ReaderChapterState.Error -> {
             val error = state.error
-            "Failed to load $target: ${error.cause?.message ?: error}"
+            MR.strings.desktop_ui_failed_to_load_target.localized(
+                Locale.getDefault(),
+                target,
+                error.cause?.message ?: error.toString(),
+            )
         }
-        transition.missingChapterCount > 0 -> "$target · ${transition.missingChapterCount} missing chapter(s)"
+        transition.missingChapterCount > 0 -> MR.strings.desktop_ui_missing_chapters.localized(
+            Locale.getDefault(),
+            target,
+            transition.missingChapterCount,
+        )
         else -> target
     }
     return ChapterTransitionPresentation(
@@ -210,8 +225,8 @@ internal fun chapterTransitionPresentation(
 internal fun EmptyState(onBack: () -> Unit) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("No pages available", color = Color.White)
-            Button(onClick = onBack, modifier = Modifier.padding(top = 16.dp)) { Text("Go Back") }
+            Text(MR.strings.desktop_ui_no_pages_available.localized(), color = Color.White)
+            Button(onClick = onBack, modifier = Modifier.padding(top = 16.dp)) { Text(MR.strings.desktop_ui_go_back.localized()) }
         }
     }
 }

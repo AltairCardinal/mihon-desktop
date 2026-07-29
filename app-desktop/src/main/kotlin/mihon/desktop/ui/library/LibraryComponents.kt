@@ -1,5 +1,8 @@
 package mihon.desktop.ui.library
 
+import tachiyomi.i18n.MR
+import java.util.Locale
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -136,8 +139,8 @@ internal fun LibraryToolbar(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = onSearchChange,
-                placeholder = { Text("Search library...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+                placeholder = { Text(MR.strings.desktop_ui_search_library.localized()) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = MR.strings.action_search.localized()) },
                 singleLine = true,
                 modifier = Modifier.weight(1f),
             )
@@ -150,19 +153,34 @@ internal fun LibraryToolbar(
                         LibraryDisplayMode.COMFORTABLE_GRID -> Icons.Default.GridView
                         LibraryDisplayMode.LIST -> Icons.AutoMirrored.Filled.List
                     }
-                    Icon(icon, contentDescription = "Display mode")
+                    Icon(icon, contentDescription = MR.strings.action_display_mode.localized())
                 }
                 DropdownMenu(expanded = showDisplayMenu, onDismissRequest = { showDisplayMenu = false }) {
                     DropdownMenuItem(
-                        text = { Text(if (displayMode == LibraryDisplayMode.COMPACT_GRID) "✓ Compact Grid" else "  Compact Grid") },
+                        text = {
+                            Text(
+                                "${if (displayMode == LibraryDisplayMode.COMPACT_GRID) "✓ " else "  "}" +
+                                    MR.strings.desktop_ui_compact_grid.localized(),
+                            )
+                        },
                         onClick = { onDisplayModeChange(LibraryDisplayMode.COMPACT_GRID); showDisplayMenu = false },
                     )
                     DropdownMenuItem(
-                        text = { Text(if (displayMode == LibraryDisplayMode.COMFORTABLE_GRID) "✓ Comfortable Grid" else "  Comfortable Grid") },
+                        text = {
+                            Text(
+                                "${if (displayMode == LibraryDisplayMode.COMFORTABLE_GRID) "✓ " else "  "}" +
+                                    MR.strings.desktop_ui_comfortable_grid.localized(),
+                            )
+                        },
                         onClick = { onDisplayModeChange(LibraryDisplayMode.COMFORTABLE_GRID); showDisplayMenu = false },
                     )
                     DropdownMenuItem(
-                        text = { Text(if (displayMode == LibraryDisplayMode.LIST) "✓ List" else "  List") },
+                        text = {
+                            Text(
+                                "${if (displayMode == LibraryDisplayMode.LIST) "✓ " else "  "}" +
+                                    MR.strings.desktop_ui_list.localized(),
+                            )
+                        },
                         onClick = { onDisplayModeChange(LibraryDisplayMode.LIST); showDisplayMenu = false },
                     )
                 }
@@ -171,17 +189,17 @@ internal fun LibraryToolbar(
             // Sort
             Box {
                 IconButton(onClick = { showSortMenu = true }) {
-                    Icon(Icons.Default.SortByAlpha, contentDescription = "Sort")
+                    Icon(Icons.Default.SortByAlpha, contentDescription = MR.strings.action_sort.localized())
                 }
                 DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
                     SortMode.entries.forEach { mode ->
                         DropdownMenuItem(
                             text = {
                                 val label = when (mode) {
-                                    SortMode.TITLE -> "Title"
-                                    SortMode.UNREAD_COUNT -> "Unread count"
-                                    SortMode.DATE_ADDED -> "Date added"
-                                    SortMode.LAST_READ -> "Last read"
+                                    SortMode.TITLE -> MR.strings.title.localized()
+                                    SortMode.UNREAD_COUNT -> MR.strings.action_sort_unread_count.localized()
+                                    SortMode.DATE_ADDED -> MR.strings.action_sort_date_added.localized()
+                                    SortMode.LAST_READ -> MR.strings.action_sort_last_read.localized()
                                 }
                                 val arrow = if (mode == sortMode) (if (sortAscending) " ↑" else " ↓") else ""
                                 Text("$label$arrow")
@@ -198,45 +216,75 @@ internal fun LibraryToolbar(
             // Filter
             Box {
                 IconButton(onClick = { showFilterMenu = true }) {
-                    Icon(Icons.Default.FilterList, contentDescription = "Filter")
+                    Icon(Icons.Default.FilterList, contentDescription = MR.strings.action_filter.localized())
                 }
                 DropdownMenu(expanded = showFilterMenu, onDismissRequest = { showFilterMenu = false }) {
                     filterRows(filter).forEach { (label, value) ->
                         DropdownMenuItem(
-                            text = { Text("$label: ${value.second.label()}") },
+                            text = {
+                                Text(
+                                    MR.strings.desktop_ui_filter_value.localized(
+                                        Locale.getDefault(),
+                                        label,
+                                        value.second.label(),
+                                    ),
+                                )
+                            },
                             onClick = { onToggleFilter(value.first) },
                         )
                     }
                     availableTrackerIds.forEach { trackerId ->
                         DropdownMenuItem(
-                            text = { Text("Tracker $trackerId: ${filter.tracking[trackerId].orDisabledForUi().label()}") },
+                            text = {
+                                Text(
+                                    MR.strings.desktop_ui_tracker_filter.localized(
+                                        Locale.getDefault(),
+                                        trackerId,
+                                        filter.tracking[trackerId].orDisabledForUi().label(),
+                                    ),
+                                )
+                            },
                             onClick = { onToggleTracking(trackerId) },
                         )
                     }
                     DropdownMenuItem(
-                        text = { Text("Global downloaded only: ${filter.globalDownloadedOnly.onOff()}") },
+                        text = {
+                            Text(
+                                MR.strings.desktop_ui_global_downloaded_only.localized(
+                                    Locale.getDefault(),
+                                    filter.globalDownloadedOnly.onOff(),
+                                ),
+                            )
+                        },
                         onClick = onToggleGlobalDownloadedOnly,
                     )
                     DropdownMenuItem(
-                        text = { Text("Apply custom interval filter: ${filter.skipOutsideReleasePeriod.onOff()}") },
+                        text = {
+                            Text(
+                                MR.strings.desktop_ui_custom_interval_filter.localized(
+                                    Locale.getDefault(),
+                                    filter.skipOutsideReleasePeriod.onOff(),
+                                ),
+                            )
+                        },
                         onClick = onToggleSkipOutsideReleasePeriod,
                     )
                 }
             }
 
             IconButton(onClick = onRandomManga) {
-                Icon(Icons.Default.Shuffle, contentDescription = "Random manga")
+                Icon(Icons.Default.Shuffle, contentDescription = MR.strings.desktop_ui_random_manga.localized())
             }
 
             IconButton(onClick = onManageCategories) {
-                Icon(Icons.Default.CreateNewFolder, contentDescription = "Manage categories")
+                Icon(Icons.Default.CreateNewFolder, contentDescription = MR.strings.desktop_ui_manage_categories_eceede45.localized())
             }
 
             if (isUpdating) {
                 CircularProgressIndicator(modifier = Modifier.padding(8.dp), strokeWidth = 2.dp)
             } else {
                 IconButton(onClick = onRefresh) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Check for updates")
+                    Icon(Icons.Default.Refresh, contentDescription = MR.strings.check_for_updates.localized())
                 }
             }
         }
@@ -250,7 +298,15 @@ internal fun LibraryToolbar(
                         onClick = {
                             onToggleFilter(value.first)
                         },
-                        label = { Text("$label: ${value.second.label()}") },
+                        label = {
+                            Text(
+                                MR.strings.desktop_ui_filter_value.localized(
+                                    Locale.getDefault(),
+                                    label,
+                                    value.second.label(),
+                                ),
+                            )
+                        },
                     )
                 }
             }
@@ -278,29 +334,33 @@ internal fun SelectionActionBar(
         containerColor = MaterialTheme.colorScheme.secondaryContainer,
     ) {
         IconButton(onClick = onClose) {
-            Icon(Icons.Default.Close, contentDescription = "Clear selection")
+            Icon(Icons.Default.Close, contentDescription = MR.strings.desktop_ui_clear_selection.localized())
         }
         Text(
-            text = "$selectedCount selected",
+            text = MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), selectedCount),
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.weight(1f),
         )
         IconButton(onClick = onSelectAll) {
-            Icon(Icons.Default.SelectAll, contentDescription = "Select all")
+            Icon(Icons.Default.SelectAll, contentDescription = MR.strings.action_select_all.localized())
         }
         IconButton(onClick = onInvertSelection) {
-            Icon(Icons.Default.SelectAll, contentDescription = "Invert selection")
+            Icon(Icons.Default.SelectAll, contentDescription = MR.strings.desktop_ui_invert_selection.localized())
         }
         Box {
-            TextButton(onClick = { downloadExpanded = true }) { Text("Download") }
+            TextButton(onClick = { downloadExpanded = true }) { Text(MR.strings.action_download.localized()) }
             DropdownMenu(expanded = downloadExpanded, onDismissRequest = { downloadExpanded = false }) {
                 listOf(
-                    MangaDetailDownloadAction.NEXT_1_CHAPTER to "Next 1 chapter",
-                    MangaDetailDownloadAction.NEXT_5_CHAPTERS to "Next 5 chapters",
-                    MangaDetailDownloadAction.NEXT_10_CHAPTERS to "Next 10 chapters",
-                    MangaDetailDownloadAction.NEXT_25_CHAPTERS to "Next 25 chapters",
-                    MangaDetailDownloadAction.UNREAD_CHAPTERS to "All unread chapters",
-                    MangaDetailDownloadAction.BOOKMARKED_CHAPTERS to "Bookmarked chapters",
+                    MangaDetailDownloadAction.NEXT_1_CHAPTER to
+                        MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 1),
+                    MangaDetailDownloadAction.NEXT_5_CHAPTERS to
+                        MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 5),
+                    MangaDetailDownloadAction.NEXT_10_CHAPTERS to
+                        MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 10),
+                    MangaDetailDownloadAction.NEXT_25_CHAPTERS to
+                        MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 25),
+                    MangaDetailDownloadAction.UNREAD_CHAPTERS to MR.strings.desktop_ui_all_unread_chapters.localized(),
+                    MangaDetailDownloadAction.BOOKMARKED_CHAPTERS to MR.strings.desktop_ui_bookmarked_chapters.localized(),
                 ).forEach { (action, label) ->
                     DropdownMenuItem(
                         text = { Text(label) },
@@ -312,12 +372,12 @@ internal fun SelectionActionBar(
                 }
             }
         }
-        TextButton(onClick = actions.migrate, enabled = canMigrate) { Text("Migrate") }
-        TextButton(onClick = onSetCategories) { Text("Categories") }
-        TextButton(onClick = onMarkRead) { Text("Mark read") }
-        TextButton(onClick = onMarkUnread) { Text("Mark unread") }
+        TextButton(onClick = actions.migrate, enabled = canMigrate) { Text(MR.strings.action_migrate.localized()) }
+        TextButton(onClick = onSetCategories) { Text(MR.strings.categories.localized()) }
+        TextButton(onClick = onMarkRead) { Text(MR.strings.desktop_ui_mark_read.localized()) }
+        TextButton(onClick = onMarkUnread) { Text(MR.strings.desktop_ui_mark_unread.localized()) }
         TextButton(onClick = onRemoveFromLibrary) {
-            Text("Remove", color = MaterialTheme.colorScheme.error)
+            Text(MR.strings.action_remove.localized(), color = MaterialTheme.colorScheme.error)
         }
     }
 }
@@ -406,7 +466,14 @@ internal fun LibraryList(
                     }
                 },
                 supportingContent = if (item.unreadCount > 0L) {
-                    { Text("${item.unreadCount} unread") }
+                    {
+                        Text(
+                            MR.strings.desktop_ui_unread_count.localized(
+                                Locale.getDefault(),
+                                item.unreadCount,
+                            ),
+                        )
+                    }
                 } else {
                     null
                 },
@@ -536,7 +603,7 @@ internal fun MangaCoverCard(
                     ) {
                         Icon(
                             Icons.Default.Download,
-                            contentDescription = "Downloaded",
+                            contentDescription = MR.strings.label_downloaded.localized(),
                             tint = MaterialTheme.colorScheme.onTertiary,
                             modifier = Modifier.size(10.dp),
                         )
@@ -557,7 +624,7 @@ internal fun MangaCoverCard(
                 ) {
                     Icon(
                         Icons.Default.PlayArrow,
-                        contentDescription = "Continue reading",
+                        contentDescription = MR.strings.desktop_ui_continue_reading.localized(),
                         tint = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.size(16.dp),
                     )
@@ -574,7 +641,7 @@ internal fun MangaCoverCard(
                     ) {
                         Icon(
                             Icons.Default.CheckCircle,
-                            contentDescription = "Selected",
+                            contentDescription = MR.strings.selected.localized(),
                             tint = Color.White,
                             modifier = Modifier.size(32.dp),
                         )
@@ -604,12 +671,12 @@ internal fun EmptyLibrary() {
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = "Your library is empty",
+                text = MR.strings.information_empty_library.localized(),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = "Add manga from Browse to get started",
+                text = MR.strings.desktop_ui_add_manga_from_browse_to_get_started.localized(),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
@@ -631,19 +698,19 @@ internal fun MangaContextMenu(
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DropdownMenuItem(
-            text = { Text("Mark all read") },
+            text = { Text(MR.strings.desktop_ui_mark_all_read.localized()) },
             onClick = onMarkAllRead,
         )
         DropdownMenuItem(
-            text = { Text("Mark all unread") },
+            text = { Text(MR.strings.desktop_ui_mark_all_unread.localized()) },
             onClick = onMarkAllUnread,
         )
         DropdownMenuItem(
-            text = { Text("Download next unread") },
+            text = { Text(MR.strings.desktop_ui_download_next_unread.localized()) },
             onClick = onDownload,
         )
         DropdownMenuItem(
-            text = { Text("Remove from library", color = MaterialTheme.colorScheme.error) },
+            text = { Text(MR.strings.remove_from_library.localized(), color = MaterialTheme.colorScheme.error) },
             onClick = onRemoveFromLibrary,
         )
     }
@@ -674,10 +741,10 @@ internal fun BatchCategoryDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Set categories") },
+        title = { Text(MR.strings.action_move_category.localized()) },
         text = {
             if (categories.isEmpty()) {
-                Text("No categories. Create categories first.")
+                Text(MR.strings.desktop_ui_no_categories_create_categories_first.localized())
             } else {
                 Column {
                     categories.forEach { cat ->
@@ -701,10 +768,10 @@ internal fun BatchCategoryDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(checkedIds.toList()) }) { Text("OK") }
+            TextButton(onClick = { onConfirm(checkedIds.toList()) }) { Text(MR.strings.action_ok.localized()) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
         },
     )
 }

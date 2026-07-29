@@ -1,5 +1,7 @@
 package mihon.desktop.ui.history
 
+import tachiyomi.i18n.MR
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -72,7 +74,7 @@ data class HistorySection(val dateLabel: String, val items: List<HistoryWithRela
  * Day labels: "Today", "Yesterday", or "MMM dd, yyyy".
  */
 internal fun groupHistoryByDate(items: List<HistoryWithRelations>): List<HistorySection> {
-    val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.ENGLISH)
+    val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
     val today = startOfDay(Calendar.getInstance().time)
     val yesterday = startOfDay(Date(today.time - 86_400_000L))
 
@@ -81,8 +83,8 @@ internal fun groupHistoryByDate(items: List<HistoryWithRelations>): List<History
         .groupByTo(linkedMapOf()) { startOfDay(it.readAt!!) }
         .map { (dayStart, groupItems) ->
             val label = when (dayStart) {
-                today -> "Today"
-                yesterday -> "Yesterday"
+                today -> MR.strings.relative_time_today.localized()
+                yesterday -> MR.strings.desktop_ui_yesterday.localized()
                 else -> dateFormat.format(dayStart)
             }
             HistorySection(dateLabel = label, items = groupItems)
@@ -108,7 +110,7 @@ object HistoryTab : Tab {
             return remember {
                 TabOptions(
                     index = 2u,
-                    title = "History",
+                    title = MR.strings.history.localized(),
                     icon = icon,
                 )
             }
@@ -138,8 +140,8 @@ class HistoryRootScreen : Screen {
         if (state.showClearAllDialog) {
             AlertDialog(
                 onDismissRequest = { model.setShowClearAllDialog(false) },
-                title = { Text("Clear all history?") },
-                text = { Text("This will permanently delete all reading history. This cannot be undone.") },
+                title = { Text(MR.strings.desktop_ui_clear_all_history_81616b91.localized()) },
+                text = { Text(MR.strings.desktop_ui_this_will_permanently_delete_all_reading_history_this_ca.localized()) },
                 confirmButton = {
                     TextButton(
                         onClick = {
@@ -147,10 +149,10 @@ class HistoryRootScreen : Screen {
                                 model.clearAllHistory()
                             }
                         },
-                    ) { Text("Clear all", color = MaterialTheme.colorScheme.error) }
+                    ) { Text(MR.strings.desktop_ui_clear_all.localized(), color = MaterialTheme.colorScheme.error) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { model.setShowClearAllDialog(false) }) { Text("Cancel") }
+                    TextButton(onClick = { model.setShowClearAllDialog(false) }) { Text(MR.strings.action_cancel.localized()) }
                 },
             )
         }
@@ -165,21 +167,21 @@ class HistoryRootScreen : Screen {
                 OutlinedTextField(
                     value = state.searchQuery,
                     onValueChange = { query -> scope.launch { model.loadHistory(query) } },
-                    placeholder = { Text("Search history...") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+                    placeholder = { Text(MR.strings.desktop_ui_search_history.localized()) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = MR.strings.action_search.localized()) },
                     singleLine = true,
                     modifier = Modifier.weight(1f),
                 )
                 if (state.items.isNotEmpty()) {
                     TooltipBox(
                         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                        tooltip = { Text("Clear all history") },
+                        tooltip = { Text(MR.strings.desktop_ui_clear_all_history.localized()) },
                         state = rememberTooltipState(),
                     ) {
                         IconButton(onClick = { model.setShowClearAllDialog(true) }) {
                             Icon(
                                 Icons.Default.DeleteSweep,
-                                contentDescription = "Clear all history",
+                                contentDescription = MR.strings.desktop_ui_clear_all_history.localized(),
                                 tint = MaterialTheme.colorScheme.error,
                             )
                         }
@@ -194,12 +196,12 @@ class HistoryRootScreen : Screen {
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "No reading history",
+                            text = MR.strings.desktop_ui_no_reading_history.localized(),
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            text = "Manga you read will appear here",
+                            text = MR.strings.desktop_ui_manga_you_read_will_appear_here.localized(),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 4.dp),
@@ -302,7 +304,10 @@ private fun HistoryItem(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "Ch. ${item.chapterNumber}",
+                    text = MR.strings.desktop_ui_chapter_number.localized(
+                        Locale.getDefault(),
+                        item.chapterNumber.toString(),
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -319,7 +324,7 @@ private fun HistoryItem(
             IconButton(onClick = onRemove) {
                 Icon(
                     Icons.Default.Delete,
-                    contentDescription = "Remove",
+                    contentDescription = MR.strings.action_remove.localized(),
                     tint = MaterialTheme.colorScheme.error,
                 )
             }

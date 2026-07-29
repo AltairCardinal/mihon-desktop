@@ -1,5 +1,8 @@
 package mihon.desktop.ui.library
 
+import tachiyomi.i18n.MR
+import java.util.Locale
+
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.platform.DesktopShareService
@@ -152,7 +155,7 @@ internal fun MangaHeader(
                 ) {
                     Icon(
                         Icons.Default.Edit,
-                        contentDescription = "Edit cover",
+                        contentDescription = MR.strings.action_edit_cover.localized(),
                         tint = Color.White,
                     )
                 }
@@ -161,14 +164,14 @@ internal fun MangaHeader(
                     onDismissRequest = { showCoverMenu = false },
                 ) {
                     DropdownMenuItem(
-                        text = { Text("Edit cover") },
+                        text = { Text(MR.strings.action_edit_cover.localized()) },
                         onClick = {
                             showCoverMenu = false
                             onEditCover()
                         },
                     )
                     DropdownMenuItem(
-                        text = { Text("Delete cover") },
+                        text = { Text(MR.strings.desktop_ui_delete_cover.localized()) },
                         onClick = {
                             showCoverMenu = false
                             onDeleteCover()
@@ -179,7 +182,14 @@ internal fun MangaHeader(
         }
         Column(modifier = Modifier.weight(1f)) {
             coverFeedback?.let {
-                Text(it, color = if (it == "Cover updated") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                Text(
+                    it,
+                    color = if (it == MR.strings.cover_updated.localized()) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
+                )
             }
             Text(
                 text = manga.title,
@@ -187,7 +197,7 @@ internal fun MangaHeader(
             )
             authorNavigationNameOrNull(manga.author)?.let { author ->
                 Text(
-                    text = "Author: $author",
+                    text = MR.strings.desktop_ui_author_value.localized(Locale.getDefault(), author),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
@@ -197,7 +207,7 @@ internal fun MangaHeader(
             }
             authorNavigationNameOrNull(manga.artist)?.takeIf { it != authorNavigationNameOrNull(manga.author) }?.let { artist ->
                 Text(
-                    text = "Artist: $artist",
+                    text = MR.strings.desktop_ui_artist_value.localized(Locale.getDefault(), artist),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
@@ -208,7 +218,7 @@ internal fun MangaHeader(
             Text(
                 text = listOfNotNull(
                     mangaStatusLabel(manga.status),
-                    sourceName?.let { "Source: $it" },
+                    sourceName?.let { MR.strings.desktop_ui_source_value.localized(Locale.getDefault(), it) },
                 ).joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -238,7 +248,7 @@ internal fun MangaHeader(
                             label = { Text(tag, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             trailingIcon = {
                                 IconButton(onClick = { onTagCopy(tag) }) {
-                                    Icon(Icons.Default.Link, contentDescription = "Copy tag")
+                                    Icon(Icons.Default.Link, contentDescription = MR.strings.desktop_ui_copy_tag.localized())
                                 }
                             },
                         )
@@ -252,7 +262,7 @@ internal fun MangaHeader(
 @Composable
 internal fun MangaCategoryDialog(
     mangaId: Long,
-    title: String = "Edit categories",
+    title: String = MR.strings.action_edit_categories.localized(),
     loadCategories: suspend () -> List<Category>,
     loadCategoryIds: suspend (Long) -> Set<Long>,
     onConfirm: suspend (List<Long>) -> Unit,
@@ -276,7 +286,7 @@ internal fun MangaCategoryDialog(
         title = { Text(title) },
         text = {
             if (categories.isEmpty()) {
-                Text("No categories. Create categories from Library first.")
+                Text(MR.strings.desktop_ui_no_categories_create_categories_from_library_first.localized())
             } else {
                 Column {
                     categories.forEach { category ->
@@ -310,11 +320,11 @@ internal fun MangaCategoryDialog(
                     }
                 },
             ) {
-                Text("OK")
+                Text(MR.strings.action_ok.localized())
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
         },
     )
 }
@@ -334,8 +344,8 @@ internal fun MangaDetailLibraryCategoryDialog(
     MangaCategoryDialog(
         mangaId = manga.id,
         title = when (mode) {
-            MangaCategoryDialogMode.ADD_TO_LIBRARY -> "Add to library"
-            MangaCategoryDialogMode.EDIT_CATEGORIES -> "Edit categories"
+            MangaCategoryDialogMode.ADD_TO_LIBRARY -> MR.strings.add_to_library.localized()
+            MangaCategoryDialogMode.EDIT_CATEGORIES -> MR.strings.action_edit_categories.localized()
         },
         loadCategories = model::categories,
         loadCategoryIds = model::categoryIdsForManga,
@@ -368,7 +378,7 @@ internal fun FetchIntervalDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Update interval") },
+        title = { Text(MR.strings.desktop_ui_update_interval.localized()) },
         text = {
             Column {
                 options.forEach { interval ->
@@ -384,7 +394,11 @@ internal fun FetchIntervalDialog(
                             onCheckedChange = { selectedInterval = interval },
                         )
                         Text(
-                            text = if (interval == 0) "Default" else "$interval day${if (interval == 1) "" else "s"}",
+                            text = if (interval == 0) {
+                                MR.strings.label_default.localized()
+                            } else {
+                                MR.strings.desktop_ui_days.localized(Locale.getDefault(), interval)
+                            },
                             modifier = Modifier.padding(start = 8.dp),
                         )
                     }
@@ -392,21 +406,21 @@ internal fun FetchIntervalDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(selectedInterval) }) { Text("OK") }
+            TextButton(onClick = { onConfirm(selectedInterval) }) { Text(MR.strings.action_ok.localized()) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
         },
     )
 }
 
 internal fun mangaStatusLabel(status: Long): String? =
     when (status) {
-        SManga.ONGOING.toLong() -> "Ongoing"
-        SManga.COMPLETED.toLong() -> "Completed"
-        SManga.LICENSED.toLong() -> "Licensed"
-        SManga.PUBLISHING_FINISHED.toLong() -> "Publishing finished"
-        SManga.CANCELLED.toLong() -> "Cancelled"
+        SManga.ONGOING.toLong() -> MR.strings.ongoing.localized()
+        SManga.COMPLETED.toLong() -> MR.strings.completed.localized()
+        SManga.LICENSED.toLong() -> MR.strings.licensed.localized()
+        SManga.PUBLISHING_FINISHED.toLong() -> MR.strings.publishing_finished.localized()
+        SManga.CANCELLED.toLong() -> MR.strings.cancelled.localized()
         else -> null
     }
 
@@ -443,31 +457,31 @@ internal fun MangaDetailActionRow(
                             contentDescription = null,
                         )
                         Spacer(Modifier.width(4.dp))
-                        Text(if (manga.favorite) "In library" else "Add to library")
+                        Text(if (manga.favorite) MR.strings.in_library.localized() else MR.strings.add_to_library.localized())
                     }
                 MangaDetailPrimaryActionType.EDIT_CATEGORIES ->
                     IconButton(onClick = onEditCategories) {
-                        Icon(Icons.Default.Category, contentDescription = "Edit categories")
+                        Icon(Icons.Default.Category, contentDescription = MR.strings.action_edit_categories.localized())
                     }
                 MangaDetailPrimaryActionType.EDIT_FETCH_INTERVAL ->
                     IconButton(onClick = onEditFetchInterval) {
-                        Icon(Icons.Default.HourglassEmpty, contentDescription = "Edit update interval")
+                        Icon(Icons.Default.HourglassEmpty, contentDescription = MR.strings.desktop_ui_edit_update_interval.localized())
                     }
                 MangaDetailPrimaryActionType.TRACKING ->
                     IconButton(onClick = onTracking) {
-                        Icon(Icons.Default.Sync, contentDescription = "Tracking")
+                        Icon(Icons.Default.Sync, contentDescription = MR.strings.pref_category_tracking.localized())
                     }
                 MangaDetailPrimaryActionType.OPEN_IN_BROWSER ->
                     IconButton(onClick = onOpenInBrowser) {
-                        Icon(Icons.Default.OpenInBrowser, contentDescription = "Open in browser")
+                        Icon(Icons.Default.OpenInBrowser, contentDescription = MR.strings.action_open_in_browser.localized())
                     }
                 MangaDetailPrimaryActionType.COPY_LINK ->
                     IconButton(onClick = linkActions!!.copyLink) {
-                        Icon(Icons.Default.Link, contentDescription = "Copy link")
+                        Icon(Icons.Default.Link, contentDescription = MR.strings.action_copy_link.localized())
                     }
                 MangaDetailPrimaryActionType.SHARE ->
                     IconButton(onClick = linkActions!!.share) {
-                        Icon(Icons.Default.Share, contentDescription = "Share link")
+                        Icon(Icons.Default.Share, contentDescription = MR.strings.desktop_ui_share_link.localized())
                     }
                 MangaDetailPrimaryActionType.CONTINUE_READING -> Unit
             }
@@ -515,7 +529,11 @@ internal fun ChapterRow(
                 IconButton(onClick = onToggleBookmark) {
                     Icon(
                         if (chapter.bookmark) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                        contentDescription = if (chapter.bookmark) "Remove bookmark" else "Add bookmark",
+                        contentDescription = if (chapter.bookmark) {
+                            MR.strings.action_remove_bookmark.localized()
+                        } else {
+                            MR.strings.action_bookmark.localized()
+                        },
                         tint = if (chapter.bookmark) {
                             MaterialTheme.colorScheme.primary
                         } else {
@@ -529,7 +547,7 @@ internal fun ChapterRow(
                         IconButton(onClick = onDeleteDownload) {
                             Icon(
                                 Icons.Default.DownloadDone,
-                                contentDescription = "Delete download",
+                                contentDescription = MR.strings.desktop_ui_delete_download.localized(),
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                         }
@@ -540,7 +558,7 @@ internal fun ChapterRow(
                         )
                     ChapterDownloadStatus.NOT_DOWNLOADED ->
                         IconButton(onClick = onDownload) {
-                            Icon(Icons.Default.CloudDownload, contentDescription = "Download")
+                            Icon(Icons.Default.CloudDownload, contentDescription = MR.strings.action_download.localized())
                         }
                 }
                 if (!isSelected) {
@@ -548,11 +566,11 @@ internal fun ChapterRow(
                         if (chapter.read) {
                             Icon(
                                 Icons.Default.CheckCircle,
-                                contentDescription = "Read",
+                                contentDescription = MR.strings.label_read_chapters.localized(),
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                         } else {
-                            Text("Read")
+                            Text(MR.strings.label_read_chapters.localized())
                         }
                     }
                 }
@@ -577,12 +595,12 @@ internal fun downloadProgressFraction(progress: Int, totalPages: Int): Float? {
 
 internal val MangaDetailDownloadAction.label: String
     get() = when (this) {
-        MangaDetailDownloadAction.NEXT_1_CHAPTER -> "Next 1 chapter"
-        MangaDetailDownloadAction.NEXT_5_CHAPTERS -> "Next 5 chapters"
-        MangaDetailDownloadAction.NEXT_10_CHAPTERS -> "Next 10 chapters"
-        MangaDetailDownloadAction.NEXT_25_CHAPTERS -> "Next 25 chapters"
-        MangaDetailDownloadAction.UNREAD_CHAPTERS -> "Unread chapters"
-        MangaDetailDownloadAction.BOOKMARKED_CHAPTERS -> "Bookmarked chapters"
+        MangaDetailDownloadAction.NEXT_1_CHAPTER -> MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 1)
+        MangaDetailDownloadAction.NEXT_5_CHAPTERS -> MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 5)
+        MangaDetailDownloadAction.NEXT_10_CHAPTERS -> MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 10)
+        MangaDetailDownloadAction.NEXT_25_CHAPTERS -> MR.strings.desktop_ui_next_chapters.localized(Locale.getDefault(), 25)
+        MangaDetailDownloadAction.UNREAD_CHAPTERS -> MR.strings.desktop_ui_all_unread_chapters.localized()
+        MangaDetailDownloadAction.BOOKMARKED_CHAPTERS -> MR.strings.desktop_ui_bookmarked_chapters.localized()
     }
 
 internal data class MangaLinkActions(
@@ -665,13 +683,13 @@ internal fun ChapterDownloadingIndicator(
         }
         Icon(
             imageVector = Icons.Default.ArrowDownward,
-            contentDescription = "Downloading",
+            contentDescription = MR.strings.ext_downloading.localized(),
             modifier = Modifier.layoutSize(16.dp),
             tint = strokeColor,
         )
         DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
             DropdownMenuItem(
-                text = { Text("Cancel") },
+                text = { Text(MR.strings.action_cancel.localized()) },
                 onClick = {
                     onCancel()
                     showMenu = false
@@ -701,10 +719,10 @@ internal fun ChapterSelectionBar(
         containerColor = MaterialTheme.colorScheme.secondaryContainer,
     ) {
         IconButton(onClick = onClose) {
-            Icon(Icons.Default.Close, contentDescription = "Clear selection")
+            Icon(Icons.Default.Close, contentDescription = MR.strings.desktop_ui_clear_selection.localized())
         }
         Text(
-            text = "$selectedCount selected",
+            text = MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), selectedCount),
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.weight(1f),
         )
@@ -712,29 +730,29 @@ internal fun ChapterSelectionBar(
             when (action) {
                 ChapterSelectionActionType.BOOKMARK ->
                     IconButton(onClick = onBookmark) {
-                        Icon(Icons.Default.Bookmark, contentDescription = "Bookmark selected")
+                        Icon(Icons.Default.Bookmark, contentDescription = MR.strings.desktop_ui_bookmark_selected.localized())
                     }
                 ChapterSelectionActionType.MARK_READ ->
                     IconButton(onClick = onMarkRead) {
-                        Icon(Icons.Default.DoneAll, contentDescription = "Mark selected as read")
+                        Icon(Icons.Default.DoneAll, contentDescription = MR.strings.desktop_ui_mark_selected_as_read.localized())
                     }
                 ChapterSelectionActionType.MARK_UNREAD ->
                     IconButton(onClick = onMarkUnread) {
-                        Icon(Icons.Default.RadioButtonUnchecked, contentDescription = "Mark selected as unread")
+                        Icon(Icons.Default.RadioButtonUnchecked, contentDescription = MR.strings.desktop_ui_mark_selected_as_unread.localized())
                     }
                 ChapterSelectionActionType.MARK_BELOW_READ ->
                     IconButton(onClick = onMarkBelowRead) {
-                        Icon(Icons.Default.ArrowDownward, contentDescription = "Mark below as read")
+                        Icon(Icons.Default.ArrowDownward, contentDescription = MR.strings.desktop_ui_mark_below_as_read.localized())
                     }
                 ChapterSelectionActionType.DOWNLOAD ->
                     IconButton(onClick = onDownloadOrDelete) {
-                        Icon(Icons.Default.CloudDownload, contentDescription = "Download selected")
+                        Icon(Icons.Default.CloudDownload, contentDescription = MR.strings.desktop_ui_download_selected.localized())
                     }
                 ChapterSelectionActionType.DELETE_DOWNLOAD ->
                     IconButton(onClick = onDownloadOrDelete) {
                         Icon(
                             Icons.Default.Delete,
-                            contentDescription = "Delete downloaded",
+                            contentDescription = MR.strings.delete_downloaded.localized(),
                             tint = MaterialTheme.colorScheme.error,
                         )
                     }

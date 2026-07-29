@@ -102,8 +102,8 @@ class DesktopReaderProductRegressionTest {
         assertTrue(filter.isEffective)
         assertTrue(filter.grayscaleEnabled)
         assertTrue(filter.invertEnabled)
-        assertTrue(readerSource("ReaderSettingsPanel.kt").contains("Grayscale"))
-        assertTrue(readerSource("ReaderSettingsPanel.kt").contains("Invert colours"))
+        assertTrue(readerSource("ReaderSettingsPanel.kt").contains("pref_grayscale"))
+        assertTrue(readerSource("ReaderSettingsPanel.kt").contains("desktop_ui_invert_colors"))
     }
 
     @Test
@@ -340,8 +340,8 @@ class DesktopReaderProductRegressionTest {
 
         assertTrue(screen.contains("skipFilteredChapters = state.skipFilteredChapters"))
         assertTrue(screen.contains("skipDuplicateChapters = state.skipDuplicateChapters"))
-        assertTrue(settings.contains("Skip filtered chapters"))
-        assertTrue(settings.contains("Skip duplicate chapters"))
+        assertTrue(settings.contains("pref_skip_filtered_chapters"))
+        assertTrue(settings.contains("pref_skip_dupe_chapters"))
         assertFalse(detail.contains("visibleChapterIds = displayedChapters"))
         assertTrue(chapterRefs.contains("isReaderChapterFiltered("))
         assertTrue(chapterRefs.contains("unreadFilterRaw = manga.unreadFilterRaw"))

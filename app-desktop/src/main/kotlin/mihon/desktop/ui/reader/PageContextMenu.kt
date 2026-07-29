@@ -1,5 +1,7 @@
 package mihon.desktop.ui.reader
 
+import tachiyomi.i18n.MR
+
 import androidx.compose.foundation.ContextMenuArea
 import androidx.compose.foundation.ContextMenuItem
 import androidx.compose.runtime.Composable
@@ -18,7 +20,6 @@ import mihon.domain.reader.splitPageBounds
 import java.awt.image.BufferedImage
 import java.io.File
 import java.util.Locale
-import tachiyomi.i18n.MR
 
 /**
  * Wraps [content] in a right-click context menu with page actions:
@@ -130,11 +131,14 @@ internal fun loadPageContextMenuImage(
     return source.getSubimage(bounds.x, bounds.y, bounds.width, bounds.height)
 }
 
-internal fun pageContextMenuLabels(includeSetAsCover: Boolean): List<String> = buildList {
-    add("分享图片")
-    add("复制到剪贴板")
-    add("保存图片")
-    if (includeSetAsCover) add("设为封面")
+internal fun pageContextMenuLabels(
+    includeSetAsCover: Boolean,
+    locale: Locale = Locale.getDefault(),
+): List<String> = buildList {
+    add(MR.strings.action_share.localized(locale))
+    add(MR.strings.action_copy_to_clipboard.localized(locale))
+    add(MR.strings.action_save.localized(locale))
+    if (includeSetAsCover) add(MR.strings.set_as_cover.localized(locale))
 }
 
 // ── Shared desktop action wiring ──────────────────────────────────────────────

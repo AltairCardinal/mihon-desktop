@@ -1,5 +1,8 @@
 package mihon.desktop.ui.migration
 
+import tachiyomi.i18n.MR
+import java.util.Locale
+
 import mihon.desktop.LocalDesktopUiDependencies
 
 import androidx.compose.foundation.layout.Box
@@ -184,10 +187,17 @@ data class MigrationSearchScreen(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Find replacement for \"$sourceMangaTitle\"") },
+                    title = {
+                        Text(
+                            MR.strings.desktop_ui_find_replacement.localized(
+                                Locale.getDefault(),
+                                sourceMangaTitle,
+                            ),
+                        )
+                    },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, MR.strings.desktop_ui_back.localized())
                         }
                     },
                 )
@@ -201,7 +211,7 @@ data class MigrationSearchScreen(
                     active = false,
                     onActiveChange = { searchActive = it },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    placeholder = { Text("Search manga title…") },
+                    placeholder = { Text(MR.strings.desktop_ui_search_manga_title.localized()) },
                 ) {}
 
                 if (isSearching) {
@@ -211,7 +221,7 @@ data class MigrationSearchScreen(
                 } else if (results.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
-                            "No results",
+                            MR.strings.desktop_ui_no_results.localized(),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -240,7 +250,7 @@ data class MigrationSearchScreen(
                                 },
                                 trailingContent = {
                                     TextButton(onClick = { confirmTarget = source to manga }) {
-                                        Text("Select")
+                                        Text(MR.strings.desktop_ui_select.localized())
                                     }
                                 },
                             )
@@ -286,7 +296,7 @@ private fun MigrationConfirmDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Migrate manga") },
+        title = { Text(MR.strings.label_migration.localized()) },
         text = {
             Column {
                 Text(
@@ -294,18 +304,18 @@ private fun MigrationConfirmDialog(
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(bottom = 12.dp),
                 )
-                CheckRow("Copy chapter read status", copyChapters) { copyChapters = it }
-                CheckRow("Copy categories", copyCategories) { copyCategories = it }
-                CheckRow("Copy notes", copyNotes) { copyNotes = it }
+                CheckRow(MR.strings.desktop_ui_copy_chapter_read_status.localized(), copyChapters) { copyChapters = it }
+                CheckRow(MR.strings.desktop_ui_copy_categories.localized(), copyCategories) { copyCategories = it }
+                CheckRow(MR.strings.desktop_ui_copy_notes.localized(), copyNotes) { copyNotes = it }
             }
         },
         confirmButton = {
             val options = MigrationOptions(copyChapters, copyCategories, copyNotes)
-            Button(onClick = { onMigrate(options) }) { Text("Migrate") }
+            Button(onClick = { onMigrate(options) }) { Text(MR.strings.action_migrate.localized()) }
         },
         dismissButton = {
             val options = MigrationOptions(copyChapters, copyCategories, copyNotes)
-            OutlinedButton(onClick = { onCopy(options) }) { Text("Copy") }
+            OutlinedButton(onClick = { onCopy(options) }) { Text(MR.strings.copy.localized()) }
         },
     )
 }

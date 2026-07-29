@@ -146,7 +146,7 @@ object BrowseTab : Tab {
             return remember {
                 TabOptions(
                     index = 1u,
-                    title = "Browse",
+                    title = MR.strings.browse.localized(),
                     icon = icon,
                 )
             }
@@ -240,7 +240,7 @@ class BrowseSourceListScreen : Screen {
             snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
                 TopAppBar(
-                    title = { Text("Browse") },
+                    title = { Text(MR.strings.browse.localized()) },
                     actions = {
                         IconButton(onClick = { showLanguageFilter = true }) {
                             Icon(
@@ -249,7 +249,7 @@ class BrowseSourceListScreen : Screen {
                             )
                         }
                         IconButton(onClick = { navigator.push(GlobalSearchScreen()) }) {
-                            Icon(Icons.Default.Search, contentDescription = "Global search")
+                            Icon(Icons.Default.Search, contentDescription = MR.strings.action_global_search.localized())
                         }
                     },
                 )
@@ -267,7 +267,7 @@ class BrowseSourceListScreen : Screen {
                             FilterChip(
                                 selected = effectiveSelectedLang == null,
                                 onClick = { selectedLang = null },
-                                label = { Text("All") },
+                                label = { Text(MR.strings.all.localized()) },
                             )
                         }
                         items(languages) { lang ->
@@ -283,8 +283,8 @@ class BrowseSourceListScreen : Screen {
 
                 // ── Local Source entry (always shown first) ──────────────────
                 ListItem(
-                    headlineContent = { Text("Local source") },
-                    supportingContent = { Text("Read manga from local files") },
+                    headlineContent = { Text(MR.strings.local_source.localized()) },
+                    supportingContent = { Text(MR.strings.desktop_ui_read_manga_from_local_files.localized()) },
                     leadingContent = {
                         Icon(Icons.Default.Folder, contentDescription = null)
                     },
@@ -297,7 +297,7 @@ class BrowseSourceListScreen : Screen {
                 val content = state.sourceState.content
                 when {
                     content is SourceScreenContent.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Loading sources…")
+                        Text(MR.strings.desktop_ui_loading_sources.localized())
                     }
                     content is SourceScreenContent.Failure -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -372,12 +372,12 @@ private fun EmptySources(onExtensionsClick: () -> Unit) {
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = "No sources installed",
+                text = MR.strings.desktop_ui_no_sources_installed.localized(),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = "Place extension JARs in ~/.mihon/extensions/",
+                text = MR.strings.desktop_ui_place_extension_jars_in_mihon_extensions.localized(),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),

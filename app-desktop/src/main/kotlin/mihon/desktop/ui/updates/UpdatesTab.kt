@@ -1,5 +1,7 @@
 package mihon.desktop.ui.updates
 
+import tachiyomi.i18n.MR
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -76,7 +78,7 @@ object UpdatesTab : Tab {
             return remember {
                 TabOptions(
                     index = 1u,
-                    title = "Updates",
+                    title = MR.strings.label_recent_updates.localized(),
                     icon = icon,
                 )
             }
@@ -106,17 +108,24 @@ class UpdatesRootScreen : Screen {
         if (state.showMarkAllReadDialog) {
             AlertDialog(
                 onDismissRequest = { model.setShowMarkAllReadDialog(false) },
-                title = { Text("Mark all as read?") },
-                text = { Text("This will mark all ${state.items.count { !it.read }} unread updates as read.") },
+                title = { Text(MR.strings.desktop_ui_mark_all_as_read_b69f52ab.localized()) },
+                text = {
+                    Text(
+                        MR.strings.desktop_ui_mark_updates_read.localized(
+                            Locale.getDefault(),
+                            state.items.count { !it.read },
+                        ),
+                    )
+                },
                 confirmButton = {
                     TextButton(onClick = {
                         scope.launch {
                             model.markAllRead()
                         }
-                    }) { Text("Mark all read") }
+                    }) { Text(MR.strings.desktop_ui_mark_all_read.localized()) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { model.setShowMarkAllReadDialog(false) }) { Text("Cancel") }
+                    TextButton(onClick = { model.setShowMarkAllReadDialog(false) }) { Text(MR.strings.action_cancel.localized()) }
                 },
             )
         }
@@ -154,20 +163,20 @@ class UpdatesRootScreen : Screen {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Recent Updates",
+                    text = MR.strings.desktop_ui_recent_updates.localized(),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
                 // Filter button
                 TooltipBox(
                     positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                    tooltip = { Text("Filter") },
+                    tooltip = { Text(MR.strings.action_filter.localized()) },
                     state = rememberTooltipState(),
                 ) {
                     IconButton(onClick = { model.setShowFilterDialog(true) }) {
                         Icon(
                             Icons.Default.FilterList,
-                            contentDescription = "Filter",
+                            contentDescription = MR.strings.action_filter.localized(),
                             tint = if (state.hasActiveFilters) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                         )
                     }
@@ -175,11 +184,11 @@ class UpdatesRootScreen : Screen {
                 // Upcoming calendar
                 TooltipBox(
                     positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                    tooltip = { Text("Upcoming") },
+                    tooltip = { Text(MR.strings.label_upcoming.localized()) },
                     state = rememberTooltipState(),
                 ) {
                     IconButton(onClick = { navigator.push(UpcomingScreen()) }) {
-                        Icon(Icons.Default.CalendarMonth, contentDescription = "Upcoming")
+                        Icon(Icons.Default.CalendarMonth, contentDescription = MR.strings.label_upcoming.localized())
                     }
                 }
                 // Mark all as read — only shown when unread items exist
@@ -187,11 +196,11 @@ class UpdatesRootScreen : Screen {
                 if (hasUnread) {
                     TooltipBox(
                         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                        tooltip = { Text("Mark all as read") },
+                        tooltip = { Text(MR.strings.desktop_ui_mark_all_as_read.localized()) },
                         state = rememberTooltipState(),
                     ) {
                         IconButton(onClick = { model.setShowMarkAllReadDialog(true) }) {
-                            Icon(Icons.Default.DoneAll, contentDescription = "Mark all as read")
+                            Icon(Icons.Default.DoneAll, contentDescription = MR.strings.desktop_ui_mark_all_as_read.localized())
                         }
                     }
                 }
@@ -204,7 +213,7 @@ class UpdatesRootScreen : Screen {
                 } else {
                     TooltipBox(
                         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                        tooltip = { Text("Check for updates") },
+                        tooltip = { Text(MR.strings.check_for_updates.localized()) },
                         state = rememberTooltipState(),
                     ) {
                         IconButton(onClick = {
@@ -212,7 +221,7 @@ class UpdatesRootScreen : Screen {
                                 model.refreshUpdates()
                             }
                         }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh updates")
+                            Icon(Icons.Default.Refresh, contentDescription = MR.strings.desktop_ui_refresh_updates.localized())
                         }
                     }
                 }
@@ -227,12 +236,12 @@ class UpdatesRootScreen : Screen {
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "No recent updates",
+                            text = MR.strings.information_no_recent.localized(),
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            text = "New chapters from your library will appear here",
+                            text = MR.strings.desktop_ui_new_chapters_from_your_library_will_appear_here.localized(),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 4.dp),
@@ -317,13 +326,13 @@ private fun UpdatesFilterDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Filter") },
+        title = { Text(MR.strings.action_filter.localized()) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                TriStateFilterRow("Unread", filterUnread, onToggleUnread)
-                TriStateFilterRow("Downloaded", filterDownloaded, onToggleDownloaded)
-                TriStateFilterRow("Started", filterStarted, onToggleStarted)
-                TriStateFilterRow("Bookmarked", filterBookmarked, onToggleBookmarked)
+                TriStateFilterRow(MR.strings.desktop_ui_unread.localized(), filterUnread, onToggleUnread)
+                TriStateFilterRow(MR.strings.desktop_ui_downloaded.localized(), filterDownloaded, onToggleDownloaded)
+                TriStateFilterRow(MR.strings.desktop_ui_started.localized(), filterStarted, onToggleStarted)
+                TriStateFilterRow(MR.strings.desktop_ui_bookmarked.localized(), filterBookmarked, onToggleBookmarked)
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 Row(
                     modifier = Modifier
@@ -333,13 +342,13 @@ private fun UpdatesFilterDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Hide excluded scanlators", style = MaterialTheme.typography.bodyMedium)
+                    Text(MR.strings.desktop_ui_hide_excluded_scanlators.localized(), style = MaterialTheme.typography.bodyMedium)
                     Switch(checked = filterExcludedScanlators, onCheckedChange = { onToggleExcludedScanlators() })
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
+            TextButton(onClick = onDismiss) { Text(MR.strings.action_close.localized()) }
         },
     )
 }
@@ -441,13 +450,13 @@ private fun UpdateItem(
             // Download button
             TooltipBox(
                 positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                tooltip = { Text("Download") },
+                tooltip = { Text(MR.strings.action_download.localized()) },
                 state = rememberTooltipState(),
             ) {
                 IconButton(onClick = onDownload) {
                     Icon(
                         Icons.Default.CloudDownload,
-                        contentDescription = "Download",
+                        contentDescription = MR.strings.action_download.localized(),
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp),
                     )
@@ -458,13 +467,13 @@ private fun UpdateItem(
             if (!item.read) {
                 TooltipBox(
                     positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                    tooltip = { Text("Mark as read") },
+                    tooltip = { Text(MR.strings.action_mark_as_read.localized()) },
                     state = rememberTooltipState(),
                 ) {
                     IconButton(onClick = onMarkRead) {
                         Icon(
                             Icons.Default.DoneAll,
-                            contentDescription = "Mark as read",
+                            contentDescription = MR.strings.action_mark_as_read.localized(),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(20.dp),
                         )
@@ -482,8 +491,6 @@ private sealed interface UpdatesListItem {
     data class Entry(val update: UpdatesWithRelations) : UpdatesListItem
 }
 
-private val UpdatesHeaderFormatter = DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault())
-
 private fun buildUpdatesListItems(items: List<UpdatesWithRelations>): List<UpdatesListItem> {
     val today = LocalDate.now()
     val yesterday = today.minusDays(1)
@@ -493,9 +500,9 @@ private fun buildUpdatesListItems(items: List<UpdatesWithRelations>): List<Updat
     return buildList {
         grouped.entries.sortedByDescending { it.key }.forEach { (date, updates) ->
             val label = when (date) {
-                today -> "Today"
-                yesterday -> "Yesterday"
-                else -> date.format(UpdatesHeaderFormatter)
+                today -> MR.strings.relative_time_today.localized()
+                yesterday -> MR.strings.desktop_ui_yesterday.localized()
+                else -> date.format(DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault()))
             }
             add(UpdatesListItem.Header(label))
             updates.forEach { add(UpdatesListItem.Entry(it)) }

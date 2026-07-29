@@ -32,15 +32,16 @@ data class DesktopLocaleFeedback(
 /**
  * Desktop boundary for the application locale.
  *
- * The empty language tag follows the JVM's locale as captured before Mihon applies an app override.
- * Supported tags mirror fixed-main's generated Android `locales_config`; source language preferences
- * deliberately do not participate in this adapter.
+ * The empty language tag follows the JVM's locale as captured before Mihon applies an app override,
+ * resolving it to Simplified Chinese, Traditional Chinese, or English. Unsupported system languages
+ * use Simplified Chinese. Source language preferences deliberately do not participate in this adapter.
  */
 class DesktopLocaleAdapter(
     private val preference: Preference<String>,
     private val systemLocale: Locale = DesktopSystemLocale.value,
     private val setJvmDefault: (Locale) -> Unit = { locale -> Locale.setDefault(locale) },
 ) {
+    private val resolvedSystemLocale = resolveSystemLocale(systemLocale)
     private val mutableActiveLanguageTag = MutableStateFlow(normalizeSupported(preference.get()) ?: "")
     private val mutablePendingFeedback = MutableStateFlow<DesktopLocaleFeedback?>(null)
     private val feedbackIds = AtomicLong()
@@ -59,13 +60,13 @@ class DesktopLocaleAdapter(
     @Synchronized
     fun applyPersisted(): DesktopLocaleApplyResult {
         val stored = preference.get()
-        if (stored.isEmpty()) return applyWithoutWrite("", systemLocale)
+        if (stored.isEmpty()) return applyWithoutWrite("", resolvedSystemLocale)
         val normalized = normalizeSupported(stored)
         if (normalized == null) {
             val repairFailure = runCatching { preference.set("") }.exceptionOrNull()
-            val applyResult = applyWithoutWrite("", systemLocale)
+            val applyResult = applyWithoutWrite("", resolvedSystemLocale)
             if (repairFailure == null && applyResult is DesktopLocaleApplyResult.Applied) {
-                return DesktopLocaleApplyResult.Fallback(stored, systemLocale)
+                return DesktopLocaleApplyResult.Fallback(stored, resolvedSystemLocale)
             }
             val failure = repairFailure ?: (applyResult as DesktopLocaleApplyResult.Failed).cause
             if (repairFailure != null && applyResult is DesktopLocaleApplyResult.Failed) {
@@ -123,7 +124,6 @@ class DesktopLocaleAdapter(
                     localizedDisplayName = displayName(nameLocale, displayLocale),
                 )
             }
-            .sortedBy(DesktopLanguageOption::displayName)
     }
 
     fun consumeFeedback(id: Long) {
@@ -173,10 +173,10 @@ class DesktopLocaleAdapter(
     }
 
     private fun localeForSelection(languageTag: String): Locale =
-        if (languageTag.isEmpty()) systemLocale else localeForTag(languageTag)
+        if (languageTag.isEmpty()) resolvedSystemLocale else localeForTag(languageTag)
 
     private fun activeTagForLocale(locale: Locale): String? {
-        if (locale == systemLocale) return ""
+        if (locale == resolvedSystemLocale) return ""
         return normalizeSupported(locale.toLanguageTag())
     }
 
@@ -193,13 +193,7 @@ class DesktopLocaleAdapter(
     }
 
     private companion object {
-        val fixedMainLanguageTags = listOf(
-            "am", "ar", "as", "be", "bg", "bn", "ca", "ceb", "cs", "cv", "da", "de", "el", "en",
-            "eo", "es", "eu", "fa", "fi", "fil", "fr", "gl", "he", "hi", "hr", "hu", "in", "it",
-            "ja", "jv", "ka-GE", "kk", "km", "kn", "ko", "lt", "lv", "ml", "mr", "ms", "my",
-            "nb-NO", "ne", "nl", "nn", "pl", "pt", "pt-BR", "ro", "ru", "sa", "sah", "sc", "sdh",
-            "sk", "sq", "sr", "sv", "ta", "te", "th", "tr", "uk", "uz", "vi", "zh-CN", "zh-TW",
-        )
+        val fixedMainLanguageTags = listOf("zh-CN", "zh-TW", "en")
 
         val authorityTagLookup = fixedMainLanguageTags.associateBy { it.lowercase(Locale.ROOT) }
         val canonicalAuthorityLookup = fixedMainLanguageTags.associateBy {
@@ -224,6 +218,17 @@ class DesktopLocaleAdapter(
         }
 
         fun localeForTag(languageTag: String): Locale = Locale.forLanguageTag(languageTag)
+
+        fun resolveSystemLocale(locale: Locale): Locale = when (locale.language.lowercase(Locale.ROOT)) {
+            "zh" -> when {
+                locale.script.equals("Hant", ignoreCase = true) ||
+                    locale.country.uppercase(Locale.ROOT) in setOf("HK", "MO", "TW") ->
+                    localeForTag("zh-TW")
+                else -> localeForTag("zh-CN")
+            }
+            "en" -> localeForTag("en")
+            else -> localeForTag("zh-CN")
+        }
 
         fun fixedMainNameLocale(languageTag: String): Locale = when (languageTag) {
             "zh-CN" -> Locale.forLanguageTag("zh-Hans")

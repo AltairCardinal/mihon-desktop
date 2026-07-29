@@ -127,7 +127,7 @@ data class SourcePreferencesScreen(
                     title = { Text(sourceName) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
                         }
                     },
                 )
@@ -304,10 +304,10 @@ private fun EditTextRow(item: EditTextPreference, prefStore: DesktopPreferenceSt
                             showDialog = false
                         }
                     },
-                ) { Text("OK") }
+                ) { Text(MR.strings.action_ok.localized()) }
             },
             dismissButton = {
-                TextButton(onClick = { showDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { showDialog = false }) { Text(MR.strings.action_cancel.localized()) }
             },
         )
     }
@@ -363,7 +363,7 @@ private fun ListRow(item: ListPreference, prefStore: DesktopPreferenceStore) {
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { showDialog = false }) { Text(MR.strings.action_cancel.localized()) }
             },
         )
     }
@@ -415,10 +415,10 @@ private fun MultiSelectRow(item: MultiSelectListPreference, prefStore: DesktopPr
                 TextButton(onClick = {
                     pref.set(selected.filter { it.value }.keys.toSet())
                     showDialog = false
-                }) { Text("OK") }
+                }) { Text(MR.strings.action_ok.localized()) }
             },
             dismissButton = {
-                TextButton(onClick = { showDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { showDialog = false }) { Text(MR.strings.action_cancel.localized()) }
             },
         )
     }

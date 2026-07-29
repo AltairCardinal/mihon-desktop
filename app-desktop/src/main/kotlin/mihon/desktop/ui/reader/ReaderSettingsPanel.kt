@@ -1,5 +1,7 @@
 package mihon.desktop.ui.reader
 
+import tachiyomi.i18n.MR
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -99,11 +101,15 @@ fun ReaderSettingsPanel(
     onDismiss: () -> Unit,
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("General", "Display", "Filter")
+    val tabs = listOf(
+        MR.strings.desktop_ui_general.localized(),
+        MR.strings.desktop_ui_reader_display.localized(),
+        MR.strings.action_filter.localized(),
+    )
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Reader Settings") },
+        title = { Text(MR.strings.desktop_ui_reader_settings.localized()) },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 TabRow(selectedTabIndex = selectedTab) {
@@ -169,7 +175,7 @@ fun ReaderSettingsPanel(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
+            TextButton(onClick = onDismiss) { Text(MR.strings.action_close.localized()) }
         },
     )
 }
@@ -200,10 +206,10 @@ private fun GeneralTab(
     onZoomChange: (ZoomState) -> Unit,
 ) {
     // Reading mode
-    SettingsSection("Reading Mode") {
+    SettingsSection(MR.strings.desktop_ui_reading_mode.localized()) {
         ReadingMode.entries.forEach { mode ->
             RadioRow(
-                label = mode.displayName,
+                label = readingModeLabel(mode),
                 selected = currentMode == mode,
                 onClick = { onModeChange(mode) },
             )
@@ -214,20 +220,20 @@ private fun GeneralTab(
 
     // Pager settings (non-Webtoon modes only)
     if (currentMode != ReadingMode.WEBTOON) {
-        SettingsSection("Pager") {
+        SettingsSection(MR.strings.desktop_ui_pager.localized()) {
             CheckboxRow(
-                label = "Split Wide Pages",
+                label = MR.strings.desktop_ui_split_wide_pages.localized(),
                 checked = autoSplitPages,
                 onCheckedChange = onAutoSplitPagesChange,
             )
             CheckboxRow(
-                label = "Dual Page (side-by-side)",
+                label = MR.strings.desktop_ui_dual_page_side_by_side.localized(),
                 checked = isDualPage,
                 onCheckedChange = onDualPageChange,
             )
             if (isDualPage) {
                 CheckboxRow(
-                    label = "Auto Spread Matching",
+                    label = MR.strings.desktop_ui_auto_spread_matching.localized(),
                     checked = isAutoSpreadMatching,
                     onCheckedChange = onAutoSpreadMatchingChange,
                     indented = true,
@@ -239,10 +245,10 @@ private fun GeneralTab(
 
     // Navigation mode (pager only)
     if (currentMode != ReadingMode.WEBTOON) {
-        SettingsSection("Tap Navigation") {
+        SettingsSection(MR.strings.desktop_ui_tap_navigation.localized()) {
             NavigationMode.entries.forEach { mode ->
                 RadioRow(
-                    label = mode.displayName,
+                    label = navigationModeLabel(mode),
                     selected = navigationMode == mode,
                     onClick = { onNavigationModeChange(mode) },
                 )
@@ -252,19 +258,19 @@ private fun GeneralTab(
     }
 
     // Skip read chapters
-    SettingsSection("Chapter Navigation") {
+    SettingsSection(MR.strings.desktop_ui_chapter_navigation.localized()) {
         SwitchRow(
-            label = "Skip read chapters",
+            label = MR.strings.desktop_ui_skip_read_chapters.localized(),
             checked = skipReadChapters,
             onCheckedChange = onSkipReadChaptersChange,
         )
         SwitchRow(
-            label = "Skip filtered chapters",
+            label = MR.strings.pref_skip_filtered_chapters.localized(),
             checked = skipFilteredChapters,
             onCheckedChange = onSkipFilteredChaptersChange,
         )
         SwitchRow(
-            label = "Skip duplicate chapters",
+            label = MR.strings.pref_skip_dupe_chapters.localized(),
             checked = skipDuplicateChapters,
             onCheckedChange = onSkipDuplicateChaptersChange,
         )
@@ -273,7 +279,7 @@ private fun GeneralTab(
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
     // Background theme
-    SettingsSection("Background") {
+    SettingsSection(MR.strings.desktop_ui_background.localized()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -292,10 +298,10 @@ private fun GeneralTab(
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
     // Zoom quick-controls
-    SettingsSection("Zoom") {
+    SettingsSection(MR.strings.desktop_ui_zoom.localized()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { onZoomChange(zoomState.zoomOut()) }) {
-                Icon(Icons.Default.ZoomOut, contentDescription = "Zoom Out", tint = Color.Unspecified)
+                Icon(Icons.Default.ZoomOut, contentDescription = MR.strings.desktop_ui_zoom_out.localized(), tint = Color.Unspecified)
             }
             Text(
                 text = "×${"%.1f".format(zoomState.scale)}",
@@ -303,10 +309,10 @@ private fun GeneralTab(
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
             IconButton(onClick = { onZoomChange(zoomState.zoomIn()) }) {
-                Icon(Icons.Default.ZoomIn, contentDescription = "Zoom In", tint = Color.Unspecified)
+                Icon(Icons.Default.ZoomIn, contentDescription = MR.strings.desktop_ui_zoom_in.localized(), tint = Color.Unspecified)
             }
             IconButton(onClick = { onZoomChange(zoomState.reset()) }) {
-                Icon(Icons.Outlined.FitScreen, contentDescription = "Reset Zoom", tint = Color.Unspecified)
+                Icon(Icons.Outlined.FitScreen, contentDescription = MR.strings.desktop_ui_reset_zoom.localized(), tint = Color.Unspecified)
             }
         }
     }
@@ -327,10 +333,10 @@ private fun DisplayTab(
     onWebtoonAutoScrollSpeedChange: (WebtoonAutoScrollSpeed) -> Unit,
     onScaleTypeChange: (ScaleType) -> Unit = {},
 ) {
-    SettingsSection("Scale Type") {
+    SettingsSection(MR.strings.desktop_ui_scale_type.localized()) {
         ScaleType.entries.forEach { type ->
             RadioRow(
-                label = type.displayName,
+                label = scaleTypeLabel(type),
                 selected = scaleType == type,
                 onClick = { onScaleTypeChange(type) },
             )
@@ -339,14 +345,14 @@ private fun DisplayTab(
 
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-    SettingsSection("Crop Borders") {
+    SettingsSection(MR.strings.desktop_ui_crop_borders.localized()) {
         SwitchRow(
-            label = "Pager (LTR / RTL / Dual)",
+            label = MR.strings.desktop_ui_pager_ltr_rtl_dual.localized(),
             checked = cropBordersPager,
             onCheckedChange = onCropBordersPagerChange,
         )
         SwitchRow(
-            label = "Webtoon",
+            label = MR.strings.desktop_ui_webtoon.localized(),
             checked = cropBordersWebtoon,
             onCheckedChange = onCropBordersWebtoonChange,
         )
@@ -354,10 +360,10 @@ private fun DisplayTab(
 
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-    SettingsSection("Webtoon Side Padding") {
+    SettingsSection(MR.strings.desktop_ui_webtoon_side_padding.localized()) {
         WebtoonSidePadding.entries.forEach { padding ->
             RadioRow(
-                label = padding.displayName,
+                label = webtoonSidePaddingLabel(padding),
                 selected = webtoonSidePadding == padding,
                 onClick = { onWebtoonSidePaddingChange(padding) },
             )
@@ -366,16 +372,16 @@ private fun DisplayTab(
 
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-    SettingsSection("Webtoon Auto-Scroll") {
+    SettingsSection(MR.strings.desktop_ui_webtoon_auto_scroll.localized()) {
         SwitchRow(
-            label = "Enable auto-scroll",
+            label = MR.strings.desktop_ui_enable_auto_scroll.localized(),
             checked = webtoonAutoScroll,
             onCheckedChange = onWebtoonAutoScrollChange,
         )
         if (webtoonAutoScroll) {
             WebtoonAutoScrollSpeed.entries.forEach { speed ->
                 RadioRow(
-                    label = speed.displayName,
+                    label = webtoonAutoScrollSpeedLabel(speed),
                     selected = webtoonAutoScrollSpeed == speed,
                     onClick = { onWebtoonAutoScrollSpeedChange(speed) },
                 )
@@ -390,9 +396,9 @@ private fun FilterTab(
     onColorFilterChange: (ReaderColorFilter) -> Unit,
 ) {
     // Brightness
-    SettingsSection("Brightness") {
+    SettingsSection(MR.strings.desktop_ui_brightness.localized()) {
         SwitchRow(
-            label = "Enable brightness",
+            label = MR.strings.desktop_ui_enable_brightness.localized(),
             checked = colorFilter.brightnessEnabled,
             onCheckedChange = { onColorFilterChange(colorFilter.copy(brightnessEnabled = it)) },
         )
@@ -412,9 +418,9 @@ private fun FilterTab(
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
     // Colour filter
-    SettingsSection("Colour Filter") {
+    SettingsSection(MR.strings.desktop_ui_color_filter.localized()) {
         SwitchRow(
-            label = "Enable colour filter",
+            label = MR.strings.desktop_ui_enable_color_filter.localized(),
             checked = colorFilter.tintEnabled,
             onCheckedChange = { onColorFilterChange(colorFilter.copy(tintEnabled = it)) },
         )
@@ -443,12 +449,12 @@ private fun FilterTab(
             )
         }
         SwitchRow(
-            label = "Grayscale",
+            label = MR.strings.pref_grayscale.localized(),
             checked = colorFilter.grayscaleEnabled,
             onCheckedChange = { onColorFilterChange(colorFilter.copy(grayscaleEnabled = it)) },
         )
         SwitchRow(
-            label = "Invert colours",
+            label = MR.strings.desktop_ui_invert_colors.localized(),
             checked = colorFilter.invertEnabled,
             onCheckedChange = { onColorFilterChange(colorFilter.copy(invertEnabled = it)) },
         )
@@ -555,9 +561,49 @@ private fun BackgroundThemeChip(
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = theme.name.take(4).lowercase().replaceFirstChar { it.uppercase() },
+            text = readerBackgroundThemeLabel(theme),
             style = MaterialTheme.typography.labelSmall,
             color = if (theme == ReaderBackgroundTheme.BLACK) Color.White else Color.Black,
         )
     }
+}
+
+internal fun readingModeLabel(mode: ReadingMode): String = when (mode) {
+    ReadingMode.LTR -> MR.strings.left_to_right_viewer.localized()
+    ReadingMode.RTL -> MR.strings.right_to_left_viewer.localized()
+    ReadingMode.WEBTOON -> MR.strings.webtoon_viewer.localized()
+}
+
+private fun navigationModeLabel(mode: NavigationMode): String = when (mode) {
+    NavigationMode.RightAndLeft -> MR.strings.right_and_left_nav.localized()
+    NavigationMode.L -> MR.strings.l_nav.localized()
+    NavigationMode.Kindle -> MR.strings.kindlish_nav.localized()
+    NavigationMode.Edge -> MR.strings.edge_nav.localized()
+    NavigationMode.Disabled -> MR.strings.disabled_nav.localized()
+}
+
+private fun scaleTypeLabel(type: ScaleType): String = when (type) {
+    ScaleType.FIT_SCREEN -> MR.strings.scale_type_fit_screen.localized()
+    ScaleType.FIT_WIDTH -> MR.strings.scale_type_fit_width.localized()
+    ScaleType.FIT_HEIGHT -> MR.strings.scale_type_fit_height.localized()
+    ScaleType.ORIGINAL_SIZE -> MR.strings.scale_type_original_size.localized()
+    ScaleType.SMART_FIT -> MR.strings.scale_type_smart_fit.localized()
+}
+
+private fun webtoonSidePaddingLabel(padding: WebtoonSidePadding): String =
+    if (padding == WebtoonSidePadding.NONE) MR.strings.none.localized() else padding.displayName
+
+private fun webtoonAutoScrollSpeedLabel(speed: WebtoonAutoScrollSpeed): String = when (speed) {
+    WebtoonAutoScrollSpeed.Slowest -> MR.strings.desktop_ui_slowest.localized()
+    WebtoonAutoScrollSpeed.Slow -> MR.strings.desktop_ui_slow.localized()
+    WebtoonAutoScrollSpeed.Normal -> MR.strings.desktop_ui_normal.localized()
+    WebtoonAutoScrollSpeed.Fast -> MR.strings.desktop_ui_fast.localized()
+    WebtoonAutoScrollSpeed.Fastest -> MR.strings.desktop_ui_fastest.localized()
+}
+
+private fun readerBackgroundThemeLabel(theme: ReaderBackgroundTheme): String = when (theme) {
+    ReaderBackgroundTheme.BLACK -> MR.strings.black_background.localized()
+    ReaderBackgroundTheme.GRAY -> MR.strings.gray_background.localized()
+    ReaderBackgroundTheme.WHITE -> MR.strings.white_background.localized()
+    ReaderBackgroundTheme.AUTOMATIC -> MR.strings.automatic_background.localized()
 }

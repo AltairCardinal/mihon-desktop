@@ -1,5 +1,8 @@
 package mihon.desktop.ui.migration
 
+import tachiyomi.i18n.MR
+import java.util.Locale
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -48,21 +51,31 @@ data class MigrationBatchQueueScreen(val queueId: String) : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Migration queue") },
-                    navigationIcon = { IconButton(navigator::pop) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                    title = { Text(MR.strings.desktop_ui_migration_queue.localized()) },
+                    navigationIcon = {
+                        IconButton(navigator::pop) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, MR.strings.desktop_ui_back.localized())
+                        }
+                    },
                 )
             },
         ) { padding ->
             if (queue == null) {
                 Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                    Text("This migration queue is no longer available")
+                    Text(MR.strings.desktop_ui_this_migration_queue_is_no_longer_available.localized())
                 }
                 return@Scaffold
             }
             BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
                 val controls: @Composable () -> Unit = {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("${queue.completedCount}/${queue.items.size} finished")
+                        Text(
+                            MR.strings.desktop_ui_finished_count.localized(
+                                Locale.getDefault(),
+                                queue.completedCount,
+                                queue.items.size,
+                            ),
+                        )
                         LinearProgressIndicator(progress = { queue.progress }, modifier = Modifier.fillMaxWidth())
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
@@ -71,17 +84,22 @@ data class MigrationBatchQueueScreen(val queueId: String) : Screen {
                                     else batchMigrationController.pause(queueId)
                                 },
                                 enabled = !queue.cancelled,
-                            ) { Text(if (queue.paused) "Resume" else "Pause") }
+                            ) {
+                                Text(
+                                    if (queue.paused) MR.strings.action_resume.localized()
+                                    else MR.strings.action_pause.localized(),
+                                )
+                            }
                             TextButton(
                                 onClick = { batchMigrationController.cancelAll(queueId) },
                                 enabled = !queue.cancelled,
-                            ) { Text("Cancel all") }
+                            ) { Text(MR.strings.action_cancel_all.localized()) }
                         }
                         Text(
                             when {
-                                queue.cancelled -> "Queue cancelled"
-                                queue.paused -> "Queue paused; progress is saved"
-                                else -> "Failures do not stop the remaining queue"
+                                queue.cancelled -> MR.strings.desktop_ui_queue_cancelled.localized()
+                                queue.paused -> MR.strings.desktop_ui_queue_paused_progress_saved.localized()
+                                else -> MR.strings.desktop_ui_queue_failure_continues.localized()
                             },
                         )
                     }
@@ -99,15 +117,15 @@ data class MigrationBatchQueueScreen(val queueId: String) : Screen {
                                                 onClick = {
                                                     navigator.push(MigrationSearchScreen(item.mangaId, item.title, queueId))
                                                 },
-                                            ) { Text("Choose target") }
+                                            ) { Text(MR.strings.desktop_ui_choose_target.localized()) }
                                             BatchMigrationItemStatus.ERROR -> TextButton(
                                                 onClick = { batchMigrationController.retryItem(queueId, item.mangaId) },
-                                            ) { Text("Retry") }
+                                            ) { Text(MR.strings.action_retry.localized()) }
                                             else -> Unit
                                         }
                                         if (item.status !in setOf(BatchMigrationItemStatus.SUCCESS, BatchMigrationItemStatus.CANCELLED)) {
                                             TextButton(onClick = { batchMigrationController.cancelItem(queueId, item.mangaId) }) {
-                                                Text("Cancel")
+                                                Text(MR.strings.action_cancel.localized())
                                             }
                                         }
                                     }
@@ -134,10 +152,13 @@ data class MigrationBatchQueueScreen(val queueId: String) : Screen {
 }
 
 private fun statusLabel(item: BatchMigrationItemState): String = when (item.status) {
-    BatchMigrationItemStatus.QUEUED -> "Queued"
-    BatchMigrationItemStatus.RUNNING -> "Running"
-    BatchMigrationItemStatus.WAITING_FOR_USER -> "Waiting for target selection"
-    BatchMigrationItemStatus.SUCCESS -> "Completed"
-    BatchMigrationItemStatus.ERROR -> "Failed: ${item.error ?: "Unknown error"}"
-    BatchMigrationItemStatus.CANCELLED -> "Cancelled"
+    BatchMigrationItemStatus.QUEUED -> MR.strings.desktop_ui_queued.localized()
+    BatchMigrationItemStatus.RUNNING -> MR.strings.desktop_ui_running.localized()
+    BatchMigrationItemStatus.WAITING_FOR_USER -> MR.strings.desktop_ui_waiting_for_target.localized()
+    BatchMigrationItemStatus.SUCCESS -> MR.strings.desktop_ui_completed.localized()
+    BatchMigrationItemStatus.ERROR -> MR.strings.desktop_ui_failed_reason.localized(
+        Locale.getDefault(),
+        item.error ?: MR.strings.unknown_error.localized(),
+    )
+    BatchMigrationItemStatus.CANCELLED -> MR.strings.desktop_ui_cancelled.localized()
 }

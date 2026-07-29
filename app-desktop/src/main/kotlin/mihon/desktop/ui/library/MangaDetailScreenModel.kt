@@ -1,5 +1,7 @@
 package mihon.desktop.ui.library
 
+import tachiyomi.i18n.MR
+
 import cafe.adriel.voyager.core.model.ScreenModel
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.SManga
@@ -283,13 +285,13 @@ class MangaDetailScreenModel(
             _state.update { it.copy(coverTask = TaskState.Idle) }
             return
         }
-        applyCoverResult(result, "Cover updated")
+        applyCoverResult(result, MR.strings.cover_updated.localized())
     }
 
     suspend fun deleteCustomCover() {
         _state.update { it.copy(coverTask = TaskState.Running(), coverFeedback = null) }
         val result = requireNotNull(deleteCover) { "Delete cover callback is required" }(mangaId)
-        applyCoverResult(result, "Cover deleted")
+        applyCoverResult(result, MR.strings.desktop_ui_cover_deleted.localized())
     }
 
     private fun applyCoverResult(result: TaskState<Unit>, successFeedback: String) {
@@ -299,7 +301,8 @@ class MangaDetailScreenModel(
                 coverTask = result,
                 coverFeedback = when (result) {
                     is TaskState.Success -> successFeedback
-                    is TaskState.Failure -> result.error.cause?.message ?: "Unable to update cover"
+                    is TaskState.Failure -> result.error.cause?.message
+                        ?: MR.strings.desktop_ui_unable_to_update_cover.localized()
                     else -> null
                 },
                 coverLastModified = if (result is TaskState.Success) System.currentTimeMillis() else it.coverLastModified,

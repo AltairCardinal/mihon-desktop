@@ -41,6 +41,7 @@ import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.i18n.MR
 
 @OptIn(ExperimentalComposeUiApi::class)
 class MangaDetailLibraryEntryWiringTest {
@@ -84,13 +85,15 @@ class MangaDetailLibraryEntryWiringTest {
                     }
                 }
             }
-            renderUntil(scene) { nodes(scene).any { it.hasText("Add to library") } }
+            val addToLibrary = MR.strings.add_to_library.localized()
+            val confirm = MR.strings.action_ok.localized()
+            renderUntil(scene) { nodes(scene).any { it.hasText(addToLibrary) } }
 
-            click(scene, "Add to library")
+            click(scene, addToLibrary)
 
             renderUntil(scene) { nodes(scene).any { it.hasText("Screen selected") } }
             click(scene, "Screen selected")
-            click(scene, "OK")
+            click(scene, confirm)
             withTimeout(5_000) {
                 while (!mangaRepository.get(manga.id)!!.favorite) delay(10)
             }
@@ -127,7 +130,7 @@ class MangaDetailLibraryEntryWiringTest {
             }
             renderUntil(scene) { nodes(scene).any { node -> node.hasText("Selected category") } }
             click(scene, "Selected category")
-            click(scene, "OK")
+            click(scene, MR.strings.action_ok.localized())
 
             withTimeout(5_000) {
                 while (!mangaRepository.get(manga.id)!!.favorite) delay(10)
