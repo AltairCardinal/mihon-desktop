@@ -41,13 +41,13 @@
 
 | ID | 裁决 | 收口时 manifest 状态 | 后续任务 |
 |---:|---|---|---|
-| 3 | `extract` | `CHARACTERIZED` | `docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-141-a1-id-3-shared-screen-state` |
+| 3 | `extract` | `CHARACTERIZED` | `NONE` |
 | 4 | `adapter` | `VERIFIED` | `NONE` |
-| 32 | `reuse` | `WIRED` | `docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-143-a3-id-32-android-extension-repository-wiring` |
+| 32 | `reuse` | `WIRED` | `NONE` |
 | 39 | `adapter` | `VERIFIED` | `NONE` |
-| 69 | `extract` | `CHARACTERIZED` | `docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-145-b1-id-69-provider-neutral-core` |
-| 70 | `extract` | `CHARACTERIZED` | `docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-147-b3-id-70-delayed-tracker-sync` |
-| 87 | `adapter` | `SHARED` | `docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-149-c1-id-87-desktop-language` |
+| 69 | `extract` | `CHARACTERIZED` | `NONE` |
+| 70 | `extract` | `CHARACTERIZED` | `NONE` |
+| 87 | `adapter` | `SHARED` | `NONE` |
 | 88 | `adapter` | `VERIFIED` | `NONE` |
 
 ## 最终终态摘要（2026-07-28）
@@ -64,7 +64,7 @@ consumer、shared 或平台 adapter、Desktop consumer 与 production protection
 最终 `finalParityAudit` 及 manifest governance contract 通过；Windows/macOS 同一版本
 `0.11.14.51.19a55d7` 的运行验收均为 13/13 场景族、5/5 永久保护、64/64 capability、
 `unmapped=0`。完整命令、产物哈希、失败/跳过和环境限制见
-`docs/superpowers/reports/2026-07-23-mihon-desktop-final-parity-verify.md`。
+完整逐项状态、保护测试和运行证据以 manifest 为准。
 
 Task 14 表仅保留历史交接含义，不表示当前状态；任何终态查询必须读取 manifest。
 

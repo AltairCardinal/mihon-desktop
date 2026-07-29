@@ -122,7 +122,7 @@ root, bundle, executable, plist, output = map(pathlib.Path, sys.argv[1:])
 def product_input(path):
     value = path.as_posix()
     parts = value.split("/")
-    if value.startswith(("docs/", "openspec/", "test-desktop/", "scripts/tests/", ".codex/")):
+    if value.startswith(("docs/", "test-desktop/", "scripts/tests/", ".codex/")):
         return False
     if value in {"scripts/task15-platform-evidence-test.ps1", "scripts/task15-platform-evidence-test.sh"}:
         return False
@@ -192,7 +192,7 @@ source_tree = subprocess.check_output(
 product_source = {
     "algorithm": "mihon-production-input-v1:sha256(mode<TAB>relative-path<TAB>raw-byte-sha256<LF>)",
     "exclusions": [
-        "docs/**", "openspec/**", "test-desktop/**", "scripts/tests/**",
+        "docs/**", "test-desktop/**", "scripts/tests/**",
         "scripts/task15-platform-evidence-test.{ps1,sh}", ".codex/**",
         "**/src/*Test/**", "**/src/*test/**", "**/build/**",
     ],

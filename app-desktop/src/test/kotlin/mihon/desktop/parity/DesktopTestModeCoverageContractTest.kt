@@ -25,7 +25,6 @@ class DesktopTestModeCoverageContractTest {
         val inventory = inventory()
         val handlers = compiledHandlers(inventory)
         val runners = compiledRunners(inventory)
-        val plan = childPlan(inventory)
         val firstScenario = inventory.scenarios.first()
         val firstProtection = inventory.protections.first()
         val finalRuntime = inventory.boundaries.single { it.id == "boundary-final-runtime-runner" }
@@ -35,8 +34,7 @@ class DesktopTestModeCoverageContractTest {
             changed: Inventory = inventory,
             changedHandlers: Map<String, String> = handlers,
             changedRunners: Map<String, String> = runners,
-            changedPlan: String = plan,
-        ) = assertThrows(AssertionError::class.java) { validate(changed, changedHandlers, changedRunners, changedPlan) }
+        ) = assertThrows(AssertionError::class.java) { validate(changed, changedHandlers, changedRunners) }
 
         rejects(inventory.replace(finalRuntime, finalRuntime.copy(status = "gap")))
         rejects(inventory.replace(coveredScenario, coveredScenario.copy(status = "gap")))
@@ -49,15 +47,12 @@ class DesktopTestModeCoverageContractTest {
         rejects(changedHandlers = handlers - coveredScenario.id)
         rejects(changedRunners = runners - coveredScenario.id)
         rejects(inventory.copy(protections = inventory.protections - firstProtection))
-        rejects(changedPlan = plan.replace(task173Dependency, "depends on unfinished product work"))
-        rejects(changedPlan = plan.replace(task173Files, "**Files:** `domain/src/**` and product owners."))
     }
 
     private fun validate(
         inventory: Inventory,
         handlers: Map<String, String>,
         runners: Map<String, String>,
-        plan: String = childPlan(inventory),
     ) {
         assertEquals(requiredFamilies.size, inventory.scenarios.size)
         assertEquals(requiredFamilies, inventory.scenarios.mapNotNull(Entry::family).toSet())
@@ -101,9 +96,6 @@ class DesktopTestModeCoverageContractTest {
                 }
             }
         }
-        val task173 = plan.substringAfter("### Task 173 ").substringBefore("### Task 174 ")
-        assertTrue(task173Dependency in task173 && task173Files in task173)
-        assertTrue(forbiddenTask173Files.none(task173::contains), "Task173 crosses the Desktop TestMode boundary")
     }
 
     private fun inventory(): Inventory {
@@ -126,7 +118,6 @@ class DesktopTestModeCoverageContractTest {
             scenarios = entries("scenarios", true),
             boundaries = entries("boundaries", false),
             protections = entries("permanentProtections", false),
-            childPlan = root.text("childPlan"),
         )
     }
 
@@ -146,8 +137,6 @@ class DesktopTestModeCoverageContractTest {
         val localRunner = parts.size == 2 && runCatching { Class.forName(parts[0]).declaredMethods.any { it.name == parts[1] } }.getOrDefault(false)
         if (localRunner) entry.id to entry.runnerTest else null
     }.toMap()
-
-    private fun childPlan(inventory: Inventory) = Files.readString(repositoryRoot.resolve(inventory.childPlan))
 
     private fun manifestIds(): Set<Int> {
         val root = Json.parseToJsonElement(Files.readString(repositoryRoot.resolve(manifestPath))).jsonArray
@@ -174,7 +163,6 @@ class DesktopTestModeCoverageContractTest {
         val scenarios: List<Entry>,
         val boundaries: List<Entry>,
         val protections: List<Entry>,
-        val childPlan: String,
     ) {
         val allEntries get() = scenarios + boundaries + protections
 
@@ -216,8 +204,5 @@ class DesktopTestModeCoverageContractTest {
             "boundary-notifications" to ("non-ui" to setOf(11)), "boundary-crash-handler" to ("non-ui" to setOf(12)),
             "boundary-final-runtime-runner" to ("covered" to emptySet()),
         )
-        const val task173Dependency = "depends on completed Task141 and Task142 artifacts"
-        const val task173Files = "**Files:** Desktop TestMode/HTTP code under `app-desktop/src/main/kotlin/mihon/desktop/test/**`, plus HTTP/coverage tests under `app-desktop/src/test/kotlin/mihon/desktop/test/**` and `app-desktop/src/test/kotlin/mihon/desktop/parity/DesktopTestModeCoverageContractTest.kt` only."
-        val forbiddenTask173Files = listOf("`app/src/", "`domain/src/", "shared state core", "Android and Desktop browse owners", "product owners")
     }
 }

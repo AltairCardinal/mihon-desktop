@@ -31,5 +31,5 @@
     {"id":"auto-scroll","capabilityIds":[47,51],"entryPoint":"Webtoon auto-scroll gate","productionHandler":"mihon.desktop.ui.reader.WebtoonAutoScrollGate","observableFeedback":"scroll and exactly-once next-chapter action","runnerTest":"mihon.desktop.ui.reader.WebtoonAutoScrollTest#production auto scroll gate requests next chapter once per stay at bottom","status":"covered","reason":"permanent Desktop auto-scroll behavior remains directly tested"},
     {"id":"apk-to-jar","capabilityIds":[34,35,96],"entryPoint":"Desktop extension APK install adapter","productionHandler":"mihon.desktop.extension.ApkToJarConverter","observableFeedback":"validated JAR output or contained conversion failure","runnerTest":"mihon.desktop.extension.ApkToJarConverterTest#produces JAR file when given APK with classes dex","status":"covered","reason":"permanent Desktop APK-to-JAR adapter remains directly tested"}
   ],
-  "childPlan": "docs/superpowers/plans/2026-07-24-task-16d-test-mode-scenario-closure.md"
+  "governance": "app-desktop/src/test/resources/parity/parity-manifest.json"
 }

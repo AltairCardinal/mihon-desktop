@@ -69,4 +69,4 @@ capability mapping。
 
 Desktop 迭代使用 `scripts/build-desktop.sh`；最终运行验收使用
 `scripts/desktop-final-parity-test.sh`。详细版本、产物、哈希与环境证据见
-`docs/superpowers/reports/2026-07-23-mihon-desktop-final-parity-verify.md`。
+逐项状态与验证证据以 `app-desktop/src/test/resources/parity/parity-manifest.json` 为准。

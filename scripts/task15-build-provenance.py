@@ -20,7 +20,6 @@ APP_VERSION = pathlib.PurePosixPath(
 )
 EXCLUSIONS = [
     "docs/**",
-    "openspec/**",
     "test-desktop/**",
     "scripts/tests/**",
     "scripts/task15-platform-evidence-test.{ps1,sh}",
@@ -38,7 +37,7 @@ def git(root: pathlib.Path, *args: str, text: bool = True) -> Union[str, bytes]:
 def is_product_input(path: pathlib.PurePosixPath) -> bool:
     value = path.as_posix()
     parts = value.split("/")
-    if value.startswith(("docs/", "openspec/", "test-desktop/", "scripts/tests/", ".codex/")):
+    if value.startswith(("docs/", "test-desktop/", "scripts/tests/", ".codex/")):
         return False
     if value in {
         "scripts/task15-platform-evidence-test.ps1",

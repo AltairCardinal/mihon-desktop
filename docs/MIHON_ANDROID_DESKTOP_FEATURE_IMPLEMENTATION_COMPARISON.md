@@ -88,4 +88,4 @@ Linux 仅保留防御性 Unsupported fallback，不是发行或验收平台。�
 - 验证版本：`0.11.14.51.19a55d7`
 - Windows/macOS source commit：`19a55d7c27e854a9a5b8baa27871b6d8e1c3608c`
 - 最终运行：13/13 families、5/5 permanent protections、64/64 capabilities、`unmapped=0`
-- 完整报告：`docs/superpowers/reports/2026-07-23-mihon-desktop-final-parity-verify.md`
+- 机器状态与逐项证据：`app-desktop/src/test/resources/parity/parity-manifest.json`

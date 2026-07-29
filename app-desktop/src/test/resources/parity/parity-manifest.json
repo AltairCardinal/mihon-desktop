@@ -15,9 +15,9 @@
         "domain/src/commonTest/kotlin/mihon/domain/error/AppErrorTest.kt": ["partial failure identifies each failed unit"],
         "domain/src/commonTest/kotlin/mihon/domain/task/TaskStateTest.kt": ["任务状态表达进度结果失败与取消"]
       }
-    }, {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-141-a1-id-3-shared-screen-state", "gap": "Current Android SourcesScreenModel and Desktop state containers still lack one shared immutable screen-state/event production core and a cross-platform consumer contract."}, {"task": "Task 16D", "decision": "READY_FOR_PROMOTION", "followUp": "NONE", "productClosureFollowUps": ["docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-141-a1-id-3-shared-screen-state","docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-142-a2-id-3-desktop-screen-state-consumer"], "coverageFollowUp": "NONE", "promotionFollowUp": "Task 18", "gap": "NONE"}],
+    }, {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "NONE", "gap": "Current Android SourcesScreenModel and Desktop state containers still lack one shared immutable screen-state/event production core and a cross-platform consumer contract."}, {"task": "Task 16D", "decision": "READY_FOR_PROMOTION", "followUp": "NONE", "productClosureFollowUps": [], "coverageFollowUp": "NONE", "promotionFollowUp": "Task 18", "gap": "NONE"}],
     "statusDecision": {"task": "Task 18", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE"},
-    "testModeCoverageAudit": {"task":"Task 16D","inventory":"app-desktop/src/test/resources/parity/test-mode-coverage-inventory.json","families":13,"coveredFamilies":13,"gapFamilies":0,"permanentProtections":5,"mappedCapabilities":64,"unmappedCapabilities":0,"runtimeRunner":"PASSED","runtimeSourceCommit":"dbc02bb9ad53f26f570427cc70a574bcbadff5ac","runtimeVersion":"0.11.14.48.dbc02bb","childPlan":"docs/superpowers/plans/2026-07-24-task-16d-test-mode-scenario-closure.md"},
+    "testModeCoverageAudit": {"task":"Task 16D","inventory":"app-desktop/src/test/resources/parity/test-mode-coverage-inventory.json","families":13,"coveredFamilies":13,"gapFamilies":0,"permanentProtections":5,"mappedCapabilities":64,"unmappedCapabilities":0,"runtimeRunner":"PASSED","runtimeSourceCommit":"dbc02bb9ad53f26f570427cc70a574bcbadff5ac","childPlan":"NONE"},
     "authoritativeImplementation": "Fixed-main original Mihon capability #3: SourcesScreenModel uses Voyager StateScreenModel, immutable State snapshots, Flow collection, and an explicit Event channel.",
     "desktopImplementation": "Current Android SourcesScreenModel and Desktop DesktopSourcesScreenModel both consume the shared SourceScreenReducer. BrowseSourceListScreen renders the Desktop state and exactly-once action feedback while retaining Desktop source grouping, filtering and local-source behavior.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
@@ -250,7 +250,7 @@
       "forbiddenCompiledEdges": [],
       "permittedPlatformAdapters": [{"edge": "mihon.desktop.di.DesktopAppModuleKt -> mihon.desktop.platform.DesktopNetworkHelper", "reason": "The Desktop composition root owns JVM HTTP clients, cookie persistence and browser integration outside UI."}],
       "mutationEvidence": ["app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt#compiled fixtures reject a forbidden manager and a disconnected use case", "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt#platform adapter allowlist requires compiled edges and nonblank reasons"],
-      "childPlan": "docs/superpowers/plans/2026-07-24-task-16c-ui-dependency-boundary-closure.md"
+      "childPlan": "NONE"
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #8: NetworkHelper owns configured OkHttp clients, cookies, user-agent and Cloudflare integration; OkHttpExtensions centralizes response and JSON handling.",
     "desktopImplementation": "Current Desktop MangaDexSource is the production consumer protected by NetworkErrorContractTest for the shared HTTP error mapper. DesktopNetworkHelper and DesktopAppModule are separate platform client adapters and are not claimed as mapper-test coverage.",
@@ -388,7 +388,7 @@
     }, {
       "task": "Task 16B",
       "decision": "EXTRACT",
-      "followUp": "docs/superpowers/plans/2026-07-24-task-16b-background-task-state-machine-closure.md#task-161-shared-task-lifecycle-core",
+      "followUp": "NONE",
       "gap": "Current Android LibraryUpdateJob and its production callers still own WorkManager lifecycle rules without consuming a shared legal-transition core or an Android production-caller behavior test; DesktopTaskScheduler independently owns those transitions.",
       "behaviorMethods": {
         "domain/src/commonTest/kotlin/mihon/domain/task/BackgroundTaskContractTest.kt": [
@@ -502,7 +502,7 @@
         ]
       },
       "missingBehaviorEvidence": "NONE",
-      "childPlan": "docs/superpowers/plans/2026-07-24-task-16b-background-task-state-machine-closure.md"
+      "childPlan": "NONE"
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #10: LibraryUpdateJob schedules constrained Android WorkManager library updates.",
     "desktopImplementation": "DesktopTaskScheduler delegates common legal transitions to BackgroundTaskLifecycle while FileTaskCheckpointStore and LibraryUpdateScheduler retain Desktop persistence, recovery, notification, and coroutine ownership.",
@@ -1256,7 +1256,7 @@
     }, {
       "task": "Task 14A",
       "decision": "KEEP_GAP",
-      "followUp": "docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-143-a3-id-32-android-extension-repository-wiring",
+      "followUp": "NONE",
       "gap": "Android and Desktop both reuse the shared extension-repository API, but current Android CRUD wiring has no executable consumer contract that fails when create/replace/delete production wiring breaks."
     }, {"task": "Task 17", "decision": "READY_FOR_PROMOTION", "followUp": "NONE", "promotionFollowUp": "Task 18", "gap": "NONE"}],
     "statusDecision": {"task": "Task 18", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE"},
@@ -2714,7 +2714,7 @@
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt#production registry contains every public Android tracker with isolated credentials", "productionMarkers": ["DesktopTrackerServiceRegistry.production("]}]
     },
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt": ["production registry contains every public Android tracker with isolated credentials"]},
-    "statusDecisionHistory": [{"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Fixed-main production provider configuration; bind-existing/new-entry and refresh-before-update; initial reading status/date and MAL error behavior; search model and private/date/delete editing; enhanced auto-match; Suwayomi delete preference; provider error classification/retry; Komga DNS/server discovery; and Kitsu/MangaUpdates request shape remain unclosed.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt": ["production registry contains every public Android tracker with isolated credentials"]}}, {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-145-b1-id-69-provider-neutral-core", "gap": "Extract provider-neutral production configuration, bind/refresh/status/date/search/edit/delete/error contracts and close enhanced-provider replay without weakening Desktop credential/checkpoint enhancements."}, {"task": "Task 17", "decision": "READY_FOR_PROMOTION", "followUp": "NONE", "promotionFollowUp": "Task 18", "gap": "NONE"}],
+    "statusDecisionHistory": [{"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Fixed-main production provider configuration; bind-existing/new-entry and refresh-before-update; initial reading status/date and MAL error behavior; search model and private/date/delete editing; enhanced auto-match; Suwayomi delete preference; provider error classification/retry; Komga DNS/server discovery; and Kitsu/MangaUpdates request shape remain unclosed.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/tracking/DesktopProviderTrackerServiceTest.kt": ["production registry contains every public Android tracker with isolated credentials"]}}, {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "NONE", "gap": "Extract provider-neutral production configuration, bind/refresh/status/date/search/edit/delete/error contracts and close enhanced-provider replay without weakening Desktop credential/checkpoint enhancements."}, {"task": "Task 17", "decision": "READY_FOR_PROMOTION", "followUp": "NONE", "promotionFollowUp": "Task 18", "gap": "NONE"}],
     "statusDecision": {"task": "Task 18", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE"},
     "verificationScope": "READY_FOR_PROMOTION: Tasks 145A–146D close the shared provider workflow and current Android/Desktop production consumers with provider, OAuth, edit, unbind and enhanced auto-match fixtures; Task 18 performs the terminal status promotion.",
     "platformExemptionEvidence": "NONE",
@@ -2831,7 +2831,7 @@
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt#eligible tracker sync completes after caller cancellation", "productionMarkers": ["ReaderProgressTracker("]}]
     },
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": ["eligible tracker sync completes after caller cancellation"]},
-    "statusDecisionHistory": [{"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Fixed-main refresh-before-update, login/progress filtering and parallel provider updates; delayed queue per-track monotonic highest progress; and network constraint, unique work, exponential backoff, bounded retry and queue cleanup remain unclosed.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": ["eligible tracker sync completes after caller cancellation"]}}, {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-147-b3-id-70-delayed-tracker-sync", "gap": "Extract refresh/filter/parallel update plus monotonic delayed queue, constraint, unique-work, exponential-backoff, bounded-retry and cleanup semantics while retaining Desktop restart checkpoints."}, {"task": "Task 17", "decision": "READY_FOR_PROMOTION", "followUp": "NONE", "promotionFollowUp": "Task 18", "gap": "NONE"}],
+    "statusDecisionHistory": [{"task": "Task 11", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Fixed-main refresh-before-update, login/progress filtering and parallel provider updates; delayed queue per-track monotonic highest progress; and network constraint, unique work, exponential backoff, bounded retry and queue cleanup remain unclosed.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": ["eligible tracker sync completes after caller cancellation"]}}, {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "NONE", "gap": "Extract refresh/filter/parallel update plus monotonic delayed queue, constraint, unique-work, exponential-backoff, bounded-retry and cleanup semantics while retaining Desktop restart checkpoints."}, {"task": "Task 17", "decision": "READY_FOR_PROMOTION", "followUp": "NONE", "promotionFollowUp": "Task 18", "gap": "NONE"}],
     "statusDecision": {"task": "Task 18", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE"},
     "verificationScope": "READY_FOR_PROMOTION: Tasks 147 and 148 close the shared delayed queue plus Android WorkManager/store and Desktop scheduler/checkpoint production consumers; Task 18 performs the terminal status promotion.",
     "platformExemptionEvidence": "NONE",
@@ -3156,7 +3156,7 @@
     "statusDecision": {"task": "Task 15", "decision": "KEEP_EXEMPT", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"presentation-widget/src/test/java/tachiyomi/presentation/widget/WidgetPrivacyProductionWiringTest.kt": ["base widget default constructor observes injected security preferences", "locked production data source never queries updates"], "app-desktop/src/test/kotlin/mihon/desktop/parity/WidgetPrivacyBoundaryTest.kt": ["desktop exposes shared updates but no system widget provider"]}},
     "statusDecisionHistory": [{"task": "Task 12", "decision": "KEEP_EXEMPT", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"presentation-widget/src/test/java/tachiyomi/presentation/widget/WidgetPrivacyProductionWiringTest.kt": ["base widget default constructor observes injected security preferences", "locked production data source never queries updates"], "app-desktop/src/test/kotlin/mihon/desktop/parity/WidgetPrivacyBoundaryTest.kt": ["desktop exposes shared updates but no system widget provider"]}}],
     "exemptionApproval": {
-      "approvalSource": "docs/superpowers/specs/2026-07-12-mihon-desktop-upstream-parity-design.md:217",
+      "approvalSource": "docs/MIHON_ANDROID_DESKTOP_FEATURE_IMPLEMENTATION_COMPARISON.md:79",
       "approvalDate": "2026-07-12",
       "capabilityBoundary": "Desktop retains shared Updates data but does not promise a cross-desktop system widget provider.",
       "userVisibleBoundary": "The Desktop privacy capability reports the system widget provider as Unsupported.",
@@ -3247,7 +3247,7 @@
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopLocaleAdapter.kt", "symbol": "class DesktopLocaleAdapter(", "line": 39}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/i18n/DesktopSettingsResourceIdentityTest.kt#Appearance language entry applies default and reports persistence failure without changing selection", "productionMarkers": ["AppearanceSettingsScreen()", "DesktopLocaleAdapter("]}]
     },
-    "statusDecisionHistory": [{"task": "Task 12", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Desktop still has no app-language selector and retains unlocalized copy outside the currently rendered shared MR paths.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/i18n/DesktopExtensionListRenderedCopyTest.kt": ["extension list filter and uninstall render localized copy"], "app-desktop/src/test/kotlin/mihon/desktop/i18n/MoreSourceExtensionRenderedCopyTest.kt": ["source extension entries render localized copy and navigate"]}}, {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "docs/superpowers/plans/2026-07-24-task-14-product-parity-closure.md#task-149-c1-id-87-desktop-language", "gap": "Desktop needs an Appearance language selector, persisted JVM locale adapter and remaining production-copy localization without regressing shared MR consumers."}, {"task": "Task 17", "decision": "READY_FOR_PROMOTION", "followUp": "NONE", "promotionFollowUp": "Task 18", "gap": "NONE"}],
+    "statusDecisionHistory": [{"task": "Task 12", "decision": "KEEP_GAP", "followUp": "Task 14", "gap": "Desktop still has no app-language selector and retains unlocalized copy outside the currently rendered shared MR paths.", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/i18n/DesktopExtensionListRenderedCopyTest.kt": ["extension list filter and uninstall render localized copy"], "app-desktop/src/test/kotlin/mihon/desktop/i18n/MoreSourceExtensionRenderedCopyTest.kt": ["source extension entries render localized copy and navigate"]}}, {"task": "Task 14A", "decision": "KEEP_GAP", "followUp": "NONE", "gap": "Desktop needs an Appearance language selector, persisted JVM locale adapter and remaining production-copy localization without regressing shared MR consumers."}, {"task": "Task 17", "decision": "READY_FOR_PROMOTION", "followUp": "NONE", "promotionFollowUp": "Task 18", "gap": "NONE"}],
     "statusDecision": {"task": "Task 18", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE"},
     "verificationScope": "READY_FOR_PROMOTION: Task 149 closes the Desktop locale selector, persistence, startup restore, immediate MR refresh and failure rollback while preserving the Android AppCompat adapter boundary; Task 18 performs the terminal status promotion.",
     "platformExemptionEvidence": "NONE",
@@ -3497,7 +3497,7 @@
       ],
       "permittedPlatformAdapters": [{"edge": "mihon.desktop.ui.ExternalActionNavigator -> mihon.desktop.platform.DesktopExternalActionTarget", "reason": "OS URI ingress is a Desktop navigation adapter with typed rejection feedback."}, {"edge": "mihon.desktop.ui.library.MangaDetailComponentsKt -> mihon.desktop.platform.DesktopShareService", "reason": "Host share is an OS side-effect port with structured success, fallback and failure results."}],
       "mutationEvidence": ["app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt#compiled fixtures reject a forbidden manager and a disconnected use case", "app-desktop/src/test/kotlin/mihon/desktop/architecture/DesktopArchitectureGuardTest.kt#platform adapter allowlist requires compiled edges and nonblank reasons"],
-      "childPlan": "docs/superpowers/plans/2026-07-24-task-16c-ui-dependency-boundary-closure.md"
+      "childPlan": "NONE"
     },
     "verificationScope": "VERIFIED: five evidence roles, all 40 required Library, Manga detail, Authors, Tracking, Extension, Browse, Home and Settings use-case/port edges, zero missing or forbidden edges, and forbidden/disconnected/allowlist mutations are executable.",
     "platformExemptionEvidence": "NONE",

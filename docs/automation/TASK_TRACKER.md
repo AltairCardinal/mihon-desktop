@@ -71,4 +71,4 @@ macOS 平台验收不再调用 `screencapture`，URI 和 Unsupported capture-aff
 - 本机 TCC 数据库或权限授予状态。
 
 完整版本、测试计数、产物哈希与环境限制见
-`docs/superpowers/reports/2026-07-23-mihon-desktop-final-parity-verify.md`。
+逐项状态与验证证据以 `app-desktop/src/test/resources/parity/parity-manifest.json` 为准。
