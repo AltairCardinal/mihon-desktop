@@ -299,9 +299,14 @@ class DesktopNetworkHelper(
 
 internal fun desktopSystemProxySelector(): ProxySelector {
     System.setProperty("java.net.useSystemProxies", "true")
-    return ProxySelector.getDefault() ?: object : ProxySelector() {
+    val fallback = ProxySelector.getDefault() ?: object : ProxySelector() {
         override fun select(uri: URI): List<Proxy> = listOf(Proxy.NO_PROXY)
         override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) = Unit
+    }
+    return if (OperatingSystem.detect() == OperatingSystem.WINDOWS) {
+        WindowsSystemProxySelector(fallback)
+    } else {
+        fallback
     }
 }
 
