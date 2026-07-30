@@ -248,6 +248,31 @@ class DesktopNetworkHelperTest {
     }
 
     @Test
+    fun `connection test retries a transient timeout with a fresh diagnostic connection`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(
+                MockResponse.Builder()
+                    .onResponseStart(SocketEffect.Stall)
+                    .build(),
+            )
+            server.enqueue(MockResponse(code = 204))
+            val helper = DesktopNetworkHelper(
+                cacheDir = createTempCacheDir(),
+                globalMode = GlobalNetworkMode.DIRECT,
+                connectionTestTimeoutMillis = 100,
+            )
+
+            val result = helper.testConnection(server.url("/diagnostic").toString())
+
+            assertTrue(result.successful, result.error)
+            assertEquals(204, result.statusCode)
+            assertEquals(2, server.requestCount)
+            helper.close()
+        }
+    }
+
+    @Test
     fun `default client leaves content decoding to OkHttp and source specific configuration`() {
         val helper = DesktopNetworkHelper(cacheDir = createTempCacheDir())
 

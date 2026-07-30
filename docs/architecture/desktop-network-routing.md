@@ -498,6 +498,8 @@ Desktop 已实现本文首版产品链路：
 - Windows adapter 直接读取当前用户的静态 `ProxyEnable`、`ProxyServer` 与
   `ProxyOverride`，按目标应用代理及 bypass；读取失败时再回退 JVM `ProxySelector`；
 - 设置页区分已保存策略、当前生效策略和最近实际 route，并提供真实连接测试；
+- 连接测试遇到瞬时 timeout 时会使用独立 Dispatcher 与 ConnectionPool 重试一次，
+  避免应用既有 TLS/代理连接状态污染诊断结果；非 timeout 错误不会自动重试；
 - `HttpSource` 的默认托管客户端按插件包名应用四种插件复写策略；
 - 插件详情页显示支持程度、当前生效 route、连接测试、声明域名和运行时观测域名；
 - 运行时观测覆盖托管 HTTP 请求及重定向，只持久化规范化主机名，单插件上限 256 条；

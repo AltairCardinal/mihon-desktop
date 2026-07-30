@@ -31,6 +31,8 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import okhttp3.Cache
 import okhttp3.Call
 import okhttp3.Connection
+import okhttp3.ConnectionPool
+import okhttp3.Dispatcher
 import okhttp3.EventListener
 import okhttp3.Interceptor
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -38,11 +40,13 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.dnsoverhttps.DnsOverHttps
 import java.io.File
+import java.io.InterruptedIOException
 import java.net.URI
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.ProxySelector
 import java.net.SocketAddress
+import java.net.SocketTimeoutException
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -174,28 +178,56 @@ class DesktopNetworkHelper(
             val parsed = url.toHttpUrlOrNull()
                 ?: return@withContext DesktopConnectionTestResult("", null, null, "Invalid URL")
             val scope = sourceId?.let(sourceOwner) ?: GlobalScope
-            val requestClient = (sourceId?.let(::clientForSource) ?: client)
+            val applicationClient = sourceId?.let(::clientForSource) ?: client
+            val request = okhttp3.Request.Builder().url(parsed).head().build()
+            val firstAttempt = applicationClient
                 .newBuilder()
                 .callTimeout(connectionTestTimeoutMillis, TimeUnit.MILLISECONDS)
                 .build()
-            runCatching {
-                requestClient.newCall(okhttp3.Request.Builder().url(parsed).head().build()).execute().use { response ->
-                    DesktopConnectionTestResult(
-                        host = parsed.host,
-                        statusCode = response.code,
-                        route = routeObservations.value.lastOrNull { it.scope == scope && it.host == parsed.host },
-                        error = null,
-                    )
+            try {
+                firstAttempt.newCall(request).execute().use { response ->
+                    return@withContext response.toConnectionTestResult(parsed.host, scope)
                 }
-            }.getOrElse { error ->
-                DesktopConnectionTestResult(
-                    host = parsed.host,
-                    statusCode = null,
-                    route = routeObservations.value.lastOrNull { it.scope == scope && it.host == parsed.host },
-                    error = error.message ?: error.javaClass.simpleName,
-                )
+            } catch (error: Exception) {
+                if (!error.isTransientConnectionTimeout()) {
+                    return@withContext failedConnectionTestResult(parsed.host, scope, error)
+                }
+            }
+
+            val isolatedDispatcher = Dispatcher()
+            val isolatedPool = ConnectionPool()
+            val retryClient = applicationClient.newBuilder()
+                .dispatcher(isolatedDispatcher)
+                .connectionPool(isolatedPool)
+                .callTimeout(connectionTestTimeoutMillis, TimeUnit.MILLISECONDS)
+                .build()
+            try {
+                retryClient.newCall(request).execute().use { response ->
+                    response.toConnectionTestResult(parsed.host, scope)
+                }
+            } catch (error: Exception) {
+                failedConnectionTestResult(parsed.host, scope, error)
+            } finally {
+                isolatedPool.evictAll()
+                isolatedDispatcher.executorService.shutdown()
             }
         }
+
+    private fun okhttp3.Response.toConnectionTestResult(host: String, scope: String) =
+        DesktopConnectionTestResult(
+            host = host,
+            statusCode = code,
+            route = routeObservations.value.lastOrNull { it.scope == scope && it.host == host },
+            error = null,
+        )
+
+    private fun failedConnectionTestResult(host: String, scope: String, error: Exception) =
+        DesktopConnectionTestResult(
+            host = host,
+            statusCode = null,
+            route = routeObservations.value.lastOrNull { it.scope == scope && it.host == host },
+            error = error.message ?: error.javaClass.simpleName,
+        )
 
     override fun clearCookies(sources: List<Source>): Int {
         val domains = sources
@@ -296,6 +328,10 @@ class DesktopNetworkHelper(
 
     }
 }
+
+private fun Exception.isTransientConnectionTimeout(): Boolean =
+    this is SocketTimeoutException ||
+        (this is InterruptedIOException && message.orEmpty().contains("timeout", ignoreCase = true))
 
 internal fun desktopSystemProxySelector(): ProxySelector {
     System.setProperty("java.net.useSystemProxies", "true")
