@@ -33,6 +33,7 @@ import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.DohProvider
 import mihon.desktop.settings.GlobalNetworkMode
 import mihon.desktop.settings.parseDesktopProxyUrl
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import tachiyomi.i18n.MR
 import java.util.Locale
@@ -178,33 +179,57 @@ class GeneralSettingsScreen : Screen {
                 OutlinedButton(
                     enabled = !testing,
                     onClick = {
+                        testResult = null
                         testing = true
                         scope.launch {
-                            val result = networkHelper.testConnection(testUrl)
-                            testResult = if (result.successful) {
-                                val route = result.route?.let {
-                                    "${it.proxyType.name}${it.proxyAddress?.let { address -> " $address" }.orEmpty()}"
-                                } ?: "unknown"
-                                MR.strings.desktop_network_test_success.localized(
+                            try {
+                                val result = networkHelper.testConnection(testUrl)
+                                testResult = if (result.successful) {
+                                    val route = result.route?.let {
+                                        "${it.proxyType.name}${it.proxyAddress?.let { address -> " $address" }.orEmpty()}"
+                                    } ?: "unknown"
+                                    MR.strings.desktop_network_test_success.localized(
+                                        Locale.getDefault(),
+                                        result.statusCode ?: 0,
+                                        route,
+                                    )
+                                } else {
+                                    MR.strings.desktop_network_test_failed.localized(
+                                        Locale.getDefault(),
+                                        result.error.orEmpty(),
+                                    )
+                                }
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (error: Exception) {
+                                testResult = MR.strings.desktop_network_test_failed.localized(
                                     Locale.getDefault(),
-                                    result.statusCode ?: 0,
-                                    route,
+                                    error.message ?: error.javaClass.simpleName,
                                 )
-                            } else {
-                                MR.strings.desktop_network_test_failed.localized(
-                                    Locale.getDefault(),
-                                    result.error.orEmpty(),
-                                )
+                            } finally {
+                                testing = false
                             }
-                            testing = false
                         }
                     },
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 ) {
-                    Text(MR.strings.desktop_network_test.localized())
+                    Text(
+                        if (testing) {
+                            MR.strings.desktop_network_testing.localized()
+                        } else {
+                            MR.strings.desktop_network_test.localized()
+                        },
+                    )
                 }
-                testResult?.let {
-                    Text(it, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
+                when {
+                    testing -> Text(
+                        MR.strings.desktop_network_testing.localized(),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    )
+                    testResult != null -> Text(
+                        requireNotNull(testResult),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    )
                 }
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))

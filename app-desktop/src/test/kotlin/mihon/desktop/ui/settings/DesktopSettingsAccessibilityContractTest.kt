@@ -12,14 +12,18 @@ import androidx.compose.ui.state.ToggleableState
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import eu.kanade.domain.ui.model.ThemeMode
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.download.DesktopDownloadManager
+import mihon.desktop.network.DesktopConnectionTestResult
 import mihon.desktop.platform.DesktopLocaleAdapter
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.settings.DesktopAppPreferences
@@ -102,14 +106,54 @@ class DesktopSettingsAccessibilityContractTest {
         }
     }
 
+    @Test
+    fun `connection test immediately reports progress and restores an explicit result`() = runBlocking {
+        val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
+        val pendingResult = CompletableDeferred<DesktopConnectionTestResult>()
+        val network = mockk<DesktopNetworkHelper> {
+            every { routeObservations } returns MutableStateFlow(emptyList())
+            every { activeGlobalMode } returns preferences.globalNetworkMode.get()
+            every { activeGlobalProxy } returns preferences.proxyRuntimeConfig()
+            coEvery { testConnection(any(), null) } coAnswers { pendingResult.await() }
+        }
+
+        withScene(GeneralSettingsScreen(), preferences, network, height = 2_000) { scene ->
+            click(scene, MR.strings.desktop_network_test.localized(Locale.US))
+            withTimeout(5_000) {
+                while (MR.strings.desktop_network_testing.localized(Locale.US) !in nodes(scene, true).flatMap(::subtreeText)) {
+                    scene.render()
+                    yield()
+                }
+            }
+
+            pendingResult.complete(
+                DesktopConnectionTestResult(
+                    host = "example.org",
+                    statusCode = null,
+                    route = null,
+                    error = "timed out",
+                ),
+            )
+            val expected = MR.strings.desktop_network_test_failed.localized(Locale.US, "timed out")
+            withTimeout(5_000) {
+                while (expected !in nodes(scene, true).flatMap(::subtreeText)) {
+                    scene.render()
+                    yield()
+                }
+            }
+            assertTrue(nodes(scene, true).flatMap(::subtreeText).contains(expected))
+        }
+    }
+
     private suspend fun withScene(
         screen: cafe.adriel.voyager.core.screen.Screen,
         preferences: DesktopAppPreferences = DesktopAppPreferences(InMemoryPreferenceStore()),
+        suppliedNetwork: DesktopNetworkHelper? = null,
         height: Int = 1_000,
         block: suspend (ImageComposeScene) -> Unit,
     ) {
         val downloads = mockk<DesktopDownloadManager> { every { queue } returns MutableStateFlow(emptyList()) }
-        val network = mockk<DesktopNetworkHelper> {
+        val network = suppliedNetwork ?: mockk<DesktopNetworkHelper> {
             every { routeObservations } returns MutableStateFlow(emptyList())
             every { activeGlobalMode } returns preferences.globalNetworkMode.get()
             every { activeGlobalProxy } returns preferences.proxyRuntimeConfig()
@@ -147,7 +191,14 @@ class DesktopSettingsAccessibilityContractTest {
             .filter { it.config.contains(SemanticsProperties.Role) && it.config[SemanticsProperties.Role] == role }
             .single { label in subtreeText(it) }
 
-    private fun subtreeText(node: SemanticsNode) = flatten(node).flatMap {
+    private fun click(scene: ImageComposeScene, label: String) {
+        val node = nodes(scene, true).single {
+            it.config.contains(SemanticsActions.OnClick) && label in subtreeText(it)
+        }
+        assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
+    }
+
+    private fun subtreeText(node: SemanticsNode): List<String> = flatten(node).flatMap {
         if (it.config.contains(SemanticsProperties.Text)) it.config[SemanticsProperties.Text].map { text -> text.text } else emptyList()
     }
 

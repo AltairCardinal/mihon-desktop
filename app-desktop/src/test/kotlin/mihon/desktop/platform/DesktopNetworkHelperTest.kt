@@ -9,6 +9,7 @@ import okhttp3.Request
 import okhttp3.Response
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import mockwebserver3.SocketEffect
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
@@ -17,6 +18,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import mihon.desktop.network.CF_CLEARANCE_COOKIE_NAME
 import mihon.desktop.network.DesktopCloudflareCookieImportResult
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -34,6 +36,7 @@ import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import java.util.UUID
 import java.util.prefs.Preferences
+import kotlinx.coroutines.runBlocking
 
 class DesktopNetworkHelperTest {
 
@@ -218,6 +221,29 @@ class DesktopNetworkHelperTest {
                 helper.close()
                 preferenceNode.removeNode()
             }
+        }
+    }
+
+    @Test
+    fun `connection test uses its short diagnostic timeout`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(
+                MockResponse.Builder()
+                    .onResponseStart(SocketEffect.Stall)
+                    .build(),
+            )
+            val helper = DesktopNetworkHelper(
+                cacheDir = createTempCacheDir(),
+                globalMode = GlobalNetworkMode.DIRECT,
+                connectionTestTimeoutMillis = 100,
+            )
+
+            val result = helper.testConnection(server.url("/stalled").toString())
+
+            assertFalse(result.successful)
+            assertTrue(result.error.orEmpty().contains("timeout", ignoreCase = true))
+            helper.close()
         }
     }
 

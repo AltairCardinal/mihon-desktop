@@ -387,9 +387,10 @@
     <string name="desktop_network_active_policy">Currently active: %1$s</string>
     <string name="desktop_network_restart_pending">Restart required to apply the saved global policy</string>
     <string name="desktop_network_last_route">Last actual route: %1$s</string>
-    <string name="desktop_network_no_route">No actual connection route observed yet</string>
+    <string name="desktop_network_no_route">No observable connection has been established yet. Test the connection or load content to see whether it used direct or proxy routing.</string>
     <string name="desktop_network_test_url">Connection test URL</string>
     <string name="desktop_network_test">Test connection</string>
+    <string name="desktop_network_testing">Testing connection…</string>
     <string name="desktop_network_test_success">Connected: HTTP %1$d via %2$s</string>
     <string name="desktop_network_test_failed">Connection failed: %1$s</string>
     <string name="desktop_plugin_network_title">Network routing</string>

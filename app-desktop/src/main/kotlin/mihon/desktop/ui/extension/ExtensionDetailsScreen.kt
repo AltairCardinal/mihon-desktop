@@ -60,6 +60,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.LocalExtensionScreenModel
 import mihon.desktop.extension.ExtensionOrigin
@@ -392,6 +393,7 @@ private fun PluginNetworkCard(
         mutableStateOf(sources.filterIsInstance<HttpSource>().firstOrNull()?.baseUrl.orEmpty())
     }
     var testResult by remember { mutableStateOf<String?>(null) }
+    var testing by remember { mutableStateOf(false) }
 
     fun copy(format: PluginDomainExportFormat, formatName: String) {
         if (domains.isEmpty()) return
@@ -470,30 +472,52 @@ private fun PluginNetworkCard(
             OutlinedButton(
                 onClick = {
                     val sourceId = sources.firstOrNull()?.id
+                    testResult = null
+                    testing = true
                     scope.launch {
-                        val result = networkHelper.testConnection(testUrl, sourceId)
-                        testResult = if (result.successful) {
-                            val route = result.route?.let {
-                                "${it.proxyType.name}${it.proxyAddress?.let { address -> " $address" }.orEmpty()}"
-                            } ?: "unknown"
-                            MR.strings.desktop_network_test_success.localized(
+                        try {
+                            val result = networkHelper.testConnection(testUrl, sourceId)
+                            testResult = if (result.successful) {
+                                val route = result.route?.let {
+                                    "${it.proxyType.name}${it.proxyAddress?.let { address -> " $address" }.orEmpty()}"
+                                } ?: "unknown"
+                                MR.strings.desktop_network_test_success.localized(
+                                    Locale.getDefault(),
+                                    result.statusCode ?: 0,
+                                    route,
+                                )
+                            } else {
+                                MR.strings.desktop_network_test_failed.localized(
+                                    Locale.getDefault(),
+                                    result.error.orEmpty(),
+                                )
+                            }
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
+                            testResult = MR.strings.desktop_network_test_failed.localized(
                                 Locale.getDefault(),
-                                result.statusCode ?: 0,
-                                route,
+                                error.message ?: error.javaClass.simpleName,
                             )
-                        } else {
-                            MR.strings.desktop_network_test_failed.localized(
-                                Locale.getDefault(),
-                                result.error.orEmpty(),
-                            )
+                        } finally {
+                            testing = false
                         }
                     }
                 },
-                enabled = testUrl.isNotBlank(),
+                enabled = testUrl.isNotBlank() && !testing,
             ) {
-                Text(MR.strings.desktop_network_test.localized())
+                Text(
+                    if (testing) {
+                        MR.strings.desktop_network_testing.localized()
+                    } else {
+                        MR.strings.desktop_network_test.localized()
+                    },
+                )
             }
-            testResult?.let { Text(it) }
+            when {
+                testing -> Text(MR.strings.desktop_network_testing.localized())
+                testResult != null -> Text(requireNotNull(testResult))
+            }
 
             HorizontalDivider()
             Text(MR.strings.desktop_plugin_domains_title.localized(), style = MaterialTheme.typography.titleSmall)

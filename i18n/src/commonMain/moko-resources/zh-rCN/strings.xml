@@ -142,9 +142,10 @@
     <string name="desktop_network_active_policy">当前生效：%1$s</string>
     <string name="desktop_network_restart_pending">需要重启才能应用已保存的全局策略</string>
     <string name="desktop_network_last_route">最近实际路由：%1$s</string>
-    <string name="desktop_network_no_route">尚未观测到实际连接路由</string>
+    <string name="desktop_network_no_route">尚未建立可观测连接。测试连接或加载内容后，这里会显示实际使用了直连还是代理。</string>
     <string name="desktop_network_test_url">连接测试地址</string>
     <string name="desktop_network_test">测试连接</string>
+    <string name="desktop_network_testing">正在测试连接…</string>
     <string name="desktop_network_test_success">连接成功：HTTP %1$d，经由 %2$s</string>
     <string name="desktop_network_test_failed">连接失败：%1$s</string>
     <string name="desktop_plugin_network_title">网络路由</string>

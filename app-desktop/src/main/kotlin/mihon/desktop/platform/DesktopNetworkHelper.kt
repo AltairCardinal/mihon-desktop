@@ -55,6 +55,7 @@ class DesktopNetworkHelper(
     globalMode: GlobalNetworkMode = if (proxyConfig == null) GlobalNetworkMode.SYSTEM else GlobalNetworkMode.MANUAL,
     private val systemProxySelector: ProxySelector = desktopSystemProxySelector(),
     private val appPreferences: DesktopAppPreferences? = null,
+    private val connectionTestTimeoutMillis: Long = 15_000,
     challengeManager: CloudflareChallengeManager? = null,
 ) : AutoCloseable, DesktopExtensionCookiePort, DesktopNetworkMaintenancePort, DesktopNetworkRoutingPort {
     private val routeMonitor = DesktopRouteMonitor()
@@ -173,7 +174,10 @@ class DesktopNetworkHelper(
             val parsed = url.toHttpUrlOrNull()
                 ?: return@withContext DesktopConnectionTestResult("", null, null, "Invalid URL")
             val scope = sourceId?.let(sourceOwner) ?: GlobalScope
-            val requestClient = sourceId?.let(::clientForSource) ?: client
+            val requestClient = (sourceId?.let(::clientForSource) ?: client)
+                .newBuilder()
+                .callTimeout(connectionTestTimeoutMillis, TimeUnit.MILLISECONDS)
+                .build()
             runCatching {
                 requestClient.newCall(okhttp3.Request.Builder().url(parsed).head().build()).execute().use { response ->
                     DesktopConnectionTestResult(
