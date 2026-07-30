@@ -92,18 +92,41 @@ class DesktopAppPreferencesTest {
     }
 
     @Test
-    fun `network proxy is disabled by default`() {
+    fun `global network follows system by default`() {
         val preferences = prefs()
 
-        assertFalse(preferences.proxyEnabled.get())
+        assertEquals(GlobalNetworkMode.SYSTEM, preferences.globalNetworkMode.get())
         assertEquals("", preferences.proxyUrl.get())
         assertNull(preferences.proxyRuntimeConfig())
     }
 
     @Test
-    fun `enabled HTTP proxy URL produces runtime config`() {
+    fun `legacy enabled proxy migrates to manual mode without losing its URL`() {
+        val store = InMemoryPreferenceStore(
+            sequenceOf(
+                InMemoryPreferenceStore.InMemoryPreference("network_proxy_enabled", true, false),
+                InMemoryPreferenceStore.InMemoryPreference(
+                    "network_proxy_url",
+                    "http://127.0.0.1:10808",
+                    "",
+                ),
+            ),
+        )
+
+        val preferences = DesktopAppPreferences(store)
+
+        assertEquals(GlobalNetworkMode.MANUAL, preferences.globalNetworkMode.get())
+        assertEquals("http://127.0.0.1:10808", preferences.proxyUrl.get())
+        assertEquals(
+            DesktopProxyRuntimeConfig(Proxy.Type.HTTP, "127.0.0.1", 10808),
+            preferences.proxyRuntimeConfig(),
+        )
+    }
+
+    @Test
+    fun `manual HTTP proxy URL produces runtime config`() {
         val preferences = prefs()
-        preferences.proxyEnabled.set(true)
+        preferences.globalNetworkMode.set(GlobalNetworkMode.MANUAL)
         preferences.proxyUrl.set(" http://127.0.0.1:10808 ")
 
         assertEquals(
@@ -113,9 +136,9 @@ class DesktopAppPreferencesTest {
     }
 
     @Test
-    fun `enabled SOCKS5 proxy URL produces runtime config`() {
+    fun `manual SOCKS5 proxy URL produces runtime config`() {
         val preferences = prefs()
-        preferences.proxyEnabled.set(true)
+        preferences.globalNetworkMode.set(GlobalNetworkMode.MANUAL)
         preferences.proxyUrl.set("socks5://localhost:7891")
 
         assertEquals(
@@ -127,7 +150,7 @@ class DesktopAppPreferencesTest {
     @Test
     fun `invalid or authenticated proxy URL is rejected`() {
         val preferences = prefs()
-        preferences.proxyEnabled.set(true)
+        preferences.globalNetworkMode.set(GlobalNetworkMode.MANUAL)
 
         listOf(
             "127.0.0.1:10808",
@@ -138,5 +161,56 @@ class DesktopAppPreferencesTest {
             preferences.proxyUrl.set(value)
             assertNull(preferences.proxyRuntimeConfig(), value)
         }
+    }
+
+    @Test
+    fun `direct and system modes never expose manual runtime proxy`() {
+        val preferences = prefs()
+        preferences.proxyUrl.set("http://127.0.0.1:10808")
+
+        preferences.globalNetworkMode.set(GlobalNetworkMode.DIRECT)
+        assertNull(preferences.proxyRuntimeConfig())
+        preferences.globalNetworkMode.set(GlobalNetworkMode.SYSTEM)
+        assertNull(preferences.proxyRuntimeConfig())
+    }
+
+    @Test
+    fun `plugin network policy defaults to inherit and round trips all overrides`() {
+        val preferences = prefs()
+        val packageName = "eu.kanade.tachiyomi.extension.en.example"
+
+        assertEquals(PluginNetworkMode.INHERIT_GLOBAL, preferences.pluginNetworkMode(packageName).get())
+        PluginNetworkMode.entries.forEach { mode ->
+            preferences.pluginNetworkMode(packageName).set(mode)
+            assertEquals(mode, preferences.pluginNetworkMode(packageName).get())
+        }
+        preferences.pluginProxyUrl(packageName).set("socks5://127.0.0.1:7890")
+        assertEquals(
+            DesktopProxyRuntimeConfig(Proxy.Type.SOCKS, "127.0.0.1", 7890),
+            preferences.pluginProxyRuntimeConfig(packageName),
+        )
+    }
+
+    @Test
+    fun `plugin manual proxy is ignored outside manual mode`() {
+        val preferences = prefs()
+        val packageName = "pkg.example"
+        preferences.pluginProxyUrl(packageName).set("http://127.0.0.1:8080")
+
+        preferences.pluginNetworkMode(packageName).set(PluginNetworkMode.DIRECT)
+        assertNull(preferences.pluginProxyRuntimeConfig(packageName))
+        preferences.pluginNetworkMode(packageName).set(PluginNetworkMode.SYSTEM)
+        assertNull(preferences.pluginProxyRuntimeConfig(packageName))
+    }
+
+    @Test
+    fun `plugin domain export target is remembered per plugin`() {
+        val preferences = prefs()
+
+        assertEquals("PROXY", preferences.pluginDomainExportTarget("pkg.one").get())
+        preferences.pluginDomainExportTarget("pkg.one").set("漫画源")
+
+        assertEquals("漫画源", preferences.pluginDomainExportTarget("pkg.one").get())
+        assertEquals("PROXY", preferences.pluginDomainExportTarget("pkg.two").get())
     }
 }

@@ -12,6 +12,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -19,6 +20,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
@@ -26,8 +31,11 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.DohProvider
+import mihon.desktop.settings.GlobalNetworkMode
 import mihon.desktop.settings.parseDesktopProxyUrl
+import kotlinx.coroutines.launch
 import tachiyomi.i18n.MR
+import java.util.Locale
 
 class GeneralSettingsScreen : Screen {
 
@@ -40,8 +48,21 @@ class GeneralSettingsScreen : Screen {
         val incognito by prefs.incognitoMode.changes().collectAsState(initial = prefs.incognitoMode.get())
         val pageTurnAnim by prefs.pageTurnAnimation.changes().collectAsState(initial = prefs.pageTurnAnimation.get())
         val doh by prefs.dohProvider.changes().collectAsState(initial = prefs.dohProvider.get())
-        val proxyEnabled by prefs.proxyEnabled.changes().collectAsState(initial = prefs.proxyEnabled.get())
+        val networkMode by prefs.globalNetworkMode.changes().collectAsState(initial = prefs.globalNetworkMode.get())
         val proxyUrl by prefs.proxyUrl.changes().collectAsState(initial = prefs.proxyUrl.get())
+        val networkHelper = LocalDesktopUiDependencies.current.networkRoutingPort
+        val routeFlow = remember(networkHelper) { runCatching { networkHelper.routeObservations }.getOrNull() }
+        val routeObservations = routeFlow?.collectAsState()?.value.orEmpty()
+        val activeMode = remember(networkHelper) {
+            runCatching { networkHelper.activeGlobalMode }.getOrDefault(networkMode)
+        }
+        val activeProxy = remember(networkHelper) {
+            runCatching { networkHelper.activeGlobalProxy }.getOrNull()
+        }
+        var testUrl by remember { mutableStateOf("https://raw.githubusercontent.com/") }
+        var testResult by remember { mutableStateOf<String?>(null) }
+        var testing by remember { mutableStateOf(false) }
+        val scope = rememberCoroutineScope()
         val incognitoTitle = MR.strings.pref_incognito_mode.localized()
         val dnsTitle = MR.strings.pref_dns_over_https.localized()
         val proxyTitle = MR.strings.desktop_general_proxy_title.localized()
@@ -92,13 +113,14 @@ class GeneralSettingsScreen : Screen {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
                 )
-                SwitchSettingsItem(
-                    title = MR.strings.desktop_general_proxy_enabled.localized(),
-                    subtitle = MR.strings.desktop_general_proxy_restart_summary.localized(),
-                    checked = proxyEnabled,
-                    onCheckedChange = { prefs.proxyEnabled.set(it) },
-                )
-                if (proxyEnabled) {
+                GlobalNetworkMode.entries.forEach { mode ->
+                    RadioSettingsItem(
+                        title = networkModeLabel(mode),
+                        selected = networkMode == mode,
+                        onClick = { prefs.globalNetworkMode.set(mode) },
+                    )
+                }
+                if (networkMode == GlobalNetworkMode.MANUAL) {
                     val proxyUrlValid = parseDesktopProxyUrl(proxyUrl) != null
                     OutlinedTextField(
                         value = proxyUrl,
@@ -118,6 +140,71 @@ class GeneralSettingsScreen : Screen {
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     )
+                }
+                val savedLabel = networkModeLabel(networkMode)
+                val activeLabel = networkModeLabel(activeMode) +
+                    activeProxy?.let { " (${it.type.name} ${it.host}:${it.port})" }.orEmpty()
+                Text(
+                    text = MR.strings.desktop_network_saved_policy.localized(Locale.getDefault(), savedLabel),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
+                Text(
+                    text = MR.strings.desktop_network_active_policy.localized(Locale.getDefault(), activeLabel),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
+                if (networkMode != activeMode || (networkMode == GlobalNetworkMode.MANUAL && prefs.proxyRuntimeConfig() != activeProxy)) {
+                    Text(
+                        text = MR.strings.desktop_network_restart_pending.localized(),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    )
+                }
+                val lastRoute = routeObservations.lastOrNull { it.scope == "mihon-global" }
+                Text(
+                    text = lastRoute?.let {
+                        val route = "${it.host} → ${it.proxyType.name}${it.proxyAddress?.let { address -> " $address" }.orEmpty()}"
+                        MR.strings.desktop_network_last_route.localized(Locale.getDefault(), route)
+                    } ?: MR.strings.desktop_network_no_route.localized(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
+                OutlinedTextField(
+                    value = testUrl,
+                    onValueChange = { testUrl = it },
+                    label = { Text(MR.strings.desktop_network_test_url.localized()) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+                OutlinedButton(
+                    enabled = !testing,
+                    onClick = {
+                        testing = true
+                        scope.launch {
+                            val result = networkHelper.testConnection(testUrl)
+                            testResult = if (result.successful) {
+                                val route = result.route?.let {
+                                    "${it.proxyType.name}${it.proxyAddress?.let { address -> " $address" }.orEmpty()}"
+                                } ?: "unknown"
+                                MR.strings.desktop_network_test_success.localized(
+                                    Locale.getDefault(),
+                                    result.statusCode ?: 0,
+                                    route,
+                                )
+                            } else {
+                                MR.strings.desktop_network_test_failed.localized(
+                                    Locale.getDefault(),
+                                    result.error.orEmpty(),
+                                )
+                            }
+                            testing = false
+                        }
+                    },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                ) {
+                    Text(MR.strings.desktop_network_test.localized())
+                }
+                testResult?.let {
+                    Text(it, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
                 }
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -149,4 +236,11 @@ class GeneralSettingsScreen : Screen {
             }
         }
     }
+}
+
+@Composable
+private fun networkModeLabel(mode: GlobalNetworkMode): String = when (mode) {
+    GlobalNetworkMode.SYSTEM -> MR.strings.desktop_network_mode_system.localized()
+    GlobalNetworkMode.DIRECT -> MR.strings.desktop_network_mode_direct.localized()
+    GlobalNetworkMode.MANUAL -> MR.strings.desktop_network_mode_manual.localized()
 }

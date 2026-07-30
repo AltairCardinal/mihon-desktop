@@ -403,7 +403,9 @@ private fun registerDesktopNetwork(
         cacheDir = paths.networkCacheDir,
         cookieStorageFile = paths.cookiesFile,
         dohProvider = dohProvider,
+        globalMode = appPreferences.globalNetworkMode.get(),
         proxyConfig = appPreferences.proxyRuntimeConfig(),
+        appPreferences = appPreferences,
         challengeManager = challengeManager,
     )
     authenticatedSessionCommitter = DesktopAuthenticatedSessionCommitter(networkHelper.cookieJar)
@@ -418,7 +420,7 @@ private fun registerDesktopNetwork(
     Injekt.addSingleton(networkHelper)
     Injekt.addSingleton<DesktopNetworkMaintenancePort>(networkHelper)
     Injekt.addSingleton(networkHelper.client)
-    Injekt.addSingleton(NetworkHelper(networkHelper.client))
+    Injekt.addSingleton(NetworkHelper(networkHelper.client, networkHelper::clientForSource))
     Injekt.addSingleton(
         Json {
             ignoreUnknownKeys = true
@@ -503,6 +505,7 @@ private fun registerDesktopExtension(
         artifactAuthenticator = artifactAuthenticator,
     )
     extensionManager.loadAll()
+    networkHelper.bindSourceOwner(extensionManager::getExtensionPackage)
     Injekt.addSingleton(extensionManager)
     Injekt.addSingleton(extensionApi)
     val appPreferences = Injekt.get<DesktopAppPreferences>()

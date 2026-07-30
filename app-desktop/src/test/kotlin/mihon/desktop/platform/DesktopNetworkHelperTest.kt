@@ -2,10 +2,13 @@ package mihon.desktop.platform
 
 import eu.kanade.tachiyomi.source.online.HttpSource
 import okhttp3.Cookie
+import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
@@ -20,9 +23,38 @@ import org.junit.jupiter.api.Test
 import java.io.File
 import java.net.InetSocketAddress
 import java.net.Proxy
+import java.net.ProxySelector
+import java.net.SocketAddress
+import java.net.URI
 import mihon.desktop.settings.DesktopProxyRuntimeConfig
+import mihon.desktop.settings.GlobalNetworkMode
+import mihon.desktop.settings.PluginNetworkMode
+import mihon.desktop.settings.DesktopAppPreferences
+import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import java.util.UUID
+import java.util.prefs.Preferences
 
 class DesktopNetworkHelperTest {
+
+    @Test
+    fun `system proxy selector enables JVM operating system proxy discovery`() {
+        val key = "java.net.useSystemProxies"
+        val previous = System.getProperty(key)
+        try {
+            System.clearProperty(key)
+
+            desktopSystemProxySelector()
+
+            assertEquals("true", System.getProperty(key))
+        } finally {
+            if (previous == null) {
+                System.clearProperty(key)
+            } else {
+                System.setProperty(key, previous)
+            }
+        }
+    }
 
     @Test
     fun `client is configured with sensible defaults`() {
@@ -55,12 +87,138 @@ class DesktopNetworkHelperTest {
     fun `client uses configured HTTP proxy for extension and source requests`() {
         val helper = DesktopNetworkHelper(
             cacheDir = createTempCacheDir(),
+            globalMode = GlobalNetworkMode.MANUAL,
             proxyConfig = DesktopProxyRuntimeConfig(Proxy.Type.HTTP, "127.0.0.1", 10808),
         )
 
         assertEquals(Proxy.Type.HTTP, helper.client.proxy?.type())
         assertEquals(InetSocketAddress("127.0.0.1", 10808), helper.client.proxy?.address())
         helper.close()
+    }
+
+    @Test
+    fun `direct mode explicitly bypasses every proxy selector`() {
+        val helper = DesktopNetworkHelper(
+            cacheDir = createTempCacheDir(),
+            globalMode = GlobalNetworkMode.DIRECT,
+            systemProxySelector = FixedProxySelector(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 9999))),
+        )
+
+        assertEquals(Proxy.NO_PROXY, helper.client.proxy)
+        helper.close()
+    }
+
+    @Test
+    fun `system mode delegates proxy choice per destination`() {
+        val selector = FixedProxySelector(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 7777)))
+        val helper = DesktopNetworkHelper(
+            cacheDir = createTempCacheDir(),
+            globalMode = GlobalNetworkMode.SYSTEM,
+            systemProxySelector = selector,
+        )
+
+        assertEquals(selector, helper.client.proxySelector)
+        assertEquals(null, helper.client.proxy)
+        assertEquals(
+            Proxy.Type.HTTP,
+            helper.client.proxySelector.select(URI("https://example.org")).single().type(),
+        )
+        helper.close()
+    }
+
+    @Test
+    fun `source client applies plugin override instead of global policy`() {
+        val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
+        val packageName = "pkg.manual"
+        preferences.pluginNetworkMode(packageName).set(PluginNetworkMode.MANUAL)
+        preferences.pluginProxyUrl(packageName).set("socks5://127.0.0.1:7890")
+        val helper = DesktopNetworkHelper(
+            cacheDir = createTempCacheDir(),
+            globalMode = GlobalNetworkMode.DIRECT,
+            appPreferences = preferences,
+        )
+        helper.bindSourceOwner { sourceId -> if (sourceId == 42L) packageName else null }
+
+        val pluginClient = helper.clientForSource(42L)
+        assertEquals(Proxy.Type.SOCKS, pluginClient.proxy?.type())
+        assertEquals(InetSocketAddress("127.0.0.1", 7890), pluginClient.proxy?.address())
+        assertEquals(Proxy.NO_PROXY, helper.client.proxy)
+        helper.close()
+    }
+
+    @Test
+    fun `managed plugin request observes exact host and actual route`() {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse(body = "ok"))
+            val preferenceNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
+            val preferences = DesktopAppPreferences(DesktopPreferenceStore(preferenceNode))
+            val packageName = "pkg.observed"
+            val helper = DesktopNetworkHelper(
+                cacheDir = createTempCacheDir(),
+                globalMode = GlobalNetworkMode.DIRECT,
+                appPreferences = preferences,
+            )
+            helper.bindSourceOwner { packageName }
+
+            helper.clientForSource(7L)
+                .newCall(Request.Builder().url(server.url("/secret/path?token=hidden")).build())
+                .execute()
+                .use { assertEquals(200, it.code) }
+
+            assertEquals(setOf(server.hostName), preferences.pluginObservedDomains(packageName).get())
+            val route = helper.routeObservations.value.last()
+            assertEquals(packageName, route.scope)
+            assertEquals(server.hostName, route.host)
+            assertEquals(Proxy.Type.DIRECT, route.proxyType)
+            helper.close()
+            preferenceNode.removeNode()
+        }
+    }
+
+    @Test
+    fun `managed plugin observes redirect target without storing URL details`() {
+        MockWebServer().use { redirectServer ->
+            MockWebServer().use { targetServer ->
+                redirectServer.start()
+                targetServer.start()
+                val targetUrl = targetServer.url("/redirected/secret?token=hidden")
+                    .newBuilder()
+                    .host("127.0.0.1")
+                    .build()
+                redirectServer.enqueue(
+                    MockResponse(
+                        code = 302,
+                        headers = Headers.headersOf("Location", targetUrl.toString()),
+                    ),
+                )
+                targetServer.enqueue(MockResponse(body = "ok"))
+                val preferenceNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
+                val preferences = DesktopAppPreferences(DesktopPreferenceStore(preferenceNode))
+                val helper = DesktopNetworkHelper(
+                    cacheDir = createTempCacheDir(),
+                    globalMode = GlobalNetworkMode.DIRECT,
+                    appPreferences = preferences,
+                )
+                helper.bindSourceOwner { "pkg.redirect" }
+
+                helper.clientForSource(7L)
+                    .newCall(Request.Builder().url(redirectServer.url("/start")).build())
+                    .execute()
+                    .use { assertEquals(200, it.code) }
+
+                assertEquals(
+                    setOf(redirectServer.hostName, "127.0.0.1"),
+                    preferences.pluginObservedDomains("pkg.redirect").get(),
+                )
+                assertEquals(
+                    setOf(redirectServer.hostName, "127.0.0.1"),
+                    helper.routeObservations.value.map { it.host }.toSet(),
+                )
+                helper.close()
+                preferenceNode.removeNode()
+            }
+        }
     }
 
     @Test
@@ -160,5 +318,10 @@ class DesktopNetworkHelperTest {
         override fun chapterPageParse(response: Response): SChapter = error("not used")
         override fun pageListParse(response: Response): List<Page> = error("not used")
         override fun imageUrlParse(response: Response): String = error("not used")
+    }
+
+    private class FixedProxySelector(private val proxy: Proxy) : ProxySelector() {
+        override fun select(uri: URI): List<Proxy> = listOf(proxy)
+        override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: java.io.IOException?) = Unit
     }
 }

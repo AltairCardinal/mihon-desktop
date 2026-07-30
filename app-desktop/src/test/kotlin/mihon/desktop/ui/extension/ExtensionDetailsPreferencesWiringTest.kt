@@ -37,6 +37,7 @@ import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.extension.ExtensionOrigin
 import mihon.desktop.extension.InstalledExtension
 import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.network.DesktopPluginNetworkSupport
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.DesktopSourceManager
 import mihon.desktop.ui.browse.SourceBrowseScreen
@@ -122,6 +123,8 @@ class ExtensionDetailsPreferencesWiringTest {
         )
         val network = mockk<DesktopNetworkHelper> {
             every { clearCookies(listOf(source)) } returns 2
+            every { pluginNetworkSupport(any()) } returns DesktopPluginNetworkSupport.FULL
+            every { pluginEffectiveRoute(any()) } returns "DIRECT"
         }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { extensionApi } returns api
@@ -129,6 +132,7 @@ class ExtensionDetailsPreferencesWiringTest {
             every { appPreferences } returns preferences
             every { this@mockk.sourceManager } returns sourceManager
             every { networkHelper } returns network
+            every { networkRoutingPort } returns network
             every { extensionCookiePort } returns network
         }
         val scene = ImageComposeScene(900, 1400, coroutineContext = coroutineContext) {}
@@ -204,6 +208,21 @@ class ExtensionDetailsPreferencesWiringTest {
             verify { network.clearCookies(listOf(source)) }
             renderUntil(scene, "cookie feedback") { nodes(scene).any { it.config.toString().contains(MR.strings.desktop_extension_cookies_cleared.localized(Locale.getDefault(), 2)) } }
             dismissSnackbar(scene)
+            scrollToIndex(scene, 5)
+            val networkRendered = nodes(scene).joinToString { it.config.toString() }
+            listOf(
+                MR.strings.desktop_plugin_network_title.localized(),
+                MR.strings.desktop_plugin_network_inherit.localized(),
+                MR.strings.desktop_network_mode_system.localized(),
+                MR.strings.desktop_network_mode_direct.localized(),
+                MR.strings.desktop_network_mode_manual.localized(),
+                MR.strings.desktop_plugin_network_effective.localized(Locale.getDefault(), "DIRECT"),
+                MR.strings.desktop_plugin_domains_declared.localized(),
+                MR.strings.desktop_plugin_domains_observed.localized(),
+                MR.strings.desktop_plugin_domains_copy_mihomo_suffix.localized(),
+                "source.example",
+            ).forEach { assertTrue(networkRendered.contains(it), "missing plugin network capability: $it") }
+            scrollToIndex(scene, 1)
             directoryResult = false
             click(scene, MR.strings.desktop_extension_open_folder.localized())
             renderUntil(scene, "directory failure feedback") { nodes(scene).any { it.config.toString().contains(MR.strings.desktop_extension_open_folder_failed.localized()) } }
@@ -213,6 +232,7 @@ class ExtensionDetailsPreferencesWiringTest {
             navigator?.pop()
             scene.render()
 
+            scrollToIndex(scene, 6)
             uninstall(scene)
             assertTrue(navigator?.lastItem is ExtensionDetailsScreen)
             renderUntil(scene, "uninstall failure") {
@@ -456,6 +476,12 @@ class ExtensionDetailsPreferencesWiringTest {
     private fun toggle(scene: ImageComposeScene, index: Int) {
         val node = nodes(scene).filter { it.config.contains(SemanticsProperties.ToggleableState) }[index]
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
+    }
+
+    private fun scrollToIndex(scene: ImageComposeScene, index: Int) {
+        val list = nodes(scene).first { it.config.contains(SemanticsActions.ScrollToIndex) }
+        assertTrue(requireNotNull(list.config[SemanticsActions.ScrollToIndex].action).invoke(index))
+        scene.render()
     }
 
     private fun sourceToggleState(scene: ImageComposeScene): ToggleableState =

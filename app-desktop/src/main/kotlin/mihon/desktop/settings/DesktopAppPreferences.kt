@@ -10,6 +10,7 @@ import tachiyomi.core.common.preference.PreferenceStore
 import java.net.URI
 import java.net.Proxy
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.prefs.Preferences
 
 typealias ThemeMode = eu.kanade.domain.ui.model.ThemeMode
@@ -18,6 +19,10 @@ enum class ReaderDefaultMode { PAGER, WEBTOON }
 
 /** DNS over HTTPS provider. [OFF] uses system DNS. */
 enum class DohProvider { OFF, GOOGLE, CLOUDFLARE, ADGUARD }
+
+enum class GlobalNetworkMode { SYSTEM, DIRECT, MANUAL }
+
+enum class PluginNetworkMode { INHERIT_GLOBAL, SYSTEM, DIRECT, MANUAL }
 
 data class FlareSolverrRuntimeConfig(val baseUrl: HttpUrl)
 
@@ -58,6 +63,10 @@ class DesktopAppPreferences(
     private val store: PreferenceStore,
     private val legacy: Preferences = Preferences.userRoot().node("mihon/desktop/app"),
 ) {
+    private val pluginNetworkModes = ConcurrentHashMap<String, Preference<PluginNetworkMode>>()
+    private val pluginProxyUrls = ConcurrentHashMap<String, Preference<String>>()
+    private val pluginObservedDomainSets = ConcurrentHashMap<String, Preference<Set<String>>>()
+    private val pluginDomainExportTargets = ConcurrentHashMap<String, Preference<String>>()
 
     private fun <T> Preference<T>.migrate(key: String, parser: (String) -> T?): Preference<T> =
         migrateFrom(legacy, key) { parser(legacy.get(it, null)) }
@@ -207,14 +216,67 @@ class DesktopAppPreferences(
         boolean(key = "network_proxy_enabled", default = false)
     }
 
+    /**
+     * Global network mode. The former boolean proxy switch is read exactly once as migration
+     * input, then this preference becomes the only behavioral authority.
+     */
+    val globalNetworkMode: Preference<GlobalNetworkMode> by lazy {
+        store.getObjectFromString(
+            key = "network_mode",
+            defaultValue = GlobalNetworkMode.SYSTEM,
+            serializer = { it.name },
+            deserializer = { GlobalNetworkMode.valueOf(it) },
+        ).also { current ->
+            if (!current.isSet()) {
+                current.set(
+                    if (proxyEnabled.isSet() && proxyEnabled.get()) {
+                        GlobalNetworkMode.MANUAL
+                    } else {
+                        GlobalNetworkMode.SYSTEM
+                    },
+                )
+            }
+        }
+    }
+
     val proxyUrl: Preference<String> by lazy {
         string(key = "network_proxy_url", default = "")
     }
 
     fun proxyRuntimeConfig(): DesktopProxyRuntimeConfig? {
-        if (!proxyEnabled.get()) return null
+        if (globalNetworkMode.get() != GlobalNetworkMode.MANUAL) return null
         return parseDesktopProxyUrl(proxyUrl.get())
     }
+
+    fun pluginNetworkMode(packageName: String): Preference<PluginNetworkMode> =
+        pluginNetworkModes.computeIfAbsent(packageName) {
+            store.getObjectFromString(
+                key = "network_plugin_mode_$packageName",
+                defaultValue = PluginNetworkMode.INHERIT_GLOBAL,
+                serializer = { it.name },
+                deserializer = { PluginNetworkMode.valueOf(it) },
+            )
+        }
+
+    fun pluginProxyUrl(packageName: String): Preference<String> =
+        pluginProxyUrls.computeIfAbsent(packageName) {
+            store.getString("network_plugin_proxy_url_$packageName", "")
+        }
+
+    fun pluginProxyRuntimeConfig(packageName: String): DesktopProxyRuntimeConfig? {
+        if (pluginNetworkMode(packageName).get() != PluginNetworkMode.MANUAL) return null
+        return parseDesktopProxyUrl(pluginProxyUrl(packageName).get())
+    }
+
+    fun pluginObservedDomains(packageName: String): Preference<Set<String>> =
+        pluginObservedDomainSets.computeIfAbsent(packageName) {
+            store.getStringSet("network_plugin_observed_domains_$packageName", emptySet())
+        }
+
+    fun pluginDomainExportTarget(packageName: String): Preference<String> =
+        pluginDomainExportTargets.computeIfAbsent(packageName) {
+            store.getString("network_plugin_domain_export_target_$packageName", "PROXY")
+        }
 
     val flareSolverrEnabled: Preference<Boolean> by lazy {
         boolean(key = "flare_solverr_enabled", default = false)

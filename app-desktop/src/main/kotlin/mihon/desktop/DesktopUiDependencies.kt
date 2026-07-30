@@ -26,6 +26,7 @@ import mihon.desktop.network.DesktopChallengeBrowserLoginBridge
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.network.DesktopExtensionCookiePort
 import mihon.desktop.network.DesktopNetworkMaintenancePort
+import mihon.desktop.network.DesktopNetworkRoutingPort
 import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopDeepLinkHandler
@@ -116,6 +117,7 @@ data class DesktopUiDependencies(
     val batchMigrationController: DesktopBatchMigrationController,
     val migrateManga: DesktopMigrateMangaUseCase,
     val networkHelper: DesktopNetworkHelper,
+    val networkRoutingPort: DesktopNetworkRoutingPort = networkHelper,
     val networkMaintenancePort: DesktopNetworkMaintenancePort = networkHelper,
     val extensionCookiePort: DesktopExtensionCookiePort = networkHelper,
     val notificationService: DesktopNotificationService,

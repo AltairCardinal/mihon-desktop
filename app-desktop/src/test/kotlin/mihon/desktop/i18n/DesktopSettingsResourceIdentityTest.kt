@@ -42,6 +42,7 @@ import mihon.desktop.platform.CredentialBackend
 import mihon.desktop.platform.DesktopCredentialStore
 import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.platform.DesktopLocaleAdapter
+import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.OperatingSystem
 import mihon.desktop.platform.PlatformCredentialUnavailableException
 import mihon.desktop.network.DesktopCloudflareCookieImportResult
@@ -494,11 +495,18 @@ class DesktopSettingsResourceIdentityTest {
             every { queue } returns MutableStateFlow(listOf(mockk<DownloadItem>(), mockk<DownloadItem>()))
         }
         val emptyDownloads = mockk<DesktopDownloadManager> { every { queue } returns MutableStateFlow(emptyList()) }
+        val network = mockk<DesktopNetworkHelper> {
+            every { routeObservations } returns MutableStateFlow(emptyList())
+            every { activeGlobalMode } returns prefs.globalNetworkMode.get()
+            every { activeGlobalProxy } returns prefs.proxyRuntimeConfig()
+        }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns prefs
             every { this@mockk.localeAdapter } returns localeAdapter
             every { downloadManager } returns downloads
             every { downloadQueuePort } returns downloads
+            every { networkHelper } returns network
+            every { networkRoutingPort } returns network
         }
         val emptyDependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns prefs

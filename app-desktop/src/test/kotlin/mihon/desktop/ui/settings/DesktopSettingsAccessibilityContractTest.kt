@@ -19,8 +19,9 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
-import mihon.desktop.platform.DesktopLocaleAdapter
 import mihon.desktop.download.DesktopDownloadManager
+import mihon.desktop.platform.DesktopLocaleAdapter
+import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.settings.DesktopAppPreferences
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -108,11 +109,18 @@ class DesktopSettingsAccessibilityContractTest {
         block: suspend (ImageComposeScene) -> Unit,
     ) {
         val downloads = mockk<DesktopDownloadManager> { every { queue } returns MutableStateFlow(emptyList()) }
+        val network = mockk<DesktopNetworkHelper> {
+            every { routeObservations } returns MutableStateFlow(emptyList())
+            every { activeGlobalMode } returns preferences.globalNetworkMode.get()
+            every { activeGlobalProxy } returns preferences.proxyRuntimeConfig()
+        }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns preferences
             every { localeAdapter } returns DesktopLocaleAdapter(preferences.appLanguage)
             every { downloadManager } returns downloads
             every { downloadQueuePort } returns downloads
+            every { networkHelper } returns network
+            every { networkRoutingPort } returns network
         }
         val previousLocale = Locale.getDefault()
         val scene = ImageComposeScene(1_000, height, coroutineContext = kotlinx.coroutines.currentCoroutineContext()) {}

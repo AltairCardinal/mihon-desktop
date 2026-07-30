@@ -438,6 +438,7 @@ tasks.register<Test>("task5ParityVerification") {
 compose.desktop {
     application {
         mainClass = "mihon.desktop.MainKt"
+        jvmArgs += listOf("-Djava.net.useSystemProxies=true")
 
         nativeDistributions {
             // Redirect output to local APFS volume — codesign fails on exFAT

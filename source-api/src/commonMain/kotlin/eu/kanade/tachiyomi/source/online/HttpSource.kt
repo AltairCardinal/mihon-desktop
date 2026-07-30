@@ -65,7 +65,7 @@ abstract class HttpSource : CatalogueSource {
      * Default network client for doing requests.
      */
     open val client: OkHttpClient
-        get() = network.client
+        get() = network.clientForSource(id)
 
     /**
      * Generates a unique ID for the source based on the provided [name], [lang] and

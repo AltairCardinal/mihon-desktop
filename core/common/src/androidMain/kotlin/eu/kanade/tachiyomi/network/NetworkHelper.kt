@@ -68,6 +68,8 @@ class NetworkHelper(
         )
         .build()
 
+    fun clientForSource(sourceId: Long): OkHttpClient = client
+
     /**
      * @deprecated Since extension-lib 1.5
      */

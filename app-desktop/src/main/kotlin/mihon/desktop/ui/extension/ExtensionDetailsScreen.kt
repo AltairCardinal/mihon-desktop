@@ -25,8 +25,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SnackbarHost
@@ -45,9 +47,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -59,8 +63,18 @@ import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.LocalExtensionScreenModel
 import mihon.desktop.extension.ExtensionOrigin
+import mihon.desktop.extension.InstalledExtension
+import mihon.desktop.network.PluginDomainExportFormat
+import mihon.desktop.network.exportPluginDomains
+import mihon.desktop.network.normalizePluginHost
 import mihon.desktop.platform.DesktopUrlOpener
+import mihon.desktop.network.DesktopNetworkRoutingPort
+import mihon.desktop.network.DesktopPluginNetworkSupport
+import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.settings.PluginNetworkMode
 import mihon.desktop.ui.settings.DesktopDirectoryOpener
+import mihon.desktop.ui.settings.RadioSettingsItem
+import mihon.desktop.settings.parseDesktopProxyUrl
 import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.i18n.MR
 import java.io.File
@@ -303,6 +317,15 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
                     }
                 }
                 item {
+                    PluginNetworkCard(
+                        extension = extension,
+                        sources = extension.sources,
+                        appPreferences = appPreferences,
+                        networkHelper = dependencies.networkRoutingPort,
+                        snackbar = snackbar,
+                    )
+                }
+                item {
                     Button(onClick = { confirmUninstall = true }) {
                         Icon(Icons.Default.Delete, contentDescription = null)
                         Text(MR.strings.ext_uninstall.localized(), Modifier.padding(start = 6.dp))
@@ -339,6 +362,205 @@ data class ExtensionDetailsScreen(val jarPath: String) : Screen {
             }
         }
     }
+}
+
+@Composable
+private fun PluginNetworkCard(
+    extension: InstalledExtension,
+    sources: List<eu.kanade.tachiyomi.source.Source>,
+    appPreferences: DesktopAppPreferences,
+    networkHelper: DesktopNetworkRoutingPort,
+    snackbar: SnackbarHostState,
+) {
+    val packageName = extension.pkgName
+    val modePreference = remember(packageName) { appPreferences.pluginNetworkMode(packageName) }
+    val proxyPreference = remember(packageName) { appPreferences.pluginProxyUrl(packageName) }
+    val observedPreference = remember(packageName) { appPreferences.pluginObservedDomains(packageName) }
+    val exportTargetPreference = remember(packageName) { appPreferences.pluginDomainExportTarget(packageName) }
+    val mode by modePreference.changes().collectAsState(initial = modePreference.get())
+    val proxyUrl by proxyPreference.changes().collectAsState(initial = proxyPreference.get())
+    val observedDomains by observedPreference.changes().collectAsState(initial = observedPreference.get())
+    val exportTarget by exportTargetPreference.changes().collectAsState(initial = exportTargetPreference.get())
+    val declaredDomains = remember(sources) {
+        sources.filterIsInstance<HttpSource>().mapNotNull { normalizePluginHost(it.baseUrl) }.toSet()
+    }
+    val domains = (declaredDomains + observedDomains).sorted()
+    val support = remember(sources, mode, proxyUrl) { networkHelper.pluginNetworkSupport(sources) }
+    val clipboard = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+    var testUrl by remember {
+        mutableStateOf(sources.filterIsInstance<HttpSource>().firstOrNull()?.baseUrl.orEmpty())
+    }
+    var testResult by remember { mutableStateOf<String?>(null) }
+
+    fun copy(format: PluginDomainExportFormat, formatName: String) {
+        if (domains.isEmpty()) return
+        val target = when (format) {
+            PluginDomainExportFormat.SING_BOX -> exportTarget.ifBlank { "proxy" }
+            else -> exportTarget.ifBlank { "PROXY" }
+        }
+        clipboard.setText(AnnotatedString(exportPluginDomains(domains, format, target)))
+        scope.launch {
+            snackbar.showSnackbar(
+                MR.strings.desktop_plugin_domains_copied.localized(
+                    Locale.getDefault(),
+                    domains.size,
+                    formatName,
+                ),
+            )
+        }
+    }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(MR.strings.desktop_plugin_network_title.localized(), style = MaterialTheme.typography.titleMedium)
+            Text(
+                MR.strings.desktop_plugin_network_summary.localized(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            PluginNetworkMode.entries.forEach { candidate ->
+                RadioSettingsItem(
+                    title = pluginNetworkModeLabel(candidate),
+                    selected = mode == candidate,
+                    onClick = { modePreference.set(candidate) },
+                )
+            }
+            if (mode == PluginNetworkMode.MANUAL) {
+                val valid = parseDesktopProxyUrl(proxyUrl) != null
+                OutlinedTextField(
+                    value = proxyUrl,
+                    onValueChange = { proxyPreference.set(it) },
+                    label = { Text(MR.strings.desktop_general_proxy_url.localized()) },
+                    supportingText = {
+                        Text(
+                            if (valid) {
+                                MR.strings.desktop_general_proxy_supported_types.localized()
+                            } else {
+                                MR.strings.desktop_general_proxy_invalid.localized()
+                            },
+                        )
+                    },
+                    isError = !valid,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Text(
+                when (support) {
+                    DesktopPluginNetworkSupport.FULL -> MR.strings.desktop_plugin_network_support_full.localized()
+                    DesktopPluginNetworkSupport.PARTIAL -> MR.strings.desktop_plugin_network_support_partial.localized()
+                    DesktopPluginNetworkSupport.UNKNOWN -> MR.strings.desktop_plugin_network_support_unknown.localized()
+                },
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                MR.strings.desktop_plugin_network_effective.localized(
+                    Locale.getDefault(),
+                    networkHelper.pluginEffectiveRoute(packageName),
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = testUrl,
+                onValueChange = { testUrl = it },
+                label = { Text(MR.strings.desktop_network_test_url.localized()) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedButton(
+                onClick = {
+                    val sourceId = sources.firstOrNull()?.id
+                    scope.launch {
+                        val result = networkHelper.testConnection(testUrl, sourceId)
+                        testResult = if (result.successful) {
+                            val route = result.route?.let {
+                                "${it.proxyType.name}${it.proxyAddress?.let { address -> " $address" }.orEmpty()}"
+                            } ?: "unknown"
+                            MR.strings.desktop_network_test_success.localized(
+                                Locale.getDefault(),
+                                result.statusCode ?: 0,
+                                route,
+                            )
+                        } else {
+                            MR.strings.desktop_network_test_failed.localized(
+                                Locale.getDefault(),
+                                result.error.orEmpty(),
+                            )
+                        }
+                    }
+                },
+                enabled = testUrl.isNotBlank(),
+            ) {
+                Text(MR.strings.desktop_network_test.localized())
+            }
+            testResult?.let { Text(it) }
+
+            HorizontalDivider()
+            Text(MR.strings.desktop_plugin_domains_title.localized(), style = MaterialTheme.typography.titleSmall)
+            Text(
+                MR.strings.desktop_plugin_domains_notice.localized(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (domains.isEmpty()) {
+                Text(MR.strings.desktop_plugin_domains_empty.localized())
+            } else {
+                Text(
+                    MR.strings.desktop_plugin_domains_declared.localized(),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                if (declaredDomains.isEmpty()) {
+                    Text(MR.strings.desktop_plugin_domains_none.localized())
+                } else {
+                    declaredDomains.sorted().forEach { Text(it) }
+                }
+                Text(
+                    MR.strings.desktop_plugin_domains_observed.localized(),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                if (observedDomains.isEmpty()) {
+                    Text(MR.strings.desktop_plugin_domains_none.localized())
+                } else {
+                    observedDomains.sorted().forEach { Text(it) }
+                }
+                OutlinedTextField(
+                    value = exportTarget,
+                    onValueChange = { exportTargetPreference.set(it) },
+                    label = { Text(MR.strings.desktop_plugin_domains_export_target.localized()) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedButton(onClick = { copy(PluginDomainExportFormat.PLAIN, "domain") }) {
+                    Text(MR.strings.desktop_plugin_domains_copy_plain.localized())
+                }
+                OutlinedButton(onClick = { copy(PluginDomainExportFormat.MIHOMO_DOMAIN, "Mihomo") }) {
+                    Text(MR.strings.desktop_plugin_domains_copy_mihomo.localized())
+                }
+                OutlinedButton(onClick = { copy(PluginDomainExportFormat.MIHOMO_SUFFIX, "Mihomo DOMAIN-SUFFIX") }) {
+                    Text(MR.strings.desktop_plugin_domains_copy_mihomo_suffix.localized())
+                }
+                OutlinedButton(onClick = { copy(PluginDomainExportFormat.SING_BOX, "sing-box") }) {
+                    Text(MR.strings.desktop_plugin_domains_copy_sing_box.localized())
+                }
+                OutlinedButton(onClick = { copy(PluginDomainExportFormat.XRAY, "v2rayN/Xray") }) {
+                    Text(MR.strings.desktop_plugin_domains_copy_xray.localized())
+                }
+            }
+            OutlinedButton(
+                onClick = { observedPreference.delete() },
+                enabled = observedDomains.isNotEmpty(),
+            ) {
+                Text(MR.strings.desktop_plugin_domains_clear.localized())
+            }
+        }
+    }
+}
+
+@Composable
+private fun pluginNetworkModeLabel(mode: PluginNetworkMode): String = when (mode) {
+    PluginNetworkMode.INHERIT_GLOBAL -> MR.strings.desktop_plugin_network_inherit.localized()
+    PluginNetworkMode.SYSTEM -> MR.strings.desktop_network_mode_system.localized()
+    PluginNetworkMode.DIRECT -> MR.strings.desktop_network_mode_direct.localized()
+    PluginNetworkMode.MANUAL -> MR.strings.desktop_network_mode_manual.localized()
 }
 
 internal fun extensionVersionCopy(versionName: String, locale: Locale): String =

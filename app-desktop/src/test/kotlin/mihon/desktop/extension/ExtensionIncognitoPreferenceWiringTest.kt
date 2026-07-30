@@ -92,12 +92,14 @@ class ExtensionIncognitoPreferenceWiringTest {
             ExtensionPresentationOptions(false, setOf("en")),
         )
         model.refresh().join()
+        val network = mockk<DesktopNetworkHelper>(relaxed = true)
         val dependencies = mockk<DesktopUiDependencies> {
             every { extensionManager } returns manager
             every { appPreferences } returns preferences
             every { sourceManager } returns DesktopSourceManager(manager, preferences, emptyList())
             every { extensionApi } returns api
-            every { networkHelper } returns mockk<DesktopNetworkHelper>(relaxed = true)
+            every { networkHelper } returns network
+            every { networkRoutingPort } returns network
         }
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
         val previous = Injekt

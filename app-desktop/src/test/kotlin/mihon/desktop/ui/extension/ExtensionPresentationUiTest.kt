@@ -34,6 +34,8 @@ import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionInstallStart
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.extension.InstalledExtension
+import mihon.desktop.network.DesktopNetworkRoutingPort
+import mihon.desktop.network.DesktopPluginNetworkSupport
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionCatalogResult
@@ -80,6 +82,7 @@ class ExtensionPresentationUiTest {
             every { appPreferences } returns DesktopAppPreferences(
                 DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
             )
+            every { networkRoutingPort } returns testNetworkRoutingPort()
         }
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
         var navigator: Navigator? = null
@@ -190,6 +193,7 @@ class ExtensionPresentationUiTest {
             every { appPreferences } returns DesktopAppPreferences(
                 DesktopPreferenceStore(Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")),
             )
+            every { networkRoutingPort } returns testNetworkRoutingPort()
         }
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
         fun mount(path: String) = scene.setContent {
@@ -585,6 +589,11 @@ class ExtensionPresentationUiTest {
     }
 
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+    private fun testNetworkRoutingPort() = mockk<DesktopNetworkRoutingPort> {
+        every { routeObservations } returns MutableStateFlow(emptyList())
+        every { pluginNetworkSupport(any()) } returns DesktopPluginNetworkSupport.UNKNOWN
+        every { pluginEffectiveRoute(any()) } returns "UNKNOWN"
+    }
     private fun source(id: Long, lang: String, name: String) = DesktopAvailableSource(id, lang, name, "https://$id")
     private fun extension(name: String, pkg: String, sources: List<DesktopAvailableSource>) = DesktopAvailableExtension(
         name, pkg, "1.4.0", 2, 1.5, "en", false, "https://repo/$pkg.jar", "", "https://repo", sources = sources,
