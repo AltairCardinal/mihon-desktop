@@ -95,7 +95,7 @@ internal fun actionHistoryParams(
 private fun jsonText(value: JsonObject) = Json.encodeToString(JsonObject.serializer(), value)
 
 private val nestedScreenActions = mapOf(
-    "SettingsScreen" to "open_general_settings",
+    "SettingsScreen" to "open_settings",
     "GeneralSettingsScreen" to "open_general_settings",
     "DownloadSettingsScreen" to "open_download_settings",
     "BackupSettingsScreen" to "open_backup_settings",

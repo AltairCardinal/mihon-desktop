@@ -9,6 +9,7 @@ import mihon.desktop.ui.settings.LicenseDetailScreen
 import mihon.desktop.ui.settings.LicenseListScreen
 import mihon.desktop.ui.settings.MoreRootScreen
 import mihon.desktop.ui.settings.ReaderSettingsScreen
+import mihon.desktop.ui.settings.SettingsRootScreen
 import mihon.desktop.ui.settings.licenseDetailDestination
 import mihon.desktop.ui.settings.licenseListDestination
 import mihon.domain.license.model.DependencyNotice
@@ -73,6 +74,7 @@ class PhaseFNavigationContractTest {
     fun `all settings screens can be instantiated without DI`() {
         assertDoesNotThrow {
             MoreRootScreen()
+            SettingsRootScreen()
             AppearanceSettingsScreen()
             ReaderSettingsScreen()
             LibrarySettingsScreen()

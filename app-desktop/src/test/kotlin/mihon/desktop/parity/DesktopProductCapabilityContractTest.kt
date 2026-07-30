@@ -810,7 +810,7 @@ class DesktopProductCapabilityContractTest {
                         setOf(
                             "catalog delegates search to shared policy",
                             "search has feedback focus submission keys and result navigation",
-                            "More search entry opens the production search screen",
+                            "More settings entry opens the settings directory",
                         ),
                 ),
             91 to
@@ -1126,7 +1126,7 @@ class DesktopProductCapabilityContractTest {
     )
     private val exactSettingsDesktop = mapOf(
         88 to setOf("app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SettingsComposables.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/GeneralSettingsScreen.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AppearanceSettingsScreen.kt"),
-        90 to setOf("app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DesktopSettingsCatalog.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SettingsSearchScreen.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DesktopSettingsAnchor.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/MoreRootScreen.kt"),
+        90 to setOf("app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DesktopSettingsCatalog.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SettingsSearchScreen.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SettingsRootScreen.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DesktopSettingsAnchor.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/MoreRootScreen.kt"),
         91 to setOf("app-desktop/src/main/kotlin/mihon/desktop/settings/DesktopAppPreferences.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/theme/DesktopTheme.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AppearanceSettingsScreen.kt"),
         94 to setOf("app-desktop/src/main/kotlin/mihon/desktop/license/DesktopDependencyNoticeProvider.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/AboutScreen.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LicenseListScreen.kt", "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/LicenseDetailScreen.kt", "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt"),
     )
@@ -1138,7 +1138,7 @@ class DesktopProductCapabilityContractTest {
         90 to mapOf(
             "domain/src/commonTest/kotlin/mihon/domain/settings/SettingsSearchPolicyTest.kt" to setOf("fixed main excludes disabled blank info and disabled or blank groups"),
             "app/src/test/java/eu/kanade/presentation/more/settings/screen/SettingsSearchConsumerBehaviorTest.kt" to setOf("real Android preference projection is searched by shared policy"),
-            "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSearchWiringTest.kt" to setOf("catalog delegates search to shared policy", "search has feedback focus submission keys and result navigation", "More search entry opens the production search screen"),
+            "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsSearchWiringTest.kt" to setOf("catalog delegates search to shared policy", "search has feedback focus submission keys and result navigation", "More settings entry opens the settings directory"),
         ),
         91 to mapOf(
             "presentation-theme/src/commonTest/kotlin/eu/kanade/presentation/theme/colorscheme/AppThemeColorSchemeTest.kt" to setOf("every static app theme selects its fixed main palette", "amoled only changes dark static colors and preserves fixed containers"),

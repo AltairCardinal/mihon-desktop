@@ -37,14 +37,25 @@ class DesktopSettingsAccessibilityContractTest {
     fun `More entries expose one labeled button action without decorative icon semantics`() = runBlocking {
         withScene(MoreRootScreen(), height = 2_000) { scene ->
             val labels = listOf(
-                MR.strings.action_search_settings.localized(Locale.US),
-                MR.strings.pref_category_general.localized(Locale.US),
-                MR.strings.pref_category_appearance.localized(Locale.US),
+                MR.strings.label_download_queue.localized(Locale.US),
+                MR.strings.label_extensions.localized(Locale.US),
+                MR.strings.label_migration.localized(Locale.US),
+                MR.strings.label_stats.localized(Locale.US),
+                MR.strings.label_settings.localized(Locale.US),
                 MR.strings.pref_category_about.localized(Locale.US),
             )
             labels.forEach { label ->
                 val entry = semanticBranch(scene, label, Role.Button)
                 assertEquals(1, flatten(entry).count { it.config.contains(SemanticsActions.OnClick) }, label)
+            }
+            val removedSettings = listOf(
+                MR.strings.action_search_settings.localized(Locale.US),
+                MR.strings.pref_category_general.localized(Locale.US),
+                MR.strings.pref_category_appearance.localized(Locale.US),
+                MR.strings.pref_category_advanced.localized(Locale.US),
+            )
+            removedSettings.forEach { label ->
+                assertTrue(nodes(scene, true).none { label in subtreeText(it) }, label)
             }
             assertTrue(
                 nodes(scene, true).none {

@@ -16,10 +16,12 @@ import kotlinx.coroutines.runBlocking
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.download.DesktopDownloadManager
+import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.extension.ExtensionListScreen
 import mihon.desktop.ui.settings.MoreRootScreen
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.i18n.MR
 import java.util.Locale
 
@@ -31,6 +33,7 @@ class MoreSourceExtensionRenderedCopyTest {
         val dependencies = mockk<DesktopUiDependencies> {
             every { downloadManager } returns downloads
             every { downloadQueuePort } returns downloads
+            every { appPreferences } returns DesktopAppPreferences(InMemoryPreferenceStore())
         }
         val previousLocale = Locale.getDefault()
         try {
@@ -52,10 +55,9 @@ class MoreSourceExtensionRenderedCopyTest {
                     val expected = listOf(
                         MR.strings.label_extensions.localized(locale),
                         MR.strings.desktop_more_extensions_summary.localized(locale),
-                        MR.strings.label_extension_repos.localized(locale),
-                        MR.strings.desktop_more_extension_repos_summary.localized(locale),
                     )
                     expected.forEach { assertTrue(it in texts(scene), "Missing '$it': ${texts(scene)}") }
+                    assertTrue(MR.strings.label_extension_repos.localized(locale) !in texts(scene))
                     click(scene, MR.strings.label_extensions.localized(locale))
                     assertTrue(navigator.lastItem is ExtensionListScreen)
                 } finally {

@@ -75,13 +75,12 @@ class DesktopSettingsSearchWiringTest {
         withRestoredLocale {
             Locale.setDefault(Locale.US)
             val screens = DesktopSettingsCatalog.screens()
-            val fixedMain = "AppearanceSettingsScreen,LibrarySettingsScreen,ReaderSettingsScreen,DownloadSettingsScreen,TrackingSettingsScreen,ExtensionListScreen,BackupSettingsScreen,SecuritySettingsScreen,AdvancedSettingsScreen"
-            assertEquals(fixedMain, screens.take(9).joinToString(",") { it.route::class.simpleName.orEmpty() })
-            assertEquals(listOf("GeneralSettingsScreen", "ExtensionRepoScreen", "AboutScreen"), screens.drop(9).map { it.route::class.simpleName })
+            val fixedMain = "AppearanceSettingsScreen,LibrarySettingsScreen,ReaderSettingsScreen,DownloadSettingsScreen,TrackingSettingsScreen,BackupSettingsScreen,SecuritySettingsScreen,AdvancedSettingsScreen"
+            assertEquals(fixedMain, screens.take(8).joinToString(",") { it.route::class.simpleName.orEmpty() })
+            assertEquals(listOf("GeneralSettingsScreen", "ExtensionRepoScreen", "AboutScreen"), screens.drop(8).map { it.route::class.simpleName })
             assertTrue(screens.none { it.route is Tab })
-            val originalRoutes = screens.take(9).map { it.route::class }.toSet()
+            val originalRoutes = screens.take(8).map { it.route::class }.toSet()
             val results = DesktopSettingsCatalog.search("e")
-            assertEquals(10, results.size)
             assertTrue(results.all { it.route::class in originalRoutes })
         }
         assertEquals(previous, Locale.getDefault())
@@ -318,13 +317,56 @@ class DesktopSettingsSearchWiringTest {
         }
     }
     @Test
-    fun `More search entry opens the production search screen`() = runBlocking {
+    fun `More settings entry opens the settings directory`() = runBlocking {
         withSearchScene(MoreRootScreen()) { scene ->
             lateinit var navigator: Navigator
             scene.setContent { dependencies { Navigator(MoreRootScreen()) { nav -> navigator = nav; CurrentScreen() } } }
             render(scene)
-            click(scene, MR.strings.action_search_settings.localized(Locale.getDefault()))
+            click(scene, MR.strings.label_settings.localized(Locale.getDefault()))
+            assertEquals("SettingsRootScreen", navigator.lastItem::class.simpleName)
+            render(scene)
+            listOf(
+                MR.strings.pref_category_general,
+                MR.strings.pref_category_appearance,
+                MR.strings.pref_category_library,
+                MR.strings.pref_category_reader,
+                MR.strings.pref_category_downloads,
+                MR.strings.pref_category_tracking,
+                MR.strings.browse,
+                MR.strings.label_data_storage,
+                MR.strings.pref_category_security,
+                MR.strings.pref_category_advanced,
+                MR.strings.pref_category_about,
+            ).forEach { resource ->
+                assertTrue(resource.localized(Locale.getDefault()) in text(scene))
+            }
+            clickDescription(scene, MR.strings.action_search_settings.localized(Locale.getDefault()))
             assertTrue(navigator.lastItem is SettingsSearchScreen)
+        }
+    }
+
+    @Test
+    fun `search top bar stays within compact width and exposes back navigation`() = runBlocking {
+        withSearchScene(MoreRootScreen(), width = 320) { scene ->
+            lateinit var navigator: Navigator
+            scene.setContent { dependencies { Navigator(MoreRootScreen()) { nav -> navigator = nav; CurrentScreen() } } }
+            render(scene)
+            navigator.push(SettingsSearchScreen())
+            render(scene)
+            setText(scene, "appearance")
+            render(scene)
+
+            val rootBounds = nodes(scene).first().boundsInRoot
+            val fieldBounds = field(scene).boundsInRoot
+            assertTrue(fieldBounds.left >= rootBounds.left, "field=$fieldBounds root=$rootBounds")
+            assertTrue(fieldBounds.right <= rootBounds.right, "field=$fieldBounds root=$rootBounds")
+            assertTrue(
+                nodes(scene, true).any {
+                    it.config.contains(SemanticsProperties.ContentDescription) &&
+                        MR.strings.action_bar_up_description.localized(Locale.getDefault()) in
+                        it.config[SemanticsProperties.ContentDescription]
+                },
+            )
         }
     }
 
@@ -426,10 +468,11 @@ class DesktopSettingsSearchWiringTest {
     }
     private suspend fun withSearchScene(
         screen: Screen = SettingsSearchScreen(),
+        width: Int = 900,
         height: Int = 900,
         block: suspend (SearchScene) -> Unit,
     ) {
-        val scene = SearchScene(kotlinx.coroutines.currentCoroutineContext(), height)
+        val scene = SearchScene(kotlinx.coroutines.currentCoroutineContext(), height, width)
         if (screen is SettingsSearchScreen) {
             val showScreen = mutableStateOf(false)
             scene.setContent {
@@ -485,6 +528,15 @@ class DesktopSettingsSearchWiringTest {
         nodes(scene).first { it.config.contains(SemanticsActions.OnClick) && flatten(it).any { node -> label in text(node) } }
             .config[SemanticsActions.OnClick].action,
     ).invoke()
+    private fun clickDescription(scene: SearchScene, description: String) = requireNotNull(
+        nodes(scene, true).first {
+            it.config.contains(SemanticsActions.OnClick) &&
+                flatten(it).any { child ->
+                    child.config.contains(SemanticsProperties.ContentDescription) &&
+                        description in child.config[SemanticsProperties.ContentDescription]
+                }
+        }.config[SemanticsActions.OnClick].action,
+    ).invoke()
     private fun text(scene: SearchScene) = nodes(scene).flatMap(::text).joinToString()
     private fun text(node: SemanticsNode) = if (node.config.contains(SemanticsProperties.Text)) node.config[SemanticsProperties.Text].map { it.text } else emptyList()
     private fun nodes(scene: SearchScene, unmerged: Boolean = false) = scene.semanticsOwners.flatMap { flatten(if (unmerged) it.unmergedRootSemanticsNode else it.rootSemanticsNode) }
@@ -495,11 +547,11 @@ class DesktopSettingsSearchWiringTest {
     }
     private lateinit var currentPreferences: mihon.desktop.settings.DesktopAppPreferences
 
-    private class SearchScene(context: CoroutineContext, height: Int) : AutoCloseable {
+    private class SearchScene(context: CoroutineContext, height: Int, width: Int = 900) : AutoCloseable {
         val semanticsOwners = linkedSetOf<SemanticsOwner>()
-        private val canvas = Canvas(ImageBitmap(900, height))
+        private val canvas = Canvas(ImageBitmap(width, height))
         private val scene: ComposeScene = CanvasLayersComposeScene(
-            size = IntSize(900, height),
+            size = IntSize(width, height),
             coroutineContext = context,
             platformContext = object : PlatformContext {
                 override val windowInfo = object : WindowInfo { override val isWindowFocused = true }

@@ -2,7 +2,6 @@ package mihon.desktop.ui.settings
 
 import cafe.adriel.voyager.core.screen.Screen
 import dev.icerock.moko.resources.StringResource
-import mihon.desktop.ui.extension.extensionListDestination
 import mihon.desktop.ui.tracking.TrackingSettingsScreen
 import mihon.domain.settings.SearchablePreference
 import mihon.domain.settings.SearchableSettingsScreen
@@ -39,12 +38,11 @@ object DesktopSettingsCatalog {
         screen(ReaderSettingsScreen(), MR.strings.pref_category_reader, MR.strings.pref_viewer_type, MR.strings.desktop_reader_pager_mode),
         screen(DownloadSettingsScreen(), MR.strings.pref_category_downloads, DesktopSettingsAnchorResources.downloadNew, DesktopSettingsAnchorResources.downloadAsCbz),
         screen(TrackingSettingsScreen(), MR.strings.pref_category_tracking, DesktopSettingsAnchorResources.trackingAutoSync, DesktopSettingsAnchorResources.trackingLogin),
-        screen(extensionListDestination(), MR.strings.label_extensions, MR.strings.label_extensions, MR.strings.label_extension_repos),
         screen(BackupSettingsScreen(), MR.strings.label_backup, DesktopSettingsAnchorResources.createBackup, DesktopSettingsAnchorResources.restoreBackup),
         screen(SecuritySettingsScreen(), MR.strings.pref_category_security, MR.strings.desktop_security_lock_enabled, DesktopSettingsAnchorResources.securitySecureScreen),
         screen(AdvancedSettingsScreen(), MR.strings.pref_category_advanced, MR.strings.pref_clear_cookies, MR.strings.desktop_advanced_clear_network_cache, DesktopSettingsAnchorResources.advancedCrashLog),
         screen(GeneralSettingsScreen(), MR.strings.pref_category_general, MR.strings.pref_incognito_mode, MR.strings.pref_dns_over_https),
-        screen(ExtensionRepoScreen(), MR.strings.label_extension_repos, DesktopSettingsAnchorResources.extensionRepoAdd, DesktopSettingsAnchorResources.extensionRepoDelete),
+        screen(ExtensionRepoScreen(), MR.strings.browse, DesktopSettingsAnchorResources.extensionRepoAdd, DesktopSettingsAnchorResources.extensionRepoDelete),
         screen(AboutScreen(), MR.strings.pref_category_about, MR.strings.check_for_updates, DesktopSettingsAnchorResources.aboutAppData),
     )
 

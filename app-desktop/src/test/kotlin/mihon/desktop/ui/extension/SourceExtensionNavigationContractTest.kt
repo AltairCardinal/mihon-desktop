@@ -30,6 +30,7 @@ import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.extension.InstalledExtension
+import mihon.desktop.settings.DesktopAppPreferences
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import mihon.desktop.ui.browse.SourceBrowseScreen
@@ -47,6 +48,7 @@ import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
@@ -112,7 +114,7 @@ class SourceExtensionNavigationContractTest {
             Assertions.assertEquals(listOf("https://second.example"), repository.getAll().map(ExtensionRepo::baseUrl))
             Assertions.assertEquals(
                 listOf("GeneralSettingsScreen", "ExtensionRepoScreen", "AboutScreen"),
-                DesktopSettingsCatalog.screens().drop(9).map { it.route::class.simpleName },
+                DesktopSettingsCatalog.screens().drop(8).map { it.route::class.simpleName },
             )
         } finally {
             DesktopSettingsAnchorOwner.clear()
@@ -139,6 +141,7 @@ class SourceExtensionNavigationContractTest {
         val dependencies = mockk<DesktopUiDependencies> {
             every { this@mockk.downloadManager } returns downloadManager
             every { downloadQueuePort } returns downloadManager
+            every { appPreferences } returns DesktopAppPreferences(InMemoryPreferenceStore())
         }
         lateinit var navigator: Navigator
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}

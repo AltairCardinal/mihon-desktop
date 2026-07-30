@@ -190,11 +190,11 @@ class AboutUpdateWiringTest {
             val screens = DesktopSettingsCatalog.screens()
             val fixedMain = listOf(
                 "AppearanceSettingsScreen", "LibrarySettingsScreen", "ReaderSettingsScreen",
-                "DownloadSettingsScreen", "TrackingSettingsScreen", "ExtensionListScreen",
-                "BackupSettingsScreen", "SecuritySettingsScreen", "AdvancedSettingsScreen",
+                "DownloadSettingsScreen", "TrackingSettingsScreen", "BackupSettingsScreen",
+                "SecuritySettingsScreen", "AdvancedSettingsScreen",
             )
-            assertEquals(fixedMain, screens.take(9).map { it.route::class.simpleName })
-            assertEquals(listOf("GeneralSettingsScreen", "ExtensionRepoScreen", "AboutScreen"), screens.drop(9).map { it.route::class.simpleName })
+            assertEquals(fixedMain, screens.take(8).map { it.route::class.simpleName })
+            assertEquals(listOf("GeneralSettingsScreen", "ExtensionRepoScreen", "AboutScreen"), screens.drop(8).map { it.route::class.simpleName })
 
             val title = MR.strings.desktop_about_app_data_directory.localized()
             val result = DesktopSettingsCatalog.search(title).single { it.route is AboutScreen && it.anchorTitle == title }

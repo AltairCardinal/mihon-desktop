@@ -35,15 +35,15 @@ class TrackingNavigationContractTest {
         assertEquals(
             listOf(
                 "AppearanceSettingsScreen", "LibrarySettingsScreen", "ReaderSettingsScreen",
-                "DownloadSettingsScreen", "TrackingSettingsScreen", "ExtensionListScreen",
-                "BackupSettingsScreen", "SecuritySettingsScreen", "AdvancedSettingsScreen",
+                "DownloadSettingsScreen", "TrackingSettingsScreen", "BackupSettingsScreen",
+                "SecuritySettingsScreen", "AdvancedSettingsScreen",
             ),
-            screens.take(9).map { it.route::class.simpleName },
+            screens.take(8).map { it.route::class.simpleName },
         )
         assertTrue(screens[4].route is TrackingSettingsScreen)
         assertEquals(
             listOf("GeneralSettingsScreen", "ExtensionRepoScreen", "AboutScreen"),
-            screens.drop(9).map { it.route::class.simpleName },
+            screens.drop(8).map { it.route::class.simpleName },
         )
     }
 

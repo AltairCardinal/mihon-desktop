@@ -8,20 +8,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.Book
-import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.SaveAlt
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -64,7 +55,7 @@ class MoreRootScreen : Screen {
 
     companion object {
         fun backupSettingsDestination(): Screen = BackupSettingsScreen()
-        fun searchDestination(): Screen = SettingsSearchScreen()
+        fun settingsDestination(): Screen = SettingsRootScreen()
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -72,7 +63,9 @@ class MoreRootScreen : Screen {
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val downloadQueuePort = LocalDesktopUiDependencies.current.downloadQueuePort
+        val preferences = LocalDesktopUiDependencies.current.appPreferences
         val downloadQueue by downloadQueuePort.queue.collectAsState()
+        val incognito by preferences.incognitoMode.changes().collectAsState(initial = preferences.incognitoMode.get())
         val activeDownloads = downloadQueue.size
 
         // Observe pending screen navigation from test automation after this screen is mounted.
@@ -83,6 +76,7 @@ class MoreRootScreen : Screen {
                 val screen = pendingScreen
                 if (screen != null) {
                     when (screen) {
+                        "open_settings" -> navigator.push(SettingsRootScreen())
                         "open_general_settings" -> navigator.push(GeneralSettingsScreen())
                         "open_download_settings" -> navigator.push(DownloadSettingsScreen())
                         "open_backup_settings" -> navigator.push(BackupSettingsScreen())
@@ -105,56 +99,11 @@ class MoreRootScreen : Screen {
                 modifier = Modifier.fillMaxSize().padding(padding),
             ) {
                 item {
-                    SettingsEntry(
-                        icon = Icons.Default.Search,
-                        title = MR.strings.action_search_settings.localized(),
-                        subtitle = MR.strings.desktop_settings_search_entry_summary.localized(),
-                        onClick = { navigator.push(searchDestination()) },
-                    )
-                    HorizontalDivider()
-                }
-                item {
-                    SettingsEntry(
-                        icon = Icons.Default.Sync,
-                        title = MR.strings.pref_category_tracking.localized(),
-                        subtitle = MR.strings.desktop_more_tracking_summary.localized(),
-                        onClick = { onTracking(navigator) },
-                    )
-                    HorizontalDivider()
-                }
-                item {
-                    SettingsEntry(
-                        icon = Icons.Default.Settings,
-                        title = MR.strings.pref_category_general.localized(),
-                        subtitle = MR.strings.desktop_more_general_summary.localized(),
-                        onClick = { navigator.push(GeneralSettingsScreen()) },
-                    )
-                    HorizontalDivider()
-                }
-                item {
-                    SettingsEntry(
-                        icon = Icons.Default.Lock,
-                        title = MR.strings.desktop_security_title.localized(),
-                        subtitle = MR.strings.desktop_security_summary.localized(),
-                        onClick = { onSecurity(navigator) },
-                    )
-                    HorizontalDivider()
-                }
-                item {
-                    SettingsEntry(
-                        icon = Icons.Default.Tune,
-                        title = MR.strings.pref_category_downloads.localized(),
-                        subtitle = MR.strings.desktop_more_download_settings_summary.localized(),
-                        onClick = { navigator.push(DownloadSettingsScreen()) },
-                    )
-                    HorizontalDivider()
-                }
-                item {
-                    SettingsEntry(
-                        icon = Icons.Default.SaveAlt,
-                        title = MR.strings.label_backup.localized(),
-                        subtitle = MR.strings.desktop_more_backup_summary.localized(),
-                        onClick = { navigator.push(backupSettingsDestination()) },
+                    SwitchSettingsItem(
+                        title = MR.strings.pref_incognito_mode.localized(),
+                        subtitle = MR.strings.pref_incognito_mode_summary.localized(),
+                        checked = incognito,
+                        onCheckedChange = preferences.incognitoMode::set,
                     )
                     HorizontalDivider()
                 }
@@ -173,46 +122,10 @@ class MoreRootScreen : Screen {
                 }
                 item {
                     SettingsEntry(
-                        icon = Icons.Default.Palette,
-                        title = MR.strings.pref_category_appearance.localized(),
-                        subtitle = MR.strings.desktop_more_appearance_summary.localized(),
-                        onClick = { navigator.push(AppearanceSettingsScreen()) },
-                    )
-                    HorizontalDivider()
-                }
-                item {
-                    SettingsEntry(
-                        icon = Icons.Default.MenuBook,
-                        title = MR.strings.pref_category_reader.localized(),
-                        subtitle = MR.strings.desktop_more_reader_summary.localized(),
-                        onClick = { navigator.push(ReaderSettingsScreen()) },
-                    )
-                    HorizontalDivider()
-                }
-                item {
-                    SettingsEntry(
-                        icon = Icons.Default.Book,
-                        title = MR.strings.pref_category_library.localized(),
-                        subtitle = MR.strings.desktop_more_library_summary.localized(),
-                        onClick = { navigator.push(LibrarySettingsScreen()) },
-                    )
-                    HorizontalDivider()
-                }
-                item {
-                    SettingsEntry(
                         icon = Icons.Default.Extension,
                         title = MR.strings.label_extensions.localized(),
                         subtitle = MR.strings.desktop_more_extensions_summary.localized(),
                         onClick = { onExtensions(navigator) },
-                    )
-                    HorizontalDivider()
-                }
-                item {
-                    SettingsEntry(
-                        icon = Icons.Default.Extension,
-                        title = MR.strings.label_extension_repos.localized(),
-                        subtitle = MR.strings.desktop_more_extension_repos_summary.localized(),
-                        onClick = { navigator.push(ExtensionRepoScreen()) },
                     )
                     HorizontalDivider()
                 }
@@ -236,10 +149,10 @@ class MoreRootScreen : Screen {
                 }
                 item {
                     SettingsEntry(
-                        icon = Icons.Default.Build,
-                        title = MR.strings.pref_category_advanced.localized(),
-                        subtitle = MR.strings.desktop_more_advanced_summary.localized(),
-                        onClick = { navigator.push(AdvancedSettingsScreen()) },
+                        icon = Icons.Default.Settings,
+                        title = MR.strings.label_settings.localized(),
+                        subtitle = null,
+                        onClick = { navigator.push(settingsDestination()) },
                     )
                     HorizontalDivider()
                 }
@@ -260,7 +173,7 @@ class MoreRootScreen : Screen {
 internal fun SettingsEntry(
     icon: ImageVector,
     title: String,
-    subtitle: String,
+    subtitle: String?,
     onClick: () -> Unit,
 ) {
     ListItem(
@@ -268,7 +181,7 @@ internal fun SettingsEntry(
             Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         },
         headlineContent = { Text(title) },
-        supportingContent = { Text(subtitle, style = MaterialTheme.typography.bodySmall) },
+        supportingContent = subtitle?.let { { Text(it, style = MaterialTheme.typography.bodySmall) } },
         trailingContent = {
             Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null)
         },

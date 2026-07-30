@@ -3,13 +3,20 @@ package mihon.desktop.ui.settings
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -23,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
@@ -50,26 +58,65 @@ class SettingsSearchScreen : Screen {
         Scaffold(
             topBar = {
                 TopAppBar(
+                    navigationIcon = {
+                        IconButton(onClick = navigator::pop) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = MR.strings.action_bar_up_description.localized(),
+                            )
+                        }
+                    },
                     title = {
-                        OutlinedTextField(
+                        BasicTextField(
                             value = query,
                             onValueChange = { query = it },
-                            placeholder = { Text(MR.strings.action_search_settings.localized()) },
                             singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                color = MaterialTheme.colorScheme.onSurface,
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                             keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .focusRequester(focusRequester)
                                 .desktopSettingsEnterKey(focusManager::clearFocus),
+                            decorationBox = { innerTextField ->
+                                Box {
+                                    if (query.isEmpty()) {
+                                        Text(
+                                            MR.strings.action_search_settings.localized(),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            },
                         )
+                    },
+                    actions = {
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { query = "" }) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = MR.strings.action_reset.localized(),
+                                )
+                            }
+                        }
                     },
                 )
             },
         ) { padding ->
             when {
-                query.isEmpty() -> Feedback(MR.strings.desktop_settings_search_empty.localized(), Modifier.fillMaxSize())
-                results.isEmpty() -> Feedback(MR.strings.no_results_found.localized(), Modifier.fillMaxSize())
+                query.isEmpty() -> Feedback(
+                    MR.strings.desktop_settings_search_empty.localized(),
+                    Modifier.fillMaxSize().padding(padding),
+                )
+                results.isEmpty() -> Feedback(
+                    MR.strings.no_results_found.localized(),
+                    Modifier.fillMaxSize().padding(padding),
+                )
                 else -> LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = padding) {
                     items(results) { result ->
                         ListItem(

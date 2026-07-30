@@ -26,6 +26,7 @@ import mihon.desktop.ui.migration.MigrationBatchQueueScreen
 import mihon.desktop.ui.migration.MigrationSearchScreen
 import mihon.desktop.ui.settings.DesktopSettingsCatalog
 import mihon.desktop.ui.settings.MoreRootScreen
+import mihon.desktop.ui.settings.SettingsRootScreen
 import mihon.desktop.ui.settings.SettingsSearchScreen
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -49,12 +50,17 @@ import org.junit.jupiter.api.Assertions.assertTrue
 class NavigationContractTest {
 
     @Test
-    fun `More settings search and every catalog route target the nested Screen navigator`() {
-        val search = MoreRootScreen.searchDestination()
+    fun `More settings directory search and every catalog route target the nested Screen navigator`() {
+        val settings = MoreRootScreen.settingsDestination()
+        val search = SettingsSearchScreen()
+        assertTrue(settings is SettingsRootScreen)
+        assertTrue(settings is Screen)
+        assertFalse(settings is Tab)
         assertTrue(search is SettingsSearchScreen)
         assertTrue(search is Screen)
         assertFalse(search is Tab)
         assertTrue(DesktopSettingsCatalog.screens().all { it.route is Screen && it.route !is Tab })
+        assertEquals("open_settings", mihon.desktop.test.http.nestedTestScreenAction("SettingsScreen"))
     }
 
     @Test
