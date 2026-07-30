@@ -10,6 +10,7 @@ __pycache__/
 .idea/*
 !.idea/icon.svg
 /captures
+/app-desktop/artifacts/
 
 # Configuration files
 local.properties

@@ -14,11 +14,22 @@
 ./scripts/build-desktop.sh
 ```
 
-Windows 默认构建产物是未打包应用，不会生成 MSI。唯一的开发验收 EXE 为：
+Windows 默认先生成未打包应用用于运行验收，再封装完整 ZIP 作为交付物；不会生成 MSI。开发验收 EXE 为：
 
 ```text
 app-desktop/tmp/mihon-dist/main/app/Mihon Desktop/Mihon Desktop.exe
 ```
+
+`app-desktop/tmp/` 是自动化运行使用的临时未打包目录，不能把其中的 EXE 单独作为交付物；
+该 launcher 必须与同级 `app/`、`runtime/` 一起存在。Windows 构建成功后会额外生成可搬运的完整 ZIP：
+
+```text
+app-desktop/artifacts/windows/Mihon-Desktop-0.STAGE.FEATURE.BUILD.GIT_HASH-windows.zip
+app-desktop/artifacts/windows/Mihon-Desktop-0.STAGE.FEATURE.BUILD.GIT_HASH-windows.zip.sha256
+```
+
+对外验收和人工安装应使用 ZIP；脚本会在成功前检查压缩包内同时包含 launcher、应用文件和 Java runtime，
+并生成 SHA-256。`tmp` 下的未打包目录仍仅供 Test Mode 与运行时自动化使用。
 
 构建脚本会自动启动该 EXE，并确认窗口标题中的运行版本与本轮 `0.STAGE.FEATURE.BUILD.GIT_HASH` 完全一致。只有发布时才显式执行 `./scripts/build-desktop.sh msi`；MSI 不能替代未打包版本的开发验收。
 

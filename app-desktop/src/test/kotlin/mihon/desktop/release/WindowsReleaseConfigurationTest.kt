@@ -66,6 +66,12 @@ class WindowsReleaseConfigurationTest {
         assertTrue(text.contains("MainWindowTitle"), "Windows script must verify the visible runtime version")
         assertTrue(text.contains("Get-CimInstance Win32_Process"), "Validation must inspect the launched process tree")
         assertTrue(text.contains("ParentProcessId"), "Validation must follow the launcher child process")
+        assertTrue(
+            text.contains("package-windows-distributable.ps1"),
+            "Windows script must package the complete unpackaged runtime for delivery",
+        )
+        assertTrue(text.contains("Deliverable ZIP:"), "Windows script must report the durable ZIP artifact")
+        assertTrue(text.contains("Deliverable SHA-256:"), "Windows script must report the ZIP checksum")
         assertFalse(text.contains("/Applications"), "Windows script must not deploy to macOS Applications")
         assertFalse(text.contains("/private/tmp"), "Windows script must not depend on macOS temp paths")
     }

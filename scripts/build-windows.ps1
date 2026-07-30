@@ -16,6 +16,8 @@ $AppVersionFile = Join-Path $RepoRoot "app-desktop\src\main\kotlin\mihon\desktop
 $UnpackedExe = Join-Path $RepoRoot "app-desktop\tmp\mihon-dist\main\app\Mihon Desktop\Mihon Desktop.exe"
 $UnpackedApp = Split-Path $UnpackedExe
 $MsiOutputDir = Join-Path $RepoRoot "app-desktop\tmp\mihon-dist\main\msi"
+$ArtifactOutputDir = Join-Path $RepoRoot "app-desktop\artifacts\windows"
+$ArtifactPackager = Join-Path $RepoRoot "scripts\package-windows-distributable.ps1"
 $ProvenanceTool = Join-Path $RepoRoot "scripts\task15-build-provenance.py"
 $ProvenanceSource = Join-Path ([IO.Path]::GetTempPath()) "mihon-task151-source-$([Guid]::NewGuid().ToString('N')).json"
 $Python = if ($env:MIHON_PYTHON) {
@@ -134,6 +136,9 @@ try {
     if (-not (Test-Path $UnpackedExe)) {
         throw "Canonical unpackaged executable was not created: $UnpackedExe"
     }
+    if (-not (Test-Path $ArtifactPackager)) {
+        throw "Windows distributable packager was not found: $ArtifactPackager"
+    }
 
     $exeInfo = Get-Item $UnpackedExe
     if ($exeInfo.LastWriteTimeUtc -lt $BuildStartedAt.AddSeconds(-2)) {
@@ -184,7 +189,19 @@ try {
             --output "$UnpackedApp.task151-provenance.json"
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
+    $ArtifactArchive = Join-Path $ArtifactOutputDir "Mihon-Desktop-$FullVersion-windows.zip"
+    & $ArtifactPackager -SourceDirectory $UnpackedApp -OutputArchive $ArtifactArchive
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    if (-not (Test-Path -LiteralPath $ArtifactArchive -PathType Leaf)) {
+        throw "Deliverable Windows archive was not created: $ArtifactArchive"
+    }
+    if (-not (Test-Path -LiteralPath "$ArtifactArchive.sha256" -PathType Leaf)) {
+        throw "Deliverable Windows archive checksum was not created: $ArtifactArchive.sha256"
+    }
+
     Write-Host "Unpacked EXE: $UnpackedExe"
+    Write-Host "Deliverable ZIP: $ArtifactArchive"
+    Write-Host "Deliverable SHA-256: $ArtifactArchive.sha256"
     if ($PackageMsi) {
         Write-Host "MSI output: $MsiOutputDir"
     }
