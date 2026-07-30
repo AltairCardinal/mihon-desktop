@@ -118,7 +118,8 @@ Android 与 Desktop 预期一致的行为必须使用共享契约测试覆盖；
 规则：
 
 - 每项都必须描述用户实际可见或可操作的变化，不写纯代码细节作为主要内容。
-- 验收清单必须可执行；可在几分钟内手动完成的行为给出操作路径，其余行为给出自动化验证命令或运行时证据。若验收生成了构建产物，必须在对应验收项中以 Markdown 超链接给出可点击的绝对本地路径，例如 `[Mihon Desktop.exe](D:/Shell/Github/mihon/app-desktop/tmp/mihon-dist/main/app/Mihon%20Desktop/Mihon%20Desktop.exe)`；不得只写纯文本路径。
+- 验收清单必须可执行；可在几分钟内手动完成的行为给出操作路径，其余行为给出自动化验证命令或运行时证据。若验收生成了构建产物，必须在对应验收项中以 Markdown 超链接给出可点击的绝对本地路径；不得只写纯文本路径。
+- Windows Desktop 构建完成后，完成报告必须引用构建日志中 `Final unpacked EXE:` 输出的实际绝对路径，例如 `[Mihon Desktop.exe](D:/Shell/Github/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.STAGE.FEATURE.BUILD.GIT_HASH-unpacked/Mihon%20Desktop.exe)`，并在报告前确认文件存在。不得把 `app-desktop/tmp/`、Gradle `build/` 或其他临时目录中的 EXE 写成交付地址。
 - 必须说明功能边界，例如“仅 QUEUED 状态可取消，DOWNLOADING 不可取消”。
 - 内部重构无需虚构新增 UI；应报告它保护的既有用户行为、production wiring、自动化验证证据和当前功能边界。
 - 拆分的 Task 之间只记录任务状态和验证证据；完整的用户可见完成报告在 change 或迭代最终完成时统一输出。
@@ -134,6 +135,10 @@ Android 与 Desktop 预期一致的行为必须使用共享契约测试覆盖；
 ./scripts/build-desktop.sh msi       # 显式生成 MSI，最后重新生成并验收未打包应用
 ```
 
+Windows 构建在运行验收后，会把完整未打包应用发布到
+`app-desktop/artifacts/windows/Mihon-Desktop-<完整版本>-unpacked/`。构建日志中的
+`Final unpacked EXE:` 是完成报告使用的唯一未打包 EXE 地址；`app-desktop/tmp/` 仅为内部构建和
+Test Mode 输入。
 
 ## 常用命令
 

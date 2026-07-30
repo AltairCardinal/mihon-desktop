@@ -59,16 +59,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 每次完成 desktop 迭代必须使用构建脚本，**不直接调用 gradle**：
 
 ```bash
-./scripts/build-desktop.sh           # 默认：仅更新 git hash
-./scripts/build-desktop.sh feature   # 递增功能批次号（7.0 → 7.1）
-./scripts/build-desktop.sh stage     # 递增阶段号，重置功能批次（7.x → 8.0）
+./scripts/build-desktop.sh           # BUILD +1，构建并验收未打包应用
+./scripts/build-desktop.sh feature   # FEATURE +1，BUILD 重置为 1
+./scripts/build-desktop.sh stage     # STAGE +1，FEATURE 重置为 0，BUILD 重置为 1
+./scripts/build-desktop.sh msi       # 显式生成 MSI，最后重新生成并验收未打包应用
 ```
 
-版本格式：`0.STAGE.FEATURE.GIT_HASH`（例如 `0.7.0.92dab15`）
+版本格式：`0.STAGE.FEATURE.BUILD.GIT_HASH`。
 
-脚本会自动：运行测试 → 构建 → 部署到 `/Applications/Mihon Desktop.app`。
+脚本会自动运行测试、构建并验收运行版本。Windows 构建会把完整未打包应用发布到
+`app-desktop/artifacts/windows/Mihon-Desktop-<完整版本>-unpacked/`。
 
-完成后必须向用户报告版本号（例如："已部署 Mihon Desktop **0.7.1.abc1234**"）。
+完成后必须向用户报告完整版本号。Windows 完成报告还必须使用构建日志中
+`Final unpacked EXE:` 输出的实际绝对路径，并确认文件存在；不得报告 `app-desktop/tmp/` 中的临时 EXE。
 
 版本号单一来源：`app-desktop/src/main/kotlin/mihon/desktop/AppVersion.kt`
 

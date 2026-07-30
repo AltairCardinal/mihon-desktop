@@ -1,8 +1,10 @@
 package mihon.desktop.release
 
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -70,10 +72,69 @@ class WindowsReleaseConfigurationTest {
             text.contains("package-windows-distributable.ps1"),
             "Windows script must package the complete unpackaged runtime for delivery",
         )
+        assertTrue(
+            text.contains("publish-windows-unpacked.ps1"),
+            "Windows script must publish the validated runtime outside Gradle's temporary output",
+        )
+        assertTrue(
+            text.contains("Final unpacked EXE:"),
+            "Windows script must report the durable executable path for completion reports",
+        )
         assertTrue(text.contains("Deliverable ZIP:"), "Windows script must report the durable ZIP artifact")
         assertTrue(text.contains("Deliverable SHA-256:"), "Windows script must report the ZIP checksum")
         assertFalse(text.contains("/Applications"), "Windows script must not deploy to macOS Applications")
         assertFalse(text.contains("/private/tmp"), "Windows script must not depend on macOS temp paths")
+    }
+
+    @Test
+    fun `windows unpackaged publisher copies validated runtime to durable versioned directory`(
+        @TempDir tempDir: Path,
+    ) {
+        val publisher = repoRoot.resolve("scripts/publish-windows-unpacked.ps1")
+        assertTrue(Files.exists(publisher), "Windows unpackaged publisher must exist")
+
+        val source = tempDir.resolve("build-output/Mihon Desktop")
+        Files.createDirectories(source.resolve("app"))
+        Files.createDirectories(source.resolve("runtime"))
+        Files.writeString(source.resolve("Mihon Desktop.exe"), "launcher")
+        Files.writeString(source.resolve("app/application.jar"), "application")
+        Files.writeString(source.resolve("runtime/java.dll"), "runtime")
+
+        val outputRoot = tempDir.resolve("artifacts/windows")
+        val version = "0.12.3.4.abcdef0"
+        val process = ProcessBuilder(
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            publisher.toString(),
+            "-SourceDirectory",
+            source.toString(),
+            "-OutputRoot",
+            outputRoot.toString(),
+            "-FullVersion",
+            version,
+        )
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        val exitCode = process.waitFor()
+
+        assertEquals(0, exitCode, output)
+        val finalApp = outputRoot.resolve("Mihon-Desktop-$version-unpacked")
+        val finalExe = finalApp.resolve("Mihon Desktop.exe")
+        assertTrue(Files.isRegularFile(finalExe), "Durable unpackaged launcher must be copied")
+        assertTrue(Files.isRegularFile(finalApp.resolve("app/application.jar")), "Application files must be copied")
+        assertTrue(Files.isRegularFile(finalApp.resolve("runtime/java.dll")), "Runtime files must be copied")
+        assertTrue(
+            output.contains("Final unpacked EXE: ${finalExe.toAbsolutePath()}"),
+            "Publisher must report the durable executable path for completion reports",
+        )
+        assertFalse(
+            output.contains("app-desktop${System.getProperty("file.separator")}tmp"),
+            "Publisher output must not present a temporary Gradle path as the final executable",
+        )
     }
 
     @Test
@@ -216,7 +277,9 @@ class WindowsReleaseConfigurationTest {
     private companion object {
         val requiredWindowsRuntimeDocumentationTerms = listOf(
             "0.STAGE.FEATURE.BUILD.GIT_HASH",
-            "app-desktop/tmp/mihon-dist/main/app/Mihon Desktop/Mihon Desktop.exe",
+            "app-desktop/artifacts/windows/Mihon-Desktop-0.STAGE.FEATURE.BUILD.GIT_HASH-unpacked/Mihon Desktop.exe",
+            "Final unpacked EXE:",
+            "完成报告",
             "MSI",
             "不能替代",
             "运行版本",

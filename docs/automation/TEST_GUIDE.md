@@ -14,24 +14,34 @@
 ./scripts/build-desktop.sh
 ```
 
-Windows 默认先生成未打包应用用于运行验收，再封装完整 ZIP 作为交付物；不会生成 MSI。开发验收 EXE 为：
+Windows 默认先在 Gradle 临时目录生成未打包应用并完成运行验收，然后将完整应用发布到持久目录；
+不会生成 MSI。构建成功后可直接运行、并应写入完成报告的最终 EXE 为：
 
 ```text
-app-desktop/tmp/mihon-dist/main/app/Mihon Desktop/Mihon Desktop.exe
+app-desktop/artifacts/windows/Mihon-Desktop-0.STAGE.FEATURE.BUILD.GIT_HASH-unpacked/Mihon Desktop.exe
 ```
 
-`app-desktop/tmp/` 是自动化运行使用的临时未打包目录，不能把其中的 EXE 单独作为交付物；
-该 launcher 必须与同级 `app/`、`runtime/` 一起存在。Windows 构建成功后会额外生成可搬运的完整 ZIP：
+构建日志会输出该次构建的准确绝对路径：
+
+```text
+Final unpacked EXE: D:\...\app-desktop\artifacts\windows\Mihon-Desktop-<完整版本>-unpacked\Mihon Desktop.exe
+```
+
+完成报告必须复制这条输出中的实际路径并在报告前确认文件存在，不能根据模板猜测版本号。
+`app-desktop/tmp/` 仅供内部构建、运行验收和 Test Mode 使用，不能作为完成报告中的构建地址。
+最终目录中的 launcher 必须与同级 `app/`、`runtime/` 一起保留。Windows 构建成功后还会生成可搬运的完整 ZIP：
 
 ```text
 app-desktop/artifacts/windows/Mihon-Desktop-0.STAGE.FEATURE.BUILD.GIT_HASH-windows.zip
 app-desktop/artifacts/windows/Mihon-Desktop-0.STAGE.FEATURE.BUILD.GIT_HASH-windows.zip.sha256
 ```
 
-对外验收和人工安装应使用 ZIP；脚本会在成功前检查压缩包内同时包含 launcher、应用文件和 Java runtime，
-并生成 SHA-256。`tmp` 下的未打包目录仍仅供 Test Mode 与运行时自动化使用。
+对外分发和人工安装可使用 ZIP；直接运行验收可使用上述最终未打包 EXE。脚本会在成功前检查压缩包内
+同时包含 launcher、应用文件和 Java runtime，并生成 SHA-256。
 
-构建脚本会自动启动该 EXE，并确认窗口标题中的运行版本与本轮 `0.STAGE.FEATURE.BUILD.GIT_HASH` 完全一致。只有发布时才显式执行 `./scripts/build-desktop.sh msi`；MSI 不能替代未打包版本的开发验收。
+构建脚本会先启动临时构建 EXE，确认窗口标题中的运行版本与本轮
+`0.STAGE.FEATURE.BUILD.GIT_HASH` 完全一致，再发布最终目录。只有发布时才显式执行
+`./scripts/build-desktop.sh msi`；MSI 不能替代未打包版本的开发验收。
 
 启动测试模式：
 

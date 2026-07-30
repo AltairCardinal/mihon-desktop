@@ -13,11 +13,12 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $Gradle = Join-Path $RepoRoot "gradlew.bat"
 $AppVersionFile = Join-Path $RepoRoot "app-desktop\src\main\kotlin\mihon\desktop\AppVersion.kt"
-$UnpackedExe = Join-Path $RepoRoot "app-desktop\tmp\mihon-dist\main\app\Mihon Desktop\Mihon Desktop.exe"
-$UnpackedApp = Split-Path $UnpackedExe
+$BuildOutputExe = Join-Path $RepoRoot "app-desktop\tmp\mihon-dist\main\app\Mihon Desktop\Mihon Desktop.exe"
+$BuildOutputApp = Split-Path $BuildOutputExe
 $MsiOutputDir = Join-Path $RepoRoot "app-desktop\tmp\mihon-dist\main\msi"
 $ArtifactOutputDir = Join-Path $RepoRoot "app-desktop\artifacts\windows"
 $ArtifactPackager = Join-Path $RepoRoot "scripts\package-windows-distributable.ps1"
+$UnpackedPublisher = Join-Path $RepoRoot "scripts\publish-windows-unpacked.ps1"
 $ProvenanceTool = Join-Path $RepoRoot "scripts\task15-build-provenance.py"
 $ProvenanceSource = Join-Path ([IO.Path]::GetTempPath()) "mihon-task151-source-$([Guid]::NewGuid().ToString('N')).json"
 $Python = if ($env:MIHON_PYTHON) {
@@ -133,21 +134,24 @@ try {
         exit $LASTEXITCODE
     }
 
-    if (-not (Test-Path $UnpackedExe)) {
-        throw "Canonical unpackaged executable was not created: $UnpackedExe"
+    if (-not (Test-Path $BuildOutputExe)) {
+        throw "Canonical unpackaged executable was not created: $BuildOutputExe"
     }
     if (-not (Test-Path $ArtifactPackager)) {
         throw "Windows distributable packager was not found: $ArtifactPackager"
     }
+    if (-not (Test-Path $UnpackedPublisher)) {
+        throw "Windows unpackaged publisher was not found: $UnpackedPublisher"
+    }
 
-    $exeInfo = Get-Item $UnpackedExe
+    $exeInfo = Get-Item $BuildOutputExe
     if ($exeInfo.LastWriteTimeUtc -lt $BuildStartedAt.AddSeconds(-2)) {
-        throw "Canonical unpackaged executable is stale: $UnpackedExe"
+        throw "Canonical unpackaged executable is stale: $BuildOutputExe"
     }
 
     Write-Host ""
     Write-Host "Validating unpackaged runtime version..."
-    $validationProcess = Start-Process -FilePath $UnpackedExe -PassThru
+    $validationProcess = Start-Process -FilePath $BuildOutputExe -PassThru
     try {
         $deadline = [DateTime]::UtcNow.AddSeconds(30)
         $actualTitle = ""
@@ -185,12 +189,20 @@ try {
     Write-Host "Validated Mihon Desktop $FullVersion"
     if ($EvidenceProvenance) {
         & $Python $ProvenanceTool seal --repo $RepoRoot --require-version-allocation `
-            --source $ProvenanceSource --artifact $UnpackedApp `
-            --output "$UnpackedApp.task151-provenance.json"
+            --source $ProvenanceSource --artifact $BuildOutputApp `
+            --output "$BuildOutputApp.task151-provenance.json"
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
+    & $UnpackedPublisher -SourceDirectory $BuildOutputApp -OutputRoot $ArtifactOutputDir -FullVersion $FullVersion
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    $FinalUnpackedApp = Join-Path $ArtifactOutputDir "Mihon-Desktop-$FullVersion-unpacked"
+    $FinalUnpackedExe = Join-Path $FinalUnpackedApp "Mihon Desktop.exe"
+    if (-not (Test-Path -LiteralPath $FinalUnpackedExe -PathType Leaf)) {
+        throw "Final unpackaged executable was not published: $FinalUnpackedExe"
+    }
+
     $ArtifactArchive = Join-Path $ArtifactOutputDir "Mihon-Desktop-$FullVersion-windows.zip"
-    & $ArtifactPackager -SourceDirectory $UnpackedApp -OutputArchive $ArtifactArchive
+    & $ArtifactPackager -SourceDirectory $FinalUnpackedApp -OutputArchive $ArtifactArchive
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     if (-not (Test-Path -LiteralPath $ArtifactArchive -PathType Leaf)) {
         throw "Deliverable Windows archive was not created: $ArtifactArchive"
@@ -199,7 +211,7 @@ try {
         throw "Deliverable Windows archive checksum was not created: $ArtifactArchive.sha256"
     }
 
-    Write-Host "Unpacked EXE: $UnpackedExe"
+    Write-Host "Final unpacked EXE: $FinalUnpackedExe"
     Write-Host "Deliverable ZIP: $ArtifactArchive"
     Write-Host "Deliverable SHA-256: $ArtifactArchive.sha256"
     if ($PackageMsi) {
