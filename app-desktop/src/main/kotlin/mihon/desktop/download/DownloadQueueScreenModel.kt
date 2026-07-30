@@ -1,8 +1,8 @@
 package mihon.desktop.download
 
 import cafe.adriel.voyager.core.model.ScreenModel
-import cafe.adriel.voyager.core.model.screenModelScope
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -41,11 +41,12 @@ class DownloadQueueScreenModel(
     private val sourceManager: SourceManager,
     coroutineScope: CoroutineScope? = null,
 ) : ScreenModel {
-    private val injectedScope =
-        coroutineScope?.let {
-            CoroutineScope(it.coroutineContext + SupervisorJob(it.coroutineContext[Job]))
-        }
-    private val scope = injectedScope ?: screenModelScope
+    private val parentContext = coroutineScope?.coroutineContext
+    // Do not fall back to Voyager's screenModelScope here. The Desktop runtime also contains
+    // the Android Main dispatcher provider, which cannot initialize without android.os.Handler.
+    private val scope = CoroutineScope(
+        (parentContext ?: Dispatchers.Default) + SupervisorJob(parentContext?.get(Job)),
+    )
     val queue: StateFlow<List<DownloadItem>> = downloadManager.queue
     val isPaused: StateFlow<Boolean> = downloadManager.isPaused
     val state: StateFlow<DownloadQueueScreenState> =
@@ -105,7 +106,7 @@ class DownloadQueueScreenModel(
     fun retry(chapterId: Long) = downloadManager.retryItem(chapterId)
 
     override fun onDispose() {
-        injectedScope?.cancel()
+        scope.cancel()
     }
 
     private fun projectState(

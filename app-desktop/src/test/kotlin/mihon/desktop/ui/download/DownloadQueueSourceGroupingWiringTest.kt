@@ -25,6 +25,7 @@ import mihon.desktop.download.projectDownloadQueueSourceGroups
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.source.FakeSource
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -36,6 +37,22 @@ class DownloadQueueSourceGroupingWiringTest {
 
     @TempDir
     lateinit var tempDir: File
+
+    @Test
+    fun `production model initializes without a Main dispatcher`() {
+        val manager = DesktopDownloadManager(DesktopDownloadProvider(tempDir))
+        lateinit var model: DownloadQueueScreenModel
+        assertDoesNotThrow {
+            model = DownloadQueueScreenModel(
+                manager,
+                mockk(relaxed = true),
+                FakeDesktopSourceManager(emptyList()),
+            )
+        }
+
+        assertEquals(emptyList<DownloadItem>(), model.state.value.queue)
+        model.onDispose()
+    }
 
     @Test
     fun `persistent source ids remain one group when the source instance is replaced`() {

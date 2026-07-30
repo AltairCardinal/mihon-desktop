@@ -2175,8 +2175,8 @@
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/download/DownloadQueueScreenModel.kt", "symbol": ".groupBy { it.source }", "line": 123}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/download/DownloadQueueScreenModel.kt", "symbol": ".groupBy { it.source }", "line": 123}],
-      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DownloadQueueScreenModel.kt", "symbol": "internal fun projectDownloadQueueSourceGroups(", "line": 121}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/download/DownloadQueueScreenModel.kt", "symbol": "sourceGroups = projectDownloadQueueSourceGroups", "line": 117}],
+      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DownloadQueueScreenModel.kt", "symbol": "internal fun projectDownloadQueueSourceGroups(", "line": 122}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/download/DownloadQueueScreenModel.kt", "symbol": "sourceGroups = projectDownloadQueueSourceGroups", "line": 118}],
       "FIXTURE": [
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/download/DownloadQueueSourceGroupingWiringTest.kt#persistent source ids remain one group when the source instance is replaced", "productionMarkers": ["projectDownloadQueueSourceGroups(queue)"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/download/DownloadQueueSourceGroupingWiringTest.kt#queue renders one header per source with source names and a stable missing-source fallback", "productionMarkers": ["DownloadQueueScreenModel("]}
