@@ -454,6 +454,7 @@ compose.desktop {
                 "java.instrument",
                 "java.security.jgss",
                 "java.net.http",
+                "jdk.zipfs",
             )
 
             macOS {

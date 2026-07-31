@@ -184,9 +184,16 @@ import java.io.File
  * Call once at application startup before showing any UI.
  */
 fun initDesktopDI() {
-    initAndroidCompatApplication()
     val paths = DesktopPlatformPaths.current(createDirectories = false)
     val preferenceStore = DesktopPreferenceStore()
+    initDesktopDI(paths, preferenceStore)
+}
+
+internal fun initDesktopDI(
+    paths: DesktopPlatformPaths,
+    preferenceStore: DesktopPreferenceStore,
+) {
+    initAndroidCompatApplication()
     prepareDesktopProfile(paths, preferenceStore)
     initConfigLayer(paths.configDir, preferenceStore)
     val networkHelper = initNetworkLayer(paths, preferenceStore)

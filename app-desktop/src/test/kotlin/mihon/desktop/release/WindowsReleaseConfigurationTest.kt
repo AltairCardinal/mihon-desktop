@@ -38,6 +38,10 @@ class WindowsReleaseConfigurationTest {
             text.contains("readAppVersionConstant(\"BUILD\")"),
             "Native package version must include the per-build number",
         )
+        assertTrue(
+            text.contains("\"jdk.zipfs\""),
+            "The published runtime must include the ZIP filesystem provider used by APK conversion",
+        )
     }
 
     @Test
@@ -64,10 +68,16 @@ class WindowsReleaseConfigurationTest {
             text.contains("--rerun-tasks") && text.indexOf("--rerun-tasks") < unpackagedIndex,
             "Canonical unpackaged build must bypass stale Gradle UP-TO-DATE state",
         )
-        assertTrue(text.contains("Start-Process"), "Windows script must launch the unpackaged executable")
-        assertTrue(text.contains("MainWindowTitle"), "Windows script must verify the visible runtime version")
-        assertTrue(text.contains("Get-CimInstance Win32_Process"), "Validation must inspect the launched process tree")
-        assertTrue(text.contains("ParentProcessId"), "Validation must follow the launcher child process")
+        assertTrue(
+            text.contains("validate-windows-extension-runtime.ps1"),
+            "Windows build must run the published executable through extension installation acceptance",
+        )
+        assertTrue(
+            text.contains("keiyoushi-manhuagui-1.4.28.apk"),
+            "Windows build must use the immutable redistributable DEX fixture",
+        )
+        assertFalse(text.contains("MainWindowTitle"), "Build acceptance must not depend on Windows UI automation")
+        assertFalse(text.contains("Get-CimInstance Win32_Process"), "The build orchestrator must not inspect windows")
         assertTrue(
             text.contains("package-windows-distributable.ps1"),
             "Windows script must package the complete unpackaged runtime for delivery",
@@ -84,6 +94,15 @@ class WindowsReleaseConfigurationTest {
         assertTrue(text.contains("Deliverable SHA-256:"), "Windows script must report the ZIP checksum")
         assertFalse(text.contains("/Applications"), "Windows script must not deploy to macOS Applications")
         assertFalse(text.contains("/private/tmp"), "Windows script must not depend on macOS temp paths")
+
+        val validator = Files.readString(repoRoot.resolve("scripts/validate-windows-extension-runtime.ps1"))
+        assertTrue(validator.contains("Start-Process"), "Runtime acceptance must launch the real executable")
+        assertTrue(
+            validator.contains("--test-extension-runtime"),
+            "Runtime acceptance must enter the guarded production extension transaction",
+        )
+        assertTrue(validator.contains("ExpectedVersion"), "Runtime acceptance must verify the packaged app version")
+        assertTrue(validator.contains("sourceIds"), "Runtime acceptance must verify that production loading exposed sources")
     }
 
     @Test

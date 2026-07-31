@@ -19,6 +19,8 @@ $MsiOutputDir = Join-Path $RepoRoot "app-desktop\tmp\mihon-dist\main\msi"
 $ArtifactOutputDir = Join-Path $RepoRoot "app-desktop\artifacts\windows"
 $ArtifactPackager = Join-Path $RepoRoot "scripts\package-windows-distributable.ps1"
 $UnpackedPublisher = Join-Path $RepoRoot "scripts\publish-windows-unpacked.ps1"
+$ExtensionRuntimeValidator = Join-Path $RepoRoot "scripts\validate-windows-extension-runtime.ps1"
+$ExtensionRuntimeFixture = Join-Path $RepoRoot "app-desktop\src\test\resources\extensions\real\keiyoushi-manhuagui-1.4.28.apk"
 $ProvenanceTool = Join-Path $RepoRoot "scripts\task15-build-provenance.py"
 $ProvenanceSource = Join-Path ([IO.Path]::GetTempPath()) "mihon-task151-source-$([Guid]::NewGuid().ToString('N')).json"
 $Python = if ($env:MIHON_PYTHON) {
@@ -46,22 +48,6 @@ function Set-BuildNumber([int]$Build) {
     $text = Get-Content -Raw -Encoding UTF8 $AppVersionFile
     $updated = [regex]::Replace($text, 'const val BUILD = \d+', "const val BUILD = $Build")
     Set-Content -Encoding UTF8 -NoNewline -Path $AppVersionFile -Value $updated
-}
-
-function Get-DescendantProcessIds([int]$RootProcessId) {
-    $allProcesses = @(Get-CimInstance Win32_Process)
-    $pending = [System.Collections.Generic.Queue[int]]::new()
-    $pending.Enqueue($RootProcessId)
-    $descendants = [System.Collections.Generic.List[int]]::new()
-    while ($pending.Count -gt 0) {
-        $parentId = $pending.Dequeue()
-        foreach ($child in $allProcesses | Where-Object { $_.ParentProcessId -eq $parentId }) {
-            $childId = [int]$child.ProcessId
-            $descendants.Add($childId)
-            $pending.Enqueue($childId)
-        }
-    }
-    return $descendants.ToArray()
 }
 
 $fields = Read-VersionFields
@@ -143,6 +129,12 @@ try {
     if (-not (Test-Path $UnpackedPublisher)) {
         throw "Windows unpackaged publisher was not found: $UnpackedPublisher"
     }
+    if (-not (Test-Path $ExtensionRuntimeValidator)) {
+        throw "Windows extension runtime validator was not found: $ExtensionRuntimeValidator"
+    }
+    if (-not (Test-Path $ExtensionRuntimeFixture)) {
+        throw "Windows extension runtime fixture was not found: $ExtensionRuntimeFixture"
+    }
 
     $exeInfo = Get-Item $BuildOutputExe
     if ($exeInfo.LastWriteTimeUtc -lt $BuildStartedAt.AddSeconds(-2)) {
@@ -150,40 +142,17 @@ try {
     }
 
     Write-Host ""
-    Write-Host "Validating unpackaged runtime version..."
-    $validationProcess = Start-Process -FilePath $BuildOutputExe -PassThru
-    try {
-        $deadline = [DateTime]::UtcNow.AddSeconds(30)
-        $actualTitle = ""
-        while ([DateTime]::UtcNow -lt $deadline) {
-            Start-Sleep -Milliseconds 250
-            $processIds = @($validationProcess.Id) + @(Get-DescendantProcessIds $validationProcess.Id)
-            foreach ($processId in $processIds) {
-                $candidate = Get-Process -Id $processId -ErrorAction SilentlyContinue
-                if ($candidate) {
-                    $candidate.Refresh()
-                    if ($candidate.MainWindowTitle) {
-                        $actualTitle = $candidate.MainWindowTitle
-                        break
-                    }
-                }
-            }
-            if ($actualTitle) {
-                break
-            }
-        }
-        if (-not $actualTitle.Contains($ExpectedVersion)) {
-            throw "Runtime version mismatch: expected '$ExpectedVersion', window title was '$actualTitle'"
-        }
-    } finally {
-        if ($validationProcess) {
-            $cleanupIds = @($validationProcess.Id) + @(Get-DescendantProcessIds $validationProcess.Id)
-            [array]::Reverse($cleanupIds)
-            foreach ($processId in ($cleanupIds | Select-Object -Unique)) {
-                Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
-            }
-        }
-    }
+    Write-Host "Validating unpackaged runtime version and production APK installation..."
+    & $ExtensionRuntimeValidator `
+        -Executable $BuildOutputExe `
+        -ArtifactPath $ExtensionRuntimeFixture `
+        -PackageName "eu.kanade.tachiyomi.extension.zh.manhuagui" `
+        -DisplayName "ManHuaGui" `
+        -VersionName "1.4.28" `
+        -VersionCode 28 `
+        -RepositoryFingerprint "9add655a78e96c4ec7a53ef89dccb557cb5d767489fac5e785d671a5a75d4da2" `
+        -ArtifactSha256 "200cfc4b3b9e98f387824e3cecb13f97f4b0971f8fb678ce49c60aab6856c0c8" `
+        -ExpectedVersion $ExpectedVersion
 
     Write-Host ""
     Write-Host "Validated Mihon Desktop $FullVersion"

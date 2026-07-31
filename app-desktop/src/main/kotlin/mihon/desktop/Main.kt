@@ -37,6 +37,8 @@ import mihon.desktop.platform.DesktopUriSchemeRegistration
 import mihon.desktop.platform.AwtDesktopOpenUriEventPort
 import mihon.desktop.platform.DesktopOpenUriInstallResult
 import mihon.desktop.privacy.DesktopWindowPrivacyController
+import mihon.desktop.release.desktopExtensionRuntimeAcceptanceRequest
+import mihon.desktop.release.executeDesktopExtensionRuntimeAcceptance
 import mihon.desktop.security.DesktopAppLock
 import mihon.desktop.security.DesktopAppLockLifecycle
 import mihon.desktop.settings.DesktopAppPreferences
@@ -58,6 +60,7 @@ import java.awt.Window as AwtWindow
 import java.awt.event.WindowEvent
 import java.awt.event.WindowFocusListener
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.system.exitProcess
 
 /**
  * Main entry point for Mihon Desktop application.
@@ -68,6 +71,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 suspend fun main(args: Array<String>) {
     // Install crash handler FIRST
     CrashHandler.install()
+
+    desktopExtensionRuntimeAcceptanceRequest(args)?.let { request ->
+        val result = executeDesktopExtensionRuntimeAcceptance(request, APP_VERSION)
+        exitProcess(if (result.success) 0 else 1)
+    }
 
     startProductionDesktopApplication(args)
 }

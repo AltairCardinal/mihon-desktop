@@ -46,6 +46,8 @@ Keiyoushi 当前同时发布 APK 与签名 JAR；Desktop 的全量兼容调查�
   输出、清理”阶段以及原始异常。仅文件被临时占用等可恢复的文件系统失败重试一次；确定性
   的格式、DEX 或字节码失败不得重试。转换失败与随后发生的 source discovery/runtime 加载
   失败必须分别报告，不能统一伪装成“仓库应提供 JAR”。
+- APK→JAR 会通过 `FileSystems.newFileSystem` 修改转换后的 JAR；Compose Desktop 的 jlink
+  运行时必须显式包含 `jdk.zipfs`。系统 JDK 中测试通过不能证明发布运行时具备该 provider。
 - 部分 Android 扩展在源构造阶段读取 JVM `http.agent` 并假定它非空。Desktop 统一网络层
   初始化时只在该属性缺失时提供 `Mihon Desktop/1.0`，显式 JVM 配置保持不变。此属性只用于
   Android ABI 与请求头兼容，不创建旁路 HTTP 客户端，也不改变代理选择；扩展请求仍必须通过
@@ -63,5 +65,11 @@ Keiyoushi 当前同时发布 APK 与签名 JAR；Desktop 的全量兼容调查�
 - Legacy 安装事务测试必须至少用一个可再分发的真实 APK 覆盖 prepare、验证、转换、source
   discovery、commit 与 reload；无再分发许可证的制品只允许由显式集成测试从不可变地址获取，
   并在使用前核对大小和 SHA-256，不得提交进仓库。
+- Windows 发布构建必须在发布 artifacts 之前启动刚生成的真实 EXE，以隔离的 loopback HTTP
+  制品服务器和临时 profile 执行 production DI、下载、摘要、APK signer、安装事务、DEX 转换、
+  source discovery 与 reload，并同时核对内置版本和非空 source 列表。该验收仅允许在
+  `--test-mode --headless` 下触发，不依赖窗口标题或 Windows UI 自动化；失败时构建必须终止并
+  保留结构化根因。仓库内固定使用有再分发证据的 ManHuaGui APK，CopyManga 等无再分发许可
+  制品只在显式本地/在线验收中使用其不可变 SHA-256。
 - Keiyoushi Windows survey 对当前 v2 index 中每个 JAR 执行 repository signer 验证和
   production loader 加载，不执行 APK→JAR。
