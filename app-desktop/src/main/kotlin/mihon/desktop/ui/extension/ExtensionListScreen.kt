@@ -68,6 +68,8 @@ import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.launch
 import eu.kanade.tachiyomi.source.ConfigurableSource
+import mihon.desktop.extension.ApkConversionException
+import mihon.desktop.extension.ApkConversionStage
 import mihon.desktop.extension.DesktopAvailableExtension
 import mihon.desktop.extension.InstalledExtension
 import mihon.desktop.extension.isExtensionAvailableOnDesktop
@@ -671,11 +673,36 @@ private fun AvailableExtensionCard(
 
 internal fun extensionInstallErrorCopy(name: String, error: AppError, locale: Locale = Locale.getDefault()): String {
     val detail = error.cause?.message.orEmpty()
+    val conversion = (error as? AppError.MalformedData)?.cause as? ApkConversionException
     return when {
+        conversion != null -> MR.strings.desktop_extension_conversion_failed_detailed.localized(
+            locale,
+            name,
+            conversion.failure.stage.localized(locale),
+            conversion.failure.attempts,
+            conversion.failure.error.userFacingConversionReason(),
+        )
         error is AppError.MalformedData && detail.startsWith("Android-only") -> MR.strings.desktop_extension_android_only.localized(locale, name)
         error is AppError.MalformedData && detail.startsWith("APK convert failed") -> MR.strings.desktop_extension_conversion_failed.localized(locale, name)
         else -> MR.strings.desktop_extension_install_failed.localized(locale, detail.ifBlank { error.toString() })
     }
+}
+
+private fun ApkConversionStage.localized(locale: Locale): String = when (this) {
+    ApkConversionStage.INSPECT_INPUT -> MR.strings.desktop_extension_conversion_stage_inspect_input.localized(locale)
+    ApkConversionStage.PREPARE_WORKSPACE -> MR.strings.desktop_extension_conversion_stage_prepare_workspace.localized(locale)
+    ApkConversionStage.TRANSLATE_DEX -> MR.strings.desktop_extension_conversion_stage_translate_dex.localized(locale)
+    ApkConversionStage.REWRITE_BYTECODE -> MR.strings.desktop_extension_conversion_stage_rewrite_bytecode.localized(locale)
+    ApkConversionStage.COPY_ASSETS -> MR.strings.desktop_extension_conversion_stage_copy_assets.localized(locale)
+    ApkConversionStage.PUBLISH_OUTPUT -> MR.strings.desktop_extension_conversion_stage_publish_output.localized(locale)
+    ApkConversionStage.CLEANUP -> MR.strings.desktop_extension_conversion_stage_cleanup.localized(locale)
+}
+
+private fun Throwable.userFacingConversionReason(): String {
+    val root = generateSequence(this) { it.cause }.last()
+    val type = root::class.simpleName ?: root.javaClass.simpleName.ifBlank { "Error" }
+    val message = root.message.orEmpty().lineSequence().firstOrNull().orEmpty().trim()
+    return if (message.isBlank()) type else "$type: $message"
 }
 
 internal fun extensionInstallStepCopy(step: ExtensionPresentationInstallStep?, locale: Locale = Locale.getDefault()): String? = when (step) {

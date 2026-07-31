@@ -34,6 +34,7 @@ import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.di.isolatedDesktopPreferenceStore
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.license.DependencyNoticeProvider
+import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.update.*
@@ -172,11 +173,18 @@ class AboutUpdateWiringTest {
         }
         val extensionManager = DesktopExtensionManager()
         val appPreferences = DesktopAppPreferences(InMemoryPreferenceStore())
+        val network = mockk<DesktopNetworkHelper> {
+            every { routeObservations } returns MutableStateFlow(emptyList())
+            every { activeGlobalMode } returns appPreferences.globalNetworkMode.get()
+            every { activeGlobalProxy } returns appPreferences.proxyRuntimeConfig()
+        }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { this@mockk.extensionManager } returns extensionManager
             every { extensionPresentationService } returns extensionManager
             every { this@mockk.appPreferences } returns appPreferences
             every { updateScreenModel } returns updateModel
+            every { networkHelper } returns network
+            every { networkRoutingPort } returns network
         }
         val scene = ImageComposeScene(900, 170) {}
         lateinit var navigator: Navigator

@@ -445,6 +445,14 @@
     <string name="desktop_extension_install_failed">Install failed: %s</string>
     <string name="desktop_extension_android_only">%s: Android-only extension, cannot run on desktop</string>
     <string name="desktop_extension_conversion_failed">%s: APK conversion failed — try a JAR-based repo</string>
+    <string name="desktop_extension_conversion_failed_detailed">%1$s: APK conversion failed during %2$s after %3$d attempt(s): %4$s</string>
+    <string name="desktop_extension_conversion_stage_inspect_input">input inspection</string>
+    <string name="desktop_extension_conversion_stage_prepare_workspace">temporary workspace preparation</string>
+    <string name="desktop_extension_conversion_stage_translate_dex">DEX translation</string>
+    <string name="desktop_extension_conversion_stage_rewrite_bytecode">JVM bytecode repair</string>
+    <string name="desktop_extension_conversion_stage_copy_assets">extension resource merge</string>
+    <string name="desktop_extension_conversion_stage_publish_output">output write</string>
+    <string name="desktop_extension_conversion_stage_cleanup">temporary file cleanup</string>
     <string name="desktop_extension_trust_changed">Update blocked: repository identity changed from %1$s to %2$s</string>
     <string name="desktop_extension_open_link_failed">Unable to open link: %s</string>
     <string name="desktop_extension_updating_message">Updating %d extension(s)…</string>

@@ -52,6 +52,16 @@ import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
+internal const val DEFAULT_DESKTOP_HTTP_AGENT = "Mihon Desktop/1.0"
+
+private const val HTTP_AGENT_PROPERTY = "http.agent"
+
+internal fun installDesktopHttpAgentCompatibilityProperty() {
+    if (System.getProperty(HTTP_AGENT_PROPERTY) == null) {
+        System.setProperty(HTTP_AGENT_PROPERTY, DEFAULT_DESKTOP_HTTP_AGENT)
+    }
+}
+
 class DesktopNetworkHelper(
     cacheDir: File = DesktopPlatformPaths.current().networkCacheDir,
     cookieStorageFile: File = DesktopPlatformPaths.current().cookiesFile,
@@ -290,7 +300,7 @@ class DesktopNetworkHelper(
         }
     }
 
-    private fun defaultUserAgentProvider(): String = "Mihon Desktop/1.0"
+    private fun defaultUserAgentProvider(): String = DEFAULT_DESKTOP_HTTP_AGENT
 
     private fun activeGlobalRouteLabel(): String = when (activeGlobalMode) {
         GlobalNetworkMode.SYSTEM -> "SYSTEM (per destination)"

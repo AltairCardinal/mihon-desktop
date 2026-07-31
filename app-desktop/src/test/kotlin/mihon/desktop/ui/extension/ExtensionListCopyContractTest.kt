@@ -1,6 +1,9 @@
 package mihon.desktop.ui.extension
 
 import mihon.domain.error.AppError
+import mihon.desktop.extension.ApkConversionException
+import mihon.desktop.extension.ApkConversionResult
+import mihon.desktop.extension.ApkConversionStage
 import mihon.domain.extension.model.RepositoryCatalogFailure
 import mihon.domain.extension.model.RepositoryIdentity
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
@@ -15,6 +18,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.i18n.MR
 import java.util.Locale
+import java.nio.file.AccessDeniedException
 
 class ExtensionListCopyContractTest {
     @Test
@@ -71,6 +75,28 @@ class ExtensionListCopyContractTest {
             MR.strings.desktop_extension_conversion_failed.localized(Locale.ENGLISH, "Example"),
             extensionInstallErrorCopy("Example", AppError.MalformedData(IllegalStateException("APK convert failed")), Locale.ENGLISH),
         )
+        val detailedFailure = ApkConversionException(
+            ApkConversionResult.Failure(
+                stage = ApkConversionStage.PUBLISH_OUTPUT,
+                error = AccessDeniedException("candidate.jar", null, "locked by another process"),
+                attempts = 2,
+            ),
+        )
+        val detailedEnglish = extensionInstallErrorCopy(
+            "Example",
+            AppError.MalformedData(detailedFailure),
+            Locale.ENGLISH,
+        )
+        val detailedChinese = extensionInstallErrorCopy(
+            "示例",
+            AppError.MalformedData(detailedFailure),
+            Locale.SIMPLIFIED_CHINESE,
+        )
+        assertTrue(detailedEnglish.contains("output", ignoreCase = true))
+        assertTrue(detailedEnglish.contains("locked by another process"))
+        assertTrue(detailedEnglish.contains("2"))
+        assertTrue(detailedChinese.contains("输出"))
+        assertTrue(detailedChinese.contains("locked by another process"))
         assertTrue(extensionInstallErrorCopy("Example", AppError.Network(), Locale.ENGLISH).contains("Install failed"))
         assertEquals(
             MR.strings.desktop_extension_install_failed.localized(Locale.ENGLISH, "Android-only network"),

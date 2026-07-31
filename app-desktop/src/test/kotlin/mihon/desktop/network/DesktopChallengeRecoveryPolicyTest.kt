@@ -35,6 +35,7 @@ import tachiyomi.domain.source.service.BrowserLoginSession
 import tachiyomi.domain.source.service.BrowserOpenResult
 import tachiyomi.domain.source.service.SourceLoginRequest
 import java.io.IOException
+import java.net.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -1927,11 +1928,12 @@ class DesktopChallengeRecoveryPolicyTest {
     fun `solver user agent is used for the unique retry and later same-host requests only`() {
         val sourceServer = MockWebServer().also { it.start() }
         val solverServer = MockWebServer().also { it.start() }
+        val unrelatedServer = MockWebServer().also { it.start() }
         try {
             sourceServer.enqueue(cloudflareChallenge(503))
             sourceServer.enqueue(MockResponse(code = 200, body = "recovered"))
             sourceServer.enqueue(MockResponse(code = 200, body = "same-host"))
-            sourceServer.enqueue(MockResponse(code = 200, body = "unrelated-host"))
+            unrelatedServer.enqueue(MockResponse(code = 200, body = "unrelated-host"))
             solverServer.enqueue(
                 solvedResponse(
                     domain = sourceServer.url("/").host,
@@ -1941,15 +1943,18 @@ class DesktopChallengeRecoveryPolicyTest {
                 ),
             )
             val jar = DesktopCookieJar()
+            val directClient = OkHttpClient.Builder()
+                .proxy(Proxy.NO_PROXY)
+                .build()
             val manager = CloudflareChallengeManager(
                 committer = DesktopAuthenticatedSessionCommitter(jar),
                 flareSolverrClient = FlareSolverrClient(
                     solverServer.url("/").toString().removeSuffix("/"),
-                    OkHttpClient(),
+                    directClient,
                 ),
                 authenticatedCookieLookup = desktopCookieLookup(jar),
             )
-            val client = OkHttpClient.Builder()
+            val client = directClient.newBuilder()
                 .cookieJar(jar)
                 .addInterceptor(DesktopCloudflareInterceptor(manager))
                 .addNetworkInterceptor(DesktopCloudflareCredentialInterceptor(manager))
@@ -1975,19 +1980,22 @@ class DesktopChallengeRecoveryPolicyTest {
             ).execute().close()
             client.newCall(
                 Request.Builder()
-                    .url(sourceServer.url("/other").newBuilder().host("127.0.0.1").build())
+                    .url(unrelatedServer.url("/other").newBuilder().host("127.0.0.1").build())
                     .header("User-Agent", "default-agent")
                     .build(),
             ).execute().close()
 
-            val observed = List(4) { sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing source request") }
+            val observed = List(3) { sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing source request") }
+            val unrelated = unrelatedServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing unrelated request")
             assertEquals("default-agent", observed[0].headers["User-Agent"])
             assertEquals("solver-agent", observed[1].headers["User-Agent"])
             assertEquals("solver-agent", observed[2].headers["User-Agent"])
-            assertEquals("default-agent", observed[3].headers["User-Agent"])
-            assertEquals(4, sourceServer.requestCount)
+            assertEquals("default-agent", unrelated.headers["User-Agent"])
+            assertEquals(3, sourceServer.requestCount)
+            assertEquals(1, unrelatedServer.requestCount)
             assertEquals(1, solverServer.requestCount)
         } finally {
+            unrelatedServer.close()
             solverServer.close()
             sourceServer.close()
         }

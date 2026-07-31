@@ -244,8 +244,13 @@ internal class DesktopExtensionInstallPort(
                     ?.takeIf(String::isNotBlank)
                     ?: failMalformed("APK manifest does not declare an extension provider")
                 validateDeclaredClass(install.artifact, install.extensionClass.orEmpty().split(':'))
-                val converted = apkConverter.convert(install.download, install.transactionDirectory)
-                    ?: failMalformed("APK convert failed: could not translate DEX bytecode to JVM")
+                val converted = when (val conversion = apkConverter.convertDetailed(install.download, install.transactionDirectory)) {
+                    is ApkConversionResult.Success -> conversion.jar
+                    is ApkConversionResult.Failure -> failMalformed(
+                        message = "APK convert failed at ${conversion.stage}",
+                        cause = ApkConversionException(conversion),
+                    )
+                }
                 fileSystem.copy(converted, candidate)
             }
             else -> failMalformed("Android-only extension: artifact contains no JVM classes or DEX")

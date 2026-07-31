@@ -11,11 +11,13 @@ import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.settings.DesktopAppPreferences
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -110,8 +112,15 @@ class AdvancedSettingsScreenTest {
     ): Fixture {
         val preferences = DesktopAppPreferences(InMemoryPreferenceStore())
         val actions = RecordingActions(opens, clears, clearThrows)
+        val network = mockk<DesktopNetworkHelper> {
+            every { routeObservations } returns MutableStateFlow(emptyList())
+            every { activeGlobalMode } returns preferences.globalNetworkMode.get()
+            every { activeGlobalProxy } returns preferences.proxyRuntimeConfig()
+        }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns preferences
+            every { networkHelper } returns network
+            every { networkRoutingPort } returns network
         }
         val scene = ImageComposeScene(900, 170) {}
         lateinit var navigator: Navigator

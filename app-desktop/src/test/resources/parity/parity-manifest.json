@@ -41,7 +41,7 @@
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/source/model/SourceScreenState.kt", "symbol": "class SourceScreenReducer", "line": 53}],
       "DESKTOP_CONSUMER": [
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourcesScreenModel.kt", "symbol": "class DesktopSourcesScreenModel(", "line": 31},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt", "symbol": "rememberScreenModel { DesktopSourcesScreenModel", "line": 176}
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt", "symbol": "rememberScreenModel { DesktopSourcesScreenModel", "line": 204}
       ],
       "FIXTURE": [
         {"artifact": "domain/src/commonTest/kotlin/mihon/domain/source/model/SourceScreenStateTest.kt#disabled and pinned results are consumed exactly once", "productionMarkers": ["reducer.disabled", "reducer.pinned", "reducer.consumeEvent"]},
@@ -112,7 +112,7 @@
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt", "symbol": "override fun InjektRegistrar.registerInjectables", "line": 52}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/domain/DomainModule.kt", "symbol": "override fun InjektRegistrar.registerInjectables", "line": 115}],
-      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "fun initDesktopDI", "line": 185}],
+      "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "fun initDesktopDI", "line": 186}],
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "symbol": "initDesktopDI()", "line": 82}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt#reinitializing while scheduler runs joins old work and closes old database", "productionMarkers": ["initDesktopDIForTest", "Injekt.get"]}]
     },
@@ -538,7 +538,7 @@
       "DESKTOP_CONSUMER": [
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/DesktopSystemNotifier.kt", "symbol": "class DesktopSystemNotifier", "line": 5},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/privacy/DesktopPrivacyCapabilities.kt", "symbol": "val production = DesktopPrivacyCapabilities(", "line": 20},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)", "line": 872}
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)", "line": 885}
       ],
       "FIXTURE": [
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/DesktopSystemNotifierTest.kt#falls back to in-app notification when system delivery is unavailable", "productionMarkers": ["DesktopSystemNotifier("]},
@@ -1146,13 +1146,13 @@
         {"path": "data/src/androidMain/kotlin/tachiyomi/data/source/SourcePagingSource.kt", "symbol": "abstract class BaseSourcePagingSource(", "line": 37}
       ],
       "SHARED_OR_ADAPTER": [
-        {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt", "symbol": "class SourceMangaSearchService", "line": 13},
+        {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt", "symbol": "class SourceMangaSearchService", "line": 10},
         {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/manga/model/SManga.kt", "symbol": "fun SManga.toDomainManga", "line": 6},
         {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/NetworkToLocalManga.kt", "symbol": "class NetworkToLocalManga(", "line": 6}
       ],
       "DESKTOP_CONSUMER": [
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt", "symbol": "internal class DesktopSourceLastUsedRecorder(", "line": 159},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt", "symbol": "class SourceBrowseQueryCoordinator(", "line": 80}
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt", "symbol": "internal class DesktopSourceLastUsedRecorder(", "line": 160},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt", "symbol": "class SourceBrowseQueryCoordinator(", "line": 73}
       ],
       "FIXTURE": [{"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModelBehaviorTest.kt#production Pager publishes shared service content without calling source directly", "productionMarkers": ["model.mangaPagerFlowFlow"]}]
     },
@@ -1224,8 +1224,8 @@
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/SearchScreenModel.kt", "symbol": "class SearchScreenModel", "line": 37}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/SearchScreenModel.kt", "symbol": "private val sourceMangaSearchService", "line": 53}],
-      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt", "symbol": "class SourceMangaSearchService", "line": 13}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt", "symbol": "class DesktopGlobalSearchCoordinator", "line": 256}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/source/service/SourceMangaSearchService.kt", "symbol": "class SourceMangaSearchService", "line": 10}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt", "symbol": "class DesktopGlobalSearchCoordinator", "line": 249}],
       "FIXTURE": [
         {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/globalsearch/SearchScreenModelBehaviorTest.kt#production global search uses shared failure and recovery without direct source call", "productionMarkers": ["screenModel(source, service)", "service.loadPageResult"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/GlobalSearchResultProductionWiringTest.kt#production search gates canonical rows retries materialization and rejects old completion", "productionMarkers": ["Navigator(GlobalSearchScreen(\"old\"))", "sourceMangaSearchService"]}
@@ -1456,9 +1456,9 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "private suspend fun loadExtension", "line": 226}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "private suspend fun loadExtension", "line": 226}],
       "SHARED_OR_ADAPTER": [
-        {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/ApkToJarConverter.kt", "symbol": "fun convert", "line": 30},
+        {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/ApkToJarConverter.kt", "symbol": "fun convert", "line": 84},
         {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/JvmExtensionArtifactAdapter.kt", "symbol": "fun adaptIfRequired", "line": 14},
-        {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "symbol": "private fun loadFromJar", "line": 66}
+        {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "symbol": "private fun loadFromJar", "line": 67}
       ],
       "DESKTOP_CONSUMER": [
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt", "symbol": "apkConverter.convert", "line": 247},
@@ -1596,7 +1596,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionsByType.kt", "symbol": "class GetExtensionsByType", "line": 10}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionsByType.kt", "symbol": "androidExtensionPresentationStore", "line": 20}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/extension/presentation/ExtensionPresentationStore.kt", "symbol": "class ExtensionPresentationStore", "line": 3}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPort.kt", "symbol": "desktopExtensionPresentationStore =", "line": 193}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPort.kt", "symbol": "desktopExtensionPresentationStore =", "line": 195}],
       "FIXTURE": [
         {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionPresentationWiringTest.kt#android get extensions consumes shared classification and source projection", "productionMarkers": ["GetExtensionsByType", "classifier.classify"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionPresentationUiTest.kt#search input filters through model state and survives content remount", "productionMarkers": ["ExtensionsScreenModel(", "ExtensionListContent(model)"]}
@@ -1726,7 +1726,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewScreen.kt", "symbol": "class WebViewScreen(", "line": 12}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/presentation/webview/WebViewScreenContent.kt", "symbol": "fun WebViewScreenContent(", "line": 69}],
       "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/network/DesktopBrowserLoginAdapter.kt", "symbol": "class DesktopBrowserLoginAdapter", "line": 69}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt", "symbol": "fun recover()", "line": 343}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt", "symbol": "fun recover()", "line": 344}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceLoginTestModeWiringTest.kt#source browse installs observation after real open login recovery", "productionMarkers": ["SourceBrowseScreen("]}]
     },
     "verificationScope": "VERIFIED: fixed/current Android embedded login, shared authentication outcome, Desktop external-browser adapter, real cookie commit/rollback and source-browse feedback are bound.",
@@ -1775,7 +1775,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt", "symbol": "class CloudflareInterceptor(", "line": 25}],
       "CURRENT_ANDROID": [{"path": "core/common/src/androidMain/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt", "symbol": "class CloudflareInterceptor(", "line": 25}],
       "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/network/DesktopCloudflareInterceptor.kt", "symbol": "typealias DesktopCloudflareInterceptor", "line": 61}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopNetworkHelper.kt", "symbol": "class DesktopNetworkHelper(", "line": 30}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopNetworkHelper.kt", "symbol": "class DesktopNetworkHelper(", "line": 65}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/network/DesktopChallengeRecoveryPolicyTest.kt#production client exposes upstream cloudflare interceptor runtime contract", "productionMarkers": ["DesktopNetworkHelper(", "simpleName == \"CloudflareInterceptor\""]}]
     },
     "deviations": [
@@ -1978,7 +1978,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt", "symbol": "sealed interface State", "line": 45}, {"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt", "symbol": "private fun observeStatus", "line": 82}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt", "symbol": "internal fun observePagerTransitionState", "line": 154}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt", "symbol": "internal fun observeWebtoonTransitionState", "line": 149}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt", "symbol": "sealed interface ReaderChapterState", "line": 26}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt", "symbol": "fun setChapterTransitionState", "line": 246}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt", "symbol": "fun setChapterTransitionState", "line": 250}],
       "FIXTURE": [{"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt#pager holder production observer executes loading error and loaded states", "productionMarkers": ["observePagerTransitionState"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt#webtoon holder production observer executes loading error and loaded states", "productionMarkers": ["observeWebtoonTransitionState"]}]
     },
     "protectionTests": [
@@ -2070,7 +2070,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt", "symbol": "private fun getCombinedPaint", "line": 812}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt", "symbol": "readerPreferences.grayscale().changes()", "line": 908}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt", "symbol": "internal fun buildAndroidLayerFilterParams", "line": 27}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt", "symbol": "data class ReaderColorFilterParams", "line": 241}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "ReaderViewportColorLayer(state.colorFilter)", "line": 489}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "internal fun ReaderViewportColorLayer", "line": 551}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun Modifier.readerColorTransform", "line": 52}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun readerColorMatrix", "line": 62}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "ReaderViewportColorLayer(state.colorFilter)", "line": 489}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "internal fun ReaderViewportColorLayer", "line": 551}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun Modifier.readerColorTransform", "line": 53}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun readerColorMatrix", "line": 63}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt#mounted reader viewport color layer renders disabled grayscale and invert pixels", "productionMarkers": ["renderColorLayer(", "assertPixel("]}]
     },
     "protectionTests": [
@@ -2210,7 +2210,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt", "symbol": "downloadPreferences.parallelSourceLimit.changes()", "line": 196}, {"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt", "symbol": ".retryWhen { _, attempt ->", "line": 504}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt", "symbol": "downloadPreferences.parallelSourceLimit().changes()", "line": 196}, {"path": "app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt", "symbol": ".retryWhen { _, attempt ->", "line": 504}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/download/DownloadQueueStateMachine.kt", "symbol": "fun schedule", "line": 42}, {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/download/DownloadQueueStateMachine.kt", "symbol": "fun retryDelayMillis", "line": 61}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt", "symbol": "val batch = stateMachine.schedule", "line": 273}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt", "symbol": "stateMachine.retryDelayMillis(attempt++)", "line": 408}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt", "symbol": "stateMachine.retryDelayMillis(renameAttempt++)", "line": 450}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt", "symbol": "val batch = stateMachine.schedule", "line": 273}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt", "symbol": "stateMachine.retryDelayMillis(attempt++)", "line": 407}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt", "symbol": "stateMachine.retryDelayMillis(renameAttempt++)", "line": 449}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/download/DownloadManagerReactivityTest.kt#three items enqueued after start all leave QUEUED state", "productionMarkers": ["mgr.start()"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/download/DesktopDownloadRetryIntegrationTest.kt#HTTP failures use 2 4 8 retry policy without sleeping", "productionMarkers": ["manager(server, delays)", "manager.start()"]}]
     },
     "protectionTests": ["domain/src/commonTest/kotlin/mihon/domain/download/DownloadQueueStateMachineTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/download/DownloadManagerReactivityTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/download/DesktopDownloadRetryIntegrationTest.kt"],
@@ -2239,7 +2239,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "symbol": "filterChaptersForDownload.await(manga, newChapters)", "line": 268}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt", "symbol": "filterChaptersForDownload.await(manga, newChapters)", "line": 294}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/chapter/interactor/FilterChaptersForDownload.kt", "symbol": "class FilterChaptersForDownload", "line": 16}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "filterChaptersForDownload.await(manga, chapters)", "line": 895}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "filterChaptersForDownload.await(manga, chapters)", "line": 908}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/FilterChaptersForDownloadIntegrationTest.kt#开启后保留候选数量与上游排序且正确处理空列表", "productionMarkers": ["filter.await"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt#reinitializing test DI replaces every binding and scheduler context", "productionMarkers": ["Injekt.get<LibraryUpdateScheduler>().runNow().join()", "PersistentDownloadStore("]}]
     },
     "protectionTests": [
@@ -3296,7 +3296,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "presentation-core/src/main/java/tachiyomi/presentation/core/util/Modifier.kt", "symbol": "fun Modifier.runOnEnterKeyPressed", "line": 55}],
       "CURRENT_ANDROID": [{"path": "presentation-core/src/main/java/tachiyomi/presentation/core/util/Modifier.kt", "symbol": "fun Modifier.runOnEnterKeyPressed", "line": 55}],
       "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/SettingsComposables.kt", "symbol": "internal fun Modifier.desktopSettingsEnterKey", "line": 27}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/GeneralSettingsScreen.kt", "symbol": "SwitchSettingsItem(", "line": 68}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/GeneralSettingsScreen.kt", "symbol": "SwitchSettingsItem(", "line": 90}],
       "FIXTURE": [
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt#Backup production button activates once on key down and respects disabled state", "productionMarkers": ["DesktopSettingsButton("]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsAccessibilityContractTest.kt#General and Appearance rows expose one action role state and disabled semantics", "productionMarkers": ["GeneralSettingsScreen()", "AppearanceSettingsScreen()"]}
@@ -3535,10 +3535,10 @@
         {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/compat/AndroidCompat.kt", "symbol": "object AndroidCompat", "line": 15}
       ],
       "DESKTOP_CONSUMER": [
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "AndroidCompat.initialize", "line": 207},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "AndroidCompat.startApp", "line": 209},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "AndroidCompat.initialize", "line": 208},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "AndroidCompat.startApp", "line": 210},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt", "symbol": "apkConverter.convert", "line": 247},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "symbol": "ServiceLoader.load(Source::class.java", "line": 75}
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "symbol": "ServiceLoader.load(Source::class.java", "line": 77}
       ],
       "FIXTURE": [
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/extension/CompatEvidenceContractTest.kt#inventory covers the complete public compat adapter surface", "productionMarkers": ["scanSurface(root)"]},

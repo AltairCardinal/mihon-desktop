@@ -22,6 +22,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -42,6 +43,7 @@ import mihon.desktop.platform.CredentialBackend
 import mihon.desktop.platform.CommandResult
 import mihon.desktop.platform.CommandRunner
 import mihon.desktop.platform.DesktopCredentialStore
+import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.OperatingSystem
 import mihon.desktop.platform.PlatformCredentialBackend
 import mihon.desktop.platform.PlatformCredentialUnavailableException
@@ -931,6 +933,11 @@ class SecuritySettingsWiringTest {
                 support = DesktopCapabilitySupport.Supported,
             ),
         )
+        val network = mockk<DesktopNetworkHelper> {
+            every { routeObservations } returns MutableStateFlow(emptyList())
+            every { activeGlobalMode } returns appPreferences.globalNetworkMode.get()
+            every { activeGlobalProxy } returns appPreferences.proxyRuntimeConfig()
+        }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { this@mockk.appPreferences } returns appPreferences
             every { securityPreferences } returns preferences
@@ -941,6 +948,8 @@ class SecuritySettingsWiringTest {
                 appPreferences,
                 DesktopWindowPrivacy(),
             )
+            every { networkHelper } returns network
+            every { networkRoutingPort } returns network
         }
         val scene = ImageComposeScene(900, 170) {}
         lateinit var navigator: Navigator

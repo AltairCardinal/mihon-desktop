@@ -1,9 +1,11 @@
 package mihon.desktop.extension
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldEndWith
+import io.kotest.matchers.types.shouldBeInstanceOf
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassVisitor
 import org.objectweb.asm.Label
@@ -13,8 +15,11 @@ import org.objectweb.asm.Type
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.nio.file.AccessDeniedException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.util.concurrent.CancellationException
 import java.util.jar.JarFile
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -143,6 +148,87 @@ class ApkToJarConverterTest {
 
         Files.readAllBytes(existingOutput).contentEquals(original) shouldBe true
         Files.exists(tmp.resolve("existing-raw.jar")) shouldBe false
+    }
+
+    @Test
+    fun `detailed failure identifies asset merge and retains the original cause`(@TempDir tmp: Path) {
+        val apk = buildConflictingAssetsApk(tmp.resolve("diagnostic.apk").toFile())
+
+        val failure = converter.convertDetailed(apk, tmp.toFile())
+            .shouldBeInstanceOf<ApkConversionResult.Failure>()
+
+        failure.stage shouldBe ApkConversionStage.COPY_ASSETS
+        failure.attempts shouldBe 1
+        failure.error.shouldBeInstanceOf<java.nio.file.FileSystemException>()
+    }
+
+    @Test
+    fun `transient output access denial retries the complete conversion once`(@TempDir tmp: Path) {
+        val apk = tmp.resolve("retry.apk").toFile()
+        buildZip(apk) {
+            putEntry("classes.dex", minimalDexBytes())
+        }
+        var publishAttempts = 0
+        val retryingConverter = ApkToJarConverter(
+            outputPublisher = { source, destination ->
+                publishAttempts++
+                if (publishAttempts == 1) {
+                    throw AccessDeniedException(source.toString(), destination.toString(), "injected lock")
+                }
+                Files.move(source, destination, StandardCopyOption.REPLACE_EXISTING)
+            },
+            retryDelay = {},
+        )
+
+        val success = retryingConverter.convertDetailed(apk, tmp.toFile())
+            .shouldBeInstanceOf<ApkConversionResult.Success>()
+
+        publishAttempts shouldBe 2
+        success.jar.exists() shouldBe true
+    }
+
+    @Test
+    fun `persistent output access denial reports attempts stage and final cause`(@TempDir tmp: Path) {
+        val apk = tmp.resolve("locked.apk").toFile()
+        buildZip(apk) {
+            putEntry("classes.dex", minimalDexBytes())
+        }
+        val failures = mutableListOf<AccessDeniedException>()
+        val retryingConverter = ApkToJarConverter(
+            outputPublisher = { source, destination ->
+                throw AccessDeniedException(source.toString(), destination.toString(), "injected-${failures.size + 1}")
+                    .also(failures::add)
+            },
+            retryDelay = {},
+        )
+
+        val failure = retryingConverter.convertDetailed(apk, tmp.toFile())
+            .shouldBeInstanceOf<ApkConversionResult.Failure>()
+
+        failures.size shouldBe 2
+        failure.stage shouldBe ApkConversionStage.PUBLISH_OUTPUT
+        failure.attempts shouldBe 2
+        failure.error shouldBe failures.last()
+    }
+
+    @Test
+    fun `cancellation propagates after removing the conversion workspace`(@TempDir tmp: Path) {
+        val apk = tmp.resolve("cancelled.apk").toFile()
+        buildZip(apk) {
+            putEntry("classes.dex", minimalDexBytes())
+        }
+        val cancellingConverter = ApkToJarConverter(
+            outputPublisher = { _, _ -> throw CancellationException("injected cancellation") },
+            retryDelay = {},
+        )
+
+        shouldThrow<CancellationException> {
+            cancellingConverter.convertDetailed(apk, tmp.toFile())
+        }
+
+        Files.list(tmp).use { files ->
+            files.noneMatch { it.fileName.toString().startsWith(".mihon-apk-convert-") } shouldBe true
+        }
     }
 
     @Test

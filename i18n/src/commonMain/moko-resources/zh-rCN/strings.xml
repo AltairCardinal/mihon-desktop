@@ -647,6 +647,14 @@
     <string name="desktop_extension_install_failed">安装失败：%s</string>
     <string name="desktop_extension_android_only">%s：仅支持 Android，无法在桌面端运行</string>
     <string name="desktop_extension_conversion_failed">%s：APK 转换失败，请尝试使用提供 JAR 的仓库</string>
+    <string name="desktop_extension_conversion_failed_detailed">%1$s：APK 转换在“%2$s”阶段失败（已尝试 %3$d 次）：%4$s</string>
+    <string name="desktop_extension_conversion_stage_inspect_input">输入检查</string>
+    <string name="desktop_extension_conversion_stage_prepare_workspace">临时目录准备</string>
+    <string name="desktop_extension_conversion_stage_translate_dex">DEX 转换</string>
+    <string name="desktop_extension_conversion_stage_rewrite_bytecode">JVM 字节码修复</string>
+    <string name="desktop_extension_conversion_stage_copy_assets">插件资源合并</string>
+    <string name="desktop_extension_conversion_stage_publish_output">输出写入</string>
+    <string name="desktop_extension_conversion_stage_cleanup">临时文件清理</string>
     <string name="desktop_extension_trust_changed">更新已阻止：仓库身份已从 %1$s 变更为 %2$s</string>
     <string name="desktop_extension_open_link_failed">无法打开链接：%s</string>
     <string name="desktop_extension_updating_message">正在更新 %d 个插件…</string>

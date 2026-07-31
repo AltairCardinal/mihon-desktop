@@ -19,6 +19,7 @@ import mihon.desktop.extension.DefaultDesktopArtifactAuthenticator
 import mihon.desktop.source.DesktopSourceManager
 import eu.kanade.tachiyomi.network.NetworkHelper
 import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.platform.installDesktopHttpAgentCompatibilityProperty
 import mihon.desktop.network.DesktopNetworkMaintenancePort
 import mihon.desktop.platform.DesktopNativeSharePort
 import mihon.desktop.platform.DesktopShareService
@@ -366,6 +367,7 @@ private fun registerDesktopNetwork(
     preferenceStore: PreferenceStore,
     browserOpener: DesktopBrowserOpener?,
 ): DesktopNetworkHelper {
+    installDesktopHttpAgentCompatibilityProperty()
     val dohProvider = preferenceStore.getObjectFromString(
         key = "doh_provider",
         defaultValue = mihon.desktop.settings.DohProvider.OFF,

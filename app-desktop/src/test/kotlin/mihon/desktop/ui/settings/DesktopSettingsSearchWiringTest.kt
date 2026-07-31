@@ -47,6 +47,7 @@ import kotlinx.coroutines.runBlocking
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.platform.DesktopLocaleAdapter
+import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.ui.theme.DesktopTheme
 import mihon.desktop.ui.theme.desktopColorScheme
@@ -499,11 +500,20 @@ class DesktopSettingsSearchWiringTest {
         val localeAdapter = androidx.compose.runtime.remember(currentPreferences) {
             DesktopLocaleAdapter(currentPreferences.appLanguage)
         }
+        val network = androidx.compose.runtime.remember(currentPreferences) {
+            mockk<DesktopNetworkHelper> {
+                every { routeObservations } returns MutableStateFlow(emptyList())
+                every { activeGlobalMode } returns currentPreferences.globalNetworkMode.get()
+                every { activeGlobalProxy } returns currentPreferences.proxyRuntimeConfig()
+            }
+        }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns currentPreferences
             every { this@mockk.localeAdapter } returns localeAdapter
             every { downloadManager } returns downloads
             every { downloadQueuePort } returns downloads
+            every { networkHelper } returns network
+            every { networkRoutingPort } returns network
         }
         CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies, content = content)
     }

@@ -42,6 +42,14 @@ Keiyoushi 当前同时发布 APK 与签名 JAR；Desktop 的全量兼容调查�
   回滚到旧 JAR、sidecar 和 runtime snapshot。
 - APK→JAR 保留为 Legacy capability，但不承诺任意历史 APK 都能无损转换；不得继续为
   Keiyoushi 当前 JAR 已解决的问题增加 DEX 类型猜测或扩展特例。
+- APK→JAR 的失败必须保留“检查输入、准备工作区、DEX 转换、字节码重写、复制资源、发布
+  输出、清理”阶段以及原始异常。仅文件被临时占用等可恢复的文件系统失败重试一次；确定性
+  的格式、DEX 或字节码失败不得重试。转换失败与随后发生的 source discovery/runtime 加载
+  失败必须分别报告，不能统一伪装成“仓库应提供 JAR”。
+- 部分 Android 扩展在源构造阶段读取 JVM `http.agent` 并假定它非空。Desktop 统一网络层
+  初始化时只在该属性缺失时提供 `Mihon Desktop/1.0`，显式 JVM 配置保持不变。此属性只用于
+  Android ABI 与请求头兼容，不创建旁路 HTTP 客户端，也不改变代理选择；扩展请求仍必须通过
+  production `NetworkHelper` 与按源分派的统一出口。
 - 全量网络调查只在显式启用 integration、live-network 和 network-survey 标签时运行，并
   持久化逐制品报告以便附着恢复。
 
@@ -52,5 +60,8 @@ Keiyoushi 当前同时发布 APK 与签名 JAR；Desktop 的全量兼容调查�
 - Legacy catalog 测试继续证明没有 `index_v2` 时仍选择 APK。
 - artifact authenticity 测试分别覆盖错误 APK signer、未签名 JAR、正确签名 JAR 和摘要
   失败顺序。
+- Legacy 安装事务测试必须至少用一个可再分发的真实 APK 覆盖 prepare、验证、转换、source
+  discovery、commit 与 reload；无再分发许可证的制品只允许由显式集成测试从不可变地址获取，
+  并在使用前核对大小和 SHA-256，不得提交进仓库。
 - Keiyoushi Windows survey 对当前 v2 index 中每个 JAR 执行 repository signer 验证和
   production loader 加载，不执行 APK→JAR。
