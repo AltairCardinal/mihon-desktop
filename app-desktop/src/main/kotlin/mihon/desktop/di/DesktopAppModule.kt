@@ -527,9 +527,10 @@ private fun registerDesktopExtension(
     val extensionScreenModel = ExtensionsScreenModel(
         port = presentationPort,
         initialOptions = ExtensionPresentationOptions(
-            showNsfw = false,
+            showNsfw = appPreferences.showNsfwSources.get(),
             enabledLanguages = appPreferences.enabledLanguages.get(),
         ),
+        onShowNsfwChanged = appPreferences.showNsfwSources::set,
     )
     Injekt.addSingleton(extensionScreenModel)
     val extensionController = SourceExtensionTestModeController(extensionScreenModel)

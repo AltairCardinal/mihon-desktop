@@ -50,6 +50,7 @@ class ExtensionsScreenModel(
     private val port: DesktopExtensionPresentationPort,
     parentScope: CoroutineScope? = null,
     initialOptions: ExtensionPresentationOptions,
+    private val onShowNsfwChanged: (Boolean) -> Unit = {},
 ) {
     private val ownerJob = SupervisorJob(parentScope?.coroutineContext?.get(Job))
     private val scope = CoroutineScope((parentScope?.coroutineContext ?: Dispatchers.Default) + ownerJob)
@@ -99,6 +100,9 @@ class ExtensionsScreenModel(
     }
 
     fun setOptions(value: ExtensionPresentationOptions) {
+        if (options.value.showNsfw != value.showNsfw) {
+            onShowNsfwChanged(value.showNsfw)
+        }
         options.value = value
         mutableState.update { it.copy(options = value) }
     }

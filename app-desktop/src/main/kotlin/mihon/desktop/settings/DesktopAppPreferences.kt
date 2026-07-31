@@ -154,6 +154,11 @@ class DesktopAppPreferences(
         )
     }
 
+    /** Whether extension discovery includes repository entries marked as NSFW. */
+    val showNsfwSources: Preference<Boolean> by lazy {
+        store.getBoolean(key = "show_nsfw_source", defaultValue = true)
+    }
+
     /** Source IDs excluded from discovery while remaining resolvable for existing manga. */
     val disabledSources: Preference<Set<String>> by lazy {
         store.getStringSet(key = "hidden_catalogues", defaultValue = emptySet()).also { current ->
