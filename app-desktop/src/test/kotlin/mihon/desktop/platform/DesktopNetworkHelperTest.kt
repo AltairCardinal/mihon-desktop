@@ -143,8 +143,9 @@ class DesktopNetworkHelperTest {
         helper.bindSourceOwner { sourceId -> if (sourceId == 42L) packageName else null }
 
         val pluginClient = helper.clientForSource(42L)
-        assertEquals(Proxy.Type.SOCKS, pluginClient.proxy?.type())
-        assertEquals(InetSocketAddress("127.0.0.1", 7890), pluginClient.proxy?.address())
+        val selectedProxy = pluginClient.proxySelector.select(URI("https://example.org")).single()
+        assertEquals(Proxy.Type.SOCKS, selectedProxy.type())
+        assertEquals(InetSocketAddress("127.0.0.1", 7890), selectedProxy.address())
         assertEquals(Proxy.NO_PROXY, helper.client.proxy)
         helper.close()
     }

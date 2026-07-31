@@ -1,6 +1,7 @@
 package mihon.desktop.ui.browse
 
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.ui.source.desktopSourceErrorMessage
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement

@@ -18,11 +18,11 @@ data class DesktopReaderRuntime(
 )
 
 object DesktopReaderRuntimeFactory {
-    fun createRuntime(progressTracker: ReaderProgressTracker?): DesktopReaderRuntime {
+    fun createRuntime(progressTracker: ReaderProgressTracker?, sourceId: Long): DesktopReaderRuntime {
         val networkHelper = Injekt.get<NetworkHelper>()
         return DesktopReaderRuntime(
             prefs = Injekt.get<ReaderPreferences>(),
-            preloader = buildReaderPreloader(networkHelper),
+            preloader = buildReaderPreloader(networkHelper, sourceId),
             tracker = progressTracker ?: Injekt.get<ReaderProgressTracker>(),
             pageLoader = DesktopReaderPageLoader(
                 downloadProvider = Injekt.get<DesktopDownloadProvider>(),
@@ -72,11 +72,11 @@ object DesktopReaderRuntimeFactory {
     }
 }
 
-private fun buildReaderPreloader(networkHelper: NetworkHelper): PagePreloader = PagePreloader(
+internal fun buildReaderPreloader(networkHelper: NetworkHelper, sourceId: Long): PagePreloader = PagePreloader(
     fetcher = { url ->
         try {
             val request = okhttp3.Request.Builder().url(url).build()
-            networkHelper.client.newCall(request).execute().use { response ->
+            networkHelper.clientForSource(sourceId).newCall(request).execute().use { response ->
                 if (response.isSuccessful) response.body.bytes() else null
             }
         } catch (_: Exception) {

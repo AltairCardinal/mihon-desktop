@@ -452,8 +452,10 @@ ResolvedNetworkPolicy
 
 ### 7.3 客户端生命周期
 
-继续复用共享 OkHttp 连接池、线程池和基础配置，通过 `newBuilder()` 派生不同策略客户端，
-不要为每次请求创建全新 OkHttpClient。
+继续复用共享 OkHttp 的 Dispatcher、缓存、Cookie、DNS 和基础拦截器，通过 `newBuilder()`
+派生不同策略客户端，不要为每次请求创建全新 OkHttpClient。每个插件使用独立连接池；这样
+插件策略变化时可以只清除该插件的旧连接，避免手动代理、系统代理和 DIRECT 之间复用已经
+建立的错误 route，同时不干扰仓库、更新器或其他插件。
 
 至少维护：
 
@@ -462,14 +464,31 @@ ResolvedNetworkPolicy
 - 强制直连客户端；
 - 按已安装插件身份缓存的解析客户端。
 
-配置变化必须失效相关缓存并避免新旧请求错误复用连接。已经建立的长连接是否中断需要
-有明确策略；默认允许在途请求完成，新请求使用新配置。
+插件客户端的 `ProxySelector` 必须在每次新请求时读取当前插件策略。配置变化时清除对应
+连接池，允许在途请求完成，新请求使用新配置；不能要求重新加载扩展，也不能因为扩展在
+构造期缓存了派生客户端而继续使用旧 route。
 
 ### 7.4 扩展注入
 
 每个扩展 classloader 应获得带扩展身份的 `ExtensionNetworkContext`，其中的
 `NetworkHelper`/OkHttpClient 由插件策略派生。不能只在全局 Injekt 注册一个无法识别
 插件身份的客户端。
+
+Desktop 当前通过 classloader 到插件包名的弱映射保存身份。扩展调用
+`NetworkHelper.client` 时，getter 从调用栈中的扩展 classloader 解析包名，因此以下两类
+常见写法都必须进入同一插件客户端：
+
+```kotlin
+override val client = network.client
+override val client = network.client.newBuilder().addInterceptor(...).build()
+```
+
+第二种写法是 ManHuaGui 等扩展采用的构造期派生模式。派生客户端会继承动态
+`ProxySelector`、策略刷新、域名观察与 route 观察链，插件以后切换四种网络策略时无需重建
+source 实例。
+
+由 Mihon 主进程代替扩展发出的后续请求必须显式使用 `clientForSource(sourceId)`，当前包括
+章节下载、阅读器图片回退和阅读器预加载。主进程不得在这些路径直接读取全局 `client`。
 
 扩展允许覆盖 `client` 或打包自己的网络帮助类，因此 loader 必须检测并报告支持程度。
 检测结果只用于诚实说明能力，不能把“检测到 OkHttp 类”当作全部流量已被强制接管。
@@ -486,6 +505,19 @@ ResolvedNetworkPolicy
 - 插件卸载后的清理策略；
 - 插件 ID/签名变化后的身份迁移；
 - localhost 和私网地址的显著标识。
+
+### 7.6 统一错误契约
+
+所有托管 source 调用把异常先转换为共享 `AppError`，再由界面统一生成用户文案，不允许
+各页面直接显示异常类名或重新包装为“未知错误”。最低分类为：
+
+- 超时、DNS 解析失败、TLS 失败、连接被拒绝、连接重置和其他网络失败；
+- HTTP 401/403 鉴权失败、429 限流、5xx 服务端失败；
+- 扩展返回数据无法解析；
+- 取消操作（不显示为失败）。
+
+搜索/热门/最新、详情与章节调用、阅读器页面、下载和书架更新应保留同一个结构化错误，
+由共享呈现器按当前语言显示可操作原因。底层 cause 只用于诊断，不作为主要用户文案。
 
 ## 8. 安全与隐私
 
@@ -513,6 +545,13 @@ Desktop 已实现本文首版产品链路：
 - 连接测试遇到瞬时 timeout 时会使用独立 Dispatcher 与 ConnectionPool 重试一次，
   避免应用既有 TLS/代理连接状态污染诊断结果；非 timeout 错误不会自动重试；
 - `HttpSource` 的默认托管客户端按插件包名应用四种插件复写策略；
+- 扩展 classloader 在 source 实例化前绑定插件身份；`NetworkHelper.client` 及其
+  `newBuilder()` 派生客户端均继承插件策略、域名观察和 route 观察；
+- 插件客户端每次请求动态读取当前复写策略，策略变化会清除该插件连接池；构造期缓存的
+  客户端无需重建即可在后续请求使用新 route；
+- 下载、阅读器图片回退和阅读器后台预加载等主进程代发请求均按 `sourceId` 获取插件客户端；
+- source 异常统一保留为 `AppError`，用户反馈区分超时、DNS、TLS、拒绝连接、连接重置、
+  鉴权、限流、服务端和响应解析错误；
 - 插件详情页显示支持程度、当前生效 route、连接测试、声明域名和运行时观测域名；
 - 运行时观测覆盖托管 HTTP 请求及重定向，只持久化规范化主机名，单插件上限 256 条；
 - 支持纯域名、Mihomo `DOMAIN`、显式 Mihomo `DOMAIN-SUFFIX`、sing-box 与
@@ -520,7 +559,7 @@ Desktop 已实现本文首版产品链路：
 
 当前边界：
 
-- 全局策略和 DoH 在下次启动时生效；插件复写对新取得的托管客户端立即生效；
+- 全局策略和 DoH 在下次启动时生效；插件复写对现有托管客户端的下一次新请求立即生效；
 - Windows PAC URL 和 WPAD 自动发现尚未由 Mihon 自行解析，只能使用 JVM fallback；
 - mixed capability 探测只适用于无协议的本机回环入口，不用于远程代理，也不尝试识别
   代理软件、节点或最终出口；

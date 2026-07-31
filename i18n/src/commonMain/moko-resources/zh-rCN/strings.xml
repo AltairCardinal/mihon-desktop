@@ -1240,6 +1240,11 @@
     <string name="desktop_source_login_invalid_header">请输入有效的 Cookie 请求头。</string>
     <string name="desktop_source_login_timed_out">登录超时。</string>
     <string name="desktop_source_network_timeout">网络请求超时。请检查该扩展的网络模式以及代理软件的分流或节点，然后重试。</string>
+    <string name="desktop_source_network_error">网络连接失败。请检查该扩展的网络模式和当前选择的代理路由，然后重试。</string>
+    <string name="desktop_source_network_dns">DNS 解析失败。请检查 DNS 或 DoH 设置，然后重试。</string>
+    <string name="desktop_source_network_tls">安全连接（TLS）失败。请检查系统时间、证书或代理软件的 HTTPS 解密设置，然后重试。</string>
+    <string name="desktop_source_network_refused">连接被拒绝。请检查目标站点和当前选择的代理路由，然后重试。</string>
+    <string name="desktop_source_network_reset">连接被目标站点或当前网络路由重置。请尝试切换路由后重试。</string>
     <string name="desktop_unlock_action">解锁</string>
     <string name="desktop_unlock_passphrase">密码</string>
     <string name="desktop_unlock_recovery_open_failed">无法打开配置文件夹</string>

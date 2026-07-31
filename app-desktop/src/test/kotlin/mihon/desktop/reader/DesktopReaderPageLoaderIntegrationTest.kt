@@ -13,10 +13,13 @@ import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.ui.reader.ReaderScreenModel
 import mihon.domain.reader.ReaderChapterModel
 import mihon.domain.reader.ReaderChapterState
+import mihon.domain.error.AppError
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -59,7 +62,8 @@ class DesktopReaderPageLoaderIntegrationTest {
                 initialPage = 0,
             )
 
-            assertTrue(model.state.value.chapterState is ReaderChapterState.Error)
+            val failed = model.state.value.chapterState as ReaderChapterState.Error
+            assertInstanceOf(AppError.Server::class.java, failed.error)
 
             server.enqueue(MockResponse(body = "retried-page"))
             model.requestRetry()
@@ -110,6 +114,35 @@ class DesktopReaderPageLoaderIntegrationTest {
 
             val loaded = retried as ReaderChapterState.Loaded
             assertTrue(loaded.pages.all { !it.imageUrl.isNullOrBlank() })
+        }
+    }
+
+    @Test
+    fun `reader fallback image requests use the source scoped client`() = runTest {
+        MockWebServer().also { it.start() }.use { server ->
+            server.enqueue(MockResponse(body = "image"))
+            val source = PageSource(listOf(Page(0, imageUrl = server.url("/scoped.jpg").toString())))
+            var scopedRequests = 0
+            val globalClient = OkHttpClient.Builder()
+                .addInterceptor { throw java.io.IOException("global client must not be used") }
+                .build()
+            val sourceClient = OkHttpClient.Builder()
+                .addInterceptor { chain -> scopedRequests += 1; chain.proceed(chain.request()) }
+                .build()
+            val loader = DesktopReaderPageLoader(
+                downloadProvider = DesktopDownloadProvider(tempDir),
+                sourceManager = FakeDesktopSourceManager(listOf(source)),
+                networkHelper = NetworkHelper(globalClient) { sourceId ->
+                    if (sourceId == source.id) sourceClient else globalClient
+                },
+            )
+            val chapterUrl = "/scoped/${UUID.randomUUID()}"
+            val model = ReaderScreenModel(chapterId = 9L, sourceId = source.id, chapterUrl = chapterUrl)
+
+            loader.load(model, source.id, chapterUrl, "Manga", "Chapter", 0)
+
+            assertTrue(model.state.value.chapterState is ReaderChapterState.Loaded)
+            assertEquals(1, scopedRequests)
         }
     }
 

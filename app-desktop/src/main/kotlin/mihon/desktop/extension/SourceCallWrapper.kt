@@ -1,15 +1,22 @@
 package mihon.desktop.extension
 
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeout
+import mihon.domain.error.AppError
+import tachiyomi.domain.source.service.toSourceAppError
+import java.net.SocketTimeoutException
 
 /**
  * Result of a [safeSourceCall] invocation.
  */
 sealed interface SourceCallResult<out T> {
     data class Success<T>(val value: T) : SourceCallResult<T>
-    data class Error(val message: String, val cause: Throwable? = null) : SourceCallResult<Nothing>
-    data object Timeout : SourceCallResult<Nothing>
+    data class Error(val error: AppError) : SourceCallResult<Nothing> {
+        val message: String get() = error.cause?.message ?: error::class.simpleName.orEmpty()
+        val cause: Throwable? get() = error.cause
+    }
+    data class Timeout(val error: AppError.Network) : SourceCallResult<Nothing>
 }
 
 /**
@@ -35,10 +42,14 @@ suspend fun <T> safeSourceCall(
     }
 } catch (e: TimeoutCancellationException) {
     System.err.println("[$tag] Source call timed out after ${timeoutMs}ms")
-    SourceCallResult.Timeout
+    SourceCallResult.Timeout(
+        AppError.Network(SocketTimeoutException("Source call timed out after ${timeoutMs}ms")),
+    )
+} catch (e: CancellationException) {
+    throw e
 } catch (e: Exception) {
     System.err.println("[$tag] Source call failed: ${e.message}")
-    SourceCallResult.Error(e.message ?: e.javaClass.simpleName, e)
+    SourceCallResult.Error(e.toSourceAppError())
 }
 
 /**

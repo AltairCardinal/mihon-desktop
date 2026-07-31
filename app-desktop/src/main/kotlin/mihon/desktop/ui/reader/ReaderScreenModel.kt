@@ -152,12 +152,16 @@ class ReaderScreenModel(
     fun hasLoadedPage(): Boolean = state.value.resolvedUrls.any { it.isNotBlank() }
 
     fun setLoadError(message: String) {
+        setLoadError(AppError.Unknown(IllegalStateException(message)), message)
+    }
+
+    fun setLoadError(error: AppError, message: String) {
         _state.update {
             it.copy(
                 isLoadingPages = false,
                 errorMessage = message,
                 chapterState = ReaderChapterState.Error(
-                    error = AppError.Unknown(IllegalStateException(message)),
+                    error = error,
                     retryTargetChapterId = chapterId,
                 ),
             )

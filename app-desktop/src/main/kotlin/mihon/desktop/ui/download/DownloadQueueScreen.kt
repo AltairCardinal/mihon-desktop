@@ -4,6 +4,7 @@ import tachiyomi.i18n.MR
 import java.util.Locale
 
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.ui.source.desktopSourceErrorMessage
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -415,17 +416,13 @@ internal fun downloadFailureMessage(
     error: AppError,
     locale: Locale = Locale.getDefault(),
 ): String = when (error) {
-    is AppError.MalformedData -> MR.strings.desktop_ui_download_malformed_error.localized(locale)
+    is AppError.MalformedData -> desktopSourceErrorMessage(error, locale)
     is AppError.Unknown -> MR.strings.desktop_ui_download_unknown_error.localized(locale)
-    is AppError.Network -> MR.strings.desktop_ui_download_network_error.localized(locale)
-    is AppError.Authentication -> MR.strings.desktop_ui_download_auth_error.localized(locale)
-    is AppError.RateLimited -> error.retryAfterSeconds?.let {
-        MR.strings.desktop_ui_download_rate_limited_seconds.localized(locale, it)
-    } ?: MR.strings.desktop_ui_download_rate_limited.localized(locale)
-    is AppError.Server -> MR.strings.desktop_ui_download_server_error.localized(
-        locale,
-        error.statusCode,
-    )
+    is AppError.Network,
+    is AppError.Authentication,
+    is AppError.RateLimited,
+    is AppError.Server,
+    -> desktopSourceErrorMessage(error, locale)
     is AppError.Permission -> MR.strings.desktop_ui_download_permission_error.localized(locale)
     is AppError.Storage -> MR.strings.desktop_ui_download_storage_error.localized(locale)
     else -> MR.strings.desktop_ui_download_retry_error.localized(locale)

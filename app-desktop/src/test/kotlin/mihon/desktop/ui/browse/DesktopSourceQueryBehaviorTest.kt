@@ -18,6 +18,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import mihon.domain.error.AppError
+import mihon.desktop.ui.source.desktopSourceErrorMessage
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -35,6 +36,10 @@ import tachiyomi.i18n.MR
 import java.io.File
 import java.io.InterruptedIOException
 import java.net.SocketTimeoutException
+import java.net.ConnectException
+import java.net.SocketException
+import java.net.UnknownHostException
+import javax.net.ssl.SSLHandshakeException
 import java.util.Locale
 
 class DesktopSourceQueryBehaviorTest {
@@ -72,12 +77,28 @@ class DesktopSourceQueryBehaviorTest {
             MR.strings.desktop_ui_download_malformed_error.localized(Locale.ENGLISH),
             desktopSourceErrorMessage(AppError.MalformedData(), Locale.ENGLISH),
         )
+        assertEquals(
+            MR.strings.desktop_source_network_dns.localized(Locale.ENGLISH),
+            desktopSourceErrorMessage(AppError.Network(UnknownHostException("source.invalid")), Locale.ENGLISH),
+        )
+        assertEquals(
+            MR.strings.desktop_source_network_tls.localized(Locale.ENGLISH),
+            desktopSourceErrorMessage(AppError.Network(SSLHandshakeException("certificate rejected")), Locale.ENGLISH),
+        )
+        assertEquals(
+            MR.strings.desktop_source_network_refused.localized(Locale.ENGLISH),
+            desktopSourceErrorMessage(AppError.Network(ConnectException("Connection refused")), Locale.ENGLISH),
+        )
+        assertEquals(
+            MR.strings.desktop_source_network_reset.localized(Locale.ENGLISH),
+            desktopSourceErrorMessage(AppError.Network(SocketException("Connection reset")), Locale.ENGLISH),
+        )
     }
 
     @Test
     fun `desktop source errors use stable i18n messages instead of class names`() {
         assertEquals(
-            MR.strings.exception_offline.localized(Locale.ENGLISH),
+            MR.strings.desktop_source_network_error.localized(Locale.ENGLISH),
             desktopSourceErrorMessage(AppError.Network(), Locale.ENGLISH),
         )
         assertEquals(

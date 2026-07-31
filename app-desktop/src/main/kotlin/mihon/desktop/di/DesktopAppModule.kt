@@ -420,7 +420,13 @@ private fun registerDesktopNetwork(
     Injekt.addSingleton(networkHelper)
     Injekt.addSingleton<DesktopNetworkMaintenancePort>(networkHelper)
     Injekt.addSingleton(networkHelper.client)
-    Injekt.addSingleton(NetworkHelper(networkHelper.client, networkHelper::clientForSource))
+    Injekt.addSingleton(
+        NetworkHelper(
+            client = networkHelper.client,
+            sourceClientProvider = networkHelper::clientForSource,
+            extensionClientProvider = networkHelper::clientForCurrentExtension,
+        ),
+    )
     Injekt.addSingleton(
         Json {
             ignoreUnknownKeys = true
@@ -500,7 +506,7 @@ private fun registerDesktopExtension(
         extensionRepoRepository = extensionRepoRepository,
     )
     val extensionManager = DesktopExtensionManager(
-        loader = DesktopExtensionLoader(paths.extensionsDir),
+        loader = DesktopExtensionLoader(paths.extensionsDir, networkHelper.extensionNetworkContext),
         artifactProvider = extensionApi::downloadArtifact,
         artifactAuthenticator = artifactAuthenticator,
     )

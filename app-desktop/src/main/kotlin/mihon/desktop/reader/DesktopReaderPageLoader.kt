@@ -9,6 +9,7 @@ import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.extension.SourceCallResult
 import mihon.desktop.extension.safeSourceCall
 import mihon.desktop.ui.reader.ReaderScreenModel
+import mihon.desktop.ui.source.desktopSourceErrorMessage
 import mihon.domain.error.AppError
 import mihon.domain.reader.ReaderChapterModel
 import mihon.domain.reader.ReaderChapterState
@@ -40,7 +41,7 @@ class DesktopReaderPageLoader(
             )
         ) {
             is PageLoadResult.Loaded -> model.setLoadedPages(result.urls, initialPage)
-            is PageLoadResult.Error -> model.setLoadError(result.message)
+            is PageLoadResult.Error -> model.setLoadError(result.error, result.message)
         }
     }
 
@@ -62,7 +63,7 @@ class DesktopReaderPageLoader(
             },
         )
         is PageLoadResult.Error -> ReaderChapterState.Error(
-            error = AppError.Unknown(IllegalStateException(result.message)),
+            error = result.error,
             retryTargetChapterId = chapter.id,
         )
     }
@@ -96,34 +97,39 @@ class DesktopReaderPageLoader(
         }
         val pages = when (val result = safeSourceCall { source.getPageList(chapter) }) {
             is SourceCallResult.Success -> result.value
-            is SourceCallResult.Timeout -> return PageLoadResult.Error("Source timed out loading pages")
-            is SourceCallResult.Error -> return PageLoadResult.Error(result.message)
+            is SourceCallResult.Timeout -> return PageLoadResult.Error(desktopSourceErrorMessage(result.error), result.error)
+            is SourceCallResult.Error -> return PageLoadResult.Error(desktopSourceErrorMessage(result.error), result.error)
         }
         if (pages.isEmpty()) return PageLoadResult.Error("Source returned 0 pages")
 
-        val fetcher = SourcePageFetcher(source = source, fallbackClient = networkHelper.client)
+        val fetcher = SourcePageFetcher(source = source, fallbackClient = networkHelper.clientForSource(sourceId))
         val tempDir = File(
             System.getProperty("java.io.tmpdir"),
             "mihon_reader_${sourceId}_${chapterUrl.hashCode()}",
         ).also { it.mkdirs() }
         onPageCount(pages.size)
-        val urls = coroutineScope {
+        val pageResults = coroutineScope {
             pages.mapIndexed { index, page ->
                 async {
-                    fetcher.fetchToFile(page, tempDir)?.also { onPageLoaded(index, it) }.orEmpty()
+                    fetcher.fetch(page, tempDir).also { result ->
+                        if (result is SourcePageFetchResult.Success) onPageLoaded(index, result.uri)
+                    }
                 }
             }.awaitAll()
         }
-        return if (urls.all(String::isNotBlank)) {
-            PageLoadResult.Loaded(urls)
+        val failure = pageResults.filterIsInstance<SourcePageFetchResult.Failure>().firstOrNull()
+        return if (failure == null) {
+            PageLoadResult.Loaded(pageResults.filterIsInstance<SourcePageFetchResult.Success>().map { it.uri })
         } else {
-            val failedPage = urls.indexOfFirst(String::isBlank) + 1
-            PageLoadResult.Error("Failed to load page $failedPage of ${urls.size}")
+            PageLoadResult.Error(desktopSourceErrorMessage(failure.error), failure.error)
         }
     }
 
     private sealed interface PageLoadResult {
         data class Loaded(val urls: List<String>) : PageLoadResult
-        data class Error(val message: String) : PageLoadResult
+        data class Error(
+            val message: String,
+            val error: AppError = AppError.MalformedData(IllegalStateException(message)),
+        ) : PageLoadResult
     }
 }

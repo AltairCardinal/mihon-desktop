@@ -24,6 +24,7 @@ fun DesktopExtensionLoader.readMetaVersionCode(jarFile: java.io.File): Long =
  */
 open class DesktopExtensionLoader(
     val extensionsDirectory: File = File(System.getProperty("user.home"), ".mihon/extensions"),
+    private val networkContext: DesktopExtensionNetworkContext = DesktopExtensionNetworkContext(),
 ) {
     private val mutableDiagnostics = mutableListOf<ExtensionLoadDiagnostic>()
     val diagnostics: List<ExtensionLoadDiagnostic> get() = mutableDiagnostics.toList()
@@ -70,6 +71,7 @@ open class DesktopExtensionLoader(
                 jarFile.toURI().toURL(),
                 this::class.java.classLoader,
             )
+            networkContext.register(classLoader, jarFile.nameWithoutExtension)
 
             // 1. Try ServiceLoader first (fast path for JVM-compiled extensions).
             var sources = ServiceLoader.load(Source::class.java, classLoader).toList()

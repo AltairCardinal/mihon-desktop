@@ -312,7 +312,9 @@ class DesktopDownloadManager(
      */
     private suspend fun downloadChapter(item: DownloadItem): Boolean {
         return try {
-            val client = httpClient ?: networkHelper?.client ?: Injekt.get<NetworkHelper>().client
+            val client = httpClient
+                ?: networkHelper?.clientForSource(item.sourceId)
+                ?: Injekt.get<NetworkHelper>().clientForSource(item.sourceId)
             // Resolve page URLs if not pre-provided
             val urls = when {
                 item.pageUrls.isNotEmpty() -> item.pageUrls
@@ -328,13 +330,10 @@ class DesktopDownloadManager(
                     val pagesResult = safeSourceCall(timeoutMs = sourceCallTimeoutMs) { source.getPageList(sChapter) }
                     when (pagesResult) {
                         is SourceCallResult.Success -> pagesResult.value.mapNotNull { it.imageUrl }
-                        is SourceCallResult.Timeout -> return fail(
-                            item.chapterId,
-                            AppError.Network(java.util.concurrent.TimeoutException("Source page list timed out")),
-                        )
+                        is SourceCallResult.Timeout -> return fail(item.chapterId, pagesResult.error)
                         is SourceCallResult.Error -> return fail(
                             item.chapterId,
-                            pagesResult.cause.toSourceAppError(),
+                            pagesResult.error,
                         )
                     }
                 }
@@ -509,11 +508,6 @@ class DesktopDownloadManager(
     private fun fail(chapterId: Long, error: AppError): Boolean {
         recordFailure(chapterId, error)
         return false
-    }
-
-    private fun Throwable?.toSourceAppError(): AppError = when (this) {
-        is java.io.IOException -> AppError.Network(this)
-        else -> AppError.MalformedData(this)
     }
 
     private fun Throwable?.toAppError(): AppError {

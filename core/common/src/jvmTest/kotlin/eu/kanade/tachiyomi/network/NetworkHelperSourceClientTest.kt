@@ -17,4 +17,17 @@ class NetworkHelperSourceClientTest {
         assertSame(scoped, helper.clientForSource(42L))
         assertSame(global, helper.clientForSource(1L))
     }
+
+    @Test
+    fun `desktop helper resolves extension caller scoped client without changing the public getter`() {
+        val global = OkHttpClient()
+        val scoped = OkHttpClient()
+        val helper = NetworkHelper(
+            client = global,
+            sourceClientProvider = { global },
+            extensionClientProvider = { scoped },
+        )
+
+        assertSame(scoped, helper.client)
+    }
 }

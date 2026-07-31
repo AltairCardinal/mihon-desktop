@@ -157,7 +157,7 @@ class LibraryUpdateScheduler(
                 )
                 val result = runCatching { update(entry.manga) }
                 result.onSuccess { updateResult ->
-                    if (updateResult.error == null) {
+                    if (updateResult.error == null && updateResult.sourceError == null) {
                         autoDownload?.invoke(entry.manga, updateResult.newChapters)
                         newChapters += updateResult.newChapterCount
                         completed++
@@ -167,7 +167,8 @@ class LibraryUpdateScheduler(
                             TaskCheckpoint(entry.manga.id.toString(), completed, completed.toFloat() / totalUnits),
                         )
                     } else {
-                        val error = AppError.Unknown(IllegalStateException(updateResult.error))
+                        val error = updateResult.sourceError
+                            ?: AppError.Unknown(IllegalStateException(requireNotNull(updateResult.error)))
                         failures += error
                         failedUnits += AppError.FailedUnit("manga:${entry.manga.id}", error)
                     }

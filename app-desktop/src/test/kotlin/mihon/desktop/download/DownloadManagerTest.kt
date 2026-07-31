@@ -31,6 +31,7 @@ import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -183,6 +184,52 @@ class DownloadManagerTest {
         } finally {
             workerJob.cancel()
             server.stop(gracePeriodMillis = 0, timeoutMillis = 500)
+        }
+    }
+
+    @Test
+    fun `page downloads use the source scoped client instead of the global client`() = runTest {
+        val provider = DesktopDownloadProvider(baseDir = tempDir)
+        val globalClient = OkHttpClient()
+        val sourceClient = OkHttpClient()
+        var observedClient: OkHttpClient? = null
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            networkHelper = NetworkHelper(globalClient) { sourceId ->
+                if (sourceId == 42L) sourceClient else globalClient
+            },
+            workerScope = this,
+            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun execute(client: OkHttpClient, url: String): Response {
+                    observedClient = client
+                    return Response.Builder()
+                        .request(Request.Builder().url(url).build())
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .body(jpegBytes().toResponseBody())
+                        .build()
+                }
+            },
+        )
+        val worker = manager.start()
+        try {
+            manager.enqueue(
+                DownloadItem(
+                    sourceId = 42L,
+                    mangaTitle = "Scoped",
+                    chapterName = "Chapter",
+                    chapterId = 420L,
+                    pageUrls = listOf("https://fixture.invalid/001.jpg"),
+                ),
+            )
+
+            advanceUntilIdle()
+
+            assertSame(sourceClient, observedClient)
+            assertTrue(manager.queue.value.isEmpty())
+        } finally {
+            worker.cancel()
         }
     }
 

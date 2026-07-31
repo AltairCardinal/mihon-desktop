@@ -1,5 +1,6 @@
 package mihon.desktop.ui.reader
 
+import mihon.desktop.ui.source.desktopSourceErrorMessage
 import tachiyomi.i18n.MR
 import java.util.Locale
 
@@ -200,7 +201,7 @@ internal fun chapterTransitionPresentation(
             MR.strings.desktop_ui_failed_to_load_target.localized(
                 Locale.getDefault(),
                 target,
-                error.cause?.message ?: error.toString(),
+                desktopSourceErrorMessage(error),
             )
         }
         transition.missingChapterCount > 0 -> MR.strings.desktop_ui_missing_chapters.localized(

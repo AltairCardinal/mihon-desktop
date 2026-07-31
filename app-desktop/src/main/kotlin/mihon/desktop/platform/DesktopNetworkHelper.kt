@@ -26,6 +26,7 @@ import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.settings.DesktopProxyRuntimeConfig
 import mihon.desktop.settings.GlobalNetworkMode
 import mihon.desktop.settings.PluginNetworkMode
+import mihon.desktop.extension.DesktopExtensionNetworkContext
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import okhttp3.Cache
@@ -61,9 +62,10 @@ class DesktopNetworkHelper(
     private val appPreferences: DesktopAppPreferences? = null,
     private val connectionTestTimeoutMillis: Long = 15_000,
     challengeManager: CloudflareChallengeManager? = null,
+    internal val extensionNetworkContext: DesktopExtensionNetworkContext = DesktopExtensionNetworkContext(),
 ) : AutoCloseable, DesktopExtensionCookiePort, DesktopNetworkMaintenancePort, DesktopNetworkRoutingPort {
     private val routeMonitor = DesktopRouteMonitor()
-    private val pluginClients = ConcurrentHashMap<PluginClientKey, OkHttpClient>()
+    private val pluginClients = ConcurrentHashMap<String, OkHttpClient>()
     @Volatile
     private var sourceOwner: (Long) -> String? = { null }
 
@@ -127,18 +129,32 @@ class DesktopNetworkHelper(
 
     fun bindSourceOwner(owner: (Long) -> String?) {
         sourceOwner = owner
-        pluginClients.clear()
     }
 
     fun clientForSource(sourceId: Long): OkHttpClient {
         val packageName = sourceOwner(sourceId) ?: return client
+        return clientForPlugin(packageName)
+    }
+
+    internal fun clientForCurrentExtension(): OkHttpClient =
+        extensionNetworkContext.currentPackage()?.let(::clientForPlugin) ?: client
+
+    private fun clientForPlugin(packageName: String): OkHttpClient {
         val preferences = appPreferences ?: return client
-        val mode = preferences.pluginNetworkMode(packageName).get()
-        val manualProxy = preferences.pluginProxyRuntimeConfig(packageName)
-        val key = PluginClientKey(packageName, mode, manualProxy)
-        return pluginClients.computeIfAbsent(key) {
+        return pluginClients.computeIfAbsent(packageName) {
+            val connectionPool = ConnectionPool()
+            val policy = PluginRoutingPolicy(
+                packageName = packageName,
+                preferences = preferences,
+                globalMode = activeGlobalMode,
+                globalProxy = activeGlobalProxy,
+                systemProxySelector = systemProxySelector,
+            )
             client.newBuilder()
-                .applyPluginProxy(mode, manualProxy, systemProxySelector)
+                .proxy(null)
+                .proxySelector(PluginRoutingProxySelector(policy))
+                .connectionPool(connectionPool)
+                .addInterceptor(PluginPolicyRefreshInterceptor(policy, connectionPool))
                 .addNetworkInterceptor(PluginDomainObservationInterceptor(packageName, preferences))
                 .eventListenerFactory { routeMonitor.listener(packageName) }
                 .build()
@@ -146,14 +162,20 @@ class DesktopNetworkHelper(
     }
 
     override fun pluginNetworkSupport(sources: List<Source>): DesktopPluginNetworkSupport {
-        val httpSources = sources.filterIsInstance<HttpSource>()
-        if (httpSources.isEmpty()) return DesktopPluginNetworkSupport.UNKNOWN
-        val managed = httpSources.count { source ->
-            runCatching { source.client === clientForSource(source.id) }.getOrDefault(false)
+        val clients = sources.mapNotNull { source ->
+            val packageName = sourceOwner(source.id) ?: return@mapNotNull null
+            sourceClient(source)?.let { packageName to it }
+        }
+        if (clients.isEmpty()) return DesktopPluginNetworkSupport.UNKNOWN
+        val fullyManaged = clients.count { (packageName, sourceClient) ->
+            sourceClient.hasCompletePluginNetworkChain(packageName)
+        }
+        val partlyManaged = clients.count { (packageName, sourceClient) ->
+            sourceClient.hasAnyPluginNetworkChain(packageName)
         }
         return when {
-            managed == httpSources.size -> DesktopPluginNetworkSupport.FULL
-            managed > 0 -> DesktopPluginNetworkSupport.PARTIAL
+            fullyManaged == clients.size -> DesktopPluginNetworkSupport.FULL
+            partlyManaged > 0 -> DesktopPluginNetworkSupport.PARTIAL
             else -> DesktopPluginNetworkSupport.UNKNOWN
         }
     }
@@ -254,6 +276,8 @@ class DesktopNetworkHelper(
     override fun clearCookies() = cookieJar.clear()
 
     override fun close() {
+        pluginClients.values.map { it.connectionPool }.distinct().forEach(ConnectionPool::evictAll)
+        pluginClients.clear()
         client.dispatcher.cancelAll()
         client.dispatcher.executorService.shutdown()
         client.connectionPool.evictAll()
@@ -275,33 +299,111 @@ class DesktopNetworkHelper(
             ?: "INVALID MANUAL PROXY"
     }
 
-    private fun OkHttpClient.Builder.applyPluginProxy(
-        mode: PluginNetworkMode,
-        manualProxy: DesktopProxyRuntimeConfig?,
-        systemProxySelector: ProxySelector,
-    ): OkHttpClient.Builder = apply {
-        when (mode) {
-            PluginNetworkMode.INHERIT_GLOBAL -> Unit
-            PluginNetworkMode.SYSTEM -> {
-                proxy(null)
-                proxySelector(systemProxySelector)
-            }
-            PluginNetworkMode.DIRECT -> proxy(Proxy.NO_PROXY)
-            PluginNetworkMode.MANUAL -> proxy(
-                manualProxy?.let { Proxy(it.type, InetSocketAddress(it.host, it.port)) }
-                    ?: InvalidManualProxy,
-            )
-        }
+    private fun sourceClient(source: Source): OkHttpClient? = when (source) {
+        is HttpSource -> runCatching { source.client }.getOrNull()
+        else -> runCatching {
+            source.javaClass.methods
+                .firstOrNull { it.name == "getClient" && it.parameterCount == 0 }
+                ?.invoke(source) as? OkHttpClient
+        }.getOrNull()
     }
 
-    private data class PluginClientKey(
-        val packageName: String,
+    private fun OkHttpClient.hasCompletePluginNetworkChain(packageName: String): Boolean =
+        (proxySelector as? PluginRoutingProxySelector)?.packageName == packageName &&
+            interceptors.any { it is PluginPolicyRefreshInterceptor && it.packageName == packageName } &&
+            networkInterceptors.any { it is PluginDomainObservationInterceptor && it.packageName == packageName }
+
+    private fun OkHttpClient.hasAnyPluginNetworkChain(packageName: String): Boolean =
+        (proxySelector as? PluginRoutingProxySelector)?.packageName == packageName ||
+            interceptors.any { it is PluginPolicyRefreshInterceptor && it.packageName == packageName } ||
+            networkInterceptors.any { it is PluginDomainObservationInterceptor && it.packageName == packageName }
+
+    private data class PluginPolicySnapshot(
         val mode: PluginNetworkMode,
         val manualProxy: DesktopProxyRuntimeConfig?,
     )
 
+    private class PluginRoutingPolicy(
+        val packageName: String,
+        private val preferences: DesktopAppPreferences,
+        private val globalMode: GlobalNetworkMode,
+        private val globalProxy: DesktopProxyRuntimeConfig?,
+        private val systemProxySelector: ProxySelector,
+    ) {
+        fun snapshot(): PluginPolicySnapshot {
+            val mode = preferences.pluginNetworkMode(packageName).get()
+            return PluginPolicySnapshot(
+                mode = mode,
+                manualProxy = preferences.pluginProxyRuntimeConfig(packageName).takeIf {
+                    mode == PluginNetworkMode.MANUAL
+                },
+            )
+        }
+
+        fun select(uri: URI): List<Proxy> {
+            val current = snapshot()
+            return when (current.mode) {
+                PluginNetworkMode.INHERIT_GLOBAL -> selectGlobal(uri)
+                PluginNetworkMode.SYSTEM -> systemProxySelector.select(uri)
+                PluginNetworkMode.DIRECT -> listOf(Proxy.NO_PROXY)
+                PluginNetworkMode.MANUAL -> listOf(current.manualProxy.toProxyOrInvalid())
+            }
+        }
+
+        fun connectFailed(uri: URI?, address: SocketAddress?, failure: IOException?) {
+            val mode = snapshot().mode
+            if (mode == PluginNetworkMode.SYSTEM || (mode == PluginNetworkMode.INHERIT_GLOBAL && globalMode == GlobalNetworkMode.SYSTEM)) {
+                systemProxySelector.connectFailed(uri, address, failure)
+            }
+        }
+
+        private fun selectGlobal(uri: URI): List<Proxy> = when (globalMode) {
+            GlobalNetworkMode.SYSTEM -> systemProxySelector.select(uri)
+            GlobalNetworkMode.DIRECT -> listOf(Proxy.NO_PROXY)
+            GlobalNetworkMode.MANUAL -> listOf(globalProxy.toProxyOrInvalid())
+        }
+
+        private fun DesktopProxyRuntimeConfig?.toProxyOrInvalid(): Proxy = this?.let {
+            Proxy(it.type, InetSocketAddress(it.host, it.port))
+        } ?: InvalidManualProxy
+    }
+
+    private class PluginRoutingProxySelector(
+        private val policy: PluginRoutingPolicy,
+    ) : ProxySelector() {
+        val packageName: String get() = policy.packageName
+
+        override fun select(uri: URI): List<Proxy> = policy.select(uri)
+
+        override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) =
+            policy.connectFailed(uri, sa, ioe)
+    }
+
+    private class PluginPolicyRefreshInterceptor(
+        private val policy: PluginRoutingPolicy,
+        private val connectionPool: ConnectionPool,
+    ) : Interceptor {
+        val packageName: String get() = policy.packageName
+
+        @Volatile
+        private var previousPolicy: PluginPolicySnapshot? = null
+
+        override fun intercept(chain: Interceptor.Chain): okhttp3.Response {
+            val current = policy.snapshot()
+            if (current != previousPolicy) {
+                synchronized(this) {
+                    if (current != previousPolicy) {
+                        if (previousPolicy != null) connectionPool.evictAll()
+                        previousPolicy = current
+                    }
+                }
+            }
+            return chain.proceed(chain.request())
+        }
+    }
+
     private class PluginDomainObservationInterceptor(
-        private val packageName: String,
+        val packageName: String,
         private val preferences: DesktopAppPreferences,
     ) : Interceptor {
         override fun intercept(chain: Interceptor.Chain): okhttp3.Response {

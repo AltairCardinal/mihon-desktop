@@ -1,12 +1,16 @@
 package mihon.desktop.reader
 
+import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.Page
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import mihon.domain.error.AppError
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import tachiyomi.domain.source.service.toSourceAppError
 import java.io.File
 
 /**
@@ -39,29 +43,49 @@ class SourcePageFetcher(
     /**
      * Downloads [page] to [destDir] using the source's client and headers.
      *
-     * @return `file://` URI string of the saved file, or `null` if imageUrl is absent or the request fails.
+     * @return a local `file://` URI on success, or the shared source error on failure.
      */
-    suspend fun fetchToFile(page: Page, destDir: File): String? {
-        val imageUrl = page.imageUrl?.takeIf { it.isNotBlank() } ?: return null
+    suspend fun fetch(page: Page, destDir: File): SourcePageFetchResult {
+        val imageUrl = page.imageUrl?.takeIf { it.isNotBlank() }
+            ?: return SourcePageFetchResult.Failure(
+                AppError.MalformedData(IllegalStateException("Page ${page.index + 1} has no image URL")),
+            )
         val ext = imageUrl.substringAfterLast('.').substringBefore('?').take(4).ifBlank { "jpg" }
         val destFile = File(destDir, "page_${page.index.toString().padStart(4, '0')}.$ext")
 
-        if (destFile.exists() && destFile.length() > 0L) return destFile.toURI().toString()
+        if (destFile.exists() && destFile.length() > 0L) {
+            return SourcePageFetchResult.Success(destFile.toURI().toString())
+        }
 
         val request = Request.Builder().url(imageUrl).apply {
             headers?.forEach { (name, value) -> header(name, value) }
         }.build()
 
-        return runCatching {
+        return try {
             withContext(Dispatchers.IO) {
                 client.newCall(request).execute().use { response ->
-                    check(response.isSuccessful) { "HTTP ${response.code}" }
+                    if (!response.isSuccessful) throw HttpException(response.code)
                     destFile.outputStream().buffered().use { out ->
                         response.body.byteStream().copyTo(out)
                     }
                 }
             }
-            destFile.toURI().toString()
-        }.getOrNull()
+            SourcePageFetchResult.Success(destFile.toURI().toString())
+        } catch (error: CancellationException) {
+            destFile.delete()
+            throw error
+        } catch (error: Exception) {
+            destFile.delete()
+            SourcePageFetchResult.Failure(error.toSourceAppError())
+        }
     }
+
+    /** Backward-compatible nullable API for callers that do not present failures. */
+    suspend fun fetchToFile(page: Page, destDir: File): String? =
+        (fetch(page, destDir) as? SourcePageFetchResult.Success)?.uri
+}
+
+sealed interface SourcePageFetchResult {
+    data class Success(val uri: String) : SourcePageFetchResult
+    data class Failure(val error: AppError) : SourcePageFetchResult
 }

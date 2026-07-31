@@ -8,10 +8,13 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.runBlocking
 import mihon.desktop.domain.fakes.FakeChapterRepository
+import mihon.domain.error.AppError
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
+import java.io.IOException
 
 class LibraryUpdateCheckerTest {
 
@@ -21,6 +24,7 @@ class LibraryUpdateCheckerTest {
     private class StubSource(
         private val chapters: List<SChapter>,
         override val id: Long = 42L,
+        private val failure: Throwable? = null,
     ) : CatalogueSource {
         override val name = "Stub"
         override val lang = "en"
@@ -31,7 +35,7 @@ class LibraryUpdateCheckerTest {
             MangasPage(emptyList(), false)
         override fun getFilterList() = FilterList()
         override suspend fun getMangaDetails(manga: SManga) = SManga.create()
-        override suspend fun getChapterList(manga: SManga) = chapters
+        override suspend fun getChapterList(manga: SManga) = failure?.let { throw it } ?: chapters
         override suspend fun getPageList(chapter: SChapter) = emptyList<Page>()
     }
 
@@ -179,5 +183,15 @@ class LibraryUpdateCheckerTest {
         val result = checker.checkForUpdates(manga(), source)
 
         assertEquals(0, result.newChapters.size)
+    }
+
+    @Test
+    fun `source network failure remains structured for scheduler and notification presentation`() = runBlocking<Unit> {
+        val result = LibraryUpdateChecker(FakeChapterRepository()).checkForUpdates(
+            manga(),
+            StubSource(emptyList(), failure = IOException("connection reset")),
+        )
+
+        assertInstanceOf(AppError.Network::class.java, result.sourceError)
     }
 }

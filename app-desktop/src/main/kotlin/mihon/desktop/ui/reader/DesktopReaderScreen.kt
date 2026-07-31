@@ -111,7 +111,7 @@ data class DesktopReaderScreen(
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val scope = rememberCoroutineScope()
-        val runtime = remember { DesktopReaderRuntimeFactory.createRuntime(progressTracker) }
+        val runtime = remember { DesktopReaderRuntimeFactory.createRuntime(progressTracker, sourceId) }
         val model = rememberScreenModel {
             createReaderScreenModel(runtime.prefs, runtime.pageLoader)
         }

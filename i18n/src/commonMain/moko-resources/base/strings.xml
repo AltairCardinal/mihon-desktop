@@ -794,6 +794,11 @@
     <string name="desktop_source_login_invalid_cookies">The source rejected these cookies.</string>
     <string name="desktop_source_login_commit_failed">The authenticated session could not be saved.</string>
     <string name="desktop_source_network_timeout">Network request timed out. Check this extension\'s network mode and the proxy routing or node, then retry.</string>
+    <string name="desktop_source_network_error">Network connection failed. Check this extension\'s network mode and the selected proxy route, then retry.</string>
+    <string name="desktop_source_network_dns">DNS lookup failed. Check DNS or DoH settings, then retry.</string>
+    <string name="desktop_source_network_tls">Secure connection failed (TLS). Check the system time, certificates, or proxy interception, then retry.</string>
+    <string name="desktop_source_network_refused">Connection was refused. Check the target site and the selected proxy route, then retry.</string>
+    <string name="desktop_source_network_reset">Connection was reset by the target site or current network route. Try another route, then retry.</string>
     <string name="logging_in">Logging in…</string>
     <string name="login_success">Logged in</string>
     <string name="logout_title">Log out from %1$s?</string>

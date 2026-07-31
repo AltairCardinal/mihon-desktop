@@ -5,6 +5,10 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import mihon.domain.error.AppError
+import mihon.domain.network.AppErrorException
+import eu.kanade.tachiyomi.network.HttpException
+import java.io.IOException
 import org.junit.jupiter.api.Test
 
 /**
@@ -20,17 +24,29 @@ class SourceCallWrapperTest {
     }
 
     @Test
-    fun `returns Error when block throws`() = runBlocking {
-        val result = safeSourceCall<Int> { throw RuntimeException("network error") }
+    fun `classifies IO HTTP and parser failures with the shared source error contract`() = runBlocking {
+        val network = safeSourceCall<Int> { throw IOException("connection reset") } as SourceCallResult.Error
+        val authentication = safeSourceCall<Int> { throw HttpException(403) } as SourceCallResult.Error
+        val malformed = safeSourceCall<Int> { throw IllegalArgumentException("broken document") } as SourceCallResult.Error
+
+        network.error.shouldBeInstanceOf<AppError.Network>()
+        authentication.error.shouldBeInstanceOf<AppError.Authentication>()
+        malformed.error.shouldBeInstanceOf<AppError.MalformedData>()
+    }
+
+    @Test
+    fun `preserves an extension supplied stable app error`() = runBlocking {
+        val expected = AppError.RateLimited(12)
+        val result = safeSourceCall<Int> { throw AppErrorException(expected) }
         result.shouldBeInstanceOf<SourceCallResult.Error>()
-        val err = result as SourceCallResult.Error
-        assert(err.message.contains("network error")) { "Error should include exception message: ${err.message}" }
+        (result as SourceCallResult.Error).error shouldBe expected
     }
 
     @Test
     fun `returns Timeout when block exceeds timeoutMs`() = runBlocking {
         val result = safeSourceCall<Int>(timeoutMs = 50L) { delay(5_000); 99 }
         result.shouldBeInstanceOf<SourceCallResult.Timeout>()
+        (result as SourceCallResult.Timeout).error.shouldBeInstanceOf<AppError.Network>()
     }
 
     @Test
