@@ -9,7 +9,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -117,15 +116,6 @@ class MoreRootScreen : Screen {
                             MR.strings.label_download_queue.localized()
                         },
                         onClick = { navigator.push(mihon.desktop.ui.download.DownloadQueueScreen()) },
-                    )
-                    HorizontalDivider()
-                }
-                item {
-                    SettingsEntry(
-                        icon = Icons.Default.Extension,
-                        title = MR.strings.label_extensions.localized(),
-                        subtitle = MR.strings.desktop_more_extensions_summary.localized(),
-                        onClick = { onExtensions(navigator) },
                     )
                     HorizontalDivider()
                 }

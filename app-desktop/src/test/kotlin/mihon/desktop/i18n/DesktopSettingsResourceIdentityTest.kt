@@ -525,8 +525,6 @@ class DesktopSettingsResourceIdentityTest {
                     MR.strings.pref_incognito_mode_summary.localized(locale),
                     MR.strings.label_download_queue.localized(locale),
                     MR.strings.desktop_more_download_queue_count.localized(locale, 2),
-                    MR.strings.label_extensions.localized(locale),
-                    MR.strings.desktop_more_extensions_summary.localized(locale),
                     MR.strings.label_migration.localized(locale),
                     MR.strings.desktop_more_migration_summary.localized(locale),
                     MR.strings.label_stats.localized(locale),
@@ -534,6 +532,11 @@ class DesktopSettingsResourceIdentityTest {
                     MR.strings.label_settings.localized(locale),
                     MR.strings.pref_category_about.localized(locale),
                     MR.strings.desktop_more_about_summary.localized(locale),
+                )
+                assertNoCopy(
+                    more.text,
+                    MR.strings.label_extensions.localized(locale),
+                    MR.strings.desktop_more_extensions_summary.localized(locale),
                 )
                 assertEntry(
                     more,

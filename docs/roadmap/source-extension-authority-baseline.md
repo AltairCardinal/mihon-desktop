@@ -63,7 +63,7 @@ Task 6B 的差异分类结果：`ExtensionManager` 的异步初始化，以及�
 
 ## Desktop 产品边界与现有保护网
 
-- 用户入口保持 Browse → Sources / Global Search，以及 Browse → Extensions → Installed/Available → Extension details。
+- 用户入口保持 Browse → Sources / Global Search，以及 Browse → Extensions → Installed/Available → Extension details；Extensions 顶栏提供 Extension repositories 链接，“更多”不再重复展示 Extensions，设置 → 浏览仍保留仓库配置的次级入口。
 - Desktop 优先加载仓库 v2 提供且签名可验证的 JAR；APK→JAR 只作为没有 JAR 的 Legacy fallback。两条路径均保留原子替换/reload、文件摘要和仓库信息；Open folder、键鼠/宽屏、显式 FlareSolverr 后备与 Test Mode 保持。
 - 制品选择、信任边界和失败处理以 `docs/architecture/desktop-extension-artifacts.md` 为维护权威。
 - Android-only AAR、QuickJS 或没有真实 fixture 调用的 compat API 不承诺支持；文件工具仅承担 Desktop side effect，不进入共享业务层。

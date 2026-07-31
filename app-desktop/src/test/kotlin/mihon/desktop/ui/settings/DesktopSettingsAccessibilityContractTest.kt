@@ -43,7 +43,6 @@ class DesktopSettingsAccessibilityContractTest {
         withScene(MoreRootScreen(), height = 2_000) { scene ->
             val labels = listOf(
                 MR.strings.label_download_queue.localized(Locale.US),
-                MR.strings.label_extensions.localized(Locale.US),
                 MR.strings.label_migration.localized(Locale.US),
                 MR.strings.label_stats.localized(Locale.US),
                 MR.strings.label_settings.localized(Locale.US),
@@ -54,6 +53,8 @@ class DesktopSettingsAccessibilityContractTest {
                 assertEquals(1, flatten(entry).count { it.config.contains(SemanticsActions.OnClick) }, label)
             }
             val removedSettings = listOf(
+                MR.strings.label_extensions.localized(Locale.US),
+                MR.strings.desktop_more_extensions_summary.localized(Locale.US),
                 MR.strings.action_search_settings.localized(Locale.US),
                 MR.strings.pref_category_general.localized(Locale.US),
                 MR.strings.pref_category_appearance.localized(Locale.US),

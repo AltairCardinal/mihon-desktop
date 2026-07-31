@@ -72,6 +72,7 @@ import mihon.desktop.extension.InstalledExtension
 import mihon.desktop.extension.isExtensionAvailableOnDesktop
 import mihon.desktop.platform.DesktopUrlOpener
 import mihon.desktop.ui.browse.SourceBrowseScreen
+import mihon.desktop.ui.settings.ExtensionRepoScreen
 import mihon.domain.error.AppError
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
@@ -81,15 +82,6 @@ import java.util.Locale
 
 /** Lists installed extensions and available extensions from registered repositories. */
 class ExtensionListScreen : Screen {
-
-    internal fun onOpen(navigator: Navigator, extension: InstalledExtension) {
-        navigator.push(extensionDetailsDestination(extension.jarFile.absolutePath))
-    }
-
-    internal fun onSettings(navigator: Navigator, sourceId: Long, sourceName: String) {
-        navigator.push(sourcePreferencesDestination(sourceId, sourceName))
-    }
-
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content() {
@@ -97,8 +89,9 @@ class ExtensionListScreen : Screen {
         ExtensionListContent(
             model = LocalExtensionScreenModel.current(),
             onBack = navigator::pop,
-            onOpen = { onOpen(navigator, it) },
-            onSettings = { sourceId, sourceName -> onSettings(navigator, sourceId, sourceName) },
+            onRepositories = navigator::pushExtensionRepository,
+            onOpen = navigator::pushExtensionDetails,
+            onSettings = navigator::pushSourcePreferences,
         )
     }
 }
@@ -112,13 +105,31 @@ internal fun sourcePreferencesDestination(sourceId: Long, sourceName: String) =
 
 internal fun sourceBrowseDestination(sourceId: Long) = SourceBrowseScreen(sourceId)
 
+internal fun extensionRepositoryDestination() = ExtensionRepoScreen()
+
+internal fun Navigator.pushExtensionDetails(extension: InstalledExtension) {
+    push(extensionDetailsDestination(extension.jarFile.absolutePath))
+}
+
+internal fun Navigator.pushSourcePreferences(sourceId: Long, sourceName: String) {
+    push(sourcePreferencesDestination(sourceId, sourceName))
+}
+
+internal fun Navigator.pushExtensionRepository() {
+    push(extensionRepositoryDestination())
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ExtensionListContent(
     model: ExtensionsScreenModel,
     onBack: () -> Unit = {},
+    onRepositories: (() -> Unit)? = null,
     onOpen: (InstalledExtension) -> Unit = {},
     onSettings: (Long, String) -> Unit = { _, _ -> },
+    title: String? = null,
+    showBackButton: Boolean = true,
+    primaryNavigation: (@Composable () -> Unit)? = null,
 ) {
         val state by model.state.collectAsState()
         val copy = remember { extensionListCopy() }
@@ -223,13 +234,20 @@ internal fun ExtensionListContent(
             topBar = {
                 Column {
                     TopAppBar(
-                        title = { Text(copy.title) },
+                        title = { Text(title ?: copy.title) },
                         navigationIcon = {
-                            IconButton(onClick = onBack) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
+                            if (showBackButton) {
+                                IconButton(onClick = onBack) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
+                                }
                             }
                         },
                         actions = {
+                            onRepositories?.let {
+                                TextButton(onClick = it) {
+                                    Text(MR.strings.label_extension_repos.localized())
+                                }
+                            }
                             if (currentTabLangs.isNotEmpty()) {
                                 IconButton(onClick = { showLangFilter = true }) {
                                     if (state.options.enabledLanguages.isNotEmpty()) {
@@ -252,6 +270,7 @@ internal fun ExtensionListContent(
                             }
                         },
                     )
+                    primaryNavigation?.invoke()
                     TabRow(selectedTabIndex = selectedTab) {
                         Tab(
                             selected = selectedTab == 0,

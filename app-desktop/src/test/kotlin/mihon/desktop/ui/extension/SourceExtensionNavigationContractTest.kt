@@ -135,7 +135,7 @@ class SourceExtensionNavigationContractTest {
     }
 
     @Test
-    fun `production clicks and mounted More automation push regular Screen destinations`() = runBlocking {
+    fun `More omits extension entry while mounted automation keeps regular Screen compatibility`() = runBlocking {
         val more = MoreRootScreen()
         val downloadManager = mockk<DesktopDownloadManager> { every { queue } returns MutableStateFlow(emptyList()) }
         val dependencies = mockk<DesktopUiDependencies> {
@@ -157,9 +157,15 @@ class SourceExtensionNavigationContractTest {
             }
             scene.render()
 
-            click(scene, MR.strings.label_extensions.localized())
-            Assertions.assertTrue(navigator.lastItem is ExtensionListScreen)
-            navigator.pop()
+            Assertions.assertFalse(
+                nodes(scene).flatMap { node ->
+                    if (node.config.contains(SemanticsProperties.Text)) {
+                        node.config[SemanticsProperties.Text].map { it.text }
+                    } else {
+                        emptyList()
+                    }
+                }.contains(MR.strings.label_extensions.localized()),
+            )
 
             TestScreenNavigator.navigateTo("open_extensions")
             withTimeout(1_000) {
@@ -236,6 +242,11 @@ class SourceExtensionNavigationContractTest {
                     yield()
                 }
             }
+
+            click(scene, MR.strings.label_extension_repos.localized())
+            Assertions.assertTrue(navigator.lastItem is ExtensionRepoScreen)
+            navigator.pop()
+            scene.render()
 
             click(scene, extension.name)
             Assertions.assertEquals(extension.jarFile.absolutePath, (navigator.lastItem as ExtensionDetailsScreen).jarPath)

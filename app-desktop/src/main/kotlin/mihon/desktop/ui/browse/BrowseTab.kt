@@ -1,6 +1,7 @@
 package mihon.desktop.ui.browse
 
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.LocalExtensionScreenModel
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -36,6 +37,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -43,9 +46,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -59,7 +64,10 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.tachiyomi.source.CatalogueSource
-import mihon.desktop.ui.extension.ExtensionListScreen
+import mihon.desktop.ui.extension.ExtensionListContent
+import mihon.desktop.ui.extension.pushExtensionDetails
+import mihon.desktop.ui.extension.pushExtensionRepository
+import mihon.desktop.ui.extension.pushSourcePreferences
 import mihon.domain.source.model.SourceScreenContent
 import mihon.domain.source.model.SourceScreenEvent
 import mihon.domain.source.model.SourceScreenState
@@ -170,6 +178,26 @@ class BrowseSourceListScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
+        var selectedSection by rememberSaveable { mutableIntStateOf(BROWSE_SOURCES_SECTION) }
+
+        if (selectedSection == BROWSE_EXTENSIONS_SECTION) {
+            ExtensionListContent(
+                model = LocalExtensionScreenModel.current(),
+                title = MR.strings.browse.localized(),
+                showBackButton = false,
+                onRepositories = navigator::pushExtensionRepository,
+                onOpen = navigator::pushExtensionDetails,
+                onSettings = navigator::pushSourcePreferences,
+                primaryNavigation = {
+                    BrowseSectionTabs(
+                        selectedSection = selectedSection,
+                        onSectionSelected = { selectedSection = it },
+                    )
+                },
+            )
+            return
+        }
+
         val dependencies = LocalDesktopUiDependencies.current
         val sourceManager = dependencies.sourceManager
         val appPreferences = dependencies.appPreferences
@@ -239,20 +267,26 @@ class BrowseSourceListScreen : Screen {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
-                TopAppBar(
-                    title = { Text(MR.strings.browse.localized()) },
-                    actions = {
-                        IconButton(onClick = { showLanguageFilter = true }) {
-                            Icon(
-                                Icons.Default.FilterList,
-                                contentDescription = MR.strings.action_filter.localized(),
-                            )
-                        }
-                        IconButton(onClick = { navigator.push(GlobalSearchScreen()) }) {
-                            Icon(Icons.Default.Search, contentDescription = MR.strings.action_global_search.localized())
-                        }
-                    },
-                )
+                Column {
+                    TopAppBar(
+                        title = { Text(MR.strings.browse.localized()) },
+                        actions = {
+                            IconButton(onClick = { showLanguageFilter = true }) {
+                                Icon(
+                                    Icons.Default.FilterList,
+                                    contentDescription = MR.strings.action_filter.localized(),
+                                )
+                            }
+                            IconButton(onClick = { navigator.push(GlobalSearchScreen()) }) {
+                                Icon(Icons.Default.Search, contentDescription = MR.strings.action_global_search.localized())
+                            }
+                        },
+                    )
+                    BrowseSectionTabs(
+                        selectedSection = selectedSection,
+                        onSectionSelected = { selectedSection = it },
+                    )
+                }
             },
         ) { padding ->
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -306,7 +340,7 @@ class BrowseSourceListScreen : Screen {
                         }
                     }
                     displayedSourceGroups.isEmpty() ->
-                        EmptySources(onExtensionsClick = { navigator.push(ExtensionListScreen()) })
+                        EmptySources(onExtensionsClick = { selectedSection = BROWSE_EXTENSIONS_SECTION })
                     else -> LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(vertical = 4.dp),
@@ -352,6 +386,28 @@ class BrowseSourceListScreen : Screen {
                 }
             }
         }
+    }
+}
+
+private const val BROWSE_SOURCES_SECTION = 0
+private const val BROWSE_EXTENSIONS_SECTION = 1
+
+@Composable
+private fun BrowseSectionTabs(
+    selectedSection: Int,
+    onSectionSelected: (Int) -> Unit,
+) {
+    TabRow(selectedTabIndex = selectedSection) {
+        Tab(
+            selected = selectedSection == BROWSE_SOURCES_SECTION,
+            onClick = { onSectionSelected(BROWSE_SOURCES_SECTION) },
+            text = { Text(MR.strings.label_sources.localized()) },
+        )
+        Tab(
+            selected = selectedSection == BROWSE_EXTENSIONS_SECTION,
+            onClick = { onSectionSelected(BROWSE_EXTENSIONS_SECTION) },
+            text = { Text(MR.strings.label_extensions.localized()) },
+        )
     }
 }
 

@@ -19,8 +19,6 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.AnnotatedString
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
-import cafe.adriel.voyager.navigator.tab.CurrentTab
-import cafe.adriel.voyager.navigator.tab.TabNavigator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -60,6 +58,7 @@ import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.source.FakeSource
 import mihon.desktop.ui.extension.DesktopExtensionPresentationPort
 import mihon.desktop.ui.extension.ExtensionsScreenModel
+import mihon.desktop.ui.settings.ExtensionRepoScreen
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
@@ -141,7 +140,7 @@ class SourceSharedStateWiringTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
-    fun `browse tab extensions action renders extension list screen`() = runBlocking {
+    fun `browse tab keeps sources and extensions together with repository navigation`() = runBlocking {
         val extensionApi = mockk<DesktopExtensionApi> {
             coEvery { refreshCatalog() } returns ExtensionCatalogResult(emptyList(), emptyList())
             every { availableExtensions(any()) } returns emptyList()
@@ -160,8 +159,13 @@ class SourceSharedStateWiringTest {
             every { this@mockk.extensionManager } returns extensionManager
         }
         val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+        lateinit var navigator: Navigator
 
         fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+        fun hasText(node: SemanticsNode, text: String): Boolean = flatten(node).any {
+            it.config.contains(SemanticsProperties.Text) &&
+                it.config[SemanticsProperties.Text].any { candidate -> candidate.text == text }
+        }
 
         try {
             scene.setContent {
@@ -169,33 +173,63 @@ class SourceSharedStateWiringTest {
                     LocalDesktopUiDependencies provides dependencies,
                     LocalExtensionScreenModel provides { extensionModel },
                 ) {
-                    TabNavigator(BrowseTab) {
-                        CurrentTab()
+                    Navigator(BrowseSourceListScreen()) { currentNavigator ->
+                        navigator = currentNavigator
+                        CurrentScreen()
                     }
                 }
             }
             scene.render()
+
+            val initialNodes = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+            assertTrue(initialNodes.any { hasText(it, MR.strings.label_sources.localized()) })
+            assertTrue(initialNodes.any { hasText(it, MR.strings.label_extensions.localized()) })
 
             val extensionsAction = requireNotNull(
                 scene.semanticsOwners
                     .flatMap { flatten(it.rootSemanticsNode) }
                     .firstOrNull {
                         it.config.contains(SemanticsActions.OnClick) &&
-                            it.config.toString().contains(MR.strings.label_extensions.localized())
+                            hasText(it, MR.strings.label_extensions.localized())
                     },
             )
 
             assertTrue(requireNotNull(extensionsAction.config[SemanticsActions.OnClick].action).invoke())
             scene.render()
 
+            val extensionNodes = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+            assertTrue(extensionNodes.any { hasText(it, MR.strings.label_sources.localized()) })
+            assertTrue(extensionNodes.any {
+                it.config.contains(SemanticsProperties.ContentDescription) &&
+                    it.config[SemanticsProperties.ContentDescription]
+                        .contains(MR.strings.desktop_extension_reload_installed.localized())
+            })
+
+            val repositoriesAction = requireNotNull(
+                extensionNodes.firstOrNull {
+                    it.config.contains(SemanticsActions.OnClick) &&
+                        hasText(it, MR.strings.label_extension_repos.localized())
+                },
+            )
+            assertTrue(requireNotNull(repositoriesAction.config[SemanticsActions.OnClick].action).invoke())
+            assertTrue(navigator.lastItem is ExtensionRepoScreen)
+
+            navigator.pop()
+            scene.render()
+            val sourcesAction = requireNotNull(
+                scene.semanticsOwners
+                    .flatMap { flatten(it.rootSemanticsNode) }
+                    .firstOrNull {
+                        it.config.contains(SemanticsActions.OnClick) &&
+                            hasText(it, MR.strings.label_sources.localized())
+                    },
+            )
+            assertTrue(requireNotNull(sourcesAction.config[SemanticsActions.OnClick].action).invoke())
+            scene.render()
             assertTrue(
                 scene.semanticsOwners
                     .flatMap { flatten(it.rootSemanticsNode) }
-                    .any {
-                        it.config.contains(SemanticsProperties.ContentDescription) &&
-                            it.config[SemanticsProperties.ContentDescription]
-                                .contains(MR.strings.desktop_extension_reload_installed.localized())
-                    },
+                    .any { hasText(it, MR.strings.local_source.localized()) },
             )
         } finally {
             scene.close()
