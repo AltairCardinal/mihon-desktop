@@ -436,7 +436,10 @@
     <string name="desktop_extension_search">Search extensions</string>
     <string name="desktop_extension_empty_installed">No extensions installed</string>
     <string name="desktop_extension_empty_installed_hint">Browse the Available tab to install extensions.</string>
-    <string name="desktop_extension_empty_available">No extensions found. Add a repository in More → Extension repos.</string>
+    <string name="desktop_extension_empty_available">No available extensions found.</string>
+    <string name="desktop_extension_loading_available">Loading available extensions…</string>
+    <string name="desktop_extension_no_repositories">No extension repositories configured.</string>
+    <string name="desktop_extension_refreshing_cached">Showing cached results while checking for updates…</string>
     <string name="desktop_extension_installing_message">Installing %s…</string>
     <string name="desktop_extension_installed_message">%s installed</string>
     <string name="desktop_extension_install_failed">Install failed: %s</string>

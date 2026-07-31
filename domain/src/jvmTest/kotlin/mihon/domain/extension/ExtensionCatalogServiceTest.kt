@@ -1,6 +1,10 @@
 package mihon.domain.extension
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionArtifact
 import mihon.domain.extension.model.ExtensionCatalogEntry
@@ -16,6 +20,28 @@ import org.junit.jupiter.api.Test
 class ExtensionCatalogServiceTest {
 
     @Test
+    fun `independent repositories are fetched concurrently`() = runBlocking {
+        val repositories = listOf(repository("one"), repository("two"))
+        val entered = Channel<Unit>(Channel.UNLIMITED)
+        val release = CompletableDeferred<Unit>()
+
+        val refresh = async {
+            ExtensionCatalogService().refresh(repositories) { repo ->
+                entered.send(Unit)
+                release.await()
+                RepositoryFetchResult.Success(repo.toIdentity(), emptyList())
+            }
+        }
+
+        withTimeout(1_000) {
+            repeat(repositories.size) { entered.receive() }
+        }
+        release.complete(Unit)
+
+        assertTrue(refresh.await().isCompleteEmpty)
+    }
+
+    @Test
     fun `all successful empty repositories produce a true empty catalog`() = runBlocking {
         val repositories = listOf(repository("one"), repository("two"))
 
@@ -25,6 +51,7 @@ class ExtensionCatalogServiceTest {
 
         assertTrue(result.entries.isEmpty())
         assertTrue(result.failures.isEmpty())
+        assertEquals(repositories.map { it.toIdentity() }, result.repositories)
         assertTrue(result.isCompleteEmpty)
     }
 

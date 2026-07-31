@@ -53,6 +53,7 @@ class ExtensionCatalogService {
             failures = results.filterIsInstance<RepositoryFetchResult.Failure>().map {
                 RepositoryCatalogFailure(it.repository, it.error)
             },
+            repositories = repositories.map { it.toIdentity() },
         )
     }
 

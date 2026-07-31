@@ -32,6 +32,8 @@ internal data class ExtensionListCopy(
     val emptyInstalled: String,
     val emptyInstalledHint: String,
     val emptyAvailable: String,
+    val noRepositories: String,
+    val refreshingCached: String,
     val repositoryFailure: String,
     val retry: String,
 )
@@ -40,10 +42,12 @@ internal fun extensionListCopy(locale: Locale = Locale.getDefault()) = Extension
     title = MR.strings.label_extensions.localized(locale),
     available = MR.strings.desktop_extension_available.localized(locale),
     search = MR.strings.desktop_extension_search.localized(locale),
-    loading = MR.strings.loading.localized(locale),
+    loading = MR.strings.desktop_extension_loading_available.localized(locale),
     emptyInstalled = MR.strings.desktop_extension_empty_installed.localized(locale),
     emptyInstalledHint = MR.strings.desktop_extension_empty_installed_hint.localized(locale),
     emptyAvailable = MR.strings.desktop_extension_empty_available.localized(locale),
+    noRepositories = MR.strings.desktop_extension_no_repositories.localized(locale),
+    refreshingCached = MR.strings.desktop_extension_refreshing_cached.localized(locale),
     repositoryFailure = MR.strings.extension_api_error.localized(locale),
     retry = MR.strings.action_retry.localized(locale),
 )

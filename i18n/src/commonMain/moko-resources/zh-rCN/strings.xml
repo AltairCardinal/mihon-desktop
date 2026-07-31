@@ -638,7 +638,10 @@
     <string name="desktop_extension_search">搜索插件</string>
     <string name="desktop_extension_empty_installed">未安装插件</string>
     <string name="desktop_extension_empty_installed_hint">前往“可用”标签页安装插件。</string>
-    <string name="desktop_extension_empty_available">未找到插件。请前往“更多 → 插件仓库”添加仓库。</string>
+    <string name="desktop_extension_empty_available">未找到可用插件。</string>
+    <string name="desktop_extension_loading_available">正在加载可用插件…</string>
+    <string name="desktop_extension_no_repositories">尚未配置插件仓库。</string>
+    <string name="desktop_extension_refreshing_cached">正在显示缓存结果并检查更新…</string>
     <string name="desktop_extension_installing_message">正在安装 %s…</string>
     <string name="desktop_extension_installed_message">%s 已安装</string>
     <string name="desktop_extension_install_failed">安装失败：%s</string>

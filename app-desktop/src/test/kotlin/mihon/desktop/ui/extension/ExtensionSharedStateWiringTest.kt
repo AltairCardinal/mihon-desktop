@@ -29,9 +29,11 @@ import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.model.RepositoryCatalogFailure
 import mihon.domain.extension.model.RepositoryIdentity
+import mihon.domain.extension.model.toIdentity
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.service.ExtensionInstallState
+import mihon.domain.extensionrepo.model.ExtensionRepo
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -48,6 +50,80 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
 class ExtensionSharedStateWiringTest {
+    @Test
+    fun `fresh catalog snapshot is reused until its bounded freshness window expires`() = runTest {
+        val catalog = ExtensionCatalogResult(emptyList(), emptyList())
+        var nowMillis = 1_000L
+        var refreshCalls = 0
+        val api = mockk<DesktopExtensionApi> {
+            coEvery { refreshCatalog() } coAnswers {
+                refreshCalls++
+                catalog
+            }
+            every { availableExtensions(catalog) } returns emptyList()
+        }
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(api, mockk(), MutableStateFlow(emptyList())),
+            backgroundScope,
+            ExtensionPresentationOptions(false, setOf("en")),
+            nowMillis = { nowMillis },
+            catalogFreshnessMillis = 300_000L,
+        )
+
+        checkNotNull(model.refreshIfStale()).join()
+        assertTrue(model.state.value.hasLoadedCatalog)
+        assertEquals(null, model.refreshIfStale())
+        assertEquals(1, refreshCalls)
+
+        nowMillis += 300_001L
+        checkNotNull(model.refreshIfStale()).join()
+        assertEquals(2, refreshCalls)
+    }
+
+    @Test
+    fun `repository flow prefetches asynchronously and invalidates the catalog when configuration changes`() = runTest {
+        val firstRepository = ExtensionRepo("https://first.example", "First", null, "https://first.example", "first")
+        val secondRepository = ExtensionRepo("https://second.example", "Second", null, "https://second.example", "second")
+        val firstCatalog = ExtensionCatalogResult(emptyList(), emptyList(), listOf(firstRepository.toIdentity()))
+        val secondCatalog = ExtensionCatalogResult(emptyList(), emptyList(), listOf(secondRepository.toIdentity()))
+        val repositories = MutableStateFlow(
+            listOf(firstRepository),
+        )
+        var refreshCalls = 0
+        val api = mockk<DesktopExtensionApi> {
+            coEvery { refreshCatalog() } coAnswers {
+                refreshCalls++
+                if (refreshCalls == 1) firstCatalog else secondCatalog
+            }
+            every { availableExtensions(firstCatalog) } returns emptyList()
+            every { availableExtensions(secondCatalog) } returns emptyList()
+        }
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(
+                api,
+                mockk(),
+                MutableStateFlow(emptyList()),
+                configuredRepositories = repositories,
+            ),
+            backgroundScope,
+            ExtensionPresentationOptions(false, setOf("en")),
+        )
+
+        testScheduler.runCurrent()
+        assertEquals(1, model.state.value.configuredRepositoryCount)
+        assertTrue(model.state.value.hasLoadedCatalog)
+        assertEquals(1, refreshCalls)
+
+        repositories.value = listOf(
+            secondRepository,
+        )
+        testScheduler.runCurrent()
+
+        assertEquals(2, refreshCalls)
+        assertTrue(model.state.value.hasLoadedCatalog)
+        assertEquals(1, model.state.value.configuredRepositoryCount)
+    }
+
     @Test
     fun `refresh is single flight and a failed request can be retried successfully`() = runTest {
         val entered = CompletableDeferred<Unit>()

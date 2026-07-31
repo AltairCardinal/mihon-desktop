@@ -29,6 +29,7 @@ import mihon.domain.extension.presentation.ExtensionPresentationStore
 import mihon.domain.extension.service.ExtensionInstallState
 import mihon.domain.extension.service.ExtensionUpdatePolicy
 import mihon.domain.extension.service.SharedExtensionUpdatePolicy
+import mihon.domain.extensionrepo.model.ExtensionRepo
 import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.i18n.MR
 import java.util.Locale
@@ -101,6 +102,7 @@ class DesktopExtensionPresentationPort(
     installedExtensions: StateFlow<List<InstalledExtension>> = service.installedExtensions,
     private val updatePolicy: ExtensionUpdatePolicy = SharedExtensionUpdatePolicy,
     private val sourcePreferences: DesktopExtensionSourcePreferenceAdapter? = null,
+    internal val configuredRepositories: Flow<List<ExtensionRepo>>? = null,
 ) {
     val installedExtensions: StateFlow<List<InstalledExtension>> = installedExtensions
     val disabledSources: Flow<Set<String>> = sourcePreferences?.disabledSources ?: flowOf(emptySet())

@@ -26,6 +26,9 @@ import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import mihon.domain.extension.presentation.ExtensionPresentationResult
 import mihon.domain.extension.service.ExtensionInstallState
+import mihon.domain.extension.model.RepositoryIdentity
+import mihon.domain.extension.model.toIdentity
+import mihon.domain.extensionrepo.model.ExtensionRepo
 
 data class DesktopPendingTrust(
     val packageName: String,
@@ -38,6 +41,8 @@ data class DesktopExtensionsState(
     val presentation: ExtensionPresentationResult<DesktopExtensionItem>? = null,
     val actions: ExtensionPresentationActionState = ExtensionPresentationActionState(),
     val options: ExtensionPresentationOptions,
+    val hasLoadedCatalog: Boolean = false,
+    val configuredRepositoryCount: Int? = null,
     val refreshError: Throwable? = null,
     val reloadError: Throwable? = null,
     val rawInstallStates: Map<String, ExtensionInstallState> = emptyMap(),
@@ -51,6 +56,8 @@ class ExtensionsScreenModel(
     parentScope: CoroutineScope? = null,
     initialOptions: ExtensionPresentationOptions,
     private val onShowNsfwChanged: (Boolean) -> Unit = {},
+    private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val catalogFreshnessMillis: Long = DEFAULT_CATALOG_FRESHNESS_MILLIS,
 ) {
     private val ownerJob = SupervisorJob(parentScope?.coroutineContext?.get(Job))
     private val scope = CoroutineScope((parentScope?.coroutineContext ?: Dispatchers.Default) + ownerJob)
@@ -64,10 +71,12 @@ class ExtensionsScreenModel(
     private var activeTrust: DesktopPendingTrust? = null
     private var isClosed = false
     private var latestCatalog: DesktopExtensionCatalogState? = null
+    private var catalogLoadedAtMillis: Long? = null
     internal val closed get() = synchronized(lock) { isClosed }
     internal val activeJobCount get() = synchronized(lock) { packageJobs.values.count(Job::isActive) }
 
     init {
+        require(catalogFreshnessMillis >= 0) { "Catalog freshness must not be negative" }
         scope.launch {
             combine(port.installedExtensions, options, port.disabledSources) { _, currentOptions, disabledSources ->
                 currentOptions to disabledSources
@@ -76,27 +85,59 @@ class ExtensionsScreenModel(
                 publish(currentOptions)
             }
         }
+        port.configuredRepositories?.let { repositories ->
+            scope.launch {
+                repositories.collect(::onRepositoriesChanged)
+            }
+        }
     }
 
     fun refresh(): Job = synchronized(lock) {
-        refreshJob?.takeIf(Job::isActive) ?: scope.launch(start = CoroutineStart.LAZY) {
-            val self = currentCoroutineContext()[Job]!!
-            dispatch(ExtensionPresentationAction.RefreshStarted)
-            try {
-                latestCatalog = port.refresh()
-                publish(options.value, clearRefreshError = true)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                mutableState.update { it.copy(refreshError = error) }
-            } finally {
-                dispatch(ExtensionPresentationAction.RefreshFinished)
-                synchronized(lock) { if (refreshJob === self) refreshJob = null }
+        refreshJob?.takeIf(Job::isActive) ?: run {
+            scope.launch(start = CoroutineStart.LAZY) {
+                val self = currentCoroutineContext()[Job]!!
+                dispatch(ExtensionPresentationAction.RefreshStarted)
+                try {
+                    val refreshedCatalog = port.refresh()
+                    val accepted = synchronized(lock) {
+                        if (isClosed) {
+                            false
+                        } else {
+                            latestCatalog = refreshedCatalog
+                            catalogLoadedAtMillis = nowMillis().takeIf { refreshedCatalog.catalog.failures.isEmpty() }
+                            true
+                        }
+                    }
+                    if (accepted) publish(options.value, clearRefreshError = true)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    val accepted = synchronized(lock) {
+                        (!isClosed).also {
+                            if (it) catalogLoadedAtMillis = null
+                        }
+                    }
+                    if (accepted) mutableState.update { it.copy(refreshError = error) }
+                } finally {
+                    dispatch(ExtensionPresentationAction.RefreshFinished)
+                    synchronized(lock) { if (refreshJob === self) refreshJob = null }
+                }
+            }.also { job ->
+                refreshJob = job
+                job.start()
             }
-        }.also { job ->
-            refreshJob = job
-            job.start()
         }
+    }
+
+    fun refreshIfStale(): Job? {
+        val currentTime = nowMillis()
+        synchronized(lock) {
+            refreshJob?.takeIf(Job::isActive)?.let { return it }
+            catalogLoadedAtMillis?.let { loadedAt ->
+                if (currentTime >= loadedAt && currentTime - loadedAt < catalogFreshnessMillis) return null
+            }
+        }
+        return refresh()
     }
 
     fun setOptions(value: ExtensionPresentationOptions) {
@@ -222,15 +263,48 @@ class ExtensionsScreenModel(
     }
 
     private fun publish(currentOptions: ExtensionPresentationOptions, clearRefreshError: Boolean = false) {
-        val catalog = latestCatalog ?: EMPTY_CATALOG
+        val loadedCatalog = synchronized(lock) { latestCatalog }
+        val catalog = loadedCatalog ?: EMPTY_CATALOG
         val projection = port.project(catalog)
         mutableState.update {
             it.copy(
                 projection = projection,
                 presentation = port.classify(projection, currentOptions),
                 options = currentOptions,
+                hasLoadedCatalog = loadedCatalog != null,
                 refreshError = if (clearRefreshError) null else it.refreshError,
             )
+        }
+    }
+
+    private suspend fun onRepositoriesChanged(repositories: List<ExtensionRepo>) {
+        val snapshot = repositories.toList()
+        val identities = snapshot.map { it.toIdentity() }
+        mutableState.update { it.copy(configuredRepositoryCount = snapshot.size) }
+        val activeRefresh = synchronized(lock) { refreshJob?.takeIf(Job::isActive) }
+
+        if (identities.isEmpty()) {
+            activeRefresh?.cancelAndJoin()
+            synchronized(lock) {
+                latestCatalog = EMPTY_CATALOG
+                catalogLoadedAtMillis = nowMillis()
+            }
+            publish(options.value, clearRefreshError = true)
+            return
+        }
+
+        activeRefresh?.join()
+        if (closed) return
+        val catalogMatchesConfiguration = synchronized(lock) {
+            latestCatalog?.catalog?.repositories.matches(identities)
+        }
+        if (!catalogMatchesConfiguration) {
+            synchronized(lock) {
+                latestCatalog = null
+                catalogLoadedAtMillis = null
+            }
+            publish(options.value, clearRefreshError = true)
+            refresh()
         }
     }
 
@@ -391,9 +465,13 @@ class ExtensionsScreenModel(
     private fun checkOpen() = check(!closed) { "ExtensionsScreenModel is closed" }
 
     private companion object {
+        const val DEFAULT_CATALOG_FRESHNESS_MILLIS = 5 * 60 * 1_000L
         val EMPTY_CATALOG = DesktopExtensionCatalogState(
             catalog = mihon.domain.extension.model.ExtensionCatalogResult(emptyList(), emptyList()),
             available = emptyList(),
         )
     }
 }
+
+private fun List<RepositoryIdentity>?.matches(other: List<RepositoryIdentity>): Boolean =
+    this?.toSet() == other.toSet()

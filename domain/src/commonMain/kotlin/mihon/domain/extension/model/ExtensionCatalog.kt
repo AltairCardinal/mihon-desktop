@@ -24,6 +24,7 @@ data class ExtensionCatalogEntry(
 data class ExtensionCatalogResult(
     val entries: List<ExtensionCatalogEntry>,
     val failures: List<RepositoryCatalogFailure>,
+    val repositories: List<RepositoryIdentity> = emptyList(),
 ) {
     val isCompleteEmpty: Boolean = entries.isEmpty() && failures.isEmpty()
 }

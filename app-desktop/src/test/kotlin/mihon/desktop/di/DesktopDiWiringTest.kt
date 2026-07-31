@@ -810,9 +810,13 @@ class DesktopDiWiringTest {
             val firstModel = Injekt.get<ExtensionsScreenModel>()
             val firstController = Injekt.get<SourceExtensionTestModeController>()
             assertSame(firstManager.installedExtensions, firstPort.installedExtensions)
+            assertNotNull(firstPort.configuredRepositories)
             assertSame(firstPort, Injekt.get<DesktopExtensionPresentationPort>())
             assertSame(firstModel, Injekt.get<ExtensionsScreenModel>())
             assertSame(firstModel, first.extensionScreenModel)
+            withTimeout(5_000) {
+                firstModel.state.first { it.configuredRepositoryCount == 0 && it.hasLoadedCatalog }
+            }
             assertSame(firstController, SourceExtensionTestModeBridge.controller)
             firstModel.search("first-query")
             assertEquals("first-query", firstController.snapshot().searchQuery)

@@ -37,6 +37,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -155,7 +156,7 @@ internal fun ExtensionListContent(
                 }.filter(String::isNotBlank).distinct().sorted()
         }
 
-        LaunchedEffect(model) { model.refresh() }
+        LaunchedEffect(model) { model.refreshIfStale() }
 
         LaunchedEffect(state.reloadError) {
             state.reloadError?.let { error ->
@@ -333,14 +334,18 @@ internal fun ExtensionListContent(
                         }
                     }
                 }
-                if (state.projection == null) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator()
-                            Text(copy.loading, modifier = Modifier.padding(top = 8.dp))
-                        }
+                if (selectedTab == 1 && state.hasLoadedCatalog && state.actions.isRefreshing) {
+                    Column(Modifier.fillMaxWidth()) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text(
+                            copy.refreshingCached,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
-                } else when (selectedTab) {
+                }
+                when (selectedTab) {
                 0 -> InstalledTab(
                     extensions = ui.installed,
                     onUninstall = { pendingRemoval = it },
@@ -351,6 +356,7 @@ internal fun ExtensionListContent(
                 )
                 1 -> AvailableTab(
                     extensions = ui.updates + ui.available,
+                    loadState = state.availableExtensionLoadState((ui.updates + ui.available).isNotEmpty()),
                     installedExtensions = installedExtensions,
                     updatableExtensions = ui.updates,
                     installSteps = state.actions.installSteps,
@@ -377,12 +383,29 @@ internal fun ExtensionListContent(
                             )
                         }
                     },
+                    onRepositories = onRepositories,
                     emptyCopy = copy,
                     modifier = Modifier.weight(1f),
                 )
             }
             }
         }
+}
+
+internal enum class AvailableExtensionLoadState {
+    Loading,
+    NoRepositories,
+    Failed,
+    Empty,
+    Content,
+}
+
+internal fun DesktopExtensionsState.availableExtensionLoadState(hasContent: Boolean): AvailableExtensionLoadState = when {
+    configuredRepositoryCount == 0 -> AvailableExtensionLoadState.NoRepositories
+    !hasLoadedCatalog && refreshError == null -> AvailableExtensionLoadState.Loading
+    !hasLoadedCatalog -> AvailableExtensionLoadState.Failed
+    hasContent -> AvailableExtensionLoadState.Content
+    else -> AvailableExtensionLoadState.Empty
 }
 
 @Composable
@@ -418,6 +441,7 @@ private fun InstalledTab(
 @Composable
 private fun AvailableTab(
     extensions: List<DesktopExtensionItem>,
+    loadState: AvailableExtensionLoadState,
     installedExtensions: List<InstalledExtension>,
     updatableExtensions: List<DesktopExtensionItem>,
     installSteps: Map<String, ExtensionPresentationInstallStep>,
@@ -428,18 +452,41 @@ private fun AvailableTab(
     onCancel: (DesktopExtensionItem) -> Unit,
     onOpenUrl: (String) -> Unit,
     onUpdateAll: () -> Unit,
+    onRepositories: (() -> Unit)?,
     emptyCopy: ExtensionListCopy,
     modifier: Modifier = Modifier,
 ) {
-    when {
-        extensions.isEmpty() -> Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    when (loadState) {
+        AvailableExtensionLoadState.Loading -> Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator()
+                Text(text = emptyCopy.loading, modifier = Modifier.padding(top = 8.dp))
+            }
+        }
+        AvailableExtensionLoadState.NoRepositories -> Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    emptyCopy.noRepositories,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                onRepositories?.let { openRepositories ->
+                    OutlinedButton(onClick = openRepositories, modifier = Modifier.padding(top = 12.dp)) {
+                        Text(MR.strings.label_extension_repos.localized())
+                    }
+                }
+            }
+        }
+        AvailableExtensionLoadState.Failed,
+        AvailableExtensionLoadState.Empty,
+        -> Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
                 emptyCopy.emptyAvailable,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        else -> LazyColumn(
+        AvailableExtensionLoadState.Content -> LazyColumn(
             modifier = modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),

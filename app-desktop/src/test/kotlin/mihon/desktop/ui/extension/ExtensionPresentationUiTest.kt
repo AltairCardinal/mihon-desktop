@@ -16,6 +16,7 @@ import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.flow
@@ -44,6 +45,7 @@ import mihon.domain.extension.model.RepositoryIdentity
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.service.ExtensionInstallState
+import mihon.domain.extensionrepo.model.ExtensionRepo
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
@@ -293,6 +295,215 @@ class ExtensionPresentationUiTest {
             model.search("Alpha")
             assertEquals("Alpha", model.state.value.searchQuery)
             awaitExtensionNames(scene, visible = alpha.name, hidden = beta.name)
+        } finally {
+            scene.close()
+            model.closeAndJoin()
+        }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `available tab shows loading instead of an empty result before the first catalog completes`() = runBlocking {
+        val refreshEntered = CompletableDeferred<Unit>()
+        val releaseRefresh = CompletableDeferred<Unit>()
+        val catalog = ExtensionCatalogResult(emptyList(), emptyList())
+        val api = mockk<DesktopExtensionApi> {
+            coEvery { refreshCatalog() } coAnswers {
+                refreshEntered.complete(Unit)
+                releaseRefresh.await()
+                catalog
+            }
+            every { availableExtensions(catalog) } returns emptyList()
+        }
+        val manager = mockk<DesktopExtensionManager>(relaxed = true)
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(api, manager, MutableStateFlow(emptyList())),
+            this,
+            ExtensionPresentationOptions(false, setOf("en")),
+        )
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { extensionApi } returns api
+            every { extensionManager } returns manager
+        }
+        val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ExtensionListContent(model)
+                }
+            }
+            refreshEntered.await()
+            withTimeout(5_000) { model.state.first { it.actions.isRefreshing && it.projection != null } }
+            scene.render()
+            click(scene, extensionListCopy().available)
+            scene.render()
+
+            val loadingContent = nodes(scene).joinToString { it.config.toString() }
+            assertTrue(loadingContent.contains(extensionListCopy().loading))
+            assertFalse(loadingContent.contains(extensionListCopy().emptyAvailable))
+
+            releaseRefresh.complete(Unit)
+            withTimeout(5_000) { model.state.first { !it.actions.isRefreshing } }
+            awaitText(scene, extensionListCopy().emptyAvailable)
+        } finally {
+            releaseRefresh.complete(Unit)
+            scene.close()
+            model.closeAndJoin()
+        }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `remounting the extension list reuses a fresh catalog instead of requesting it again`() = runBlocking {
+        val catalog = ExtensionCatalogResult(emptyList(), emptyList())
+        var refreshCalls = 0
+        val api = mockk<DesktopExtensionApi> {
+            coEvery { refreshCatalog() } coAnswers {
+                refreshCalls++
+                catalog
+            }
+            every { availableExtensions(catalog) } returns emptyList()
+        }
+        val manager = mockk<DesktopExtensionManager>(relaxed = true)
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(api, manager, MutableStateFlow(emptyList())),
+            this,
+            ExtensionPresentationOptions(false, setOf("en")),
+        )
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { extensionApi } returns api
+            every { extensionManager } returns manager
+        }
+        val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
+        fun mount() = scene.setContent {
+            CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                ExtensionListContent(model)
+            }
+        }
+        try {
+            mount()
+            withTimeout(5_000) {
+                while (refreshCalls < 1 || model.state.value.actions.isRefreshing) {
+                    scene.render()
+                    yield()
+                }
+            }
+            scene.setContent {}
+            scene.render()
+            mount()
+            repeat(20) {
+                scene.render()
+                yield()
+            }
+
+            assertEquals(1, refreshCalls)
+        } finally {
+            scene.close()
+            model.closeAndJoin()
+        }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `stale catalog stays visible with background refresh feedback`() = runBlocking {
+        val catalog = ExtensionCatalogResult(emptyList(), emptyList())
+        val available = extension("Cached extension", "pkg.cached", listOf(source(9, "en", "Cached source")))
+        val backgroundRefreshEntered = CompletableDeferred<Unit>()
+        val releaseBackgroundRefresh = CompletableDeferred<Unit>()
+        var refreshCalls = 0
+        var nowMillis = 1_000L
+        val api = mockk<DesktopExtensionApi> {
+            coEvery { refreshCatalog() } coAnswers {
+                refreshCalls++
+                if (refreshCalls > 1) {
+                    backgroundRefreshEntered.complete(Unit)
+                    releaseBackgroundRefresh.await()
+                }
+                catalog
+            }
+            every { availableExtensions(catalog) } returns listOf(available)
+        }
+        val manager = mockk<DesktopExtensionManager>(relaxed = true)
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(api, manager, MutableStateFlow(emptyList())),
+            this,
+            ExtensionPresentationOptions(false, setOf("en")),
+            nowMillis = { nowMillis },
+        )
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { extensionApi } returns api
+            every { extensionManager } returns manager
+        }
+        val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
+        try {
+            model.refresh().join()
+            nowMillis += 300_001L
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ExtensionListContent(model)
+                }
+            }
+            backgroundRefreshEntered.await()
+            scene.render()
+            click(scene, extensionListCopy().available)
+
+            awaitText(scene, available.name)
+            awaitText(scene, extensionListCopy().refreshingCached)
+            assertEquals(2, refreshCalls)
+
+            releaseBackgroundRefresh.complete(Unit)
+            withTimeout(5_000) { model.state.first { !it.actions.isRefreshing } }
+        } finally {
+            releaseBackgroundRefresh.complete(Unit)
+            scene.close()
+            model.closeAndJoin()
+        }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `available tab distinguishes a missing repository and links to repository settings`() = runBlocking {
+        val catalog = ExtensionCatalogResult(emptyList(), emptyList())
+        val repositories = MutableStateFlow<List<ExtensionRepo>>(emptyList())
+        val api = mockk<DesktopExtensionApi> {
+            coEvery { refreshCatalog() } returns catalog
+            every { availableExtensions(catalog) } returns emptyList()
+        }
+        val manager = mockk<DesktopExtensionManager>(relaxed = true)
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(
+                api,
+                manager,
+                MutableStateFlow(emptyList()),
+                configuredRepositories = repositories,
+            ),
+            this,
+            ExtensionPresentationOptions(false, setOf("en")),
+        )
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { extensionApi } returns api
+            every { extensionManager } returns manager
+        }
+        val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
+        var repositoryOpens = 0
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ExtensionListContent(model, onRepositories = { repositoryOpens++ })
+                }
+            }
+            withTimeout(5_000) {
+                model.state.first { it.configuredRepositoryCount == 0 && it.hasLoadedCatalog }
+            }
+            scene.render()
+            click(scene, extensionListCopy().available)
+            awaitText(scene, extensionListCopy().noRepositories)
+            val content = nodes(scene).joinToString { it.config.toString() }
+            assertFalse(content.contains(extensionListCopy().emptyAvailable))
+
+            click(scene, MR.strings.label_extension_repos.localized(), last = true)
+            assertEquals(1, repositoryOpens)
+            coVerify(exactly = 0) { api.refreshCatalog() }
         } finally {
             scene.close()
             model.closeAndJoin()

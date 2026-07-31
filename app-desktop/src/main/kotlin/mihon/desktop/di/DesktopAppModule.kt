@@ -522,6 +522,7 @@ private fun registerDesktopExtension(
         extensionApi,
         extensionManager,
         sourcePreferences = DesktopExtensionSourcePreferenceAdapter(appPreferences),
+        configuredRepositories = extensionRepoRepository.subscribeAll(),
     )
     Injekt.addSingleton(presentationPort)
     val extensionScreenModel = ExtensionsScreenModel(
