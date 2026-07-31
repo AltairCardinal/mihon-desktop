@@ -80,6 +80,14 @@ selector；如果没有可用 selector，则以可操作错误失败，并提示
 第一阶段至少支持 Windows 静态系统代理及 bypass 规则。PAC 和自动发现如果尚未实现，
 界面必须显示“不支持/受限”，不能假装完整跟随系统。
 
+Windows 静态代理需要保留“规则解析”和“入口传输协议”两个概念。显式的
+`http://`、`socks5://` 以及 `http=...;https=...;socks=...` 规则必须原样遵循。部分
+本地代理软件会把 HTTP/SOCKS 混合入口以无协议的 `127.0.0.1:端口` 写入系统设置；
+对这种仅限回环地址的歧义入口，adapter 可以执行一次有严格超时的 SOCKS5 capability
+握手：确认支持时使用 SOCKS5，否则保持 HTTP。不得对远程代理地址发送探测流量。
+探测结果按入口缓存；该入口连接失败时必须失效缓存，以便代理软件启动、重启或更换核心
+后重新判定。
+
 ### 3.3 强制直连
 
 强制直连必须显式使用直连路由，绕过：
@@ -497,6 +505,10 @@ Desktop 已实现本文首版产品链路：
 - 全局网络使用“跟随系统 / 强制直连 / 手动代理”三个互斥模式；
 - Windows adapter 直接读取当前用户的静态 `ProxyEnable`、`ProxyServer` 与
   `ProxyOverride`，按目标应用代理及 bypass；读取失败时再回退 JVM `ProxySelector`；
+- Windows 无协议回环入口使用 500 ms 上限的 SOCKS5 capability 握手识别
+  v2rayN/Xray 等 mixed 入口；显式协议和远程入口不探测，连接失败会使缓存失效；
+- 连接测试、插件仓库、应用更新和托管插件请求共用同一全局 OkHttp 策略与 Windows
+  adapter，不维护仓库专用的旁路客户端；
 - 设置页区分已保存策略、当前生效策略和最近实际 route，并提供真实连接测试；
 - 连接测试遇到瞬时 timeout 时会使用独立 Dispatcher 与 ConnectionPool 重试一次，
   避免应用既有 TLS/代理连接状态污染诊断结果；非 timeout 错误不会自动重试；
@@ -510,6 +522,8 @@ Desktop 已实现本文首版产品链路：
 
 - 全局策略和 DoH 在下次启动时生效；插件复写对新取得的托管客户端立即生效；
 - Windows PAC URL 和 WPAD 自动发现尚未由 Mihon 自行解析，只能使用 JVM fallback；
+- mixed capability 探测只适用于无协议的本机回环入口，不用于远程代理，也不尝试识别
+  代理软件、节点或最终出口；
 - 插件自建 `OkHttpClient`、原始 Socket 或进程外通信无法被保证接管，界面会显示完整、部分或未知；
 - “强制直连”不能绕过系统 VPN/TUN；route 观测也不能推断外部代理的最终出口；
 - 观测记录当前保存域名集合，不保存完整 URL、请求时间线或请求内容；
@@ -578,6 +592,8 @@ Desktop 已实现本文首版产品链路：
 
 - DIRECT 成功及代理不可达时仍不使用代理；
 - HTTP 代理和 SOCKS 代理真实连接；
+- Windows 无协议 mixed 入口经 capability 探测后，生产 `DesktopNetworkHelper` 与
+  `DesktopExtensionApi` 能通过同一 SOCKS route 获取仓库 manifest 和索引；
 - 系统 bypass；
 - 插件复写不影响全局仓库请求；
 - 两个插件选择不同策略时客户端不串用；
