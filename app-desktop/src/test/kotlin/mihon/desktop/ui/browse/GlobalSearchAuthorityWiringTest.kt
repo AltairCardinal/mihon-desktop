@@ -118,7 +118,7 @@ class GlobalSearchAuthorityWiringTest {
             }
             assertTrue(partial.contains(MR.strings.loading.localized()))
             assertTrue(partial.contains(MR.strings.no_results_found.localized()))
-            assertTrue(partial.contains(MR.strings.unknown_error.localized()))
+            assertTrue(partial.contains(MR.strings.desktop_ui_download_malformed_error.localized()))
             assertTrue(partial.contains(MR.strings.action_retry.localized()))
 
             release.complete(Unit)

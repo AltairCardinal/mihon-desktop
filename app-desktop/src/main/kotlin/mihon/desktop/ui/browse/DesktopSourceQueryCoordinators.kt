@@ -33,7 +33,10 @@ import tachiyomi.domain.source.service.SourceQueryReducer
 import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.SourceRecoveryAction
 import tachiyomi.i18n.MR
+import java.io.InterruptedIOException
+import java.net.SocketTimeoutException
 import java.util.Locale
+import java.util.concurrent.TimeoutException
 
 sealed interface DesktopSourceRecoveryIntent {
     data class Retry(val request: SourcePageRequest) : DesktopSourceRecoveryIntent
@@ -45,10 +48,32 @@ sealed interface DesktopSourceRecoveryIntent {
 }
 
 internal fun desktopSourceErrorMessage(error: AppError, locale: Locale = Locale.getDefault()): String = when (error) {
-    is AppError.Network -> MR.strings.exception_offline.localized(locale)
+    is AppError.Network -> if (error.cause.isTimeoutFailure()) {
+        MR.strings.desktop_source_network_timeout.localized(locale)
+    } else {
+        MR.strings.exception_offline.localized(locale)
+    }
     is AppError.Authentication -> MR.strings.login.localized(locale)
+    is AppError.RateLimited -> error.retryAfterSeconds?.let {
+        MR.strings.desktop_ui_download_rate_limited_seconds.localized(locale, it)
+    } ?: MR.strings.desktop_ui_download_rate_limited.localized(locale)
+    is AppError.Server -> MR.strings.desktop_ui_download_server_error.localized(locale, error.statusCode)
+    is AppError.MalformedData -> MR.strings.desktop_ui_download_malformed_error.localized(locale)
     AppError.NoResults -> MR.strings.no_results_found.localized(locale)
     else -> MR.strings.unknown_error.localized(locale)
+}
+
+private fun Throwable?.isTimeoutFailure(): Boolean =
+    generateSequence(this) { it.cause }
+        .any(Throwable::isTimeoutMarker)
+
+private fun Throwable.isTimeoutMarker(): Boolean = when (this) {
+    is SocketTimeoutException, is TimeoutException -> true
+    is InterruptedIOException -> message.orEmpty().let {
+        it.contains("timeout", ignoreCase = true) ||
+            it.contains("timed out", ignoreCase = true)
+    }
+    else -> false
 }
 
 internal fun desktopSourceRecoveryActionLabel(

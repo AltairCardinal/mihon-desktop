@@ -33,9 +33,46 @@ import tachiyomi.domain.source.service.SourceQueryState
 import tachiyomi.domain.source.service.SourceRecoveryAction
 import tachiyomi.i18n.MR
 import java.io.File
+import java.io.InterruptedIOException
+import java.net.SocketTimeoutException
 import java.util.Locale
 
 class DesktopSourceQueryBehaviorTest {
+
+    @Test
+    fun `desktop source errors identify timeout and known source failures`() {
+        assertEquals(
+            MR.strings.desktop_source_network_timeout.localized(Locale.ENGLISH),
+            desktopSourceErrorMessage(
+                AppError.Network(SocketTimeoutException("Read timed out")),
+                Locale.ENGLISH,
+            ),
+        )
+        assertEquals(
+            MR.strings.desktop_source_network_timeout.localized(Locale.ENGLISH),
+            desktopSourceErrorMessage(
+                AppError.Network(
+                    IllegalStateException(
+                        "request failed",
+                        InterruptedIOException("Read timed out"),
+                    ),
+                ),
+                Locale.ENGLISH,
+            ),
+        )
+        assertEquals(
+            MR.strings.desktop_ui_download_rate_limited_seconds.localized(Locale.ENGLISH, 30L),
+            desktopSourceErrorMessage(AppError.RateLimited(retryAfterSeconds = 30L), Locale.ENGLISH),
+        )
+        assertEquals(
+            MR.strings.desktop_ui_download_server_error.localized(Locale.ENGLISH, 503),
+            desktopSourceErrorMessage(AppError.Server(503), Locale.ENGLISH),
+        )
+        assertEquals(
+            MR.strings.desktop_ui_download_malformed_error.localized(Locale.ENGLISH),
+            desktopSourceErrorMessage(AppError.MalformedData(), Locale.ENGLISH),
+        )
+    }
 
     @Test
     fun `desktop source errors use stable i18n messages instead of class names`() {
@@ -48,7 +85,7 @@ class DesktopSourceQueryBehaviorTest {
             desktopSourceErrorMessage(AppError.Authentication(), Locale.SIMPLIFIED_CHINESE),
         )
         assertEquals(
-            MR.strings.unknown_error.localized(Locale.ENGLISH),
+            MR.strings.desktop_ui_download_server_error.localized(Locale.ENGLISH, 500),
             desktopSourceErrorMessage(AppError.Server(500), Locale.ENGLISH),
         )
         assertEquals(

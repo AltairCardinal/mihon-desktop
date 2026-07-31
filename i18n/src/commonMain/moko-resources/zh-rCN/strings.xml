@@ -1239,6 +1239,7 @@
     <string name="desktop_source_login_invalid_cookies">来源拒绝了这些 Cookie。</string>
     <string name="desktop_source_login_invalid_header">请输入有效的 Cookie 请求头。</string>
     <string name="desktop_source_login_timed_out">登录超时。</string>
+    <string name="desktop_source_network_timeout">网络请求超时。请检查该扩展的网络模式以及代理软件的分流或节点，然后重试。</string>
     <string name="desktop_unlock_action">解锁</string>
     <string name="desktop_unlock_passphrase">密码</string>
     <string name="desktop_unlock_recovery_open_failed">无法打开配置文件夹</string>

@@ -793,6 +793,7 @@
     <string name="desktop_source_login_timed_out">Login timed out.</string>
     <string name="desktop_source_login_invalid_cookies">The source rejected these cookies.</string>
     <string name="desktop_source_login_commit_failed">The authenticated session could not be saved.</string>
+    <string name="desktop_source_network_timeout">Network request timed out. Check this extension\'s network mode and the proxy routing or node, then retry.</string>
     <string name="logging_in">Logging in…</string>
     <string name="login_success">Logged in</string>
     <string name="logout_title">Log out from %1$s?</string>
