@@ -143,6 +143,7 @@ internal fun ExtensionListContent(
         var pendingRemoval by remember { mutableStateOf<DesktopExtensionItem?>(null) }
         var showLangFilter by remember { mutableStateOf(false) }
         val ui = remember(state) { state.toExtensionListUiProjection(state.searchQuery) }
+        val installedCount = state.presentation?.let { it.updates.size + it.installed.size } ?: 0
         val installedExtensions = state.projection?.installed.orEmpty().mapNotNull(DesktopExtensionItem::installed)
         val languageInventory = remember(state.projection) {
             state.projection?.let { projection ->
@@ -277,14 +278,24 @@ internal fun ExtensionListContent(
                     TabRow(selectedTabIndex = selectedTab) {
                         Tab(
                             selected = selectedTab == 0,
-                            onClick = { selectedTab = 0 },
+                            onClick = {
+                                if (selectedTab != 0) {
+                                    selectedTab = 0
+                                    model.search("")
+                                }
+                            },
                             text = {
-                                Text("${MR.strings.ext_installed.localized()} (${ui.installed.size})")
+                                Text("${MR.strings.ext_installed.localized()} ($installedCount)")
                             },
                         )
                         Tab(
                             selected = selectedTab == 1,
-                            onClick = { selectedTab = 1 },
+                            onClick = {
+                                if (selectedTab != 1) {
+                                    selectedTab = 1
+                                    model.search("")
+                                }
+                            },
                             text = {
                                 if (ui.updates.isNotEmpty()) {
                                     BadgedBox(badge = { Badge { Text("${ui.updates.size}") } }) {

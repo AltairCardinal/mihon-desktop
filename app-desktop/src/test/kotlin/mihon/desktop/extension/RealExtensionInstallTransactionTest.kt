@@ -95,21 +95,13 @@ class RealExtensionInstallTransactionTest {
     fun `CopyManga v1_4_53 completes the production install transaction`(
         @TempDir tempDir: Path,
     ) = runBlocking {
-        val apk = tempDir.resolve("tachiyomi-zh.copymanga-v1.4.53.apk").toFile()
         val extensionsDirectory = tempDir.resolve("extensions").toFile()
         val diContext = initDesktopDIForTest(
             appDir = tempDir.resolve("app").toFile(),
             preferenceStore = DesktopPreferenceStore(),
         )
         try {
-            val localFixture = System.getenv("MIHON_COPYMANGA_APK")?.let(::File)?.takeIf(File::isFile)
-            if (localFixture != null) {
-                Files.copy(localFixture.toPath(), apk.toPath(), StandardCopyOption.REPLACE_EXISTING)
-            } else {
-                download(Injekt.get<NetworkHelper>().client, COPYMANGA_URL, apk)
-            }
-            assertEquals(COPYMANGA_SIZE, apk.length())
-            assertEquals(COPYMANGA_SHA256, sha256(apk))
+            val apk = copyMangaApk(tempDir)
             val installed = install(
                 apk = apk,
                 artifact = artifact(
@@ -140,6 +132,88 @@ class RealExtensionInstallTransactionTest {
                 loaded.map { it.classLoader }.distinct().filterIsInstance<AutoCloseable>().forEach { it.close() }
             }
         } finally {
+            diContext.closeAndJoin()
+        }
+    }
+
+    @Test
+    @Tag("integration")
+    @Tag("live-network")
+    fun `installing CopyManga keeps ManHuaGui installed before and after reload`(
+        @TempDir tempDir: Path,
+    ) = runBlocking {
+        val manHuaGuiApk = repositoryRoot().resolve(MANHUAGUI_APK).toFile()
+        val extensionsDirectory = tempDir.resolve("extensions").toFile()
+        val diContext = initDesktopDIForTest(
+            appDir = tempDir.resolve("app").toFile(),
+            preferenceStore = DesktopPreferenceStore(),
+        )
+        val copyMangaApk = copyMangaApk(tempDir)
+        val artifacts = listOf(
+            artifact(
+                name = "ManHuaGui",
+                packageName = MANHUAGUI_PACKAGE,
+                versionName = "1.4.28",
+                versionCode = 28,
+                repository = RepositoryIdentity(
+                    "https://raw.githubusercontent.com/keiyoushi/extensions/repo",
+                    "Keiyoushi",
+                    "fixture",
+                ),
+                downloadUrl = MANHUAGUI_URL,
+            ),
+            artifact(
+                name = "CopyManga",
+                packageName = COPYMANGA_PACKAGE,
+                versionName = "1.4.53",
+                versionCode = 53,
+                repository = RepositoryIdentity(COPYMANGA_REPOSITORY, "CopyManga", COPYMANGA_FINGERPRINT),
+                sources = listOf(
+                    ExtensionSourceDescriptor(
+                        id = COPYMANGA_SOURCE_ID,
+                        language = "zh",
+                        name = "CopyManga",
+                        baseUrl = "https://www.mangacopy.com",
+                    ),
+                ),
+                downloadUrl = COPYMANGA_URL,
+            ),
+        )
+        val apks = mapOf(
+            MANHUAGUI_PACKAGE to manHuaGuiApk,
+            COPYMANGA_PACKAGE to copyMangaApk,
+        )
+        val loader = DesktopExtensionLoader(extensionsDirectory)
+        val manager = DesktopExtensionManager(
+            loader = loader,
+            artifactProvider = { artifact, destination ->
+                Files.copy(
+                    checkNotNull(apks[artifact.packageName]).toPath(),
+                    destination.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            },
+            artifactAuthenticator = DesktopArtifactAuthenticator { _, _, _ -> },
+        )
+        try {
+            manager.loadAll()
+            artifacts.forEach { current ->
+                manager.installExtension(current)
+                assertEquals(
+                    artifacts.takeWhile { it != current }.map { it.packageName }.toSet() + current.packageName,
+                    manager.installedExtensions.value.map { it.pkgName }.toSet(),
+                )
+            }
+
+            manager.loadAll()
+
+            assertEquals(
+                setOf(MANHUAGUI_PACKAGE, COPYMANGA_PACKAGE),
+                manager.installedExtensions.value.map { it.pkgName }.toSet(),
+            )
+            assertTrue(loader.diagnostics.isEmpty(), "Extension loader diagnostics: ${loader.diagnostics}")
+        } finally {
+            manager.close()
             diContext.closeAndJoin()
         }
     }
@@ -200,6 +274,19 @@ class RealExtensionInstallTransactionTest {
             check(response.isSuccessful) { "CopyManga fixture download failed: HTTP ${response.code}" }
             response.body.byteStream().use { input -> destination.outputStream().use(input::copyTo) }
         }
+    }
+
+    private fun copyMangaApk(tempDir: Path): File {
+        val apk = tempDir.resolve("tachiyomi-zh.copymanga-v1.4.53.apk").toFile()
+        val localFixture = System.getenv("MIHON_COPYMANGA_APK")?.let(::File)?.takeIf(File::isFile)
+        if (localFixture != null) {
+            Files.copy(localFixture.toPath(), apk.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        } else {
+            download(Injekt.get<NetworkHelper>().client, COPYMANGA_URL, apk)
+        }
+        assertEquals(COPYMANGA_SIZE, apk.length())
+        assertEquals(COPYMANGA_SHA256, sha256(apk))
+        return apk
     }
 
     private fun sha256(file: File): String =

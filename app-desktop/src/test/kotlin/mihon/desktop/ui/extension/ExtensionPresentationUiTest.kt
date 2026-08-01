@@ -303,6 +303,67 @@ class ExtensionPresentationUiTest {
 
     @OptIn(ExperimentalComposeUiApi::class)
     @Test
+    fun `available search does not hide an older extension after switching to installed`() = runBlocking {
+        val manHuaGui = InstalledExtension(
+            File("eu.kanade.tachiyomi.extension.zh.manhuagui.jar"),
+            emptyList(),
+            displayName = "ManHuaGui",
+            language = "zh",
+        )
+        val copyManga = InstalledExtension(
+            File("eu.kanade.tachiyomi.extension.zh.copymanga.jar"),
+            emptyList(),
+            displayName = "CopyManga",
+            language = "zh",
+        )
+        val installedFlow = MutableStateFlow(listOf(manHuaGui))
+        val availableCopyManga = extension("CopyManga", copyManga.pkgName, emptyList()).copy(lang = "zh")
+        val catalog = ExtensionCatalogResult(emptyList(), emptyList())
+        val api = mockk<DesktopExtensionApi> {
+            coEvery { refreshCatalog() } returns catalog
+            every { availableExtensions(catalog) } returns listOf(availableCopyManga)
+            coEvery { loadExtensionIcon(any()) } returns null
+        }
+        val manager = mockk<DesktopExtensionManager>(relaxed = true)
+        val model = ExtensionsScreenModel(
+            DesktopExtensionPresentationPort(api, manager, installedFlow),
+            this,
+            ExtensionPresentationOptions(false, setOf("zh")),
+        )
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { extensionApi } returns api
+            every { extensionManager } returns manager
+        }
+        val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
+        try {
+            model.refresh().join()
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ExtensionListContent(model)
+                }
+            }
+            awaitText(scene, manHuaGui.name)
+
+            click(scene, extensionListCopy().available)
+            setText(scene, copyManga.name)
+            awaitText(scene, availableCopyManga.name)
+
+            installedFlow.value = listOf(manHuaGui, copyManga)
+            withTimeout(5_000) { model.state.first { it.projection?.installed?.size == 2 } }
+            scene.render()
+            clickTextStartingWith(scene, "${MR.strings.ext_installed.localized()} (")
+
+            assertEquals("", model.state.value.searchQuery)
+            awaitText(scene, manHuaGui.name)
+            awaitText(scene, copyManga.name)
+        } finally {
+            scene.close()
+            model.closeAndJoin()
+        }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
     fun `available tab shows loading instead of an empty result before the first catalog completes`() = runBlocking {
         val refreshEntered = CompletableDeferred<Unit>()
         val releaseRefresh = CompletableDeferred<Unit>()
@@ -771,6 +832,14 @@ class ExtensionPresentationUiTest {
                     it.config.contains(SemanticsProperties.ContentDescription) && it.config[SemanticsProperties.ContentDescription].contains(label))
         }
         val node = if (last) matches.last() else matches.single()
+        assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
+    }
+    private fun clickTextStartingWith(scene: ImageComposeScene, prefix: String) {
+        val node = nodes(scene).single {
+            it.config.contains(SemanticsActions.OnClick) &&
+                it.config.contains(SemanticsProperties.Text) &&
+                it.config[SemanticsProperties.Text].any { text -> text.text.startsWith(prefix) }
+        }
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
     }
     private fun toggle(scene: ImageComposeScene, index: Int) {
