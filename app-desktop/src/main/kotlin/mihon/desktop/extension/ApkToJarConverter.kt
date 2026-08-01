@@ -123,7 +123,7 @@ class ApkToJarConverter internal constructor(
             BytecodeEditor.fixBytecode(rawJar, editedJar)
             check(editedJar.isFile && editedJar.length() > 0L) { "Bytecode rewrite produced no JAR" }
             stage = ApkConversionStage.COPY_ASSETS
-            copyClasspathAssets(apkFile, editedJar)
+            copyClasspathResources(apkFile, editedJar)
             val outputJar = File(outputDir, apkFile.nameWithoutExtension + ".jar")
             stage = ApkConversionStage.PUBLISH_OUTPUT
             outputPublisher(editedJar.toPath(), outputJar.toPath())
@@ -153,21 +153,26 @@ class ApkToJarConverter internal constructor(
         Files.deleteIfExists(workDir)
     }
 
-    /** Copies safe APK assets after bytecode editing without replacing generated JAR entries. */
-    private fun copyClasspathAssets(apkFile: File, outputJar: File) {
+    /**
+     * Copies safe JVM resources after bytecode editing without replacing generated JAR entries.
+     *
+     * Android packages Java resources at the APK root rather than below `assets/`. Converted
+     * extensions still load those files through `Class.getResourceAsStream`, so preserving only
+     * `assets/` produces valid bytecode with an incomplete runtime classpath.
+     */
+    private fun copyClasspathResources(apkFile: File, outputJar: File) {
         ZipFile(apkFile).use { apk ->
             FileSystems.newFileSystem(outputJar.toPath()).use { jar ->
                 val root = jar.getPath("/")
-                val assetsRoot = root.resolve("assets")
                 apk.entries().asSequence()
-                    .filter { !it.isDirectory && isSafeAssetPath(it.name) }
+                    .filter { !it.isDirectory && isSafeClasspathResourcePath(it.name) }
                     .forEach { entry ->
                         val target = try {
                             root.resolve(entry.name).normalize()
                         } catch (_: InvalidPathException) {
                             return@forEach
                         }
-                        if (!target.startsWith(assetsRoot) || Files.exists(target)) return@forEach
+                        if (!target.startsWith(root) || Files.exists(target)) return@forEach
                         Files.createDirectories(target.parent)
                         apk.getInputStream(entry).use { input -> Files.copy(input, target) }
                     }
@@ -175,10 +180,15 @@ class ApkToJarConverter internal constructor(
         }
     }
 
-    private fun isSafeAssetPath(name: String): Boolean =
-        name.startsWith("assets/") &&
-            '\\' !in name &&
-            name.split('/').none { it == "." || it == ".." }
+    private fun isSafeClasspathResourcePath(name: String): Boolean {
+        if (name.isBlank() || name.startsWith('/') || '\\' in name) return false
+        val segments = name.split('/')
+        if (segments.any { it.isBlank() || it == "." || it == ".." }) return false
+        if (segments.first() in AndroidContainerDirectories) return false
+        if (name in AndroidContainerFiles || name.matches(AndroidDexEntry)) return false
+        if (name.endsWith(".class", ignoreCase = true)) return false
+        return true
+    }
 
     private fun inspectInput(apkFile: File): ApkConversionResult.Failure? {
         return try {
@@ -212,6 +222,9 @@ class ApkToJarConverter internal constructor(
         }
 
     private companion object {
+        val AndroidContainerDirectories = setOf("META-INF", "lib", "res")
+        val AndroidContainerFiles = setOf("AndroidManifest.xml", "resources.arsc")
+        val AndroidDexEntry = Regex("classes\\d*\\.dex")
         const val MAX_CONVERSION_ATTEMPTS = 2
         const val TRANSIENT_FILE_RETRY_DELAY_MILLIS = 10L
     }

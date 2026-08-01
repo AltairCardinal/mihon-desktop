@@ -48,6 +48,13 @@ Keiyoushi 当前同时发布 APK 与签名 JAR；Desktop 的全量兼容调查�
   失败必须分别报告，不能统一伪装成“仓库应提供 JAR”。
 - APK→JAR 会通过 `FileSystems.newFileSystem` 修改转换后的 JAR；Compose Desktop 的 jlink
   运行时必须显式包含 `jdk.zipfs`。系统 JDK 中测试通过不能证明发布运行时具备该 provider。
+- APK 中的 JVM library resource 位于 classpath 根目录，不一定在 `assets/` 下。转换必须同时
+  保留安全的根目录/嵌套 classpath resource 和 `assets/`，但不得复制 DEX、`.class`、
+  `AndroidManifest.xml`、`resources.arsc`、`META-INF/`、`res/` 或 `lib/`，也不得覆盖 DEX
+  转换已经生成的 JAR entry。缺失这类资源可能在 HTTP 响应成功后才表现为 parser 异常；排查时
+  必须根据 production 路由记录和异常阶段区分网络失败与扩展运行时资源缺失。
+- 已安装的转换 JAR 是安装事务的最终制品，不保留原始 APK；转换规则升级不会凭空修补旧 JAR。
+  受资源保留问题影响的既有扩展需重新安装一次，后续安装和更新才使用新转换规则。
 - 部分 Android 扩展在源构造阶段读取 JVM `http.agent` 并假定它非空。Desktop 统一网络层
   初始化时只在该属性缺失时提供 `Mihon Desktop/1.0`，显式 JVM 配置保持不变。此属性只用于
   Android ABI 与请求头兼容，不创建旁路 HTTP 客户端，也不改变代理选择；扩展请求仍必须通过

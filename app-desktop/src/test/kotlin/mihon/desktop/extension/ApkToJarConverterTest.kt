@@ -87,19 +87,26 @@ class ApkToJarConverterTest {
     }
 
     @Test
-    fun `conversion preserves only safe asset classpath entries`(@TempDir tmp: Path) {
+    fun `conversion preserves safe JVM classpath resources and excludes Android or unsafe entries`(@TempDir tmp: Path) {
         val apk = tmp.resolve("assets.apk").toFile()
         val safeAsset = "title=MangaDex\n".toByteArray()
+        val simplifiedChars = "漢=汉\n".toByteArray()
+        val simplifiedLexemes = "軟體=软件\n".toByteArray()
         val injected = "must-not-reach-output".toByteArray()
         buildZip(apk) {
             putEntry("classes.dex", minimalDexBytes())
             putEntry("assets/i18n/messages_en.properties", safeAsset)
+            putEntry("simp.txt", simplifiedChars)
+            putEntry("simplified.txt", simplifiedLexemes)
             putEntry("assets/../escaped.txt", injected)
             putEntry("/assets/absolute.txt", injected)
             putEntry("assets\\windows.txt", injected)
             putEntry("assets/../../Injected.class", injected)
             putEntry("assets/../../META-INF/MANIFEST.MF", injected)
+            putEntry("Injected.class", injected)
             putEntry("AndroidManifest.xml", injected)
+            putEntry("resources.arsc", injected)
+            putEntry("res/raw/injected.txt", injected)
             putEntry("META-INF/CERT.RSA", injected)
         }
 
@@ -107,6 +114,10 @@ class ApkToJarConverterTest {
         JarFile(jar).use { archive ->
             val assetEntry = archive.getJarEntry("assets/i18n/messages_en.properties").shouldNotBeNull()
             archive.getInputStream(assetEntry).readBytes().contentEquals(safeAsset) shouldBe true
+            val charsEntry = archive.getJarEntry("simp.txt").shouldNotBeNull()
+            archive.getInputStream(charsEntry).readBytes().contentEquals(simplifiedChars) shouldBe true
+            val lexemesEntry = archive.getJarEntry("simplified.txt").shouldNotBeNull()
+            archive.getInputStream(lexemesEntry).readBytes().contentEquals(simplifiedLexemes) shouldBe true
             listOf(
                 "assets/../escaped.txt",
                 "/assets/absolute.txt",
@@ -115,6 +126,8 @@ class ApkToJarConverterTest {
                 "assets/../../META-INF/MANIFEST.MF",
                 "Injected.class",
                 "AndroidManifest.xml",
+                "resources.arsc",
+                "res/raw/injected.txt",
                 "META-INF/CERT.RSA",
                 "classes.dex",
             ).forEach { archive.getJarEntry(it).shouldBeNull() }
