@@ -1,20 +1,28 @@
 package mihon.desktop.extension
 
+import coil3.PlatformContext
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
 import eu.kanade.tachiyomi.source.CatalogueSource
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.network.DesktopPluginNetworkSupport
 import mihon.desktop.platform.DesktopNetworkHelper
+import mihon.desktop.image.DesktopSourceImage
+import mihon.desktop.image.createDesktopImageLoader
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.nio.file.Files
@@ -48,15 +56,21 @@ class RealCopyMangaNetworkRoutingTest {
         ) { "Production converter rejected the pinned CopyManga APK" }
         Files.move(converted.toPath(), installedJar, StandardCopyOption.REPLACE_EXISTING)
         JarFile(installedJar.toFile()).use { archive ->
-            assertNotNull(archive.getJarEntry("simp.txt"), "CopyManga character dictionary was not preserved")
-            assertNotNull(archive.getJarEntry("simplified.txt"), "CopyManga lexeme dictionary was not preserved")
+            assertNotNull(
+                archive.getJarEntry("simp.txt") ?: archive.getJarEntry("assets/simp.txt"),
+                "CopyManga character dictionary was not preserved",
+            )
+            assertNotNull(
+                archive.getJarEntry("simplified.txt") ?: archive.getJarEntry("assets/simplified.txt"),
+                "CopyManga lexeme dictionary was not preserved",
+            )
         }
         writeExtensionMeta(
             installedJar.toFile(),
             ExtensionMeta(
                 pkgName = COPY_MANGA_PACKAGE,
-                versionCode = 53,
-                versionName = "1.4.53",
+                versionCode = 82,
+                versionName = "1.4.82",
                 artifactSha256 = "local-live-fixture",
                 source = ExtensionOrigin.CONVERTED_APK,
                 apkConversionVersion = CURRENT_APK_CONVERSION_VERSION,
@@ -74,8 +88,9 @@ class RealCopyMangaNetworkRoutingTest {
         val context = initDesktopDIForTest(appDir.toFile(), preferenceStore)
         try {
             val manager = Injekt.get<DesktopExtensionManager>()
-            val source = manager.getSource(COPY_MANGA_SOURCE_ID)
-            assertNotNull(source, "Production extension manager did not load CopyManga")
+            val source = requireNotNull(manager.getSource(COPY_MANGA_SOURCE_ID)) {
+                "Production extension manager did not load CopyManga"
+            }
             val catalogue = source as CatalogueSource
             val network = Injekt.get<DesktopNetworkHelper>()
             assertEquals(
@@ -89,6 +104,49 @@ class RealCopyMangaNetworkRoutingTest {
             }
 
             assertTrue(page.mangas.isNotEmpty(), "CopyManga search returned no results")
+            val manga = page.mangas.first()
+            assertTrue(
+                manga.thumbnail_url?.isNotBlank() == true,
+                "CopyManga search result did not expose its cover URL",
+            )
+            val thumbnailUrl = requireNotNull(manga.thumbnail_url)
+            val imageLoader = createDesktopImageLoader(
+                context = PlatformContext.INSTANCE,
+                networkHelper = network,
+                sourceManager = Injekt.get<SourceManager>(),
+            )
+            try {
+                val coverResult = withTimeout(45_000) {
+                    imageLoader.execute(
+                        ImageRequest.Builder(PlatformContext.INSTANCE)
+                            .data(DesktopSourceImage(thumbnailUrl, catalogue.id))
+                            .build(),
+                    )
+                }
+                assertInstanceOf(SuccessResult::class.java, coverResult)
+            } finally {
+                imageLoader.shutdown()
+            }
+
+            when (
+                val detailsResult = safeSourceCall(timeoutMs = 45_000, tag = "CopyMangaLive") {
+                    val details = catalogue.getMangaDetails(manga)
+                    details to catalogue.getChapterList(details)
+                }
+            ) {
+                is SourceCallResult.Success -> {
+                    assertTrue(
+                        detailsResult.value.first.thumbnail_url?.isNotBlank() == true,
+                        "CopyManga details did not expose its cover URL",
+                    )
+                    assertTrue(detailsResult.value.second.isNotEmpty(), "CopyManga details returned no chapters")
+                }
+                is SourceCallResult.Error -> fail(
+                    "Maintained CopyManga details failed: ${detailsResult.error} " +
+                        "(${detailsResult.cause?.message.orEmpty()})",
+                )
+                is SourceCallResult.Timeout -> fail("CopyManga details timed out instead of returning a classified result")
+            }
             assertTrue(
                 network.routeObservations.value.any {
                     it.scope == COPY_MANGA_PACKAGE && it.host.startsWith("api.")
@@ -111,7 +169,7 @@ class RealCopyMangaNetworkRoutingTest {
     private companion object {
         const val COPY_MANGA_APK_ENV = "MIHON_COPYMANGA_APK"
         const val COPY_MANGA_APK_SHA256 =
-            "ab331e2c9f7a0197858cc86c43356508ef5203a4122d30c6ec7b3c44c7193675"
+            "93fef21408bf6d3e1e8e88051956680f387701379c48ebe8390a556dac675280"
         const val COPY_MANGA_PACKAGE = "eu.kanade.tachiyomi.extension.zh.copymanga"
         const val COPY_MANGA_EXTENSION_CLASS = "$COPY_MANGA_PACKAGE.CopyManga"
         const val COPY_MANGA_SOURCE_ID = 6696312508930833206L

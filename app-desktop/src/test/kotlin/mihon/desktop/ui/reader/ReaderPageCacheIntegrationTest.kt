@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import javax.imageio.ImageIO
+import mihon.desktop.image.DesktopSourceImage
 
 class ReaderPageCacheIntegrationTest {
 
@@ -29,12 +30,12 @@ class ReaderPageCacheIntegrationTest {
         val url = "https://example.invalid/page.png"
         val initialRevision = preloader.cacheRevision.value
 
-        assertEquals(url, readerPagePainterModel(url, preloader.get(0)))
+        assertEquals(DesktopSourceImage(url, 42L), readerPagePainterModel(url, preloader.get(0), sourceId = 42L))
 
         preloader.preload(0, listOf(url))
 
         assertTrue(preloader.cacheRevision.value > initialRevision)
-        assertNull(readerPagePainterModel(url, preloader.get(0)))
+        assertNull(readerPagePainterModel(url, preloader.get(0), sourceId = 42L))
     }
 
     @Test
@@ -222,7 +223,7 @@ class ReaderPageCacheIntegrationTest {
         assertEquals(4, cropped.width)
         assertEquals(2, cropped.height)
         assertEquals(BLACK, cropped.asSkiaBitmap().getColor(0, 0))
-        assertNull(readerPagePainterModel("cached-page", cachedPage.bitmap))
+        assertNull(readerPagePainterModel("cached-page", cachedPage.bitmap, sourceId = 42L))
     }
 
     @Test

@@ -125,7 +125,7 @@ internal fun MangaHeader(
     onAuthorClick: (String) -> Unit,
     onArtistClick: (String) -> Unit,
 ) {
-    val coverRequestState = rememberMangaCoverRequestState(manga.id, coverModel, coverLastModified)
+    val coverRequestState = rememberMangaCoverRequestState(manga.id, manga.source, coverModel, coverLastModified)
     var showCoverMenu by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier

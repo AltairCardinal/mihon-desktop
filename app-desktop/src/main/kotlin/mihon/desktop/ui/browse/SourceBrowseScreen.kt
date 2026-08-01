@@ -807,7 +807,7 @@ private fun MangaCard(manga: Manga, onClick: () -> Unit) {
     ) {
         Box {
             AsyncImage(
-                model = manga.thumbnailUrl,
+                model = mihon.desktop.image.desktopSourceImageModel(manga.thumbnailUrl, manga.source),
                 contentDescription = manga.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxWidth().aspectRatio(0.7f).testTag("source-browse-cover:${manga.thumbnailUrl}"),

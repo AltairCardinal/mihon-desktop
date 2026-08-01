@@ -9,12 +9,56 @@ import mihon.desktop.domain.fakes.FakeCatalogueSource
 import mihon.desktop.domain.fakes.FakeMangaRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
+import mihon.domain.error.AppError
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 
 class SaveSourceMangaForDetailsTest {
+
+    @Test
+    fun `background detail refresh publishes loading then keeps the structured source failure`() = runBlocking<Unit> {
+        val mangaRepo = FakeMangaRepository()
+        val chapterRepo = FakeChapterRepository()
+        val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
+        val listed = SManga.create().apply {
+            url = "/comic/invalid-details"
+            title = "Invalid details"
+        }
+        val source = object : eu.kanade.tachiyomi.source.CatalogueSource {
+            override val id = 42L
+            override val name = "Broken source"
+            override val lang = "en"
+            override val supportsLatest = false
+            override suspend fun getMangaDetails(manga: SManga): SManga =
+                throw IllegalStateException("results was null")
+            override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
+            override suspend fun getPopularManga(page: Int) = eu.kanade.tachiyomi.source.model.MangasPage(emptyList(), false)
+            override suspend fun getLatestUpdates(page: Int) = eu.kanade.tachiyomi.source.model.MangasPage(emptyList(), false)
+            override suspend fun getSearchManga(
+                page: Int,
+                query: String,
+                filters: eu.kanade.tachiyomi.source.model.FilterList,
+            ) = eu.kanade.tachiyomi.source.model.MangasPage(emptyList(), false)
+            override fun getFilterList() = eu.kanade.tachiyomi.source.model.FilterList()
+        }
+
+        val refresh = useCase.refreshFromSource(source, listed)
+        assertInstanceOf(
+            SourceMangaRefreshState.Loading::class.java,
+            useCase.refreshStates.value[SourceMangaRefreshKey(source.id, listed.url)],
+        )
+        refresh.join()
+
+        val failure = assertInstanceOf(
+            SourceMangaRefreshState.Failure::class.java,
+            useCase.refreshStates.value[SourceMangaRefreshKey(source.id, listed.url)],
+        )
+        assertInstanceOf(AppError.MalformedData::class.java, failure.error)
+        assertEquals(0, chapterRepo.addedChapters.size)
+    }
 
     @Test
     fun `search results use canonical mapping deduplicate per source and preserve existing state`() = runBlocking<Unit> {

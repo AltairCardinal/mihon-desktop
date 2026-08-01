@@ -29,5 +29,8 @@ class NetworkHelperSourceClientTest {
         )
 
         assertSame(scoped, helper.client)
+        assertSame(scoped, helper.nonCloudflareClient)
+        @Suppress("DEPRECATION")
+        assertSame(scoped, helper.cloudflareClient)
     }
 }

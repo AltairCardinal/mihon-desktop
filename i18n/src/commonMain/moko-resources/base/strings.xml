@@ -1675,6 +1675,6 @@
     <string name="desktop_ui_download_retry_error">Download failed. Retry.</string>
     <string name="desktop_ui_missing_chapter_count">%1$d chapter(s) missing</string>
     <string name="desktop_ui_hide_missing_chapter_indicators">Hide missing chapter indicators</string>
-    <string name="desktop_ui_download_malformed_error">The source returned invalid page data. Update the source or try again later.</string>
+    <string name="desktop_ui_download_malformed_error">The source returned invalid page data. Update the extension or try again later.</string>
     <string name="desktop_ui_download_unknown_error">The source is unavailable or an unknown error occurred. Check the source settings and retry.</string>
 </resources>

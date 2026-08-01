@@ -32,6 +32,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import mihon.desktop.reader.PagePreloader
 import mihon.desktop.reader.WebtoonSidePadding
+import mihon.desktop.image.LocalDesktopSourceImageId
 import org.jetbrains.skia.Bitmap as SkiaBitmap
 import org.jetbrains.skia.Canvas as SkiaCanvas
 import org.jetbrains.skia.Image as SkiaImage
@@ -213,7 +214,8 @@ private fun WebtoonPageItem(
     }
     val preloadedBitmap = remember(url, pageIndex, preloader, preloadRevision) { preloader?.get(pageIndex) }
 
-    val painter = rememberAsyncImagePainter(readerPagePainterModel(url, preloadedBitmap))
+    val sourceId = LocalDesktopSourceImageId.current
+    val painter = rememberAsyncImagePainter(readerPagePainterModel(url, preloadedBitmap, sourceId))
     val painterState by painter.state.collectAsState()
 
     LaunchedEffect(painterState, preloadedBitmap, cropBorders) {

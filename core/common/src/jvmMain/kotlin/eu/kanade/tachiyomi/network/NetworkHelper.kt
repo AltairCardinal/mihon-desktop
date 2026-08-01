@@ -21,6 +21,18 @@ class NetworkHelper(
     val client: OkHttpClient
         get() = extensionClientProvider()
 
+    /**
+     * Extension API compatibility aliases. Desktop has no separate WebView-based Cloudflare
+     * client; both aliases must still resolve through the calling extension's managed route.
+     */
+    val nonCloudflareClient: OkHttpClient
+        get() = extensionClientProvider()
+
+    @Deprecated("The regular client handles Cloudflare by default")
+    @Suppress("UNUSED")
+    val cloudflareClient: OkHttpClient
+        get() = extensionClientProvider()
+
     fun clientForSource(sourceId: Long): OkHttpClient = sourceClientProvider(sourceId)
 
     fun defaultUserAgentProvider(): String = "Mihon Desktop/1.0"

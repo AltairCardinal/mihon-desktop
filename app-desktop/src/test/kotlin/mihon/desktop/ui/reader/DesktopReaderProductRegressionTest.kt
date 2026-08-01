@@ -314,7 +314,7 @@ class DesktopReaderProductRegressionTest {
         assertTrue(webtoon.contains("preloader = preloader"), "Webtoon items must consume the preload cache")
         assertTrue(page.contains("cacheRevision.collectAsState"), "Late preload writes must recompose visible pages")
         assertTrue(
-            page.contains("rememberAsyncImagePainter(readerPagePainterModel(url, preloadedBitmap))"),
+            page.contains("rememberAsyncImagePainter(readerPagePainterModel(url, preloadedBitmap, sourceId))"),
             "A bounded/tiled preload hit must stop the ordinary full-image Coil request",
         )
     }

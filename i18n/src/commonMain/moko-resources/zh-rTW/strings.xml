@@ -1502,6 +1502,6 @@
     <string name="desktop_ui_download_retry_error">下載失敗，請重試。</string>
     <string name="desktop_ui_missing_chapter_count">缺少 %1$d 話</string>
     <string name="desktop_ui_hide_missing_chapter_indicators">隱藏缺話提示</string>
-    <string name="desktop_ui_download_malformed_error">來源傳回的頁面資料無效，請更新來源或稍後重試。</string>
+    <string name="desktop_ui_download_malformed_error">圖源傳回的頁面資料無效，請更新擴充套件或稍後重試。</string>
     <string name="desktop_ui_download_unknown_error">來源無法使用或發生未知錯誤，請檢查來源設定後重試。</string>
 </resources>

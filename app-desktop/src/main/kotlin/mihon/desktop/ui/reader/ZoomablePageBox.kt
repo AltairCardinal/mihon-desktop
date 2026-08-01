@@ -38,6 +38,8 @@ import mihon.desktop.reader.PreloadedPageBitmap
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.SkiaImageDecoder
 import mihon.desktop.reader.ZoomState
+import mihon.desktop.image.LocalDesktopSourceImageId
+import mihon.desktop.image.desktopSourceImageModel
 import mihon.domain.reader.PixelBounds
 import org.jetbrains.skia.Bitmap as SkiaBitmap
 import org.jetbrains.skia.Canvas as SkiaCanvas
@@ -207,7 +209,8 @@ internal fun ZoomablePageBox(
         }
     }
 
-    val painter = rememberAsyncImagePainter(readerPagePainterModel(url, preloadedBitmap))
+    val sourceId = LocalDesktopSourceImageId.current
+    val painter = rememberAsyncImagePainter(readerPagePainterModel(url, preloadedBitmap, sourceId))
     val painterState by painter.state.collectAsState()
 
     val localBitmap by produceState<ImageBitmap?>(initialValue = null, url, splitHalf, sourceBounds, cropBorders) {
@@ -477,8 +480,11 @@ internal fun ZoomablePageBox(
     }
 }
 
-internal fun readerPagePainterModel(url: String, preloadedBitmap: ImageBitmap?): Any? =
-    url.takeIf { preloadedBitmap == null }
+internal fun readerPagePainterModel(
+    url: String,
+    preloadedBitmap: ImageBitmap?,
+    sourceId: Long,
+): Any? = desktopSourceImageModel(url, sourceId).takeIf { preloadedBitmap == null }
 
 internal fun transformCachedPageBitmap(
     bitmap: ImageBitmap,

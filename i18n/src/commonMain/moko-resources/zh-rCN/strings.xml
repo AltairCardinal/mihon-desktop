@@ -1532,6 +1532,6 @@
     <string name="desktop_ui_download_retry_error">下载失败，请重试。</string>
     <string name="desktop_ui_missing_chapter_count">缺少 %1$d 话</string>
     <string name="desktop_ui_hide_missing_chapter_indicators">隐藏缺话提示</string>
-    <string name="desktop_ui_download_malformed_error">源返回的页面数据无效，请更新源或稍后重试。</string>
+    <string name="desktop_ui_download_malformed_error">图源返回的页面数据无效，请更新插件或稍后重试。</string>
     <string name="desktop_ui_download_unknown_error">源不可用或发生未知错误，请检查源设置后重试。</string>
 </resources>

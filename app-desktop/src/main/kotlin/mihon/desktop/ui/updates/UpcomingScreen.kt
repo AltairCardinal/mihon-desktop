@@ -351,7 +351,7 @@ private fun UpcomingMangaItem(manga: Manga, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AsyncImage(
-            model = manga.thumbnailUrl,
+            model = mihon.desktop.image.desktopSourceImageModel(manga.thumbnailUrl, manga.source),
             contentDescription = manga.title,
             contentScale = ContentScale.Crop,
             modifier = Modifier

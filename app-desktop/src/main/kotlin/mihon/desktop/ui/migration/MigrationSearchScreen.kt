@@ -234,7 +234,10 @@ data class MigrationSearchScreen(
                             ListItem(
                                 leadingContent = {
                                     AsyncImage(
-                                        model = manga.thumbnail_url,
+                                        model = mihon.desktop.image.desktopSourceImageModel(
+                                            manga.thumbnail_url,
+                                            source.id,
+                                        ),
                                         contentDescription = null,
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.width(40.dp).size(56.dp),

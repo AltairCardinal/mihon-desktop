@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -48,6 +49,7 @@ import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.ReaderProgressTracker
+import mihon.desktop.image.LocalDesktopSourceImageId
 import mihon.desktop.reader.DesktopReaderRuntimeFactory
 import mihon.desktop.reader.DualPageState
 import mihon.desktop.reader.EdgePixelMatcher
@@ -240,6 +242,7 @@ data class DesktopReaderScreen(
         ReaderViewport(
             state = state,
             model = model,
+            sourceId = sourceId,
             navigator = navigator,
             focusRequester = focusRequester,
             contextMenuScope = scope,
@@ -443,6 +446,7 @@ internal suspend fun resolveDesktopMatchedPairs(
 private fun ReaderViewport(
     state: ReaderState,
     model: ReaderScreenModel,
+    sourceId: Long,
     navigator: Navigator,
     focusRequester: FocusRequester,
     contextMenuScope: kotlinx.coroutines.CoroutineScope,
@@ -486,8 +490,10 @@ private fun ReaderViewport(
                 )
                 state.resolvedUrls.isEmpty() -> EmptyState(onBack = { navigator.pop() })
                 else -> {
-                    ReaderViewportColorLayer(state.colorFilter) {
-                        ReaderContent(state, model, navigator, contextMenuScope, mangaTitle, chapterTitle, preloader, readerNav, onPrevChapter, onNextChapter)
+                    CompositionLocalProvider(LocalDesktopSourceImageId provides sourceId) {
+                        ReaderViewportColorLayer(state.colorFilter) {
+                            ReaderContent(state, model, navigator, contextMenuScope, mangaTitle, chapterTitle, preloader, readerNav, onPrevChapter, onNextChapter)
+                        }
                     }
                     ColorFilterOverlay(state.colorFilter)
                     if (state.showUI) {

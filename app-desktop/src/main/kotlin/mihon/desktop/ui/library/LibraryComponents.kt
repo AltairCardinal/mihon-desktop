@@ -444,7 +444,10 @@ internal fun LibraryList(
                 leadingContent = {
                     Box {
                         AsyncImage(
-                            model = item.manga.thumbnailUrl,
+                            model = mihon.desktop.image.desktopSourceImageModel(
+                                item.manga.thumbnailUrl,
+                                item.manga.source,
+                            ),
                             contentDescription = item.manga.title,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.size(48.dp),
@@ -543,7 +546,10 @@ internal fun MangaCoverCard(
         Column {
             Box {
                 AsyncImage(
-                    model = item.manga.thumbnailUrl,
+                    model = mihon.desktop.image.desktopSourceImageModel(
+                        item.manga.thumbnailUrl,
+                        item.manga.source,
+                    ),
                     contentDescription = item.manga.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier

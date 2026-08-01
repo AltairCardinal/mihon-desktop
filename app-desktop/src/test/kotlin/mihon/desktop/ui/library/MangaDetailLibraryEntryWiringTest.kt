@@ -25,6 +25,7 @@ import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.GetAvailableScanlators
 import mihon.desktop.domain.GetExcludedScanlators
+import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
@@ -37,6 +38,7 @@ import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
+import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.StubSource
@@ -72,6 +74,11 @@ class MangaDetailLibraryEntryWiringTest {
         )
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns DesktopAppPreferences(DesktopPreferenceStore())
+            every { saveSourceMangaForDetails } returns SaveSourceMangaForDetails(
+                NetworkToLocalManga(mangaRepository),
+                mangaRepository,
+                chapterRepository,
+            )
         }
         val scene = ImageComposeScene(1_200, 900, coroutineContext = coroutineContext) {}
 

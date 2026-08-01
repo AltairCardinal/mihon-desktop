@@ -116,7 +116,7 @@ data class MigrationMangaScreen(
                         ListItem(
                             leadingContent = {
                                 AsyncImage(
-                                    model = m.thumbnailUrl,
+                                    model = mihon.desktop.image.desktopSourceImageModel(m.thumbnailUrl, m.source),
                                     contentDescription = null,
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.width(48.dp).size(64.dp),

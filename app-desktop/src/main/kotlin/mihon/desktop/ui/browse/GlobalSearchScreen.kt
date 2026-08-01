@@ -626,7 +626,7 @@ private fun GlobalSearchMangaCard(
     ) {
         Box {
             AsyncImage(
-                model = manga.thumbnailUrl,
+                model = mihon.desktop.image.desktopSourceImageModel(manga.thumbnailUrl, manga.source),
                 contentDescription = manga.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize().testTag("global-search-cover:${manga.thumbnailUrl}"),

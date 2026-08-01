@@ -487,8 +487,11 @@ override val client = network.client.newBuilder().addInterceptor(...).build()
 `ProxySelector`、策略刷新、域名观察与 route 观察链，插件以后切换四种网络策略时无需重建
 source 实例。
 
-由 Mihon 主进程代替扩展发出的后续请求必须显式使用 `clientForSource(sourceId)`，当前包括
-章节下载、阅读器图片回退和阅读器预加载。主进程不得在这些路径直接读取全局 `client`。
+由 Mihon 主进程代替扩展发出的后续请求必须显式携带 `sourceId` 并使用该源客户端，当前包括
+漫画封面、章节下载、阅读器图片回退和阅读器预加载。Compose/Coil 只允许使用启动时安装的
+production `ImageLoader`：普通远程图片使用全局托管客户端，漫画封面根据 `sourceId` 选择
+插件客户端并合并源请求头。主进程不得在这些路径使用 Coil 默认客户端或直接读取全局
+`client` 代替插件策略。
 
 扩展允许覆盖 `client` 或打包自己的网络帮助类，因此 loader 必须检测并报告支持程度。
 检测结果只用于诚实说明能力，不能把“检测到 OkHttp 类”当作全部流量已被强制接管。
@@ -558,8 +561,12 @@ Desktop 已实现本文首版产品链路：
 - 插件客户端每次请求动态读取当前复写策略，策略变化会清除该插件连接池；构造期缓存的
   客户端无需重建即可在后续请求使用新 route；
 - 下载、阅读器图片回退和阅读器后台预加载等主进程代发请求均按 `sourceId` 获取插件客户端；
+- Compose/Coil 的远程请求统一使用 production `ImageLoader`；漫画封面携带 `sourceId`，按插件
+  网络复写策略和源请求头加载，仓库图标等普通图片使用全局托管客户端；
 - source 异常统一保留为 `AppError`，用户反馈区分超时、DNS、TLS、拒绝连接、连接重置、
   鉴权、限流、服务端和响应解析错误；
+- 搜索结果进入详情后的详情/章节刷新通过有界状态流公开加载与失败状态；失败时保留结构化
+  `AppError` 并显示重试入口，不能吞掉异常后把未加载完成伪装成“章节 0”；
 - 插件详情页显示支持程度、当前生效 route、连接测试、声明域名和运行时观测域名；
 - 运行时观测覆盖托管 HTTP 请求及重定向，只持久化规范化主机名，单插件上限 256 条；
 - 支持纯域名、Mihomo `DOMAIN`、显式 Mihomo `DOMAIN-SUFFIX`、sing-box 与

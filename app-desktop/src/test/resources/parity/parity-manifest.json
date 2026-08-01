@@ -113,7 +113,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/di/AppModule.kt", "symbol": "override fun InjektRegistrar.registerInjectables", "line": 52}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/domain/DomainModule.kt", "symbol": "override fun InjektRegistrar.registerInjectables", "line": 115}],
       "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt", "symbol": "fun initDesktopDI", "line": 186}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "symbol": "initDesktopDI()", "line": 90}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "symbol": "initDesktopDI()", "line": 91}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt#reinitializing while scheduler runs joins old work and closes old database", "productionMarkers": ["initDesktopDIForTest", "Injekt.get"]}]
     },
     "verificationScope": "VERIFIED: platform-specific composition roots, Desktop production bootstrap, dependency resolution, ownership replacement and deterministic teardown are executable.",
@@ -609,7 +609,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/util/CrashLogUtil.kt", "symbol": "CrashLogUtil", "line": 20}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/util/CrashLogUtil.kt", "symbol": "suspend fun dumpLogs", "line": 26}],
       "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/CrashHandler.kt", "symbol": "object CrashHandler", "line": 14}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "symbol": "CrashHandler.install()", "line": 73}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "symbol": "CrashHandler.install()", "line": 74}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/CrashHandlerTest.kt#uncaught handler reports original exception when crash log write fails", "productionMarkers": ["CrashHandler.uncaughtException"]}]
     },
     "group": "平台基础",
@@ -850,7 +850,7 @@
         {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/category/interactor/SetMangaCategories.kt", "symbol": "class SetMangaCategories", "line": 7}
       ],
       "DESKTOP_CONSUMER": [
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt", "symbol": "categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY", "line": 829},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt", "symbol": "categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY", "line": 851},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt", "symbol": "suspend fun toggleLibrary", "line": 267},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt", "symbol": "MangaCategoryDialogMode.ADD_TO_LIBRARY -> model.toggleLibrary", "line": 354},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 540}
@@ -2070,7 +2070,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt", "symbol": "private fun getCombinedPaint", "line": 812}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt", "symbol": "readerPreferences.grayscale().changes()", "line": 908}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt", "symbol": "internal fun buildAndroidLayerFilterParams", "line": 27}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt", "symbol": "data class ReaderColorFilterParams", "line": 241}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "ReaderViewportColorLayer(state.colorFilter)", "line": 489}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "internal fun ReaderViewportColorLayer", "line": 551}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun Modifier.readerColorTransform", "line": 53}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun readerColorMatrix", "line": 63}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "ReaderViewportColorLayer(state.colorFilter)", "line": 494}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "internal fun ReaderViewportColorLayer", "line": 557}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun Modifier.readerColorTransform", "line": 53}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun readerColorMatrix", "line": 63}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt#mounted reader viewport color layer renders disabled grayscale and invert pixels", "productionMarkers": ["renderColorLayer(", "assertPixel("]}]
     },
     "protectionTests": [
@@ -3043,7 +3043,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt", "symbol": "private fun handleIntentAction", "line": 513}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt", "symbol": "private fun handleIntentAction", "line": 397}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/platform/ExternalAction.kt", "symbol": "sealed interface ExternalAction", "line": 10}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "symbol": "internal fun wireDesktopOpenUriEvents", "line": 554}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt", "symbol": "internal fun wireDesktopOpenUriEvents", "line": 556}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt#macOS open URI bridge drains queued events once and uses the shared ViewUri ingress", "productionMarkers": ["wireDesktopOpenUriEvents"]}]
     },
     "statusDecision": {"task": "Task 18", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/DesktopAppRuntimeTest.kt": ["macOS open URI bridge drains queued events once and uses the shared ViewUri ingress"]}},

@@ -49,6 +49,7 @@ import mihon.desktop.test.state.applicationState
 import mihon.desktop.tracking.DesktopTrackerOAuthCallbackBroker
 import mihon.desktop.ui.ExternalActionNavigator
 import mihon.desktop.ui.home.HomeScreen
+import mihon.desktop.image.installDesktopImageLoader
 import mihon.desktop.ui.security.DesktopProtectedRoot
 import mihon.desktop.ui.settings.DesktopLocaleFeedbackHost
 import mihon.desktop.ui.theme.DesktopTheme
@@ -168,6 +169,7 @@ private suspend fun runDesktopComposeWindowEventLoop(
     owner: DesktopOwnerStartup,
     requestClose: suspend () -> Unit,
 ) {
+    installDesktopImageLoader(owner.ingress.uiDependencies)
     application {
         val applicationScope = rememberCoroutineScope()
         Window(

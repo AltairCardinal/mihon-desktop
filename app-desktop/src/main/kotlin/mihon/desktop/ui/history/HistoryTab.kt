@@ -287,7 +287,7 @@ private fun HistoryItem(
         ) {
             // Cover thumbnail
             AsyncImage(
-                model = item.coverData.url,
+                model = mihon.desktop.image.desktopSourceImageModel(item.coverData.url, item.coverData.sourceId),
                 contentDescription = item.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier

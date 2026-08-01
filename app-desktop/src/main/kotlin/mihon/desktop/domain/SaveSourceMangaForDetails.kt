@@ -7,15 +7,23 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import mihon.domain.manga.model.toDomainManga
+import mihon.desktop.extension.SourceCallResult
 import mihon.desktop.extension.safeSourceCall
+import mihon.domain.error.AppError
+import mihon.domain.manga.model.toDomainManga
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.repository.MangaRepository
+
+private const val MAX_REFRESH_STATES = 128
 
 /**
  * Persists a browsed source manga so Browse and Library can share MangaDetailScreen.
@@ -27,6 +35,9 @@ class SaveSourceMangaForDetails(
     private val refreshScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
 
+    private val mutableRefreshStates = MutableStateFlow<Map<SourceMangaRefreshKey, SourceMangaRefreshState>>(emptyMap())
+    val refreshStates: StateFlow<Map<SourceMangaRefreshKey, SourceMangaRefreshState>> = mutableRefreshStates.asStateFlow()
+
     suspend fun awaitSearchResults(results: List<SManga>, sourceId: Long): List<Manga> =
         results.map { it.toDomainManga(sourceId) }
             .distinctBy(Manga::url)
@@ -36,8 +47,24 @@ class SaveSourceMangaForDetails(
         source: CatalogueSource,
         listedManga: SManga,
     ): Job {
+        val key = SourceMangaRefreshKey(source.id, listedManga.url)
+        updateRefreshState(key, SourceMangaRefreshState.Loading)
         return refreshScope.launch {
-            safeSourceCall { awaitFromSource(source, listedManga) }
+            when (val result = safeSourceCall { awaitFromSource(source, listedManga) }) {
+                is SourceCallResult.Success -> updateRefreshState(key, null)
+                is SourceCallResult.Error -> updateRefreshState(key, SourceMangaRefreshState.Failure(result.error))
+                is SourceCallResult.Timeout -> updateRefreshState(key, SourceMangaRefreshState.Failure(result.error))
+            }
+        }
+    }
+
+    private fun updateRefreshState(key: SourceMangaRefreshKey, state: SourceMangaRefreshState?) {
+        mutableRefreshStates.update { current ->
+            LinkedHashMap(current).apply {
+                remove(key)
+                if (state != null) put(key, state)
+                while (size > MAX_REFRESH_STATES) remove(keys.first())
+            }
         }
     }
 
@@ -149,6 +176,16 @@ class SaveSourceMangaForDetails(
 
         return dbManga
     }
+}
+
+data class SourceMangaRefreshKey(
+    val sourceId: Long,
+    val mangaUrl: String,
+)
+
+sealed interface SourceMangaRefreshState {
+    data object Loading : SourceMangaRefreshState
+    data class Failure(val error: AppError) : SourceMangaRefreshState
 }
 
 data class ListedMangaForDetails(

@@ -91,14 +91,18 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
+import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.launch
+import mihon.desktop.domain.SourceMangaRefreshKey
+import mihon.desktop.domain.SourceMangaRefreshState
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.externalChapterUrlOrNull
 import mihon.desktop.reader.readingModeFromViewerFlags
 import mihon.desktop.ui.browse.GlobalSearchScreen
 import mihon.desktop.ui.reader.DesktopReaderScreen
 import mihon.desktop.ui.reader.readingModeLabel
+import mihon.desktop.ui.source.desktopSourceErrorMessage
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.creator.model.CreatorRole
@@ -144,6 +148,12 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         // Read aliases — immutable vals at all read sites, writes go through model
         val manga = state.manga
         val chapters = state.chapters
+        val sourceRefreshStates by dependencies.saveSourceMangaForDetails.refreshStates.collectAsState()
+        val sourceRefreshState = manga?.let {
+            sourceRefreshStates[SourceMangaRefreshKey(sourceId = it.source, mangaUrl = it.url)]
+        }
+        val sourceRefreshFailure = sourceRefreshState as? SourceMangaRefreshState.Failure
+        val chapterContentState = mangaDetailChapterContentState(sourceRefreshState, chapters.size)
         val isUpdating = state.isUpdating
         val deleteConfirmChapter = state.deleteConfirmChapter
         val markAllReadConfirm = state.markAllReadConfirm
@@ -213,6 +223,14 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         }
         val source = remember(manga?.source) {
             manga?.let { m -> model.sourceFor(m) }
+        }
+        val refreshFromSource = refresh@{
+            val currentManga = manga ?: return@refresh
+            val currentSource = source as? CatalogueSource ?: return@refresh
+            dependencies.saveSourceMangaForDetails.refreshFromSource(
+                source = currentSource,
+                listedManga = currentManga.toSourceMangaForRefresh(),
+            )
         }
         val mangaUrl = remember(manga?.url, source) {
             val m = manga
@@ -429,7 +447,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                             }
                         }
 
-                        if (isUpdating) {
+                        if (isUpdating || sourceRefreshState is SourceMangaRefreshState.Loading) {
                             CircularProgressIndicator(
                                 modifier = Modifier.padding(horizontal = 12.dp),
                                 strokeWidth = 2.dp,
@@ -437,10 +455,14 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         } else {
                             IconButton(onClick = {
                                 val m = manga ?: return@IconButton
-                                scope.launch {
-                                    model.setIsUpdating(true)
-                                    model.refreshManga(m)
-                                    model.setIsUpdating(false)
+                                if (source is CatalogueSource) {
+                                    refreshFromSource()
+                                } else {
+                                    scope.launch {
+                                        model.setIsUpdating(true)
+                                        model.refreshManga(m)
+                                        model.setIsUpdating(false)
+                                    }
                                 }
                             }) {
                                 Icon(Icons.Default.Refresh, contentDescription = MR.strings.check_for_updates.localized())
@@ -898,57 +920,119 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                     HorizontalDivider()
                 }
 
-                mangaDetailChapterListItems(
-                    displayedChapterCount = displayedChapters.size,
-                    totalChapterCount = chapters.size,
-                    chapterRows = chapterRows,
-                    downloadQueue = downloadQueue,
-                    manga = manga,
-                    isChapterDownloaded = model::isChapterDownloaded,
-                    isChapterSelected = { chapterId -> chapterId in selectionState.selectedIds },
-                    onSelectChapter = selectionState::toggle,
-                    onDownloadChapter = { chapter ->
-                        manga?.let { model.enqueueDownloads(it, listOf(chapter)) }
-                    },
-                    onDeleteDownload = model::setDeleteConfirmChapter,
-                    onCancelDownload = model::cancelChapterDownload,
-                    onToggleBookmark = { chapter ->
-                        scope.launch {
-                            model.toggleChapterBookmark(chapter)
-                        }
-                    },
-                    onReadChapter = { chapter ->
-                        scope.launch {
-                            val externalUrl = chapter.url.externalChapterUrlOrNull()
-                            if (externalUrl != null) {
-                                openExternalLink(externalUrl)
-                                return@launch
-                            }
-                            val request = model.readerRequest(
-                                manga = manga!!,
-                                chapters = chapters,
-                                chapter = chapter,
-                            ) ?: return@launch
-                            navigator.push(
-                                DesktopReaderScreen(
-                                    chapterTitle = request.chapterTitle,
-                                    mangaId = request.mangaId,
-                                    mangaTitle = request.mangaTitle,
-                                    pageUrls = emptyList(),
-                                    isWebtoon = false,
-                                    sourceId = request.sourceId,
-                                    chapterUrl = request.chapterUrl,
-                                    chapterId = request.chapterId,
-                                    chapters = request.chapters,
-                                    currentChapterIndex = request.currentChapterIndex,
-                                    initialPage = request.initialPage,
-                                    mangaViewerFlags = request.mangaViewerFlags,
-                                ),
+                sourceRefreshFailure?.let { failure ->
+                    item(key = "source-refresh-failure") {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.errorContainer)
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                text = desktopSourceErrorMessage(failure.error),
+                                color = MaterialTheme.colorScheme.onErrorContainer,
                             )
+                            TextButton(onClick = refreshFromSource) {
+                                Text(MR.strings.action_retry.localized())
+                            }
                         }
-                    },
-                )
+                    }
+                }
+
+                when (chapterContentState) {
+                    MangaDetailChapterContentState.LOADING -> item(key = "source-refresh-loading") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(24.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.layoutSize(24.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Text(MR.strings.loading.localized())
+                        }
+                    }
+                    MangaDetailChapterContentState.FAILURE -> Unit
+                    MangaDetailChapterContentState.CONTENT -> mangaDetailChapterListItems(
+                        displayedChapterCount = displayedChapters.size,
+                        totalChapterCount = chapters.size,
+                        chapterRows = chapterRows,
+                        downloadQueue = downloadQueue,
+                        manga = manga,
+                        isChapterDownloaded = model::isChapterDownloaded,
+                        isChapterSelected = { chapterId -> chapterId in selectionState.selectedIds },
+                        onSelectChapter = selectionState::toggle,
+                        onDownloadChapter = { chapter ->
+                            manga?.let { model.enqueueDownloads(it, listOf(chapter)) }
+                        },
+                        onDeleteDownload = model::setDeleteConfirmChapter,
+                        onCancelDownload = model::cancelChapterDownload,
+                        onToggleBookmark = { chapter ->
+                            scope.launch {
+                                model.toggleChapterBookmark(chapter)
+                            }
+                        },
+                        onReadChapter = { chapter ->
+                            scope.launch {
+                                val externalUrl = chapter.url.externalChapterUrlOrNull()
+                                if (externalUrl != null) {
+                                    openExternalLink(externalUrl)
+                                    return@launch
+                                }
+                                val request = model.readerRequest(
+                                    manga = manga!!,
+                                    chapters = chapters,
+                                    chapter = chapter,
+                                ) ?: return@launch
+                                navigator.push(
+                                    DesktopReaderScreen(
+                                        chapterTitle = request.chapterTitle,
+                                        mangaId = request.mangaId,
+                                        mangaTitle = request.mangaTitle,
+                                        pageUrls = emptyList(),
+                                        isWebtoon = false,
+                                        sourceId = request.sourceId,
+                                        chapterUrl = request.chapterUrl,
+                                        chapterId = request.chapterId,
+                                        chapters = request.chapters,
+                                        currentChapterIndex = request.currentChapterIndex,
+                                        initialPage = request.initialPage,
+                                        mangaViewerFlags = request.mangaViewerFlags,
+                                    ),
+                                )
+                            }
+                        },
+                    )
+                }
             }
         }
     }
+}
+
+internal enum class MangaDetailChapterContentState {
+    LOADING,
+    FAILURE,
+    CONTENT,
+}
+
+internal fun mangaDetailChapterContentState(
+    refreshState: SourceMangaRefreshState?,
+    chapterCount: Int,
+): MangaDetailChapterContentState = when {
+    chapterCount > 0 -> MangaDetailChapterContentState.CONTENT
+    refreshState is SourceMangaRefreshState.Loading -> MangaDetailChapterContentState.LOADING
+    refreshState is SourceMangaRefreshState.Failure -> MangaDetailChapterContentState.FAILURE
+    else -> MangaDetailChapterContentState.CONTENT
+}
+
+internal fun Manga.toSourceMangaForRefresh(): SManga = SManga.create().apply {
+    url = this@toSourceMangaForRefresh.url
+    title = this@toSourceMangaForRefresh.title
+    thumbnail_url = this@toSourceMangaForRefresh.thumbnailUrl
+    author = this@toSourceMangaForRefresh.author
+    artist = this@toSourceMangaForRefresh.artist
+    description = this@toSourceMangaForRefresh.description
+    genre = this@toSourceMangaForRefresh.genre?.joinToString(", ")
+    status = this@toSourceMangaForRefresh.status.toInt()
+    initialized = this@toSourceMangaForRefresh.initialized
 }

@@ -40,15 +40,16 @@ internal fun mangaCoverRequestKey(
 @Composable
 internal fun rememberMangaCoverRequestState(
     mangaId: Long,
+    sourceId: Long,
     coverModel: String?,
     coverVersion: Long,
 ): MangaCoverRequestState {
     val stateKey = mangaCoverStateKey(mangaId, coverModel, coverVersion)
     val requestKey = mangaCoverRequestKey(mangaId, coverModel, coverVersion)
     val platformContext = LocalPlatformContext.current
-    val request = remember(requestKey, coverModel, platformContext) {
+    val request = remember(requestKey, sourceId, coverModel, platformContext) {
         ImageRequest.Builder(platformContext)
-            .data(coverModel)
+            .data(mihon.desktop.image.desktopSourceImageModel(coverModel, sourceId))
             .memoryCacheKey(requestKey)
             .diskCacheKey(requestKey)
             .crossfade(false)
