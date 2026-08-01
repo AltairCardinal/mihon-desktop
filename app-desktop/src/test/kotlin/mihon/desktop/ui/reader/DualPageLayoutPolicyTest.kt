@@ -8,18 +8,30 @@ import org.junit.jupiter.api.Test
 class DualPageLayoutPolicyTest {
 
     @Test
-    fun `RTL trailing single page image is aligned to physical left`() {
+    fun `RTL trailing single page uses the inner edge of the physical left slot`() {
         assertEquals(
-            Alignment.CenterStart,
+            Alignment.CenterEnd,
             singlePageImageAlignment(SinglePageSide.TRAILING, isRtl = true),
         )
     }
 
     @Test
-    fun `LTR trailing single page image is aligned to physical right`() {
+    fun `LTR trailing single page uses the inner edge of the physical right slot`() {
+        assertEquals(
+            Alignment.CenterStart,
+            singlePageImageAlignment(SinglePageSide.TRAILING, isRtl = false),
+        )
+    }
+
+    @Test
+    fun `leading single pages also face the center spine`() {
+        assertEquals(
+            Alignment.CenterStart,
+            singlePageImageAlignment(SinglePageSide.LEADING, isRtl = true),
+        )
         assertEquals(
             Alignment.CenterEnd,
-            singlePageImageAlignment(SinglePageSide.TRAILING, isRtl = false),
+            singlePageImageAlignment(SinglePageSide.LEADING, isRtl = false),
         )
     }
 

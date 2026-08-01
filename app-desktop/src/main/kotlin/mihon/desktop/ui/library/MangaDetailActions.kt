@@ -72,7 +72,27 @@ internal fun chaptersForDownloadAction(
 }
 
 internal fun nextUnreadChapter(chapters: List<Chapter>): Chapter? =
-    chapters.sortedBy { it.sourceOrder }.firstOrNull { !it.read }
+    chapters.filterNot { it.read }.maxByOrNull { it.sourceOrder }
+
+internal enum class ChapterReadIndicator {
+    UNREAD_DOT,
+    PROGRESS_RING,
+    READ_CHECK,
+}
+
+internal data class ChapterReadPresentation(
+    val indicator: ChapterReadIndicator,
+    val pageNumber: Long?,
+)
+
+internal fun chapterReadPresentation(chapter: Chapter): ChapterReadPresentation = when {
+    chapter.read -> ChapterReadPresentation(ChapterReadIndicator.READ_CHECK, pageNumber = null)
+    chapter.lastPageRead > 0 -> ChapterReadPresentation(
+        ChapterReadIndicator.PROGRESS_RING,
+        pageNumber = chapter.lastPageRead + 1,
+    )
+    else -> ChapterReadPresentation(ChapterReadIndicator.UNREAD_DOT, pageNumber = null)
+}
 
 internal fun chapterDisplayTitle(
     chapter: Chapter,

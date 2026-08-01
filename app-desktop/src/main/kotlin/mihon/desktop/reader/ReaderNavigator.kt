@@ -39,7 +39,7 @@ fun List<ReaderChapterRef>.withDuplicateChapterFlags(currentChapterId: Long): Li
 /**
  * Computes adjacent-chapter navigation for the reader.
  *
- * [chapters] is sorted descending by sourceOrder (newest first, same as MangaDetailScreen).
+ * [chapters] is sorted ascending by sourceOrder (newest first, same as MangaDetailScreen).
  * Therefore:
  *   - "next to read" = lower index  (newer chapter, higher number)
  *   - "previous read" = higher index (older chapter, lower number)

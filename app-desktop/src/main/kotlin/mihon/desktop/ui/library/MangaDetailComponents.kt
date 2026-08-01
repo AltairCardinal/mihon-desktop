@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
@@ -505,6 +506,14 @@ internal fun ChapterRow(
     onToggleBookmark: () -> Unit,
     onRead: () -> Unit,
 ) {
+    val readPresentation = chapterReadPresentation(chapter)
+    val readProgress = readPresentation.pageNumber?.let {
+        MR.strings.chapter_progress.localized(Locale.getDefault(), it)
+    }
+    val supportingText = listOfNotNull(
+        readProgress,
+        chapter.scanlator?.takeIf { it.isNotBlank() },
+    ).joinToString(" · ")
     ListItem(
         modifier = if (isSelected) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier,
         leadingContent = {
@@ -562,21 +571,32 @@ internal fun ChapterRow(
                         }
                 }
                 if (!isSelected) {
-                    TextButton(onClick = onRead) {
-                        if (chapter.read) {
-                            Icon(
-                                Icons.Default.CheckCircle,
-                                contentDescription = MR.strings.label_read_chapters.localized(),
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
+                    IconButton(onClick = onRead) {
+                        val actionDescription = if (chapter.read) {
+                            MR.strings.action_mark_as_unread.localized()
                         } else {
-                            Text(MR.strings.label_read_chapters.localized())
+                            MR.strings.action_mark_as_read.localized()
                         }
+                        Icon(
+                            imageVector = when (readPresentation.indicator) {
+                                ChapterReadIndicator.UNREAD_DOT -> Icons.Default.Circle
+                                ChapterReadIndicator.PROGRESS_RING -> Icons.Default.RadioButtonUnchecked
+                                ChapterReadIndicator.READ_CHECK -> Icons.Default.CheckCircle
+                            },
+                            contentDescription = readProgress?.let { "$it，$actionDescription" }
+                                ?: actionDescription,
+                            modifier = Modifier.layoutSize(
+                                if (readPresentation.indicator == ChapterReadIndicator.UNREAD_DOT) 10.dp else 24.dp,
+                            ),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
                     }
                 }
             }
         },
-        supportingContent = chapter.scanlator?.let { { Text(it, style = MaterialTheme.typography.bodySmall) } },
+        supportingContent = supportingText.takeIf { it.isNotEmpty() }?.let { text ->
+            { Text(text, style = MaterialTheme.typography.bodySmall) }
+        },
     )
     HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 }

@@ -169,7 +169,9 @@ internal fun ChapterTransitionFeedback(
             if (presentation.showContinue && onContinue != null) {
                 Button(onClick = onContinue, modifier = Modifier.padding(top = 12.dp)) { Text(MR.strings.desktop_ui_continue.localized()) }
             }
-            Button(onClick = onDismiss, modifier = Modifier.padding(top = 12.dp)) { Text(MR.strings.desktop_ui_dismiss.localized()) }
+            if (presentation.showDismiss) {
+                Button(onClick = onDismiss, modifier = Modifier.padding(top = 12.dp)) { Text(MR.strings.desktop_ui_dismiss.localized()) }
+            }
         }
     }
 }
@@ -179,6 +181,7 @@ internal data class ChapterTransitionPresentation(
     val showLoading: Boolean,
     val showRetry: Boolean,
     val showContinue: Boolean,
+    val showDismiss: Boolean,
     val isBoundary: Boolean,
     val missingChapterCount: Int,
 )
@@ -215,8 +218,8 @@ internal fun chapterTransitionPresentation(
         message = message,
         showLoading = state is ReaderChapterState.Loading,
         showRetry = state is ReaderChapterState.Error,
-        showContinue = !isBoundary &&
-            (state is ReaderChapterState.Wait || state is ReaderChapterState.Loaded),
+        showContinue = false,
+        showDismiss = isBoundary || state is ReaderChapterState.Error,
         isBoundary = isBoundary,
         missingChapterCount = transition.missingChapterCount,
     )

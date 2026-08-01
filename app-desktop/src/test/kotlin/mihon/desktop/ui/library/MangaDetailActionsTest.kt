@@ -77,13 +77,14 @@ class MangaDetailActionsTest {
     }
 
     @Test
-    fun `next unread chapter follows displayed order`() {
+    fun `next unread chapter chooses oldest unfinished chapter`() {
         val chapters = listOf(
-            chapter(id = 1, sourceOrder = 1, read = true),
-            chapter(id = 2, sourceOrder = 2, read = false),
+            chapter(id = 1, sourceOrder = 0, read = false),
+            chapter(id = 2, sourceOrder = 1, read = true),
+            chapter(id = 3, sourceOrder = 2, read = false, lastPageRead = 4),
         )
 
-        assertEquals(2L, nextUnreadChapter(chapters)?.id)
+        assertEquals(3L, nextUnreadChapter(chapters)?.id)
         assertNull(nextUnreadChapter(chapters.map { it.copy(read = true) }))
     }
 
@@ -103,6 +104,7 @@ private fun chapter(
     read: Boolean = false,
     bookmark: Boolean = false,
     chapterNumber: Double = id.toDouble(),
+    lastPageRead: Long = 0,
 ): Chapter =
     Chapter.create().copy(
         id = id,
@@ -112,4 +114,5 @@ private fun chapter(
         read = read,
         bookmark = bookmark,
         chapterNumber = chapterNumber,
+        lastPageRead = lastPageRead,
     )

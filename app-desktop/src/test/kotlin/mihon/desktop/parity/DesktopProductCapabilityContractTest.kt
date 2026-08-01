@@ -127,7 +127,7 @@ class DesktopProductCapabilityContractTest {
                             "webtoon holder production observer executes loading error and loaded states",
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
-                        setOf("production adjacent chain publishes loading error retry loaded and navigates with loaded pages"),
+                        setOf("next chapter enters target immediately at zero pages before page count arrives"),
                 ),
             49 to
                 mapOf(
@@ -531,8 +531,8 @@ class DesktopProductCapabilityContractTest {
                         "webtoon holder production observer executes loading error and loaded states",
                     ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to setOf(
-                        "production adjacent chain publishes loading error retry loaded and navigates with loaded pages",
-                        "both adjacent boundaries never invoke the production loader",
+                        "next chapter enters target immediately at zero pages before page count arrives",
+                        "chapter boundaries return no destination and keep explicit feedback",
                     ),
                 ),
             49 to
@@ -1558,10 +1558,10 @@ class DesktopProductCapabilityContractTest {
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
                         mapOf(
-                            "production adjacent chain publishes loading error retry loaded and navigates with loaded pages" to
-                                setOf("requestAdjacentChapterTransition", "retryChapterTransition", "destinationForChapterTransition"),
-                            "both adjacent boundaries never invoke the production loader" to
-                                setOf("requestAdjacentChapterTransition", "ChapterBoundary", "loadCalls"),
+                            "next chapter enters target immediately at zero pages before page count arrives" to
+                                setOf("requestAdjacentChapterTransition", "ReaderChapterState.Loading", "setLoadingPageSlots"),
+                            "chapter boundaries return no destination and keep explicit feedback" to
+                                setOf("requestAdjacentChapterTransition", "ReaderNavigationCommand.ChapterBoundary", "legacyAdjacentLoadCalls"),
                         ),
                 ),
             49 to
@@ -1675,9 +1675,9 @@ class DesktopProductCapabilityContractTest {
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt" to
                         setOf("ReaderChapterTransitionModel("),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt" to
-                        setOf("ChapterTransitionFeedback(", "retryChapterTransition"),
+                        setOf("requestAdjacentChapterTransition", "loadedPageUrls = emptyList()", "ChapterTransitionFeedback("),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt" to
-                        setOf("chapterTransitionPresentation", "Button(onClick = onContinue"),
+                        setOf("chapterTransitionPresentation", "showContinue = false", "showDismiss = isBoundary"),
                 ),
             49 to
                 mapOf(

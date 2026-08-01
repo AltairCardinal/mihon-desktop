@@ -55,6 +55,38 @@ class ReaderProgressTrackerIntegrationTest {
     }
 
     @Test
+    fun `reading a later chapter only updates that chapter and requires its last page`() = runBlocking {
+        val fixture = fixture()
+        fixture.driver.execute(
+            null,
+            "INSERT INTO chapters(_id, manga_id, url, name, scanlator, read, bookmark, last_page_read, chapter_number, source_order, date_fetch, date_upload) VALUES (2, 10, '/2', 'Chapter 2', NULL, 0, 0, 0, 2, 1, 0, 0)",
+            0,
+        )
+        fixture.driver.execute(
+            null,
+            "INSERT INTO chapters(_id, manga_id, url, name, scanlator, read, bookmark, last_page_read, chapter_number, source_order, date_fetch, date_upload) VALUES (3, 10, '/3', 'Chapter 3', NULL, 0, 0, 0, 3, 2, 0, 0)",
+            0,
+        )
+        val tracker = ReaderProgressTracker(fixture.recorder)
+
+        tracker.track("chapter-3-partial", 3, 4, 10, sourceId = null, mangaId = 10)
+
+        fixture.database.chaptersQueries.getChapterById(1).executeAsOne().read shouldBe false
+        fixture.database.chaptersQueries.getChapterById(2).executeAsOne().read shouldBe false
+        fixture.database.chaptersQueries.getChapterById(3).executeAsOne().let {
+            it.read shouldBe false
+            it.last_page_read shouldBe 4
+        }
+
+        tracker.track("chapter-3-finished", 3, 9, 10, sourceId = null, mangaId = 10)
+
+        fixture.database.chaptersQueries.getChapterById(1).executeAsOne().read shouldBe false
+        fixture.database.chaptersQueries.getChapterById(2).executeAsOne().read shouldBe false
+        fixture.database.chaptersQueries.getChapterById(3).executeAsOne().read shouldBe true
+        Unit
+    }
+
+    @Test
     fun `duplicate and concurrent event key mutates chapter history and tracker event once`() = runBlocking {
         val fixture = fixture()
         val event = ReadingProgressEvent(1, 5, 10, Date(1234), 500, idempotencyKey = "same-reader-event")

@@ -25,6 +25,8 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.i18n.MR
+import java.util.Locale
 import java.util.prefs.Preferences
 
 /**
@@ -433,7 +435,7 @@ class ReaderScreenModelTest {
     }
 
     @Test
-    fun `chapter transition presentation distinguishes loading error retry continue and boundary`() {
+    fun `chapter transition presentation never offers cancel while loading or continue after loading`() {
         val from = mihon.domain.reader.ReaderChapterModel(1L, "/1", "Chapter 1", 1.0)
         val to = mihon.domain.reader.ReaderChapterModel(3L, "/3", "Chapter 3", 3.0)
         val loading = mihon.domain.reader.ReaderChapterTransitionModel(
@@ -450,10 +452,20 @@ class ReaderScreenModelTest {
         val boundary = loading.copy(to = null, missingChapterCount = 0, state = ReaderChapterState.Wait)
 
         assertTrue(chapterTransitionPresentation(loading).showLoading)
+        assertFalse(chapterTransitionPresentation(loading).showDismiss)
         assertTrue(chapterTransitionPresentation(error).showRetry)
-        assertTrue(chapterTransitionPresentation(ready).showContinue)
+        assertTrue(chapterTransitionPresentation(error).showDismiss)
+        assertFalse(chapterTransitionPresentation(ready).showContinue)
+        assertFalse(chapterTransitionPresentation(ready).showDismiss)
         assertEquals(1, chapterTransitionPresentation(ready).missingChapterCount)
         assertTrue(chapterTransitionPresentation(boundary).isBoundary)
+        assertTrue(chapterTransitionPresentation(boundary).showDismiss)
+    }
+
+    @Test
+    fun `chapter transition dismiss copy is localized as close in Chinese`() {
+        assertEquals("关闭", MR.strings.desktop_ui_dismiss.localized(Locale.SIMPLIFIED_CHINESE))
+        assertEquals("關閉", MR.strings.desktop_ui_dismiss.localized(Locale.TRADITIONAL_CHINESE))
     }
 
     @Test

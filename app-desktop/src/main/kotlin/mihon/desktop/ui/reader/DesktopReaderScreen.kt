@@ -72,11 +72,9 @@ import mihon.desktop.reader.viewerFlagsWithDualPage
 import mihon.desktop.reader.viewerFlagsWithReadingMode
 import mihon.desktop.reader.firstVirtualIndex
 import mihon.desktop.reader.realPageIndex
-import mihon.domain.reader.ReaderChapterModel
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderChapterTransitionModel
 import mihon.domain.reader.ReaderTransitionDirection
-import tachiyomi.domain.chapter.service.calculateChapterGap
 
 @OptIn(ExperimentalMaterial3Api::class)
 data class DesktopReaderScreen(
@@ -167,17 +165,23 @@ data class DesktopReaderScreen(
             state.readingMode,
         )
         val onPrevChapter: () -> Unit = {
-            scope.launch {
-                requestAdjacentChapterTransition(ReaderTransitionDirection.PREVIOUS, model, readerNav)
+            requestAdjacentChapterTransition(
+                ReaderTransitionDirection.PREVIOUS,
+                model,
+                readerNav,
+                currentViewerFlags(),
+            )?.let { destination ->
+                model.clearChapterTransition()
+                navigator.replace(destination)
             }
         }
         val onNextChapter: () -> Unit = {
-            scope.launch {
-                requestAdjacentChapterTransition(ReaderTransitionDirection.NEXT, model, readerNav)
-            }
-        }
-        val onContinueChapter: (ReaderChapterTransitionModel) -> Unit = { transition ->
-            destinationForChapterTransition(transition, currentViewerFlags())?.let { destination ->
+            requestAdjacentChapterTransition(
+                ReaderTransitionDirection.NEXT,
+                model,
+                readerNav,
+                currentViewerFlags(),
+            )?.let { destination ->
                 model.clearChapterTransition()
                 navigator.replace(destination)
             }
@@ -252,30 +256,36 @@ data class DesktopReaderScreen(
             readerNav = readerNav,
             onPrevChapter = onPrevChapter,
             onNextChapter = onNextChapter,
-            onContinueChapter = onContinueChapter,
         )
     }
 
-    internal suspend fun requestAdjacentChapterTransition(
+    internal fun requestAdjacentChapterTransition(
         direction: ReaderTransitionDirection,
         model: ReaderScreenModel,
         readerNavigator: ReaderNavigator?,
-    ) {
+        viewerFlags: Long = mangaViewerFlags,
+    ): DesktopReaderScreen? {
         val target = when (direction) {
             ReaderTransitionDirection.PREVIOUS -> readerNavigator?.previousRead
             ReaderTransitionDirection.NEXT -> readerNavigator?.nextToRead
         }
         if (target == null) {
             model.showChapterBoundary(direction, chapterId, chapterUrl, chapterTitle, chapterNumber)
-            return
+            return null
         }
-        model.showChapterTransition(
-            direction = direction,
-            from = ReaderChapterModel(chapterId, chapterUrl, chapterTitle, chapterNumber),
-            to = ReaderChapterModel(target.id, target.url, target.name, target.chapterNumber),
-            missingChapterCount = chapterGap(chapterNumber, target.chapterNumber),
+        return copyForChapter(
+            ref = target,
+            newIndex = ReaderNavigator.indexForId(chapters, target.id),
+            initialPage = initialPageForChapterNavigation(
+                if (direction == ReaderTransitionDirection.PREVIOUS) {
+                    ReaderChapterNavigationDirection.Previous
+                } else {
+                    ReaderChapterNavigationDirection.Next
+                },
+            ),
+            viewerFlags = viewerFlags,
+            loadedPageUrls = emptyList(),
         )
-        model.loadChapterTransition(target.id)
     }
 
     internal fun destinationForChapterTransition(
@@ -456,7 +466,6 @@ private fun ReaderViewport(
     readerNav: ReaderNavigator?,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
-    onContinueChapter: (ReaderChapterTransitionModel) -> Unit,
 ) {
     val bgColor = when (state.backgroundTheme) {
         ReaderBackgroundTheme.BLACK -> Color.Black
@@ -515,7 +524,7 @@ private fun ReaderViewport(
             state.chapterTransition?.let { transition ->
                 ChapterTransitionFeedback(
                     transition = transition,
-                    onContinue = transition.to?.let { { onContinueChapter(transition) } },
+                    onContinue = null,
                     onRetry = transition.to?.let {
                         {
                             contextMenuScope.launch { model.retryChapterTransition() }
@@ -693,6 +702,3 @@ private fun ReaderContent(
         }
     }
 }
-
-private fun chapterGap(first: Double, second: Double): Int =
-    calculateChapterGap(maxOf(first, second), minOf(first, second)).coerceAtLeast(0)

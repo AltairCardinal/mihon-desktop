@@ -1265,7 +1265,7 @@
     <string name="desktop_ui_delete_download">刪除下載</string>
     <string name="desktop_ui_delete_download_bba9a9de">刪除下載？</string>
     <string name="desktop_ui_discovered_works">已發現作品</string>
-    <string name="desktop_ui_dismiss">解僱</string>
+    <string name="desktop_ui_dismiss">關閉</string>
     <string name="desktop_ui_done">完畢</string>
     <string name="desktop_ui_download_queue">下載佇列</string>
     <string name="desktop_ui_download_chapters">下載章節</string>

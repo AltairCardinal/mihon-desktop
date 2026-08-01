@@ -509,9 +509,7 @@ class LibraryScreenModel(
         val chapters = requireNotNull(getChaptersByMangaId) { "GetChaptersByMangaId is required" }
             .awaitOrThrow(item.manga.id)
             .sortedBy { it.sourceOrder }
-        val target = chapters.firstOrNull { !it.read }
-            ?: chapters.maxByOrNull { it.sourceOrder }
-            ?: return null
+        val target = nextUnreadChapter(chapters) ?: return null
         val chapterRefs = chapters.toReaderChapterRefs(
             currentChapterId = target.id,
             manga = item.manga,

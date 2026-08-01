@@ -58,9 +58,9 @@ internal fun dualPageLoadingIndicatorPlacement(
 
 internal fun singlePageImageAlignment(side: SinglePageSide, isRtl: Boolean): Alignment {
     return if (singlePageBoxOnRight(side, isRtl)) {
-        Alignment.CenterEnd
-    } else {
         Alignment.CenterStart
+    } else {
+        Alignment.CenterEnd
     }
 }
 
@@ -292,60 +292,92 @@ internal fun DualPagePagerViewer(
                         }
                     }
                     SinglePageSide.TRAILING -> {
-                        // LTR: physical RIGHT half; RTL: physical LEFT half (cover on reader's entry side).
-                        // Touch area is full screen, but image is aligned to one side.
-                        ZoomablePageBox(
-                            url = pageUrls[pageIndex],
+                        val slotOnRight = singlePageBoxOnRight(SinglePageSide.TRAILING, isRtl)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .readerPrimaryTapInput(zoomState.scale, navigationMode, isRtl) {
+                                    when (it) {
+                                        TapNavRegion.PREV -> onTapPrevious()
+                                        TapNavRegion.NEXT -> onTapNext()
+                                        TapNavRegion.MENU -> onTapCenter?.invoke()
+                                    }
+                                },
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.5f)
+                                    .fillMaxHeight()
+                                    .align(if (slotOnRight) Alignment.CenterEnd else Alignment.CenterStart),
+                            ) {
+                                ZoomablePageBox(
+                                    url = pageUrls[pageIndex],
+                                    pageLabel = MR.strings.desktop_ui_page_number.localized(
+                                        Locale.getDefault(),
+                                        pageIndex + 1,
+                                    ),
+                                    zoomState = zoomState,
+                                    onZoomChange = onZoomChange,
+                                    cropBorders = cropBorders,
+                                    contextMenuScope = contextMenuScope,
+                                    mangaTitle = mangaTitle,
+                                    chapterTitle = chapterTitle,
+                                    pageIndex = pageIndex,
+                                    preloader = preloader,
+                                    modifier = Modifier.fillMaxSize(),
+                                    imageAlignment = singlePageImageAlignment(SinglePageSide.TRAILING, isRtl),
+                                    loadingAlignment = Alignment.Center,
+                                    onSpreadDetected = { onSpreadDetected(pageIndex) },
+                                    navigationMode = navigationMode,
+                                    isRtl = isRtl,
+                                    handlesTapNavigation = false,
+                                )
+                            }
+                        }
+                    }
+                    SinglePageSide.LEADING -> {
+                        val slotOnRight = singlePageBoxOnRight(SinglePageSide.LEADING, isRtl)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .readerPrimaryTapInput(zoomState.scale, navigationMode, isRtl) {
+                                    when (it) {
+                                        TapNavRegion.PREV -> onTapPrevious()
+                                        TapNavRegion.NEXT -> onTapNext()
+                                        TapNavRegion.MENU -> onTapCenter?.invoke()
+                                    }
+                                },
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.5f)
+                                    .fillMaxHeight()
+                                    .align(if (slotOnRight) Alignment.CenterEnd else Alignment.CenterStart),
+                            ) {
+                                ZoomablePageBox(
+                                    url = pageUrls[pageIndex],
                                 pageLabel = MR.strings.desktop_ui_page_number.localized(
                                     Locale.getDefault(),
                                     pageIndex + 1,
                                 ),
-                            zoomState = zoomState,
-                            onZoomChange = onZoomChange,
-                            cropBorders = cropBorders,
-                            contextMenuScope = contextMenuScope,
-                            mangaTitle = mangaTitle,
-                            chapterTitle = chapterTitle,
-                            pageIndex = pageIndex,
-                            preloader = preloader,
-                            modifier = Modifier.fillMaxSize(),
-                            imageAlignment = singlePageImageAlignment(SinglePageSide.TRAILING, isRtl),
-                            loadingAlignment = Alignment.Center,
-                            onSpreadDetected = { onSpreadDetected(pageIndex) },
-                            navigationMode = navigationMode,
-                            isRtl = isRtl,
-                            onTapPrevious = onTapPrevious,
-                            onTapNext = onTapNext,
-                            onTapCenter = onTapCenter,
-                        )
-                    }
-                    SinglePageSide.LEADING -> {
-                        // LTR: physical LEFT half; RTL: physical RIGHT half.
-                        // Touch area is full screen, but image is aligned to one side.
-                        ZoomablePageBox(
-                            url = pageUrls[pageIndex],
-                            pageLabel = MR.strings.desktop_ui_page_number.localized(
-                                Locale.getDefault(),
-                                pageIndex + 1,
-                            ),
-                            zoomState = zoomState,
-                            onZoomChange = onZoomChange,
-                            cropBorders = cropBorders,
-                            contextMenuScope = contextMenuScope,
-                            mangaTitle = mangaTitle,
-                            chapterTitle = chapterTitle,
-                            pageIndex = pageIndex,
-                            preloader = preloader,
-                            modifier = Modifier.fillMaxSize(),
-                            imageAlignment = singlePageImageAlignment(SinglePageSide.LEADING, isRtl),
-                            loadingAlignment = Alignment.Center,
-                            onSpreadDetected = { onSpreadDetected(pageIndex) },
-                            navigationMode = navigationMode,
-                            isRtl = isRtl,
-                            onTapPrevious = onTapPrevious,
-                            onTapNext = onTapNext,
-                            onTapCenter = onTapCenter,
-                        )
+                                    zoomState = zoomState,
+                                    onZoomChange = onZoomChange,
+                                    cropBorders = cropBorders,
+                                    contextMenuScope = contextMenuScope,
+                                    mangaTitle = mangaTitle,
+                                    chapterTitle = chapterTitle,
+                                    pageIndex = pageIndex,
+                                    preloader = preloader,
+                                    modifier = Modifier.fillMaxSize(),
+                                    imageAlignment = singlePageImageAlignment(SinglePageSide.LEADING, isRtl),
+                                    loadingAlignment = Alignment.Center,
+                                    onSpreadDetected = { onSpreadDetected(pageIndex) },
+                                    navigationMode = navigationMode,
+                                    isRtl = isRtl,
+                                    handlesTapNavigation = false,
+                                )
+                            }
+                        }
                     }
                 }
             } else {

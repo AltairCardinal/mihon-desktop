@@ -649,12 +649,21 @@ class LibraryScreenModelTest {
     }
 
     @Test
-    fun `continueReadingRequest uses first unread chapter and all chapter refs`() = runTest {
+    fun `continueReadingRequest uses oldest unfinished chapter and keeps navigation newest first`() = runTest {
         val chapterRepository = FakeChapterRepository()
         chapterRepository.addAll(
             listOf(
-                Chapter.create().copy(id = 1L, mangaId = 10L, name = "Read", url = "/read", read = true, sourceOrder = 0L),
-                Chapter.create().copy(id = 2L, mangaId = 10L, name = "Unread", url = "/unread", read = false, sourceOrder = 1L, lastPageRead = 5L),
+                Chapter.create().copy(id = 2L, mangaId = 10L, name = "Read", url = "/read", read = true, sourceOrder = 1L),
+                Chapter.create().copy(id = 1L, mangaId = 10L, name = "Newer unread", url = "/newer", read = false, sourceOrder = 0L),
+                Chapter.create().copy(
+                    id = 3L,
+                    mangaId = 10L,
+                    name = "Oldest started",
+                    url = "/oldest",
+                    read = false,
+                    sourceOrder = 2L,
+                    lastPageRead = 5L,
+                ),
             ),
         )
         val model = modelWithChapterUseCases(chapterRepository)
@@ -662,14 +671,30 @@ class LibraryScreenModelTest {
         val request = model.continueReadingRequest(sampleLibraryManga(sampleManga(id = 10L, source = 7L, viewerFlags = 0x44L)))
 
         assertNotNull(request)
-        assertEquals("Unread", request?.chapterTitle)
-        assertEquals("/unread", request?.chapterUrl)
-        assertEquals(2L, request?.chapterId)
+        assertEquals("Oldest started", request?.chapterTitle)
+        assertEquals("/oldest", request?.chapterUrl)
+        assertEquals(3L, request?.chapterId)
         assertEquals(10L, request?.mangaId)
         assertEquals(0x44L, request?.mangaViewerFlags)
         assertEquals(5, request?.initialPage)
-        assertEquals(listOf(1L, 2L), request?.chapters?.map { it.id })
-        assertEquals(1, request?.currentChapterIndex)
+        assertEquals(listOf(1L, 2L, 3L), request?.chapters?.map { it.id })
+        assertEquals(2, request?.currentChapterIndex)
+    }
+
+    @Test
+    fun `continueReadingRequest returns null when every chapter is read`() = runTest {
+        val chapterRepository = FakeChapterRepository()
+        chapterRepository.addAll(
+            listOf(
+                Chapter.create().copy(id = 1L, mangaId = 10L, read = true, sourceOrder = 0L),
+                Chapter.create().copy(id = 2L, mangaId = 10L, read = true, sourceOrder = 1L),
+            ),
+        )
+        val model = modelWithChapterUseCases(chapterRepository)
+
+        val request = model.continueReadingRequest(sampleLibraryManga(sampleManga(id = 10L, source = 7L)))
+
+        assertNull(request)
     }
 
     @Test
@@ -738,11 +763,6 @@ class LibraryScreenModelTest {
             ),
         )
 
-        val libraryTarget = ReaderNavigator(
-            chapters = libraryRequest.chapters,
-            currentIndex = libraryRequest.currentChapterIndex,
-            skipFilteredChapters = true,
-        ).previousRead
         val detailTarget = ReaderNavigator(
             chapters = detailRequest.chapters,
             currentIndex = detailRequest.currentChapterIndex,
@@ -753,7 +773,7 @@ class LibraryScreenModelTest {
         assertTrue(detailRequest.chapters.first { it.id == filtered.id }.isFiltered)
         assertTrue(requestAfterTemporaryUiChange.chapters.first { it.id == filtered.id }.isFiltered)
         assertEquals(visible.id, detailTarget?.id)
-        assertEquals(detailTarget?.id, libraryTarget?.id)
+        assertEquals(detailTarget?.id, libraryRequest.chapterId)
     }
 
     @Test

@@ -781,7 +781,7 @@
       "DESKTOP_CONSUMER": [
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryTab.kt", "symbol": "internal fun librarySelectionActions(", "line": 123},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "internal suspend fun enqueueDownloads(", "line": 437},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 540}
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 538}
       ],
       "FIXTURE": [
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt#selection action bar exposes invert download and migrate entries", "productionMarkers": ["librarySelectionActions", "SelectionActionBar"]},
@@ -852,8 +852,8 @@
       "DESKTOP_CONSUMER": [
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt", "symbol": "categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY", "line": 851},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt", "symbol": "suspend fun toggleLibrary", "line": 267},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt", "symbol": "MangaCategoryDialogMode.ADD_TO_LIBRARY -> model.toggleLibrary", "line": 354},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 540}
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt", "symbol": "MangaCategoryDialogMode.ADD_TO_LIBRARY -> model.toggleLibrary", "line": 355},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt", "symbol": "suspend fun setCategoriesForManga", "line": 538}
       ],
       "FIXTURE": [
         {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModelSharedMutationWiringTest.kt#Android add with categories delegates one atomic shared membership request", "productionMarkers": ["screenModel(", "model.moveMangaToCategoriesAndAddToLibrary", "UpdateLibraryMembership"]},
@@ -1964,11 +1964,11 @@
       "gap": "NONE",
       "behaviorMethods": {
         "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt": ["pager holder production observer executes loading error and loaded states", "webtoon holder production observer executes loading error and loaded states"],
-        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt": ["production adjacent chain publishes loading error retry loaded and navigates with loaded pages", "both adjacent boundaries never invoke the production loader"]
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt": ["next chapter enters target immediately at zero pages before page count arrives", "chapter boundaries return no destination and keep explicit feedback"]
       }
     },
     "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt 统一 Wait/Loading/Loaded/Error、相邻章节、缺章数、边界与重试命令；app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt 发布共享状态，app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt 与 app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt 均消费 sharedStateFlow 并处理 Loading/Error/Loaded",
-    "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt 与 app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt 消费共享状态，app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt 提供可操作 Retry、Continue/Dismiss 过渡和章节边界反馈",
+    "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt 保留共享章节状态适配，app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt 在跨章时直接进入目标章节的 0 页加载态并由页面加载器渐进填充，app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt 只在边界和错误反馈中提供关闭或重试",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt", "symbol": "sealed interface State"}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt", "symbol": "private fun observeStatus"}],
     "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt"],
@@ -1989,7 +1989,7 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt"
     ],
-    "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["chapter transition exposes wait loading loaded error missing count and retry command"], "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt": ["pager holder production observer executes loading error and loaded states", "webtoon holder production observer executes loading error and loaded states"], "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt": ["production adjacent chain publishes loading error retry loaded and navigates with loaded pages"]},
+    "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["chapter transition exposes wait loading loaded error missing count and retry command"], "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt": ["pager holder production observer executes loading error and loaded states", "webtoon holder production observer executes loading error and loaded states"], "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt": ["next chapter enters target immediately at zero pages before page count arrives"]},
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -2070,7 +2070,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt", "symbol": "private fun getCombinedPaint", "line": 812}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt", "symbol": "readerPreferences.grayscale().changes()", "line": 908}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt", "symbol": "internal fun buildAndroidLayerFilterParams", "line": 27}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt", "symbol": "data class ReaderColorFilterParams", "line": 241}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "ReaderViewportColorLayer(state.colorFilter)", "line": 494}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "internal fun ReaderViewportColorLayer", "line": 557}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun Modifier.readerColorTransform", "line": 53}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun readerColorMatrix", "line": 63}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "ReaderViewportColorLayer(state.colorFilter)", "line": 503}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "internal fun ReaderViewportColorLayer", "line": 566}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun Modifier.readerColorTransform", "line": 53}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun readerColorMatrix", "line": 63}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt#mounted reader viewport color layer renders disabled grayscale and invert pixels", "productionMarkers": ["renderColorLayer(", "assertPixel("]}]
     },
     "protectionTests": [

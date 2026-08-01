@@ -119,7 +119,8 @@ class DesktopReaderProductRegressionTest {
         assertTrue(detail.contains("DesktopReaderScreen("), "Manga detail must remain the reader entry point")
         assertTrue(reader.contains("onRetry"), "Loading errors must expose retry")
         assertTrue(reader.contains("ChapterTransitionFeedback"), "Chapter boundary and missing chapter feedback must be visible")
-        assertTrue(readerVisuals.contains("Button(onClick = onContinue"), "A chapter transition must remain visible until the user continues")
+        assertTrue(reader.contains("loadedPageUrls = emptyList()"), "Chapter navigation must enter the target before pages arrive")
+        assertTrue(readerVisuals.contains("showContinue = false"), "Loaded chapter transitions must not wait for Continue")
         assertTrue(reader.contains("loadGeneration = state.loadGeneration"), "Retry must restart the production loading effect")
         assertEquals(1, occurrenceCount(reader, "model.setMatchedPairs("), "ReaderSideEffects must own one matched-pair update")
         val edgeMatchingCall = callBlock(reader, "model.setMatchedPairs(")
@@ -194,8 +195,10 @@ class DesktopReaderProductRegressionTest {
                 "Delegating Row #$index must own the primary-tap handler",
             )
         }
-        val delegatedPageBoxes = navigationRows.flatMap { callBlocks(it, "ZoomablePageBox(") }
-        assertEquals(4, delegatedPageBoxes.size, "Two split and two paired children must delegate single taps")
+        val rowDelegatedPageBoxes = navigationRows.flatMap { callBlocks(it, "ZoomablePageBox(") }
+        assertEquals(4, rowDelegatedPageBoxes.size, "Two split and two paired children must delegate single taps")
+        val delegatedPageBoxes = dualPageBoxes.filter { it.contains("handlesTapNavigation = false") }
+        assertEquals(6, delegatedPageBoxes.size, "Split, paired, trailing, and leading pages must delegate full-spread taps")
         delegatedPageBoxes.forEachIndexed { index, block ->
             assertTrue(block.contains("handlesTapNavigation = false"), "Delegated child #$index must disable only local tap navigation")
             assertTrue(block.contains("isRtl = isRtl"), "Delegated child #$index must retain its reading direction")
@@ -204,14 +207,14 @@ class DesktopReaderProductRegressionTest {
             assertFalse(block.contains("onTapCenter ="), "Delegated child #$index must not receive an inactive Menu callback")
         }
         val independentPageBoxes = dualPageBoxes.filterNot { it in delegatedPageBoxes }
-        assertEquals(3, independentPageBoxes.size, "Landscape, trailing, and leading branches navigate independently")
+        assertEquals(1, independentPageBoxes.size, "Only a centered landscape page navigates independently")
         independentPageBoxes.forEachIndexed { index, block ->
             assertFalse(block.contains("handlesTapNavigation = false"), "Independent child #$index must retain local tap navigation")
             assertTrue(block.contains("isRtl = isRtl"), "Independent child #$index must receive RTL direction")
             assertTrue(block.contains("onTapPrevious = onTapPrevious"), "Independent child #$index must receive logical Previous")
             assertTrue(block.contains("onTapNext = onTapNext"), "Independent child #$index must receive logical Next")
         }
-        assertEquals(2, Regex("readerPrimaryTapInput\\(zoomState\\.scale, navigationMode, isRtl\\)").findAll(dual).count())
+        assertEquals(4, Regex("readerPrimaryTapInput\\(zoomState\\.scale, navigationMode, isRtl\\)").findAll(dual).count())
         assertTrue(dual.contains("ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, dualState.groupCount)"))
         assertTrue(dual.contains("pointerInput(zoomScale, navigationMode, isRtl)"))
         assertTrue(page.contains("Modifier.pointerInput(navigationMode, isRtl, gestureCapabilities.tapNavigationEnabled)"))
