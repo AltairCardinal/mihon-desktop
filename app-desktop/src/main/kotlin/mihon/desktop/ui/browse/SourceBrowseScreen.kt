@@ -75,8 +75,10 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.SaveSourceMangaForDetails
+import mihon.desktop.extension.DesktopSourceArtifactStatusLookup
 import mihon.desktop.extension.DesktopSourceExtensionLookup
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.ui.extension.extensionListDestination
 import mihon.desktop.ui.library.MangaDetailScreen
 import mihon.domain.error.AppError
 import tachiyomi.domain.manga.model.Manga
@@ -256,10 +258,14 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
         val saveSourceMangaForDetails = dependencies.saveSourceMangaForDetails
         val getManga = dependencies.getManga
         val source = remember { sourceManager.getCatalogueSources().find { it.id == sourceId } }
+        val sourceExtensionLookup = source?.let { dependencies.sourceExtensionLookup }
+        val requiresApkReconversion = remember(sourceExtensionLookup, sourceId) {
+            (sourceExtensionLookup as? DesktopSourceArtifactStatusLookup)
+                ?.requiresApkReconversion(sourceId) == true
+        }
         val scope = rememberCoroutineScope()
-        val lastUsedRecorder = source?.let {
+        val lastUsedRecorder = sourceExtensionLookup?.let { extensionLookup ->
             val preferences = dependencies.appPreferences
-            val extensionLookup = dependencies.sourceExtensionLookup
             remember(preferences, extensionLookup) { DesktopSourceLastUsedRecorder(preferences, extensionLookup) }
         }
 
@@ -335,7 +341,7 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
         val hasFilters = remember(source) { source?.getFilterList()?.isNotEmpty() == true }
 
         fun loadPage(page: Int, query: SourceQuery = listingQuery) {
-            if (source == null || (page > 1 && queryUiState.loading)) return
+            if (source == null || requiresApkReconversion || (page > 1 && queryUiState.loading)) return
             scope.launch {
                 queryCoordinator.load(source, page, query)
             }
@@ -373,7 +379,9 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
         )
 
         // Initial load
-        LaunchedEffect(Unit) { loadPage(1) }
+        LaunchedEffect(source?.id, requiresApkReconversion) {
+            if (!requiresApkReconversion) loadPage(1)
+        }
 
         // Filter dialog
         if (showFilterDialog) {
@@ -488,6 +496,24 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
                 }
 
                 when {
+                    requiresApkReconversion -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    MR.strings.desktop_extension_reconversion_required.localized(),
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                androidx.compose.material3.Button(
+                                    onClick = { navigator.push(extensionListDestination(initialTab = 1)) },
+                                    modifier = Modifier.padding(top = 8.dp).testTag("source-reconversion-action"),
+                                ) {
+                                    Text(MR.strings.desktop_extension_reconversion_action.localized())
+                                }
+                            }
+                        }
+                    }
+
                     queryUiState.loading && queryUiState.items.isEmpty() -> {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator()

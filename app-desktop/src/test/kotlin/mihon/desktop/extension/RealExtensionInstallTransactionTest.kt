@@ -69,6 +69,10 @@ class RealExtensionInstallTransactionTest {
             )
 
             assertTrue(installed.isFile)
+            assertEquals(
+                CURRENT_APK_CONVERSION_VERSION,
+                requireNotNull(readExtensionMeta(installed)).apkConversionVersion,
+            )
             val loaded = DesktopExtensionLoader(extensionsDirectory).loadPackage(MANHUAGUI_PACKAGE)
             try {
                 assertTrue(loaded.isNotEmpty())

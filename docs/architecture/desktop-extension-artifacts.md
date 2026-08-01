@@ -55,6 +55,7 @@ Keiyoushi 当前同时发布 APK 与签名 JAR；Desktop 的全量兼容调查�
   必须根据 production 路由记录和异常阶段区分网络失败与扩展运行时资源缺失。
 - 已安装的转换 JAR 是安装事务的最终制品，不保留原始 APK；转换规则升级不会凭空修补旧 JAR。
   受资源保留问题影响的既有扩展需重新安装一次，后续安装和更新才使用新转换规则。
+- sidecar 记录 `apkConversionVersion`。版本缺失或落后的 `CONVERTED_APK` 产物会停止源请求，并在插件可用页作为同版本更新展示；用户确认更新后，仍通过正常的仓库信任、下载、校验和安装事务重新生成 JAR。
 - 部分 Android 扩展在源构造阶段读取 JVM `http.agent` 并假定它非空。Desktop 统一网络层
   初始化时只在该属性缺失时提供 `Mihon Desktop/1.0`，显式 JVM 配置保持不变。此属性只用于
   Android ABI 与请求头兼容，不创建旁路 HTTP 客户端，也不改变代理选择；扩展请求仍必须通过

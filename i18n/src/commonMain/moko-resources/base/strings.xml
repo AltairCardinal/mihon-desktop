@@ -446,6 +446,8 @@
     <string name="desktop_extension_android_only">%s: Android-only extension, cannot run on desktop</string>
     <string name="desktop_extension_conversion_failed">%s: APK conversion failed — try a JAR-based repo</string>
     <string name="desktop_extension_conversion_failed_detailed">%1$s: APK conversion failed during %2$s after %3$d attempt(s): %4$s</string>
+    <string name="desktop_extension_reconversion_required">This extension was installed by an older APK converter and may be missing runtime resources. Update or reinstall it before browsing.</string>
+    <string name="desktop_extension_reconversion_action">Open extension updates</string>
     <string name="desktop_extension_conversion_stage_inspect_input">input inspection</string>
     <string name="desktop_extension_conversion_stage_prepare_workspace">temporary workspace preparation</string>
     <string name="desktop_extension_conversion_stage_translate_dex">DEX translation</string>

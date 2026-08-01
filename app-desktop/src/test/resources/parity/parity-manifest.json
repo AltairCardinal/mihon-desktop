@@ -1151,7 +1151,7 @@
         {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/NetworkToLocalManga.kt", "symbol": "class NetworkToLocalManga(", "line": 6}
       ],
       "DESKTOP_CONSUMER": [
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt", "symbol": "internal class DesktopSourceLastUsedRecorder(", "line": 160},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt", "symbol": "internal class DesktopSourceLastUsedRecorder(", "line": 162},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/DesktopSourceQueryCoordinators.kt", "symbol": "class SourceBrowseQueryCoordinator(", "line": 73}
       ],
       "FIXTURE": [{"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModelBehaviorTest.kt#production Pager publishes shared service content without calling source directly", "productionMarkers": ["model.mangaPagerFlowFlow"]}]
@@ -1456,7 +1456,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "private suspend fun loadExtension", "line": 226}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt", "symbol": "private suspend fun loadExtension", "line": 226}],
       "SHARED_OR_ADAPTER": [
-        {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/ApkToJarConverter.kt", "symbol": "fun convert", "line": 84},
+        {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/ApkToJarConverter.kt", "symbol": "fun convert", "line": 86},
         {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/JvmExtensionArtifactAdapter.kt", "symbol": "fun adaptIfRequired", "line": 14},
         {"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionLoader.kt", "symbol": "private fun loadFromJar", "line": 67}
       ],
@@ -1596,7 +1596,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionsByType.kt", "symbol": "class GetExtensionsByType", "line": 10}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/domain/extension/interactor/GetExtensionsByType.kt", "symbol": "androidExtensionPresentationStore", "line": 20}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/extension/presentation/ExtensionPresentationStore.kt", "symbol": "class ExtensionPresentationStore", "line": 3}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPort.kt", "symbol": "desktopExtensionPresentationStore =", "line": 195}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPort.kt", "symbol": "desktopExtensionPresentationStore =", "line": 198}],
       "FIXTURE": [
         {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionPresentationWiringTest.kt#android get extensions consumes shared classification and source projection", "productionMarkers": ["GetExtensionsByType", "classifier.classify"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/extension/ExtensionPresentationUiTest.kt#search input filters through model state and survives content remount", "productionMarkers": ["ExtensionsScreenModel(", "ExtensionListContent(model)"]}
@@ -1726,7 +1726,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewScreen.kt", "symbol": "class WebViewScreen(", "line": 12}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/presentation/webview/WebViewScreenContent.kt", "symbol": "fun WebViewScreenContent(", "line": 69}],
       "SHARED_OR_ADAPTER": [{"kind": "PLATFORM_ADAPTER", "path": "app-desktop/src/main/kotlin/mihon/desktop/network/DesktopBrowserLoginAdapter.kt", "symbol": "class DesktopBrowserLoginAdapter", "line": 69}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt", "symbol": "fun recover()", "line": 344}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/SourceBrowseScreen.kt", "symbol": "fun recover()", "line": 350}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/browse/SourceLoginTestModeWiringTest.kt#source browse installs observation after real open login recovery", "productionMarkers": ["SourceBrowseScreen("]}]
     },
     "verificationScope": "VERIFIED: fixed/current Android embedded login, shared authentication outcome, Desktop external-browser adapter, real cookie commit/rollback and source-browse feedback are bound.",

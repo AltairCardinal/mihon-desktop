@@ -10,6 +10,7 @@ import mihon.desktop.extension.DesktopAvailableSource
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionInstallStart
 import mihon.desktop.extension.DesktopExtensionManager
+import mihon.desktop.extension.ExtensionOrigin
 import mihon.desktop.extension.InstalledExtension
 import eu.kanade.tachiyomi.source.online.HttpSource
 import mihon.domain.error.AppError
@@ -38,6 +39,10 @@ class DesktopExtensionPresentationProjectionTest {
     fun `projection uses shared policy and classifier while preserving conservative desktop boundaries`() = runTest {
         val update = installed("pkg.update", repo = "https://ok.example")
         val noUpdate = installed("pkg.current", repo = "https://ok.example")
+        val staleConversion = installed("pkg.stale", repo = "https://ok.example").copy(
+            origin = ExtensionOrigin.CONVERTED_APK,
+            apkConversionVersion = 0,
+        )
         val obsolete = installed("pkg.obsolete", repo = "https://incompatible.example")
         val httpSource = mockk<HttpSource> {
             every { id } returns 42; every { lang } returns "en"; every { name } returns "Installed"; every { baseUrl } returns "https://installed.example"
@@ -45,9 +50,10 @@ class DesktopExtensionPresentationProjectionTest {
         val custom = installed("pkg.custom", repo = "", sources = listOf(httpSource))
         val failed = installed("pkg.failed", repo = "https://failed.example")
         val bundled = installed(BUNDLED, repo = "https://ok.example")
-        val installed = listOf(update, noUpdate, obsolete, custom, failed, bundled)
+        val installed = listOf(update, noUpdate, staleConversion, obsolete, custom, failed, bundled)
         val updateCandidate = available("pkg.update", sources = listOf(source(7, "en", "Manga Hub")))
         val currentCandidate = available("pkg.current", code = 1)
+        val staleCandidate = available("pkg.stale", code = 1)
         val multi = available(
             "pkg.multi",
             sources = listOf(source(8, "en", "English"), source(9, "fr", "Français")),
@@ -68,7 +74,7 @@ class DesktopExtensionPresentationProjectionTest {
                     ),
                 ),
             ),
-            listOf(updateCandidate, currentCandidate, multi, bundledCandidate),
+            listOf(updateCandidate, currentCandidate, staleCandidate, multi, bundledCandidate),
         )
         val policy = mockk<ExtensionUpdatePolicy> {
             every { isUpdateAvailable(2, 1.4, 1, 1.4) } returns true
@@ -83,8 +89,9 @@ class DesktopExtensionPresentationProjectionTest {
             ExtensionPresentationOptions(false, setOf("en", "fr")),
         )
 
-        assertEquals(listOf("pkg.update"), classified.updates.map { it.operationPackageName })
+        assertEquals(setOf("pkg.update", "pkg.stale"), classified.updates.map { it.operationPackageName }.toSet())
         assertFalse(projected.installed.single { it.operationPackageName == "pkg.current" }.presentation.hasUpdate)
+        assertTrue(projected.installed.single { it.operationPackageName == "pkg.stale" }.presentation.hasUpdate)
         assertTrue(projected.installed.single { it.operationPackageName == "pkg.obsolete" }.presentation.isObsolete)
         assertFalse(projected.installed.single { it.operationPackageName == "pkg.custom" }.presentation.isObsolete)
         assertFalse(projected.installed.single { it.operationPackageName == "pkg.failed" }.presentation.isObsolete)
@@ -97,7 +104,8 @@ class DesktopExtensionPresentationProjectionTest {
         assertTrue(port.searchPredicate("reader.example")(updateCandidate.item()))
         assertTrue(port.searchPredicate("7")(updateCandidate.item()))
         assertTrue(port.searchPredicate("installed.example")(projected.installed.single { it.operationPackageName == "pkg.custom" }))
-        verify { policy.isUpdateAvailable(2, 1.4, 1, 1.4); policy.isUpdateAvailable(1, 1.4, 1, 1.4) }
+        verify { policy.isUpdateAvailable(2, 1.4, 1, 1.4) }
+        verify(exactly = 1) { policy.isUpdateAvailable(1, 1.4, 1, 1.4) }
         assertSame(catalog.catalog.failures.single(), projected.failures.single())
         assertSame(catalog.catalog.failures.single().error, projected.failures.single().error)
     }

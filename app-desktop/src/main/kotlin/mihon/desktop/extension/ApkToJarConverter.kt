@@ -17,6 +17,8 @@ import java.nio.file.StandardCopyOption
 import java.util.concurrent.CancellationException
 import java.util.zip.ZipFile
 
+internal const val CURRENT_APK_CONVERSION_VERSION = 1
+
 enum class ApkConversionStage {
     INSPECT_INPUT,
     PREPARE_WORKSPACE,

@@ -125,9 +125,11 @@ class SourceExtensionNavigationContractTest {
     @Test
     fun `source and extension destinations are regular Screens with preserved parameters`() {
         val details = extensionDetailsDestination("C:/extensions/example.jar")
+        val reconversion = extensionListDestination(initialTab = 1)
         val preferences = sourcePreferencesDestination(42L, "Example Source")
         val browse = sourceBrowseDestination(42L)
         Assertions.assertEquals("C:/extensions/example.jar", details.jarPath)
+        Assertions.assertEquals(1, reconversion.initialTab)
         Assertions.assertEquals(42L, preferences.sourceId)
         Assertions.assertEquals("Example Source", preferences.sourceName)
         val expectedInitialQuery: String? = null

@@ -173,12 +173,15 @@ class DesktopExtensionPresentationPort(
             val candidate = candidates[extension.pkgName]
             val bundled = extension.pkgName == BUNDLED_MANGADEX
             extension.item(
-                hasUpdate = !bundled && candidate != null && updatePolicy.isUpdateAvailable(
-                    candidate.versionCode,
-                    candidate.libVersion,
-                    extension.versionCode,
-                    extractExtensionLibVersion(extension.versionName) ?: 0.0,
-                ),
+                hasUpdate = !bundled && candidate != null && (
+                    extension.requiresApkReconversion ||
+                        updatePolicy.isUpdateAvailable(
+                            candidate.versionCode,
+                            candidate.libVersion,
+                            extension.versionCode,
+                            extractExtensionLibVersion(extension.versionName) ?: 0.0,
+                        )
+                    ),
                 isObsolete = !bundled && candidate == null && extension.repoUrl.isNotBlank() &&
                     extension.repoUrl.normalizedRepo() in successfulRepos &&
                     extension.repoUrl.normalizedRepo() !in failedRepos,

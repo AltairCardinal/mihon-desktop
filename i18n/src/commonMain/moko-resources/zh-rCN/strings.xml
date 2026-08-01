@@ -648,6 +648,8 @@
     <string name="desktop_extension_android_only">%s：仅支持 Android，无法在桌面端运行</string>
     <string name="desktop_extension_conversion_failed">%s：APK 转换失败，请尝试使用提供 JAR 的仓库</string>
     <string name="desktop_extension_conversion_failed_detailed">%1$s：APK 转换在“%2$s”阶段失败（已尝试 %3$d 次）：%4$s</string>
+    <string name="desktop_extension_reconversion_required">此插件由旧版 APK 转换器安装，可能缺少运行所需资源。请先更新或重新安装插件。</string>
+    <string name="desktop_extension_reconversion_action">打开插件更新</string>
     <string name="desktop_extension_conversion_stage_inspect_input">输入检查</string>
     <string name="desktop_extension_conversion_stage_prepare_workspace">临时目录准备</string>
     <string name="desktop_extension_conversion_stage_translate_dex">DEX 转换</string>

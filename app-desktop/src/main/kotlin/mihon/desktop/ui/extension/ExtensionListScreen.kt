@@ -84,7 +84,7 @@ import tachiyomi.i18n.MR
 import java.util.Locale
 
 /** Lists installed extensions and available extensions from registered repositories. */
-class ExtensionListScreen : Screen {
+data class ExtensionListScreen(val initialTab: Int = 0) : Screen {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content() {
@@ -95,11 +95,12 @@ class ExtensionListScreen : Screen {
             onRepositories = navigator::pushExtensionRepository,
             onOpen = navigator::pushExtensionDetails,
             onSettings = navigator::pushSourcePreferences,
+            initialTab = initialTab,
         )
     }
 }
 
-internal fun extensionListDestination() = ExtensionListScreen()
+internal fun extensionListDestination(initialTab: Int = 0) = ExtensionListScreen(initialTab)
 
 internal fun extensionDetailsDestination(jarPath: String) = ExtensionDetailsScreen(jarPath)
 
@@ -133,13 +134,14 @@ internal fun ExtensionListContent(
     title: String? = null,
     showBackButton: Boolean = true,
     primaryNavigation: (@Composable () -> Unit)? = null,
+    initialTab: Int = 0,
 ) {
         val state by model.state.collectAsState()
         val copy = remember { extensionListCopy() }
         val scope = rememberCoroutineScope()
         val snackbarHostState = remember { SnackbarHostState() }
 
-        var selectedTab by remember { mutableStateOf(0) }
+        var selectedTab by remember(initialTab) { mutableStateOf(initialTab.coerceIn(0, 1)) }
         var pendingRemoval by remember { mutableStateOf<DesktopExtensionItem?>(null) }
         var showLangFilter by remember { mutableStateOf(false) }
         val ui = remember(state) { state.toExtensionListUiProjection(state.searchQuery) }

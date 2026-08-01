@@ -26,6 +26,8 @@ data class ExtensionMeta(
     val installedAt: Long = 0L,
     val artifactSha256: String = "",
     val source: ExtensionOrigin = ExtensionOrigin.COMPILED_JAR,
+    /** Version of the APK-to-JAR format used to create this installed artifact. */
+    val apkConversionVersion: Int = 0,
     val name: String = "",
     val language: String = "",
     val isNsfw: Boolean = false,

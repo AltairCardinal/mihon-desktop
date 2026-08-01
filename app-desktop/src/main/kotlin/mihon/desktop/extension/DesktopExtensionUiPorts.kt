@@ -22,6 +22,20 @@ fun interface DesktopSourceExtensionLookup {
     fun getExtensionPackage(sourceId: Long): String?
 }
 
+fun interface DesktopSourceArtifactStatusLookup {
+    /** True when the source belongs to an APK artifact created by an obsolete converter. */
+    fun requiresApkReconversion(sourceId: Long): Boolean
+}
+
+internal class DesktopExtensionSourceLookup(
+    private val extensionManager: DesktopExtensionManager,
+) : DesktopSourceExtensionLookup, DesktopSourceArtifactStatusLookup {
+    override fun getExtensionPackage(sourceId: Long): String? = extensionManager.getExtensionPackage(sourceId)
+
+    override fun requiresApkReconversion(sourceId: Long): Boolean =
+        extensionManager.requiresApkReconversion(sourceId)
+}
+
 object DesktopSourcePreferenceContextFactory {
     fun create(source: Source): Any? = source::class.java.classLoader
         ?.loadClass("android.content.Context")

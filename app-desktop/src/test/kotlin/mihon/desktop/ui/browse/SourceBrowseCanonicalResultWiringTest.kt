@@ -4,10 +4,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
+import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -24,7 +27,10 @@ import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.SaveSourceMangaForDetails
+import mihon.desktop.extension.DesktopSourceExtensionLookup
+import mihon.desktop.extension.DesktopSourceArtifactStatusLookup
 import mihon.desktop.source.FakeDesktopSourceManager
+import mihon.desktop.ui.extension.ExtensionListScreen
 import mihon.domain.manga.model.toDomainManga
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -49,6 +55,72 @@ import java.util.Locale
 
 @OptIn(ExperimentalComposeUiApi::class)
 class SourceBrowseCanonicalResultWiringTest {
+
+    @Test
+    fun `stale converted extension blocks source request and opens update list`() = runBlocking {
+        val previousLocale = Locale.getDefault()
+        val locale = Locale.SIMPLIFIED_CHINESE
+        Locale.setDefault(locale)
+        var calls = 0
+        val source = mockk<CatalogueSource> {
+            every { id } returns 21L
+            every { name } returns "Stale CopyManga"
+            every { lang } returns "zh"
+            every { supportsLatest } returns false
+            every { getFilterList() } returns FilterList()
+            coEvery { getPopularManga(any()) } answers {
+                calls += 1
+                MangasPage(emptyList(), false)
+            }
+        }
+        val lookup = object : DesktopSourceExtensionLookup, DesktopSourceArtifactStatusLookup {
+            override fun getExtensionPackage(sourceId: Long) = "eu.kanade.tachiyomi.extension.zh.copymanga"
+            override fun requiresApkReconversion(sourceId: Long) = true
+        }
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { sourceManager } returns FakeDesktopSourceManager(listOf(source))
+            every { appPreferences } returns sourceBrowseHistoryPreferences()
+            every { extensionManager } returns sourceBrowseExtensionManager()
+            every { sourceExtensionLookup } returns lookup
+            every { sourceMangaSearchService } returns SourceMangaSearchService()
+            every { saveSourceMangaForDetails } returns mockk(relaxed = true)
+            every { getManga } returns mockk(relaxed = true)
+            every { sourceLoginSessionFactory } returns mockk(relaxed = true)
+        }
+        lateinit var navigator: Navigator
+        val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(SourceBrowseScreen(source.id)) {
+                        navigator = LocalNavigator.currentOrThrow
+                        CurrentScreen()
+                    }
+                }
+            }
+            val warning = MR.strings.desktop_extension_reconversion_required.localized(locale)
+            withTimeout(15_000) {
+                while (!renderedText(scene).contains(warning)) {
+                    scene.render()
+                    yield()
+                }
+            }
+
+            assertEquals(0, calls, "stale artifact must be blocked before issuing a source request")
+            val button = nodes(scene).first {
+                it.config.contains(SemanticsActions.OnClick) &&
+                    it.config.contains(SemanticsProperties.TestTag) &&
+                    it.config[SemanticsProperties.TestTag] == "source-reconversion-action"
+            }
+            assertTrue(button.config[SemanticsActions.OnClick].action?.invoke() == true)
+            val destination = navigator.lastItem as ExtensionListScreen
+            assertEquals(1, destination.initialTab)
+        } finally {
+            scene.close()
+            Locale.setDefault(previousLocale)
+        }
+    }
 
     @Test
     fun `closing materializer rejects a non cancellable stale publication`() = runBlocking {

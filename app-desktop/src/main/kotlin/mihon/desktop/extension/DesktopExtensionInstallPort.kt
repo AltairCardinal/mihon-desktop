@@ -281,6 +281,7 @@ internal class DesktopExtensionInstallPort(
                 installedAt = System.currentTimeMillis(),
                 artifactSha256 = candidate.sha256(),
                 source = if (content.hasDex) ExtensionOrigin.CONVERTED_APK else ExtensionOrigin.COMPILED_JAR,
+                apkConversionVersion = if (content.hasDex) CURRENT_APK_CONVERSION_VERSION else 0,
                 name = install.artifact.name,
                 language = install.artifact.language,
                 isNsfw = install.artifact.isNsfw,

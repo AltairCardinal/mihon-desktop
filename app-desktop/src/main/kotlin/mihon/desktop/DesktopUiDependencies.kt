@@ -18,6 +18,7 @@ import mihon.desktop.download.DownloadQueueScreenModel
 import mihon.desktop.extension.DesktopExtensionApi
 import mihon.desktop.extension.DesktopExtensionManager
 import mihon.desktop.extension.DesktopExtensionPresentationService
+import mihon.desktop.extension.DesktopExtensionSourceLookup
 import mihon.desktop.extension.DesktopSourceExtensionLookup
 import mihon.desktop.license.DependencyNoticeProvider
 import mihon.desktop.network.CloudflareChallengeManager
@@ -101,7 +102,7 @@ data class DesktopUiDependencies(
     val extensionApi: DesktopExtensionApi,
     val extensionManager: DesktopExtensionManager,
     val extensionPresentationService: DesktopExtensionPresentationService = extensionManager,
-    val sourceExtensionLookup: DesktopSourceExtensionLookup = extensionManager,
+    val sourceExtensionLookup: DesktopSourceExtensionLookup = DesktopExtensionSourceLookup(extensionManager),
     val externalActionNavigator: ExternalActionNavigator,
     val getExcludedScanlators: GetExcludedScanlators,
     val getExtensionRepo: GetExtensionRepo,

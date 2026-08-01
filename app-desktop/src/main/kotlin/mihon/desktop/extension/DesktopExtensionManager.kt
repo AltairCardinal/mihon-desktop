@@ -77,6 +77,11 @@ class DesktopExtensionManager(
         loadedExtensions.find { it.source.id == sourceId }?.jarFile?.nameWithoutExtension
     }
 
+    fun requiresApkReconversion(sourceId: Long): Boolean =
+        installedExtensions.value.any { extension ->
+            extension.requiresApkReconversion && extension.sources.any { it.id == sourceId }
+        }
+
     /**
      * Returns installed extensions grouped by JAR file.
      * Each entry represents one JAR that may expose multiple sources.
@@ -101,6 +106,7 @@ class DesktopExtensionManager(
                     installedAt = meta?.installedAt ?: 0L,
                     artifactSha256 = meta?.artifactSha256 ?: "",
                     origin = meta?.source ?: ExtensionOrigin.COMPILED_JAR,
+                    apkConversionVersion = meta?.apkConversionVersion ?: 0,
                     displayName = meta?.name.orEmpty(),
                     language = meta?.language.orEmpty(),
                     isNsfw = meta?.isNsfw == true,
@@ -222,10 +228,13 @@ data class InstalledExtension(
     val installedAt: Long = 0L,
     val artifactSha256: String = "",
     val origin: ExtensionOrigin = ExtensionOrigin.COMPILED_JAR,
+    val apkConversionVersion: Int = 0,
     val displayName: String = "",
     val language: String = "",
     val isNsfw: Boolean = false,
 ) {
     val name: String get() = displayName.ifBlank { jarFile.nameWithoutExtension }
     val pkgName: String get() = jarFile.nameWithoutExtension
+    val requiresApkReconversion: Boolean
+        get() = origin == ExtensionOrigin.CONVERTED_APK && apkConversionVersion < CURRENT_APK_CONVERSION_VERSION
 }

@@ -59,6 +59,7 @@ class RealCopyMangaNetworkRoutingTest {
                 versionName = "1.4.53",
                 artifactSha256 = "local-live-fixture",
                 source = ExtensionOrigin.CONVERTED_APK,
+                apkConversionVersion = CURRENT_APK_CONVERSION_VERSION,
                 name = "CopyManga",
                 language = "zh",
                 extensionClass = COPY_MANGA_EXTENSION_CLASS,

@@ -1,8 +1,13 @@
 package mihon.desktop.extension
 
+import eu.kanade.tachiyomi.source.Source
+import io.mockk.every
+import io.mockk.mockk
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -82,6 +87,62 @@ class ExtensionVersionMetaTest {
         assertEquals("", meta.repoFingerprint)
         assertEquals(0L, meta.installedAt)
         assertEquals("", meta.artifactSha256)
+        assertEquals(0, meta.apkConversionVersion)
+    }
+
+    @Test
+    fun `converted APK installed by an older converter requires reconversion`(@TempDir tmpDir: Path) {
+        val jar = File(tmpDir.toFile(), "legacy-converted.jar").also { it.createNewFile() }
+
+        val legacy = InstalledExtension(
+            jarFile = jar,
+            sources = emptyList(),
+            origin = ExtensionOrigin.CONVERTED_APK,
+            apkConversionVersion = 0,
+        )
+        val current = legacy.copy(apkConversionVersion = CURRENT_APK_CONVERSION_VERSION)
+        val compiled = legacy.copy(origin = ExtensionOrigin.COMPILED_JAR)
+
+        assertTrue(legacy.requiresApkReconversion)
+        assertFalse(current.requiresApkReconversion)
+        assertFalse(compiled.requiresApkReconversion)
+    }
+
+    @Test
+    fun `manager exposes stale conversion status through source lookup`(@TempDir tmpDir: Path) {
+        val jar = File(tmpDir.toFile(), "converted.jar").also { it.createNewFile() }
+        val source = mockk<Source> { every { id } returns 7L }
+        writeExtensionMeta(
+            jar,
+            ExtensionMeta(
+                pkgName = "converted",
+                versionCode = 1,
+                versionName = "1.0",
+                source = ExtensionOrigin.CONVERTED_APK,
+                apkConversionVersion = 0,
+            ),
+        )
+        val loader = object : DesktopExtensionLoader(tmpDir.toFile()) {
+            override fun loadExtensions() = listOf(LoadedExtension(source, jar, javaClass.classLoader))
+        }
+        val manager = DesktopExtensionManager(loader)
+        val sourceLookup = DesktopExtensionSourceLookup(manager)
+
+        try {
+            manager.loadAll()
+            assertTrue(sourceLookup.requiresApkReconversion(source.id))
+
+            writeExtensionMeta(
+                jar,
+                requireNotNull(readExtensionMeta(jar)).copy(
+                    apkConversionVersion = CURRENT_APK_CONVERSION_VERSION,
+                ),
+            )
+            manager.loadAll()
+            assertFalse(sourceLookup.requiresApkReconversion(source.id))
+        } finally {
+            manager.close()
+        }
     }
 
     @Test
