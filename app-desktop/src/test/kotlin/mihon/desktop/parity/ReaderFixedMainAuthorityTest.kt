@@ -304,6 +304,9 @@ class ReaderFixedMainAuthorityTest {
         assertEquals("WIRED", migrationScope.requiredText("androidScheduler"))
         assertEquals("WIRED", migrationScope.requiredText("desktopSchedulerAdapter"))
         assertEquals("WIRED", migrationScope.requiredText("androidEncodedStore"))
+        assertEquals("RA-01", migrationScope.requiredText("androidCoreCutoverTask"))
+        assertEquals("WIRED", migrationScope.requiredText("androidCanonicalSession"))
+        assertEquals("REMOVED", migrationScope.requiredText("androidLegacyChapterStateInput"))
         assertEquals(
             emptySet<String>(),
             migrationScope.getValue("openProductGaps").jsonArray.map { it.jsonPrimitive.content }.toSet(),
@@ -317,6 +320,10 @@ class ReaderFixedMainAuthorityTest {
         val chapterWindowItem = items.getValue(47).jsonObject
         val chapterWindowScope = chapterWindowItem.getValue("readerCoreMigrationScope").jsonObject
         assertEquals("RC-04", chapterWindowScope.requiredText("windowTask"))
+        assertEquals("RC-01", chapterWindowScope.requiredText("sessionTask"))
+        assertEquals("WIRED", chapterWindowScope.requiredText("sharedSessionState"))
+        assertEquals("WIRED", chapterWindowScope.requiredText("androidSessionState"))
+        assertEquals("NOT_WIRED", chapterWindowScope.requiredText("desktopSessionState"))
         assertEquals("WIRED", chapterWindowScope.requiredText("sharedChapterWindow"))
         assertEquals("WIRED", chapterWindowScope.requiredText("androidChapterWindow"))
         assertEquals("NOT_WIRED", chapterWindowScope.requiredText("desktopChapterWindow"))
@@ -324,6 +331,11 @@ class ReaderFixedMainAuthorityTest {
             chapterWindowItem.getValue("sharedImplementationPaths").jsonArray.any {
                 it.jsonPrimitive.content ==
                     "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderChapterWindow.kt"
+            },
+        )
+        assertTrue(
+            chapterWindowItem.getValue("sharedImplementationPaths").jsonArray.any {
+                it.jsonPrimitive.content == "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderSession.kt"
             },
         )
         assertTrue(
@@ -377,6 +389,43 @@ class ReaderFixedMainAuthorityTest {
                 },
         )
         assertTrue(progressItem.requiredText("verificationScope").contains("latest-settlement"))
+
+        val androidCoreContract =
+            "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt"
+        val androidSessionContract =
+            "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderSessionProductionWiringTest.kt"
+        listOf(preloadItem, chapterWindowItem, progressItem).forEach { item ->
+            assertTrue(item.getValue("protectionTests").jsonArray.any { it.jsonPrimitive.content == androidCoreContract })
+            assertEquals(
+                "RA-01",
+                item.getValue("readerCoreMigrationScope").jsonObject.requiredText("androidCoreCutoverTask"),
+            )
+            assertEquals(
+                "WIRED",
+                item.getValue("readerCoreMigrationScope").jsonObject.requiredText("androidCanonicalSession"),
+            )
+        }
+        assertTrue(
+            preloadItem.getValue("behaviorMethods").jsonObject.getValue(androidCoreContract).jsonArray.any {
+                it.jsonPrimitive.content ==
+                    "online ReaderViewModel executes shared session scheduler encoded cache and progress chain"
+            },
+        )
+        assertTrue(
+            chapterWindowItem.getValue("behaviorMethods").jsonObject.getValue(androidCoreContract).jsonArray.any {
+                it.jsonPrimitive.content == "legacy Android chapter state is a read only projection"
+            },
+        )
+        assertTrue(
+            chapterWindowItem.getValue("behaviorMethods").jsonObject.getValue(androidSessionContract).jsonArray.any {
+                it.jsonPrimitive.content == "stale storage reset cannot recycle a newer activation loader"
+            },
+        )
+        assertTrue(
+            progressItem.getValue("behaviorMethods").jsonObject.getValue(androidCoreContract).jsonArray.any {
+                it.jsonPrimitive.content == "ReaderViewModel initialization preserves cooperative cancellation"
+            },
+        )
 
         val entryItem = items.getValue(54).jsonObject
         val entryScope = entryItem.getValue("readerCoreMigrationScope").jsonObject
@@ -561,7 +610,7 @@ class ReaderFixedMainAuthorityTest {
     private companion object {
         const val FIXED_MAIN_REF = "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8"
         const val FIXED_UPSTREAM_LINEAGE_BASE = "upstream/main@8e0c911f93e60db35dcbe2a9103ac6ea0d803e29"
-        const val TRACKED_UPSTREAM_REF = "upstream/main@d7f3ceef5c75294306d0d9495e9ebc5ffca96302"
+        const val TRACKED_UPSTREAM_REF = "upstream/main@55be95dd5df7ac985bbc68ea62a5a525611a732f"
         const val FORK_COMPATIBILITY_BASELINE = "9111d70a85565e20940fa4736c97eea8c1a44a0d"
         const val READER_AUTHORITY_FIXTURE = "app-desktop/src/test/resources/parity/fixed-main-reader-fixtures.json"
         const val FIXED_MAIN_INVENTORY = "app-desktop/src/test/resources/parity/fixed-main-path-inventory.json"

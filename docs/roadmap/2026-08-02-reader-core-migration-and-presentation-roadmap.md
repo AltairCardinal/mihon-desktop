@@ -4,7 +4,7 @@
 - 状态：`IN_PROGRESS`
 - 上级路线：[`2026-06-30-mihon-desktop-refactor-roadmap.md`](./2026-06-30-mihon-desktop-refactor-roadmap.md) 的 Phase R
 - 固定原版权威：`main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`
-- 本次核对的上游跟踪点：`upstream/main@d7f3ceef5c75294306d0d9495e9ebc5ffca96302`（2026-08-02）
+- 本次核对的上游跟踪点：`upstream/main@55be95dd5df7ac985bbc68ea62a5a525611a732f`（2026-08-02；`d7f3ceef5…` 之后无 reader 路径变更）
 - 当前 Fork 兼容基线：`9111d70a85565e20940fa4736c97eea8c1a44a0d`
 - 当前进度：从第 9 节“任务清单”的第一个未勾选任务推导；本文不另设活动任务字段
 
@@ -227,7 +227,7 @@ DesktopReaderScreen / Android ReaderActivity
 - [x] `RC-03` 提取统一优先级调度、generation 取消和 encoded store 契约
 - [x] `RC-04` 提取 current/previous/next 章节窗口与跨章状态转换
 - [x] `RC-05` 提取进度、末页完成和阅读入口选择语义
-- [ ] `RA-01` 完成 Android 生产链切换并证明没有第二套执行核心
+- [x] `RA-01` 完成 Android 生产链切换并证明没有第二套执行核心
 - [ ] `RP-01` 建立 Desktop presentation SPI 并迁移单页模式
 - [ ] `RP-02` 将条漫迁移为同级 presentation 策略
 - [ ] `RP-03` 将双页迁移为同级 presentation 策略并修复封面双槽布局
@@ -464,6 +464,7 @@ python scripts/gradle-coordinator.py run --key reader-core-final -- ./gradlew :d
 | 2026-08-02 | `RC-03` | `TODO -> DOING -> REVIEW -> DONE` | `rc03-domain-red`、`rc03-android-red`、`rc03-desktop-red`：缺少 shared scheduler/store 与两端生产消费；`rc03-review-physical-bound-red`、`rc03-review-store-red`、`rc03-review-eviction-transaction-red2`、`rc03-review-cache-api-red`、`rc03-review-startup-diagnostics-red`、`rc03-review-reconcile-classify-red`：依次复现真实 I/O 跨 generation 无界、缺失实体仍 Ready、删除失败后逻辑先行、editor 竞争静默成功、启动诊断漏记、双 LRU phantom 与 lifecycle 错误误分为 Network | `rc03-review-domain-final`：scheduler、store、固定原版 +4 contract 全绿；`rc03-review-android-final3`：生产抢占/迟到拒收、真实 I/O bound、editor 竞争、两阶段淘汰、reopen、startup diagnostics、双 LRU reconcile 与 Storage 分类全绿；`rc03-review-desktop-final2`：Desktop scheduler consumer 与完整 authority/manifest 全绿 | 1 轮独立审查 + 1 轮修复复审；初审 2 个 P1、2 个 P2 及复审期间指出的 lifecycle 分类/双 LRU 候选点均已关闭；最终结论 `APPROVED / NO_P0_P1_P2` | `rc03-review-format-final2`：domain/app Spotless 全绿；`git diff --check`、manifest JSON 解析与 legacy policy guard 通过；本阶段按分层策略未运行全量/发布构建 | 本批次提交（由本行所在 Git commit 解析） |
 | 2026-08-02 | `RC-04` | `TODO -> DOING -> REVIEW -> DONE` | `rc04-domain-red`、`rc04-android-red2`：缺少 shared chapter-window reducer 与 Android production owner/wiring；`rc04-loader-wait-red`、`rc04-review-stale-prefetch-red`：依次复现激活未等待相邻预取，以及 release 后旧 effect 重启窗口外 loader | `rc04-final-domain`：chapter-window/session contract 全绿；`rc04-final-android-related`：ViewModel、owner、loader/generation、pager/webtoon transition 与 shared parity 全绿 | 1 轮独立审查 + 1 轮修复复审；初审 P1 已通过与 `ref/unref` 同锁的 retained 门禁及 production 交错测试关闭，最终结论 `APPROVED / NO_P0_P1_P2` | `rc04-final-authority`、`rc04-final-spotless-check` 全绿；manifest JSON 解析与 `git diff --check` 通过；本阶段按分层策略未运行全量/发布构建 | 本批次提交（由本行所在 Git commit 解析） |
 | 2026-08-02 | `RC-05` | `TODO -> DOING -> REVIEW -> DONE` | `rc05-domain-red`、`rc05-android-red`、`rc05-data-red`、`rc05-desktop-entry-red`、`rc05-authority-red`：缺少 shared progress/entry 与真实生产/数据库/入口证据；`rc05-settlement-race-red2` 复现旧相邻 settle 反向激活并提交 B 章进度；`rc05-arbiter-red` 固定 latest token 与串行事务仲裁 | `rc05-android-final-gate`：进度、末页、旧 settle 竞态、仲裁器、duplicate、window/错误与入口组全绿；`rc05-domain-final-gate`、`rc05-data-final-gate`：shared contract 与真实目标行事务全绿 | 1 轮独立审查 + 1 轮修复复审；初审 P1 通过 active-window latest token guard 关闭，复审 P2 通过独立 `ReaderViewportSettlementArbiter` 并发测试与最终证据行校准关闭；未追加第二轮代理复审 | `rc05-desktop-authority-final-gate`、`rc05-spotless-check-final` 全绿；manifest JSON、`git diff --check` 通过；本阶段按分层策略未运行全量/发布构建 | 本批次提交（由本行所在 Git commit 解析） |
+| 2026-08-02 | `RA-01` | `TODO -> DOING -> REVIEW -> DONE` | `ra01-session-reset-red`：缺少 canonical storage-route reset；`ra01-stale-storage-reset-red`：缺少绑定 loader/generation 的原子令牌，旧 preload 可回收较新的 activation loader | `ra01-production-contract-final-focused-2`、`ra01-default-composition-focused`：真实默认 `ReaderViewModel -> ChapterLoader -> HttpPageLoader -> shared scheduler/encoded store/progress` 同链全绿；`ra01-stale-storage-reset-green`、`ra01-review-fixes-focused`：storage reset 竞态、窗口与真实 loader 资源清理全绿 | 1 轮独立审查 + 1 轮修复复审；初审 P1/P2 通过原子 reset token 与 `finally` 回收关闭；复审确认两项关闭，并发现 manifest 精确集合 P2，由 `ra01-task3-parity` RED、`ra01-task3-parity-final` GREEN 关闭，未追加第二轮代理复审 | `ra01-domain-full`、`ra01-android-reader-focused`、`ra01-app-full`、`ra01-authority-final`、`ra01-spotless-green` 全绿；Task 3 为 274 项测试；manifest/fixture JSON 与 `git diff --check` 通过；本阶段未运行发布构建 | 本批次提交（由本行所在 Git commit 解析） |
 
 `R0-01` 范围说明：本批次保持 8 个内聚文件，但逐 symbol/blob/marker 夹具、18 项上游分类、变异测试和
 权威文档合计超过 400 行。它们共同构成一个不可拆分的 provenance 关闭条件；拆开会让 manifest 或文档
@@ -507,6 +508,15 @@ entry 与 capability 证据共同构成同一用户能力；拆开会留下未�
 history 重复以及升/降序列表选择不同故事章节；已由 `ReaderViewportSettlementArbiter`、active chapter 门禁、
 identity-bearing 幂等 key、`wasRead`、独立 duplicate fixture、真实内存数据库与两端 production 入口测试控制。
 数据库 schema、备份和 `last_page_read` 格式未改变；Desktop viewport/session producer 仍明确留给 `RD-01`。
+
+`RA-01` 范围说明：本批次 19 个内聚 production/test/authority/文档文件并超过 400 行，原因是 Android
+`ReaderViewModel` 默认 composition、canonical session 投影、source/cache/progress 真实链、storage route
+竞态和 manifest 精确证据必须同批关闭；拆开会留下可回写的 legacy state、无法证明的默认 factory 或证据与
+production 漂移。主要风险是在线失败转下载时旧 preload 回收新 activation loader、异常路径泄漏真实 loader、
+取消被吞掉和原版 current +4 网络量漂移；已由同锁 loader/generation token、`finally` 回收、取消传播与默认
+`HttpPageLoader` 端到端契约控制。Android View/Bitmap/Coil、触摸、Activity/process 生命周期和可选双页 UI
+仍是平台 adapter/presentation 边界；Desktop 完整 session executor 仍明确留给 `RD-01`，最终发布验收留给
+`RV-01`。
 
 建议状态记录使用 `TODO / DOING / BLOCKED / REVIEW / DONE`；状态只用于解释，checkbox 仍是唯一完成标记。
 

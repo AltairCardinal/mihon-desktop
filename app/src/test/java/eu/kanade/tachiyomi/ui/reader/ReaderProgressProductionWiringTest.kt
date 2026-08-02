@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.ui.reader.loader.ChapterLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
+import eu.kanade.tachiyomi.ui.reader.model.publishLoadedPageListForTest
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import io.mockk.coEvery
 import io.mockk.every
@@ -88,8 +89,7 @@ class ReaderProgressProductionWiringTest {
             val chapterLoader = mockk<ChapterLoader>()
             val materializeChapter: (ReaderChapter) -> Unit = { readerChapter ->
                 if (readerChapter.state !is ReaderChapter.State.Loaded) {
-                    readerChapter.state = ReaderChapter.State.Loading
-                    readerChapter.state = ReaderChapter.State.Loaded(
+                    readerChapter.publishLoadedPageListForTest(
                         (0..2).map { index ->
                             ReaderPage(index = index).apply { chapter = readerChapter }
                         },

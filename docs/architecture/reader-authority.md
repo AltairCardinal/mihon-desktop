@@ -7,7 +7,7 @@
 | 证据 | 固定引用 | 用途 |
 | --- | --- | --- |
 | 固定原版快照 | `main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8` | 冻结迁移必须保持的状态、加载、过渡和进度语义 |
-| 较新上游跟踪点 | `upstream/main@d7f3ceef5c75294306d0d9495e9ebc5ffca96302` | 捕获固定点之后已经修正的 reader 缺陷与生命周期变化 |
+| 较新上游跟踪点 | `upstream/main@55be95dd5df7ac985bbc68ea62a5a525611a732f` | 捕获固定点之后已经修正的 reader 缺陷与生命周期变化；`d7f3ceef5…` 到该点没有 reader 路径变更 |
 | 当前 Fork 兼容基线 | `9111d70a85565e20940fa4736c97eea8c1a44a0d` | 保护当前 Android/Desktop 已有增强，并登记相对原版的缺口 |
 
 固定快照 `6fbf6df…` 本身是 Fork merge；它的 reader blobs 与第二父提交
@@ -98,7 +98,8 @@ PagerViewer / WebtoonViewer
 
 ## 跟踪点必须吸收的上游变化
 
-固定点到 `d7f3ce…` 没有改变 current + 4、末五页 page-list-only、末页完成和 transition 无按钮语义。
+固定点到 `55be95dd5…` 没有改变 current + 4、末五页 page-list-only、末页完成和 transition 无按钮语义；
+RA-01 开始时复核的 `d7f3ceef5…55be95dd5` 区间也没有 reader 路径变更。
 迁移仍必须吸收以下较新修复：
 
 - `bc7f7e70a1de65f1f966e2e31f97457f8ac16ce6`：`ChapterCache.isImageInCache` 同时检查 journal 和
@@ -159,6 +160,17 @@ RC-05 同时提取 `ReaderEntryResolver`。Android 原 `getNextUnread` 和 Deskt
 漫画配置排序，再显式传入升序或降序；两种 UI 输入均选择故事顺序最早的未完成章，而不是直接取列表第一项。
 Desktop 已消费 `RecordReadingProgress` 事务，但其 viewport/session progress producer 仍待 RD-01 切换；
 Desktop production materialize/window wiring 同样尚未完成。
+
+RA-01 已完成 Android 全链收口：`ReaderViewModel` 的相邻预取只读取 canonical
+`ReaderChapterLoadState`，在线内容转为已下载内容时通过绑定 loader 身份与 generation 的原子令牌执行
+`ResetChapter`；旧 preload 若与较新的 activation 交错，令牌会失效，不能回收新 loader 或推进新 generation。
+`ReaderChapter.State` 只保留为 pager/webtoon 的只读 Android 投影，不再能反向驱动 session。production
+契约从真实 `ReaderViewModel` 进入 `ChapterLoader`/`HttpPageLoader`，验证 online source、current +4 shared
+scheduler、`AndroidReaderEncodedPageStore` 和 `RecordReadingProgress` 同链执行；download/local/archive/EPUB
+分派继续由五路 concrete factory 行为测试保护。初始化仍传播 `CancellationException`，没有恢复
+NonCancellable。Android 保留的 `Context`、Source/Download/Local I/O、ChapterCache、View/Bitmap/Coil、触摸和
+Activity 生命周期均为 adapter/presentation 边界，不再拥有 page-list、page-state、scheduler、window 或
+progress 的第二套生产决策。
 
 因此 parity manifest 9/43/44/45/47/49/51/53/54 的 `VERIFIED` 只表示各自窄 capability 已验证；每项的
 `readerCoreMigrationScope.canonicalSessionExecutor` 在 RD-01 前必须保持 `NOT_WIRED`。删除或绕过当前

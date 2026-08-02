@@ -33,13 +33,8 @@ data class ReaderChapter(val chapter: Chapter) {
     }
 
     private var mutableState: State = State.Wait
-    var state: State
+    val state: State
         get() = synchronized(sharedSessionLock) { mutableState }
-        set(value) {
-            synchronized(sharedSessionLock) {
-                publishCompatibilityState(value)
-            }
-        }
 
     val pages: List<ReaderPage>?
         get() = (state as? State.Loaded)?.pages
@@ -76,8 +71,7 @@ data class ReaderChapter(val chapter: Chapter) {
                 if (mutablePageLoader != null) {
                     logcat { "Recycling chapter ${chapter.name}" }
                 }
-                clearPageLoaderLocked()
-                publishCompatibilityState(State.Wait)
+                resetPageListLocked()
             }
         }
     }
@@ -99,6 +93,56 @@ data class ReaderChapter(val chapter: Chapter) {
             intent = ReaderSessionIntent.OpenChapter(sharedChapterId()),
         )
         mutableSharedSessionStateFlow.value.generation
+    }
+
+    /**
+     * Captures the online page-list generation that may be replaced by downloaded storage. The
+     * token prevents a delayed preload check from resetting a newer activation generation.
+     */
+    internal fun storageChangeResetToken(): ReaderChapterStorageChangeResetToken? =
+        synchronized(sharedSessionLock) {
+            val loader = mutablePageLoader ?: return@synchronized null
+            val snapshot = mutableSharedSessionStateFlow.value
+            if (
+                loader.isLocal ||
+                loader.isRecycled ||
+                !snapshot.activeChapter.loadState.allowsStorageChangeReset()
+            ) {
+                return@synchronized null
+            }
+            ReaderChapterStorageChangeResetToken(
+                loader = loader,
+                generation = snapshot.generation,
+            )
+        }
+
+    /**
+     * Invalidates an online page-list generation after the same chapter becomes available from
+     * downloaded storage. The canonical session remains the authority for the reset; the Android
+     * state and loader are only projections/resources owned by this adapter.
+     */
+    internal fun resetPageListForStorageChange(token: ReaderChapterStorageChangeResetToken): Boolean =
+        synchronized(sharedSessionLock) {
+            val snapshot = mutableSharedSessionStateFlow.value
+            if (
+                mutablePageLoader !== token.loader ||
+                token.loader.isLocal ||
+                token.loader.isRecycled ||
+                snapshot.generation != token.generation ||
+                !snapshot.activeChapter.loadState.allowsStorageChangeReset()
+            ) {
+                return@synchronized false
+            }
+            resetPageListLocked()
+            true
+        }
+
+    private fun resetPageListLocked() {
+        clearPageLoaderLocked()
+        applyNonTerminalState(
+            value = State.Wait,
+            intent = ReaderSessionIntent.ResetChapter(sharedChapterId()),
+        )
     }
 
     internal fun beginPageListLoad(
@@ -187,36 +231,6 @@ data class ReaderChapter(val chapter: Chapter) {
         recycleOnceLocked(loader)
     }
 
-    private fun publishCompatibilityState(value: State) {
-        val chapterId = sharedChapterId()
-        when (value) {
-            State.Wait -> applyNonTerminalState(value, ReaderSessionIntent.ResetChapter(chapterId))
-            State.Loading -> applyNonTerminalState(value, ReaderSessionIntent.OpenChapter(chapterId))
-            is State.Error -> {
-                val generation = ensureLoadingGeneration(chapterId)
-                applyTerminalState(
-                    value = value,
-                    intent = ReaderSessionIntent.PageListFailed(
-                        chapterId = chapterId,
-                        generation = generation,
-                        error = AppError.Unknown(value.error),
-                    ),
-                )
-            }
-            is State.Loaded -> {
-                val generation = ensureLoadingGeneration(chapterId)
-                applyTerminalState(
-                    value = value,
-                    intent = ReaderSessionIntent.PageListLoaded(
-                        chapterId = chapterId,
-                        generation = generation,
-                        pages = value.pages.toSharedDescriptors(),
-                    ),
-                )
-            }
-        }
-    }
-
     private fun applyNonTerminalState(
         value: State,
         intent: ReaderSessionIntent,
@@ -288,17 +302,6 @@ data class ReaderChapter(val chapter: Chapter) {
         }
     }
 
-    private fun ensureLoadingGeneration(chapterId: ReaderChapterId): Long {
-        val snapshot = mutableSharedSessionStateFlow.value
-        if (
-            snapshot.activeChapter.id != chapterId ||
-            snapshot.activeChapter.loadState !is ReaderChapterLoadState.LoadingPageList
-        ) {
-            dispatch(ReaderSessionIntent.OpenChapter(chapterId), projectLegacyState = false)
-        }
-        return mutableSharedSessionStateFlow.value.generation
-    }
-
     private fun dispatch(
         intent: ReaderSessionIntent,
         projectLegacyState: Boolean = true,
@@ -312,6 +315,14 @@ data class ReaderChapter(val chapter: Chapter) {
 
     private fun sharedChapterId(): ReaderChapterId = ReaderChapterId(checkNotNull(chapter.id))
 }
+
+internal class ReaderChapterStorageChangeResetToken(
+    internal val loader: PageLoader,
+    internal val generation: Long,
+)
+
+private fun ReaderChapterLoadState.allowsStorageChangeReset(): Boolean =
+    this == ReaderChapterLoadState.Wait || this is ReaderChapterLoadState.Error
 
 private fun ReaderSessionSnapshot.toLegacyState(): ReaderChapterState = when (val loadState = activeChapter.loadState) {
     ReaderChapterLoadState.Wait -> ReaderChapterState.Wait

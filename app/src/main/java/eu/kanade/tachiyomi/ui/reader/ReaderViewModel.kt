@@ -71,6 +71,7 @@ import mihon.domain.reader.markDuplicateChapters
 import mihon.domain.reader.progress.ReaderProgressPolicy
 import mihon.domain.reader.progress.ReaderProgressSignal
 import mihon.domain.reader.session.ReaderChapterLoadPurpose
+import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderChapterWindowEffect
 import mihon.domain.reader.session.ReaderChapterWindowIntent
 import mihon.domain.reader.session.ReaderChapterWindowReducer
@@ -443,18 +444,17 @@ class ReaderViewModel @JvmOverloads constructor(
      * that the user doesn't have to wait too long to continue reading.
      */
     suspend fun preload(chapter: ReaderChapter) {
-        if (chapter.state is ReaderChapter.State.Loaded || chapter.state == ReaderChapter.State.Loading) {
-            return
-        }
-
-        val purpose = if (chapter.state is ReaderChapter.State.Error) {
-            ReaderChapterLoadPurpose.RETRY
-        } else {
-            ReaderChapterLoadPurpose.PREFETCH
+        val purpose = when (chapter.sharedSessionStateFlow.value.activeChapter.loadState) {
+            ReaderChapterLoadState.Wait -> ReaderChapterLoadPurpose.PREFETCH
+            is ReaderChapterLoadState.Error -> ReaderChapterLoadPurpose.RETRY
+            ReaderChapterLoadState.LoadingPageList,
+            ReaderChapterLoadState.Loaded,
+            -> return
         }
         val pageListEffect = chapterWindowOwner.pageListEffect(chapter, purpose) ?: return
 
-        if (chapter.pageLoader?.isLocal == false) {
+        val storageResetToken = chapter.storageChangeResetToken()
+        if (storageResetToken != null) {
             val manga = manga ?: return
             val dbChapter = chapter.chapter
             val isDownloaded = downloadManager.isChapterDownloaded(
@@ -465,13 +465,18 @@ class ReaderViewModel @JvmOverloads constructor(
                 manga.source,
                 skipCache = true,
             )
-            if (isDownloaded) {
-                chapter.state = ReaderChapter.State.Wait
+            if (isDownloaded && !chapter.resetPageListForStorageChange(storageResetToken)) {
+                return
             }
         }
 
-        if (chapter.state != ReaderChapter.State.Wait && chapter.state !is ReaderChapter.State.Error) {
-            return
+        when (chapter.sharedSessionStateFlow.value.activeChapter.loadState) {
+            ReaderChapterLoadState.Wait,
+            is ReaderChapterLoadState.Error,
+            -> Unit
+            ReaderChapterLoadState.LoadingPageList,
+            ReaderChapterLoadState.Loaded,
+            -> return
         }
 
         val loader = loader ?: return

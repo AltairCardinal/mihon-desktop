@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader.model
 
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -12,12 +13,58 @@ import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.chapter.model.Chapter
 
 class ReaderSessionProductionWiringTest {
+
+    @Test
+    fun `stale storage reset cannot recycle a newer activation loader`() {
+        val chapter = chapter(7)
+        val oldOnlineLoader = pageLoader(isLocal = false)
+        val failedGeneration = chapter.openPageListForTest()
+        chapter.failPageListForTest(failedGeneration, IllegalStateException("online failed"))
+        chapter.pageLoader = oldOnlineLoader
+        val staleReset = checkNotNull(chapter.storageChangeResetToken())
+
+        val activationGeneration = chapter.openPageListForTest()
+        val downloadLoader = pageLoader(isLocal = true)
+        assertTrue(chapter.installPageLoader(activationGeneration, downloadLoader))
+
+        assertFalse(chapter.resetPageListForStorageChange(staleReset))
+        assertSame(downloadLoader, chapter.pageLoader)
+        assertFalse(downloadLoader.isRecycled)
+        assertEquals(
+            ReaderChapterLoadState.LoadingPageList,
+            chapter.sharedSessionStateFlow.value.activeChapter.loadState,
+        )
+    }
+
+    @Test
+    fun `storage route reset is reduced by the canonical session and retires the old loader`() {
+        val chapter = chapter(7)
+        val generation = checkNotNull(chapter.beginPageListLoadIfNeeded())
+        chapter.failPageListForTest(generation, IllegalStateException("online failed"))
+        val onlineLoader = object : PageLoader() {
+            override var isLocal = false
+            override suspend fun getPages() = emptyList<ReaderPage>()
+        }
+        chapter.pageLoader = onlineLoader
+        val resetToken = checkNotNull(chapter.storageChangeResetToken())
+
+        assertTrue(chapter.resetPageListForStorageChange(resetToken))
+
+        val reset = chapter.sharedSessionStateFlow.value
+        assertEquals(generation + 1, reset.generation)
+        assertEquals(ReaderChapterLoadState.Wait, reset.activeChapter.loadState)
+        assertEquals(emptyList<Any>(), reset.activeChapter.pages)
+        assertEquals(ReaderChapter.State.Wait, chapter.state)
+        assertTrue(onlineLoader.isRecycled)
+    }
 
     @Test
     fun `Android chapter publishes zero pages then the complete stable page list`() = runTest {
@@ -28,10 +75,10 @@ class ReaderSessionProductionWiringTest {
         }
         runCurrent()
 
-        chapter.state = ReaderChapter.State.Loading
+        val generation = chapter.openPageListForTest()
         val first = page(chapter, index = 0, url = "")
         val second = page(chapter, index = 1, url = "/page/1").apply { status = Page.State.Ready }
-        chapter.state = ReaderChapter.State.Loaded(listOf(first, second))
+        chapter.completePageListForTest(generation, listOf(first, second))
         runCurrent()
 
         val shared = chapter.sharedSessionStateFlow.value
@@ -53,8 +100,7 @@ class ReaderSessionProductionWiringTest {
     fun `Android page state changes retain the same shared page identity`() {
         val chapter = chapter(7)
         val page = page(chapter, index = 0, url = "")
-        chapter.state = ReaderChapter.State.Loading
-        chapter.state = ReaderChapter.State.Loaded(listOf(page))
+        chapter.publishLoadedPageListForTest(listOf(page))
         val pageId = chapter.sharedSessionStateFlow.value.activeChapter.pages.single().id
 
         page.status = Page.State.LoadPage
@@ -79,13 +125,11 @@ class ReaderSessionProductionWiringTest {
     fun `Android replacement generation ignores state from an unbound old page`() {
         val chapter = chapter(7)
         val oldPage = page(chapter, index = 0, url = "/old")
-        chapter.state = ReaderChapter.State.Loading
-        chapter.state = ReaderChapter.State.Loaded(listOf(oldPage))
+        chapter.publishLoadedPageListForTest(listOf(oldPage))
         val firstGeneration = chapter.sharedSessionStateFlow.value.generation
 
-        chapter.state = ReaderChapter.State.Loading
         val replacementPage = page(chapter, index = 0, url = "/replacement")
-        chapter.state = ReaderChapter.State.Loaded(listOf(replacementPage))
+        chapter.publishLoadedPageListForTest(listOf(replacementPage))
         val replacement = chapter.sharedSessionStateFlow.value
 
         oldPage.status = Page.State.Error(IllegalStateException("late old failure"))
@@ -102,8 +146,8 @@ class ReaderSessionProductionWiringTest {
     @Test
     fun `Android chapter error projects from canonical session into the existing transition state`() {
         val chapter = chapter(7)
-        chapter.state = ReaderChapter.State.Loading
-        chapter.state = ReaderChapter.State.Error(IllegalStateException("page list failed"))
+        val error = IllegalStateException("page list failed")
+        chapter.failPageListForTest(chapter.openPageListForTest(), error)
 
         assertInstanceOf(
             ReaderChapterLoadState.Error::class.java,
@@ -120,6 +164,11 @@ class ReaderSessionProductionWiringTest {
     ) = ReaderPage(index = index, url = url).apply { this.chapter = chapter }
 
     private fun chapter(id: Long) = ReaderChapter(Chapter.create().copy(id = id, mangaId = 1))
+
+    private fun pageLoader(isLocal: Boolean) = object : PageLoader() {
+        override var isLocal = isLocal
+        override suspend fun getPages() = emptyList<ReaderPage>()
+    }
 }
 
 private fun mihon.domain.reader.session.ReaderSessionSnapshot.pageState(pageId: ReaderPageId): ReaderPageLoadState =

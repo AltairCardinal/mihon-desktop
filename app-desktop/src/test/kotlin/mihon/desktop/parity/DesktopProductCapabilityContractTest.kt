@@ -167,6 +167,107 @@ class DesktopProductCapabilityContractTest {
                         setOf("reading to last page marks shared event as read"),
                 ),
         )
+    private val readerCoreMigrationBehaviorMethods =
+        mapOf(
+            45 to
+                mapOf(
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/scheduler/ReaderRequestSchedulerTest.kt" to
+                        setOf(
+                            "original Mihon policy schedules visible page then four forward pages serially",
+                            "generation replacement discards queued work cancels active work and rejects late results",
+                        ),
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/storage/EncodedPageStoreContractTest.kt" to
+                        setOf(
+                            "quota commit evicts least recently used entry and reports the exact eviction",
+                            "commit planning reports victims without advancing the logical index",
+                        ),
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutorTest.kt" to
+                        setOf("retry forces a fresh fetch even when encoded content is cached"),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt" to
+                        setOf(
+                            "rapid zero one two selection cancels stale jobs without error and reorders current first",
+                            "interactive preemption restores cancelled nearby page to queue and restarts it",
+                            "rapid non cooperative generations keep actual Android IO within the stale budget",
+                        ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt" to
+                        setOf(
+                            "quota eviction survives cache reopen with physical presence as authority",
+                            "session begin counts physically observed entries and startup quota eviction",
+                            "physical LRU eviction is reconciled before the logical commit chooses another victim",
+                            "logical commit rejects a writer result when the physical entry is absent",
+                            "quota commit does not advance the logical index when physical victim removal fails",
+                        ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ReaderMaterializeProductionWiringTest.kt" to
+                        setOf(
+                            "HTTP page request runs through canonical executor and retry forces redownload",
+                            "cache editor rejection is published as storage failure instead of ready",
+                        ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderStorageClassificationTest.kt" to
+                        setOf("encoded cache session startup failure is published as chapter storage error"),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt" to
+                        setOf(
+                            "online ReaderViewModel executes shared session scheduler encoded cache and progress chain",
+                            "legacy Android chapter state is a read only projection",
+                            "ReaderViewModel initialization preserves cooperative cancellation",
+                        ),
+                ),
+            47 to
+                mapOf(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderSessionProductionWiringTest.kt" to
+                        setOf(
+                            "stale storage reset cannot recycle a newer activation loader",
+                            "storage route reset is reduced by the canonical session and retires the old loader",
+                            "Android chapter publishes zero pages then the complete stable page list",
+                            "Android replacement generation ignores state from an unbound old page",
+                        ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt" to
+                        setOf(
+                            "online ReaderViewModel executes shared session scheduler encoded cache and progress chain",
+                            "legacy Android chapter state is a read only projection",
+                            "ReaderViewModel initialization preserves cooperative cancellation",
+                        ),
+                ),
+            53 to
+                mapOf(
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt" to
+                        setOf(
+                            "only a settled viewport in the active chapter produces a progress effect",
+                            "settled spread records its highest visible logical page and only the last page completes",
+                            "a partial settled page never clears an existing read state",
+                            "settlement identity creates a stable idempotency key and a later settlement creates a new key",
+                        ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressProductionWiringTest.kt" to
+                        setOf(
+                            "Android domain DI resolves the canonical reading progress recorder",
+                            "Android current settled page records progress through the canonical shared transaction",
+                        ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt" to
+                        setOf("newer current settlement rejects older adjacent activation and progress"),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt" to
+                        setOf(
+                            "issuing a new token invalidates every older viewport settlement",
+                            "an in-flight write completes before the latest settlement enters the serialized transaction",
+                        ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderDuplicateCompletionPolicyTest.kt" to
+                        setOf(
+                            "duplicate completion remains disabled independently of current chapter completion",
+                            "enabled duplicate completion marks only other unread chapters with the same number",
+                        ),
+                    "data/src/jvmTest/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepositoryTest.kt" to
+                        setOf(
+                            "reading a later chapter updates only that row and requires its last page to mark read",
+                            "partial progress preserves an existing read state",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/library/ChapterReadPresentationTest.kt" to
+                        setOf("partial chapter shows progress ring and one based page"),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt" to
+                        setOf(
+                            "online ReaderViewModel executes shared session scheduler encoded cache and progress chain",
+                            "legacy Android chapter state is a read only projection",
+                            "ReaderViewModel initialization preserves cooperative cancellation",
+                        ),
+                ),
+        )
     private val task4ProvenanceStatuses =
         mapOf(54 to "WIRED", 56 to "WIRED", 57 to "VERIFIED", 59 to "VERIFIED", 61 to "VERIFIED", 62 to "VERIFIED", 64 to "VERIFIED", 66 to "SHARED")
     private val task4BehaviorMethods =
@@ -2174,6 +2275,8 @@ class DesktopProductCapabilityContractTest {
                     item.getValue("statusDecision").jsonObject.getValue("behaviorMethods").jsonObject.mapValues { (_, methods) ->
                         methods.jsonArray.map { it.jsonPrimitive.content }.toSet()
                     }
+                } else if (id in readerCoreMigrationBehaviorMethods) {
+                    task3BehaviorMethods.getValue(id) + readerCoreMigrationBehaviorMethods.getValue(id)
                 } else {
                     task3BehaviorMethods.getValue(id)
                 }
@@ -2224,6 +2327,17 @@ class DesktopProductCapabilityContractTest {
                             mapOf(
                                 "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt" to
                                     setOf("current Android ReaderViewModel applies shared skip policy before exposing adjacent chapters"),
+                                "domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt" to
+                                    setOf("reader entry chooses the story earliest unfinished chapter from ascending or descending input"),
+                                "app/src/test/java/eu/kanade/tachiyomi/util/chapter/ChapterGetNextUnreadSharedPolicyTest.kt" to
+                                    setOf(
+                                        "Android entry adapter chooses the same story chapter from ascending or descending input",
+                                        "Android manga reader entry preserves fixed original sorting semantics in both directions",
+                                    ),
+                                "app-desktop/src/test/kotlin/mihon/desktop/ui/library/MangaDetailActionsTest.kt" to
+                                    setOf("next unread chapter chooses story earliest unfinished chapter in either configured direction"),
+                                "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt" to
+                                    setOf("continueReadingRequest uses oldest unfinished chapter and keeps navigation newest first"),
                             )
                     66 ->
                         task4BehaviorMethods.getValue(id) +

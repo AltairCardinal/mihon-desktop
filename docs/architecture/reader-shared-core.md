@@ -9,8 +9,10 @@
   viewport 进度决策；Desktop `PagePreloader` 也消费同一 scheduler；
 - 另已共享：解码/cache contract、宽图拆分/配对纯算法、输入导航、章节过滤、reader entry resolver 和滤镜参数；
 - 尚未共享：Desktop production materialize/session/window/progress producer wiring；
-- 当前 Android `ReaderViewModel` 与 Desktop `DesktopReaderPageLoader/ReaderScreenModel` 仍包含尚待后续
-  批次迁移的运行决策，但两端不再各自解释预加载优先级或 generation。
+- RA-01 已收口 Android：`ReaderViewModel`、`ChapterLoader`、`HttpPageLoader` 与 `ReaderChapter` 只负责
+  lifecycle、source/download/local/cache 和旧 View 状态投影；page-list、page-state、scheduler、window 与
+  progress 决策全部来自 shared 实现。Desktop `DesktopReaderPageLoader/ReaderScreenModel` 的私有运行决策
+  仍待 RD-01 删除。
 
 因此 `domain/src/commonMain/kotlin/mihon/domain/reader/` 现在不是完整的唯一 reader runtime。迁移目标是让
 Android 与 Desktop 消费从固定原版 Android 提取的同一个 `ReaderSessionCore`，同时把图形、文件、source、
@@ -132,6 +134,11 @@ Android 保留 Context/Source/Download/Local、ChapterCache、Bitmap/Coil、View
 保留 SourceManager/ClassLoader、download/local/archive、Skia/Compose、Voyager 和键鼠。adapter 只能映射，
 不能重新实现页序、优先级、Retry、相邻章或完成规则。
 
+Android 的 `ReaderChapter.State` 是旧 pager/webtoon 观察者使用的只读投影；唯一写入方向是
+`ReaderSessionReducer → ReaderChapter`。当在线章节在运行中变为已下载章节时，adapter 通过 canonical
+`ResetChapter` 失效旧 generation 并回收旧 loader，再由同一 `ChapterLoader` 五路 route factory 选择
+download/local/archive/EPUB/online I/O。任何 production 调用都不能从 legacy state 反向发布 session。
+
 较新上游 `bc7f7e70…` 的 cache journal + 实体文件存在性检查已由 Android encoded store adapter 保留；
 RC-02 已恢复 cached Error 的显式 Retry 强制重抓，RC-03 又由 shared scheduler 把 Retry 提升为 P0 并
 启动新 generation。encoded store 只有在 journal 与实体文件均存在后才提交逻辑索引；配额淘汰先确认
@@ -177,6 +184,10 @@ token；相邻章加载完成后只有最新 token 可以提交 active window，
 `RecordReadingProgress` 写入现有 SQLDelight 章节行；不新增 schema，不改变备份或 `last_page_read`。history 仍由 Android 原阅读计时链负责，
 该逐页事务设置 `recordHistory = false`，避免重复 history。已读章节被再次部分阅读时通过 `wasRead` 保留已读
 状态；同章节号 duplicate 更新仍只在独立 preference 开启时执行。
+
+RA-01 的 online→download route reset 只接受由同一 canonical Wait/Error generation 捕获的 token。token
+同时绑定原在线 `PageLoader` 身份；下载检查期间若 activation 安装了新 generation 或 local/download loader，
+旧 preload 的 reset 必须返回失败且立即退出，不能回收较新的 loader。
 
 `ReaderEntryResolver` 接收已经按漫画原始排序配置排列的候选与显式方向：升序取第一个未读，降序取最后一个
 未读。Android `getNextUnread`、Desktop 详情页阅读入口和书库“继续阅读”都通过该 resolver，因此不会把 UI

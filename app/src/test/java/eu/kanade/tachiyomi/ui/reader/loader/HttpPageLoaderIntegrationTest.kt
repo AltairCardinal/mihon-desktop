@@ -5,6 +5,7 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
+import eu.kanade.tachiyomi.ui.reader.model.publishLoadedPageListForTest
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -225,7 +226,7 @@ class HttpPageLoaderIntegrationTest {
         }
         val chapter = ReaderChapter(Chapter.create().copy(id = 1, mangaId = 1))
         val page = ReaderPage(0, imageUrl = "https://example.test/image").apply { this.chapter = chapter }
-        chapter.state = ReaderChapter.State.Loaded(listOf(page))
+        chapter.publishLoadedPageListForTest(listOf(page))
         val loader = HttpPageLoader(
             chapter = chapter,
             source = source,
@@ -309,7 +310,7 @@ class HttpPageLoaderIntegrationTest {
             val chapter = ReaderChapter(Chapter.create().copy(id = 1, mangaId = 1))
             pages = List(6) { ReaderPage(it, imageUrl = "https://example/$it") }
                 .onEach { it.chapter = chapter }
-            chapter.state = ReaderChapter.State.Loaded(pages)
+            chapter.publishLoadedPageListForTest(pages)
             loader = HttpPageLoader(
                 chapter = chapter,
                 source = source,
