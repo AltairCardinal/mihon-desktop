@@ -21,6 +21,8 @@ import okhttp3.Response
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.chapter.model.Chapter
 import java.io.File
@@ -122,6 +124,55 @@ class HttpPageLoaderIntegrationTest {
         assertEquals(Page.State.Queue, fixture.pages[0].status)
         assertFalse(fixture.pages[0].status is Page.State.Error)
         fixture.loader.recycle()
+    }
+
+    @Test
+    fun `late failure from old generation cannot replace ready content of the same page`() = runTest {
+        val source = mockk<HttpSource>()
+        val cache = mockk<ChapterCache>()
+        val response = mockk<Response>()
+        val releaseFirst = Channel<Unit>(Channel.UNLIMITED)
+        var attempts = 0
+        every { cache.isImageInCache(any()) } returns false
+        every { cache.putImageToCache(any(), any()) } returns Unit
+        every { cache.getImageFile(any()) } returns File("unused")
+        coEvery { source.getImage(any()) } coAnswers {
+            if (attempts++ == 0) {
+                withContext(NonCancellable) {
+                    releaseFirst.receive()
+                    throw IOException("late stale failure")
+                }
+            }
+            response
+        }
+        val chapter = ReaderChapter(Chapter.create().copy(id = 1, mangaId = 1))
+        val page = ReaderPage(0, imageUrl = "https://example.test/image").apply { this.chapter = chapter }
+        chapter.state = ReaderChapter.State.Loaded(listOf(page))
+        val loader = HttpPageLoader(
+            chapter = chapter,
+            source = source,
+            chapterCache = cache,
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        loader.onPageSelected(page)
+        runCurrent()
+        loader.onPageSelected(page)
+        runCurrent()
+
+        assertEquals(2, attempts)
+        assertEquals(Page.State.Ready, page.status)
+        val acceptedRef = page.encodedPageRef
+        assertNotNull(acceptedRef)
+        val acceptedSnapshot = chapter.sharedSessionStateFlow.value
+
+        releaseFirst.trySend(Unit).getOrThrow()
+        runCurrent()
+
+        assertEquals(Page.State.Ready, page.status)
+        assertEquals(acceptedRef, page.encodedPageRef)
+        assertSame(acceptedSnapshot, chapter.sharedSessionStateFlow.value)
+        loader.recycle()
     }
 
     private class Fixture(

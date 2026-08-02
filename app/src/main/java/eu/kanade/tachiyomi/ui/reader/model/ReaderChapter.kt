@@ -103,14 +103,18 @@ data class ReaderChapter(val chapter: Chapter) {
     internal fun completePageListLoad(
         generation: Long,
         pages: List<ReaderPage>,
+        descriptors: List<ReaderPageDescriptor> = pages.toSharedDescriptors(),
     ): Boolean = synchronized(sharedSessionLock) {
+        require(pages.map(ReaderPage::index) == descriptors.map(ReaderPageDescriptor::sourcePageIndex)) {
+            "Platform pages must match canonical page descriptors"
+        }
         val chapterId = sharedChapterId()
         applyTerminalState(
             value = State.Loaded(pages),
             intent = ReaderSessionIntent.PageListLoaded(
                 chapterId = chapterId,
                 generation = generation,
-                pages = pages.toSharedDescriptors(),
+                pages = descriptors,
             ),
         )
     }
@@ -118,6 +122,7 @@ data class ReaderChapter(val chapter: Chapter) {
     internal fun failPageListLoad(
         generation: Long,
         error: Throwable,
+        appError: AppError = AppError.Unknown(error),
     ): Boolean = synchronized(sharedSessionLock) {
         val chapterId = sharedChapterId()
         applyTerminalState(
@@ -125,7 +130,7 @@ data class ReaderChapter(val chapter: Chapter) {
             intent = ReaderSessionIntent.PageListFailed(
                 chapterId = chapterId,
                 generation = generation,
-                error = AppError.Unknown(error),
+                error = appError,
             ),
         )
     }
@@ -228,9 +233,11 @@ data class ReaderChapter(val chapter: Chapter) {
             val pageId = ReaderPageId(chapterId, page.index)
             page.bindSharedState { loadState ->
                 dispatch(
-                    ReaderSessionIntent.PageStateChanged(
+                    ReaderSessionIntent.PageContentChanged(
                         pageId = pageId,
                         generation = generation,
+                        imageUrl = page.imageUrl,
+                        encodedPageRef = page.encodedPageRef,
                         loadState = loadState,
                     ),
                 )
@@ -243,6 +250,7 @@ data class ReaderChapter(val chapter: Chapter) {
             sourcePageIndex = page.index,
             url = page.url,
             imageUrl = page.imageUrl,
+            encodedPageRef = page.encodedPageRef,
             initialLoadState = page.toSharedLoadState(),
         )
     }

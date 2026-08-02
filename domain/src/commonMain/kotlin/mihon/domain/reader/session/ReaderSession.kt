@@ -13,6 +13,13 @@ data class ReaderPageId(
     }
 }
 
+@JvmInline
+value class EncodedPageRef(val value: String) {
+    init {
+        require(value.isNotBlank()) { "Encoded page reference must not be blank" }
+    }
+}
+
 sealed interface ReaderChapterLoadState {
     data object Wait : ReaderChapterLoadState
     data object LoadingPageList : ReaderChapterLoadState
@@ -38,6 +45,7 @@ data class ReaderPageDescriptor(
     val sourcePageIndex: Int,
     val url: String = "",
     val imageUrl: String? = null,
+    val encodedPageRef: EncodedPageRef? = null,
     val initialLoadState: ReaderPageLoadState = ReaderPageLoadState.Queued,
 ) {
     init {
@@ -49,6 +57,7 @@ data class ReaderPageSession(
     val id: ReaderPageId,
     val url: String,
     val imageUrl: String?,
+    val encodedPageRef: EncodedPageRef?,
     val loadState: ReaderPageLoadState,
 )
 
@@ -110,6 +119,13 @@ sealed interface ReaderSessionIntent {
         val generation: Long,
         val loadState: ReaderPageLoadState,
     ) : ReaderSessionIntent
+    data class PageContentChanged(
+        val pageId: ReaderPageId,
+        val generation: Long,
+        val imageUrl: String?,
+        val encodedPageRef: EncodedPageRef?,
+        val loadState: ReaderPageLoadState,
+    ) : ReaderSessionIntent
 }
 
 sealed interface ReaderSessionEffect {
@@ -135,6 +151,7 @@ object ReaderSessionReducer {
         is ReaderSessionIntent.PageListLoaded -> pageListLoaded(snapshot, intent)
         is ReaderSessionIntent.PageListFailed -> pageListFailed(snapshot, intent)
         is ReaderSessionIntent.PageStateChanged -> pageStateChanged(snapshot, intent)
+        is ReaderSessionIntent.PageContentChanged -> pageContentChanged(snapshot, intent)
     }
 
     private fun openChapter(
@@ -171,6 +188,7 @@ object ReaderSessionReducer {
                 id = ReaderPageId(intent.chapterId, descriptor.sourcePageIndex),
                 url = descriptor.url,
                 imageUrl = descriptor.imageUrl,
+                encodedPageRef = descriptor.encodedPageRef,
                 loadState = descriptor.initialLoadState,
             )
         }
@@ -212,6 +230,28 @@ object ReaderSessionReducer {
         if (currentPage.loadState == intent.loadState) return ReaderSessionReduction(snapshot)
         val pages = snapshot.activeChapter.pages.toMutableList().apply {
             this[pageIndex] = currentPage.copy(loadState = intent.loadState)
+        }
+        return ReaderSessionReduction(
+            snapshot.copy(activeChapter = snapshot.activeChapter.copy(pages = pages)),
+        )
+    }
+
+    private fun pageContentChanged(
+        snapshot: ReaderSessionSnapshot,
+        intent: ReaderSessionIntent.PageContentChanged,
+    ): ReaderSessionReduction {
+        if (!snapshot.accepts(intent.pageId.chapterId, intent.generation)) return ReaderSessionReduction(snapshot)
+        val pageIndex = snapshot.activeChapter.pages.indexOfFirst { it.id == intent.pageId }
+        if (pageIndex < 0) return ReaderSessionReduction(snapshot)
+        val currentPage = snapshot.activeChapter.pages[pageIndex]
+        val updatedPage = currentPage.copy(
+            imageUrl = intent.imageUrl,
+            encodedPageRef = intent.encodedPageRef,
+            loadState = intent.loadState,
+        )
+        if (updatedPage == currentPage) return ReaderSessionReduction(snapshot)
+        val pages = snapshot.activeChapter.pages.toMutableList().apply {
+            this[pageIndex] = updatedPage
         }
         return ReaderSessionReduction(
             snapshot.copy(activeChapter = snapshot.activeChapter.copy(pages = pages)),

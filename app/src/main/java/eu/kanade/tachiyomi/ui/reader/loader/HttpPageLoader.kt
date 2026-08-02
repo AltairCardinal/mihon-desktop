@@ -19,6 +19,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import mihon.domain.reader.PreloadJobKey
 import mihon.domain.reader.ReaderPreloadPlanner
+import mihon.domain.reader.materialize.CanonicalReaderMaterializeExecutor
+import mihon.domain.reader.materialize.ReaderMaterializeExecutor
+import mihon.domain.reader.materialize.ReaderPageFetchRequest
+import mihon.domain.reader.materialize.ReaderPageMaterializeEvent
+import mihon.domain.reader.materialize.ReaderPageMaterializeResult
+import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderPageId
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.withIOContext
 import uy.kohesive.injekt.Injekt
@@ -36,6 +43,7 @@ internal class HttpPageLoader(
     private val source: HttpSource,
     private val chapterCache: ChapterCache = Injekt.get(),
     dispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val materializeExecutor: ReaderMaterializeExecutor = CanonicalReaderMaterializeExecutor,
 ) : PageLoader() {
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -106,6 +114,7 @@ internal class HttpPageLoader(
                 page = page,
                 key = PreloadJobKey(page.index, currentGeneration),
                 priority = 2,
+                forceRefresh = false,
             )
         }
         if (queuedPage != null) queueSignal.trySend(Unit)
@@ -132,6 +141,7 @@ internal class HttpPageLoader(
                     page = candidate,
                     key = request.jobKey,
                     priority = if (request.pageIndex == page.index) 1 else 0,
+                    forceRefresh = false,
                 )
             }
 
@@ -161,7 +171,12 @@ internal class HttpPageLoader(
             page.status = Page.State.Queue
         }
         val registered = synchronized(preloadJobLock) {
-            registerPreloadLocked(page, PreloadJobKey(page.index, currentGeneration), priority = 2) != null
+            registerPreloadLocked(
+                page = page,
+                key = PreloadJobKey(page.index, currentGeneration),
+                priority = 2,
+                forceRefresh = true,
+            ) != null
         }
         if (registered) queueSignal.trySend(Unit)
     }
@@ -198,44 +213,63 @@ internal class HttpPageLoader(
      *
      * @param page the page whose source image has to be downloaded.
      */
-    private suspend fun internalLoadPage(page: ReaderPage, jobKey: PreloadJobKey) {
+    private suspend fun internalLoadPage(
+        page: ReaderPage,
+        jobKey: PreloadJobKey,
+        forceRefresh: Boolean,
+    ) {
+        val port = AndroidReaderPageFetchPort(page, source, chapterCache)
+        val request = ReaderPageFetchRequest(
+            pageId = ReaderPageId(
+                chapterId = ReaderChapterId(checkNotNull(chapter.chapter.id)),
+                sourcePageIndex = page.index,
+            ),
+            generation = jobKey.generation,
+            url = page.url,
+            imageUrl = page.imageUrl,
+        )
         try {
-            if (page.imageUrl.isNullOrEmpty()) {
-                page.status = Page.State.LoadPage
-                val imageUrl = source.getImageUrl(page)
-                if (!publishIfAccepted(jobKey) { page.imageUrl = imageUrl }) {
-                    discardStaleResult(page, jobKey)
-                    return
-                }
-            }
-            val imageUrl = page.imageUrl!!
-
-            if (!chapterCache.isImageInCache(imageUrl)) {
-                page.status = Page.State.DownloadImage
-                val imageResponse = source.getImage(page)
-                chapterCache.putImageToCache(imageUrl, imageResponse)
-            }
-
-            if (!publishIfAccepted(jobKey) {
-                    page.stream = { chapterCache.getImageFile(imageUrl).inputStream() }
-                    page.status = Page.State.Ready
-                }
-            ) {
+            val result = materializeExecutor.materializePage(
+                request = request,
+                port = port,
+                forceRefresh = forceRefresh,
+                publish = { event -> publishIfAccepted(jobKey) { page.applyMaterializeEvent(event, port) } },
+            )
+            if (result is ReaderPageMaterializeResult.Rejected) {
                 discardStaleResult(page, jobKey)
-                return
             }
         } catch (e: CancellationException) {
             discardStaleResult(page, jobKey)
             throw e
-        } catch (e: Throwable) {
-            if (!publishIfAccepted(jobKey) { page.status = Page.State.Error(e) }) {
-                discardStaleResult(page, jobKey)
+        }
+    }
+
+    private fun ReaderPage.applyMaterializeEvent(
+        event: ReaderPageMaterializeEvent,
+        port: AndroidReaderPageFetchPort,
+    ) {
+        when (event) {
+            ReaderPageMaterializeEvent.ResolvingImage -> status = Page.State.LoadPage
+            is ReaderPageMaterializeEvent.Downloading -> {
+                imageUrl = event.imageUrl
+                status = Page.State.DownloadImage
+            }
+            is ReaderPageMaterializeEvent.Ready -> {
+                imageUrl = event.imageUrl
+                encodedPageRef = event.encodedPageRef
+                stream = { port.openEncodedPage(event.encodedPageRef) }
+                status = Page.State.Ready
+            }
+            is ReaderPageMaterializeEvent.Failed -> {
+                failMaterialization(event.error, event.cause ?: IllegalStateException(event.error.toString()))
             }
         }
     }
 
     private fun runQueuedPage(queued: PriorityPage) {
-        val loadJob = scope.launch(start = CoroutineStart.LAZY) { internalLoadPage(queued.page, queued.jobKey) }
+        val loadJob = scope.launch(start = CoroutineStart.LAZY) {
+            internalLoadPage(queued.page, queued.jobKey, queued.forceRefresh)
+        }
         synchronized(preloadJobLock) { activePreloadJobs[queued.jobKey] = loadJob }
         loadJob.invokeOnCompletion {
             synchronized(preloadJobLock) {
@@ -273,13 +307,14 @@ internal class HttpPageLoader(
         page: ReaderPage,
         key: PreloadJobKey,
         priority: Int,
+        forceRefresh: Boolean,
     ): PriorityPage? {
         if (queuedPreloadJobs.containsKey(key) || activePreloadJobs.containsKey(key)) return null
         if (page.status == Page.State.Ready) return null
         if (activePreloadJobs.keys.any { it.pageIndex == key.pageIndex && it != key }) {
             page.status = Page.State.Queue
         }
-        val queued = PriorityPage(page, priority, key)
+        val queued = PriorityPage(page, priority, key, forceRefresh)
         queuedPreloadJobs[key] = queued
         queue.offer(queued)
         return queued
@@ -335,6 +370,7 @@ private class PriorityPage(
     val page: ReaderPage,
     val priority: Int,
     val jobKey: PreloadJobKey,
+    val forceRefresh: Boolean,
 ) : Comparable<PriorityPage> {
     companion object {
         private val idGenerator = AtomicInt(0)

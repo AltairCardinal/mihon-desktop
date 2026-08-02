@@ -87,6 +87,30 @@ class ReaderSessionReducerTest {
     }
 
     @Test
+    fun `materialized content updates image and encoded reference without changing page identity`() {
+        val chapterId = ReaderChapterId(7)
+        val pageId = ReaderPageId(chapterId, 0)
+        val loaded = loadedSession(chapterId)
+        val encodedPageRef = EncodedPageRef("encoded-page-0")
+
+        val materialized = ReaderSessionReducer.reduce(
+            loaded,
+            ReaderSessionIntent.PageContentChanged(
+                pageId = pageId,
+                generation = loaded.generation,
+                imageUrl = "https://example.test/image/0",
+                encodedPageRef = encodedPageRef,
+                loadState = ReaderPageLoadState.Ready,
+            ),
+        ).snapshot.activeChapter.pages.single()
+
+        assertEquals(pageId, materialized.id)
+        assertEquals("https://example.test/image/0", materialized.imageUrl)
+        assertEquals(encodedPageRef, materialized.encodedPageRef)
+        assertEquals(ReaderPageLoadState.Ready, materialized.loadState)
+    }
+
+    @Test
     fun `replacement generation rejects stale page lists errors and page states`() {
         val chapterId = ReaderChapterId(7)
         val first = ReaderSessionReducer.reduce(

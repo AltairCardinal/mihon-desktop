@@ -1936,7 +1936,10 @@
     "desktopImplementation": "ReaderPreloadPlanner is a shared pure window/generation planner consumed by Android HttpPageLoader and Desktop PagePreloader; Android HttpPageLoader, Desktop PagePreloader, and DesktopReaderPageLoader remain separate executors until RC-03/RD-01.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt", "symbol": "private val preloadSize = 4"}],
-    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt"],
+    "sharedImplementationPaths": [
+      "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt",
+      "domain/src/commonMain/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutor.kt"
+    ],
     "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt"],
     "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt"],
     "deviations": [
@@ -1951,26 +1954,42 @@
         "classification": "PRODUCT_GAP",
         "evidenceRef": "9111d70a85565e20940fa4736c97eea8c1a44a0d",
         "closureTask": "RC-02",
-        "description": "The current Android HttpPageLoader no longer forces a cached Error page to refetch on explicit Retry; this remains outside the verified planner slice until RC-02."
+        "resolutionStatus": "CLOSED",
+        "resolutionEvidence": {
+          "sharedExecutor": "domain/src/commonMain/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutor.kt",
+          "androidProductionAdapter": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt",
+          "productionBehaviorTest": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ReaderMaterializeProductionWiringTest.kt#HTTP page request runs through canonical executor and retry forces redownload"
+        },
+        "description": "RC-02 restored fixed-original explicit Retry force through the canonical page materialize executor; the original drift remains recorded as historical provenance and is no longer an open product gap."
       }
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt", "symbol": "private val preloadSize = 4", "line": 44}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt", "symbol": "private val preloadPlanner", "line": 50}],
-      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt", "symbol": "class ReaderPreloadPlanner", "line": 272}],
+      "SHARED_OR_ADAPTER": [
+        {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt", "symbol": "class ReaderPreloadPlanner", "line": 272},
+        {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutor.kt", "symbol": "object CanonicalReaderMaterializeExecutor", "line": 85}
+      ],
       "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt", "symbol": "private val planner", "line": 45}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt#page change cancels every active or queued old generation request", "productionMarkers": ["preloader.preload"]}]
     },
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
+      "domain/src/commonTest/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutorTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ReaderMaterializeProductionWiringTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt"
     ],
-    "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["fixed original Mihon preload window keeps forward-only behavior"], "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt": ["page change cancels every active or queued old generation request"]},
+    "behaviorMethods": {
+      "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["fixed original Mihon preload window keeps forward-only behavior"],
+      "domain/src/commonTest/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutorTest.kt": ["retry forces a fresh fetch even when encoded content is cached"],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ReaderMaterializeProductionWiringTest.kt": ["HTTP page request runs through canonical executor and retry forces redownload"],
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt": ["page change cancels every active or queued old generation request"]
+    },
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
-    "readerCoreMigrationScope": {"task": "R0-01", "verifiedSlice": "PRELOAD_WINDOW_PLANNER", "canonicalSessionExecutor": "NOT_WIRED", "closureTask": "RD-01", "openProductGaps": ["HTTP_RETRY_FORCE_DRIFT"]},
-    "verificationScope": "VERIFIED only for the forward-window planner and each platform's current generation/cancellation adapter; cached-error Retry force is excluded and tracked as HTTP_RETRY_FORCE_DRIFT. This does not prove shared ReaderSessionCore, one priority scheduler, or one page materialization executor.",
+    "readerCoreMigrationScope": {"task": "R0-01", "verifiedSlice": "PRELOAD_WINDOW_PLANNER", "canonicalSessionExecutor": "NOT_WIRED", "closureTask": "RD-01", "materializeTask": "RC-02", "androidMaterializeExecutor": "WIRED", "openProductGaps": [], "closedProductGaps": ["HTTP_RETRY_FORCE_DRIFT"]},
+    "verificationScope": "VERIFIED for the forward-window planner, each platform's current generation/cancellation adapter, and Android's RC-02 canonical page materialization path where explicit Retry forces a fresh fetch. This does not prove shared ReaderSessionCore, one priority scheduler, or a Desktop-wired page materialization executor.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },

@@ -113,14 +113,14 @@ PagerViewer / WebtoonViewer
 
 完整提交清单及分类保存在 reader fixture，缺任一跟踪提交会使 provenance 测试失败。
 
-## Fork 增强与已知缺口
+## Fork 增强与缺口处置
 
 | 项目 | 分类 | 当前处理 |
 | --- | --- | --- |
 | generation 取消、迟到结果拒绝 | `CROSS_PLATFORM_RELIABILITY_ENHANCEMENT` | 保留并在 RC-03 纳入唯一 scheduler |
 | adjacent portrait pairing | `CROSS_PLATFORM_PRODUCT_ENHANCEMENT` | 作为 presentation 能力保留；固定原版只拆一张宽源图 |
 | Desktop 完整下一章预取 | `DESKTOP_PRODUCT_ENHANCEMENT` | RD-02 的显式 policy，不改变 Android 默认流量 |
-| cached Error 的 Retry 不再强制重抓 | `PRODUCT_GAP` | 当前 Fork generation 改造丢失 fixed `force`；RC-02 先写失败测试后修复 |
+| cached Error 的 Retry 不再强制重抓 | `PRODUCT_GAP`（RC-02 已关闭） | RC-02 已恢复显式 Retry 强制重抓；shared executor contract 与 Android production wiring 测试共同保护 |
 | Android 双页只上报 `firstPage` | `PRODUCT_GAP` | 最终 pair 可能不能按真实末页完成；RC-05/RP-03 改为 settled 可见逻辑页集合 |
 
 相邻 portrait pairing 的 fork 起点为 `bef51fc6924c6a9de185fa0fb2a56ce76309dc19`；固定
@@ -131,8 +131,10 @@ PagerViewer / WebtoonViewer
 ## 当前迁移状态
 
 `domain/src/commonMain/kotlin/mihon/domain/reader/` 当前验证的是若干窄切片：页面/章节 DTO、解码与缓存
-contract、窗口 planner、配对/拆页纯算法、输入导航、章节过滤和滤镜参数。它尚未拥有 page-list executor、
-单页 materialize executor、唯一 scheduler、current/previous/next window、跨章激活或进度 effect。
+contract、窗口 planner、配对/拆页纯算法、输入导航、章节过滤和滤镜参数。RC-02 已增加 page-list 与单页
+materialize executor，并由 Android `ChapterLoader`/`HttpPageLoader` 生产链消费；核心只传稳定 descriptor 和
+opaque `EncodedPageRef`，download/local/archive/EPUB/online 的具体 I/O 仍留在 Android adapter。它尚未拥有
+唯一 scheduler、current/previous/next window、跨章激活、进度 effect 或 Desktop production wiring。
 
 因此 parity manifest 9/43/44/45/47/49/51/54 的 `VERIFIED` 只表示各自窄 capability 已验证；每项的
 `readerCoreMigrationScope.canonicalSessionExecutor` 在 RD-01 前必须保持 `NOT_WIRED`。删除或绕过当前

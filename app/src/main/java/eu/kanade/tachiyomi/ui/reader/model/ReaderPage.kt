@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.reader.model
 import eu.kanade.tachiyomi.source.model.Page
 import mihon.domain.error.AppError
 import mihon.domain.reader.ReaderPageModel
+import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderPageLoadState
 import java.io.InputStream
 
@@ -16,10 +17,16 @@ open class ReaderPage(
     open lateinit var chapter: ReaderChapter
 
     private var sharedStatePublisher: ((ReaderPageLoadState) -> Unit)? = null
+    private var sharedMaterializeError: AppError? = null
+
+    var encodedPageRef: EncodedPageRef? = null
 
     override var status: State
         get() = super.status
         set(value) {
+            if (value !is State.Error) {
+                sharedMaterializeError = null
+            }
             super.status = value
             publishSharedState()
         }
@@ -47,7 +54,12 @@ open class ReaderPage(
         State.LoadPage -> ReaderPageLoadState.ResolvingImage
         State.DownloadImage -> ReaderPageLoadState.Downloading(progress.takeIf { it in 0..100 })
         State.Ready -> ReaderPageLoadState.Ready
-        is State.Error -> ReaderPageLoadState.Error(AppError.Unknown(current.error))
+        is State.Error -> ReaderPageLoadState.Error(sharedMaterializeError ?: AppError.Unknown(current.error))
+    }
+
+    internal fun failMaterialization(error: AppError, cause: Throwable) {
+        sharedMaterializeError = error
+        status = State.Error(cause)
     }
 
     private fun publishSharedState() {

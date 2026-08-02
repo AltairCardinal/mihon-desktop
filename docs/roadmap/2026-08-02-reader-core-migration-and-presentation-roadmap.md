@@ -223,7 +223,7 @@ DesktopReaderScreen / Android ReaderActivity
 
 - [x] `R0-01` 冻结原版行为、跟踪上游差异并纠正现有共享核心能力声明
 - [x] `RC-01` 提取稳定 ReaderSession/Chapter/Page 状态与逻辑页身份
-- [ ] `RC-02` 提取原版章节页列表与单页 materialize executor
+- [x] `RC-02` 提取原版章节页列表与单页 materialize executor
 - [ ] `RC-03` 提取统一优先级调度、generation 取消和 encoded store 契约
 - [ ] `RC-04` 提取 current/previous/next 章节窗口与跨章状态转换
 - [ ] `RC-05` 提取进度、末页完成和阅读入口选择语义
@@ -460,6 +460,7 @@ python scripts/gradle-coordinator.py run --key reader-core-final -- ./gradlew :d
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-08-02 | `R0-01` | `TODO -> DOING -> REVIEW -> DONE` | `r0-reader-authority-red-cmd`：新 authority contract 因缺少 reader fixture 与 manifest migration scope 出现 3 个预期失败 | `r0-reader-review-fix-final2`：authority + manifest contract + Spotless 全绿；22 个固定/lineage blob、18 个 tracked commit、方法体调用链与 deviation provenance 可执行 | 1 轮独立审查 + 1 轮修复复审；3 个 P2 已关闭，复审发现的 ID 40 scope 污染已移除，并由“scope 只能归属 ID 45”断言保护 | `git diff --check`；本批次不改变产品行为，未运行发布构建 | 本批次提交（由本行所在 Git commit 解析） |
 | 2026-08-02 | `RC-01` | `TODO -> DOING -> REVIEW -> DONE` | `rc01-domain-red`、`rc01-android-red2`：缺少 session reducer 与 Android production flow；`rc01-review-domain-red`、`rc01-review-android-red`、`rc01-loader-install-red`、`rc01-loader-ownership-red2`：依次复现重复终态、旧 generation 成功/失败、晚构造 loader 和所有权移交竞态 | `rc01-close-domain`：6 项 session reducer contract 全绿；`rc01-close-android`：真实 `ChapterLoader` 的 5 项 generation/loader 竞态以及 Android session、transition、shared parity 全绿 | 1 轮独立审查 + 1 轮修复复审；初审 P1/P2 和复审发现的 loader 所有权窗口均已关闭，未追加第二轮代理复审 | `rc01-close-static`：`:source-api:jvmTest` 与 `domain/source-api/app` Spotless 全绿；`git diff --check`；本阶段未运行全量/发布构建 | 本批次提交（由本行所在 Git commit 解析） |
+| 2026-08-02 | `RC-02` | `TODO -> DOING -> REVIEW -> DONE` | `rc02-domain-red`、`rc02-android-red`、`rc02-adapter-red`：缺少 canonical executor、Android production port/wiring 与 HTTP adapter；`rc02-review-storage-red`、`rc02-review-dispatch-red`、`rc02-authority-red`、`rc02-review-app-error-red`、`rc02-review-manifest-red`、`rc02-review-default-factory-red`：依次复现 Storage 误分类、真实 route/factory 缺口、Retry 缺口未闭环、已有 AppError 被重包、manifest capability 污染和默认 concrete factory 未执行 | `rc02-close-domain`：materialize/session/parity contract 全绿；`rc02-final-android`：cache、page-list、五路分派、HTTP 403/429/500/畸形响应、Retry、同页旧 generation 与 production wiring 全绿；`rc02-final-authority`：完整 reader authority 类全绿 | 1 轮独立审查 + 1 轮修复复审；初审 4 项与复审 3 个 P2 均已关闭，复审后的修复由主代理通过 AppError/取消、默认 concrete factory 与 capability 唯一归属行为测试核验，未追加第二轮代理复审 | `rc02-final-spotless`：domain/app Spotless 全绿；`git diff --check`；`app-desktop` 未配置 Spotless task，以 Kotlin 编译、完整 authority 测试和 diff 校验覆盖；本阶段未运行全量/发布构建 | 本批次提交（由本行所在 Git commit 解析） |
 
 `R0-01` 范围说明：本批次保持 8 个内聚文件，但逐 symbol/blob/marker 夹具、18 项上游分类、变异测试和
 权威文档合计超过 400 行。它们共同构成一个不可拆分的 provenance 关闭条件；拆开会让 manifest 或文档
@@ -471,6 +472,13 @@ python scripts/gradle-coordinator.py run --key reader-core-final -- ./gradlew :d
 这些内容必须同批运行才能证明 Android 不是只消费未使用 DTO。主要风险是重复终态、旧 page-list 回填、
 旧 loader 覆盖或泄漏，以及 URL 为空时身份漂移；已由首终态门禁、`ChapterId + sourcePageIndex`、原子
 loader 移交/单次回收和 5 项 production 竞态测试控制。Android UI、页加载优先级与持久化行为未改变。
+
+`RC-02` 范围说明：本批次约 20 个内聚 production/test/authority 文件并超过 400 行，原因是 shared port、
+canonical executor、Android adapter、download/local/archive/EPUB/online 分派、真实 HTTP/缓存错误边界与
+机器权威必须同批可执行；拆开会产生未消费 core 或无法证明 production wiring 的中间状态。主要风险是
+Retry 未强制重抓、旧 generation 回填、平台流对象泄漏进 core、local/storage 错误误分类及 factory 路由
+漂移；已由 opaque `EncodedPageRef`、原子 materialize event、generation 发布门禁、默认 concrete factory、
+MockWebServer 与 capability 唯一归属测试控制。Android UI、当前 +4 调度策略和 Desktop presentation 未改。
 
 建议状态记录使用 `TODO / DOING / BLOCKED / REVIEW / DONE`；状态只用于解释，checkbox 仍是唯一完成标记。
 

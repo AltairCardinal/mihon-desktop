@@ -196,6 +196,25 @@ class ReaderFixedMainAuthorityTest {
 
         val preloadItem = items.getValue(45).jsonObject
         val preloadDecisionScope = "PRELOAD_WINDOW_PLANNER_AND_PLATFORM_GENERATION_ADAPTERS"
+        val materializeExecutorPath =
+            "domain/src/commonMain/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutor.kt"
+        assertEquals(
+            setOf(45),
+            items.filterValues { item ->
+                item.jsonObject["sharedImplementationPaths"]?.jsonArray?.any {
+                    it.jsonPrimitive.content == materializeExecutorPath
+                } == true
+            }.keys,
+            "The RC-02 materialize executor must belong only to reader capability ID 45",
+        )
+        assertTrue(
+            preloadItem.getValue("roleEvidence").jsonObject.getValue("SHARED_OR_ADAPTER").jsonArray.any { evidence ->
+                val entry = evidence.jsonObject
+                entry.requiredText("path") == materializeExecutorPath &&
+                    entry.requiredText("symbol") == "object CanonicalReaderMaterializeExecutor"
+            },
+            "ID 45 must bind the shared materialize executor symbol",
+        )
         assertEquals(
             preloadDecisionScope,
             preloadItem.getValue("statusDecision").jsonObject.requiredText("scope"),
@@ -214,14 +233,30 @@ class ReaderFixedMainAuthorityTest {
             "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
             preloadDeviations.getValue("GENERATION_HARDENING").requiredText("classification"),
         )
-        assertEquals("PRODUCT_GAP", preloadDeviations.getValue("HTTP_RETRY_FORCE_DRIFT").requiredText("classification"))
-        assertEquals("RC-02", preloadDeviations.getValue("HTTP_RETRY_FORCE_DRIFT").requiredText("closureTask"))
+        val retryDeviation = preloadDeviations.getValue("HTTP_RETRY_FORCE_DRIFT")
+        assertEquals("PRODUCT_GAP", retryDeviation.requiredText("classification"))
+        assertEquals("RC-02", retryDeviation.requiredText("closureTask"))
+        assertEquals("CLOSED", retryDeviation.requiredText("resolutionStatus"))
+        val retryResolution = retryDeviation.getValue("resolutionEvidence").jsonObject
+        assertEquals(
+            "domain/src/commonMain/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutor.kt",
+            retryResolution.requiredText("sharedExecutor"),
+        )
+        assertEquals(
+            "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ReaderMaterializeProductionWiringTest.kt#HTTP page request runs through canonical executor and retry forces redownload",
+            retryResolution.requiredText("productionBehaviorTest"),
+        )
+        val migrationScope = preloadItem.getValue("readerCoreMigrationScope").jsonObject
+        assertEquals("WIRED", migrationScope.requiredText("androidMaterializeExecutor"))
+        assertEquals(
+            emptySet<String>(),
+            migrationScope.getValue("openProductGaps").jsonArray.map { it.jsonPrimitive.content }.toSet(),
+        )
         assertEquals(
             setOf("HTTP_RETRY_FORCE_DRIFT"),
-            preloadItem.getValue("readerCoreMigrationScope").jsonObject
-                .getValue("openProductGaps").jsonArray.map { it.jsonPrimitive.content }.toSet(),
+            migrationScope.getValue("closedProductGaps").jsonArray.map { it.jsonPrimitive.content }.toSet(),
         )
-        assertTrue(preloadItem.requiredText("verificationScope").contains("cached-error Retry force is excluded"))
+        assertTrue(preloadItem.requiredText("verificationScope").contains("explicit Retry forces a fresh fetch"))
     }
 
     private fun validateFixture(source: String) {
