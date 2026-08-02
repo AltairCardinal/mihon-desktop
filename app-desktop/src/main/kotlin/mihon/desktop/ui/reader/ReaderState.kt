@@ -7,6 +7,7 @@ import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.VirtualPage
 import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
+import mihon.desktop.ui.reader.presentation.DisplayUnitId
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderChapterTransitionModel
 
@@ -19,6 +20,7 @@ import mihon.domain.reader.ReaderChapterTransitionModel
 data class ReaderState(
     // ── Page data ────────────────────────────────────────────────────────────
     val currentPage: Int = 0,
+    val currentDisplayUnitId: DisplayUnitId? = null,
     val resolvedUrls: List<String> = emptyList(),
     val isLoadingPages: Boolean = false,
     val errorMessage: String? = null,

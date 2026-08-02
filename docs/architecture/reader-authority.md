@@ -172,6 +172,15 @@ NonCancellable。Android 保留的 `Context`、Source/Download/Local I/O、Chapt
 Activity 生命周期均为 adapter/presentation 边界，不再拥有 page-list、page-state、scheduler、window 或
 progress 的第二套生产决策。
 
+RP-01 已在 Desktop 建立首个 production presentation consumer：`SinglePagedPresentation` 通过统一 registry
+把稳定 `ReaderPageId` 映射为 `DisplayUnitId`，LTR/RTL 宽页切片只改变显示顺序，不改变 source identity；
+settled unit 回报 `VisiblePageSet`。单页 pager 的 key 与固定 Compose 容器不再使用 URL，Loading、Ready、
+Error 和原位 Retry 在同一 identity 下切换。拖拽中的 `currentPage` 不提交进度，只有 settled unit 会把完整
+`DisplayUnitId` 写回状态，因此返回宽页时能恢复同一切片而不是退回第一片。由于 Desktop canonical session
+尚待 RD-01 接线，当前 URL slot
+只经无 I/O 临时 adapter 投影为 `ReaderChapterSession`；该 adapter 不代表 Desktop loader/session 已迁移。
+Webtoon 与 Dual 也分别留给 RP-02、RP-03，因此 ID 43 只能新增“Desktop Single 已接线”的窄证据。
+
 因此 parity manifest 9/43/44/45/47/49/51/53/54 的 `VERIFIED` 只表示各自窄 capability 已验证；每项的
 `readerCoreMigrationScope.canonicalSessionExecutor` 在 RD-01 前必须保持 `NOT_WIRED`。删除或绕过当前
 窄能力仍应让各自测试失败，但这些测试不能被引用为“Android/Desktop 已经共用完整 reader core”的证据。

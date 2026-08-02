@@ -1834,7 +1834,14 @@
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/reader/VirtualPageList.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/reader/DualPageState.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/PageSplitHalf.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/PageSplitHalf.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderState.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewerAdapter.kt", "symbol": "class PagerViewerAdapter", "line": 18}],
@@ -1843,10 +1850,18 @@
         {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagePairingAlgorithm.kt", "symbol": "ReaderPagePairing.build(", "line": 13}
       ],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt", "symbol": "object ReaderPagePairing", "line": 122}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/VirtualPageList.kt", "symbol": "fun buildVirtualPageList(", "line": 8}],
+      "DESKTOP_CONSUMER": [
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/VirtualPageList.kt", "symbol": "fun buildVirtualPageList(", "line": 8},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt", "symbol": "object SinglePagedPresentation", "line": 15},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "fun ZoomablePagerViewer(", "line": 88},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt", "symbol": "fun SinglePagePagerViewer(", "line": 53}
+      ],
       "FIXTURE": [
         {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt#fork-added pairing adapter and shared core produce the same enhancement vectors", "productionMarkers": ["PagePairingAlgorithm.buildPairings", "ReaderPagePairing.build"]},
-        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt#LTR single spread produces LEFT then RIGHT", "productionMarkers": ["buildVirtualPageList", "PageSplitHalf.LEFT"]}
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt#LTR single spread produces LEFT then RIGHT", "productionMarkers": ["buildVirtualPageList", "PageSplitHalf.LEFT"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt#late content and load-state changes preserve display-unit identities", "productionMarkers": ["SinglePagedPresentation.present", "DisplayUnit::id"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt#single-page viewport keeps stable slots mounted through chapter loading and error", "productionMarkers": ["readerViewportBody", "ReaderViewportBody.CONTENT"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagePresentationIdentityTest.kt#production single-page selector mounts the SPI display unit", "productionMarkers": ["ZoomablePagerViewer", "ReaderDisplayUnitIdKey"]}
       ]
     },
     "deviations": [
@@ -1855,16 +1870,24 @@
       { "classification": "CORRECTNESS_BUGFIX", "description": "Odd-pixel split bounds intentionally preserve the center line that historical ImageUtil.splitInHalf omitted." },
       { "classification": "PLATFORM_ADAPTER", "description": "Android View adapters and Desktop Compose/Skia rendering remain separate consumers of the shared enhancement." }
     ],
-    "desktopImplementation": "VirtualPageList/DualPageState/PageSplitHalf consume shared transforms and explicitly layer cover single, manual adjustment, edge matching and landscape parity without claiming fixed-main pairing authority",
+    "desktopImplementation": "ReaderPresentationStrategy/DisplayUnit/VisiblePageSet mode registry 与 SinglePagedPresentation 现已驱动 Desktop 单页 production selector；Pager 只在 settled 后写回完整 DisplayUnitId，宽页第二切片可精确恢复；稳定 PageId/DisplayUnitId 在 Loading/Ready/Error 间保留 pager key 与固定容器，URL 仅作内容。VirtualPageList/DualPageState 仍服务待迁移的条漫/双页与现有 Desktop options。",
     "protectionTests": [
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagePresentationIdentityTest.kt"
     ],
-    "readerCoreMigrationScope": {"task": "R0-01", "verifiedSlice": "PRESENTATION_TRANSFORM_CONTRACT", "canonicalSessionExecutor": "NOT_WIRED", "closureTask": "RD-01"},
-    "verificationScope": "VERIFIED only for fixed-original wide-page transforms plus explicitly classified Fork/Desktop presentation pairing; this does not prove shared ReaderSessionCore or any page-loading executor.",
+    "behaviorMethods": {
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt": ["settled single-page position preserves the exact display unit until explicit navigation", "single-page viewport keeps stable slots mounted through chapter loading and error"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt": ["late content and load-state changes preserve display-unit identities", "LTR and RTL split a wide page in reading order without changing source identity", "settled unit reports logical visible page and supports stable return lookup", "registry selects the single strategy and rejects duplicate mode ownership"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagePresentationIdentityTest.kt": ["mounted container keeps identity while loading ready and error content changes in place", "production single-page selector mounts the SPI display unit", "visible-page reporting waits for the settled pager index"]
+    },
+    "readerCoreMigrationScope": {"task": "R0-01", "verifiedSlice": "PRESENTATION_TRANSFORM_CONTRACT", "canonicalSessionExecutor": "NOT_WIRED", "closureTask": "RD-01", "presentationTask": "RP-01", "desktopSinglePresentation": "WIRED", "desktopWebtoonPresentation": "NOT_WIRED", "desktopDualPresentation": "NOT_WIRED", "legacyDesktopStateAdapter": "REMOVE_RD-01"},
+    "verificationScope": "VERIFIED for fixed-original wide-page transforms, explicitly classified Fork/Desktop pairing, and the RP-01 Desktop Single strategy with stable DisplayUnit identity, LTR/RTL split order and exact split-slice restoration, settled-only VisiblePageSet reporting, in-place Retry, and mounted production registry wiring. This does not prove shared ReaderSessionCore, a Desktop page-loading executor, or Webtoon or Dual presentation migration.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2052,7 +2075,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt", "symbol": "sealed interface State", "line": 45}, {"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt", "symbol": "private fun observeStatus", "line": 82}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "private suspend fun loadChapter", "line": 334}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoader.kt", "symbol": "internal suspend fun loadChapter", "line": 58}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt", "symbol": "val state: State", "line": 36}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterWindowOwner.kt", "symbol": "internal class ReaderChapterWindowOwner", "line": 13}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt", "symbol": "internal fun observePagerTransitionState", "line": 154}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt", "symbol": "internal fun observeWebtoonTransitionState", "line": 149}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt", "symbol": "sealed interface ReaderChapterState", "line": 26}, {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderSession.kt", "symbol": "object ReaderSessionReducer", "line": 143}, {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderChapterWindow.kt", "symbol": "object ReaderChapterWindowReducer", "line": 113}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt", "symbol": "fun setChapterTransitionState", "line": 250}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt", "symbol": "fun setChapterTransitionState", "line": 269}],
       "FIXTURE": [{"artifact": "domain/src/commonTest/kotlin/mihon/domain/reader/session/ReaderChapterWindowReducerTest.kt#opening next chapter publishes zero-page loading before one exact activation", "productionMarkers": ["ReaderChapterWindowReducer.reduce", "beginLoad.reduceSession"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderChapterWindowProductionWiringTest.kt#ReaderViewModel preloads only an adjacent target and commits the shared window on activation", "productionMarkers": ["viewModel.preload", "viewModel.loadNextChapter"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderWindowEffectIntegrationTest.kt#activation waits for the in-flight adjacent page list and reuses its retained session", "productionMarkers": ["chapterLoader.loadChapter", "chapter.sharedSessionStateFlow"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterWindowOwnerTest.kt#Android owner keeps overlapping chapter sessions and releases only chapters outside the new window", "productionMarkers": ["owner.replace", "owner.dispatch"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt#pager holder production observer executes loading error and loaded states", "productionMarkers": ["observePagerTransitionState"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt#webtoon holder production observer executes loading error and loaded states", "productionMarkers": ["observeWebtoonTransitionState"]}]
     },
     "protectionTests": [
@@ -2154,7 +2177,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt", "symbol": "private fun getCombinedPaint", "line": 812}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt", "symbol": "readerPreferences.grayscale().changes()", "line": 908}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt", "symbol": "internal fun buildAndroidLayerFilterParams", "line": 27}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt", "symbol": "data class ReaderColorFilterParams", "line": 241}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "ReaderViewportColorLayer(state.colorFilter)", "line": 503}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "internal fun ReaderViewportColorLayer", "line": 566}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun Modifier.readerColorTransform", "line": 53}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun readerColorMatrix", "line": 63}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "ReaderViewportColorLayer(state.colorFilter)", "line": 505}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "internal fun ReaderViewportColorLayer", "line": 587}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun Modifier.readerColorTransform", "line": 60}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun readerColorMatrix", "line": 70}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt#mounted reader viewport color layer renders disabled grayscale and invert pixels", "productionMarkers": ["renderColorLayer(", "assertPixel("]}]
     },
     "protectionTests": [

@@ -8,7 +8,10 @@
   priority/generation scheduler、encoded store contract、current/previous/next 章节窗口、跨章激活及 settled
   viewport 进度决策；Desktop `PagePreloader` 也消费同一 scheduler；
 - 另已共享：解码/cache contract、宽图拆分/配对纯算法、输入导航、章节过滤、reader entry resolver 和滤镜参数；
-- 尚未共享：Desktop production materialize/session/window/progress producer wiring；
+- RP-01 已建立 Desktop `ReaderPresentationStrategy`、稳定 `DisplayUnitId`/`VisiblePageSet` 与 mode registry，
+  单页 production selector 已迁移；
+- 尚未共享：Desktop Webtoon/Dual presentation，以及 production materialize/session/window/progress producer
+  wiring；
 - RA-01 已收口 Android：`ReaderViewModel`、`ChapterLoader`、`HttpPageLoader` 与 `ReaderChapter` 只负责
   lifecycle、source/download/local/cache 和旧 View 状态投影；page-list、page-state、scheduler、window 与
   progress 决策全部来自 shared 实现。Desktop `DesktopReaderPageLoader/ReaderScreenModel` 的私有运行决策
@@ -119,6 +122,14 @@ Single、Webtoon 和 Dual 是 registry 中同级策略：
 
 Pairing、双槽、封面和屏幕宽度禁止进入 `ReaderSessionCore`。双页 settled 时必须上报实际可见的全部
 `PageId`；只上报 `firstPage` 会让末页 pair 的进度不完整。
+
+当前 RP-01 只注册 `SinglePagedPresentation`。它将 canonical `ReaderPageSession` 映射为单页或宽页切片
+`DisplayUnit`，以 `PageId + splitHalf + mode` 组成稳定 key，并把 settled unit 还原为逻辑页集合；
+拖拽中的临时 `currentPage` 不上报，settled 后完整 `DisplayUnitId` 写回 UI state，使宽页返回时精确恢复
+原切片。Loading、Ready 和 Error + Retry 都在同一 Compose 容器中切换，URL/encoded ref 不参与 identity。现有
+Desktop `resolvedUrls` 进入该策略前仅经过一个无 I/O 的迁移 adapter；该 adapter 不拥有 loader，必须在
+RD-01 直接接入 `ReaderSessionCore` snapshot 时删除。Webtoon 与 Dual 仍使用旧 renderer，分别由 RP-02、
+RP-03 迁移，因此目前不能宣称三模式 registry 已关闭。
 
 ## Platform adapters
 

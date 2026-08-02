@@ -13,10 +13,17 @@ import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.reader.viewerFlagsWithDualPage
 import mihon.desktop.reader.viewerFlagsWithReadingMode
+import mihon.desktop.ui.reader.presentation.DisplaySlotId
+import mihon.desktop.ui.reader.presentation.DisplayUnitId
+import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
+import mihon.desktop.ui.reader.presentation.VisiblePageSet
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderNavigationCommand
 import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.error.AppError
+import mihon.domain.reader.PageSplitHalf
+import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderPageId
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -209,6 +216,45 @@ class ReaderScreenModelTest {
         val model = ReaderScreenModel(pageUrls = emptyList())
         model.goToPage(3)
         assertEquals(0, model.state.value.currentPage)
+    }
+
+    @Test
+    fun `settled single-page position preserves the exact display unit until explicit navigation`() {
+        val model = ReaderScreenModel(pageUrls = listOf("a", "b"), chapterId = 7L)
+        val pageId = ReaderPageId(ReaderChapterId(7L), 0)
+        val secondSlice = DisplayUnitId(
+            mode = ReaderPresentationMode.SINGLE_PAGED,
+            slots = listOf(DisplaySlotId(pageId, PageSplitHalf.RIGHT)),
+        )
+
+        model.settleSinglePage(VisiblePageSet(secondSlice, setOf(pageId)))
+
+        assertEquals(0, model.state.value.currentPage)
+        assertEquals(secondSlice, model.state.value.currentDisplayUnitId)
+
+        model.goToPage(1)
+        assertEquals(1, model.state.value.currentPage)
+        assertNull(model.state.value.currentDisplayUnitId)
+    }
+
+    @Test
+    fun `single-page viewport keeps stable slots mounted through chapter loading and error`() {
+        val error = ReaderChapterState.Error(AppError.Network(), retryTargetChapterId = 7L)
+        val singleSlots = ReaderState(
+            resolvedUrls = listOf("", "ready"),
+            readingMode = ReadingMode.LTR,
+            chapterState = error,
+            errorMessage = "offline",
+        )
+
+        assertEquals(ReaderViewportBody.CONTENT, readerViewportBody(singleSlots))
+        assertEquals(
+            ReaderViewportBody.CONTENT,
+            readerViewportBody(singleSlots.copy(errorMessage = null, isLoadingPages = true, chapterState = ReaderChapterState.Loading)),
+        )
+        assertEquals(ReaderViewportBody.ERROR, readerViewportBody(singleSlots.copy(resolvedUrls = emptyList())))
+        assertEquals(ReaderViewportBody.ERROR, readerViewportBody(singleSlots.copy(dualPageMode = true)))
+        assertEquals(ReaderViewportBody.ERROR, readerViewportBody(singleSlots.copy(readingMode = ReadingMode.WEBTOON)))
     }
 
     // ── UI visibility ────────────────────────────────────────────────────────

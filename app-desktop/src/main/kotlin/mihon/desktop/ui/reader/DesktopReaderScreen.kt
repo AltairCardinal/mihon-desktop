@@ -246,6 +246,7 @@ data class DesktopReaderScreen(
         ReaderViewport(
             state = state,
             model = model,
+            chapterId = chapterId,
             sourceId = sourceId,
             navigator = navigator,
             focusRequester = focusRequester,
@@ -456,6 +457,7 @@ internal suspend fun resolveDesktopMatchedPairs(
 private fun ReaderViewport(
     state: ReaderState,
     model: ReaderScreenModel,
+    chapterId: Long,
     sourceId: Long,
     navigator: Navigator,
     focusRequester: FocusRequester,
@@ -490,18 +492,18 @@ private fun ReaderViewport(
                     handleReaderKeyEvent(event, state, model, navigator, readerNav, onPrevChapter, onNextChapter)
                 },
         ) {
-            when {
-                state.isLoadingPages -> LoadingState()
-                state.errorMessage != null -> ErrorState(
-                    state.errorMessage,
+            when (readerViewportBody(state)) {
+                ReaderViewportBody.LOADING -> LoadingState()
+                ReaderViewportBody.ERROR -> ErrorState(
+                    requireNotNull(state.errorMessage),
                     onRetry = model::requestRetry,
                     onBack = { navigator.pop() },
                 )
-                state.resolvedUrls.isEmpty() -> EmptyState(onBack = { navigator.pop() })
-                else -> {
+                ReaderViewportBody.EMPTY -> EmptyState(onBack = { navigator.pop() })
+                ReaderViewportBody.CONTENT -> {
                     CompositionLocalProvider(LocalDesktopSourceImageId provides sourceId) {
                         ReaderViewportColorLayer(state.colorFilter) {
-                            ReaderContent(state, model, navigator, contextMenuScope, mangaTitle, chapterTitle, preloader, readerNav, onPrevChapter, onNextChapter)
+                            ReaderContent(state, model, navigator, chapterId, contextMenuScope, mangaTitle, chapterTitle, preloader, readerNav, onPrevChapter, onNextChapter)
                         }
                     }
                     ColorFilterOverlay(state.colorFilter)
@@ -559,6 +561,25 @@ private fun ReaderViewport(
                 )
             }
         }
+    }
+}
+
+internal enum class ReaderViewportBody {
+    CONTENT,
+    LOADING,
+    ERROR,
+    EMPTY,
+}
+
+internal fun readerViewportBody(state: ReaderState): ReaderViewportBody {
+    val keepsMountedSinglePage =
+        state.readingMode != ReadingMode.WEBTOON && !state.dualPageMode && state.resolvedUrls.isNotEmpty()
+    return when {
+        keepsMountedSinglePage -> ReaderViewportBody.CONTENT
+        state.isLoadingPages -> ReaderViewportBody.LOADING
+        state.errorMessage != null -> ReaderViewportBody.ERROR
+        state.resolvedUrls.isEmpty() -> ReaderViewportBody.EMPTY
+        else -> ReaderViewportBody.CONTENT
     }
 }
 
@@ -664,6 +685,7 @@ private fun ReaderContent(
     state: ReaderState,
     model: ReaderScreenModel,
     navigator: Navigator,
+    chapterId: Long,
     contextMenuScope: kotlinx.coroutines.CoroutineScope,
     mangaTitle: String,
     chapterTitle: String,
@@ -682,17 +704,21 @@ private fun ReaderContent(
         )
         ReadingMode.LTR, ReadingMode.RTL -> {
             val rtl = state.readingMode == ReadingMode.RTL
-            val vpCurrent = state.virtualPages?.firstVirtualIndex(state.currentPage.coerceIn(0, (state.resolvedUrls.size - 1).coerceAtLeast(0))) ?: state.currentPage
             ZoomablePagerViewer(
-                pageUrls = state.resolvedUrls, currentPage = vpCurrent, isRtl = rtl,
+                chapterId = chapterId, loadGeneration = state.loadGeneration,
+                pageUrls = state.resolvedUrls, currentPage = state.currentPage,
+                currentDisplayUnitId = state.currentDisplayUnitId, isRtl = rtl,
                 isDualPage = state.dualPageMode, autoSplitPages = state.autoSplitPages,
                 cropBorders = state.cropBordersPager, contextMenuScope = contextMenuScope,
                 mangaTitle = mangaTitle, chapterTitle = chapterTitle, zoomState = state.zoomState,
                 forcedSinglePages = state.forcedSinglePages, matchedPairs = state.matchedPairs,
-                virtualPages = state.virtualPages, preloader = preloader, scaleType = state.scaleType,
+                splitPageIndices = state.spreadPages, preloader = preloader, scaleType = state.scaleType,
                 navigationMode = state.navigationMode,
-                onPageChange = { idx -> model.goToPage(state.virtualPages?.realPageIndex(idx) ?: idx) },
+                onPageChange = model::goToPage,
                 onZoomChange = { model.setZoomState(it) },
+                pageError = (state.chapterState as? ReaderChapterState.Error)?.error,
+                onRetryPage = model::requestRetry,
+                onSingleVisiblePagesChanged = model::settleSinglePage,
                 onSpreadPagesChanged = { model.setSpreadPages(it) },
                 onSpreadDetected = { realIdx -> if (realIdx !in state.spreadPages) model.setSpreadPages(state.spreadPages + realIdx) },
                 onTapCenter = { model.toggleUI() },

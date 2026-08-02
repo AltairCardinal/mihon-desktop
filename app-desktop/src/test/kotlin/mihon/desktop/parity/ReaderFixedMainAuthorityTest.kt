@@ -437,6 +437,57 @@ class ReaderFixedMainAuthorityTest {
     }
 
     @Test
+    fun `RP01 records only the wired Desktop single-page presentation slice`() {
+        val item = Json.parseToJsonElement(Files.readString(manifestPath)).jsonArray
+            .single { it.jsonObject.getValue("id").jsonPrimitive.content.toInt() == 43 }
+            .jsonObject
+        val scope = item.getValue("readerCoreMigrationScope").jsonObject
+
+        assertEquals("RP-01", scope.requiredText("presentationTask"))
+        assertEquals("WIRED", scope.requiredText("desktopSinglePresentation"))
+        assertEquals("NOT_WIRED", scope.requiredText("desktopWebtoonPresentation"))
+        assertEquals("NOT_WIRED", scope.requiredText("desktopDualPresentation"))
+        assertEquals("REMOVE_RD-01", scope.requiredText("legacyDesktopStateAdapter"))
+        assertEquals("NOT_WIRED", scope.requiredText("canonicalSessionExecutor"))
+
+        val desktopPaths = item.getValue("desktopConsumerAdapterPaths").jsonArray
+            .map { it.jsonPrimitive.content }
+            .toSet()
+        assertTrue(
+            "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt" in desktopPaths,
+        )
+        assertTrue(
+            "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt" in desktopPaths,
+        )
+        assertTrue(
+            "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt" in desktopPaths,
+        )
+        assertTrue(
+            "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt" in desktopPaths,
+        )
+
+        val behaviorMethods = item.getValue("behaviorMethods").jsonObject
+        assertTrue(
+            behaviorMethods
+                .getValue(
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt",
+                )
+                .jsonArray
+                .any { it.jsonPrimitive.content == "late content and load-state changes preserve display-unit identities" },
+        )
+        assertTrue(
+            behaviorMethods
+                .getValue(
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagePresentationIdentityTest.kt",
+                )
+                .jsonArray
+                .any { it.jsonPrimitive.content == "production single-page selector mounts the SPI display unit" },
+        )
+        assertTrue(item.requiredText("verificationScope").contains("does not prove shared ReaderSessionCore"))
+        assertTrue(item.requiredText("verificationScope").contains("Webtoon or Dual"))
+    }
+
+    @Test
     fun `shared scheduler is the sole preload policy consumed by Android and Desktop adapters`() {
         val sharedScheduler = Files.readString(
             repositoryRoot.resolve("domain/src/commonMain/kotlin/mihon/domain/reader/scheduler/ReaderRequestScheduler.kt"),

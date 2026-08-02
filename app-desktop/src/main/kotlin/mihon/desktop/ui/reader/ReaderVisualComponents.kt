@@ -14,6 +14,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -27,10 +28,16 @@ import kotlinx.coroutines.CoroutineScope
 import mihon.desktop.reader.PagePreloader
 import mihon.desktop.reader.ReaderColorFilter
 import mihon.desktop.reader.ScaleType
-import mihon.desktop.reader.VirtualPage
 import mihon.desktop.reader.ZoomState
+import mihon.desktop.ui.reader.presentation.DesktopReaderPresentationRegistry
+import mihon.desktop.ui.reader.presentation.DisplayUnitId
+import mihon.desktop.ui.reader.presentation.LegacyDesktopReaderPresentationAdapter
+import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
+import mihon.desktop.ui.reader.presentation.VisiblePageSet
+import mihon.domain.error.AppError
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderChapterTransitionModel
+import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderTransitionDirection
 
 @Composable
@@ -79,8 +86,11 @@ internal fun readerColorMatrix(colorFilter: ReaderColorFilter): ColorMatrix? {
 
 @Composable
 internal fun ZoomablePagerViewer(
+    chapterId: Long,
+    loadGeneration: Long,
     pageUrls: List<String>,
     currentPage: Int,
+    currentDisplayUnitId: DisplayUnitId? = null,
     isRtl: Boolean,
     isDualPage: Boolean,
     autoSplitPages: Boolean = false,
@@ -91,18 +101,22 @@ internal fun ZoomablePagerViewer(
     zoomState: ZoomState,
     forcedSinglePages: Set<Int> = emptySet(),
     matchedPairs: Set<Pair<Int, Int>> = emptySet(),
-    virtualPages: List<VirtualPage>? = null,
+    splitPageIndices: Set<Int> = emptySet(),
     preloader: PagePreloader? = null,
     scaleType: ScaleType = ScaleType.FIT_SCREEN,
     navigationMode: NavigationMode = NavigationMode.RightAndLeft,
     onPageChange: (Int) -> Unit,
     onZoomChange: (ZoomState) -> Unit,
+    pageError: AppError? = null,
+    onRetryPage: (() -> Unit)? = null,
+    onSingleVisiblePagesChanged: ((VisiblePageSet) -> Unit)? = null,
     onSpreadPagesChanged: ((Set<Int>) -> Unit)? = null,
     onSpreadDetected: ((Int) -> Unit)? = null,
     onTapCenter: (() -> Unit)? = null,
     onPrevChapter: (() -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
 ) {
+    if (pageUrls.isEmpty()) return
     if (isDualPage && pageUrls.size > 1) {
         DualPagePagerViewer(
             pageUrls = pageUrls, currentPage = currentPage, isRtl = isRtl,
@@ -115,12 +129,39 @@ internal fun ZoomablePagerViewer(
             onTapCenter = onTapCenter, onPrevChapter = onPrevChapter, onNextChapter = onNextChapter,
         )
     } else {
+        val direction = if (isRtl) ReaderDirection.RTL else ReaderDirection.LTR
+        val request = remember(chapterId, loadGeneration, pageUrls, direction, autoSplitPages, splitPageIndices, pageError) {
+            LegacyDesktopReaderPresentationAdapter.singlePagedRequest(
+                chapterId = chapterId,
+                generation = loadGeneration,
+                pageUrls = pageUrls,
+                direction = direction,
+                splitPageIndices = if (autoSplitPages) splitPageIndices else emptySet(),
+                pageError = pageError,
+            )
+        }
+        val presentation = remember(request) {
+            DesktopReaderPresentationRegistry
+                .require(ReaderPresentationMode.SINGLE_PAGED)
+                .present(request)
+        }
+        val currentPageId = request.chapter.pages[currentPage.coerceIn(pageUrls.indices)]
+            .id
         SinglePagePagerViewer(
-            pageUrls = pageUrls, currentPage = currentPage, isRtl = isRtl,
+            presentation = presentation, currentPageId = currentPageId,
+            currentDisplayUnitId = currentDisplayUnitId, isRtl = isRtl,
             cropBorders = cropBorders, contextMenuScope = contextMenuScope,
             mangaTitle = mangaTitle, chapterTitle = chapterTitle, zoomState = zoomState,
-            virtualPages = virtualPages, preloader = preloader, scaleType = scaleType,
-            navigationMode = navigationMode, onPageChange = onPageChange, onZoomChange = onZoomChange,
+            preloader = preloader, scaleType = scaleType,
+            navigationMode = navigationMode, onZoomChange = onZoomChange,
+            onVisiblePagesChanged = { visiblePages ->
+                if (onSingleVisiblePagesChanged != null) {
+                    onSingleVisiblePagesChanged(visiblePages)
+                } else {
+                    visiblePages.pageIds.singleOrNull()?.let { onPageChange(it.sourcePageIndex) }
+                }
+            },
+            onRetryPage = { onRetryPage?.invoke() },
             onSpreadDetected = onSpreadDetected, onTapCenter = onTapCenter,
             onPrevChapter = onPrevChapter, onNextChapter = onNextChapter,
         )

@@ -179,11 +179,12 @@ class DesktopReaderProductRegressionTest {
         assertTrue(keyboard.contains("Key.DirectionLeft, Key.A -> ReaderKeyboardAction.forLeft(isRtl, navCurrent, totalPages)"))
         assertTrue(keyboard.contains("Key.DirectionRight, Key.D, Key.Spacebar -> ReaderKeyboardAction.forRight(isRtl, navCurrent, totalPages)"))
 
-        val singlePage = callBlock(single, "        ZoomablePageBox(")
+        val singlePage = callBlock(single, "            ZoomablePageBox(")
         assertTrue(singlePage.contains("isRtl = isRtl"))
-        assertTrue(singlePage.contains("onTapPrevious = onTapPrevious"))
-        assertTrue(singlePage.contains("onTapNext = onTapNext"))
-        assertTrue(single.contains("ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, effectivePageCount)"))
+        assertTrue(singlePage.contains("onTapPrevious = { executeTapCommand(ReaderNavigationCommand.Previous) }"))
+        assertTrue(singlePage.contains("onTapNext = { executeTapCommand(ReaderNavigationCommand.Next) }"))
+        assertTrue(single.contains("ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, displayUnits.size)"))
+        assertTrue(single.contains("settledPagerIndex = { pagerState.settledPage }"))
 
         val dualPageBoxes = callBlocks(dual, "ZoomablePageBox(")
         assertEquals(7, dualPageBoxes.size, "Every cover/split/trailing/leading/paired image branch must be audited")

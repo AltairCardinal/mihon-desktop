@@ -3,63 +3,57 @@ package mihon.desktop.ui.reader
 import tachiyomi.i18n.MR
 import java.util.Locale
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.SemanticsPropertyKey
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import mihon.desktop.reader.PagePreloader
 import mihon.desktop.reader.ReaderKeyboardAction
 import mihon.desktop.reader.ReaderPageAction
 import mihon.desktop.reader.ScaleType
-import mihon.desktop.reader.VirtualPage
 import mihon.desktop.reader.ZoomState
+import mihon.desktop.ui.reader.presentation.DisplaySlot
+import mihon.desktop.ui.reader.presentation.DisplayUnit
+import mihon.desktop.ui.reader.presentation.DisplayUnitId
+import mihon.desktop.ui.reader.presentation.ReaderPresentationSnapshot
+import mihon.desktop.ui.reader.presentation.VisiblePageSet
 import mihon.domain.reader.ReaderNavigationCommand
+import mihon.domain.reader.session.ReaderPageId
+import mihon.domain.reader.session.ReaderPageLoadState
 
-/**
- * Standard single-page pager.  Each swipe advances exactly one manga page.
- *
- * ──────────────────────────────────────────────────────────
- * RTL design note
- * ──────────────────────────────────────────────────────────
- * RTL scroll is implemented by reversing the pager index mapping, NOT by
- * using `reverseLayout` or `CompositionLocalProvider(RTL)`.  Both of those
- * inject an RTL LayoutDirection into the content, which can flip alignment.
- *
- * The pager always runs in LTR.  For RTL mode:
- *   pagerIndex 0  →  last page  (rightmost = manga start)
- *   pagerIndex N  →  first page (leftmost = manga end)
- * Swiping RIGHT decreases pagerIndex → later page → forward in manga.
- *
- * ──────────────────────────────────────────────────────────
- * Android migration note
- * ──────────────────────────────────────────────────────────
- * This composable has no desktop-specific code.  It can be moved to a shared
- * Compose Multiplatform module and used on Android unchanged.  The only
- * dependency besides Compose itself is [ZoomablePageBox] (same package) and
- * [ZoomState] (pure Kotlin).
- *
- * @param pageUrls        Ordered list of page image URLs in logical reading order (LTR).
- * @param currentPage     Currently-visible page index (logical, 0-based, LTR order).
- *                        When [virtualPages] is non-null, this is the **virtual** index.
- * @param isRtl           When true, the pager renders right-to-left.
- * @param zoomState       Current zoom/pan state shared across all pages.
- * @param virtualPages    Optional virtual page mapping for split-wide-pages mode.
- *                        When non-null, pager count and page lookup use this list.
- * @param onPageChange    Called when the pager settles on a new page (virtual index if split active).
- * @param onZoomChange    Called when the user changes the zoom/pan state.
- * @param onSpreadDetected Called when a page is detected as wide (width > height).
- *                        Receives the **real** page index.
- * @param onTapCenter     Called when the user taps the center zone.
- */
+internal class ReaderDisplayUnitCompositionIdentity
+
+internal val ReaderDisplayUnitCompositionIdentityKey =
+    SemanticsPropertyKey<ReaderDisplayUnitCompositionIdentity>("ReaderDisplayUnitCompositionIdentity")
+internal val ReaderDisplayUnitIdKey = SemanticsPropertyKey<DisplayUnitId>("ReaderDisplayUnitId")
+internal val ReaderDisplayUnitLoadStateKey = SemanticsPropertyKey<ReaderPageLoadState>("ReaderDisplayUnitLoadState")
+
 @Composable
 internal fun SinglePagePagerViewer(
-    pageUrls: List<String>,
-    currentPage: Int,
+    presentation: ReaderPresentationSnapshot,
+    currentPageId: ReaderPageId,
+    currentDisplayUnitId: DisplayUnitId? = null,
     isRtl: Boolean,
     zoomState: ZoomState,
     cropBorders: Boolean = false,
@@ -68,85 +62,154 @@ internal fun SinglePagePagerViewer(
     chapterTitle: String = "",
     scaleType: ScaleType = ScaleType.FIT_SCREEN,
     navigationMode: NavigationMode = NavigationMode.RightAndLeft,
-    virtualPages: List<VirtualPage>? = null,
     preloader: PagePreloader? = null,
-    onPageChange: (Int) -> Unit,
+    onVisiblePagesChanged: (VisiblePageSet) -> Unit,
     onZoomChange: (ZoomState) -> Unit,
+    onRetryPage: (ReaderPageId) -> Unit,
     onSpreadDetected: ((Int) -> Unit)? = null,
     onTapCenter: (() -> Unit)? = null,
     onPrevChapter: (() -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
 ) {
-    val effectivePageCount = virtualPages?.size ?: pageUrls.size
-    val maxPageIndex = (effectivePageCount - 1).coerceAtLeast(0)
+    val displayUnits = presentation.displayUnits
+    if (displayUnits.isEmpty()) return
 
-    // Index mapping: pager always runs LTR; RTL reverses the mapping.
+    val maxPageIndex = displayUnits.lastIndex
+
     fun pageToPager(page: Int): Int = if (isRtl) maxPageIndex - page else page
-    fun pagerToPage(pagerIdx: Int): Int = if (isRtl) maxPageIndex - pagerIdx else pagerIdx
+    fun pagerToPage(pagerIndex: Int): Int = if (isRtl) maxPageIndex - pagerIndex else pagerIndex
 
+    val currentDisplayUnit = presentation
+        .restoreDisplayUnitIndex(currentPageId, currentDisplayUnitId)
+        .coerceAtLeast(0)
     val pagerState = rememberPagerState(
-        initialPage = pageToPager(currentPage.coerceIn(0, maxPageIndex)),
-        pageCount = { effectivePageCount },
+        initialPage = pageToPager(currentDisplayUnit.coerceIn(0, maxPageIndex)),
+        pageCount = { displayUnits.size },
     )
     val scope = rememberCoroutineScope()
 
-    // External navigation (slider / keyboard) → jump pager to the new page.
-    LaunchedEffect(currentPage, maxPageIndex, isRtl) {
-        val target = pageToPager(currentPage.coerceIn(0, maxPageIndex))
-        if (pagerState.currentPage != target) {
-            pagerState.scrollToPage(target)
-        }
+    LaunchedEffect(currentPageId, currentDisplayUnitId, displayUnits.map(DisplayUnit::id), isRtl) {
+        val targetPage = presentation
+            .restoreDisplayUnitIndex(currentPageId, currentDisplayUnitId)
+            .coerceAtLeast(0)
+            .coerceIn(0, maxPageIndex)
+        val targetPagerIndex = pageToPager(targetPage)
+        if (pagerState.currentPage != targetPagerIndex) pagerState.scrollToPage(targetPagerIndex)
     }
 
-    // Pager swipe → update logical page counter in the parent.
-    LaunchedEffect(pagerState.currentPage) {
-        onPageChange(pagerToPage(pagerState.currentPage))
-    }
+    SinglePageSettledVisiblePageReporter(
+        presentation = presentation,
+        isRtl = isRtl,
+        settledPagerIndex = { pagerState.settledPage },
+        onVisiblePagesChanged = onVisiblePagesChanged,
+    )
 
     fun executeTapCommand(command: ReaderNavigationCommand) {
-        when (val action = ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, effectivePageCount)) {
+        when (val action = ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, displayUnits.size)) {
             is ReaderPageAction.GoToPage -> scope.launch { pagerState.animateScrollToPage(action.page) }
             ReaderPageAction.NoPrevPage -> onPrevChapter?.invoke()
             ReaderPageAction.NoNextPage -> onNextChapter?.invoke()
         }
     }
-    val onTapPrevious: () -> Unit = { executeTapCommand(ReaderNavigationCommand.Previous) }
-    val onTapNext: () -> Unit = { executeTapCommand(ReaderNavigationCommand.Next) }
 
     HorizontalPager(
         state = pagerState,
         modifier = Modifier.fillMaxSize(),
+        key = { pagerIndex -> displayUnits[pagerToPage(pagerIndex)].id },
     ) { pagerIndex ->
-        val page = pagerToPage(pagerIndex)
-        val vp = virtualPages?.get(page)
-        val realIndex = vp?.realIndex ?: page
-        val splitHalf = vp?.splitHalf
-        val sourceBounds = vp?.sourceBounds
-        ZoomablePageBox(
-            url = pageUrls[realIndex],
-            pageLabel = MR.strings.desktop_ui_page_number.localized(Locale.getDefault(), realIndex + 1),
-            zoomState = zoomState,
-            onZoomChange = onZoomChange,
-            cropBorders = cropBorders,
-            splitHalf = splitHalf,
-            sourceBounds = sourceBounds,
-            contextMenuScope = contextMenuScope,
-            mangaTitle = mangaTitle,
-            chapterTitle = chapterTitle,
-            pageIndex = realIndex,
-            preloader = preloader,
-            // Detect spreads only on full pages (not already-split halves).
-            onSpreadDetected = if (splitHalf == null && onSpreadDetected != null) {
-                { onSpreadDetected.invoke(realIndex) }
-            } else {
-                null
+        val unit = displayUnits[pagerToPage(pagerIndex)]
+        val slot = unit.slots.single()
+        val page = requireNotNull(slot.page)
+        SinglePageDisplayUnitContainer(
+            unit = unit,
+            onRetry = onRetryPage,
+        ) { readySlot ->
+            val readyPage = requireNotNull(readySlot.page)
+            ZoomablePageBox(
+                url = readyPage.imageUrl ?: readyPage.url,
+                pageLabel = MR.strings.desktop_ui_page_number.localized(Locale.getDefault(), page.id.sourcePageIndex + 1),
+                zoomState = zoomState,
+                onZoomChange = onZoomChange,
+                cropBorders = cropBorders,
+                splitHalf = readySlot.splitHalf,
+                sourceBounds = readySlot.sourceBounds,
+                contextMenuScope = contextMenuScope,
+                mangaTitle = mangaTitle,
+                chapterTitle = chapterTitle,
+                pageIndex = page.id.sourcePageIndex,
+                preloader = preloader,
+                onSpreadDetected = if (readySlot.splitHalf == null && onSpreadDetected != null) {
+                    { onSpreadDetected(page.id.sourcePageIndex) }
+                } else {
+                    null
+                },
+                scaleType = scaleType,
+                navigationMode = navigationMode,
+                isRtl = isRtl,
+                onTapPrevious = { executeTapCommand(ReaderNavigationCommand.Previous) },
+                onTapNext = { executeTapCommand(ReaderNavigationCommand.Next) },
+                onTapCenter = onTapCenter,
+            )
+        }
+    }
+}
+
+@Composable
+internal fun SinglePageSettledVisiblePageReporter(
+    presentation: ReaderPresentationSnapshot,
+    isRtl: Boolean,
+    settledPagerIndex: () -> Int,
+    onVisiblePagesChanged: (VisiblePageSet) -> Unit,
+) {
+    val currentCallback by rememberUpdatedState(onVisiblePagesChanged)
+    LaunchedEffect(presentation, isRtl) {
+        snapshotFlow { settledPagerIndex() }
+            .distinctUntilChanged()
+            .collect { pagerIndex ->
+                val displayUnits = presentation.displayUnits
+                if (displayUnits.isEmpty()) return@collect
+                val safePagerIndex = pagerIndex.coerceIn(displayUnits.indices)
+                val displayUnitIndex = if (isRtl) displayUnits.lastIndex - safePagerIndex else safePagerIndex
+                currentCallback(presentation.visiblePages(displayUnits[displayUnitIndex].id))
+            }
+    }
+}
+
+@Composable
+internal fun SinglePageDisplayUnitContainer(
+    unit: DisplayUnit,
+    onRetry: (ReaderPageId) -> Unit,
+    readyContent: @Composable (DisplaySlot) -> Unit,
+) {
+    val slot = unit.slots.single()
+    val page = requireNotNull(slot.page)
+    val compositionIdentity = remember(unit.id) { ReaderDisplayUnitCompositionIdentity() }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .semantics {
+                this[ReaderDisplayUnitCompositionIdentityKey] = compositionIdentity
+                this[ReaderDisplayUnitIdKey] = unit.id
+                this[ReaderDisplayUnitLoadStateKey] = page.loadState
             },
-            scaleType = scaleType,
-            navigationMode = navigationMode,
-            isRtl = isRtl,
-            onTapPrevious = onTapPrevious,
-            onTapNext = onTapNext,
-            onTapCenter = onTapCenter,
-        )
+        contentAlignment = Alignment.Center,
+    ) {
+        when (page.loadState) {
+            ReaderPageLoadState.Queued,
+            ReaderPageLoadState.ResolvingImage,
+            is ReaderPageLoadState.Downloading,
+            -> CircularProgressIndicator(color = Color.White)
+
+            ReaderPageLoadState.Ready -> readyContent(slot)
+            is ReaderPageLoadState.Error -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(MR.strings.desktop_ui_failed_to_load_pages.localized(), color = Color.White)
+                Button(
+                    onClick = { onRetry(page.id) },
+                    modifier = Modifier.padding(top = 16.dp),
+                ) {
+                    Text(MR.strings.action_retry.localized())
+                }
+            }
+        }
     }
 }

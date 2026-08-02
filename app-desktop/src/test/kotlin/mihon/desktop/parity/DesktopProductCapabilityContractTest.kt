@@ -1598,6 +1598,9 @@ class DesktopProductCapabilityContractTest {
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagePresentationIdentityTest.kt",
                 ),
             49 to
                 setOf(
@@ -1652,6 +1655,29 @@ class DesktopProductCapabilityContractTest {
                         mapOf(
                             "shared pairing keeps cover edge matching adjust and landscape parity enhancements" to
                                 setOf("DualPageState(", "matchedPairs", "forcedSinglePages"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt" to
+                        mapOf(
+                            "settled single-page position preserves the exact display unit until explicit navigation" to
+                                setOf("model.settleSinglePage", "currentDisplayUnitId"),
+                            "single-page viewport keeps stable slots mounted through chapter loading and error" to
+                                setOf("readerViewportBody", "ReaderViewportBody.CONTENT"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt" to
+                        mapOf(
+                            "late content and load-state changes preserve display-unit identities" to
+                                setOf("SinglePagedPresentation.present", "DisplayUnit::id"),
+                            "LTR and RTL split a wide page in reading order without changing source identity" to
+                                setOf("SinglePagedPresentation.present", "PageSplitHalf.RIGHT"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagePresentationIdentityTest.kt" to
+                        mapOf(
+                            "mounted container keeps identity while loading ready and error content changes in place" to
+                                setOf("SinglePageDisplayUnitContainer(", "assertSame"),
+                            "production single-page selector mounts the SPI display unit" to
+                                setOf("ZoomablePagerViewer(", "ReaderDisplayUnitIdKey"),
+                            "visible-page reporting waits for the settled pager index" to
+                                setOf("SinglePageSettledVisiblePageReporter(", "settledIndex = 1"),
                         ),
                 ),
             44 to
@@ -1852,6 +1878,20 @@ class DesktopProductCapabilityContractTest {
                         setOf("buildVirtualReaderPages"),
                     "app-desktop/src/main/kotlin/mihon/desktop/reader/DualPageState.kt" to
                         setOf("ReaderPairingState", "PagePairingOptions"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt" to
+                        setOf("interface ReaderPresentationStrategy", "data class DisplayUnit", "data class VisiblePageSet"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt" to
+                        setOf("object SinglePagedPresentation", "splitPageBounds"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderState.kt" to
+                        setOf("currentDisplayUnitId"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt" to
+                        setOf("fun settleSinglePage", "currentDisplayUnitId"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt" to
+                        setOf("readerViewportBody(state)", "onSingleVisiblePagesChanged = model::settleSinglePage"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt" to
+                        setOf("DesktopReaderPresentationRegistry", "ReaderPresentationMode.SINGLE_PAGED"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt" to
+                        setOf("key = { pagerIndex", "ReaderDisplayUnitCompositionIdentityKey"),
                 ),
             44 to
                 mapOf(
