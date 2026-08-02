@@ -11,6 +11,7 @@ import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderPageModel
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderChapterLoadState
+import mihon.domain.reader.session.ReaderChapterWindowEffect
 import mihon.domain.reader.session.ReaderPageDescriptor
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderSessionIntent
@@ -98,6 +99,25 @@ data class ReaderChapter(val chapter: Chapter) {
             intent = ReaderSessionIntent.OpenChapter(sharedChapterId()),
         )
         mutableSharedSessionStateFlow.value.generation
+    }
+
+    internal fun beginPageListLoad(
+        effect: ReaderChapterWindowEffect.BeginPageListLoad,
+    ): Long? = synchronized(sharedSessionLock) {
+        // Window effects are valid only while this chapter is owned by the retained window. This
+        // check shares the ref/unref lock so a stale prefetch cannot restart work after release.
+        if (references == 0) return@synchronized null
+
+        val current = mutableSharedSessionStateFlow.value
+        val next = effect.reduceSession(current).snapshot
+        if (next === current) return@synchronized null
+
+        clearPageLoaderLocked()
+        (mutableState as? State.Loaded)?.pages?.forEach(ReaderPage::unbindSharedState)
+        mutableState = State.Loading
+        mutableSharedSessionStateFlow.value = next
+        mutableSharedStateFlow.value = next.toLegacyState()
+        next.generation
     }
 
     internal fun completePageListLoad(

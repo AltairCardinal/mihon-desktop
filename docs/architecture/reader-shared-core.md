@@ -5,10 +5,10 @@
 本文描述 reader migration 的目标架构和当前边界。当前状态是 `MIGRATING`：
 
 - 已共享并由 Android 生产消费：稳定 session/page 状态、page-list 与单页 materialize executor、唯一
-  priority/generation scheduler、encoded store contract；Desktop `PagePreloader` 也消费同一 scheduler；
+  priority/generation scheduler、encoded store contract、current/previous/next 章节窗口及跨章激活；Desktop
+  `PagePreloader` 也消费同一 scheduler；
 - 另已共享：解码/cache contract、宽图拆分/配对纯算法、输入导航、章节过滤和滤镜参数；
-- 尚未共享：current/previous/next 章节窗口、跨章激活、进度 effect，以及 Desktop production
-  materialize/session wiring；
+- 尚未共享：进度 effect，以及 Desktop production materialize/session/window wiring；
 - 当前 Android `ReaderViewModel` 与 Desktop `DesktopReaderPageLoader/ReaderScreenModel` 仍包含尚待后续
   批次迁移的运行决策，但两端不再各自解释预加载优先级或 generation。
 
@@ -52,7 +52,7 @@ Android ReaderActivity / DesktopReaderScreen
 | 文件 | 当前可引用的证据范围 | 不能据此宣称的内容 |
 | --- | --- | --- |
 | `ReaderPageModel.kt` | page/chapter DTO、decode/cache contract | 章节窗口、完整 session executor |
-| `reader/session/`、`reader/materialize/` | 稳定逻辑页状态、page-list 与单页 materialize；Android production 已接线 | Desktop production materialize、章节窗口、进度 effect |
+| `reader/session/`、`reader/materialize/` | 稳定逻辑页状态、page-list、单页 materialize、三章窗口 retain/release 与幂等跨章激活；Android production 已接线 | Desktop production materialize/window、进度 effect |
 | `reader/scheduler/ReaderRequestScheduler.kt` | P0～P4、原版 current +4、稳定 PageId、有界并发、抢占、Retry 与 generation 拒收；Android/Desktop adapter 已接线 | 相邻章何时进入 P3/P4（由后续 window/policy 产生请求） |
 | `reader/storage/EncodedPageStore.kt` | 生命周期、物理存在性、配额/淘汰结果和诊断；Android `ChapterCache` adapter 已接线 | Desktop encoded store 实现 |
 | `PageTransform.kt` | 宽图尺寸/切片、纯配对算法、滤镜参数 | session core；pairing 属 presentation |
@@ -144,6 +144,17 @@ RC-02 已恢复 cached Error 的显式 Retry 强制重抓，RC-03 又由 shared 
 
 固定原版 transition 只有 Loading、Error + Retry 和无附加控件的 Wait/Loaded；没有 Continue、Cancel 或
 Dismiss。相邻章 page list 已 Loaded 且无 gap 时，adapter 把其页面 seamless 接到当前 viewer。
+
+`ReaderChapterWindowReducer` 是 current/previous/next 身份、retain/release 顺序、相邻 page-list 请求、
+Boundary 和 active transition 的唯一决策点。窗口替换先产生新章 `RetainChapter`，再发布窗口，最后
+`ReleaseChapter` 离窗 session；跨章 intent 携带预期 from/target，首次激活后重放同一 intent 必须无 effect。
+`BeginPageListLoad` 对 Wait/Error 发布 0 页 Loading，对已经 Loading/Loaded 的 retained session 不重启；
+Android 在与 `ref/unref` 相同的锁内再次确认目标仍被窗口持有，因此 release 后恢复的旧预取 effect 只会
+取消，不会在窗口外重启 loader。`ReaderChapterWindowOwner` 只把生命周期 effect 映射到
+`ReaderChapter.ref/unref`，并保持固定原版
+“加载完成后提交 active 窗口”的 UI 时序；激活撞上正在进行的相邻预取时等待同一 page-list 终态，不创建
+第二个 loader。pager/webtoon holder 的 Loading、Error + Retry、Boundary 和无额外 Continue/Cancel 控件
+保持不变。
 
 Desktop 目标行为是翻过末页后立即激活下一章 `LoadingPageList(pageCount = 0)`，随后一次性发布稳定 page
 identity，再逐页 Ready/Error；失败显示 Retry/返回，边界显示明确结束反馈。这个产品策略属于

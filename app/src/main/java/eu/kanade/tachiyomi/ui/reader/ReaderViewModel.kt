@@ -29,8 +29,10 @@ import eu.kanade.tachiyomi.ui.reader.loader.ChapterLoader
 import eu.kanade.tachiyomi.ui.reader.loader.DownloadPageLoader
 import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
+import eu.kanade.tachiyomi.ui.reader.model.ReaderChapterWindowOwner
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.model.sharedChapterId
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
@@ -61,9 +63,15 @@ import mihon.domain.reader.ChapterSkipPolicy
 import mihon.domain.reader.ReaderChapterEntry
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderNavigationCommand
+import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.filterChaptersForReader
 import mihon.domain.reader.isReaderChapterFiltered
 import mihon.domain.reader.markDuplicateChapters
+import mihon.domain.reader.session.ReaderChapterLoadPurpose
+import mihon.domain.reader.session.ReaderChapterWindowEffect
+import mihon.domain.reader.session.ReaderChapterWindowIntent
+import mihon.domain.reader.session.ReaderChapterWindowReducer
+import mihon.domain.reader.session.ReaderChapterWindowSnapshot
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
@@ -150,6 +158,8 @@ class ReaderViewModel @JvmOverloads constructor(
      * The chapter loader for the loaded manga. It'll be null until [manga] is set.
      */
     private var loader: ChapterLoader? = null
+
+    private val chapterWindowOwner = ReaderChapterWindowOwner()
 
     /**
      * The time the chapter was started reading
@@ -245,9 +255,8 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     override fun onCleared() {
-        val currentChapters = state.value.viewerChapters
-        if (currentChapters != null) {
-            currentChapters.unref()
+        chapterWindowOwner.close()
+        if (state.value.viewerChapters != null) {
             chapterToDownload?.let {
                 downloadManager.addDownloadsToStartOfQueue(listOf(it))
             }
@@ -314,31 +323,52 @@ class ReaderViewModel @JvmOverloads constructor(
     private suspend fun loadChapter(
         loader: ChapterLoader,
         chapter: ReaderChapter,
+        activationIntent: ReaderChapterWindowIntent.OpenAdjacent? = null,
     ): ViewerChapters {
-        loader.loadChapter(chapter)
+        if (activationIntent == null) {
+            loader.loadChapter(chapter)
+        } else {
+            val pageListEffect = ReaderChapterWindowReducer.reduce(
+                chapterWindowOwner.snapshot,
+                activationIntent,
+            ).effects.filterIsInstance<ReaderChapterWindowEffect.BeginPageListLoad>()
+                .singleOrNull { it.chapterId == chapter.sharedChapterId() }
+                ?: return requireNotNull(state.value.viewerChapters)
+            loader.loadChapter(chapter, pageListEffect)
+        }
 
         val chapterList = getChapterList()
         val chapterPos = chapterList.indexOf(chapter)
-        val newChapters = ViewerChapters(
+        val requestedChapters = ViewerChapters(
             chapter,
             chapterList.getOrNull(chapterPos - 1),
             chapterList.getOrNull(chapterPos + 1),
         )
 
-        withUIContext {
-            mutableState.update {
-                // Add new references first to avoid unnecessary recycling
-                newChapters.ref()
-                it.viewerChapters?.unref()
+        return withUIContext {
+            val windowReduction = if (activationIntent == null) {
+                chapterWindowOwner.replace(requestedChapters)
+            } else {
+                chapterWindowOwner.dispatch(activationIntent, chapterList)
+            }
+            if (
+                activationIntent != null &&
+                windowReduction.effects.none { it is ReaderChapterWindowEffect.ActivateChapter }
+            ) {
+                return@withUIContext requireNotNull(state.value.viewerChapters)
+            }
 
-                chapterToDownload = cancelQueuedDownloads(newChapters.currChapter)
+            val newChapters = requireNotNull(chapterWindowOwner.viewerChapters())
+            chapterToDownload = cancelQueuedDownloads(newChapters.currChapter)
+            mutableState.update {
                 it.copy(
                     viewerChapters = newChapters,
+                    chapterWindow = requireNotNull(windowReduction.snapshot),
                     bookmarked = newChapters.currChapter.chapter.bookmark,
                 )
             }
+            newChapters
         }
-        return newChapters
     }
 
     /**
@@ -347,6 +377,7 @@ class ReaderViewModel @JvmOverloads constructor(
      */
     private fun loadNewChapter(chapter: ReaderChapter) {
         val loader = loader ?: return
+        val activationIntent = createAdjacentActivationIntent(chapter) ?: return
 
         viewModelScope.launchIO {
             logcat { "Loading ${chapter.chapter.url}" }
@@ -355,7 +386,7 @@ class ReaderViewModel @JvmOverloads constructor(
             restartReadTimer()
 
             try {
-                loadChapter(loader, chapter)
+                loadChapter(loader, chapter, activationIntent)
             } catch (e: Throwable) {
                 if (e is CancellationException) {
                     throw e
@@ -370,13 +401,14 @@ class ReaderViewModel @JvmOverloads constructor(
      */
     private suspend fun loadAdjacent(chapter: ReaderChapter) {
         val loader = loader ?: return
+        val activationIntent = createAdjacentActivationIntent(chapter) ?: return
 
         logcat { "Loading adjacent ${chapter.chapter.url}" }
 
         mutableState.update { it.copy(isLoadingAdjacentChapter = true) }
         try {
             withIOContext {
-                loadChapter(loader, chapter)
+                loadChapter(loader, chapter, activationIntent)
             }
         } catch (e: Throwable) {
             if (e is CancellationException) {
@@ -396,6 +428,13 @@ class ReaderViewModel @JvmOverloads constructor(
         if (chapter.state is ReaderChapter.State.Loaded || chapter.state == ReaderChapter.State.Loading) {
             return
         }
+
+        val purpose = if (chapter.state is ReaderChapter.State.Error) {
+            ReaderChapterLoadPurpose.RETRY
+        } else {
+            ReaderChapterLoadPurpose.PREFETCH
+        }
+        val pageListEffect = chapterWindowOwner.pageListEffect(chapter, purpose) ?: return
 
         if (chapter.pageLoader?.isLocal == false) {
             val manga = manga ?: return
@@ -420,7 +459,7 @@ class ReaderViewModel @JvmOverloads constructor(
         val loader = loader ?: return
         try {
             logcat { "Preloading ${chapter.chapter.url}" }
-            loader.loadChapter(chapter)
+            loader.loadChapter(chapter, pageListEffect)
         } catch (e: Throwable) {
             if (e is CancellationException) {
                 throw e
@@ -434,6 +473,30 @@ class ReaderViewModel @JvmOverloads constructor(
         mutableState.update {
             it.copy(viewer = viewer)
         }
+    }
+
+    private fun createAdjacentActivationIntent(
+        chapter: ReaderChapter,
+    ): ReaderChapterWindowIntent.OpenAdjacent? {
+        val window = chapterWindowOwner.snapshot ?: return null
+        val targetChapterId = chapter.sharedChapterId()
+        val direction = when (targetChapterId) {
+            window.previousChapterId -> ReaderTransitionDirection.PREVIOUS
+            window.nextChapterId -> ReaderTransitionDirection.NEXT
+            else -> return null
+        }
+        val chapterList = chapterListCache ?: return null
+        val targetIndex = chapterList.indexOf(chapter).takeIf { it >= 0 } ?: return null
+        val replacementChapterId = when (direction) {
+            ReaderTransitionDirection.PREVIOUS -> chapterList.getOrNull(targetIndex - 1)?.sharedChapterId()
+            ReaderTransitionDirection.NEXT -> chapterList.getOrNull(targetIndex + 1)?.sharedChapterId()
+        }
+        return ReaderChapterWindowIntent.OpenAdjacent(
+            direction = direction,
+            expectedCurrentChapterId = window.currentChapterId,
+            expectedTargetChapterId = targetChapterId,
+            replacementChapterId = replacementChapterId,
+        )
     }
 
     /**
@@ -997,6 +1060,7 @@ class ReaderViewModel @JvmOverloads constructor(
     data class State(
         val manga: Manga? = null,
         val viewerChapters: ViewerChapters? = null,
+        val chapterWindow: ReaderChapterWindowSnapshot? = null,
         val bookmarked: Boolean = false,
         val isLoadingAdjacentChapter: Boolean = false,
         val currentPage: Int = -1,

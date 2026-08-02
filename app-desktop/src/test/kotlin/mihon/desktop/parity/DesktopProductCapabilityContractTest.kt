@@ -121,6 +121,24 @@ class DesktopProductCapabilityContractTest {
                 mapOf(
                     "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt" to
                         setOf("chapter transition exposes wait loading loaded error missing count and retry command"),
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/session/ReaderChapterWindowReducerTest.kt" to
+                        setOf(
+                            "replacing the window retains additions before releasing chapters that left it",
+                            "prefetching an adjacent chapter requests its page list without activating it",
+                            "opening next chapter publishes zero-page loading before one exact activation",
+                            "an adjacent failure changes only its own session and retry targets that chapter",
+                            "opening beyond either edge emits a boundary without changing the window",
+                            "closing releases every retained chapter once",
+                        ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderChapterWindowProductionWiringTest.kt" to
+                        setOf("ReaderViewModel preloads only an adjacent target and commits the shared window on activation"),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderWindowEffectIntegrationTest.kt" to
+                        setOf(
+                            "stale prefetch effect cannot restart a chapter after it leaves the retained window",
+                            "activation waits for the in-flight adjacent page list and reuses its retained session",
+                        ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterWindowOwnerTest.kt" to
+                        setOf("Android owner keeps overlapping chapter sessions and releases only chapters outside the new window"),
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt" to
                         setOf(
                             "pager holder production observer executes loading error and loaded states",
@@ -1611,6 +1629,30 @@ class DesktopProductCapabilityContractTest {
                 ),
             47 to
                 mapOf(
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/session/ReaderChapterWindowReducerTest.kt" to
+                        mapOf(
+                            "opening next chapter publishes zero-page loading before one exact activation" to
+                                setOf("ReaderChapterWindowReducer.reduce", "beginLoad.reduceSession"),
+                            "opening beyond either edge emits a boundary without changing the window" to
+                                setOf("ReaderChapterWindowEffect.Boundary"),
+                        ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderChapterWindowProductionWiringTest.kt" to
+                        mapOf(
+                            "ReaderViewModel preloads only an adjacent target and commits the shared window on activation" to
+                                setOf("viewModel.preload", "viewModel.loadNextChapter", "chapterWindow"),
+                        ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderWindowEffectIntegrationTest.kt" to
+                        mapOf(
+                            "stale prefetch effect cannot restart a chapter after it leaves the retained window" to
+                                setOf("owner.pageListEffect", "owner.dispatch", "chapterLoader.loadChapter", "factoryCalls"),
+                            "activation waits for the in-flight adjacent page list and reuses its retained session" to
+                                setOf("chapterLoader.loadChapter", "chapter.sharedSessionStateFlow", "factoryCalls"),
+                        ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterWindowOwnerTest.kt" to
+                        mapOf(
+                            "Android owner keeps overlapping chapter sessions and releases only chapters outside the new window" to
+                                setOf("owner.replace", "owner.dispatch", "owner.close"),
+                        ),
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt" to
                         mapOf(
                             "pager holder production observer executes loading error and loaded states" to
@@ -1739,8 +1781,16 @@ class DesktopProductCapabilityContractTest {
                 mapOf(
                     "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt" to
                         setOf("data class ReaderChapterTransitionModel"),
+                    "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderChapterWindow.kt" to
+                        setOf("object ReaderChapterWindowReducer", "data class BeginPageListLoad"),
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt" to
+                        setOf("chapterWindowOwner.replace", "chapterWindowOwner.dispatch", "chapterWindow ="),
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoader.kt" to
+                        setOf("chapter.beginPageListLoad(pageListEffect)", "awaitExistingWindowLoad"),
                     "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt" to
                         setOf("mutableSharedStateFlow", "ReaderChapterState.Error"),
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterWindowOwner.kt" to
+                        setOf("ReaderChapterWindowReducer.reduce", "chapter.ref()", ".unref()"),
                     "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt" to
                         setOf("observePagerTransitionState(scope, chapter)", "chapter.sharedStateFlow.collectLatest"),
                     "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt" to

@@ -287,6 +287,32 @@ class ReaderFixedMainAuthorityTest {
             migrationScope.getValue("closedProductGaps").jsonArray.map { it.jsonPrimitive.content }.toSet(),
         )
         assertTrue(preloadItem.requiredText("verificationScope").contains("explicit Retry forces a fresh fetch"))
+
+        val chapterWindowItem = items.getValue(47).jsonObject
+        val chapterWindowScope = chapterWindowItem.getValue("readerCoreMigrationScope").jsonObject
+        assertEquals("RC-04", chapterWindowScope.requiredText("windowTask"))
+        assertEquals("WIRED", chapterWindowScope.requiredText("sharedChapterWindow"))
+        assertEquals("WIRED", chapterWindowScope.requiredText("androidChapterWindow"))
+        assertEquals("NOT_WIRED", chapterWindowScope.requiredText("desktopChapterWindow"))
+        assertTrue(
+            chapterWindowItem.getValue("sharedImplementationPaths").jsonArray.any {
+                it.jsonPrimitive.content ==
+                    "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderChapterWindow.kt"
+            },
+        )
+        assertTrue(
+            chapterWindowItem.getValue("behaviorMethods").jsonObject
+                .getValue(
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/" +
+                        "ChapterLoaderWindowEffectIntegrationTest.kt",
+                ).jsonArray
+                .any {
+                    it.jsonPrimitive.content ==
+                        "stale prefetch effect cannot restart a chapter after it leaves the retained window"
+                },
+        )
+        assertTrue(chapterWindowItem.requiredText("verificationScope").contains("retain-before-release"))
+        assertTrue(chapterWindowItem.requiredText("verificationScope").contains("stale window effects"))
     }
 
     @Test
@@ -714,7 +740,7 @@ class ReaderFixedMainAuthorityTest {
                 43 to "PRESENTATION_TRANSFORM_CONTRACT",
                 44 to "PLATFORM_DECODE_BUDGET_CONTRACT",
                 45 to "PRIORITY_SCHEDULER_AND_ENCODED_STORE_CONTRACT",
-                47 to "CHAPTER_TRANSITION_VIEW_STATE",
+                47 to "CHAPTER_WINDOW_AND_TRANSITION",
                 49 to "INPUT_NAVIGATION_CONTRACT",
                 51 to "COLOR_FILTER_CONTRACT",
                 54 to "CHAPTER_FILTER_NAVIGATION",

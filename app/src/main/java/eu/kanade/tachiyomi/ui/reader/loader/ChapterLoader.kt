@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import mihon.core.archive.ArchiveReader
 import mihon.core.archive.EpubReader
 import mihon.core.archive.archiveReader
@@ -20,6 +21,8 @@ import mihon.domain.reader.materialize.ReaderChapterContentRequest
 import mihon.domain.reader.materialize.ReaderChapterMaterializeResult
 import mihon.domain.reader.materialize.ReaderMaterializeExecutor
 import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderChapterLoadState
+import mihon.domain.reader.session.ReaderChapterWindowEffect
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
@@ -49,8 +52,30 @@ class ChapterLoader(
      * is already loaded.
      */
     suspend fun loadChapter(chapter: ReaderChapter) {
+        loadChapterInternal(chapter, pageListEffect = null)
+    }
+
+    internal suspend fun loadChapter(
+        chapter: ReaderChapter,
+        pageListEffect: ReaderChapterWindowEffect.BeginPageListLoad,
+    ) {
+        loadChapterInternal(chapter, pageListEffect)
+    }
+
+    private suspend fun loadChapterInternal(
+        chapter: ReaderChapter,
+        pageListEffect: ReaderChapterWindowEffect.BeginPageListLoad?,
+    ) {
         beforeBeginPageListLoad?.invoke()
-        val generation = chapter.beginPageListLoadIfNeeded() ?: return
+        val generation = if (pageListEffect == null) {
+            chapter.beginPageListLoadIfNeeded()
+        } else {
+            chapter.beginPageListLoad(pageListEffect)
+        }
+        if (generation == null) {
+            if (pageListEffect != null) awaitExistingWindowLoad(chapter)
+            return
+        }
         withIOContext {
             logcat { "Loading pages for ${chapter.chapter.name}" }
             var resolvedLoader: PageLoader? = null
@@ -101,6 +126,18 @@ class ChapterLoader(
                 }
                 throw failure
             }
+        }
+    }
+
+    private suspend fun awaitExistingWindowLoad(chapter: ReaderChapter) {
+        val terminal = chapter.sharedSessionStateFlow.first {
+            it.activeChapter.loadState !is ReaderChapterLoadState.LoadingPageList
+        }.activeChapter.loadState
+        when (terminal) {
+            ReaderChapterLoadState.Loaded -> Unit
+            is ReaderChapterLoadState.Error -> throw AppErrorException(terminal.error)
+            ReaderChapterLoadState.Wait -> throw CancellationException("Chapter left the retained reader window")
+            ReaderChapterLoadState.LoadingPageList -> error("Terminal page-list wait returned LoadingPageList")
         }
     }
 

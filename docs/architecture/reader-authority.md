@@ -143,7 +143,12 @@ executor，并由 Android `ChapterLoader`/`HttpPageLoader` 生产链消费；核
 存在性、配额/淘汰和诊断结果，Android 通过 `AndroidReaderEncodedPageStore` 把它接到 `ChapterCache`；
 物理写入/删除确认先于逻辑提交，并在每次提交前 reconcile `ChapterCache` 自身 LRU 已删除的 tracked ref。
 editor 竞争、缺失文件、session 启动失败和删除失败都发布 storage failure，而不是 Ready 或 Network。
-核心尚未拥有 current/previous/next window、跨章激活、进度 effect 或 Desktop production materialize wiring。
+RC-04 已增加唯一 `ReaderChapterWindowReducer`，冻结 current/previous/next 身份、先 retain 后 release、相邻
+page-list 预取、Boundary 与幂等跨章激活；Android `ReaderViewModel`/`ReaderChapterWindowOwner` 已消费该
+生产决策，并继续保持固定原版“目标章加载完成后再提交 active 窗口”的 UI 时序。相邻预取与激活撞车时复用
+同一 retained session 并等待 page-list 终态，不重启 loader；effect 执行与 `ref/unref` 共用锁内 retained
+门禁，release 后恢复的旧 effect 会取消且不会创建窗口外 loader。核心仍未拥有进度 effect，也尚未完成
+Desktop production materialize/window wiring。
 
 因此 parity manifest 9/43/44/45/47/49/51/54 的 `VERIFIED` 只表示各自窄 capability 已验证；每项的
 `readerCoreMigrationScope.canonicalSessionExecutor` 在 RD-01 前必须保持 `NOT_WIRED`。删除或绕过当前
