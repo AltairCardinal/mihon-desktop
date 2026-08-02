@@ -26,6 +26,8 @@ class ChapterLoader(
     private val downloadProvider: DownloadProvider,
     private val manga: Manga,
     private val source: Source,
+    private val pageLoaderFactory: ((ReaderChapter) -> PageLoader)? = null,
+    private val beforeBeginPageListLoad: (() -> Unit)? = null,
 ) {
 
     /**
@@ -33,16 +35,18 @@ class ChapterLoader(
      * is already loaded.
      */
     suspend fun loadChapter(chapter: ReaderChapter) {
-        if (chapterIsReady(chapter)) {
-            return
-        }
-
-        chapter.state = ReaderChapter.State.Loading
+        beforeBeginPageListLoad?.invoke()
+        val generation = chapter.beginPageListLoadIfNeeded() ?: return
         withIOContext {
             logcat { "Loading pages for ${chapter.chapter.name}" }
+            var resolvedLoader: PageLoader? = null
             try {
-                val loader = getPageLoader(chapter)
-                chapter.pageLoader = loader
+                val loader = pageLoaderFactory?.invoke(chapter) ?: getPageLoader(chapter)
+                resolvedLoader = loader
+                if (!chapter.installPageLoader(generation, loader)) {
+                    chapter.retirePageLoader(generation, loader)
+                    return@withIOContext
+                }
 
                 val pages = loader.getPages()
                     .onEach { it.chapter = chapter }
@@ -51,25 +55,23 @@ class ChapterLoader(
                     throw Exception(context.stringResource(MR.strings.page_list_empty_error))
                 }
 
-                // If the chapter is partially read, set the starting page to the last the user read
-                // otherwise use the requested page.
-                if (!chapter.chapter.read) {
-                    chapter.requestedPage = chapter.chapter.last_page_read
+                val accepted = chapter.completePageListLoad(generation, pages)
+                if (!accepted) {
+                    chapter.retirePageLoader(generation, loader)
                 }
 
-                chapter.state = ReaderChapter.State.Loaded(pages)
+                // If the accepted chapter is partially read, set the starting page to the last the
+                // user read; otherwise preserve the requested page.
+                if (accepted && !chapter.chapter.read) {
+                    chapter.requestedPage = chapter.chapter.last_page_read
+                }
             } catch (e: Throwable) {
-                chapter.state = ReaderChapter.State.Error(e)
+                if (!chapter.failPageListLoad(generation, e)) {
+                    resolvedLoader?.let { chapter.retirePageLoader(generation, it) }
+                }
                 throw e
             }
         }
-    }
-
-    /**
-     * Checks [chapter] to be loaded based on present pages and loader in addition to state.
-     */
-    private fun chapterIsReady(chapter: ReaderChapter): Boolean {
-        return chapter.state is ReaderChapter.State.Loaded && chapter.pageLoader != null
     }
 
     /**

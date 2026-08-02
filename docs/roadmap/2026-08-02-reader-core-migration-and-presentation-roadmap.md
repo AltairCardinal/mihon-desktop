@@ -222,7 +222,7 @@ DesktopReaderScreen / Android ReaderActivity
 ## 9. 任务清单
 
 - [x] `R0-01` 冻结原版行为、跟踪上游差异并纠正现有共享核心能力声明
-- [ ] `RC-01` 提取稳定 ReaderSession/Chapter/Page 状态与逻辑页身份
+- [x] `RC-01` 提取稳定 ReaderSession/Chapter/Page 状态与逻辑页身份
 - [ ] `RC-02` 提取原版章节页列表与单页 materialize executor
 - [ ] `RC-03` 提取统一优先级调度、generation 取消和 encoded store 契约
 - [ ] `RC-04` 提取 current/previous/next 章节窗口与跨章状态转换
@@ -459,11 +459,18 @@ python scripts/gradle-coordinator.py run --key reader-core-final -- ./gradlew :d
 | 日期 | 任务 | 状态变化 | RED 证据 | GREEN/重构证据 | 独立审查 | 验证/产物 | Commit |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-08-02 | `R0-01` | `TODO -> DOING -> REVIEW -> DONE` | `r0-reader-authority-red-cmd`：新 authority contract 因缺少 reader fixture 与 manifest migration scope 出现 3 个预期失败 | `r0-reader-review-fix-final2`：authority + manifest contract + Spotless 全绿；22 个固定/lineage blob、18 个 tracked commit、方法体调用链与 deviation provenance 可执行 | 1 轮独立审查 + 1 轮修复复审；3 个 P2 已关闭，复审发现的 ID 40 scope 污染已移除，并由“scope 只能归属 ID 45”断言保护 | `git diff --check`；本批次不改变产品行为，未运行发布构建 | 本批次提交（由本行所在 Git commit 解析） |
+| 2026-08-02 | `RC-01` | `TODO -> DOING -> REVIEW -> DONE` | `rc01-domain-red`、`rc01-android-red2`：缺少 session reducer 与 Android production flow；`rc01-review-domain-red`、`rc01-review-android-red`、`rc01-loader-install-red`、`rc01-loader-ownership-red2`：依次复现重复终态、旧 generation 成功/失败、晚构造 loader 和所有权移交竞态 | `rc01-close-domain`：6 项 session reducer contract 全绿；`rc01-close-android`：真实 `ChapterLoader` 的 5 项 generation/loader 竞态以及 Android session、transition、shared parity 全绿 | 1 轮独立审查 + 1 轮修复复审；初审 P1/P2 和复审发现的 loader 所有权窗口均已关闭，未追加第二轮代理复审 | `rc01-close-static`：`:source-api:jvmTest` 与 `domain/source-api/app` Spotless 全绿；`git diff --check`；本阶段未运行全量/发布构建 | 本批次提交（由本行所在 Git commit 解析） |
 
 `R0-01` 范围说明：本批次保持 8 个内聚文件，但逐 symbol/blob/marker 夹具、18 项上游分类、变异测试和
 权威文档合计超过 400 行。它们共同构成一个不可拆分的 provenance 关闭条件；拆开会让 manifest 或文档
 暂时失去机器证据。主要风险是固定证据陈旧、错误 ref 或窄能力被描述成完整 session，已由 Git 对象/
 谱系、限定方法体、deviation evidence 与 manifest scope 测试控制。
+
+`RC-01` 范围说明：本批次保持 8 个内聚 production/test 文件，但 shared session 状态、reducer、Android
+`ReaderChapter/ReaderPage` 即时映射、`ChapterLoader` generation 所有权与真实并发测试合计超过 400 行。
+这些内容必须同批运行才能证明 Android 不是只消费未使用 DTO。主要风险是重复终态、旧 page-list 回填、
+旧 loader 覆盖或泄漏，以及 URL 为空时身份漂移；已由首终态门禁、`ChapterId + sourcePageIndex`、原子
+loader 移交/单次回收和 5 项 production 竞态测试控制。Android UI、页加载优先级与持久化行为未改变。
 
 建议状态记录使用 `TODO / DOING / BLOCKED / REVIEW / DONE`；状态只用于解释，checkbox 仍是唯一完成标记。
 

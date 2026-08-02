@@ -22,7 +22,7 @@ open class Page(
 
     @Transient
     val statusFlow = _statusFlow.asStateFlow()
-    var status: State
+    open var status: State
         get() = _statusFlow.value
         set(value) {
             _statusFlow.value = value
@@ -33,7 +33,7 @@ open class Page(
 
     @Transient
     val progressFlow = _progressFlow.asStateFlow()
-    var progress: Int
+    open var progress: Int
         get() = _progressFlow.value
         set(value) {
             _progressFlow.value = value
