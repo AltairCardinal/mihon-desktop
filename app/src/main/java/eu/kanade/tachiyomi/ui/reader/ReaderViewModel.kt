@@ -45,6 +45,7 @@ import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.storage.cacheImageDir
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -67,11 +68,14 @@ import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.filterChaptersForReader
 import mihon.domain.reader.isReaderChapterFiltered
 import mihon.domain.reader.markDuplicateChapters
+import mihon.domain.reader.progress.ReaderProgressPolicy
+import mihon.domain.reader.progress.ReaderProgressSignal
 import mihon.domain.reader.session.ReaderChapterLoadPurpose
 import mihon.domain.reader.session.ReaderChapterWindowEffect
 import mihon.domain.reader.session.ReaderChapterWindowIntent
 import mihon.domain.reader.session.ReaderChapterWindowReducer
 import mihon.domain.reader.session.ReaderChapterWindowSnapshot
+import mihon.domain.reader.session.ReaderPageId
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
@@ -90,12 +94,15 @@ import tachiyomi.domain.history.model.HistoryUpdate
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.reader.interactor.RecordReadingProgress
+import tachiyomi.domain.reader.model.ReadingProgressEvent
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.Instant
 import java.util.Date
+import java.util.UUID
 
 /**
  * Presenter used by the activity to perform background operations.
@@ -116,6 +123,7 @@ class ReaderViewModel @JvmOverloads constructor(
     private val getNextChapters: GetNextChapters = Injekt.get(),
     private val upsertHistory: UpsertHistory = Injekt.get(),
     private val updateChapter: UpdateChapter = Injekt.get(),
+    private val recordReadingProgress: RecordReadingProgress = Injekt.get(),
     private val setMangaViewerFlags: SetMangaViewerFlags = Injekt.get(),
     private val getIncognitoState: GetIncognitoState = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
@@ -160,6 +168,8 @@ class ReaderViewModel @JvmOverloads constructor(
     private var loader: ChapterLoader? = null
 
     private val chapterWindowOwner = ReaderChapterWindowOwner()
+    private val readerProgressSessionId = UUID.randomUUID().toString()
+    private val readerProgressSettlementArbiter = ReaderViewportSettlementArbiter()
 
     /**
      * The time the chapter was started reading
@@ -324,6 +334,7 @@ class ReaderViewModel @JvmOverloads constructor(
         loader: ChapterLoader,
         chapter: ReaderChapter,
         activationIntent: ReaderChapterWindowIntent.OpenAdjacent? = null,
+        canActivate: () -> Boolean = { true },
     ): ViewerChapters {
         if (activationIntent == null) {
             loader.loadChapter(chapter)
@@ -346,6 +357,9 @@ class ReaderViewModel @JvmOverloads constructor(
         )
 
         return withUIContext {
+            if (activationIntent != null && !canActivate()) {
+                return@withUIContext requireNotNull(state.value.viewerChapters)
+            }
             val windowReduction = if (activationIntent == null) {
                 chapterWindowOwner.replace(requestedChapters)
             } else {
@@ -375,18 +389,22 @@ class ReaderViewModel @JvmOverloads constructor(
      * Called when the user changed to the given [chapter] when changing pages from the viewer.
      * It's used only to set this chapter as active.
      */
-    private fun loadNewChapter(chapter: ReaderChapter) {
-        val loader = loader ?: return
-        val activationIntent = createAdjacentActivationIntent(chapter) ?: return
+    private fun loadNewChapter(chapter: ReaderChapter, settlementSequence: Long): Job? {
+        val loader = loader ?: return null
+        val activationIntent = createAdjacentActivationIntent(chapter) ?: return null
 
-        viewModelScope.launchIO {
+        return viewModelScope.launchIO {
+            if (!readerProgressSettlementArbiter.isLatest(settlementSequence)) return@launchIO
             logcat { "Loading ${chapter.chapter.url}" }
 
             updateHistory()
             restartReadTimer()
+            if (!readerProgressSettlementArbiter.isLatest(settlementSequence)) return@launchIO
 
             try {
-                loadChapter(loader, chapter, activationIntent)
+                loadChapter(loader, chapter, activationIntent) {
+                    readerProgressSettlementArbiter.isLatest(settlementSequence)
+                }
             } catch (e: Throwable) {
                 if (e is CancellationException) {
                     throw e
@@ -514,15 +532,21 @@ class ReaderViewModel @JvmOverloads constructor(
 
         val selectedChapter = page.chapter
         val pages = selectedChapter.pages ?: return
+        val settlementSequence = readerProgressSettlementArbiter.nextToken()
 
-        // Save last page read and mark as read if needed
-        viewModelScope.launchNonCancellable {
-            updateChapterProgress(selectedChapter, page)
+        val activationJob = if (selectedChapter != getCurrentChapter()) {
+            logcat { "Setting ${selectedChapter.chapter.url} as active" }
+            loadNewChapter(selectedChapter, settlementSequence)
+        } else {
+            null
         }
 
-        if (selectedChapter != getCurrentChapter()) {
-            logcat { "Setting ${selectedChapter.chapter.url} as active" }
-            loadNewChapter(selectedChapter)
+        // Persist only after an adjacent chapter has become the canonical active chapter.
+        viewModelScope.launchNonCancellable {
+            activationJob?.join()
+            readerProgressSettlementArbiter.runIfLatest(settlementSequence) {
+                updateChapterProgress(selectedChapter, page, settlementSequence)
+            }
         }
 
         val inDownloadRange = page.number.toDouble() / pages.size > 0.25
@@ -602,7 +626,15 @@ class ReaderViewModel @JvmOverloads constructor(
      * Saves the chapter progress (last read page and whether it's read)
      * if incognito mode isn't on.
      */
-    private suspend fun updateChapterProgress(readerChapter: ReaderChapter, page: Page) {
+    private suspend fun updateChapterProgress(
+        readerChapter: ReaderChapter,
+        page: Page,
+        settlementSequence: Long,
+    ) {
+        val chapterId = readerChapter.sharedChapterId()
+        val activeChapterId = getCurrentChapter()?.sharedChapterId() ?: return
+        if (chapterId != activeChapterId) return
+
         val pageIndex = page.index
 
         mutableState.update {
@@ -612,17 +644,35 @@ class ReaderViewModel @JvmOverloads constructor(
         chapterPageIndex = pageIndex
 
         if (!incognitoMode && page.status !is Page.State.Error) {
-            readerChapter.chapter.last_page_read = pageIndex
+            val totalPages = readerChapter.pages?.size ?: return
+            val progress = ReaderProgressPolicy.reduce(
+                ReaderProgressSignal.ViewportSettled(
+                    activeChapterId = activeChapterId,
+                    chapterId = chapterId,
+                    visiblePageIds = setOf(ReaderPageId(chapterId, pageIndex)),
+                    totalPages = totalPages,
+                    wasRead = readerChapter.chapter.read,
+                    sessionId = readerProgressSessionId,
+                    settlementSequence = settlementSequence,
+                ),
+            ) ?: return
+            readerChapter.chapter.last_page_read = progress.lastPageRead
 
-            if (readerChapter.pages?.lastIndex == pageIndex) {
+            if (progress.reachedLastPage) {
                 updateChapterProgressOnComplete(readerChapter)
             }
 
-            updateChapter.await(
-                ChapterUpdate(
-                    id = readerChapter.chapter.id!!,
-                    read = readerChapter.chapter.read,
-                    lastPageRead = readerChapter.chapter.last_page_read.toLong(),
+            recordReadingProgress.await(
+                ReadingProgressEvent(
+                    chapterId = progress.chapterId.value,
+                    lastPageRead = progress.lastPageRead,
+                    totalPages = progress.totalPages,
+                    readAt = Date(),
+                    sessionReadDuration = 0,
+                    trackerEvent = if (progress.reachedLastPage) "finished" else "progress",
+                    wasRead = progress.wasRead,
+                    recordHistory = false,
+                    idempotencyKey = progress.idempotencyKey,
                 ),
             )
         }
@@ -637,19 +687,15 @@ class ReaderViewModel @JvmOverloads constructor(
             .contains(LibraryPreferences.MARK_DUPLICATE_CHAPTER_READ_EXISTING)
         if (!markDuplicateAsRead) return
 
-        val duplicateUnreadChapters = getUnfilteredChapterList()
-            .mapNotNull { chapter ->
-                if (
-                    !chapter.read &&
-                    chapter.isRecognizedNumber &&
-                    chapter.chapterNumber.toFloat() == readerChapter.chapter.chapter_number
-                ) {
-                    ChapterUpdate(id = chapter.id, read = true)
-                } else {
-                    null
-                }
-            }
-        updateChapter.awaitAll(duplicateUnreadChapters)
+        val completedChapter = readerChapter.chapter.toDomainChapter() ?: return
+        val duplicateUnreadChapters = duplicateChapterReadUpdates(
+            chapters = getUnfilteredChapterList(),
+            completedChapter = completedChapter,
+            enabled = true,
+        )
+        if (duplicateUnreadChapters.isNotEmpty()) {
+            updateChapter.awaitAll(duplicateUnreadChapters)
+        }
     }
 
     fun restartReadTimer() {
@@ -1121,6 +1167,26 @@ internal fun filterAndroidReaderChapterEntries(
         currentChapterId = currentChapterId,
         skipPolicy = skipPolicy,
     )
+}
+
+internal fun duplicateChapterReadUpdates(
+    chapters: List<Chapter>,
+    completedChapter: Chapter,
+    enabled: Boolean,
+): List<ChapterUpdate> {
+    if (!enabled) return emptyList()
+    return chapters.mapNotNull { chapter ->
+        if (
+            chapter.id != completedChapter.id &&
+            !chapter.read &&
+            chapter.isRecognizedNumber &&
+            chapter.chapterNumber.toFloat() == completedChapter.chapterNumber.toFloat()
+        ) {
+            ChapterUpdate(id = chapter.id, read = true)
+        } else {
+            null
+        }
+    }
 }
 
 internal fun filterAndroidReaderChapters(

@@ -248,7 +248,9 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val linkActions = mangaUrl?.let {
             mangaLinkActions(it)
         }
-        val nextUnread = remember(chapters) { nextUnreadChapter(chapters) }
+        val nextUnread = remember(chapters, manga?.chapterFlags) {
+            manga?.let { nextUnreadChapter(chapters, it) }
+        }
 
         Scaffold(
             topBar = {

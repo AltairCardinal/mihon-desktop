@@ -12,6 +12,7 @@ data class ReadingProgressEvent(
     val trackerEvent: String = "progress",
     val recordHistory: Boolean = true,
     val idempotencyKey: String = UUID.randomUUID().toString(),
+    val wasRead: Boolean = false,
 ) {
-    val isRead: Boolean get() = totalPages > 0 && lastPageRead >= totalPages - 1
+    val isRead: Boolean get() = wasRead || (totalPages > 0 && lastPageRead >= totalPages - 1)
 }

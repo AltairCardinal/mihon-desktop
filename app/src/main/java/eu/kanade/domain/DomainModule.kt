@@ -42,6 +42,7 @@ import tachiyomi.data.chapter.ChapterRepositoryImpl
 import tachiyomi.data.creator.CreatorRepositoryImpl
 import tachiyomi.data.history.HistoryRepositoryImpl
 import tachiyomi.data.manga.MangaRepositoryImpl
+import tachiyomi.data.reader.SqlDelightReadingProgressRepository
 import tachiyomi.data.release.AndroidPlatformInfo
 import tachiyomi.data.release.ReleaseServiceImpl
 import tachiyomi.data.source.SourceRepositoryImpl
@@ -89,6 +90,8 @@ import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
 import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.manga.interactor.UpdateMangaNotes
 import tachiyomi.domain.manga.repository.MangaRepository
+import tachiyomi.domain.reader.interactor.RecordReadingProgress
+import tachiyomi.domain.reader.repository.ReadingProgressRepository
 import tachiyomi.domain.release.interactor.GetApplicationRelease
 import tachiyomi.domain.release.service.ReleaseService
 import tachiyomi.domain.source.interactor.GetRemoteManga
@@ -187,6 +190,9 @@ class DomainModule : InjektModule {
         addFactory { UpsertHistory(get()) }
         addFactory { RemoveHistory(get()) }
         addFactory { GetTotalReadDuration(get()) }
+
+        addSingletonFactory<ReadingProgressRepository> { SqlDelightReadingProgressRepository(get()) }
+        addFactory { RecordReadingProgress(get()) }
 
         addFactory { DeleteDownload(get(), get()) }
 

@@ -5,10 +5,10 @@
 本文描述 reader migration 的目标架构和当前边界。当前状态是 `MIGRATING`：
 
 - 已共享并由 Android 生产消费：稳定 session/page 状态、page-list 与单页 materialize executor、唯一
-  priority/generation scheduler、encoded store contract、current/previous/next 章节窗口及跨章激活；Desktop
-  `PagePreloader` 也消费同一 scheduler；
-- 另已共享：解码/cache contract、宽图拆分/配对纯算法、输入导航、章节过滤和滤镜参数；
-- 尚未共享：进度 effect，以及 Desktop production materialize/session/window wiring；
+  priority/generation scheduler、encoded store contract、current/previous/next 章节窗口、跨章激活及 settled
+  viewport 进度决策；Desktop `PagePreloader` 也消费同一 scheduler；
+- 另已共享：解码/cache contract、宽图拆分/配对纯算法、输入导航、章节过滤、reader entry resolver 和滤镜参数；
+- 尚未共享：Desktop production materialize/session/window/progress producer wiring；
 - 当前 Android `ReaderViewModel` 与 Desktop `DesktopReaderPageLoader/ReaderScreenModel` 仍包含尚待后续
   批次迁移的运行决策，但两端不再各自解释预加载优先级或 generation。
 
@@ -52,14 +52,14 @@ Android ReaderActivity / DesktopReaderScreen
 | 文件 | 当前可引用的证据范围 | 不能据此宣称的内容 |
 | --- | --- | --- |
 | `ReaderPageModel.kt` | page/chapter DTO、decode/cache contract | 章节窗口、完整 session executor |
-| `reader/session/`、`reader/materialize/` | 稳定逻辑页状态、page-list、单页 materialize、三章窗口 retain/release 与幂等跨章激活；Android production 已接线 | Desktop production materialize/window、进度 effect |
+| `reader/session/`、`reader/materialize/` | 稳定逻辑页状态、page-list、单页 materialize、三章窗口 retain/release 与幂等跨章激活；Android production 已接线 | Desktop production materialize/window |
 | `reader/scheduler/ReaderRequestScheduler.kt` | P0～P4、原版 current +4、稳定 PageId、有界并发、抢占、Retry 与 generation 拒收；Android/Desktop adapter 已接线 | 相邻章何时进入 P3/P4（由后续 window/policy 产生请求） |
 | `reader/storage/EncodedPageStore.kt` | 生命周期、物理存在性、配额/淘汰结果和诊断；Android `ChapterCache` adapter 已接线 | Desktop encoded store 实现 |
 | `PageTransform.kt` | 宽图尺寸/切片、纯配对算法、滤镜参数 | session core；pairing 属 presentation |
-| `ReaderNavigation.kt` | tap command、inversion、章节过滤与 adjacent result | reader entry、跨章 session 激活、进度 |
-| `ReadingProgressEvent` / `RecordReadingProgress` | Fork 的幂等进度事务，当前 Desktop 消费 | Android 已切到同一进度 effect |
+| `ReaderNavigation.kt`、`reader/progress/ReaderEntryResolver.kt` | tap command、inversion、章节过滤、adjacent result，以及不依赖 UI 方向的故事最早未读入口；Android/Desktop 入口已接线 | 跨章 session 激活、进度 |
+| `ReaderProgressPolicy` / `ReadingProgressEvent` / `RecordReadingProgress` | settled active viewport → identity-bearing progress effect、末页完成和幂等事务；Android production 已接线，Desktop 已消费事务 | Desktop viewport/session producer 已切到同一 policy |
 
-parity manifest 9/43/44/45/47/49/51/54 通过 `readerCoreMigrationScope` 锁定这些范围；在 RD-01
+parity manifest 9/43/44/45/47/49/51/53/54 通过 `readerCoreMigrationScope` 锁定这些范围；在 RD-01
 关闭前，它们不能作为 canonical `ReaderSessionCore` 已接线的证据。
 
 ## Canonical session core
@@ -167,6 +167,20 @@ presentation/navigation adapter，不进入 core 文案或按钮决策。
 - prefetch、decode、创建相邻章和 dispose 都不是进度来源；
 - duplicate chapter-number 标记是独立 preference；
 - 阅读后序章节不能批量完成前序章节。
+
+`ReaderProgressPolicy` 只接受 `ViewportSettled(activeChapterId, chapterId, visiblePageIds)`；章节打开、页准备和
+非 active 章节 settled 都不产生 effect。多页可见集合取实际可见逻辑页的最大索引，因此最终双页只有确实
+包含末页时才完成。effect 携带 session、chapter、page 与 settlement sequence 组成的幂等 key，Android
+`ReaderViewModel.onPageSelected` 通过 `ReaderViewportSettlementArbiter` 为每次 viewport settlement 分配单调
+token；相邻章加载完成后只有最新 token 可以提交 active window，UI/saved-page/事务写入也在同一串行仲裁中再次检查 token 与 active chapter。旧加载
+可以保留为相邻章 page-list 预取，但不能在用户返回当前章后反向激活或写进度。有效 settlement 再通过
+`RecordReadingProgress` 写入现有 SQLDelight 章节行；不新增 schema，不改变备份或 `last_page_read`。history 仍由 Android 原阅读计时链负责，
+该逐页事务设置 `recordHistory = false`，避免重复 history。已读章节被再次部分阅读时通过 `wasRead` 保留已读
+状态；同章节号 duplicate 更新仍只在独立 preference 开启时执行。
+
+`ReaderEntryResolver` 接收已经按漫画原始排序配置排列的候选与显式方向：升序取第一个未读，降序取最后一个
+未读。Android `getNextUnread`、Desktop 详情页阅读入口和书库“继续阅读”都通过该 resolver，因此不会把 UI
+第一项误当作故事最早未完成章节；Desktop 仍保留现有 reader navigation 列表顺序。
 
 ## 迁移门禁
 

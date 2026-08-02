@@ -1,5 +1,10 @@
 package mihon.desktop.ui.library
 
+import mihon.domain.reader.progress.ReaderChapterDisplayOrder
+import mihon.domain.reader.progress.ReaderEntryCandidate
+import mihon.domain.reader.progress.resolveReaderEntry
+import mihon.domain.reader.session.ReaderChapterId
+import tachiyomi.domain.chapter.service.getChapterSort
 import tachiyomi.i18n.MR
 import java.util.Locale
 
@@ -71,8 +76,23 @@ internal fun chaptersForDownloadAction(
     }
 }
 
-internal fun nextUnreadChapter(chapters: List<Chapter>): Chapter? =
-    chapters.filterNot { it.read }.maxByOrNull { it.sourceOrder }
+internal fun nextUnreadChapter(chapters: List<Chapter>, manga: Manga): Chapter? {
+    val sortedChapters = chapters.sortedWith(getChapterSort(manga))
+    val targetId = resolveReaderEntry(
+        chapters = sortedChapters.map { chapter ->
+            ReaderEntryCandidate(
+                chapterId = ReaderChapterId(chapter.id),
+                isRead = chapter.read,
+            )
+        },
+        displayOrder = if (manga.sortDescending()) {
+            ReaderChapterDisplayOrder.STORY_DESCENDING
+        } else {
+            ReaderChapterDisplayOrder.STORY_ASCENDING
+        },
+    )
+    return chapters.firstOrNull { it.id == targetId?.value }
+}
 
 internal enum class ChapterReadIndicator {
     UNREAD_DOT,

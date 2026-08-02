@@ -121,7 +121,7 @@ PagerViewer / WebtoonViewer
 | adjacent portrait pairing | `CROSS_PLATFORM_PRODUCT_ENHANCEMENT` | 作为 presentation 能力保留；固定原版只拆一张宽源图 |
 | Desktop 完整下一章预取 | `DESKTOP_PRODUCT_ENHANCEMENT` | RD-02 的显式 policy，不改变 Android 默认流量 |
 | cached Error 的 Retry 不再强制重抓 | `PRODUCT_GAP`（RC-02 已关闭） | RC-02 已恢复显式 Retry 强制重抓；shared executor contract 与 Android production wiring 测试共同保护 |
-| Android 双页只上报 `firstPage` | `PRODUCT_GAP` | 最终 pair 可能不能按真实末页完成；RC-05/RP-03 改为 settled 可见逻辑页集合 |
+| Android 双页只上报 `firstPage` | `PRODUCT_GAP` | RC-05 的 shared policy 已支持 settled 可见逻辑页集合；Android 双页 presentation 的完整集合上报仍由 RP-03 关闭 |
 
 相邻 portrait pairing 的 fork 起点为 `bef51fc6924c6a9de185fa0fb2a56ce76309dc19`；固定
 `6fbf6df…` 不含 `PagePairingAlgorithm`、`PairingState` 或 `DualPageViewerAdapter`。odd-width split 保留
@@ -147,10 +147,20 @@ RC-04 已增加唯一 `ReaderChapterWindowReducer`，冻结 current/previous/nex
 page-list 预取、Boundary 与幂等跨章激活；Android `ReaderViewModel`/`ReaderChapterWindowOwner` 已消费该
 生产决策，并继续保持固定原版“目标章加载完成后再提交 active 窗口”的 UI 时序。相邻预取与激活撞车时复用
 同一 retained session 并等待 page-list 终态，不重启 loader；effect 执行与 `ref/unref` 共用锁内 retained
-门禁，release 后恢复的旧 effect 会取消且不会创建窗口外 loader。核心仍未拥有进度 effect，也尚未完成
-Desktop production materialize/window wiring。
+门禁，release 后恢复的旧 effect 会取消且不会创建窗口外 loader。RC-05 已增加
+`ReaderProgressPolicy`：只有 active chapter 的 settled visible `ReaderPageId` 集合产生进度，集合内最大逻辑页
+决定 `last_page_read`，只有实际末页完成；打开章节、materialize、decode 和预取都不产生进度。Android
+`ReaderViewModel.onPageSelected` 在相邻章激活完成后消费该 policy，并由 `ReaderViewportSettlementArbiter`
+以最新 settlement token 同时仲裁 active window、UI/saved-page 与串行事务写入；被较新 viewport 取代的旧相邻加载只能留下可复用 page list，不能反向
+激活或提交进度。有效事件通过现有 `RecordReadingProgress` 与 SQLDelight 事务写当前目标行；`wasRead` 防止重读部分页清除既有已读状态，history 继续由原计时链单独写入。
+同章节号 duplicate 标记仍受 `MARK_DUPLICATE_CHAPTER_READ_EXISTING` 独立控制，并排除当前章自身。
 
-因此 parity manifest 9/43/44/45/47/49/51/54 的 `VERIFIED` 只表示各自窄 capability 已验证；每项的
+RC-05 同时提取 `ReaderEntryResolver`。Android 原 `getNextUnread` 和 Desktop 详情页/书库继续阅读入口都先按
+漫画配置排序，再显式传入升序或降序；两种 UI 输入均选择故事顺序最早的未完成章，而不是直接取列表第一项。
+Desktop 已消费 `RecordReadingProgress` 事务，但其 viewport/session progress producer 仍待 RD-01 切换；
+Desktop production materialize/window wiring 同样尚未完成。
+
+因此 parity manifest 9/43/44/45/47/49/51/53/54 的 `VERIFIED` 只表示各自窄 capability 已验证；每项的
 `readerCoreMigrationScope.canonicalSessionExecutor` 在 RD-01 前必须保持 `NOT_WIRED`。删除或绕过当前
 窄能力仍应让各自测试失败，但这些测试不能被引用为“Android/Desktop 已经共用完整 reader core”的证据。
 

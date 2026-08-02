@@ -2,7 +2,6 @@ package mihon.desktop.parity
 
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.Date
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -13,10 +12,12 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import mihon.domain.reader.progress.ReaderProgressPolicy
+import mihon.domain.reader.progress.ReaderProgressSignal
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
 import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
 import mihon.domain.reader.session.ReaderChapterId
-import tachiyomi.domain.reader.model.ReadingProgressEvent
+import mihon.domain.reader.session.ReaderPageId
 
 class ReaderFixedMainAuthorityTest {
     private val repositoryRoot = repositoryRoot()
@@ -126,9 +127,34 @@ class ReaderFixedMainAuthorityTest {
     fun `fixed last page completion fixture executes through the current progress event`() {
         val vector = behaviorVector("LAST_PAGE_COMPLETION")
         assertEquals("LAST_LOGICAL_PAGE", vector.requiredText("value"))
+        val chapterId = ReaderChapterId(1)
 
-        val penultimate = ReadingProgressEvent(1, 8, 10, Date(0), 0, idempotencyKey = "penultimate")
-        val last = ReadingProgressEvent(1, 9, 10, Date(0), 0, idempotencyKey = "last")
+        val penultimate = requireNotNull(
+            ReaderProgressPolicy.reduce(
+                ReaderProgressSignal.ViewportSettled(
+                    activeChapterId = chapterId,
+                    chapterId = chapterId,
+                    visiblePageIds = setOf(ReaderPageId(chapterId, 8)),
+                    totalPages = 10,
+                    wasRead = false,
+                    sessionId = "authority",
+                    settlementSequence = 1,
+                ),
+            ),
+        )
+        val last = requireNotNull(
+            ReaderProgressPolicy.reduce(
+                ReaderProgressSignal.ViewportSettled(
+                    activeChapterId = chapterId,
+                    chapterId = chapterId,
+                    visiblePageIds = setOf(ReaderPageId(chapterId, 9)),
+                    totalPages = 10,
+                    wasRead = false,
+                    sessionId = "authority",
+                    settlementSequence = 2,
+                ),
+            ),
+        )
 
         assertFalse(penultimate.isRead)
         assertTrue(last.isRead)
@@ -313,6 +339,52 @@ class ReaderFixedMainAuthorityTest {
         )
         assertTrue(chapterWindowItem.requiredText("verificationScope").contains("retain-before-release"))
         assertTrue(chapterWindowItem.requiredText("verificationScope").contains("stale window effects"))
+
+        val progressItem = items.getValue(53).jsonObject
+        val progressScope = progressItem.getValue("readerCoreMigrationScope").jsonObject
+        assertEquals("RC-05", progressScope.requiredText("progressTask"))
+        assertEquals("WIRED", progressScope.requiredText("sharedProgressPolicy"))
+        assertEquals("WIRED", progressScope.requiredText("androidProgressExecutor"))
+        assertEquals("NOT_WIRED", progressScope.requiredText("desktopProgressExecutor"))
+        assertTrue(
+            progressItem.getValue("sharedImplementationPaths").jsonArray.any {
+                it.jsonPrimitive.content ==
+                    "domain/src/commonMain/kotlin/mihon/domain/reader/progress/ReaderProgressPolicy.kt"
+            },
+        )
+        assertTrue(
+            progressItem.getValue("currentAndroidConsumerPaths").jsonArray.any {
+                it.jsonPrimitive.content ==
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiter.kt"
+            },
+        )
+        assertTrue(
+            progressItem.getValue("behaviorMethods").jsonObject
+                .getValue("app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt")
+                .jsonArray
+                .any {
+                    it.jsonPrimitive.content ==
+                        "newer current settlement rejects older adjacent activation and progress"
+                },
+        )
+        assertTrue(
+            progressItem.getValue("behaviorMethods").jsonObject
+                .getValue("app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt")
+                .jsonArray
+                .any {
+                    it.jsonPrimitive.content ==
+                        "an in-flight write completes before the latest settlement enters the serialized transaction"
+                },
+        )
+        assertTrue(progressItem.requiredText("verificationScope").contains("latest-settlement"))
+
+        val entryItem = items.getValue(54).jsonObject
+        val entryScope = entryItem.getValue("readerCoreMigrationScope").jsonObject
+        assertEquals("RC-05", entryScope.requiredText("entryTask"))
+        assertEquals("WIRED", entryScope.requiredText("sharedReaderEntryResolver"))
+        assertEquals("WIRED", entryScope.requiredText("androidReaderEntry"))
+        assertEquals("WIRED", entryScope.requiredText("desktopReaderEntry"))
+        assertTrue(entryItem.requiredText("verificationScope").contains("reader entry selection"))
     }
 
     @Test
@@ -743,6 +815,7 @@ class ReaderFixedMainAuthorityTest {
                 47 to "CHAPTER_WINDOW_AND_TRANSITION",
                 49 to "INPUT_NAVIGATION_CONTRACT",
                 51 to "COLOR_FILTER_CONTRACT",
+                53 to "PROGRESS_TRANSACTION_CONTRACT",
                 54 to "CHAPTER_FILTER_NAVIGATION",
             )
     }

@@ -80,6 +80,7 @@ class ReaderChapterErrorUiIntegrationTest {
                 getNextChapters = mockk(relaxed = true),
                 upsertHistory = mockk(relaxed = true),
                 updateChapter = mockk(relaxed = true),
+                recordReadingProgress = mockk(relaxed = true),
                 setMangaViewerFlags = mockk(relaxed = true),
                 getIncognitoState = mockk(relaxed = true),
                 libraryPreferences = mockk(relaxed = true),

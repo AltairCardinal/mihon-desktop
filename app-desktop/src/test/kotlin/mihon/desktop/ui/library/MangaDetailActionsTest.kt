@@ -77,15 +77,22 @@ class MangaDetailActionsTest {
     }
 
     @Test
-    fun `next unread chapter chooses oldest unfinished chapter`() {
+    fun `next unread chapter chooses story earliest unfinished chapter in either configured direction`() {
         val chapters = listOf(
             chapter(id = 1, sourceOrder = 0, read = false),
             chapter(id = 2, sourceOrder = 1, read = true),
             chapter(id = 3, sourceOrder = 2, read = false, lastPageRead = 4),
         )
+        val ascending = Manga.create().copy(
+            chapterFlags = Manga.CHAPTER_SORTING_SOURCE or Manga.CHAPTER_SORT_ASC,
+        )
+        val descending = ascending.copy(
+            chapterFlags = Manga.CHAPTER_SORTING_SOURCE or Manga.CHAPTER_SORT_DESC,
+        )
 
-        assertEquals(3L, nextUnreadChapter(chapters)?.id)
-        assertNull(nextUnreadChapter(chapters.map { it.copy(read = true) }))
+        assertEquals(3L, nextUnreadChapter(chapters, ascending)?.id)
+        assertEquals(3L, nextUnreadChapter(chapters.reversed(), descending)?.id)
+        assertNull(nextUnreadChapter(chapters.map { it.copy(read = true) }, ascending))
     }
 
     @Test

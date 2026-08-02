@@ -226,7 +226,7 @@ DesktopReaderScreen / Android ReaderActivity
 - [x] `RC-02` 提取原版章节页列表与单页 materialize executor
 - [x] `RC-03` 提取统一优先级调度、generation 取消和 encoded store 契约
 - [x] `RC-04` 提取 current/previous/next 章节窗口与跨章状态转换
-- [ ] `RC-05` 提取进度、末页完成和阅读入口选择语义
+- [x] `RC-05` 提取进度、末页完成和阅读入口选择语义
 - [ ] `RA-01` 完成 Android 生产链切换并证明没有第二套执行核心
 - [ ] `RP-01` 建立 Desktop presentation SPI 并迁移单页模式
 - [ ] `RP-02` 将条漫迁移为同级 presentation 策略
@@ -463,6 +463,7 @@ python scripts/gradle-coordinator.py run --key reader-core-final -- ./gradlew :d
 | 2026-08-02 | `RC-02` | `TODO -> DOING -> REVIEW -> DONE` | `rc02-domain-red`、`rc02-android-red`、`rc02-adapter-red`：缺少 canonical executor、Android production port/wiring 与 HTTP adapter；`rc02-review-storage-red`、`rc02-review-dispatch-red`、`rc02-authority-red`、`rc02-review-app-error-red`、`rc02-review-manifest-red`、`rc02-review-default-factory-red`：依次复现 Storage 误分类、真实 route/factory 缺口、Retry 缺口未闭环、已有 AppError 被重包、manifest capability 污染和默认 concrete factory 未执行 | `rc02-close-domain`：materialize/session/parity contract 全绿；`rc02-final-android`：cache、page-list、五路分派、HTTP 403/429/500/畸形响应、Retry、同页旧 generation 与 production wiring 全绿；`rc02-final-authority`：完整 reader authority 类全绿 | 1 轮独立审查 + 1 轮修复复审；初审 4 项与复审 3 个 P2 均已关闭，复审后的修复由主代理通过 AppError/取消、默认 concrete factory 与 capability 唯一归属行为测试核验，未追加第二轮代理复审 | `rc02-final-spotless`：domain/app Spotless 全绿；`git diff --check`；`app-desktop` 未配置 Spotless task，以 Kotlin 编译、完整 authority 测试和 diff 校验覆盖；本阶段未运行全量/发布构建 | 本批次提交（由本行所在 Git commit 解析） |
 | 2026-08-02 | `RC-03` | `TODO -> DOING -> REVIEW -> DONE` | `rc03-domain-red`、`rc03-android-red`、`rc03-desktop-red`：缺少 shared scheduler/store 与两端生产消费；`rc03-review-physical-bound-red`、`rc03-review-store-red`、`rc03-review-eviction-transaction-red2`、`rc03-review-cache-api-red`、`rc03-review-startup-diagnostics-red`、`rc03-review-reconcile-classify-red`：依次复现真实 I/O 跨 generation 无界、缺失实体仍 Ready、删除失败后逻辑先行、editor 竞争静默成功、启动诊断漏记、双 LRU phantom 与 lifecycle 错误误分为 Network | `rc03-review-domain-final`：scheduler、store、固定原版 +4 contract 全绿；`rc03-review-android-final3`：生产抢占/迟到拒收、真实 I/O bound、editor 竞争、两阶段淘汰、reopen、startup diagnostics、双 LRU reconcile 与 Storage 分类全绿；`rc03-review-desktop-final2`：Desktop scheduler consumer 与完整 authority/manifest 全绿 | 1 轮独立审查 + 1 轮修复复审；初审 2 个 P1、2 个 P2 及复审期间指出的 lifecycle 分类/双 LRU 候选点均已关闭；最终结论 `APPROVED / NO_P0_P1_P2` | `rc03-review-format-final2`：domain/app Spotless 全绿；`git diff --check`、manifest JSON 解析与 legacy policy guard 通过；本阶段按分层策略未运行全量/发布构建 | 本批次提交（由本行所在 Git commit 解析） |
 | 2026-08-02 | `RC-04` | `TODO -> DOING -> REVIEW -> DONE` | `rc04-domain-red`、`rc04-android-red2`：缺少 shared chapter-window reducer 与 Android production owner/wiring；`rc04-loader-wait-red`、`rc04-review-stale-prefetch-red`：依次复现激活未等待相邻预取，以及 release 后旧 effect 重启窗口外 loader | `rc04-final-domain`：chapter-window/session contract 全绿；`rc04-final-android-related`：ViewModel、owner、loader/generation、pager/webtoon transition 与 shared parity 全绿 | 1 轮独立审查 + 1 轮修复复审；初审 P1 已通过与 `ref/unref` 同锁的 retained 门禁及 production 交错测试关闭，最终结论 `APPROVED / NO_P0_P1_P2` | `rc04-final-authority`、`rc04-final-spotless-check` 全绿；manifest JSON 解析与 `git diff --check` 通过；本阶段按分层策略未运行全量/发布构建 | 本批次提交（由本行所在 Git commit 解析） |
+| 2026-08-02 | `RC-05` | `TODO -> DOING -> REVIEW -> DONE` | `rc05-domain-red`、`rc05-android-red`、`rc05-data-red`、`rc05-desktop-entry-red`、`rc05-authority-red`：缺少 shared progress/entry 与真实生产/数据库/入口证据；`rc05-settlement-race-red2` 复现旧相邻 settle 反向激活并提交 B 章进度；`rc05-arbiter-red` 固定 latest token 与串行事务仲裁 | `rc05-android-final-gate`：进度、末页、旧 settle 竞态、仲裁器、duplicate、window/错误与入口组全绿；`rc05-domain-final-gate`、`rc05-data-final-gate`：shared contract 与真实目标行事务全绿 | 1 轮独立审查 + 1 轮修复复审；初审 P1 通过 active-window latest token guard 关闭，复审 P2 通过独立 `ReaderViewportSettlementArbiter` 并发测试与最终证据行校准关闭；未追加第二轮代理复审 | `rc05-desktop-authority-final-gate`、`rc05-spotless-check-final` 全绿；manifest JSON、`git diff --check` 通过；本阶段按分层策略未运行全量/发布构建 | 本批次提交（由本行所在 Git commit 解析） |
 
 `R0-01` 范围说明：本批次保持 8 个内聚文件，但逐 symbol/blob/marker 夹具、18 项上游分类、变异测试和
 权威文档合计超过 400 行。它们共同构成一个不可拆分的 provenance 关闭条件；拆开会让 manifest 或文档
@@ -498,6 +499,14 @@ chapter-window reducer、Android 引用所有权、ViewModel 跨章提交、page
 恢复并泄漏窗口外资源；已由预期 from/target、先 retain 后 release、同 generation 终态等待、与 `ref/unref`
 同锁的 retained 门禁和 production 交错测试控制。Android 原 transition UI/时序保持不变，Desktop production
 window/完整 session executor 仍留给 `RD-01`，进度 policy 留给 `RC-05`。
+
+`RC-05` 范围说明：本批次 26 个内聚 production/test/authority/文档文件并超过 400 行，原因是 settled
+viewport policy、Android latest-settlement 仲裁、现有 SQLDelight 事务、duplicate preference、两端 reader
+entry 与 capability 证据共同构成同一用户能力；拆开会留下未消费 policy、无真实目标行证明或入口语义分叉。
+主要风险是旧相邻加载反向激活、连续写入乱序、部分重读清除已读、末页前提前完成、阅读后序章批量完成前序章、
+history 重复以及升/降序列表选择不同故事章节；已由 `ReaderViewportSettlementArbiter`、active chapter 门禁、
+identity-bearing 幂等 key、`wasRead`、独立 duplicate fixture、真实内存数据库与两端 production 入口测试控制。
+数据库 schema、备份和 `last_page_read` 格式未改变；Desktop viewport/session producer 仍明确留给 `RD-01`。
 
 建议状态记录使用 `TODO / DOING / BLOCKED / REVIEW / DONE`；状态只用于解释，checkbox 仍是唯一完成标记。
 
