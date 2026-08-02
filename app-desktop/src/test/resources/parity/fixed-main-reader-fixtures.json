@@ -1,0 +1,396 @@
+{
+  "fixedOriginalRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+  "fixedOriginalUpstreamLineageBase": "upstream/main@8e0c911f93e60db35dcbe2a9103ac6ea0d803e29",
+  "trackedUpstreamRef": "upstream/main@d7f3ceef5c75294306d0d9495e9ebc5ffca96302",
+  "forkCompatibilityBaseline": "9111d70a85565e20940fa4736c97eea8c1a44a0d",
+  "symbols": [
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/data/cache/ChapterCache.kt",
+      "blobId": "1d47f5b7d7acbc89e4a9722cd1caf0ebbf1e78fd",
+      "responsibility": "Owns the fixed-original disk cache existence check used before HTTP image materialization.",
+      "markers": ["class ChapterCache(", "fun isImageInCache(imageUrl: String): Boolean", "diskCache.get(DiskUtil.hashKeyForDisk(imageUrl)).use { it != null }"]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
+      "blobId": "4c227636a85e44c8abb35e6b73ec524a54931b41",
+      "responsibility": "Owns the fixed-original active chapter window, adjacent page-list preload entry, selected-page progress, and last-page completion.",
+      "markers": [
+        "class ReaderViewModel @JvmOverloads constructor(",
+        "private suspend fun loadChapter(",
+        "val newChapters = ViewerChapters(",
+        "suspend fun preload(chapter: ReaderChapter)",
+        "loader.loadChapter(chapter)",
+        "private suspend fun updateChapterProgress(",
+        "readerChapter.pages?.lastIndex == pageIndex"
+      ]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt",
+      "blobId": "830c6ccc245326150a008a990d954bdbe8378296",
+      "responsibility": "Connects pager and webtoon preload requests to the production ReaderViewModel.",
+      "markers": [
+        "class ReaderActivity : BaseActivity()",
+        "fun requestPreloadChapter(chapter: ReaderChapter)",
+        "viewModel.preload(chapter)"
+      ]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ArchivePageLoader.kt",
+      "blobId": "9332c8a0ca8fd7aad9fe35862cc597c1fd30db9b",
+      "responsibility": "Builds stable ReaderPage entries and streams image data from archive chapters.",
+      "markers": ["internal class ArchivePageLoader", "override suspend fun getPages()", "override suspend fun loadPage(page: ReaderPage)"]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoader.kt",
+      "blobId": "761c212a12a2b4f202b077494f33ffde8746f4e2",
+      "responsibility": "Selects download, directory, archive, EPUB, or HTTP loaders and publishes chapter Loading, Loaded, and Error states.",
+      "markers": [
+        "class ChapterLoader(",
+        "suspend fun loadChapter(chapter: ReaderChapter)",
+        "chapter.state = ReaderChapter.State.Loading",
+        "val pages = loader.getPages()",
+        "chapter.state = ReaderChapter.State.Loaded(pages)",
+        "chapter.state = ReaderChapter.State.Error(e)",
+        "private fun getPageLoader(chapter: ReaderChapter): PageLoader"
+      ]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/DirectoryPageLoader.kt",
+      "blobId": "adb92c1b4fb2d3f6ee0fb8823dea775403e64072",
+      "responsibility": "Builds and materializes ReaderPage entries for local directory chapters.",
+      "markers": ["internal class DirectoryPageLoader", "override suspend fun getPages()", "return file.listFiles()"]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/DownloadPageLoader.kt",
+      "blobId": "026faac3e3672cd6b71f9014f8df1dc3a1fce5e7",
+      "responsibility": "Builds and materializes ReaderPage entries from the Android download provider.",
+      "markers": ["internal class DownloadPageLoader(", "override suspend fun getPages()", "override suspend fun loadPage(page: ReaderPage)"]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/EpubPageLoader.kt",
+      "blobId": "5139fe2b7d15872217d12bfb97bed84fa5d8fb08",
+      "responsibility": "Builds and materializes ReaderPage entries for EPUB chapters.",
+      "markers": ["internal class EpubPageLoader", "override suspend fun getPages()", "override suspend fun loadPage(page: ReaderPage)"]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt",
+      "blobId": "81530afa36ad08b037af44275777d37da608faaf",
+      "responsibility": "Loads online page lists and serially prioritizes the selected page, retry, and the next four pages through one queue.",
+      "markers": [
+        "internal class HttpPageLoader(",
+        "private val queue = PriorityBlockingQueue<PriorityPage>()",
+        "private val preloadSize = 4",
+        "queuedPages += preloadNextPages(page, preloadSize)",
+        "force = it.priority == PriorityPage.RETRY",
+        "if (force || !chapterCache.isImageInCache(imageUrl))",
+        "page.status = Page.State.LoadPage",
+        "page.status = Page.State.DownloadImage",
+        "page.status = Page.State.Ready",
+        "page.status = Page.State.Error(e)"
+      ]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/PageLoader.kt",
+      "blobId": "164de6bda4d710c12e228437f0e311c4ee05d168",
+      "responsibility": "Defines page-list, single-page load, retry, and recycle operations for every fixed-original loader.",
+      "markers": [
+        "abstract class PageLoader",
+        "abstract suspend fun getPages(): List<ReaderPage>",
+        "open suspend fun loadPage(page: ReaderPage)",
+        "open fun retryPage(page: ReaderPage)",
+        "open fun recycle()"
+      ]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ChapterTransition.kt",
+      "blobId": "2da46e5b0a5ff4f3c2fe1eb3e615ca528917d366",
+      "responsibility": "Represents symmetric previous/next boundaries between a loaded chapter and an optional adjacent chapter.",
+      "markers": ["sealed class ChapterTransition", "abstract val from: ReaderChapter", "abstract val to: ReaderChapter?", "class Prev(", "class Next("]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/InsertPage.kt",
+      "blobId": "40bb702f142bf800231f77001710d8bdbdf0de45",
+      "responsibility": "Represents the second displayed half of one source page without creating a second source identity.",
+      "markers": ["class InsertPage(val parent: ReaderPage)", "override var chapter: ReaderChapter = parent.chapter", "status = State.Ready", "stream = parent.stream"]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt",
+      "blobId": "cb3bca256878a56612f43980ee837c313c742b5c",
+      "responsibility": "Owns chapter Wait, Loading, Loaded, and Error state plus reference-counted loader recycling.",
+      "markers": [
+        "data class ReaderChapter(val chapter: Chapter)",
+        "private var references = 0",
+        "fun ref()",
+        "fun unref()",
+        "data object Wait : State",
+        "data object Loading : State",
+        "data class Error(val error: Throwable) : State",
+        "data class Loaded(val pages: List<ReaderPage>) : State"
+      ]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderPage.kt",
+      "blobId": "6602b96185a2c1f8cedc9163907c9fef1f35f816",
+      "responsibility": "Adds chapter identity and an encoded stream supplier to the source Page state holder.",
+      "markers": ["open class ReaderPage(", ": Page(index, url, imageUrl, null)", "open lateinit var chapter: ReaderChapter"]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ViewerChapters.kt",
+      "blobId": "6fb5905c3356ca694d6a8f33215cf331e59b1ce1",
+      "responsibility": "Retains and releases the current, previous, and next ReaderChapter window as one unit.",
+      "markers": ["data class ViewerChapters(", "val currChapter: ReaderChapter", "fun ref()", "fun unref()"]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt",
+      "blobId": "4569f43700281b6b24694e9e859f30c5e7f47fe9",
+      "responsibility": "Renders fixed-original pager transition Loading, Error, Wait, and Loaded states.",
+      "markers": ["class PagerTransitionHolder(", "is ReaderChapter.State.Loading -> setLoading()", "is ReaderChapter.State.Error -> setError(state.error)", "is ReaderChapter.State.Wait, is ReaderChapter.State.Loaded", "// No additional view is added", "MR.strings.action_retry"]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewer.kt",
+      "blobId": "1d39507b31cc56c178110800a7d8257e53d25a26",
+      "responsibility": "Requests adjacent chapter page-list preload when the paged reader is fewer than five pages from the end.",
+      "markers": ["abstract class PagerViewer(val activity: ReaderActivity)", "val inPreloadRange = pages.size - page.number < 5", "adapter.nextTransition?.to?.let(activity::requestPreloadChapter)"]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewerAdapter.kt",
+      "blobId": "0fef0b8bc0c42b13b704ebd0c5de77b1cce26426",
+      "responsibility": "Builds pager items from current pages, optional transition items, and already-loaded adjacent pages for seamless chapter entry.",
+      "markers": ["class PagerViewerAdapter(private val viewer: PagerViewer)", "fun setChapters(chapters: ViewerChapters, forceTransition: Boolean)", "newItems.add(ChapterTransition.Prev", "nextTransition = ChapterTransition.Next", "chapters.nextChapter?.pages?.let(newItems::addAll)"]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonAdapter.kt",
+      "blobId": "29727f696845dae7b8d1df9b1581b84aeb8d5671",
+      "responsibility": "Builds webtoon items from current pages, optional transition items, and already-loaded adjacent pages for seamless chapter entry.",
+      "markers": ["class WebtoonAdapter(val viewer: WebtoonViewer)", "fun setChapters(chapters: ViewerChapters, forceTransition: Boolean)", "newItems.add(ChapterTransition.Prev", "newItems.add(ChapterTransition.Next", "chapters.nextChapter?.pages?.let(newItems::addAll)"]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt",
+      "blobId": "57036d070d058fe3bed425d117deffebd87c3075",
+      "responsibility": "Renders fixed-original webtoon transition Loading, Error, Wait, and Loaded states.",
+      "markers": ["class WebtoonTransitionHolder(", "is ReaderChapter.State.Loading -> setLoading()", "is ReaderChapter.State.Error -> setError(state.error, transition)", "is ReaderChapter.State.Wait, is ReaderChapter.State.Loaded", "// No additional view is added", "MR.strings.action_retry"]
+    },
+    {
+      "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonViewer.kt",
+      "blobId": "33d21d1eba913728ca1b9770855400166fafee78",
+      "responsibility": "Requests adjacent chapter page-list preload when the webtoon reader is fewer than five pages from the end.",
+      "markers": ["class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = true)", "val inPreloadRange = pages.size - page.number < 5", "activity.requestPreloadChapter(transitionChapter)"]
+    },
+    {
+      "path": "source-api/src/commonMain/kotlin/eu/kanade/tachiyomi/source/model/Page.kt",
+      "blobId": "1119850439480370948570b61d61055b7a546562",
+      "responsibility": "Defines stable source page index and Queue, LoadPage, DownloadImage, Ready, and Error state transitions.",
+      "markers": [
+        "open class Page(",
+        "private val _statusFlow = MutableStateFlow<State>(State.Queue)",
+        "data object Queue : State",
+        "data object LoadPage : State",
+        "data object DownloadImage : State",
+        "data object Ready : State",
+        "data class Error(val error: Throwable) : State"
+      ]
+    }
+  ],
+  "behaviorVectors": [
+    {
+      "id": "CURRENT_PLUS_FOUR",
+      "classification": "FIXED_ORIGINAL",
+      "sourcePath": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt",
+      "value": "4",
+      "contract": "The selected page has higher priority than four forward-only adjacent requests in the serial HTTP queue."
+    },
+    {
+      "id": "ADJACENT_PAGE_LIST_THRESHOLD",
+      "classification": "FIXED_ORIGINAL",
+      "sourcePath": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewer.kt",
+      "value": "5",
+      "requiredPathChain": [
+        "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewer.kt",
+        "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonViewer.kt",
+        "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt",
+        "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
+        "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoader.kt",
+        "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/PageLoader.kt"
+      ],
+      "forbiddenOperations": ["PageLoader.loadPage", "HttpSource.getImageUrl", "HttpSource.getImage"],
+      "contract": "Pager and webtoon request the next chapter through ReaderActivity and ReaderViewModel when fewer than five pages remain; ReaderViewModel calls ChapterLoader.loadChapter, which materializes the page list but does not eagerly fetch every image."
+    },
+    {
+      "id": "LAST_PAGE_COMPLETION",
+      "classification": "FIXED_ORIGINAL",
+      "sourcePath": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
+      "value": "LAST_LOGICAL_PAGE",
+      "contract": "A selected non-error page updates last_page_read, and only the chapter's last logical page invokes completion; duplicate chapter-number marking remains a separate preference rule."
+    },
+    {
+      "id": "PAGE_STATE_MACHINE",
+      "classification": "FIXED_ORIGINAL",
+      "sourcePath": "source-api/src/commonMain/kotlin/eu/kanade/tachiyomi/source/model/Page.kt",
+      "value": "QUEUE_LOAD_PAGE_DOWNLOAD_IMAGE_READY_ERROR",
+      "contract": "ReaderPage retains one stable index while its inherited Page state changes independently."
+    },
+    {
+      "id": "CHAPTER_WINDOW",
+      "classification": "FIXED_ORIGINAL",
+      "sourcePath": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ViewerChapters.kt",
+      "value": "CURRENT_PREVIOUS_NEXT_RETAIN_RELEASE",
+      "contract": "ReaderViewModel atomically refs the new current/previous/next window before unrefing the old one."
+    },
+    {
+      "id": "PAGER_TRANSITION",
+      "classification": "FIXED_ORIGINAL",
+      "sourcePath": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt",
+      "value": "WAIT_LOADING_LOADED_ERROR",
+      "contract": "Pager transition UI shows Loading or Error with Retry; Wait and Loaded add no buttons, and the adapter removes a loaded transition for seamless reading. Fixed original has no Continue or Cancel transition action."
+    },
+    {
+      "id": "WEBTOON_TRANSITION",
+      "classification": "FIXED_ORIGINAL",
+      "sourcePath": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt",
+      "value": "WAIT_LOADING_LOADED_ERROR",
+      "contract": "Webtoon transition UI shows Loading or Error with Retry; Wait and Loaded add no buttons, and the adapter removes a loaded transition for seamless reading. Fixed original has no Continue or Cancel transition action."
+    }
+  ],
+  "deviations": [
+    {
+      "id": "GENERATION_HARDENING",
+      "classification": "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
+      "evidenceRef": "83c5a97f67fcea33367f5f79c09397bb215a2f6f",
+      "description": "ReaderPreloadPlanner generations, cancellation, and stale-result rejection were added by the Fork; fixed original used a priority queue but did not expose this shared generation contract."
+    },
+    {
+      "id": "ADJACENT_PORTRAIT_PAIRING",
+      "classification": "CROSS_PLATFORM_PRODUCT_ENHANCEMENT",
+      "evidenceRef": "bef51fc6924c6a9de185fa0fb2a56ce76309dc19",
+      "description": "Adjacent portrait-page pairing and its Android dual-page adapter are Fork additions; fixed original only split a single wide source page."
+    },
+    {
+      "id": "DESKTOP_FULL_NEXT_CHAPTER_PREFETCH",
+      "classification": "DESKTOP_PRODUCT_ENHANCEMENT",
+      "evidenceRef": "planned:RD-02",
+      "description": "Fetching every encoded image of the next chapter after the current chapter is fully Ready is a planned Desktop policy, not fixed-original behavior."
+    },
+    {
+      "id": "HTTP_RETRY_FORCE_DRIFT",
+      "classification": "PRODUCT_GAP",
+      "evidenceRef": "9111d70a85565e20940fa4736c97eea8c1a44a0d",
+      "description": "Fixed original RETRY forced an image refetch even when ChapterCache reported a hit; the current Fork generation-hardened HttpPageLoader no longer carries that force flag, so RC-02 must restore and test cached-error Retry semantics."
+    },
+    {
+      "id": "DUAL_PAGE_PROGRESS_FIRST_ONLY",
+      "classification": "PRODUCT_GAP",
+      "evidenceRef": "9111d70a85565e20940fa4736c97eea8c1a44a0d",
+      "description": "The current Android dual-page viewer reports only DisplayPage.firstPage to ReaderViewModel; RC-05 and RP-03 must report the settled visible logical-page set so a final pair can complete on its actual last page."
+    }
+  ],
+  "trackedUpstreamChanges": [
+    {
+      "commit": "6d69903a561b3b9445578eb9b2479f064f4926e8",
+      "classification": "UPSTREAM_REFACTOR",
+      "coreContractImpact": "NONE",
+      "summary": "Reader timing moved from java.time.Instant to kotlin.time.Clock without changing session, loading, or progress semantics."
+    },
+    {
+      "commit": "9c3cc1ca5f0011c4b3638d8f5272080d219bfb2e",
+      "classification": "UPSTREAM_REFACTOR",
+      "coreContractImpact": "NONE",
+      "summary": "source-api moved from commonMain layout to an Android library main source set; the Page state semantics remained unchanged."
+    },
+    {
+      "commit": "430b13bb81c8f51331109fa3ff35296f8bde9d27",
+      "classification": "UPSTREAM_REFACTOR",
+      "coreContractImpact": "MATERIALIZATION_REVIEW",
+      "summary": "The OkHttp network adapter moved to the TachiyomiX 1.6 suspend and cancellation contract; reader materialization must preserve cooperative request cancellation."
+    },
+    {
+      "commit": "4c37f4c764afc47e0be6c63b1389b54f240b03f5",
+      "classification": "UPSTREAM_REFACTOR",
+      "coreContractImpact": "MATERIALIZATION_REVIEW",
+      "summary": "Source adapters moved to the TachiyomiX 1.6 suspend API without changing fixed page ordering or page-state semantics."
+    },
+    {
+      "commit": "d8c3440d3793573c1ea52b85d00a6ced03983668",
+      "classification": "UPSTREAM_READER_FEATURE",
+      "coreContractImpact": "MATERIALIZATION_REVIEW",
+      "summary": "Encoded image downloads gained resumable range support; the shared executor and platform adapters must not regress resumable materialization."
+    },
+    {
+      "commit": "6981185f4ba1cf92ad1f84e7721b670ce1c36716",
+      "classification": "UPSTREAM_READER_FIX",
+      "coreContractImpact": "MATERIALIZATION_REVIEW",
+      "summary": "Resumed HTTP 206 downloads now report progress against the complete image size instead of only the remaining response body."
+    },
+    {
+      "commit": "47d7c0f2ea3349c586008db4da3ae1fd571d28ab",
+      "classification": "NO_SEMANTIC_CHANGE",
+      "coreContractImpact": "NONE",
+      "summary": "Reader import optimization did not change the authority behaviors."
+    },
+    {
+      "commit": "98bb731b4ddbba9743debeb4442e9346bac48d68",
+      "classification": "UPSTREAM_READER_FIX",
+      "coreContractImpact": "LIFECYCLE_REVIEW",
+      "summary": "ReaderActivity initialization is no longer forced through a non-cancellable call; Android cutover must retain cooperative cancellation."
+    },
+    {
+      "commit": "c3b99aea0723bc9b34a4c71afb2b12d654c09ef7",
+      "classification": "UPSTREAM_REFACTOR",
+      "coreContractImpact": "LIFECYCLE_REVIEW",
+      "summary": "ReaderActivity and reader-settings lifecycle ownership migrated to AndroidX ViewModel APIs; the main ReaderViewModel core behavior did not change in this commit."
+    },
+    {
+      "commit": "b4635c41a8dd5e30edf480b0c9bdc80d0fda0520",
+      "classification": "UPSTREAM_READER_FIX",
+      "coreContractImpact": "PRESENTATION_REVIEW",
+      "summary": "Paged-reader app bars now hide correctly after page changes following chapter-slider use."
+    },
+    {
+      "commit": "44780e74b5579dbb23a648f7e1b5c6cda6454d9f",
+      "classification": "UPSTREAM_READER_FEATURE",
+      "coreContractImpact": "PRESENTATION_REVIEW",
+      "summary": "Paged reader gained a vertical chapter navigator and height option; this remains presentation behavior."
+    },
+    {
+      "commit": "80541831bb02f893f4ff56670a738b25452ea17d",
+      "classification": "UPSTREAM_REFACTOR",
+      "coreContractImpact": "LIFECYCLE_REVIEW",
+      "summary": "Upstream reverted the app-scoped coroutine change, restoring ViewModel-owned reader work."
+    },
+    {
+      "commit": "a6f0cec08383fb8c6720b8633badd045e77793a0",
+      "classification": "NO_SEMANTIC_CHANGE",
+      "coreContractImpact": "NONE",
+      "summary": "ImageUtil drawable conversion was mechanically updated without changing wide-image or split policy."
+    },
+    {
+      "commit": "6ae79d255dbb581c06cd0d637e1e255ac81d54f2",
+      "classification": "NO_SEMANTIC_CHANGE",
+      "coreContractImpact": "NONE",
+      "summary": "Redundant reader constructs were simplified without changing the frozen state or scheduling vectors."
+    },
+    {
+      "commit": "4b9974e20a88c3acc3be229089c0eada71b71a47",
+      "classification": "NO_SEMANTIC_CHANGE",
+      "coreContractImpact": "NONE",
+      "summary": "Duration overload adoption did not change reader timeouts or core state semantics."
+    },
+    {
+      "commit": "509eee5dfb81266ea7056587f695910506248a8a",
+      "classification": "UPSTREAM_REFACTOR",
+      "coreContractImpact": "LIFECYCLE_REVIEW",
+      "summary": "Reader work temporarily moved to an app-scoped coroutine before being reverted by 80541831."
+    },
+    {
+      "commit": "a330258f6a26a57ceca9a318270b5db3b4653e24",
+      "classification": "UPSTREAM_READER_FEATURE",
+      "coreContractImpact": "PRESENTATION_REVIEW",
+      "summary": "Long-strip mode gained a vertical chapter navigator; it does not alter the shared loading core."
+    },
+    {
+      "commit": "bc7f7e70a1de65f1f966e2e31f97457f8ac16ce6",
+      "classification": "UPSTREAM_READER_FIX",
+      "coreContractImpact": "MATERIALIZATION_REVIEW",
+      "summary": "ChapterCache now requires both its journal entry and encoded image file to exist, preventing a stale journal entry from causing FileNotFoundException; RC-02 and RC-03 adapters must preserve this fix."
+    }
+  ]
+}

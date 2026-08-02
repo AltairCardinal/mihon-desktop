@@ -341,6 +341,8 @@
     ],
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt": ["decode JPEG returns correct dimensions"]},
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
+    "readerCoreMigrationScope": {"task": "R0-01", "verifiedSlice": "PLATFORM_DECODE_CONTRACT", "canonicalSessionExecutor": "NOT_WIRED", "closureTask": "RD-01"},
+    "verificationScope": "VERIFIED only for platform-neutral decode request/result contracts and Android/Desktop decoder adapters; this does not prove shared ReaderSessionCore, page materialization, scheduling, chapter-window, or progress execution.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1861,6 +1863,8 @@
       "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt"
     ],
+    "readerCoreMigrationScope": {"task": "R0-01", "verifiedSlice": "PRESENTATION_TRANSFORM_CONTRACT", "canonicalSessionExecutor": "NOT_WIRED", "closureTask": "RD-01"},
+    "verificationScope": "VERIFIED only for fixed-original wide-page transforms plus explicitly classified Fork/Desktop presentation pairing; this does not prove shared ReaderSessionCore or any page-loading executor.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1882,7 +1886,7 @@
         "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt": ["ordinary non large page path still enforces decoded dimension bounds"]
       }
     },
-    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt 定义区域解码请求、结果尺寸和缓存字节预算；app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt 将 Android tile reader 映射为共享无重复完整解码缓存策略",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #44: ReaderPageImageView configures bounded tile decoding through setMaxTileSize; shared decode-size and cache-budget contracts are Fork migration output consumed by platform image adapters.",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt 通过 SkiaRegionPageDecoder 物化有界输出，app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt 禁止超大完整 bitmap 长驻普通缓存",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt", "symbol": "setMaxTileSize"}],
@@ -1905,6 +1909,8 @@
     ],
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt": ["Skia region adapter decodes only the requested tile"]},
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
+    "readerCoreMigrationScope": {"task": "R0-01", "verifiedSlice": "PLATFORM_DECODE_BUDGET_CONTRACT", "canonicalSessionExecutor": "NOT_WIRED", "closureTask": "RD-01"},
+    "verificationScope": "VERIFIED only for bounded region decode and decoded-cache budget adapters; this does not prove shared ReaderSessionCore, encoded-page ownership, or a canonical materialization executor.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1920,18 +1926,34 @@
       "decision": "PROMOTE_VERIFIED",
       "followUp": "NONE",
       "gap": "NONE",
+      "scope": "PRELOAD_WINDOW_PLANNER_AND_PLATFORM_GENERATION_ADAPTERS",
       "behaviorMethods": {
         "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt": ["rapid zero one two selection cancels stale jobs without error and reorders current first"],
         "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt": ["fast page change cancels stale preload and prevents a late cache write", "page change cancels every active or queued old generation request"]
       }
     },
-    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt 的 ReaderPreloadPlanner 统一窗口、优先级、generation、取消与淘汰；app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt 消费同一规划器并保留 Android 前向 4 页权威配置",
-    "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt 消费共享规划器并取消旧协程、拒绝过期回填、淘汰旧窗口",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #45: HttpPageLoader uses one serial PriorityBlockingQueue where the selected page outranks four forward adjacent pages and an explicit Retry outranks both.",
+    "desktopImplementation": "ReaderPreloadPlanner is a shared pure window/generation planner consumed by Android HttpPageLoader and Desktop PagePreloader; Android HttpPageLoader, Desktop PagePreloader, and DesktopReaderPageLoader remain separate executors until RC-03/RD-01.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt", "symbol": "private val preloadSize = 4"}],
     "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt"],
     "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt"],
     "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt"],
+    "deviations": [
+      {
+        "id": "GENERATION_HARDENING",
+        "classification": "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
+        "evidenceRef": "83c5a97f67fcea33367f5f79c09397bb215a2f6f",
+        "description": "ReaderPreloadPlanner generations, cancellation, and stale-result rejection are Fork reliability enhancements, not fixed-original queue semantics."
+      },
+      {
+        "id": "HTTP_RETRY_FORCE_DRIFT",
+        "classification": "PRODUCT_GAP",
+        "evidenceRef": "9111d70a85565e20940fa4736c97eea8c1a44a0d",
+        "closureTask": "RC-02",
+        "description": "The current Android HttpPageLoader no longer forces a cached Error page to refetch on explicit Retry; this remains outside the verified planner slice until RC-02."
+      }
+    ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt", "symbol": "private val preloadSize = 4", "line": 44}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt", "symbol": "private val preloadPlanner", "line": 50}],
@@ -1947,6 +1969,8 @@
     ],
     "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["fixed original Mihon preload window keeps forward-only behavior"], "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt": ["page change cancels every active or queued old generation request"]},
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
+    "readerCoreMigrationScope": {"task": "R0-01", "verifiedSlice": "PRELOAD_WINDOW_PLANNER", "canonicalSessionExecutor": "NOT_WIRED", "closureTask": "RD-01", "openProductGaps": ["HTTP_RETRY_FORCE_DRIFT"]},
+    "verificationScope": "VERIFIED only for the forward-window planner and each platform's current generation/cancellation adapter; cached-error Retry force is excluded and tracked as HTTP_RETRY_FORCE_DRIFT. This does not prove shared ReaderSessionCore, one priority scheduler, or one page materialization executor.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -1967,7 +1991,7 @@
         "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt": ["next chapter enters target immediately at zero pages before page count arrives", "chapter boundaries return no destination and keep explicit feedback"]
       }
     },
-    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt 统一 Wait/Loading/Loaded/Error、相邻章节、缺章数、边界与重试命令；app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt 发布共享状态，app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt 与 app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt 均消费 sharedStateFlow 并处理 Loading/Error/Loaded",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #47: ReaderChapter exposes Wait/Loading/Loaded/Error and pager/webtoon transition holders show Loading or Error with Retry; Wait/Loaded add no Continue or Cancel controls and loaded adjacent pages replace the transition seamlessly.",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt 保留共享章节状态适配，app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt 在跨章时直接进入目标章节的 0 页加载态并由页面加载器渐进填充，app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt 只在边界和错误反馈中提供关闭或重试",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt", "symbol": "sealed interface State"}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt", "symbol": "private fun observeStatus"}],
@@ -1991,6 +2015,8 @@
     ],
     "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["chapter transition exposes wait loading loaded error missing count and retry command"], "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt": ["pager holder production observer executes loading error and loaded states", "webtoon holder production observer executes loading error and loaded states"], "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt": ["next chapter enters target immediately at zero pages before page count arrives"]},
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
+    "readerCoreMigrationScope": {"task": "R0-01", "verifiedSlice": "CHAPTER_TRANSITION_VIEW_STATE", "canonicalSessionExecutor": "NOT_WIRED", "closureTask": "RD-01"},
+    "verificationScope": "VERIFIED only for chapter transition DTO/state projection and platform observers; this does not prove shared ReaderSessionCore, current/previous/next ownership, retain/release, or chapter activation execution.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2013,7 +2039,7 @@
         "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderKeyboardNavigationPositionTest.kt": ["all tap presets move logical pages before mapping to LTR pager storage"]
       }
     },
-    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt 固化 Android RightAndLeft、L、Kindle、Edge、Disabled 区域及横向/纵向反转语义；app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ViewerNavigation.kt 从共享区域构建 Android RectF",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #49: ViewerNavigation defines RightAndLeft, L, Kindle, Edge, Disabled tap regions and inversion; ReaderNavigation is the Fork shared input-command extraction consumed by Android and Desktop adapters.",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/TapZone.kt 与 app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderKeyboardAction.kt 把鼠标/键盘映射到共享命令",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ViewerNavigation.kt", "symbol": "fun getAction"}],
@@ -2036,6 +2062,8 @@
     ],
     "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/ui/reader/TapZoneTest.kt": ["tap regions delegate to the shared navigation presets"]},
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
+    "readerCoreMigrationScope": {"task": "R0-01", "verifiedSlice": "INPUT_NAVIGATION_CONTRACT", "canonicalSessionExecutor": "NOT_WIRED", "closureTask": "RD-01"},
+    "verificationScope": "VERIFIED only for presentation/input command mapping and Desktop keyboard enhancement; this does not prove shared ReaderSessionCore or page/chapter navigation execution.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2058,7 +2086,7 @@
         "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt": ["mounted reader viewport color layer renders disabled grayscale and invert pixels"]
       }
     },
-    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt 的 ReaderColorFilterParams 统一亮度、色调、灰度、反色、归一化与 effective 语义；app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt 映射参数，app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt 以共享 effective/normalized 驱动 Android 硬件图层",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #51: ReaderActivity combines tint, brightness, grayscale, and invert through Android Paint/ColorMatrix; ReaderColorFilterParams is the Fork shared parameter extraction consumed by Android and Desktop render adapters.",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderSettingsPanel.kt、app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt 与 app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt 提供持久化开关；app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt 的 readerColorTransform 委托 readerColorMatrix 构建 Compose ColorMatrix 并实际渲染灰度/反色",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt", "symbol": "private fun getCombinedPaint"}],
@@ -2082,6 +2110,8 @@
     ],
     "behaviorMethods": {"app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt": ["current Android consumer grayscale and invert preferences map to the shared filter contract"], "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt": ["grayscale and invert are effective shared filter modes"], "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt": ["mounted reader viewport color layer renders disabled grayscale and invert pixels"]},
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
+    "readerCoreMigrationScope": {"task": "R0-01", "verifiedSlice": "COLOR_FILTER_CONTRACT", "canonicalSessionExecutor": "NOT_WIRED", "closureTask": "RD-01"},
+    "verificationScope": "VERIFIED only for presentation color-filter parameters and platform render adapters; this does not prove shared ReaderSessionCore or any reader loading/state execution.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2121,7 +2151,7 @@
       "SHARE-DIRECT"
     ],
     "status": "VERIFIED",
-    "authoritativeImplementation": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderNavigation.kt 定义 read、filtered、duplicate 可组合跳过、当前章保留以及 Found/Boundary/InvalidCurrent 明确结果；app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt 的 getChapterList 以 sortedChapters、chapterId、skipPolicy、isFiltered 命名参数实际调用 filterAndroidReaderChapters",
+    "authoritativeImplementation": "Fixed-main original Mihon capability #54: ReaderViewModel filters read, filtered, and duplicate chapters while retaining the current chapter; ReaderNavigation is the Fork shared policy extraction consumed by Android and Desktop navigation adapters.",
     "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderNavigator.kt 消费共享 findAdjacentChapter，并保留 Desktop 章节引用与界面入口",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "private val chapterList by lazy"}],
@@ -2152,7 +2182,8 @@
     "statusDecision": {"task": "Task 18", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt": ["current Android ReaderViewModel applies shared skip policy before exposing adjacent chapters"]}},
     "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "additionalBehaviorVerificationTask": ":app:testReleaseUnitTest --tests \"eu.kanade.tachiyomi.ui.reader.ReaderSharedParityWiringTest\"",
-    "verificationScope": "VERIFIED: a production ReaderViewModel fixture observes shared skip semantics in adjacent chapter state; disconnecting filterAndroidReaderChapters makes that exact test fail, while the restored production wiring passes.",
+    "readerCoreMigrationScope": {"task": "R0-01", "verifiedSlice": "CHAPTER_FILTER_NAVIGATION", "canonicalSessionExecutor": "NOT_WIRED", "closureTask": "RD-01"},
+    "verificationScope": "VERIFIED only for shared chapter filtering/adjacent-navigation policy and its production consumers; this does not prove shared ReaderSessionCore, reader entry selection, chapter-window ownership, or progress execution.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },

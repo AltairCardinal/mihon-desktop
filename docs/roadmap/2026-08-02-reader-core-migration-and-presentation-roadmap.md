@@ -1,7 +1,7 @@
 # 原版 Mihon 阅读核心迁移与 Desktop 阅读呈现解耦 Roadmap
 
 - 制定日期：2026-08-02
-- 状态：`PLANNED`
+- 状态：`IN_PROGRESS`
 - 上级路线：[`2026-06-30-mihon-desktop-refactor-roadmap.md`](./2026-06-30-mihon-desktop-refactor-roadmap.md) 的 Phase R
 - 固定原版权威：`main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`
 - 本次核对的上游跟踪点：`upstream/main@d7f3ceef5c75294306d0d9495e9ebc5ffca96302`（2026-08-02）
@@ -63,7 +63,7 @@
 | 相邻章预取 | 接近末尾 5 页时加载下一章 page list；没有“当前章全部图片完成后下载完整下一章” | 已有 adjacent loader API，但生产调用链不统一 | 需保留原版 page-list 预取，并把完整下一章预取作为显式 Desktop 策略 |
 | 进度 | 仅当前被选中的逻辑页提交 `last_page_read`，到最后一页才完成；可选同章节号 duplicate 规则另算 | 当前 Fork 已有末页完成、圆环和最前未读章节修复，但仍绑定 Screen 生命周期和 URL 数量 | 这些修复必须迁入共享 session 事件，不能在 core cutover 时回归 |
 
-当前 Fork 的 `9111d70…` 是迁移的兼容基线，而不是目标架构完成证据。尤其是取消/继续按钮、直接跨章、圆环进度、只在末页已读和“从列表最下方未读章节开始”等已修正用户行为，后续每个批次都必须保持。
+当前 Fork 的 `9111d70…` 是迁移的兼容基线，而不是目标架构完成证据。尤其是加载下一章时不显示取消/继续按钮、直接跨章、圆环进度、只在末页已读和“从列表最下方未读章节开始”等已修正用户行为，后续每个批次都必须保持。
 
 ## 4. 目标架构
 
@@ -179,8 +179,8 @@ DesktopReaderScreen / Android ReaderActivity
 | 当前页 + 后 4 页 | 有 | 完全复用 | shared scheduler policy |
 | 距末尾 5 页加载下一章 page list | 有 | 完全复用 | shared adjacent policy |
 | 当前章全 Ready 后加载完整下一章 | 无 | 默认启用的 Desktop 增强，可在设置中选“关闭/首屏/完整下一章” | scheduler policy + Desktop preference/UI |
-| 章节 transition item 的 Continue | 原版 viewer 可显示 | Desktop 翻过末页后直接进入下一章 0 页状态，不显示 Continue | presentation/navigation adapter |
-| 加载相邻章时 Cancel/Dismiss | 不是 shared core 必需语义 | Desktop 不显示取消按钮；失败时只显示 Retry/返回 | Desktop UI |
+| 相邻章 transition 呈现 | Loading 显示进度，Error 显示 Retry，Wait/Loaded 无额外按钮；Loaded 后 seamless 接入 | 翻过末页后直接进入下一章 0 页状态，同样不显示 Continue | presentation/navigation adapter |
+| 加载相邻章时 Cancel/Dismiss | 原版 transition 不显示该按钮 | Desktop 同样不显示取消按钮；失败时只显示 Retry/返回 | Desktop UI |
 | 同一宽图切半 | 有 | 保留 | shared transform + presentation |
 | 相邻 portrait 双页 | 固定原版无 | Fork/desktop 可选增强 | presentation |
 
@@ -221,7 +221,7 @@ DesktopReaderScreen / Android ReaderActivity
 
 ## 9. 任务清单
 
-- [ ] `R0-01` 冻结原版行为、跟踪上游差异并纠正现有共享核心能力声明
+- [x] `R0-01` 冻结原版行为、跟踪上游差异并纠正现有共享核心能力声明
 - [ ] `RC-01` 提取稳定 ReaderSession/Chapter/Page 状态与逻辑页身份
 - [ ] `RC-02` 提取原版章节页列表与单页 materialize executor
 - [ ] `RC-03` 提取统一优先级调度、generation 取消和 encoded store 契约
@@ -458,7 +458,12 @@ python scripts/gradle-coordinator.py run --key reader-core-final -- ./gradlew :d
 
 | 日期 | 任务 | 状态变化 | RED 证据 | GREEN/重构证据 | 独立审查 | 验证/产物 | Commit |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 待填写 | `R0-01` | `TODO -> ...` |  |  |  |  |  |
+| 2026-08-02 | `R0-01` | `TODO -> DOING -> REVIEW -> DONE` | `r0-reader-authority-red-cmd`：新 authority contract 因缺少 reader fixture 与 manifest migration scope 出现 3 个预期失败 | `r0-reader-review-fix-final2`：authority + manifest contract + Spotless 全绿；22 个固定/lineage blob、18 个 tracked commit、方法体调用链与 deviation provenance 可执行 | 1 轮独立审查 + 1 轮修复复审；3 个 P2 已关闭，复审发现的 ID 40 scope 污染已移除，并由“scope 只能归属 ID 45”断言保护 | `git diff --check`；本批次不改变产品行为，未运行发布构建 | 本批次提交（由本行所在 Git commit 解析） |
+
+`R0-01` 范围说明：本批次保持 8 个内聚文件，但逐 symbol/blob/marker 夹具、18 项上游分类、变异测试和
+权威文档合计超过 400 行。它们共同构成一个不可拆分的 provenance 关闭条件；拆开会让 manifest 或文档
+暂时失去机器证据。主要风险是固定证据陈旧、错误 ref 或窄能力被描述成完整 session，已由 Git 对象/
+谱系、限定方法体、deviation evidence 与 manifest scope 测试控制。
 
 建议状态记录使用 `TODO / DOING / BLOCKED / REVIEW / DONE`；状态只用于解释，checkbox 仍是唯一完成标记。
 

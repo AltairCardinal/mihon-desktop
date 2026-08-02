@@ -4,6 +4,8 @@
 
 正式版日期：2026-06-30
 
+- active-child-plan: [`2026-08-02-reader-core-migration-and-presentation-roadmap.md`](./2026-08-02-reader-core-migration-and-presentation-roadmap.md)
+
 ## 0. 产品路线
 
 本 roadmap 固定以下产品路线，后续重构不得偏离：
@@ -205,7 +207,7 @@
 | Phase W1 | Desktop UI/UseCase 分层 | DONE | 否 |
 | Phase W2 | Desktop 生命周期和平台 adapter | DONE | 否 |
 | Phase W3 | Desktop 扩展系统、备份、Crash、通知收敛 | DONE | 否，通知平台 adapter 降级为后续体验优化 |
-| Phase R | 功能 parity 与体验补齐 | TODO | 否 |
+| Phase R | 功能 parity 与体验补齐 | DOING | 否 |
 | Phase X | Windows/Android 构建发布与 Android 合并 | DEFERRED | 否 |
 
 ## 6. Phase A：产品基线与架构决策冻结
@@ -285,7 +287,9 @@
 
 ## 12. Phase R：功能 parity 与体验补齐
 
-目标：在 macOS/Desktop 主线稳定后补齐长期体验，不阻塞当前核心重构。
+目标：在 macOS/Desktop 主线稳定后补齐长期体验，不阻塞当前核心重构。当前优先按
+[`reader core migration child plan`](./2026-08-02-reader-core-migration-and-presentation-roadmap.md)
+完成阅读核心迁移和 Desktop 呈现解耦；下表保留其余 Phase R backlog。
 
 | ID | 状态 | 优先级 | 平台 | 任务 | 用户可见变化 | 验收 |
 | --- | --- | --- | --- | --- | --- | --- |
