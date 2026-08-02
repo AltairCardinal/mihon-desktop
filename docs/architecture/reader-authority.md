@@ -117,7 +117,7 @@ PagerViewer / WebtoonViewer
 
 | 项目 | 分类 | 当前处理 |
 | --- | --- | --- |
-| generation 取消、迟到结果拒绝 | `CROSS_PLATFORM_RELIABILITY_ENHANCEMENT` | 保留并在 RC-03 纳入唯一 scheduler |
+| generation 取消、迟到结果拒绝 | `CROSS_PLATFORM_RELIABILITY_ENHANCEMENT` | RC-03 已纳入唯一 `ReaderRequestScheduler`，Android 与 Desktop adapter 均消费该策略 |
 | adjacent portrait pairing | `CROSS_PLATFORM_PRODUCT_ENHANCEMENT` | 作为 presentation 能力保留；固定原版只拆一张宽源图 |
 | Desktop 完整下一章预取 | `DESKTOP_PRODUCT_ENHANCEMENT` | RD-02 的显式 policy，不改变 Android 默认流量 |
 | cached Error 的 Retry 不再强制重抓 | `PRODUCT_GAP`（RC-02 已关闭） | RC-02 已恢复显式 Retry 强制重抓；shared executor contract 与 Android production wiring 测试共同保护 |
@@ -130,11 +130,20 @@ PagerViewer / WebtoonViewer
 
 ## 当前迁移状态
 
-`domain/src/commonMain/kotlin/mihon/domain/reader/` 当前验证的是若干窄切片：页面/章节 DTO、解码与缓存
-contract、窗口 planner、配对/拆页纯算法、输入导航、章节过滤和滤镜参数。RC-02 已增加 page-list 与单页
-materialize executor，并由 Android `ChapterLoader`/`HttpPageLoader` 生产链消费；核心只传稳定 descriptor 和
-opaque `EncodedPageRef`，download/local/archive/EPUB/online 的具体 I/O 仍留在 Android adapter。它尚未拥有
-唯一 scheduler、current/previous/next window、跨章激活、进度 effect 或 Desktop production wiring。
+`domain/src/commonMain/kotlin/mihon/domain/reader/` 当前验证的是若干已接线的窄切片：页面/章节 DTO、解码与
+缓存 contract、配对/拆页纯算法、输入导航、章节过滤和滤镜参数。RC-02 已增加 page-list 与单页 materialize
+executor，并由 Android `ChapterLoader`/`HttpPageLoader` 生产链消费；核心只传稳定 descriptor 和 opaque
+`EncodedPageRef`，download/local/archive/EPUB/online 的具体 I/O 仍留在 Android adapter。RC-03 已以
+`ReaderPageId(ChapterId + sourcePageIndex)` 为请求身份建立唯一 `ReaderRequestScheduler`：P0～P4 顺序、
+当前 generation 有界并发、抢占、Retry、generation 取消与迟到拒收均在 shared core 决定；Android
+`HttpPageLoader` 使用原版串行 current +4 policy，并在 adapter 层保留一个 stale 物理 permit，使连续
+不合作请求的真实 I/O 最多为“当前 policy 并发 + 1”而不会跨 generation 无界增长。Desktop
+`PagePreloader` 也消费同一调度器而只负责协程和解码执行。旧
+`ReaderPreloadPlanner` 及两端私有优先级解释已删除。`ReaderEncodedPageStore` 同时冻结生命周期、物理
+存在性、配额/淘汰和诊断结果，Android 通过 `AndroidReaderEncodedPageStore` 把它接到 `ChapterCache`；
+物理写入/删除确认先于逻辑提交，并在每次提交前 reconcile `ChapterCache` 自身 LRU 已删除的 tracked ref。
+editor 竞争、缺失文件、session 启动失败和删除失败都发布 storage failure，而不是 Ready 或 Network。
+核心尚未拥有 current/previous/next window、跨章激活、进度 effect 或 Desktop production materialize wiring。
 
 因此 parity manifest 9/43/44/45/47/49/51/54 的 `VERIFIED` 只表示各自窄 capability 已验证；每项的
 `readerCoreMigrationScope.canonicalSessionExecutor` 在 RD-01 前必须保持 `NOT_WIRED`。删除或绕过当前

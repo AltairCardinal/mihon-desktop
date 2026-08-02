@@ -13,7 +13,9 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import mihon.domain.reader.ReaderPreloadPlanner
+import mihon.domain.reader.scheduler.ReaderRequestScheduler
+import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
+import mihon.domain.reader.session.ReaderChapterId
 import tachiyomi.domain.reader.model.ReadingProgressEvent
 
 class ReaderFixedMainAuthorityTest {
@@ -104,12 +106,17 @@ class ReaderFixedMainAuthorityTest {
     }
 
     @Test
-    fun `fixed current plus four fixture executes through the shared planner without claiming an executor`() {
+    fun `fixed current plus four fixture executes through the shared scheduler`() {
         val vector = behaviorVector("CURRENT_PLUS_FOUR")
         val forwardWindow = vector.requiredText("value").toInt()
 
-        val plan = ReaderPreloadPlanner(windowSize = forwardWindow, backwardWindowSize = 0)
-            .moveTo(currentPage = 2, pageCount = 10)
+        val plan = ReaderRequestScheduler(
+            ReaderSchedulerPolicy(
+                nearbyForward = forwardWindow,
+                nearbyBackward = 0,
+                maxConcurrentRequests = 1,
+            ),
+        ).moveTo(ReaderChapterId(1), currentPage = 2, pageCount = 10)
 
         assertEquals(listOf(2, 3, 4, 5, 6), plan.requests.map { it.pageIndex })
         assertEquals("FIXED_ORIGINAL", vector.requiredText("classification"))
@@ -195,9 +202,11 @@ class ReaderFixedMainAuthorityTest {
         }
 
         val preloadItem = items.getValue(45).jsonObject
-        val preloadDecisionScope = "PRELOAD_WINDOW_PLANNER_AND_PLATFORM_GENERATION_ADAPTERS"
+        val preloadDecisionScope = "SHARED_PRIORITY_SCHEDULER_AND_ENCODED_STORE"
         val materializeExecutorPath =
             "domain/src/commonMain/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutor.kt"
+        val schedulerPath =
+            "domain/src/commonMain/kotlin/mihon/domain/reader/scheduler/ReaderRequestScheduler.kt"
         assertEquals(
             setOf(45),
             items.filterValues { item ->
@@ -214,6 +223,23 @@ class ReaderFixedMainAuthorityTest {
                     entry.requiredText("symbol") == "object CanonicalReaderMaterializeExecutor"
             },
             "ID 45 must bind the shared materialize executor symbol",
+        )
+        assertEquals(
+            setOf(45),
+            items.filterValues { item ->
+                item.jsonObject["sharedImplementationPaths"]?.jsonArray?.any {
+                    it.jsonPrimitive.content == schedulerPath
+                } == true
+            }.keys,
+            "The RC-03 priority scheduler must belong only to reader capability ID 45",
+        )
+        assertTrue(
+            preloadItem.getValue("roleEvidence").jsonObject.getValue("SHARED_OR_ADAPTER").jsonArray.any { evidence ->
+                val entry = evidence.jsonObject
+                entry.requiredText("path") == schedulerPath &&
+                    entry.requiredText("symbol") == "class ReaderRequestScheduler"
+            },
+            "ID 45 must bind the shared priority scheduler symbol",
         )
         assertEquals(
             preloadDecisionScope,
@@ -248,6 +274,10 @@ class ReaderFixedMainAuthorityTest {
         )
         val migrationScope = preloadItem.getValue("readerCoreMigrationScope").jsonObject
         assertEquals("WIRED", migrationScope.requiredText("androidMaterializeExecutor"))
+        assertEquals("RC-03", migrationScope.requiredText("schedulerTask"))
+        assertEquals("WIRED", migrationScope.requiredText("androidScheduler"))
+        assertEquals("WIRED", migrationScope.requiredText("desktopSchedulerAdapter"))
+        assertEquals("WIRED", migrationScope.requiredText("androidEncodedStore"))
         assertEquals(
             emptySet<String>(),
             migrationScope.getValue("openProductGaps").jsonArray.map { it.jsonPrimitive.content }.toSet(),
@@ -257,6 +287,29 @@ class ReaderFixedMainAuthorityTest {
             migrationScope.getValue("closedProductGaps").jsonArray.map { it.jsonPrimitive.content }.toSet(),
         )
         assertTrue(preloadItem.requiredText("verificationScope").contains("explicit Retry forces a fresh fetch"))
+    }
+
+    @Test
+    fun `shared scheduler is the sole preload policy consumed by Android and Desktop adapters`() {
+        val sharedScheduler = Files.readString(
+            repositoryRoot.resolve("domain/src/commonMain/kotlin/mihon/domain/reader/scheduler/ReaderRequestScheduler.kt"),
+        )
+        val legacyPageModel = Files.readString(
+            repositoryRoot.resolve("domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt"),
+        )
+        val androidAdapter = Files.readString(
+            repositoryRoot.resolve("app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt"),
+        )
+        val desktopAdapter = Files.readString(
+            repositoryRoot.resolve("app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt"),
+        )
+
+        assertTrue(sharedScheduler.contains("class ReaderRequestScheduler"))
+        assertFalse(legacyPageModel.contains("ReaderPreloadPlanner"))
+        assertTrue(androidAdapter.contains("requestScheduler.pollNext()"))
+        assertFalse(androidAdapter.contains("PriorityBlockingQueue"))
+        assertTrue(desktopAdapter.contains("requestScheduler.pollNext()"))
+        assertFalse(desktopAdapter.contains("ReaderPreloadPlanner"))
     }
 
     private fun validateFixture(source: String) {
@@ -660,7 +713,7 @@ class ReaderFixedMainAuthorityTest {
                 9 to "PLATFORM_DECODE_CONTRACT",
                 43 to "PRESENTATION_TRANSFORM_CONTRACT",
                 44 to "PLATFORM_DECODE_BUDGET_CONTRACT",
-                45 to "PRELOAD_WINDOW_PLANNER",
+                45 to "PRIORITY_SCHEDULER_AND_ENCODED_STORE_CONTRACT",
                 47 to "CHAPTER_TRANSITION_VIEW_STATE",
                 49 to "INPUT_NAVIGATION_CONTRACT",
                 51 to "COLOR_FILTER_CONTRACT",

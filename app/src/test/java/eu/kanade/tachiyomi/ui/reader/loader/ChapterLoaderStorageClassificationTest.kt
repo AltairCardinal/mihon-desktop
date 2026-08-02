@@ -20,6 +20,7 @@ import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
 import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderPageLoadState
+import mihon.domain.reader.storage.ReaderEncodedPageStore
 import okhttp3.Response
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -118,6 +119,41 @@ class ChapterLoaderStorageClassificationTest {
         )
         assertInstanceOf(AppError.Storage::class.java, pageState.error)
         loader.recycle()
+    }
+
+    @Test
+    fun `encoded cache session startup failure is published as chapter storage error`() = runTest {
+        val source = mockk<HttpSource>()
+        val cache = mockk<ChapterCache>()
+        val encodedStore = mockk<ReaderEncodedPageStore>(relaxed = true)
+        every { cache.getPageListFromCache(any()) } throws IOException("page list cache miss")
+        coEvery { source.getPageList(any()) } returns listOf(Page(0, "/page", "https://example.test/image"))
+        coEvery { encodedStore.beginSession(any()) } throws IOException("encoded cache unavailable")
+        val chapter = ReaderChapter(Chapter.create().copy(id = 7, mangaId = 1))
+        val pageLoader = HttpPageLoader(
+            chapter = chapter,
+            source = source,
+            chapterCache = cache,
+            dispatcher = StandardTestDispatcher(testScheduler),
+            encodedPageStore = encodedStore,
+        )
+        val loader = ChapterLoader(
+            context = mockk<Context>(relaxed = true),
+            downloadManager = mockk<DownloadManager>(relaxed = true),
+            downloadProvider = mockk<DownloadProvider>(relaxed = true),
+            manga = mockk<Manga>(relaxed = true),
+            source = source,
+            pageLoaderFactory = { pageLoader },
+        )
+
+        val result = runCatching { loader.loadChapter(chapter) }
+
+        assertTrue(result.isFailure)
+        val state = assertInstanceOf(
+            ReaderChapterLoadState.Error::class.java,
+            chapter.sharedSessionStateFlow.value.activeChapter.loadState,
+        )
+        assertInstanceOf(AppError.Storage::class.java, state.error)
     }
 
     @Test

@@ -29,14 +29,19 @@ import java.io.IOException
 class ChapterCache(
     private val context: Context,
     private val json: Json,
+    maxCacheBytes: Long = DEFAULT_MAX_SIZE_BYTES,
 ) {
+
+    private val cacheSizeLimit = maxCacheBytes.also {
+        require(it > 0) { "maxCacheBytes must be positive" }
+    }
 
     /** Cache class used for cache management. */
     private val diskCache = DiskLruCache.open(
         File(context.cacheDir, "chapter_disk_cache"),
         PARAMETER_APP_VERSION,
         PARAMETER_VALUE_COUNT,
-        PARAMETER_CACHE_SIZE,
+        cacheSizeLimit,
     )
 
     /**
@@ -143,20 +148,21 @@ class ChapterCache(
      * @throws IOException image error.
      */
     @Throws(IOException::class)
-    fun putImageToCache(imageUrl: String, response: Response) {
+    fun putImageToCache(imageUrl: String, response: Response): Boolean {
         // Initialize editor (edits the values for an entry).
         var editor: DiskLruCache.Editor? = null
 
         try {
             // Get editor from md5 key.
             val key = DiskUtil.hashKeyForDisk(imageUrl)
-            editor = diskCache.edit(key) ?: return
+            editor = diskCache.edit(key) ?: return false
 
             // Get OutputStream and write image with Okio.
             response.body.source().saveTo(editor.newOutputStream(0))
 
-            diskCache.flush()
             editor.commit()
+            diskCache.flush()
+            return isImageInCache(imageUrl)
         } finally {
             response.body.close()
             editor?.abortUnlessCommitted()
@@ -175,6 +181,16 @@ class ChapterCache(
 
     internal fun close() {
         diskCache.close()
+    }
+
+    @Throws(IOException::class)
+    internal fun removeImageFromCache(imageUrl: String): Boolean {
+        val removedFromJournal = diskCache.remove(DiskUtil.hashKeyForDisk(imageUrl))
+        val imageFile = getImageFile(imageUrl)
+        if (imageFile.exists() && !imageFile.delete()) {
+            throw IOException("Failed to remove image from cache: $imageUrl")
+        }
+        return removedFromJournal
     }
 
     /**
@@ -203,6 +219,10 @@ class ChapterCache(
     private fun getKey(chapter: Chapter): String {
         return "${chapter.mangaId}${chapter.url}"
     }
+
+    companion object {
+        internal const val DEFAULT_MAX_SIZE_BYTES = 100L * 1024 * 1024
+    }
 }
 
 /** Application cache version.  */
@@ -210,6 +230,3 @@ private const val PARAMETER_APP_VERSION = 1
 
 /** The number of values per cache entry. Must be positive.  */
 private const val PARAMETER_VALUE_COUNT = 1
-
-/** The maximum number of bytes this cache should use to store.  */
-private const val PARAMETER_CACHE_SIZE = 100L * 1024 * 1024

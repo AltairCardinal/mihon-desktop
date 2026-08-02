@@ -3,6 +3,9 @@ package mihon.desktop.reader
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
+import mihon.domain.reader.scheduler.ReaderRequestScheduler
+import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
@@ -13,6 +16,36 @@ import java.io.ByteArrayOutputStream
 import javax.imageio.ImageIO
 
 class PagePreloaderTest {
+
+    @Test
+    fun `production preloader consumes the shared scheduler serial policy`() = runTest {
+        val bytes = makePngBytes(9)
+        val started = Channel<String>(Channel.UNLIMITED)
+        val releases = (0..3).associate { "page$it" to CompletableDeferred<Unit>() }
+        val preloader = PagePreloader(
+            fetcher = { url ->
+                started.send(url)
+                releases.getValue(url).await()
+                bytes
+            },
+            windowSize = 2,
+            requestScheduler = ReaderRequestScheduler(
+                ReaderSchedulerPolicy(nearbyForward = 2, nearbyBackward = 0, maxConcurrentRequests = 1),
+            ),
+        )
+
+        val preload = async { preloader.preload(currentPage = 1, pageUrls = releases.keys.toList()) }
+
+        assertEquals("page1", started.receive())
+        assertTrue(started.tryReceive().isFailure)
+        releases.getValue("page1").complete(Unit)
+        assertEquals("page2", started.receive())
+        releases.getValue("page2").complete(Unit)
+        assertEquals("page3", started.receive())
+        releases.getValue("page3").complete(Unit)
+        preload.await()
+        assertTrue(started.tryReceive().isFailure)
+    }
 
     /** Minimal PNG bytes keyed by index — used as fake page "URLs" */
     private fun makePngBytes(tag: Int): ByteArray {

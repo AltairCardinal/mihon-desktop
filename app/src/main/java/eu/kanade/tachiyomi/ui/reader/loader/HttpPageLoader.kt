@@ -17,23 +17,28 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import mihon.domain.reader.PreloadJobKey
-import mihon.domain.reader.ReaderPreloadPlanner
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
+import mihon.domain.error.AppError
+import mihon.domain.network.AppErrorException
 import mihon.domain.reader.materialize.CanonicalReaderMaterializeExecutor
 import mihon.domain.reader.materialize.ReaderMaterializeExecutor
 import mihon.domain.reader.materialize.ReaderPageFetchRequest
 import mihon.domain.reader.materialize.ReaderPageMaterializeEvent
 import mihon.domain.reader.materialize.ReaderPageMaterializeResult
+import mihon.domain.reader.scheduler.ReaderRequestKey
+import mihon.domain.reader.scheduler.ReaderRequestKind
+import mihon.domain.reader.scheduler.ReaderRequestScheduler
+import mihon.domain.reader.scheduler.ReaderScheduledRequest
+import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
+import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
+import mihon.domain.reader.storage.ReaderEncodedPageStore
 import tachiyomi.core.common.util.lang.launchIO
-import tachiyomi.core.common.util.lang.withIOContext
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.util.concurrent.PriorityBlockingQueue
-import kotlin.concurrent.atomics.AtomicInt
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
-import kotlin.concurrent.atomics.incrementAndFetch
 
 /**
  * Loader used to load chapters from an online source.
@@ -42,31 +47,31 @@ internal class HttpPageLoader(
     private val chapter: ReaderChapter,
     private val source: HttpSource,
     private val chapterCache: ChapterCache = Injekt.get(),
-    dispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val materializeExecutor: ReaderMaterializeExecutor = CanonicalReaderMaterializeExecutor,
+    private val requestScheduler: ReaderRequestScheduler = ReaderRequestScheduler(
+        ReaderSchedulerPolicy.originalMihon(),
+    ),
+    private val encodedPageStore: ReaderEncodedPageStore = AndroidReaderEncodedPageStore(chapterCache),
 ) : PageLoader() {
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
 
-    /**
-     * A queue used to manage requests one by one while allowing priorities.
-     */
-    private val queue = PriorityBlockingQueue<PriorityPage>()
     private val queueSignal = Channel<Unit>(Channel.CONFLATED)
+    private val physicalRequestPermits = Semaphore(
+        requestScheduler.snapshot().maxConcurrentRequests + MAX_STALE_PHYSICAL_REQUESTS,
+    )
 
-    private val preloadSize = 4
-    private val preloadPlanner = ReaderPreloadPlanner(windowSize = preloadSize, backwardWindowSize = 0)
     private val preloadJobLock = Any()
-    private val queuedPreloadJobs = mutableMapOf<PreloadJobKey, PriorityPage>()
-    private val activePreloadJobs = mutableMapOf<PreloadJobKey, Job>()
-    private var currentGeneration = 0L
+    private val scheduledPages = mutableMapOf<ReaderRequestKey, ReaderPage>()
+    private val activePreloadJobs = mutableMapOf<ReaderRequestKey, Job>()
 
     init {
         scope.launch {
             for (signal in queueSignal) {
                 while (true) {
-                    val queued = synchronized(preloadJobLock, ::pollNextStartableLocked) ?: break
-                    runQueuedPage(queued)
+                    val scheduled = synchronized(preloadJobLock, ::pollNextStartableLocked) ?: break
+                    runScheduledPage(scheduled.first, scheduled.second)
                 }
             }
         }
@@ -90,13 +95,27 @@ internal class HttpPageLoader(
         return pages.mapIndexed { index, page ->
             // Don't trust sources and use our own indexing
             ReaderPage(index, page.url, page.imageUrl)
+        }.also { readerPages ->
+            try {
+                encodedPageStore.beginSession(
+                    readerPages.mapNotNullTo(mutableSetOf()) { readerPage ->
+                        readerPage.imageUrl?.takeIf(String::isNotBlank)?.let(::EncodedPageRef)
+                    },
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: AppErrorException) {
+                throw error
+            } catch (error: Throwable) {
+                throw AppErrorException(AppError.Storage(error))
+            }
         }
     }
 
     /**
      * Loads a page through the queue. Handles re-enqueueing pages if they were evicted from the cache.
      */
-    override suspend fun loadPage(page: ReaderPage) = withIOContext {
+    override suspend fun loadPage(page: ReaderPage) = withContext(dispatcher) {
         val imageUrl = page.imageUrl
 
         // Check if the image has been deleted
@@ -109,56 +128,41 @@ internal class HttpPageLoader(
             page.status = Page.State.Queue
         }
 
-        val queuedPage = synchronized(preloadJobLock) {
-            registerPreloadLocked(
-                page = page,
-                key = PreloadJobKey(page.index, currentGeneration),
-                priority = 2,
-                forceRefresh = false,
+        val scheduledRequest = synchronized(preloadJobLock) {
+            val result = requestScheduler.enqueue(
+                pageId = readerPageId(page.index),
+                kind = ReaderRequestKind.INTERACTIVE_VISIBLE,
             )
+            registerEnqueueResultLocked(result, page.chapter.pages.orEmpty())
+            result.request
         }
-        if (queuedPage != null) queueSignal.trySend(Unit)
+        if (scheduledRequest != null) queueSignal.trySend(Unit)
 
         suspendCancellableCoroutine<Nothing> { continuation ->
             continuation.invokeOnCancellation {
-                queuedPage?.let(::removeQueuedPreload)
+                scheduledRequest?.let(::removePendingRequest)
             }
         }
     }
 
     override fun onPageSelected(page: ReaderPage) {
         val pages = page.chapter.pages.orEmpty()
-        val preloadPlan = synchronized(preloadPlanner) {
-            preloadPlanner.moveTo(page.index, pages.size)
-        }
         val registered = synchronized(preloadJobLock) {
-            currentGeneration = preloadPlan.generation
+            val preloadPlan = requestScheduler.moveTo(readerChapterId(), page.index, pages.size)
 
-            // Register the replacement generation before cancellation can restore the old page to Queue.
-            val replacements = preloadPlan.requests.mapNotNull { request ->
+            // Register replacements before cancellation can restore an overlapping page to Queue.
+            preloadPlan.requests.forEach { request ->
                 val candidate = pages[request.pageIndex]
-                registerPreloadLocked(
-                    page = candidate,
-                    key = request.jobKey,
-                    priority = if (request.pageIndex == page.index) 1 else 0,
-                    forceRefresh = false,
-                )
+                if (preloadPlan.cancelRequests.any { it.pageIndex == request.pageIndex } &&
+                    candidate.status != Page.State.Ready
+                ) {
+                    candidate.status = Page.State.Queue
+                }
+                scheduledPages[request.jobKey] = candidate
             }
-
-            val staleQueued = queuedPreloadJobs
-                .filterKeys { it.generation != preloadPlan.generation }
-                .values
-                .toList()
-            staleQueued.forEach { queued ->
-                queuedPreloadJobs.remove(queued.jobKey)
-                queue.remove(queued)
-            }
-
-            activePreloadJobs
-                .filterKeys { it.generation != preloadPlan.generation }
-                .values
-                .forEach(Job::cancel)
-            replacements.isNotEmpty()
+            preloadPlan.discardRequests.forEach(scheduledPages::remove)
+            cancelActiveRequestsLocked(preloadPlan.cancelRequests)
+            preloadPlan.requests.isNotEmpty()
         }
         if (registered) queueSignal.trySend(Unit)
     }
@@ -170,13 +174,23 @@ internal class HttpPageLoader(
         if (page.status is Page.State.Error) {
             page.status = Page.State.Queue
         }
+        val pages = page.chapter.pages.orEmpty()
         val registered = synchronized(preloadJobLock) {
-            registerPreloadLocked(
-                page = page,
-                key = PreloadJobKey(page.index, currentGeneration),
-                priority = 2,
-                forceRefresh = true,
-            ) != null
+            val retryPlan = requestScheduler.retry(readerPageId(page.index), pages.size)
+            retryPlan.requests.forEach { request ->
+                val candidate = pages.getOrNull(request.pageIndex) ?: page.takeIf { it.index == request.pageIndex }
+                if (candidate != null) {
+                    if (retryPlan.cancelRequests.any { it.pageIndex == request.pageIndex } &&
+                        candidate.status != Page.State.Ready
+                    ) {
+                        candidate.status = Page.State.Queue
+                    }
+                    scheduledPages[request.jobKey] = candidate
+                }
+            }
+            retryPlan.discardRequests.forEach(scheduledPages::remove)
+            cancelActiveRequestsLocked(retryPlan.cancelRequests)
+            retryPlan.requests.isNotEmpty()
         }
         if (registered) queueSignal.trySend(Unit)
     }
@@ -185,11 +199,12 @@ internal class HttpPageLoader(
         super.recycle()
         queueSignal.close()
         scope.cancel()
-        queue.clear()
         synchronized(preloadJobLock) {
-            queuedPreloadJobs.clear()
+            requestScheduler.moveTo(chapterId = readerChapterId(), currentPage = 0, pageCount = 0)
+            scheduledPages.clear()
             activePreloadJobs.clear()
         }
+        encodedPageStore.endSession()
 
         // Cache current page list progress for online chapters to allow a faster reopen
         chapter.pages?.let { pages ->
@@ -215,10 +230,10 @@ internal class HttpPageLoader(
      */
     private suspend fun internalLoadPage(
         page: ReaderPage,
-        jobKey: PreloadJobKey,
+        jobKey: ReaderRequestKey,
         forceRefresh: Boolean,
     ) {
-        val port = AndroidReaderPageFetchPort(page, source, chapterCache)
+        val port = AndroidReaderPageFetchPort(page, source, chapterCache, encodedPageStore)
         val request = ReaderPageFetchRequest(
             pageId = ReaderPageId(
                 chapterId = ReaderChapterId(checkNotNull(chapter.chapter.id)),
@@ -266,120 +281,96 @@ internal class HttpPageLoader(
         }
     }
 
-    private fun runQueuedPage(queued: PriorityPage) {
+    private fun runScheduledPage(request: ReaderScheduledRequest, page: ReaderPage) {
         val loadJob = scope.launch(start = CoroutineStart.LAZY) {
-            internalLoadPage(queued.page, queued.jobKey, queued.forceRefresh)
+            physicalRequestPermits.withPermit {
+                internalLoadPage(page, request.jobKey, request.forceRefresh)
+            }
         }
-        synchronized(preloadJobLock) { activePreloadJobs[queued.jobKey] = loadJob }
+        synchronized(preloadJobLock) { activePreloadJobs[request.jobKey] = loadJob }
         loadJob.invokeOnCompletion {
             synchronized(preloadJobLock) {
-                if (activePreloadJobs[queued.jobKey] === loadJob) {
-                    activePreloadJobs.remove(queued.jobKey)
+                if (activePreloadJobs[request.jobKey] === loadJob) {
+                    activePreloadJobs.remove(request.jobKey)
                 }
+                requestScheduler.complete(request.jobKey)
+                scheduledPages.remove(request.jobKey)
             }
             queueSignal.trySend(Unit)
         }
         loadJob.start()
     }
 
-    private fun pollNextStartableLocked(): PriorityPage? {
+    private fun pollNextStartableLocked(): Pair<ReaderScheduledRequest, ReaderPage>? {
         while (true) {
-            val queued = queue.peek() ?: return null
-            val isRegistered = queuedPreloadJobs[queued.jobKey] === queued &&
-                queued.jobKey.generation == currentGeneration
-            if (!isRegistered || queued.page.status != Page.State.Queue) {
-                queue.poll()
-                if (queuedPreloadJobs[queued.jobKey] === queued) {
-                    queuedPreloadJobs.remove(queued.jobKey)
-                }
+            val request = requestScheduler.pollNext() ?: return null
+            val page = scheduledPages[request.jobKey]
+            if (page == null || page.status != Page.State.Queue) {
+                requestScheduler.complete(request.jobKey)
+                scheduledPages.remove(request.jobKey)
                 continue
             }
-            if (activePreloadJobs.keys.any { it.generation == queued.jobKey.generation }) {
-                return null
-            }
-            queue.poll()
-            queuedPreloadJobs.remove(queued.jobKey)
-            return queued
+            return request to page
         }
     }
 
-    private fun registerPreloadLocked(
-        page: ReaderPage,
-        key: PreloadJobKey,
-        priority: Int,
-        forceRefresh: Boolean,
-    ): PriorityPage? {
-        if (queuedPreloadJobs.containsKey(key) || activePreloadJobs.containsKey(key)) return null
-        if (page.status == Page.State.Ready) return null
-        if (activePreloadJobs.keys.any { it.pageIndex == key.pageIndex && it != key }) {
-            page.status = Page.State.Queue
+    private fun registerEnqueueResultLocked(
+        result: mihon.domain.reader.scheduler.ReaderEnqueueResult,
+        pages: List<ReaderPage>,
+    ) {
+        result.replacedRequests.forEach(scheduledPages::remove)
+        result.request?.let { request ->
+            pages.getOrNull(request.pageIndex)?.let { scheduledPages[request.jobKey] = it }
         }
-        val queued = PriorityPage(page, priority, key, forceRefresh)
-        queuedPreloadJobs[key] = queued
-        queue.offer(queued)
-        return queued
-    }
-
-    private fun removeQueuedPreload(queued: PriorityPage) {
-        synchronized(preloadJobLock) {
-            if (queuedPreloadJobs[queued.jobKey] === queued) {
-                queuedPreloadJobs.remove(queued.jobKey)
-                queue.remove(queued)
+        val pendingRequests = requestScheduler.snapshot().pendingRequests
+        pendingRequests.forEach { request ->
+            pages.getOrNull(request.pageIndex)?.let { scheduledPages[request.jobKey] = it }
+        }
+        result.cancelRequests.forEach { cancelledKey ->
+            val cancelledPage = scheduledPages[cancelledKey] ?: return@forEach
+            val hasReplacement = pendingRequests.any { it.pageId == cancelledKey.pageId }
+            if (hasReplacement && cancelledPage.status != Page.State.Ready) {
+                cancelledPage.status = Page.State.Queue
             }
         }
+        cancelActiveRequestsLocked(result.cancelRequests)
     }
 
-    private fun publishIfAccepted(jobKey: PreloadJobKey, publish: () -> Unit): Boolean =
+    private fun removePendingRequest(request: ReaderScheduledRequest) {
         synchronized(preloadJobLock) {
-            if (jobKey.generation != currentGeneration || !activePreloadJobs.containsKey(jobKey)) {
+            if (requestScheduler.cancelPending(request.jobKey)) {
+                scheduledPages.remove(request.jobKey)
+            }
+        }
+    }
+
+    private fun cancelActiveRequestsLocked(cancelRequests: Set<ReaderRequestKey>) {
+        cancelRequests.forEach { jobKey -> activePreloadJobs[jobKey]?.cancel() }
+    }
+
+    private fun publishIfAccepted(jobKey: ReaderRequestKey, publish: () -> Unit): Boolean =
+        synchronized(preloadJobLock) {
+            if (!requestScheduler.accepts(jobKey) || !activePreloadJobs.containsKey(jobKey)) {
                 return@synchronized false
             }
             publish()
             true
         }
 
-    private fun discardStaleResult(page: ReaderPage, jobKey: PreloadJobKey) {
+    private fun discardStaleResult(page: ReaderPage, jobKey: ReaderRequestKey) {
         synchronized(preloadJobLock) {
-            val hasCurrentReplacement = queuedPreloadJobs.keys.any {
-                it.pageIndex == jobKey.pageIndex && it.generation == currentGeneration && it != jobKey
-            } || activePreloadJobs.keys.any {
-                it.pageIndex == jobKey.pageIndex && it.generation == currentGeneration && it != jobKey
-            }
+            val hasCurrentReplacement = requestScheduler.hasCurrentReplacement(readerPageId(page.index), jobKey)
             if (!hasCurrentReplacement && page.status != Page.State.Ready && page.status !is Page.State.Error) {
                 page.status = Page.State.Queue
             }
         }
     }
-}
 
-internal fun cancelAndroidPreloadJob(
-    activeKey: PreloadJobKey,
-    activeJob: Job,
-    cancelRequests: Set<PreloadJobKey>,
-): Boolean {
-    if (activeKey !in cancelRequests) return false
-    activeJob.cancel()
-    return true
-}
+    private fun readerChapterId() = ReaderChapterId(checkNotNull(chapter.chapter.id))
 
-/**
- * Data class used to keep ordering of pages in order to maintain priority.
- */
-@OptIn(ExperimentalAtomicApi::class)
-private class PriorityPage(
-    val page: ReaderPage,
-    val priority: Int,
-    val jobKey: PreloadJobKey,
-    val forceRefresh: Boolean,
-) : Comparable<PriorityPage> {
-    companion object {
-        private val idGenerator = AtomicInt(0)
-    }
+    private fun readerPageId(pageIndex: Int) = ReaderPageId(readerChapterId(), pageIndex)
 
-    private val identifier = idGenerator.incrementAndFetch()
-
-    override fun compareTo(other: PriorityPage): Int {
-        val p = other.priority.compareTo(priority)
-        return if (p != 0) p else identifier.compareTo(other.identifier)
+    private companion object {
+        const val MAX_STALE_PHYSICAL_REQUESTS = 1
     }
 }

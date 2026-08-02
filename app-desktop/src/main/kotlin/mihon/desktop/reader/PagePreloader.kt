@@ -16,8 +16,11 @@ import mihon.domain.reader.PageCacheWrite
 import mihon.domain.reader.PageDecodeRequest
 import mihon.domain.reader.PageDecodeResult
 import mihon.domain.reader.PixelBounds
-import mihon.domain.reader.PreloadJobKey
-import mihon.domain.reader.ReaderPreloadPlanner
+import mihon.domain.reader.scheduler.ReaderRequestKey
+import mihon.domain.reader.scheduler.ReaderRequestScheduler
+import mihon.domain.reader.scheduler.ReaderScheduledRequest
+import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
+import mihon.domain.reader.session.ReaderChapterId
 
 /**
  * Desktop adapter for the shared preload-window contract.
@@ -30,6 +33,13 @@ class PagePreloader(
     private val maxDecodedHeight: Int = 2048,
     maxCacheBytes: Long = DEFAULT_CACHE_BYTES,
     private val largeImagePixelThreshold: Long = DEFAULT_LARGE_IMAGE_PIXELS,
+    private val requestScheduler: ReaderRequestScheduler = ReaderRequestScheduler(
+        ReaderSchedulerPolicy(
+            nearbyForward = windowSize,
+            nearbyBackward = windowSize,
+            maxConcurrentRequests = DEFAULT_CONCURRENT_REQUESTS,
+        ),
+    ),
 ) {
     private data class Decoded(
         val index: Int,
@@ -42,10 +52,9 @@ class PagePreloader(
 
     private val lock = Any()
     private val cache = DesktopPageCache(maxCacheBytes)
-    private val planner = ReaderPreloadPlanner(windowSize)
     private val pageDecoder = SkiaPageDecoder()
     private val regionDecoder = SkiaRegionPageDecoder()
-    private val activeJobs = mutableMapOf<PreloadJobKey, Deferred<Decoded?>>()
+    private val activeJobs = mutableMapOf<ReaderRequestKey, Deferred<Decoded?>>()
     private val sourceSizes = mutableMapOf<Int, SourceSize>()
 
     val cacheRevision: StateFlow<Long> = cache.revision
@@ -58,78 +67,61 @@ class PagePreloader(
 
     suspend fun preload(currentPage: Int, pageUrls: List<String>) = supervisorScope {
         val plan = synchronized(lock) {
-            planner.moveTo(currentPage, pageUrls.size).also {
+            requestScheduler.moveTo(SCHEDULER_CHAPTER_ID, currentPage, pageUrls.size).also {
                 it.cancelRequests.forEach { jobKey -> activeJobs.remove(jobKey)?.cancel() }
                 check(cache.beginGeneration(it.generation, it.evictPageIndices))
                 sourceSizes.keys.retainAll(cache.snapshot().keys)
             }
         }
-        val jobs = synchronized(lock) {
-            if (cache.generation != plan.generation) {
-                emptyList()
-            } else {
-                plan.requests
-                    .filter { it.pageIndex in pageUrls.indices && cache.get(it.pageIndex) == null }
-                    .map { preloadRequest ->
-                        val index = preloadRequest.pageIndex
-                        async(Dispatchers.IO, start = CoroutineStart.LAZY) {
-                            val bytes = fetcher(pageUrls[index]) ?: return@async null
-                            val size = SkiaImageDecoder.peekSize(bytes) ?: return@async null
-                            val request = PageDecodeRequest(
-                                pageIndex = index,
-                                generation = preloadRequest.generation,
-                                maxWidth = maxDecodedWidth,
-                                maxHeight = maxDecodedHeight,
-                                region = PixelBounds(0, 0, size.first, size.second),
-                            )
-                            val pixelCount = size.first.toLong() * size.second
-                            val result = if (pixelCount > largeImagePixelThreshold) {
-                                regionDecoder.decodeRegion(bytes, request)
-                            } else {
-                                pageDecoder.decode(bytes, request.copy(region = null))
+        while (true) {
+            val jobs = synchronized(lock) {
+                if (cache.generation != plan.generation || !requestScheduler.acceptsGeneration(plan.generation)) {
+                    emptyList()
+                } else {
+                    buildList {
+                        while (true) {
+                            val request = requestScheduler.pollNext() ?: break
+                            val index = request.pageIndex
+                            if (index !in pageUrls.indices || cache.get(index) != null) {
+                                requestScheduler.complete(request.jobKey)
+                                continue
                             }
-                            Decoded(index, result, size.first, size.second)
-                        }.also { job ->
-                            activeJobs[preloadRequest.jobKey] = job
+                            val job = async(Dispatchers.IO, start = CoroutineStart.LAZY) {
+                                decodePage(request, pageUrls[index])
+                            }
+                            activeJobs[request.jobKey] = job
+                            add(request to job)
                         }
                     }
                 }
-        }
-        jobs.forEach { it.start() }
+            }
+            if (jobs.isEmpty()) break
+            jobs.forEach { (_, job) -> job.start() }
 
-        jobs.forEach { job ->
             try {
-                val decoded = try {
-                    job.await()
-                } catch (error: CancellationException) {
-                    if (!currentCoroutineContext().isActive) throw error
-                    null
-                }
-                if (decoded == null) return@forEach
-                synchronized(lock) {
-                    if (decoded.index in plan.keepPageIndices) {
-                        when (val result = decoded.result) {
-                            is PageDecodeResult.Success -> {
-                                val commitResult = cache.commit(
-                                    PageCacheWrite(
-                                        pageIndex = decoded.index,
-                                        generation = result.generation,
-                                        value = result.value,
-                                        estimatedBytes = result.estimatedBytes,
-                                    ),
-                                )
-                                if (commitResult == PageCacheCommitResult.STORED) {
-                                    sourceSizes[decoded.index] = SourceSize(decoded.sourceWidth, decoded.sourceHeight)
-                                }
-                                sourceSizes.keys.retainAll(cache.snapshot().keys)
+                jobs.forEach { (request, job) ->
+                    val decoded = try {
+                        job.await()
+                    } catch (error: CancellationException) {
+                        if (!currentCoroutineContext().isActive) throw error
+                        null
+                    }
+                    if (decoded != null) {
+                        synchronized(lock) {
+                            if (requestScheduler.accepts(request.jobKey) && decoded.index in plan.keepPageIndices) {
+                                commitDecodedPage(decoded)
                             }
-                            is PageDecodeResult.Failure -> Unit
                         }
                     }
                 }
             } finally {
                 synchronized(lock) {
-                    activeJobs.entries.removeAll { (_, activeJob) -> activeJob === job }
+                    jobs.forEach { (request, job) ->
+                        if (activeJobs[request.jobKey] === job) {
+                            activeJobs.remove(request.jobKey)
+                        }
+                        requestScheduler.complete(request.jobKey)
+                    }
                 }
             }
         }
@@ -147,7 +139,11 @@ class PagePreloader(
 
     fun clear() {
         synchronized(lock) {
-            val plan = planner.moveTo(currentPage = 0, pageCount = 0)
+            val plan = requestScheduler.moveTo(
+                chapterId = SCHEDULER_CHAPTER_ID,
+                currentPage = 0,
+                pageCount = 0,
+            )
             plan.cancelRequests.forEach { jobKey -> activeJobs.remove(jobKey)?.cancel() }
             activeJobs.values.forEach { it.cancel() }
             activeJobs.clear()
@@ -161,9 +157,50 @@ class PagePreloader(
 
     fun cacheSnapshot(): PageCacheSnapshot = cache.snapshot()
 
+    private suspend fun decodePage(request: ReaderScheduledRequest, url: String): Decoded? {
+        val bytes = fetcher(url) ?: return null
+        val size = SkiaImageDecoder.peekSize(bytes) ?: return null
+        val decodeRequest = PageDecodeRequest(
+            pageIndex = request.pageIndex,
+            generation = request.generation,
+            maxWidth = maxDecodedWidth,
+            maxHeight = maxDecodedHeight,
+            region = PixelBounds(0, 0, size.first, size.second),
+        )
+        val pixelCount = size.first.toLong() * size.second
+        val result = if (pixelCount > largeImagePixelThreshold) {
+            regionDecoder.decodeRegion(bytes, decodeRequest)
+        } else {
+            pageDecoder.decode(bytes, decodeRequest.copy(region = null))
+        }
+        return Decoded(request.pageIndex, result, size.first, size.second)
+    }
+
+    private fun commitDecodedPage(decoded: Decoded) {
+        when (val result = decoded.result) {
+            is PageDecodeResult.Success -> {
+                val commitResult = cache.commit(
+                    PageCacheWrite(
+                        pageIndex = decoded.index,
+                        generation = result.generation,
+                        value = result.value,
+                        estimatedBytes = result.estimatedBytes,
+                    ),
+                )
+                if (commitResult == PageCacheCommitResult.STORED) {
+                    sourceSizes[decoded.index] = SourceSize(decoded.sourceWidth, decoded.sourceHeight)
+                }
+                sourceSizes.keys.retainAll(cache.snapshot().keys)
+            }
+            is PageDecodeResult.Failure -> Unit
+        }
+    }
+
     companion object {
         const val DEFAULT_CACHE_BYTES: Long = 128L * 1024L * 1024L
         const val DEFAULT_LARGE_IMAGE_PIXELS: Long = 16_000_000L
+        const val DEFAULT_CONCURRENT_REQUESTS: Int = 3
+        private val SCHEDULER_CHAPTER_ID = ReaderChapterId(0)
     }
 }
 

@@ -5,6 +5,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import mihon.domain.error.AppError
+import mihon.domain.reader.scheduler.ReaderRequestKey
+import mihon.domain.reader.scheduler.ReaderRequestPriority
+import mihon.domain.reader.scheduler.ReaderRequestScheduler
+import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
+import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderPageId
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -535,28 +541,35 @@ class ReaderParityContractTest {
     }
 
     @Test
-    fun `preload planner cancels every old generation job and evicts the complete old window`() {
-        val planner = ReaderPreloadPlanner(windowSize = 2)
-        val first = planner.moveTo(currentPage = 2, pageCount = 8)
-        val second = planner.moveTo(currentPage = 6, pageCount = 8)
+    fun `scheduler cancels or discards every old generation job and evicts the complete old window`() {
+        val scheduler = ReaderRequestScheduler(
+            ReaderSchedulerPolicy(nearbyForward = 2, nearbyBackward = 2, maxConcurrentRequests = 1),
+        )
+        val first = scheduler.moveTo(READER_CHAPTER_ID, currentPage = 2, pageCount = 8)
+        val firstActive = requireNotNull(scheduler.pollNext())
+        val second = scheduler.moveTo(READER_CHAPTER_ID, currentPage = 6, pageCount = 8)
 
         assertEquals(listOf(2, 3, 4, 1, 0), first.requests.map { it.pageIndex })
-        assertEquals(PreloadPriority.CURRENT, first.requests.first().priority)
-        assertEquals(first.requests.mapTo(mutableSetOf()) { it.jobKey }, second.cancelRequests)
+        assertEquals(ReaderRequestPriority.P0_INTERACTIVE, first.requests.first().priority)
+        assertEquals(setOf(firstActive.jobKey), second.cancelRequests)
+        assertEquals(first.requests.drop(1).mapTo(mutableSetOf()) { it.jobKey }, second.discardRequests)
         assertEquals(first.keepPageIndices, second.evictPageIndices)
-        assertEquals(setOf(0, 1, 2, 3, 4), second.cancelPageIndices)
+        assertEquals(
+            setOf(0, 1, 2, 3, 4),
+            (second.cancelRequests + second.discardRequests).mapTo(mutableSetOf(), ReaderRequestKey::pageIndex),
+        )
         assertEquals(setOf(4, 5, 6, 7), second.keepPageIndices)
         assertTrue(second.requests.all { it.generation == second.generation })
-        assertFalse(planner.accepts(first.generation))
-        assertTrue(planner.accepts(second.generation))
+        assertFalse(scheduler.acceptsGeneration(first.generation))
+        assertTrue(scheduler.acceptsGeneration(second.generation))
         assertTrue(second.generation > first.generation)
     }
 
     @Test
     fun `fixed original Mihon preload window keeps forward-only behavior`() {
-        val planner = ReaderPreloadPlanner(windowSize = 4, backwardWindowSize = 0)
+        val scheduler = ReaderRequestScheduler(ReaderSchedulerPolicy.originalMihon())
 
-        val plan = planner.moveTo(currentPage = 2, pageCount = 8)
+        val plan = scheduler.moveTo(READER_CHAPTER_ID, currentPage = 2, pageCount = 8)
 
         assertEquals(listOf(2, 3, 4, 5, 6), plan.requests.map { it.pageIndex })
         assertEquals(setOf(2, 3, 4, 5, 6), plan.keepPageIndices)
@@ -598,7 +611,7 @@ class ReaderParityContractTest {
             PageDecodeRequest(pageIndex = 0, generation = -1, maxWidth = 1, maxHeight = 1)
         }
         assertThrows(IllegalArgumentException::class.java) {
-            PreloadRequest(pageIndex = 0, priority = PreloadPriority.CURRENT, generation = -1)
+            ReaderRequestKey(ReaderPageId(READER_CHAPTER_ID, 0), generation = -1, requestId = 0)
         }
         assertThrows(IllegalArgumentException::class.java) {
             PageDecodeResult.Success(-1, "decoded", width = 1, height = 1, estimatedBytes = 4)
@@ -701,16 +714,18 @@ class ReaderParityContractTest {
 
     @Test
     fun `cache generation change can evict every key from the complete previous window`() {
-        val planner = ReaderPreloadPlanner(windowSize = 1)
+        val scheduler = ReaderRequestScheduler(
+            ReaderSchedulerPolicy(nearbyForward = 1, nearbyBackward = 1, maxConcurrentRequests = 3),
+        )
         val cache = ByteBudgetPageCache<String>(maxBytes = 64)
-        val first = planner.moveTo(currentPage = 1, pageCount = 5)
+        val first = scheduler.moveTo(READER_CHAPTER_ID, currentPage = 1, pageCount = 5)
         cache.beginGeneration(first.generation, first.evictPageIndices)
         first.requests.forEach { request ->
             cache.commit(PageCacheWrite(request.pageIndex, request.generation, "page-${request.pageIndex}", 4))
         }
         assertEquals(first.keepPageIndices, cache.snapshot().keys)
 
-        val second = planner.moveTo(currentPage = 2, pageCount = 5)
+        val second = scheduler.moveTo(READER_CHAPTER_ID, currentPage = 2, pageCount = 5)
         cache.beginGeneration(second.generation, second.evictPageIndices)
 
         assertEquals(first.keepPageIndices, second.evictPageIndices)
@@ -725,6 +740,10 @@ class ReaderParityContractTest {
         assertThrows(IllegalArgumentException::class.java) {
             PageCacheSnapshot(keys = emptySet(), usedBytes = 9, maxBytes = 8)
         }
+    }
+
+    private companion object {
+        val READER_CHAPTER_ID = ReaderChapterId(1)
     }
 
     @Test

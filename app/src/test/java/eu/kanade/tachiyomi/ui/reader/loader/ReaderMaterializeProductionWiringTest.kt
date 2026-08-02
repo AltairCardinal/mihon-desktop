@@ -26,7 +26,14 @@ import mihon.domain.reader.materialize.ReaderPageFetchPort
 import mihon.domain.reader.materialize.ReaderPageFetchRequest
 import mihon.domain.reader.materialize.ReaderPageMaterializeEvent
 import mihon.domain.reader.materialize.ReaderPageMaterializeResult
+import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderPageLoadState
+import mihon.domain.reader.storage.EncodedPageEvictionResult
+import mihon.domain.reader.storage.EncodedPageStoreDiagnostics
+import mihon.domain.reader.storage.EncodedPageStoreEntry
+import mihon.domain.reader.storage.EncodedPageStoreLifecycleResult
+import mihon.domain.reader.storage.EncodedPageStoreWriteResult
+import mihon.domain.reader.storage.ReaderEncodedPageStore
 import okhttp3.Response
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -77,11 +84,12 @@ class ReaderMaterializeProductionWiringTest {
     @Test
     fun `HTTP page request runs through canonical executor and retry forces redownload`() = runTest {
         val executor = RecordingExecutor()
+        val encodedStore = RecordingEncodedPageStore()
         val source = mockk<HttpSource>()
         val cache = mockk<ChapterCache>()
         val response = mockk<Response>()
         every { cache.isImageInCache(any()) } returns true
-        every { cache.putImageToCache(any(), any()) } returns Unit
+        every { cache.putImageToCache(any(), any()) } returns true
         every { cache.getImageFile(any()) } returns File("unused")
         coEvery { source.getImage(any()) } returns response
         val chapter = ReaderChapter(Chapter.create().copy(id = 7, mangaId = 1))
@@ -96,6 +104,7 @@ class ReaderMaterializeProductionWiringTest {
             chapterCache = cache,
             dispatcher = StandardTestDispatcher(testScheduler),
             materializeExecutor = executor,
+            encodedPageStore = encodedStore,
         )
 
         loader.retryPage(page)
@@ -103,6 +112,7 @@ class ReaderMaterializeProductionWiringTest {
 
         assertEquals(1, executor.pageCalls)
         assertTrue(executor.forceRefreshes.single())
+        assertEquals(1, encodedStore.writeCalls)
         verify(exactly = 1) { cache.putImageToCache("https://example.test/image", response) }
         assertEquals(Page.State.Ready, page.status)
         loader.recycle()
@@ -113,9 +123,14 @@ class ReaderMaterializeProductionWiringTest {
         val source = mockk<HttpSource>()
         val cache = mockk<ChapterCache>()
         val response = mockk<Response>()
+        val cachedUrls = mutableSetOf<String>()
         var attempts = 0
-        every { cache.isImageInCache(any()) } returns false
-        every { cache.putImageToCache(any(), any()) } returns Unit
+        every { cache.isImageInCache(any()) } answers { firstArg<String>() in cachedUrls }
+        every { cache.putImageToCache(any(), any()) } answers {
+            cachedUrls += firstArg<String>()
+            true
+        }
+        every { cache.removeImageFromCache(any()) } answers { cachedUrls.remove(firstArg<String>()) }
         every { cache.getImageFile(any()) } returns File("unused")
         coEvery { source.getImage(any()) } coAnswers {
             if (attempts++ == 0) throw IOException("offline")
@@ -153,6 +168,37 @@ class ReaderMaterializeProductionWiringTest {
         loader.recycle()
     }
 
+    @Test
+    fun `cache editor rejection is published as storage failure instead of ready`() = runTest {
+        val source = mockk<HttpSource>()
+        val cache = mockk<ChapterCache>()
+        val response = mockk<Response>()
+        every { cache.isImageInCache(any()) } returns false
+        every { cache.putImageToCache(any(), any()) } returns false
+        every { cache.getImageFile(any()) } returns File("missing")
+        coEvery { source.getImage(any()) } returns response
+        val chapter = ReaderChapter(Chapter.create().copy(id = 7, mangaId = 1))
+        val page = ReaderPage(0, imageUrl = "https://example.test/contended").apply { this.chapter = chapter }
+        chapter.state = ReaderChapter.State.Loaded(listOf(page))
+        val loader = HttpPageLoader(
+            chapter = chapter,
+            source = source,
+            chapterCache = cache,
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        loader.onPageSelected(page)
+        runCurrent()
+
+        assertInstanceOf(Page.State.Error::class.java, page.status)
+        val sharedFailure = assertInstanceOf(
+            ReaderPageLoadState.Error::class.java,
+            chapter.sharedSessionStateFlow.value.activeChapter.pages.single().loadState,
+        )
+        assertInstanceOf(AppError.Storage::class.java, sharedFailure.error)
+        loader.recycle()
+    }
+
     private class RecordingExecutor : ReaderMaterializeExecutor {
         var chapterCalls = 0
         var pageCalls = 0
@@ -182,5 +228,44 @@ class ReaderMaterializeProductionWiringTest {
             forceRefreshes += forceRefresh
             return CanonicalReaderMaterializeExecutor.materializePage(request, port, forceRefresh, publish)
         }
+    }
+
+    private class RecordingEncodedPageStore : ReaderEncodedPageStore {
+        var writeCalls = 0
+
+        override suspend fun beginSession(retainedRefs: Set<EncodedPageRef>) = EncodedPageStoreLifecycleResult(
+            availableRefs = emptySet(),
+            missingRefs = retainedRefs,
+            evictedRefs = emptySet(),
+        )
+
+        override suspend fun contains(ref: EncodedPageRef): Boolean = false
+
+        override suspend fun store(
+            ref: EncodedPageRef,
+            writer: suspend () -> Long,
+        ): EncodedPageStoreWriteResult {
+            writeCalls++
+            return EncodedPageStoreWriteResult.Stored(
+                entry = EncodedPageStoreEntry(ref, writer()),
+                evictedRefs = emptySet(),
+            )
+        }
+
+        override suspend fun evict(ref: EncodedPageRef): EncodedPageEvictionResult =
+            EncodedPageEvictionResult.Missing
+
+        override fun diagnostics() = EncodedPageStoreDiagnostics(
+            refs = emptySet(),
+            usedBytes = 0,
+            maxBytes = 1,
+            hitCount = 0,
+            missCount = 0,
+            writeCount = writeCalls.toLong(),
+            evictionCount = 0,
+            isSessionOpen = true,
+        )
+
+        override fun endSession(): EncodedPageStoreDiagnostics = diagnostics().copy(isSessionOpen = false)
     }
 }

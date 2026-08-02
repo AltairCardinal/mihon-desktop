@@ -17,18 +17,38 @@ import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import mihon.domain.reader.scheduler.ReaderRequestScheduler
+import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
 import okhttp3.Response
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.chapter.model.Chapter
 import java.io.File
 import java.io.IOException
 
 class HttpPageLoaderIntegrationTest {
+
+    @Test
+    fun `shared scheduler policy controls bounded Android production concurrency`() = runTest {
+        val requestScheduler = ReaderRequestScheduler(
+            ReaderSchedulerPolicy(nearbyForward = 3, nearbyBackward = 0, maxConcurrentRequests = 2),
+        )
+        val fixture = Fixture(testScheduler, requestScheduler = requestScheduler)
+
+        fixture.loader.onPageSelected(fixture.pages[0])
+        runCurrent()
+
+        assertEquals(listOf(0, 1), fixture.started)
+        fixture.release(0)
+        runCurrent()
+        assertEquals(listOf(0, 1, 2), fixture.started)
+        fixture.loader.recycle()
+    }
 
     @Test
     fun `holder binds do not cancel the selected page generation`() = runTest {
@@ -47,6 +67,35 @@ class HttpPageLoaderIntegrationTest {
 
         holderOne.cancel()
         holderTwo.cancel()
+        fixture.loader.recycle()
+    }
+
+    @Test
+    fun `interactive preemption restores cancelled nearby page to queue and restarts it`() = runTest {
+        val requestScheduler = ReaderRequestScheduler(
+            ReaderSchedulerPolicy(nearbyForward = 1, nearbyBackward = 0, maxConcurrentRequests = 1),
+        )
+        val fixture = Fixture(testScheduler, requestScheduler = requestScheduler)
+        fixture.loader.onPageSelected(fixture.pages[0])
+        runCurrent()
+        fixture.release(0)
+        runCurrent()
+        assertEquals(listOf(0, 1), fixture.started)
+
+        val visibleHolder = launch { fixture.loader.loadPage(fixture.pages[2]) }
+        runCurrent()
+
+        assertEquals(listOf(0, 1, 2), fixture.started)
+        fixture.release(2)
+        runCurrent()
+
+        assertEquals(listOf(1), fixture.cancelled)
+        assertEquals(listOf(0, 1, 2, 1), fixture.started)
+        assertEquals(Page.State.DownloadImage, fixture.pages[1].status)
+        fixture.release(1)
+        runCurrent()
+        assertEquals(Page.State.Ready, fixture.pages[1].status)
+        visibleHolder.cancel()
         fixture.loader.recycle()
     }
 
@@ -107,6 +156,30 @@ class HttpPageLoaderIntegrationTest {
     }
 
     @Test
+    fun `rapid non cooperative generations keep actual Android IO within the stale budget`() = runTest {
+        val fixture = Fixture(
+            scheduler = testScheduler,
+            nonCancellablePages = (0..4).toSet(),
+        )
+
+        try {
+            repeat(5) { pageIndex ->
+                fixture.loader.onPageSelected(fixture.pages[pageIndex])
+                runCurrent()
+            }
+
+            assertTrue(
+                fixture.peakInFlight <= 2,
+                "One current request plus at most one cancellation-ignoring stale request may perform physical IO",
+            )
+        } finally {
+            repeat(5, fixture::release)
+            runCurrent()
+            fixture.loader.recycle()
+        }
+    }
+
+    @Test
     fun `non cooperative stale request cannot publish ordinary failure after a new generation`() = runTest {
         val fixture = Fixture(
             scheduler = testScheduler,
@@ -132,9 +205,14 @@ class HttpPageLoaderIntegrationTest {
         val cache = mockk<ChapterCache>()
         val response = mockk<Response>()
         val releaseFirst = Channel<Unit>(Channel.UNLIMITED)
+        val cachedUrls = mutableSetOf<String>()
         var attempts = 0
-        every { cache.isImageInCache(any()) } returns false
-        every { cache.putImageToCache(any(), any()) } returns Unit
+        every { cache.isImageInCache(any()) } answers { firstArg<String>() in cachedUrls }
+        every { cache.putImageToCache(any(), any()) } answers {
+            cachedUrls += firstArg<String>()
+            true
+        }
+        every { cache.removeImageFromCache(any()) } answers { cachedUrls.remove(firstArg<String>()) }
         every { cache.getImageFile(any()) } returns File("unused")
         coEvery { source.getImage(any()) } coAnswers {
             if (attempts++ == 0) {
@@ -179,9 +257,15 @@ class HttpPageLoaderIntegrationTest {
         scheduler: TestCoroutineScheduler,
         private val nonCancellablePages: Set<Int> = emptySet(),
         private val failingPages: Set<Int> = emptySet(),
+        private val requestScheduler: ReaderRequestScheduler = ReaderRequestScheduler(
+            ReaderSchedulerPolicy.originalMihon(),
+        ),
     ) {
         val started = mutableListOf<Int>()
         val cancelled = mutableListOf<Int>()
+        var peakInFlight = 0
+            private set
+        private var inFlight = 0
         private val releases = List(6) { Channel<Unit>(Channel.UNLIMITED) }
         val pages: List<ReaderPage>
         val loader: HttpPageLoader
@@ -190,12 +274,19 @@ class HttpPageLoaderIntegrationTest {
             val source = mockk<HttpSource>()
             val cache = mockk<ChapterCache>()
             val response = mockk<Response>()
-            every { cache.isImageInCache(any()) } returns false
-            every { cache.putImageToCache(any(), any()) } returns Unit
+            val cachedUrls = mutableSetOf<String>()
+            every { cache.isImageInCache(any()) } answers { firstArg<String>() in cachedUrls }
+            every { cache.putImageToCache(any(), any()) } answers {
+                cachedUrls += firstArg<String>()
+                true
+            }
+            every { cache.removeImageFromCache(any()) } answers { cachedUrls.remove(firstArg<String>()) }
             every { cache.getImageFile(any()) } returns File("unused")
             coEvery { source.getImage(any()) } coAnswers {
                 val page = firstArg<Page>()
                 started += page.index
+                inFlight++
+                peakInFlight = maxOf(peakInFlight, inFlight)
                 try {
                     if (page.index in nonCancellablePages) {
                         withContext(NonCancellable) {
@@ -211,6 +302,8 @@ class HttpPageLoaderIntegrationTest {
                 } catch (e: CancellationException) {
                     cancelled += page.index
                     throw e
+                } finally {
+                    inFlight--
                 }
             }
             val chapter = ReaderChapter(Chapter.create().copy(id = 1, mangaId = 1))
@@ -222,6 +315,7 @@ class HttpPageLoaderIntegrationTest {
                 source = source,
                 chapterCache = cache,
                 dispatcher = StandardTestDispatcher(scheduler),
+                requestScheduler = requestScheduler,
             )
         }
 

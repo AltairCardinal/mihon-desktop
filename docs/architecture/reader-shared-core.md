@@ -4,12 +4,13 @@
 
 本文描述 reader migration 的目标架构和当前边界。当前状态是 `MIGRATING`：
 
-- 已共享：部分 DTO、解码/cache contract、前向窗口 planner、宽图拆分/配对纯算法、输入导航、章节过滤和
-  滤镜参数；
-- 尚未共享：page-list executor、单页 materialize executor、唯一优先级 scheduler、章节窗口、跨章激活和
-  进度 effect；
-- 当前 Android `HttpPageLoader/ReaderViewModel` 与 Desktop
-  `DesktopReaderPageLoader/PagePreloader/ReaderScreenModel` 仍包含不同运行决策。
+- 已共享并由 Android 生产消费：稳定 session/page 状态、page-list 与单页 materialize executor、唯一
+  priority/generation scheduler、encoded store contract；Desktop `PagePreloader` 也消费同一 scheduler；
+- 另已共享：解码/cache contract、宽图拆分/配对纯算法、输入导航、章节过滤和滤镜参数；
+- 尚未共享：current/previous/next 章节窗口、跨章激活、进度 effect，以及 Desktop production
+  materialize/session wiring；
+- 当前 Android `ReaderViewModel` 与 Desktop `DesktopReaderPageLoader/ReaderScreenModel` 仍包含尚待后续
+  批次迁移的运行决策，但两端不再各自解释预加载优先级或 generation。
 
 因此 `domain/src/commonMain/kotlin/mihon/domain/reader/` 现在不是完整的唯一 reader runtime。迁移目标是让
 Android 与 Desktop 消费从固定原版 Android 提取的同一个 `ReaderSessionCore`，同时把图形、文件、source、
@@ -50,7 +51,10 @@ Android ReaderActivity / DesktopReaderScreen
 
 | 文件 | 当前可引用的证据范围 | 不能据此宣称的内容 |
 | --- | --- | --- |
-| `ReaderPageModel.kt` | page/chapter DTO、decode/cache contract、前向窗口与 generation planner | 唯一 page executor、唯一 scheduler、章节窗口 |
+| `ReaderPageModel.kt` | page/chapter DTO、decode/cache contract | 章节窗口、完整 session executor |
+| `reader/session/`、`reader/materialize/` | 稳定逻辑页状态、page-list 与单页 materialize；Android production 已接线 | Desktop production materialize、章节窗口、进度 effect |
+| `reader/scheduler/ReaderRequestScheduler.kt` | P0～P4、原版 current +4、稳定 PageId、有界并发、抢占、Retry 与 generation 拒收；Android/Desktop adapter 已接线 | 相邻章何时进入 P3/P4（由后续 window/policy 产生请求） |
+| `reader/storage/EncodedPageStore.kt` | 生命周期、物理存在性、配额/淘汰结果和诊断；Android `ChapterCache` adapter 已接线 | Desktop encoded store 实现 |
 | `PageTransform.kt` | 宽图尺寸/切片、纯配对算法、滤镜参数 | session core；pairing 属 presentation |
 | `ReaderNavigation.kt` | tap command、inversion、章节过滤与 adjacent result | reader entry、跨章 session 激活、进度 |
 | `ReadingProgressEvent` / `RecordReadingProgress` | Fork 的幂等进度事务，当前 Desktop 消费 | Android 已切到同一进度 effect |
@@ -84,8 +88,11 @@ parity manifest 9/43/44/45/47/49/51/54 通过 `readerCoreMigrationScope` 锁定�
 4. `ADJACENT_METADATA`：距末尾不足五页时只建立相邻章 page list；
 5. `ADJACENT_BACKGROUND`：Desktop 可选的下一章 encoded 内容。
 
-Scheduler 必须有界、可抢占并按 generation 拒绝迟到结果。Android 默认 policy 不增加固定原版网络量；
-Desktop background policy 可以提高有界并发，但不能让后台请求饿死可见页。
+`ReaderRequestScheduler` 已实现有界的当前 generation 并发、P0 抢占和 generation 迟到拒绝，请求身份使用
+稳定 `ChapterId + sourcePageIndex`，不会把相邻章的同索引页合并。Android 默认 policy 保持固定原版串行
+current +4，不增加正常请求的网络量；adapter 另以真实 Job completion 释放物理 permit，最多容纳一个不响应
+取消的 stale 请求，所以连续快速翻页的真实 I/O 上限为“当前 policy 并发 + 1”，不会随 generation 无界增长。
+Desktop adapter 可配置更高但有界的当前 generation 并发，后台请求不能饿死可见页。
 
 `Ready` 只表示 encoded 数据可用。decoded bitmap 属于 viewport 附近的有界平台缓存，完整下一章预取
 不能线性保留整章 decoded bitmap。
@@ -117,7 +124,7 @@ Core ports 使用平台无关引用，不暴露 `Context`、`File`、`InputStrea
 
 - `ReaderChapterContentPort`：online/download/local/archive 的 page descriptor；
 - `ReaderPageFetchPort`：把一页 materialize 为 opaque `EncodedPageRef`；
-- `ReaderEncodedPageStore`：存在性、open、配额、淘汰与诊断；
+- `ReaderEncodedPageStore`：session 生命周期、物理存在性、配额、淘汰与诊断；
 - `ReaderProgressPort`：提交 core 产生的进度 effect；
 - clock/diagnostics/lifecycle ports。
 
@@ -125,8 +132,13 @@ Android 保留 Context/Source/Download/Local、ChapterCache、Bitmap/Coil、View
 保留 SourceManager/ClassLoader、download/local/archive、Skia/Compose、Voyager 和键鼠。adapter 只能映射，
 不能重新实现页序、优先级、Retry、相邻章或完成规则。
 
-较新上游 `bc7f7e70…` 的 cache journal + 实体文件存在性检查必须进入 encoded store adapter；当前 Fork
-cached Error Retry 丢失 fixed 强制重抓语义，RC-02 必须用失败集成测试恢复。
+较新上游 `bc7f7e70…` 的 cache journal + 实体文件存在性检查已由 Android encoded store adapter 保留；
+RC-02 已恢复 cached Error 的显式 Retry 强制重抓，RC-03 又由 shared scheduler 把 Retry 提升为 P0 并
+启动新 generation。encoded store 只有在 journal 与实体文件均存在后才提交逻辑索引；配额淘汰先确认
+实体删除，再推进逻辑 LRU，写后异常和 session 结束期间的迟到写入会清理未索引实体。物理删除失败会
+作为 storage failure 暴露，不能返回 `Stored` 或 `Ready`。由于 `ChapterCache` 自身也有物理 LRU，每次
+逻辑 commit 前会对全部 tracked ref 做物理存在性 reconcile；物理层先行淘汰的 ref 会进入本次
+`evictedRefs`，而不会残留 phantom diagnostics。session 启动失败同样分类为 Storage，而不是网络错误。
 
 ## 章节过渡与进度
 

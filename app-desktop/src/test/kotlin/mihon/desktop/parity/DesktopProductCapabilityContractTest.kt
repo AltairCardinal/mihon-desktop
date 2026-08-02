@@ -518,7 +518,32 @@ class DesktopProductCapabilityContractTest {
                 ),
             45 to
                 mapOf(
-                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt" to setOf("rapid zero one two selection cancels stale jobs without error and reorders current first"),
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/scheduler/ReaderRequestSchedulerTest.kt" to setOf(
+                        "original Mihon policy schedules visible page then four forward pages serially",
+                        "generation replacement discards queued work cancels active work and rejects late results",
+                    ),
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/storage/EncodedPageStoreContractTest.kt" to setOf(
+                        "quota commit evicts least recently used entry and reports the exact eviction",
+                        "commit planning reports victims without advancing the logical index",
+                    ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt" to setOf(
+                        "rapid zero one two selection cancels stale jobs without error and reorders current first",
+                        "interactive preemption restores cancelled nearby page to queue and restarts it",
+                        "rapid non cooperative generations keep actual Android IO within the stale budget",
+                    ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt" to setOf(
+                        "quota eviction survives cache reopen with physical presence as authority",
+                        "session begin counts physically observed entries and startup quota eviction",
+                        "physical LRU eviction is reconciled before the logical commit chooses another victim",
+                        "logical commit rejects a writer result when the physical entry is absent",
+                        "quota commit does not advance the logical index when physical victim removal fails",
+                    ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ReaderMaterializeProductionWiringTest.kt" to setOf(
+                        "cache editor rejection is published as storage failure instead of ready",
+                    ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderStorageClassificationTest.kt" to setOf(
+                        "encoded cache session startup failure is published as chapter storage error",
+                    ),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt" to setOf(
                         "fast page change cancels stale preload and prevents a late cache write",
                         "page change cancels every active or queued old generation request",
@@ -1530,10 +1555,51 @@ class DesktopProductCapabilityContractTest {
                 ),
             45 to
                 mapOf(
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/scheduler/ReaderRequestSchedulerTest.kt" to
+                        mapOf(
+                            "original Mihon policy schedules visible page then four forward pages serially" to
+                                setOf("ReaderSchedulerPolicy.originalMihon()", "scheduler.pollNext()"),
+                            "generation replacement discards queued work cancels active work and rejects late results" to
+                                setOf("scheduler.moveTo", "scheduler.accepts"),
+                        ),
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/storage/EncodedPageStoreContractTest.kt" to
+                        mapOf(
+                            "quota commit evicts least recently used entry and reports the exact eviction" to
+                                setOf("index.commit", "index.diagnostics()"),
+                            "commit planning reports victims without advancing the logical index" to
+                                setOf("index.planCommit", "index.diagnostics()"),
+                        ),
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt" to
                         mapOf(
                             "rapid zero one two selection cancels stale jobs without error and reorders current first" to
                                 setOf("fixture.loader.onPageSelected", "fixture.cancelled"),
+                            "interactive preemption restores cancelled nearby page to queue and restarts it" to
+                                setOf("fixture.loader.loadPage", "fixture.pages[1].status"),
+                            "rapid non cooperative generations keep actual Android IO within the stale budget" to
+                                setOf("fixture.loader.onPageSelected", "fixture.peakInFlight"),
+                        ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt" to
+                        mapOf(
+                            "quota eviction survives cache reopen with physical presence as authority" to
+                                setOf("AndroidReaderEncodedPageStore(", "reopenedStore.beginSession"),
+                            "session begin counts physically observed entries and startup quota eviction" to
+                                setOf("store.beginSession", "store.diagnostics().evictionCount"),
+                            "physical LRU eviction is reconciled before the logical commit chooses another victim" to
+                                setOf("cache.isImageInCache(firstRef.value)", "store.diagnostics().refs"),
+                            "logical commit rejects a writer result when the physical entry is absent" to
+                                setOf("store.store", "store.diagnostics().refs"),
+                            "quota commit does not advance the logical index when physical victim removal fails" to
+                                setOf("store.store", "store.diagnostics().refs"),
+                        ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ReaderMaterializeProductionWiringTest.kt" to
+                        mapOf(
+                            "cache editor rejection is published as storage failure instead of ready" to
+                                setOf("cache.putImageToCache", "AppError.Storage"),
+                        ),
+                    "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderStorageClassificationTest.kt" to
+                        mapOf(
+                            "encoded cache session startup failure is published as chapter storage error" to
+                                setOf("encodedStore.beginSession", "AppError.Storage"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt" to
                         mapOf(
@@ -1656,11 +1722,18 @@ class DesktopProductCapabilityContractTest {
                 ),
             45 to
                 mapOf(
-                    "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt" to setOf("class ReaderPreloadPlanner"),
+                    "domain/src/commonMain/kotlin/mihon/domain/reader/scheduler/ReaderRequestScheduler.kt" to
+                        setOf("class ReaderRequestScheduler", "fun pollNext()", "fun accepts(jobKey"),
+                    "domain/src/commonMain/kotlin/mihon/domain/reader/storage/EncodedPageStore.kt" to
+                        setOf("interface ReaderEncodedPageStore", "class ByteBudgetEncodedPageStoreIndex"),
                     "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt" to
-                        setOf("preloadPlanner.moveTo"),
+                        setOf("requestScheduler.moveTo", "requestScheduler.pollNext", "encodedPageStore"),
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStore.kt" to
+                        setOf("class AndroidReaderEncodedPageStore", "chapterCache.isImageInCache", "index.commit"),
+                    "app/src/main/java/eu/kanade/tachiyomi/data/cache/ChapterCache.kt" to
+                        setOf("maxCacheBytes", "removeImageFromCache"),
                     "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt" to
-                        setOf("planner.moveTo", "activeJobs"),
+                        setOf("requestScheduler.moveTo", "requestScheduler.pollNext", "activeJobs"),
                 ),
             47 to
                 mapOf(

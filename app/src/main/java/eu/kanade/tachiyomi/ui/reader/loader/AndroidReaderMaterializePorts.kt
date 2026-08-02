@@ -14,7 +14,10 @@ import mihon.domain.reader.materialize.ReaderPageFetchPort
 import mihon.domain.reader.materialize.ReaderPageFetchRequest
 import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderPageDescriptor
+import mihon.domain.reader.storage.EncodedPageStoreWriteResult
+import mihon.domain.reader.storage.ReaderEncodedPageStore
 import tachiyomi.domain.source.service.toSourceAppError
+import java.io.IOException
 import java.io.InputStream
 
 internal class AndroidReaderChapterContentPort(
@@ -56,6 +59,7 @@ internal class AndroidReaderPageFetchPort(
     private val page: ReaderPage,
     private val source: HttpSource,
     private val chapterCache: ChapterCache,
+    private val encodedPageStore: ReaderEncodedPageStore = AndroidReaderEncodedPageStore(chapterCache),
 ) : ReaderPageFetchPort {
 
     override suspend fun resolveImageUrl(request: ReaderPageFetchRequest): String = sourceCall {
@@ -64,15 +68,21 @@ internal class AndroidReaderPageFetchPort(
 
     override suspend fun findEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef? {
         val imageUrl = request.requireImageUrl()
-        return if (chapterCache.isImageInCache(imageUrl)) EncodedPageRef(imageUrl) else null
+        val ref = EncodedPageRef(imageUrl)
+        return if (encodedPageStore.contains(ref)) ref else null
     }
 
     override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef {
         val imageUrl = request.requireImageUrl()
         page.imageUrl = imageUrl
         val response = sourceCall { source.getImage(page) }
-        try {
-            chapterCache.putImageToCache(imageUrl, response)
+        val result = try {
+            encodedPageStore.store(EncodedPageRef(imageUrl)) {
+                if (!chapterCache.putImageToCache(imageUrl, response)) {
+                    throw IOException("Chapter cache rejected the image write: $imageUrl")
+                }
+                chapterCache.getImageFile(imageUrl).length()
+            }
         } catch (error: CancellationException) {
             throw error
         } catch (error: AppErrorException) {
@@ -80,7 +90,16 @@ internal class AndroidReaderPageFetchPort(
         } catch (error: Throwable) {
             throw AppErrorException(AppError.Storage(error))
         }
-        return EncodedPageRef(imageUrl)
+        return when (result) {
+            is EncodedPageStoreWriteResult.Stored -> result.entry.ref
+            is EncodedPageStoreWriteResult.RejectedQuota -> throw AppErrorException(
+                AppError.Storage(
+                    IllegalStateException(
+                        "Encoded page exceeds cache quota: ${result.entry.byteCount} > ${result.maxBytes}",
+                    ),
+                ),
+            )
+        }
     }
 
     fun openEncodedPage(ref: EncodedPageRef): InputStream = chapterCache.getImageFile(ref.value).inputStream()

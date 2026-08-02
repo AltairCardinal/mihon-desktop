@@ -1926,28 +1926,38 @@
       "decision": "PROMOTE_VERIFIED",
       "followUp": "NONE",
       "gap": "NONE",
-      "scope": "PRELOAD_WINDOW_PLANNER_AND_PLATFORM_GENERATION_ADAPTERS",
+      "scope": "SHARED_PRIORITY_SCHEDULER_AND_ENCODED_STORE",
       "behaviorMethods": {
-        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt": ["rapid zero one two selection cancels stale jobs without error and reorders current first"],
+        "domain/src/commonTest/kotlin/mihon/domain/reader/scheduler/ReaderRequestSchedulerTest.kt": ["original Mihon policy schedules visible page then four forward pages serially", "generation replacement discards queued work cancels active work and rejects late results"],
+        "domain/src/commonTest/kotlin/mihon/domain/reader/storage/EncodedPageStoreContractTest.kt": ["quota commit evicts least recently used entry and reports the exact eviction", "commit planning reports victims without advancing the logical index"],
+        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt": ["rapid zero one two selection cancels stale jobs without error and reorders current first", "interactive preemption restores cancelled nearby page to queue and restarts it", "rapid non cooperative generations keep actual Android IO within the stale budget"],
+        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt": ["quota eviction survives cache reopen with physical presence as authority", "session begin counts physically observed entries and startup quota eviction", "physical LRU eviction is reconciled before the logical commit chooses another victim", "logical commit rejects a writer result when the physical entry is absent", "quota commit does not advance the logical index when physical victim removal fails"],
+        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ReaderMaterializeProductionWiringTest.kt": ["cache editor rejection is published as storage failure instead of ready"],
+        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderStorageClassificationTest.kt": ["encoded cache session startup failure is published as chapter storage error"],
         "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt": ["fast page change cancels stale preload and prevents a late cache write", "page change cancels every active or queued old generation request"]
       }
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #45: HttpPageLoader uses one serial PriorityBlockingQueue where the selected page outranks four forward adjacent pages and an explicit Retry outranks both.",
-    "desktopImplementation": "ReaderPreloadPlanner is a shared pure window/generation planner consumed by Android HttpPageLoader and Desktop PagePreloader; Android HttpPageLoader, Desktop PagePreloader, and DesktopReaderPageLoader remain separate executors until RC-03/RD-01.",
+    "desktopImplementation": "ReaderRequestScheduler is the single priority/generation policy consumed by Android HttpPageLoader and Desktop PagePreloader. ReaderEncodedPageStore defines lifecycle, physical existence, quota/eviction, and diagnostics while AndroidReaderEncodedPageStore adapts ChapterCache; Desktop page materialization remains separate until RD-01.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt", "symbol": "private val preloadSize = 4"}],
     "sharedImplementationPaths": [
-      "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt",
+      "domain/src/commonMain/kotlin/mihon/domain/reader/scheduler/ReaderRequestScheduler.kt",
+      "domain/src/commonMain/kotlin/mihon/domain/reader/storage/EncodedPageStore.kt",
       "domain/src/commonMain/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutor.kt"
     ],
-    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt"],
+    "currentAndroidConsumerPaths": [
+      "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStore.kt",
+      "app/src/main/java/eu/kanade/tachiyomi/data/cache/ChapterCache.kt"
+    ],
     "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt"],
     "deviations": [
       {
         "id": "GENERATION_HARDENING",
         "classification": "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
         "evidenceRef": "83c5a97f67fcea33367f5f79c09397bb215a2f6f",
-        "description": "ReaderPreloadPlanner generations, cancellation, and stale-result rejection are Fork reliability enhancements, not fixed-original queue semantics."
+        "description": "ReaderRequestScheduler generations, cancellation, preemption, and stale-result rejection are Fork reliability enhancements, not fixed-original queue semantics."
       },
       {
         "id": "HTTP_RETRY_FORCE_DRIFT",
@@ -1965,31 +1975,49 @@
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt", "symbol": "private val preloadSize = 4", "line": 44}],
-      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt", "symbol": "private val preloadPlanner", "line": 50}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt", "symbol": "private val requestScheduler", "line": 52}],
       "SHARED_OR_ADAPTER": [
-        {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt", "symbol": "class ReaderPreloadPlanner", "line": 272},
+        {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/scheduler/ReaderRequestScheduler.kt", "symbol": "class ReaderRequestScheduler", "line": 104},
+        {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/storage/EncodedPageStore.kt", "symbol": "interface ReaderEncodedPageStore", "line": 56},
         {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutor.kt", "symbol": "object CanonicalReaderMaterializeExecutor", "line": 85}
       ],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt", "symbol": "private val planner", "line": 45}],
-      "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt#page change cancels every active or queued old generation request", "productionMarkers": ["preloader.preload"]}]
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt", "symbol": "private val requestScheduler", "line": 36}],
+      "FIXTURE": [
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt#interactive preemption restores cancelled nearby page to queue and restarts it", "productionMarkers": ["fixture.loader.loadPage", "fixture.pages[1].status"]},
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt#rapid non cooperative generations keep actual Android IO within the stale budget", "productionMarkers": ["fixture.loader.onPageSelected", "fixture.peakInFlight"]},
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt#quota eviction survives cache reopen with physical presence as authority", "productionMarkers": ["AndroidReaderEncodedPageStore(", "reopenedStore.beginSession"]},
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt#physical LRU eviction is reconciled before the logical commit chooses another victim", "productionMarkers": ["cache.isImageInCache(firstRef.value)", "store.diagnostics().refs"]},
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt#quota commit does not advance the logical index when physical victim removal fails", "productionMarkers": ["store.store", "store.diagnostics().refs"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt#page change cancels every active or queued old generation request", "productionMarkers": ["preloader.preload"]}
+      ]
     },
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
+      "domain/src/commonTest/kotlin/mihon/domain/reader/scheduler/ReaderRequestSchedulerTest.kt",
+      "domain/src/commonTest/kotlin/mihon/domain/reader/storage/EncodedPageStoreContractTest.kt",
       "domain/src/commonTest/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutorTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ReaderMaterializeProductionWiringTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderStorageClassificationTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/data/cache/ChapterCacheFilePresenceTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt"
     ],
     "behaviorMethods": {
+      "domain/src/commonTest/kotlin/mihon/domain/reader/scheduler/ReaderRequestSchedulerTest.kt": ["original Mihon policy schedules visible page then four forward pages serially", "generation replacement discards queued work cancels active work and rejects late results"],
+      "domain/src/commonTest/kotlin/mihon/domain/reader/storage/EncodedPageStoreContractTest.kt": ["quota commit evicts least recently used entry and reports the exact eviction", "commit planning reports victims without advancing the logical index"],
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["fixed original Mihon preload window keeps forward-only behavior"],
       "domain/src/commonTest/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutorTest.kt": ["retry forces a fresh fetch even when encoded content is cached"],
-      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ReaderMaterializeProductionWiringTest.kt": ["HTTP page request runs through canonical executor and retry forces redownload"],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt": ["rapid zero one two selection cancels stale jobs without error and reorders current first", "interactive preemption restores cancelled nearby page to queue and restarts it", "rapid non cooperative generations keep actual Android IO within the stale budget"],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt": ["quota eviction survives cache reopen with physical presence as authority", "session begin counts physically observed entries and startup quota eviction", "physical LRU eviction is reconciled before the logical commit chooses another victim", "logical commit rejects a writer result when the physical entry is absent", "quota commit does not advance the logical index when physical victim removal fails"],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ReaderMaterializeProductionWiringTest.kt": ["HTTP page request runs through canonical executor and retry forces redownload", "cache editor rejection is published as storage failure instead of ready"],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderStorageClassificationTest.kt": ["encoded cache session startup failure is published as chapter storage error"],
       "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt": ["page change cancels every active or queued old generation request"]
     },
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
-    "readerCoreMigrationScope": {"task": "R0-01", "verifiedSlice": "PRELOAD_WINDOW_PLANNER", "canonicalSessionExecutor": "NOT_WIRED", "closureTask": "RD-01", "materializeTask": "RC-02", "androidMaterializeExecutor": "WIRED", "openProductGaps": [], "closedProductGaps": ["HTTP_RETRY_FORCE_DRIFT"]},
-    "verificationScope": "VERIFIED for the forward-window planner, each platform's current generation/cancellation adapter, and Android's RC-02 canonical page materialization path where explicit Retry forces a fresh fetch. This does not prove shared ReaderSessionCore, one priority scheduler, or a Desktop-wired page materialization executor.",
+    "readerCoreMigrationScope": {"task": "R0-01", "verifiedSlice": "PRIORITY_SCHEDULER_AND_ENCODED_STORE_CONTRACT", "canonicalSessionExecutor": "NOT_WIRED", "closureTask": "RD-01", "materializeTask": "RC-02", "schedulerTask": "RC-03", "androidMaterializeExecutor": "WIRED", "androidScheduler": "WIRED", "desktopSchedulerAdapter": "WIRED", "androidEncodedStore": "WIRED", "openProductGaps": [], "closedProductGaps": ["HTTP_RETRY_FORCE_DRIFT"]},
+    "verificationScope": "VERIFIED for the single shared priority/generation scheduler consumed by Android HttpPageLoader and Desktop PagePreloader, Android's one-current-plus-one-stale physical request bound, transactionally verified encoded-store lifecycle/quota wiring with physical-LRU reconciliation and Storage-classified lifecycle failures, and Android's RC-02 canonical page materialization path where explicit Retry forces a fresh fetch. This does not prove shared ReaderSessionCore or a Desktop-wired page materialization executor.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },

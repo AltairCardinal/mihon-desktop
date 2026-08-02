@@ -139,9 +139,14 @@ class HttpReaderMaterializeAdapterIntegrationTest {
         val chapterPort: AndroidReaderChapterContentPort
 
         init {
+            val cachedUrls = mutableSetOf<String>()
             every { cache.getPageListFromCache(any()) } throws IOException("cache miss")
-            every { cache.isImageInCache(any()) } returns false
-            every { cache.putImageToCache(any(), any()) } returns Unit
+            every { cache.isImageInCache(any()) } answers { firstArg<String>() in cachedUrls }
+            every { cache.putImageToCache(any(), any()) } answers {
+                cachedUrls += firstArg<String>()
+                true
+            }
+            every { cache.removeImageFromCache(any()) } answers { cachedUrls.remove(firstArg<String>()) }
             every { cache.getImageFile(any()) } returns File("unused")
             loader = HttpPageLoader(
                 chapter,
