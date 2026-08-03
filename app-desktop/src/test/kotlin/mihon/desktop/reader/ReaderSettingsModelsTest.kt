@@ -177,6 +177,29 @@ class ReaderSettingsModelsTest {
         }
     }
 
+    @Test
+    fun `next chapter prefetch defaults to full and persists every policy`() {
+        val root = Preferences.userRoot().node("/mihon/reader-prefetch-test/${System.nanoTime()}")
+        try {
+            val store = DesktopPreferenceStore(root.node("store"))
+            val legacy = root.node("legacy")
+            val preferences = ReaderPreferences(store, legacy)
+
+            assertEquals(NextChapterPrefetchMode.FULL_NEXT_CHAPTER, preferences.nextChapterPrefetchMode)
+            assertEquals(
+                listOf("OFF", "FIRST_VIEWPORT", "FULL_NEXT_CHAPTER"),
+                NextChapterPrefetchMode.entries.map(NextChapterPrefetchMode::name),
+            )
+
+            NextChapterPrefetchMode.entries.forEach { mode ->
+                preferences.nextChapterPrefetchMode = mode
+                assertEquals(mode, ReaderPreferences(store, legacy).nextChapterPrefetchMode)
+            }
+        } finally {
+            root.removeNode()
+        }
+    }
+
     // ── WebtoonSidePadding ─────────────────────────────────────────────────────
 
     @Test

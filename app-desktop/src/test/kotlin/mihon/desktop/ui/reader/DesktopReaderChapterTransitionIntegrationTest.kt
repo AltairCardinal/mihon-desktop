@@ -1,11 +1,33 @@
 package mihon.desktop.ui.reader
 
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.ImageComposeScene
+import cafe.adriel.voyager.navigator.Navigator
+import dev.mihon.injekt.patchInjekt
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import mihon.desktop.reader.DesktopReaderChapterContext
+import mihon.desktop.reader.DesktopReaderChapterContentPortFactory
+import mihon.desktop.reader.DesktopReaderEncodedPageStore
+import mihon.desktop.reader.DesktopReaderPageFetchPortFactory
+import mihon.desktop.reader.DesktopReaderProgressPort
+import mihon.desktop.reader.DesktopReaderRuntime
+import mihon.desktop.reader.DesktopReaderRuntimeFactory
+import mihon.desktop.reader.DesktopReaderSession
 import mihon.desktop.reader.DesktopReaderSessionState
+import mihon.desktop.reader.PagePreloader
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
+import mihon.desktop.reader.ReaderPreferences
+import mihon.desktop.reader.ReadingMode
 import mihon.domain.reader.ReaderNavigationCommand
 import mihon.domain.reader.ReaderTransitionDirection
+import mihon.domain.reader.materialize.ReaderChapterContentPort
 import mihon.domain.reader.materialize.ReaderChapterMaterializeResult
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderChapterLoadState
@@ -18,6 +40,12 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.addSingleton
+import java.io.File
+import java.util.prefs.Preferences
 
 class DesktopReaderChapterTransitionIntegrationTest {
 
@@ -144,6 +172,118 @@ class DesktopReaderChapterTransitionIntegrationTest {
             model.chapterTransitionCommand(),
         )
         assertEquals(0, activations)
+    }
+
+    @Test
+    fun `production reader supplies filtered next chapter and presentation viewport to prefetch`() {
+        val chapters = chapters()
+        val updates = mutableListOf<Pair<DesktopReaderChapterContext?, Int>>()
+        val initialContext = context(chapters[1], chapterIndex = 1, initialPage = 0)
+        val model = ReaderScreenModel(
+            initialSessionState = DesktopReaderSessionState(
+                initialContext,
+                ReaderSessionCore(ReaderChapterId(1L), sessionId = "prefetch-wiring-test").snapshot,
+            ),
+            onNextChapterPrefetchChanged = { target, firstViewportPageCount ->
+                updates += target to firstViewportPageCount
+            },
+        )
+        val screen = DesktopReaderScreen(
+            chapterTitle = "Chapter 1",
+            mangaTitle = "Manga",
+            chapterId = 1L,
+            chapterUrl = "/1",
+            chapterNumber = 1.0,
+            sourceId = 9L,
+            mangaId = 44L,
+            chapters = chapters,
+            currentChapterIndex = 1,
+        )
+        val navigator = ReaderNavigator(chapters, currentIndex = 1)
+
+        screen.updateNextChapterPrefetch(model, navigator, ReadingMode.LTR, dualPage = false)
+        screen.updateNextChapterPrefetch(model, navigator, ReadingMode.LTR, dualPage = true)
+        screen.updateNextChapterPrefetch(model, navigator, ReadingMode.WEBTOON, dualPage = false)
+
+        assertEquals(listOf(1, 2, 3), updates.map { it.second })
+        assertTrue(updates.all { it.first?.chapterId == 2L })
+        assertTrue(updates.all { it.first?.mangaId == 44L })
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
+    @Test
+    fun `mounted production screen launches next chapter prefetch wiring`(@TempDir tempDir: File) = runTest {
+        val chapters = chapters()
+        val initialContext = context(chapters[1], chapterIndex = 1, initialPage = 0)
+        val core = ReaderSessionCore(ReaderChapterId(1L), sessionId = "mounted-prefetch-wiring-test")
+        val store = DesktopReaderEncodedPageStore(tempDir.resolve("encoded"))
+        val legacy = Preferences.userRoot().node("/mihon/mounted-prefetch/${System.nanoTime()}")
+        val session = DesktopReaderSession(
+            initialContext = initialContext,
+            core = core,
+            encodedPageStore = store,
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory {
+                ReaderChapterContentPort { error("page-list I/O is not needed for the wiring assertion") }
+            },
+            pageFetchPortFactory = DesktopReaderPageFetchPortFactory { _, _ ->
+                error("page I/O is not needed for the wiring assertion")
+            },
+            progressPort = DesktopReaderProgressPort { _, _ -> },
+            parentScope = this,
+        )
+        val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy)
+        val runtime = DesktopReaderRuntime(
+            prefs = prefs,
+            preloader = PagePreloader(encodedPageReader = { null }),
+            session = session,
+            encodedPageStore = store,
+            prefetchPreferenceJob = Job(),
+        )
+        val updates = mutableListOf<Pair<DesktopReaderChapterContext?, Int>>()
+        val model = ReaderScreenModel(
+            prefs = prefs,
+            initialSessionState = session.state.value,
+            onNextChapterPrefetchChanged = { target, firstViewportPageCount ->
+                updates += target to firstViewportPageCount
+            },
+            runtime = runtime,
+        )
+        val factory = mockk<DesktopReaderRuntimeFactory> {
+            every { createScreenModel(any(), any(), any(), any(), any()) } returns model
+        }
+        val screen = DesktopReaderScreen(
+            chapterTitle = "Chapter 1",
+            mangaTitle = "Manga",
+            chapterId = 1L,
+            chapterUrl = "/1",
+            chapterNumber = 1.0,
+            sourceId = 9L,
+            mangaId = 44L,
+            chapters = chapters,
+            currentChapterIndex = 1,
+        )
+        val previousInjekt = Injekt
+        val scene = ImageComposeScene(640, 480, coroutineContext = currentCoroutineContext()) {}
+        try {
+            patchInjekt()
+            Injekt.addSingleton(factory)
+            scene.setContent {
+                Navigator(screen) { screen.Content() }
+            }
+            repeat(3) {
+                scene.render()
+                runCurrent()
+            }
+
+            assertEquals(listOf(1), updates.map { it.second })
+            assertEquals(listOf(2L), updates.map { it.first?.chapterId })
+            assertEquals(listOf(44L), updates.map { it.first?.mangaId })
+        } finally {
+            scene.close()
+            runtime.close()
+            Injekt = previousInjekt
+            legacy.removeNode()
+        }
     }
 
     private fun chapters() = listOf(

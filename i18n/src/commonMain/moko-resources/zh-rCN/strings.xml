@@ -1040,6 +1040,10 @@
     <string name="desktop_reader_webtoon_mode">条漫（垂直滚动）</string>
     <string name="desktop_reader_rtl">默认从右向左</string>
     <string name="desktop_reader_rtl_summary">从右向左翻页（日漫顺序）</string>
+    <string name="desktop_reader_prefetch_next_chapter">预取下一章</string>
+    <string name="desktop_reader_prefetch_summary">当前章全部页面准备完成后，在后台缓存下一章的编码图片；不会把整章解码图片留在内存中。</string>
+    <string name="desktop_reader_prefetch_first_viewport">首屏</string>
+    <string name="desktop_reader_prefetch_full_next_chapter">完整下一章</string>
     <string name="desktop_download_cbz_summary">将下载的章节打包为 .cbz 漫画压缩文件</string>
     <string name="desktop_download_new_chapters_summary">发现更新时自动下载新章节</string>
     <string name="desktop_download_delete_after_read_summary">章节读完后删除已下载文件</string>

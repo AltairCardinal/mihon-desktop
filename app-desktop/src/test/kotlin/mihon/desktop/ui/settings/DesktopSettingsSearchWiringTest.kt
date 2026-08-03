@@ -83,6 +83,10 @@ class DesktopSettingsSearchWiringTest {
             val originalRoutes = screens.take(8).map { it.route::class }.toSet()
             val results = DesktopSettingsCatalog.search("e")
             assertTrue(results.all { it.route::class in originalRoutes })
+            assertTrue(
+                DesktopSettingsCatalog.search(MR.strings.desktop_reader_prefetch_next_chapter.localized())
+                    .any { it.route is ReaderSettingsScreen },
+            )
         }
         assertEquals(previous, Locale.getDefault())
     }
@@ -497,6 +501,9 @@ class DesktopSettingsSearchWiringTest {
     private fun dependencies(content: @androidx.compose.runtime.Composable () -> Unit) {
         val downloads = mockk<DesktopDownloadManager> { every { queue } returns MutableStateFlow(emptyList()) }
         currentPreferences = androidx.compose.runtime.remember { mihon.desktop.settings.DesktopAppPreferences(InMemoryPreferenceStore()) }
+        currentReaderPreferences = androidx.compose.runtime.remember {
+            mihon.desktop.reader.ReaderPreferences(InMemoryPreferenceStore())
+        }
         val localeAdapter = androidx.compose.runtime.remember(currentPreferences) {
             DesktopLocaleAdapter(currentPreferences.appLanguage)
         }
@@ -509,6 +516,7 @@ class DesktopSettingsSearchWiringTest {
         }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns currentPreferences
+            every { readerPreferences } returns currentReaderPreferences
             every { this@mockk.localeAdapter } returns localeAdapter
             every { downloadManager } returns downloads
             every { downloadQueuePort } returns downloads
@@ -556,6 +564,7 @@ class DesktopSettingsSearchWiringTest {
         return try { block() } finally { Locale.setDefault(previous) }
     }
     private lateinit var currentPreferences: mihon.desktop.settings.DesktopAppPreferences
+    private lateinit var currentReaderPreferences: mihon.desktop.reader.ReaderPreferences
 
     private class SearchScene(context: CoroutineContext, height: Int, width: Int = 900) : AutoCloseable {
         val semanticsOwners = linkedSetOf<SemanticsOwner>()

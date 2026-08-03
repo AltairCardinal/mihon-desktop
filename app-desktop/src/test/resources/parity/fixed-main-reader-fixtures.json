@@ -267,8 +267,8 @@
     {
       "id": "DESKTOP_FULL_NEXT_CHAPTER_PREFETCH",
       "classification": "DESKTOP_PRODUCT_ENHANCEMENT",
-      "evidenceRef": "planned:RD-02",
-      "description": "Fetching every encoded image of the next chapter after the current chapter is fully Ready is a planned Desktop policy, not fixed-original behavior."
+      "evidenceRef": "production:app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#full next chapter waits for every current page then materializes all encoded pages without progress",
+      "description": "Desktop can prefetch the next chapter through OFF, FIRST_VIEWPORT, or FULL_NEXT_CHAPTER policy after the current chapter is fully Ready; this encoded-only P4 behavior, its policy-plus-one-stale physical I/O bound, and target-sequence Storage guard are Desktop enhancements and do not change fixed-original Android traffic."
     },
     {
       "id": "HTTP_RETRY_FORCE_DRIFT",

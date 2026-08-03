@@ -96,13 +96,31 @@ parity manifest 9/43/44/45/47/49/51/53/54 通过 `readerCoreMigrationScope` 锁�
 稳定 `ChapterId + sourcePageIndex`，不会把相邻章的同索引页合并。Android 默认 policy 保持固定原版串行
 current +4，不增加正常请求的网络量；adapter 另以真实 Job completion 释放物理 permit，最多容纳一个不响应
 取消的 stale 请求，所以连续快速翻页的真实 I/O 上限为“当前 policy 并发 + 1”，不会随 generation 无界增长。
-Desktop adapter 可配置更高但有界的当前 generation 并发，后台请求不能饿死可见页。
+Desktop adapter 使用同一条物理边界：图片与章节 page-list materialize 共用 permit，只有真实 Job 结束才释放，
+因此连续 settle、切换下一章目标或关闭 reader 时，峰值同样不超过“当前 policy 并发 + 1 个 stale 请求”。P3
+metadata 在 page list 尚无稳定 `PageId` 时不伪装成图片请求，而由相邻目标 sequence 管理；它必须先完成才会产生
+P4 图片请求，激活/换目标会取消旧 sequence。后台请求不能饿死可见页。
+
+RD-02 在 Desktop adapter 中实现 `OFF / FIRST_VIEWPORT / FULL_NEXT_CHAPTER` 三档相邻章图片策略，默认
+`FULL_NEXT_CHAPTER`。只有当前章全部逻辑页均为 `Ready(encodedRef)` 后，才会为下一章发出 P4；
+`FIRST_VIEWPORT` 只覆盖 presentation 提供的首屏页数，`FULL_NEXT_CHAPTER` 覆盖完整 page list。用户激活
+下一章时先取消该章仍在运行或排队的 P4，再由 active viewport 以 P0 请求尚未 Ready 的可见页。切到 `OFF`、
+跳向其他章节或关闭 session 都会取消不再有用的策略请求；若尚未进入末五页，`OFF` 还会取消仅由完整预取
+触发的 page-list 网络请求。
+
+相邻章 Storage 失败的降级副作用还必须同时匹配当前 target sequence 与仍被 scheduler 接受的 request identity；
+旧目标即使在取消后迟到返回，也不能设置新目标的 quota block 或取消新目标 P4。
+
+固定原版的末五页 page-list-only 策略与上述图片策略相互独立：进入末五页后，即使 `OFF` 也可以获取下一章
+page list，但不会获取图片。Android 继续使用固定原版串行 current +4 与末五页 page-list-only 流量，不消费
+Desktop preference。
 
 `Ready` 只表示 encoded 数据可用。decoded bitmap 属于 viewport 附近的有界平台缓存，完整下一章预取
-不能线性保留整章 decoded bitmap。
+不能线性保留整章 decoded bitmap。相邻章写入若因 encoded-store 配额或 storage 失败而拒绝，会停止该章
+剩余后台请求，不改变当前章状态，也不产生 history、`last_page_read` 或 read effect。
 
-当前 Desktop 主 loader 与 `PagePreloader` 仍可能沿不同路径获取/解码内容；这是 RD-01 必须删除的双链，
-不能描述成“已经共享同一 encoded ref”。
+RD-01 已删除 Desktop 主 loader 与网络型 `PagePreloader` 的双获取链；canonical session 产出的 encoded ref
+是 presentation decode 的唯一输入。`PagePreloader` 只保留 viewport 附近的有界解码/cache 职责。
 
 ## Presentation SPI
 
@@ -191,9 +209,10 @@ Android 在与 `ref/unref` 相同的锁内再次确认目标仍被窗口持有�
 第二个 loader。pager/webtoon holder 的 Loading、Error + Retry、Boundary 和无额外 Continue/Cancel 控件
 保持不变。
 
-Desktop 目标行为是翻过末页后立即激活下一章 `LoadingPageList(pageCount = 0)`，随后一次性发布稳定 page
+Desktop 生产行为是翻过末页后立即激活下一章 `LoadingPageList(pageCount = 0)`，随后一次性发布稳定 page
 identity，再逐页 Ready/Error；失败显示 Retry/返回，边界显示明确结束反馈。这个产品策略属于
-presentation/navigation adapter，不进入 core 文案或按钮决策。
+presentation/navigation adapter，不进入 core 文案或按钮决策。若相邻章 page list 或 encoded 内容已由 RD-02
+准备，激活会复用它们；尚未准备的可见页仍按正常 0 页/逐页状态和 P0 优先级加载。
 
 进度只来自 settled visible logical page：
 
@@ -229,11 +248,12 @@ RA-01 的 online→download route reset 只接受由同一 canonical Wait/Error 
 | RA-01 | Android 不再保留第二套 session/loader 决策 |
 | RP-01～RP-03 | Single/Webtoon/Dual 通过同一 SPI，core 无 presentation 分支 |
 | RD-01 | Desktop production 只创建 canonical session，空 URL/双 loader/Screen replace 已删除 |
-| RD-02 | Desktop 完整下一章预取是可关闭的 encoded-only policy |
+| RD-02 | Desktop 已接入默认完整、可选首屏/关闭的 encoded-only P4 policy；OFF 保留末五页 page-list-only |
 | RG-01 | legacy bridge/executor 删除，架构守卫与文档一致 |
 
-只有 RD-01 的 Android、Desktop production wiring 与行为测试都齐全后，manifest 的
-`canonicalSessionExecutor` 才能从 `NOT_WIRED` 改为 `WIRED`。
+RD-01 已以 Android、Desktop production wiring 与行为测试把 manifest 的 `canonicalSessionExecutor` 收口为
+`WIRED`；RD-02 的 preference、P4/P0、配额降级和原版 OFF 边界证据归属 capability 45。后续 RG-01 只能删除
+不可达 legacy bridge，不能重建第二套 loader、调度器或网络型 decode preloader。
 
 ## 验证与失败处理
 

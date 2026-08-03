@@ -26,6 +26,8 @@ import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.backup.BackupPreview
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
 import mihon.desktop.download.DesktopDownloadPreferences
+import mihon.desktop.reader.NextChapterPrefetchMode
+import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.platform.DesktopBackupFilePicker
 import mihon.desktop.settings.DesktopAppPreferences
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -120,10 +122,26 @@ class DesktopSettingsContentAccessibilityTest {
     @Test
     fun `Reader Library Download and Backup controls expose one labeled action with role and state`() = runBlocking {
         val store = InMemoryPreferenceStore()
-        val dependencies = dependencies(store, this)
+        val readerPreferences = ReaderPreferences(store)
+        val dependencies = dependencies(store, this, readerPreferences)
         withScene(ReaderSettingsScreen(), dependencies) { scene ->
             assertToggle(scene, MR.strings.desktop_reader_pager_mode.localized(), Role.RadioButton, selected = true)
             assertToggle(scene, MR.strings.desktop_reader_rtl.localized(), Role.Switch, toggled = ToggleableState.Off)
+            assertToggle(
+                scene,
+                MR.strings.desktop_reader_prefetch_full_next_chapter.localized(),
+                Role.RadioButton,
+                selected = true,
+            )
+            requireNotNull(
+                semanticBranch(
+                    scene,
+                    MR.strings.desktop_reader_prefetch_first_viewport.localized(),
+                    Role.RadioButton,
+                ).config[SemanticsActions.OnClick].action,
+            ).invoke()
+            render(scene)
+            assertEquals(NextChapterPrefetchMode.FIRST_VIEWPORT, readerPreferences.nextChapterPrefetchMode)
         }
         withScene(LibrarySettingsScreen(), dependencies, 1_600) { scene ->
             assertToggle(scene, MR.strings.update_never.localized(), Role.RadioButton, selected = true)
@@ -169,6 +187,7 @@ class DesktopSettingsContentAccessibilityTest {
     private fun dependencies(
         store: InMemoryPreferenceStore,
         scope: kotlinx.coroutines.CoroutineScope,
+        readerPreferences: ReaderPreferences = ReaderPreferences(store),
     ): DesktopUiDependencies {
         val categories = mockk<GetCategories> { coEvery { await() } returns listOf(Category(1, "Favorites", 0, 0)) }
         val model = BackupRestoreScreenModel(
@@ -182,6 +201,7 @@ class DesktopSettingsContentAccessibilityTest {
         }
         return mockk(relaxed = true) {
             every { appPreferences } returns DesktopAppPreferences(store)
+            every { this@mockk.readerPreferences } returns readerPreferences
             every { downloadPreferences } returns DesktopDownloadPreferences(store)
             every { getCategories } returns categories
             every { backupRestoreScreenModelFactory } returns factory

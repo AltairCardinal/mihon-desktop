@@ -3,8 +3,11 @@ package mihon.desktop.reader
 import eu.kanade.tachiyomi.network.NetworkHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.ui.reader.ReaderScreenModel
@@ -25,8 +28,10 @@ data class DesktopReaderRuntime(
     val preloader: PagePreloader,
     val session: DesktopReaderSession,
     internal val encodedPageStore: DesktopReaderEncodedPageStore,
+    private val prefetchPreferenceJob: Job,
 ) : AutoCloseable {
     override fun close() {
+        prefetchPreferenceJob.cancel()
         preloader.clear()
         session.close()
     }
@@ -88,12 +93,17 @@ class DesktopReaderRuntimeFactory(
                 }
             },
             parentScope = parentScope,
+            initialNextChapterPrefetchMode = prefs.nextChapterPrefetchMode,
         )
+        val prefetchPreferenceJob = parentScope.launch {
+            prefs.nextChapterPrefetchPreference.changes().collect(session::setNextChapterPrefetchMode)
+        }
         return DesktopReaderRuntime(
             prefs = prefs,
             preloader = PagePreloader(encodedPageReader = store::read, windowSize = 3),
             session = session,
             encodedPageStore = store,
+            prefetchPreferenceJob = prefetchPreferenceJob,
         ).also { session.start() }
     }
 
@@ -116,6 +126,7 @@ class DesktopReaderRuntimeFactory(
             runtime.session.activate(context)
             runtime.session.state.value
         },
+        onNextChapterPrefetchChanged = runtime.session::updateNextChapter,
         runtime = runtime,
         ownedRuntimeScope = ownedRuntimeScope,
         persistViewerFlags = { targetMangaId, flags ->

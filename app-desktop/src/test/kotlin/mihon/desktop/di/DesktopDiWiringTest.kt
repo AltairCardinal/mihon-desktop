@@ -942,6 +942,7 @@ class DesktopDiWiringTest {
         assertNotNull(Injekt.get<DesktopAppPreferences>())
         assertNotNull(Injekt.get<ReaderPreferences>())
         assertNotNull(Injekt.get<DesktopReaderRuntimeFactory>())
+        assertSame(Injekt.get<ReaderPreferences>(), DesktopUiDependencies.fromInjekt().readerPreferences)
         assertNotNull(Injekt.get<LibraryUpdateScheduler>())
 
         Injekt.get<LibraryUpdateScheduler>().runNow().join()

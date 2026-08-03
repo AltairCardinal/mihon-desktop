@@ -58,11 +58,19 @@ class ReaderFixedMainAuthorityTest {
         REQUIRED_DEVIATION_EVIDENCE.forEach { (id, expectedRef) ->
             val evidenceRef = deviations.getValue(id).requiredText("evidenceRef")
             assertEquals(expectedRef, evidenceRef, "$id evidence ref")
-            if (evidenceRef.startsWith("planned:")) {
-                assertEquals("planned:RD-02", evidenceRef)
-            } else {
-                assertEquals("commit", runGit("cat-file", "-t", evidenceRef).single(), "$id evidence type")
-                runGit("merge-base", "--is-ancestor", evidenceRef, "HEAD")
+            when {
+                evidenceRef.startsWith("production:") -> {
+                    val artifact = evidenceRef.removePrefix("production:")
+                    val parts = artifact.split('#', limit = 2)
+                    assertEquals(2, parts.size, "$id production evidence artifact")
+                    val source = Files.readString(repositoryRoot.resolve(parts[0]))
+                    assertTrue(source.contains("fun `${parts[1]}`"), "$id production evidence method")
+                }
+                evidenceRef.startsWith("planned:") -> assertEquals("planned:RD-02", evidenceRef)
+                else -> {
+                    assertEquals("commit", runGit("cat-file", "-t", evidenceRef).single(), "$id evidence type")
+                    runGit("merge-base", "--is-ancestor", evidenceRef, "HEAD")
+                }
             }
         }
         DEVIATION_INTRODUCTION_PATHS.forEach { (id, requiredPaths) ->
@@ -292,10 +300,21 @@ class ReaderFixedMainAuthorityTest {
         )
         val preloadDeviations = preloadItem.getValue("deviations").jsonArray.map { it.jsonObject }
             .associateBy { it.requiredText("id") }
-        assertEquals(setOf("GENERATION_HARDENING", "HTTP_RETRY_FORCE_DRIFT"), preloadDeviations.keys)
+        assertEquals(
+            setOf("GENERATION_HARDENING", "DESKTOP_FULL_NEXT_CHAPTER_PREFETCH", "HTTP_RETRY_FORCE_DRIFT"),
+            preloadDeviations.keys,
+        )
         assertEquals(
             "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
             preloadDeviations.getValue("GENERATION_HARDENING").requiredText("classification"),
+        )
+        assertEquals(
+            "DESKTOP_PRODUCT_ENHANCEMENT",
+            preloadDeviations.getValue("DESKTOP_FULL_NEXT_CHAPTER_PREFETCH").requiredText("classification"),
+        )
+        assertEquals(
+            RD02_PRODUCTION_EVIDENCE,
+            preloadDeviations.getValue("DESKTOP_FULL_NEXT_CHAPTER_PREFETCH").requiredText("evidenceRef"),
         )
         val retryDeviation = preloadDeviations.getValue("HTTP_RETRY_FORCE_DRIFT")
         assertEquals("PRODUCT_GAP", retryDeviation.requiredText("classification"))
@@ -453,6 +472,78 @@ class ReaderFixedMainAuthorityTest {
         assertEquals("WIRED", entryScope.requiredText("androidReaderEntry"))
         assertEquals("WIRED", entryScope.requiredText("desktopReaderEntry"))
         assertTrue(entryItem.requiredText("verificationScope").contains("reader entry selection"))
+    }
+
+    @Test
+    fun `RD02 records bounded encoded next chapter prefetch as a Desktop policy`() {
+        val fixture = Json.parseToJsonElement(Files.readString(fixturePath)).jsonObject
+        val deviation = fixture.getValue("deviations").jsonArray
+            .map { it.jsonObject }
+            .single { it.requiredText("id") == "DESKTOP_FULL_NEXT_CHAPTER_PREFETCH" }
+        assertEquals(RD02_PRODUCTION_EVIDENCE, deviation.requiredText("evidenceRef"))
+        assertEquals("DESKTOP_PRODUCT_ENHANCEMENT", deviation.requiredText("classification"))
+        assertFalse(deviation.requiredText("description").contains("planned", ignoreCase = true))
+
+        val item = Json.parseToJsonElement(Files.readString(manifestPath)).jsonArray
+            .single { it.jsonObject.getValue("id").jsonPrimitive.content.toInt() == 45 }
+            .jsonObject
+        val scope = item.getValue("readerCoreMigrationScope").jsonObject
+        assertEquals("RD-02", scope.requiredText("desktopNextChapterPrefetchTask"))
+        assertEquals("WIRED", scope.requiredText("desktopNextChapterPrefetch"))
+        assertEquals("FULL_NEXT_CHAPTER", scope.requiredText("desktopNextChapterPrefetchDefault"))
+        assertEquals("ORIGINAL_LAST_FIVE_PAGE_LIST_ONLY", scope.requiredText("desktopNextChapterPrefetchOffPolicy"))
+        assertEquals("ENCODED_ONLY_BOUNDED", scope.requiredText("desktopNextChapterPrefetchStorage"))
+        assertEquals("NO_PROGRESS_EFFECT", scope.requiredText("desktopNextChapterPrefetchProgress"))
+        assertEquals("POLICY_PLUS_ONE_STALE", scope.requiredText("desktopNextChapterPhysicalRequestBound"))
+        assertEquals("TARGET_SEQUENCE_AND_REQUEST_ID", scope.requiredText("desktopNextChapterStorageFailureGuard"))
+
+        val desktopPaths = item.getValue("desktopConsumerAdapterPaths").jsonArray
+            .map { it.jsonPrimitive.content }
+            .toSet()
+        assertTrue("app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderPreferences.kt" in desktopPaths)
+        assertTrue("app-desktop/src/main/kotlin/mihon/desktop/ui/settings/ReaderSettingsScreen.kt" in desktopPaths)
+
+        val expectedMethods =
+            mapOf(
+                "domain/src/commonTest/kotlin/mihon/domain/reader/session/ReaderSessionCoreTest.kt" to
+                    setOf(
+                        "adjacent background work uses P4 and an active viewport preempts it with P0",
+                        "cancelling an adjacent chapter removes its active and pending requests only",
+                    ),
+                "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt" to
+                    setOf(
+                        "full next chapter waits for every current page then materializes all encoded pages without progress",
+                        "first viewport mode materializes only its bounded next chapter prefix",
+                        "off mode keeps last five page-list preload but never fetches adjacent images",
+                        "switching off cancels a policy-only next chapter page-list request",
+                        "activating a prefetched chapter cancels P4 and retries its visible page as P0",
+                        "adjacent storage failure stops the remaining background chapter without changing active state",
+                        "non cooperative page cancellation keeps physical image requests within policy plus one stale request",
+                        "non cooperative target switches keep physical chapter requests within policy plus one stale request",
+                        "late storage failure from an old target cannot cancel the new target prefetch",
+                    ),
+                "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt" to
+                    setOf(
+                        "production runtime follows persisted next chapter prefetch changes",
+                        "production runtime preference changes drive off first viewport and full request sets",
+                    ),
+                "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
+                    setOf("mounted production screen launches next chapter prefetch wiring"),
+                "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt" to
+                    setOf("next chapter prefetch defaults to full and persists every policy"),
+                "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt" to
+                    setOf("Reader Library Download and Backup controls expose one labeled action with role and state"),
+            )
+        val methods = item.getValue("behaviorMethods").jsonObject
+        val protectionTests = item.getValue("protectionTests").jsonArray.map { it.jsonPrimitive.content }.toSet()
+        expectedMethods.forEach { (path, expected) ->
+            assertTrue(path in protectionTests, "ID 45 must protect RD-02 through $path")
+            val actual = methods.getValue(path).jsonArray.map { it.jsonPrimitive.content }.toSet()
+            assertTrue(actual.containsAll(expected), "ID 45 RD-02 methods missing from $path: ${expected - actual}")
+        }
+        assertTrue(item.requiredText("desktopImplementation").contains("P4"))
+        assertTrue(item.requiredText("desktopImplementation").contains("encoded-only"))
+        assertTrue(item.requiredText("verificationScope").contains("OFF / FIRST_VIEWPORT / FULL_NEXT_CHAPTER"))
     }
 
     @Test
@@ -787,10 +878,13 @@ class ReaderFixedMainAuthorityTest {
             mapOf(
                 "GENERATION_HARDENING" to "83c5a97f67fcea33367f5f79c09397bb215a2f6f",
                 "ADJACENT_PORTRAIT_PAIRING" to "bef51fc6924c6a9de185fa0fb2a56ce76309dc19",
-                "DESKTOP_FULL_NEXT_CHAPTER_PREFETCH" to "planned:RD-02",
+                "DESKTOP_FULL_NEXT_CHAPTER_PREFETCH" to RD02_PRODUCTION_EVIDENCE,
                 "HTTP_RETRY_FORCE_DRIFT" to FORK_COMPATIBILITY_BASELINE,
                 "DUAL_PAGE_PROGRESS_FIRST_ONLY" to FORK_COMPATIBILITY_BASELINE,
             )
+        const val RD02_PRODUCTION_EVIDENCE =
+            "production:app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#" +
+                "full next chapter waits for every current page then materializes all encoded pages without progress"
         val DEVIATION_INTRODUCTION_PATHS =
             mapOf(
                 "GENERATION_HARDENING" to

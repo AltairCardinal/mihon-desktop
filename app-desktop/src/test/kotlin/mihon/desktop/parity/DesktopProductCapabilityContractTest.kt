@@ -183,6 +183,11 @@ class DesktopProductCapabilityContractTest {
                         ),
                     "domain/src/commonTest/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutorTest.kt" to
                         setOf("retry forces a fresh fetch even when encoded content is cached"),
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/session/ReaderSessionCoreTest.kt" to
+                        setOf(
+                            "adjacent background work uses P4 and an active viewport preempts it with P0",
+                            "cancelling an adjacent chapter removes its active and pending requests only",
+                        ),
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt" to
                         setOf(
                             "rapid zero one two selection cancels stale jobs without error and reorders current first",
@@ -227,11 +232,25 @@ class DesktopProductCapabilityContractTest {
                             "successful HTTP with a malformed image body fails before the encoded ref becomes ready",
                             "successful HTTP with a truncated pixel stream fails before the encoded ref becomes ready",
                         ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt" to
+                        setOf(
+                            "full next chapter waits for every current page then materializes all encoded pages without progress",
+                            "first viewport mode materializes only its bounded next chapter prefix",
+                            "off mode keeps last five page-list preload but never fetches adjacent images",
+                            "switching off cancels a policy-only next chapter page-list request",
+                            "activating a prefetched chapter cancels P4 and retries its visible page as P0",
+                            "adjacent storage failure stops the remaining background chapter without changing active state",
+                        ),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt" to
                         setOf(
+                            "production runtime follows persisted next chapter prefetch changes",
                             "production factory creates one shared core and exposes its canonical state to the model",
                             "production factory coordinates encoded cache across concurrent reader runtimes",
                         ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt" to
+                        setOf("next chapter prefetch defaults to full and persists every policy"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt" to
+                        setOf("Reader Library Download and Backup controls expose one labeled action with role and state"),
                 ),
             47 to
                 mapOf(
@@ -1892,6 +1911,56 @@ class DesktopProductCapabilityContractTest {
                             "page change cancels every active or queued old generation request" to
                                 setOf("PagePreloader(", "firstOld0Finished", "firstOld1Finished"),
                         ),
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/session/ReaderSessionCoreTest.kt" to
+                        mapOf(
+                            "adjacent background work uses P4 and an active viewport preempts it with P0" to
+                                setOf("core.enqueueAdjacentPage", "ReaderRequestKind.INTERACTIVE_VISIBLE"),
+                            "cancelling an adjacent chapter removes its active and pending requests only" to
+                                setOf("core.cancelChapterPageRequests", "cancelled.discardRequests"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt" to
+                        mapOf(
+                            "full next chapter waits for every current page then materializes all encoded pages without progress" to
+                                setOf("session.updateNextChapter", "releaseLastCurrentPage.complete"),
+                            "first viewport mode materializes only its bounded next chapter prefix" to
+                                setOf("NextChapterPrefetchMode.FIRST_VIEWPORT", "nextPageFetches"),
+                            "off mode keeps last five page-list preload but never fetches adjacent images" to
+                                setOf("NextChapterPrefetchMode.OFF", "nextPageListLoads"),
+                            "switching off cancels a policy-only next chapter page-list request" to
+                                setOf("session.setNextChapterPrefetchMode", "nextPageListCancelled.await"),
+                            "activating a prefetched chapter cancels P4 and retries its visible page as P0" to
+                                setOf("session.activate(context(2L))", "prefetchCancelled.await"),
+                            "adjacent storage failure stops the remaining background chapter without changing active state" to
+                                setOf("DesktopReaderEncodedPageStore", "encodedStore.diagnostics()"),
+                            "non cooperative page cancellation keeps physical image requests within policy plus one stale request" to
+                                setOf("NonCancellable", "startedPages"),
+                            "non cooperative target switches keep physical chapter requests within policy plus one stale request" to
+                                setOf("NonCancellable", "startedChapters"),
+                            "late storage failure from an old target cannot cancel the new target prefetch" to
+                                setOf("oldFailurePublished", "newPageAttempts"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt" to
+                        mapOf(
+                            "production runtime follows persisted next chapter prefetch changes" to
+                                setOf("prefs.nextChapterPrefetchMode", "runtime.session.currentNextChapterPrefetchMode"),
+                            "production runtime preference changes drive off first viewport and full request sets" to
+                                setOf("NextChapterPrefetchMode.FIRST_VIEWPORT", "runtime.encodedPageStore.diagnostics().refs.size"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
+                        mapOf(
+                            "mounted production screen launches next chapter prefetch wiring" to
+                                setOf("Navigator(screen) { screen.Content() }", "updates += target to firstViewportPageCount"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt" to
+                        mapOf(
+                            "next chapter prefetch defaults to full and persists every policy" to
+                                setOf("NextChapterPrefetchMode.entries", "ReaderPreferences(store, legacy)"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt" to
+                        mapOf(
+                            "Reader Library Download and Backup controls expose one labeled action with role and state" to
+                                setOf("ReaderSettingsScreen()", "NextChapterPrefetchMode.FIRST_VIEWPORT"),
+                        ),
                 ),
             47 to
                 mapOf(
@@ -2070,6 +2139,8 @@ class DesktopProductCapabilityContractTest {
                         setOf("interface ReaderEncodedPageStore", "class ByteBudgetEncodedPageStoreIndex"),
                     "domain/src/commonMain/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutor.kt" to
                         setOf("object CanonicalReaderMaterializeExecutor"),
+                    "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderSessionCore.kt" to
+                        setOf("fun enqueueAdjacentPage", "fun cancelChapterPageRequests"),
                     "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt" to
                         setOf("requestScheduler.moveTo", "requestScheduler.pollNext", "encodedPageStore"),
                     "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStore.kt" to
@@ -2083,9 +2154,26 @@ class DesktopProductCapabilityContractTest {
                     "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderMaterializePorts.kt" to
                         setOf("class DesktopReaderChapterContentPort", "class DesktopReaderPageFetchPort"),
                     "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt" to
-                        setOf("CanonicalReaderMaterializeExecutor", "materializeExecutor.materializeChapter", "materializeExecutor.materializePage"),
+                        setOf(
+                            "CanonicalReaderMaterializeExecutor",
+                            "materializeExecutor.materializeChapter",
+                            "materializeExecutor.materializePage",
+                            "physicalRequestPermits.withPermit",
+                            "scheduledPage.adjacentSequence == adjacentSequence",
+                            "core.enqueueAdjacentPage",
+                            "NextChapterPrefetchMode.FULL_NEXT_CHAPTER",
+                        ),
                     "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt" to
-                        setOf("ReaderSessionCore(", "DesktopReaderEncodedPageStoreCoordinator(", "openSessionStore()"),
+                        setOf(
+                            "ReaderSessionCore(",
+                            "DesktopReaderEncodedPageStoreCoordinator(",
+                            "openSessionStore()",
+                            "nextChapterPrefetchPreference.changes()",
+                        ),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderPreferences.kt" to
+                        setOf("enum class NextChapterPrefetchMode", "FULL_NEXT_CHAPTER"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/ReaderSettingsScreen.kt" to
+                        setOf("NextChapterPrefetchMode.entries", "nextChapterPrefetchLabel"),
                 ),
             47 to
                 mapOf(

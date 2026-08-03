@@ -35,6 +35,7 @@ import mihon.desktop.platform.DesktopBackupFilePicker
 import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.privacy.DesktopPrivacyCapabilities
 import mihon.desktop.privacy.DesktopWindowPrivacyController
+import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.security.DesktopPassphraseVerifier
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.platform.DesktopLocaleAdapter
@@ -78,6 +79,7 @@ import uy.kohesive.injekt.api.get
 
 data class DesktopUiDependencies(
     val appPreferences: DesktopAppPreferences,
+    val readerPreferences: ReaderPreferences,
     val localeAdapter: DesktopLocaleAdapter = DesktopLocaleAdapter(appPreferences.appLanguage),
     val backupRestoreScreenModelFactory: BackupRestoreScreenModelFactory,
     val backupFilePicker: DesktopBackupFilePicker,
@@ -165,6 +167,7 @@ data class DesktopUiDependencies(
             val sourceManager = Injekt.get<SourceManager>()
             return DesktopUiDependencies(
                 appPreferences = appPreferences,
+                readerPreferences = Injekt.get(),
                 localeAdapter = localeAdapter,
                 backupRestoreScreenModelFactory = Injekt.get(),
                 backupFilePicker = Injekt.get(),

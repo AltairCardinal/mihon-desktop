@@ -6,6 +6,7 @@ import mihon.domain.reader.scheduler.ReaderRequestKind
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
 import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -115,6 +116,47 @@ class ReaderSessionCoreTest {
         assertEquals(ReaderRequestKind.EXPLICIT_RETRY, request.kind)
         assertTrue(request.forceRefresh)
         assertEquals(request, requireNotNull(retry.schedulePlan).requests.first())
+    }
+
+    @Test
+    fun `adjacent background work uses P4 and an active viewport preempts it with P0`() {
+        val currentChapterId = ReaderChapterId(13)
+        val adjacentPageId = ReaderPageId(ReaderChapterId(14), 0)
+        val currentPageId = ReaderPageId(currentChapterId, 0)
+        val core = loadedCore(currentChapterId, pageCount = 2)
+
+        val enqueued = core.enqueueAdjacentPage(adjacentPageId)
+        val background = requireNotNull(core.pollNextPageRequest())
+
+        assertEquals(ReaderRequestKind.ADJACENT_BACKGROUND, requireNotNull(enqueued.request).kind)
+        assertEquals(adjacentPageId, background.pageId)
+        assertTrue(core.acceptsPageRequest(background.jobKey))
+
+        val moved = core.settleViewport(setOf(currentPageId), currentPageId, wasRead = false)
+        val visible = requireNotNull(core.pollNextPageRequest())
+
+        assertTrue(background.jobKey in requireNotNull(moved.schedulePlan).cancelRequests)
+        assertFalse(core.acceptsPageRequest(background.jobKey))
+        assertEquals(currentPageId, visible.pageId)
+        assertEquals(ReaderRequestKind.INTERACTIVE_VISIBLE, visible.kind)
+    }
+
+    @Test
+    fun `cancelling an adjacent chapter removes its active and pending requests only`() {
+        val currentChapterId = ReaderChapterId(15)
+        val adjacentChapterId = ReaderChapterId(16)
+        val core = loadedCore(currentChapterId, pageCount = 1)
+        core.enqueueAdjacentPage(ReaderPageId(adjacentChapterId, 0))
+        core.enqueueAdjacentPage(ReaderPageId(adjacentChapterId, 1))
+        val active = requireNotNull(core.pollNextPageRequest())
+
+        val cancelled = core.cancelChapterPageRequests(adjacentChapterId)
+
+        assertEquals(setOf(active.jobKey), cancelled.cancelRequests)
+        assertEquals(1, cancelled.discardRequests.size)
+        assertTrue(cancelled.discardRequests.all { it.chapterId == adjacentChapterId })
+        assertFalse(core.acceptsPageRequest(active.jobKey))
+        assertEquals(null, core.pollNextPageRequest())
     }
 
     private fun loadedCore(chapterId: ReaderChapterId, pageCount: Int): ReaderSessionCore {

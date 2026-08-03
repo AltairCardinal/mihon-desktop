@@ -76,6 +76,23 @@ PagerViewer / WebtoonViewer
 这条链建立相邻章的稳定 page list；它不调用 `PageLoader.loadPage`、`HttpSource.getImageUrl` 或
 `HttpSource.getImage`，也不等同于把下一章全部图片下载完成。
 
+### Desktop 完整下一章图片预取是显式增强
+
+RD-02 只在 Desktop canonical session 上增加 `OFF / FIRST_VIEWPORT / FULL_NEXT_CHAPTER` 策略，默认
+`FULL_NEXT_CHAPTER`。当前章任一逻辑页尚未 `Ready(encodedRef)` 时不得发出相邻章图片请求；全部 Ready 后，
+下一章图片通过共享 scheduler 以 P4 进入同一 encoded store。激活下一章会取消该章 P4，并把尚未 Ready 的
+可见页以 P0 重新入队，因此后台工作不能饿死用户正在看的页面。
+
+`OFF` 不等于关闭固定原版行为：进入末五页仍可取得下一章 page list，但不得获取相邻章图片。若用户在末五页
+之前从完整/首屏切到 `OFF`，仅由 Desktop 图片策略触发的 page-list 请求也必须取消。退出、跳向其他章节、
+storage/配额失败都会有界停止无用后台请求；这些请求不改变当前章、不提交 history、`last_page_read` 或 read
+effect，也不把完整下一章 decoded bitmap 保留在内存。Android 默认流量仍是串行 current +4 与末五页
+page-list-only。
+
+Desktop 图片与 page-list materialize 共用按真实完成释放的物理 permit，连续非协作取消的峰值最多是 scheduler
+policy 并发加一个 stale 请求。page-list 在取得稳定 `PageId` 之前由 target sequence 表达 P3 生命周期，完成后
+才允许入队 P4；旧 sequence 的 Storage 终态还必须匹配当前 request identity，不能阻断替换后的下一章目标。
+
 ### 过渡呈现没有 Continue/Cancel
 
 固定 `PagerTransitionHolder` 与 `WebtoonTransitionHolder` 的实际语义是：
@@ -120,7 +137,7 @@ RA-01 开始时复核的 `d7f3ceef5…55be95dd5` 区间也没有 reader 路径�
 | --- | --- | --- |
 | generation 取消、迟到结果拒绝 | `CROSS_PLATFORM_RELIABILITY_ENHANCEMENT` | RC-03 已纳入唯一 `ReaderRequestScheduler`，Android 与 Desktop adapter 均消费该策略 |
 | adjacent portrait pairing | `CROSS_PLATFORM_PRODUCT_ENHANCEMENT` | 作为 presentation 能力保留；固定原版只拆一张宽源图 |
-| Desktop 完整下一章预取 | `DESKTOP_PRODUCT_ENHANCEMENT` | RD-02 的显式 policy，不改变 Android 默认流量 |
+| Desktop 完整下一章预取 | `DESKTOP_PRODUCT_ENHANCEMENT` | RD-02 已接入默认完整、可选首屏/关闭的 encoded-only P4 policy；OFF 保留固定原版末五页 page-list-only，不改变 Android 默认流量 |
 | cached Error 的 Retry 不再强制重抓 | `PRODUCT_GAP`（RC-02 已关闭） | RC-02 已恢复显式 Retry 强制重抓；shared executor contract 与 Android production wiring 测试共同保护 |
 | Android 双页只上报 `firstPage` | `PRODUCT_GAP` | RC-05 的 shared policy 已支持 settled 可见逻辑页集合；RP-03 已关闭 Desktop 双页 producer，Android Fork pager 仍是独立 presentation 缺口，不能作为完整集合证据 |
 
@@ -158,8 +175,10 @@ page-list 预取、Boundary 与幂等跨章激活；Android `ReaderViewModel`/`R
 
 RC-05 同时提取 `ReaderEntryResolver`。Android 原 `getNextUnread` 和 Desktop 详情页/书库继续阅读入口都先按
 漫画配置排序，再显式传入升序或降序；两种 UI 输入均选择故事顺序最早的未完成章，而不是直接取列表第一项。
-Desktop 已消费 `RecordReadingProgress` 事务，但其 viewport/session progress producer 仍待 RD-01 切换；
-Desktop production materialize/window wiring 同样尚未完成。
+RD-01 已完成 Desktop production materialize/window/progress 切换：一个 Voyager ScreenModel 生命周期只持有
+一个 canonical session，online/download/local/archive 均按页 materialize 到同一 encoded store，presentation
+只消费 snapshot 与 encoded ref。RD-02 在这条链上追加 Desktop-only P4，而不是恢复独立 loader：偏好实时更新
+session，当前章全 Ready 门禁、P0 抢占、按章节取消、配额停止和无进度副作用均由行为测试保护。
 
 RA-01 已完成 Android 全链收口：`ReaderViewModel` 的相邻预取只读取 canonical
 `ReaderChapterLoadState`，在线内容转为已下载内容时通过绑定 loader 身份与 generation 的原子令牌执行

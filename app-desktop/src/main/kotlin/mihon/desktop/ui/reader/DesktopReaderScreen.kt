@@ -155,6 +155,20 @@ data class DesktopReaderScreen(
                 )
             }
         }
+        LaunchedEffect(
+            runtime.session,
+            state.context.chapterId,
+            readerNav?.nextToRead?.id,
+            state.readingMode,
+            state.dualPageMode,
+        ) {
+            updateNextChapterPrefetch(
+                model = model,
+                readerNavigator = readerNav,
+                readingMode = state.readingMode,
+                dualPage = state.dualPageMode,
+            )
+        }
         val onPrevChapter: () -> Unit = {
             requestAdjacentChapterTransition(
                 ReaderTransitionDirection.PREVIOUS,
@@ -263,28 +277,48 @@ data class DesktopReaderScreen(
             return false
         }
         model.clearChapterTransition()
-        model.activateChapter(
-            DesktopReaderChapterContext(
-                chapterId = target.id,
-                sourceId = sourceId,
-                chapterUrl = target.url,
-                mangaTitle = mangaTitle,
-                chapterTitle = target.name,
-                chapterNumber = target.chapterNumber,
-                chapterIndex = ReaderNavigator.indexForId(chapters, target.id),
-                initialPage = initialPageForChapterNavigation(
+        model.activateChapter(chapterContext(target, direction))
+        return true
+    }
+
+    internal fun updateNextChapterPrefetch(
+        model: ReaderScreenModel,
+        readerNavigator: ReaderNavigator?,
+        readingMode: ReadingMode,
+        dualPage: Boolean,
+    ) {
+        val nextContext = readerNavigator?.nextToRead?.let { target ->
+            chapterContext(target, ReaderTransitionDirection.NEXT)
+        }
+        val firstViewportPageCount = when {
+            readingMode == ReadingMode.WEBTOON -> WEBTOON_FIRST_VIEWPORT_PAGES
+            dualPage -> DUAL_FIRST_VIEWPORT_PAGES
+            else -> SINGLE_FIRST_VIEWPORT_PAGES
+        }
+        model.updateNextChapterPrefetch(nextContext, firstViewportPageCount)
+    }
+
+    private fun chapterContext(
+        target: ReaderChapterRef,
+        direction: ReaderTransitionDirection,
+    ) = DesktopReaderChapterContext(
+        chapterId = target.id,
+        sourceId = sourceId,
+        chapterUrl = target.url,
+        mangaTitle = mangaTitle,
+        chapterTitle = target.name,
+        chapterNumber = target.chapterNumber,
+        chapterIndex = ReaderNavigator.indexForId(chapters, target.id),
+        initialPage = initialPageForChapterNavigation(
                 if (direction == ReaderTransitionDirection.PREVIOUS) {
                     ReaderChapterNavigationDirection.Previous
                 } else {
                     ReaderChapterNavigationDirection.Next
                 },
-                ),
-                wasRead = target.isRead,
-                mangaId = mangaId,
-            ),
-        )
-        return true
-    }
+        ),
+        wasRead = target.isRead,
+        mangaId = mangaId,
+    )
 
     internal fun initialContext() = DesktopReaderChapterContext(
         chapterId = chapterId,
@@ -299,6 +333,12 @@ data class DesktopReaderScreen(
         localChapterPath = localChapterPath,
         mangaId = mangaId,
     )
+
+    private companion object {
+        const val SINGLE_FIRST_VIEWPORT_PAGES = 1
+        const val DUAL_FIRST_VIEWPORT_PAGES = 2
+        const val WEBTOON_FIRST_VIEWPORT_PAGES = 3
+    }
 }
 
 internal object ReaderInitialPage {

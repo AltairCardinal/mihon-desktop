@@ -1038,12 +1038,14 @@ class DesktopSettingsResourceIdentityTest {
     @Test
     fun `Reader Library and Download render their shared MR identities`() = runBlocking {
         val prefs = DesktopAppPreferences(InMemoryPreferenceStore())
+        val readerPrefs = mihon.desktop.reader.ReaderPreferences(InMemoryPreferenceStore())
         val downloadPrefs = DesktopDownloadPreferences(InMemoryPreferenceStore())
         val categoryLoader = mockk<GetCategories> {
             coEvery { await() } returns listOf(Category(1, "Favorites", 0, 0))
         }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns prefs
+            every { readerPreferences } returns readerPrefs
             every { downloadPreferences } returns downloadPrefs
             every { getCategories } returns categoryLoader
         }
@@ -1059,6 +1061,10 @@ class DesktopSettingsResourceIdentityTest {
                     MR.strings.desktop_reader_webtoon_mode.localized(locale),
                     MR.strings.desktop_reader_rtl.localized(locale),
                     MR.strings.desktop_reader_rtl_summary.localized(locale),
+                    MR.strings.desktop_reader_prefetch_next_chapter.localized(locale),
+                    MR.strings.desktop_reader_prefetch_summary.localized(locale),
+                    MR.strings.desktop_reader_prefetch_first_viewport.localized(locale),
+                    MR.strings.desktop_reader_prefetch_full_next_chapter.localized(locale),
                 )
                 assertEntry(
                     reader,

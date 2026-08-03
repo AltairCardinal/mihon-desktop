@@ -1286,6 +1286,10 @@
     <string name="desktop_reader_webtoon_mode">Webtoon (vertical scroll)</string>
     <string name="desktop_reader_rtl">Right-to-left by default</string>
     <string name="desktop_reader_rtl_summary">Flip pages from right to left (Japanese manga order)</string>
+    <string name="desktop_reader_prefetch_next_chapter">Next chapter prefetch</string>
+    <string name="desktop_reader_prefetch_summary">After every current page is ready, prepare encoded images for the next chapter. Decoded images are not kept in memory.</string>
+    <string name="desktop_reader_prefetch_first_viewport">First viewport</string>
+    <string name="desktop_reader_prefetch_full_next_chapter">Entire next chapter</string>
     <string name="desktop_download_cbz_summary">Package downloaded chapters as .cbz archives (comic book zip)</string>
     <string name="desktop_download_new_chapters_summary">Automatically download chapters when updates are found</string>
     <string name="desktop_download_delete_after_read_summary">Remove downloaded files after a chapter is fully read</string>

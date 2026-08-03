@@ -5,6 +5,8 @@ import mihon.domain.reader.materialize.ReaderPageMaterializeEvent
 import mihon.domain.reader.progress.ReaderProgressEffect
 import mihon.domain.reader.progress.ReaderProgressPolicy
 import mihon.domain.reader.progress.ReaderProgressSignal
+import mihon.domain.reader.scheduler.ReaderEnqueueResult
+import mihon.domain.reader.scheduler.ReaderRequestCancellation
 import mihon.domain.reader.scheduler.ReaderRequestKey
 import mihon.domain.reader.scheduler.ReaderRequestKind
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
@@ -129,6 +131,19 @@ class ReaderSessionCore(
         val schedulePlan = requestScheduler.retry(pageId, chapter.pages.size)
         return ReaderSessionCoreUpdate(snapshot, schedulePlan = schedulePlan)
     }
+
+    /** Adds cache-only work for a retained adjacent chapter without changing the active snapshot. */
+    fun enqueueAdjacentPage(pageId: ReaderPageId): ReaderEnqueueResult {
+        require(pageId.chapterId != snapshot.activeChapter.id) {
+            "Adjacent page work must not target the active chapter"
+        }
+        return requestScheduler.enqueue(pageId, ReaderRequestKind.ADJACENT_BACKGROUND)
+    }
+
+    fun cancelChapterPageRequests(chapterId: ReaderChapterId): ReaderRequestCancellation =
+        requestScheduler.cancelChapter(chapterId)
+
+    fun acceptsPageRequest(jobKey: ReaderRequestKey): Boolean = requestScheduler.accepts(jobKey)
 
     fun acceptPageMaterialization(
         request: ReaderScheduledRequest,

@@ -88,6 +88,11 @@ data class ReaderEnqueueResult(
     val scheduled: Boolean get() = request != null
 }
 
+data class ReaderRequestCancellation(
+    val cancelRequests: Set<ReaderRequestKey> = emptySet(),
+    val discardRequests: Set<ReaderRequestKey> = emptySet(),
+)
+
 data class ReaderSchedulerSnapshot(
     val generation: Long,
     val pendingRequests: List<ReaderScheduledRequest>,
@@ -223,6 +228,20 @@ class ReaderRequestScheduler(
         val removed = pending.remove(jobKey) ?: return false
         currentRequestByPage.remove(removed.request.pageId, jobKey)
         return true
+    }
+
+    fun cancelChapter(chapterId: ReaderChapterId): ReaderRequestCancellation {
+        val discardRequests = pending.keys.filterTo(mutableSetOf()) { it.chapterId == chapterId }
+        val cancelRequests = active.keys.filterTo(mutableSetOf()) { it.chapterId == chapterId }
+        discardRequests.forEach { jobKey ->
+            pending.remove(jobKey)
+            currentRequestByPage.remove(jobKey.pageId, jobKey)
+        }
+        cancelRequests.forEach { jobKey ->
+            active.remove(jobKey)
+            currentRequestByPage.remove(jobKey.pageId, jobKey)
+        }
+        return ReaderRequestCancellation(cancelRequests, discardRequests)
     }
 
     fun accepts(jobKey: ReaderRequestKey): Boolean =

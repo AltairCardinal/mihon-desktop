@@ -1115,6 +1115,10 @@
     <string name="desktop_reader_pager_mode">分頁（水平翻頁）</string>
     <string name="desktop_reader_rtl">預設從右向左</string>
     <string name="desktop_reader_rtl_summary">從右向左翻頁（日漫順序）</string>
+    <string name="desktop_reader_prefetch_next_chapter">預取下一章</string>
+    <string name="desktop_reader_prefetch_summary">目前章節的所有頁面準備完成後，在背景快取下一章的編碼圖片；不會把整章解碼圖片留在記憶體中。</string>
+    <string name="desktop_reader_prefetch_first_viewport">首屏</string>
+    <string name="desktop_reader_prefetch_full_next_chapter">完整下一章</string>
     <string name="desktop_reader_webtoon_mode">條漫（垂直滾動）</string>
     <string name="desktop_secure_screen_failed">無法驗證螢幕捕獲保護，已保留之前的設定。</string>
     <string name="desktop_secure_screen_limited">Windows 已應用僅限顯示器的保護。此保護能力有限，並不等同於完整禁止捕獲。</string>

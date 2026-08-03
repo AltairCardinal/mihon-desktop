@@ -13,6 +13,12 @@ import kotlin.reflect.KProperty
 private operator fun <T> Preference<T>.getValue(thisRef: Any?, property: KProperty<*>): T = get()
 private operator fun <T> Preference<T>.setValue(thisRef: Any?, property: KProperty<*>, value: T) = set(value)
 
+enum class NextChapterPrefetchMode {
+    OFF,
+    FIRST_VIEWPORT,
+    FULL_NEXT_CHAPTER,
+}
+
 /** Reader preferences eagerly migrate every public setting during construction. */
 class ReaderPreferences(
     store: PreferenceStore = DesktopPreferenceStore(),
@@ -40,6 +46,13 @@ class ReaderPreferences(
     private val skipReadPref = store.getBoolean("reader_skip_read_chapters", false).legacy("skipReadChapters") { legacy.getBoolean("skipReadChapters", false) }
     private val skipFilteredPref = store.getBoolean("reader_skip_filtered_chapters", false).legacy("skipFilteredChapters") { legacy.getBoolean("skipFilteredChapters", false) }
     private val skipDuplicatePref = store.getBoolean("reader_skip_duplicate_chapters", false).legacy("skipDuplicateChapters") { legacy.getBoolean("skipDuplicateChapters", false) }
+    val nextChapterPrefetchPreference: Preference<NextChapterPrefetchMode> = store
+        .getEnum("reader_next_chapter_prefetch", NextChapterPrefetchMode.FULL_NEXT_CHAPTER)
+        .legacy("nextChapterPrefetchMode") {
+            legacy.get("nextChapterPrefetchMode", null)?.let {
+                runCatching { NextChapterPrefetchMode.valueOf(it) }.getOrNull()
+            }
+        }
     private val scaleTypePref = store.getEnum("reader_scale_type", ScaleType.DEFAULT)
         .legacy("scaleType") { legacy.get("scaleType", null)?.let { runCatching { ScaleType.valueOf(it) }.getOrNull() } }
     private val filterEnabledPref = store.getBoolean("reader_color_filter_enabled", false).legacy("colorFilterEnabled") { legacy.getBoolean("colorFilterEnabled", false) }
@@ -68,6 +81,7 @@ class ReaderPreferences(
     var skipReadChapters by skipReadPref
     var skipFilteredChapters by skipFilteredPref
     var skipDuplicateChapters by skipDuplicatePref
+    var nextChapterPrefetchMode by nextChapterPrefetchPreference
     var scaleType by scaleTypePref
     var colorFilterEnabled by filterEnabledPref
     var colorFilterBrightnessEnabled by brightnessEnabledPref

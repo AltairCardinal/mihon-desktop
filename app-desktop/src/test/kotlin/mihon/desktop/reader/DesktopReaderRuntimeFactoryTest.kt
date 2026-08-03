@@ -25,14 +25,114 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.source.service.SourceManager
 import java.io.File
+import java.util.prefs.Preferences
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DesktopReaderRuntimeFactoryTest {
 
     @TempDir
     lateinit var tempDir: File
+
+    @Test
+    fun `production runtime follows persisted next chapter prefetch changes`() = runTest {
+        val legacy = Preferences.userRoot().node("/mihon/runtime-prefetch/${System.nanoTime()}")
+        val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy).apply {
+            nextChapterPrefetchMode = NextChapterPrefetchMode.OFF
+        }
+        val factory = DesktopReaderRuntimeFactory(
+            prefs = prefs,
+            downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads-prefetch-mode")),
+            sourceManager = mockk<SourceManager>(relaxed = true),
+            networkHelper = NetworkHelper(OkHttpClient()),
+            progressTracker = mockk<ReaderProgressTracker>(relaxed = true),
+            mangaRepository = null,
+            encodedCacheDirectory = tempDir.resolve("encoded-prefetch-mode"),
+        )
+        val runtime = factory.createRuntime(
+            DesktopReaderChapterContext(
+                chapterId = 61L,
+                sourceId = 42L,
+                chapterUrl = "/chapter/61",
+                mangaTitle = "Manga",
+                chapterTitle = "Chapter 61",
+                chapterNumber = 61.0,
+                chapterIndex = 0,
+                initialPage = 0,
+                wasRead = false,
+            ),
+            this,
+        )
+        try {
+            assertEquals(NextChapterPrefetchMode.OFF, runtime.session.currentNextChapterPrefetchMode)
+
+            prefs.nextChapterPrefetchMode = NextChapterPrefetchMode.FIRST_VIEWPORT
+            advanceUntilIdle()
+
+            assertEquals(NextChapterPrefetchMode.FIRST_VIEWPORT, runtime.session.currentNextChapterPrefetchMode)
+        } finally {
+            runtime.close()
+            legacy.removeNode()
+        }
+    }
+
+    @Test
+    fun `production runtime preference changes drive off first viewport and full request sets`() = runTest {
+        val legacy = Preferences.userRoot().node("/mihon/runtime-prefetch-requests/${System.nanoTime()}")
+        val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy).apply {
+            nextChapterPrefetchMode = NextChapterPrefetchMode.OFF
+        }
+        val currentDirectory = tempDir.resolve("runtime-prefetch-current").also(File::mkdirs).apply {
+            resolve("001.png").writeBytes(byteArrayOf(1, 2, 3))
+        }
+        val nextArchive = archive("runtime-prefetch-next.cbz", pageCount = 4)
+        val laterArchive = archive("runtime-prefetch-later.cbz", pageCount = 3)
+        val factory = DesktopReaderRuntimeFactory(
+            prefs = prefs,
+            downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads-prefetch-requests")),
+            sourceManager = mockk<SourceManager>(relaxed = true),
+            networkHelper = NetworkHelper(OkHttpClient()),
+            progressTracker = mockk<ReaderProgressTracker>(relaxed = true),
+            mangaRepository = null,
+            encodedCacheDirectory = tempDir.resolve("encoded-prefetch-requests"),
+        )
+        val runtime = factory.createRuntime(localContext(71L, currentDirectory), this)
+        try {
+            advanceUntilIdle()
+            runtime.session.updateNextChapter(localContext(72L, nextArchive), firstViewportPageCount = 2)
+            advanceUntilIdle()
+
+            assertEquals(NextChapterPrefetchMode.OFF, runtime.session.currentNextChapterPrefetchMode)
+            assertEquals(0, runtime.encodedPageStore.diagnostics().refs.size)
+
+            prefs.nextChapterPrefetchMode = NextChapterPrefetchMode.FIRST_VIEWPORT
+            advanceUntilIdle()
+
+            assertEquals(NextChapterPrefetchMode.FIRST_VIEWPORT, runtime.session.currentNextChapterPrefetchMode)
+            assertEquals(2, runtime.encodedPageStore.diagnostics().refs.size)
+
+            prefs.nextChapterPrefetchMode = NextChapterPrefetchMode.FULL_NEXT_CHAPTER
+            advanceUntilIdle()
+
+            assertEquals(NextChapterPrefetchMode.FULL_NEXT_CHAPTER, runtime.session.currentNextChapterPrefetchMode)
+            assertEquals(4, runtime.encodedPageStore.diagnostics().refs.size)
+
+            prefs.nextChapterPrefetchMode = NextChapterPrefetchMode.OFF
+            advanceUntilIdle()
+            runtime.session.updateNextChapter(localContext(73L, laterArchive), firstViewportPageCount = 2)
+            advanceUntilIdle()
+
+            assertEquals(NextChapterPrefetchMode.OFF, runtime.session.currentNextChapterPrefetchMode)
+            assertEquals(4, runtime.encodedPageStore.diagnostics().refs.size)
+        } finally {
+            runtime.close()
+            legacy.removeNode()
+        }
+    }
 
     @Test
     fun `local reader session identity never becomes a durable chapter progress id`() = runTest {
@@ -258,4 +358,27 @@ class DesktopReaderRuntimeFactoryTest {
             second.close()
         }
     }
+
+    private fun archive(name: String, pageCount: Int): File = tempDir.resolve(name).also { archive ->
+        ZipOutputStream(archive.outputStream()).use { output ->
+            repeat(pageCount) { index ->
+                output.putNextEntry(ZipEntry("${(index + 1).toString().padStart(3, '0')}.png"))
+                output.write(byteArrayOf(1, 2, 3, index.toByte()))
+                output.closeEntry()
+            }
+        }
+    }
+
+    private fun localContext(chapterId: Long, path: File) = DesktopReaderChapterContext(
+        chapterId = chapterId,
+        sourceId = 42L,
+        chapterUrl = path.absolutePath,
+        mangaTitle = "Manga",
+        chapterTitle = "Chapter $chapterId",
+        chapterNumber = chapterId.toDouble(),
+        chapterIndex = 0,
+        initialPage = 0,
+        wasRead = false,
+        localChapterPath = path.absolutePath,
+    )
 }

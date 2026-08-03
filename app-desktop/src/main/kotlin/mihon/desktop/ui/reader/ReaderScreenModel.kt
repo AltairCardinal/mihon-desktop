@@ -67,6 +67,7 @@ class ReaderScreenModel(
     private val onPageRetry: (ReaderPageId) -> Unit = {},
     private val onChapterRetry: () -> Unit = {},
     private val onChapterActivated: (DesktopReaderChapterContext) -> DesktopReaderSessionState? = { null },
+    private val onNextChapterPrefetchChanged: (DesktopReaderChapterContext?, Int) -> Unit = { _, _ -> },
     internal val runtime: DesktopReaderRuntime? = null,
     private val ownedRuntimeScope: CoroutineScope? = null,
 ) : ScreenModel {
@@ -134,6 +135,13 @@ class ReaderScreenModel(
 
     fun activateChapter(context: DesktopReaderChapterContext) {
         onChapterActivated(context)?.let(::acceptSessionState)
+    }
+
+    fun updateNextChapterPrefetch(
+        context: DesktopReaderChapterContext?,
+        firstViewportPageCount: Int,
+    ) {
+        onNextChapterPrefetchChanged(context, firstViewportPageCount)
     }
 
     fun goToPage(page: Int) {
