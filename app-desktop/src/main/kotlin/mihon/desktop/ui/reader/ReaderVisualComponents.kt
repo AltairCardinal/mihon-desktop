@@ -31,16 +31,18 @@ import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.ui.reader.presentation.DesktopReaderPresentationRegistry
 import mihon.desktop.ui.reader.presentation.DisplayUnitId
-import mihon.desktop.ui.reader.presentation.LegacyDesktopReaderPresentationAdapter
 import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
 import mihon.desktop.ui.reader.presentation.VisiblePageSet
 import mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor
 import mihon.desktop.ui.reader.presentation.WebtoonViewportUpdate
+import mihon.desktop.ui.reader.presentation.desktopReaderPresentationRequest
 import mihon.domain.error.AppError
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderChapterTransitionModel
 import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderTransitionDirection
+import mihon.domain.reader.session.ReaderChapterSession
+import mihon.domain.reader.session.ReaderPageId
 
 @Composable
 internal fun ColorFilterOverlay(colorFilter: ReaderColorFilter) {
@@ -88,9 +90,7 @@ internal fun readerColorMatrix(colorFilter: ReaderColorFilter): ColorMatrix? {
 
 @Composable
 internal fun ZoomablePagerViewer(
-    chapterId: Long,
-    loadGeneration: Long,
-    pageUrls: List<String>,
+    chapter: ReaderChapterSession,
     currentPage: Int,
     currentDisplayUnitId: DisplayUnitId? = null,
     isRtl: Boolean,
@@ -109,8 +109,7 @@ internal fun ZoomablePagerViewer(
     navigationMode: NavigationMode = NavigationMode.RightAndLeft,
     onPageChange: (Int) -> Unit,
     onZoomChange: (ZoomState) -> Unit,
-    pageError: AppError? = null,
-    onRetryPage: (() -> Unit)? = null,
+    onRetryPage: ((ReaderPageId) -> Unit)? = null,
     onSingleVisiblePagesChanged: ((VisiblePageSet) -> Unit)? = null,
     onDualVisiblePagesChanged: ((VisiblePageSet) -> Unit)? = null,
     onSpreadDetected: ((Int) -> Unit)? = null,
@@ -118,30 +117,24 @@ internal fun ZoomablePagerViewer(
     onPrevChapter: (() -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
 ) {
-    if (pageUrls.isEmpty()) return
+    if (chapter.pages.isEmpty()) return
     val direction = if (isRtl) ReaderDirection.RTL else ReaderDirection.LTR
     if (isDualPage) {
         val request = remember(
-            chapterId,
-            loadGeneration,
-            pageUrls,
+            chapter,
             direction,
             splitPageIndices,
             forcedSinglePages,
             matchedPairs,
             autoSplitPages,
-            pageError,
         ) {
-            LegacyDesktopReaderPresentationAdapter.dualPagedRequest(
-                chapterId = chapterId,
-                generation = loadGeneration,
-                pageUrls = pageUrls,
+            desktopReaderPresentationRequest(
+                chapter = chapter,
                 direction = direction,
                 spreadPageIndices = splitPageIndices,
                 forcedSinglePageIndices = forcedSinglePages,
                 matchedPagePairs = matchedPairs,
                 splitWidePages = autoSplitPages,
-                pageError = pageError,
             )
         }
         val presentation = remember(request) {
@@ -149,7 +142,7 @@ internal fun ZoomablePagerViewer(
                 .require(ReaderPresentationMode.DUAL_PAGED)
                 .present(request)
         }
-        val currentPageId = request.chapter.pages[currentPage.coerceIn(pageUrls.indices)].id
+        val currentPageId = request.chapter.pages[currentPage.coerceIn(chapter.pages.indices)].id
         DualPagePagerViewer(
             presentation = presentation, currentPageId = currentPageId,
             currentDisplayUnitId = currentDisplayUnitId, isRtl = isRtl,
@@ -165,19 +158,16 @@ internal fun ZoomablePagerViewer(
                 }
             },
             onZoomChange = onZoomChange,
-            onRetryPage = { onRetryPage?.invoke() },
+            onRetryPage = { pageId -> onRetryPage?.invoke(pageId) },
             onSpreadDetected = onSpreadDetected,
             onTapCenter = onTapCenter, onPrevChapter = onPrevChapter, onNextChapter = onNextChapter,
         )
     } else {
-        val request = remember(chapterId, loadGeneration, pageUrls, direction, autoSplitPages, splitPageIndices, pageError) {
-            LegacyDesktopReaderPresentationAdapter.singlePagedRequest(
-                chapterId = chapterId,
-                generation = loadGeneration,
-                pageUrls = pageUrls,
+        val request = remember(chapter, direction, autoSplitPages, splitPageIndices) {
+            desktopReaderPresentationRequest(
+                chapter = chapter,
                 direction = direction,
                 splitPageIndices = if (autoSplitPages) splitPageIndices else emptySet(),
-                pageError = pageError,
             )
         }
         val presentation = remember(request) {
@@ -185,7 +175,7 @@ internal fun ZoomablePagerViewer(
                 .require(ReaderPresentationMode.SINGLE_PAGED)
                 .present(request)
         }
-        val currentPageId = request.chapter.pages[currentPage.coerceIn(pageUrls.indices)]
+        val currentPageId = request.chapter.pages[currentPage.coerceIn(chapter.pages.indices)]
             .id
         SinglePagePagerViewer(
             presentation = presentation, currentPageId = currentPageId,
@@ -201,7 +191,7 @@ internal fun ZoomablePagerViewer(
                     visiblePages.pageIds.singleOrNull()?.let { onPageChange(it.sourcePageIndex) }
                 }
             },
-            onRetryPage = { onRetryPage?.invoke() },
+            onRetryPage = { pageId -> onRetryPage?.invoke(pageId) },
             onSpreadDetected = onSpreadDetected, onTapCenter = onTapCenter,
             onPrevChapter = onPrevChapter, onNextChapter = onNextChapter,
         )
@@ -210,13 +200,10 @@ internal fun ZoomablePagerViewer(
 
 @Composable
 internal fun WebtoonPresentationViewer(
-    chapterId: Long,
-    loadGeneration: Long,
-    pageUrls: List<String>,
+    chapter: ReaderChapterSession,
     currentPage: Int,
     currentDisplayUnitId: DisplayUnitId?,
     initialAnchor: WebtoonScrollAnchor?,
-    pageError: AppError?,
     autoSplitPages: Boolean = false,
     splitPageIndices: Set<Int> = emptySet(),
     cropBorders: Boolean = false,
@@ -228,18 +215,16 @@ internal fun WebtoonPresentationViewer(
     chapterTitle: String = "",
     preloader: PagePreloader? = null,
     onViewportChanged: (WebtoonViewportUpdate) -> Unit,
-    onRetryPage: (() -> Unit)? = null,
+    onRetryPage: ((ReaderPageId) -> Unit)? = null,
     onSpreadDetected: ((Int) -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
 ) {
-    if (pageUrls.isEmpty()) return
-    val request = remember(chapterId, loadGeneration, pageUrls, autoSplitPages, splitPageIndices, pageError) {
-        LegacyDesktopReaderPresentationAdapter.webtoonRequest(
-            chapterId = chapterId,
-            generation = loadGeneration,
-            pageUrls = pageUrls,
+    if (chapter.pages.isEmpty()) return
+    val request = remember(chapter, autoSplitPages, splitPageIndices) {
+        desktopReaderPresentationRequest(
+            chapter = chapter,
+            direction = ReaderDirection.RTL,
             splitPageIndices = if (autoSplitPages) splitPageIndices else emptySet(),
-            pageError = pageError,
         )
     }
     val presentation = remember(request) {
@@ -247,7 +232,7 @@ internal fun WebtoonPresentationViewer(
             .require(ReaderPresentationMode.WEBTOON)
             .present(request)
     }
-    val currentPageId = request.chapter.pages[currentPage.coerceIn(pageUrls.indices)].id
+    val currentPageId = request.chapter.pages[currentPage.coerceIn(chapter.pages.indices)].id
     WebtoonViewer(
         presentation = presentation,
         currentPageId = currentPageId,
@@ -262,7 +247,7 @@ internal fun WebtoonPresentationViewer(
         chapterTitle = chapterTitle,
         preloader = preloader,
         onViewportChanged = onViewportChanged,
-        onRetryPage = { onRetryPage?.invoke() },
+        onRetryPage = { pageId -> onRetryPage?.invoke(pageId) },
         onSpreadDetected = onSpreadDetected,
         onNextChapter = onNextChapter,
     )

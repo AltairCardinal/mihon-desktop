@@ -292,7 +292,8 @@ private fun WebtoonSettledViewportReporter(
     onViewportChanged: (WebtoonViewportUpdate) -> Unit,
 ) {
     val currentCallback by rememberUpdatedState(onViewportChanged)
-    LaunchedEffect(presentation, listState, enabled) {
+    val displayUnitIds = presentation.displayUnits.map(DisplayUnit::id)
+    LaunchedEffect(displayUnitIds, listState, enabled) {
         if (!enabled) return@LaunchedEffect
         snapshotFlow {
             if (listState.isScrollInProgress) {
@@ -466,7 +467,7 @@ private fun WebtoonPageItem(
 ) {
     val page = requireNotNull(slot.page)
     val pageIndex = page.id.sourcePageIndex
-    val url = page.imageUrl ?: page.url
+    val url = page.encodedContentUri()
     val preloadRevision = if (preloader != null) {
         preloader.cacheRevision.collectAsState().value
     } else {

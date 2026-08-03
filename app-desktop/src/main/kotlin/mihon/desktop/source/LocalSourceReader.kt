@@ -432,4 +432,66 @@ object LocalSourceReader {
     fun readChapter(chapter: LocalChapterEntry): List<LocalPage> =
         if (chapter.file.isDirectory) readDirectory(chapter.file)
         else readArchive(chapter.file)
+
+    /** Materializes one local/archive page into [destination] for the reader encoded store. */
+    fun extractPage(
+        chapter: LocalChapterEntry,
+        page: LocalPage,
+        destination: File,
+    ): Long {
+        destination.parentFile?.mkdirs()
+        if (chapter.file.isDirectory) {
+            val source = requireNotNull(page.file) { "Directory page has no backing file: ${page.name}" }
+            source.inputStream().buffered().use { input ->
+                destination.outputStream().buffered().use(input::copyTo)
+            }
+            return destination.length()
+        }
+
+        val entryPath = requireNotNull(page.archiveEntry) { "Archive page has no entry: ${page.name}" }
+        try {
+            when (chapter.file.extension.lowercase()) {
+                in ZIP_EXTENSIONS -> ZipFile(chapter.file).use { zip ->
+                    val entry = requireNotNull(zip.getEntry(entryPath)) { "Archive entry is missing: $entryPath" }
+                    zip.getInputStream(entry).use { input ->
+                        destination.outputStream().buffered().use(input::copyTo)
+                    }
+                }
+                in RAR_EXTENSIONS -> extractRarEntry(chapter.file, entryPath, destination)
+                else -> error("Unsupported local archive: ${chapter.file.extension}")
+            }
+        } catch (error: Throwable) {
+            destination.delete()
+            throw error
+        }
+        return destination.length()
+    }
+
+    private fun extractRarEntry(archive: File, entryPath: String, destination: File) {
+        val randomAccessFile = RandomAccessFile(archive, "r")
+        val inArchive = try {
+            requireNotNull(SevenZip.openInArchive(null, RandomAccessFileInStream(randomAccessFile))) {
+                "Unsupported or malformed archive: ${archive.name}"
+            }
+        } catch (error: Throwable) {
+            randomAccessFile.close()
+            throw error
+        }
+        try {
+            val item = requireNotNull(
+                inArchive.getSimpleInterface().archiveItems.firstOrNull { !it.isFolder && it.path == entryPath },
+            ) { "Archive entry is missing: $entryPath" }
+            destination.outputStream().buffered().use { output ->
+                item.extractSlow(object : ISequentialOutStream {
+                    override fun write(data: ByteArray): Int {
+                        output.write(data)
+                        return data.size
+                    }
+                })
+            }
+        } finally {
+            inArchive.close()
+            randomAccessFile.close()
+        }
+    }
 }

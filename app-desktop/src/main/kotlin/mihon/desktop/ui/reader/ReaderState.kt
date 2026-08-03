@@ -1,6 +1,7 @@
 package mihon.desktop.ui.reader
 
 import mihon.desktop.reader.ReaderBackgroundTheme
+import mihon.desktop.reader.DesktopReaderChapterContext
 import mihon.desktop.reader.ReaderColorFilter
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.ScaleType
@@ -9,9 +10,10 @@ import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.ui.reader.presentation.DisplayUnitId
 import mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor
-import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderChapterTransitionModel
+import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
+import mihon.domain.reader.session.ReaderSessionSnapshot
 
 /**
  * All reader UI and settings state, owned by [ReaderScreenModel].
@@ -21,16 +23,23 @@ import mihon.domain.reader.session.ReaderPageId
  */
 data class ReaderState(
     // ── Page data ────────────────────────────────────────────────────────────
+    val context: DesktopReaderChapterContext = DesktopReaderChapterContext(
+        chapterId = 0L,
+        sourceId = 0L,
+        chapterUrl = "",
+        mangaTitle = "",
+        chapterTitle = "",
+        chapterNumber = 0.0,
+        chapterIndex = 0,
+        initialPage = 0,
+        wasRead = false,
+    ),
+    val session: ReaderSessionSnapshot = ReaderSessionSnapshot.initial(ReaderChapterId(context.chapterId)),
     val currentPage: Int = 0,
     val currentDisplayUnitId: DisplayUnitId? = null,
     val visiblePageIds: Set<ReaderPageId> = emptySet(),
     val webtoonScrollAnchor: WebtoonScrollAnchor? = null,
-    val resolvedUrls: List<String> = emptyList(),
-    val isLoadingPages: Boolean = false,
-    val errorMessage: String? = null,
-    val chapterState: ReaderChapterState = ReaderChapterState.Wait,
     val chapterTransition: ReaderChapterTransitionModel? = null,
-    val loadGeneration: Long = 0,
 
     // ── Reading mode ─────────────────────────────────────────────────────────
     val readingMode: ReadingMode = ReadingMode.LTR,

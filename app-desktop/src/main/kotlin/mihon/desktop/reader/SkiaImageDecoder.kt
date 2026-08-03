@@ -5,6 +5,8 @@ import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import org.jetbrains.skia.Bitmap as SkiaBitmap
 import org.jetbrains.skia.Canvas as SkiaCanvas
+import org.jetbrains.skia.Codec as SkiaCodec
+import org.jetbrains.skia.Data as SkiaData
 import org.jetbrains.skia.Image as SkiaImage
 import org.jetbrains.skia.Rect as SkiaRect
 
@@ -32,9 +34,35 @@ object SkiaImageDecoder {
      */
     fun peekSize(bytes: ByteArray): Pair<Int, Int>? = try {
         val image = SkiaImage.makeFromEncoded(bytes)
-        Pair(image.width, image.height)
+        try {
+            Pair(image.width, image.height)
+        } finally {
+            image.close()
+        }
     } catch (_: Exception) {
         null
+    }
+
+    /** Returns true only after Skia has decoded the complete encoded pixel stream. */
+    fun canDecodePixels(bytes: ByteArray): Boolean = try {
+        val data = SkiaData.makeFromBytes(bytes)
+        try {
+            val codec = SkiaCodec.makeFromData(data)
+            try {
+                val bitmap = codec.readPixels()
+                try {
+                    !bitmap.isNull && bitmap.width > 0 && bitmap.height > 0
+                } finally {
+                    bitmap.close()
+                }
+            } finally {
+                codec.close()
+            }
+        } finally {
+            data.close()
+        }
+    } catch (_: Exception) {
+        false
     }
 
     /**

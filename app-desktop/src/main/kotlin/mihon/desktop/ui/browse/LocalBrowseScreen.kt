@@ -68,18 +68,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.LocalChapterEntry
-import mihon.desktop.source.LocalPage
 import mihon.desktop.source.LocalSourceReader
 import mihon.desktop.source.LocalSourceScanService
-import mihon.desktop.ui.reader.DesktopReaderScreen
-import net.sf.sevenzipjbinding.ISequentialOutStream
-import net.sf.sevenzipjbinding.SevenZip
-import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream
 import java.awt.FileDialog
 import java.io.File
-import java.io.FileOutputStream
-import java.io.RandomAccessFile
-import java.util.zip.ZipFile
 import javax.swing.JFileChooser
 
 /**
@@ -214,23 +206,13 @@ class LocalMangaBrowseScreen : Screen {
                                 coverFile = entry.coverFile,
                                 onClick = {
                                     if (entry.directory.isFile) {
-                                        scope.launch {
-                                            val chapter = LocalChapterEntry(
-                                                name = entry.name,
-                                                file = entry.directory,
-                                            )
-                                            val pageUrls = withContext(Dispatchers.IO) {
-                                                val pages = LocalSourceReader.readChapter(chapter)
-                                                resolvePageUrls(chapter, pages)
-                                            }
-                                            navigator.push(
-                                                DesktopReaderScreen(
-                                                    chapterTitle = entry.name,
-                                                    mangaTitle = entry.name,
-                                                    pageUrls = pageUrls,
-                                                ),
-                                            )
-                                        }
+                                        navigator.push(
+                                            localReaderScreen(
+                                                chapterFile = entry.directory,
+                                                mangaName = entry.name,
+                                                chapterTitle = entry.name,
+                                            ),
+                                        )
                                     } else {
                                         navigator.push(
                                             LocalChapterScreen(
@@ -364,19 +346,13 @@ data class LocalChapterScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    scope.launch {
-                                        val pageUrls = withContext(Dispatchers.IO) {
-                                            val pages = LocalSourceReader.readChapter(chapter)
-                                            resolvePageUrls(chapter, pages)
-                                        }
-                                        navigator.push(
-                                            DesktopReaderScreen(
-                                                chapterTitle = chapter.name,
-                                                mangaTitle = mangaName,
-                                                pageUrls = pageUrls,
-                                            ),
-                                        )
-                                    }
+                                    navigator.push(
+                                        localReaderScreen(
+                                            chapterFile = chapter.file,
+                                            mangaName = mangaName,
+                                            chapterTitle = chapter.name,
+                                        ),
+                                    )
                                 },
                         )
                         HorizontalDivider()
@@ -384,69 +360,5 @@ data class LocalChapterScreen(
                 }
             }
         }
-    }
-}
-
-/**
- * Converts [LocalPage] list to absolute `file://` URL strings that Coil can load.
- *
- * For archive chapters, entries are extracted to a per-chapter temp directory.
- */
-private fun resolvePageUrls(chapter: LocalChapterEntry, pages: List<LocalPage>): List<String> {
-    if (pages.isEmpty()) return emptyList()
-
-    return if (chapter.file.isDirectory) {
-        pages.map { page -> page.file!!.toURI().toString() }
-    } else {
-        val tempDir = File(
-            System.getProperty("java.io.tmpdir"),
-            "mihon_local_${chapter.file.nameWithoutExtension}_${chapter.file.lastModified()}",
-        ).also { it.mkdirs() }
-
-        val ext = chapter.file.extension.lowercase()
-        when {
-            ext == "rar" || ext == "cbr" -> {
-                val raf = RandomAccessFile(chapter.file, "r")
-                val inArchive = SevenZip.openInArchive(null, RandomAccessFileInStream(raf))
-                try {
-                    if (inArchive != null) {
-                        val simpleIface = inArchive.getSimpleInterface()
-                        for (item in simpleIface.archiveItems) {
-                            if (item.isFolder) continue
-                            val itemPath = item.path ?: continue
-                            val matchPage = pages.find { it.archiveEntry == itemPath } ?: continue
-                            val destFile = File(tempDir, File(matchPage.name).name)
-                            if (!destFile.exists()) {
-                                FileOutputStream(destFile).use { out ->
-                                    item.extractSlow(object : ISequentialOutStream {
-                                        override fun write(data: ByteArray): Int {
-                                            out.write(data)
-                                            return data.size
-                                        }
-                                    })
-                                }
-                            }
-                        }
-                    }
-                } finally {
-                    try { inArchive?.close() } catch (_: Exception) {}
-                    try { raf.close() } catch (_: Exception) {}
-                }
-            }
-            else -> {
-                ZipFile(chapter.file).use { zip ->
-                    for (page in pages) {
-                        val destFile = File(tempDir, File(page.name).name)
-                        if (!destFile.exists()) {
-                            val entry = zip.getEntry(page.archiveEntry!!) ?: continue
-                            zip.getInputStream(entry).use { input ->
-                                FileOutputStream(destFile).use { output -> input.copyTo(output) }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        pages.map { page -> File(tempDir, File(page.name).name).toURI().toString() }
     }
 }

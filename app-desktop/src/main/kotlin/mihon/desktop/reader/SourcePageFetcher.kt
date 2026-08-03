@@ -3,15 +3,21 @@ package mihon.desktop.reader
 import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import mihon.domain.error.AppError
+import mihon.domain.network.AppErrorException
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import tachiyomi.domain.source.service.toSourceAppError
 import java.io.File
+import java.lang.reflect.InvocationTargetException
+import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
+import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 
 /**
  * Fetches page images through the source's own OkHttp client and headers.
@@ -32,13 +38,34 @@ class SourcePageFetcher(
 
     /** Source's OkHttp client, resolved reflectively. Falls back to [fallbackClient]. */
     val client: OkHttpClient = runCatching {
-        source.javaClass.getMethod("getClient").invoke(source) as OkHttpClient
+        source.javaClass.getMethod("getClient").apply { trySetAccessible() }.invoke(source) as OkHttpClient
     }.getOrDefault(fallbackClient)
 
     /** Source's request headers (contains Referer, User-Agent, etc.), or null if unavailable. */
     private val headers: Headers? = runCatching {
-        source.javaClass.getMethod("getHeaders").invoke(source) as Headers
+        source.javaClass.getMethod("getHeaders").apply { trySetAccessible() }.invoke(source) as Headers
     }.getOrNull()
+
+    suspend fun resolveImageUrl(page: Page): String {
+        page.imageUrl?.takeIf(String::isNotBlank)?.let { return it }
+        val resolved = try {
+            when (source) {
+                is HttpSource -> source.getImageUrl(page)
+                else -> invokeReflectiveImageUrl(page)
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: AppErrorException) {
+            throw error
+        } catch (error: Throwable) {
+            val cause = (error as? InvocationTargetException)?.targetException ?: error
+            throw AppErrorException(cause.toSourceAppError())
+        }
+        return resolved?.takeIf(String::isNotBlank)
+            ?: throw AppErrorException(
+                AppError.MalformedData(IllegalStateException("Page ${page.index + 1} has no image URL")),
+            )
+    }
 
     /**
      * Downloads [page] to [destDir] using the source's client and headers.
@@ -46,27 +73,45 @@ class SourcePageFetcher(
      * @return a local `file://` URI on success, or the shared source error on failure.
      */
     suspend fun fetch(page: Page, destDir: File): SourcePageFetchResult {
-        val imageUrl = page.imageUrl?.takeIf { it.isNotBlank() }
-            ?: return SourcePageFetchResult.Failure(
-                AppError.MalformedData(IllegalStateException("Page ${page.index + 1} has no image URL")),
-            )
+        val imageUrl = try {
+            resolveImageUrl(page)
+        } catch (error: AppErrorException) {
+            return SourcePageFetchResult.Failure(error.error)
+        }
         val ext = imageUrl.substringAfterLast('.').substringBefore('?').take(4).ifBlank { "jpg" }
         val destFile = File(destDir, "page_${page.index.toString().padStart(4, '0')}.$ext")
 
-        if (destFile.exists() && destFile.length() > 0L) {
-            return SourcePageFetchResult.Success(destFile.toURI().toString())
+        page.imageUrl = imageUrl
+        return fetchToDestination(page, destFile)
+    }
+
+    suspend fun fetchToDestination(page: Page, destFile: File): SourcePageFetchResult {
+        val imageUrl = try {
+            resolveImageUrl(page)
+        } catch (error: AppErrorException) {
+            return SourcePageFetchResult.Failure(error.error)
         }
 
-        val request = Request.Builder().url(imageUrl).apply {
+        if (withContext(Dispatchers.IO) { destFile.isDecodableImage() }) {
+            return SourcePageFetchResult.Success(destFile.toURI().toString())
+        }
+        if (destFile.exists()) destFile.delete()
+
+        destFile.parentFile?.mkdirs()
+        val fallbackRequest = Request.Builder().url(imageUrl).apply {
             headers?.forEach { (name, value) -> header(name, value) }
         }.build()
 
         return try {
             withContext(Dispatchers.IO) {
-                client.newCall(request).execute().use { response ->
+                val response = sourceImageResponse(page) ?: client.newCall(fallbackRequest).execute()
+                response.use {
                     if (!response.isSuccessful) throw HttpException(response.code)
                     destFile.outputStream().buffered().use { out ->
                         response.body.byteStream().copyTo(out)
+                    }
+                    check(destFile.isDecodableImage()) {
+                        "Page ${page.index + 1} response is not a decodable image"
                     }
                 }
             }
@@ -76,13 +121,47 @@ class SourcePageFetcher(
             throw error
         } catch (error: Exception) {
             destFile.delete()
-            SourcePageFetchResult.Failure(error.toSourceAppError())
+            val cause = (error as? InvocationTargetException)?.targetException ?: error
+            SourcePageFetchResult.Failure(cause.toSourceAppError())
         }
     }
 
     /** Backward-compatible nullable API for callers that do not present failures. */
     suspend fun fetchToFile(page: Page, destDir: File): String? =
         (fetch(page, destDir) as? SourcePageFetchResult.Success)?.uri
+
+    private suspend fun invokeReflectiveImageUrl(page: Page): String? {
+        val method = source.javaClass.methods.firstOrNull { candidate ->
+            candidate.name == "getImageUrl" &&
+                candidate.parameterCount == 2 &&
+                candidate.parameterTypes.first().isAssignableFrom(page.javaClass)
+        }?.apply { trySetAccessible() } ?: return null
+        return suspendCoroutineUninterceptedOrReturn { continuation ->
+            val result = method.invoke(source, page, continuation)
+            if (result === COROUTINE_SUSPENDED) COROUTINE_SUSPENDED else result as? String
+        }
+    }
+
+    private suspend fun sourceImageResponse(page: Page): Response? = when (source) {
+        is HttpSource -> source.getImage(page)
+        else -> invokeReflectiveImage(page)
+    }
+
+    /** Child-classloader HttpSource implementations cannot always be cast to this process's HttpSource. */
+    private suspend fun invokeReflectiveImage(page: Page): Response? {
+        val method = source.javaClass.methods.firstOrNull { candidate ->
+            candidate.name == "getImage" &&
+                candidate.parameterCount == 2 &&
+                candidate.parameterTypes.first().isAssignableFrom(page.javaClass)
+        }?.apply { trySetAccessible() } ?: return null
+        return suspendCoroutineUninterceptedOrReturn { continuation ->
+            val result = method.invoke(source, page, continuation)
+            if (result === COROUTINE_SUSPENDED) COROUTINE_SUSPENDED else result as? Response
+        }
+    }
+
+    private fun File.isDecodableImage(): Boolean =
+        isFile && length() > 0L && SkiaImageDecoder.canDecodePixels(readBytes())
 }
 
 sealed interface SourcePageFetchResult {

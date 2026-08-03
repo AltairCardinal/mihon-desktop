@@ -26,8 +26,11 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.Collections
+import javax.imageio.ImageIO
 
 class MangaDexSourceTest {
 
@@ -264,12 +267,10 @@ class MangaDexSourceTest {
         baseUrl = baseUrl,
     )
 
-    private fun jpegBytes() = byteArrayOf(
-        0xFF.toByte(),
-        0xD8.toByte(),
-        0xFF.toByte(),
-        0xD9.toByte(),
-    )
+    private fun jpegBytes(): ByteArray {
+        val image = BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB)
+        return ByteArrayOutputStream().also { ImageIO.write(image, "jpeg", it) }.toByteArray()
+    }
 
     private data class ChapterFixture(
         val id: String,

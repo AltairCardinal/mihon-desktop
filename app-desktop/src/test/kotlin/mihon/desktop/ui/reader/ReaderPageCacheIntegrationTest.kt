@@ -16,6 +16,7 @@ import mihon.domain.reader.PixelBounds
 import mihon.domain.reader.PageRotation
 import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.splitPageBounds
+import mihon.domain.reader.session.EncodedPageRef
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -37,17 +38,17 @@ class ReaderPageCacheIntegrationTest {
             val green = 220 - (y * 150 / (height - 1))
             return (0xFF shl 24) or (red shl 16) or (green shl 8) or 90
         }
-        val urls = listOf("cover", "left-half", "right-half")
-        val bytesByUrl = mapOf(
-            urls[0] to pngBytes(width, height) { _, _ -> 0xFF777777.toInt() },
-            urls[1] to pngBytes(width, height) { x, y -> if (x >= width - 5) seamColor(y) else RED },
-            urls[2] to pngBytes(width, height) { x, y -> if (x < 5) seamColor(y) else BLUE },
+        val refs = listOf("cover", "left-half", "right-half").map(::EncodedPageRef)
+        val bytesByRef = mapOf(
+            refs[0] to pngBytes(width, height) { _, _ -> 0xFF777777.toInt() },
+            refs[1] to pngBytes(width, height) { x, y -> if (x >= width - 5) seamColor(y) else RED },
+            refs[2] to pngBytes(width, height) { x, y -> if (x < 5) seamColor(y) else BLUE },
         )
-        val fetchCounts = mutableMapOf<String, Int>()
+        val fetchCounts = mutableMapOf<EncodedPageRef, Int>()
         val preloader = PagePreloader(
-            fetcher = { url ->
-                synchronized(fetchCounts) { fetchCounts[url] = fetchCounts.getOrDefault(url, 0) + 1 }
-                bytesByUrl.getValue(url)
+            encodedPageReader = { ref ->
+                synchronized(fetchCounts) { fetchCounts[ref] = fetchCounts.getOrDefault(ref, 0) + 1 }
+                bytesByRef.getValue(ref)
             },
             windowSize = 1,
         )
@@ -58,7 +59,7 @@ class ReaderPageCacheIntegrationTest {
                 preloader = preloader,
                 autoSpreadMatching = true,
                 dualPageMode = true,
-                pageCount = urls.size,
+                pageCount = refs.size,
                 retainedMatchedPairs = emptySet(),
                 findMatchedPairs = { count, pageAt -> EdgePixelMatcher().findMatchedPairs(count, pageAt) },
             ) { pairs ->
@@ -80,7 +81,7 @@ class ReaderPageCacheIntegrationTest {
         awaitUpdate(preloader.cacheRevision.value, emptySet())
         assertTrue(fetchCounts.isEmpty(), "The matcher must not load an uncached page")
 
-        preloader.preload(currentPage = 1, pageUrls = urls)
+        preloader.preloadEncoded(currentPage = 1, encodedPageRefs = refs)
         awaitUpdate(preloader.cacheRevision.value, setOf(1 to 2))
         assertEquals(3, synchronized(fetchCounts) { fetchCounts.values.sum() })
 
@@ -88,7 +89,7 @@ class ReaderPageCacheIntegrationTest {
         assertEquals(0, preloader.cacheSize())
         awaitUpdate(preloader.cacheRevision.value, setOf(1 to 2))
         assertEquals(3, synchronized(fetchCounts) { fetchCounts.values.sum() })
-        assertEquals(setOf(urls[0], urls[1], urls[2]), synchronized(fetchCounts) { fetchCounts.keys.toSet() })
+        assertEquals(refs.toSet(), synchronized(fetchCounts) { fetchCounts.keys.toSet() })
     }
 
     @Test
@@ -96,13 +97,14 @@ class ReaderPageCacheIntegrationTest {
         val bytes = ByteArrayOutputStream().also {
             ImageIO.write(BufferedImage(8, 8, BufferedImage.TYPE_INT_ARGB), "png", it)
         }.toByteArray()
-        val preloader = PagePreloader(fetcher = { bytes }, windowSize = 0)
+        val preloader = PagePreloader(encodedPageReader = { bytes }, windowSize = 0)
         val url = "https://example.invalid/page.png"
+        val ref = EncodedPageRef("test:late-page")
         val initialRevision = preloader.cacheRevision.value
 
         assertEquals(DesktopSourceImage(url, 42L), readerPagePainterModel(url, preloader.get(0), sourceId = 42L))
 
-        preloader.preload(0, listOf(url))
+        preloader.preloadEncoded(0, listOf(ref))
 
         assertTrue(preloader.cacheRevision.value > initialRevision)
         assertNull(readerPagePainterModel(url, preloader.get(0), sourceId = 42L))
@@ -211,13 +213,13 @@ class ReaderPageCacheIntegrationTest {
             colorAt = { _, y -> if (y < 8) GREEN else MAGENTA },
         )
         val preloader = PagePreloader(
-            fetcher = { bytes },
+            encodedPageReader = { bytes },
             windowSize = 0,
             maxDecodedWidth = 4,
             maxDecodedHeight = 8,
             largeImagePixelThreshold = Long.MAX_VALUE,
         )
-        preloader.preload(0, listOf("rotated-odd"))
+        preloader.preloadEncoded(0, listOf(EncodedPageRef("rotated-odd")))
         val cachedPage = requireNotNull(preloader.getCachedPage(0))
         assertEquals(4, cachedPage.bitmap.width)
         assertEquals(7, cachedPage.bitmap.height)
@@ -323,13 +325,13 @@ class ReaderPageCacheIntegrationTest {
     ): PreloadedPageBitmap {
         val bytes = pngBytes(width, height, colorAt)
         val preloader = PagePreloader(
-            fetcher = { bytes },
+            encodedPageReader = { bytes },
             windowSize = 0,
             maxDecodedWidth = maxWidth,
             maxDecodedHeight = maxHeight,
             largeImagePixelThreshold = Long.MAX_VALUE,
         )
-        preloader.preload(0, listOf("downsampled"))
+        preloader.preloadEncoded(0, listOf(EncodedPageRef("downsampled")))
         return requireNotNull(preloader.getCachedPage(0))
     }
 

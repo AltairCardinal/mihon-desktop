@@ -39,10 +39,11 @@ class ReaderProgressTracker(
         chapterName: String? = null,
         mangaId: Long = 0L,
         chapterNumber: Double? = null,
+        wasRead: Boolean = false,
         readAt: Date = Date(),
         sessionReadDuration: Long = 0L,
     ) {
-        val isRead = totalPages > 0 && lastPageRead >= totalPages - 1
+        val isRead = wasRead || (totalPages > 0 && lastPageRead >= totalPages - 1)
 
         val extensionPackage = sourceId?.let(extensionPackageForSource)
         val extensionIncognito = extensionPackage != null &&
@@ -58,6 +59,7 @@ class ReaderProgressTracker(
                 trackerEvent = if (isRead) "finished" else "progress",
                 recordHistory = !incognito,
                 idempotencyKey = eventId,
+                wasRead = wasRead,
             ),
         )
 

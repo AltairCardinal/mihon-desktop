@@ -145,7 +145,7 @@ class DesktopProductCapabilityContractTest {
                             "webtoon holder production observer executes loading error and loaded states",
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
-                        setOf("next chapter enters target immediately at zero pages before page count arrives"),
+                        setOf("next chapter activates inside the same core at zero pages without a replacement screen"),
                 ),
             49 to
                 mapOf(
@@ -210,9 +210,37 @@ class DesktopProductCapabilityContractTest {
                             "legacy Android chapter state is a read only projection",
                             "ReaderViewModel initialization preserves cooperative cancellation",
                         ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt" to
+                        setOf(
+                            "failed encoded write removes partial bytes before retry lookup",
+                            "empty encoded write is rejected instead of publishing a ready blank page",
+                            "concurrent reader stores share staging quota and active ref leases",
+                            "a new store instance reconciles prior cache bytes and enforces one cross-session quota",
+                            "replacement bytes stay invisible until one atomic commit",
+                            "same ref has one writer and cancelling a stale writer cannot delete the committed file",
+                            "download and local directory page lists expose ready encoded refs without copying",
+                            "archive page is materialized per page into the shared encoded store",
+                            "online page uses source client and headers then decode reads the same encoded ref",
+                            "online page executes the source image request method body and per-page headers",
+                            "child loaded source executes reflective getImage with its request semantics",
+                            "online failures retain shared empty authentication rate limit server and malformed errors",
+                            "successful HTTP with a malformed image body fails before the encoded ref becomes ready",
+                            "successful HTTP with a truncated pixel stream fails before the encoded ref becomes ready",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt" to
+                        setOf(
+                            "production factory creates one shared core and exposes its canonical state to the model",
+                            "production factory coordinates encoded cache across concurrent reader runtimes",
+                        ),
                 ),
             47 to
                 mapOf(
+                    "domain/src/commonTest/kotlin/mihon/domain/reader/session/ReaderSessionCoreTest.kt" to
+                        setOf(
+                            "open publishes zero-page loading then stable page identities and per-page states",
+                            "rapid viewport change promotes visible page and rejects the cancelled late result",
+                            "retry keeps page identity and creates force-refresh P0 work",
+                        ),
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderSessionProductionWiringTest.kt" to
                         setOf(
                             "stale storage reset cannot recycle a newer activation loader",
@@ -225,6 +253,23 @@ class DesktopProductCapabilityContractTest {
                             "online ReaderViewModel executes shared session scheduler encoded cache and progress chain",
                             "legacy Android chapter state is a read only projection",
                             "ReaderViewModel initialization preserves cooperative cancellation",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt" to
+                        setOf(
+                            "one session opens at zero pages then materializes visible pages and settled progress",
+                            "adjacent activation reuses core publishes zero-page loading and retry preserves page identity",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt" to
+                        setOf(
+                            "leaving composition does not close the screen-owned reader runtime",
+                            "production screen model owns its runtime until Voyager disposal",
+                            "production factory creates one shared core and exposes its canonical state to the model",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
+                        setOf(
+                            "next chapter activates inside the same core at zero pages without a replacement screen",
+                            "previous chapter resolves last page after its stable page list arrives",
+                            "chapter boundaries do not activate and keep explicit feedback",
                         ),
                 ),
             53 to
@@ -258,6 +303,19 @@ class DesktopProductCapabilityContractTest {
                             "reading a later chapter updates only that row and requires its last page to mark read",
                             "partial progress preserves an existing read state",
                         ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt" to
+                        setOf(
+                            "reading to last page marks shared event as read",
+                            "settling an already read chapter mid chapter keeps it read",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt" to
+                        setOf(
+                            "one session opens at zero pages then materializes visible pages and settled progress",
+                            "settling the last page then paging backward never makes the chapter unread",
+                            "closing immediately after settlement lets the final progress write finish",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt" to
+                        setOf("local reader session identity never becomes a durable chapter progress id"),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/library/ChapterReadPresentationTest.kt" to
                         setOf("partial chapter shows progress ring and one based page"),
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt" to
@@ -675,8 +733,8 @@ class DesktopProductCapabilityContractTest {
                         "webtoon holder production observer executes loading error and loaded states",
                     ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to setOf(
-                        "next chapter enters target immediately at zero pages before page count arrives",
-                        "chapter boundaries return no destination and keep explicit feedback",
+                        "next chapter activates inside the same core at zero pages without a replacement screen",
+                        "chapter boundaries do not activate and keep explicit feedback",
                     ),
                 ),
             49 to
@@ -1661,6 +1719,8 @@ class DesktopProductCapabilityContractTest {
                         mapOf(
                             "shared pairing keeps cover edge matching adjust and landscape parity enhancements" to
                                 setOf("dualGroups(", "matchedPairs", "forcedSinglePages"),
+                            "reader product wiring retains entry retry transitions auto scroll and context menu" to
+                                setOf("state.session.activeChapter", "model.activateChapter(", "navigator.replace("),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt" to
                         mapOf(
@@ -1674,12 +1734,16 @@ class DesktopProductCapabilityContractTest {
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt" to
                         mapOf(
-                            "settled single-page position preserves the exact display unit until explicit navigation" to
-                                setOf("model.settleSinglePage", "currentDisplayUnitId"),
-                            "single-page viewport keeps stable slots mounted through chapter loading and error" to
+                            "state flow exposes the canonical session snapshot" to
+                                setOf("initialSessionState", "flow.value.session"),
+                            "zero-page loading error and loaded chapters select one canonical viewport body" to
                                 setOf("readerViewportBody", "ReaderViewportBody.CONTENT"),
-                            "settled dual-page viewport stores both pages and advances to maximum visible progress" to
-                                setOf("model.settleDualPage", "visiblePageIds"),
+                            "same chapter readiness updates preserve mounted display identity" to
+                                setOf("model.acceptSessionState", "currentDisplayUnitId"),
+                            "load-state updates do not resettle identical viewports in any presentation mode" to
+                                setOf("acceptSessionState(ready)", "singleSettlements"),
+                            "settled webtoon and dual viewports report canonical page identities" to
+                                setOf("model.settleWebtoon", "model.settleDualPage", "settled.last()"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt" to
                         mapOf(
@@ -1868,10 +1932,10 @@ class DesktopProductCapabilityContractTest {
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
                         mapOf(
-                            "next chapter enters target immediately at zero pages before page count arrives" to
-                                setOf("requestAdjacentChapterTransition", "ReaderChapterState.Loading", "setLoadingPageSlots"),
-                            "chapter boundaries return no destination and keep explicit feedback" to
-                                setOf("requestAdjacentChapterTransition", "ReaderNavigationCommand.ChapterBoundary", "legacyAdjacentLoadCalls"),
+                            "next chapter activates inside the same core at zero pages without a replacement screen" to
+                                setOf("requestAdjacentChapterTransition", "core.openChapter", "pages.isEmpty()"),
+                            "chapter boundaries do not activate and keep explicit feedback" to
+                                setOf("requestAdjacentChapterTransition", "ReaderNavigationCommand.ChapterBoundary", "activations"),
                         ),
                 ),
             49 to
@@ -1955,6 +2019,8 @@ class DesktopProductCapabilityContractTest {
                         setOf("findMatchedPairs(", "ImageBitmap"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt" to
                         setOf("interface ReaderPresentationStrategy", "data class DisplayUnit", "data class VisiblePageSet"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/DesktopReaderPresentationRequest.kt" to
+                        setOf("fun desktopReaderPresentationRequest", "chapter = chapter"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt" to
                         setOf("object SinglePagedPresentation", "splitPageBounds"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentation.kt" to
@@ -2002,6 +2068,8 @@ class DesktopProductCapabilityContractTest {
                         setOf("class ReaderRequestScheduler", "fun pollNext()", "fun accepts(jobKey"),
                     "domain/src/commonMain/kotlin/mihon/domain/reader/storage/EncodedPageStore.kt" to
                         setOf("interface ReaderEncodedPageStore", "class ByteBudgetEncodedPageStoreIndex"),
+                    "domain/src/commonMain/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutor.kt" to
+                        setOf("object CanonicalReaderMaterializeExecutor"),
                     "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt" to
                         setOf("requestScheduler.moveTo", "requestScheduler.pollNext", "encodedPageStore"),
                     "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStore.kt" to
@@ -2010,6 +2078,14 @@ class DesktopProductCapabilityContractTest {
                         setOf("maxCacheBytes", "removeImageFromCache"),
                     "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt" to
                         setOf("requestScheduler.moveTo", "requestScheduler.pollNext", "activeJobs"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderEncodedPageStore.kt" to
+                        setOf("class DesktopReaderEncodedPageStore", "override suspend fun store"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderMaterializePorts.kt" to
+                        setOf("class DesktopReaderChapterContentPort", "class DesktopReaderPageFetchPort"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt" to
+                        setOf("CanonicalReaderMaterializeExecutor", "materializeExecutor.materializeChapter", "materializeExecutor.materializePage"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt" to
+                        setOf("ReaderSessionCore(", "DesktopReaderEncodedPageStoreCoordinator(", "openSessionStore()"),
                 ),
             47 to
                 mapOf(
@@ -2017,6 +2093,8 @@ class DesktopProductCapabilityContractTest {
                         setOf("data class ReaderChapterTransitionModel"),
                     "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderChapterWindow.kt" to
                         setOf("object ReaderChapterWindowReducer", "data class BeginPageListLoad"),
+                    "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderSessionCore.kt" to
+                        setOf("class ReaderSessionCore", "fun openChapter", "fun settleViewport"),
                     "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt" to
                         setOf("chapterWindowOwner.replace", "chapterWindowOwner.dispatch", "chapterWindow ="),
                     "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoader.kt" to
@@ -2030,9 +2108,19 @@ class DesktopProductCapabilityContractTest {
                     "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt" to
                         setOf("observeWebtoonTransitionState(scope, chapter)", "chapter.sharedStateFlow.collectLatest"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt" to
-                        setOf("ReaderChapterTransitionModel("),
+                        setOf("fun acceptSessionState", "fun activateChapter", "ReaderChapterTransitionModel("),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt" to
+                        setOf("class DesktopReaderSession", "core.openChapter", "core.retryPage"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt" to
+                        setOf("ReaderSessionCore(", "DesktopReaderSession("),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt" to
-                        setOf("requestAdjacentChapterTransition", "loadedPageUrls = emptyList()", "ChapterTransitionFeedback("),
+                        setOf(
+                            "runtimeFactory.createScreenModel(",
+                            "state.session.activeChapter",
+                            "model.activateChapter(",
+                            "requestAdjacentChapterTransition",
+                            "ChapterTransitionFeedback(",
+                        ),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt" to
                         setOf("chapterTransitionPresentation", "showContinue = false", "showDismiss = isBoundary"),
                 ),

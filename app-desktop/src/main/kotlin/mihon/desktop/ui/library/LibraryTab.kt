@@ -426,7 +426,6 @@ class LibraryRootScreen : Screen {
                                             DesktopReaderScreen(
                                                 chapterTitle = request.chapterTitle,
                                                 mangaTitle = request.mangaTitle,
-                                                pageUrls = emptyList(),
                                                 isWebtoon = false,
                                                 sourceId = request.sourceId,
                                                 chapterUrl = request.chapterUrl,
@@ -458,7 +457,6 @@ class LibraryRootScreen : Screen {
                                             DesktopReaderScreen(
                                                 chapterTitle = request.chapterTitle,
                                                 mangaTitle = request.mangaTitle,
-                                                pageUrls = emptyList(),
                                                 isWebtoon = false,
                                                 sourceId = request.sourceId,
                                                 chapterUrl = request.chapterUrl,

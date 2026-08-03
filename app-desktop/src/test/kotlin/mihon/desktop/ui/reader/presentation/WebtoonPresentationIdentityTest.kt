@@ -20,6 +20,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.reader.WebtoonSidePadding
+import mihon.desktop.reader.readerChapterSession
 import mihon.desktop.ui.reader.WebtoonDisplayUnitCompositionIdentityKey
 import mihon.desktop.ui.reader.WebtoonDisplayUnitContainer
 import mihon.desktop.ui.reader.WebtoonDisplayUnitIdKey
@@ -90,13 +91,15 @@ class WebtoonPresentationIdentityTest {
             scene.setContent {
                 MaterialTheme {
                     WebtoonPresentationViewer(
-                        chapterId = chapterId.value,
-                        loadGeneration = 3,
-                        pageUrls = listOf("", ""),
+                        chapter = readerChapterSession(
+                            chapterId = chapterId.value,
+                            generation = 3,
+                            pageCount = 2,
+                            pageLoadState = { ReaderPageLoadState.Queued },
+                        ),
                         currentPage = 0,
                         currentDisplayUnitId = null,
                         initialAnchor = null,
-                        pageError = null,
                         onViewportChanged = {},
                     )
                 }

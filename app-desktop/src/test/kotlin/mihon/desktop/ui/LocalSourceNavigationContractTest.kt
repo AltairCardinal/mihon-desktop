@@ -6,8 +6,10 @@ import mihon.desktop.source.LocalMangaEntry
 import mihon.desktop.ui.browse.LocalChapterScreen
 import mihon.desktop.ui.browse.LocalMangaBrowseScreen
 import mihon.desktop.ui.browse.LocalSourceSettingsScreen
+import mihon.desktop.ui.browse.localReaderScreen
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -56,6 +58,30 @@ class LocalSourceNavigationContractTest {
         File(mangaDir, "Chapter 1").also { it.mkdirs() }
         val entry = LocalMangaEntry(name = "LongManga", directory = mangaDir)
         assertTrue(!entry.directory.isFile, "Directory LocalMangaEntry.directory should NOT be isFile")
+    }
+
+    @Test
+    fun `local reader entries use stable distinct nonzero chapter identities from canonical paths`() {
+        val first = File(tmpDir.toFile(), "Manga/Chapter 1.cbz").also { file ->
+            file.parentFile.mkdirs()
+            file.writeBytes(byteArrayOf(1))
+        }
+        val second = File(tmpDir.toFile(), "Manga/Chapter 2.cbz").also { it.writeBytes(byteArrayOf(2)) }
+
+        val firstScreen = localReaderScreen(first, mangaName = "Manga", chapterTitle = "Chapter 1")
+        val sameFirstScreen = localReaderScreen(
+            File(first.parentFile, ".${File.separator}${first.name}"),
+            mangaName = "Manga",
+            chapterTitle = "Chapter 1",
+        )
+        val secondScreen = localReaderScreen(second, mangaName = "Manga", chapterTitle = "Chapter 2")
+
+        assertNotEquals(0L, firstScreen.chapterId)
+        assertEquals(firstScreen.chapterId, sameFirstScreen.chapterId)
+        assertNotEquals(firstScreen.chapterId, secondScreen.chapterId)
+        assertEquals(first.canonicalPath, firstScreen.localChapterPath)
+        assertEquals(first.canonicalPath, firstScreen.chapterUrl)
+        assertInstanceOf(Screen::class.java, firstScreen)
     }
 
     @Test

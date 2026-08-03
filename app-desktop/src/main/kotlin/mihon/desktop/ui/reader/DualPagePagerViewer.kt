@@ -285,7 +285,7 @@ internal fun DualPagePagerViewer(
                 val page = requireNotNull(slot.page)
                 val physicalSlot = unit.slots.indexOf(slot)
                 ZoomablePageBox(
-                    url = page.imageUrl ?: page.url,
+                    url = page.encodedContentUri(),
                     pageLabel = MR.strings.desktop_ui_page_number.localized(
                         Locale.getDefault(),
                         page.id.sourcePageIndex + 1,
@@ -329,7 +329,8 @@ internal fun DualPageSettledVisiblePageReporter(
     onVisiblePagesChanged: (VisiblePageSet) -> Unit,
 ) {
     val currentCallback by rememberUpdatedState(onVisiblePagesChanged)
-    LaunchedEffect(presentation, isRtl) {
+    val displayUnitIds = presentation.displayUnits.map(DisplayUnit::id)
+    LaunchedEffect(displayUnitIds, isRtl) {
         snapshotFlow { settledPagerIndex() }
             .distinctUntilChanged()
             .collect { pagerIndex ->

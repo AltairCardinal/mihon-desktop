@@ -231,7 +231,7 @@ DesktopReaderScreen / Android ReaderActivity
 - [x] `RP-01` 建立 Desktop presentation SPI 并迁移单页模式
 - [x] `RP-02` 将条漫迁移为同级 presentation 策略
 - [x] `RP-03` 将双页迁移为同级 presentation 策略并修复封面双槽布局
-- [ ] `RD-01` 实现 Desktop 平台 adapters 并将生产阅读器切到 shared core
+- [x] `RD-01` 实现 Desktop 平台 adapters 并将生产阅读器切到 shared core
 - [ ] `RD-02` 实现当前章全 Ready 后完整预取下一章的 Desktop policy
 - [ ] `RG-01` 删除 legacy executor/兼容桥，收紧架构守卫并同步权威文档
 - [ ] `RV-01` 完成跨平台全量、运行时和发布产物验收
@@ -468,6 +468,7 @@ python scripts/gradle-coordinator.py run --key reader-core-final -- ./gradlew :d
 | 2026-08-02 | `RP-01` | `TODO -> DOING -> REVIEW -> DONE` | `rp01-red`、`rp01-manifest-red`、`rp01-product-contract-red`：缺少 presentation SPI、稳定 identity 与 production/authority 证据；`rp01-review-red`：复现未 settled 页误报、宽页第二切片丢失、错误/重试卸载 Pager 及旧产品回归断言失效 | `rp01-green-2`、`rp01-product-contract-green-2`：Single strategy、固定容器与 production selector 首次全绿；`rp01-contract-green-2`：切片恢复、settled-only 上报、原位 Retry、model/viewport、产品回归及两项权威合同共 108 项全绿 | 1 轮独立审查 + 1 轮修复复审；初审 2 个 P1 与 1 个 P2 通过完整 `DisplayUnitId` 写回、`pagerState.settledPage`、单页 viewport 持续挂载和回归契约更新关闭；复审结论 `PASS / NO_P0_P1_P2` | `rp01-related-green`：`:domain:jvmTest` + `:app-desktop:task3ParityVerification` 全绿；`rp01-spotless-check-2`、manifest JSON 与 `git diff --check` 通过；Webtoon/Dual 与 Desktop canonical executor 仍分别留给 RP-02/RP-03/RD-01 | 本批次提交（由本行所在 Git commit 解析） |
 | 2026-08-02 | `RP-02` | `TODO -> DOING -> REVIEW -> DONE` | `rp02-red`、`rp02-evidence-red`：缺少 Webtoon 同级策略、稳定 Lazy identity 与 production/authority 证据；`rp02-review-red`、`rp02-layout-authority-red`：复现尺寸变化锚点跳动、固定原版末页 resolver 偏差、拖拽后 fling 期间自动滚动抢占及 layout authority 缺口 | `rp02-green-2`、`rp02-product-1`、`rp02-evidence-green-3`：Webtoon strategy、固定容器、production selector 与权威证据全绿；`rp02-review-green-3`、`rp02-review-contract-green`：真实 `LazyListState` 几何恢复、split/merge 回退、`NO_POSITION`、拖拽到 fling 暂停及完整修复合同全绿 | 1 轮独立审查 + 1 轮修复复审；初审 1 个 P1 与 2 个 P2 已由实测 item size 相对锚点、固定原版 resolver 语义和跨 fling 暂停状态关闭；复审结论 `PASS / NO_P0_P1_P2` | `rp02-related-final`：`:domain:jvmTest` + `:app-desktop:task3ParityVerification` 全绿；`rp02-review-spotless`、manifest/inventory JSON 与 `git diff --check` 通过；Dual 与 Desktop canonical executor 仍分别留给 RP-03/RD-01 | 本批次提交（由本行所在 Git commit 解析） |
 | 2026-08-03 | `RP-03` | `TODO -> DOING -> REVIEW -> DONE` | `rp03-red`、`rp03-single-cover-red`、`rp03-evidence-red`：缺少 Dual 同级策略、单页双槽挂载与 production/authority 证据；`rp03-review-p1-red`、`rp03-cache-observer-red`：复现环境 RTL 反转物理槽、横图封面绕过 cover 规则，以及缺少真实 cache revision observer | `rp03-refactor-reader`、`rp03-evidence-green-5`：Dual strategy、固定双槽、全部可见/max progress、切片/右键与 bounded-cache matcher 首次全绿；`rp03-review-focused-2`：三模式 registry/identity、真实 preloader 晚到匹配与淘汰保留、product/parity contract 共 177 项全绿 | 1 轮独立审查 + 1 轮修复复审；初审 2 个 P1 与 2 个 P2 通过绝对物理槽、封面优先级、左右页完整状态/Retry/zoom identity、真实 revision observer 关闭；复审结论 `PASS / NO_P0_P1_P2` | `rp03-review-focused-2` 满足 Desktop presentation/Compose 与三模式 selector 阶段门禁；`rp03-spotless-final`、manifest JSON 与 `git diff --check` 通过；Desktop canonical executor 仍明确留给 RD-01 | 本批次提交（由本行所在 Git commit 解析） |
+| 2026-08-03 | `RD-01` | `TODO -> DOING -> REVIEW -> DONE` | `rd01-core-red`、`rd01-adapters-red`、`rd01-session-red`、`rd01-session-ui-red`、`rd01-store-empty-red`：缺少 Desktop canonical session、四路 materialize、encoded-only preloader、真实 Screen/DI/HTTP wiring 与空写保护；`rd01-fix1-red` 至 `rd01-fix7-image-red`：依次复现重复 settle、Screen 生命周期提前关闭、非原子/跨 session cache、local identity、source imageRequest、进度单调/drain、本地合成进度、并存 runtime 租约和截断像素流误 Ready | `rd01-core-green`、`rd01-adapters-green-2`、`rd01-session-ui-green-4`、`rd01-related-green`：shared core、online/download/local/archive、三种 presentation 与真实入口首次全绿；`rd01-review-fixes-focused`、`rd01-fix8-child-loader`：原子单写者、factory 级 cache coordinator/active-ref 租约、完整 Skia 像素校验、真实 ExtensionClassLoader、单调进度/drain 和 Voyager ScreenModel 生命周期全绿；`rd01-authority-green-c`：capability/入口/行号证据全绿 | 1 轮独立审查 + 1 轮修复复审；初审 8 项及修复复审确认的 3 个 P1、1 个 P2 均由后续 RED/GREEN 关闭；遵守复审上限未启动第二轮代理复审，主代理以聚合 focused、authority 和完整 Desktop 测试独立核验 | `rd01-domain-full`、`rd01-app-desktop-full-rerun`（2415 项）、`rd01-test-desktop-reader`、`rd01-spotless-check` 全绿；manifest JSON/逐行 role evidence、`git diff --check` 与 legacy reader 零命中审计通过；按分层策略未运行发布构建，留给 `RV-01` | 本批次提交（由本行所在 Git commit 解析） |
 
 `R0-01` 范围说明：本批次保持 8 个内聚文件，但逐 symbol/blob/marker 夹具、18 项上游分类、变异测试和
 权威文档合计超过 400 行。它们共同构成一个不可拆分的 provenance 关闭条件；拆开会让 manifest 或文档
@@ -542,6 +543,15 @@ selector 与 capability 证据必须同批闭环；拆开会留下旧 `DualPageS
 以及 matcher 绕过 cache 重复下载；已由绝对物理坐标矩阵、封面优先级、完整槽位状态切换、settled 全可见/max
 progress、真实 `PagePreloader.cacheRevision` 与淘汰后 pair 保留测试控制。临时 URL presentation adapter 和
 Desktop canonical session executor 仍明确留给 RD-01。
+
+`RD-01` 范围说明：本批次约 57 个内聚 production/test/authority/文档文件并明显超过 400 行，原因是 Desktop
+真实入口、Voyager ScreenModel 生命周期、canonical session/materialize、online/download/local/archive、
+ExtensionClassLoader、encoded store 协调器、三种 presentation 消费、进度持久化和机器权威必须在一次 cutover
+中共同可运行；拆开会留下双 executor、空 URL 中间态或无真实 wiring 的 adapter。主要风险是 source 请求语义
+被绕过、损坏图片提前 Ready、并存 Reader 删除/淘汰彼此缓存、本地合成 ID 污染数据库、dispose 丢最后进度、
+重复 settle 和章节切换重建 Screen；已由真实 `getImage`/child loader、完整像素解码、原子单写者与 active-ref
+租约、local progress 零调用、单调/drain、稳定 identity 和全量 Desktop 测试控制。完整下一章 P4 预取仍明确
+留给 `RD-02`，发布产物与跨平台运行验收留给 `RV-01`。
 
 建议状态记录使用 `TODO / DOING / BLOCKED / REVIEW / DONE`；状态只用于解释，checkbox 仍是唯一完成标记。
 

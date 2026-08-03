@@ -208,9 +208,15 @@ class ReaderFixedMainAuthorityTest {
     }
 
     @Test
-    fun `reader parity entries do not overclaim a shared session executor`() {
+    fun `RD01 records the canonical Desktop reader session cutover`() {
         val items = Json.parseToJsonElement(Files.readString(manifestPath)).jsonArray
             .associateBy { it.jsonObject.getValue("id").jsonPrimitive.content.toInt() }
+        val desktopCoreContracts =
+            mapOf(
+                45 to "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt",
+                47 to "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt",
+                53 to "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt",
+            )
 
         assertEquals(READER_PARITY_SLICES.keys, items.keys.intersect(READER_PARITY_SLICES.keys))
         READER_PARITY_SLICES.forEach { (id, verifiedSlice) ->
@@ -219,12 +225,18 @@ class ReaderFixedMainAuthorityTest {
 
             assertEquals("R0-01", scope.requiredText("task"), "ID $id migration audit owner")
             assertEquals(verifiedSlice, scope.requiredText("verifiedSlice"), "ID $id verified slice")
-            assertEquals("NOT_WIRED", scope.requiredText("canonicalSessionExecutor"), "ID $id canonical executor state")
+            assertEquals("WIRED", scope.requiredText("canonicalSessionExecutor"), "ID $id canonical executor state")
             assertEquals("RD-01", scope.requiredText("closureTask"), "ID $id canonical executor closure")
+            assertEquals("RD-01", scope.requiredText("desktopCoreCutoverTask"), "ID $id Desktop cutover owner")
+            assertEquals("WIRED", scope.requiredText("desktopCanonicalSession"), "ID $id Desktop canonical session")
             assertTrue(
-                item.requiredText("verificationScope").contains("does not prove shared ReaderSessionCore"),
-                "ID $id must explicitly exclude the canonical session executor from its current VERIFIED scope",
+                item.requiredText("verificationScope").contains("Desktop canonical ReaderSessionCore"),
+                "ID $id must record the integrated Desktop canonical session evidence",
             )
+            assertFalse(item.requiredText("verificationScope").contains("does not prove shared ReaderSessionCore"))
+            desktopCoreContracts[id]?.let { desktopCoreContract ->
+                assertTrue(item.getValue("protectionTests").jsonArray.any { it.jsonPrimitive.content == desktopCoreContract })
+            }
         }
 
         val preloadItem = items.getValue(45).jsonObject
@@ -304,6 +316,8 @@ class ReaderFixedMainAuthorityTest {
         assertEquals("WIRED", migrationScope.requiredText("androidScheduler"))
         assertEquals("WIRED", migrationScope.requiredText("desktopSchedulerAdapter"))
         assertEquals("WIRED", migrationScope.requiredText("androidEncodedStore"))
+        assertEquals("WIRED", migrationScope.requiredText("desktopMaterializeExecutor"))
+        assertEquals("WIRED", migrationScope.requiredText("desktopEncodedStore"))
         assertEquals("RA-01", migrationScope.requiredText("androidCoreCutoverTask"))
         assertEquals("WIRED", migrationScope.requiredText("androidCanonicalSession"))
         assertEquals("REMOVED", migrationScope.requiredText("androidLegacyChapterStateInput"))
@@ -323,10 +337,10 @@ class ReaderFixedMainAuthorityTest {
         assertEquals("RC-01", chapterWindowScope.requiredText("sessionTask"))
         assertEquals("WIRED", chapterWindowScope.requiredText("sharedSessionState"))
         assertEquals("WIRED", chapterWindowScope.requiredText("androidSessionState"))
-        assertEquals("NOT_WIRED", chapterWindowScope.requiredText("desktopSessionState"))
+        assertEquals("WIRED", chapterWindowScope.requiredText("desktopSessionState"))
         assertEquals("WIRED", chapterWindowScope.requiredText("sharedChapterWindow"))
         assertEquals("WIRED", chapterWindowScope.requiredText("androidChapterWindow"))
-        assertEquals("NOT_WIRED", chapterWindowScope.requiredText("desktopChapterWindow"))
+        assertEquals("WIRED", chapterWindowScope.requiredText("desktopChapterWindow"))
         assertTrue(
             chapterWindowItem.getValue("sharedImplementationPaths").jsonArray.any {
                 it.jsonPrimitive.content ==
@@ -336,6 +350,11 @@ class ReaderFixedMainAuthorityTest {
         assertTrue(
             chapterWindowItem.getValue("sharedImplementationPaths").jsonArray.any {
                 it.jsonPrimitive.content == "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderSession.kt"
+            },
+        )
+        assertTrue(
+            chapterWindowItem.getValue("sharedImplementationPaths").jsonArray.any {
+                it.jsonPrimitive.content == "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderSessionCore.kt"
             },
         )
         assertTrue(
@@ -357,7 +376,7 @@ class ReaderFixedMainAuthorityTest {
         assertEquals("RC-05", progressScope.requiredText("progressTask"))
         assertEquals("WIRED", progressScope.requiredText("sharedProgressPolicy"))
         assertEquals("WIRED", progressScope.requiredText("androidProgressExecutor"))
-        assertEquals("NOT_WIRED", progressScope.requiredText("desktopProgressExecutor"))
+        assertEquals("WIRED", progressScope.requiredText("desktopProgressExecutor"))
         assertTrue(
             progressItem.getValue("sharedImplementationPaths").jsonArray.any {
                 it.jsonPrimitive.content ==
@@ -437,7 +456,7 @@ class ReaderFixedMainAuthorityTest {
     }
 
     @Test
-    fun `RP03 records all three wired Desktop presentation slices`() {
+    fun `RD01 keeps all three Desktop presentation slices on canonical session state`() {
         val item = Json.parseToJsonElement(Files.readString(manifestPath)).jsonArray
             .single { it.jsonObject.getValue("id").jsonPrimitive.content.toInt() == 43 }
             .jsonObject
@@ -447,8 +466,8 @@ class ReaderFixedMainAuthorityTest {
         assertEquals("WIRED", scope.requiredText("desktopSinglePresentation"))
         assertEquals("WIRED", scope.requiredText("desktopWebtoonPresentation"))
         assertEquals("WIRED", scope.requiredText("desktopDualPresentation"))
-        assertEquals("REMOVE_RD-01", scope.requiredText("legacyDesktopStateAdapter"))
-        assertEquals("NOT_WIRED", scope.requiredText("canonicalSessionExecutor"))
+        assertEquals("REMOVED", scope.requiredText("legacyDesktopStateAdapter"))
+        assertEquals("WIRED", scope.requiredText("canonicalSessionExecutor"))
 
         val desktopPaths = item.getValue("desktopConsumerAdapterPaths").jsonArray
             .map { it.jsonPrimitive.content }
@@ -538,8 +557,30 @@ class ReaderFixedMainAuthorityTest {
                         "mounted cover keeps a centered two-slot frame with the page in the physical left slot"
                 },
         )
-        assertTrue(item.requiredText("verificationScope").contains("does not prove shared ReaderSessionCore"))
+        assertTrue(item.requiredText("verificationScope").contains("Desktop canonical ReaderSessionCore"))
         assertTrue(item.requiredText("verificationScope").contains("three same-level presentation strategies"))
+
+        val singlePresentation = Files.readString(
+            repositoryRoot.resolve(
+                "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt",
+            ),
+        )
+        val readerState = Files.readString(
+            repositoryRoot.resolve("app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderState.kt"),
+        )
+        val readerScreen = Files.readString(
+            repositoryRoot.resolve("app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt"),
+        )
+        assertFalse(singlePresentation.contains("LegacyDesktopReaderPresentationAdapter"))
+        assertFalse(readerState.contains("resolvedUrls"))
+        assertTrue(readerScreen.contains("runtimeFactory.createScreenModel("))
+        assertFalse(readerScreen.contains("runtimeFactory.createRuntime("))
+        assertFalse(readerScreen.contains("runtimeFactory.createModel("))
+        assertTrue(
+            Files.notExists(
+                repositoryRoot.resolve("app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderPageLoader.kt"),
+            ),
+        )
     }
 
     @Test

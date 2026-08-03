@@ -236,7 +236,6 @@ class ScreenInstantiationSmokeTest {
         val s = DesktopReaderScreen(
             chapterTitle = "Chapter 1",
             mangaTitle = "Test Manga",
-            pageUrls = listOf("https://example.com/p1.jpg", "https://example.com/p2.jpg"),
             isWebtoon = false,
             sourceId = 1L,
             chapterUrl = "/ch/1",

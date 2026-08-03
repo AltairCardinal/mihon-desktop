@@ -2,6 +2,7 @@ package mihon.desktop.ui.reader
 
 import mihon.desktop.reader.ReaderKeyboardAction
 import mihon.desktop.reader.ReaderPageAction
+import mihon.desktop.reader.desktopReaderSessionState
 import mihon.domain.reader.ReaderNavigationCommand
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -88,9 +89,11 @@ class ReaderKeyboardNavigationPositionTest {
 
     @Test
     fun `dual page keyboard position uses display groups at last paired spread`() {
+        val reader = desktopReaderSessionState(pageCount = 43)
         val state = ReaderState(
+            context = reader.context,
+            session = reader.snapshot,
             currentPage = 41,
-            resolvedUrls = List(43) { "page-$it" },
             dualPageMode = true,
         )
 

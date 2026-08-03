@@ -19,6 +19,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import mihon.desktop.reader.ZoomState
+import mihon.desktop.reader.readerChapterSession
 import mihon.desktop.ui.reader.DualPageDisplayUnitCompositionIdentityKey
 import mihon.desktop.ui.reader.DualPageDisplayUnitFrame
 import mihon.desktop.ui.reader.DualPageDisplayUnitIdKey
@@ -133,9 +134,12 @@ class DualPagePresentationIdentityTest {
             scene.setContent {
                 MaterialTheme {
                     ZoomablePagerViewer(
-                        chapterId = chapterId.value,
-                        loadGeneration = 19,
-                        pageUrls = listOf(""),
+                        chapter = readerChapterSession(
+                            chapterId = chapterId.value,
+                            generation = 19,
+                            pageCount = 1,
+                            pageLoadState = { ReaderPageLoadState.Queued },
+                        ),
                         currentPage = 0,
                         isRtl = true,
                         isDualPage = true,

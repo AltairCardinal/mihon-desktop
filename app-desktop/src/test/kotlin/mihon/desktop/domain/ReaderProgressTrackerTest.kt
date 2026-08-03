@@ -73,6 +73,23 @@ class ReaderProgressTrackerTest {
     }
 
     @Test
+    fun `settling an already read chapter mid chapter keeps it read`() = runBlocking {
+        val repository = RecordingRepository()
+        val tracker = ReaderProgressTracker(RecordReadingProgress(repository))
+
+        tracker.track(
+            eventId = "settled-read",
+            chapterId = 2,
+            lastPageRead = 4,
+            totalPages = 20,
+            sourceId = null,
+            wasRead = true,
+        )
+
+        assertTrue(repository.event!!.isRead)
+    }
+
+    @Test
     fun `finishing chapter emits tracker sync after local progress commit`() = runBlocking {
         val repository = RecordingRepository()
         val requests = mutableListOf<TrackerSyncRequest>()

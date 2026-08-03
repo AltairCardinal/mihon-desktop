@@ -115,7 +115,6 @@ private suspend fun chapterDestination(target: DesktopExternalActionTarget.Chapt
         chapterTitle = request.chapterTitle,
         mangaId = request.mangaId,
         mangaTitle = request.mangaTitle,
-        pageUrls = emptyList(),
         isWebtoon = false,
         sourceId = request.sourceId,
         chapterUrl = request.chapterUrl,

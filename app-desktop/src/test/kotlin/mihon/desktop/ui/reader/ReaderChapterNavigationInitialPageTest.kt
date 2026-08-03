@@ -1,5 +1,6 @@
 package mihon.desktop.ui.reader
 
+import mihon.desktop.reader.desktopReaderSessionState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
@@ -17,9 +18,12 @@ class ReaderChapterNavigationInitialPageTest {
 
     @Test
     fun `last page sentinel clamps to loaded page tail`() {
-        val model = ReaderScreenModel()
-
-        model.setLoadedPages(listOf("p1", "p2", "p3"), initialPage = ReaderInitialPage.LAST)
+        val model = ReaderScreenModel(
+            initialSessionState = desktopReaderSessionState(
+                pageCount = 3,
+                initialPage = ReaderInitialPage.LAST,
+            ),
+        )
 
         assertEquals(2, model.state.value.currentPage)
     }

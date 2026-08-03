@@ -93,6 +93,7 @@ import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.SManga
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.reader.ReaderPreferences
+import mihon.desktop.reader.DesktopReaderRuntimeFactory
 import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
 import mihon.domain.upcoming.interactor.GetUpcomingManga
 import mihon.domain.extensionrepo.interactor.DeleteExtensionRepo
@@ -841,14 +842,24 @@ internal fun initUILayer(
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
         ),
     )
-    Injekt.addSingleton(
-        ReaderProgressTracker(
+    val readerProgressTracker = ReaderProgressTracker(
             recordReadingProgress = readingProgress,
             appPreferences = appPreferences,
             downloadPreferences = downloadPreferences,
             downloadManager = downloadManager,
             trackSync = trackSync,
             extensionPackageForSource = Injekt.get<DesktopExtensionManager>()::getExtensionPackage,
+        )
+    Injekt.addSingleton(readerProgressTracker)
+    Injekt.addSingleton(
+        DesktopReaderRuntimeFactory(
+            prefs = Injekt.get(),
+            downloadProvider = Injekt.get(),
+            sourceManager = Injekt.get(),
+            networkHelper = Injekt.get(),
+            progressTracker = readerProgressTracker,
+            mangaRepository = mangaRepository,
+            encodedCacheDirectory = paths.networkCacheDir.resolve("reader-encoded"),
         ),
     )
 

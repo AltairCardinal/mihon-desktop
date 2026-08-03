@@ -4,9 +4,10 @@ import mihon.desktop.reader.ReaderColorFilter
 import mihon.desktop.reader.ReaderKeyboardAction
 import mihon.desktop.reader.ReaderPageAction
 import mihon.desktop.reader.buildVirtualPageList
+import mihon.desktop.reader.readerChapterSession
 import mihon.desktop.ui.reader.presentation.DesktopReaderPresentationRegistry
-import mihon.desktop.ui.reader.presentation.LegacyDesktopReaderPresentationAdapter
 import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
+import mihon.desktop.ui.reader.presentation.desktopReaderPresentationRequest
 import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.PixelBounds
 import kotlinx.coroutines.runBlocking
@@ -127,9 +128,11 @@ class DesktopReaderProductRegressionTest {
         assertTrue(detail.contains("DesktopReaderScreen("), "Manga detail must remain the reader entry point")
         assertTrue(reader.contains("onRetry"), "Loading errors must expose retry")
         assertTrue(reader.contains("ChapterTransitionFeedback"), "Chapter boundary and missing chapter feedback must be visible")
-        assertTrue(reader.contains("loadedPageUrls = emptyList()"), "Chapter navigation must enter the target before pages arrive")
+        assertTrue(reader.contains("model.activateChapter("), "Chapter navigation must activate the target in the same session")
+        assertFalse(reader.contains("navigator.replace("), "Chapter navigation must not replace the reader Screen")
         assertTrue(readerVisuals.contains("showContinue = false"), "Loaded chapter transitions must not wait for Continue")
-        assertTrue(reader.contains("loadGeneration = state.loadGeneration"), "Retry must restart the production loading effect")
+        assertTrue(reader.contains("state.session.activeChapter"), "The reader must render the canonical session snapshot")
+        assertTrue(reader.contains("state.session.activeChapter.pages.map { it.encodedPageRef }"))
         assertTrue(reader.contains("ReadingMode.WEBTOON -> WebtoonPresentationViewer("))
         assertTrue(readerVisuals.contains(".require(ReaderPresentationMode.WEBTOON)"))
         assertTrue(readerVisuals.contains(".require(ReaderPresentationMode.DUAL_PAGED)"))
@@ -140,7 +143,7 @@ class DesktopReaderProductRegressionTest {
         val edgeObserverCall = callBlock(reader, "observeDesktopMatchedPairs(")
         assertTrue(edgeObserverCall.contains("autoSpreadMatching = state.autoSpreadMatching"))
         assertTrue(edgeObserverCall.contains("dualPageMode = state.dualPageMode"))
-        assertTrue(edgeObserverCall.contains("pageCount = state.resolvedUrls.size"))
+        assertTrue(edgeObserverCall.contains("pageCount = state.session.activeChapter.pages.size"))
         assertTrue(edgeObserverCall.contains("retainedMatchedPairs = state.matchedPairs"))
         assertTrue(edgeObserverCall.contains("onMatchedPairsChanged = model::setMatchedPairs"))
         assertEquals(
@@ -351,10 +354,8 @@ class DesktopReaderProductRegressionTest {
         forcedSinglePages: Set<Int> = emptySet(),
         matchedPairs: Set<Pair<Int, Int>> = emptySet(),
     ): List<List<Int>> {
-        val request = LegacyDesktopReaderPresentationAdapter.dualPagedRequest(
-            chapterId = 1L,
-            generation = 1L,
-            pageUrls = List(pageCount) { "page-$it" },
+        val request = desktopReaderPresentationRequest(
+            chapter = readerChapterSession(pageCount = pageCount),
             direction = ReaderDirection.LTR,
             spreadPageIndices = spreadPages,
             forcedSinglePageIndices = forcedSinglePages,

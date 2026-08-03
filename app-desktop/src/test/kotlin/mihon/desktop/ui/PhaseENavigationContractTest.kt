@@ -16,7 +16,6 @@ class PhaseENavigationContractTest {
     fun `DesktopReaderScreen is a Screen not a Tab`() {
         val screen = DesktopReaderScreen(
             chapterTitle = "Chapter 1",
-            pageUrls = listOf("https://example.com/1.jpg"),
             isWebtoon = false,
             sourceId = 1L,
             chapterUrl = "/chapter/1",
@@ -39,7 +38,6 @@ class PhaseENavigationContractTest {
         assertDoesNotThrow {
             DesktopReaderScreen(
                 chapterTitle = "Chapter 1",
-                pageUrls = emptyList(),
                 isWebtoon = false,
                 sourceId = 42L,
                 chapterUrl = "/chapter/1",
@@ -58,7 +56,6 @@ class PhaseENavigationContractTest {
         assertDoesNotThrow {
             DesktopReaderScreen(
                 chapterTitle = "Chapter 1",
-                pageUrls = listOf("https://example.com/1.jpg"),
                 isWebtoon = false,
             )
         }

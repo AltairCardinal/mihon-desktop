@@ -126,7 +126,7 @@ internal fun SinglePagePagerViewer(
         ) { readySlot ->
             val readyPage = requireNotNull(readySlot.page)
             ZoomablePageBox(
-                url = readyPage.imageUrl ?: readyPage.url,
+                url = readyPage.encodedContentUri(),
                 pageLabel = MR.strings.desktop_ui_page_number.localized(Locale.getDefault(), page.id.sourcePageIndex + 1),
                 zoomState = zoomState,
                 onZoomChange = onZoomChange,
@@ -162,7 +162,8 @@ internal fun SinglePageSettledVisiblePageReporter(
     onVisiblePagesChanged: (VisiblePageSet) -> Unit,
 ) {
     val currentCallback by rememberUpdatedState(onVisiblePagesChanged)
-    LaunchedEffect(presentation, isRtl) {
+    val displayUnitIds = presentation.displayUnits.map(DisplayUnit::id)
+    LaunchedEffect(displayUnitIds, isRtl) {
         snapshotFlow { settledPagerIndex() }
             .distinctUntilChanged()
             .collect { pagerIndex ->

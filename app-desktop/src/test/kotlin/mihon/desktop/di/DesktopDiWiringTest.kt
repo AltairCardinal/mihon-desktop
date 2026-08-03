@@ -61,6 +61,7 @@ import mihon.desktop.security.DesktopPassphraseVerifier
 import mihon.desktop.library.LibraryScreenModelFactory
 import mihon.desktop.library.MangaDetailScreenModelFactory
 import mihon.desktop.reader.ReaderPreferences
+import mihon.desktop.reader.DesktopReaderRuntimeFactory
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.more.StatsScreenModel
 import mihon.desktop.update.DesktopUpdateController
@@ -940,6 +941,7 @@ class DesktopDiWiringTest {
         assertSame(secondHandler, Injekt.get<DatabaseHandler>())
         assertNotNull(Injekt.get<DesktopAppPreferences>())
         assertNotNull(Injekt.get<ReaderPreferences>())
+        assertNotNull(Injekt.get<DesktopReaderRuntimeFactory>())
         assertNotNull(Injekt.get<LibraryUpdateScheduler>())
 
         Injekt.get<LibraryUpdateScheduler>().runNow().join()

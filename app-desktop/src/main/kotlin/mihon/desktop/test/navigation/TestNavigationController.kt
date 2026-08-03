@@ -235,13 +235,9 @@ object TestNavigationController {
         initialPage: Int = 0,
         pageCount: Int = 20,
     ) {
-        // Use mock page URLs for testing
-        val mockPages = getMockPageUrls(pageCount)
-
         val readerScreen = mihon.desktop.ui.reader.DesktopReaderScreen(
             chapterTitle = chapterTitle,
             mangaTitle = mangaTitle,
-            pageUrls = mockPages,
             isWebtoon = false,
             sourceId = sourceId,
             chapterUrl = chapterUrl,

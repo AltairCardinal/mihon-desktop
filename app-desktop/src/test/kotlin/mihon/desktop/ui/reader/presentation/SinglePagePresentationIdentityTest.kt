@@ -15,6 +15,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import mihon.desktop.reader.ZoomState
+import mihon.desktop.reader.readerChapterSession
 import mihon.desktop.ui.reader.NavigationMode
 import mihon.desktop.ui.reader.ReaderDisplayUnitCompositionIdentityKey
 import mihon.desktop.ui.reader.ReaderDisplayUnitIdKey
@@ -84,16 +85,18 @@ class SinglePagePresentationIdentityTest {
 
     @Test
     fun `production single-page selector mounts the SPI display unit`() = runTest {
-        var pageError by mutableStateOf<AppError?>(AppError.Network())
+        var chapter by mutableStateOf(
+            readerChapterSession(chapterId.value, 11, pageCount = 1) {
+                ReaderPageLoadState.Error(AppError.Network())
+            },
+        )
         var retries = 0
         val scene = ImageComposeScene(640, 480, coroutineContext = currentCoroutineContext()) {}
         try {
             scene.setContent {
                 MaterialTheme {
                     ZoomablePagerViewer(
-                        chapterId = chapterId.value,
-                        loadGeneration = 11,
-                        pageUrls = listOf(""),
+                        chapter = chapter,
                         currentPage = 0,
                         isRtl = false,
                         isDualPage = false,
@@ -101,7 +104,6 @@ class SinglePagePresentationIdentityTest {
                         navigationMode = NavigationMode.RightAndLeft,
                         onPageChange = {},
                         onZoomChange = {},
-                        pageError = pageError,
                         onRetryPage = { retries++ },
                     )
                 }
@@ -122,7 +124,12 @@ class SinglePagePresentationIdentityTest {
             assertTrue(requireNotNull(retryAction).invoke())
             assertEquals(1, retries)
 
-            pageError = null
+            chapter = readerChapterSession(
+                chapterId = chapterId.value,
+                generation = 11,
+                pageCount = 1,
+                pageLoadState = { ReaderPageLoadState.Queued },
+            )
             scene.render()
             val retryLoadingNode = displayUnitNode(scene)
             assertSame(identity, retryLoadingNode.config[ReaderDisplayUnitCompositionIdentityKey])
@@ -134,12 +141,9 @@ class SinglePagePresentationIdentityTest {
 
     @Test
     fun `visible-page reporting waits for the settled pager index`() = runTest {
-        val request = LegacyDesktopReaderPresentationAdapter.singlePagedRequest(
-            chapterId = chapterId.value,
-            generation = 11,
-            pageUrls = listOf("first", "second"),
+        val request = ReaderPresentationRequest(
+            chapter = readerChapterSession(chapterId.value, 11, pageCount = 2),
             direction = ReaderDirection.LTR,
-            splitPageIndices = emptySet(),
         )
         val presentation = SinglePagedPresentation.present(request)
         var transientCurrentIndex by mutableStateOf(0)

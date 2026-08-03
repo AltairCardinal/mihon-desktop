@@ -20,6 +20,7 @@ import mihon.domain.reader.scheduler.ReaderRequestKey
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
 import mihon.domain.reader.scheduler.ReaderScheduledRequest
 import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
+import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderChapterId
 
 /**
@@ -27,7 +28,7 @@ import mihon.domain.reader.session.ReaderChapterId
  * Late results are generation-checked, stale jobs are cancelled, and decoded pages obey a byte budget.
  */
 class PagePreloader(
-    private val fetcher: suspend (url: String) -> ByteArray?,
+    private val encodedPageReader: suspend (ref: EncodedPageRef) -> ByteArray?,
     val windowSize: Int = 3,
     private val maxDecodedWidth: Int = 2048,
     private val maxDecodedHeight: Int = 2048,
@@ -65,9 +66,12 @@ class PagePreloader(
         require(largeImagePixelThreshold > 0) { "largeImagePixelThreshold must be positive" }
     }
 
-    suspend fun preload(currentPage: Int, pageUrls: List<String>) = supervisorScope {
+    suspend fun preloadEncoded(currentPage: Int, encodedPageRefs: List<EncodedPageRef?>) =
+        preloadSources(currentPage, encodedPageRefs)
+
+    private suspend fun preloadSources(currentPage: Int, sources: List<EncodedPageRef?>) = supervisorScope {
         val plan = synchronized(lock) {
-            requestScheduler.moveTo(SCHEDULER_CHAPTER_ID, currentPage, pageUrls.size).also {
+            requestScheduler.moveTo(SCHEDULER_CHAPTER_ID, currentPage, sources.size).also {
                 it.cancelRequests.forEach { jobKey -> activeJobs.remove(jobKey)?.cancel() }
                 check(cache.beginGeneration(it.generation, it.evictPageIndices))
                 sourceSizes.keys.retainAll(cache.snapshot().keys)
@@ -82,12 +86,12 @@ class PagePreloader(
                         while (true) {
                             val request = requestScheduler.pollNext() ?: break
                             val index = request.pageIndex
-                            if (index !in pageUrls.indices || cache.get(index) != null) {
+                            if (index !in sources.indices || cache.get(index) != null) {
                                 requestScheduler.complete(request.jobKey)
                                 continue
                             }
                             val job = async(Dispatchers.IO, start = CoroutineStart.LAZY) {
-                                decodePage(request, pageUrls[index])
+                                decodePage(request, sources[index])
                             }
                             activeJobs[request.jobKey] = job
                             add(request to job)
@@ -157,8 +161,8 @@ class PagePreloader(
 
     fun cacheSnapshot(): PageCacheSnapshot = cache.snapshot()
 
-    private suspend fun decodePage(request: ReaderScheduledRequest, url: String): Decoded? {
-        val bytes = fetcher(url) ?: return null
+    private suspend fun decodePage(request: ReaderScheduledRequest, source: EncodedPageRef?): Decoded? {
+        val bytes = source?.let { encodedPageReader(it) } ?: return null
         val size = SkiaImageDecoder.peekSize(bytes) ?: return null
         val decodeRequest = PageDecodeRequest(
             pageIndex = request.pageIndex,
