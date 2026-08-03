@@ -229,7 +229,7 @@ DesktopReaderScreen / Android ReaderActivity
 - [x] `RC-05` 提取进度、末页完成和阅读入口选择语义
 - [x] `RA-01` 完成 Android 生产链切换并证明没有第二套执行核心
 - [x] `RP-01` 建立 Desktop presentation SPI 并迁移单页模式
-- [ ] `RP-02` 将条漫迁移为同级 presentation 策略
+- [x] `RP-02` 将条漫迁移为同级 presentation 策略
 - [ ] `RP-03` 将双页迁移为同级 presentation 策略并修复封面双槽布局
 - [ ] `RD-01` 实现 Desktop 平台 adapters 并将生产阅读器切到 shared core
 - [ ] `RD-02` 实现当前章全 Ready 后完整预取下一章的 Desktop policy
@@ -466,6 +466,7 @@ python scripts/gradle-coordinator.py run --key reader-core-final -- ./gradlew :d
 | 2026-08-02 | `RC-05` | `TODO -> DOING -> REVIEW -> DONE` | `rc05-domain-red`、`rc05-android-red`、`rc05-data-red`、`rc05-desktop-entry-red`、`rc05-authority-red`：缺少 shared progress/entry 与真实生产/数据库/入口证据；`rc05-settlement-race-red2` 复现旧相邻 settle 反向激活并提交 B 章进度；`rc05-arbiter-red` 固定 latest token 与串行事务仲裁 | `rc05-android-final-gate`：进度、末页、旧 settle 竞态、仲裁器、duplicate、window/错误与入口组全绿；`rc05-domain-final-gate`、`rc05-data-final-gate`：shared contract 与真实目标行事务全绿 | 1 轮独立审查 + 1 轮修复复审；初审 P1 通过 active-window latest token guard 关闭，复审 P2 通过独立 `ReaderViewportSettlementArbiter` 并发测试与最终证据行校准关闭；未追加第二轮代理复审 | `rc05-desktop-authority-final-gate`、`rc05-spotless-check-final` 全绿；manifest JSON、`git diff --check` 通过；本阶段按分层策略未运行全量/发布构建 | 本批次提交（由本行所在 Git commit 解析） |
 | 2026-08-02 | `RA-01` | `TODO -> DOING -> REVIEW -> DONE` | `ra01-session-reset-red`：缺少 canonical storage-route reset；`ra01-stale-storage-reset-red`：缺少绑定 loader/generation 的原子令牌，旧 preload 可回收较新的 activation loader | `ra01-production-contract-final-focused-2`、`ra01-default-composition-focused`：真实默认 `ReaderViewModel -> ChapterLoader -> HttpPageLoader -> shared scheduler/encoded store/progress` 同链全绿；`ra01-stale-storage-reset-green`、`ra01-review-fixes-focused`：storage reset 竞态、窗口与真实 loader 资源清理全绿 | 1 轮独立审查 + 1 轮修复复审；初审 P1/P2 通过原子 reset token 与 `finally` 回收关闭；复审确认两项关闭，并发现 manifest 精确集合 P2，由 `ra01-task3-parity` RED、`ra01-task3-parity-final` GREEN 关闭，未追加第二轮代理复审 | `ra01-domain-full`、`ra01-android-reader-focused`、`ra01-app-full`、`ra01-authority-final`、`ra01-spotless-green` 全绿；Task 3 为 274 项测试；manifest/fixture JSON 与 `git diff --check` 通过；本阶段未运行发布构建 | 本批次提交（由本行所在 Git commit 解析） |
 | 2026-08-02 | `RP-01` | `TODO -> DOING -> REVIEW -> DONE` | `rp01-red`、`rp01-manifest-red`、`rp01-product-contract-red`：缺少 presentation SPI、稳定 identity 与 production/authority 证据；`rp01-review-red`：复现未 settled 页误报、宽页第二切片丢失、错误/重试卸载 Pager 及旧产品回归断言失效 | `rp01-green-2`、`rp01-product-contract-green-2`：Single strategy、固定容器与 production selector 首次全绿；`rp01-contract-green-2`：切片恢复、settled-only 上报、原位 Retry、model/viewport、产品回归及两项权威合同共 108 项全绿 | 1 轮独立审查 + 1 轮修复复审；初审 2 个 P1 与 1 个 P2 通过完整 `DisplayUnitId` 写回、`pagerState.settledPage`、单页 viewport 持续挂载和回归契约更新关闭；复审结论 `PASS / NO_P0_P1_P2` | `rp01-related-green`：`:domain:jvmTest` + `:app-desktop:task3ParityVerification` 全绿；`rp01-spotless-check-2`、manifest JSON 与 `git diff --check` 通过；Webtoon/Dual 与 Desktop canonical executor 仍分别留给 RP-02/RP-03/RD-01 | 本批次提交（由本行所在 Git commit 解析） |
+| 2026-08-02 | `RP-02` | `TODO -> DOING -> REVIEW -> DONE` | `rp02-red`、`rp02-evidence-red`：缺少 Webtoon 同级策略、稳定 Lazy identity 与 production/authority 证据；`rp02-review-red`、`rp02-layout-authority-red`：复现尺寸变化锚点跳动、固定原版末页 resolver 偏差、拖拽后 fling 期间自动滚动抢占及 layout authority 缺口 | `rp02-green-2`、`rp02-product-1`、`rp02-evidence-green-3`：Webtoon strategy、固定容器、production selector 与权威证据全绿；`rp02-review-green-3`、`rp02-review-contract-green`：真实 `LazyListState` 几何恢复、split/merge 回退、`NO_POSITION`、拖拽到 fling 暂停及完整修复合同全绿 | 1 轮独立审查 + 1 轮修复复审；初审 1 个 P1 与 2 个 P2 已由实测 item size 相对锚点、固定原版 resolver 语义和跨 fling 暂停状态关闭；复审结论 `PASS / NO_P0_P1_P2` | `rp02-related-final`：`:domain:jvmTest` + `:app-desktop:task3ParityVerification` 全绿；`rp02-review-spotless`、manifest/inventory JSON 与 `git diff --check` 通过；Dual 与 Desktop canonical executor 仍分别留给 RP-03/RD-01 | 本批次提交（由本行所在 Git commit 解析） |
 
 `R0-01` 范围说明：本批次保持 8 个内聚文件，但逐 symbol/blob/marker 夹具、18 项上游分类、变异测试和
 权威文档合计超过 400 行。它们共同构成一个不可拆分的 provenance 关闭条件；拆开会让 manifest 或文档
@@ -525,6 +526,13 @@ Pager/Compose identity、settled 位置写回、旧 Desktop 状态临时 adapter
 第一切片、URL 晚到替换 key、错误/Retry 卸载 Pager，以及误称 Desktop executor 已迁移；已由 settled-only
 离屏测试、完整 `DisplayUnitId`、固定容器 identity、outer viewport/model 测试和 `NOT_WIRED` scope 守卫控制。
 临时 adapter 不执行 I/O，明确由 RD-01 删除；Webtoon 与 Dual 仍留给 RP-02、RP-03。
+
+`RP-02` 范围说明：本批次 21 个内聚 production/test/authority/文档文件并超过 400 行，原因是 Webtoon
+strategy、真实 Lazy 几何锚点、固定容器 renderer、production wiring、设置项、固定原版 layout provenance
+与行为测试必须同批闭环；拆开会留下未消费策略、无法证明的滚动恢复或 presentation/authority 状态漂移。
+主要风险是页面尺寸晚到导致跳动、错误 active page 提前完成章节、自动滚动与用户 fling 冲突，以及 split/merge
+后丢失逻辑页；已由真实 `LazyListState` 离屏测试、固定原版 `NO_POSITION` 语义、跨 fling 暂停状态、稳定
+`DisplayUnitId` 和同页有界恢复控制。临时 URL adapter 仍由 RD-01 删除；Dual 保持留给 RP-03。
 
 建议状态记录使用 `TODO / DOING / BLOCKED / REVIEW / DONE`；状态只用于解释，checkbox 仍是唯一完成标记。
 

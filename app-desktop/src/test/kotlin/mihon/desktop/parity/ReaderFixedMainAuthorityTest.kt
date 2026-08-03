@@ -437,15 +437,15 @@ class ReaderFixedMainAuthorityTest {
     }
 
     @Test
-    fun `RP01 records only the wired Desktop single-page presentation slice`() {
+    fun `RP02 records wired Desktop single and webtoon presentation slices`() {
         val item = Json.parseToJsonElement(Files.readString(manifestPath)).jsonArray
             .single { it.jsonObject.getValue("id").jsonPrimitive.content.toInt() == 43 }
             .jsonObject
         val scope = item.getValue("readerCoreMigrationScope").jsonObject
 
-        assertEquals("RP-01", scope.requiredText("presentationTask"))
+        assertEquals("RP-02", scope.requiredText("presentationTask"))
         assertEquals("WIRED", scope.requiredText("desktopSinglePresentation"))
-        assertEquals("NOT_WIRED", scope.requiredText("desktopWebtoonPresentation"))
+        assertEquals("WIRED", scope.requiredText("desktopWebtoonPresentation"))
         assertEquals("NOT_WIRED", scope.requiredText("desktopDualPresentation"))
         assertEquals("REMOVE_RD-01", scope.requiredText("legacyDesktopStateAdapter"))
         assertEquals("NOT_WIRED", scope.requiredText("canonicalSessionExecutor"))
@@ -453,6 +453,14 @@ class ReaderFixedMainAuthorityTest {
         val desktopPaths = item.getValue("desktopConsumerAdapterPaths").jsonArray
             .map { it.jsonPrimitive.content }
             .toSet()
+        val upstreamSymbols = item.getValue("upstreamSymbols").jsonArray.map { it.jsonObject }
+        assertTrue(
+            upstreamSymbols.any { symbol ->
+                symbol.requiredText("path") ==
+                    "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonLayoutManager.kt" &&
+                    symbol.requiredText("symbol").contains("findLastEndVisibleItemPosition")
+            },
+        )
         assertTrue(
             "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt" in desktopPaths,
         )
@@ -460,10 +468,16 @@ class ReaderFixedMainAuthorityTest {
             "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt" in desktopPaths,
         )
         assertTrue(
+            "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentation.kt" in desktopPaths,
+        )
+        assertTrue(
             "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt" in desktopPaths,
         )
         assertTrue(
             "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt" in desktopPaths,
+        )
+        assertTrue(
+            "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt" in desktopPaths,
         )
 
         val behaviorMethods = item.getValue("behaviorMethods").jsonObject
@@ -483,8 +497,24 @@ class ReaderFixedMainAuthorityTest {
                 .jsonArray
                 .any { it.jsonPrimitive.content == "production single-page selector mounts the SPI display unit" },
         )
+        assertTrue(
+            behaviorMethods
+                .getValue(
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt",
+                )
+                .jsonArray
+                .any { it.jsonPrimitive.content == "viewport reports every visible page and uses fixed-main last end-visible active rule" },
+        )
+        assertTrue(
+            behaviorMethods
+                .getValue(
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt",
+                )
+                .jsonArray
+                .any { it.jsonPrimitive.content == "production webtoon selector mounts registry display units with stable lazy identities" },
+        )
         assertTrue(item.requiredText("verificationScope").contains("does not prove shared ReaderSessionCore"))
-        assertTrue(item.requiredText("verificationScope").contains("Webtoon or Dual"))
+        assertTrue(item.requiredText("verificationScope").contains("Dual presentation migration"))
     }
 
     @Test

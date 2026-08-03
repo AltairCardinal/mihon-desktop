@@ -1601,6 +1601,9 @@ class DesktopProductCapabilityContractTest {
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagePresentationIdentityTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/WebtoonAutoScrollTest.kt",
                 ),
             49 to
                 setOf(
@@ -1678,6 +1681,37 @@ class DesktopProductCapabilityContractTest {
                                 setOf("ZoomablePagerViewer(", "ReaderDisplayUnitIdKey"),
                             "visible-page reporting waits for the settled pager index" to
                                 setOf("SinglePageSettledVisiblePageReporter(", "settledIndex = 1"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt" to
+                        mapOf(
+                            "late page state and content preserve webtoon display identities" to
+                                setOf("WebtoonPresentation.present", "DisplayUnit::id"),
+                            "wide webtoon page becomes consecutive halves in requested merge order" to
+                                setOf("WebtoonPresentation.present", "PageSplitHalf.RIGHT"),
+                            "viewport reports every visible page and uses fixed-main last end-visible active rule" to
+                                setOf("resolveWebtoonViewport", "activePageId"),
+                            "fixed-main active resolver returns no position when no visible child reaches either edge" to
+                                setOf("resolveWebtoonViewport", "assertNull"),
+                            "anchor restores exact split item and falls back to its logical page" to
+                                setOf("restoreWebtoonAnchorIndex", "WebtoonScrollAnchor"),
+                            "registry exposes webtoon beside single-page presentation" to
+                                setOf("DesktopReaderPresentationRegistry", "ReaderPresentationMode.WEBTOON"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt" to
+                        mapOf(
+                            "webtoon item keeps composition identity while loading ready error and retry change in place" to
+                                setOf("WebtoonDisplayUnitContainer(", "assertSame"),
+                            "production webtoon selector mounts registry display units with stable lazy identities" to
+                                setOf("WebtoonPresentationViewer(", "WebtoonDisplayUnitIdKey"),
+                            "mounted list restores relative anchor when ready content changes item geometry" to
+                                setOf("WebtoonDisplayUnitList(", "firstVisibleItemScrollOffset"),
+                            "mounted list keeps logical page and bounded offset when split anchor merges" to
+                                setOf("WebtoonDisplayUnitList(", "splitAnchor"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/WebtoonAutoScrollTest.kt" to
+                        mapOf(
+                            "auto scroll pauses through user drag and fling then resumes after settlement" to
+                                setOf("WebtoonAutoScrollPauseState", "isScrollInProgress"),
                         ),
                 ),
             44 to
@@ -1882,16 +1916,28 @@ class DesktopProductCapabilityContractTest {
                         setOf("interface ReaderPresentationStrategy", "data class DisplayUnit", "data class VisiblePageSet"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt" to
                         setOf("object SinglePagedPresentation", "splitPageBounds"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentation.kt" to
+                        setOf("object WebtoonPresentation", "resolveWebtoonViewport", "WebtoonScrollAnchor"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderState.kt" to
-                        setOf("currentDisplayUnitId"),
+                        setOf("currentDisplayUnitId", "visiblePageIds", "webtoonScrollAnchor"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt" to
-                        setOf("fun settleSinglePage", "currentDisplayUnitId"),
+                        setOf("fun settleSinglePage", "fun settleWebtoon", "currentDisplayUnitId"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt" to
-                        setOf("readerViewportBody(state)", "onSingleVisiblePagesChanged = model::settleSinglePage"),
+                        setOf(
+                            "readerViewportBody(state)",
+                            "onSingleVisiblePagesChanged = model::settleSinglePage",
+                            "onViewportChanged = model::settleWebtoon",
+                        ),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt" to
-                        setOf("DesktopReaderPresentationRegistry", "ReaderPresentationMode.SINGLE_PAGED"),
+                        setOf(
+                            "DesktopReaderPresentationRegistry",
+                            "ReaderPresentationMode.SINGLE_PAGED",
+                            "ReaderPresentationMode.WEBTOON",
+                        ),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt" to
                         setOf("key = { pagerIndex", "ReaderDisplayUnitCompositionIdentityKey"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt" to
+                        setOf("key = DisplayUnit::id", "WebtoonSettledViewportReporter", "WebtoonDisplayUnitCompositionIdentityKey"),
                 ),
             44 to
                 mapOf(

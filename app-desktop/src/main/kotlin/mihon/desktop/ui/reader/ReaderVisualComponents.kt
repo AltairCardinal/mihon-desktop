@@ -34,6 +34,8 @@ import mihon.desktop.ui.reader.presentation.DisplayUnitId
 import mihon.desktop.ui.reader.presentation.LegacyDesktopReaderPresentationAdapter
 import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
 import mihon.desktop.ui.reader.presentation.VisiblePageSet
+import mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor
+import mihon.desktop.ui.reader.presentation.WebtoonViewportUpdate
 import mihon.domain.error.AppError
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderChapterTransitionModel
@@ -166,6 +168,66 @@ internal fun ZoomablePagerViewer(
             onPrevChapter = onPrevChapter, onNextChapter = onNextChapter,
         )
     }
+}
+
+@Composable
+internal fun WebtoonPresentationViewer(
+    chapterId: Long,
+    loadGeneration: Long,
+    pageUrls: List<String>,
+    currentPage: Int,
+    currentDisplayUnitId: DisplayUnitId?,
+    initialAnchor: WebtoonScrollAnchor?,
+    pageError: AppError?,
+    autoSplitPages: Boolean = false,
+    splitPageIndices: Set<Int> = emptySet(),
+    cropBorders: Boolean = false,
+    sidePadding: mihon.desktop.reader.WebtoonSidePadding = mihon.desktop.reader.WebtoonSidePadding.NONE,
+    autoScroll: Boolean = false,
+    autoScrollSpeed: WebtoonAutoScrollSpeed = WebtoonAutoScrollSpeed.Normal,
+    contextMenuScope: CoroutineScope? = null,
+    mangaTitle: String = "",
+    chapterTitle: String = "",
+    preloader: PagePreloader? = null,
+    onViewportChanged: (WebtoonViewportUpdate) -> Unit,
+    onRetryPage: (() -> Unit)? = null,
+    onSpreadDetected: ((Int) -> Unit)? = null,
+    onNextChapter: (() -> Unit)? = null,
+) {
+    if (pageUrls.isEmpty()) return
+    val request = remember(chapterId, loadGeneration, pageUrls, autoSplitPages, splitPageIndices, pageError) {
+        LegacyDesktopReaderPresentationAdapter.webtoonRequest(
+            chapterId = chapterId,
+            generation = loadGeneration,
+            pageUrls = pageUrls,
+            splitPageIndices = if (autoSplitPages) splitPageIndices else emptySet(),
+            pageError = pageError,
+        )
+    }
+    val presentation = remember(request) {
+        DesktopReaderPresentationRegistry
+            .require(ReaderPresentationMode.WEBTOON)
+            .present(request)
+    }
+    val currentPageId = request.chapter.pages[currentPage.coerceIn(pageUrls.indices)].id
+    WebtoonViewer(
+        presentation = presentation,
+        currentPageId = currentPageId,
+        currentDisplayUnitId = currentDisplayUnitId,
+        initialAnchor = initialAnchor,
+        cropBorders = cropBorders,
+        sidePadding = sidePadding,
+        autoScroll = autoScroll,
+        autoScrollSpeed = autoScrollSpeed,
+        contextMenuScope = contextMenuScope,
+        mangaTitle = mangaTitle,
+        chapterTitle = chapterTitle,
+        preloader = preloader,
+        onViewportChanged = onViewportChanged,
+        onRetryPage = { onRetryPage?.invoke() },
+        onSpreadDetected = onSpreadDetected,
+        onNextChapter = onNextChapter,
+    )
 }
 
 @Composable

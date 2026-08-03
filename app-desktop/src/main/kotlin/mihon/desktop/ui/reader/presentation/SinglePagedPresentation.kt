@@ -98,4 +98,19 @@ internal object LegacyDesktopReaderPresentationAdapter {
                 .mapTo(linkedSetOf()) { pages[it].id },
         )
     }
+
+    fun webtoonRequest(
+        chapterId: Long,
+        generation: Long,
+        pageUrls: List<String>,
+        splitPageIndices: Set<Int>,
+        pageError: AppError? = null,
+    ): ReaderPresentationRequest = singlePagedRequest(
+        chapterId = chapterId,
+        generation = generation,
+        pageUrls = pageUrls,
+        direction = ReaderDirection.RTL,
+        splitPageIndices = splitPageIndices,
+        pageError = pageError,
+    )
 }

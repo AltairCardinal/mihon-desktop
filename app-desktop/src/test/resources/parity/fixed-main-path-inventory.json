@@ -41,6 +41,7 @@
     { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerPageHolder.kt", "blobId": "4a6850bf4c447906c10ead2c0d3d0826f3671630" },
     { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerViewers.kt", "blobId": "a79f858142b6ce27432c17563f022457a24a5039" },
     { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonAdapter.kt", "blobId": "29727f696845dae7b8d1df9b1581b84aeb8d5671" },
+    { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonLayoutManager.kt", "blobId": "1948bcdf12a4a7fc4d558f8619d161c321320269" },
     { "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonPageHolder.kt", "blobId": "5b63635d34015602999eccd6f9c40fb4b8219eb5" },
     { "path": "core/common/src/main/kotlin/tachiyomi/core/common/util/system/ImageUtil.kt", "blobId": "ec08d66d2ed7ea56586027422170d01b09bae9dc" },
     { "path": "app/src/main/java/mihon/domain/migration/usecases/MigrateMangaUseCase.kt", "blobId": "f5e4c792c9964c1ad81eacac6e6b2107a8f1962e" },

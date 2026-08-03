@@ -17,6 +17,8 @@ import mihon.desktop.ui.reader.presentation.DisplaySlotId
 import mihon.desktop.ui.reader.presentation.DisplayUnitId
 import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
 import mihon.desktop.ui.reader.presentation.VisiblePageSet
+import mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor
+import mihon.desktop.ui.reader.presentation.WebtoonViewportUpdate
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderNavigationCommand
 import mihon.domain.reader.ReaderTransitionDirection
@@ -238,6 +240,48 @@ class ReaderScreenModelTest {
     }
 
     @Test
+    fun `settled webtoon viewport stores every visible page active page and scroll anchor`() {
+        val model = ReaderScreenModel(pageUrls = listOf("a", "b", "c"), chapterId = 7L)
+        val firstPage = ReaderPageId(ReaderChapterId(7L), 0)
+        val activePage = ReaderPageId(ReaderChapterId(7L), 1)
+        val anchorUnit = DisplayUnitId(
+            ReaderPresentationMode.WEBTOON,
+            listOf(DisplaySlotId(firstPage)),
+        )
+        val activeUnit = DisplayUnitId(
+            ReaderPresentationMode.WEBTOON,
+            listOf(DisplaySlotId(activePage)),
+        )
+        val anchor = WebtoonScrollAnchor(anchorUnit, scrollOffset = 43)
+
+        model.settleWebtoon(
+            WebtoonViewportUpdate(
+                visiblePages = VisiblePageSet(activeUnit, setOf(firstPage, activePage), activePageId = activePage),
+                anchor = anchor,
+            ),
+        )
+
+        assertEquals(1, model.state.value.currentPage)
+        assertEquals(activeUnit, model.state.value.currentDisplayUnitId)
+        assertEquals(anchor, model.state.value.webtoonScrollAnchor)
+        assertEquals(setOf(firstPage, activePage), model.state.value.visiblePageIds)
+
+        model.setLoadingPageSlots(totalPages = 3, initialPage = 0)
+        assertEquals(1, model.state.value.currentPage)
+        assertEquals(anchor, model.state.value.webtoonScrollAnchor)
+
+        model.setLoadedPages(listOf("a", "b", "c"), initialPage = 0)
+        assertEquals(1, model.state.value.currentPage)
+        assertEquals(anchor, model.state.value.webtoonScrollAnchor)
+
+        model.goToPage(2)
+        assertEquals(2, model.state.value.currentPage)
+        assertNull(model.state.value.currentDisplayUnitId)
+        assertNull(model.state.value.webtoonScrollAnchor)
+        assertTrue(model.state.value.visiblePageIds.isEmpty())
+    }
+
+    @Test
     fun `single-page viewport keeps stable slots mounted through chapter loading and error`() {
         val error = ReaderChapterState.Error(AppError.Network(), retryTargetChapterId = 7L)
         val singleSlots = ReaderState(
@@ -254,7 +298,7 @@ class ReaderScreenModelTest {
         )
         assertEquals(ReaderViewportBody.ERROR, readerViewportBody(singleSlots.copy(resolvedUrls = emptyList())))
         assertEquals(ReaderViewportBody.ERROR, readerViewportBody(singleSlots.copy(dualPageMode = true)))
-        assertEquals(ReaderViewportBody.ERROR, readerViewportBody(singleSlots.copy(readingMode = ReadingMode.WEBTOON)))
+        assertEquals(ReaderViewportBody.CONTENT, readerViewportBody(singleSlots.copy(readingMode = ReadingMode.WEBTOON)))
     }
 
     // ── UI visibility ────────────────────────────────────────────────────────

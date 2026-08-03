@@ -572,10 +572,11 @@ internal enum class ReaderViewportBody {
 }
 
 internal fun readerViewportBody(state: ReaderState): ReaderViewportBody {
-    val keepsMountedSinglePage =
-        state.readingMode != ReadingMode.WEBTOON && !state.dualPageMode && state.resolvedUrls.isNotEmpty()
+    val keepsMountedPresentation =
+        state.resolvedUrls.isNotEmpty() &&
+            (state.readingMode == ReadingMode.WEBTOON || !state.dualPageMode)
     return when {
-        keepsMountedSinglePage -> ReaderViewportBody.CONTENT
+        keepsMountedPresentation -> ReaderViewportBody.CONTENT
         state.isLoadingPages -> ReaderViewportBody.LOADING
         state.errorMessage != null -> ReaderViewportBody.ERROR
         state.resolvedUrls.isEmpty() -> ReaderViewportBody.EMPTY
@@ -695,11 +696,20 @@ private fun ReaderContent(
     onNextChapter: () -> Unit,
 ) {
     when (state.readingMode) {
-        ReadingMode.WEBTOON -> WebtoonViewer(
-            pageUrls = state.resolvedUrls, cropBorders = state.cropBordersWebtoon,
-            sidePadding = state.webtoonSidePadding, autoScroll = state.webtoonAutoScroll,
-            autoScrollSpeed = state.webtoonAutoScrollSpeed, contextMenuScope = contextMenuScope, mangaTitle = mangaTitle, chapterTitle = chapterTitle,
+        ReadingMode.WEBTOON -> WebtoonPresentationViewer(
+            chapterId = chapterId, loadGeneration = state.loadGeneration,
+            pageUrls = state.resolvedUrls, currentPage = state.currentPage,
+            currentDisplayUnitId = state.currentDisplayUnitId,
+            initialAnchor = state.webtoonScrollAnchor,
+            pageError = (state.chapterState as? ReaderChapterState.Error)?.error,
+            autoSplitPages = state.autoSplitPages, splitPageIndices = state.spreadPages,
+            cropBorders = state.cropBordersWebtoon, sidePadding = state.webtoonSidePadding,
+            autoScroll = state.webtoonAutoScroll, autoScrollSpeed = state.webtoonAutoScrollSpeed,
+            contextMenuScope = contextMenuScope, mangaTitle = mangaTitle, chapterTitle = chapterTitle,
             preloader = preloader,
+            onViewportChanged = model::settleWebtoon,
+            onRetryPage = model::requestRetry,
+            onSpreadDetected = { realIdx -> if (realIdx !in state.spreadPages) model.setSpreadPages(state.spreadPages + realIdx) },
             onNextChapter = if (readerNav?.nextToRead != null) onNextChapter else null,
         )
         ReadingMode.LTR, ReadingMode.RTL -> {

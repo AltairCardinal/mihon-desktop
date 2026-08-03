@@ -50,7 +50,14 @@ internal data class DisplayUnit(
 internal data class VisiblePageSet(
     val displayUnitId: DisplayUnitId,
     val pageIds: Set<ReaderPageId>,
-)
+    val activePageId: ReaderPageId? = pageIds.singleOrNull(),
+) {
+    init {
+        require(activePageId == null || activePageId in pageIds) {
+            "The active page must be part of the visible page set"
+        }
+    }
+}
 
 internal data class ReaderPresentationRequest(
     val chapter: ReaderChapterSession,
@@ -125,5 +132,5 @@ internal class ReaderPresentationRegistry(
 }
 
 internal val DesktopReaderPresentationRegistry = ReaderPresentationRegistry(
-    listOf(SinglePagedPresentation),
+    listOf(SinglePagedPresentation, WebtoonPresentation),
 )

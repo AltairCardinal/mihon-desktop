@@ -218,8 +218,17 @@ private fun GeneralTab(
 
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-    // Pager settings (non-Webtoon modes only)
-    if (currentMode != ReadingMode.WEBTOON) {
+    if (currentMode == ReadingMode.WEBTOON) {
+        SettingsSection(MR.strings.desktop_ui_webtoon.localized()) {
+            CheckboxRow(
+                label = MR.strings.desktop_ui_split_wide_pages.localized(),
+                checked = autoSplitPages,
+                onCheckedChange = onAutoSplitPagesChange,
+            )
+        }
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+    } else {
+        // Pager settings
         SettingsSection(MR.strings.desktop_ui_pager.localized()) {
             CheckboxRow(
                 label = MR.strings.desktop_ui_split_wide_pages.localized(),

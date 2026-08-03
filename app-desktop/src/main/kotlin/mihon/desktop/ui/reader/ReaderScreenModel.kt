@@ -15,6 +15,7 @@ import mihon.desktop.reader.ZoomState
 import mihon.desktop.reader.dualPageFromViewerFlags
 import mihon.desktop.reader.readingModeFromViewerFlags
 import mihon.desktop.ui.reader.presentation.VisiblePageSet
+import mihon.desktop.ui.reader.presentation.WebtoonViewportUpdate
 import mihon.domain.error.AppError
 import mihon.domain.reader.ReaderChapterModel
 import mihon.domain.reader.ReaderChapterState
@@ -109,6 +110,8 @@ class ReaderScreenModel(
             s.copy(
                 currentPage = page.coerceIn(0, max),
                 currentDisplayUnitId = null,
+                visiblePageIds = emptySet(),
+                webtoonScrollAnchor = null,
             )
         }
     }
@@ -123,6 +126,24 @@ class ReaderScreenModel(
                 state.copy(
                     currentPage = pageId.sourcePageIndex,
                     currentDisplayUnitId = visiblePages.displayUnitId,
+                    visiblePageIds = visiblePages.pageIds,
+                )
+            }
+        }
+    }
+
+    internal fun settleWebtoon(update: WebtoonViewportUpdate) {
+        val activePageId = update.visiblePages.activePageId ?: return
+        if (activePageId.chapterId.value != chapterId) return
+        _state.update { state ->
+            if (activePageId.sourcePageIndex !in state.resolvedUrls.indices) {
+                state
+            } else {
+                state.copy(
+                    currentPage = activePageId.sourcePageIndex,
+                    currentDisplayUnitId = update.visiblePages.displayUnitId,
+                    visiblePageIds = update.visiblePages.pageIds,
+                    webtoonScrollAnchor = update.anchor,
                 )
             }
         }
@@ -130,7 +151,12 @@ class ReaderScreenModel(
 
     fun setLoadedPages(urls: List<String>, initialPage: Int = 0) {
         _state.update { s ->
-            val page = initialPage.coerceIn(0, (urls.size - 1).coerceAtLeast(0))
+            val maxPage = (urls.size - 1).coerceAtLeast(0)
+            val page = if (s.webtoonScrollAnchor != null) {
+                s.currentPage.coerceIn(0, maxPage)
+            } else {
+                initialPage.coerceIn(0, maxPage)
+            }
             s.copy(
                 resolvedUrls = urls,
                 isLoadingPages = false,
@@ -144,10 +170,15 @@ class ReaderScreenModel(
     fun setLoadingPageSlots(totalPages: Int, initialPage: Int = 0) {
         _state.update { s ->
             val pageCount = totalPages.coerceAtLeast(0)
+            val page = if (s.webtoonScrollAnchor != null) {
+                s.currentPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
+            } else {
+                initialPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
+            }
             s.copy(
                 resolvedUrls = List(pageCount) { "" },
                 isLoadingPages = pageCount > 0,
-                currentPage = initialPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0)),
+                currentPage = page,
                 errorMessage = null,
                 chapterState = ReaderChapterState.Loading,
             )
@@ -340,7 +371,14 @@ class ReaderScreenModel(
     /** Changes reading mode. For webtoon-flagged chapters this is a no-op. */
     fun setReadingMode(mode: ReadingMode, prefs: ReaderPreferences? = null) {
         if (isWebtoon) return
-        _state.update { it.copy(readingMode = mode, currentDisplayUnitId = null) }
+        _state.update {
+            it.copy(
+                readingMode = mode,
+                currentDisplayUnitId = null,
+                visiblePageIds = emptySet(),
+                webtoonScrollAnchor = null,
+            )
+        }
         if (mode != ReadingMode.WEBTOON) prefs?.readingMode = mode
     }
 
@@ -352,13 +390,21 @@ class ReaderScreenModel(
                 dualPageMode = on,
                 forcedSinglePages = if (!on) emptySet() else s.forcedSinglePages,
                 currentDisplayUnitId = null,
+                visiblePageIds = emptySet(),
+                webtoonScrollAnchor = null,
             )
         }
         prefs?.isDualPage = on
     }
 
     fun setAutoSplitPages(on: Boolean, prefs: ReaderPreferences? = null) {
-        _state.update { it.copy(autoSplitPages = on, currentDisplayUnitId = null) }
+        _state.update { state ->
+            if (state.readingMode == ReadingMode.WEBTOON) {
+                state.copy(autoSplitPages = on)
+            } else {
+                state.copy(autoSplitPages = on, currentDisplayUnitId = null, visiblePageIds = emptySet())
+            }
+        }
         prefs?.autoSplitPages = on
     }
 

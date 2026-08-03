@@ -172,14 +172,18 @@ NonCancellable。Android 保留的 `Context`、Source/Download/Local I/O、Chapt
 Activity 生命周期均为 adapter/presentation 边界，不再拥有 page-list、page-state、scheduler、window 或
 progress 的第二套生产决策。
 
-RP-01 已在 Desktop 建立首个 production presentation consumer：`SinglePagedPresentation` 通过统一 registry
-把稳定 `ReaderPageId` 映射为 `DisplayUnitId`，LTR/RTL 宽页切片只改变显示顺序，不改变 source identity；
-settled unit 回报 `VisiblePageSet`。单页 pager 的 key 与固定 Compose 容器不再使用 URL，Loading、Ready、
-Error 和原位 Retry 在同一 identity 下切换。拖拽中的 `currentPage` 不提交进度，只有 settled unit 会把完整
-`DisplayUnitId` 写回状态，因此返回宽页时能恢复同一切片而不是退回第一片。由于 Desktop canonical session
-尚待 RD-01 接线，当前 URL slot
-只经无 I/O 临时 adapter 投影为 `ReaderChapterSession`；该 adapter 不代表 Desktop loader/session 已迁移。
-Webtoon 与 Dual 也分别留给 RP-02、RP-03，因此 ID 43 只能新增“Desktop Single 已接线”的窄证据。
+RP-01/RP-02 已在 Desktop 建立两个同级 production presentation consumer：`SinglePagedPresentation` 与
+`WebtoonPresentation` 通过统一 registry 把稳定 `ReaderPageId` 映射为 `DisplayUnitId`。LTR/RTL 宽页切片只
+改变显示顺序，不改变 source identity；单页 settled unit 回报其逻辑页，Webtoon settled viewport 回报全部
+可见页，并按固定原版 `WebtoonLayoutManager.findLastEndVisibleItemPosition` 的 last-end-visible/NO_POSITION
+规则明确 active 页。两种 renderer 的 key 与固定 Compose 容器均不再
+使用 URL，Loading、Ready、Error 和原位 Retry 在同一 identity 下切换。Single 只有 settled pager unit 才
+写回完整 `DisplayUnitId`；Webtoon 只有滚动停止后才写回 active/visible PageId 与首个可见 unit 的 offset +
+测量高度。Ready 几何变化按相对位置重放，split/merge 后按同一逻辑页回退并服从 Lazy 边界，恢复完成前不发布
+错误 viewport。条漫的 side padding、crop 和覆盖 drag/fling、只在 settled 后恢复的 auto-scroll 保持为
+presentation option，不持有 page fetch job。由于 Desktop canonical session 尚待 RD-01 接线，当前 URL slot
+仍只经无 I/O 临时 adapter 投影为 `ReaderChapterSession`；该 adapter 不代表 Desktop loader/session 已迁移。
+Dual 留给 RP-03，因此 ID 43 当前只新增“Desktop Single + Webtoon 已接线”的窄证据。
 
 因此 parity manifest 9/43/44/45/47/49/51/53/54 的 `VERIFIED` 只表示各自窄 capability 已验证；每项的
 `readerCoreMigrationScope.canonicalSessionExecutor` 在 RD-01 前必须保持 `NOT_WIRED`。删除或绕过当前

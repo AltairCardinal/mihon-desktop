@@ -47,4 +47,15 @@ class WebtoonAutoScrollTest {
             gate.action(enabled = true, lastVisibleIndex = 1, totalItemsCount = 2, lastVisibleBottom = 100, viewportEnd = 100),
         )
     }
+
+    @Test
+    fun `auto scroll pauses through user drag and fling then resumes after settlement`() {
+        val pauseState = WebtoonAutoScrollPauseState()
+
+        assertTrue(pauseState.loopEnabled(enabled = true, isUserDragging = false, isScrollInProgress = false))
+        assertEquals(false, pauseState.loopEnabled(enabled = true, isUserDragging = true, isScrollInProgress = true))
+        assertEquals(false, pauseState.loopEnabled(enabled = true, isUserDragging = false, isScrollInProgress = true))
+        assertTrue(pauseState.loopEnabled(enabled = true, isUserDragging = false, isScrollInProgress = false))
+        assertEquals(false, pauseState.loopEnabled(enabled = false, isUserDragging = false, isScrollInProgress = false))
+    }
 }
