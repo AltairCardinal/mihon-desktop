@@ -47,11 +47,11 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.image.LocalDesktopSourceImageId
 import mihon.desktop.reader.DesktopReaderRuntimeFactory
-import mihon.desktop.reader.DualPageState
 import mihon.desktop.reader.EdgePixelMatcher
 import mihon.desktop.reader.DesktopReaderPageLoader
 import mihon.desktop.reader.PagePreloader
@@ -72,6 +72,14 @@ import mihon.desktop.reader.viewerFlagsWithDualPage
 import mihon.desktop.reader.viewerFlagsWithReadingMode
 import mihon.desktop.reader.firstVirtualIndex
 import mihon.desktop.reader.realPageIndex
+import mihon.desktop.ui.reader.presentation.DesktopReaderPresentationRegistry
+import mihon.desktop.ui.reader.presentation.LegacyDesktopReaderPresentationAdapter
+import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
+import mihon.desktop.ui.reader.presentation.ReaderPresentationSnapshot
+import mihon.desktop.ui.reader.presentation.dualDisplayUnitIndexForSourcePage
+import mihon.desktop.ui.reader.presentation.firstDualPageIndex
+import mihon.desktop.ui.reader.presentation.resolveDualVisiblePages
+import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderChapterTransitionModel
 import mihon.domain.reader.ReaderTransitionDirection
@@ -369,14 +377,30 @@ internal fun readerProgressPageForTracking(state: ReaderState): Int {
     val safeCurrent = state.currentPage.coerceIn(0, pageCount - 1)
     if (!state.dualPageMode || pageCount == 1) return safeCurrent
 
-    val dualState = DualPageState(
-        totalPages = pageCount,
-        spreadPages = state.spreadPages,
-        forcedSinglePages = state.forcedSinglePages,
-        matchedPairs = state.matchedPairs,
+    val visibleProgress = state.visiblePageIds.maxOfOrNull { it.sourcePageIndex }
+    if (visibleProgress != null) return visibleProgress.coerceIn(0, pageCount - 1)
+    val presentation = state.dualPresentationSnapshot()
+    val unitIndex = presentation.dualDisplayUnitIndexForSourcePage(safeCurrent).coerceAtLeast(0)
+    return presentation.resolveDualVisiblePages(presentation.displayUnits[unitIndex].id)
+        .activePageId
+        ?.sourcePageIndex
+        ?.coerceIn(0, pageCount - 1)
+        ?: safeCurrent
+}
+
+private fun ReaderState.dualPresentationSnapshot(): ReaderPresentationSnapshot {
+    val direction = if (readingMode == ReadingMode.RTL) ReaderDirection.RTL else ReaderDirection.LTR
+    val request = LegacyDesktopReaderPresentationAdapter.dualPagedRequest(
+        chapterId = 0L,
+        generation = loadGeneration,
+        pageUrls = resolvedUrls,
+        direction = direction,
+        spreadPageIndices = spreadPages,
+        forcedSinglePageIndices = forcedSinglePages,
+        matchedPagePairs = matchedPairs,
+        splitWidePages = autoSplitPages,
     )
-    val group = dualState.getGroup(dualState.groupIndexForPage(safeCurrent))
-    return group.maxOrNull()?.coerceIn(0, pageCount - 1) ?: safeCurrent
+    return DesktopReaderPresentationRegistry.require(ReaderPresentationMode.DUAL_PAGED).present(request)
 }
 
 @Composable
@@ -421,13 +445,14 @@ private fun ReaderSideEffects(
         if (state.resolvedUrls.isNotEmpty()) preloader.preload(state.currentPage, state.resolvedUrls)
     }
     LaunchedEffect(state.showSettings) { if (!state.showSettings) focusRequester.requestFocus() }
-    LaunchedEffect(state.resolvedUrls, state.autoSpreadMatching, state.dualPageMode) {
-        model.setMatchedPairs(
-            resolveDesktopMatchedPairs(
-                autoSpreadMatching = state.autoSpreadMatching,
-                dualPageMode = state.dualPageMode,
-                pageUrls = state.resolvedUrls,
-            ),
+    LaunchedEffect(state.resolvedUrls.size, state.autoSpreadMatching, state.dualPageMode) {
+        observeDesktopMatchedPairs(
+            preloader = preloader,
+            autoSpreadMatching = state.autoSpreadMatching,
+            dualPageMode = state.dualPageMode,
+            pageCount = state.resolvedUrls.size,
+            retainedMatchedPairs = state.matchedPairs,
+            onMatchedPairsChanged = model::setMatchedPairs,
         )
     }
     LaunchedEffect(state.resolvedUrls.size, state.spreadPages, state.autoSplitPages, state.dualPageMode, state.readingMode) {
@@ -440,14 +465,43 @@ private fun ReaderSideEffects(
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(100); focusRequester.requestFocus() }
 }
 
+internal suspend fun observeDesktopMatchedPairs(
+    preloader: PagePreloader,
+    autoSpreadMatching: Boolean,
+    dualPageMode: Boolean,
+    pageCount: Int,
+    retainedMatchedPairs: Set<Pair<Int, Int>>,
+    findMatchedPairs: suspend (Int, (Int) -> androidx.compose.ui.graphics.ImageBitmap?) -> Set<Pair<Int, Int>> =
+        { count, provider -> EdgePixelMatcher().findMatchedPairs(count, provider) },
+    onMatchedPairsChanged: (Set<Pair<Int, Int>>) -> Unit,
+) {
+    var retained = retainedMatchedPairs
+    preloader.cacheRevision.collect {
+        retained = if (autoSpreadMatching && dualPageMode) {
+            retained + resolveDesktopMatchedPairs(
+                autoSpreadMatching = true,
+                dualPageMode = true,
+                pageCount = pageCount,
+                pageAt = preloader::get,
+                findMatchedPairs = findMatchedPairs,
+            )
+        } else {
+            emptySet()
+        }
+        onMatchedPairsChanged(retained)
+    }
+}
+
 internal suspend fun resolveDesktopMatchedPairs(
     autoSpreadMatching: Boolean,
     dualPageMode: Boolean,
-    pageUrls: List<String>,
-    findMatchedPairs: suspend (List<String>) -> Set<Pair<Int, Int>> = { EdgePixelMatcher().findMatchedPairs(it) },
+    pageCount: Int,
+    pageAt: (Int) -> androidx.compose.ui.graphics.ImageBitmap?,
+    findMatchedPairs: suspend (Int, (Int) -> androidx.compose.ui.graphics.ImageBitmap?) -> Set<Pair<Int, Int>> =
+        { count, provider -> EdgePixelMatcher().findMatchedPairs(count, provider) },
 ): Set<Pair<Int, Int>> =
-    if (autoSpreadMatching && dualPageMode && pageUrls.size > 1) {
-        findMatchedPairs(pageUrls)
+    if (autoSpreadMatching && dualPageMode && pageCount > 1) {
+        findMatchedPairs(pageCount, pageAt)
     } else {
         emptySet()
     }
@@ -572,9 +626,7 @@ internal enum class ReaderViewportBody {
 }
 
 internal fun readerViewportBody(state: ReaderState): ReaderViewportBody {
-    val keepsMountedPresentation =
-        state.resolvedUrls.isNotEmpty() &&
-            (state.readingMode == ReadingMode.WEBTOON || !state.dualPageMode)
+    val keepsMountedPresentation = state.resolvedUrls.isNotEmpty()
     return when {
         keepsMountedPresentation -> ReaderViewportBody.CONTENT
         state.isLoadingPages -> ReaderViewportBody.LOADING
@@ -637,13 +689,8 @@ private fun handleReaderKeyEvent(
     return when (action) {
         is ReaderPageAction.GoToPage -> {
             val target = if (state.dualPageMode && state.resolvedUrls.isNotEmpty()) {
-                val ds = DualPageState(state.resolvedUrls.size, state.spreadPages, state.forcedSinglePages, state.matchedPairs)
-                val cg = ds.groupIndexForPage(state.currentPage.coerceIn(0, state.resolvedUrls.size - 1))
-                when (action.page) {
-                    navCurrent + 1 -> ds.firstPageInGroup((cg + 1).coerceIn(0, ds.groupCount - 1))
-                    navCurrent - 1 -> ds.firstPageInGroup((cg - 1).coerceIn(0, ds.groupCount - 1))
-                    else -> ds.firstPageInGroup(action.page.coerceIn(0, ds.groupCount - 1))
-                }
+                val presentation = state.dualPresentationSnapshot()
+                presentation.firstDualPageIndex(action.page.coerceIn(presentation.displayUnits.indices))
             } else if (state.virtualPages != null) {
                 state.virtualPages.realPageIndex(action.page.coerceIn(0, state.virtualPages.size - 1))
             } else action.page
@@ -661,16 +708,11 @@ internal data class ReaderKeyboardNavigationPosition(
 
 internal fun readerKeyboardNavigationPosition(state: ReaderState): ReaderKeyboardNavigationPosition {
     if (state.dualPageMode && state.resolvedUrls.size > 1) {
-        val dualState = DualPageState(
-            totalPages = state.resolvedUrls.size,
-            spreadPages = state.spreadPages,
-            forcedSinglePages = state.forcedSinglePages,
-            matchedPairs = state.matchedPairs,
-        )
+        val presentation = state.dualPresentationSnapshot()
         val safePage = state.currentPage.coerceIn(0, state.resolvedUrls.size - 1)
         return ReaderKeyboardNavigationPosition(
-            current = dualState.groupIndexForPage(safePage),
-            total = dualState.groupCount,
+            current = presentation.dualDisplayUnitIndexForSourcePage(safePage).coerceAtLeast(0),
+            total = presentation.displayUnits.size,
         )
     }
 
@@ -729,7 +771,7 @@ private fun ReaderContent(
                 pageError = (state.chapterState as? ReaderChapterState.Error)?.error,
                 onRetryPage = model::requestRetry,
                 onSingleVisiblePagesChanged = model::settleSinglePage,
-                onSpreadPagesChanged = { model.setSpreadPages(it) },
+                onDualVisiblePagesChanged = model::settleDualPage,
                 onSpreadDetected = { realIdx -> if (realIdx !in state.spreadPages) model.setSpreadPages(state.spreadPages + realIdx) },
                 onTapCenter = { model.toggleUI() },
                 onPrevChapter = onPrevChapter,

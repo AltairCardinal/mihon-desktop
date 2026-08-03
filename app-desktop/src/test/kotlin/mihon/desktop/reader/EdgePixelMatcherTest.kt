@@ -1,11 +1,14 @@
 package mihon.desktop.reader
 
+import androidx.compose.ui.graphics.ImageBitmap
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import java.awt.Color
 import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
+import javax.imageio.ImageIO
 
 /**
  * Unit tests for [EdgePixelMatcher].
@@ -446,5 +449,37 @@ class EdgePixelMatcherTest {
             "Pages with symmetric white margins must not be detected as spread pair " +
                 "(white ≈ white is not meaningful content continuity)",
         )
+    }
+
+    @Test
+    fun `matched pairs consume only caller supplied bounded decoded images`() {
+        val cover = solidImage(40, 60, Color.WHITE)
+        val first = solidImage(40, 60, Color.WHITE)
+        val second = solidImage(40, 60, Color.WHITE)
+        for (y in 0 until 60) {
+            val color = Color((y * 4).coerceAtMost(255), y * 2, 255 - y * 3)
+            first.setRGB(37, y, color.rgb)
+            second.setRGB(2, y, color.rgb)
+        }
+        val decoded = listOf(cover, first, second).map(::toImageBitmap)
+        val requested = mutableListOf<Int>()
+
+        val matches = kotlinx.coroutines.runBlocking {
+            matcher.findMatchedPairs(decoded.size) { index ->
+                requested += index
+                decoded[index]
+            }
+        }
+
+        assertEquals(setOf(1 to 2), matches)
+        assertEquals(listOf(1, 2), requested)
+    }
+
+    private fun toImageBitmap(image: BufferedImage): ImageBitmap {
+        val bytes = ByteArrayOutputStream().use { output ->
+            ImageIO.write(image, "png", output)
+            output.toByteArray()
+        }
+        return SkiaImageDecoder.decode(bytes)
     }
 }

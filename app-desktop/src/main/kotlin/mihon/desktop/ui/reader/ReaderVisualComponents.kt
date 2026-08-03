@@ -112,26 +112,64 @@ internal fun ZoomablePagerViewer(
     pageError: AppError? = null,
     onRetryPage: (() -> Unit)? = null,
     onSingleVisiblePagesChanged: ((VisiblePageSet) -> Unit)? = null,
-    onSpreadPagesChanged: ((Set<Int>) -> Unit)? = null,
+    onDualVisiblePagesChanged: ((VisiblePageSet) -> Unit)? = null,
     onSpreadDetected: ((Int) -> Unit)? = null,
     onTapCenter: (() -> Unit)? = null,
     onPrevChapter: (() -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
 ) {
     if (pageUrls.isEmpty()) return
-    if (isDualPage && pageUrls.size > 1) {
+    val direction = if (isRtl) ReaderDirection.RTL else ReaderDirection.LTR
+    if (isDualPage) {
+        val request = remember(
+            chapterId,
+            loadGeneration,
+            pageUrls,
+            direction,
+            splitPageIndices,
+            forcedSinglePages,
+            matchedPairs,
+            autoSplitPages,
+            pageError,
+        ) {
+            LegacyDesktopReaderPresentationAdapter.dualPagedRequest(
+                chapterId = chapterId,
+                generation = loadGeneration,
+                pageUrls = pageUrls,
+                direction = direction,
+                spreadPageIndices = splitPageIndices,
+                forcedSinglePageIndices = forcedSinglePages,
+                matchedPagePairs = matchedPairs,
+                splitWidePages = autoSplitPages,
+                pageError = pageError,
+            )
+        }
+        val presentation = remember(request) {
+            DesktopReaderPresentationRegistry
+                .require(ReaderPresentationMode.DUAL_PAGED)
+                .present(request)
+        }
+        val currentPageId = request.chapter.pages[currentPage.coerceIn(pageUrls.indices)].id
         DualPagePagerViewer(
-            pageUrls = pageUrls, currentPage = currentPage, isRtl = isRtl,
-            autoSplitPages = autoSplitPages, cropBorders = cropBorders, contextMenuScope = contextMenuScope,
+            presentation = presentation, currentPageId = currentPageId,
+            currentDisplayUnitId = currentDisplayUnitId, isRtl = isRtl,
+            cropBorders = cropBorders, contextMenuScope = contextMenuScope,
             mangaTitle = mangaTitle, chapterTitle = chapterTitle, zoomState = zoomState,
-            forcedSinglePages = forcedSinglePages, matchedPairs = matchedPairs,
             preloader = preloader,
-            scaleType = scaleType, navigationMode = navigationMode, onPageChange = onPageChange,
-            onZoomChange = onZoomChange, onSpreadPagesChanged = onSpreadPagesChanged,
+            scaleType = scaleType, navigationMode = navigationMode,
+            onVisiblePagesChanged = { visiblePages ->
+                if (onDualVisiblePagesChanged != null) {
+                    onDualVisiblePagesChanged(visiblePages)
+                } else {
+                    visiblePages.activePageId?.let { onPageChange(it.sourcePageIndex) }
+                }
+            },
+            onZoomChange = onZoomChange,
+            onRetryPage = { onRetryPage?.invoke() },
+            onSpreadDetected = onSpreadDetected,
             onTapCenter = onTapCenter, onPrevChapter = onPrevChapter, onNextChapter = onNextChapter,
         )
     } else {
-        val direction = if (isRtl) ReaderDirection.RTL else ReaderDirection.LTR
         val request = remember(chapterId, loadGeneration, pageUrls, direction, autoSplitPages, splitPageIndices, pageError) {
             LegacyDesktopReaderPresentationAdapter.singlePagedRequest(
                 chapterId = chapterId,

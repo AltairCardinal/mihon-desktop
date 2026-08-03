@@ -1,7 +1,14 @@
 package mihon.desktop.ui.reader
 
 import androidx.compose.ui.graphics.asSkiaBitmap
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import mihon.desktop.reader.EdgePixelMatcher
 import mihon.desktop.reader.PagePreloader
 import mihon.desktop.reader.PreloadedPageBitmap
 import mihon.desktop.reader.SkiaImageDecoder
@@ -20,6 +27,69 @@ import javax.imageio.ImageIO
 import mihon.desktop.image.DesktopSourceImage
 
 class ReaderPageCacheIntegrationTest {
+
+    @Test
+    fun `cache revision observer matches late pages preserves pairs after eviction and never loads`() = runTest {
+        val width = 40
+        val height = 100
+        fun seamColor(y: Int): Int {
+            val red = 40 + (y * 170 / (height - 1))
+            val green = 220 - (y * 150 / (height - 1))
+            return (0xFF shl 24) or (red shl 16) or (green shl 8) or 90
+        }
+        val urls = listOf("cover", "left-half", "right-half")
+        val bytesByUrl = mapOf(
+            urls[0] to pngBytes(width, height) { _, _ -> 0xFF777777.toInt() },
+            urls[1] to pngBytes(width, height) { x, y -> if (x >= width - 5) seamColor(y) else RED },
+            urls[2] to pngBytes(width, height) { x, y -> if (x < 5) seamColor(y) else BLUE },
+        )
+        val fetchCounts = mutableMapOf<String, Int>()
+        val preloader = PagePreloader(
+            fetcher = { url ->
+                synchronized(fetchCounts) { fetchCounts[url] = fetchCounts.getOrDefault(url, 0) + 1 }
+                bytesByUrl.getValue(url)
+            },
+            windowSize = 1,
+        )
+        val updates = Channel<Pair<Long, Set<Pair<Int, Int>>>>(Channel.UNLIMITED)
+
+        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            observeDesktopMatchedPairs(
+                preloader = preloader,
+                autoSpreadMatching = true,
+                dualPageMode = true,
+                pageCount = urls.size,
+                retainedMatchedPairs = emptySet(),
+                findMatchedPairs = { count, pageAt -> EdgePixelMatcher().findMatchedPairs(count, pageAt) },
+            ) { pairs ->
+                updates.trySend(preloader.cacheRevision.value to pairs)
+            }
+        }
+
+        suspend fun awaitUpdate(revision: Long, expected: Set<Pair<Int, Int>>) {
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    while (true) {
+                        val (observedRevision, pairs) = updates.receive()
+                        if (observedRevision >= revision && pairs == expected) return@withTimeout
+                    }
+                }
+            }
+        }
+
+        awaitUpdate(preloader.cacheRevision.value, emptySet())
+        assertTrue(fetchCounts.isEmpty(), "The matcher must not load an uncached page")
+
+        preloader.preload(currentPage = 1, pageUrls = urls)
+        awaitUpdate(preloader.cacheRevision.value, setOf(1 to 2))
+        assertEquals(3, synchronized(fetchCounts) { fetchCounts.values.sum() })
+
+        preloader.clear()
+        assertEquals(0, preloader.cacheSize())
+        awaitUpdate(preloader.cacheRevision.value, setOf(1 to 2))
+        assertEquals(3, synchronized(fetchCounts) { fetchCounts.values.sum() })
+        assertEquals(setOf(urls[0], urls[1], urls[2]), synchronized(fetchCounts) { fetchCounts.keys.toSet() })
+    }
 
     @Test
     fun `late preload revision replaces the ordinary full image request with a cache hit`() = runTest {

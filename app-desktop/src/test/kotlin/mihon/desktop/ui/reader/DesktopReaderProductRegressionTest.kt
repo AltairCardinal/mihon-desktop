@@ -1,10 +1,13 @@
 package mihon.desktop.ui.reader
 
-import mihon.desktop.reader.DualPageState
 import mihon.desktop.reader.ReaderColorFilter
 import mihon.desktop.reader.ReaderKeyboardAction
 import mihon.desktop.reader.ReaderPageAction
 import mihon.desktop.reader.buildVirtualPageList
+import mihon.desktop.ui.reader.presentation.DesktopReaderPresentationRegistry
+import mihon.desktop.ui.reader.presentation.LegacyDesktopReaderPresentationAdapter
+import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
+import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.PixelBounds
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -21,38 +24,42 @@ class DesktopReaderProductRegressionTest {
 
     @Test
     fun `shared pairing keeps cover edge matching adjust and landscape parity enhancements`() {
-        val cover = DualPageState(totalPages = 4)
-        assertEquals(listOf(listOf(0), listOf(1, 2), listOf(3)), List(cover.groupCount, cover::getGroup))
-
-        val edgeMatched = DualPageState(totalPages = 6, matchedPairs = setOf(2 to 3))
+        assertEquals(
+            listOf(listOf(0), listOf(1, 2), listOf(3)),
+            dualGroups(pageCount = 4),
+        )
         assertEquals(
             listOf(listOf(0), listOf(1), listOf(2, 3), listOf(4, 5)),
-            List(edgeMatched.groupCount, edgeMatched::getGroup),
+            dualGroups(pageCount = 6, matchedPairs = setOf(2 to 3)),
         )
-
-        val parity = DualPageState(totalPages = 7, spreadPages = setOf(3))
         assertEquals(
             listOf(listOf(0), listOf(1, 2), listOf(3), listOf(4), listOf(5, 6)),
-            List(parity.groupCount, parity::getGroup),
+            dualGroups(pageCount = 7, spreadPages = setOf(3)),
         )
-        val adjusted = DualPageState(4, forcedSinglePages = setOf(1))
-        assertEquals(listOf(1), adjusted.getGroup(1))
+        assertEquals(listOf(1), dualGroups(pageCount = 4, forcedSinglePages = setOf(1))[1])
     }
 
     @Test
     fun `edge matching adapter only invokes production matcher for enabled dual page reading`() = runBlocking {
         var invocations = 0
-        val matcher: suspend (List<String>) -> Set<Pair<Int, Int>> = {
+        val matcher: suspend (Int, (Int) -> androidx.compose.ui.graphics.ImageBitmap?) -> Set<Pair<Int, Int>> = { _, _ ->
             invocations++
             setOf(2 to 3)
         }
+        val cachedPage: (Int) -> androidx.compose.ui.graphics.ImageBitmap? = { null }
 
         assertEquals(
             setOf(2 to 3),
-            resolveDesktopMatchedPairs(true, true, listOf("cover", "one", "two", "three"), matcher),
+            resolveDesktopMatchedPairs(true, true, pageCount = 4, pageAt = cachedPage, findMatchedPairs = matcher),
         )
-        assertEquals(emptySet<Pair<Int, Int>>(), resolveDesktopMatchedPairs(false, true, listOf("a", "b"), matcher))
-        assertEquals(emptySet<Pair<Int, Int>>(), resolveDesktopMatchedPairs(true, false, listOf("a", "b"), matcher))
+        assertEquals(
+            emptySet<Pair<Int, Int>>(),
+            resolveDesktopMatchedPairs(false, true, pageCount = 2, pageAt = cachedPage, findMatchedPairs = matcher),
+        )
+        assertEquals(
+            emptySet<Pair<Int, Int>>(),
+            resolveDesktopMatchedPairs(true, false, pageCount = 2, pageAt = cachedPage, findMatchedPairs = matcher),
+        )
         assertEquals(1, invocations)
     }
 
@@ -125,15 +132,28 @@ class DesktopReaderProductRegressionTest {
         assertTrue(reader.contains("loadGeneration = state.loadGeneration"), "Retry must restart the production loading effect")
         assertTrue(reader.contains("ReadingMode.WEBTOON -> WebtoonPresentationViewer("))
         assertTrue(readerVisuals.contains(".require(ReaderPresentationMode.WEBTOON)"))
+        assertTrue(readerVisuals.contains(".require(ReaderPresentationMode.DUAL_PAGED)"))
+        assertTrue(dual.contains("key = { pagerIndex -> displayUnits[pagerToUnit(pagerIndex)].id }"))
         assertTrue(webtoon.contains("key = DisplayUnit::id"), "Webtoon Lazy items must keep stable display identities")
         assertTrue(settings.contains("if (currentMode == ReadingMode.WEBTOON)"))
         assertTrue(settings.contains("desktop_ui_split_wide_pages"), "Webtoon must expose its wide-page split option")
-        assertEquals(1, occurrenceCount(reader, "model.setMatchedPairs("), "ReaderSideEffects must own one matched-pair update")
-        val edgeMatchingCall = callBlock(reader, "model.setMatchedPairs(")
-        assertTrue(edgeMatchingCall.contains("resolveDesktopMatchedPairs("))
-        assertTrue(edgeMatchingCall.contains("autoSpreadMatching = state.autoSpreadMatching"))
-        assertTrue(edgeMatchingCall.contains("dualPageMode = state.dualPageMode"))
-        assertTrue(edgeMatchingCall.contains("pageUrls = state.resolvedUrls"))
+        val edgeObserverCall = callBlock(reader, "observeDesktopMatchedPairs(")
+        assertTrue(edgeObserverCall.contains("autoSpreadMatching = state.autoSpreadMatching"))
+        assertTrue(edgeObserverCall.contains("dualPageMode = state.dualPageMode"))
+        assertTrue(edgeObserverCall.contains("pageCount = state.resolvedUrls.size"))
+        assertTrue(edgeObserverCall.contains("retainedMatchedPairs = state.matchedPairs"))
+        assertTrue(edgeObserverCall.contains("onMatchedPairsChanged = model::setMatchedPairs"))
+        assertEquals(
+            1,
+            occurrenceCount(reader, "internal suspend fun observeDesktopMatchedPairs("),
+            "The cache-revision observer must have one authoritative declaration",
+        )
+        val edgeObserverStart = reader.indexOf("internal suspend fun observeDesktopMatchedPairs(")
+        val edgeObserverEnd = reader.indexOf("internal suspend fun resolveDesktopMatchedPairs(")
+        val edgeObserverDeclaration = reader.substring(edgeObserverStart, edgeObserverEnd)
+        assertTrue(edgeObserverDeclaration.contains("preloader.cacheRevision.collect"))
+        assertTrue(edgeObserverDeclaration.contains("retained + resolveDesktopMatchedPairs("))
+        assertTrue(edgeObserverDeclaration.contains("pageAt = preloader::get"))
         assertEquals(
             1,
             occurrenceCount(reader, "internal suspend fun resolveDesktopMatchedPairs("),
@@ -142,10 +162,11 @@ class DesktopReaderProductRegressionTest {
         val matcherDeclaration = callBlock(reader, "internal suspend fun resolveDesktopMatchedPairs(")
         assertTrue(
             matcherDeclaration.contains(
-                "findMatchedPairs: suspend (List<String>) -> Set<Pair<Int, Int>> = { EdgePixelMatcher().findMatchedPairs(it) }",
+                "findMatchedPairs: suspend (Int, (Int) -> androidx.compose.ui.graphics.ImageBitmap?) -> Set<Pair<Int, Int>>",
             ),
-            "The production default must invoke EdgePixelMatcher rather than only satisfying injected tests",
+            "The production matcher must consume caller-owned bounded decoded images",
         )
+        assertTrue(matcherDeclaration.contains("EdgePixelMatcher().findMatchedPairs(count, provider)"))
 
         val autoScrollEffect = bracedBlock(webtoon, "LaunchedEffect(autoScroll, autoScrollSpeed, autoScrollLoopEnabled)")
         assertTrue(autoScrollEffect.contains("autoScrollGate.action("))
@@ -197,36 +218,15 @@ class DesktopReaderProductRegressionTest {
         assertTrue(single.contains("settledPagerIndex = { pagerState.settledPage }"))
 
         val dualPageBoxes = callBlocks(dual, "ZoomablePageBox(")
-        assertEquals(7, dualPageBoxes.size, "Every cover/split/trailing/leading/paired image branch must be audited")
-        val navigationRows = trailingLambdaCallBlocks(dual, "Row(")
-        assertEquals(2, navigationRows.size, "Split and paired layouts must each own one full-spread navigation Row")
-        navigationRows.forEachIndexed { index, row ->
-            assertTrue(
-                row.contains("readerPrimaryTapInput(zoomState.scale, navigationMode, isRtl)"),
-                "Delegating Row #$index must own the primary-tap handler",
-            )
-        }
-        val rowDelegatedPageBoxes = navigationRows.flatMap { callBlocks(it, "ZoomablePageBox(") }
-        assertEquals(4, rowDelegatedPageBoxes.size, "Two split and two paired children must delegate single taps")
-        val delegatedPageBoxes = dualPageBoxes.filter { it.contains("handlesTapNavigation = false") }
-        assertEquals(6, delegatedPageBoxes.size, "Split, paired, trailing, and leading pages must delegate full-spread taps")
-        delegatedPageBoxes.forEachIndexed { index, block ->
-            assertTrue(block.contains("handlesTapNavigation = false"), "Delegated child #$index must disable only local tap navigation")
-            assertTrue(block.contains("isRtl = isRtl"), "Delegated child #$index must retain its reading direction")
-            assertFalse(block.contains("onTapPrevious ="), "Delegated child #$index must not receive an inactive Previous callback")
-            assertFalse(block.contains("onTapNext ="), "Delegated child #$index must not receive an inactive Next callback")
-            assertFalse(block.contains("onTapCenter ="), "Delegated child #$index must not receive an inactive Menu callback")
-        }
-        val independentPageBoxes = dualPageBoxes.filterNot { it in delegatedPageBoxes }
-        assertEquals(1, independentPageBoxes.size, "Only a centered landscape page navigates independently")
-        independentPageBoxes.forEachIndexed { index, block ->
-            assertFalse(block.contains("handlesTapNavigation = false"), "Independent child #$index must retain local tap navigation")
-            assertTrue(block.contains("isRtl = isRtl"), "Independent child #$index must receive RTL direction")
-            assertTrue(block.contains("onTapPrevious = onTapPrevious"), "Independent child #$index must receive logical Previous")
-            assertTrue(block.contains("onTapNext = onTapNext"), "Independent child #$index must receive logical Next")
-        }
-        assertEquals(4, Regex("readerPrimaryTapInput\\(zoomState\\.scale, navigationMode, isRtl\\)").findAll(dual).count())
-        assertTrue(dual.contains("ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, dualState.groupCount)"))
+        assertEquals(1, dualPageBoxes.size, "All physical slots must share the same renderer path")
+        val delegatedPageBox = dualPageBoxes.single()
+        assertTrue(delegatedPageBox.contains("handlesTapNavigation = false"))
+        assertTrue(delegatedPageBox.contains("isRtl = isRtl"))
+        assertTrue(delegatedPageBox.contains("splitHalf = slot.splitHalf"))
+        assertTrue(delegatedPageBox.contains("sourceBounds = slot.sourceBounds"))
+        assertEquals(1, Regex("readerPrimaryTapInput\\(zoomState\\.scale, navigationMode, isRtl\\)").findAll(dual).count())
+        assertTrue(dual.contains("ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, displayUnits.size)"))
+        assertTrue(dual.contains("settledPagerIndex = { pagerState.settledPage }"))
         assertTrue(dual.contains("pointerInput(zoomScale, navigationMode, isRtl)"))
         assertTrue(page.contains("Modifier.pointerInput(navigationMode, isRtl, gestureCapabilities.tapNavigationEnabled)"))
         assertTrue(page.contains("val gestureCapabilities = zoomableGestureCapabilities("))
@@ -335,14 +335,37 @@ class DesktopReaderProductRegressionTest {
 
     @Test
     fun `platform reader code consumes common reader contracts instead of duplicate algorithms`() {
-        val dualState = source("app-desktop/src/main/kotlin/mihon/desktop/reader/DualPageState.kt")
+        val dualPresentation = readerSource("presentation/DualPagedPresentation.kt")
         val virtualPages = source("app-desktop/src/main/kotlin/mihon/desktop/reader/VirtualPageList.kt")
         val tapZone = readerSource("TapZone.kt")
 
-        assertTrue(dualState.contains("mihon.domain.reader.ReaderPairingState"))
-        assertFalse(dualState.contains("private fun buildGroups"))
+        assertTrue(dualPresentation.contains("ReaderPagePairing.build("))
+        assertFalse(dualPresentation.contains("private fun buildGroups"))
         assertTrue(virtualPages.contains("mihon.domain.reader.buildVirtualReaderPages"))
         assertTrue(tapZone.contains("mihon.domain.reader.ReaderNavigation"))
+    }
+
+    private fun dualGroups(
+        pageCount: Int,
+        spreadPages: Set<Int> = emptySet(),
+        forcedSinglePages: Set<Int> = emptySet(),
+        matchedPairs: Set<Pair<Int, Int>> = emptySet(),
+    ): List<List<Int>> {
+        val request = LegacyDesktopReaderPresentationAdapter.dualPagedRequest(
+            chapterId = 1L,
+            generation = 1L,
+            pageUrls = List(pageCount) { "page-$it" },
+            direction = ReaderDirection.LTR,
+            spreadPageIndices = spreadPages,
+            forcedSinglePageIndices = forcedSinglePages,
+            matchedPagePairs = matchedPairs,
+            splitWidePages = false,
+        )
+        return DesktopReaderPresentationRegistry
+            .require(ReaderPresentationMode.DUAL_PAGED)
+            .present(request)
+            .displayUnits
+            .map { unit -> unit.slots.mapNotNull { it.page?.id?.sourcePageIndex }.distinct().sorted() }
     }
 
     @Test

@@ -116,9 +116,9 @@ mihon.desktop
 ├── download/              下载管理器
 ├── extension/             扩展加载
 ├── platform/              平台实现（网络等）
-├── reader/                阅读器核心逻辑（无 UI）
-│   ├── DualPageState      页面分组算法
-│   ├── EdgePixelMatcher   跨页边缘匹配
+├── reader/                Desktop 阅读器 policy 与平台辅助
+│   ├── DualPageLayoutPolicy  兼容物理单页槽位辅助
+│   ├── EdgePixelMatcher   对有界 decoded cache 做跨页边缘匹配
 │   ├── ReaderKeyboardAction
 │   ├── ReaderNavigator
 │   └── ReaderPreferences
@@ -131,6 +131,7 @@ mihon.desktop
     │   ├── SinglePagePagerViewer.kt
     │   ├── WebtoonViewer.kt
     │   ├── ZoomablePageBox.kt
+    │   ├── presentation/  三种同级 ReaderPresentationStrategy
     │   └── ReaderBottomBar.kt
     ├── library/
     ├── browse/
@@ -142,35 +143,36 @@ mihon.desktop
 
 ## 五、核心算法设计说明
 
-### 5.1 双页分组算法（DualPageState）
+### 5.1 双页表现策略（DualPagedPresentation）
 
-**位置**：`app-desktop/src/main/kotlin/mihon/desktop/reader/DualPageState.kt`
+**位置**：`app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentation.kt`
 
-**三级优先级**：
-1. `spreadPages`（图片宽>高的横版跨页）+ `forcedSinglePages`（用户手动强制单页）→ 单独显示
-2. `matchedPairs`（EdgePixelMatcher 识别的匹配对）→ 强制配对
-3. 默认顺序配对：[0], [1,2], [3,4], ...
+`DualPagedPresentation` 与 Single/Webtoon 共用 `ReaderPresentationStrategy` registry，并委托共享
+`ReaderPagePairing.build` 生成逻辑分组。封面固定单页；spread 与 forced single 单独显示；显式
+`matchedPairs` 优先保留相邻匹配；其余 portrait 默认按 `[0], [1,2], [3,4], ...` 配对。
 
 **智能奇偶重置**：
 横版跨页在实体书中占两页物理位置，数字化后被压缩为一页，导致后续页面配对偏移。
 解决方案：跨页后统计连续普通页数量（`countRunAfter`），奇数才插入落单页，偶数直接配对。
 
-**单页定位（SinglePageSide）**：
-- `TRAILING`：页面后面有内容 → 放在阅读方向末尾侧（RTL=物理左，LTR=物理右）
-- `LEADING`：页面后面无内容（末尾孤页）→ 放在阅读方向首侧
-- `CENTER`：横版跨页 → 全幅居中
+**固定物理布局**：`DualPageDisplayUnitFrame` 始终在窗口中央挂载同一双槽画布，并保留水平安全边距。
+横图或竖图封面在 LTR/RTL 和环境 locale RTL 下都位于绝对物理左槽，右槽保持为空；普通 pair 才按阅读方向
+交换两页。末尾或 forced single
+仍保留两个物理槽，不会缩成贴窗口边缘的单槽；单张 landscape spread 使用同一居中 frame 全幅显示。
 
-**UI 实现**：使用 `Box(contentAlignment = Alignment.CenterEnd/CenterStart)`，
-`CenterEnd/CenterStart` 是 Compose 方向感知 API，RTL/LTR 下自动映射到正确物理位置，
-代码中无任何 `isRtl` 判断。
+`DisplayUnitId` 与 `DisplaySlotId` 只由稳定 `ReaderPageId`、切片和 mode 组成。任一页从 Loading 变为
+Ready/Error/Retry 时，只替换槽内内容，不替换 pair、pager key 或 zoom 容器。settled pair 上报所有实际可见
+PageId，并以最大 source index 推进阅读进度。
 
 ### 5.2 跨页边缘匹配算法（EdgePixelMatcher）
 
 **位置**：`app-desktop/src/main/kotlin/mihon/desktop/reader/EdgePixelMatcher.kt`
 
-判定两页是否为同一物理跨页的扫描结果，满足任一条件即判定为跨页：
+生产 matcher 只接收 `PagePreloader` 有界 decoded cache 中已有的 `ImageBitmap`。它不读取 URL、不发起网络
+请求，也不拥有独立加载任务；缓存中暂时缺页时跳过，production observer 待 cache revision 变化后再判断。
+新发现的 pair 与当前章节已确认结果做并集，因此缓存淘汰不会让双页排版反复跳变。
 
-**条件 A — 色差匹配**：
+**内容连续性匹配**：
 取左页右侧边缘列与右页左侧边缘列的像素，计算逐像素 RGB 绝对差的均值。
 均值 < `threshold`（默认 30）即认为颜色连续。
 
@@ -179,18 +181,16 @@ mihon.desktop
 2. **暗边守卫**：双侧 80% 以上像素 max(R,G,B) < 50（纯黑边框）→ 拒绝
 3. **低方差守卫**：双侧像素亮度方差均 < 100（纯色均匀区域）→ 拒绝
 
-**条件 B — 白边装订检测**：
-扫描版经过清理后，两页内侧装订处往往为纯白区域。
-对内侧取 20 列多行采样，80% 以上像素 minChannel > 220 即判定为白边装订。
-双侧均为白边时仍拒绝（避免两页各有白色页边误判）。
+白边装订检测仍作为纯算法诊断/回归辅助，但不参与生产 `isSpreadPair`：两张独立漫画页通常也各有装订侧
+白边，仅凭白边无法区分“同一跨页的两半”和“相邻独立页”，会产生系统性误配。
 
 **横版跨页判定**：图片 `width > height`（严格大于，方形图不算）。
 
 ### 5.3 RTL/LTR 方向处理原则
 
-- `HorizontalPager` 通过外层 `CompositionLocalProvider(LocalLayoutDirection)` 切换方向，不反转页面 URL 顺序
-- `Alignment.CenterEnd/CenterStart` 在 Compose 中是方向感知 API，RTL/LTR 下自动映射，无需 `isRtl` 条件判断
-- `DualPageState` 和 `EdgePixelMatcher` 是纯 Kotlin，零方向依赖
+- `DualPagedPresentation` 保持 source identity 顺序，普通 pair 仅在生成物理槽时按 LTR/RTL 交换
+- 封面槽位不随方向变化：始终为物理左槽；pager 的阅读方向与 frame 的物理坐标分离
+- `EdgePixelMatcher` 同时比较两种边缘朝向，本身不决定阅读方向或页序
 
 ---
 
@@ -219,8 +219,15 @@ mihon.desktop
 单元测试覆盖核心算法：
 ```
 app-desktop/src/test/kotlin/mihon/desktop/reader/
-├── EdgePixelMatcherTest.kt   （色差匹配、白边检测、三重守卫）
-└── PhaseEReaderTest.kt       （DualPageState 分组、奇偶重置、单页定位）
+├── EdgePixelMatcherTest.kt   （色差匹配、白边误判守卫、仅消费 decoded cache）
+└── PhaseEReaderTest.kt       （共享配对、奇偶重置与兼容布局辅助）
+
+app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/
+├── DualPagedPresentationTest.kt       （LTR/RTL、封面、pair、spread 与稳定身份）
+└── DualPagePresentationIdentityTest.kt （固定双槽 Compose 布局与 production selector）
+
+app-desktop/src/test/kotlin/mihon/desktop/ui/reader/
+└── ReaderPageCacheIntegrationTest.kt  （真实 preload revision、晚到匹配、淘汰保留与零额外 fetch）
 ```
 
 运行：
@@ -228,8 +235,7 @@ app-desktop/src/test/kotlin/mihon/desktop/reader/
 ./gradlew :app-desktop:jvmTest
 ```
 
-测试数据：Chainsaw Man Vol.1 Ch.1（53页，含横版跨页和方形封面）
-路径：`/Users/altair/.mihon/downloads/2499283573021220255/Chainsaw Man/Vol.1 Ch.1_ A Dog and a Chainsaw/`
+边缘匹配测试使用进程内合成 bitmap，不依赖个人下载目录或网络资源。
 
 ---
 

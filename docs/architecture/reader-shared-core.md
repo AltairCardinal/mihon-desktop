@@ -8,9 +8,9 @@
   priority/generation scheduler、encoded store contract、current/previous/next 章节窗口、跨章激活及 settled
   viewport 进度决策；Desktop `PagePreloader` 也消费同一 scheduler；
 - 另已共享：解码/cache contract、宽图拆分/配对纯算法、输入导航、章节过滤、reader entry resolver 和滤镜参数；
-- RP-01/RP-02 已建立 Desktop `ReaderPresentationStrategy`、稳定 `DisplayUnitId`/`VisiblePageSet` 与 mode
-  registry，单页和 Webtoon production selector 已迁移；
-- 尚未共享：Desktop Dual presentation，以及 production materialize/session/window/progress producer wiring；
+- RP-01～RP-03 已建立 Desktop `ReaderPresentationStrategy`、稳定 `DisplayUnitId`/`VisiblePageSet` 与 mode
+  registry，单页、Webtoon 和 Dual production selector 均已迁移；
+- 尚未共享：Desktop production materialize/session/window/progress producer wiring；
 - RA-01 已收口 Android：`ReaderViewModel`、`ChapterLoader`、`HttpPageLoader` 与 `ReaderChapter` 只负责
   lifecycle、source/download/local/cache 和旧 View 状态投影；page-list、page-state、scheduler、window 与
   progress 决策全部来自 shared 实现。Desktop `DesktopReaderPageLoader/ReaderScreenModel` 的私有运行决策
@@ -32,7 +32,7 @@ Android ReaderActivity / DesktopReaderScreen
                     │
                     ▼
            presentation strategy
-       Single / Webtoon / optional Dual
+          Single / Webtoon / Dual
                     │
           DisplayUnit + VisiblePageSet
                     │
@@ -122,17 +122,31 @@ Single、Webtoon 和 Dual 是 registry 中同级策略：
 Pairing、双槽、封面和屏幕宽度禁止进入 `ReaderSessionCore`。双页 settled 时必须上报实际可见的全部
 `PageId`；只上报 `firstPage` 会让末页 pair 的进度不完整。
 
-当前 RP-01/RP-02 已在同一 registry 注册 `SinglePagedPresentation` 与 `WebtoonPresentation`。Single 将
-canonical `ReaderPageSession` 映射为单页或宽页切片 `DisplayUnit`；Webtoon 将逻辑页/切片映射为连续
-`DisplayUnit`。两者均以 `PageId + splitHalf + mode` 组成稳定 key，Loading、Ready 和 Error + Retry 在同一
-Compose 容器内切换，URL/encoded ref 不参与 identity。Single 仅在 pager settled 后写回完整
-`DisplayUnitId`；Webtoon 仅在滚动停止后写回全部可见 `PageId`、按固定原版 last-end-visible/NO_POSITION
-规则选出的 active `PageId`，以及首个可见 unit 的 offset 与测量高度。Ready 内容改变高度时按相对位置重放
-锚点；宽页 split/merge 后若旧 unit 不再存在，会回退到同一逻辑页并服从 Lazy 边界，不会跳到后续页或先发布
-错误 viewport。side padding、crop 与覆盖 drag/fling、只在滚动 settled 后恢复的 auto-scroll 都是 renderer
-option，presentation 不持有 fetch job。现有 Desktop `resolvedUrls` 进入策略前仍只经过一个无 I/O 的迁移 adapter；
-该 adapter 不拥有 loader，必须在 RD-01 直接接入 `ReaderSessionCore` snapshot 时删除。Dual 仍使用旧 renderer，
-由 RP-03 迁移，因此目前不能宣称三模式 registry 已关闭。
+当前 RP-01～RP-03 已在同一 registry 注册 `SinglePagedPresentation`、`WebtoonPresentation` 与
+`DualPagedPresentation`。Single 将 canonical `ReaderPageSession` 映射为单页或宽页切片 `DisplayUnit`；
+Webtoon 将逻辑页/切片映射为连续 `DisplayUnit`；Dual 调用共享 `ReaderPagePairing`，把封面、相邻 portrait、
+forced single、spread、edge match 与 landscape parity 映射为一槽或固定两槽 display unit。三者均以
+`PageId + splitHalf + mode` 组成稳定 key，Loading、Ready 和 Error + Retry 在同一 Compose 容器内切换，
+URL/encoded ref 不参与 identity。
+
+Single 仅在 pager settled 后写回完整 `DisplayUnitId`；Webtoon 仅在滚动停止后写回全部可见 `PageId`、按固定
+原版 last-end-visible/NO_POSITION 规则选出的 active `PageId`，以及首个可见 unit 的 offset 与测量高度。
+Ready 内容改变高度时按相对位置重放锚点；宽页 split/merge 后若旧 unit 不再存在，会回退到同一逻辑页并服从
+Lazy 边界，不会跳到后续页或先发布错误 viewport。Dual 的 settled display unit 上报去重后的全部可见
+`PageId`，并以最大 source index 作为 active progress；最终 pair 只有实际包含末页时才完成章节。
+
+Dual renderer 始终挂载一个带水平安全边距、相对窗口居中的固定双槽 frame：封面无论横竖比例、章节长度、
+阅读方向或环境 locale 方向，都占绝对物理左槽，右槽为空；普通 pair 只按阅读方向改变两页的物理分配，
+环境 RTL 不得再次翻转槽位。单页不会退化为贴边单槽。pair/slot identity 不随任一页的
+Loading→Ready/Error 改变。宽图切片继续通过统一 `ZoomablePageBox` 的 `splitHalf/sourceBounds` 渲染，所以
+右键保存消费与屏幕相同的实际切片。自动 edge matching 只读取 `PagePreloader` 的有界 decoded cache；matcher
+没有 URL 或网络入口，也不拥有 fetch job。production observer 收集 cache revision：晚到解码会触发重算，
+新发现与本章已确认 pair 做并集；缓存淘汰不会让当前章节的排版来回跳变。
+
+side padding、crop、双页组合选项与覆盖 drag/fling、只在滚动 settled 后恢复的 auto-scroll 都是 renderer /
+presentation option。现有 Desktop `resolvedUrls` 进入三种策略前仍只经过一个无 I/O 的迁移 adapter；该 adapter
+不拥有 loader，必须在 RD-01 直接接入 `ReaderSessionCore` snapshot 时删除。三模式 presentation 门禁已关闭，
+但这不能证明 Desktop canonical session executor 已接线。
 
 ## Platform adapters
 

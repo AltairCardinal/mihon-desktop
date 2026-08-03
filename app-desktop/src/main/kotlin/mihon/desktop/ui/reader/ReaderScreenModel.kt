@@ -149,6 +149,23 @@ class ReaderScreenModel(
         }
     }
 
+    internal fun settleDualPage(visiblePages: VisiblePageSet) {
+        val activePageId = visiblePages.activePageId ?: return
+        if (activePageId.chapterId.value != chapterId) return
+        _state.update { state ->
+            if (activePageId.sourcePageIndex !in state.resolvedUrls.indices) {
+                state
+            } else {
+                state.copy(
+                    currentPage = activePageId.sourcePageIndex,
+                    currentDisplayUnitId = visiblePages.displayUnitId,
+                    visiblePageIds = visiblePages.pageIds,
+                    webtoonScrollAnchor = null,
+                )
+            }
+        }
+    }
+
     fun setLoadedPages(urls: List<String>, initialPage: Int = 0) {
         _state.update { s ->
             val maxPage = (urls.size - 1).coerceAtLeast(0)

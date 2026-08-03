@@ -437,16 +437,16 @@ class ReaderFixedMainAuthorityTest {
     }
 
     @Test
-    fun `RP02 records wired Desktop single and webtoon presentation slices`() {
+    fun `RP03 records all three wired Desktop presentation slices`() {
         val item = Json.parseToJsonElement(Files.readString(manifestPath)).jsonArray
             .single { it.jsonObject.getValue("id").jsonPrimitive.content.toInt() == 43 }
             .jsonObject
         val scope = item.getValue("readerCoreMigrationScope").jsonObject
 
-        assertEquals("RP-02", scope.requiredText("presentationTask"))
+        assertEquals("RP-03", scope.requiredText("presentationTask"))
         assertEquals("WIRED", scope.requiredText("desktopSinglePresentation"))
         assertEquals("WIRED", scope.requiredText("desktopWebtoonPresentation"))
-        assertEquals("NOT_WIRED", scope.requiredText("desktopDualPresentation"))
+        assertEquals("WIRED", scope.requiredText("desktopDualPresentation"))
         assertEquals("REMOVE_RD-01", scope.requiredText("legacyDesktopStateAdapter"))
         assertEquals("NOT_WIRED", scope.requiredText("canonicalSessionExecutor"))
 
@@ -471,6 +471,9 @@ class ReaderFixedMainAuthorityTest {
             "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentation.kt" in desktopPaths,
         )
         assertTrue(
+            "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentation.kt" in desktopPaths,
+        )
+        assertTrue(
             "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt" in desktopPaths,
         )
         assertTrue(
@@ -478,6 +481,9 @@ class ReaderFixedMainAuthorityTest {
         )
         assertTrue(
             "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt" in desktopPaths,
+        )
+        assertTrue(
+            "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt" in desktopPaths,
         )
 
         val behaviorMethods = item.getValue("behaviorMethods").jsonObject
@@ -513,8 +519,27 @@ class ReaderFixedMainAuthorityTest {
                 .jsonArray
                 .any { it.jsonPrimitive.content == "production webtoon selector mounts registry display units with stable lazy identities" },
         )
+        assertTrue(
+            behaviorMethods
+                .getValue(
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt",
+                )
+                .jsonArray
+                .any { it.jsonPrimitive.content == "portrait pairs follow physical LTR and RTL slots while reporting both pages" },
+        )
+        assertTrue(
+            behaviorMethods
+                .getValue(
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt",
+                )
+                .jsonArray
+                .any {
+                    it.jsonPrimitive.content ==
+                        "mounted cover keeps a centered two-slot frame with the page in the physical left slot"
+                },
+        )
         assertTrue(item.requiredText("verificationScope").contains("does not prove shared ReaderSessionCore"))
-        assertTrue(item.requiredText("verificationScope").contains("Dual presentation migration"))
+        assertTrue(item.requiredText("verificationScope").contains("three same-level presentation strategies"))
     }
 
     @Test

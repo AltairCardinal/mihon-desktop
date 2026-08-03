@@ -1598,11 +1598,14 @@ class DesktopProductCapabilityContractTest {
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderPageCacheIntegrationTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagePresentationIdentityTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt",
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt",
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/WebtoonAutoScrollTest.kt",
                 ),
             49 to
@@ -1657,7 +1660,17 @@ class DesktopProductCapabilityContractTest {
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt" to
                         mapOf(
                             "shared pairing keeps cover edge matching adjust and landscape parity enhancements" to
-                                setOf("DualPageState(", "matchedPairs", "forcedSinglePages"),
+                                setOf("dualGroups(", "matchedPairs", "forcedSinglePages"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt" to
+                        mapOf(
+                            "matched pairs consume only caller supplied bounded decoded images" to
+                                setOf("matcher.findMatchedPairs", "requested"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderPageCacheIntegrationTest.kt" to
+                        mapOf(
+                            "cache revision observer matches late pages preserves pairs after eviction and never loads" to
+                                setOf("observeDesktopMatchedPairs", "PagePreloader", "EdgePixelMatcher"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt" to
                         mapOf(
@@ -1665,6 +1678,8 @@ class DesktopProductCapabilityContractTest {
                                 setOf("model.settleSinglePage", "currentDisplayUnitId"),
                             "single-page viewport keeps stable slots mounted through chapter loading and error" to
                                 setOf("readerViewportBody", "ReaderViewportBody.CONTENT"),
+                            "settled dual-page viewport stores both pages and advances to maximum visible progress" to
+                                setOf("model.settleDualPage", "visiblePageIds"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt" to
                         mapOf(
@@ -1707,6 +1722,32 @@ class DesktopProductCapabilityContractTest {
                                 setOf("WebtoonDisplayUnitList(", "firstVisibleItemScrollOffset"),
                             "mounted list keeps logical page and bounded offset when split anchor merges" to
                                 setOf("WebtoonDisplayUnitList(", "splitAnchor"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt" to
+                        mapOf(
+                            "cover occupies the physical left slot for both reading directions" to
+                                setOf("DualPagedPresentation", "assertNull"),
+                            "landscape cover remains whole in the physical left slot for one and many page chapters" to
+                                setOf("DualPagedPresentation", "splitPageIds", "assertNull"),
+                            "portrait pairs follow physical LTR and RTL slots while reporting both pages" to
+                                setOf("resolveDualVisiblePages", "activePageId"),
+                            "late content and state changes preserve pair and slot identities" to
+                                setOf("DisplayUnit::id", "DisplaySlot::id"),
+                            "wide spread can occupy two physical slice slots without changing source page identity" to
+                                setOf("PageSplitHalf.RIGHT", "resolveDualVisiblePages"),
+                            "registry exposes dual beside single and webtoon" to
+                                setOf("DesktopReaderPresentationRegistry", "ReaderPresentationMode.DUAL_PAGED"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt" to
+                        mapOf(
+                            "mounted cover keeps a centered two-slot frame with the page in the physical left slot" to
+                                setOf("DualPageDisplayUnitFrame", "assertCentered"),
+                            "pair frame identity survives either page loading ready and error changes" to
+                                setOf("DualPageDisplayUnitCompositionIdentityKey", "assertSame"),
+                            "production dual selector mounts registry display units" to
+                                setOf("ZoomablePagerViewer(", "DualPageDisplayUnitIdKey"),
+                            "visible-page reporting waits for settled pager and reports both pair pages" to
+                                setOf("DualPageSettledVisiblePageReporter", "settled = 1"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/WebtoonAutoScrollTest.kt" to
                         mapOf(
@@ -1910,34 +1951,40 @@ class DesktopProductCapabilityContractTest {
                         setOf("ReaderPagePairing.build"),
                     "app-desktop/src/main/kotlin/mihon/desktop/reader/VirtualPageList.kt" to
                         setOf("buildVirtualReaderPages"),
-                    "app-desktop/src/main/kotlin/mihon/desktop/reader/DualPageState.kt" to
-                        setOf("ReaderPairingState", "PagePairingOptions"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/EdgePixelMatcher.kt" to
+                        setOf("findMatchedPairs(", "ImageBitmap"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt" to
                         setOf("interface ReaderPresentationStrategy", "data class DisplayUnit", "data class VisiblePageSet"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt" to
                         setOf("object SinglePagedPresentation", "splitPageBounds"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentation.kt" to
                         setOf("object WebtoonPresentation", "resolveWebtoonViewport", "WebtoonScrollAnchor"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentation.kt" to
+                        setOf("object DualPagedPresentation", "ReaderPagePairing.build", "resolveDualVisiblePages"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderState.kt" to
                         setOf("currentDisplayUnitId", "visiblePageIds", "webtoonScrollAnchor"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt" to
-                        setOf("fun settleSinglePage", "fun settleWebtoon", "currentDisplayUnitId"),
+                        setOf("fun settleSinglePage", "fun settleWebtoon", "fun settleDualPage", "currentDisplayUnitId"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt" to
                         setOf(
                             "readerViewportBody(state)",
                             "onSingleVisiblePagesChanged = model::settleSinglePage",
                             "onViewportChanged = model::settleWebtoon",
+                            "onDualVisiblePagesChanged = model::settleDualPage",
                         ),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt" to
                         setOf(
                             "DesktopReaderPresentationRegistry",
                             "ReaderPresentationMode.SINGLE_PAGED",
                             "ReaderPresentationMode.WEBTOON",
+                            "ReaderPresentationMode.DUAL_PAGED",
                         ),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt" to
                         setOf("key = { pagerIndex", "ReaderDisplayUnitCompositionIdentityKey"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt" to
                         setOf("key = DisplayUnit::id", "WebtoonSettledViewportReporter", "WebtoonDisplayUnitCompositionIdentityKey"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt" to
+                        setOf("key = { pagerIndex", "DualPageSettledVisiblePageReporter", "DualPageDisplayUnitCompositionIdentityKey"),
                 ),
             44 to
                 mapOf(

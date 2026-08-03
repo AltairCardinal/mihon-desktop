@@ -1,7 +1,8 @@
 package mihon.desktop.reader
 
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asSkiaBitmap
 import java.awt.image.BufferedImage
-import javax.imageio.ImageIO
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -9,24 +10,17 @@ import kotlinx.coroutines.withContext
  * Detects pairs of adjacent manga pages that are two halves of the same
  * physical double-page spread.
  *
- * Two complementary signals are used (either is sufficient for a match):
- *
- * 1. **Colour continuity** — the inner edges share continuous artwork.
- *    Sampled via [sampleEdge] + [computeEdgeDistance].
- *
- * 2. **White gutter** — the inner edges of both pages are predominantly
- *    white/light.  Scanned spreads that have been digitally cleaned often
- *    have the binding area replaced with a plain white margin rather than
- *    continuous artwork, so colour continuity alone misses them.
- *    Detected via [hasWhiteGutter] + [isWhiteGutterPair].
+ * Production matching uses colour continuity with meaningful edge detail.
+ * White, dark and low-variance edges are rejected because equal page margins
+ * are not evidence that two independent pages form one spread.
  *
  * ──────────────────────────────────────────────────────────
  * Android migration note
  * ──────────────────────────────────────────────────────────
- * [computeEdgeDistance] and [sampleEdge] operate on [IntArray] (ARGB) and
- * are pure Kotlin.  [hasWhiteGutter] uses [BufferedImage.getRGB].
- * On Android, replace [loadImage] with Coil/Glide bitmap loading and
- * adapt the pixel-access calls to `android.graphics.Bitmap.getPixel()`.
+ * [findMatchedPairs] accepts only caller-owned, already decoded [ImageBitmap]
+ * values from a bounded cache and performs no URL resolution or network I/O.
+ * The [BufferedImage] overloads remain test helpers for the pure sampling and
+ * false-positive guards.
  */
 class EdgePixelMatcher(
     /** Number of evenly-spaced sample points along each edge column. */
@@ -74,20 +68,26 @@ class EdgePixelMatcher(
      * Scans all adjacent page pairs and returns the indices of pages that
      * should be displayed together as a dual-page spread.
      *
-     * @param pageUrls Ordered list of page image URLs.
+     * [pageAt] must return an already bounded decoded image owned by the caller's cache.
+     * The matcher never resolves URLs or performs network I/O.
+     *
+     * @param pageCount Number of logical source pages.
      * @return Set of (smallerIndex, largerIndex) pairs that should be matched.
      */
-    suspend fun findMatchedPairs(pageUrls: List<String>): Set<Pair<Int, Int>> =
+    suspend fun findMatchedPairs(
+        pageCount: Int,
+        pageAt: (Int) -> ImageBitmap?,
+    ): Set<Pair<Int, Int>> =
         withContext(Dispatchers.IO) {
             val result = mutableSetOf<Pair<Int, Int>>()
-            if (pageUrls.size < 3) return@withContext result // need cover + ≥2 pages
+            if (pageCount < 3) return@withContext result // need cover + ≥2 pages
 
             // Skip page 0 (cover).  Scan pairs (1,2), (2,3), (3,4), …
             var i = 1
-            while (i + 1 < pageUrls.size) {
+            while (i + 1 < pageCount) {
                 try {
-                    val imgA = loadImage(pageUrls[i])
-                    val imgB = loadImage(pageUrls[i + 1])
+                    val imgA = pageAt(i)
+                    val imgB = pageAt(i + 1)
                     if (imgA != null && imgB != null) {
                         // Landscape images are full-spread pages already handled by spreadPages;
                         // they cannot be halves of a scan spread — skip to avoid false positives.
@@ -102,7 +102,7 @@ class EdgePixelMatcher(
                         }
                     }
                 } catch (_: Exception) {
-                    // Image load failure — skip this pair
+                    // Cached image sampling failure — skip this pair.
                 }
                 i++
             }
@@ -125,6 +125,15 @@ class EdgePixelMatcher(
      */
     internal fun isSpreadPair(imgA: BufferedImage, imgB: BufferedImage): Boolean =
         hasContentEdgeMatch(imgA, imgB)
+
+    private fun isSpreadPair(imgA: ImageBitmap, imgB: ImageBitmap): Boolean =
+        hasContentContinuity(
+            sampleEdge(imgA, Side.RIGHT, samplePoints),
+            sampleEdge(imgB, Side.LEFT, samplePoints),
+        ) || hasContentContinuity(
+            sampleEdge(imgA, Side.LEFT, samplePoints),
+            sampleEdge(imgB, Side.RIGHT, samplePoints),
+        )
 
     /**
      * Returns true if the inner edges of two pages share continuous artwork
@@ -338,6 +347,23 @@ class EdgePixelMatcher(
         }
     }
 
+    private fun sampleEdge(
+        image: ImageBitmap,
+        side: Side,
+        points: Int,
+    ): IntArray {
+        val bitmap = image.asSkiaBitmap()
+        val x = when (side) {
+            Side.LEFT -> 2.coerceAtMost(bitmap.width - 1)
+            Side.RIGHT -> (bitmap.width - 3).coerceAtLeast(0)
+        }
+        val step = bitmap.height.toDouble() / points.coerceAtLeast(1)
+        return IntArray(points) { index ->
+            val y = (index * step).toInt().coerceIn(0, bitmap.height - 1)
+            bitmap.getColor(x, y)
+        }
+    }
+
     /**
      * Computes the mean per-channel absolute colour distance between two
      * pixel arrays.
@@ -358,12 +384,5 @@ class EdgePixelMatcher(
             totalDist += dr + dg + db
         }
         return totalDist.toDouble() / len
-    }
-
-    private fun loadImage(urlString: String): BufferedImage? = try {
-        val url = java.net.URI(urlString).toURL()
-        ImageIO.read(url)
-    } catch (_: Exception) {
-        null
     }
 }

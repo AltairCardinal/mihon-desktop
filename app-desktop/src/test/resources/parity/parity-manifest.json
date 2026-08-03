@@ -1811,7 +1811,9 @@
         "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt": ["fork-added pairing adapter and shared core produce the same enhancement vectors"],
         "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["fork-added shared portrait pairing enhancement groups adjacent pages"],
         "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt": ["LTR single spread produces LEFT then RIGHT"],
-        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt": ["shared pairing keeps cover edge matching adjust and landscape parity enhancements"]
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt": ["shared pairing keeps cover edge matching adjust and landscape parity enhancements"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt": ["cover occupies the physical left slot for both reading directions", "portrait pairs follow physical LTR and RTL slots while reporting both pages"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt": ["mounted cover keeps a centered two-slot frame with the page in the physical left slot", "production dual selector mounts registry display units"]
       }
     },
     "authoritativeImplementation": "fixed main 的 PagerViewerAdapter/PagerPageHolder 与 WebtoonAdapter/WebtoonPageHolder 提供单页顺序、RTL 反转、章节过渡与同一宽源页拆分/旋转；WebtoonLayoutManager.findLastEndVisibleItemPosition 提供 last-end-visible active 页选择且无匹配时返回 NO_POSITION；固定原版没有相邻 portrait 页配对默认算法",
@@ -1834,17 +1836,20 @@
     ],
     "desktopConsumerAdapterPaths": [
       "app-desktop/src/main/kotlin/mihon/desktop/reader/VirtualPageList.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/reader/DualPageState.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/reader/DualPageLayoutPolicy.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/reader/EdgePixelMatcher.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/PageSplitHalf.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentation.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentation.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderState.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -1860,9 +1865,11 @@
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/VirtualPageList.kt", "symbol": "fun buildVirtualPageList(", "line": 8},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt", "symbol": "object SinglePagedPresentation", "line": 15},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentation.kt", "symbol": "object WebtoonPresentation", "line": 12},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentation.kt", "symbol": "object DualPagedPresentation", "line": 24},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "fun ZoomablePagerViewer(", "line": 90},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt", "symbol": "fun SinglePagePagerViewer(", "line": 53},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt", "symbol": "fun WebtoonViewer(", "line": 75}
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt", "symbol": "fun WebtoonViewer(", "line": 75},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt", "symbol": "fun DualPagePagerViewer(", "line": 206}
       ],
       "FIXTURE": [
         {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt#fork-added pairing adapter and shared core produce the same enhancement vectors", "productionMarkers": ["PagePairingAlgorithm.buildPairings", "ReaderPagePairing.build"]},
@@ -1873,7 +1880,12 @@
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt#viewport reports every visible page and uses fixed-main last end-visible active rule", "productionMarkers": ["resolveWebtoonViewport", "activePageId"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt#mounted list restores relative anchor when ready content changes item geometry", "productionMarkers": ["WebtoonDisplayUnitList", "firstVisibleItemScrollOffset"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt#production webtoon selector mounts registry display units with stable lazy identities", "productionMarkers": ["WebtoonPresentationViewer", "WebtoonDisplayUnitIdKey"]},
-        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/WebtoonAutoScrollTest.kt#auto scroll pauses through user drag and fling then resumes after settlement", "productionMarkers": ["WebtoonAutoScrollPauseState", "isScrollInProgress"]}
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/WebtoonAutoScrollTest.kt#auto scroll pauses through user drag and fling then resumes after settlement", "productionMarkers": ["WebtoonAutoScrollPauseState", "isScrollInProgress"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt#portrait pairs follow physical LTR and RTL slots while reporting both pages", "productionMarkers": ["DualPagedPresentation.present", "resolveDualVisiblePages"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#mounted cover keeps a centered two-slot frame with the page in the physical left slot", "productionMarkers": ["DualPageDisplayUnitFrame", "DualPagePhysicalSlot.LEFT"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#production dual selector mounts registry display units", "productionMarkers": ["ZoomablePagerViewer", "DualPageDisplayUnitIdKey"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt#matched pairs consume only caller supplied bounded decoded images", "productionMarkers": ["matcher.findMatchedPairs", "ImageBitmap"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderPageCacheIntegrationTest.kt#cache revision observer matches late pages preserves pairs after eviction and never loads", "productionMarkers": ["observeDesktopMatchedPairs", "PagePreloader", "EdgePixelMatcher"]}
       ]
     },
     "deviations": [
@@ -1882,30 +1894,37 @@
       { "classification": "CORRECTNESS_BUGFIX", "description": "Odd-pixel split bounds intentionally preserve the center line that historical ImageUtil.splitInHalf omitted." },
       { "classification": "PLATFORM_ADAPTER", "description": "Android View adapters and Desktop Compose/Skia rendering remain separate consumers of the shared enhancement." }
     ],
-    "desktopImplementation": "ReaderPresentationStrategy/DisplayUnit/VisiblePageSet mode registry 现由 SinglePagedPresentation 与同级 WebtoonPresentation 共同驱动 Desktop production selector。Pager 在 settled 后写回完整 DisplayUnitId；Webtoon 在滚动停止后写回全部可见 PageId、fixed-main active PageId 与包含测量高度的滚动锚点。Ready 几何变化按相对位置重放，split/merge 缺失旧 unit 时回退同一逻辑页并由 Lazy 边界夹取，不先发布错误 viewport。两者均以稳定 PageId/DisplayUnitId 在 Loading/Ready/Error + Retry 间保留固定容器，URL 仅作内容；Webtoon 的宽页连续切片、side padding、裁边和覆盖 drag/fling 的可暂停自动滚动均留在 presentation/renderer。VirtualPageList/DualPageState 仍服务待迁移的双页与现有 Desktop options。",
+    "desktopImplementation": "ReaderPresentationStrategy/DisplayUnit/VisiblePageSet mode registry 现由 SinglePagedPresentation、WebtoonPresentation 与 DualPagedPresentation 三个同级策略共同驱动 production selector。Dual 直接消费 shared ReaderPagePairing，把相邻 portrait、cover-single、forced single、spread、edge match 与 landscape parity 映射为稳定物理双槽；横图或竖图封面在 LTR/RTL 和环境 locale RTL 中均占居中 frame 的绝对物理左槽，单页章节也不缩成单槽。pair settled 上报全部可见 PageId 并以最大 source progress 为 active；Loading/Ready/Error + Retry 不改变 pair/slot/zoom identity。EdgePixelMatcher 只读取 PagePreloader 提供的有界 decoded ImageBitmap，不解析 URL 或另发网络请求；cache revision observer 允许晚到页面追加匹配，并在缓存淘汰后保留本章已确认 pair。右键保存继续接收实际 splitHalf/sourceBounds。Single/Webtoon 既有稳定 identity、锚点和 fixed-main resolver 语义保持不变。",
     "protectionTests": [
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderPageCacheIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagePresentationIdentityTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/WebtoonAutoScrollTest.kt"
     ],
     "behaviorMethods": {
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt": ["settled single-page position preserves the exact display unit until explicit navigation", "settled webtoon viewport stores every visible page active page and scroll anchor", "single-page viewport keeps stable slots mounted through chapter loading and error"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt": ["settled single-page position preserves the exact display unit until explicit navigation", "settled webtoon viewport stores every visible page active page and scroll anchor", "settled dual-page viewport stores both pages and advances to maximum visible progress", "single-page viewport keeps stable slots mounted through chapter loading and error"],
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt": ["matched pairs consume only caller supplied bounded decoded images"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderPageCacheIntegrationTest.kt": ["cache revision observer matches late pages preserves pairs after eviction and never loads"],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt": ["late content and load-state changes preserve display-unit identities", "LTR and RTL split a wide page in reading order without changing source identity", "settled unit reports logical visible page and supports stable return lookup", "registry selects the single strategy and rejects duplicate mode ownership"],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagePresentationIdentityTest.kt": ["mounted container keeps identity while loading ready and error content changes in place", "production single-page selector mounts the SPI display unit", "visible-page reporting waits for the settled pager index"],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt": ["late page state and content preserve webtoon display identities", "wide webtoon page becomes consecutive halves in requested merge order", "viewport reports every visible page and uses fixed-main last end-visible active rule", "last page becomes active at the settled chapter bottom", "fixed-main active resolver returns no position when no visible child reaches either edge", "anchor restores exact split item and falls back to its logical page", "registry exposes webtoon beside single-page presentation"],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt": ["webtoon item keeps composition identity while loading ready error and retry change in place", "production webtoon selector mounts registry display units with stable lazy identities", "mounted list restores relative anchor when ready content changes item geometry", "mounted list keeps logical page and bounded offset when split anchor merges"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt": ["cover occupies the physical left slot for both reading directions", "landscape cover remains whole in the physical left slot for one and many page chapters", "portrait pairs follow physical LTR and RTL slots while reporting both pages", "late content and state changes preserve pair and slot identities", "spread forced single edge match and parity change grouping without changing page identity", "wide spread can occupy two physical slice slots without changing source page identity", "registry exposes dual beside single and webtoon"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt": ["mounted cover keeps a centered two-slot frame with the page in the physical left slot", "pair frame identity survives either page loading ready and error changes", "production dual selector mounts registry display units", "visible-page reporting waits for settled pager and reports both pair pages"],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/WebtoonAutoScrollTest.kt": ["auto scroll pauses through user drag and fling then resumes after settlement"]
     },
-    "readerCoreMigrationScope": {"task": "R0-01", "verifiedSlice": "PRESENTATION_TRANSFORM_CONTRACT", "canonicalSessionExecutor": "NOT_WIRED", "closureTask": "RD-01", "presentationTask": "RP-02", "desktopSinglePresentation": "WIRED", "desktopWebtoonPresentation": "WIRED", "desktopDualPresentation": "NOT_WIRED", "legacyDesktopStateAdapter": "REMOVE_RD-01"},
-    "verificationScope": "VERIFIED for fixed-original wide-page transforms and WebtoonLayoutManager last-end-visible/NO_POSITION selection, explicitly classified Fork/Desktop pairing, the RP-01 Desktop Single strategy, and the RP-02 same-level Webtoon strategy. Evidence covers stable DisplayUnit identity, LTR/RTL split order, exact split-slice restoration, measured relative scroll-anchor restoration across late geometry and split/merge changes, settled all-visible and fixed-main active PageId reporting, in-place Retry, stable Lazy keys, drag-plus-fling auto-scroll pause/resume, and mounted production registry wiring. This does not prove shared ReaderSessionCore, a Desktop page-loading executor, or Dual presentation migration.",
+    "readerCoreMigrationScope": {"task": "R0-01", "verifiedSlice": "PRESENTATION_TRANSFORM_CONTRACT", "canonicalSessionExecutor": "NOT_WIRED", "closureTask": "RD-01", "presentationTask": "RP-03", "desktopSinglePresentation": "WIRED", "desktopWebtoonPresentation": "WIRED", "desktopDualPresentation": "WIRED", "legacyDesktopStateAdapter": "REMOVE_RD-01"},
+    "verificationScope": "VERIFIED for fixed-original wide-page transforms and WebtoonLayoutManager last-end-visible/NO_POSITION selection, explicitly classified Fork/Desktop pairing, and three same-level presentation strategies registered in Desktop production. Evidence covers stable Single/Webtoon/Dual DisplayUnit identity, LTR/RTL split and locale-independent physical slot order, centered fixed two-slot landscape/portrait cover layout including one-page chapters, pair all-visible/max-progress reporting, exact slice/context-menu bounds, measured Webtoon anchor recovery, in-place Retry with stable zoom identity, stable Pager/Lazy keys, real PagePreloader late-revision edge matching with retained pairs after eviction and no matcher-owned fetch, and mounted registry wiring. This does not prove shared ReaderSessionCore or a Desktop page-loading executor; those remain RD-01.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -2093,7 +2112,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt", "symbol": "sealed interface State", "line": 45}, {"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt", "symbol": "private fun observeStatus", "line": 82}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "private suspend fun loadChapter", "line": 334}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoader.kt", "symbol": "internal suspend fun loadChapter", "line": 58}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt", "symbol": "val state: State", "line": 36}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterWindowOwner.kt", "symbol": "internal class ReaderChapterWindowOwner", "line": 13}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/pager/PagerTransitionHolder.kt", "symbol": "internal fun observePagerTransitionState", "line": 154}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/webtoon/WebtoonTransitionHolder.kt", "symbol": "internal fun observeWebtoonTransitionState", "line": 149}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt", "symbol": "sealed interface ReaderChapterState", "line": 26}, {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderSession.kt", "symbol": "object ReaderSessionReducer", "line": 143}, {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderChapterWindow.kt", "symbol": "object ReaderChapterWindowReducer", "line": 113}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt", "symbol": "fun setChapterTransitionState", "line": 300}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt", "symbol": "fun setChapterTransitionState", "line": 317}],
       "FIXTURE": [{"artifact": "domain/src/commonTest/kotlin/mihon/domain/reader/session/ReaderChapterWindowReducerTest.kt#opening next chapter publishes zero-page loading before one exact activation", "productionMarkers": ["ReaderChapterWindowReducer.reduce", "beginLoad.reduceSession"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderChapterWindowProductionWiringTest.kt#ReaderViewModel preloads only an adjacent target and commits the shared window on activation", "productionMarkers": ["viewModel.preload", "viewModel.loadNextChapter"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderWindowEffectIntegrationTest.kt#activation waits for the in-flight adjacent page list and reuses its retained session", "productionMarkers": ["chapterLoader.loadChapter", "chapter.sharedSessionStateFlow"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterWindowOwnerTest.kt#Android owner keeps overlapping chapter sessions and releases only chapters outside the new window", "productionMarkers": ["owner.replace", "owner.dispatch"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt#pager holder production observer executes loading error and loaded states", "productionMarkers": ["observePagerTransitionState"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapterTransitionIntegrationTest.kt#webtoon holder production observer executes loading error and loaded states", "productionMarkers": ["observeWebtoonTransitionState"]}]
     },
     "protectionTests": [
@@ -2195,7 +2214,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt", "symbol": "private fun getCombinedPaint", "line": 812}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt", "symbol": "readerPreferences.grayscale().changes()", "line": 908}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt", "symbol": "internal fun buildAndroidLayerFilterParams", "line": 27}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/PageTransform.kt", "symbol": "data class ReaderColorFilterParams", "line": 241}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "ReaderViewportColorLayer(state.colorFilter)", "line": 505}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "internal fun ReaderViewportColorLayer", "line": 588}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun Modifier.readerColorTransform", "line": 62}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun readerColorMatrix", "line": 72}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "ReaderViewportColorLayer(state.colorFilter)", "line": 559}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt", "symbol": "internal fun ReaderViewportColorLayer", "line": 640}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun Modifier.readerColorTransform", "line": 62}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "internal fun readerColorMatrix", "line": 72}],
       "FIXTURE": [{"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderColorMatrixTest.kt#mounted reader viewport color layer renders disabled grayscale and invert pixels", "productionMarkers": ["renderColorLayer(", "assertPixel("]}]
     },
     "protectionTests": [

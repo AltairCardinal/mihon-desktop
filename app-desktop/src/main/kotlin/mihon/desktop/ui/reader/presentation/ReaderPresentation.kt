@@ -65,6 +65,7 @@ internal data class ReaderPresentationRequest(
     val splitPageIds: Set<ReaderPageId> = emptySet(),
     val pageSizes: Map<ReaderPageId, ReaderPageSize> = emptyMap(),
     val pageRotations: Map<ReaderPageId, PageRotation> = emptyMap(),
+    val dualPagedOptions: DualPagedPresentationOptions = DualPagedPresentationOptions(),
 ) {
     init {
         require(splitPageIds.all { it.chapterId == chapter.id }) {
@@ -75,6 +76,9 @@ internal data class ReaderPresentationRequest(
         }
         require(pageRotations.keys.all { it.chapterId == chapter.id }) {
             "Every page rotation must belong to the presented chapter"
+        }
+        require(dualPagedOptions.pageIds.all { it.chapterId == chapter.id }) {
+            "Every dual-page option must belong to the presented chapter"
         }
     }
 }
@@ -132,5 +136,5 @@ internal class ReaderPresentationRegistry(
 }
 
 internal val DesktopReaderPresentationRegistry = ReaderPresentationRegistry(
-    listOf(SinglePagedPresentation, WebtoonPresentation),
+    listOf(SinglePagedPresentation, WebtoonPresentation, DualPagedPresentation),
 )

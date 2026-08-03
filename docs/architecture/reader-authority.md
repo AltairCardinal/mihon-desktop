@@ -122,7 +122,7 @@ RA-01 开始时复核的 `d7f3ceef5…55be95dd5` 区间也没有 reader 路径�
 | adjacent portrait pairing | `CROSS_PLATFORM_PRODUCT_ENHANCEMENT` | 作为 presentation 能力保留；固定原版只拆一张宽源图 |
 | Desktop 完整下一章预取 | `DESKTOP_PRODUCT_ENHANCEMENT` | RD-02 的显式 policy，不改变 Android 默认流量 |
 | cached Error 的 Retry 不再强制重抓 | `PRODUCT_GAP`（RC-02 已关闭） | RC-02 已恢复显式 Retry 强制重抓；shared executor contract 与 Android production wiring 测试共同保护 |
-| Android 双页只上报 `firstPage` | `PRODUCT_GAP` | RC-05 的 shared policy 已支持 settled 可见逻辑页集合；Android 双页 presentation 的完整集合上报仍由 RP-03 关闭 |
+| Android 双页只上报 `firstPage` | `PRODUCT_GAP` | RC-05 的 shared policy 已支持 settled 可见逻辑页集合；RP-03 已关闭 Desktop 双页 producer，Android Fork pager 仍是独立 presentation 缺口，不能作为完整集合证据 |
 
 相邻 portrait pairing 的 fork 起点为 `bef51fc6924c6a9de185fa0fb2a56ce76309dc19`；固定
 `6fbf6df…` 不含 `PagePairingAlgorithm`、`PairingState` 或 `DualPageViewerAdapter`。odd-width split 保留
@@ -172,18 +172,28 @@ NonCancellable。Android 保留的 `Context`、Source/Download/Local I/O、Chapt
 Activity 生命周期均为 adapter/presentation 边界，不再拥有 page-list、page-state、scheduler、window 或
 progress 的第二套生产决策。
 
-RP-01/RP-02 已在 Desktop 建立两个同级 production presentation consumer：`SinglePagedPresentation` 与
-`WebtoonPresentation` 通过统一 registry 把稳定 `ReaderPageId` 映射为 `DisplayUnitId`。LTR/RTL 宽页切片只
-改变显示顺序，不改变 source identity；单页 settled unit 回报其逻辑页，Webtoon settled viewport 回报全部
-可见页，并按固定原版 `WebtoonLayoutManager.findLastEndVisibleItemPosition` 的 last-end-visible/NO_POSITION
-规则明确 active 页。两种 renderer 的 key 与固定 Compose 容器均不再
-使用 URL，Loading、Ready、Error 和原位 Retry 在同一 identity 下切换。Single 只有 settled pager unit 才
-写回完整 `DisplayUnitId`；Webtoon 只有滚动停止后才写回 active/visible PageId 与首个可见 unit 的 offset +
-测量高度。Ready 几何变化按相对位置重放，split/merge 后按同一逻辑页回退并服从 Lazy 边界，恢复完成前不发布
-错误 viewport。条漫的 side padding、crop 和覆盖 drag/fling、只在 settled 后恢复的 auto-scroll 保持为
-presentation option，不持有 page fetch job。由于 Desktop canonical session 尚待 RD-01 接线，当前 URL slot
-仍只经无 I/O 临时 adapter 投影为 `ReaderChapterSession`；该 adapter 不代表 Desktop loader/session 已迁移。
-Dual 留给 RP-03，因此 ID 43 当前只新增“Desktop Single + Webtoon 已接线”的窄证据。
+RP-01～RP-03 已在 Desktop 建立三个同级 production presentation consumer：`SinglePagedPresentation`、
+`WebtoonPresentation` 与 `DualPagedPresentation` 通过统一 registry 把稳定 `ReaderPageId` 映射为
+`DisplayUnitId`。LTR/RTL 宽页切片只改变显示顺序，不改变 source identity；单页 settled unit 回报其逻辑页，
+Webtoon settled viewport 回报全部可见页，并按固定原版
+`WebtoonLayoutManager.findLastEndVisibleItemPosition` 的 last-end-visible/NO_POSITION 规则明确 active 页；
+Dual settled unit 回报 pair 内全部可见逻辑页，并以最大 source index 作为 active progress。三种 renderer 的
+key 与固定 Compose 容器均不使用 URL，Loading、Ready、Error 和原位 Retry 在同一 identity 下切换。
+
+Dual 使用共享 `ReaderPagePairing` 消费 cover-single、adjacent portrait、forced single、spread、edge match 与
+landscape parity options。renderer 保持居中的固定双槽 frame，横图或竖图封面在 LTR/RTL 和环境 locale RTL 下
+均占绝对物理左槽且右槽为空；普通 pair 才按阅读方向交换物理顺序。pair/slot identity 不随任一页的内容状态
+变化。宽图切片与右键保存都通过统一 `ZoomablePageBox` 的 `splitHalf/sourceBounds`，保存的是实际可见区域。
+edge matcher 只读取 `PagePreloader` 有界 decoded cache，不解析 URL、不发起网络请求，也不持有 fetch job；
+晚到页面可追加新 pair，cache 淘汰后已确认 pair 仍保留到章节或选项生命周期结束。
+
+Single 只有 settled pager unit 才写回完整 `DisplayUnitId`；Webtoon 只有滚动停止后才写回 active/visible
+PageId 与首个可见 unit 的 offset + 测量高度。Ready 几何变化按相对位置重放，split/merge 后按同一逻辑页回退
+并服从 Lazy 边界，恢复完成前不发布错误 viewport。条漫的 side padding、crop 和覆盖 drag/fling、只在
+settled 后恢复的 auto-scroll 保持为 presentation option。由于 Desktop canonical session 尚待 RD-01 接线，
+当前 URL slot 仍只经无 I/O 临时 adapter 投影为 `ReaderChapterSession`；该 adapter 不代表 Desktop
+loader/session 已迁移。ID 43 当前新增的是“Desktop 三模式 presentation 已接线”的窄证据，不能据此声明
+Desktop canonical executor 已迁移，也不能把 Android Fork 双页的 `firstPage` 上报视为已关闭。
 
 因此 parity manifest 9/43/44/45/47/49/51/53/54 的 `VERIFIED` 只表示各自窄 capability 已验证；每项的
 `readerCoreMigrationScope.canonicalSessionExecutor` 在 RD-01 前必须保持 `NOT_WIRED`。删除或绕过当前

@@ -282,6 +282,26 @@ class ReaderScreenModelTest {
     }
 
     @Test
+    fun `settled dual-page viewport stores both pages and advances to maximum visible progress`() {
+        val model = ReaderScreenModel(pageUrls = listOf("a", "b", "c", "d"), chapterId = 7L)
+        val first = ReaderPageId(ReaderChapterId(7L), 1)
+        val second = ReaderPageId(ReaderChapterId(7L), 2)
+        val pair = DisplayUnitId(
+            ReaderPresentationMode.DUAL_PAGED,
+            listOf(DisplaySlotId(first), DisplaySlotId(second)),
+        )
+        model.setZoomState(ZoomState(scale = 2.0f))
+
+        model.settleDualPage(VisiblePageSet(pair, setOf(first, second), activePageId = second))
+
+        assertEquals(2, model.state.value.currentPage)
+        assertEquals(pair, model.state.value.currentDisplayUnitId)
+        assertEquals(setOf(first, second), model.state.value.visiblePageIds)
+        assertEquals(2.0f, model.state.value.zoomState.scale)
+        assertNull(model.state.value.webtoonScrollAnchor)
+    }
+
+    @Test
     fun `single-page viewport keeps stable slots mounted through chapter loading and error`() {
         val error = ReaderChapterState.Error(AppError.Network(), retryTargetChapterId = 7L)
         val singleSlots = ReaderState(
@@ -297,7 +317,7 @@ class ReaderScreenModelTest {
             readerViewportBody(singleSlots.copy(errorMessage = null, isLoadingPages = true, chapterState = ReaderChapterState.Loading)),
         )
         assertEquals(ReaderViewportBody.ERROR, readerViewportBody(singleSlots.copy(resolvedUrls = emptyList())))
-        assertEquals(ReaderViewportBody.ERROR, readerViewportBody(singleSlots.copy(dualPageMode = true)))
+        assertEquals(ReaderViewportBody.CONTENT, readerViewportBody(singleSlots.copy(dualPageMode = true)))
         assertEquals(ReaderViewportBody.CONTENT, readerViewportBody(singleSlots.copy(readingMode = ReadingMode.WEBTOON)))
     }
 

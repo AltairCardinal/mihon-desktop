@@ -113,4 +113,37 @@ internal object LegacyDesktopReaderPresentationAdapter {
         splitPageIndices = splitPageIndices,
         pageError = pageError,
     )
+
+    fun dualPagedRequest(
+        chapterId: Long,
+        generation: Long,
+        pageUrls: List<String>,
+        direction: ReaderDirection,
+        spreadPageIndices: Set<Int>,
+        forcedSinglePageIndices: Set<Int>,
+        matchedPagePairs: Set<Pair<Int, Int>>,
+        splitWidePages: Boolean,
+        pageError: AppError? = null,
+    ): ReaderPresentationRequest {
+        val request = singlePagedRequest(
+            chapterId = chapterId,
+            generation = generation,
+            pageUrls = pageUrls,
+            direction = direction,
+            splitPageIndices = if (splitWidePages) spreadPageIndices else emptySet(),
+            pageError = pageError,
+        )
+        val pages = request.chapter.pages
+        return request.copy(
+            dualPagedOptions = DualPagedPresentationOptions(
+                spreadPageIds = spreadPageIndices.filter { it in pages.indices }.mapTo(linkedSetOf()) { pages[it].id },
+                forcedSinglePageIds = forcedSinglePageIndices
+                    .filter { it in pages.indices }
+                    .mapTo(linkedSetOf()) { pages[it].id },
+                matchedPagePairs = matchedPagePairs.mapNotNullTo(linkedSetOf()) { (first, second) ->
+                    if (first in pages.indices && second in pages.indices) pages[first].id to pages[second].id else null
+                },
+            ),
+        )
+    }
 }
