@@ -240,13 +240,20 @@ class DesktopProductCapabilityContractTest {
                             "switching off cancels a policy-only next chapter page-list request",
                             "activating a prefetched chapter cancels P4 and retries its visible page as P0",
                             "adjacent storage failure stops the remaining background chapter without changing active state",
+                            "non cooperative page cancellation keeps physical image requests within policy plus one stale request",
+                            "non cooperative target switches keep physical chapter requests within policy plus one stale request",
+                            "late storage failure from an old target cannot cancel the new target prefetch",
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt" to
                         setOf(
                             "production runtime follows persisted next chapter prefetch changes",
+                            "production runtime preference changes drive off first viewport and full request sets",
+                            "production runtime preloader reads its own encoded page store",
                             "production factory creates one shared core and exposes its canonical state to the model",
                             "production factory coordinates encoded cache across concurrent reader runtimes",
                         ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
+                        setOf("mounted production screen launches next chapter prefetch wiring"),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt" to
                         setOf("next chapter prefetch defaults to full and persists every policy"),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt" to
@@ -1945,6 +1952,8 @@ class DesktopProductCapabilityContractTest {
                                 setOf("prefs.nextChapterPrefetchMode", "runtime.session.currentNextChapterPrefetchMode"),
                             "production runtime preference changes drive off first viewport and full request sets" to
                                 setOf("NextChapterPrefetchMode.FIRST_VIEWPORT", "runtime.encodedPageStore.diagnostics().refs.size"),
+                            "production runtime preloader reads its own encoded page store" to
+                                setOf("runtime.encodedPageStore.store(ref)", "runtime.preloader.preloadEncoded"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
                         mapOf(
@@ -2532,8 +2541,9 @@ class DesktopProductCapabilityContractTest {
             task2BehaviorMethods.getValue(id).forEach { (path, methods) ->
                 val source = Files.readString(repositoryRoot.resolve(path))
                 methods.forEach { method ->
+                    val methodSource = kotlinTestMethod(source, method, "ID $id behavior method $path#$method")
                     assertTrue(
-                        kotlinTestMethod(source, method, "ID $id behavior method $path#$method").contains("assert"),
+                        listOf("assert", " shouldBe ", ".shouldContain", "verify(", "coVerify(").any(methodSource::contains),
                         "ID $id behavior method must execute assertions: $path#$method",
                     )
                 }
@@ -2593,8 +2603,9 @@ class DesktopProductCapabilityContractTest {
             behaviorMethods.forEach { (path, methods) ->
                 val source = Files.readString(repositoryRoot.resolve(path))
                 methods.forEach { method ->
+                    val methodSource = kotlinTestMethod(source, method, "ID $id behavior method $path#$method")
                     assertTrue(
-                        kotlinTestMethod(source, method, "ID $id behavior method $path#$method").contains("assert"),
+                        listOf("assert", " shouldBe ", ".shouldContain", "verify(", "coVerify(").any(methodSource::contains),
                         "ID $id behavior method must execute assertions: $path#$method",
                     )
                 }
