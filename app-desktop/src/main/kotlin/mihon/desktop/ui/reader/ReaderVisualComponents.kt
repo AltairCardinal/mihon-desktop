@@ -278,9 +278,8 @@ internal fun ErrorState(message: String, onRetry: () -> Unit, onBack: () -> Unit
 @Composable
 internal fun ChapterTransitionFeedback(
     transition: ReaderChapterTransitionModel,
-    onContinue: (() -> Unit)?,
     onRetry: (() -> Unit)?,
-    onDismiss: () -> Unit,
+    onClose: () -> Unit,
 ) {
     val presentation = chapterTransitionPresentation(transition)
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.72f)), contentAlignment = Alignment.Center) {
@@ -292,11 +291,8 @@ internal fun ChapterTransitionFeedback(
             if (presentation.showRetry && onRetry != null) {
                 Button(onClick = onRetry, modifier = Modifier.padding(top = 12.dp)) { Text(MR.strings.action_retry.localized()) }
             }
-            if (presentation.showContinue && onContinue != null) {
-                Button(onClick = onContinue, modifier = Modifier.padding(top = 12.dp)) { Text(MR.strings.desktop_ui_continue.localized()) }
-            }
-            if (presentation.showDismiss) {
-                Button(onClick = onDismiss, modifier = Modifier.padding(top = 12.dp)) { Text(MR.strings.desktop_ui_dismiss.localized()) }
+            if (presentation.showClose) {
+                Button(onClick = onClose, modifier = Modifier.padding(top = 12.dp)) { Text(MR.strings.action_close.localized()) }
             }
         }
     }
@@ -306,8 +302,7 @@ internal data class ChapterTransitionPresentation(
     val message: String,
     val showLoading: Boolean,
     val showRetry: Boolean,
-    val showContinue: Boolean,
-    val showDismiss: Boolean,
+    val showClose: Boolean,
     val isBoundary: Boolean,
     val missingChapterCount: Int,
 )
@@ -344,8 +339,7 @@ internal fun chapterTransitionPresentation(
         message = message,
         showLoading = state is ReaderChapterState.Loading,
         showRetry = state is ReaderChapterState.Error,
-        showContinue = false,
-        showDismiss = isBoundary || state is ReaderChapterState.Error,
+        showClose = isBoundary || state is ReaderChapterState.Error,
         isBoundary = isBoundary,
         missingChapterCount = transition.missingChapterCount,
     )

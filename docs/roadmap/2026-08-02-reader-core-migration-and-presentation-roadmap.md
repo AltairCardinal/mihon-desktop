@@ -233,7 +233,7 @@ DesktopReaderScreen / Android ReaderActivity
 - [x] `RP-03` 将双页迁移为同级 presentation 策略并修复封面双槽布局
 - [x] `RD-01` 实现 Desktop 平台 adapters 并将生产阅读器切到 shared core
 - [x] `RD-02` 实现当前章全 Ready 后完整预取下一章的 Desktop policy
-- [ ] `RG-01` 删除 legacy executor/兼容桥，收紧架构守卫并同步权威文档
+- [x] `RG-01` 删除 legacy executor/兼容桥，收紧架构守卫并同步权威文档
 - [ ] `RV-01` 完成跨平台全量、运行时和发布产物验收
 
 ## 10. 详细任务设计
@@ -470,6 +470,7 @@ python scripts/gradle-coordinator.py run --key reader-core-final -- ./gradlew :d
 | 2026-08-03 | `RP-03` | `TODO -> DOING -> REVIEW -> DONE` | `rp03-red`、`rp03-single-cover-red`、`rp03-evidence-red`：缺少 Dual 同级策略、单页双槽挂载与 production/authority 证据；`rp03-review-p1-red`、`rp03-cache-observer-red`：复现环境 RTL 反转物理槽、横图封面绕过 cover 规则，以及缺少真实 cache revision observer | `rp03-refactor-reader`、`rp03-evidence-green-5`：Dual strategy、固定双槽、全部可见/max progress、切片/右键与 bounded-cache matcher 首次全绿；`rp03-review-focused-2`：三模式 registry/identity、真实 preloader 晚到匹配与淘汰保留、product/parity contract 共 177 项全绿 | 1 轮独立审查 + 1 轮修复复审；初审 2 个 P1 与 2 个 P2 通过绝对物理槽、封面优先级、左右页完整状态/Retry/zoom identity、真实 revision observer 关闭；复审结论 `PASS / NO_P0_P1_P2` | `rp03-review-focused-2` 满足 Desktop presentation/Compose 与三模式 selector 阶段门禁；`rp03-spotless-final`、manifest JSON 与 `git diff --check` 通过；Desktop canonical executor 仍明确留给 RD-01 | 本批次提交（由本行所在 Git commit 解析） |
 | 2026-08-03 | `RD-01` | `TODO -> DOING -> REVIEW -> DONE` | `rd01-core-red`、`rd01-adapters-red`、`rd01-session-red`、`rd01-session-ui-red`、`rd01-store-empty-red`：缺少 Desktop canonical session、四路 materialize、encoded-only preloader、真实 Screen/DI/HTTP wiring 与空写保护；`rd01-fix1-red` 至 `rd01-fix7-image-red`：依次复现重复 settle、Screen 生命周期提前关闭、非原子/跨 session cache、local identity、source imageRequest、进度单调/drain、本地合成进度、并存 runtime 租约和截断像素流误 Ready | `rd01-core-green`、`rd01-adapters-green-2`、`rd01-session-ui-green-4`、`rd01-related-green`：shared core、online/download/local/archive、三种 presentation 与真实入口首次全绿；`rd01-review-fixes-focused`、`rd01-fix8-child-loader`：原子单写者、factory 级 cache coordinator/active-ref 租约、完整 Skia 像素校验、真实 ExtensionClassLoader、单调进度/drain 和 Voyager ScreenModel 生命周期全绿；`rd01-authority-green-c`：capability/入口/行号证据全绿 | 1 轮独立审查 + 1 轮修复复审；初审 8 项及修复复审确认的 3 个 P1、1 个 P2 均由后续 RED/GREEN 关闭；遵守复审上限未启动第二轮代理复审，主代理以聚合 focused、authority 和完整 Desktop 测试独立核验 | `rd01-domain-full`、`rd01-app-desktop-full-rerun`（2415 项）、`rd01-test-desktop-reader`、`rd01-spotless-check` 全绿；manifest JSON/逐行 role evidence、`git diff --check` 与 legacy reader 零命中审计通过；按分层策略未运行发布构建，留给 `RV-01` | 本批次提交（由本行所在 Git commit 解析） |
 | 2026-08-03 | `RD-02` | `TODO -> DOING -> REVIEW -> DONE` | `rd02-domain-red`、`rd02-desktop-red`、`rd02-off-red`、`rd02-wiring-red`、`rd02-authority-red`：依次固定 shared P4/cancel API、全 Ready/配额/进度边界、OFF 原版网络策略、设置与真实 Screen wiring、authority 证据缺口；`rd02-review-red-session-cleanup` 进一步复现不合作请求使图片/metadata 物理 I/O 越界及旧目标 Storage 迟到取消新预取 | `rd02-domain-green`、`rd02-related-green`：P4、三档策略、encoded-only/配额/取消/无进度与设置入口首次全绿；`rd02-review-green-session-b`：图片和 metadata 共用 policy + 1 permit、目标 sequence/request identity 原子门禁全绿；`rd02-review-coverage-green-c`、`rd02-review-screen-green`：真实 local/CBZ 动态 OFF/FIRST/FULL 请求集合、激活缓存复用及 mounted Voyager/Compose `LaunchedEffect` wiring 全绿；`rd02-review-authority-green`：fixture/manifest/product contract 全绿 | 1 轮独立审查 + 1 轮修复复审；初审 3 个 P1 与 3 个 P2 全部关闭；复审结论 `REVIEWED / APPROVED / NO_P0_P1_P2`，并确认尚无 `PageId` 的 P3 metadata 以 target sequence 管生命周期、与 P4 共用物理许可且成功建立稳定 descriptor 后才调度图片，不构成第二套无界 loader | `rd02-final-focused-domain`、`rd02-final-focused-desktop`、`rd02-domain-full`、`rd02-app-desktop-full`、`rd02-test-desktop-full`、`rd02-spotless-check-2` 全绿；fixture/manifest JSON、RD-02 非 fixed-main role evidence 逐行审计与 `git diff --check` 通过；发布构建按分层策略留给 `RV-01` | 本批次提交（由本行所在 Git commit 解析） |
+| 2026-08-03 | `RG-01` | `TODO -> DOING -> REVIEW -> DONE` | `rg01-architecture-red-2`：12 个 Continue/Dismiss/旧 transition 兼容 marker 与缺失 manifest cleanup scope 正确失败；`rg01-review-fix-red-3`：扩大 production roots 后捕获未接线的私有 `readerProgressPageForTracking` owner | `rg01-architecture-green`、`rg01-related-green-2`：兼容面删除、九项 manifest scope、transition/产品契约首次全绿；`rg01-review-fix-green-2`、`rg01-review-fix-final`：完整 reader roots、canonical owner/declaration/alias、全 Desktop `PagePreloader` owner、`store::read` factory 集成与旧 progress helper 删除全绿 | 1 轮独立审查 + 1 轮修复复审；初审发现的门禁覆盖 P1，以及复审发现的第二 preloader owner、alias/声明范围和未使用 import P1/P2 均已关闭；遵守复审上限未启动第三轮代理审查，由主代理以合成绕过门禁、runtime store 解码、聚合 focused 与静态审计独立核验 | `rg01-final-domain-focused`、`rg01-final-android-focused-2`、`rg01-final-related`、`rg01-review-fix-final` 全绿；`rg01-final-spotless-2`、manifest JSON/九项 scope/66 项非 fixed-main role evidence、legacy 文件/marker 零命中与 `git diff --check` 通过；发布矩阵留给 `RV-01` | 本批次提交（由本行所在 Git commit 解析） |
 
 `R0-01` 范围说明：本批次保持 8 个内聚文件，但逐 symbol/blob/marker 夹具、18 项上游分类、变异测试和
 权威文档合计超过 400 行。它们共同构成一个不可拆分的 provenance 关闭条件；拆开会让 manifest 或文档
@@ -552,7 +553,7 @@ ExtensionClassLoader、encoded store 协调器、三种 presentation 消费、�
 被绕过、损坏图片提前 Ready、并存 Reader 删除/淘汰彼此缓存、本地合成 ID 污染数据库、dispose 丢最后进度、
 重复 settle 和章节切换重建 Screen；已由真实 `getImage`/child loader、完整像素解码、原子单写者与 active-ref
 租约、local progress 零调用、单调/drain、稳定 identity 和全量 Desktop 测试控制。完整下一章 P4 预取已由
-`RD-02` 在同一 canonical session 上关闭；legacy 清理留给 `RG-01`，发布产物与跨平台运行验收留给 `RV-01`。
+`RD-02` 在同一 canonical session 上关闭；legacy 清理由 `RG-01` 关闭，发布产物与跨平台运行验收留给 `RV-01`。
 
 `RD-02` 范围说明：本批次约 29 个内聚 production/test/authority/文档文件并明显超过 400 行，原因是 shared
 scheduler 的 P4/cancel 扩展、Desktop session 的全 Ready 门禁、三档持久化策略、设置入口、真实 Screen
@@ -561,8 +562,16 @@ wiring、encoded cache 配额/物理并发边界和 capability 证据必须同�
 迟到终止新目标、预取误写进度、整章 decoded bitmap 常驻，以及 OFF 仍产生增强网络量；已由 shared priority、
 policy + 1 物理许可、target sequence/request identity 门禁、encoded-only store、真实 local/CBZ 动态策略测试、
 mounted Voyager/Compose wiring 与完整 Desktop 测试控制。原版末 5 页只预取 page list 的策略保持独立；P3
-metadata 在稳定 `PageId` 建立前由 target sequence 管理，成功后才产生 P4。legacy 删除留给 `RG-01`，发布与
-跨平台运行验收留给 `RV-01`。
+metadata 在稳定 `PageId` 建立前由 target sequence 管理，成功后才产生 P4。legacy 删除已由 `RG-01` 关闭，
+发布与跨平台运行验收留给 `RV-01`。
+
+`RG-01` 范围说明：本批次 15 个内聚 production/test/manifest/i18n/文档文件并超过 400 行，原因是兼容控件与
+死 progress owner 删除、全 production owner/alias 边界、runtime encoded-store wiring 行为证据和机器权威必须
+同批关闭；拆开会留下 `ENFORCED` 声明早于真实门禁或文档/manifest 漂移。主要风险是 reader 其他文件重建
+`resolvedUrls`/Screen replace、第二个网络型 `PagePreloader` 绕过 factory、私有 scheduler/progress/window
+decision 重新出现，以及精确 role evidence 行号失效；已由完整 reader roots、范围化 declaration/typealias、
+全 Desktop preloader occurrence/owner、真实 store 写入解码、逐行证据和 related behavior tests 控制。产品
+加载、三种 presentation、进度与预取语义不变；发布产物及跨平台运行验收只留给 `RV-01`。
 
 建议状态记录使用 `TODO / DOING / BLOCKED / REVIEW / DONE`；状态只用于解释，checkbox 仍是唯一完成标记。
 

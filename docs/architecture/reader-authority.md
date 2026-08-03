@@ -209,14 +209,18 @@ edge matcher 只读取 `PagePreloader` 有界 decoded cache，不解析 URL、�
 Single 只有 settled pager unit 才写回完整 `DisplayUnitId`；Webtoon 只有滚动停止后才写回 active/visible
 PageId 与首个可见 unit 的 offset + 测量高度。Ready 几何变化按相对位置重放，split/merge 后按同一逻辑页回退
 并服从 Lazy 边界，恢复完成前不发布错误 viewport。条漫的 side padding、crop 和覆盖 drag/fling、只在
-settled 后恢复的 auto-scroll 保持为 presentation option。由于 Desktop canonical session 尚待 RD-01 接线，
-当前 URL slot 仍只经无 I/O 临时 adapter 投影为 `ReaderChapterSession`；该 adapter 不代表 Desktop
-loader/session 已迁移。ID 43 当前新增的是“Desktop 三模式 presentation 已接线”的窄证据，不能据此声明
-Desktop canonical executor 已迁移，也不能把 Android Fork 双页的 `firstPage` 上报视为已关闭。
+settled 后恢复的 auto-scroll 保持为 presentation option。Desktop 三种策略现已直接消费 canonical session
+snapshot；URL slot、`resolvedUrls` 与临时 presentation adapter 已删除。ID 43 证明三模式 production wiring，
+但仍不能把 Android Fork 双页的 `firstPage` 上报视为完整 settled visible-page 集合证据。
 
-因此 parity manifest 9/43/44/45/47/49/51/53/54 的 `VERIFIED` 只表示各自窄 capability 已验证；每项的
-`readerCoreMigrationScope.canonicalSessionExecutor` 在 RD-01 前必须保持 `NOT_WIRED`。删除或绕过当前
-窄能力仍应让各自测试失败，但这些测试不能被引用为“Android/Desktop 已经共用完整 reader core”的证据。
+parity manifest 9/43/44/45/47/49/51/53/54 的 `canonicalSessionExecutor` 已由 RD-01 收口为 `WIRED`；RG-01
+又为每项记录 `legacyReaderExecutors = REMOVED` 与 `readerArchitectureGuard = ENFORCED`。该声明必须同时由
+production 行为测试和架构守卫支持：完整 Desktop reader production roots 会扫描 legacy executor、Screen
+replace 与兼容状态；`PagePreloader` production 构造必须保持 `store::read`；canonical scheduler/progress/window
+调用 owner、Reader-named decision 声明 family、canonical import/typealias 和已知旧私有 owner 都由范围化清单
+约束。全 Desktop production 只允许 class 声明与 runtime factory 两处 `PagePreloader(`，且 factory 集成测试会
+从同一 runtime encoded store 写入并解码。恢复旧 owner、增加受控 decision family、别名/第二构造 owner 或改变
+decoded-only wiring 都会使门禁失败。
 
 ## 维护规则
 
@@ -228,3 +232,6 @@ Desktop canonical executor 已迁移，也不能把 Android Fork 双页的 `firs
 5. presentation 禁止调用 source/repository；platform adapter 禁止重新决定页序、调度、完成或相邻章。
 6. 只有 RC-01～RC-05、RA-01、RP-01～RP-03 和 RD-01 的 production wiring 全部关闭后，才能把
    canonical session executor 标记为 `WIRED`。
+7. RG-01 关闭后，reader canonical decision 声明/调用 owner 集合、已知 legacy owner 与文件零清单、
+   `store::read` decoded-only `PagePreloader` wiring 和 manifest 关闭字段必须由
+   `ReaderArchitectureGuardTest` 持续保护。

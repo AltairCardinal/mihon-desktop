@@ -1411,7 +1411,6 @@
     <string name="desktop_extension_repo_add_failed">Failed to add repository.</string>
     <string name="desktop_extension_repo_delete_consequence">Extensions from this repository will no longer be available.</string>
     <string name="desktop_language_follow_system">Follow system language</string>
-    <string name="desktop_ui_continue">Continue</string>
 
     <string name="desktop_ui_add_manga_from_browse_to_get_started">Add manga from Browse to get started</string>
     <string name="desktop_ui_adjust_spread">Adjust Spread</string>
@@ -1442,7 +1441,6 @@
     <string name="desktop_ui_delete_download">Delete download</string>
     <string name="desktop_ui_delete_download_bba9a9de">Delete download?</string>
     <string name="desktop_ui_discovered_works">Discovered works</string>
-    <string name="desktop_ui_dismiss">Dismiss</string>
     <string name="desktop_ui_done">Done</string>
     <string name="desktop_ui_download_queue">Download Queue</string>
     <string name="desktop_ui_download_chapters">Download chapters</string>

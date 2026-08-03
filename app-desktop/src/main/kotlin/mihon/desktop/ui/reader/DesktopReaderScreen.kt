@@ -79,7 +79,6 @@ import mihon.desktop.ui.reader.presentation.ReaderPresentationSnapshot
 import mihon.desktop.ui.reader.presentation.desktopReaderPresentationRequest
 import mihon.desktop.ui.reader.presentation.dualDisplayUnitIndexForSourcePage
 import mihon.desktop.ui.reader.presentation.firstDualPageIndex
-import mihon.desktop.ui.reader.presentation.resolveDualVisiblePages
 import mihon.desktop.ui.source.desktopSourceErrorMessage
 import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderTransitionDirection
@@ -357,25 +356,6 @@ internal fun initialPageForChapterNavigation(direction: ReaderChapterNavigationD
         ReaderChapterNavigationDirection.Next -> ReaderInitialPage.FIRST
     }
 
-// ── Private helper composables ───────────────────────────────────────────────
-
-internal fun readerProgressPageForTracking(state: ReaderState): Int {
-    val pageCount = state.session.activeChapter.pages.size
-    if (pageCount <= 0) return 0
-    val safeCurrent = state.currentPage.coerceIn(0, pageCount - 1)
-    if (!state.dualPageMode || pageCount == 1) return safeCurrent
-
-    val visibleProgress = state.visiblePageIds.maxOfOrNull { it.sourcePageIndex }
-    if (visibleProgress != null) return visibleProgress.coerceIn(0, pageCount - 1)
-    val presentation = state.dualPresentationSnapshot()
-    val unitIndex = presentation.dualDisplayUnitIndexForSourcePage(safeCurrent).coerceAtLeast(0)
-    return presentation.resolveDualVisiblePages(presentation.displayUnits[unitIndex].id)
-        .activePageId
-        ?.sourcePageIndex
-        ?.coerceIn(0, pageCount - 1)
-        ?: safeCurrent
-}
-
 private fun ReaderState.dualPresentationSnapshot(): ReaderPresentationSnapshot {
     val direction = if (readingMode == ReadingMode.RTL) ReaderDirection.RTL else ReaderDirection.LTR
     val request = desktopReaderPresentationRequest(
@@ -552,9 +532,8 @@ private fun ReaderViewport(
             state.chapterTransition?.let { transition ->
                 ChapterTransitionFeedback(
                     transition = transition,
-                    onContinue = null,
                     onRetry = null,
-                    onDismiss = model::clearChapterTransition,
+                    onClose = model::clearChapterTransition,
                 )
             }
             if (state.showUI) {

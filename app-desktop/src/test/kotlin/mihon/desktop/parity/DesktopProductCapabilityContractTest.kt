@@ -2210,7 +2210,7 @@ class DesktopProductCapabilityContractTest {
                             "ChapterTransitionFeedback(",
                         ),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt" to
-                        setOf("chapterTransitionPresentation", "showContinue = false", "showDismiss = isBoundary"),
+                        setOf("chapterTransitionPresentation", "showRetry = state is ReaderChapterState.Error", "showClose = isBoundary"),
                 ),
             49 to
                 mapOf(

@@ -2,7 +2,8 @@
 
 ## 状态与目的
 
-本文描述 reader migration 的目标架构和当前边界。当前状态是 `MIGRATING`：
+本文描述 reader migration 的最终架构和当前边界。当前状态是
+`CORE_MIGRATION_CLOSED / RELEASE_VALIDATION_PENDING`：
 
 - 已共享并由 Android 生产消费：稳定 session/page 状态、page-list 与单页 materialize executor、唯一
   priority/generation scheduler、encoded store contract、current/previous/next 章节窗口、跨章激活及 settled
@@ -10,15 +11,18 @@
 - 另已共享：解码/cache contract、宽图拆分/配对纯算法、输入导航、章节过滤、reader entry resolver 和滤镜参数；
 - RP-01～RP-03 已建立 Desktop `ReaderPresentationStrategy`、稳定 `DisplayUnitId`/`VisiblePageSet` 与 mode
   registry，单页、Webtoon 和 Dual production selector 均已迁移；
-- 尚未共享：Desktop production materialize/session/window/progress producer wiring；
+- RD-01/RD-02 已收口 Desktop：一个 Voyager ScreenModel 持有一个 canonical session，四类内容 route、
+  encoded store、三种 presentation、进度事务与下一章 P4 policy 均消费 shared contract；
 - RA-01 已收口 Android：`ReaderViewModel`、`ChapterLoader`、`HttpPageLoader` 与 `ReaderChapter` 只负责
   lifecycle、source/download/local/cache 和旧 View 状态投影；page-list、page-state、scheduler、window 与
-  progress 决策全部来自 shared 实现。Desktop `DesktopReaderPageLoader/ReaderScreenModel` 的私有运行决策
-  仍待 RD-01 删除。
+  progress 决策全部来自 shared 实现；
+- RG-01 已删除 Desktop Continue/Dismiss 兼容控件与遗留私有进度 helper，并以完整 Desktop reader root 扫描、
+  canonical decision 声明/调用 owner 清单、平台禁入、presentation I/O 禁入、`store::read` decoded-only wiring
+  和 manifest 关闭字段建立可执行架构守卫。
 
-因此 `domain/src/commonMain/kotlin/mihon/domain/reader/` 现在不是完整的唯一 reader runtime。迁移目标是让
-Android 与 Desktop 消费从固定原版 Android 提取的同一个 `ReaderSessionCore`，同时把图形、文件、source、
-生命周期和输入差异限制在 adapter。
+因此 `domain/src/commonMain/kotlin/mihon/domain/reader/` 是 Android 与 Desktop reader runtime 的唯一
+业务决策来源；图形、文件、source、生命周期和输入差异限制在 adapter。剩余 `RV-01` 只做全量、运行时与
+正式发布产物验收，不再接受功能实现或第二套兼容链。
 
 固定原版行为、上游修复和 Fork 偏差以
 [`reader-authority.md`](./reader-authority.md) 为准；执行顺序和门禁以
@@ -56,15 +60,15 @@ Android ReaderActivity / DesktopReaderScreen
 | 文件 | 当前可引用的证据范围 | 不能据此宣称的内容 |
 | --- | --- | --- |
 | `ReaderPageModel.kt` | page/chapter DTO、decode/cache contract | 章节窗口、完整 session executor |
-| `reader/session/`、`reader/materialize/` | 稳定逻辑页状态、page-list、单页 materialize、三章窗口 retain/release 与幂等跨章激活；Android production 已接线 | Desktop production materialize/window |
-| `reader/scheduler/ReaderRequestScheduler.kt` | P0～P4、原版 current +4、稳定 PageId、有界并发、抢占、Retry 与 generation 拒收；Android/Desktop adapter 已接线 | 相邻章何时进入 P3/P4（由后续 window/policy 产生请求） |
-| `reader/storage/EncodedPageStore.kt` | 生命周期、物理存在性、配额/淘汰结果和诊断；Android `ChapterCache` adapter 已接线 | Desktop encoded store 实现 |
+| `reader/session/`、`reader/materialize/` | 稳定逻辑页状态、page-list、单页 materialize、三章窗口 retain/release 与幂等跨章激活；Android/Desktop production 已接线 | 平台 I/O、UI 与 decoded bitmap 生命周期 |
+| `reader/scheduler/ReaderRequestScheduler.kt` | P0～P4、原版 current +4、稳定 PageId、有界并发、抢占、Retry 与 generation 拒收；Android/Desktop adapter 已接线 | 平台执行、物理 I/O 与 decoded cache |
+| `reader/storage/EncodedPageStore.kt` | 生命周期、物理存在性、配额/淘汰结果和诊断；Android `ChapterCache` 与 Desktop encoded store adapter 已接线 | 平台文件格式与 decoded cache |
 | `PageTransform.kt` | 宽图尺寸/切片、纯配对算法、滤镜参数 | session core；pairing 属 presentation |
 | `ReaderNavigation.kt`、`reader/progress/ReaderEntryResolver.kt` | tap command、inversion、章节过滤、adjacent result，以及不依赖 UI 方向的故事最早未读入口；Android/Desktop 入口已接线 | 跨章 session 激活、进度 |
-| `ReaderProgressPolicy` / `ReadingProgressEvent` / `RecordReadingProgress` | settled active viewport → identity-bearing progress effect、末页完成和幂等事务；Android production 已接线，Desktop 已消费事务 | Desktop viewport/session producer 已切到同一 policy |
+| `ReaderProgressPolicy` / `ReadingProgressEvent` / `RecordReadingProgress` | settled active viewport → identity-bearing progress effect、末页完成和幂等事务；Android/Desktop production 已接线 | history 计时与平台 tracker adapter |
 
-parity manifest 9/43/44/45/47/49/51/53/54 通过 `readerCoreMigrationScope` 锁定这些范围；在 RD-01
-关闭前，它们不能作为 canonical `ReaderSessionCore` 已接线的证据。
+parity manifest 9/43/44/45/47/49/51/53/54 通过 `readerCoreMigrationScope` 锁定这些范围，并统一记录
+`legacyCleanupTask = RG-01`、`legacyReaderExecutors = REMOVED` 与 `readerArchitectureGuard = ENFORCED`。
 
 ## Canonical session core
 
@@ -162,9 +166,9 @@ Loading→Ready/Error 改变。宽图切片继续通过统一 `ZoomablePageBox` 
 新发现与本章已确认 pair 做并集；缓存淘汰不会让当前章节的排版来回跳变。
 
 side padding、crop、双页组合选项与覆盖 drag/fling、只在滚动 settled 后恢复的 auto-scroll 都是 renderer /
-presentation option。现有 Desktop `resolvedUrls` 进入三种策略前仍只经过一个无 I/O 的迁移 adapter；该 adapter
-不拥有 loader，必须在 RD-01 直接接入 `ReaderSessionCore` snapshot 时删除。三模式 presentation 门禁已关闭，
-但这不能证明 Desktop canonical session executor 已接线。
+presentation option。Desktop 三种策略直接消费 canonical `ReaderSessionCore` snapshot；`resolvedUrls`、空 URL
+slot 与迁移 presentation adapter 已删除。架构守卫禁止 presentation 重新获得 source、HTTP、repository 或
+materialize port。
 
 ## Platform adapters
 
@@ -252,8 +256,11 @@ RA-01 的 online→download route reset 只接受由同一 canonical Wait/Error 
 | RG-01 | legacy bridge/executor 删除，架构守卫与文档一致 |
 
 RD-01 已以 Android、Desktop production wiring 与行为测试把 manifest 的 `canonicalSessionExecutor` 收口为
-`WIRED`；RD-02 的 preference、P4/P0、配额降级和原版 OFF 边界证据归属 capability 45。后续 RG-01 只能删除
-不可达 legacy bridge，不能重建第二套 loader、调度器或网络型 decode preloader。
+`WIRED`；RD-02 的 preference、P4/P0、配额降级和原版 OFF 边界证据归属 capability 45。RG-01 已删除剩余
+Continue/Dismiss 兼容面及未接线的私有进度 helper，并固定 canonical decision 声明/调用 owner、已知 legacy
+owner、legacy 文件零清单、core/presentation 依赖边界与 `store::read` decoded-only `PagePreloader` wiring；
+后续变更若恢复这些兼容面/旧 owner、增加 Reader-named scheduler/progress/window/session/queue/completion
+decision family，或新增第二个/网络型 decode preloader，架构门禁会失败。
 
 ## 验证与失败处理
 

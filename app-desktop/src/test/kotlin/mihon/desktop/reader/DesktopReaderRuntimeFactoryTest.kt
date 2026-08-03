@@ -16,6 +16,7 @@ import mihon.desktop.ui.reader.ReaderLifecycleEffect
 import mihon.desktop.ui.reader.ReaderModeState
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderChapterLoadState
+import mihon.domain.reader.session.ReaderPageId
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -27,10 +28,13 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.source.service.SourceManager
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.prefs.Preferences
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import javax.imageio.ImageIO
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DesktopReaderRuntimeFactoryTest {
@@ -313,6 +317,49 @@ class DesktopReaderRuntimeFactoryTest {
     }
 
     @Test
+    fun `production runtime preloader reads its own encoded page store`() = runTest {
+        val factory = DesktopReaderRuntimeFactory(
+            prefs = ReaderPreferences(),
+            downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads-preloader-wiring")),
+            sourceManager = mockk<SourceManager>(relaxed = true),
+            networkHelper = NetworkHelper(OkHttpClient()),
+            progressTracker = mockk<ReaderProgressTracker>(relaxed = true),
+            mangaRepository = null,
+            encodedCacheDirectory = tempDir.resolve("encoded-preloader-wiring"),
+        )
+        val context = DesktopReaderChapterContext(
+            chapterId = 81L,
+            sourceId = 42L,
+            chapterUrl = "/chapter/81",
+            mangaTitle = "Manga",
+            chapterTitle = "Chapter 81",
+            chapterNumber = 81.0,
+            chapterIndex = 0,
+            initialPage = 0,
+            wasRead = false,
+        )
+        val runtime = factory.createRuntime(context, this)
+        try {
+            advanceUntilIdle()
+            val ref = runtime.encodedPageStore.cacheRef(
+                ReaderPageId(ReaderChapterId(81L), sourcePageIndex = 0),
+                discriminator = "factory-store-wiring",
+            )
+            val bytes = pngBytes()
+            runtime.encodedPageStore.store(ref) {
+                runtime.encodedPageStore.destinationFile(ref).writeBytes(bytes)
+                bytes.size.toLong()
+            }
+
+            runtime.preloader.preloadEncoded(currentPage = 0, encodedPageRefs = listOf(ref))
+
+            assertNotNull(runtime.preloader.get(0))
+        } finally {
+            runtime.close()
+        }
+    }
+
+    @Test
     fun `production factory coordinates encoded cache across concurrent reader runtimes`() = runTest {
         val factory = DesktopReaderRuntimeFactory(
             prefs = ReaderPreferences(),
@@ -367,6 +414,18 @@ class DesktopReaderRuntimeFactoryTest {
                 output.closeEntry()
             }
         }
+    }
+
+    private fun pngBytes(): ByteArray {
+        val image = BufferedImage(4, 4, BufferedImage.TYPE_INT_ARGB)
+        val graphics = image.createGraphics()
+        try {
+            graphics.color = java.awt.Color.BLUE
+            graphics.fillRect(0, 0, image.width, image.height)
+        } finally {
+            graphics.dispose()
+        }
+        return ByteArrayOutputStream().also { output -> ImageIO.write(image, "png", output) }.toByteArray()
     }
 
     private fun localContext(chapterId: Long, path: File) = DesktopReaderChapterContext(

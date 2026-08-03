@@ -1087,7 +1087,6 @@
     <string name="desktop_plugin_domains_export_target">策略群組 / 出站名稱</string>
     <string name="desktop_plugin_domains_copied">已複製 %1$d 筆 %2$s 記錄</string>
     <string name="desktop_language_follow_system">跟隨系統語言</string>
-    <string name="desktop_ui_continue">繼續</string>
     <string name="desktop_library_excluded_categories">不參與更新的分類</string>
     <string name="desktop_library_excluded_categories_summary">自動更新時會跳過所選分類中的漫畫。</string>
     <string name="desktop_library_manual_refresh_summary">也可以在書架頁點選重新整理按鈕，手動檢查新章節。</string>
@@ -1269,7 +1268,6 @@
     <string name="desktop_ui_delete_download">刪除下載</string>
     <string name="desktop_ui_delete_download_bba9a9de">刪除下載？</string>
     <string name="desktop_ui_discovered_works">已發現作品</string>
-    <string name="desktop_ui_dismiss">關閉</string>
     <string name="desktop_ui_done">完畢</string>
     <string name="desktop_ui_download_queue">下載佇列</string>
     <string name="desktop_ui_download_chapters">下載章節</string>

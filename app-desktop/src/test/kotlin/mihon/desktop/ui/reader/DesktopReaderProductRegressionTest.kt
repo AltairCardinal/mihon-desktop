@@ -130,7 +130,7 @@ class DesktopReaderProductRegressionTest {
         assertTrue(reader.contains("ChapterTransitionFeedback"), "Chapter boundary and missing chapter feedback must be visible")
         assertTrue(reader.contains("model.activateChapter("), "Chapter navigation must activate the target in the same session")
         assertFalse(reader.contains("navigator.replace("), "Chapter navigation must not replace the reader Screen")
-        assertTrue(readerVisuals.contains("showContinue = false"), "Loaded chapter transitions must not wait for Continue")
+        assertFalse(readerVisuals.contains("showContinue"), "Loaded chapter transitions must not expose Continue")
         assertTrue(reader.contains("state.session.activeChapter"), "The reader must render the canonical session snapshot")
         assertTrue(reader.contains("state.session.activeChapter.pages.map { it.encodedPageRef }"))
         assertTrue(reader.contains("ReadingMode.WEBTOON -> WebtoonPresentationViewer("))

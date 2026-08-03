@@ -352,11 +352,11 @@ class ReaderScreenModelTest {
         val boundary = loading.copy(to = null, missingChapterCount = 0, state = ReaderChapterState.Wait)
 
         assertTrue(chapterTransitionPresentation(loading).showLoading)
-        assertFalse(chapterTransitionPresentation(loading).showDismiss)
+        assertFalse(chapterTransitionPresentation(loading).showClose)
         assertTrue(chapterTransitionPresentation(error).showRetry)
-        assertTrue(chapterTransitionPresentation(error).showDismiss)
-        assertFalse(chapterTransitionPresentation(loading.copy(state = ReaderChapterState.Wait)).showContinue)
+        assertTrue(chapterTransitionPresentation(error).showClose)
         assertTrue(chapterTransitionPresentation(boundary).isBoundary)
+        assertTrue(chapterTransitionPresentation(boundary).showClose)
     }
 
     @Test
