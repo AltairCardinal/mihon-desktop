@@ -58,12 +58,16 @@ class DesktopExtensionManager(
                 loadedExtensions.toList().also {
                     loadedExtensions.clear()
                     loadedExtensions.addAll(replacements)
+                    runtimeRevision++
                 }
             }
             closeLoaders(previous)
             publishInstalledExtensions()
         }
     }
+
+    private var runtimeRevision = 0L
+    private var publishedRuntimeRevision = -1L
 
     /** Returns all loaded sources. */
     fun getInstalledSources(): List<Source> = synchronized(runtimeLock) { loadedExtensions.map { it.source } }
@@ -89,32 +93,47 @@ class DesktopExtensionManager(
      */
     fun getInstalledExtensions(): List<InstalledExtension> = installedExtensions.value
 
-    private fun snapshotInstalledExtensions(): List<InstalledExtension> =
-        synchronized(runtimeLock) { loadedExtensions.toList() }
-            .groupBy { it.jarFile }
-            .map { (jarFile, exts) ->
-                val meta = readExtensionMeta(jarFile)
-                InstalledExtension(
-                    jarFile = jarFile,
-                    sources = exts.map { it.source },
-                    versionCode = meta?.versionCode ?: 0L,
-                    versionName = meta?.versionName ?: "",
-                    iconUrl = meta?.iconUrl ?: "",
-                    repoUrl = meta?.repoUrl ?: "",
-                    repoName = meta?.repoName ?: "",
-                    repoFingerprint = meta?.repoFingerprint ?: "",
-                    installedAt = meta?.installedAt ?: 0L,
-                    artifactSha256 = meta?.artifactSha256 ?: "",
-                    origin = meta?.source ?: ExtensionOrigin.COMPILED_JAR,
-                    apkConversionVersion = meta?.apkConversionVersion ?: 0,
-                    displayName = meta?.name.orEmpty(),
-                    language = meta?.language.orEmpty(),
-                    isNsfw = meta?.isNsfw == true,
-                )
-            }
+    private fun snapshotInstalledExtensions(): InstalledSnapshot {
+        val (revision, extensions) = synchronized(runtimeLock) {
+            runtimeRevision to loadedExtensions.toList()
+        }
+        return InstalledSnapshot(
+            revision = revision,
+            extensions = extensions
+                .groupBy { it.jarFile }
+                .map { (jarFile, exts) ->
+                    val meta = readExtensionMeta(jarFile)
+                    InstalledExtension(
+                        jarFile = jarFile,
+                        sources = exts.map { it.source },
+                        versionCode = meta?.versionCode ?: 0L,
+                        versionName = meta?.versionName ?: "",
+                        iconUrl = meta?.iconUrl ?: "",
+                        repoUrl = meta?.repoUrl ?: "",
+                        repoName = meta?.repoName ?: "",
+                        repoFingerprint = meta?.repoFingerprint ?: "",
+                        installedAt = meta?.installedAt ?: 0L,
+                        artifactSha256 = meta?.artifactSha256 ?: "",
+                        origin = meta?.source ?: ExtensionOrigin.COMPILED_JAR,
+                        apkConversionVersion = meta?.apkConversionVersion ?: 0,
+                        displayName = meta?.name.orEmpty(),
+                        language = meta?.language.orEmpty(),
+                        isNsfw = meta?.isNsfw == true,
+                    )
+                },
+        )
+    }
 
     private fun publishInstalledExtensions() {
-        mutableInstalledExtensions.value = snapshotInstalledExtensions()
+        val snapshot = snapshotInstalledExtensions()
+        synchronized(runtimeLock) {
+            // Snapshot projection performs file I/O outside the runtime lock. A slower, older
+            // projection must not overwrite a newer installation snapshot that already won.
+            if (snapshot.revision >= publishedRuntimeRevision) {
+                mutableInstalledExtensions.value = snapshot.extensions
+                publishedRuntimeRevision = snapshot.revision
+            }
+        }
     }
 
     /**
@@ -164,7 +183,10 @@ class DesktopExtensionManager(
     private fun releaseRuntime(packageName: String) {
         val previous = synchronized(runtimeLock) {
             loadedExtensions.filter { it.jarFile.nameWithoutExtension == packageName }
-                .also { loadedExtensions.removeAll(it.toSet()) }
+                .also {
+                    loadedExtensions.removeAll(it.toSet())
+                    if (it.isNotEmpty()) runtimeRevision++
+                }
         }
         closeLoaders(previous)
     }
@@ -189,6 +211,7 @@ class DesktopExtensionManager(
             loadedExtensions.filter { it.jarFile.nameWithoutExtension == packageName }.also {
                 loadedExtensions.removeAll(it.toSet())
                 loadedExtensions.addAll(replacements)
+                runtimeRevision++
             }
         }
         closeLoaders(previous)
@@ -198,7 +221,11 @@ class DesktopExtensionManager(
         lifecycleGate.closeAndAwait { installScope.cancel() }
         lifecycleGate.withShutdownOperation {
             val previous = synchronized(runtimeLock) {
-                loadedExtensions.toList().also { loadedExtensions.clear() }
+                loadedExtensions.toList().also {
+                    loadedExtensions.clear()
+                    runtimeRevision++
+                    publishedRuntimeRevision = runtimeRevision
+                }
             }
             closeLoaders(previous)
         }
@@ -210,6 +237,11 @@ class DesktopExtensionManager(
 
     /** Returns the directory where extensions should be placed. */
     override val extensionsDirectory get() = loader.extensionsDirectory
+
+    private data class InstalledSnapshot(
+        val revision: Long,
+        val extensions: List<InstalledExtension>,
+    )
 }
 
 /**

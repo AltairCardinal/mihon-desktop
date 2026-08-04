@@ -110,6 +110,42 @@ class DesktopExtensionInstallTransactionTest {
     }
 
     @Test
+    fun `different package completions cannot overwrite a newer installed snapshot`(
+        @TempDir directory: Path,
+    ) = runBlocking {
+        val firstPackage = "mihon.desktop"
+        val secondPackage = PACKAGE
+        val expectedPackages = setOf(firstPackage, secondPackage)
+        val bytes = sourceJar(FixtureNewSource::class.java)
+        val loader = SnapshotRaceLoader(directory.toFile(), firstPackage)
+        val manager = transactionManager(
+            loader = loader,
+            artifactProvider = { _, destination -> destination.writeBytes(bytes) },
+        )
+        val firstInstall = async(Dispatchers.IO) {
+            manager.installExtension(artifact(FixtureNewSource.ID).copy(packageName = firstPackage))
+        }
+
+        try {
+            loader.staleSnapshotEntered.awaitLatch()
+            val secondInstall = async(Dispatchers.IO) {
+                manager.installExtension(artifact(FixtureNewSource.ID).copy(packageName = secondPackage))
+            }
+
+            assertInstanceOf(ExtensionInstallState.Installed::class.java, withTimeout(5_000) { secondInstall.await() })
+            assertEquals(expectedPackages, manager.installedExtensions.value.map { it.pkgName }.toSet())
+
+            loader.releaseStaleSnapshot()
+            assertInstanceOf(ExtensionInstallState.Installed::class.java, withTimeout(5_000) { firstInstall.await() })
+            assertEquals(expectedPackages, manager.installedExtensions.value.map { it.pkgName }.toSet())
+        } finally {
+            loader.releaseStaleSnapshot()
+            runCatching { withTimeout(5_000) { firstInstall.await() } }
+            manager.close()
+        }
+    }
+
+    @Test
     fun `invalid package path cannot create artifacts outside extension directory`(@TempDir directory: Path) = runBlocking {
         val extensions = directory.resolve("extensions").toFile().also(File::mkdirs)
         MockWebServer().use { server ->
@@ -1214,6 +1250,55 @@ class DesktopExtensionInstallTransactionTest {
                 error("fake reload failure")
             }
             return super.loadPackage(packageName)
+        }
+    }
+
+    private class SnapshotRaceLoader(
+        directory: File,
+        private val stalePackage: String,
+    ) : DesktopExtensionLoader(directory) {
+        val staleSnapshotEntered = CountDownLatch(1)
+        private val releaseSnapshot = CountDownLatch(1)
+        private val blockFirstSnapshot = AtomicBoolean(true)
+
+        override fun loadPackage(packageName: String): List<LoadedExtension> {
+            val artifact = extensionArtifactFile(extensionsDirectory, packageName, "jar")
+            val runtimeArtifact = if (packageName == stalePackage) {
+                SnapshotBlockingFile(
+                    artifact.absolutePath,
+                    blockFirstSnapshot,
+                    staleSnapshotEntered,
+                    releaseSnapshot,
+                )
+            } else {
+                artifact
+            }
+            return listOf(
+                LoadedExtension(
+                    source = FixtureNewSource(),
+                    jarFile = runtimeArtifact,
+                    classLoader = FixtureNewSource::class.java.classLoader,
+                ),
+            )
+        }
+
+        fun releaseStaleSnapshot() {
+            releaseSnapshot.countDown()
+        }
+    }
+
+    private class SnapshotBlockingFile(
+        path: String,
+        private val blockFirstSnapshot: AtomicBoolean,
+        private val snapshotEntered: CountDownLatch,
+        private val releaseSnapshot: CountDownLatch,
+    ) : File(path) {
+        override fun hashCode(): Int {
+            if (blockFirstSnapshot.compareAndSet(true, false)) {
+                snapshotEntered.countDown()
+                check(releaseSnapshot.await(5, TimeUnit.SECONDS)) { "timed out releasing stale installed snapshot" }
+            }
+            return super.hashCode()
         }
     }
 
