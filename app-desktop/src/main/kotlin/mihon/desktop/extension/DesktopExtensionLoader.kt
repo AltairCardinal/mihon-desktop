@@ -97,7 +97,10 @@ open class DesktopExtensionLoader(
                 return emptyList()
             }
 
-            sources.map { source ->
+            // A JAR scan can discover both a SourceFactory and one of its concrete products.
+            // Source IDs are the runtime identity, so publish only the first discovered
+            // provider from this installed artifact.
+            sources.distinctBy(Source::id).map { source ->
                 LoadedExtension(
                     source = source,
                     jarFile = jarFile,
