@@ -1,15 +1,16 @@
 # Mihon Desktop 非 Reader 原版核心复用与功能补齐 Roadmap
 
 - 制定日期：2026-08-02
-- 状态：`READY`（已设计，尚未成为父路线的 `active-child-plan`）
+- 最近细化：2026-08-04（依据 `NR0-01` 自动语义映射失控审查）
+- 状态：`IN_PROGRESS`（父路线当前唯一 `active-child-plan`）
 - 上级路线：[`2026-06-30-mihon-desktop-refactor-roadmap.md`](./2026-06-30-mihon-desktop-refactor-roadmap.md) 的非 Reader Phase R
 - Reader 专项：[`2026-08-02-reader-core-migration-and-presentation-roadmap.md`](./2026-08-02-reader-core-migration-and-presentation-roadmap.md)
 - 固定原版权威：`main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`
 - 本次上游跟踪点：`upstream/main@d7f3ceef5c75294306d0d9495e9ebc5ffca96302`（2026-08-02）
-- 当前 Fork 已提交基线：`9d4de56180c01ac6c97916d04449035ea1afd55f`
+- 当前 Fork 已提交基线：`95b82fc1039f772d4f8688855f2b06e16f983eb5`
 - 历史对齐总结：[`2026-08-02-mihon-desktop-upstream-parity-program-summary.md`](./2026-08-02-mihon-desktop-upstream-parity-program-summary.md)
 - 机器状态权威：[`parity-manifest.json`](../../app-desktop/src/test/resources/parity/parity-manifest.json)
-- 当前进度：本文激活后，从第 7 节第一个未勾选任务推导；不另设 `active-task`
+- 当前进度：从第 7 节第一个未勾选顶层任务，以及该任务中第一项非 `PASS` checkpoint 推导；不另设 `active-task`
 
 当前 Fork 基线只指已提交树；制定本文时存在的未提交工作树改动不作为“已实现”或“已验证”证据，也不由本文修改。
 
@@ -179,11 +180,26 @@ Android ScreenModel / Desktop ScreenModel
 - **Evidence**：manifest、文档、测试报告或运行产物已记录。
 - **Commit**：只在批次提交存在后填写 hash；提交前 checkbox 不得勾选。
 
+### 5.3 强制小步执行、工具边界与停止条件
+
+以下约束适用于本文全部任务，尤其适用于 inventory、架构审计和大规模迁移：
+
+1. **先定义禁止证据，再写正向实现。** 每个任务先写出不能证明完成的证据，以及至少 3 个会破坏目标行为的反例；反例未按正确原因失败前，不得扩展到完整页面、完整 capability 或全部平台。
+2. **最小先导切片先于批量扩展。** 审计类任务先处理 20 个高风险样本；业务任务先处理一个动作族和一条双端 production 调用链；平台任务先处理一个 shared effect 和两个 adapter。先导切片未通过内部 stop-gate，不得批量生成或迁移其余内容。
+3. **执行 checkpoint 与 Git task 分离。** 一个顶层功能批次仍按治理规则原子提交，但内部必须拆成可在 0.5–3 工程日内完成的 checkpoint。checkpoint 使用 `TODO / DOING / REVIEW / PASS / INVALIDATED`，第一项非 `PASS` 即内部进度；`PASS` 不等于顶层任务完成，也不单独产生状态提交。
+4. **过程工具不得升级为隐含产品。** 除任务明确列出的交付物外，不新增生成器、规则引擎、状态系统或长期快照。持久化 helper 只能做机械发现、确定性 ID/hash、Git 对象读取、排序和序列化；一旦开始选择业务锚点、判断 action 语义、决定 capability 归属、生成 GAP/EXEMPT 或维护 synonym/override/exception 表，立即停止并回到计划审查。
+5. **测试不得与实现互相证明。** 测试不得调用生成器的语义函数，也不得复制其 token、synonym、候选评分或 override 逻辑。结构测试只能证明 schema、引用、路径和 drift；语义正确性由手写破坏性反例、逐簇源码审查和 production 行为测试证明。
+6. **系统性失败不得补丁式扩张。** 同类错误在 2 个样本或 2 个 capability 出现、一个 cluster 需要超过 5 个同类例外、或审查指出方法层缺陷时，当前 checkpoint 标记 `INVALIDATED`，停止扩大数据集；删除错误方法并回到最近 `PASS` checkpoint，禁止继续追加规则或豁免。
+7. **颗粒度上限。** inventory 语义审查每个 cluster 最多 8 个 capability 且最多 60 个 action；超过任一上限必须先按页面/动作族再拆。业务迁移 checkpoint 最多覆盖一个动作族、一个 shared core 和 Android/Desktop 各一条生产入口；需要三个以上独立动作族时，先在任务内增加 checkpoint。
+8. **每个 checkpoint 有固定六项。** 开始前写明输入、允许动作、禁止动作、交付物、通过门禁和 timebox；任何新增流程不属于这六项时，先暂停并更新路线图，不能边执行边隐性扩展。
+
+这些 checkpoint 只记录在对应详细任务的状态表和最终证据行中，不新增第二份计划、逐阶段 manifest 快照或巨型 diff 包。
+
 ## 6. 阶段与任务总览
 
 | 阶段 | 目标 | 退出门禁 |
 | --- | --- | --- |
-| Phase 0 | 把权威升级到动作级，建立“不得存在第二核心”的可执行约束 | 所有非 Reader 入口均已映射；状态不再由页面级 `VERIFIED` 推断 |
+| Phase 0 | 先建立独立负例与人工语义裁决方法，再把权威升级到动作级 | 20 个高风险样本和 8 个 capability cluster 逐段通过；不存在自动语义豁免或未审查跨 capability 关系 |
 | Phase 1 | 远端作品与章节同步成为唯一共享核心 | Android 与 Desktop 的详情/materialize 链使用同一 core；简化重写删除 |
 | Phase 2 | 补齐漫画详情页全部原版动作并共享决策 | 详情动作矩阵全绿；只保留平台 UI/adapters 与 Desktop 增强 |
 | Phase 3 | 收口书库、书库更新和下载 | 更新资格、同步和下载动作规则不再由平台各自解释 |
@@ -196,7 +212,7 @@ Android ScreenModel / Desktop ScreenModel
 
 ### Phase 0：权威与架构门禁
 
-- [ ] `NR0-01` 建立非 Reader 动作级 inventory，并纠正历史 capability 粒度
+- [ ] `NR0-01` 按“负例 → 20 样本 → 8 个 capability cluster → tracked/source 图”建立动作级 inventory
 - [ ] `NR0-02` 建立共享核心、双端消费者和 Legacy 删除的可执行架构门禁
 
 ### Phase 1：远端作品与章节同步
@@ -250,20 +266,112 @@ Android ScreenModel / Desktop ScreenModel
 
 ## 8. 详细任务设计
 
-### `NR0-01` 建立非 Reader 动作级 inventory
+### `NR0-01` 分段建立非 Reader 动作级 inventory
 
-> 状态卡：`NEXT` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared `N/A 待记录` · Android `[ ]` · Desktop/UI `[ ]` · Legacy `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`DOING` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared `N/A：本任务只建立机器权威，不改变共享生产实现` · Android `[ ]` · Desktop/UI `[ ]` · Legacy `N/A：本任务不替换或删除生产实现` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 产物 `—` · Commit `—`
+> 记录：阻塞 `方法性阻塞已确认但不依赖外部输入：当前自动语义映射会产生大规模误配，必须从 NR0-01.A 回退` · 审查 `既有两轮均为 CHANGES_REQUIRED；最新审查确认 372 个语义豁免、257 个跨 capability 绑定和 external.share → AndroidCookieJar 明显串线，现有 2 个全绿测试不能作为关闭证据` · 验证 `既有 RED/GREEN/Spotless 仅保留为过程历史，语义证明已 INVALIDATED；新的独立负例门禁尚未建立` · 产物 `415 个 action、458 个 source entry 仅作为机械候选池保留；action 语义、capability 归属、source 关系、GAP/EXEMPT 和 tracked 裁决全部视为 provisional` · Commit `—`
 
-- 依赖：无；激活本文后第一个执行。
-- 交付：枚举 Android 与 Desktop 的所有非 Reader Screen/Tab、菜单、对话框、快捷键和后台入口，形成“页面 → 用户动作 → 入口 → 反馈/确认 → 固定原版 symbol → tracked-upstream 变化 → 当前 Android 调用链 → Desktop 调用链 → 迁移标签”的动作矩阵。
-- 交付：扩展现有 `parity-manifest.json`，为每项 capability 记录动作面和 `shared-executor/direct-reuse/platform-adapter/desktop-product/reader-owned` 裁决；不创建并行 JSON 状态源。
-- 基线：写 manifest schema/coverage 测试，缺页面动作、缺原版 symbol、只有测试副本、或用一个窄 fixture 声称整页完成时失败。
-- Reader 边界：所有 Reader 内部动作标记 `READER-OWNED` 并链接 Reader roadmap；只保留 `ReaderOpenRequest` 的生产入口证据。
-- 验证：authority/manifest focused tests、固定 Git blob/ref 可解析、`git diff --check`。
-- 关闭条件：历史 64 项没有任何条目再仅凭页面级描述推断全动作完成；审查者可从每个动作追到生产消费者。
-- 预计：3–5 工程日，约 5–9 个 manifest/fixture/test/doc 文件；超过 400 行的内聚原因是同一 schema 与完整 inventory 必须原子生效。
+- 依赖：无；本文内部进度从下表第一项非 `PASS` checkpoint 推导。
+- 实际交付物：在现有 `parity-manifest.json` 中形成经过人工逐簇裁决的“surface → action → 固定原版/当前 Android/Desktop 生产证据 → tracked-upstream 差异 → source 关系 → 迁移标签/缺口”矩阵，并用独立负例、结构测试和审查锁定结果。
+- 非交付物：自动语义映射器、通用 Kotlin/Compose 行为理解器、关键词 ontology、候选评分器、自动 GAP/EXEMPT 判定器或第二份 inventory 状态系统。
+- 原子提交：A–H/F1–F8 是同一功能批次的内部 checkpoint；中途只记录 `PASS/INVALIDATED`，不单独创建状态提交。最终提交仍包含收敛后的 manifest、机械 helper（若保留）、独立契约测试和 roadmap checkoff。
+
+#### 审查结论到路线约束的映射
+
+| 审查发现 | 本次纠正 |
+| --- | --- |
+| inventory 被隐性扩大成自动语义映射器 | helper 限定为机械发现/序列化；语义字段全部人工裁决，自动语义函数必须删除 |
+| 一次生成 415 actions/458 entries 后才审查 | 先 20 个高风险样本，再按 F1–F8 单 cluster 扩展；每 cluster 有独立 stop-gate |
+| 纯文案、Cancel、默认返回值和无关 source 也能成为证据 | 先冻结“绝对禁止证据”表；结构全绿不能覆盖语义禁区 |
+| 没有破坏性反例，明显串线仍全绿 | 完整 manifest 前先跑 12 类手写负例；`external.share → AndroidCookieJar` 是固定哨兵 |
+| 测试复制 generator 的 token/semantic 逻辑 | 测试与 helper 禁止共享或复制语义词表；digest 降级为 drift guard |
+| 审查指出系统性问题后仍继续加规则/例外 | 同类问题出现两次即 checkpoint INVALIDATED，回到最近 PASS；禁止追加 override/豁免继续扩张 |
+
+#### 绝对不能作为动作语义证据的内容
+
+| 禁止证据 | 为什么无效 | 最低可接受替代 |
+| --- | --- | --- |
+| 纯文案、字符串资源、标题、图标或 content description | 只能证明有文本/资源，不能证明动作存在或执行 | 生产 handler/intention 到 use case/effect 的调用位置，以及用户可见结果 |
+| 通用 Cancel、Dismiss、Back、Close、`navigator.pop()` | 几乎所有对话框都包含，无法证明目标 capability | 只有目标本身就是取消/关闭流程时才可作为 action；否则只标为容器控制 |
+| 接口声明、默认返回值、空实现、placeholder、stub | 不能证明 production override 或调用方实际使用 | 具体实现 + production caller；两者必须能追到同一行为 |
+| 测试、preview、sample、fixture、注释或 dead code | 不能证明真实入口 | `app/`、`app-desktop/` 或 shared production 路径及其真实 wiring |
+| 仅词语相似、同义词命中、最近 symbol 或候选评分最高 | 词法接近不等于业务关系 | 直接调用、数据流、状态转换或同一用户 intent 的源码上下文 |
+| Screen/Tab/Dialog 类声明、构造器、DI 注册 | 只证明容器/依赖存在 | 具体入口事件、业务调用和反馈；容器可单独记为 surface/source container |
+| preference key/default 或 repository getter | 只证明存储/读取存在 | 设置 UI/生产消费者 + 行为改变或持久化结果 |
+| background job、shortcut 声明但无消费路径 | 只证明触发器被声明 | 触发器到同一 shared use case/effect 的 production 调用链 |
+| 与目标无关的平台 adapter，例如用 CookieJar 证明 Share | 平台同属一组不代表行为相关 | 目标 effect 的实际 adapter 和成功/失败结果 |
+| test-only source、兼容 shim 或 Reader 内部实现 | 不能证明非 Reader 产品动作 | 对应非 Reader 入口；Reader 内部一律交给 Reader roadmap |
+| 同一个 source entry 自动分配给多个 capability | 容易制造跨 capability 假关系 | 默认归属一个 capability；确需共享时逐项写明实际多消费者调用链和人工理由 |
+
+结构测试可以验证路径、行号、context hash 和双向引用一致，但这些条件即使全绿也不能把上述禁止证据变成有效语义证据。
+
+#### 机械 helper 的允许范围
+
+`scripts/nr0_01_action_inventory_v2.py` 可以缩减后保留，也可以删除并改用一次性只读命令；无论形式如何，都必须满足：
+
+- 允许发现/输出：`revision`、`platform`、`path`、`line`、原始 `locator`、显示用 declaration、entry kind、`contextHash`、确定性 `sourceEntryId`、Git 中存在/删除/移动的机械事实、稳定排序和 JSON 序列化。
+- 可以原样序列化已经人工填写的 action/capability/source 关系，但不得创建、选择、改写或补全这些关系。
+- 禁止生成：action/surface/capability 归属、业务锚点、`migrationTag`、`implementationStatus`、GAP/EXEMPT、feedback、confirmation、follow-up task、`sourceEntryIds` 关系或 tracked 语义结论。
+- 禁止继续维护 `ANCHOR_OVERRIDES`、`semantic_groups`、synonym/token matching、候选评分、自动 exception 或任何等价机制；发现机械路径后应把候选交给人工 checkpoint，而不是“提高匹配率”。
+- `NonReaderActionInventoryContractTest` 必须删除/替换与生成器等价的 `semanticGroups`、`tokenMatches`、synonym 和 candidate-shape 判断；digest 只能作为已审查基线的 drift guard，不能证明初始语义正确。
+
+#### 独立破坏性负例门禁
+
+在接触完整 manifest 前，测试夹具必须手写至少以下 12 类错误映射，并证明每类因独立、清晰的原因失败；同时保留至少 2 个合法正例，防止测试变成“一律拒绝”：
+
+1. `external.share` 绑定到 `AndroidCookieJar`。
+2. 删除/清空能力绑定到 Cancel/Dismiss 文案或按钮。
+3. 下载暂停绑定到接口默认 `false`、空实现或仅声明。
+4. 设置动作只绑定 preference key/default，没有 UI 或生产消费者。
+5. 详情刷新绑定到 test/preview 中的同名 `getMangaDetails`。
+6. History 清空绑定到通用 `navigator.pop()`。
+7. Tracking 更新只绑定 repository getter，没有远端更新/结果处理。
+8. Share/Save 绑定到无关 browser/cookie adapter。
+9. 一个 source entry 无理由绑定到两个无关 capability。
+10. Desktop product 被伪造为 fixed-original `PRESENT`，或平台缺口被自动标为 `EXEMPT`。
+11. Reader 页加载/进度动作被收入非 Reader inventory。
+12. tracked-upstream 路径仍存在，但目标行为已删除、移动到另一 symbol 或语义改变，却被文件级比较判为 `UNCHANGED`。
+
+负例测试不得导入或复制 helper 的语义词表；若测试只能通过新增某个 action ID 特判，应先判断 schema/方法是否错误，不能直接扩大 allowlist。
+
+#### 内部 checkpoint 状态与 timebox
+
+| Checkpoint | 状态 | 固定目标与交付物 | 通过门禁 | Timebox |
+| --- | --- | --- | --- | --- |
+| `NR0-01.A` 止损与资产分级 | `NEXT` | 冻结全量扩展；把现有字段分为机械候选、人工待审、应删除的自动语义三类 | 不再新增 override/exception；任务记录明确可保留/作废范围 | 0.5–1 日 |
+| `NR0-01.B` 证据模型与禁止项 | `TODO` | 固定 action/surface/container/source、PRESENT/GAP/EXEMPT、跨 capability 关系的人工裁决规则 | 上述禁止证据全部进入规范；无“关键词命中即有效”路径 | 1 日 |
+| `NR0-01.C` 独立负例夹具 | `TODO` | 建立 12 类破坏性负例和至少 2 个正例，不读取完整 manifest | 12 类均按各自原因 RED，正例 GREEN；测试不复用 helper 语义 | 1–2 日 |
+| `NR0-01.D` 机械 helper 收缩 | `TODO` | 删除自动 anchor/semantic/relationship/status 逻辑，仅保留机械发现和序列化 | helper 输出零语义决策；测试中无复制的 semantic matcher | 1–2 日 |
+| `NR0-01.E` 20 个高风险先导样本 | `TODO` | 人工核对 20 个非随机样本的四方上下文和 source 关系 | 20/20 逐项通过内部方法审查；全部负例仍有效 | 1–2 日 |
+| `NR0-01.F1` 平台基础 | `TODO` | capability `3,4,7,8,9,10,11,12`；`9` 只审非 Reader 设置/入口边界 | 本 cluster 人工裁决、3 个 cluster mutation、零自动豁免 | 1–2 日 |
+| `NR0-01.F2` 书库与详情 | `TODO` | capability `16,17,19,22,24,26` | 同上；详情 action 不用容器/通用按钮代证 | 1–2 日 |
+| `NR0-01.F3` Browse/Extension A | `TODO` | capability `28,29,30,32,33,34` | 同上；多源和扩展 catalog 关系逐项追调用链 | 1–2 日 |
+| `NR0-01.F4` Browse/Extension B | `TODO` | capability `35,36,37,38,39,40` | 同上；认证/挑战/平台 loader 分类明确 | 1–2 日 |
+| `NR0-01.F5` Download/Updates/History | `TODO` | capability `56,57,59,61,62,64,66` | 同上；background 与用户动作分开，不共享伪锚点 | 1–2 日 |
+| `NR0-01.F6` Migration/Tracking/Backup | `TODO` | capability `67,68,69,70,71,72,73,74` | 同上；数据动作、平台 I/O 和反馈分别取证 | 1–2 日 |
+| `NR0-01.F7` 平台能力 | `TODO` | capability `81,82,83,84,85,86,87,88` | 同上；85 等豁免必须人工证明平台边界 | 1–2 日 |
+| `NR0-01.F8` Settings/Maintenance | `TODO` | capability `90,91,92,93,94,95,96` | 同上；preference 声明不能代替入口与消费行为 | 1–2 日 |
+| `NR0-01.G` tracked/source 图 | `TODO` | 在已通过 F1–F8 的人工 action 上补 tracked diff 和双向 source 关系 | 零文件级默认结论、零未审查跨 capability 绑定 | 2–3 日 |
+| `NR0-01.H` 聚合、独立审查与提交 | `TODO` | 合并 cluster 结果，运行 focused/格式，完成一次独立审查和必要复审 | 全部 checkpoint PASS；一个原子提交关闭 NR0-01 | 2–3 日 |
+
+如果任一 F cluster 超过 60 个 action，必须先在本表按 surface/动作族拆成 `F<n>.1/F<n>.2`，更新 timebox 后再开始；不得边审查边扩大 cluster。
+
+#### Checkpoint 具体执行约束
+
+- `A` 只做止损和分级，不修语义。现有 415/458 条目允许保留路径、行号、entry kind、revision、locator/context hash 等机械候选；自动 action anchor、capability/source 关系、状态和 tracked 结论全部降级为待人工重做。不得为了保住既有数量而维持错误条目。
+- `B` 先手写规则和 12 类禁止项，再允许修改 schema。action 是会引发领域状态、导航、外部 effect 或用户可见结果的 intent；surface/container 不是 action；background/shortcut 是入口类型，不因被发现就自动等于某项用户能力。
+- `C` 使用最小独立 fixture，不加载 240 万字节完整 manifest，不调用 helper。错误必须有可定位的断言消息；若 external.share → AndroidCookieJar 仍能通过，禁止进入 `D/E`。
+- `D` 以“删除语义代码”为主，不继续修补。helper 可发现候选，但人工选择哪一条证明哪个 action；结构测试可以检查人工关系的引用一致性，不能自行生成期望关系。
+- `E` 的 20 个样本由执行者显式列出，不随机抽样且不由 helper 选择；五类各 4 个：词法碰撞、危险动作/通用控制、background/shortcut/settings、Desktop product/platform/Reader 边界、tracked 移动/改名/多消费者。每项读取固定原版、当前 Android、Desktop 和 tracked-upstream 上下文。完成后立即做一次主协调者只读方法审查；发现系统性缺陷即把 `E` 标为 `INVALIDATED` 并回到 `B/C/D`，不追加规则继续扩展。
+- `F1–F8` 严格一次只做一个 cluster：机械列候选 → 人工确定 action/owner/source → 添加 3 个针对该 cluster 的破坏性 mutation → focused 验证 → 状态改为 PASS。前一 cluster 未 PASS，不得生成下一 cluster 的语义字段。
+- Reader capability `43,44,45,47,49,51,53,54` 不进入 F cluster；只验证 `READER_OWNED` 元数据和本文第 2.3 节允许的入口边界，不盘点 Reader 内部 action。
+- `G` 只能在语义 action 已通过后进行。tracked 结论比较具体 action context，不以“文件仍存在”“词语仍出现”代替；source graph 默认禁止跨 capability，共享 source 必须写实际多消费者路径和人工理由。
+- `H` 才允许锁定最终计数/digest。415 actions、458 entries 不是保底指标；删去伪 action 或重新归属后数量变化是正确结果。独立审查从每个 cluster 抽取高风险项并重跑负例；修复复审仍遵守最多一轮。既有两轮 CHANGES_REQUIRED 只作为已废弃自动语义方法的历史，不冒充新方法审查；本次用户要求依据报告重规划后，修正版批次重新执行一轮独立审查和至多一轮修复复审。
+
+- Focused 验证：独立负例 fixture、manifest schema/reference/drift、逐 cluster mutation、固定 Git blob/ref、Reader scope、`spotlessCheck`、`git diff --check`。
+- 关闭条件：全部 checkpoint PASS；helper 和测试均无自动语义 matcher；零自动语义豁免、零未审查跨 capability 绑定；每个 GAP/EXEMPT/desktop-product 有人工理由和 follow-up/边界；审查者可从每个 action 追到真实 production 上下文。
+- 预计：15–25 工程日，约 4–7 个 manifest/helper/test/doc 文件但会显著超过 400 行。内聚原因是最终 manifest schema 和双向关系必须原子提交；风险由小样本、cluster stop-gate 和零自动语义规则控制，而不是由更多 override 控制。
 
 ### `NR0-02` 建立可执行复用架构门禁
 
@@ -272,13 +380,15 @@ Android ScreenModel / Desktop ScreenModel
 > 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 产物 `—` · Commit `—`
 
 - 依赖：`NR0-01`。
-- RED：准备最小编译变异夹具，分别模拟“shared core 无 Android 消费者”“Desktop 绕过 use case 直连 repository”“adapter 内复制业务判断”“legacy executor 仍可从 production 到达”；门禁必须失败。
-- GREEN：在现有 architecture/parity tests 中增加 compiled edge 与 production factory 约束；允许名单必须逐项说明平台原因和到期条件。
-- 规则：源码扫描只用于包依赖、禁用 API 和遗留 symbol 守卫；完成证据必须绑定真实类、DI、数据库、HTTP 或 mounted UI。
+- `NR0-02.A`（0.5–1 日）：只选 `NR0-01.F2` 中一个已经人工通过的详情 action，手写四个最小编译变异：“shared core 无 Android 消费者”“Desktop 绕过 use case 直连 repository”“adapter 内复制业务判断”“legacy executor 仍可从 production 到达”；四个必须以不同断言 RED。
+- `NR0-02.B`（1–2 日）：只为该 action 建立 compiled edge、production factory 和真实行为测试；确认恢复任一错误变异都会失败，且源码扫描本身不被当作功能完成证据。
+- `NR0-02.C`（1–2 日）：按 `F1–F8` cluster 扩展结构规则；一次只增加一个 dependency rule/allowlist family，每项允许名单必须写平台原因、真实消费者和复查/删除条件。
+- GREEN：在现有 architecture/parity tests 中增加 compiled edge 与 production factory 约束；不得调用 NR0-01 helper 生成预期边，测试也不得用类名/关键词相似代替编译关系。
+- 规则：源码扫描只用于包依赖、禁用 API 和遗留 symbol 守卫；完成证据必须绑定真实类、DI、数据库、HTTP 或 mounted UI。若同一规则需要超过 5 个 allowlist 例外，停止扩展并重新检查依赖边界。
 - 用户行为：无新增 UI；保护所有后续迁移不会只增加一个未使用的 shared facade。
 - 验证：architecture/parity focused tests、mutation fixture、Spotless、`git diff --check`。
-- 关闭条件：断开任一已声明的 Android/Desktop shared consumer，或恢复一个已删除 executor，测试都会失败。
-- 预计：2–4 工程日，约 4–8 个测试/fixture 文件。
+- 关闭条件：A/B/C 均 PASS；断开任一已声明的 Android/Desktop shared consumer，或恢复一个已删除 executor，测试都会失败；允许名单无无理由或自动生成条目。
+- 预计：3–5 工程日，约 4–8 个测试/fixture 文件。
 
 ### `RS-01` 提取唯一章节同步核心
 
@@ -760,7 +870,7 @@ BR-01 + EX-01 + BK-01 + SE-01 ────────→ PA-01           │
 - `BK-01` 涉及数据安全和迁移语义，独立审查时暂停同一备份模型上的并行写入。
 - `QG-01` 前允许的迁移桥必须在对应任务状态卡登记名称和删除期限；超过相邻两个任务仍存在即视为阻塞。
 
-预计总量为约 100–160 工程日。单人连续执行约 20–32 周；在 Phase 1 契约冻结后以最多两个低冲突工作流并行，约 13–22 周。该估算不含 Reader roadmap，也不含等待上游、真实扩展源、macOS/Windows 构建机或第三方 tracker 恢复的外部时间。
+预计总量修正为约 115–180 工程日，其中 `NR0-01` 的人工语义审查为 15–25 日，而不是原先低估的 3–5 日。单人连续执行约 23–36 周；在 Phase 1 契约冻结后以最多两个低冲突工作流并行，约 15–24 周。该估算不含 Reader roadmap，也不含等待上游、真实扩展源、macOS/Windows 构建机或第三方 tracker 恢复的外部时间。
 
 ## 10. TDD、分层验证与发布门禁
 
@@ -787,7 +897,7 @@ BR-01 + EX-01 + BK-01 + SE-01 ────────→ PA-01           │
 
 | 门禁 | 最小验证 |
 | --- | --- |
-| Phase 0 | authority/manifest/architecture mutation、`git diff --check`、Spotless |
+| Phase 0 | 12 类独立负例、20 样本 stop-gate、F1–F8 cluster mutations、authority/manifest/architecture、`git diff --check`、Spotless |
 | Phase 1 | shared/domain/data、Android remote update callers、Desktop materialize、MockWebServer、DI |
 | Phase 2 | Android manga focused、Desktop detail full suite、Screen/navigation/DI、Test Mode detail subset |
 | Phase 3 | library/category/update/download shared tests、双端 wiring、Desktop scheduler/runtime、Test Mode subset |
@@ -819,7 +929,7 @@ python scripts/gradle-coordinator.py run --key non-reader-final -- ./gradlew :do
 
 ## 11. 进度与证据记录模板
 
-每个任务状态变化追加一行；任务处于 REVIEW 但尚未提交时仍保持 `[ ]`。
+每个任务状态变化追加一行；任务处于 REVIEW 但尚未提交时仍保持 `[ ]`。内部 checkpoint 也使用同一表，以 `NR0-01.E` 等完整编号记录，`Commit` 在顶层原子提交前写 `N/A（随 NR0-01 提交）`；checkpoint `INVALIDATED` 时保留失败原因，不覆盖成新的假绿记录。
 
 | 日期 | 任务 | 状态变化 | 权威/范围 | RED/基线证据 | Shared/双端/Legacy 结果 | 独立审查 | 验证/产物 | Commit |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -841,6 +951,9 @@ python scripts/gradle-coordinator.py run --key non-reader-final -- ./gradlew :do
 | 风险 | 控制 |
 | --- | --- |
 | 再次把窄共享 helper 当成整项 parity | 动作级 inventory；每个动作绑定 production path 和 UI；整页最终门禁 |
+| 机械 helper 演变成自动语义映射器 | helper 零语义输出；禁止 synonym/override/评分/自动豁免；20 样本前不得扩展 |
+| 生成器与测试复制同一逻辑而互相证明 | 12 类手写破坏性负例；测试不导入或复制 helper 语义；digest 只做 drift guard |
+| 审查发现系统性缺陷后继续打补丁 | 同类错误出现两次即 checkpoint INVALIDATED；回到最近 PASS，不新增例外继续扩张 |
 | “共享”只是新 facade，旧 executor 仍运行 | Android/Desktop compiled edge + mutation；Legacy 字段和相邻任务删除期限 |
 | 为 KMP 重写导致脱离原版谱系 | 固定/跟踪上游 symbol、fixture 和迁移 diff；优先移动/参数化原方法体 |
 | 平台 adapter 偷偷持有业务规则 | port API 只传 typed intent/result；adapter allowlist；跨平台 contract test |
