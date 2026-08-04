@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import mihon.desktop.extension.DesktopExtensionManager
+import mihon.desktop.extension.InstalledExtension
 import mihon.desktop.settings.DesktopAppPreferences
 import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.domain.source.model.StubSource
@@ -29,7 +30,7 @@ class DesktopSourceManager(
     override val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
 
     override val catalogueSources: Flow<List<CatalogueSource>> = extensionManager.installedExtensions.map { extensions ->
-        builtinSources + extensions.flatMap { it.sources }.filterIsInstance<CatalogueSource>()
+        canonicalCatalogueSources(extensions)
     }
 
     override fun get(sourceKey: Long): Source? {
@@ -43,15 +44,16 @@ class DesktopSourceManager(
     }
 
     override fun getOnlineSources(): List<HttpSource> {
-        val builtins = builtinSources.filterIsInstance<HttpSource>()
-        val extensions = extensionManager.getInstalledSources().filterIsInstance<HttpSource>()
-        return builtins + extensions
+        return getCatalogueSources().filterIsInstance<HttpSource>()
     }
 
     override fun getCatalogueSources(): List<CatalogueSource> {
-        return builtinSources + extensionManager.installedExtensions.value
-            .flatMap { it.sources }
-            .filterIsInstance<CatalogueSource>()
+        return canonicalCatalogueSources(extensionManager.installedExtensions.value)
+    }
+
+    private fun canonicalCatalogueSources(extensions: List<InstalledExtension>): List<CatalogueSource> {
+        return (builtinSources + extensions.flatMap { it.sources }.filterIsInstance<CatalogueSource>())
+            .distinctBy(CatalogueSource::id)
     }
 
     /** Discovery/search candidates; disabled sources remain available through [get]. */

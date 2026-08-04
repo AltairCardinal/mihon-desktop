@@ -19,7 +19,9 @@ import mihon.desktop.extension.LoadedExtension
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.DesktopSourceManager
 import mihon.desktop.source.FakeSource
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -76,6 +78,46 @@ class SourceMembershipReactiveWiringTest {
             awaitMissing(scene, reloaded.name)
             assertTrue(rendered(scene).contains(builtin.name))
             assertTrue(rendered(scene).contains("Local source"))
+        } finally {
+            scene.close()
+            extensionManager.close()
+            preferenceRoot.removeNode()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `duplicate extension source ids are canonical before the mounted browse list`() = runBlocking {
+        val preferenceRoot = Preferences.userRoot().node("/mihon/source-membership-duplicate/${System.nanoTime()}")
+        val retained = FakeSource(103, "all", "Retained authority source")
+        val collision = FakeSource(retained.id, "all", "Colliding authority source")
+        val extensionJar = extensionsDirectory.resolve("duplicate-source.jar").apply { createNewFile() }
+        val loader = SnapshotLoader(extensionsDirectory).apply {
+            snapshot = listOf(extensionJar to retained, extensionJar to collision)
+        }
+        val extensionManager = DesktopExtensionManager(loader)
+        val preferences = DesktopAppPreferences(DesktopPreferenceStore(preferenceRoot)).apply {
+            enabledLanguages.set(setOf("all"))
+        }
+        val sourceManager = DesktopSourceManager(extensionManager, preferences, emptyList())
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { this@mockk.sourceManager } returns sourceManager
+            every { appPreferences } returns preferences
+        }
+        val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+
+        try {
+            extensionManager.loadAll()
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(BrowseSourceListScreen()) { CurrentScreen() }
+                }
+            }
+
+            awaitRendered(scene, retained.name)
+            assertEquals(listOf(retained.id), sourceManager.getCatalogueSources().map { it.id })
+            assertSame(retained, sourceManager.get(retained.id))
+            assertFalse(rendered(scene).contains(collision.name))
         } finally {
             scene.close()
             extensionManager.close()
