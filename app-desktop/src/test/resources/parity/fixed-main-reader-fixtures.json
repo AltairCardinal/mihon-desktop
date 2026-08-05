@@ -332,7 +332,7 @@
       ],
       "behaviorEvidenceRefs": [
         "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#visible-page reporting waits for settled pager and reports both pair pages",
-        "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#one session opens at zero pages then materializes visible pages and settled progress"
+        "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#dual presentation settles both source pages through screen model and session progress port"
       ],
       "description": "A settled two-source-page spread records the greatest visible source page while two slices of one wide source page remain one progress identity.",
       "resolutionStatus": "ACTIVE"

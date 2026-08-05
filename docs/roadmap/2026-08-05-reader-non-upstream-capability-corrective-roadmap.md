@@ -326,9 +326,9 @@ RNC-01 → RNC-02 → RNC-03 → RNC-04 → RNC-05 → RNC-06 → RNC-07
 
 ### `RNC-05` 双页进度与进度可靠性分层
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared `[ ]` · Android `[ ]` · Desktop/UI `[ ]` · Legacy `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`DONE` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared `[x]` · Android `SKIPPED：本机无 Android SDK，RED/GREEN 均未执行` · Desktop/UI `[x]` · Legacy `[x]` · Review `[x]` · Verify `[x]` · Evidence `[x]` · Commit `[x]`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 产物 `—` · Commit `—`
+> 记录：阻塞 `Android focused tests 在依赖解析前因 ANDROID_HOME/sdk.dir 缺失而阻断；按用户要求跳过并保留既有 Android 证据，不把阻断记作 RED 或 GREEN` · 审查 `PASS：最终无 production diff；产品最大可见页、latest settlement 与幂等/drain 保持三类独立 deviation，历史 DUAL_PAGE_PROGRESS_FIRST_ONLY 语义未改写` · 验证 `有效 RED：producer 丢失第二页、repository 幂等短路移除、dispose 取消 drain 分别被对应测试捕获；GREEN：domain 5、Desktop 68、data 2 tests / 0 failures；Android 未运行；JSON parse PASS` · 产物 `DualPagedPresentation → ReaderScreenModel → DesktopReaderSession/shared policy → progress port 连续 wiring test；capability 53 evidence 更新` · Commit `本批次提交（见 Git 历史）`
 
 - 依赖：`RNC-03`、`RNC-04`；presentation producer 身份和可见集合已稳定。
 - RED（产品语义）：两张相邻 source pages 组成一个 settled pair 时上报两个 `ReaderPageId` 并取最大 source index；同一宽源图的两个 slice 去重为一个 source page；末页确实可见时才完成章节。

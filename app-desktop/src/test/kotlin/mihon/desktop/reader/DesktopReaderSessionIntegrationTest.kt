@@ -21,6 +21,7 @@ import mihon.domain.reader.materialize.ReaderPageFetchPort
 import mihon.domain.reader.materialize.ReaderPageMaterializeEvent
 import mihon.domain.reader.materialize.ReaderPageMaterializeResult
 import mihon.domain.reader.progress.ReaderProgressEffect
+import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
 import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
 import mihon.domain.reader.session.EncodedPageRef
@@ -31,6 +32,10 @@ import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
 import mihon.domain.reader.session.ReaderSessionCore
 import mihon.domain.reader.storage.EncodedPageStoreWriteResult
+import mihon.desktop.ui.reader.ReaderScreenModel
+import mihon.desktop.ui.reader.presentation.DualPagedPresentation
+import mihon.desktop.ui.reader.presentation.ReaderPresentationRequest
+import mihon.desktop.ui.reader.presentation.resolveDualVisiblePages
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertSame
@@ -44,6 +49,60 @@ class DesktopReaderSessionIntegrationTest {
 
     @TempDir
     lateinit var tempDir: File
+
+    @Test
+    fun `dual presentation settles both source pages through screen model and session progress port`() = runTest {
+        val progress = mutableListOf<ReaderProgressEffect>()
+        val session = DesktopReaderSession(
+            initialContext = context(1L),
+            core = core(initialChapterId = 1L),
+            encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-dual-progress-wiring")),
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory {
+                ReaderChapterContentPort {
+                    List(4) { index -> readyDescriptor(chapterId = 1L, index = index) }
+                }
+            },
+            pageFetchPortFactory = DesktopReaderPageFetchPortFactory { _, descriptor -> readyPort(descriptor) },
+            progressPort = DesktopReaderProgressPort { _, effect -> progress += effect },
+            parentScope = this,
+        )
+        session.start()
+        advanceUntilIdle()
+        val model = ReaderScreenModel(
+            initialSessionState = session.state.value,
+            onViewportSettled = session::settleViewport,
+        )
+        val presentation = DualPagedPresentation.present(
+            ReaderPresentationRequest(
+                chapter = session.state.value.snapshot.activeChapter,
+                direction = ReaderDirection.LTR,
+            ),
+        )
+
+        try {
+            val pair = presentation.displayUnits.single { unit ->
+                unit.slots.mapNotNull { it.page?.id?.sourcePageIndex }.toSet() == setOf(1, 2)
+            }
+            val pairViewport = presentation.resolveDualVisiblePages(pair.id)
+            model.settleDualPage(pairViewport)
+            advanceUntilIdle()
+
+            assertEquals(setOf(1, 2), pairViewport.pageIds.mapTo(linkedSetOf(), ReaderPageId::sourcePageIndex))
+            assertEquals(2, progress.single().lastPageRead)
+            assertEquals(false, progress.single().isRead)
+
+            val last = presentation.displayUnits.single { unit ->
+                unit.slots.any { it.page?.id?.sourcePageIndex == 3 }
+            }
+            model.settleDualPage(presentation.resolveDualVisiblePages(last.id))
+            advanceUntilIdle()
+
+            assertEquals(listOf(2, 3), progress.map(ReaderProgressEffect::lastPageRead))
+            assertTrue(progress.last().isRead)
+        } finally {
+            session.close()
+        }
+    }
 
     @Test
     fun `one session opens at zero pages then materializes visible pages and settled progress`() = runTest {
