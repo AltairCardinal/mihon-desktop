@@ -79,6 +79,35 @@ class ReaderDeviationGovernanceTest {
                 }
             }
         }
+        assertMutationFails(valid, "exact Reader deviation ids") { entries ->
+            entries.filterNot { it.value.requiredText("id") == "DUAL_COVER_LEFT_SLOT" }
+        }
+        assertMutationFails(valid, "resolutionStatus") { entries ->
+            entries.replace("DUAL_FIXED_4_3_FRAME", "resolutionStatus", JsonPrimitive("ACTIVE"))
+        }
+        assertMutationFails(valid, "classification") { entries ->
+            entries.replace(
+                "DESKTOP_ENCODED_CACHE_POLICY",
+                "classification",
+                JsonPrimitive("CROSS_PLATFORM_RELIABILITY_ENHANCEMENT"),
+            )
+        }
+        assertMutationFails(valid, "introductionRefs") { entries ->
+            entries.replace(
+                "DESKTOP_FULL_NEXT_CHAPTER_PREFETCH",
+                "introductionRefs",
+                JsonArray(listOf(JsonPrimitive(FIXED_MAIN_REF))),
+            )
+        }
+    }
+
+    @Test
+    fun `Desktop dual production cannot restore a fixed four three frame`() {
+        val production = Files.readString(repositoryRoot.resolve(DUAL_RENDERER_PATH))
+
+        assertTrue("DUAL_PAGE_FRAME_ASPECT_RATIO" !in production)
+        assertTrue("maxHeight * 4f / 3f" !in production)
+        assertTrue("maxWidth * 3f / 4f" !in production)
     }
 
     private fun assertMutationFails(
@@ -222,6 +251,9 @@ class ReaderDeviationGovernanceTest {
     private companion object {
         const val FIXTURE_PATH = "app-desktop/src/test/resources/parity/fixed-main-reader-fixtures.json"
         const val MANIFEST_PATH = "app-desktop/src/test/resources/parity/parity-manifest.json"
+        const val DUAL_RENDERER_PATH =
+            "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt"
+        const val FIXED_MAIN_REF = "6fbf6dfca203d99d6dd32137f2df97ced40c81b8"
         const val CURRENT_HEAD = "a1a9d009ef8b230f43c624e21434ad999690137c"
         val READER_CAPABILITY_IDS = setOf(43, 45, 53)
         val HISTORICAL_DEVIATION_OWNERS =

@@ -3,7 +3,7 @@
 ## 状态与目的
 
 本文描述 reader migration 的最终架构和当前边界。当前状态是
-`CORE_MIGRATION_CLOSED / RELEASE_VALIDATION_PENDING`：
+`CORE_MIGRATION_CLOSED / NON_UPSTREAM_AUTHORITY_CORRECTED`：
 
 - 已共享并由 Android 生产消费：稳定 session/page 状态、page-list 与单页 materialize executor、唯一
   priority/generation scheduler、encoded store contract、current/previous/next 章节窗口、跨章激活及 settled
@@ -157,11 +157,13 @@ Ready 内容改变高度时按相对位置重放锚点；宽页 split/merge 后�
 Lazy 边界，不会跳到后续页或先发布错误 viewport。Dual 的 settled display unit 上报去重后的全部可见
 `PageId`，并以最大 source index 作为 active progress；最终 pair 只有实际包含末页时才完成章节。
 
-Dual renderer 始终挂载一个带水平安全边距、相对窗口居中的固定双槽 frame：封面无论横竖比例、章节长度、
-阅读方向或环境 locale 方向，都占绝对物理左槽，右槽为空；普通 pair 只按阅读方向改变两页的物理分配，
-环境 RTL 不得再次翻转槽位。单页不会退化为贴边单槽。pair/slot identity 不随任一页的
-Loading→Ready/Error 改变。宽图切片继续通过统一 `ZoomablePageBox` 的 `splitHalf/sourceBounds` 渲染，所以
-右键保存消费与屏幕相同的实际切片。自动 edge matching 只读取 `PagePreloader` 的有界 decoded cache；matcher
+Dual renderer 始终在完整 reader content viewport 中挂载两个各占一半并向书脊对齐的稳定物理槽，不使用固定
+4:3 frame 或只为该比例服务的水平 inset。封面无论横竖比例、章节长度、阅读方向或环境 locale 方向，都占
+绝对物理左槽，右槽为空；普通 pair 只按阅读方向改变两页的物理分配，环境 RTL 不得再次翻转槽位。单页继续
+保留双槽身份。窗口 resize 只改变布局尺寸，pair/slot identity 与 zoom container 不变；默认 `FIT_SCREEN` 不
+裁切或拉伸，漫画自身比例造成的留白不由 frame 隐藏。宽图切片继续通过统一 `ZoomablePageBox` 的
+`splitHalf/sourceBounds` 渲染，所以右键保存消费与屏幕相同的实际切片。自动 edge matching 只读取
+`PagePreloader` 的有界 decoded cache；matcher
 没有 URL 或网络入口，也不拥有 fetch job。production observer 收集 cache revision：晚到解码会触发重算，
 新发现与本章已确认 pair 做并集；缓存淘汰不会让当前章节的排版来回跳变。
 
@@ -270,3 +272,15 @@ decision family，或新增第二个/网络型 decode preloader，架构门禁�
 4. authority fixture 和源码边界扫描只用于 provenance/架构守卫，不能替代 production 行为验收。
 5. 数据库、备份和 `last_page_read` 格式保持不变；encoded cache 是可丢弃派生数据。
 6. 迁移失败时回滚入口 wiring，不恢复长期双 scheduler、双 progress policy 或 renderer 内 source fallback。
+
+## Authority 分层维护规则
+
+- fixed-main 只证明固定原版用户语义；共享提取完成、可靠性加固或平台实现不能反向成为上游来源证据。
+- latest settlement、进度幂等/drain 与 encoded store 生命周期属于跨平台可靠性；它们需要两端 production
+  consumer 或真实 adapter I/O 证据，但分类仍不是 `FIXED_ORIGINAL`。
+- 双页最大可见页进度、自动滚动暂停和完整下一章图片预取属于产品增强；原版末页完成、current + 4 或末五页
+  page-list 仅作为相邻但不同的上游行为向量。
+- display/slot identity、Webtoon 相对锚点和 Desktop 512 MiB encoded cache 默认值属于平台策略，只能由平台
+  production/mounted 测试证明；不得进入 shared core 或借 decoded cache 证据完成验收。
+- manifest 是 capability 状态与 deviation 证据的机器权威。architecture 文档解释目的与边界，源码零命中只
+  防止已删除的固定 4:3 实现回归，不能代替真实几何和 wiring 测试。

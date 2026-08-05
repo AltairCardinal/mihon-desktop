@@ -4,7 +4,7 @@
 
 正式版日期：2026-06-30
 
-- active-child-plan: [`2026-08-05-reader-non-upstream-capability-corrective-roadmap.md`](./2026-08-05-reader-non-upstream-capability-corrective-roadmap.md)
+- active-child-plan: `NONE`（Reader 非上游纠正计划已按允许的跳过规则收口；暂停中的非 Reader 工作流未在本分支恢复）
 
 ## 0. 产品路线
 

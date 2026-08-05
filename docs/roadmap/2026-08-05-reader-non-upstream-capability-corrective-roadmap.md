@@ -1,7 +1,7 @@
 # Reader 非上游能力分类与双页视口纠正 Roadmap
 
 - 制定日期：2026-08-05
-- 状态：`IN_PROGRESS`（父路线当前唯一 `active-child-plan`；在独立 worktree 中串行执行，暂停中的非 Reader 工作树不参与本计划写入）
+- 状态：`DONE_WITH_RECORDED_SKIPS`（实现、治理与可运行验证已收口；Android SDK、macOS 同提交构建及四种实际窗口视觉验收按用户指示跳过并记录）
 - 来源审查：[`2026-08-05-reader-refactor-non-upstream-feature-audit.md`](./2026-08-05-reader-refactor-non-upstream-feature-audit.md)
 - 原 Reader 计划：[`2026-08-02-reader-core-migration-and-presentation-roadmap.md`](./2026-08-02-reader-core-migration-and-presentation-roadmap.md)
 - 上级路线：[`2026-06-30-mihon-desktop-refactor-roadmap.md`](./2026-06-30-mihon-desktop-refactor-roadmap.md)
@@ -16,7 +16,7 @@
 1. 固定 4:3 双页 frame 已产生可复现的页面比例缺陷，必须修改 production 实现；
 2. 审查报告列出的本地产品语义、可靠性增强和平台策略必须从 fixed-main authority 中分离，并以各自证据重新验收。
 
-父路线目前仍把非 Reader 计划作为唯一 `active-child-plan`。开始执行本文前，协调者必须显式切换父路线活动指针，或明确把本文作为不与当前工作流并行的纠正批次；不得让两个计划同时写 `parity-manifest.json`、Reader authority 测试或父路线状态。
+执行开始前已把父路线活动指针切换到本文，并在独立 worktree 中完成；暂停中的非 Reader 工作树没有参与本计划写入。收口后父路线指针恢复为 `NONE`，不得据此推断非 Reader 工作流已恢复。
 
 ## 1. 固定结论与产品决策
 
@@ -213,9 +213,9 @@ RNC-01 只人工登记下列已知条目，不搜索或生成更多条目：
 - [x] `RNC-02` 删除固定 4:3 frame，改用完整可用 viewport
 - [x] `RNC-03` 重新验收稳定 display identity、物理双槽与封面策略
 - [x] `RNC-04` 重新验收 Webtoon 锚点恢复与自动滚动暂停
-- [ ] `RNC-05` 分离双页进度产品语义与 settlement/idempotency/drain 可靠性
-- [ ] `RNC-06` 分离 encoded store 生命周期、Desktop cache policy 与完整下一章预取
-- [ ] `RNC-07` 收口 authority/manifest 治理并完成跨平台验证
+- [x] `RNC-05` 分离双页进度产品语义与 settlement/idempotency/drain 可靠性
+- [x] `RNC-06` 分离 encoded store 生命周期、Desktop cache policy 与完整下一章预取
+- [x] `RNC-07` 收口 authority/manifest 治理并完成可运行验证，记录不可替代环境跳过项
 
 固定执行顺序为：
 
@@ -360,9 +360,9 @@ RNC-01 → RNC-02 → RNC-03 → RNC-04 → RNC-05 → RNC-06 → RNC-07
 
 ### `RNC-07` Authority、治理守卫与最终验收
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared `[ ]` · Android `[ ]` · Desktop/UI `[ ]` · Legacy `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`DONE_WITH_RECORDED_SKIPS` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared `[x]` · Android `SKIPPED：本机无 Android SDK` · Desktop/UI `[x]` · Legacy `[x]` · Review `[x]` · Verify `[x]` · Evidence `[x]` · Commit `[x]`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 产物 `—` · Commit `—`
+> 记录：阻塞 `Android testReleaseUnitTest：ANDROID_HOME/sdk.dir 缺失；macOS：远端缺少 a1a9d009 基线且主工作树有用户改动，未传输完整仓库；实际四视口：Test Mode reader fixture 未接入 production page content，不能用错误页冒充双页视觉验收；官方 final parity runner 缺 evidence-mode provenance，改用同一固定 EXE/client/inventory production 步骤` · 审查 `PASS：无 P0/P1/P2；fixed-main 只证明上游用户语义，跨平台可靠性、产品增强与平台策略分层；4:3 production 未回归，12 项 deviation 与 capability 43/45/53 精确一致，9/44/47/49/51/54 无意外 diff` · 验证 `最终可运行矩阵 PASS：domain 289、data 34、Desktop 2443（1 skipped）、test-desktop 27；spotlessCheck、finalParityAudit PASS；Windows Smoke 等价命令 PASS；固定 EXE Test Mode 13/13 families、5/5 protections、64/64 mapped；Android/macOS/四视口按阻塞跳过` · 产物 `Mihon Desktop 0.11.14.86.bc4a755 正式未打包应用与 ZIP；四层 authority 文档；最终 deviation mutations 与 4:3 补充禁入守卫` · Commit `本批次提交（见 Git 历史）`
 
 - 依赖：`RNC-01`～`RNC-06` 全部完成。
 - 文档：更新 [`reader-authority.md`](../architecture/reader-authority.md) 与 [`reader-shared-core.md`](../architecture/reader-shared-core.md)，明确“上游用户语义、跨平台可靠性、产品增强、平台策略”四层；不得把实现机制继续写进 fixed-main 完成证明。
@@ -480,6 +480,6 @@ macOS 使用同一提交和正式构建脚本生成/运行应用；不得用 Gra
 | 2026-08-05 | `RNC-04.A` | `PENDING → PASS` | Desktop Webtoon `LazyListState` relative anchor | 临时删除 source-page fallback 后 merge→split mounted test RED | 恢复 existing fallback；Ready 高度变化、split↔merge、缺失目标与 `NO_POSITION` 均通过 | 随 RNC-04.C 统一审查 | Webtoon mounted/presentation tests PASS | N/A（随 RNC-04 提交） |
 | 2026-08-05 | `RNC-04.B` | `PENDING → PASS` | Desktop auto-scroll 手势暂停 | 临时让 pause state 永远返回 enabled 后状态测试与 mounted loop 均 RED | 恢复 drag→fling→settled gate，不改速度/入口/padding | 随 RNC-04.C 统一审查 | state + actual `WebtoonDisplayUnitList` consumer PASS | N/A（随 RNC-04 提交） |
 | 2026-08-05 | `RNC-04.C` | `PENDING → PASS；RNC-04 DONE` | presentation policy 与 Desktop product enhancement 分离 | 两类 production mutation 被不同测试捕获 | production 已满足，不做行为修改 | PASS：证据执行真实 `LazyListState` 与 auto-scroll loop | 65 tests / 0 failures；`spotlessCheck` PASS | 本批次提交（见 Git 历史） |
-| — | `RNC-05` | `TODO` | — | — | — | — | — | — |
-| — | `RNC-06` | `TODO` | — | — | — | — | — | — |
-| — | `RNC-07` | `TODO` | — | — | — | — | — | — |
+| 2026-08-05 | `RNC-05` | `TODO → DONE` | 双页进度产品增强与两类可靠性 deviation 分离 | producer 丢页、幂等短路移除、dispose 取消 drain 均正确 RED；Android 因 SDK 缺失未执行 | 新增 Dual presentation→ScreenModel→session/shared policy→progress port 连续测试；无 production diff | PASS：历史 gap 与三类当前语义未混写 | domain 5、Desktop 68、data 2；Android 跳过 | `84f3079cc` |
+| 2026-08-05 | `RNC-06` | `TODO → DONE` | store 生命周期、512 MiB Desktop policy、完整下一章预取分离 | LRU 反转、容量改为 256 MiB、提前 page-list 均正确 RED | 新增 production runtime 512 MiB encoded store binding 测试；无 production diff | PASS：未改容量、默认档位、decoded cache 或网络边界 | domain 19、Desktop 63；Android 跳过 | `bc4a7559e` |
+| 2026-08-05 | `RNC-07` | `TODO → DONE_WITH_RECORDED_SKIPS` | 四层 authority、12 项 exact deviation、有限 supersede | 漏 ID、错误 REMOVED 状态、512 MiB 错分共享、完整预取伪造上游 provenance mutations 均被拒绝 | 文档/治理收口；无 Reader production 行为变更 | PASS：无 P0/P1/P2；父路线与两份 Reader roadmap 状态一致 | 可运行全量、audit、Windows build/Test Mode PASS；Android/macOS/四视口按真实阻塞跳过 | 本批次提交（见 Git 历史） |

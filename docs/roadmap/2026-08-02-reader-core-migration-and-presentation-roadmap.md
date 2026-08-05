@@ -1,12 +1,17 @@
 # 原版 Mihon 阅读核心迁移与 Desktop 阅读呈现解耦 Roadmap
 
 - 制定日期：2026-08-02
-- 状态：`IN_PROGRESS`
+- 状态：`DONE`（实现、审查与原始验收历史保留；下述有限 authority/双页几何结论由纠正计划更新）
 - 上级路线：[`2026-06-30-mihon-desktop-refactor-roadmap.md`](./2026-06-30-mihon-desktop-refactor-roadmap.md) 的 Phase R
+- 后续纠正：[`2026-08-05-reader-non-upstream-capability-corrective-roadmap.md`](./2026-08-05-reader-non-upstream-capability-corrective-roadmap.md)
 - 固定原版权威：`main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`
 - 本次核对的上游跟踪点：`upstream/main@55be95dd5df7ac985bbc68ea62a5a525611a732f`（2026-08-02；`d7f3ceef5…` 之后无 reader 路径变更）
 - 当前 Fork 兼容基线：`9111d70a85565e20940fa4736c97eea8c1a44a0d`
 - 当前进度：从第 9 节“任务清单”的第一个未勾选任务推导；本文不另设活动任务字段
+
+> 有限 supersede：纠正计划仅替换“固定 4:3 Desktop 双页 frame”及把本地产品语义、跨平台可靠性、平台策略
+> 混入 fixed-main 完成证明的结论。本文记录的 R0-01～RV-01 原任务、提交、RED/GREEN、审查和发布历史保持
+> 原样；共享 session/materialize/scheduler/window/progress 与两端 production cutover 的完成状态不撤销。
 
 ## 1. 结论与目标
 
