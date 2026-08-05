@@ -1,5 +1,7 @@
 package mihon.desktop.ui.reader.presentation
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -10,7 +12,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asComposeImageBitmap
+import androidx.compose.ui.graphics.asSkiaBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
@@ -40,12 +48,13 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.jetbrains.skia.Bitmap
 
 @OptIn(ExperimentalComposeUiApi::class)
 class DualPagePresentationIdentityTest {
 
     @Test
-    fun `mounted cover keeps a centered two-slot frame with the page in the physical left slot`() = runTest {
+    fun `mounted cover keeps a full viewport two-slot frame with the page in the physical left slot`() = runTest {
         for (ambientDirection in listOf(LayoutDirection.Ltr, LayoutDirection.Rtl)) {
             for (readerDirection in listOf(ReaderDirection.LTR, ReaderDirection.RTL)) {
                 val unit = snapshot(readerDirection, ReaderPageLoadState.Ready).displayUnits.first()
@@ -66,8 +75,7 @@ class DualPagePresentationIdentityTest {
                     val left = slotNode(scene, DualPagePhysicalSlot.LEFT)
                     val right = slotNode(scene, DualPagePhysicalSlot.RIGHT)
                     assertCentered(frame, viewportWidth = 1_600f)
-                    assertTrue(frame.left > 0f)
-                    assertTrue(frame.right < 1_600f)
+                    assertEquals(Rect(0f, 0f, 1_600f, 900f), frame)
                     assertEquals(frame.left, left.boundsInRoot.left)
                     assertEquals(frame.center.x, left.boundsInRoot.right)
                     assertEquals(frame.center.x, right.boundsInRoot.left)
@@ -77,6 +85,50 @@ class DualPagePresentationIdentityTest {
                 } finally {
                     scene.close()
                 }
+            }
+        }
+    }
+
+    @Test
+    fun `full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing`() = runTest {
+        val cases =
+            listOf(
+                ViewportCase(3_840, 2_054, pageWidth = 703, expectTopContent = true, expectOuterBlank = true),
+                ViewportCase(1_920, 1_080, pageWidth = 703, expectTopContent = true, expectOuterBlank = true),
+                ViewportCase(2_520, 1_080, pageWidth = 703, expectTopContent = true, expectOuterBlank = true),
+                ViewportCase(1_600, 1_200, pageWidth = 703, expectTopContent = false, expectOuterBlank = false),
+                ViewportCase(1_600, 1_200, pageWidth = 667, expectTopContent = true, expectOuterBlank = false),
+            )
+
+        cases.forEach { case ->
+            val unit = pairUnit(ReaderPageLoadState.Ready, ReaderPageLoadState.Ready)
+            val page = whitePage(case.pageWidth, 1_000)
+            val scene = ImageComposeScene(case.width, case.height, coroutineContext = currentCoroutineContext()) {}
+            try {
+                scene.setContent {
+                    Box(Modifier.fillMaxSize().background(Color.Black)) {
+                        DualPageDisplayUnitFrame(unit = unit, onRetry = {}) { slot, modifier ->
+                            Image(
+                                bitmap = page,
+                                contentDescription = null,
+                                modifier = modifier,
+                                alignment = if (slot.id == unit.slots.first().id) Alignment.CenterEnd else Alignment.CenterStart,
+                                contentScale = ContentScale.Fit,
+                            )
+                        }
+                    }
+                }
+                val rendered = scene.render().toComposeImageBitmap().asSkiaBitmap()
+                val frame = node(scene) { it.config.contains(DualPageDisplayUnitIdKey) }.boundsInRoot
+                assertEquals(Rect(0f, 0f, case.width.toFloat(), case.height.toFloat()), frame)
+                assertPixel(rendered.getColor(case.width / 2 - 8, case.height / 2), expectedWhite = true)
+                assertPixel(rendered.getColor(0, case.height / 2), expectedWhite = !case.expectOuterBlank)
+                assertPixel(rendered.getColor(case.width / 2 - 8, 4), expectedWhite = case.expectTopContent)
+                if (!case.expectTopContent) {
+                    assertPixel(rendered.getColor(case.width / 2 - 8, 40), expectedWhite = true)
+                }
+            } finally {
+                scene.close()
             }
         }
     }
@@ -258,6 +310,27 @@ class DualPagePresentationIdentityTest {
     private fun assertCentered(bounds: Rect, viewportWidth: Float) {
         assertEquals(viewportWidth / 2f, bounds.center.x, 0.5f)
     }
+
+    private fun whitePage(width: Int, height: Int) =
+        Bitmap().apply {
+            allocN32Pixels(width, height)
+            erase(0xFFFFFFFF.toInt())
+        }.asComposeImageBitmap()
+
+    private fun assertPixel(color: Int, expectedWhite: Boolean) {
+        val expected = if (expectedWhite) 0xFF else 0x00
+        assertEquals(expected, color shr 16 and 0xFF)
+        assertEquals(expected, color shr 8 and 0xFF)
+        assertEquals(expected, color and 0xFF)
+    }
+
+    private data class ViewportCase(
+        val width: Int,
+        val height: Int,
+        val pageWidth: Int,
+        val expectTopContent: Boolean,
+        val expectOuterBlank: Boolean,
+    )
 
     private fun pageId(index: Int) = ReaderPageId(chapterId, index)
 

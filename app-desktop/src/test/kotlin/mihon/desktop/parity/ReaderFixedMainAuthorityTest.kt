@@ -658,7 +658,7 @@ class ReaderFixedMainAuthorityTest {
                 .jsonArray
                 .any {
                     it.jsonPrimitive.content ==
-                        "mounted cover keeps a centered two-slot frame with the page in the physical left slot"
+                        "mounted cover keeps a full viewport two-slot frame with the page in the physical left slot"
                 },
         )
         assertTrue(item.requiredText("verificationScope").contains("Desktop canonical ReaderSessionCore"))

@@ -309,10 +309,15 @@
       "classification": "DESKTOP_PRESENTATION_POLICY",
       "introductionRefs": ["c01771573034d2ed3492db3ddd109533bb631d99"],
       "behaviorEvidenceRefs": [
-        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#mounted cover keeps a centered two-slot frame with the page in the physical left slot"
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#mounted cover keeps a full viewport two-slot frame with the page in the physical left slot",
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing"
       ],
-      "description": "Desktop currently constrains the dual-page container to a centered 4:3 frame; RNC-02 removes this geometry while retaining stable slots.",
-      "resolutionStatus": "OPEN"
+      "description": "RNC-02 removed the historical fixed 4:3 dual-page frame so Desktop uses the complete reader viewport while FIT_SCREEN retains honest aspect-ratio letterboxing.",
+      "resolutionStatus": "REMOVED",
+      "closureTask": "RNC-02",
+      "resolutionEvidence": {
+        "productionBehaviorTest": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing"
+      }
     },
     {
       "id": "DUAL_MAX_VISIBLE_PAGE_PROGRESS",

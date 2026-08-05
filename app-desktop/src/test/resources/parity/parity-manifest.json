@@ -1813,7 +1813,7 @@
         "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt": ["LTR single spread produces LEFT then RIGHT"],
         "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt": ["shared pairing keeps cover edge matching adjust and landscape parity enhancements"],
         "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt": ["cover occupies the physical left slot for both reading directions", "portrait pairs follow physical LTR and RTL slots while reporting both pages"],
-        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt": ["mounted cover keeps a centered two-slot frame with the page in the physical left slot", "production dual selector mounts registry display units"]
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt": ["mounted cover keeps a full viewport two-slot frame with the page in the physical left slot", "full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing", "production dual selector mounts registry display units"]
       }
     },
     "authoritativeImplementation": "fixed main 的 PagerViewerAdapter/PagerPageHolder 与 WebtoonAdapter/WebtoonPageHolder 提供单页顺序、RTL 反转、章节过渡与同一宽源页拆分/旋转；WebtoonLayoutManager.findLastEndVisibleItemPosition 提供 last-end-visible active 页选择且无匹配时返回 NO_POSITION；固定原版没有相邻 portrait 页配对默认算法",
@@ -1871,7 +1871,7 @@
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "fun ZoomablePagerViewer(", "line": 92},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt", "symbol": "fun SinglePagePagerViewer(", "line": 53},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt", "symbol": "fun WebtoonViewer(", "line": 75},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt", "symbol": "fun DualPagePagerViewer(", "line": 206}
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt", "symbol": "fun DualPagePagerViewer(", "line": 197}
       ],
       "FIXTURE": [
         {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt#fork-added pairing adapter and shared core produce the same enhancement vectors", "productionMarkers": ["PagePairingAlgorithm.buildPairings", "ReaderPagePairing.build"]},
@@ -1885,7 +1885,8 @@
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt#production webtoon selector mounts registry display units with stable lazy identities", "productionMarkers": ["WebtoonPresentationViewer", "WebtoonDisplayUnitIdKey"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/WebtoonAutoScrollTest.kt#auto scroll pauses through user drag and fling then resumes after settlement", "productionMarkers": ["WebtoonAutoScrollPauseState", "isScrollInProgress"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt#portrait pairs follow physical LTR and RTL slots while reporting both pages", "productionMarkers": ["DualPagedPresentation.present", "resolveDualVisiblePages"]},
-        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#mounted cover keeps a centered two-slot frame with the page in the physical left slot", "productionMarkers": ["DualPageDisplayUnitFrame", "DualPagePhysicalSlot.LEFT"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#mounted cover keeps a full viewport two-slot frame with the page in the physical left slot", "productionMarkers": ["DualPageDisplayUnitFrame", "DualPagePhysicalSlot.LEFT"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing", "productionMarkers": ["DualPageDisplayUnitFrame", "ContentScale.Fit"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#production dual selector mounts registry display units", "productionMarkers": ["ZoomablePagerViewer", "DualPageDisplayUnitIdKey"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt#matched pairs consume only caller supplied bounded decoded images", "productionMarkers": ["matcher.findMatchedPairs", "ImageBitmap"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderPageCacheIntegrationTest.kt#cache revision observer matches late pages preserves pairs after eviction and never loads", "productionMarkers": ["observeDesktopMatchedPairs", "PagePreloader", "EdgePixelMatcher"]}
@@ -1936,9 +1937,13 @@
         "id": "DUAL_FIXED_4_3_FRAME",
         "classification": "DESKTOP_PRESENTATION_POLICY",
         "introductionRefs": ["c01771573034d2ed3492db3ddd109533bb631d99"],
-        "behaviorEvidenceRefs": ["app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#mounted cover keeps a centered two-slot frame with the page in the physical left slot"],
-        "description": "Desktop currently constrains the dual-page container to a centered 4:3 frame; RNC-02 removes this geometry while retaining stable slots.",
-        "resolutionStatus": "OPEN"
+        "behaviorEvidenceRefs": ["app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#mounted cover keeps a full viewport two-slot frame with the page in the physical left slot", "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing"],
+        "description": "RNC-02 removed the historical fixed 4:3 dual-page frame so Desktop uses the complete reader viewport while FIT_SCREEN retains honest aspect-ratio letterboxing.",
+        "resolutionStatus": "REMOVED",
+        "closureTask": "RNC-02",
+        "resolutionEvidence": {
+          "productionBehaviorTest": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing"
+        }
       },
       {
         "id": "ADJACENT_PORTRAIT_PAIRING",
@@ -1974,7 +1979,7 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt": ["late page state and content preserve webtoon display identities", "wide webtoon page becomes consecutive halves in requested merge order", "viewport reports every visible page and uses fixed-main last end-visible active rule", "last page becomes active at the settled chapter bottom", "fixed-main active resolver returns no position when no visible child reaches either edge", "anchor restores exact split item and falls back to its logical page", "registry exposes webtoon beside single-page presentation"],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt": ["webtoon item keeps composition identity while loading ready error and retry change in place", "production webtoon selector mounts registry display units with stable lazy identities", "mounted list restores relative anchor when ready content changes item geometry", "mounted list keeps logical page and bounded offset when split anchor merges"],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt": ["cover occupies the physical left slot for both reading directions", "landscape cover remains whole in the physical left slot for one and many page chapters", "portrait pairs follow physical LTR and RTL slots while reporting both pages", "late content and state changes preserve pair and slot identities", "spread forced single edge match and parity change grouping without changing page identity", "wide spread can occupy two physical slice slots without changing source page identity", "registry exposes dual beside single and webtoon"],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt": ["mounted cover keeps a centered two-slot frame with the page in the physical left slot", "pair frame identity survives either page loading ready and error changes", "production dual selector mounts registry display units", "visible-page reporting waits for settled pager and reports both pair pages"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt": ["mounted cover keeps a full viewport two-slot frame with the page in the physical left slot", "full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing", "pair frame identity survives either page loading ready and error changes", "production dual selector mounts registry display units", "visible-page reporting waits for settled pager and reports both pair pages"],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/WebtoonAutoScrollTest.kt": ["auto scroll pauses through user drag and fling then resumes after settlement"]
     },
     "readerCoreMigrationScope": {"task": "R0-01", "verifiedSlice": "PRESENTATION_TRANSFORM_CONTRACT", "canonicalSessionExecutor": "WIRED", "closureTask": "RD-01", "desktopCoreCutoverTask": "RD-01", "desktopCanonicalSession": "WIRED", "presentationTask": "RP-03", "desktopSinglePresentation": "WIRED", "desktopWebtoonPresentation": "WIRED", "desktopDualPresentation": "WIRED", "legacyDesktopStateAdapter": "REMOVED", "legacyCleanupTask": "RG-01", "legacyReaderExecutors": "REMOVED", "readerArchitectureGuard": "ENFORCED"},

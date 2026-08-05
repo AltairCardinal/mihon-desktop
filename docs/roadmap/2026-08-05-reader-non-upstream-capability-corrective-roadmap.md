@@ -210,7 +210,7 @@ RNC-01 只人工登记下列已知条目，不搜索或生成更多条目：
 ## 5. 任务清单与依赖顺序
 
 - [x] `RNC-01` 建立 Reader 本地 deviation 负例门禁并登记固定清单
-- [ ] `RNC-02` 删除固定 4:3 frame，改用完整可用 viewport
+- [x] `RNC-02` 删除固定 4:3 frame，改用完整可用 viewport
 - [ ] `RNC-03` 重新验收稳定 display identity、物理双槽与封面策略
 - [ ] `RNC-04` 重新验收 Webtoon 锚点恢复与自动滚动暂停
 - [ ] `RNC-05` 分离双页进度产品语义与 settlement/idempotency/drain 可靠性
@@ -276,9 +276,9 @@ RNC-01 → RNC-02 → RNC-03 → RNC-04 → RNC-05 → RNC-06 → RNC-07
 
 ### `RNC-02` 删除固定 4:3 frame
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared `N/A：frame 只属于 Desktop presentation` · Android `N/A：原版 Android 已使用完整 viewport` · Desktop/UI `[ ]` · Legacy `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`DONE` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared `N/A：frame 只属于 Desktop presentation` · Android `N/A：原版 Android 已使用完整 viewport` · Desktop/UI `[x]` · Legacy `[x]` · Review `[x]` · Verify `[x]` · Evidence `[x]` · Commit `[x]`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 产物 `—` · Commit `—`
+> 记录：阻塞 `无` · 审查 `PASS：production diff 仅移除 frame 比例/inset 与冗余容器；pairing、identity、progress、zoom、scale preference、导航均未改变` · 验证 `几何 RED：2 failures；GREEN：DualPagePresentationIdentityTest 5 tests / 0 failures；focused 回归 87 tests / 0 failures；spotlessCheck PASS；git diff --check PASS` · 产物 `3840×2054、1920×1080、2520×1080、1600×1200 离屏 bitmap/pixel 矩阵；DUAL_FIXED_4_3_FRAME=REMOVED` · Commit `本批次提交（见 Git 历史）`
 
 - 依赖：`RNC-01`。
 - RED：使用真实 `DualPageDisplayUnitFrame` 和程序生成的白色 `1406 × 1000` bitmap，在黑色 `3840 × 2054`、`1920 × 1080` 和 `1600 × 1200` scene 中执行第 4.1 节矩阵；当前 4:3 frame 必须在宽屏用例因上下黑边而失败。
@@ -470,7 +470,10 @@ macOS 使用同一提交和正式构建脚本生成/运行应用；不得用 Gra
 | 2026-08-05 | `RNC-01.B` | `PENDING → PASS` | 仅校验显式字段，不读取描述词义 | 真实 fixture/manifest 因缺失稳定 ID/字段 RED；6 类独立 mutation 均按对应原因失败 | 负例门禁自身通过 | 随 RNC-01.D 统一审查 | `ReaderDeviationGovernanceTest` RED/GREEN 记录 | N/A（随 RNC-01 提交） |
 | 2026-08-05 | `RNC-01.C` | `PENDING → PASS` | 12 项写入 fixture 与 manifest；4:3 保持 `OPEN` | 现有 authority/contract 测试先因旧 schema RED | 12 项 fixture/manifest 精确一致，4 个历史条目保留 | 随 RNC-01.D 统一审查 | JSON parse PASS；47 tests / 0 failures | N/A（随 RNC-01 提交） |
 | 2026-08-05 | `RNC-01.D` | `PENDING → PASS；RNC-01 DONE` | 无 production 文件变化 | RED 原因与路线图一致 | 无生成器、自动分类或范围扩张 | PASS：无 owner 串线、fixed-main 污染或非行为证据 | focused tests、`git diff --check` PASS | 本批次提交（见 Git 历史） |
-| — | `RNC-02` | `TODO` | — | — | — | — | — | — |
+| 2026-08-05 | `RNC-02.A` | `PENDING → PASS` | 仅 Dual Desktop frame geometry | 现有 4:3 production 在 full-viewport bounds 与宽屏顶边像素断言失败 | N/A：RED 阶段 | 随 RNC-02.D 统一审查 | `DualPagePresentationIdentityTest`：2 个预期失败 | N/A（随 RNC-02 提交） |
+| 2026-08-05 | `RNC-02.B` | `PENDING → PASS` | 不读取图片尺寸、不改缩放策略 | 同 RNC-02.A | frame 改为完整 viewport；删除比例常量与水平 inset | 随 RNC-02.D 统一审查 | 几何测试 5/5 PASS | N/A（随 RNC-02 提交） |
+| 2026-08-05 | `RNC-02.C` | `PENDING → PASS` | cover/pair/wide split/forced single/LTR/RTL/状态/resize 保持 | 既有回归基线 | 双半屏槽继续向书脊对齐，identity 不随尺寸变化 | 随 RNC-02.D 统一审查 | focused 回归 87 tests / 0 failures | N/A（随 RNC-02 提交） |
+| 2026-08-05 | `RNC-02.D` | `PENDING → PASS；RNC-02 DONE` | capability 43 历史引入提交保留 | 恢复固定比例会破坏 mounted/pixel 契约 | `DUAL_FIXED_4_3_FRAME` 关闭为 `REMOVED`，closure 指向 production mounted/pixel test | PASS：固定 4:3 production 零命中，无保留能力误删 | `spotlessCheck`、`git diff --check` PASS | 本批次提交（见 Git 历史） |
 | — | `RNC-03` | `TODO` | — | — | — | — | — | — |
 | — | `RNC-04` | `TODO` | — | — | — | — | — | — |
 | — | `RNC-05` | `TODO` | — | — | — | — | — | — |

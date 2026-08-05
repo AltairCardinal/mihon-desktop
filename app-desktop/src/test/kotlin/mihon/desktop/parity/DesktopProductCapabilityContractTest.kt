@@ -1832,8 +1832,10 @@ class DesktopProductCapabilityContractTest {
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt" to
                         mapOf(
-                            "mounted cover keeps a centered two-slot frame with the page in the physical left slot" to
+                            "mounted cover keeps a full viewport two-slot frame with the page in the physical left slot" to
                                 setOf("DualPageDisplayUnitFrame", "assertCentered"),
+                            "full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing" to
+                                setOf("DualPageDisplayUnitFrame", "ContentScale.Fit", "assertPixel"),
                             "pair frame identity survives either page loading ready and error changes" to
                                 setOf("DualPageDisplayUnitCompositionIdentityKey", "assertSame"),
                             "production dual selector mounts registry display units" to

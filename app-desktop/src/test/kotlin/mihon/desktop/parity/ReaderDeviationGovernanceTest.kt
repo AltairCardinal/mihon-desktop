@@ -118,6 +118,13 @@ class ReaderDeviationGovernanceTest {
                     split.size == 2 && split[0].contains("/src/test/") && split[0].endsWith("Test.kt") && split[1].isNotBlank()
                 },
             ) { "$id behaviorEvidenceRefs must use test path#method production behavior evidence" }
+            if (expected.resolutionStatus == "REMOVED") {
+                require(owned.value.requiredText("closureTask") == "RNC-02") { "$id closureTask" }
+                require(
+                    owned.value.getValue("resolutionEvidence").jsonObject.requiredText("productionBehaviorTest") in
+                        behaviorEvidenceRefs,
+                ) { "$id resolutionEvidence" }
+            }
         }
     }
 
@@ -126,11 +133,12 @@ class ReaderDeviationGovernanceTest {
             OwnedDeviation(
                 expected.ownerCapabilityId,
                 JsonObject(
-                    mapOf(
-                        "id" to JsonPrimitive(id),
-                        "classification" to JsonPrimitive(expected.classification),
-                        "introductionRefs" to JsonArray(expected.introductionRefs.map(::JsonPrimitive)),
-                        "behaviorEvidenceRefs" to
+                    buildMap {
+                        put("id", JsonPrimitive(id))
+                        put("classification", JsonPrimitive(expected.classification))
+                        put("introductionRefs", JsonArray(expected.introductionRefs.map(::JsonPrimitive)))
+                        put(
+                            "behaviorEvidenceRefs",
                             JsonArray(
                                 listOf(
                                     JsonPrimitive(
@@ -138,9 +146,24 @@ class ReaderDeviationGovernanceTest {
                                     ),
                                 ),
                             ),
-                        "description" to JsonPrimitive("Explicit user result or reliability boundary."),
-                        "resolutionStatus" to JsonPrimitive(expected.resolutionStatus),
-                    ),
+                        )
+                        put("description", JsonPrimitive("Explicit user result or reliability boundary."))
+                        put("resolutionStatus", JsonPrimitive(expected.resolutionStatus))
+                        if (expected.resolutionStatus == "REMOVED") {
+                            put("closureTask", JsonPrimitive("RNC-02"))
+                            put(
+                                "resolutionEvidence",
+                                JsonObject(
+                                    mapOf(
+                                        "productionBehaviorTest" to
+                                            JsonPrimitive(
+                                                "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#production behavior",
+                                            ),
+                                    ),
+                                ),
+                            )
+                        }
+                    },
                 ),
             )
         }
@@ -220,7 +243,7 @@ class ReaderDeviationGovernanceTest {
                         43,
                         "DESKTOP_PRESENTATION_POLICY",
                         listOf("c01771573034d2ed3492db3ddd109533bb631d99"),
-                        "OPEN",
+                        "REMOVED",
                     ),
                 "DUAL_MAX_VISIBLE_PAGE_PROGRESS" to expected(
                     53,
