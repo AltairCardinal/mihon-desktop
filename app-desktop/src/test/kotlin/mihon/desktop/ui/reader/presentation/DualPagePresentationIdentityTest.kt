@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -23,6 +24,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
@@ -174,6 +176,46 @@ class DualPagePresentationIdentityTest {
             assertEquals(slotIds, unit.slots.map(DisplaySlot::id))
             clickSingleRetry(scene)
             assertEquals(listOf(pageId(2), pageId(1)), retriedPageIds)
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    fun `viewport resize changes geometry without replacing display or physical slot identity`() = runTest {
+        val unit = pairUnit(ReaderPageLoadState.Ready, ReaderPageLoadState.Ready)
+        var viewportWidth by mutableStateOf(800.dp)
+        val scene = ImageComposeScene(1_600, 900, coroutineContext = currentCoroutineContext()) {}
+        try {
+            scene.setContent {
+                Box(Modifier.width(viewportWidth).fillMaxSize()) {
+                    DualPageDisplayUnitFrame(unit = unit, onRetry = {}) { _, modifier ->
+                        Box(modifier)
+                    }
+                }
+            }
+            scene.render()
+            val initialFrame = node(scene) { it.config.contains(DualPageDisplayUnitCompositionIdentityKey) }
+            val identity = initialFrame.config[DualPageDisplayUnitCompositionIdentityKey]
+            val unitId = initialFrame.config[DualPageDisplayUnitIdKey]
+            val slotIds =
+                listOf(DualPagePhysicalSlot.LEFT, DualPagePhysicalSlot.RIGHT).map { slot ->
+                    slotNode(scene, slot).config[DualPageSlotIdKey]
+                }
+            assertEquals(800f, initialFrame.boundsInRoot.width)
+
+            viewportWidth = 1_200.dp
+            scene.render()
+            val resizedFrame = node(scene) { it.config.contains(DualPageDisplayUnitCompositionIdentityKey) }
+            assertEquals(1_200f, resizedFrame.boundsInRoot.width)
+            assertSame(identity, resizedFrame.config[DualPageDisplayUnitCompositionIdentityKey])
+            assertEquals(unitId, resizedFrame.config[DualPageDisplayUnitIdKey])
+            assertEquals(
+                slotIds,
+                listOf(DualPagePhysicalSlot.LEFT, DualPagePhysicalSlot.RIGHT).map { slot ->
+                    slotNode(scene, slot).config[DualPageSlotIdKey]
+                },
+            )
         } finally {
             scene.close()
         }

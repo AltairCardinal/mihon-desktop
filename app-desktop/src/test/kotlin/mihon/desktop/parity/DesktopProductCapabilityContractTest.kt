@@ -1838,6 +1838,8 @@ class DesktopProductCapabilityContractTest {
                                 setOf("DualPageDisplayUnitFrame", "ContentScale.Fit", "assertPixel"),
                             "pair frame identity survives either page loading ready and error changes" to
                                 setOf("DualPageDisplayUnitCompositionIdentityKey", "assertSame"),
+                            "viewport resize changes geometry without replacing display or physical slot identity" to
+                                setOf("viewportWidth", "DualPageDisplayUnitCompositionIdentityKey", "DualPageSlotIdKey"),
                             "production dual selector mounts registry display units" to
                                 setOf("ZoomablePagerViewer(", "DualPageDisplayUnitIdKey"),
                             "visible-page reporting waits for settled pager and reports both pair pages" to

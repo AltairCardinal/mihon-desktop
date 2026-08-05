@@ -211,7 +211,7 @@ RNC-01 只人工登记下列已知条目，不搜索或生成更多条目：
 
 - [x] `RNC-01` 建立 Reader 本地 deviation 负例门禁并登记固定清单
 - [x] `RNC-02` 删除固定 4:3 frame，改用完整可用 viewport
-- [ ] `RNC-03` 重新验收稳定 display identity、物理双槽与封面策略
+- [x] `RNC-03` 重新验收稳定 display identity、物理双槽与封面策略
 - [ ] `RNC-04` 重新验收 Webtoon 锚点恢复与自动滚动暂停
 - [ ] `RNC-05` 分离双页进度产品语义与 settlement/idempotency/drain 可靠性
 - [ ] `RNC-06` 分离 encoded store 生命周期、Desktop cache policy 与完整下一章预取
@@ -294,9 +294,9 @@ RNC-01 → RNC-02 → RNC-03 → RNC-04 → RNC-05 → RNC-06 → RNC-07
 
 ### `RNC-03` 稳定 display identity、物理双槽与封面策略
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared `N/A：只验证 presentation identity` · Android `N/A：不要求 Android 采用 Compose identity` · Desktop/UI `[ ]` · Legacy `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`DONE` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared `N/A：只验证 presentation identity` · Android `N/A：不要求 Android 采用 Compose identity` · Desktop/UI `[x]` · Legacy `[x]` · Review `[x]` · Verify `[x]` · Evidence `[x]` · Commit `[x]`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 产物 `—` · Commit `—`
+> 记录：阻塞 `无` · 审查 `PASS：最终无 production diff；identity/物理槽与 full-viewport 尺寸解耦，封面/空槽/环境 RTL 语义保持` · 验证 `production mutation RED：composition identity 与相对 RTL 槽分别被捕获；恢复后 Single/Dual mounted focused 63 tests / 0 failures；spotlessCheck PASS；git diff --check PASS` · 产物 `viewport resize mounted identity test；三项 deviation 独立 behavior evidence` · Commit `本批次提交（见 Git 历史）`
 
 - 依赖：`RNC-02`；必须以 full-viewport frame 为几何前提。
 - RED：分别破坏 `DisplayUnitId`、`DisplaySlotId`、composition identity 和 zoom container，使 Loading→Ready、Ready→Error、Retry、late content 或窗口 resize 任一场景重新挂载；现有/新增 mounted tests 必须捕获。
@@ -474,7 +474,9 @@ macOS 使用同一提交和正式构建脚本生成/运行应用；不得用 Gra
 | 2026-08-05 | `RNC-02.B` | `PENDING → PASS` | 不读取图片尺寸、不改缩放策略 | 同 RNC-02.A | frame 改为完整 viewport；删除比例常量与水平 inset | 随 RNC-02.D 统一审查 | 几何测试 5/5 PASS | N/A（随 RNC-02 提交） |
 | 2026-08-05 | `RNC-02.C` | `PENDING → PASS` | cover/pair/wide split/forced single/LTR/RTL/状态/resize 保持 | 既有回归基线 | 双半屏槽继续向书脊对齐，identity 不随尺寸变化 | 随 RNC-02.D 统一审查 | focused 回归 87 tests / 0 failures | N/A（随 RNC-02 提交） |
 | 2026-08-05 | `RNC-02.D` | `PENDING → PASS；RNC-02 DONE` | capability 43 历史引入提交保留 | 恢复固定比例会破坏 mounted/pixel 契约 | `DUAL_FIXED_4_3_FRAME` 关闭为 `REMOVED`，closure 指向 production mounted/pixel test | PASS：固定 4:3 production 零命中，无保留能力误删 | `spotlessCheck`、`git diff --check` PASS | 本批次提交（见 Git 历史） |
-| — | `RNC-03` | `TODO` | — | — | — | — | — | — |
+| 2026-08-05 | `RNC-03.A` | `PENDING → PASS` | Desktop mounted display/slot identity | 临时移除 `remember(unit.id)` 后状态切换 identity 测试 RED；resize 契约新增 | 恢复既有稳定 key，无 production 变更 | 随 RNC-03.C 统一审查 | Single/Dual identity focused PASS | N/A（随 RNC-03 提交） |
+| 2026-08-05 | `RNC-03.B` | `PENDING → PASS` | 物理槽不受环境 RTL 或 frame 尺寸驱动 | 临时改用相对 `CenterStart/End` 后环境 RTL cover test RED | 恢复 `AbsoluteAlignment`；cover 左槽、右空槽与书脊对齐保持 | 随 RNC-03.C 统一审查 | cover/pair/wide split/resize mounted tests PASS | N/A（随 RNC-03 提交） |
+| 2026-08-05 | `RNC-03.C` | `PENDING → PASS；RNC-03 DONE` | `DISPLAY_UNIT_STABLE_IDENTITY`、`DUAL_PHYSICAL_SLOT_IDENTITY`、`DUAL_COVER_LEFT_SLOT` 分别取证 | 两类 production mutation 均被真实 mounted 测试捕获 | production 已满足，不做行为修改 | PASS：无固定 4:3 identity 条件、无保留能力误删 | 63 tests / 0 failures；`spotlessCheck` PASS | 本批次提交（见 Git 历史） |
 | — | `RNC-04` | `TODO` | — | — | — | — | — | — |
 | — | `RNC-05` | `TODO` | — | — | — | — | — | — |
 | — | `RNC-06` | `TODO` | — | — | — | — | — | — |

@@ -258,7 +258,8 @@
       "introductionRefs": ["464cbefafc2153de286963224694eafceda5e0d1"],
       "behaviorEvidenceRefs": [
         "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagePresentationIdentityTest.kt#mounted container keeps identity while loading ready and error content changes in place",
-        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#pair frame identity survives either page loading ready and error changes"
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#pair frame identity survives either page loading ready and error changes",
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#viewport resize changes geometry without replacing display or physical slot identity"
       ],
       "description": "Desktop keeps display-unit identity stable while loading state and mounted content change so reader zoom and scroll containers are not replaced.",
       "resolutionStatus": "ACTIVE"
@@ -289,7 +290,8 @@
       "classification": "DESKTOP_PRESENTATION_POLICY",
       "introductionRefs": ["c01771573034d2ed3492db3ddd109533bb631d99"],
       "behaviorEvidenceRefs": [
-        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#pair frame identity survives either page loading ready and error changes"
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#mounted cover keeps a full viewport two-slot frame with the page in the physical left slot",
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#viewport resize changes geometry without replacing display or physical slot identity"
       ],
       "description": "Desktop keeps physical left and right slot identities stable across reading direction and page-state changes.",
       "resolutionStatus": "ACTIVE"
