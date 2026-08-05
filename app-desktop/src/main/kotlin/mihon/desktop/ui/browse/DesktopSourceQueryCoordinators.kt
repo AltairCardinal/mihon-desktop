@@ -392,7 +392,7 @@ class DesktopGlobalSearchCoordinator(
                     async(start = CoroutineStart.LAZY) {
                         if (source.id in started.queryStates) return@async
                         val completed = sourceLoadPermits.withPermit {
-                            child.load(source, 1, SourceQuery.Search(query, source.getFilterList())) { candidate ->
+                            loadSource(child, source, query) { candidate ->
                                 aggregate(started.generation, source.id, child, candidate)?.let { publish(it, session) }
                             }
                         }
@@ -458,6 +458,15 @@ class DesktopGlobalSearchCoordinator(
             }
             current = publications.value
         }
+    }
+
+    private suspend fun loadSource(
+        coordinator: SourceBrowseQueryCoordinator,
+        source: CatalogueSource,
+        query: String,
+        onStarted: (SourceQueryState) -> Unit,
+    ): SourceQueryState = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        coordinator.load(source, 1, SourceQuery.Search(query, source.getFilterList()), onStarted)
     }
 
 }

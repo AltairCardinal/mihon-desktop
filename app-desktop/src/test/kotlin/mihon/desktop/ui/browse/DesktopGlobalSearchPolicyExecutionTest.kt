@@ -8,6 +8,7 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
@@ -17,6 +18,9 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.source.service.GlobalSearchSourceFilter
 import tachiyomi.domain.source.service.SourceMangaSearchService
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 class DesktopGlobalSearchPolicyExecutionTest {
@@ -66,6 +70,36 @@ class DesktopGlobalSearchPolicyExecutionTest {
 
         assertNull(exceededBeforeRelease, "a sixth request must wait until a permit is released")
         assertTrue(maximum.get() <= 5, "observed ${maximum.get()} concurrent source requests")
+    }
+
+    @Test
+    fun `blocking source search never occupies the caller dispatcher`() = runBlocking {
+        val sourceEntered = CountDownLatch(1)
+        val releaseSource = CountDownLatch(1)
+        val source = RecordingSearchSource(7) {
+            sourceEntered.countDown()
+            check(releaseSource.await(5, TimeUnit.SECONDS)) { "timed out releasing blocking source" }
+        }.source
+        val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
+        val uiDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        val search = async(uiDispatcher) {
+            coordinator.search(listOf(source), "query", sourceFilter = GlobalSearchSourceFilter.All)
+        }
+
+        try {
+            assertTrue(sourceEntered.await(2, TimeUnit.SECONDS), "blocking source never started")
+            val nextUiTurn = async(uiDispatcher) { Unit }
+
+            val uiStayedResponsive = withTimeoutOrNull(250) { nextUiTurn.await() }
+
+            releaseSource.countDown()
+            withTimeout(2_000) { search.await() }
+            assertEquals(Unit, uiStayedResponsive, "source work blocked the caller UI dispatcher")
+        } finally {
+            releaseSource.countDown()
+            runCatching { withTimeout(2_000) { search.await() } }
+            uiDispatcher.close()
+        }
     }
 
     private class RecordingSearchSource(id: Long, beforeResult: suspend () -> Unit = {}) {
