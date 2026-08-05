@@ -1085,6 +1085,10 @@
     <string name="desktop_backup_restore_unknown_error">无法还原备份，请重试。</string>
     <string name="desktop_challenge_manual_cookie">cf_clearance Cookie 值</string>
     <string name="desktop_challenge_manual_submit">手动导入</string>
+    <string name="desktop_challenge_cookie_help_title">如何获取 Cookie</string>
+    <string name="desktop_challenge_cookie_help_extension">1. 推荐：完成验证后，在当前页面点击“Mihon 通行 Cookie 助手”扩展并复制 cf_clearance。</string>
+    <string name="desktop_challenge_cookie_help_devtools">2. 未安装扩展：按 F12，打开“应用程序/存储 → Cookie → 当前域名”，复制 cf_clearance 的“值”。</string>
+    <string name="desktop_challenge_cookie_help_value_only">3. 此处只粘贴“值”；不要包含 cf_clearance=，也不要粘贴完整 Cookie 请求头。</string>
     <string name="desktop_settings_cloudflare_title">Cloudflare 绕过</string>
     <string name="desktop_settings_cloudflare_description">如果漫画源显示 Cloudflare 验证，请在浏览器中完成验证，然后在此导入 cf_clearance Cookie。</string>
     <string name="desktop_settings_cloudflare_solver_title">启用 FlareSolverr 备用方案</string>

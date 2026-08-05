@@ -977,6 +977,10 @@
     <string name="desktop_challenge_manual_placeholder">貼上 Cookie 值</string>
     <string name="desktop_challenge_manual_running">正在匯入 Cookie……</string>
     <string name="desktop_challenge_manual_submit">手動匯入</string>
+    <string name="desktop_challenge_cookie_help_title">如何取得 Cookie</string>
+    <string name="desktop_challenge_cookie_help_extension">1. 建議：完成驗證後，在目前頁面點擊「Mihon 通行 Cookie 助手」擴充功能並複製 cf_clearance。</string>
+    <string name="desktop_challenge_cookie_help_devtools">2. 未安裝擴充功能：按 F12，開啟「應用程式/儲存空間 → Cookie → 目前網域」，複製 cf_clearance 的「值」。</string>
+    <string name="desktop_challenge_cookie_help_value_only">3. 此處只貼上「值」；不要包含 cf_clearance=，也不要貼上完整 Cookie 請求標頭。</string>
     <string name="desktop_challenge_open_browser">開啟瀏覽器</string>
     <string name="desktop_challenge_recovered">驗證成功。</string>
     <string name="desktop_challenge_retry">重試</string>

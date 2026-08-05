@@ -1,0 +1,74 @@
+:root {
+    color-scheme: light dark;
+    font-family: system-ui, sans-serif;
+}
+
+body {
+    box-sizing: border-box;
+    margin: 0;
+    min-width: 340px;
+}
+
+main {
+    padding: 16px;
+}
+
+h1 {
+    font-size: 18px;
+    margin: 0 0 12px;
+}
+
+p {
+    line-height: 1.5;
+}
+
+dl {
+    display: grid;
+    gap: 4px;
+    margin: 16px 0;
+}
+
+dt {
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+dd {
+    font-weight: 600;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+button {
+    background: #526dfe;
+    border: 0;
+    border-radius: 8px;
+    color: #fff;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+    padding: 10px 16px;
+    width: 100%;
+}
+
+button:disabled {
+    cursor: default;
+    opacity: 0.55;
+}
+
+#status {
+    margin-bottom: 0;
+}
+
+#status[data-kind="success"] {
+    color: #16823b;
+}
+
+#status[data-kind="error"] {
+    color: #c62828;
+}
+
+.privacy {
+    font-size: 12px;
+    opacity: 0.72;
+}

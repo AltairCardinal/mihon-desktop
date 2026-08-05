@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mihon 通行 Cookie 助手</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <main>
+        <h1>Mihon 通行 Cookie 助手</h1>
+        <p>先在当前页面完成来源验证，再读取并复制 <code>cf_clearance</code> 的值。</p>
+        <dl>
+            <dt>当前域名</dt>
+            <dd id="current-host">正在读取……</dd>
+        </dl>
+        <button id="copy-clearance" type="button">读取并复制</button>
+        <p id="status" role="status" aria-live="polite">只会在点击按钮后请求当前域名权限。</p>
+        <p class="privacy">不会上传、保存或显示 Cookie；读取后会立即撤销当前域名权限。复制后请返回 Mihon 粘贴。</p>
+    </main>
+    <script type="module" src="popup.mjs"></script>
+</body>
+</html>

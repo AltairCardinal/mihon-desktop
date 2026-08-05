@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -38,6 +40,7 @@ data class DesktopChallengeLoginUiState(
     val allowConflictingActions: Boolean = true,
     val showSolver: Boolean = false,
     val solverGuidance: String? = null,
+    val cookieGuidance: List<String> = emptyList(),
     val showRetry: Boolean = false,
     val dismiss: Boolean = false,
     val cookieNames: Set<String> = emptySet(),
@@ -70,6 +73,11 @@ class DesktopChallengeLoginController(
             } else {
                 MR.strings.desktop_challenge_solver_disabled.localized(locale)
             },
+            cookieGuidance = listOf(
+                MR.strings.desktop_challenge_cookie_help_extension.localized(locale),
+                MR.strings.desktop_challenge_cookie_help_devtools.localized(locale),
+                MR.strings.desktop_challenge_cookie_help_value_only.localized(locale),
+            ),
             showRetry = state is ChallengeRecoveryState.RecoverableFailure,
             dismiss = state is ChallengeRecoveryState.Recovered || state == ChallengeRecoveryState.Cancelled,
             cookieNames = recovered?.cookieNames.orEmpty(),
@@ -170,12 +178,15 @@ fun CloudflareBypassDialog(
         },
         title = { Text(text(MR.strings.desktop_challenge_title)) },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(text(MR.strings.desktop_challenge_description))
                 Text(text(MR.strings.desktop_challenge_domain))
                 Text(state.targetHost)
                 Text(state.feedback)
                 state.solverGuidance?.let { Text(it) }
+                Spacer(Modifier.height(8.dp))
+                Text(text(MR.strings.desktop_challenge_cookie_help_title))
+                state.cookieGuidance.forEach { Text(it) }
                 Spacer(Modifier.height(8.dp))
                 if (!state.terminalClose) {
                     TextButton(

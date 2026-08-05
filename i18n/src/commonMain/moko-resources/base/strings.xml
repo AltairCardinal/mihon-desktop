@@ -1114,6 +1114,10 @@
     <string name="desktop_challenge_manual_cookie">cf_clearance cookie value</string>
     <string name="desktop_challenge_manual_placeholder">Paste the cookie value</string>
     <string name="desktop_challenge_manual_submit">Import manually</string>
+    <string name="desktop_challenge_cookie_help_title">How to get the cookie</string>
+    <string name="desktop_challenge_cookie_help_extension">1. Recommended: after verification, click the Mihon Cookie Helper extension on this page and copy cf_clearance.</string>
+    <string name="desktop_challenge_cookie_help_devtools">2. Without the extension: press F12, open Application/Storage → Cookies → this domain, then copy the cf_clearance Value.</string>
+    <string name="desktop_challenge_cookie_help_value_only">3. Paste only the Value here; do not include cf_clearance= or the full Cookie header.</string>
     <string name="desktop_challenge_use_solver">Use FlareSolverr</string>
     <string name="desktop_challenge_cancel">Cancel</string>
     <string name="desktop_challenge_close">Close</string>

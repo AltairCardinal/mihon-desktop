@@ -217,6 +217,23 @@ class DesktopChallengeLoginWiringTest {
     }
 
     @Test
+    fun `challenge dialog state explains extension and manual cookie acquisition`() {
+        val controller = DesktopChallengeLoginController(
+            CloudflareChallengeManager(),
+            DesktopChallengeBrowserLoginBridge(),
+            DesktopAppPreferences(InMemoryPreferenceStore()),
+            Locale.ENGLISH,
+        )
+
+        val guidance = controller.uiState(CloudflareChallenge(request())).cookieGuidance
+
+        assertEquals(3, guidance.size)
+        assertTrue(guidance[0].contains("Mihon Cookie Helper"))
+        assertTrue(guidance[1].contains("F12"))
+        assertTrue(guidance[2].contains("cf_clearance="))
+    }
+
+    @Test
     fun `base challenge resources resolve through MR`() {
         val resolved = listOf(
             MR.strings.desktop_challenge_title,
