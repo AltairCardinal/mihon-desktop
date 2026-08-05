@@ -1160,6 +1160,8 @@ class DesktopProductCapabilityContractTest {
             "PRODUCT_GAP",
             "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
             "DESKTOP_PRODUCT_ENHANCEMENT",
+            "DESKTOP_PRESENTATION_POLICY",
+            "DESKTOP_CACHE_POLICY",
         )
     private val fixedOriginalMihonRef =
         "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8"

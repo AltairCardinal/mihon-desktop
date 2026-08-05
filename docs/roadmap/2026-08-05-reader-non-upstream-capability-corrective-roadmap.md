@@ -1,7 +1,7 @@
 # Reader 非上游能力分类与双页视口纠正 Roadmap
 
 - 制定日期：2026-08-05
-- 状态：`PLANNED`（尚未成为父路线的 `active-child-plan`）
+- 状态：`IN_PROGRESS`（父路线当前唯一 `active-child-plan`；在独立 worktree 中串行执行，暂停中的非 Reader 工作树不参与本计划写入）
 - 来源审查：[`2026-08-05-reader-refactor-non-upstream-feature-audit.md`](./2026-08-05-reader-refactor-non-upstream-feature-audit.md)
 - 原 Reader 计划：[`2026-08-02-reader-core-migration-and-presentation-roadmap.md`](./2026-08-02-reader-core-migration-and-presentation-roadmap.md)
 - 上级路线：[`2026-06-30-mihon-desktop-refactor-roadmap.md`](./2026-06-30-mihon-desktop-refactor-roadmap.md)
@@ -209,7 +209,7 @@ RNC-01 只人工登记下列已知条目，不搜索或生成更多条目：
 
 ## 5. 任务清单与依赖顺序
 
-- [ ] `RNC-01` 建立 Reader 本地 deviation 负例门禁并登记固定清单
+- [x] `RNC-01` 建立 Reader 本地 deviation 负例门禁并登记固定清单
 - [ ] `RNC-02` 删除固定 4:3 frame，改用完整可用 viewport
 - [ ] `RNC-03` 重新验收稳定 display identity、物理双槽与封面策略
 - [ ] `RNC-04` 重新验收 Webtoon 锚点恢复与自动滚动暂停
@@ -260,9 +260,9 @@ RNC-01 → RNC-02 → RNC-03 → RNC-04 → RNC-05 → RNC-06 → RNC-07
 
 ### `RNC-01` Reader 本地 deviation 负例门禁与固定清单
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared `N/A：不改变共享 production` · Android `N/A：只读取现有消费者` · Desktop/UI `N/A：不改变呈现` · Legacy `N/A：不替换实现` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`DONE` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared `N/A：不改变共享 production` · Android `N/A：只读取现有消费者` · Desktop/UI `N/A：不改变呈现` · Legacy `N/A：不替换实现` · Review `[x]` · Verify `[x]` · Evidence `[x]` · Commit `[x]`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 产物 `—` · Commit `—`
+> 记录：阻塞 `无；使用独立 worktree 隔离暂停中的 NR0-01 manifest 改动` · 审查 `PASS：12 项人工固定清单、4 个历史条目、owner/classification/provenance/evidence 均一致；无 production diff、无自动语义逻辑` · 验证 `ReaderDeviationGovernanceTest + ReaderFixedMainAuthorityTest + DesktopProductCapabilityContractTest：47 tests / 0 failures；JSON parse PASS；git diff --check PASS` · 产物 `Reader deviation 显式字段门禁、fixture/manifest capability 43/45/53 登记` · Commit `本批次提交（见 Git 历史）`
 
 - 依赖：父路线活动指针/执行权明确；与正在修改 `parity-manifest.json` 的工作流串行。
 - 固定范围：只登记第 2.4 节 12 项；保留现有四个历史/已正确分类条目，不生成新 inventory。
@@ -466,7 +466,10 @@ macOS 使用同一提交和正式构建脚本生成/运行应用；不得用 Gra
 
 | 日期 | 任务/checkpoint | 状态变化 | 权威/范围 | RED/基线证据 | GREEN/生产结果 | 独立审查 | 验证/产物 | Commit |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| — | `RNC-01` | `TODO` | — | — | — | — | — | — |
+| 2026-08-05 | `RNC-01.A` | `PENDING → PASS` | capability 43/45/53 与固定 12 项 owner/classification/introduction refs 人工核对 | 当前匿名/粗粒度 deviation 不满足字段契约 | N/A：只冻结权威与范围 | 随 RNC-01.D 统一审查 | production/test 路径逐项存在 | N/A（随 RNC-01 提交） |
+| 2026-08-05 | `RNC-01.B` | `PENDING → PASS` | 仅校验显式字段，不读取描述词义 | 真实 fixture/manifest 因缺失稳定 ID/字段 RED；6 类独立 mutation 均按对应原因失败 | 负例门禁自身通过 | 随 RNC-01.D 统一审查 | `ReaderDeviationGovernanceTest` RED/GREEN 记录 | N/A（随 RNC-01 提交） |
+| 2026-08-05 | `RNC-01.C` | `PENDING → PASS` | 12 项写入 fixture 与 manifest；4:3 保持 `OPEN` | 现有 authority/contract 测试先因旧 schema RED | 12 项 fixture/manifest 精确一致，4 个历史条目保留 | 随 RNC-01.D 统一审查 | JSON parse PASS；47 tests / 0 failures | N/A（随 RNC-01 提交） |
+| 2026-08-05 | `RNC-01.D` | `PENDING → PASS；RNC-01 DONE` | 无 production 文件变化 | RED 原因与路线图一致 | 无生成器、自动分类或范围扩张 | PASS：无 owner 串线、fixed-main 污染或非行为证据 | focused tests、`git diff --check` PASS | 本批次提交（见 Git 历史） |
 | — | `RNC-02` | `TODO` | — | — | — | — | — | — |
 | — | `RNC-03` | `TODO` | — | — | — | — | — | — |
 | — | `RNC-04` | `TODO` | — | — | — | — | — | — |

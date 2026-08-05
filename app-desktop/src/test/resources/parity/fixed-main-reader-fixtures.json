@@ -253,6 +253,141 @@
   ],
   "deviations": [
     {
+      "id": "DISPLAY_UNIT_STABLE_IDENTITY",
+      "classification": "DESKTOP_PRESENTATION_POLICY",
+      "introductionRefs": ["464cbefafc2153de286963224694eafceda5e0d1"],
+      "behaviorEvidenceRefs": [
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagePresentationIdentityTest.kt#mounted container keeps identity while loading ready and error content changes in place",
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#pair frame identity survives either page loading ready and error changes"
+      ],
+      "description": "Desktop keeps display-unit identity stable while loading state and mounted content change so reader zoom and scroll containers are not replaced.",
+      "resolutionStatus": "ACTIVE"
+    },
+    {
+      "id": "WEBTOON_RELATIVE_ANCHOR_RECOVERY",
+      "classification": "DESKTOP_PRESENTATION_POLICY",
+      "introductionRefs": ["71aa3c458ff5b9a24b04a14820d6d2bb636c3e04"],
+      "behaviorEvidenceRefs": [
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt#mounted list restores relative anchor when ready content changes item geometry",
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt#mounted list keeps logical page and bounded offset when split anchor merges"
+      ],
+      "description": "Desktop restores a relative Webtoon anchor when late image geometry changes and falls back by source-page identity across split or merge changes.",
+      "resolutionStatus": "ACTIVE"
+    },
+    {
+      "id": "WEBTOON_AUTOSCROLL_INTERACTION_PAUSE",
+      "classification": "DESKTOP_PRODUCT_ENHANCEMENT",
+      "introductionRefs": ["71aa3c458ff5b9a24b04a14820d6d2bb636c3e04"],
+      "behaviorEvidenceRefs": [
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/WebtoonAutoScrollTest.kt#auto scroll pauses through user drag and fling then resumes after settlement"
+      ],
+      "description": "Desktop pauses Webtoon auto-scroll for the complete user drag and fling interaction, then resumes only after scrolling settles.",
+      "resolutionStatus": "ACTIVE"
+    },
+    {
+      "id": "DUAL_PHYSICAL_SLOT_IDENTITY",
+      "classification": "DESKTOP_PRESENTATION_POLICY",
+      "introductionRefs": ["c01771573034d2ed3492db3ddd109533bb631d99"],
+      "behaviorEvidenceRefs": [
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#pair frame identity survives either page loading ready and error changes"
+      ],
+      "description": "Desktop keeps physical left and right slot identities stable across reading direction and page-state changes.",
+      "resolutionStatus": "ACTIVE"
+    },
+    {
+      "id": "DUAL_COVER_LEFT_SLOT",
+      "classification": "DESKTOP_PRODUCT_ENHANCEMENT",
+      "introductionRefs": ["c01771573034d2ed3492db3ddd109533bb631d99"],
+      "behaviorEvidenceRefs": [
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt#cover occupies the physical left slot for both reading directions"
+      ],
+      "description": "Desktop presents a cover in the physical left slot with the physical right slot empty for a stable book-opening layout.",
+      "resolutionStatus": "ACTIVE"
+    },
+    {
+      "id": "DUAL_FIXED_4_3_FRAME",
+      "classification": "DESKTOP_PRESENTATION_POLICY",
+      "introductionRefs": ["c01771573034d2ed3492db3ddd109533bb631d99"],
+      "behaviorEvidenceRefs": [
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#mounted cover keeps a centered two-slot frame with the page in the physical left slot"
+      ],
+      "description": "Desktop currently constrains the dual-page container to a centered 4:3 frame; RNC-02 removes this geometry while retaining stable slots.",
+      "resolutionStatus": "OPEN"
+    },
+    {
+      "id": "DUAL_MAX_VISIBLE_PAGE_PROGRESS",
+      "classification": "CROSS_PLATFORM_PRODUCT_ENHANCEMENT",
+      "introductionRefs": [
+        "6330c6198e827622a74dc48b1ac50f15e7470380",
+        "c01771573034d2ed3492db3ddd109533bb631d99"
+      ],
+      "behaviorEvidenceRefs": [
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#visible-page reporting waits for settled pager and reports both pair pages",
+        "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#one session opens at zero pages then materializes visible pages and settled progress"
+      ],
+      "description": "A settled two-source-page spread records the greatest visible source page while two slices of one wide source page remain one progress identity.",
+      "resolutionStatus": "ACTIVE"
+    },
+    {
+      "id": "LATEST_SETTLEMENT_ORDERING",
+      "classification": "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
+      "introductionRefs": ["6330c6198e827622a74dc48b1ac50f15e7470380"],
+      "behaviorEvidenceRefs": [
+        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt#newer current settlement rejects older adjacent activation and progress",
+        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt#an in-flight write completes before the latest settlement enters the serialized transaction"
+      ],
+      "description": "Shared settlement ordering serializes progress transactions and rejects older viewport results after a newer settlement is issued.",
+      "resolutionStatus": "ACTIVE"
+    },
+    {
+      "id": "PROGRESS_IDEMPOTENCY_AND_DRAIN",
+      "classification": "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
+      "introductionRefs": [
+        "6330c6198e827622a74dc48b1ac50f15e7470380",
+        "dcb2dfb24cb4181d3703a5bf02c5b9e535adb0f8"
+      ],
+      "behaviorEvidenceRefs": [
+        "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerIntegrationTest.kt#duplicate and concurrent event key mutates chapter history and tracker event once",
+        "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#closing immediately after settlement lets the final progress write finish"
+      ],
+      "description": "Stable event identities prevent duplicate progress side effects, and reader shutdown drains every accepted settlement before closing.",
+      "resolutionStatus": "ACTIVE"
+    },
+    {
+      "id": "ENCODED_STORE_LIFECYCLE",
+      "classification": "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
+      "introductionRefs": [
+        "06a1138d2deefb67a565c1c33450d69e734029f7",
+        "dcb2dfb24cb4181d3703a5bf02c5b9e535adb0f8"
+      ],
+      "behaviorEvidenceRefs": [
+        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt#quota eviction survives cache reopen with physical presence as authority",
+        "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt#replacement bytes stay invisible until one atomic commit"
+      ],
+      "description": "The shared encoded store contract provides session retention, bounded atomic writes, physical reconciliation, eviction and diagnostics across Android and Desktop adapters.",
+      "resolutionStatus": "ACTIVE"
+    },
+    {
+      "id": "DESKTOP_ENCODED_CACHE_POLICY",
+      "classification": "DESKTOP_CACHE_POLICY",
+      "introductionRefs": ["dcb2dfb24cb4181d3703a5bf02c5b9e535adb0f8"],
+      "behaviorEvidenceRefs": [
+        "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production factory coordinates encoded cache across concurrent reader runtimes"
+      ],
+      "description": "Desktop production wiring gives the encoded reader cache a bounded 512 MB default independently of decoded-image caches.",
+      "resolutionStatus": "ACTIVE"
+    },
+    {
+      "id": "DESKTOP_FULL_NEXT_CHAPTER_PREFETCH",
+      "classification": "DESKTOP_PRODUCT_ENHANCEMENT",
+      "introductionRefs": ["6ee9473cde839fe5ee932bdb5263c78567c2ff12"],
+      "behaviorEvidenceRefs": [
+        "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#full next chapter waits for every current page then materializes all encoded pages without progress"
+      ],
+      "description": "Desktop can prefetch the complete next chapter through bounded P4 encoded-only work while OFF restores the recorded fixed-original traffic boundary.",
+      "resolutionStatus": "ACTIVE"
+    },
+    {
       "id": "GENERATION_HARDENING",
       "classification": "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
       "evidenceRef": "83c5a97f67fcea33367f5f79c09397bb215a2f6f",
@@ -263,12 +398,6 @@
       "classification": "CROSS_PLATFORM_PRODUCT_ENHANCEMENT",
       "evidenceRef": "bef51fc6924c6a9de185fa0fb2a56ce76309dc19",
       "description": "Adjacent portrait-page pairing and its Android dual-page adapter are Fork additions; fixed original only split a single wide source page."
-    },
-    {
-      "id": "DESKTOP_FULL_NEXT_CHAPTER_PREFETCH",
-      "classification": "DESKTOP_PRODUCT_ENHANCEMENT",
-      "evidenceRef": "production:app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#full next chapter waits for every current page then materializes all encoded pages without progress",
-      "description": "Desktop can prefetch the next chapter through OFF, FIRST_VIEWPORT, or FULL_NEXT_CHAPTER policy after the current chapter is fully Ready; this encoded-only P4 behavior, its policy-plus-one-stale physical I/O bound, and target-sequence Storage guard are Desktop enhancements and do not change fixed-original Android traffic."
     },
     {
       "id": "HTTP_RETRY_FORCE_DRIFT",
