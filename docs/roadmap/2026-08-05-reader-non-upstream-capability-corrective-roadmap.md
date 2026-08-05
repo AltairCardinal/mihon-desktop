@@ -343,9 +343,9 @@ RNC-01 → RNC-02 → RNC-03 → RNC-04 → RNC-05 → RNC-06 → RNC-07
 
 ### `RNC-06` Encoded store、Desktop cache policy 与完整下一章预取分层
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared `[ ]` · Android `[ ]` · Desktop/UI `[ ]` · Legacy `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`DONE` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared `[x]` · Android `SKIPPED：本机无 Android SDK，focused tests 未执行` · Desktop/UI `[x]` · Legacy `[x]` · Review `[x]` · Verify `[x]` · Evidence `[x]` · Commit `[x]`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 产物 `—` · Commit `—`
+> 记录：阻塞 `Android encoded store integration 在依赖解析前受 ANDROID_HOME/sdk.dir 缺失阻断；按用户要求跳过并保留既有 Android 行为证据` · 审查 `PASS：最终无 production diff；共享 store 生命周期、Desktop 512 MB encoded policy、Desktop 完整下一章预取保持三类独立 deviation；未改容量、默认档位、decoded cache 或网络边界` · 验证 `有效 RED：LRU 受害者反转、512 MB 改为 256 MB、提前启动下一章 page-list 均被测试捕获；GREEN：domain 19、Desktop 63 tests / 0 failures；Android 未运行；JSON parse PASS` · 产物 `production runtime 512 MiB encoded store binding test；capability 45 policy evidence 更新` · Commit `本批次提交（见 Git 历史）`
 
 - 依赖：`RNC-05`；预取无进度副作用的契约已经独立。
 - RED（共享可靠性）：session open/close、retained refs、字节预算、两阶段/原子写入、删除失败、reopen、实体丢失、物理/逻辑 LRU reconcile、diagnostics；shared contract 以及 Android/Desktop 真实文件 adapter 都必须执行。

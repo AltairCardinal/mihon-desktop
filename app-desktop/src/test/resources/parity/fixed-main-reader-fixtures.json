@@ -381,7 +381,7 @@
       "classification": "DESKTOP_CACHE_POLICY",
       "introductionRefs": ["dcb2dfb24cb4181d3703a5bf02c5b9e535adb0f8"],
       "behaviorEvidenceRefs": [
-        "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production factory coordinates encoded cache across concurrent reader runtimes"
+        "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production runtime binds the independent 512 MiB encoded cache policy"
       ],
       "description": "Desktop production wiring gives the encoded reader cache a bounded 512 MB default independently of decoded-image caches.",
       "resolutionStatus": "ACTIVE"
