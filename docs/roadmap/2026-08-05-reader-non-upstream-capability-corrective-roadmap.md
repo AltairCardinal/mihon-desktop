@@ -212,7 +212,7 @@ RNC-01 只人工登记下列已知条目，不搜索或生成更多条目：
 - [x] `RNC-01` 建立 Reader 本地 deviation 负例门禁并登记固定清单
 - [x] `RNC-02` 删除固定 4:3 frame，改用完整可用 viewport
 - [x] `RNC-03` 重新验收稳定 display identity、物理双槽与封面策略
-- [ ] `RNC-04` 重新验收 Webtoon 锚点恢复与自动滚动暂停
+- [x] `RNC-04` 重新验收 Webtoon 锚点恢复与自动滚动暂停
 - [ ] `RNC-05` 分离双页进度产品语义与 settlement/idempotency/drain 可靠性
 - [ ] `RNC-06` 分离 encoded store 生命周期、Desktop cache policy 与完整下一章预取
 - [ ] `RNC-07` 收口 authority/manifest 治理并完成跨平台验证
@@ -310,9 +310,9 @@ RNC-01 → RNC-02 → RNC-03 → RNC-04 → RNC-05 → RNC-06 → RNC-07
 
 ### `RNC-04` Webtoon 锚点恢复与自动滚动暂停
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared `N/A：Webtoon 几何属于 Desktop presentation` · Android `N/A：不移植 Compose 锚点状态机` · Desktop/UI `[ ]` · Legacy `N/A：保留现有能力` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`DONE` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared `N/A：Webtoon 几何属于 Desktop presentation` · Android `N/A：不移植 Compose 锚点状态机` · Desktop/UI `[x]` · Legacy `N/A：保留现有能力` · Review `[x]` · Verify `[x]` · Evidence `[x]` · Commit `[x]`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 产物 `—` · Commit `—`
+> 记录：阻塞 `无` · 审查 `PASS：最终无 production diff；relative anchor 与 auto-scroll 产品状态机分类分离，fixed-main 只保留 active-page/position authority` · 验证 `production mutation RED：去除 source-page fallback 与绕过 pause state 分别产生 1/2 个预期失败；恢复后 focused 65 tests / 0 failures；spotlessCheck PASS；git diff --check PASS` · 产物 `mounted merge→split relative offset test；mounted drag→fling→settled auto-scroll consumer test；两项 deviation 独立证据` · Commit `本批次提交（见 Git 历史）`
 
 - 依赖：`RNC-03`；继续使用稳定 `DisplayUnitId`。
 - RED：在真实 mounted `LazyListState` 中覆盖 Ready 改变 item 高度、相对 offset 恢复、split→merge、merge→split、目标 identity 缺失和 `NO_POSITION`；删除相对比例或 fallback 后必须失败。
@@ -477,7 +477,9 @@ macOS 使用同一提交和正式构建脚本生成/运行应用；不得用 Gra
 | 2026-08-05 | `RNC-03.A` | `PENDING → PASS` | Desktop mounted display/slot identity | 临时移除 `remember(unit.id)` 后状态切换 identity 测试 RED；resize 契约新增 | 恢复既有稳定 key，无 production 变更 | 随 RNC-03.C 统一审查 | Single/Dual identity focused PASS | N/A（随 RNC-03 提交） |
 | 2026-08-05 | `RNC-03.B` | `PENDING → PASS` | 物理槽不受环境 RTL 或 frame 尺寸驱动 | 临时改用相对 `CenterStart/End` 后环境 RTL cover test RED | 恢复 `AbsoluteAlignment`；cover 左槽、右空槽与书脊对齐保持 | 随 RNC-03.C 统一审查 | cover/pair/wide split/resize mounted tests PASS | N/A（随 RNC-03 提交） |
 | 2026-08-05 | `RNC-03.C` | `PENDING → PASS；RNC-03 DONE` | `DISPLAY_UNIT_STABLE_IDENTITY`、`DUAL_PHYSICAL_SLOT_IDENTITY`、`DUAL_COVER_LEFT_SLOT` 分别取证 | 两类 production mutation 均被真实 mounted 测试捕获 | production 已满足，不做行为修改 | PASS：无固定 4:3 identity 条件、无保留能力误删 | 63 tests / 0 failures；`spotlessCheck` PASS | 本批次提交（见 Git 历史） |
-| — | `RNC-04` | `TODO` | — | — | — | — | — | — |
+| 2026-08-05 | `RNC-04.A` | `PENDING → PASS` | Desktop Webtoon `LazyListState` relative anchor | 临时删除 source-page fallback 后 merge→split mounted test RED | 恢复 existing fallback；Ready 高度变化、split↔merge、缺失目标与 `NO_POSITION` 均通过 | 随 RNC-04.C 统一审查 | Webtoon mounted/presentation tests PASS | N/A（随 RNC-04 提交） |
+| 2026-08-05 | `RNC-04.B` | `PENDING → PASS` | Desktop auto-scroll 手势暂停 | 临时让 pause state 永远返回 enabled 后状态测试与 mounted loop 均 RED | 恢复 drag→fling→settled gate，不改速度/入口/padding | 随 RNC-04.C 统一审查 | state + actual `WebtoonDisplayUnitList` consumer PASS | N/A（随 RNC-04 提交） |
+| 2026-08-05 | `RNC-04.C` | `PENDING → PASS；RNC-04 DONE` | presentation policy 与 Desktop product enhancement 分离 | 两类 production mutation 被不同测试捕获 | production 已满足，不做行为修改 | PASS：证据执行真实 `LazyListState` 与 auto-scroll loop | 65 tests / 0 failures；`spotlessCheck` PASS | 本批次提交（见 Git 历史） |
 | — | `RNC-05` | `TODO` | — | — | — | — | — | — |
 | — | `RNC-06` | `TODO` | — | — | — | — | — | — |
 | — | `RNC-07` | `TODO` | — | — | — | — | — | — |

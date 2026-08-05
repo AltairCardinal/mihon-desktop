@@ -1,5 +1,7 @@
 package mihon.desktop.ui.reader.presentation
 
+import androidx.compose.foundation.interaction.DragInteraction
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -16,8 +18,13 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.readerChapterSession
@@ -207,6 +214,111 @@ class WebtoonPresentationIdentityTest {
             assertEquals(pageId, latestUpdate?.anchor?.displayUnitId?.slots?.single()?.pageId)
             assertEquals(listState.firstVisibleItemScrollOffset, latestUpdate?.anchor?.scrollOffset)
             assertEquals(300, latestUpdate?.anchor?.itemSize)
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    fun `mounted list restores relative offset when a merged anchor splits`() = runTest {
+        var presentation by mutableStateOf(snapshot(split = false))
+        val mergedAnchor = WebtoonScrollAnchor(presentation.displayUnits.first().id, scrollOffset = 225, itemSize = 300)
+        val listState = LazyListState(firstVisibleItemIndex = 0, firstVisibleItemScrollOffset = 225)
+        val scene = ImageComposeScene(640, 480, coroutineContext = currentCoroutineContext()) {}
+        try {
+            scene.setContent {
+                MaterialTheme {
+                    WebtoonDisplayUnitList(
+                        presentation = presentation,
+                        currentPageId = pageId,
+                        currentDisplayUnitId = mergedAnchor.displayUnitId,
+                        initialAnchor = mergedAnchor,
+                        sidePadding = WebtoonSidePadding.NONE,
+                        autoScroll = false,
+                        autoScrollSpeed = mihon.desktop.ui.reader.WebtoonAutoScrollSpeed.Normal,
+                        listStateOverride = listState,
+                        onViewportChanged = {},
+                        onRetryPage = {},
+                    ) { slot, modifier ->
+                        Box(modifier.height(if (slot.splitHalf == null) 300.dp else 1_200.dp))
+                    }
+                }
+            }
+
+            scene.render()
+            advanceUntilIdle()
+            presentation = snapshot(split = true)
+            repeat(4) {
+                scene.render()
+                advanceUntilIdle()
+            }
+
+            assertEquals(0, listState.firstVisibleItemIndex)
+            assertEquals(900, listState.firstVisibleItemScrollOffset)
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    fun `mounted auto scroll loop pauses for drag and fling then resumes after settlement`() = runTest {
+        val presentation = snapshot(split = false)
+        val listState = LazyListState()
+        val interactions = listState.interactionSource as MutableInteractionSource
+        val scene = ImageComposeScene(640, 480, coroutineContext = currentCoroutineContext()) {}
+        try {
+            scene.setContent {
+                MaterialTheme {
+                    WebtoonDisplayUnitList(
+                        presentation = presentation,
+                        currentPageId = pageId,
+                        currentDisplayUnitId = presentation.displayUnits.first().id,
+                        initialAnchor = null,
+                        sidePadding = WebtoonSidePadding.NONE,
+                        autoScroll = true,
+                        autoScrollSpeed = mihon.desktop.ui.reader.WebtoonAutoScrollSpeed.Fastest,
+                        listStateOverride = listState,
+                        onViewportChanged = {},
+                        onRetryPage = {},
+                    ) { _, modifier ->
+                        Box(modifier.height(1_200.dp))
+                    }
+                }
+            }
+
+            scene.render()
+            advanceTimeBy(96)
+            runCurrent()
+            scene.render()
+            assertTrue(listState.firstVisibleItemScrollOffset > 0)
+
+            val drag = DragInteraction.Start()
+            interactions.emit(drag)
+            runCurrent()
+            scene.render()
+            val dragOffset = listState.firstVisibleItemScrollOffset
+            advanceTimeBy(96)
+            runCurrent()
+            scene.render()
+            assertEquals(dragOffset, listState.firstVisibleItemScrollOffset)
+
+            interactions.emit(DragInteraction.Stop(drag))
+            val fling = launch { listState.scroll { awaitCancellation() } }
+            runCurrent()
+            scene.render()
+            val flingOffset = listState.firstVisibleItemScrollOffset
+            advanceTimeBy(96)
+            runCurrent()
+            scene.render()
+            assertEquals(flingOffset, listState.firstVisibleItemScrollOffset)
+
+            fling.cancelAndJoin()
+            runCurrent()
+            scene.render()
+            advanceTimeBy(96)
+            runCurrent()
+            scene.render()
+            assertTrue(listState.firstVisibleItemScrollOffset > flingOffset)
         } finally {
             scene.close()
         }

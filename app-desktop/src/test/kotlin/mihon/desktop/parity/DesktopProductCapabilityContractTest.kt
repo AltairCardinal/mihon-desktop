@@ -1814,6 +1814,10 @@ class DesktopProductCapabilityContractTest {
                                 setOf("WebtoonDisplayUnitList(", "firstVisibleItemScrollOffset"),
                             "mounted list keeps logical page and bounded offset when split anchor merges" to
                                 setOf("WebtoonDisplayUnitList(", "splitAnchor"),
+                            "mounted list restores relative offset when a merged anchor splits" to
+                                setOf("WebtoonDisplayUnitList(", "mergedAnchor", "firstVisibleItemScrollOffset"),
+                            "mounted auto scroll loop pauses for drag and fling then resumes after settlement" to
+                                setOf("WebtoonDisplayUnitList(", "DragInteraction", "listState.scroll"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt" to
                         mapOf(
