@@ -153,7 +153,7 @@ class SourceBrowseQueryCoordinator(
         source: CatalogueSource,
         request: SourcePageRequest,
     ): SourceQueryState {
-        val result = service.loadPageResult(source, request)
+        val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { service.loadPageResult(source, request) }
         currentCoroutineContext().ensureActive()
         val completed = synchronized(lock) {
             val current = requireNotNull(authoritativeState)

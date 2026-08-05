@@ -13,10 +13,12 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import mihon.domain.error.AppError
 import mihon.desktop.ui.source.desktopSourceErrorMessage
 import okhttp3.OkHttpClient
@@ -41,6 +43,9 @@ import java.net.SocketException
 import java.net.UnknownHostException
 import javax.net.ssl.SSLHandshakeException
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class DesktopSourceQueryBehaviorTest {
 
@@ -130,6 +135,40 @@ class DesktopSourceQueryBehaviorTest {
 
         listOf("No Internet connection", "Login", "Unknown error", "Retry").forEach { message ->
             assertEquals(false, source.contains("\"$message\""), "recovery text must come from MR: $message")
+        }
+    }
+
+    @Test
+    fun `blocking source page calls never occupy the caller dispatcher`() = runBlocking {
+        val queries = listOf(
+            "popular" to SourceQuery.Popular,
+            "latest" to SourceQuery.Latest,
+            "search" to SourceQuery.Search("query", FilterList()),
+        )
+
+        queries.forEach { (expectedCall, query) ->
+            val sourceEntered = CountDownLatch(1)
+            val releaseSource = CountDownLatch(1)
+            val source = BlockingBrowseSource(sourceEntered, releaseSource)
+            val coordinator = SourceBrowseQueryCoordinator(SourceMangaSearchService())
+            val uiDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+            val load = async(uiDispatcher) { coordinator.load(source, page = 1, query = query) }
+
+            try {
+                assertTrue(sourceEntered.await(2, TimeUnit.SECONDS), "$expectedCall source call never started")
+                val nextUiTurn = async(uiDispatcher) { Unit }
+
+                val uiStayedResponsive = withTimeoutOrNull(250) { nextUiTurn.await() }
+
+                releaseSource.countDown()
+                withTimeout(2_000) { load.await() }
+                assertEquals(expectedCall, source.requestedCall)
+                assertEquals(Unit, uiStayedResponsive, "$expectedCall source call blocked the caller UI dispatcher")
+            } finally {
+                releaseSource.countDown()
+                runCatching { withTimeout(2_000) { load.await() } }
+                uiDispatcher.close()
+            }
         }
     }
 
@@ -448,6 +487,34 @@ class DesktopSourceQueryBehaviorTest {
             started.complete(Unit)
             return withContext(NonCancellable) { result.await() }
         }
+        override fun getFilterList() = FilterList()
+        override suspend fun getMangaDetails(manga: SManga) = manga
+        override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
+        override suspend fun getPageList(chapter: SChapter) = emptyList<Page>()
+    }
+
+    private class BlockingBrowseSource(
+        private val entered: CountDownLatch,
+        private val release: CountDownLatch,
+    ) : CatalogueSource {
+        @Volatile var requestedCall: String? = null
+
+        override val id = 9L
+        override val name = "Blocking browse"
+        override val lang = "en"
+        override val supportsLatest = true
+
+        override suspend fun getPopularManga(page: Int) = block("popular")
+        override suspend fun getLatestUpdates(page: Int) = block("latest")
+        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList) = block("search")
+
+        private fun block(call: String): MangasPage {
+            requestedCall = call
+            entered.countDown()
+            check(release.await(5, TimeUnit.SECONDS)) { "timed out releasing $call source call" }
+            return MangasPage(emptyList(), false)
+        }
+
         override fun getFilterList() = FilterList()
         override suspend fun getMangaDetails(manga: SManga) = manga
         override suspend fun getChapterList(manga: SManga) = emptyList<SChapter>()
