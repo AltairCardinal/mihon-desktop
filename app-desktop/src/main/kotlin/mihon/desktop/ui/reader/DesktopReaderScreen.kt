@@ -356,17 +356,42 @@ internal fun initialPageForChapterNavigation(direction: ReaderChapterNavigationD
         ReaderChapterNavigationDirection.Next -> ReaderInitialPage.FIRST
     }
 
-private fun ReaderState.dualPresentationSnapshot(): ReaderPresentationSnapshot {
+internal fun ReaderState.effectiveMatchedPairs(): Set<Pair<Int, Int>> =
+    if (forcedSinglePages.isEmpty()) matchedPairs else emptySet()
+
+internal fun ReaderState.dualPresentationSnapshot(): ReaderPresentationSnapshot {
     val direction = if (readingMode == ReadingMode.RTL) ReaderDirection.RTL else ReaderDirection.LTR
     val request = desktopReaderPresentationRequest(
         chapter = session.activeChapter,
         direction = direction,
         spreadPageIndices = spreadPages,
         forcedSinglePageIndices = forcedSinglePages,
-        matchedPagePairs = matchedPairs,
+        matchedPagePairs = effectiveMatchedPairs(),
         splitWidePages = autoSplitPages,
     )
     return DesktopReaderPresentationRegistry.require(ReaderPresentationMode.DUAL_PAGED).present(request)
+}
+
+internal fun adjustedForcedSinglePages(state: ReaderState): Set<Int> {
+    if (!state.dualPageMode || state.session.activeChapter.pages.isEmpty()) return state.forcedSinglePages
+    val presentation = state.dualPresentationSnapshot()
+    val unitIndex = presentation.dualDisplayUnitIndexForSourcePage(state.currentPage)
+    if (unitIndex < 0) return state.forcedSinglePages
+
+    val pageIndices = presentation.displayUnits[unitIndex].slots
+        .mapNotNull { it.page?.id?.sourcePageIndex }
+        .distinct()
+    val forcedSingle = pageIndices.singleOrNull()?.takeIf(state.forcedSinglePages::contains)
+    if (forcedSingle != null) return state.forcedSinglePages - forcedSingle
+    if (pageIndices.size != 2) return state.forcedSinglePages
+
+    val firstPage = pageIndices.min()
+    val precedingAdjustment = (firstPage - 1).takeIf(state.forcedSinglePages::contains)
+    return if (precedingAdjustment != null) {
+        state.forcedSinglePages - precedingAdjustment
+    } else {
+        state.forcedSinglePages + firstPage
+    }
 }
 
 @Composable
@@ -520,10 +545,7 @@ private fun ReaderViewport(
                             isDualPage = state.dualPageMode, hasPrevChapter = readerNav?.previousRead != null,
                             hasNextChapter = readerNav?.nextToRead != null, onPrevChapter = onPrevChapter,
                             onNextChapter = onNextChapter,
-                            onAdjustSpread = {
-                                val p = state.currentPage
-                                model.setForcedSinglePages(if (p !in state.forcedSinglePages) state.forcedSinglePages + p else state.forcedSinglePages - p)
-                            },
+                            onAdjustSpread = { model.setForcedSinglePages(adjustedForcedSinglePages(state)) },
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
                     }
@@ -706,7 +728,7 @@ private fun ReaderContent(
                 isDualPage = state.dualPageMode, autoSplitPages = state.autoSplitPages,
                 cropBorders = state.cropBordersPager, contextMenuScope = contextMenuScope,
                 mangaTitle = mangaTitle, chapterTitle = chapterTitle, zoomState = state.zoomState,
-                forcedSinglePages = state.forcedSinglePages, matchedPairs = state.matchedPairs,
+                forcedSinglePages = state.forcedSinglePages, matchedPairs = state.effectiveMatchedPairs(),
                 splitPageIndices = state.spreadPages, preloader = preloader, scaleType = state.scaleType,
                 navigationMode = state.navigationMode,
                 onPageChange = model::goToPage,

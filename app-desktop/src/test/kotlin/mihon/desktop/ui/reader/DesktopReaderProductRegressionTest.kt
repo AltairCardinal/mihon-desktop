@@ -3,7 +3,9 @@ package mihon.desktop.ui.reader
 import mihon.desktop.reader.ReaderColorFilter
 import mihon.desktop.reader.ReaderKeyboardAction
 import mihon.desktop.reader.ReaderPageAction
+import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.buildVirtualPageList
+import mihon.desktop.reader.desktopReaderSessionState
 import mihon.desktop.reader.readerChapterSession
 import mihon.desktop.ui.reader.presentation.DesktopReaderPresentationRegistry
 import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
@@ -22,6 +24,82 @@ import java.io.File
 import javax.imageio.ImageIO
 
 class DesktopReaderProductRegressionTest {
+
+    @Test
+    fun `adjust spread shifts subsequent pairing and can restore the previous boundary`() {
+        val baseline = ReaderScreenModel(
+            initialSessionState = desktopReaderSessionState(pageCount = 6),
+        ).state.value.copy(
+            currentPage = 2,
+            dualPageMode = true,
+        )
+
+        val shiftedSingles = adjustedForcedSinglePages(baseline)
+
+        assertEquals(setOf(1), shiftedSingles)
+        assertEquals(
+            listOf(listOf(0), listOf(1), listOf(2, 3), listOf(4, 5)),
+            dualGroups(pageCount = 6, forcedSinglePages = shiftedSingles),
+        )
+
+        val restoredSingles = adjustedForcedSinglePages(
+            baseline.copy(currentPage = 3, forcedSinglePages = shiftedSingles),
+        )
+        assertEquals(emptySet<Int>(), restoredSingles)
+        assertEquals(
+            listOf(listOf(0), listOf(1, 2), listOf(3, 4), listOf(5)),
+            dualGroups(pageCount = 6, forcedSinglePages = restoredSingles),
+        )
+    }
+
+    @Test
+    fun `manual spread adjustment takes precedence over automatic matched pairs`() {
+        val automaticallyMatched = ReaderScreenModel(
+            initialSessionState = desktopReaderSessionState(pageCount = 6),
+        ).state.value.copy(
+            currentPage = 3,
+            dualPageMode = true,
+            readingMode = ReadingMode.LTR,
+            matchedPairs = setOf(2 to 3),
+        )
+
+        val adjustedPages = adjustedForcedSinglePages(automaticallyMatched)
+        val manuallyAdjusted = automaticallyMatched.copy(
+            currentPage = 4,
+            forcedSinglePages = adjustedPages,
+        )
+
+        assertEquals(setOf(2), adjustedPages)
+        assertEquals(emptySet<Pair<Int, Int>>(), manuallyAdjusted.effectiveMatchedPairs())
+        assertEquals(
+            listOf(listOf(0), listOf(1), listOf(2), listOf(3, 4), listOf(5)),
+            manuallyAdjusted.dualPresentationSnapshot().displayUnits.map { unit ->
+                unit.slots.mapNotNull { it.page?.id?.sourcePageIndex }
+            },
+        )
+
+        val restoredPages = adjustedForcedSinglePages(manuallyAdjusted)
+
+        assertEquals(emptySet<Int>(), restoredPages)
+        assertEquals(
+            setOf(2 to 3),
+            manuallyAdjusted.copy(forcedSinglePages = restoredPages).effectiveMatchedPairs(),
+        )
+    }
+
+    @Test
+    fun `adjust spread preserves unrelated manual boundaries`() {
+        val state = ReaderScreenModel(
+            initialSessionState = desktopReaderSessionState(pageCount = 8),
+        ).state.value.copy(
+            currentPage = 3,
+            dualPageMode = true,
+            forcedSinglePages = setOf(1, 4),
+            matchedPairs = setOf(2 to 3),
+        )
+
+        assertEquals(setOf(4), adjustedForcedSinglePages(state))
+    }
 
     @Test
     fun `shared pairing keeps cover edge matching adjust and landscape parity enhancements`() {
