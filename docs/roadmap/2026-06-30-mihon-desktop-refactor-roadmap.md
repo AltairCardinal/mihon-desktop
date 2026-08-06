@@ -4,7 +4,7 @@
 
 正式版日期：2026-06-30
 
-- active-child-plan: [`2026-08-02-reader-core-migration-and-presentation-roadmap.md`](./2026-08-02-reader-core-migration-and-presentation-roadmap.md)
+- active-child-plan: [`2026-08-02-mihon-desktop-non-reader-upstream-core-roadmap.md`](./2026-08-02-mihon-desktop-non-reader-upstream-core-roadmap.md)
 
 ## 0. 产品路线
 
@@ -287,9 +287,9 @@
 
 ## 12. Phase R：功能 parity 与体验补齐
 
-目标：在 macOS/Desktop 主线稳定后补齐长期体验，不阻塞当前核心重构。当前优先按
-[`reader core migration child plan`](./2026-08-02-reader-core-migration-and-presentation-roadmap.md)
-完成阅读核心迁移和 Desktop 呈现解耦；下表保留其余 Phase R backlog。
+目标：在 macOS/Desktop 主线稳定后补齐长期体验，不阻塞当前核心重构。Reader child plan 已完成；当前按
+[`non-reader upstream core child plan`](./2026-08-02-mihon-desktop-non-reader-upstream-core-roadmap.md)
+把非 Reader 产品动作迁移为原版谱系的共享核心，并补齐 Desktop 入口、反馈和平台边界；下表保留其余 Phase R backlog。
 
 | ID | 状态 | 优先级 | 平台 | 任务 | 用户可见变化 | 验收 |
 | --- | --- | --- | --- | --- | --- | --- |

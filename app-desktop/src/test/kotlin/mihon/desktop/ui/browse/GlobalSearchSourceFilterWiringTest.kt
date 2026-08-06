@@ -52,6 +52,7 @@ class GlobalSearchSourceFilterWiringTest {
             every { disabledSources } returns preference(emptySet())
             every { pinnedSources } returns preference(setOf(pinned.id.toString()))
             every { globalSearchFilterState } returns booleanPreference()
+            every { browseRecentSearches } returns sourceBrowseRecentSearchesPreference()
         }
         val dependencies = mockk<DesktopUiDependencies> {
             every { sourceManager } returns FakeDesktopSourceManager(listOf(pinned, unpinned))
@@ -173,6 +174,7 @@ class GlobalSearchSourceFilterWiringTest {
             every { disabledSources } returns preference(emptySet())
             every { pinnedSources } returns preference(pinnedSourceIds)
             every { globalSearchFilterState } returns booleanPreference()
+            every { browseRecentSearches } returns sourceBrowseRecentSearchesPreference()
         }
         val dependencies = mockk<DesktopUiDependencies> {
             every { sourceManager } returns FakeDesktopSourceManager(sources)

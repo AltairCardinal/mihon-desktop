@@ -136,6 +136,7 @@ class SourceSharedStateWiringTest {
             every { get() } returns false
             every { changes() } returns flowOf(false)
         }
+        every { browseRecentSearches } returns sourceBrowseRecentSearchesPreference()
     }
 
     @Test

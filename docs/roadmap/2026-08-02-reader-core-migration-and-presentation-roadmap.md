@@ -1,7 +1,7 @@
 # 原版 Mihon 阅读核心迁移与 Desktop 阅读呈现解耦 Roadmap
 
 - 制定日期：2026-08-02
-- 状态：`IN_PROGRESS`
+- 状态：`DONE`（14 个任务与最终 Android/Desktop/发布矩阵均已关闭；后续 Reader 内部变化仍由本文约束）
 - 上级路线：[`2026-06-30-mihon-desktop-refactor-roadmap.md`](./2026-06-30-mihon-desktop-refactor-roadmap.md) 的 Phase R
 - 固定原版权威：`main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`
 - 本次核对的上游跟踪点：`upstream/main@55be95dd5df7ac985bbc68ea62a5a525611a732f`（2026-08-02；`d7f3ceef5…` 之后无 reader 路径变更）

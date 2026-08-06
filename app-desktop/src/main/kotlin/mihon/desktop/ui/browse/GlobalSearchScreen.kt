@@ -18,10 +18,14 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -46,6 +50,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
@@ -70,6 +75,7 @@ import kotlinx.coroutines.launch
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.platform.DesktopExternalActionTarget
+import mihon.desktop.settings.BROWSE_RECENT_SEARCH_LIMIT
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.getEnabledCatalogueSourceCandidates
 import mihon.desktop.ui.library.MangaDetailScreen
@@ -349,6 +355,11 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
         val onlyShowHasResults by appPreferences.globalSearchFilterState.changes().collectAsState(
             initial = appPreferences.globalSearchFilterState.get(),
         )
+        val recentSearchesPreference = appPreferences.browseRecentSearches
+        val recentSearches by recentSearchesPreference.changes().collectAsState(
+            initial = recentSearchesPreference.get(),
+        )
+        var historyExpanded by remember { mutableStateOf(false) }
         var sourcesByGeneration by remember { mutableStateOf(emptyMap<Long, List<CatalogueSource>>()) }
         val searchUiState = GlobalSearchStateProjector.project(
             sourcesByGeneration[searchState.generation].orEmpty(),
@@ -375,7 +386,15 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
         }
 
         fun launchSearch(q: String, filter: GlobalSearchSourceFilter = sourceFilter) {
-            if (q.isBlank()) return
+            val normalizedQuery = q.trim()
+            if (normalizedQuery.isEmpty()) return
+            query = normalizedQuery
+            historyExpanded = false
+            synchronized(recentSearchesPreference) {
+                val current = recentSearchesPreference.get()
+                val updated = recordRecentSearch(current, normalizedQuery)
+                if (updated != current) recentSearchesPreference.set(updated)
+            }
             scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 val sources = GlobalSearchSourcePolicy.select(
                     sourceManager.getCatalogueSources(),
@@ -384,10 +403,19 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
                     appPreferences.pinnedSources.get(),
                     filter,
                 )
-                executeSearch(sources, queryCoordinator, q, filter) { generation, selectedSources ->
+                executeSearch(sources, queryCoordinator, normalizedQuery, filter) { generation, selectedSources ->
                     sourcesByGeneration = mapOf(generation to selectedSources)
                 }
             }
+        }
+
+        fun removeRecentSearch(recentQuery: String) {
+            synchronized(recentSearchesPreference) {
+                val current = recentSearchesPreference.get()
+                val updated = current.filterNot { it == recentQuery }
+                if (updated != current) recentSearchesPreference.set(updated)
+            }
+            historyExpanded = true
         }
 
         fun recover(sourceResult: SourceSearchResult) {
@@ -453,23 +481,67 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = { query = it },
-                        placeholder = { Text(MR.strings.desktop_ui_search_all_sources.localized()) },
-                        singleLine = true,
-                        modifier = Modifier
-                            .weight(1f)
-                            .onKeyEvent { event ->
-                                if (event.key == Key.Enter) {
-                                    launchSearch(query)
-                                    true
-                                } else {
-                                    false
+                    ExposedDropdownMenuBox(
+                        expanded = historyExpanded && recentSearches.isNotEmpty(),
+                        onExpandedChange = { historyExpanded = it },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        OutlinedTextField(
+                            value = query,
+                            onValueChange = { query = it },
+                            placeholder = { Text(MR.strings.desktop_ui_search_all_sources.localized()) },
+                            singleLine = true,
+                            modifier = Modifier
+                                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable)
+                                .fillMaxWidth()
+                                .onFocusChanged { focusState ->
+                                    if (focusState.isFocused) historyExpanded = true
                                 }
-                            },
-                    )
-                    IconButton(onClick = { launchSearch(query) }) {
+                                .testTag(GLOBAL_SEARCH_INPUT_TAG)
+                                .onKeyEvent { event ->
+                                    if (event.key == Key.Enter) {
+                                        launchSearch(query)
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                },
+                        )
+                        ExposedDropdownMenu(
+                            expanded = historyExpanded && recentSearches.isNotEmpty(),
+                            onDismissRequest = { historyExpanded = false },
+                            modifier = Modifier
+                                .exposedDropdownSize()
+                                .testTag(GLOBAL_SEARCH_HISTORY_TAG),
+                        ) {
+                            recentSearches.forEachIndexed { index, recentQuery ->
+                                DropdownMenuItem(
+                                    text = { Text(recentQuery) },
+                                    onClick = {
+                                        query = recentQuery
+                                        launchSearch(recentQuery)
+                                    },
+                                    trailingIcon = {
+                                        IconButton(
+                                            onClick = { removeRecentSearch(recentQuery) },
+                                            modifier = Modifier.testTag(globalSearchHistoryDeleteTag(index)),
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription =
+                                                    "${MR.strings.action_delete.localized()} $recentQuery",
+                                            )
+                                        }
+                                    },
+                                    modifier = Modifier.testTag(globalSearchHistoryItemTag(index)),
+                                )
+                            }
+                        }
+                    }
+                    IconButton(
+                        onClick = { launchSearch(query) },
+                        modifier = Modifier.testTag(GLOBAL_SEARCH_SUBMIT_TAG),
+                    ) {
                         Icon(Icons.Default.Search, contentDescription = MR.strings.action_search.localized())
                     }
                 }
@@ -613,6 +685,22 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
         }
     }
 }
+
+private const val GLOBAL_SEARCH_INPUT_TAG = "global-search-input"
+private const val GLOBAL_SEARCH_SUBMIT_TAG = "global-search-submit"
+private const val GLOBAL_SEARCH_HISTORY_TAG = "global-search-history"
+
+private fun recordRecentSearch(current: List<String>, query: String): List<String> {
+    val normalizedQuery = query.trim()
+    if (normalizedQuery.isEmpty()) return current.take(BROWSE_RECENT_SEARCH_LIMIT)
+    return buildList {
+        add(normalizedQuery)
+        addAll(current.filterNot { it == normalizedQuery })
+    }.take(BROWSE_RECENT_SEARCH_LIMIT)
+}
+
+private fun globalSearchHistoryItemTag(index: Int) = "global-search-history-item-$index"
+private fun globalSearchHistoryDeleteTag(index: Int) = "global-search-history-delete-$index"
 
 @Composable
 private fun GlobalSearchMangaCard(

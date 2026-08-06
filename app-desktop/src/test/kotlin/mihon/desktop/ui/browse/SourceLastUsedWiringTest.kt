@@ -43,6 +43,7 @@ internal fun sourceBrowseHistoryPreferences() = mockk<DesktopAppPreferences> {
     every { incognitoMode } returns sourceBrowseIncognitoPreference()
     every { incognitoExtensions } returns sourceBrowseExtensionIncognitoPreference()
     every { lastUsedSource } returns sourceBrowseLastUsedPreference()
+    every { browseRecentSearches } returns sourceBrowseRecentSearchesPreference()
 }
 internal fun sourceBrowseIncognitoPreference() = mockk<tachiyomi.core.common.preference.Preference<Boolean>>(relaxed = true) {
     every { get() } returns false
@@ -51,6 +52,13 @@ internal fun sourceBrowseIncognitoPreference() = mockk<tachiyomi.core.common.pre
 internal fun sourceBrowseExtensionIncognitoPreference() =
     mockk<tachiyomi.core.common.preference.Preference<Set<String>>>(relaxed = true) { every { get() } returns emptySet() }
 internal fun sourceBrowseLastUsedPreference() = mockk<tachiyomi.core.common.preference.Preference<Long>>(relaxed = true)
+
+internal fun sourceBrowseRecentSearchesPreference() =
+    tachiyomi.core.common.preference.InMemoryPreferenceStore.InMemoryPreference(
+        key = "browse_recent_searches",
+        data = null,
+        defaultValue = emptyList<String>(),
+    )
 internal fun sourceBrowseExtensionManager() = mockk<DesktopExtensionManager>(relaxed = true)
 
 @OptIn(ExperimentalComposeUiApi::class)

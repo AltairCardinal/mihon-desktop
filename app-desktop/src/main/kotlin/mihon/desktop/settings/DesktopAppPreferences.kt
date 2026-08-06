@@ -3,6 +3,9 @@ package mihon.desktop.settings
 import eu.kanade.domain.ui.model.AppTheme
 import eu.kanade.domain.ui.model.ThemeDefaults
 import eu.kanade.domain.ui.model.ThemePreferenceCodec
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.core.common.preference.Preference
@@ -14,6 +17,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.prefs.Preferences
 
 typealias ThemeMode = eu.kanade.domain.ui.model.ThemeMode
+
+internal const val BROWSE_RECENT_SEARCH_LIMIT = 3
 
 enum class ReaderDefaultMode { PAGER, WEBTOON }
 
@@ -185,6 +190,22 @@ class DesktopAppPreferences(
     /** Whether global search only displays sources with results. */
     val globalSearchFilterState: Preference<Boolean> by lazy {
         store.getBoolean(Preference.appStateKey("has_filters_toggle_state"), false)
+    }
+
+    /** Most-recent-first global browse searches, capped so the search menu stays compact. */
+    val browseRecentSearches: Preference<List<String>> by lazy {
+        store.getObjectFromString(
+            key = "browse_recent_searches",
+            defaultValue = emptyList(),
+            serializer = Json::encodeToString,
+            deserializer = { serialized ->
+                Json.decodeFromString<List<String>>(serialized)
+                    .map(String::trim)
+                    .filter(String::isNotEmpty)
+                    .distinct()
+                    .take(BROWSE_RECENT_SEARCH_LIMIT)
+            },
+        )
     }
 
     /** When true, the pager shows a page-flip animation between pages. */

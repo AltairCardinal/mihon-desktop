@@ -270,7 +270,7 @@ Android ScreenModel / Desktop ScreenModel
 
 > 状态卡：`DOING` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared `N/A：本任务只建立机器权威，不改变共享生产实现` · Android `[ ]` · Desktop/UI `[ ]` · Legacy `N/A：本任务不替换或删除生产实现` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
 >
-> 记录：阻塞 `方法性阻塞已确认但不依赖外部输入：当前自动语义映射会产生大规模误配，必须从 NR0-01.A 回退` · 审查 `既有两轮均为 CHANGES_REQUIRED；最新审查确认 372 个语义豁免、257 个跨 capability 绑定和 external.share → AndroidCookieJar 明显串线，现有 2 个全绿测试不能作为关闭证据` · 验证 `既有 RED/GREEN/Spotless 仅保留为过程历史，语义证明已 INVALIDATED；新的独立负例门禁尚未建立` · 产物 `415 个 action、458 个 source entry 仅作为机械候选池保留；action 语义、capability 归属、source 关系、GAP/EXEMPT 和 tracked 裁决全部视为 provisional` · Commit `—`
+> 记录：当前 checkpoint `NR0-01.F3（TODO；按用户要求暂停，尚未开始）` · 阻塞 `无外部阻塞；旧自动语义映射方法已 INVALIDATED；恢复后从 F3 继续，禁止追加 override/exception` · 审查 `E 主协调者只读方法审查 PASS；F1/F2.1/F2.2 人工逐项裁决及各自 3 个 cluster mutation PASS；既有两轮 CHANGES_REQUIRED 仍仅作为旧方法历史` · 验证 `F2.2 RED 的 5 项失败均来自旧 schema、缺失 Reader/risk/search-boundary 契约；GREEN 为 25 tests / 0 failures，55 actions 的 165 个 authority role 均为 MANUAL，精确 Git line/locator/contextHash 检查通过` · 产物 `A–F2.2 PASS；F3 未读取、未生成、未修改` · Commit `—：NR0-01 仍按 A–H 原子批次执行，不创建 checkpoint 提交`
 
 - 依赖：无；本文内部进度从下表第一项非 `PASS` checkpoint 推导。
 - 实际交付物：在现有 `parity-manifest.json` 中形成经过人工逐簇裁决的“surface → action → 固定原版/当前 Android/Desktop 生产证据 → tracked-upstream 差异 → source 关系 → 迁移标签/缺口”矩阵，并用独立负例、结构测试和审查锁定结果。
@@ -339,13 +339,14 @@ Android ScreenModel / Desktop ScreenModel
 
 | Checkpoint | 状态 | 固定目标与交付物 | 通过门禁 | Timebox |
 | --- | --- | --- | --- | --- |
-| `NR0-01.A` 止损与资产分级 | `NEXT` | 冻结全量扩展；把现有字段分为机械候选、人工待审、应删除的自动语义三类 | 不再新增 override/exception；任务记录明确可保留/作废范围 | 0.5–1 日 |
-| `NR0-01.B` 证据模型与禁止项 | `TODO` | 固定 action/surface/container/source、PRESENT/GAP/EXEMPT、跨 capability 关系的人工裁决规则 | 上述禁止证据全部进入规范；无“关键词命中即有效”路径 | 1 日 |
-| `NR0-01.C` 独立负例夹具 | `TODO` | 建立 12 类破坏性负例和至少 2 个正例，不读取完整 manifest | 12 类均按各自原因 RED，正例 GREEN；测试不复用 helper 语义 | 1–2 日 |
-| `NR0-01.D` 机械 helper 收缩 | `TODO` | 删除自动 anchor/semantic/relationship/status 逻辑，仅保留机械发现和序列化 | helper 输出零语义决策；测试中无复制的 semantic matcher | 1–2 日 |
-| `NR0-01.E` 20 个高风险先导样本 | `TODO` | 人工核对 20 个非随机样本的四方上下文和 source 关系 | 20/20 逐项通过内部方法审查；全部负例仍有效 | 1–2 日 |
-| `NR0-01.F1` 平台基础 | `TODO` | capability `3,4,7,8,9,10,11,12`；`9` 只审非 Reader 设置/入口边界 | 本 cluster 人工裁决、3 个 cluster mutation、零自动豁免 | 1–2 日 |
-| `NR0-01.F2` 书库与详情 | `TODO` | capability `16,17,19,22,24,26` | 同上；详情 action 不用容器/通用按钮代证 | 1–2 日 |
+| `NR0-01.A` 止损与资产分级 | `PASS` | 冻结全量扩展；把现有字段分为机械候选、人工待审、应删除的自动语义三类 | 不再新增 override/exception；任务记录明确可保留/作废范围 | 0.5–1 日 |
+| `NR0-01.B` 证据模型与禁止项 | `PASS` | 固定 action/surface/container/source、PRESENT/GAP/EXEMPT、跨 capability 关系的人工裁决规则 | 上述禁止证据全部进入规范；无“关键词命中即有效”路径 | 1 日 |
+| `NR0-01.C` 独立负例夹具 | `PASS` | 建立 12 类破坏性负例和至少 2 个正例，不读取完整 manifest | 12 类均按各自原因 RED，正例 GREEN；测试不复用 helper 语义 | 1–2 日 |
+| `NR0-01.D` 机械 helper 收缩 | `PASS` | 删除自动 anchor/semantic/relationship/status 逻辑，仅保留机械发现和序列化 | helper 输出零语义决策；测试中无复制的 semantic matcher | 1–2 日 |
+| `NR0-01.E` 20 个高风险先导样本 | `PASS` | 人工核对 20 个非随机样本的四方上下文和 source 关系 | 20/20 逐项通过内部方法审查；全部负例仍有效 | 1–2 日 |
+| `NR0-01.F1` 平台基础 | `PASS` | capability `3,4,7,8,9,10,11,12`；`9` 只审非 Reader 设置/入口边界 | 本 cluster 人工裁决、3 个 cluster mutation、零自动豁免 | 1–2 日 |
+| `NR0-01.F2.1` Category/Library/批量动作 | `PASS` | capability `16,17,19`；旧 provisional 共 38 actions | 本段独立人工裁决与 3 个 mutation；Library action 不用容器/通用按钮代证 | 1–2 日 |
+| `NR0-01.F2.2` 详情 membership/chapters/cover | `PASS` | capability `22,24,26`；旧 provisional 共 57 actions | 本段独立人工裁决与 3 个 mutation；Reader 只留打开请求边界 | 1–2 日 |
 | `NR0-01.F3` Browse/Extension A | `TODO` | capability `28,29,30,32,33,34` | 同上；多源和扩展 catalog 关系逐项追调用链 | 1–2 日 |
 | `NR0-01.F4` Browse/Extension B | `TODO` | capability `35,36,37,38,39,40` | 同上；认证/挑战/平台 loader 分类明确 | 1–2 日 |
 | `NR0-01.F5` Download/Updates/History | `TODO` | capability `56,57,59,61,62,64,66` | 同上；background 与用户动作分开，不共享伪锚点 | 1–2 日 |
@@ -354,6 +355,113 @@ Android ScreenModel / Desktop ScreenModel
 | `NR0-01.F8` Settings/Maintenance | `TODO` | capability `90,91,92,93,94,95,96` | 同上；preference 声明不能代替入口与消费行为 | 1–2 日 |
 | `NR0-01.G` tracked/source 图 | `TODO` | 在已通过 F1–F8 的人工 action 上补 tracked diff 和双向 source 关系 | 零文件级默认结论、零未审查跨 capability 绑定 | 2–3 日 |
 | `NR0-01.H` 聚合、独立审查与提交 | `TODO` | 合并 cluster 结果，运行 focused/格式，完成一次独立审查和必要复审 | 全部 checkpoint PASS；一个原子提交关闭 NR0-01 | 2–3 日 |
+
+#### `NR0-01.A` 止损与资产分级记录
+
+| 分级 | 现有资产 | 处理决定 |
+| --- | --- | --- |
+| 机械候选，可保留 | manifest 中的固定 revision、platform、path、line、原始 locator、显示 declaration、entry kind、contextHash，以及仅由这些机械字段确定的 source entry ID | 只作为后续人工裁决的候选输入；必须重新核对 Git blob 和上下文，不能单独证明 action、归属或实现状态 |
+| 人工待审，不继承结论 | 现有 surface/action 工作队列、action 到 capability/surface 的归属、四方 evidence 选择、migration tag、implementation status、feedback/confirmation/follow-up、GAP/EXEMPT、tracked disposition、sourceEntryIds 与双向 source graph | F1–F8/G 按 cluster 逐项人工重建；旧值不得作为默认答案，415/458 也不是必须保留的数量下限 |
+| 自动语义，应删除 | helper 中的 `ANCHOR_OVERRIDES`、`semantic_groups`、synonym/token matching、候选评分、自动 action/surface/capability 归属、自动 GAP/EXEMPT/desktop-product、自动 source/tracked 关系与 exception；契约测试中复制的同义词、token、candidate-shape 和语义期望表 | 在 D checkpoint 删除而不是修补；相关旧 GREEN 仅记过程历史，不作为完成证据 |
+| 路线衔接，可保留 | 父 roadmap 的 active-child 切换与已完成 Reader child plan 状态 | 作为路线状态衔接保留，但不作为 NR0-01 语义证据 |
+| 当前任务范围外，不触碰 | 在途 Global Search 历史功能、AppVersion/preferences 相关修改、其测试以及 `icon.png`/`icon.psd` | 视为用户或其他批次改动；不读取为 inventory 结论、不改写、不纳入 NR0-01 提交 |
+
+止损自检：从旧方法被判定 `INVALIDATED` 起没有新增 override、exception 或全量生成；在 B/C/D 完成前禁止再次运行会重写完整 manifest 的 helper。后续可以删除伪 action、改变归属或减少计数，不以保住旧产物规模为目标。
+
+#### `NR0-01.B` 人工证据裁决契约
+
+| 实体 | 定义 | 可以证明什么 | 不能代替什么 |
+| --- | --- | --- | --- |
+| capability | 一个稳定的用户结果或可独立维护的领域能力；编号和 F cluster 以本文为准 | action 的唯一业务 owner 和后续迁移边界 | 不能因为文件同目录、页面相邻或词语相似而吸收 action/source |
+| surface | 用户或系统能够触发 intent 的交互区域，例如页面、对话框、菜单、快捷键或 background trigger | action 的入口位置、入口类型和可发现性 | 不能仅凭 Screen/Composable/shortcut/job 声明证明 action 已执行 |
+| container | 承载 surface 的 Screen、Tab、Dialog、Composable、导航目的地或 DI/wiring 容器 | 布局/导航存在，以及生产入口可能位于何处 | 不是 action，也不能代替 handler、effect、持久化、确认或反馈 |
+| action | 一个原子 intent；执行后必须发生领域状态转换、导航、外部 effect、持久化变化或用户可见终态之一 | 要迁移、比较和验收的最小行为单位 | 文案、控件、getter、默认值或容器控制不是 action；不同 effect 不得为减少条目而合并 |
+| source entry | 一个经人工读取上下文后登记的 production 源码位置，机械部分包含 revision/platform/path/line/locator/declaration/kind/contextHash | 仅证明登记的 evidence role；抽象声明还必须配 concrete implementation 和 production consumer | 不能由候选分数自动决定 action/capability 归属，也不能仅凭存在性推出状态 |
+
+每个 action 的人工记录必须先写 `ownerCapabilityId`、`surfaceId`、入口类型、intent、expected effect 和 observable result，再选择源码。每个平台/权威角色的 evidence chain 按实际行为登记 `ENTRY/TRIGGER`、`HANDLER`、`DOMAIN_EFFECT` 或 `PLATFORM_EFFECT`、`PERSISTENCE`、`CONFIRMATION`、`FEEDBACK`；不适用的 role 明确写理由，不能用无关条目填满字段。同一源码位置可以承担多个 role，前提是该表达式在 production context 中确实同时完成这些职责，并在人工理由中说明，而不是为满足计数重复引用。
+
+实现状态只允许按以下规则人工决定：
+
+- `PRESENT`：目标角色存在可追踪的 production 入口/触发器和实际 effect，且 action 要求的持久化、确认、反馈或终态均有证据；单独的容器、声明、getter 或文案永远不足。
+- `PARTIAL`：production 链存在并执行目标 intent，但缺少一项已明确列出的语义、反馈、确认或持久化阶段；必须记录缺失项和 follow-up，不能用作“尚未看完”的临时状态。
+- `GAP`：目标平台应支持该 action，但人工检索并检查预期消费者后确认不存在等价 production 链，或现有链语义不满足；必须写适用理由、检索边界和 follow-up，不能由“helper 没找到候选”自动产生。
+- `EXEMPT`：平台约束使 action 确实不适用或不能可靠实现；必须写平台边界、用户可见的 unsupported/降级行为和重新复查条件。成本高、尚未实现、没有候选或 Desktop 与 Android 不同都不是豁免理由。
+- `READER_OWNED`：只用于本文明确排除的 Reader capability 元数据；不得把 Reader 内部 source/action 混入非 Reader evidence graph，也不得用它掩盖允许边界内的非 Reader 入口缺口。
+- `desktop-product` 是人工 migration tag，不是状态。它必须有 Desktop production 链；固定原版/当前 Android 不得伪造为 `PRESENT`，tracked 只记录真实引入/缺失事实。其他 migration tag 同样只能在 evidence chain 成立后描述架构归属，不能反向证明实现。
+
+四方裁决顺序固定为固定原版 → 当前 Android 基线 → Desktop → tracked upstream。`UNCHANGED` 只在具体 action 的入口、effect 和可观察结果语义均未变化时成立；文件/locator 仍存在或 contextHash 相同都不是充分条件。移动、改名、拆分、多消费者、删除或语义改变分别记录实际 disposition 和新证据，不得用文件级默认结论覆盖。
+
+跨 capability/source 关系遵循单一归属默认：action 只有一个 owner capability；source entry 默认也只服务该 capability。确有共享 executor/adapter 时，必须为每个额外 capability 登记其 production consumer path/locator、承担的 evidence role 和人工共享理由，且双向引用完全一致。通用容器、工具类、repository getter、CookieJar/browser adapter 或同名 symbol 不能作为共享理由；缺少任一消费者路径时关系无效。测试只校验这些人工声明的结构和明确禁区，不通过 token、synonym、评分、action-ID 特判或 digest 推断业务关系。
+
+#### `NR0-01.C` 独立负例门禁记录
+
+- RED：`nr0-01-c-red` 在 `compileTestKotlinJvm` 因独立 `ManualInventoryEvidencePolicy`/数据模型尚不存在而失败，未读取旧 manifest，也未调用 helper；失败原因与预期一致。
+- GREEN：`nr0-01-c-green` 运行 `NonReaderEvidencePolicyTest`，JUnit XML 为 `14 tests / 0 skipped / 0 failures / 0 errors`。13 个动态测试逐项覆盖本文 12 类错误（Desktop product 固定原版伪 PRESENT 与自动 EXEMPT 分开验证）；一个正例测试内含普通分享、设置 UI→effect→persistence、以及具有 consumer path/locator/reason 的共享 executor 三条合法链。
+- 独立性：策略只比较人工填写的 scope、evidence kind、behavior contract、role、decision mode、consumer proof 和 tracked observation；不读取 action ID 词义，不包含 token/synonym/score/override，也不读取 240 万字节 manifest。`external.share → AndroidCookieJar` 固定哨兵已因 behavior contract 不一致被拒绝。
+
+#### `NR0-01.D` 机械工具收缩记录
+
+- 删除 `scripts/nr0_01_action_inventory_v2.py`：不保留自动 anchor、semantic group、synonym/token、候选评分、自动 GAP/EXEMPT、source graph 或 tracked disposition 的再次运行入口；后续机械事实用只读 Git 命令取得，人工填写关系。
+- 将旧 82 KB/约 1300 行的 `NonReaderActionInventoryContractTest` 替换为 14.7 KB 结构契约，只验证 schema、固定 revision、确定性 source ID、引用存在/唯一/双向、production path，以及 Git blob 中的 line/locator/contextHash drift；不锁定 action/source 数量或语义 digest，不选择业务锚点。
+- 审计 `NonReader*.kt` 已无 `ANCHOR_OVERRIDES`、semantic group、synonym、token matcher、candidate score、`SEMANTIC_MATCH`/`EXACT_OVERRIDE` 和语义 digest 常量。`nr0-01-d-focused-2` 运行独立负例与结构契约共 16 tests，全部通过；第一次 focused 暴露并修正了 `CONTAINER/EXEMPT` source 可以没有 `actionIds` 的合法结构假设，未增加语义例外。
+
+#### `NR0-01.E` 20 个高风险先导样本记录
+
+本表固定读取 `F=main@6fbf6df…`、`C=current-fork@95b82fc…`、`D=current-fork@95b82fc…` 的 Desktop production tree 和 `T=upstream/main@d7f3cee…`。它只记录 stop-gate 的人工方法审查，不是第二份 inventory 权威；旧 manifest 对应字段继续保持 provisional，下面的裁决必须在相应 F cluster 写回唯一 `parity-manifest.json` 后才能成为机器结论。
+
+| 类别 | action | 四方 production 上下文 | 人工裁决与 source 关系 |
+| --- | --- | --- | --- |
+| 词法碰撞 | `external.share` | F `IntentExtensions.toShareIntent`；C `buildShareIntent` → shared `ExternalShare`；D `MangaDetailComponents.mangaLinkActions` → `DesktopShareService.share` → notification；T 与 F intent/effect 等价 | action 有效且 D 为 `PRESENT`，旧 `GAP` 作废；只关联分享入口、payload、native share 与 terminal feedback，`AndroidCookieJar`/browser adapter 全部拒绝 |
+| 词法碰撞 | `general.incognito` | F `MoreTab` → `BasePreferences.incognitoMode` → history/privacy consumers；C 同链函数化；D `GeneralSettingsScreen`/`MoreRootScreen` → `DesktopAppPreferences.incognitoMode` → browse/progress/privacy consumers；T 与 F 等价 | action 有效；F/C `PRESENT`，D 经 F1 复核为 `PARTIAL`：持久化与 privacy consumers 存在，但缺少 Android 等价的持续状态指示和快捷关闭。旧 C `SourcePreferences` 与 D `SecurityPreferences` 锚点不能证明全局 incognito |
+| 词法碰撞 | `app-language.open` | F/C/T `SettingsAppearanceScreen` 的 `navigator.push(AppLanguageScreen())`；D `AppearanceSettingsScreen` 的 `showLanguageDialog = true` | action 有效且三端 `PRESENT`；旧 D 锚点是关闭/Cancel 对话框，必须替换；T 只是周边 collection/context 改动，打开动作语义未变 |
+| 词法碰撞 | `advanced.clear-network-cache` | F/C/T 只有 Android WebView `clearCache(true)`，不是 OkHttp/network disk cache；D 按钮 → confirmation → `ProductionAdvancedSettingsPlatformActions.clearNetworkCache` → snackbar | `desktop-product/PRESENT` 有效，但旧 D 接口默认 `false` 是禁止证据；必须绑定 concrete implementation、production caller、确认和成功/失败反馈，Android 三方保持不适用而非伪 `PRESENT` |
+| 危险/通用控制 | `history.clear` | F/C `HistoryDeleteAllDialog.onDelete` → `HistoryScreenModel.removeAllHistory` → `RemoveHistory.awaitAll`；D `HistoryTab` confirmation → `HistoryScreenModel.clearAllHistory`；T effect 移到 `HistoryViewModel` | action 有效且三端 `PRESENT`；Cancel/dismiss 不入证据。T 结论应为实现移动且语义保持，不是仅凭未变 dialog 宣称整个 action `UNCHANGED` |
+| 危险/通用控制 | `categories.delete` | F/C `CategoryScreen` confirmation → `CategoryScreenModel.deleteCategory` → `DeleteCategory.await`；D `CategoryManagementDialog` → `LibraryScreenModel.deleteCategory`；T `CategoryViewModel.deleteCategory` | action 有效且三端 `PRESENT`；旧 fixed effect 可保留为链中一环，但 T `PATH_MISSING` 作废，应登记 ScreenModel → ViewModel 移动和真实消费者 |
+| 危险/通用控制 | `extension-repo.delete` | F `ExtensionReposDialogs` confirmation → `ExtensionReposScreenModel.deleteRepo` → `DeleteExtensionRepo`；C 加入 service result；D `DeleteRepoDialog` → actions.delete → shared use case；T Repos 重命名/迁移到 Stores/ViewModel | action 有效且三端 `PRESENT`；F/D 的 dialog 函数声明本身无效，需入口、effect、结果链；T 是命名/容器迁移，不是行为删除 |
+| 危险/通用控制 | `downloads.pause-all` | F/C queue UI → `DownloadQueueScreenModel.pauseDownloads` → `DownloadManager`；D queue UI → `DownloadQueueScreenModel.pauseAll` → `DesktopDownloadManager.pauseAll` 并由 `isPaused` 反馈；T effect 移到 `DownloadQueueViewModel` | action 有效且三端 `PRESENT`，可逆操作无需危险确认；旧 effect 锚点可作为一环，但 T `PATH_MISSING` 必须改为移动且语义保持，接口默认值不能代证 |
+| background/shortcut/settings | `library-update.schedule` | F `SettingsLibraryScreen` → `LibraryUpdateJob.setupTask` → WorkManager；C 加入 `BackgroundTaskLifecycle`；D runtime → `LibraryUpdateScheduler.start` → task scheduler/timer；T 与 F 任务语义等价 | action 有效；声明 job/函数不够，必须包含设置 consumer、注册/取消和运行时启动链。source 不与 run-now/cancel 自动共享 action 归属 |
+| background/shortcut/settings | `global-search.keyboard-submit` | F/C `AppBar.searchAndClearFocus` 同时被 Enter/IME 调用并执行 `onSearch`；D `GlobalSearchScreen.onKeyEvent` 消费 Enter 并触发 search；T 与 F 等价 | action 有效且三端 `PRESENT`；shortcut source 必须同时包含按键 consumer 与 search handler，不能只登记 `onKeyEvent`/shortcut 声明 |
+| background/shortcut/settings | `download-settings.concurrent-sources` | F/C/T slider → `DownloadPreferences.parallelSourceLimit`；Android `Downloader` 订阅 `changes()`；D baseline 无该 preference、UI 或 executor consumer | Android action 有效，D 为真实 `GAP` 而非 `EXEMPT`；旧 F/C 标题行不足，需 UI mutation + persistence + production consumer，D 不得关联无该字段的下载页面 |
+| background/shortcut/settings | `tracking-settings.auto-update-on-mark-read` | F/C/T ListPreference → `TrackPreferences.autoUpdateTrackOnMarkRead` → Manga model consumer；D 只有不同语义的 boolean `autoUpdateTrack` UI/consumer，没有该 enum policy | Android action 有效，D 为真实 `GAP`；不能用同组 tracking 设置或 Reader 的不同 boolean consumer冒充。T 行号/context 变化但 intent/effect 保持 |
+| Desktop/platform/Reader | `window-privacy.enable` | F/T secure mode + incognito flow → `Window.setSecureScreen`；C 通过 `AndroidSecureScreenConsumer` 接线；D `DesktopSecureScreenSettings` → controller → `DesktopWindowPrivacy.apply`/native bridge → explicit feedback | action 有效且三端 `PRESENT`；旧 source graph 中 `HistoryScreenModel` 无关，必须替换为 settings/lifecycle/controller/bridge 链；共享 incognito preference 要写实际 consumer |
+| Desktop/platform/Reader | `system-widget.exempt` | F/C/T `LockedWidget` 是“锁定时点击打开主应用并显示不可用文案”的真实 Android widget 行为；D 无 system widget provider，但 `DesktopPrivacyCapabilities` + `SecuritySettingsScreen` 显示 unavailable 边界 | capability 的 `PLATFORM-EXEMPT` 有真实用户反馈和复查条件，但 `system-widget.exempt` 不是用户 intent，作为 action 删除；widget source 只保留 capability/platform 边界证据 |
+| Desktop/platform/Reader | `library.shortcut-range-select` | F/C/T 无 Shift-click 对应动作；D `ShiftAwareClickModifier` → `LibraryTab.handlePrimaryClick` → `LibrarySelectionState.selectRange` | 合法 `desktop-product/PRESENT`；旧 effect 行可保留，但必须补真实 Shift consumer；与 toggle-select 共享同一 state 时逐个写 consumer，不向无关 library actions 扩散 |
+| Desktop/platform/Reader | `reader-settings.persist` | F/C/T `SettingsReaderScreen` 内含多个独立 preference mutation；D `ReaderSettingsScreen` 又包含 default mode、RTL、prefetch 等不同持久化链 | 旧 generic action 粒度无效，应在 F1 删除/拆成可验收的设置入口与独立 mutation；只覆盖非 Reader 设置边界，不收录 Reader page/progress/loader 内部 source |
+| tracked 移动/多消费者 | `sources-state.observe` | F `GetEnabledSources.subscribe` → `collectLatestSources`；C 加 shared reducer；D `DesktopSourcesScreenModel.observe` combine → reducer；T `SourcesScreenModel` 移到 `SourcesViewModel` | action 有效；T `PATH_MISSING` 作废，登记移动且语义保持。source 关系需包含 subscription、reducer 与各端 consumer，不能只绑容器类 |
+| tracked 移动/多消费者 | `network.request` | F/C shared `newCachelessCallWithProgress` 创建实际 Call；D 复用 common 实现且需具体 Desktop consumer；T 函数改成多行签名，updater/HttpSource consumers 仍存在 | action 有效；T 不是删除而是 signature/context change with same effect。跨 capability 只在列出 updater/HttpSource 等实际 consumer 时共享，不因都使用 OkHttp 自动关联 |
+| tracked 移动/多消费者 | `app.startup` | F/C/T 实际入口是 `App.onCreate` 及其 module/lifecycle 初始化；D 是 owner election → `prepareDesktopOwner` → runtime/window lifecycle | action 有效且 D 为 `PRESENT`；旧 F/C `WidgetManager.init` 只是一项 startup consumer，不能代表 app startup，旧 D `GAP` 与 widget source graph 均作废 |
+| tracked 移动/多消费者 | `categories.rename` | F/C dialog `onRename` → `CategoryScreenModel.renameCategory` → `RenameCategory.await`；D `CategoryManagementDialog` → `LibraryScreenModel.renameCategory`；T effect 移到 `CategoryViewModel` | action 有效且三端 `PRESENT`；旧 F/C dialog 声明是 container 证据，需换为 handler/effect；T 记录实现移动且语义保持，不以 contextHash 变化直接判业务改变 |
+
+先导结论：20/20 都能在四方 production context 中得到明确判定；18 个 action identity 可保留但其中多数要重选 evidence/status/tracked/source，`system-widget.exempt` 与 generic `reader-settings.persist` 两个伪 action 必须删除/拆分。所有旧误配均被 B/C 的既有规则拒绝，没有新增 action-ID 特判、override、exception 或词表；新方法未出现两例同类无法解释的系统性失败。主协调者复核后重跑 `nr0-01-e-stop-gate`，14 tests 全绿，因此 E 为 `PASS`。
+
+#### `NR0-01.F1` 平台基础 cluster 记录
+
+- 范围固定为 capability `3,4,7,8,9,10,11,12`。人工将 25 个 provisional actions 收敛为 24 个：capability 3/4/7/8/9/10/11/12 分别为 `4/2/5/2/1/4/3/3` 项；删除与 composition root 无关的 Home tab 动作和 generic `reader-settings.persist`，把 source feedback 降回 action 的 evidence role，并补入真实 pin/disable/retry intent。
+- Reader 边界只有 `reader-settings.open`，scope 为 `READER_BOUNDARY` 且 migration tag 为 `READER-OWNED`；没有收录 Reader 内部设置持久化、页加载或阅读进度。`sources-state.retry`、`crash.open-log` 是有 Desktop production 链的 `DESKTOP-PRODUCT`，固定原版/当前 Android 均保持人工 `GAP`，没有伪造 `PRESENT`。
+- Desktop 实际缺口写入后续任务：`onboarding.complete` → `SE-01`；`general.incognito` 的持续状态反馈 → `SE-01`；library update constraints/shared executor → `LU-01`；notification open/dismiss 和 crash export → `PA-01`。Android 显式 shutdown 以 OS-owned lifecycle 人工 `EXEMPT`，同时记录复查条件。
+- F1 manifest 使用 `schemaVersion: 2` 和逐 authority role 的 `decisionMode: MANUAL`/evidence 数组。tracked diff 与 source graph 明确保持 `PENDING_NR0-01.G`；F1 替换 source owner 后，其他尚未迁移 cluster 的旧跨 capability source 引用继续视为 provisional，结构测试只核验同一旧 capability 内仍闭合的关系，不恢复旧误配，也不把混合迁移期引用当作完成证据。
+- RED：`nr0-01-f1-red` 编译成功后 5/5 因旧 F1 schema、单锚点 evidence 和 Reader scope 失败。GREEN：`nr0-01-f1-green-2` 运行 `NonReaderActionInventoryContractTest` 与 `NonReaderEvidencePolicyTest` 共 `19 tests / 0 failures`；3 个 cluster mutation 分别拒绝自动 authority decision、删除必需 production evidence role、以及 `READER_INTERNAL` scope。24 actions 的 72 个 authority role 全部为 `MANUAL`，精确 Git line/locator/contextHash drift 检查和 `git diff --check` 通过；没有保留一次性合并脚本。
+
+F2 开始前机械计数得到 95 个旧 provisional actions，触发单 cluster 最多 60 actions 的强制停止条件。任务内固定拆为 F2.1 capability `16,17,19`（旧 provisional 38 项）和 F2.2 capability `22,24,26`（旧 provisional 57 项）；两段分别执行 3 个 mutation 与 focused stop-gate，总 timebox 调整为 2–4 日。此拆分只改变内部 checkpoint，不增加计划文件、提交或自动删减规则。
+
+#### `NR0-01.F2.1` Category/Library/批量动作 cluster 记录
+
+- 范围固定为 capability `16,17,19`。人工将 38 个 provisional actions 收敛为 32 个，三组分别为 `4/21/7` 项；删除 `library.refresh-category`/`library.refresh-all`（归 capability 10 的 `library-update.run-now` 所有）、不存在于 Library surface 的 `library.open-upcoming`/`library.open-authors`，以及只作为 `select-range`/`select-one` 输入证据的两个 shortcut 伪 action。
+- Category CRUD 三端均有真实共享 interactor 链；`categories.delete` 的 fixed/current Android 有确认，Desktop 当前从行操作直接删除，因此不是 `PRESENT`，而是 `PARTIAL → LB-01`。Library 的搜索、切换 category、筛选、排序、显示、随机、详情跳转和五种选择状态均重新绑定具体 handler/effect/feedback；不使用 Screen/Dialog 声明、通用按钮或旧 manifest 错误锚点代证。
+- `library.continue-reading` 只记录 Library 的入口、下一章请求与 Reader 导航边界，scope 为 `READER_BOUNDARY`、migration tag 为 `READER-OWNED`，未收入 Reader 页加载/进度/内部设置。`library.open-global-search` 的 Android Library 入口存在，但 Desktop 只有其他 surface 的 Global Search；旧“详情标签搜索即 Library 入口”结论作废，记录为 `GAP → BR-01`。
+- Library settings 的 Desktop 缺口分别为 default category、categorized display、duplicate-read policy → `LB-01`；Android chapter swipe start/end 在 Desktop 因不存在 swipe gesture surface 人工 `EXEMPT`，并写明新增 swipe surface 时重审。hide-missing 有 Desktop 设置持久化和 Manga Detail production consumer，因此为 `PRESENT`。
+- 批量分类、已读、未读、下载、迁移三端均有 production 链。Android selection dialog 支持确认后删除下载或移出书架；Desktop selection bar 没有删除下载动作，记为 `GAP → DL-02`，而移出书架有真实 mutation 但无确认，记为 `PARTIAL → LB-01`。三项破坏性 action 均声明 `risk: DESTRUCTIVE`、`confirmation: REQUIRED` 和 `CONFIRMATION` evidence role。
+- RED：`nr0-01-f2-1-red` 共 8 tests，其中 4 项因旧 F2.1 schema、缺少手工 evidence role/risk 与 mutation 选择正确失败。GREEN：`nr0-01-f2-1-green` 运行 `NonReaderActionInventoryContractTest`（8 tests）与 `NonReaderEvidencePolicyTest`（14 tests），合计 `22 tests / 0 skipped / 0 failures / 0 errors`；3 个 F2.1 mutation 分别拒绝 capability owner 漂移、破坏性 action 缺少确认，以及把容器证据冒充 production action effect。32 actions 的 96 个 authority role 全部为 `MANUAL`，精确 Git line/locator/contextHash 检查通过；一次性合并脚本已删除。
+
+#### `NR0-01.F2.2` 详情 membership/chapters/cover cluster 记录
+
+- 范围固定为 capability `22,24,26`。人工将 57 个 provisional actions 收敛为 55 个，三组分别为 `6/44/5` 项；删除 `manga.viewer-mode` 与 `manga.reader-direction`，因为两者的权威 consumer 位于 Reader 内部设置/持久化链。只保留 `manga.continue-reading` 与 `manga.open-chapter` 两个 `READER_BOUNDARY`/`READER-OWNED` 打开请求，未收入 Reader 页加载、进度或内部设置。
+- Manga membership 的添加、选择分类、编辑分类与移出书架三端均有 production 链；Desktop 缺少重复项复核和移出书架后的独立下载清理选择，分别记录为 `GAP → MD-03`。下载清理是破坏性 action，固定原版/当前 Android 的 Snackbar action、确认分支与文件删除链均已取证，Desktop 不再以单章下载删除对话框冒充该动作。
+- Chapters cluster 重新确认 Desktop 已有数字/日期/字母排序、单选、标记此前已读、Tracking、作者/画师发现等链；三个过滤器因只有瞬时 boolean、缺少 Android tri-state 与 manga flag 持久化而为 `PARTIAL → MD-02`。默认设置三项、范围选择、反选、详情描述展开、标题搜索和 source 搜索为真实 `GAP`；批量删除下载有实际 effect 但绕过单章确认，记为 `PARTIAL → MD-05`。`manga.mark-all-read` 是有确认、持久化和可观察结果的 `DESKTOP-PRODUCT/PRESENT`，Android 两个权威角色保持人工 `GAP`。
+- Cover cluster 的查看、保存、分享在 Android 有完整 viewer/image saver/share 链而 Desktop 为 `GAP → MD-06`；Desktop 现有文件选择 adapter → custom-cover 更新 → feedback，以及删除 override → source cover/feedback 链，使 `cover.edit`、`cover.delete` 均为 `PRESENT`。删除 custom cover 按三端实际语义恢复 source cover，不伪造不存在的确认要求。
+- 最终机器状态为 `38 PRESENT / 4 PARTIAL / 13 GAP`，两项破坏性 action 均声明 `risk: DESTRUCTIVE`、`confirmation: REQUIRED` 与 `CONFIRMATION` evidence role。55 actions 的 165 个固定原版/当前 Android/Desktop authority role 全部为 `MANUAL`；tracked diff 与 source graph 继续明确保持 `PENDING_NR0-01.G`。
+- RED：`nr0-01-f2-2-red` 运行 25 tests，5 项因旧 F2.2 schema、缺少手工 evidence 数组、Reader boundary/risk 和 GAP search boundary 正确失败。GREEN：`nr0-01-f2-2-green` 运行 `NonReaderActionInventoryContractTest`（11 tests）与 `NonReaderEvidencePolicyTest`（14 tests），合计 `25 tests / 0 skipped / 0 failures / 0 errors`；3 个 F2.2 mutation 分别拒绝 Reader boundary migration 漂移、破坏性详情 action 缺少确认、以及 GAP role 缺少人工检索边界。精确 Git line/locator/contextHash drift 检查通过，一次性合并脚本已删除。
+- 暂停点：F2.2 完成后按用户要求暂停。`NR0-01.F3` 保持 `TODO`，本轮没有读取或生成 F3 语义结论；NR0-01 仍是 A–H 单一原子批次，因此没有为本 checkpoint 创建中间提交。
 
 如果任一 F cluster 超过 60 个 action，必须先在本表按 surface/动作族拆成 `F<n>.1/F<n>.2`，更新 timebox 后再开始；不得边审查边扩大 cluster。
 

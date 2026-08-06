@@ -163,6 +163,7 @@ class GlobalSearchResultNavigationTest {
                 every { get() } returns false
                 every { changes() } returns flowOf(false)
             }
+            every { browseRecentSearches } returns sourceBrowseRecentSearchesPreference()
         }
         private val saver = mockk<SaveSourceMangaForDetails>(relaxed = true) {
             coEvery { awaitSearchResults(any(), any()) } answers {
