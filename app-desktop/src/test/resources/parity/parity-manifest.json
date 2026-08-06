@@ -28786,26 +28786,12 @@
       "followUp": "NONE",
       "gap": "NONE",
       "behaviorMethods": {
-        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt": [
-          "fork-added pairing adapter and shared core produce the same enhancement vectors"
-        ],
-        "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": [
-          "fork-added shared portrait pairing enhancement groups adjacent pages"
-        ],
-        "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt": [
-          "LTR single spread produces LEFT then RIGHT"
-        ],
-        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt": [
-          "shared pairing keeps cover edge matching adjust and landscape parity enhancements"
-        ],
-        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt": [
-          "cover occupies the physical left slot for both reading directions",
-          "portrait pairs follow physical LTR and RTL slots while reporting both pages"
-        ],
-        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt": [
-          "mounted cover keeps a centered two-slot frame with the page in the physical left slot",
-          "production dual selector mounts registry display units"
-        ]
+        "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt": ["fork-added pairing adapter and shared core produce the same enhancement vectors"],
+        "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["fork-added shared portrait pairing enhancement groups adjacent pages"],
+        "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt": ["LTR single spread produces LEFT then RIGHT"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt": ["shared pairing keeps cover edge matching adjust and landscape parity enhancements"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt": ["cover occupies the physical left slot for both reading directions", "portrait pairs follow physical LTR and RTL slots while reporting both pages"],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt": ["mounted cover keeps a full viewport two-slot frame with the page in the physical left slot", "full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing", "viewport resize changes geometry without replacing display or physical slot identity", "production dual selector mounts registry display units"]
       }
     },
     "authoritativeImplementation": "fixed main 的 PagerViewerAdapter/PagerPageHolder 与 WebtoonAdapter/WebtoonPageHolder 提供单页顺序、RTL 反转、章节过渡与同一宽源页拆分/旋转；WebtoonLayoutManager.findLastEndVisibleItemPosition 提供 last-end-visible active 页选择且无匹配时返回 NO_POSITION；固定原版没有相邻 portrait 页配对默认算法",
@@ -28903,177 +28889,95 @@
         }
       ],
       "DESKTOP_CONSUMER": [
-        {
-          "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/VirtualPageList.kt",
-          "symbol": "fun buildVirtualPageList(",
-          "line": 8
-        },
-        {
-          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/DesktopReaderPresentationRequest.kt",
-          "symbol": "fun desktopReaderPresentationRequest(",
-          "line": 6
-        },
-        {
-          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt",
-          "symbol": "object SinglePagedPresentation",
-          "line": 9
-        },
-        {
-          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentation.kt",
-          "symbol": "object WebtoonPresentation",
-          "line": 12
-        },
-        {
-          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentation.kt",
-          "symbol": "object DualPagedPresentation",
-          "line": 24
-        },
-        {
-          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
-          "symbol": "fun ZoomablePagerViewer(",
-          "line": 92
-        },
-        {
-          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt",
-          "symbol": "fun SinglePagePagerViewer(",
-          "line": 53
-        },
-        {
-          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt",
-          "symbol": "fun WebtoonViewer(",
-          "line": 75
-        },
-        {
-          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt",
-          "symbol": "fun DualPagePagerViewer(",
-          "line": 206
-        }
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/VirtualPageList.kt", "symbol": "fun buildVirtualPageList(", "line": 8},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/DesktopReaderPresentationRequest.kt", "symbol": "fun desktopReaderPresentationRequest(", "line": 6},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt", "symbol": "object SinglePagedPresentation", "line": 9},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentation.kt", "symbol": "object WebtoonPresentation", "line": 12},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentation.kt", "symbol": "object DualPagedPresentation", "line": 24},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "fun ZoomablePagerViewer(", "line": 92},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt", "symbol": "fun SinglePagePagerViewer(", "line": 53},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt", "symbol": "fun WebtoonViewer(", "line": 75},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt", "symbol": "fun DualPagePagerViewer(", "line": 197}
       ],
       "FIXTURE": [
-        {
-          "artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt#fork-added pairing adapter and shared core produce the same enhancement vectors",
-          "productionMarkers": [
-            "PagePairingAlgorithm.buildPairings",
-            "ReaderPagePairing.build"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt#LTR single spread produces LEFT then RIGHT",
-          "productionMarkers": [
-            "buildVirtualPageList",
-            "PageSplitHalf.LEFT"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt#late content and load-state changes preserve display-unit identities",
-          "productionMarkers": [
-            "SinglePagedPresentation.present",
-            "DisplayUnit::id"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt#same chapter readiness updates preserve mounted display identity",
-          "productionMarkers": [
-            "model.acceptSessionState",
-            "currentDisplayUnitId"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt#load-state updates do not resettle identical viewports in any presentation mode",
-          "productionMarkers": [
-            "acceptSessionState(ready)",
-            "singleSettlements"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagePresentationIdentityTest.kt#production single-page selector mounts the SPI display unit",
-          "productionMarkers": [
-            "ZoomablePagerViewer",
-            "ReaderDisplayUnitIdKey"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt#viewport reports every visible page and uses fixed-main last end-visible active rule",
-          "productionMarkers": [
-            "resolveWebtoonViewport",
-            "activePageId"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt#mounted list restores relative anchor when ready content changes item geometry",
-          "productionMarkers": [
-            "WebtoonDisplayUnitList",
-            "firstVisibleItemScrollOffset"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt#production webtoon selector mounts registry display units with stable lazy identities",
-          "productionMarkers": [
-            "WebtoonPresentationViewer",
-            "WebtoonDisplayUnitIdKey"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/WebtoonAutoScrollTest.kt#auto scroll pauses through user drag and fling then resumes after settlement",
-          "productionMarkers": [
-            "WebtoonAutoScrollPauseState",
-            "isScrollInProgress"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt#portrait pairs follow physical LTR and RTL slots while reporting both pages",
-          "productionMarkers": [
-            "DualPagedPresentation.present",
-            "resolveDualVisiblePages"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#mounted cover keeps a centered two-slot frame with the page in the physical left slot",
-          "productionMarkers": [
-            "DualPageDisplayUnitFrame",
-            "DualPagePhysicalSlot.LEFT"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#production dual selector mounts registry display units",
-          "productionMarkers": [
-            "ZoomablePagerViewer",
-            "DualPageDisplayUnitIdKey"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt#matched pairs consume only caller supplied bounded decoded images",
-          "productionMarkers": [
-            "matcher.findMatchedPairs",
-            "ImageBitmap"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderPageCacheIntegrationTest.kt#cache revision observer matches late pages preserves pairs after eviction and never loads",
-          "productionMarkers": [
-            "observeDesktopMatchedPairs",
-            "PagePreloader",
-            "EdgePixelMatcher"
-          ]
-        }
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt#fork-added pairing adapter and shared core produce the same enhancement vectors", "productionMarkers": ["PagePairingAlgorithm.buildPairings", "ReaderPagePairing.build"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt#LTR single spread produces LEFT then RIGHT", "productionMarkers": ["buildVirtualPageList", "PageSplitHalf.LEFT"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt#late content and load-state changes preserve display-unit identities", "productionMarkers": ["SinglePagedPresentation.present", "DisplayUnit::id"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt#same chapter readiness updates preserve mounted display identity", "productionMarkers": ["model.acceptSessionState", "currentDisplayUnitId"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt#load-state updates do not resettle identical viewports in any presentation mode", "productionMarkers": ["acceptSessionState(ready)", "singleSettlements"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagePresentationIdentityTest.kt#production single-page selector mounts the SPI display unit", "productionMarkers": ["ZoomablePagerViewer", "ReaderDisplayUnitIdKey"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt#viewport reports every visible page and uses fixed-main last end-visible active rule", "productionMarkers": ["resolveWebtoonViewport", "activePageId"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt#mounted list restores relative anchor when ready content changes item geometry", "productionMarkers": ["WebtoonDisplayUnitList", "firstVisibleItemScrollOffset"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt#mounted list restores relative offset when a merged anchor splits", "productionMarkers": ["WebtoonDisplayUnitList", "mergedAnchor", "firstVisibleItemScrollOffset"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt#mounted auto scroll loop pauses for drag and fling then resumes after settlement", "productionMarkers": ["WebtoonDisplayUnitList", "DragInteraction", "listState.scroll"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt#production webtoon selector mounts registry display units with stable lazy identities", "productionMarkers": ["WebtoonPresentationViewer", "WebtoonDisplayUnitIdKey"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/WebtoonAutoScrollTest.kt#auto scroll pauses through user drag and fling then resumes after settlement", "productionMarkers": ["WebtoonAutoScrollPauseState", "isScrollInProgress"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt#portrait pairs follow physical LTR and RTL slots while reporting both pages", "productionMarkers": ["DualPagedPresentation.present", "resolveDualVisiblePages"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#mounted cover keeps a full viewport two-slot frame with the page in the physical left slot", "productionMarkers": ["DualPageDisplayUnitFrame", "DualPagePhysicalSlot.LEFT"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing", "productionMarkers": ["DualPageDisplayUnitFrame", "ContentScale.Fit"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#production dual selector mounts registry display units", "productionMarkers": ["ZoomablePagerViewer", "DualPageDisplayUnitIdKey"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt#matched pairs consume only caller supplied bounded decoded images", "productionMarkers": ["matcher.findMatchedPairs", "ImageBitmap"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderPageCacheIntegrationTest.kt#cache revision observer matches late pages preserves pairs after eviction and never loads", "productionMarkers": ["observeDesktopMatchedPairs", "PagePreloader", "EdgePixelMatcher"]}
       ]
     },
     "deviations": [
       {
+        "id": "DISPLAY_UNIT_STABLE_IDENTITY",
+        "classification": "DESKTOP_PRESENTATION_POLICY",
+        "introductionRefs": ["464cbefafc2153de286963224694eafceda5e0d1"],
+        "behaviorEvidenceRefs": ["app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagePresentationIdentityTest.kt#mounted container keeps identity while loading ready and error content changes in place", "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#pair frame identity survives either page loading ready and error changes", "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#viewport resize changes geometry without replacing display or physical slot identity"],
+        "description": "Desktop keeps display-unit identity stable while loading state and mounted content change so reader zoom and scroll containers are not replaced.",
+        "resolutionStatus": "ACTIVE"
+      },
+      {
+        "id": "WEBTOON_RELATIVE_ANCHOR_RECOVERY",
+        "classification": "DESKTOP_PRESENTATION_POLICY",
+        "introductionRefs": ["71aa3c458ff5b9a24b04a14820d6d2bb636c3e04"],
+        "behaviorEvidenceRefs": ["app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt#mounted list restores relative anchor when ready content changes item geometry", "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt#mounted list keeps logical page and bounded offset when split anchor merges", "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt#mounted list restores relative offset when a merged anchor splits"],
+        "description": "Desktop restores a relative Webtoon anchor when late image geometry changes and falls back by source-page identity across split or merge changes.",
+        "resolutionStatus": "ACTIVE"
+      },
+      {
+        "id": "WEBTOON_AUTOSCROLL_INTERACTION_PAUSE",
+        "classification": "DESKTOP_PRODUCT_ENHANCEMENT",
+        "introductionRefs": ["71aa3c458ff5b9a24b04a14820d6d2bb636c3e04"],
+        "behaviorEvidenceRefs": ["app-desktop/src/test/kotlin/mihon/desktop/ui/reader/WebtoonAutoScrollTest.kt#auto scroll pauses through user drag and fling then resumes after settlement", "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt#mounted auto scroll loop pauses for drag and fling then resumes after settlement"],
+        "description": "Desktop pauses Webtoon auto-scroll for the complete user drag and fling interaction, then resumes only after scrolling settles.",
+        "resolutionStatus": "ACTIVE"
+      },
+      {
+        "id": "DUAL_PHYSICAL_SLOT_IDENTITY",
+        "classification": "DESKTOP_PRESENTATION_POLICY",
+        "introductionRefs": ["c01771573034d2ed3492db3ddd109533bb631d99"],
+        "behaviorEvidenceRefs": ["app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#mounted cover keeps a full viewport two-slot frame with the page in the physical left slot", "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#viewport resize changes geometry without replacing display or physical slot identity"],
+        "description": "Desktop keeps physical left and right slot identities stable across reading direction and page-state changes.",
+        "resolutionStatus": "ACTIVE"
+      },
+      {
+        "id": "DUAL_COVER_LEFT_SLOT",
+        "classification": "DESKTOP_PRODUCT_ENHANCEMENT",
+        "introductionRefs": ["c01771573034d2ed3492db3ddd109533bb631d99"],
+        "behaviorEvidenceRefs": ["app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt#cover occupies the physical left slot for both reading directions"],
+        "description": "Desktop presents a cover in the physical left slot with the physical right slot empty for a stable book-opening layout.",
+        "resolutionStatus": "ACTIVE"
+      },
+      {
+        "id": "DUAL_FIXED_4_3_FRAME",
+        "classification": "DESKTOP_PRESENTATION_POLICY",
+        "introductionRefs": ["c01771573034d2ed3492db3ddd109533bb631d99"],
+        "behaviorEvidenceRefs": ["app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#mounted cover keeps a full viewport two-slot frame with the page in the physical left slot", "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing"],
+        "description": "RNC-02 removed the historical fixed 4:3 dual-page frame so Desktop uses the complete reader viewport while FIT_SCREEN retains honest aspect-ratio letterboxing.",
+        "resolutionStatus": "REMOVED",
+        "closureTask": "RNC-02",
+        "resolutionEvidence": {
+          "productionBehaviorTest": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing"
+        }
+      },
+      {
+        "id": "ADJACENT_PORTRAIT_PAIRING",
         "classification": "CROSS_PLATFORM_PRODUCT_ENHANCEMENT",
-        "description": "ReaderPagePairing/ReaderPairingState pair adjacent portrait pages and power current Android/Desktop dual-page modes; these fork-added classes are absent from fixed main."
-      },
-      {
-        "classification": "DESKTOP_PRODUCT",
-        "description": "Cover single, manual spread adjustment, edge matching and landscape parity remain explicit Desktop product options."
-      },
-      {
-        "classification": "CORRECTNESS_BUGFIX",
-        "description": "Odd-pixel split bounds intentionally preserve the center line that historical ImageUtil.splitInHalf omitted."
-      },
-      {
-        "classification": "PLATFORM_ADAPTER",
-        "description": "Android View adapters and Desktop Compose/Skia rendering remain separate consumers of the shared enhancement."
+        "evidenceRef": "bef51fc6924c6a9de185fa0fb2a56ce76309dc19",
+        "description": "Adjacent portrait-page pairing and its Android dual-page adapter are Fork additions; fixed original only split a single wide source page."
       }
     ],
     "desktopImplementation": "ReaderPresentationStrategy/DisplayUnit/VisiblePageSet mode registry 由 SinglePagedPresentation、WebtoonPresentation 与 DualPagedPresentation 三个同级策略驱动 production selector；DesktopReaderPresentationRequest 直接把 canonical ReaderChapterSession 映射为策略输入，不再生成 URL slot 或第二套页面状态。Dual 保留相邻 portrait、cover-single、forced single、spread、edge match 与 landscape parity 的稳定物理双槽；pair settled 上报全部可见 PageId 并以最大 source progress 为 active。EdgePixelMatcher 只读取 PagePreloader 提供的有界 decoded ImageBitmap，右键保存继续接收实际 splitHalf/sourceBounds。",
@@ -29094,66 +28998,17 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/WebtoonAutoScrollTest.kt"
     ],
     "behaviorMethods": {
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt": [
-        "reader product wiring retains entry retry transitions auto scroll and context menu"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt": [
-        "state flow exposes the canonical session snapshot",
-        "zero-page loading error and loaded chapters select one canonical viewport body",
-        "same chapter readiness updates preserve mounted display identity",
-        "load-state updates do not resettle identical viewports in any presentation mode",
-        "settled webtoon and dual viewports report canonical page identities"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt": [
-        "matched pairs consume only caller supplied bounded decoded images"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderPageCacheIntegrationTest.kt": [
-        "cache revision observer matches late pages preserves pairs after eviction and never loads"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt": [
-        "late content and load-state changes preserve display-unit identities",
-        "LTR and RTL split a wide page in reading order without changing source identity",
-        "settled unit reports logical visible page and supports stable return lookup",
-        "registry selects the single strategy and rejects duplicate mode ownership"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagePresentationIdentityTest.kt": [
-        "mounted container keeps identity while loading ready and error content changes in place",
-        "production single-page selector mounts the SPI display unit",
-        "visible-page reporting waits for the settled pager index"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt": [
-        "late page state and content preserve webtoon display identities",
-        "wide webtoon page becomes consecutive halves in requested merge order",
-        "viewport reports every visible page and uses fixed-main last end-visible active rule",
-        "last page becomes active at the settled chapter bottom",
-        "fixed-main active resolver returns no position when no visible child reaches either edge",
-        "anchor restores exact split item and falls back to its logical page",
-        "registry exposes webtoon beside single-page presentation"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt": [
-        "webtoon item keeps composition identity while loading ready error and retry change in place",
-        "production webtoon selector mounts registry display units with stable lazy identities",
-        "mounted list restores relative anchor when ready content changes item geometry",
-        "mounted list keeps logical page and bounded offset when split anchor merges"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt": [
-        "cover occupies the physical left slot for both reading directions",
-        "landscape cover remains whole in the physical left slot for one and many page chapters",
-        "portrait pairs follow physical LTR and RTL slots while reporting both pages",
-        "late content and state changes preserve pair and slot identities",
-        "spread forced single edge match and parity change grouping without changing page identity",
-        "wide spread can occupy two physical slice slots without changing source page identity",
-        "registry exposes dual beside single and webtoon"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt": [
-        "mounted cover keeps a centered two-slot frame with the page in the physical left slot",
-        "pair frame identity survives either page loading ready and error changes",
-        "production dual selector mounts registry display units",
-        "visible-page reporting waits for settled pager and reports both pair pages"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/WebtoonAutoScrollTest.kt": [
-        "auto scroll pauses through user drag and fling then resumes after settlement"
-      ]
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt": ["reader product wiring retains entry retry transitions auto scroll and context menu"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt": ["state flow exposes the canonical session snapshot", "zero-page loading error and loaded chapters select one canonical viewport body", "same chapter readiness updates preserve mounted display identity", "load-state updates do not resettle identical viewports in any presentation mode", "settled webtoon and dual viewports report canonical page identities"],
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt": ["matched pairs consume only caller supplied bounded decoded images"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderPageCacheIntegrationTest.kt": ["cache revision observer matches late pages preserves pairs after eviction and never loads"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt": ["late content and load-state changes preserve display-unit identities", "LTR and RTL split a wide page in reading order without changing source identity", "settled unit reports logical visible page and supports stable return lookup", "registry selects the single strategy and rejects duplicate mode ownership"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagePresentationIdentityTest.kt": ["mounted container keeps identity while loading ready and error content changes in place", "production single-page selector mounts the SPI display unit", "visible-page reporting waits for the settled pager index"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt": ["late page state and content preserve webtoon display identities", "wide webtoon page becomes consecutive halves in requested merge order", "viewport reports every visible page and uses fixed-main last end-visible active rule", "last page becomes active at the settled chapter bottom", "fixed-main active resolver returns no position when no visible child reaches either edge", "anchor restores exact split item and falls back to its logical page", "registry exposes webtoon beside single-page presentation"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt": ["webtoon item keeps composition identity while loading ready error and retry change in place", "production webtoon selector mounts registry display units with stable lazy identities", "mounted list restores relative anchor when ready content changes item geometry", "mounted list keeps logical page and bounded offset when split anchor merges", "mounted list restores relative offset when a merged anchor splits", "mounted auto scroll loop pauses for drag and fling then resumes after settlement"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt": ["cover occupies the physical left slot for both reading directions", "landscape cover remains whole in the physical left slot for one and many page chapters", "portrait pairs follow physical LTR and RTL slots while reporting both pages", "late content and state changes preserve pair and slot identities", "spread forced single edge match and parity change grouping without changing page identity", "wide spread can occupy two physical slice slots without changing source page identity", "registry exposes dual beside single and webtoon"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt": ["mounted cover keeps a full viewport two-slot frame with the page in the physical left slot", "full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing", "pair frame identity survives either page loading ready and error changes", "viewport resize changes geometry without replacing display or physical slot identity", "production dual selector mounts registry display units", "visible-page reporting waits for settled pager and reports both pair pages"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/WebtoonAutoScrollTest.kt": ["auto scroll pauses through user drag and fling then resumes after settlement"]
     },
     "readerCoreMigrationScope": {
       "task": "R0-01",
@@ -29404,8 +29259,26 @@
       {
         "id": "DESKTOP_FULL_NEXT_CHAPTER_PREFETCH",
         "classification": "DESKTOP_PRODUCT_ENHANCEMENT",
-        "evidenceRef": "production:app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#full next chapter waits for every current page then materializes all encoded pages without progress",
-        "description": "RD-02 wires bounded encoded-only P4 next-chapter prefetch behind a Desktop preference while OFF retains fixed-original last-five-page page-list traffic; physical I/O is capped at policy plus one stale request and stale Storage failures cannot affect a replacement target."
+        "introductionRefs": ["6ee9473cde839fe5ee932bdb5263c78567c2ff12"],
+        "behaviorEvidenceRefs": ["app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#full next chapter waits for every current page then materializes all encoded pages without progress"],
+        "description": "Desktop can prefetch the complete next chapter through bounded P4 encoded-only work while OFF restores the recorded fixed-original traffic boundary.",
+        "resolutionStatus": "ACTIVE"
+      },
+      {
+        "id": "ENCODED_STORE_LIFECYCLE",
+        "classification": "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
+        "introductionRefs": ["06a1138d2deefb67a565c1c33450d69e734029f7", "dcb2dfb24cb4181d3703a5bf02c5b9e535adb0f8"],
+        "behaviorEvidenceRefs": ["app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt#quota eviction survives cache reopen with physical presence as authority", "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt#replacement bytes stay invisible until one atomic commit"],
+        "description": "The shared encoded store contract provides session retention, bounded atomic writes, physical reconciliation, eviction and diagnostics across Android and Desktop adapters.",
+        "resolutionStatus": "ACTIVE"
+      },
+      {
+        "id": "DESKTOP_ENCODED_CACHE_POLICY",
+        "classification": "DESKTOP_CACHE_POLICY",
+        "introductionRefs": ["dcb2dfb24cb4181d3703a5bf02c5b9e535adb0f8"],
+        "behaviorEvidenceRefs": ["app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production runtime binds the independent 512 MiB encoded cache policy"],
+        "description": "Desktop production wiring gives the encoded reader cache a bounded 512 MB default independently of decoded-image caches.",
+        "resolutionStatus": "ACTIVE"
       },
       {
         "id": "HTTP_RETRY_FORCE_DRIFT",
@@ -29501,181 +29374,32 @@
         }
       ],
       "FIXTURE": [
-        {
-          "artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt#interactive preemption restores cancelled nearby page to queue and restarts it",
-          "productionMarkers": [
-            "fixture.loader.loadPage",
-            "fixture.pages[1].status"
-          ]
-        },
-        {
-          "artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt#rapid non cooperative generations keep actual Android IO within the stale budget",
-          "productionMarkers": [
-            "fixture.loader.onPageSelected",
-            "fixture.peakInFlight"
-          ]
-        },
-        {
-          "artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt#quota eviction survives cache reopen with physical presence as authority",
-          "productionMarkers": [
-            "AndroidReaderEncodedPageStore(",
-            "reopenedStore.beginSession"
-          ]
-        },
-        {
-          "artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt#physical LRU eviction is reconciled before the logical commit chooses another victim",
-          "productionMarkers": [
-            "cache.isImageInCache(firstRef.value)",
-            "store.diagnostics().refs"
-          ]
-        },
-        {
-          "artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt#quota commit does not advance the logical index when physical victim removal fails",
-          "productionMarkers": [
-            "store.store",
-            "store.diagnostics().refs"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt#page change cancels every active or queued old generation request",
-          "productionMarkers": [
-            "preloader.preload"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt#online page uses source client and headers then decode reads the same encoded ref",
-          "productionMarkers": [
-            "DesktopReaderPageFetchPort",
-            "store.read"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt#concurrent reader stores share staging quota and active ref leases",
-          "productionMarkers": [
-            "coordinator.openSessionStore",
-            "firstStore.store",
-            "EncodedPageStoreWriteResult.RejectedQuota"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt#successful HTTP with a truncated pixel stream fails before the encoded ref becomes ready",
-          "productionMarkers": [
-            "SkiaImageDecoder.peekSize",
-            "DesktopReaderPageFetchPort"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt#child loaded source executes reflective getImage with its request semantics",
-          "productionMarkers": [
-            "ExtensionClassLoader",
-            "CanonicalReaderMaterializeExecutor.materializePage"
-          ]
-        },
-        {
-          "artifact": "domain/src/commonTest/kotlin/mihon/domain/reader/session/ReaderSessionCoreTest.kt#adjacent background work uses P4 and an active viewport preempts it with P0",
-          "productionMarkers": [
-            "core.enqueueAdjacentPage",
-            "ReaderRequestKind.INTERACTIVE_VISIBLE"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#full next chapter waits for every current page then materializes all encoded pages without progress",
-          "productionMarkers": [
-            "session.updateNextChapter",
-            "nextPageFetches"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#off mode keeps last five page-list preload but never fetches adjacent images",
-          "productionMarkers": [
-            "NextChapterPrefetchMode.OFF",
-            "nextPageListLoads"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#activating a prefetched chapter cancels P4 and retries its visible page as P0",
-          "productionMarkers": [
-            "session.activate(context(2L))",
-            "prefetchCancelled.await()"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#adjacent storage failure stops the remaining background chapter without changing active state",
-          "productionMarkers": [
-            "DesktopReaderEncodedPageStore",
-            "encodedStore.diagnostics()"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#non cooperative page cancellation keeps physical image requests within policy plus one stale request",
-          "productionMarkers": [
-            "NonCancellable",
-            "startedPages"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#non cooperative target switches keep physical chapter requests within policy plus one stale request",
-          "productionMarkers": [
-            "NonCancellable",
-            "startedChapters"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#late storage failure from an old target cannot cancel the new target prefetch",
-          "productionMarkers": [
-            "oldFailurePublished",
-            "newPageAttempts"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production runtime follows persisted next chapter prefetch changes",
-          "productionMarkers": [
-            "prefs.nextChapterPrefetchMode",
-            "runtime.session.currentNextChapterPrefetchMode"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production runtime preference changes drive off first viewport and full request sets",
-          "productionMarkers": [
-            "NextChapterPrefetchMode.FIRST_VIEWPORT",
-            "runtime.encodedPageStore.diagnostics().refs.size"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production runtime preloader reads its own encoded page store",
-          "productionMarkers": [
-            "runtime.encodedPageStore.store(ref)",
-            "runtime.preloader.preloadEncoded"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt#mounted production screen launches next chapter prefetch wiring",
-          "productionMarkers": [
-            "Navigator(screen) { screen.Content() }",
-            "updates += target to firstViewportPageCount"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt#Reader Library Download and Backup controls expose one labeled action with role and state",
-          "productionMarkers": [
-            "ReaderSettingsScreen()",
-            "NextChapterPrefetchMode.FIRST_VIEWPORT"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production factory creates one shared core and exposes its canonical state to the model",
-          "productionMarkers": [
-            "factory.createRuntime",
-            "runtime.session.core"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production factory coordinates encoded cache across concurrent reader runtimes",
-          "productionMarkers": [
-            "factory.createRuntime",
-            "sharesCoordinatorWith"
-          ]
-        }
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt#interactive preemption restores cancelled nearby page to queue and restarts it", "productionMarkers": ["fixture.loader.loadPage", "fixture.pages[1].status"]},
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt#rapid non cooperative generations keep actual Android IO within the stale budget", "productionMarkers": ["fixture.loader.onPageSelected", "fixture.peakInFlight"]},
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt#quota eviction survives cache reopen with physical presence as authority", "productionMarkers": ["AndroidReaderEncodedPageStore(", "reopenedStore.beginSession"]},
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt#physical LRU eviction is reconciled before the logical commit chooses another victim", "productionMarkers": ["cache.isImageInCache(firstRef.value)", "store.diagnostics().refs"]},
+        {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt#quota commit does not advance the logical index when physical victim removal fails", "productionMarkers": ["store.store", "store.diagnostics().refs"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt#page change cancels every active or queued old generation request", "productionMarkers": ["preloader.preload"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt#online page uses source client and headers then decode reads the same encoded ref", "productionMarkers": ["DesktopReaderPageFetchPort", "store.read"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt#concurrent reader stores share staging quota and active ref leases", "productionMarkers": ["coordinator.openSessionStore", "firstStore.store", "EncodedPageStoreWriteResult.RejectedQuota"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt#successful HTTP with a truncated pixel stream fails before the encoded ref becomes ready", "productionMarkers": ["SkiaImageDecoder.peekSize", "DesktopReaderPageFetchPort"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt#child loaded source executes reflective getImage with its request semantics", "productionMarkers": ["ExtensionClassLoader", "CanonicalReaderMaterializeExecutor.materializePage"]},
+        {"artifact": "domain/src/commonTest/kotlin/mihon/domain/reader/session/ReaderSessionCoreTest.kt#adjacent background work uses P4 and an active viewport preempts it with P0", "productionMarkers": ["core.enqueueAdjacentPage", "ReaderRequestKind.INTERACTIVE_VISIBLE"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#full next chapter waits for every current page then materializes all encoded pages without progress", "productionMarkers": ["session.updateNextChapter", "nextPageFetches"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#off mode keeps last five page-list preload but never fetches adjacent images", "productionMarkers": ["NextChapterPrefetchMode.OFF", "nextPageListLoads"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#activating a prefetched chapter cancels P4 and retries its visible page as P0", "productionMarkers": ["session.activate(context(2L))", "prefetchCancelled.await()"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#adjacent storage failure stops the remaining background chapter without changing active state", "productionMarkers": ["DesktopReaderEncodedPageStore", "encodedStore.diagnostics()"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#non cooperative page cancellation keeps physical image requests within policy plus one stale request", "productionMarkers": ["NonCancellable", "startedPages"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#non cooperative target switches keep physical chapter requests within policy plus one stale request", "productionMarkers": ["NonCancellable", "startedChapters"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#late storage failure from an old target cannot cancel the new target prefetch", "productionMarkers": ["oldFailurePublished", "newPageAttempts"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production runtime follows persisted next chapter prefetch changes", "productionMarkers": ["prefs.nextChapterPrefetchMode", "runtime.session.currentNextChapterPrefetchMode"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production runtime preference changes drive off first viewport and full request sets", "productionMarkers": ["NextChapterPrefetchMode.FIRST_VIEWPORT", "runtime.encodedPageStore.diagnostics().refs.size"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production runtime preloader reads its own encoded page store", "productionMarkers": ["runtime.encodedPageStore.store(ref)", "runtime.preloader.preloadEncoded"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt#mounted production screen launches next chapter prefetch wiring", "productionMarkers": ["Navigator(screen) { screen.Content() }", "updates += target to firstViewportPageCount"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt#Reader Library Download and Backup controls expose one labeled action with role and state", "productionMarkers": ["ReaderSettingsScreen()", "NextChapterPrefetchMode.FIRST_VIEWPORT"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production factory creates one shared core and exposes its canonical state to the model", "productionMarkers": ["factory.createRuntime", "runtime.session.core"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production factory coordinates encoded cache across concurrent reader runtimes", "productionMarkers": ["factory.createRuntime", "sharesCoordinatorWith"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production runtime binds the independent 512 MiB encoded cache policy", "productionMarkers": ["factory.createRuntime", "runtime.encodedPageStore.diagnostics().maxBytes"]}
       ]
     },
     "protectionTests": [
@@ -29700,94 +29424,23 @@
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt"
     ],
     "behaviorMethods": {
-      "domain/src/commonTest/kotlin/mihon/domain/reader/scheduler/ReaderRequestSchedulerTest.kt": [
-        "original Mihon policy schedules visible page then four forward pages serially",
-        "generation replacement discards queued work cancels active work and rejects late results"
-      ],
-      "domain/src/commonTest/kotlin/mihon/domain/reader/storage/EncodedPageStoreContractTest.kt": [
-        "quota commit evicts least recently used entry and reports the exact eviction",
-        "commit planning reports victims without advancing the logical index"
-      ],
-      "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": [
-        "fixed original Mihon preload window keeps forward-only behavior"
-      ],
-      "domain/src/commonTest/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutorTest.kt": [
-        "retry forces a fresh fetch even when encoded content is cached"
-      ],
-      "domain/src/commonTest/kotlin/mihon/domain/reader/session/ReaderSessionCoreTest.kt": [
-        "adjacent background work uses P4 and an active viewport preempts it with P0",
-        "cancelling an adjacent chapter removes its active and pending requests only"
-      ],
-      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt": [
-        "rapid zero one two selection cancels stale jobs without error and reorders current first",
-        "interactive preemption restores cancelled nearby page to queue and restarts it",
-        "rapid non cooperative generations keep actual Android IO within the stale budget"
-      ],
-      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt": [
-        "quota eviction survives cache reopen with physical presence as authority",
-        "session begin counts physically observed entries and startup quota eviction",
-        "physical LRU eviction is reconciled before the logical commit chooses another victim",
-        "logical commit rejects a writer result when the physical entry is absent",
-        "quota commit does not advance the logical index when physical victim removal fails"
-      ],
-      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ReaderMaterializeProductionWiringTest.kt": [
-        "HTTP page request runs through canonical executor and retry forces redownload",
-        "cache editor rejection is published as storage failure instead of ready"
-      ],
-      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderStorageClassificationTest.kt": [
-        "encoded cache session startup failure is published as chapter storage error"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt": [
-        "page change cancels every active or queued old generation request"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt": [
-        "failed encoded write removes partial bytes before retry lookup",
-        "empty encoded write is rejected instead of publishing a ready blank page",
-        "concurrent reader stores share staging quota and active ref leases",
-        "a new store instance reconciles prior cache bytes and enforces one cross-session quota",
-        "replacement bytes stay invisible until one atomic commit",
-        "same ref has one writer and cancelling a stale writer cannot delete the committed file",
-        "download and local directory page lists expose ready encoded refs without copying",
-        "archive page is materialized per page into the shared encoded store",
-        "online page uses source client and headers then decode reads the same encoded ref",
-        "online page executes the source image request method body and per-page headers",
-        "child loaded source executes reflective getImage with its request semantics",
-        "online failures retain shared empty authentication rate limit server and malformed errors",
-        "successful HTTP with a malformed image body fails before the encoded ref becomes ready",
-        "successful HTTP with a truncated pixel stream fails before the encoded ref becomes ready"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt": [
-        "full next chapter waits for every current page then materializes all encoded pages without progress",
-        "first viewport mode materializes only its bounded next chapter prefix",
-        "off mode keeps last five page-list preload but never fetches adjacent images",
-        "switching off cancels a policy-only next chapter page-list request",
-        "activating a prefetched chapter cancels P4 and retries its visible page as P0",
-        "adjacent storage failure stops the remaining background chapter without changing active state",
-        "non cooperative page cancellation keeps physical image requests within policy plus one stale request",
-        "non cooperative target switches keep physical chapter requests within policy plus one stale request",
-        "late storage failure from an old target cannot cancel the new target prefetch"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt": [
-        "production runtime follows persisted next chapter prefetch changes",
-        "production runtime preference changes drive off first viewport and full request sets",
-        "production runtime preloader reads its own encoded page store",
-        "production factory creates one shared core and exposes its canonical state to the model",
-        "production factory coordinates encoded cache across concurrent reader runtimes"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt": [
-        "mounted production screen launches next chapter prefetch wiring"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt": [
-        "next chapter prefetch defaults to full and persists every policy"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt": [
-        "Reader Library Download and Backup controls expose one labeled action with role and state"
-      ],
-      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt": [
-        "online ReaderViewModel executes shared session scheduler encoded cache and progress chain",
-        "legacy Android chapter state is a read only projection",
-        "ReaderViewModel initialization preserves cooperative cancellation"
-      ]
+      "domain/src/commonTest/kotlin/mihon/domain/reader/scheduler/ReaderRequestSchedulerTest.kt": ["original Mihon policy schedules visible page then four forward pages serially", "generation replacement discards queued work cancels active work and rejects late results"],
+      "domain/src/commonTest/kotlin/mihon/domain/reader/storage/EncodedPageStoreContractTest.kt": ["quota commit evicts least recently used entry and reports the exact eviction", "commit planning reports victims without advancing the logical index"],
+      "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt": ["fixed original Mihon preload window keeps forward-only behavior"],
+      "domain/src/commonTest/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutorTest.kt": ["retry forces a fresh fetch even when encoded content is cached"],
+      "domain/src/commonTest/kotlin/mihon/domain/reader/session/ReaderSessionCoreTest.kt": ["adjacent background work uses P4 and an active viewport preempts it with P0", "cancelling an adjacent chapter removes its active and pending requests only"],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoaderIntegrationTest.kt": ["rapid zero one two selection cancels stale jobs without error and reorders current first", "interactive preemption restores cancelled nearby page to queue and restarts it", "rapid non cooperative generations keep actual Android IO within the stale budget"],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt": ["quota eviction survives cache reopen with physical presence as authority", "session begin counts physically observed entries and startup quota eviction", "physical LRU eviction is reconciled before the logical commit chooses another victim", "logical commit rejects a writer result when the physical entry is absent", "quota commit does not advance the logical index when physical victim removal fails"],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ReaderMaterializeProductionWiringTest.kt": ["HTTP page request runs through canonical executor and retry forces redownload", "cache editor rejection is published as storage failure instead of ready"],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderStorageClassificationTest.kt": ["encoded cache session startup failure is published as chapter storage error"],
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt": ["page change cancels every active or queued old generation request"],
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt": ["failed encoded write removes partial bytes before retry lookup", "empty encoded write is rejected instead of publishing a ready blank page", "concurrent reader stores share staging quota and active ref leases", "a new store instance reconciles prior cache bytes and enforces one cross-session quota", "replacement bytes stay invisible until one atomic commit", "same ref has one writer and cancelling a stale writer cannot delete the committed file", "download and local directory page lists expose ready encoded refs without copying", "archive page is materialized per page into the shared encoded store", "online page uses source client and headers then decode reads the same encoded ref", "online page executes the source image request method body and per-page headers", "child loaded source executes reflective getImage with its request semantics", "online failures retain shared empty authentication rate limit server and malformed errors", "successful HTTP with a malformed image body fails before the encoded ref becomes ready", "successful HTTP with a truncated pixel stream fails before the encoded ref becomes ready"],
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt": ["full next chapter waits for every current page then materializes all encoded pages without progress", "first viewport mode materializes only its bounded next chapter prefix", "off mode keeps last five page-list preload but never fetches adjacent images", "switching off cancels a policy-only next chapter page-list request", "activating a prefetched chapter cancels P4 and retries its visible page as P0", "adjacent storage failure stops the remaining background chapter without changing active state", "non cooperative page cancellation keeps physical image requests within policy plus one stale request", "non cooperative target switches keep physical chapter requests within policy plus one stale request", "late storage failure from an old target cannot cancel the new target prefetch"],
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt": ["production runtime follows persisted next chapter prefetch changes", "production runtime preference changes drive off first viewport and full request sets", "production runtime preloader reads its own encoded page store", "production runtime binds the independent 512 MiB encoded cache policy", "production factory creates one shared core and exposes its canonical state to the model", "production factory coordinates encoded cache across concurrent reader runtimes"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt": ["mounted production screen launches next chapter prefetch wiring"],
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt": ["next chapter prefetch defaults to full and persists every policy"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt": ["Reader Library Download and Backup controls expose one labeled action with role and state"],
+      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt": ["online ReaderViewModel executes shared session scheduler encoded cache and progress chain", "legacy Android chapter state is a read only projection", "ReaderViewModel initialization preserves cooperative cancellation"]
     },
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
     "additionalBehaviorVerificationTask": ":app:testReleaseUnitTest --tests \"eu.kanade.tachiyomi.ui.reader.AndroidReaderCoreProductionContractTest\" --tests \"eu.kanade.tachiyomi.ui.reader.loader.ReaderChapterContentRouteTest\"",
@@ -30472,228 +30125,57 @@
     "authoritativeImplementation": "Fixed-main ReaderViewModel persists only the selected logical page and completes only on the last page; the extracted ReaderProgressPolicy emits the canonical identity-bearing decision, while Android's ReaderViewportSettlementArbiter rejects stale activation and serializes transaction submission.",
     "desktopImplementation": "DesktopReaderSession reduces settled canonical page identities through ReaderSessionCore and forwards identity-bearing progress effects to ReaderProgressTracker/RecordReadingProgress; page loading and background work do not emit progress, and an already-read chapter remains read on partial settlement.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
-    "upstreamSymbols": [
-      {
-        "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
-        "symbol": "private suspend fun updateChapterProgress"
-      }
-    ],
-    "sharedImplementationPaths": [
-      "domain/src/commonMain/kotlin/mihon/domain/reader/progress/ReaderProgressPolicy.kt",
-      "domain/src/commonMain/kotlin/tachiyomi/domain/reader/interactor/RecordReadingProgress.kt",
-      "domain/src/commonMain/kotlin/tachiyomi/domain/reader/model/ReadingProgressEvent.kt",
-      "data/src/commonMain/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepository.kt"
-    ],
-    "currentAndroidConsumerPaths": [
-      "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
-      "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiter.kt"
-    ],
-    "desktopConsumerAdapterPaths": [
-      "app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt"
-    ],
+    "upstreamSymbols": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "private suspend fun updateChapterProgress"}],
+    "sharedImplementationPaths": ["domain/src/commonMain/kotlin/mihon/domain/reader/progress/ReaderProgressPolicy.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/reader/interactor/RecordReadingProgress.kt", "domain/src/commonMain/kotlin/tachiyomi/domain/reader/model/ReadingProgressEvent.kt", "data/src/commonMain/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepository.kt"],
+    "currentAndroidConsumerPaths": ["app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiter.kt"],
+    "desktopConsumerAdapterPaths": ["app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt", "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt", "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt"],
     "deviations": [
       {
-        "classification": "MIGRATION_OUTPUT",
-        "description": "RC-05 extracted viewport-settled progress decisions and RD-01 now wires DesktopReaderSession through the same ReaderProgressPolicy/RecordReadingProgress semantics as Android."
+        "id": "DUAL_MAX_VISIBLE_PAGE_PROGRESS",
+        "classification": "CROSS_PLATFORM_PRODUCT_ENHANCEMENT",
+        "introductionRefs": ["6330c6198e827622a74dc48b1ac50f15e7470380", "c01771573034d2ed3492db3ddd109533bb631d99"],
+        "behaviorEvidenceRefs": ["app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#visible-page reporting waits for settled pager and reports both pair pages", "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#dual presentation settles both source pages through screen model and session progress port"],
+        "description": "A settled two-source-page spread records the greatest visible source page while two slices of one wide source page remain one progress identity.",
+        "resolutionStatus": "ACTIVE"
       },
       {
+        "id": "LATEST_SETTLEMENT_ORDERING",
         "classification": "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
-        "description": "Identity-bearing event keys atomically deduplicate chapter, history, duration, and tracker-event commits across retries."
+        "introductionRefs": ["6330c6198e827622a74dc48b1ac50f15e7470380"],
+        "behaviorEvidenceRefs": ["app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt#newer current settlement rejects older adjacent activation and progress", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt#an in-flight write completes before the latest settlement enters the serialized transaction"],
+        "description": "Shared settlement ordering serializes progress transactions and rejects older viewport results after a newer settlement is issued.",
+        "resolutionStatus": "ACTIVE"
+      },
+      {
+        "id": "PROGRESS_IDEMPOTENCY_AND_DRAIN",
+        "classification": "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
+        "introductionRefs": ["6330c6198e827622a74dc48b1ac50f15e7470380", "dcb2dfb24cb4181d3703a5bf02c5b9e535adb0f8"],
+        "behaviorEvidenceRefs": ["app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerIntegrationTest.kt#duplicate and concurrent event key mutates chapter history and tracker event once", "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#closing immediately after settlement lets the final progress write finish"],
+        "description": "Stable event identities prevent duplicate progress side effects, and reader shutdown drains every accepted settlement before closing.",
+        "resolutionStatus": "ACTIVE"
+      },
+      {
+        "id": "DUAL_PAGE_PROGRESS_FIRST_ONLY",
+        "classification": "PRODUCT_GAP",
+        "evidenceRef": "9111d70a85565e20940fa4736c97eea8c1a44a0d",
+        "closureTask": "RC-05",
+        "resolutionStatus": "CLOSED",
+        "resolutionEvidence": {
+          "productionBehaviorTest": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#visible-page reporting waits for settled pager and reports both pair pages"
+        },
+        "description": "The historical first-page-only gap was closed when settled dual viewports began reporting the complete visible logical-page set."
       }
     ],
     "roleEvidence": {
-      "FIXED_ORIGINAL": [
-        {
-          "ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
-          "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
-          "symbol": "private suspend fun updateChapterProgress",
-          "line": 534
-        }
-      ],
-      "CURRENT_ANDROID": [
-        {
-          "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
-          "symbol": "recordReadingProgress.await",
-          "line": 670
-        },
-        {
-          "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiter.kt",
-          "symbol": "internal class ReaderViewportSettlementArbiter",
-          "line": 7
-        }
-      ],
-      "SHARED_OR_ADAPTER": [
-        {
-          "kind": "SHARED",
-          "path": "domain/src/commonMain/kotlin/mihon/domain/reader/progress/ReaderProgressPolicy.kt",
-          "symbol": "object ReaderProgressPolicy",
-          "line": 46
-        },
-        {
-          "kind": "SHARED",
-          "path": "domain/src/commonMain/kotlin/tachiyomi/domain/reader/interactor/RecordReadingProgress.kt",
-          "symbol": "class RecordReadingProgress",
-          "line": 6
-        }
-      ],
-      "DESKTOP_CONSUMER": [
-        {
-          "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt",
-          "symbol": "recordReadingProgress.await",
-          "line": 52
-        },
-        {
-          "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt",
-          "symbol": "class DesktopReaderSession",
-          "line": 71
-        }
-      ],
-      "FIXTURE": [
-        {
-          "artifact": "domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt#only a settled viewport in the active chapter produces a progress effect",
-          "productionMarkers": [
-            "ReaderProgressPolicy.reduce"
-          ]
-        },
-        {
-          "artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressProductionWiringTest.kt#Android current settled page records progress through the canonical shared transaction",
-          "productionMarkers": [
-            "viewModel.onPageSelected",
-            "awaitRecordedEvent"
-          ]
-        },
-        {
-          "artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt#newer current settlement rejects older adjacent activation and progress",
-          "productionMarkers": [
-            "viewModel.onPageSelected",
-            "releaseAdjacentLoad.complete"
-          ]
-        },
-        {
-          "artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt#an in-flight write completes before the latest settlement enters the serialized transaction",
-          "productionMarkers": [
-            "ReaderViewportSettlementArbiter",
-            "runIfLatest"
-          ]
-        },
-        {
-          "artifact": "data/src/jvmTest/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepositoryTest.kt#reading a later chapter updates only that row and requires its last page to mark read",
-          "productionMarkers": [
-            "recorder.await"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#one session opens at zero pages then materializes visible pages and settled progress",
-          "productionMarkers": [
-            "session.settleViewport",
-            "progress.size"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#settling the last page then paging backward never makes the chapter unread",
-          "productionMarkers": [
-            "session.settleViewport",
-            "wasRead"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#closing immediately after settlement lets the final progress write finish",
-          "productionMarkers": [
-            "session.close",
-            "allowWrite.complete",
-            "writeCompleted"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#local reader session identity never becomes a durable chapter progress id",
-          "productionMarkers": [
-            "localReaderScreen",
-            "progressTracker.track"
-          ]
-        },
-        {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt#settling an already read chapter mid chapter keeps it read",
-          "productionMarkers": [
-            "tracker.track",
-            "wasRead"
-          ]
-        }
-      ]
+      "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "private suspend fun updateChapterProgress", "line": 534}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "recordReadingProgress.await", "line": 670}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiter.kt", "symbol": "internal class ReaderViewportSettlementArbiter", "line": 7}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/progress/ReaderProgressPolicy.kt", "symbol": "object ReaderProgressPolicy", "line": 46}, {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/reader/interactor/RecordReadingProgress.kt", "symbol": "class RecordReadingProgress", "line": 6}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt", "symbol": "recordReadingProgress.await", "line": 52}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt", "symbol": "class DesktopReaderSession", "line": 71}],
+      "FIXTURE": [{"artifact": "domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt#only a settled viewport in the active chapter produces a progress effect", "productionMarkers": ["ReaderProgressPolicy.reduce"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressProductionWiringTest.kt#Android current settled page records progress through the canonical shared transaction", "productionMarkers": ["viewModel.onPageSelected", "awaitRecordedEvent"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt#newer current settlement rejects older adjacent activation and progress", "productionMarkers": ["viewModel.onPageSelected", "releaseAdjacentLoad.complete"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt#an in-flight write completes before the latest settlement enters the serialized transaction", "productionMarkers": ["ReaderViewportSettlementArbiter", "runIfLatest"]}, {"artifact": "data/src/jvmTest/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepositoryTest.kt#reading a later chapter updates only that row and requires its last page to mark read", "productionMarkers": ["recorder.await"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#dual presentation settles both source pages through screen model and session progress port", "productionMarkers": ["DualPagedPresentation.present", "model.settleDualPage", "progress.single"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#settling the last page then paging backward never makes the chapter unread", "productionMarkers": ["session.settleViewport", "wasRead"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#closing immediately after settlement lets the final progress write finish", "productionMarkers": ["session.close", "allowWrite.complete", "writeCompleted"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#local reader session identity never becomes a durable chapter progress id", "productionMarkers": ["localReaderScreen", "progressTracker.track"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt#settling an already read chapter mid chapter keeps it read", "productionMarkers": ["tracker.track", "wasRead"]}]
     },
-    "protectionTests": [
-      "domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt",
-      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressProductionWiringTest.kt",
-      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt",
-      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt",
-      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderDuplicateCompletionPolicyTest.kt",
-      "data/src/jvmTest/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepositoryTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerIntegrationTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/ChapterReadPresentationTest.kt",
-      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt"
-    ],
-    "behaviorMethods": {
-      "domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt": [
-        "only a settled viewport in the active chapter produces a progress effect",
-        "settled spread records its highest visible logical page and only the last page completes",
-        "a partial settled page never clears an existing read state",
-        "settlement identity creates a stable idempotency key and a later settlement creates a new key"
-      ],
-      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressProductionWiringTest.kt": [
-        "Android domain DI resolves the canonical reading progress recorder",
-        "Android current settled page records progress through the canonical shared transaction"
-      ],
-      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt": [
-        "newer current settlement rejects older adjacent activation and progress"
-      ],
-      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt": [
-        "issuing a new token invalidates every older viewport settlement",
-        "an in-flight write completes before the latest settlement enters the serialized transaction"
-      ],
-      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderDuplicateCompletionPolicyTest.kt": [
-        "duplicate completion remains disabled independently of current chapter completion",
-        "enabled duplicate completion marks only other unread chapters with the same number"
-      ],
-      "data/src/jvmTest/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepositoryTest.kt": [
-        "reading a later chapter updates only that row and requires its last page to mark read",
-        "partial progress preserves an existing read state"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": [
-        "reading to last page marks shared event as read",
-        "settling an already read chapter mid chapter keeps it read"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt": [
-        "one session opens at zero pages then materializes visible pages and settled progress",
-        "settling the last page then paging backward never makes the chapter unread",
-        "closing immediately after settlement lets the final progress write finish"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt": [
-        "local reader session identity never becomes a durable chapter progress id"
-      ],
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/ChapterReadPresentationTest.kt": [
-        "partial chapter shows progress ring and one based page"
-      ],
-      "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt": [
-        "online ReaderViewModel executes shared session scheduler encoded cache and progress chain",
-        "legacy Android chapter state is a read only projection",
-        "ReaderViewModel initialization preserves cooperative cancellation"
-      ]
-    },
-    "statusDecision": {
-      "task": "Task 10",
-      "decision": "PROMOTE_VERIFIED",
-      "followUp": "NONE",
-      "gap": "NONE",
-      "behaviorMethods": {
-        "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": [
-          "reading to last page marks shared event as read"
-        ]
-      }
-    },
+    "protectionTests": ["domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressProductionWiringTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderDuplicateCompletionPolicyTest.kt", "data/src/jvmTest/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepositoryTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerIntegrationTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/library/ChapterReadPresentationTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt"],
+    "behaviorMethods": {"domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt": ["only a settled viewport in the active chapter produces a progress effect", "settled spread records its highest visible logical page and only the last page completes", "a partial settled page never clears an existing read state", "settlement identity creates a stable idempotency key and a later settlement creates a new key"], "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressProductionWiringTest.kt": ["Android domain DI resolves the canonical reading progress recorder", "Android current settled page records progress through the canonical shared transaction"], "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt": ["newer current settlement rejects older adjacent activation and progress"], "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt": ["issuing a new token invalidates every older viewport settlement", "an in-flight write completes before the latest settlement enters the serialized transaction"], "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderDuplicateCompletionPolicyTest.kt": ["duplicate completion remains disabled independently of current chapter completion", "enabled duplicate completion marks only other unread chapters with the same number"], "data/src/jvmTest/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepositoryTest.kt": ["reading a later chapter updates only that row and requires its last page to mark read", "partial progress preserves an existing read state"], "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": ["reading to last page marks shared event as read", "settling an already read chapter mid chapter keeps it read"], "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt": ["one session opens at zero pages then materializes visible pages and settled progress", "dual presentation settles both source pages through screen model and session progress port", "settling the last page then paging backward never makes the chapter unread", "closing immediately after settlement lets the final progress write finish"], "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt": ["local reader session identity never becomes a durable chapter progress id"], "app-desktop/src/test/kotlin/mihon/desktop/ui/library/ChapterReadPresentationTest.kt": ["partial chapter shows progress ring and one based page"], "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt": ["online ReaderViewModel executes shared session scheduler encoded cache and progress chain", "legacy Android chapter state is a read only projection", "ReaderViewModel initialization preserves cooperative cancellation"]},
+    "statusDecision": {"task": "Task 10", "decision": "PROMOTE_VERIFIED", "followUp": "NONE", "gap": "NONE", "behaviorMethods": {"app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt": ["reading to last page marks shared event as read"]}},
     "behaviorVerificationTask": ":app-desktop:task3ParityVerification",
     "additionalBehaviorVerificationTask": ":domain:jvmTest --tests \"mihon.domain.reader.progress.ReaderProgressPolicyTest\"; :app:testReleaseUnitTest --tests \"eu.kanade.tachiyomi.ui.reader.ReaderProgressProductionWiringTest\" --tests \"eu.kanade.tachiyomi.ui.reader.ReaderProgressSettlementRaceTest\" --tests \"eu.kanade.tachiyomi.ui.reader.ReaderViewportSettlementArbiterTest\"; :data:jvmTest --tests \"tachiyomi.data.reader.SqlDelightReadingProgressRepositoryTest\"",
     "readerCoreMigrationScope": {

@@ -1160,6 +1160,8 @@ class DesktopProductCapabilityContractTest {
             "PRODUCT_GAP",
             "CROSS_PLATFORM_RELIABILITY_ENHANCEMENT",
             "DESKTOP_PRODUCT_ENHANCEMENT",
+            "DESKTOP_PRESENTATION_POLICY",
+            "DESKTOP_CACHE_POLICY",
         )
     private val fixedOriginalMihonRef =
         "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8"
@@ -1812,6 +1814,10 @@ class DesktopProductCapabilityContractTest {
                                 setOf("WebtoonDisplayUnitList(", "firstVisibleItemScrollOffset"),
                             "mounted list keeps logical page and bounded offset when split anchor merges" to
                                 setOf("WebtoonDisplayUnitList(", "splitAnchor"),
+                            "mounted list restores relative offset when a merged anchor splits" to
+                                setOf("WebtoonDisplayUnitList(", "mergedAnchor", "firstVisibleItemScrollOffset"),
+                            "mounted auto scroll loop pauses for drag and fling then resumes after settlement" to
+                                setOf("WebtoonDisplayUnitList(", "DragInteraction", "listState.scroll"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt" to
                         mapOf(
@@ -1830,10 +1836,14 @@ class DesktopProductCapabilityContractTest {
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt" to
                         mapOf(
-                            "mounted cover keeps a centered two-slot frame with the page in the physical left slot" to
+                            "mounted cover keeps a full viewport two-slot frame with the page in the physical left slot" to
                                 setOf("DualPageDisplayUnitFrame", "assertCentered"),
+                            "full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing" to
+                                setOf("DualPageDisplayUnitFrame", "ContentScale.Fit", "assertPixel"),
                             "pair frame identity survives either page loading ready and error changes" to
                                 setOf("DualPageDisplayUnitCompositionIdentityKey", "assertSame"),
+                            "viewport resize changes geometry without replacing display or physical slot identity" to
+                                setOf("viewportWidth", "DualPageDisplayUnitCompositionIdentityKey", "DualPageSlotIdKey"),
                             "production dual selector mounts registry display units" to
                                 setOf("ZoomablePagerViewer(", "DualPageDisplayUnitIdKey"),
                             "visible-page reporting waits for settled pager and reports both pair pages" to

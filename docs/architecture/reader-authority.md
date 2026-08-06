@@ -24,6 +24,20 @@ Git ancestry 推断“原版”来源。当前 `app/`、`domain/` 和 `app-deskt
 - `app-desktop/src/test/kotlin/mihon/desktop/parity/ReaderFixedMainAuthorityTest.kt`：精确路径/blob/symbol、
   变异、行为向量和 manifest 范围守卫。
 
+### 四层行为分类
+
+Reader 的完成证据必须先落入以下一层，不能因为代码已经共享或被两端消费就反向改写来源：
+
+| 层级 | 证明内容 | 允许的主要证据 | 不允许的推论 |
+| --- | --- | --- | --- |
+| 上游用户语义 | 固定原版已有的页状态、current + 4、末五页 page-list、Retry、末页完成等结果 | 固定 blob/symbol、上游行为向量及对应 production contract | 不能证明固定点之后新增的 Desktop UI、缓存默认值或并发机制 |
+| 跨平台可靠性 | generation、迟到拒绝、latest settlement、幂等/drain、encoded store 生命周期 | shared contract 加 Android/Desktop production wiring 与真实存储测试 | “两端共用”不等于“固定原版已有” |
+| 产品增强 | adjacent portrait、双页最大可见页进度、自动滚动暂停、Desktop 完整下一章预取 | 稳定 deviation ID、真实引入提交和用户链路行为测试 | 不得用原版相邻页或 current + 4 为新增产品语义背书 |
+| 平台策略 | Desktop display identity、物理槽、Webtoon 相对锚点、512 MiB encoded cache 默认值 | 平台 production/mounted 测试及明确的 presentation/cache classification | 不得进入 shared core，也不能成为 fixed-main 完成条件 |
+
+机器权威以 manifest 的 deviation 记录为准；自然语言文档只解释设计目的、边界和失败处理。源码扫描只能作为
+禁止旧实现回归的补充守卫，不能替代 mounted/pixel、wiring 或真实 I/O 行为测试。
+
 ## 固定原版运行链
 
 ### 章节与页面状态
@@ -200,9 +214,11 @@ Dual settled unit 回报 pair 内全部可见逻辑页，并以最大 source ind
 key 与固定 Compose 容器均不使用 URL，Loading、Ready、Error 和原位 Retry 在同一 identity 下切换。
 
 Dual 使用共享 `ReaderPagePairing` 消费 cover-single、adjacent portrait、forced single、spread、edge match 与
-landscape parity options。renderer 保持居中的固定双槽 frame，横图或竖图封面在 LTR/RTL 和环境 locale RTL 下
-均占绝对物理左槽且右槽为空；普通 pair 才按阅读方向交换物理顺序。pair/slot identity 不随任一页的内容状态
-变化。宽图切片与右键保存都通过统一 `ZoomablePageBox` 的 `splitHalf/sourceBounds`，保存的是实际可见区域。
+landscape parity options。renderer 使用完整 reader content viewport，并在其中维持两个各占一半、向书脊对齐的
+稳定物理槽；不再施加固定 4:3 比例或无独立依据的 frame inset。横图或竖图封面在 LTR/RTL 和环境 locale RTL 下
+均占绝对物理左槽且右槽为空；普通 pair 才按阅读方向交换物理顺序。pair/slot identity 不随窗口尺寸或任一页的
+内容状态变化。默认 `FIT_SCREEN` 不裁切、不拉伸；真实 4:3 视口中由漫画自身比例造成的留白仍属诚实显示。
+宽图切片与右键保存都通过统一 `ZoomablePageBox` 的 `splitHalf/sourceBounds`，保存的是实际可见区域。
 edge matcher 只读取 `PagePreloader` 有界 decoded cache，不解析 URL、不发起网络请求，也不持有 fetch job；
 晚到页面可追加新 pair，cache 淘汰后已确认 pair 仍保留到章节或选项生命周期结束。
 

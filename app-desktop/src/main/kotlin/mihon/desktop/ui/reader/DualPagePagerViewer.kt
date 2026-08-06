@@ -4,13 +4,11 @@ import tachiyomi.i18n.MR
 import java.util.Locale
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Button
@@ -87,8 +85,8 @@ internal val DualPagePhysicalSlotKey = SemanticsPropertyKey<DualPagePhysicalSlot
 internal val DualPageSlotIdKey = SemanticsPropertyKey<DisplaySlotId>("DualPageSlotId")
 
 /**
- * Renders one presentation display unit inside a centered, fixed two-slot canvas.
- * A cover or forced single keeps both physical slots mounted; a full landscape spread uses the same centered frame.
+ * Renders one presentation display unit across the complete reader viewport.
+ * A cover or forced single keeps both physical slots mounted; a full landscape spread uses the same stable frame.
  */
 @Composable
 internal fun DualPageDisplayUnitFrame(
@@ -99,59 +97,52 @@ internal fun DualPageDisplayUnitFrame(
     require(unit.id.mode == ReaderPresentationMode.DUAL_PAGED) { "A dual frame requires a dual display unit" }
     require(unit.slots.size in 1..2) { "A dual display unit must contain one full-span slot or two physical slots" }
     val identity = remember(unit.id) { DualPageDisplayUnitCompositionIdentity() }
-    BoxWithConstraints(
-        modifier = Modifier.fillMaxSize().padding(horizontal = DUAL_PAGE_FRAME_HORIZONTAL_INSET),
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .semantics {
+                this[DualPageDisplayUnitCompositionIdentityKey] = identity
+                this[DualPageDisplayUnitIdKey] = unit.id
+            },
         contentAlignment = Alignment.Center,
     ) {
-        val frameWidth = minOf(maxWidth, maxHeight * DUAL_PAGE_FRAME_ASPECT_RATIO)
-        Box(
-            modifier = Modifier
-                .width(frameWidth)
-                .fillMaxHeight()
-                .semantics {
-                    this[DualPageDisplayUnitCompositionIdentityKey] = identity
-                    this[DualPageDisplayUnitIdKey] = unit.id
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            if (unit.slots.size == 1) {
-                DualPageSlotContainer(
-                    slot = unit.slots.single(),
-                    physicalSlot = DualPagePhysicalSlot.FULL,
-                    showLoadingIndicator = true,
-                    onRetry = onRetry,
-                    modifier = Modifier.fillMaxSize(),
-                    readyContent = readyContent,
-                )
-            } else {
-                val leftLoading = unit.slots[0].isLoading()
-                val rightLoading = unit.slots[1].isLoading()
-                val placement = dualPageLoadingIndicatorPlacement(leftLoading, rightLoading)
-                DualPageSlotContainer(
-                    slot = unit.slots[0],
-                    physicalSlot = DualPagePhysicalSlot.LEFT,
-                    showLoadingIndicator = placement == DualPageLoadingIndicatorPlacement.LeftHalfCenter,
-                    onRetry = onRetry,
-                    modifier = Modifier
-                        .align(AbsoluteAlignment.CenterLeft)
-                        .fillMaxWidth(0.5f)
-                        .fillMaxHeight(),
-                    readyContent = readyContent,
-                )
-                DualPageSlotContainer(
-                    slot = unit.slots[1],
-                    physicalSlot = DualPagePhysicalSlot.RIGHT,
-                    showLoadingIndicator = placement == DualPageLoadingIndicatorPlacement.RightHalfCenter,
-                    onRetry = onRetry,
-                    modifier = Modifier
-                        .align(AbsoluteAlignment.CenterRight)
-                        .fillMaxWidth(0.5f)
-                        .fillMaxHeight(),
-                    readyContent = readyContent,
-                )
-                if (placement == DualPageLoadingIndicatorPlacement.Center) {
-                    CircularProgressIndicator(color = Color.White)
-                }
+        if (unit.slots.size == 1) {
+            DualPageSlotContainer(
+                slot = unit.slots.single(),
+                physicalSlot = DualPagePhysicalSlot.FULL,
+                showLoadingIndicator = true,
+                onRetry = onRetry,
+                modifier = Modifier.fillMaxSize(),
+                readyContent = readyContent,
+            )
+        } else {
+            val leftLoading = unit.slots[0].isLoading()
+            val rightLoading = unit.slots[1].isLoading()
+            val placement = dualPageLoadingIndicatorPlacement(leftLoading, rightLoading)
+            DualPageSlotContainer(
+                slot = unit.slots[0],
+                physicalSlot = DualPagePhysicalSlot.LEFT,
+                showLoadingIndicator = placement == DualPageLoadingIndicatorPlacement.LeftHalfCenter,
+                onRetry = onRetry,
+                modifier = Modifier
+                    .align(AbsoluteAlignment.CenterLeft)
+                    .fillMaxWidth(0.5f)
+                    .fillMaxHeight(),
+                readyContent = readyContent,
+            )
+            DualPageSlotContainer(
+                slot = unit.slots[1],
+                physicalSlot = DualPagePhysicalSlot.RIGHT,
+                showLoadingIndicator = placement == DualPageLoadingIndicatorPlacement.RightHalfCenter,
+                onRetry = onRetry,
+                modifier = Modifier
+                    .align(AbsoluteAlignment.CenterRight)
+                    .fillMaxWidth(0.5f)
+                    .fillMaxHeight(),
+                readyContent = readyContent,
+            )
+            if (placement == DualPageLoadingIndicatorPlacement.Center) {
+                CircularProgressIndicator(color = Color.White)
             }
         }
     }
@@ -397,6 +388,3 @@ private fun Modifier.readerPrimaryTapInput(
         }
     }
 }
-
-private const val DUAL_PAGE_FRAME_ASPECT_RATIO = 4f / 3f
-private val DUAL_PAGE_FRAME_HORIZONTAL_INSET = 24.dp

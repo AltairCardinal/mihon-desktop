@@ -95,7 +95,10 @@ class ReaderFixedMainAuthorityTest {
             fixture.replaceFirst(FIXED_MAIN_REF, "main@${"0".repeat(40)}"),
             fixture.replaceFirst(FIXED_UPSTREAM_LINEAGE_BASE, "upstream/main@${"0".repeat(40)}"),
             fixture.replaceFirst("CURRENT_PLUS_FOUR", "REMOVED_CURRENT_PLUS_FOUR"),
-            fixture.replaceFirst("CROSS_PLATFORM_RELIABILITY_ENHANCEMENT", "FIXED_ORIGINAL"),
+            fixture.replaceFirst(
+                "\"id\": \"GENERATION_HARDENING\",\n      \"classification\": \"CROSS_PLATFORM_RELIABILITY_ENHANCEMENT\"",
+                "\"id\": \"GENERATION_HARDENING\",\n      \"classification\": \"FIXED_ORIGINAL\"",
+            ),
         )
         REQUIRED_AUTHORITY_BLOBS.forEach { (path, blobId) ->
             mutations += fixture.replaceFirst(path, "app/src/main/java/missing/${path.substringAfterLast('/')}")
@@ -301,7 +304,13 @@ class ReaderFixedMainAuthorityTest {
         val preloadDeviations = preloadItem.getValue("deviations").jsonArray.map { it.jsonObject }
             .associateBy { it.requiredText("id") }
         assertEquals(
-            setOf("GENERATION_HARDENING", "DESKTOP_FULL_NEXT_CHAPTER_PREFETCH", "HTTP_RETRY_FORCE_DRIFT"),
+            setOf(
+                "GENERATION_HARDENING",
+                "DESKTOP_FULL_NEXT_CHAPTER_PREFETCH",
+                "ENCODED_STORE_LIFECYCLE",
+                "DESKTOP_ENCODED_CACHE_POLICY",
+                "HTTP_RETRY_FORCE_DRIFT",
+            ),
             preloadDeviations.keys,
         )
         assertEquals(
@@ -314,7 +323,8 @@ class ReaderFixedMainAuthorityTest {
         )
         assertEquals(
             RD02_PRODUCTION_EVIDENCE,
-            preloadDeviations.getValue("DESKTOP_FULL_NEXT_CHAPTER_PREFETCH").requiredText("evidenceRef"),
+            preloadDeviations.getValue("DESKTOP_FULL_NEXT_CHAPTER_PREFETCH")
+                .getValue("behaviorEvidenceRefs").jsonArray.single().jsonPrimitive.content,
         )
         val retryDeviation = preloadDeviations.getValue("HTTP_RETRY_FORCE_DRIFT")
         assertEquals("PRODUCT_GAP", retryDeviation.requiredText("classification"))
@@ -480,7 +490,10 @@ class ReaderFixedMainAuthorityTest {
         val deviation = fixture.getValue("deviations").jsonArray
             .map { it.jsonObject }
             .single { it.requiredText("id") == "DESKTOP_FULL_NEXT_CHAPTER_PREFETCH" }
-        assertEquals(RD02_PRODUCTION_EVIDENCE, deviation.requiredText("evidenceRef"))
+        assertEquals(
+            RD02_PRODUCTION_EVIDENCE,
+            deviation.getValue("behaviorEvidenceRefs").jsonArray.single().jsonPrimitive.content,
+        )
         assertEquals("DESKTOP_PRODUCT_ENHANCEMENT", deviation.requiredText("classification"))
         assertFalse(deviation.requiredText("description").contains("planned", ignoreCase = true))
 
@@ -645,7 +658,7 @@ class ReaderFixedMainAuthorityTest {
                 .jsonArray
                 .any {
                     it.jsonPrimitive.content ==
-                        "mounted cover keeps a centered two-slot frame with the page in the physical left slot"
+                        "mounted cover keeps a full viewport two-slot frame with the page in the physical left slot"
                 },
         )
         assertTrue(item.requiredText("verificationScope").contains("Desktop canonical ReaderSessionCore"))
@@ -752,7 +765,6 @@ class ReaderFixedMainAuthorityTest {
         val deviations = fixture.getValue("deviations").jsonArray.map { it.jsonObject }
             .associateBy { it.requiredText("id") }
         assertEquals(REQUIRED_DEVIATIONS, deviations.keys)
-        assertEquals(REQUIRED_DEVIATION_EVIDENCE.keys, deviations.keys)
         REQUIRED_DEVIATION_EVIDENCE.forEach { (id, evidenceRef) ->
             assertEquals(evidenceRef, deviations.getValue(id).requiredText("evidenceRef"), "$id evidence ref")
         }
@@ -768,7 +780,9 @@ class ReaderFixedMainAuthorityTest {
         assertEquals("PRODUCT_GAP", deviations.getValue("DUAL_PAGE_PROGRESS_FIRST_ONLY").requiredText("classification"))
         deviations.values.forEach { deviation ->
             assertTrue(deviation.requiredText("description").isNotBlank())
-            assertFalse(deviation.requiredText("evidenceRef").startsWith(FIXED_MAIN_REF))
+        }
+        REQUIRED_DEVIATION_EVIDENCE.keys.forEach { id ->
+            assertFalse(deviations.getValue(id).requiredText("evidenceRef").startsWith(FIXED_MAIN_REF))
         }
 
         val trackedChanges = fixture.getValue("trackedUpstreamChanges").jsonArray.map { it.jsonObject }
@@ -878,12 +892,11 @@ class ReaderFixedMainAuthorityTest {
             mapOf(
                 "GENERATION_HARDENING" to "83c5a97f67fcea33367f5f79c09397bb215a2f6f",
                 "ADJACENT_PORTRAIT_PAIRING" to "bef51fc6924c6a9de185fa0fb2a56ce76309dc19",
-                "DESKTOP_FULL_NEXT_CHAPTER_PREFETCH" to RD02_PRODUCTION_EVIDENCE,
                 "HTTP_RETRY_FORCE_DRIFT" to FORK_COMPATIBILITY_BASELINE,
                 "DUAL_PAGE_PROGRESS_FIRST_ONLY" to FORK_COMPATIBILITY_BASELINE,
             )
         const val RD02_PRODUCTION_EVIDENCE =
-            "production:app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#" +
+            "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#" +
                 "full next chapter waits for every current page then materializes all encoded pages without progress"
         val DEVIATION_INTRODUCTION_PATHS =
             mapOf(
@@ -1069,6 +1082,17 @@ class ReaderFixedMainAuthorityTest {
         val ADJACENT_PAGE_LIST_FORBIDDEN_OPERATIONS = setOf("PageLoader.loadPage", "HttpSource.getImageUrl", "HttpSource.getImage")
         val REQUIRED_DEVIATIONS =
             setOf(
+                "DISPLAY_UNIT_STABLE_IDENTITY",
+                "WEBTOON_RELATIVE_ANCHOR_RECOVERY",
+                "WEBTOON_AUTOSCROLL_INTERACTION_PAUSE",
+                "DUAL_PHYSICAL_SLOT_IDENTITY",
+                "DUAL_COVER_LEFT_SLOT",
+                "DUAL_FIXED_4_3_FRAME",
+                "DUAL_MAX_VISIBLE_PAGE_PROGRESS",
+                "LATEST_SETTLEMENT_ORDERING",
+                "PROGRESS_IDEMPOTENCY_AND_DRAIN",
+                "ENCODED_STORE_LIFECYCLE",
+                "DESKTOP_ENCODED_CACHE_POLICY",
                 "GENERATION_HARDENING",
                 "ADJACENT_PORTRAIT_PAIRING",
                 "DESKTOP_FULL_NEXT_CHAPTER_PREFETCH",

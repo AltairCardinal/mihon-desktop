@@ -360,6 +360,43 @@ class DesktopReaderRuntimeFactoryTest {
     }
 
     @Test
+    fun `production runtime binds the independent 512 MiB encoded cache policy`() = runTest {
+        val factory = DesktopReaderRuntimeFactory(
+            prefs = ReaderPreferences(),
+            downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads-encoded-budget")),
+            sourceManager = mockk<SourceManager>(relaxed = true),
+            networkHelper = NetworkHelper(OkHttpClient()),
+            progressTracker = mockk<ReaderProgressTracker>(relaxed = true),
+            mangaRepository = null,
+            encodedCacheDirectory = tempDir.resolve("encoded-budget"),
+        )
+        val runtime = factory.createRuntime(
+            DesktopReaderChapterContext(
+                chapterId = 82L,
+                sourceId = 42L,
+                chapterUrl = "/chapter/82",
+                mangaTitle = "Manga",
+                chapterTitle = "Chapter 82",
+                chapterNumber = 82.0,
+                chapterIndex = 0,
+                initialPage = 0,
+                wasRead = false,
+            ),
+            this,
+        )
+
+        try {
+            assertEquals(512L * 1024L * 1024L, runtime.encodedPageStore.diagnostics().maxBytes)
+            assertEquals(
+                DesktopReaderEncodedPageStore.DEFAULT_MAX_BYTES,
+                runtime.encodedPageStore.diagnostics().maxBytes,
+            )
+        } finally {
+            runtime.close()
+        }
+    }
+
+    @Test
     fun `production factory coordinates encoded cache across concurrent reader runtimes`() = runTest {
         val factory = DesktopReaderRuntimeFactory(
             prefs = ReaderPreferences(),
