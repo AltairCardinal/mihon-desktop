@@ -27,7 +27,8 @@ permissions:
 jobs:
   desktop-test:
     name: Desktop JVM Tests
-    runs-on: ubuntu-24.04
+    # The Desktop product is currently validated and released for Windows.
+    runs-on: windows-2022
 
     steps:
       - name: Checkout
