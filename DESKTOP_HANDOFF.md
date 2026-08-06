@@ -8,15 +8,17 @@
 
 ### 远程仓库
 ```
-origin  https://github.com/mihonapp/mihon.git
+origin    https://github.com/AltairCardinal/mihon-desktop.git
+upstream  https://github.com/mihonapp/mihon.git
+legacy    https://github.com/AltairCardinal/mihon.git
 ```
-本地分支是在 Mihon 官方仓库基础上开发，**不向 origin push**，所有桌面端代码在本地维护。
+`origin` 是本项目的下游仓库，日常开发与发布均推送到该远程；`upstream` 仅用于读取官方 Mihon 更新，禁止向其推送。`legacy` 保留为迁移前仓库的只读追溯入口。
 
 ### 分支
 | 分支 | 路径 | 说明 |
 |---|---|---|
-| `main` | `/Volumes/File/OpenClaw/workspace/mihon` | 跟踪 upstream，保持与官方同步，不做修改 |
-| `claude/pensive-vaughan` | `/Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan` | 所有桌面端开发工作在此分支 |
+| `main` | 当前主工作区 | Mihon Desktop 的下游稳定主线，跟踪 `origin/main` |
+| `feature/*` / `codex/*` | 独立 worktree（可选） | 短期功能开发分支，通过 PR 合入 `main` |
 
 ### Git Worktree
 桌面端开发使用 git worktree 在独立目录进行，避免污染主工作区：
@@ -25,8 +27,8 @@ origin  https://github.com/mihonapp/mihon.git
 # 查看当前 worktree 列表
 git worktree list
 
-# 进入开发 worktree
-cd /Volumes/File/OpenClaw/workspace/mihon/.claude/worktrees/pensive-vaughan
+# 基于 main 创建独立开发 worktree
+git worktree add ../mihon-desktop-feature -b feature/<name> main
 ```
 
 ---
