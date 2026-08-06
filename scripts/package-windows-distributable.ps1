@@ -74,7 +74,17 @@ try {
     }
 
     Move-Item -LiteralPath $temporaryArchive -Destination $archive -Force
-    $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+    $stream = [IO.File]::OpenRead($archive)
+    try {
+        $sha256 = [Security.Cryptography.SHA256]::Create()
+        try {
+            $hash = [BitConverter]::ToString($sha256.ComputeHash($stream)).Replace("-", "").ToLowerInvariant()
+        } finally {
+            $sha256.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
     $checksum = "$hash  $([IO.Path]::GetFileName($archive))"
     [IO.File]::WriteAllText("$archive.sha256", "$checksum`n", [Text.UTF8Encoding]::new($false))
 
