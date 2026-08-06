@@ -9,6 +9,7 @@ sqlite = "2.6.2"
 voyager = "1.1.0-beta03"
 spotless = "8.3.0"
 ktlint-core = "1.8.0"
+test-retry = "1.6.5"
 firebase-bom = "34.10.0"
 markdown = "0.39.2"
 junit = "6.0.3"
@@ -128,6 +129,7 @@ sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
 moko = { id = "dev.icerock.mobile.multiplatform-resources", version.ref = "moko" }
 firebase-crashlytics = { id = "com.google.firebase.crashlytics", version = "3.0.6" }
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" }
+test-retry = { id = "org.gradle.test-retry", version.ref = "test-retry" }
 
 [bundles]
 okhttp = ["okhttp-core", "okhttp-logging", "okhttp-brotli", "okhttp-dnsoverhttps", "okhttp-zstd"]
