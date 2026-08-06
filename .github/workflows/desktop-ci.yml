@@ -37,6 +37,11 @@ jobs:
           # Parity and reader-authority tests resolve fixed historical Git objects.
           fetch-depth: 0
 
+      - name: Fetch provenance authority references
+        # The independent downstream repository retains these immutable references
+        # solely so authority-contract tests can resolve their fixed Git objects.
+        run: git fetch --no-tags origin +refs/heads/upstream/main:refs/remotes/origin/upstream/main +refs/heads/provenance/fixed-main:refs/remotes/origin/provenance/fixed-main
+
       - name: Set up JDK
         uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
         with:
