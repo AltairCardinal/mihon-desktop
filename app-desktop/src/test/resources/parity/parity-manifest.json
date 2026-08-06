@@ -30386,12 +30386,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "ReaderViewportColorLayer(state.colorFilter)",
-          "line": 501
+          "line": 526
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "internal fun ReaderViewportColorLayer",
-          "line": 587
+          "line": 609
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
