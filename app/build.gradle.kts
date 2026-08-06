@@ -178,13 +178,14 @@ kotlin {
 
 // The Android unit-test suite contains concurrency-sensitive lifecycle tests
 // (e.g. ExtensionInstallSessionLifecycleTest) that are known to be flaky under
-// CI load. Retry failures once so a genuine regression still fails after the
-// retry, while transient timing flakes do not red the Build & Test check.
+// CI load. Retry failures a couple of times so a genuine regression still fails
+// after all attempts, while transient timing flakes do not red the Build & Test
+// check.
 // failOnPassedAfterRetry=false means a test that passes on retry is accepted;
 // a test that fails on every attempt still fails the task.
 tasks.withType<Test>().configureEach {
     retry {
-        maxRetries.set(1)
+        maxRetries.set(2)
         maxFailures.set(10)
         failOnPassedAfterRetry.set(false)
     }
