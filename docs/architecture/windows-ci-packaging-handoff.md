@@ -59,11 +59,20 @@ classes/mihon.desktop.release.WindowsDistributablePackagingTest.html
 
 ## 未完成工作
 
-- `scripts/package-windows-distributable.ps1` 仍调用 `Get-FileHash`。
-- 尚未提交跨 PowerShell 环境的 SHA-256 实现。
-- 尚未取得修复后的 GitHub Windows CI 全绿证据。
+以下工作已完成（见下文“修复记录”），本节保留用于说明当时状态。
 
-工作区可能保留一项未提交的测试实验：它尝试用同名 PowerShell 函数遮蔽 `Get-FileHash`，但本机测试仍然通过，没有形成有效红测试。不要把该实验原样提交；继续前先检查 `git status` 和对应 diff，并用 `apply_patch` 清理或替换。
+- ~~`scripts/package-windows-distributable.ps1` 仍调用 `Get-FileHash`。~~
+- ~~尚未提交跨 PowerShell 环境的 SHA-256 实现。~~
+- ~~尚未取得修复后的 GitHub Windows CI 全绿证据。~~
+
+## 修复记录
+
+- 提交 `0067562bc`（fix(desktop): remove Get-FileHash dependency from Windows packager）完成红绿修复：
+  - 生产脚本 `scripts/package-windows-distributable.ps1` 将哈希计算替换为直接 .NET API（`[IO.File]::OpenRead` + `[Security.Cryptography.SHA256]` + `[BitConverter]`），不再依赖 `Microsoft.PowerShell.Utility` 模块自动加载提供的 `Get-FileHash`；`.sha256` 文件格式（小写 SHA-256、两个空格、文件名、`\n`）保持不变。
+  - 红测试 `WindowsDistributablePackagingTest` 改为在子进程中精确复现 Runner 环境：设置 `$PSModuleAutoLoadingPreference = 'None'`、显式导入 Management/Utility 模块、`Remove-Item Function:\Get-FileHash` 移除命令，并在夹具自检（`Get-Command Get-FileHash` 失败）后运行真实生产脚本。注意：不能卸载整个 `Microsoft.PowerShell.Utility` 模块，因为脚本还使用该模块的 `Add-Type`/`Write-Host`；也不能用 try/catch 包裹调用，否则会改变错误输出格式并破坏“不完整 runtime 被拒绝”测试对 `RuntimeException` 的断言。
+  - 测试同时增强 `.sha256` 断言：校验文件内容等于对实际 ZIP 字节计算的小写 SHA-256，且格式为 `<hash>  <文件名>\n`。
+- 本机验证：`WindowsDistributablePackagingTest` 红（修复前因 `Get-FileHash` 不可用失败）→ 绿（修复后通过）；`spotlessCheck` 通过；完整 `:app-desktop:jvmTest` 通过（2474 项，1 跳过）。
+- GitHub Actions 验证：提交 `0067562bc` 的 `Desktop JVM Tests`（windows-2022）通过。
 
 ## 推荐修复设计
 
@@ -130,15 +139,17 @@ python scripts/gradle-coordinator.py run --key desktop-ci-fix -- .\gradlew.bat s
 
 ## 验收标准
 
-- [ ] 红测试能稳定复现 `Get-FileHash` 不可用，而不是由路径、引用或测试夹具错误导致。
-- [ ] 生产脚本不再调用或依赖 `Get-FileHash`。
-- [ ] 生成的 ZIP 包含 `Mihon Desktop.exe`、`app/` 和 `runtime/`。
-- [ ] `.sha256` 内容是 ZIP 的真实小写 SHA-256，保留两个空格和文件名格式。
-- [ ] 不完整 runtime 仍被拒绝，且不留下输出 ZIP。
-- [ ] `spotlessCheck` 通过。
-- [ ] 完整 `:app-desktop:jvmTest` 通过。
-- [ ] GitHub Actions 的 `Desktop JVM Tests` 在 `windows-2022` 上通过。
-- [ ] `Build & Test` 与 Desktop CI 均满足 `main` 分支保护要求。
+- [x] 红测试能稳定复现 `Get-FileHash` 不可用，而不是由路径、引用或测试夹具错误导致。
+- [x] 生产脚本不再调用或依赖 `Get-FileHash`。
+- [x] 生成的 ZIP 包含 `Mihon Desktop.exe`、`app/` 和 `runtime/`。
+- [x] `.sha256` 内容是 ZIP 的真实小写 SHA-256，保留两个空格和文件名格式。
+- [x] 不完整 runtime 仍被拒绝，且不留下输出 ZIP。
+- [x] `spotlessCheck` 通过。
+- [x] 完整 `:app-desktop:jvmTest` 通过。
+- [x] GitHub Actions 的 `Desktop JVM Tests` 在 `windows-2022` 上通过。
+- [ ] `Build & Test` 与 Desktop CI 均满足 `main` 分支保护要求。（Desktop CI 已绿；`Build & Test` 仍受既有 flaky 测试影响，见下）
+
+> 注：`Build & Test`（Android `testReleaseUnitTest`）在交接文档提交 `6f54623a` 时即已失败（`ExtensionInstallSessionLifecycleTest`），本次重跑时失败测试子集每次不同（如 `ReaderChapterErrorUiIntegrationTest`、`MigrationListScreenModelBatchWiringTest`），属于仓库既有 flaky，与本次 Windows 打包修复无依赖关系，不在本交接范围内。
 
 ## 边界与回退
 
