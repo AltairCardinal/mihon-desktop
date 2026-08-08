@@ -189,7 +189,7 @@ class DesktopReaderProductRegressionTest {
         assertTrue(filter.grayscaleEnabled)
         assertTrue(filter.invertEnabled)
         assertTrue(readerSource("ReaderSettingsPanel.kt").contains("pref_grayscale"))
-        assertTrue(readerSource("ReaderSettingsPanel.kt").contains("desktop_ui_invert_colors"))
+        assertTrue(readerSource("ReaderSettingsPanel.kt").contains("pref_inverted_colors"))
     }
 
     @Test

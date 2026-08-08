@@ -102,9 +102,9 @@ fun ReaderSettingsPanel(
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf(
-        MR.strings.desktop_ui_general.localized(),
-        MR.strings.desktop_ui_reader_display.localized(),
-        MR.strings.action_filter.localized(),
+        MR.strings.pref_category_reading_mode.localized(),
+        MR.strings.pref_category_general.localized(),
+        MR.strings.custom_filter.localized(),
     )
 
     AlertDialog(
@@ -407,7 +407,7 @@ private fun FilterTab(
     // Brightness
     SettingsSection(MR.strings.desktop_ui_brightness.localized()) {
         SwitchRow(
-            label = MR.strings.desktop_ui_enable_brightness.localized(),
+            label = MR.strings.pref_custom_brightness.localized(),
             checked = colorFilter.brightnessEnabled,
             onCheckedChange = { onColorFilterChange(colorFilter.copy(brightnessEnabled = it)) },
         )
@@ -429,7 +429,7 @@ private fun FilterTab(
     // Colour filter
     SettingsSection(MR.strings.desktop_ui_color_filter.localized()) {
         SwitchRow(
-            label = MR.strings.desktop_ui_enable_color_filter.localized(),
+            label = MR.strings.pref_custom_color_filter.localized(),
             checked = colorFilter.tintEnabled,
             onCheckedChange = { onColorFilterChange(colorFilter.copy(tintEnabled = it)) },
         )
@@ -463,7 +463,7 @@ private fun FilterTab(
             onCheckedChange = { onColorFilterChange(colorFilter.copy(grayscaleEnabled = it)) },
         )
         SwitchRow(
-            label = MR.strings.desktop_ui_invert_colors.localized(),
+            label = MR.strings.pref_inverted_colors.localized(),
             checked = colorFilter.invertEnabled,
             onCheckedChange = { onColorFilterChange(colorFilter.copy(invertEnabled = it)) },
         )
