@@ -94,6 +94,7 @@
     <string name="action_add">Add</string>
     <string name="action_update_category">Update category</string>
     <string name="action_open_random_manga">Open random entry</string>
+    <string name="action_open">Open</string>
     <string name="action_add_category">Add category</string>
     <string name="action_edit_categories">Edit categories</string>
     <string name="action_rename_category">Rename category</string>
@@ -1473,6 +1474,10 @@
     <string name="desktop_ui_author_discovery_idle">Author discovery is idle</string>
     <string name="desktop_ui_author_discovery_running">Author discovery is running</string>
     <string name="desktop_ui_author_discovery_waiting_network">Author discovery is waiting for a network connection</string>
+    <string name="desktop_ui_author_discoveries">Author discoveries</string>
+    <string name="desktop_ui_new_work_candidate">New work candidate</string>
+    <string name="desktop_ui_new_source_version">New source version</string>
+    <string name="action_ignore">Ignore</string>
     <string name="desktop_ui_author_discovery_finished">Last author check finished</string>
     <string name="desktop_ui_author_discovery_failed">Author discovery failed: %1$s</string>
     <string name="desktop_ui_author_discovery_cancelled">Author discovery was cancelled</string>

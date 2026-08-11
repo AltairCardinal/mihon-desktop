@@ -1,6 +1,9 @@
 package mihon.desktop.updates
 
 import kotlinx.coroutines.test.runTest
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.mockk
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.domain.fakes.FakeUpdatesRepository
@@ -21,6 +24,14 @@ import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaCover
+import tachiyomi.domain.creator.model.ArchiveDiscovery
+import tachiyomi.domain.creator.model.DiscoveryKind
+import tachiyomi.domain.creator.model.DiscoveryReadState
+import tachiyomi.domain.creator.model.DiscoveryStateVector
+import tachiyomi.domain.creator.model.NotificationDeliveryState
+import tachiyomi.domain.creator.model.ReviewDisposition
+import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.updates.interactor.GetUpdates
 import tachiyomi.domain.updates.model.UpdatesWithRelations
 import tachiyomi.domain.updates.service.UpdatesPreferences
@@ -131,12 +142,35 @@ class UpdatesScreenModelTest {
         )
     }
 
+    @Test
+    fun `persistent author discoveries load mark read and support ignore undo`() = runTest {
+        val archive = mockk<CreatorArchiveRepository>()
+        val discovery = sampleDiscovery()
+        coEvery { archive.getDiscoveries(any()) } returns listOf(discovery)
+        coEvery { archive.markDiscoveriesSeen(any(), any()) } returns Unit
+        coEvery { archive.setDiscoveryReview(any(), any(), any()) } returns Unit
+        val model = buildModel(creatorArchiveRepository = archive)
+
+        model.loadUpdates(Instant.EPOCH)
+        assertEquals(listOf(discovery), model.state.value.creatorDiscoveries)
+        assertEquals(1, model.state.value.unreadDiscoveryCount)
+
+        model.markAllRead()
+        coVerify { archive.markDiscoveriesSeen(setOf(discovery.id), any()) }
+
+        model.ignoreDiscovery(discovery)
+        coVerify { archive.setDiscoveryReview(discovery.id, ReviewDisposition.IGNORED, any()) }
+        model.undoDiscoveryReview(discovery)
+        coVerify { archive.setDiscoveryReview(discovery.id, ReviewDisposition.PENDING, any()) }
+    }
+
     private fun buildModel(
         updatesRepository: FakeUpdatesRepository = FakeUpdatesRepository(),
         chapterRepository: FakeChapterRepository = FakeChapterRepository(),
         mangaRepository: FakeMangaRepository = FakeMangaRepository(),
         isDownloaded: (UpdatesWithRelations) -> Boolean = { false },
         enqueueDownload: (DownloadItem) -> Unit = {},
+        creatorArchiveRepository: CreatorArchiveRepository? = null,
     ): UpdatesScreenModel {
         return UpdatesScreenModel(
             getUpdates = GetUpdates(updatesRepository),
@@ -187,8 +221,26 @@ class UpdatesScreenModelTest {
                     override fun recover() = emptyList<DownloadQueueEntry>()
                 },
             ),
+            creatorArchiveRepository = creatorArchiveRepository,
         )
     }
+
+    private fun sampleDiscovery() = ArchiveDiscovery(
+        id = 91L,
+        creatorId = 7L,
+        sourceWork = SourceWorkNaturalKey(11L, "/new"),
+        title = "New work",
+        kind = DiscoveryKind.NEW_WORK_CANDIDATE,
+        reason = "verified",
+        baselineGeneration = 1L,
+        state = DiscoveryStateVector(
+            DiscoveryReadState.UNSEEN,
+            ReviewDisposition.PENDING,
+            NotificationDeliveryState.DELIVERED,
+        ),
+        firstDiscoveredAt = 100L,
+        lastModifiedAt = 100L,
+    )
 
     private fun sampleUpdate(
         chapterId: Long = 1L,

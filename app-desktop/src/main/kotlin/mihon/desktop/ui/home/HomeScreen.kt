@@ -1,12 +1,15 @@
 package mihon.desktop.ui.home
 
 import mihon.desktop.LocalDesktopUiDependencies
+import tachiyomi.i18n.MR
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -14,6 +17,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -28,6 +32,7 @@ import androidx.compose.ui.Modifier
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
+import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.CurrentTab
 import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
@@ -38,6 +43,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.flowOf
 import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.network.CloudflareChallenge
 import mihon.desktop.network.ChallengeRecoveryAction
@@ -45,6 +51,7 @@ import mihon.desktop.network.ChallengeRecoveryIntent
 import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.ui.browse.BrowseTab
 import mihon.desktop.ui.authors.AuthorsTab
+import mihon.desktop.ui.authors.AuthorDetailScreen
 import mihon.desktop.ui.cloudflare.CloudflareBypassDialog
 import mihon.desktop.ui.cloudflare.DesktopChallengeHomeAction
 import mihon.desktop.ui.cloudflare.DesktopChallengeHomeActionAdapter
@@ -67,8 +74,12 @@ class HomeScreen : Screen {
     override fun Content() {
         var activeChallenge by remember { mutableStateOf<CloudflareChallenge?>(null) }
         val dependencies = LocalDesktopUiDependencies.current
+        val navigator = LocalNavigator.currentOrThrow
         val challengePort = dependencies.challengeUiPort
         val notificationService = dependencies.notificationService
+        val authorDiscoveries by remember(dependencies.creatorArchiveRepository) {
+            dependencies.creatorArchiveRepository?.observeUnreadDiscoveries(100L) ?: flowOf(emptyList())
+        }.collectAsState(emptyList())
         val controller = remember(challengePort, dependencies.challengeBrowserLoginBridge, dependencies.appPreferences) {
             DesktopChallengeLoginController(
                 challengePort,
@@ -109,7 +120,13 @@ class HomeScreen : Screen {
                 } else {
                     notification.message
                 }
-                snackbarHostState.showSnackbar(message = msg)
+                val result = snackbarHostState.showSnackbar(
+                    message = msg,
+                    actionLabel = notification.creatorId?.let { MR.strings.action_open.localized() },
+                )
+                if (result == SnackbarResult.ActionPerformed) {
+                    notification.creatorId?.let { navigator.push(AuthorDetailScreen(it)) }
+                }
             }
         }
 
@@ -194,7 +211,7 @@ class HomeScreen : Screen {
                         if (!ReaderModeState.isInReaderMode) {
                             NavigationBar {
                                 TabNavigationItem(LibraryTab)
-                                TabNavigationItem(UpdatesTab)
+                                TabNavigationItem(UpdatesTab, badgeCount = authorDiscoveries.size)
                                 TabNavigationItem(HistoryTab)
                                 TabNavigationItem(BrowseTab)
                                 TabNavigationItem(AuthorsTab)
@@ -248,14 +265,20 @@ internal class ExternalActionFeedbackDispatcher(
 }
 
 @Composable
-private fun RowScope.TabNavigationItem(tab: Tab) {
+private fun RowScope.TabNavigationItem(tab: Tab, badgeCount: Int = 0) {
     val tabNavigator = LocalTabNavigator.current
     NavigationBarItem(
         selected = tabNavigator.current == tab,
         onClick = { tabNavigator.current = tab },
         icon = {
             tab.options.icon?.let { painter ->
-                Icon(painter = painter, contentDescription = tab.options.title)
+                if (badgeCount > 0) {
+                    BadgedBox(badge = { Badge { Text(badgeCount.coerceAtMost(99).toString()) } }) {
+                        Icon(painter = painter, contentDescription = tab.options.title)
+                    }
+                } else {
+                    Icon(painter = painter, contentDescription = tab.options.title)
+                }
             }
         },
         label = { Text(tab.options.title) },

@@ -566,9 +566,9 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 #### `AA3-02` 将作者新发现接入 Desktop Updates、badge 与通知 deep link
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `N/A：复用 AA3-01 feed/outbox` · Android `N/A：AA7-01` · Desktop/UI `[ ]` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`IN_PROGRESS（Windows 已验收，Android 延后）` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `N/A：复用 AA3-01 feed/outbox` · Android `N/A：AA7-01` · Desktop/UI `[x]` · Legacy/Migration `[x]：持久事件不再依赖 SharedFlow` · Review `[x]：主代理收口核对` · Verify `[x]：Windows focused` · Evidence `[x]` · Commit `[x]：本行所在提交`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `Android 产品入口按用户指示延后到 Windows 全部完成后` · 审查 `复用 Updates ScreenModel/Navigator，未新建重复 feed；作者详情承担加入书架/绑定后续动作` · 验证 `aa302-red 正确 RED；aa302-green3 ScreenModel/通知 PASS；aa302-focused ScreenModel、通知 route、Updates navigation/smoke PASS` · 运行产物 `章节+作者发现日期 timeline、作者筛选、未读 badge、新作品/新源版本分类、详情跳转、已读、忽略/撤销、in-app 通知稳定 creator route` · Commit `本行所在提交`
 
 - 依赖：`AA3-01`；扩展 `UP-01` 的 feed item/action contract，不复制章节 Updates model。
 - RED：作者 filter、未读 badge、日期分组、新作品/新源版本分组、打开 source/work、加入书架、绑定、忽略/撤销、已读、删除目标、动作 partial failure、通知点击导航类型与 owner close。

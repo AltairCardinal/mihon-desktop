@@ -13,6 +13,10 @@ import mihon.domain.download.IsChapterDownloaded
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
+import tachiyomi.domain.creator.model.ArchiveDiscovery
+import tachiyomi.domain.creator.model.DiscoveryReadState
+import tachiyomi.domain.creator.model.ReviewDisposition
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.updates.interactor.GetUpdates
 import tachiyomi.domain.updates.model.UpdatesWithRelations
@@ -30,10 +34,14 @@ data class UpdatesState(
     val filterStarted: TriState = TriState.DISABLED,
     val filterBookmarked: TriState = TriState.DISABLED,
     val filterExcludedScanlators: Boolean = false,
+    val creatorDiscoveries: List<ArchiveDiscovery> = emptyList(),
+    val showCreatorDiscoveries: Boolean = true,
 ) {
+    val unreadDiscoveryCount: Int get() = creatorDiscoveries.count { it.state.readState == DiscoveryReadState.UNSEEN }
+
     val hasActiveFilters: Boolean
         get() = listOf(filterUnread, filterDownloaded, filterStarted, filterBookmarked)
-            .any { it != TriState.DISABLED } || filterExcludedScanlators
+            .any { it != TriState.DISABLED } || filterExcludedScanlators || !showCreatorDiscoveries
 }
 
 data class UpdatesReaderRequest(
@@ -54,6 +62,7 @@ class UpdatesScreenModel(
     private val updatesPreferences: UpdatesPreferences,
     private val isChapterDownloaded: IsChapterDownloaded,
     private val enqueueDownload: EnqueueDownload,
+    private val creatorArchiveRepository: CreatorArchiveRepository? = null,
 ) : ScreenModel {
 
     private var rawItems: List<UpdatesWithRelations> = emptyList()
@@ -78,6 +87,8 @@ class UpdatesScreenModel(
             bookmarked = filters.filterBookmarked.toBooleanOrNull(),
             hideExcludedScanlators = filters.filterExcludedScanlators,
         ).first()
+        val discoveries = creatorArchiveRepository?.getDiscoveries(DISCOVERY_LIMIT).orEmpty()
+        _state.update { it.copy(creatorDiscoveries = discoveries) }
         applyVisibleItems()
     }
 
@@ -100,15 +111,53 @@ class UpdatesScreenModel(
 
     suspend fun markAllRead() {
         val unreadItems = state.value.items.filter { !it.read }
+        val unreadDiscoveries = state.value.creatorDiscoveries.filter {
+            it.state.readState == DiscoveryReadState.UNSEEN
+        }
         updateChapter.awaitAll(unreadItems.map { ChapterUpdate(id = it.chapterId, read = true) })
+        creatorArchiveRepository?.markDiscoveriesSeen(unreadDiscoveries.mapTo(mutableSetOf(), ArchiveDiscovery::id), now())
         val unreadIds = unreadItems.map { it.chapterId }.toSet()
+        val unreadDiscoveryIds = unreadDiscoveries.mapTo(mutableSetOf(), ArchiveDiscovery::id)
         rawItems = rawItems.map { if (it.chapterId in unreadIds) it.copy(read = true) else it }
         _state.update {
             it.copy(
                 items = it.items.map { item -> if (item.chapterId in unreadIds) item.copy(read = true) else item },
+                creatorDiscoveries = it.creatorDiscoveries.map { discovery ->
+                    if (discovery.id in unreadDiscoveryIds) {
+                        discovery.copy(state = discovery.state.copy(readState = DiscoveryReadState.SEEN))
+                    } else {
+                        discovery
+                    }
+                },
                 showMarkAllReadDialog = false,
             )
         }
+    }
+
+    suspend fun markDiscoverySeen(discovery: ArchiveDiscovery) {
+        if (discovery.state.readState == DiscoveryReadState.SEEN) return
+        creatorArchiveRepository?.markDiscoverySeen(discovery.id, now())
+        updateDiscovery(discovery.id) {
+            it.copy(state = it.state.copy(readState = DiscoveryReadState.SEEN))
+        }
+    }
+
+    suspend fun ignoreDiscovery(discovery: ArchiveDiscovery) {
+        creatorArchiveRepository?.setDiscoveryReview(discovery.id, ReviewDisposition.IGNORED, now())
+        updateDiscovery(discovery.id) {
+            it.copy(state = it.state.copy(reviewDisposition = ReviewDisposition.IGNORED))
+        }
+    }
+
+    suspend fun undoDiscoveryReview(discovery: ArchiveDiscovery) {
+        creatorArchiveRepository?.setDiscoveryReview(discovery.id, ReviewDisposition.PENDING, now())
+        updateDiscovery(discovery.id) {
+            it.copy(state = it.state.copy(reviewDisposition = ReviewDisposition.PENDING))
+        }
+    }
+
+    fun toggleCreatorDiscoveries() {
+        _state.update { it.copy(showCreatorDiscoveries = !it.showCreatorDiscoveries) }
     }
 
     suspend fun markRead(item: UpdatesWithRelations) {
@@ -199,6 +248,18 @@ class UpdatesScreenModel(
                 },
             )
         }
+    }
+
+    private fun updateDiscovery(id: Long, transform: (ArchiveDiscovery) -> ArchiveDiscovery) {
+        _state.update { state ->
+            state.copy(creatorDiscoveries = state.creatorDiscoveries.map { if (it.id == id) transform(it) else it })
+        }
+    }
+
+    private fun now(): Long = System.currentTimeMillis()
+
+    private companion object {
+        const val DISCOVERY_LIMIT = 200L
     }
 }
 

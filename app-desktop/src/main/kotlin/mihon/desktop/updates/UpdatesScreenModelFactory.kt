@@ -18,6 +18,7 @@ object UpdatesScreenModelFactory {
             updatesPreferences = Injekt.get<UpdatesPreferences>(),
             isChapterDownloaded = Injekt.get<IsChapterDownloaded>(),
             enqueueDownload = Injekt.get<EnqueueDownload>(),
+            creatorArchiveRepository = Injekt.get<tachiyomi.domain.creator.repository.CreatorArchiveRepository>(),
         )
     }
 }

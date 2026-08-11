@@ -30,4 +30,5 @@ class DesktopNotificationService {
 data class DesktopNotification(
     val title: String,
     val message: String,
+    val creatorId: Long? = null,
 )

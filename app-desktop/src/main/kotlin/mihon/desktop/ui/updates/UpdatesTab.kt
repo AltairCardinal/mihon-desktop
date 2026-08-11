@@ -60,9 +60,14 @@ import cafe.adriel.voyager.navigator.tab.TabOptions
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import mihon.desktop.ui.reader.DesktopReaderScreen
+import mihon.desktop.ui.authors.AuthorDetailScreen
 import mihon.desktop.updates.UpdatesScreenModelFactory
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.updates.model.UpdatesWithRelations
+import tachiyomi.domain.creator.model.ArchiveDiscovery
+import tachiyomi.domain.creator.model.DiscoveryKind
+import tachiyomi.domain.creator.model.DiscoveryReadState
+import tachiyomi.domain.creator.model.ReviewDisposition
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -113,7 +118,7 @@ class UpdatesRootScreen : Screen {
                     Text(
                         MR.strings.desktop_ui_mark_updates_read.localized(
                             Locale.getDefault(),
-                            state.items.count { !it.read },
+                            state.items.count { !it.read } + state.unreadDiscoveryCount,
                         ),
                     )
                 },
@@ -137,6 +142,7 @@ class UpdatesRootScreen : Screen {
                 filterStarted = state.filterStarted,
                 filterBookmarked = state.filterBookmarked,
                 filterExcludedScanlators = state.filterExcludedScanlators,
+                showCreatorDiscoveries = state.showCreatorDiscoveries,
                 onToggleUnread = {
                     scope.launch { model.toggleUnreadFilter() }
                 },
@@ -152,6 +158,7 @@ class UpdatesRootScreen : Screen {
                 onToggleExcludedScanlators = {
                     scope.launch { model.toggleExcludedScanlatorsFilter() }
                 },
+                onToggleCreatorDiscoveries = model::toggleCreatorDiscoveries,
                 onDismiss = { model.setShowFilterDialog(false) },
             )
         }
@@ -192,7 +199,7 @@ class UpdatesRootScreen : Screen {
                     }
                 }
                 // Mark all as read — only shown when unread items exist
-                val hasUnread = state.items.any { !it.read }
+                val hasUnread = state.items.any { !it.read } || state.unreadDiscoveryCount > 0
                 if (hasUnread) {
                     TooltipBox(
                         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
@@ -227,7 +234,10 @@ class UpdatesRootScreen : Screen {
                 }
             }
 
-            val listItems = remember(state.items) { buildUpdatesListItems(state.items) }
+            val visibleDiscoveries = if (state.showCreatorDiscoveries) state.creatorDiscoveries else emptyList()
+            val listItems = remember(state.items, visibleDiscoveries) {
+                buildUpdatesListItems(state.items, visibleDiscoveries)
+            }
 
             if (listItems.isEmpty()) {
                 Box(
@@ -260,12 +270,14 @@ class UpdatesRootScreen : Screen {
                             when (item) {
                                 is UpdatesListItem.Header -> "header-${item.label}"
                                 is UpdatesListItem.Entry -> item.update.chapterId
+                                is UpdatesListItem.DiscoveryEntry -> "discovery-${item.discovery.id}"
                             }
                         },
                         contentType = { item ->
                             when (item) {
                                 is UpdatesListItem.Header -> "header"
                                 is UpdatesListItem.Entry -> "entry"
+                                is UpdatesListItem.DiscoveryEntry -> "discovery"
                             }
                         },
                     ) { item ->
@@ -300,6 +312,18 @@ class UpdatesRootScreen : Screen {
                                     }
                                 },
                             )
+                            is UpdatesListItem.DiscoveryEntry -> DiscoveryItem(
+                                discovery = item.discovery,
+                                onOpen = {
+                                    scope.launch {
+                                        model.markDiscoverySeen(item.discovery)
+                                        navigator.push(AuthorDetailScreen(item.discovery.creatorId))
+                                    }
+                                },
+                                onMarkRead = { scope.launch { model.markDiscoverySeen(item.discovery) } },
+                                onIgnore = { scope.launch { model.ignoreDiscovery(item.discovery) } },
+                                onUndo = { scope.launch { model.undoDiscoveryReview(item.discovery) } },
+                            )
                         }
                     }
                 }
@@ -317,11 +341,13 @@ private fun UpdatesFilterDialog(
     filterStarted: TriState,
     filterBookmarked: TriState,
     filterExcludedScanlators: Boolean,
+    showCreatorDiscoveries: Boolean,
     onToggleUnread: () -> Unit,
     onToggleDownloaded: () -> Unit,
     onToggleStarted: () -> Unit,
     onToggleBookmarked: () -> Unit,
     onToggleExcludedScanlators: () -> Unit,
+    onToggleCreatorDiscoveries: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
@@ -334,6 +360,17 @@ private fun UpdatesFilterDialog(
                 TriStateFilterRow(MR.strings.desktop_ui_started.localized(), filterStarted, onToggleStarted)
                 TriStateFilterRow(MR.strings.desktop_ui_bookmarked.localized(), filterBookmarked, onToggleBookmarked)
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onToggleCreatorDiscoveries)
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(MR.strings.desktop_ui_author_discoveries.localized(), style = MaterialTheme.typography.bodyMedium)
+                    Switch(checked = showCreatorDiscoveries, onCheckedChange = { onToggleCreatorDiscoveries() })
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -484,18 +521,65 @@ private fun UpdateItem(
     }
 }
 
+@Composable
+private fun DiscoveryItem(
+    discovery: ArchiveDiscovery,
+    onOpen: () -> Unit,
+    onMarkRead: () -> Unit,
+    onIgnore: () -> Unit,
+    onUndo: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    if (discovery.kind == DiscoveryKind.NEW_SOURCE_VERSION) {
+                        MR.strings.desktop_ui_new_source_version.localized()
+                    } else {
+                        MR.strings.desktop_ui_new_work_candidate.localized()
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(discovery.title, style = MaterialTheme.typography.titleSmall)
+                Text(discovery.reason, style = MaterialTheme.typography.bodySmall)
+            }
+            if (discovery.state.readState == DiscoveryReadState.UNSEEN) {
+                TextButton(onClick = onMarkRead) { Text(MR.strings.action_mark_as_read.localized()) }
+            }
+            if (discovery.state.reviewDisposition == ReviewDisposition.IGNORED) {
+                TextButton(onClick = onUndo) { Text(MR.strings.action_undo.localized()) }
+            } else {
+                TextButton(onClick = onIgnore) { Text(MR.strings.action_ignore.localized()) }
+            }
+        }
+    }
+}
+
 // ── Date-grouped list items ────────────────────────────────────────────────────
 
 private sealed interface UpdatesListItem {
     data class Header(val label: String) : UpdatesListItem
     data class Entry(val update: UpdatesWithRelations) : UpdatesListItem
+    data class DiscoveryEntry(val discovery: ArchiveDiscovery) : UpdatesListItem
 }
 
-private fun buildUpdatesListItems(items: List<UpdatesWithRelations>): List<UpdatesListItem> {
+private fun buildUpdatesListItems(
+    items: List<UpdatesWithRelations>,
+    discoveries: List<ArchiveDiscovery>,
+): List<UpdatesListItem> {
     val today = LocalDate.now()
     val yesterday = today.minusDays(1)
-    val grouped = items.groupBy { item ->
-        Instant.ofEpochMilli(item.dateFetch).atZone(ZoneId.systemDefault()).toLocalDate()
+    val timeline = items.map { it.dateFetch to UpdatesListItem.Entry(it) } +
+        discoveries.map { it.firstDiscoveredAt to UpdatesListItem.DiscoveryEntry(it) }
+    val grouped = timeline.groupBy { (timestamp) ->
+        Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault()).toLocalDate()
     }
     return buildList {
         grouped.entries.sortedByDescending { it.key }.forEach { (date, updates) ->
@@ -505,7 +589,7 @@ private fun buildUpdatesListItems(items: List<UpdatesWithRelations>): List<Updat
                 else -> date.format(DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault()))
             }
             add(UpdatesListItem.Header(label))
-            updates.forEach { add(UpdatesListItem.Entry(it)) }
+            updates.sortedByDescending { it.first }.forEach { add(it.second) }
         }
     }
 }

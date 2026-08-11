@@ -47,6 +47,7 @@ fun desktopCreatorDiscoveryNotificationPort(
         DesktopNotification(
             title = "New author work",
             message = discovery.title,
+            creatorId = discovery.creatorId,
         ),
     )
     if (posted) CreatorDiscoveryDeliveryResult.Delivered else CreatorDiscoveryDeliveryResult.Unavailable(
