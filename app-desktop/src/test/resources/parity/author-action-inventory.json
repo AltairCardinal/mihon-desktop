@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "authority": "Author action truth only; parity-manifest.json remains capability authority",
+  "desiredBehaviorBaselines": [
+    {
+      "id": "authors-navigation",
+      "state": "recorded-red",
+      "coordinatorKey": "aa0-review-evidence-red",
+      "test": "NavigationContractTest#author entry creates a regular Screen target for the nested navigator",
+      "failureReason": "Mutating authorDetailScreenOrNull to disconnect the production target made the Screen assertion fail (expected true, was false)."
+    },
+    {
+      "id": "manual-discovery-call",
+      "state": "recorded-red",
+      "coordinatorKey": "aa0-review-evidence-red",
+      "test": "AuthorDetailBehaviorTest#manual discovery interactor executes production service before reloading details",
+      "failureReason": "Removing the production discovery call reduced repository getCreator calls from two to one and failed MockK verification."
+    },
+    {
+      "id": "review-preserving-upsert",
+      "state": "recorded-red",
+      "coordinatorKey": "aa0-01-product-gaps-red",
+      "test": "CreatorRepositoryImplTest#repeated discovery upsert preserves reviewed state and does not create a second row",
+      "failureReason": "A repeated legacy upsert returned NEW instead of preserving IGNORED; the temporary desired-behavior test was removed for AA1-02."
+    },
+    {
+      "id": "late-notification-collector",
+      "state": "recorded-red",
+      "coordinatorKey": "aa0-01-product-gaps-red",
+      "test": "NotificationServiceTest#committed author discovery remains available when UI collector starts later",
+      "failureReason": "The replay-zero flow returned null when the collector started after emission; the temporary desired-behavior test was removed for AA3-01."
+    },
+    {
+      "id": "compare-route",
+      "state": "recorded-red",
+      "coordinatorKey": "aa0-review-evidence-red",
+      "test": "AuthorDetailBehaviorTest#candidate compare action uses the production comparison screen",
+      "failureReason": "A temporary production route probe returned MangaDetailScreen, so the WorkCompareScreen assertion failed (expected true, was false); the probe was removed for AA4-02."
+    },
+    {
+      "id": "decision-safety-gate",
+      "state": "recorded-red",
+      "coordinatorKey": "aa0-review-evidence-red",
+      "test": "AuthorActionInventoryContractTest#inventory rejects false completion missing follow up and unsafe decision feedback",
+      "failureReason": "Removing the executable confirmation-or-reversal guard caused assertThrows to fail because an unsafe covered decision was accepted."
+    }
+  ],
+  "actions": [
+    {
+      "id": "index",
+      "status": "partial",
+      "followUpTasks": ["AA1-01"],
+      "gapReason": "Authors navigation and repository-backed rows exist, but there is no library-wide backfill, multi-author split, progress, or mounted UI production runner.",
+      "ENTRY": {"state":"covered","productionEdge":"MangaDetailNavigation.authorDetailScreenOrNull → AuthorDetailScreen","runnerTest":"mihon.desktop.ui.NavigationContractTest#author entry creates a regular Screen target for the nested navigator"},
+      "EFFECT": {"state":"covered","productionEdge":"GetCreators/GetCreatorDetails → CreatorRepository","runnerTest":"mihon.desktop.ui.authors.AuthorDetailBehaviorTest#author production interactors preserve list details candidate and follow behavior"},
+      "FEEDBACK": {"state":"unverified","productionEdge":"AuthorsRootScreen list and empty state","runnerTest":""},
+      "CONFIRMATION": {"state":"not-applicable","productionEdge":"Read-only navigation and projection","runnerTest":""},
+      "REVERSAL": {"state":"not-applicable","productionEdge":"Read-only navigation and projection has no decision to undo","runnerTest":""},
+      "redBaseline": {"state":"recorded-red","test":"AuthorActionInventoryContractTest#inventory rejects false completion missing follow up and unsafe decision feedback","failureReason":"Marking index covered is rejected because mounted feedback remains unverified."}
+    },
+    {
+      "id": "follow",
+      "status": "partial",
+      "followUpTasks": ["AA1-03", "AA3-03"],
+      "gapReason": "The watch mutation persists, but source/result policy, typed failure, confirmation/reversible failure feedback, and mounted UI wiring are incomplete.",
+      "ENTRY": {"state":"unverified","productionEdge":"AuthorDetailScreen follow button","runnerTest":""},
+      "EFFECT": {"state":"covered","productionEdge":"SetCreatorFollow → CreatorRepository.followCreator/unfollowCreator","runnerTest":"mihon.desktop.ui.authors.AuthorDetailBehaviorTest#author production interactors preserve list details candidate and follow behavior"},
+      "FEEDBACK": {"state":"unverified","productionEdge":"AuthorDetailScreen reactive follow/unfollow label","runnerTest":""},
+      "CONFIRMATION": {"state":"not-applicable","productionEdge":"Follow and unfollow are directly reversible","runnerTest":""},
+      "REVERSAL": {"state":"not-applicable","productionEdge":"Follow and unfollow are inverse watch commands outside the decision safety gate","runnerTest":""},
+      "redBaseline": {"state":"recorded-red","test":"AuthorActionInventoryContractTest#inventory rejects false completion missing follow up and unsafe decision feedback","failureReason":"The inventory cannot remove follow-up debt while entry and feedback remain unverified."}
+    },
+    {
+      "id": "manual-scan",
+      "status": "partial",
+      "followUpTasks": ["AA2-01", "AA2-02", "AA3-03"],
+      "gapReason": "The production interactor calls discovery and reloads details, but source selection is unbounded and the UI has no typed partial-failure, cancellation, baseline, or truncation feedback.",
+      "ENTRY": {"state":"unverified","productionEdge":"AuthorDetailScreen refresh action and collect-on-open branch","runnerTest":""},
+      "EFFECT": {"state":"covered","productionEdge":"DiscoverCreatorWorks → CreatorDiscoveryService → CreatorRepository","runnerTest":"mihon.desktop.ui.authors.AuthorDetailBehaviorTest#manual discovery interactor executes production service before reloading details"},
+      "FEEDBACK": {"state":"unverified","productionEdge":"AuthorDetailScreen checking indicator and candidate count","runnerTest":""},
+      "CONFIRMATION": {"state":"not-applicable","productionEdge":"Bounded read-only discovery will be cancellable","runnerTest":""},
+      "REVERSAL": {"state":"not-applicable","productionEdge":"Read-only discovery does not persist a user decision","runnerTest":""},
+      "redBaseline": {"state":"recorded-red","test":"AuthorActionInventoryContractTest#inventory rejects false completion missing follow up and unsafe decision feedback","failureReason":"Manual scan stays partial until mounted entry and typed terminal feedback are covered."}
+    },
+    {
+      "id": "auto-scan",
+      "status": "partial",
+      "followUpTasks": ["AA2-03"],
+      "gapReason": "LibraryUpdateScheduler invokes discovery only after a successful library update, swallows discovery failure, and has no independent due/lease/recovery lifecycle.",
+      "ENTRY": {"state":"unverified","productionEdge":"LibraryUpdateScheduler library-success callback","runnerTest":""},
+      "EFFECT": {"state":"unverified","productionEdge":"LibraryUpdateScheduler discoverCreators callback","runnerTest":""},
+      "FEEDBACK": {"state":"unverified","productionEdge":"Transient author discovery notification after library update","runnerTest":""},
+      "CONFIRMATION": {"state":"not-applicable","productionEdge":"Background read-only task with explicit cancellation contract","runnerTest":""},
+      "REVERSAL": {"state":"not-applicable","productionEdge":"Background discovery does not persist a user decision","runnerTest":""},
+      "redBaseline": {"state":"recorded-red","test":"LibraryUpdateRecoveryIntegrationTest#failed library item does not suppress due creator discovery","failureReason":"Desired behavior fails because discovery is inside the library-success-only branch."}
+    },
+    {
+      "id": "feed",
+      "status": "gap",
+      "followUpTasks": ["AA3-01", "AA3-02"],
+      "gapReason": "There is no persistent discovery inbox, unread state, Updates projection, or restart recovery; replay-zero notification flow is not a fact store.",
+      "ENTRY": {"state":"missing","productionEdge":"","runnerTest":""},
+      "EFFECT": {"state":"missing","productionEdge":"","runnerTest":""},
+      "FEEDBACK": {"state":"missing","productionEdge":"","runnerTest":""},
+      "CONFIRMATION": {"state":"not-applicable","productionEdge":"Feed read/open actions are non-destructive","runnerTest":""},
+      "REVERSAL": {"state":"not-applicable","productionEdge":"Feed read/open actions do not change match or language decisions","runnerTest":""},
+      "redBaseline": {"state":"recorded-red","test":"NotificationServiceTest#committed author discovery remains available when UI collector starts later","failureReason":"A reminder emitted before the collector is lost because SharedFlow has replay zero and no persistent feed."}
+    },
+    {
+      "id": "group",
+      "status": "gap",
+      "followUpTasks": ["AA4-01", "AA4-02"],
+      "gapReason": "Canonical tables and scorer have no production matcher, grouped projection, or reachable comparison UI.",
+      "ENTRY": {"state":"missing","productionEdge":"","runnerTest":""},
+      "EFFECT": {"state":"missing","productionEdge":"","runnerTest":""},
+      "FEEDBACK": {"state":"missing","productionEdge":"","runnerTest":""},
+      "CONFIRMATION": {"state":"not-applicable","productionEdge":"Viewing a suggestion is read-only","runnerTest":""},
+      "REVERSAL": {"state":"not-applicable","productionEdge":"Viewing a suggestion does not persist a decision","runnerTest":""},
+      "redBaseline": {"state":"recorded-red","test":"AuthorsProductionWiringTest#candidate compare action pushes WorkCompareScreen and renders persisted candidate","failureReason":"Candidates currently open MangaDetailScreen and WorkCompareScreen has no production push."}
+    },
+    {
+      "id": "confirm",
+      "status": "gap",
+      "followUpTasks": ["AA4-02"],
+      "gapReason": "No production command, durable manual decision, confirmation UI, or success/failure feedback exists.",
+      "ENTRY": {"state":"missing","productionEdge":"","runnerTest":""},
+      "EFFECT": {"state":"missing","productionEdge":"","runnerTest":""},
+      "FEEDBACK": {"state":"missing","productionEdge":"","runnerTest":""},
+      "CONFIRMATION": {"state":"missing","productionEdge":"","runnerTest":""},
+      "REVERSAL": {"state":"missing","productionEdge":"","runnerTest":""},
+      "redBaseline": {"state":"recorded-red","test":"AuthorActionInventoryContractTest#inventory rejects false completion missing follow up and unsafe decision feedback","failureReason":"A decision action cannot become complete without confirmation or reversible feedback."}
+    },
+    {
+      "id": "reject",
+      "status": "gap",
+      "followUpTasks": ["AA4-02"],
+      "gapReason": "No durable rejection history, explicit undo, production entry, or observable terminal result exists.",
+      "ENTRY": {"state":"missing","productionEdge":"","runnerTest":""},
+      "EFFECT": {"state":"missing","productionEdge":"","runnerTest":""},
+      "FEEDBACK": {"state":"missing","productionEdge":"","runnerTest":""},
+      "CONFIRMATION": {"state":"missing","productionEdge":"","runnerTest":""},
+      "REVERSAL": {"state":"missing","productionEdge":"","runnerTest":""},
+      "redBaseline": {"state":"recorded-red","test":"AuthorActionInventoryContractTest#inventory rejects false completion missing follow up and unsafe decision feedback","failureReason":"Reject remains a gap until a manual decision and undo/confirmation chain exists."}
+    },
+    {
+      "id": "language-override",
+      "status": "gap",
+      "followUpTasks": ["AA5-01", "AA5-02"],
+      "gapReason": "The UI exposes a guessed single language label only; no dimension-specific manual assertion, audit history, undo, or projection exists.",
+      "ENTRY": {"state":"missing","productionEdge":"","runnerTest":""},
+      "EFFECT": {"state":"missing","productionEdge":"","runnerTest":""},
+      "FEEDBACK": {"state":"missing","productionEdge":"","runnerTest":""},
+      "CONFIRMATION": {"state":"missing","productionEdge":"","runnerTest":""},
+      "REVERSAL": {"state":"missing","productionEdge":"","runnerTest":""},
+      "redBaseline": {"state":"recorded-red","test":"AuthorActionInventoryContractTest#inventory rejects false completion missing follow up and unsafe decision feedback","failureReason":"A language override cannot become complete without explicit scope and reversible feedback."}
+    },
+    {
+      "id": "chapter-compare",
+      "status": "gap",
+      "followUpTasks": ["AA6-01"],
+      "gapReason": "ChapterVariantNormalizer is test-only and no production chapter fetch, persistence, grouped difference projection, or UI entry exists.",
+      "ENTRY": {"state":"missing","productionEdge":"","runnerTest":""},
+      "EFFECT": {"state":"missing","productionEdge":"","runnerTest":""},
+      "FEEDBACK": {"state":"missing","productionEdge":"","runnerTest":""},
+      "CONFIRMATION": {"state":"not-applicable","productionEdge":"Comparison is read-only and unknown values remain explicit","runnerTest":""},
+      "REVERSAL": {"state":"not-applicable","productionEdge":"Comparison does not persist a match decision","runnerTest":""},
+      "redBaseline": {"state":"recorded-red","test":"AuthorActionInventoryContractTest#inventory rejects false completion missing follow up and unsafe decision feedback","failureReason":"Chapter comparison stays a gap while all three required production roles are missing."}
+    }
+  ]
+}

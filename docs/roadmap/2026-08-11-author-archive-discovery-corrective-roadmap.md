@@ -1,22 +1,22 @@
 ---
 parent-plan: 2026-06-30-mihon-desktop-refactor-roadmap.md
-status: planned
+status: in_progress
 ---
 
 # 作者作品聚合、新作提醒与语言证据闭环 Roadmap
 
 - 制定日期：2026-08-11
-- 状态：`PLANNED`（尚未激活，不改变父路线当前唯一 `active-child-plan`）
+- 状态：`IN_PROGRESS`（父路线当前唯一 `active-child-plan`）
 - 产品规格：[`author-archive-discovery-plan.md`](../author-archive-discovery-plan.md)
 - 审计基线：`main@024212ac6`（2026-08-11，只读审计）
 - 上级路线：[`2026-06-30-mihon-desktop-refactor-roadmap.md`](./2026-06-30-mihon-desktop-refactor-roadmap.md)
-- 协调计划：[`2026-08-02-mihon-desktop-non-reader-upstream-core-roadmap.md`](./2026-08-02-mihon-desktop-non-reader-upstream-core-roadmap.md)（当前活动计划，本计划激活前不得并行施工）
+- 协调计划：[`2026-08-02-mihon-desktop-non-reader-upstream-core-roadmap.md`](./2026-08-02-mihon-desktop-non-reader-upstream-core-roadmap.md)（已在 `NR0-01.F3` 前安全暂停；本文施工期间不得并行修改其范围）
 - 机器状态权威：[`parity-manifest.json`](../../app-desktop/src/test/resources/parity/parity-manifest.json) 继续只负责其 capability 状态；本文不创建第二份 capability 状态源
 - 当前进度：激活后从第 9 节第一个未勾选顶层任务推导，不另设 `active-task`
 
 本文把 2026-08-11 审计确认的“可运行原型”推进到产品规格定义的完整闭环。产品语义、用户承诺和非目标仍以产品规格为准；本文是唯一的纠偏施工顺序与任务状态来源。产品规格中的“阶段 1–6”不再表示实现进度，也不得用于宣称功能完成。
 
-制定本文时，父路线仍把非 Reader 核心计划列为唯一活动 child plan，因此本计划只登记为顶层 sibling `PLANNED`。激活机制只有一种：在同一个治理提交中记录非 Reader 计划的安全停止点并将其文档状态改为 `PAUSED`，把父路线唯一 `active-child-plan` 切换到本文，再把本文 frontmatter/正文状态改为 `IN_PROGRESS`。三步未原子完成前不得开始 `AA0-01`，也不得让两份计划同时声称正在施工。当前工作树中与本计划无关的改动不属于实现证据，也不得被回滚或纳入后续功能提交。
+本文于 2026-08-11 原子激活：非 Reader 核心计划在 `NR0-01.F3（TODO，尚未开始）` 前记录安全停止点并改为 `PAUSED`，父路线唯一 `active-child-plan` 切换到本文，本文 frontmatter/正文同步改为 `IN_PROGRESS`。恢复非 Reader 计划时必须反向执行同一套唯一活动计划切换。当前工作树中与本计划无关的改动不属于实现证据，也不得被回滚或纳入后续功能提交。
 
 ## 1. 执行结论与最终完成定义
 
@@ -62,7 +62,7 @@ status: planned
 | 本 Roadmap | 纠偏顺序、依赖、任务状态、迁移/回滚、阶段门禁 | 复制 parity capability 状态 |
 | `parity-manifest.json` 与 Test Mode inventory | 已登记 capability 和运行证据的机器权威 | 仅凭一条 Authors helper 测试宣称本产品闭环完成 |
 
-`test-mode-coverage-inventory.json` 当前把 `authors-entry` 标为 `covered`，但 runner 只调用纯 helper。`AA0-01` 必须先把该证据改为真实 production 行为，或诚实降级为 partial；不得在 production 链尚未成立时继续沿用“covered”结论。
+`test-mode-coverage-inventory.json` 已在 `AA0-01` 把 `authors-entry` 从 helper-only `covered` 诚实降级为 `partial`；动作级事实由 [`author-action-inventory.json`](../../app-desktop/src/test/resources/parity/author-action-inventory.json) 管理，但它不接管 capability 状态。production 链尚未成立前不得再把该保护提升为 `covered`。
 
 产品规格只继续拥有目标、用户流程、诚实性边界和非目标。审计已经否定的物理表、唯一约束、单一 candidate state、单值语言优先级、library-success 后置回调和旧阶段/MVP 顺序，由本文及 `AA0-02` 后续 ADR 有限 supersede；原文保留为设计历史，不能覆盖新契约。
 
@@ -121,6 +121,34 @@ status: planned
 | 源协议 | 通用 `CatalogueSource` 搜索 | 无可选作者搜索或结构化元数据；旧扩展兼容门禁尚不存在 | `AA6-02` |
 | 备份与生命周期 | shared BackupCodec、双端备份流程 | 作者/关注/决定/人工语言/事件不在备份；缺 orphan 清理、删除策略和升级样本 | 各数据任务同步接入；`AA7-02` 最终审计 |
 | 测试证据 | domain/data 测试、导航/DI/调度测试框架 | 多个 data 表达式体测试未被 JUnit 发现；Authors permanent protection 只测 helper；Test Mode 无作者动作 | `AA0-01`、`AA7-03` |
+
+### 3.1 `AA0-01` 动作级事实 inventory
+
+机器 fixture 为 [`author-action-inventory.json`](../../app-desktop/src/test/resources/parity/author-action-inventory.json)。`covered` role 必须绑定可发现的 `void @Test` production runner；源码字符串、Class.forName、helper 和未挂载 Screen 只能标 `unverified`。影响自动判断的决定动作只有在 `CONFIRMATION` 或 `REVERSAL` 也绑定 executable production runner 后才能成为 `covered`。fixture 顶层 `desiredBehaviorBaselines` 固定本任务六条真实 RED；下表只给审查摘要，不是第二份状态权威。
+
+| Action | 当前事实 | ENTRY / EFFECT / FEEDBACK | 决定/危险反馈 | 后续任务 |
+| --- | --- | --- | --- | --- |
+| index | `PARTIAL` | 导航、repository effect 已测；挂载 UI/回填反馈未测 | N/A | `AA1-01` |
+| follow | `PARTIAL` | UI entry/反馈未挂载；follow effect 已测 | 可逆；失败反馈缺失 | `AA1-03`、`AA3-03` |
+| manual scan | `PARTIAL` | production interactor→service→repository 已测；按钮与 typed terminal 未测 | 可取消契约未实现 | `AA2-01`、`AA2-02`、`AA3-03` |
+| auto scan | `PARTIAL` | library-success callback 存在，但现有 runner 不证明回调被调用；独立入口/终态缺失 | 可取消/恢复未实现 | `AA2-03` |
+| feed | `GAP` | 持久 ENTRY/EFFECT/FEEDBACK 全缺 | read/open 非危险 | `AA3-01`、`AA3-02` |
+| group | `GAP` | grouped projection、可达 compare 全缺 | 查看非危险 | `AA4-01`、`AA4-02` |
+| confirm | `GAP` | entry、manual decision、终态全缺 | 必须确认或明确可撤销 | `AA4-02` |
+| reject | `GAP` | entry、decision history、undo 全缺 | 必须确认或明确可撤销 | `AA4-02` |
+| language override | `GAP` | 维度选择、manual assertion、投影全缺 | 必须说明范围并可撤销 | `AA5-01`、`AA5-02` |
+| chapter compare | `GAP` | fetch/store/projection/UI 全缺 | 查看非危险 | `AA6-01` |
+
+六条 RED 的日志不作为提交产物；以下稳定摘要与机器 fixture 共同保存可审计事实，临时 mutation/desired-behavior tests 均已撤回：
+
+| ID | 协调器键 / runner | 正确失败原因 |
+| --- | --- | --- |
+| authors-navigation | `aa0-review-evidence-red` / `NavigationContractTest#author entry creates a regular Screen target for the nested navigator` | 临时断开 `authorDetailScreenOrNull` 后 Screen 断言由 true 变 false |
+| manual-discovery-call | `aa0-review-evidence-red` / `AuthorDetailBehaviorTest#manual discovery interactor executes production service before reloading details` | 临时移除 discovery 调用后，repository `getCreator` 只发生 1 次而非 2 次 |
+| review-preserving-upsert | `aa0-01-product-gaps-red` / `CreatorRepositoryImplTest#repeated discovery upsert preserves reviewed state and does not create a second row` | 重复 upsert 把 `IGNORED` 覆盖成 `NEW`；留待 `AA1-02` |
+| late-notification-collector | `aa0-01-product-gaps-red` / `NotificationServiceTest#committed author discovery remains available when UI collector starts later` | collector 晚启动时 replay-zero Flow 返回 null；留待 `AA3-01` |
+| compare-route | `aa0-review-evidence-red` / `AuthorDetailBehaviorTest#candidate compare action uses the production comparison screen` | production route probe 返回 `MangaDetailScreen` 而非 `WorkCompareScreen`；留待 `AA4-02` |
+| decision-safety-gate | `aa0-review-evidence-red` / `AuthorActionInventoryContractTest#inventory rejects false completion missing follow up and unsafe decision feedback` | 临时移除 confirmation/reversal guard 后，unsafe covered decision 未抛出 AssertionError |
 
 ## 4. 目标架构与不可违反的规则
 
@@ -201,25 +229,34 @@ flowchart TD
 
 ```mermaid
 stateDiagram-v2
-    [*] --> BASELINE: 首次成功扫描
-    BASELINE --> UNSEEN: 后续首次发现且身份已验证
-    UNSEEN --> SEEN: 用户打开或显式标记
-    UNSEEN --> ACCEPTED: 加入书架或绑定作品
-    UNSEEN --> IGNORED: 忽略
-    SEEN --> ACCEPTED
-    SEEN --> IGNORED
-    IGNORED --> UNSEEN: 撤销忽略
+    [*] --> NEEDS_BASELINE: 新关注或新增源
+    NEEDS_BASELINE --> BASELINED: 该源首次成功扫描
 ```
 
-`POSSIBLE` 作者匹配不进入上述“新作”状态机，只显示在“可能相关”区域；用户确认作者身份后才能建立正式 discovery。
+baseline、read、review 和 delivery 是独立维度：
+
+```mermaid
+stateDiagram-v2
+    [*] --> UNSEEN: baseline 后首次合格发现
+    UNSEEN --> SEEN: 打开或显式标记
+```
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING: 创建 discovery
+    PENDING --> ACCEPTED: 加入书架或绑定作品
+    PENDING --> IGNORED: 忽略
+    IGNORED --> PENDING: 显式撤销
+```
+
+通知投递由 outbox 的 `PENDING/DELIVERED/FAILED/CANCELLED` 单独表达，不能修改 read/review。`POSSIBLE` 作者匹配不建立 discovery，只显示在“可能相关”区域；用户确认身份后才能进入 VERIFIED 关系。
 
 ```mermaid
 stateDiagram-v2
     [*] --> SUGGESTED: 评分与证据达到展示阈值
     SUGGESTED --> CONFIRMED: 用户确认或已确认外部 ID
     SUGGESTED --> REJECTED: 用户拒绝
-    CONFIRMED --> SPLIT: 用户确认拆分
-    SPLIT --> SUGGESTED: 重新评估
+    CONFIRMED --> SUGGESTED: 用户显式拆分/撤销
     REJECTED --> SUGGESTED: 用户显式撤销拒绝
 ```
 
@@ -233,7 +270,7 @@ stateDiagram-v2
 4. 把 `manga_work_matches` 的当前 `CONFIRMED` 映射为 version link；`REJECTED` 迁入 decision 表，不能因 `manga_id UNIQUE` 丢失对其他 work 的拒绝历史。
 5. 把现有 candidate 语言字段迁为自动 assertion，证据不可识别或 tag 非法时降为 `und/UNKNOWN`，不得伪造成高置信值。
 6. 迁移完成后运行引用完整性与重复检查；失败时事务回滚并禁用 v2 自动发现，UI 给出可诊断错误，不清空用户数据。
-7. `commonMain` 与 legacy `main` SQLDelight migration 目录当前版本不一致；`AA0-02` 必须先确定唯一 schema/migration 权威并建立 drift guard，禁止继续人工盲目镜像。
+7. `AA0-02` 已确定 `data/src/commonMain/sqldelight` 为唯一 schema/migration 权威，删除未参与构建且已漂移的 `src/main` 镜像，并由 `:data:verifySqlDelightAuthority` 阻止重建。
 8. legacy production 读取桥最多跨越相邻两个顶层任务，`AA4-02` 必须移除该 adapter；legacy 物理表和 migration tooling 保留到观察期结束，由 `AA7-02` 在备份兼容和升级样本通过后清理。
 
 ## 6. 可靠发现、基线与提醒契约
@@ -380,32 +417,32 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 ### Phase AA0：权威、失败基线与目标契约
 
-- [ ] `AA0-01` 建立动作级事实基线并修正虚假完成证据
-- [ ] `AA0-02` 冻结 v2 数据、状态机、source port 与迁移/回滚契约
+- [x] `AA0-01` 建立动作级事实基线并修正虚假完成证据
+- [x] `AA0-02` 冻结 v2 数据、状态机、source port 与迁移/回滚契约
 
 #### `AA0-01` 建立动作级事实基线并修正虚假完成证据
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `N/A：证据批次` · Android `[ ]` · Desktop/UI `[ ]` · Legacy/Migration `N/A` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`DONE` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `N/A：证据批次` · Android `[x]：无 UI/通知完成声明` · Desktop/UI `[x]：诚实降级` · Legacy/Migration `N/A` · Review `[x]` · Verify `[x]` · Evidence `[x]` · Commit `[x]：本行所在提交`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `—` · 审查 `首轮 CHANGES_REQUIRED 的 4 个 P1 已修复；修复复审 PASS，P0/P1/P2=0` · 验证 `aa0-01-data-green 9/9；aa0-01-inventory-green PASS；aa0-review-evidence-red 17 tests/4 expected failures；aa0-review-green PASS；aa0-related-green PASS；aa0-review-spotless PASS` · 运行产物 `author-action-inventory.json + JUnit XML；本批无用户可见构建` · Commit `本行所在提交`
 
 - 依赖：本计划被显式激活；与非 Reader 计划的活动状态不冲突。
 - RED：建立作者动作 inventory，至少覆盖 index/follow/manual scan/auto scan/feed/group/confirm/reject/language override/chapter compare；让断开的 Authors 导航、未调用 discovery、重复 upsert、丢失启动提醒和不可达 compare page 分别按正确原因失败。
 - GREEN：把 `authors-entry` 当前 helper-only evidence 降级为真实状态，或用执行 DI-owned ScreenModel/repository/task/feed 的测试替换；修正 data 中未被 JUnit 发现的表达式体测试，使所有 intended tests 被报告。
 - Android：只建立 shared service 调用与当前无 UI/通知反馈的真实基线，不伪造 feature complete。
-- 证据边界：字符串扫描只可发现候选路径，不能作为 behavior evidence；每个 action 至少绑定 ENTRY/EFFECT/FEEDBACK，危险动作还要 CONFIRMATION。
-- 关闭条件：测试报告中的用例数与源码预期一致；破坏五条关键 production edge 会导致测试失败；manifest/inventory 不再把原型描述为完整闭环。
+- 证据边界：字符串扫描只可发现候选路径，不能作为 behavior evidence；每个 action 至少绑定 ENTRY/EFFECT/FEEDBACK，危险动作成为 `covered` 时还要 executable CONFIRMATION 或 REVERSAL。
+- 关闭条件：测试报告中的用例数与源码预期一致；五条 named desired behavior 已记录正确 RED；每个声称 `covered` 的 role 都有可由 production mutation 破坏的已提交 runner；`partial/gap` 在最终门禁保持非 PASS；manifest/inventory 不再把原型描述为完整闭环。AA0 不以提前实现 AA1–AA4 的缺失产品行为换取虚假绿色。
 - 预计：2–4 工程日，约 5–10 个 test/fixture/governance 文件。
 
 #### `AA0-02` 冻结 v2 数据、状态机、source port 与迁移/回滚契约
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `[ ]` · Android `N/A：contract 冻结` · Desktop/UI `N/A：contract 冻结` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`DONE` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `[x]：typed vectors/source port` · Android `N/A：contract 冻结` · Desktop/UI `N/A：contract 冻结` · Legacy/Migration `[x]：v15 fixture/authority` · Review `[x]` · Verify `[x]` · Evidence `[x]` · Commit `[x]：本行所在提交`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `—` · 审查 `首轮发现非显式 review/非法 algorithm decision；aa0-review-domain-red 11 tests/2 expected failures 后修复，修复复审 PASS` · 验证 `aa0-related-green：domain/data/authority/interface PASS；aa0-review-green PASS；aa0-review-spotless PASS` · 运行产物 `ADR-0003、typed vectors/source port、v15 fixture；删除 24 个未参与构建的 legacy mirror 文件；超 8 文件来自同一机械 authority cutover，无 runtime schema 变更` · Commit `本行所在提交`
 
-- 依赖：`AA0-01`。
-- RED：repository contract tests 固定 Inserted/Updated/Unchanged、review state preservation、source scope/result-language policy 分离、scope 变化 baseline、decision precedence、language projection、lease/cancel 和 outbox 原子性；数据库升级测试以当前 schema fixture 启动并暴露约束缺口。
-- GREEN：新增/更新架构文档和 typed contracts；确认第 5 节逻辑模型的物理映射、schema version、legacy bridge 到期任务、versioned author backup section 字段编号/自然键/可选性与 rollback 策略；确定 `commonMain`/legacy `main` schema 与 migration 的唯一权威并建立 drift guard。
+- 依赖：`AA0-01` 的动作/证据语义先冻结。本次激活将 AA0 作为一个原子 contract 批次验证和提交，执行顺序仍是 `AA0-01 → AA0-02`，不表示两个 production 任务并行；后续任务继续逐项关闭。
+- RED/contract vectors：以 pure executable vectors 固定 Inserted/Updated/Unchanged、review preservation、source scope/result-language policy 分离、baseline event planning、decision precedence、language projection、lease/cancel 和 discovery+outbox 原子提交形状；冻结 v15 creator fixture 并显式暴露旧唯一约束/role-PK 缺口。真实 SQLDelight repository/migration desired-behavior RED 在 `AA1-02/AA1-03` 首先落地，不提交 disabled 或永久失败测试。
+- GREEN：新增 ADR-0003 和 typed contracts；确认第 5 节逻辑模型的物理映射、schema `15 → 16`、legacy bridge 到期任务、versioned author backup section field 107/自然键/可选性与 rollback 策略；删除未参与 KMP 构建的 legacy `main` SQLDelight 镜像，确定 `commonMain` 唯一权威并建立 `check` drift guard。
 - Source port：只定义 enabled source snapshot、bounded page request、details/metadata capability、typed failure 和 cancellation；不复制 `BR-01` 的 query reducer。
 - 性能：固定第 6.4 节 reference 环境、测量命令和最终阈值；若基线证明初始数字不合理，只能在本任务中调整并记录用户影响，后续不得为让实现过门而放宽。
 - 关闭条件：每个状态转换、唯一约束、删除/保留策略和平台所有权都有可执行 contract；未决 schema 决策为零。
@@ -814,6 +851,7 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 | 日期 | 任务/checkpoint | 状态变化 | RED/基线证据 | GREEN/production 结果 | 独立审查 | 验证/产物 | Commit |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| — | — | — | — | — | — | — | — |
+| 2026-08-11 | `AA0-01` | `TODO → DONE` | JUnit 旧报告仅发现 2/9；修复后先暴露 1 个真实断言失败；`aa0-01-inventory-red`；六条 desired behavior 由 `aa0-01-product-gaps-red` 与 `aa0-review-evidence-red` 正确失败 | 9/9 intended data tests；动作 inventory、void runner、导航/手动发现真实边界与诚实 partial/gap 保护全绿 | 首轮 3 个证据 P1 修复；修复复审 PASS，P0/P1/P2=0 | `aa0-review-green`、`aa0-related-green`、`aa0-review-spotless` PASS；无发布构建 | 本行所在提交 |
+| 2026-08-11 | `AA0-02` | `TODO → DONE` | `aa0-review-domain-red`：11 tests / 2 expected failures，暴露非法 algorithm decision 与非显式 review 迁移 | 19 表物理契约、独立状态机、source port、field 107 备份 wire、v15 fixture、commonMain-only authority guard | 首轮状态契约 P1 修复；修复复审 PASS，P0/P1/P2=0 | `aa0-related-green`：domain/data/authority/interface PASS；`aa0-review-green`、`aa0-review-spotless` PASS | 本行所在提交 |
 
-激活后的第一个可执行项是 `AA0-01`。在它关闭前，不开始 schema 重写、自动通知或 canonical UI，以免继续在错误完成证据上扩建产品。
+AA0 已关闭；当前进度从第一个未勾选项推导为 `AA1-01`。在 `AA1-01` 的 production RED 建立前，不开始 `AA1-02` schema migration 或后续自动通知/canonical UI。

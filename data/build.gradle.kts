@@ -91,3 +91,27 @@ sqldelight {
 tasks.withType<Test> {
     useJUnitPlatform()
 }
+
+val verifySqlDelightAuthority by tasks.registering {
+    group = "verification"
+    description = "Ensures commonMain remains the only SQLDelight schema and migration authority."
+    val commonAuthority = layout.projectDirectory.dir("src/commonMain/sqldelight")
+    val legacyMirror = fileTree(layout.projectDirectory.dir("src/main/sqldelight")) {
+        include("**/*.sq", "**/*.sqm")
+    }
+    inputs.dir(commonAuthority)
+    inputs.files(legacyMirror)
+    doLast {
+        check(commonAuthority.asFile.resolve("tachiyomi/data").isDirectory) {
+            "SQLDelight authority is missing: ${commonAuthority.asFile}"
+        }
+        check(legacyMirror.files.isEmpty()) {
+            "Do not recreate data/src/main/sqldelight; edit data/src/commonMain/sqldelight only: " +
+                legacyMirror.files.sorted().joinToString()
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn(verifySqlDelightAuthority)
+}

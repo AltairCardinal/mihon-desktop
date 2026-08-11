@@ -1,3 +1,5 @@
+PRAGMA foreign_keys = ON;
+
 CREATE TABLE creators(
     _id INTEGER NOT NULL PRIMARY KEY,
     display_name TEXT NOT NULL,
@@ -7,8 +9,6 @@ CREATE TABLE creators(
     created_at INTEGER NOT NULL,
     last_modified_at INTEGER NOT NULL
 );
-
-CREATE INDEX idx_creators_normalized_name ON creators(normalized_name);
 
 CREATE TABLE manga_creators(
     manga_id INTEGER NOT NULL,
@@ -20,10 +20,6 @@ CREATE TABLE manga_creators(
     PRIMARY KEY(manga_id, creator_id, role)
 );
 
-CREATE INDEX idx_manga_creators_creator_id ON manga_creators(creator_id);
-CREATE INDEX idx_manga_creators_manga_id ON manga_creators(manga_id);
-CREATE INDEX idx_manga_creators_creator_role ON manga_creators(creator_id, role);
-
 CREATE TABLE discovery_candidate_creators(
     candidate_id INTEGER NOT NULL,
     creator_id INTEGER NOT NULL,
@@ -33,10 +29,6 @@ CREATE TABLE discovery_candidate_creators(
     evidence TEXT NOT NULL,
     PRIMARY KEY(candidate_id, creator_id, role)
 );
-
-CREATE INDEX idx_discovery_candidate_creators_creator_id ON discovery_candidate_creators(creator_id);
-CREATE INDEX idx_discovery_candidate_creators_candidate_id ON discovery_candidate_creators(candidate_id);
-CREATE INDEX idx_discovery_candidate_creators_creator_role ON discovery_candidate_creators(creator_id, role);
 
 CREATE TABLE creator_watches(
     creator_id INTEGER NOT NULL PRIMARY KEY,
@@ -49,9 +41,6 @@ CREATE TABLE creator_watches(
     created_at INTEGER NOT NULL
 );
 
-CREATE INDEX idx_creator_watches_enabled ON creator_watches(enabled);
-CREATE INDEX idx_creator_watches_last_checked_at ON creator_watches(last_checked_at);
-
 CREATE TABLE canonical_works(
     _id INTEGER NOT NULL PRIMARY KEY,
     primary_title TEXT NOT NULL,
@@ -61,9 +50,6 @@ CREATE TABLE canonical_works(
     created_at INTEGER NOT NULL,
     last_modified_at INTEGER NOT NULL
 );
-
-CREATE INDEX idx_canonical_works_normalized_title ON canonical_works(normalized_title);
-CREATE INDEX idx_canonical_works_primary_creator ON canonical_works(primary_creator_id);
 
 CREATE TABLE manga_work_matches(
     manga_id INTEGER NOT NULL UNIQUE,
@@ -75,10 +61,6 @@ CREATE TABLE manga_work_matches(
     created_at INTEGER NOT NULL,
     last_modified_at INTEGER NOT NULL
 );
-
-CREATE INDEX idx_manga_work_matches_work_id ON manga_work_matches(work_id);
-CREATE INDEX idx_manga_work_matches_state ON manga_work_matches(state);
-CREATE INDEX idx_manga_work_matches_work_state ON manga_work_matches(work_id, state);
 
 CREATE TABLE discovery_candidates(
     _id INTEGER NOT NULL PRIMARY KEY,
@@ -99,7 +81,4 @@ CREATE TABLE discovery_candidates(
     UNIQUE(source, url)
 );
 
-CREATE INDEX idx_discovery_candidates_normalized_title ON discovery_candidates(normalized_title);
-CREATE INDEX idx_discovery_candidates_language_tag ON discovery_candidates(language_tag);
-CREATE INDEX idx_discovery_candidates_state ON discovery_candidates(state);
-CREATE INDEX idx_discovery_candidates_first_seen_at ON discovery_candidates(first_seen_at);
+PRAGMA user_version = 15;

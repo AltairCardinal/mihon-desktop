@@ -40,6 +40,7 @@ class DesktopTestModeCoverageContractTest {
         rejects(inventory.replace(coveredScenario, coveredScenario.copy(status = "gap")))
         rejects(inventory.replace(nonUiBoundary, nonUiBoundary.copy(status = "covered")))
         rejects(inventory.replace(firstProtection, firstProtection.copy(status = "gap")))
+        rejects(inventory.replace(firstProtection, firstProtection.copy(status = "covered")))
         rejects(inventory.replace(coveredScenario, coveredScenario.copy(entryPoint = "wrong")))
         rejects(inventory.replace(firstScenario, firstScenario.copy(capabilityIds = firstScenario.capabilityIds.drop(1))))
         rejects(inventory.copy(scenarios = inventory.scenarios + firstScenario.copy(id = "duplicate-family")))
@@ -77,7 +78,7 @@ class DesktopTestModeCoverageContractTest {
             inventory.boundaries.single { it.id == "boundary-shared-state" }.tuple(),
         )
         assertEquals(requiredProtections, inventory.protections.map(Entry::id).toSet())
-        assertEquals(requiredProtections.associateWith { "covered" }, inventory.protections.associate { it.id to it.status })
+        assertEquals(expectedProtectionStatuses, inventory.protections.associate { it.id to it.status })
         assertEquals((inventory.allEntries).size, inventory.allEntries.map(Entry::id).toSet().size)
 
         val mappedIds = (inventory.scenarios + inventory.boundaries).flatMap(Entry::capabilityIds)
@@ -134,7 +135,11 @@ class DesktopTestModeCoverageContractTest {
 
     private fun compiledRunners(inventory: Inventory) = inventory.allEntries.mapNotNull { entry ->
         val parts = entry.runnerTest.split("#", limit = 2)
-        val localRunner = parts.size == 2 && runCatching { Class.forName(parts[0]).declaredMethods.any { it.name == parts[1] } }.getOrDefault(false)
+        val localRunner = parts.size == 2 && runCatching {
+            Class.forName(parts[0]).declaredMethods.singleOrNull { it.name == parts[1] }?.let { method ->
+                method.isAnnotationPresent(Test::class.java) && method.returnType == Void.TYPE
+            } == true
+        }.getOrDefault(false)
         if (localRunner) entry.id to entry.runnerTest else null
     }.toMap()
 
@@ -182,6 +187,9 @@ class DesktopTestModeCoverageContractTest {
             "updates-upcoming", "history", "migration", "backup-restore", "settings-platform", "tracking", "about",
         )
         val requiredProtections = setOf("authors-entry", "upcoming", "dual-page", "auto-scroll", "apk-to-jar")
+        val expectedProtectionStatuses = requiredProtections.associateWith { id ->
+            if (id == "authors-entry") "partial" else "covered"
+        }
         val coveredTuples = mapOf(
             "library" to listOf("POST /test/action/search|filter|sort|select", "mihon.desktop.test.http.LibraryMangaTestModeController", "HTTP status plus serialized production library rows and typed failure code", "mihon.desktop.test.http.LibraryMangaTestModeHttpTest#library filter sort and selection execute production state and expose rows"),
             "manga-detail" to listOf("POST /test/action/open_manga_detail|addToLibrary|removeFromLibrary|detail_categories|detail_chapter|detail_cover|download", "mihon.desktop.test.http.LibraryMangaTestModeController", "HTTP status plus serialized production manga detail mutations partial failures and load state", "mihon.desktop.test.http.LibraryMangaTestModeHttpTest#manga detail HTTP actions publish production mutations"),

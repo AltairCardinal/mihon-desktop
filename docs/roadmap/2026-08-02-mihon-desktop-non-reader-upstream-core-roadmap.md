@@ -2,7 +2,7 @@
 
 - 制定日期：2026-08-02
 - 最近细化：2026-08-04（依据 `NR0-01` 自动语义映射失控审查）
-- 状态：`IN_PROGRESS`（父路线当前唯一 `active-child-plan`）
+- 状态：`PAUSED`（2026-08-11 为作者归档纠偏计划让出父路线唯一 `active-child-plan`）
 - 上级路线：[`2026-06-30-mihon-desktop-refactor-roadmap.md`](./2026-06-30-mihon-desktop-refactor-roadmap.md) 的非 Reader Phase R
 - Reader 专项：[`2026-08-02-reader-core-migration-and-presentation-roadmap.md`](./2026-08-02-reader-core-migration-and-presentation-roadmap.md)
 - 固定原版权威：`main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`
@@ -11,6 +11,8 @@
 - 历史对齐总结：[`2026-08-02-mihon-desktop-upstream-parity-program-summary.md`](./2026-08-02-mihon-desktop-upstream-parity-program-summary.md)
 - 机器状态权威：[`parity-manifest.json`](../../app-desktop/src/test/resources/parity/parity-manifest.json)
 - 当前进度：从第 7 节第一个未勾选顶层任务，以及该任务中第一项非 `PASS` checkpoint 推导；不另设 `active-task`
+
+安全停止点固定为 `NR0-01.F3（TODO，尚未开始）`：`A–F2.2` 的既有证据与工作树保持原样，暂停期间不读取、生成或修改 F3 语义结论。恢复本计划时必须从 F3 继续，并先由父路线把唯一 `active-child-plan` 原子切回本文。
 
 当前 Fork 基线只指已提交树；制定本文时存在的未提交工作树改动不作为“已实现”或“已验证”证据，也不由本文修改。
 

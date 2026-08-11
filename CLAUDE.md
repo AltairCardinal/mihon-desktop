@@ -132,7 +132,7 @@ The codebase has two package roots due to the Tachiyomi → Mihon fork history:
 
 **Navigation:** Voyager (`cafe.adriel.voyager`). Screens implement `cafe.adriel.voyager.core.screen.Screen`. Navigation is handled via `LocalNavigator`.
 
-**Database:** SQLDelight with coroutines. SQL schema lives in `data/src/main/sqldelight/`. Generated Kotlin queries are in `tachiyomi.data.*.db`.
+**Database:** SQLDelight with coroutines. The only schema and migration authority is `data/src/commonMain/sqldelight/`; do not recreate a `data/src/main/sqldelight/` mirror. Generated Kotlin queries are in `tachiyomi.data.*.db`.
 
 **Image loading:** Coil 3 with custom fetchers/decoders in `app/src/main/java/eu/kanade/tachiyomi/data/coil/`.
 

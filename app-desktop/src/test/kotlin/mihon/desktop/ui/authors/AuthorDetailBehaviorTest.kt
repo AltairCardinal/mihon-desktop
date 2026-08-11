@@ -19,10 +19,43 @@ import tachiyomi.domain.creator.model.MangaCreator
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreators
+import tachiyomi.domain.creator.interactor.DiscoverCreatorWorks
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.repository.CreatorRepository
+import tachiyomi.domain.creator.service.CreatorDiscoveryService
 
 class AuthorDetailBehaviorTest {
+    @Test
+    fun `manual discovery interactor executes production service before reloading details`() {
+        runTest {
+            val repository = mockk<CreatorRepository>()
+            val creator = Creator(
+                id = 7L,
+                displayName = "Jane",
+                normalizedName = "jane",
+                sortName = null,
+                aliases = emptyList(),
+                createdAt = 1L,
+                lastModifiedAt = 1L,
+            )
+            coEvery { repository.getCreator(7L) } returns creator
+            coEvery { repository.getDiscoveryCandidatesForCreator(7L) } returns emptyList()
+            coEvery { repository.getMangaCreatorsForCreator(7L) } returns emptyList()
+
+            val interactor = DiscoverCreatorWorks(
+                discoveryService = CreatorDiscoveryService(repository),
+                getCreatorDetails = GetCreatorDetails(repository),
+            )
+
+            val details = interactor.await(7L, emptyList())
+
+            assertEquals(creator, details.creator)
+            coVerify(exactly = 2) { repository.getCreator(7L) }
+            coVerify(exactly = 1) { repository.getDiscoveryCandidatesForCreator(7L) }
+            coVerify(exactly = 1) { repository.getMangaCreatorsForCreator(7L) }
+        }
+    }
+
     @Test
     fun `author production interactors preserve list details candidate and follow behavior`() = runTest {
         val repository = mockk<CreatorRepository>()

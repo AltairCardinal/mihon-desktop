@@ -116,7 +116,7 @@
 
 ## 4. 数据模型方案
 
-新增 SQLDelight 表建议放在 `data/src/commonMain/sqldelight/tachiyomi/data/`，并镜像到 `data/src/main/sqldelight/tachiyomi/data/`，同时新增迁移文件。
+新增 SQLDelight 表只放在 `data/src/commonMain/sqldelight/tachiyomi/data/`，迁移只放在同一 source set 的 `migrations/`；`data/src/main/sqldelight/` 旧镜像已被 ADR-0003 废止，禁止重建。
 
 ### 4.1 作者实体
 
