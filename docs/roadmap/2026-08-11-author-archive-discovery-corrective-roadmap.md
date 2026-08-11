@@ -507,9 +507,9 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 #### `AA2-01` 建立 enabled-source、身份门禁与有界查询计划
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `[ ]` · Android `[ ]` · Desktop/UI `[ ]` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`IN_PROGRESS（Windows 已验收）` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `[x]` · Android `[ ]：按用户要求最终阶段统一验收` · Desktop/UI `[x]：enabled-source production port、Authors 手动检查与调度入口` · Legacy/Migration `[ ]：Android 兼容入口待最终切换` · Review `[x]：主代理收口核对` · Verify `[x]：Windows/shared focused` · Evidence `[x]` · Commit `[x]：本行所在提交`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `—` · 审查 `enabled snapshot、硬上限、identity gate、language/result policy 与分层 DI 自检 PASS；按用户要求未追加独立审查` · 验证 `aa201green2 PASS；aa201verify：5 planning/adapter + 2 pagination + 1 real repository + Windows DI PASS；aa201format PASS` · 运行产物 `optional AuthorSearchSource、bounded query planner、typed source adapter、VERIFIED/POSSIBLE gate、Windows production wiring；16 个文件属于同一 source-plan/identity/wiring 边界；无新 UI/发布构建` · Commit `本行所在提交`
 
 - RED：disabled/missing source、source watch scope、单语言/多语言 source 下的 result-language policy、scope 变更/新增源 baseline、probable/unknown 通知策略、alias 去重、页数/并发/超时上限、普通搜索无作者匹配、结构化作者匹配、UNKNOWN role、重复 URL、空/403/429/500/畸形详情与取消。
 - GREEN：复用 `BR-01` source/query contract 或冻结窄 shared port；构建 bounded query plan 和 identity evidence evaluator；不匹配结果不进入正式 discovery。
@@ -861,5 +861,6 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 | 2026-08-11 | `AA1-02` | `TODO → DONE` | `aa1-02-review-fixes-red`：40 tests / 6 expected failures；`aa1-02-rereview-red`：42 tests / 4 expected failures；`aa1-02-legacy-pending-red`：9 tests / 1 expected failure，覆盖 precedence、review attach/reset、URL、跨-work 物化及语言一致性 | v16 全量 schema + typed repository；v1 只读增量 bridge；有效 decision 唯一物化；shared language contract；Android/Desktop 同实例 DI | 首轮 P1=3/P2=1、唯一修复复审 P1=2/P2=1；全部 finding 修复并由新增 production 回归锁定，最终 P0/P1/P2=0 | 13 domain + 42 data + 11 Desktop + 4 Android 全绿；`spotlessCheck` PASS；无发布构建 | 本行所在提交 |
 | 2026-08-12 | `AA1-01 / Windows checkpoint` | `TODO → IN_PROGRESS（Windows 已验收）` | parser/index、identity 歧义、merge/split、alias、字段清空、重复回填与批处理行为已覆盖 | shared parser/indexer、事务同步、portable backup、Authors/Manga Detail identity UI 与 Desktop runtime wiring 已接入 production | 首轮 P0/P1 已修复；按用户指示不追加复审 | `scripts/build-desktop.sh feature`：2495 tests / 1 skipped；Windows build/runtime acceptance PASS；最终 EXE `0.11.18.1.99ce812` | 本行所在提交 |
 | 2026-08-12 | `AA1-03` | `TODO → DONE` | watch lease、run/checkpoint 恢复、baseline、discovery/outbox 幂等与原子回滚行为已覆盖 | shared typed persistence、v17 additive unread index、field107 watch backup slice 与 Windows production wiring 已完成 | 主代理对状态转换、原子性、迁移和备份边界收口核对 PASS；未追加独立审查 | `aa103data3`、`aa103desktop1`、`aa103related3`、`aa103spotless3` PASS；本批无用户 UI/发布构建 | 本行所在提交 |
+| 2026-08-12 | `AA2-01 / Windows checkpoint` | `TODO → IN_PROGRESS（Windows 已验收）` | enabled/scope、单/多语言预筛、alias 去重、页数/总页数/并发/时限、structured/fallback、typed failure、取消与 identity gate 已覆盖 | optional AuthorSearchSource、bounded planner、catalogue adapter、result policy、typed source-work relation 与 Windows production wiring 已完成 | 主代理收口核对 PASS；未追加独立审查 | `aa201verify` focused shared/data/Windows PASS；`aa201format` PASS；无发布构建 | 本行所在提交 |
 
-AA0、AA1-02 与 AA1-03 已关闭；AA1-01 的 Windows/shared/data/backup 实现与正式 Windows 构建验收已完成，顶层任务仍保持未勾选，等待全部功能完成后的 Android 统一验收与最终复审。实现主线进入 `AA2-01`；后续自动通知/canonical UI 仍按依赖顺序保持未开始。
+AA0、AA1-02 与 AA1-03 已关闭；AA1-01 与 AA2-01 的 Windows/shared/data 实现已经验收，顶层任务仍保持未勾选，等待全部功能完成后的 Android 统一验收与最终复审。实现主线进入 `AA2-02`；后续自动通知/canonical UI 仍按依赖顺序保持未开始。

@@ -296,7 +296,7 @@ data class AuthorDetailScreen(
                 .onFailure { identityActionError = it.message ?: it::class.simpleName.orEmpty() }
             if (shouldCollectAuthorOnOpen(collectOnOpen, candidates, mangaLinks)) {
                 checking = true
-                applyDetails(discoverCreatorWorks.await(creatorId, sourceManager.getCatalogueSources()))
+                applyDetails(discoverCreatorWorks.await(creatorId))
                 checking = false
             }
             mangaTitles = mangaLinks.associate { link ->
@@ -561,7 +561,7 @@ data class AuthorDetailScreen(
                             onClick = {
                                 scope.launch {
                                     checking = true
-                                    applyDetails(discoverCreatorWorks.await(creatorId, sourceManager.getCatalogueSources()))
+                                    applyDetails(discoverCreatorWorks.await(creatorId))
                                     mangaTitles = mangaLinks.associate { link ->
                                         link.mangaId to runCatching { desktopDependencies.getMangaTitle(link.mangaId) }
                                             .getOrDefault(MR.strings.desktop_ui_manga_number.localized(Locale.getDefault(), link.mangaId))

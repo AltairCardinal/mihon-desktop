@@ -31,6 +31,16 @@ import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WatchBaselineState
 import tachiyomi.domain.creator.model.WorkDecisionContract
 import tachiyomi.domain.creator.model.WorkDecisionState
+import tachiyomi.domain.creator.service.BoundedAuthorSearchPageRequest
+import tachiyomi.domain.creator.service.CreatorDiscoveryBounds
+import tachiyomi.domain.creator.service.CreatorDiscoveryService
+import tachiyomi.domain.creator.service.CreatorDiscoverySourcePort
+import tachiyomi.domain.creator.service.CreatorSourceCapability
+import tachiyomi.domain.creator.service.CreatorSourceDetails
+import tachiyomi.domain.creator.service.CreatorSourceDetailsResult
+import tachiyomi.domain.creator.service.CreatorSourcePageResult
+import tachiyomi.domain.creator.service.CreatorSourceWorkSnapshot
+import tachiyomi.domain.creator.service.EnabledCreatorSource
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 
@@ -718,6 +728,63 @@ class CreatorLibraryIndexRepositoryTest {
         }
     }
 
+    @Test
+    fun `bounded discovery production service persists verified and possible relations without duplicate urls`() {
+        runBlocking {
+            val creator = repository.upsertCreator("ONE")
+            repository.upsertWatchPolicy(
+                ArchiveWatchPolicy(
+                    creatorId = creator.id,
+                    enabled = true,
+                    periodMillis = 1_000L,
+                    sourceIds = setOf(10L),
+                    readingLanguageTags = setOf("en"),
+                ),
+                now = 1L,
+            )
+            val verified = CreatorSourceWorkSnapshot(
+                key = SourceWorkNaturalKey(10L, "/verified"),
+                title = "Verified",
+                authorText = "ONE",
+                artistText = null,
+                thumbnailUrl = null,
+            )
+            val possible = CreatorSourceWorkSnapshot(
+                key = SourceWorkNaturalKey(10L, "/possible"),
+                title = "Possible",
+                authorText = null,
+                artistText = null,
+                thumbnailUrl = null,
+            )
+            val port = RecordingDiscoveryPort(listOf(verified, possible, verified))
+            val service = CreatorDiscoveryService(
+                creatorRepository = repository,
+                archiveRepository = repository,
+                sourcePort = port,
+                bounds = CreatorDiscoveryBounds(
+                    maxAliases = 1,
+                    maxPagesPerAlias = 1,
+                    maxTotalPagesPerSource = 1,
+                    maxConcurrentSources = 1,
+                    sourceTimeoutMillis = 10_000,
+                ),
+                clock = { 100L },
+            )
+
+            val result = service.discoverCreator(creator.id)
+
+            result.newCandidateCount shouldBe 1
+            result.sourceResults.single().possibleCount shouldBe 1
+            result.sourceResults.single().notificationEligibleCount shouldBe 1
+            result.sourceResults.single().truncated shouldBe true
+            port.requestedPages.shouldContainExactly(1)
+            queryLong("SELECT COUNT(*) FROM author_archive_source_works") shouldBe 2L
+            queryStrings(
+                "SELECT verification FROM author_archive_source_work_creators ORDER BY source_work_id",
+            ).shouldContainExactly("VERIFIED", "POSSIBLE")
+        }
+    }
+
     private fun manga(id: Long, author: String?, artist: String?) = Manga.create().copy(
         id = id,
         source = 10L,
@@ -800,5 +867,36 @@ class CreatorLibraryIndexRepositoryTest {
     private fun sequentialKeys(): () -> String {
         var next = 1L
         return { "generated-${next++}" }
+    }
+}
+
+private class RecordingDiscoveryPort(
+    private val works: List<CreatorSourceWorkSnapshot>,
+) : CreatorDiscoverySourcePort {
+    val requestedPages = mutableListOf<Int>()
+
+    override suspend fun enabledSourcesSnapshot() = listOf(
+        EnabledCreatorSource(
+            sourceId = 10L,
+            displayName = "Fixture",
+            capabilities = setOf(CreatorSourceCapability.CATALOGUE_SEARCH_FALLBACK, CreatorSourceCapability.DETAILS),
+        ),
+    )
+
+    override suspend fun searchPage(request: BoundedAuthorSearchPageRequest): CreatorSourcePageResult {
+        requestedPages += request.page
+        return CreatorSourcePageResult.Content(works, hasNextPage = true)
+    }
+
+    override suspend fun loadDetails(key: SourceWorkNaturalKey): CreatorSourceDetailsResult {
+        val work = works.first { it.key == key }
+        return CreatorSourceDetailsResult.Content(
+            CreatorSourceDetails(
+                work = work,
+                readingLanguageTag = "en",
+                originalLanguageTag = null,
+                metadata = emptyMap(),
+            ),
+        )
     }
 }

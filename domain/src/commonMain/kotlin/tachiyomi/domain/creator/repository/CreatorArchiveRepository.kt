@@ -65,6 +65,8 @@ interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
 
     suspend fun upsertWatchPolicy(policy: ArchiveWatchPolicy, now: Long)
 
+    suspend fun getWatchPolicy(creatorId: Long): ArchiveWatchPolicy?
+
     suspend fun getDueWatchSources(now: Long, limit: Long): List<DueWatchSource>
 
     suspend fun acquireWatchLease(

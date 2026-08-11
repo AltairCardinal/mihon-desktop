@@ -189,16 +189,14 @@ class LibraryUpdateScheduler(
                     taskNotifier?.notify(NotificationEvent.Success(LIBRARY_UPDATE_TASK.id, "Library updated", "$newChapters new chapters found"))
                 }
                 runCatching {
-                    discoverCreators?.invoke() ?: sourceManager?.getCatalogueSources()?.let { sources ->
-                        creatorDiscoveryService?.discoverDueWatches(sources)?.let { result ->
-                            if (result.newCandidateCount > 0) {
-                                notificationService?.post(
-                                    DesktopNotification(
-                                        "Author works discovered",
-                                        "${result.newCandidateCount} new candidates found",
-                                    ),
-                                )
-                            }
+                    discoverCreators?.invoke() ?: creatorDiscoveryService?.discoverDueWatches()?.let { result ->
+                        if (result.newCandidateCount > 0) {
+                            notificationService?.post(
+                                DesktopNotification(
+                                    "Author works discovered",
+                                    "${result.newCandidateCount} new candidates found",
+                                ),
+                            )
                         }
                     }
                 }

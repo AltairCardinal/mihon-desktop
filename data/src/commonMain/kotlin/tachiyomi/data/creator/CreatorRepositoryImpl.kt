@@ -121,6 +121,35 @@ class CreatorRepositoryImpl(
         }
     }
 
+    override suspend fun getWatchPolicy(creatorId: Long): ArchiveWatchPolicy? {
+        bootstrap.awaitReady()
+        return handler.awaitOneOrNull {
+            author_archiveQueries.getArchiveWatchPolicyByCreator(creatorId) {
+                    id,
+                    enabled,
+                    period,
+                    includeProbable,
+                    includeUnknown,
+                    notifyProbable,
+                    notifyUnknown,
+                    sourceIds,
+                    languageTags,
+                ->
+                ArchiveWatchPolicy(
+                    creatorId = id,
+                    enabled = enabled,
+                    periodMillis = period,
+                    sourceIds = decodeStrings(sourceIds).mapNotNull(String::toLongOrNull).toSet(),
+                    readingLanguageTags = decodeStrings(languageTags).toSet(),
+                    includeProbable = includeProbable,
+                    includeUnknown = includeUnknown,
+                    notifyProbable = notifyProbable,
+                    notifyUnknown = notifyUnknown,
+                )
+            }
+        }
+    }
+
     override suspend fun acquireWatchLease(
         creatorId: Long,
         ownerToken: String,

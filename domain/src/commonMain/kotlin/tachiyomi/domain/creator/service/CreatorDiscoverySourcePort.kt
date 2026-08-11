@@ -14,7 +14,26 @@ data class EnabledCreatorSource(
     val sourceId: Long,
     val displayName: String,
     val capabilities: Set<CreatorSourceCapability>,
+    val readingLanguageProfile: CreatorSourceReadingLanguageProfile = CreatorSourceReadingLanguageProfile.Unknown,
+    val catalogueLanguageTag: String? = null,
 )
+
+sealed interface CreatorSourceReadingLanguageProfile {
+    data object Unknown : CreatorSourceReadingLanguageProfile
+
+    data class Single(val languageTag: String) : CreatorSourceReadingLanguageProfile {
+        init {
+            require(languageTag.isNotBlank())
+        }
+    }
+
+    data class Multiple(val languageTags: Set<String>) : CreatorSourceReadingLanguageProfile {
+        init {
+            require(languageTags.size > 1)
+            require(languageTags.none(String::isBlank))
+        }
+    }
+}
 
 data class BoundedAuthorSearchPageRequest(
     val sourceId: Long,
@@ -38,7 +57,19 @@ data class CreatorSourceWorkSnapshot(
     val authorText: String?,
     val artistText: String?,
     val thumbnailUrl: String?,
+    val structuredCreatorMatches: List<CreatorStructuredIdentityMatch> = emptyList(),
 )
+
+data class CreatorStructuredIdentityMatch(
+    val displayName: String,
+    val role: tachiyomi.domain.creator.model.CreatorRole,
+    val evidence: String,
+) {
+    init {
+        require(displayName.isNotBlank())
+        require(evidence.isNotBlank())
+    }
+}
 
 sealed interface CreatorSourcePageResult {
     data class Content(

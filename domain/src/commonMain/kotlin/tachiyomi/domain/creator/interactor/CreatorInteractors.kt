@@ -52,6 +52,12 @@ class DiscoverCreatorWorks(
     private val discoveryService: CreatorDiscoveryService,
     private val getCreatorDetails: GetCreatorDetails,
 ) {
+    suspend fun await(creatorId: Long): CreatorDetails {
+        discoveryService.discoverCreator(creatorId)
+        return getCreatorDetails.await(creatorId)
+    }
+
+    /** Temporary compatibility overload for Android until the final platform cutover. */
     suspend fun await(creatorId: Long, sources: List<CatalogueSource>): CreatorDetails {
         discoveryService.discoverCreator(creatorId, sources)
         return getCreatorDetails.await(creatorId)

@@ -22,6 +22,7 @@ import tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter
 import tachiyomi.domain.creator.repository.CreatorLibraryMangaSource
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
+import tachiyomi.domain.creator.service.CreatorDiscoverySourcePort
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import mihon.desktop.domain.SaveSourceMangaForDetails
@@ -118,6 +119,7 @@ class DILayerSplitContractTest {
         assertNotNull(Injekt.get<tachiyomi.data.backup.AuthorArchiveBackupContributor>())
         assertNotNull(Injekt.get<CreatorArchiveBootstrap>())
         assertNotNull(Injekt.get<CreatorDiscoveryService>())
+        assertNotNull(Injekt.get<CreatorDiscoverySourcePort>())
         assertNotNull(Injekt.get<SourceMangaSearchService>())
         assertNotNull(Injekt.get<SaveSourceMangaForDetails>())
     }

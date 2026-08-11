@@ -147,6 +147,8 @@ import tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter
 import tachiyomi.domain.creator.repository.CreatorLibraryMangaSource
 import tachiyomi.domain.creator.service.CreatorLibraryIndexer
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
+import tachiyomi.domain.creator.service.CatalogueCreatorDiscoverySourceAdapter
+import tachiyomi.domain.creator.service.CreatorDiscoverySourcePort
 import tachiyomi.domain.history.interactor.GetHistory
 import tachiyomi.domain.history.interactor.GetNextChapters
 import tachiyomi.domain.history.interactor.RemoveHistory
@@ -685,7 +687,26 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
     Injekt.addSingleton(UpdateMangaNotes(mangaRepository))
     Injekt.addSingleton(ReaderModeMemoryCleaner(mangaRepository))
     Injekt.addSingleton(LibraryUpdateChecker(chapterRepository))
-    val creatorDiscoveryService = CreatorDiscoveryService(creatorRepository, sourceMangaSearchService)
+    val creatorDiscoverySourcePort = CatalogueCreatorDiscoverySourceAdapter(
+        enabledSourcesProvider = {
+            runCatching { Injekt.get<DesktopSourceManager>() }
+                .getOrNull()
+                ?.getEnabledCatalogueSources()
+                .orEmpty()
+        },
+        sourceResolver = { sourceId ->
+            runCatching { Injekt.get<DesktopSourceManager>() }
+                .getOrNull()
+                ?.get(sourceId) as? CatalogueSource
+        },
+        sourceMangaSearchService = sourceMangaSearchService,
+    )
+    Injekt.addSingleton<CreatorDiscoverySourcePort>(creatorDiscoverySourcePort)
+    val creatorDiscoveryService = CreatorDiscoveryService(
+        creatorRepository = creatorRepository,
+        archiveRepository = Injekt.get<CreatorArchiveRepository>(),
+        sourcePort = creatorDiscoverySourcePort,
+    )
     Injekt.addSingleton(creatorDiscoveryService)
     Injekt.addSingleton(DiscoverCreatorWorks(creatorDiscoveryService, getCreatorDetails))
 }

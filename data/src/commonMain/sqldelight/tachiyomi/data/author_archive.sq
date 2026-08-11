@@ -2339,6 +2339,37 @@ FROM author_archive_watches W
 WHERE W.enabled = 1
 ORDER BY W.created_at DESC, W._id;
 
+getArchiveWatchPolicyByCreator:
+SELECT
+    W.creator_id,
+    W.enabled,
+    W.period_millis,
+    P.include_probable,
+    P.include_unknown,
+    P.notify_probable,
+    P.notify_unknown,
+    coalesce((
+        SELECT group_concat(ORDERED_SOURCE.source_id, char(31))
+        FROM (
+            SELECT WS.source_id
+            FROM author_archive_watch_sources WS
+            WHERE WS.watch_id = W._id
+            ORDER BY WS.source_id
+        ) ORDERED_SOURCE
+    ), '') AS source_ids,
+    coalesce((
+        SELECT group_concat(ORDERED_LANGUAGE.language_tag, char(31))
+        FROM (
+            SELECT WL.language_tag
+            FROM author_archive_watch_languages WL
+            WHERE WL.policy_id = P._id
+            ORDER BY WL.language_tag
+        ) ORDERED_LANGUAGE
+    ), '') AS language_tags
+FROM author_archive_watches W
+JOIN author_archive_watch_result_policies P ON P.watch_id = W._id
+WHERE W.creator_id = :creatorId;
+
 updateArchiveWatchCheckResult:
 UPDATE author_archive_watches
 SET last_checked_at = :checkedAt,
