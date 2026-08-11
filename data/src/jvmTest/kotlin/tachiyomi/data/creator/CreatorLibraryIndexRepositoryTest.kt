@@ -773,7 +773,9 @@ class CreatorLibraryIndexRepositoryTest {
 
             val result = service.discoverCreator(creator.id)
 
-            result.newCandidateCount shouldBe 1
+            // First successful scan establishes the source baseline and archives relations, so it
+            // produces no discovery events or outbox rows.
+            result.newCandidateCount shouldBe 0
             result.sourceResults.single().possibleCount shouldBe 1
             result.sourceResults.single().notificationEligibleCount shouldBe 1
             result.sourceResults.single().truncated shouldBe true

@@ -502,7 +502,7 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 ### Phase AA2：有界、幂等、可恢复的发现任务
 
 - [ ] `AA2-01` 建立 enabled-source、身份门禁与有界查询计划
-- [ ] `AA2-02` 实现 baseline、幂等、partial failure、取消与退避状态机
+- [x] `AA2-02` 实现 baseline、幂等、partial failure、取消与退避状态机
 - [ ] `AA2-03` 将 Android/Desktop 切换到独立 CreatorDiscoveryTask
 
 #### `AA2-01` 建立 enabled-source、身份门禁与有界查询计划
@@ -520,9 +520,9 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 #### `AA2-02` 实现 baseline、幂等、partial failure、取消与退避状态机
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `[ ]` · Android `N/A：shared executor` · Desktop/UI `N/A：shared executor` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`DONE` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `[x]` · Android `N/A：shared executor` · Desktop/UI `N/A：shared executor` · Legacy/Migration `[x]` · Review `[x]：主代理补齐源级事务与缓存边界` · Verify `[x]：focused shared/data` · Evidence `[x]` · Commit `[x]：本行所在提交`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `—` · 审查 `MiniMax M3 超时且 5/14 focused 场景未绿；DeepSeek V4 Flash 主体实现通过 16/16 状态机与 domain JVM，主代理发现并修复 per-source 非原子写入、catalogue cache 误判 library/history 两项 P1` · 验证 `aa202-atomic、aa202-final-focused PASS；18 个状态机/事务/缓存边界场景 + backoff/planning focused PASS；domain/data SpotlessApply PASS` · 运行产物 `shared archive-backed executor、per-source observation transaction、baseline generation、typed run summary、lease/recovery、partial/failure、truncation、manual force、cancellation、backoff+jitter` · Commit `本行所在提交`
 
 - RED：第一次扫描 0 条提醒、第二次相同结果 0 条、该 watch 新增一个合格关系恰好 1 条、全局 SourceWork 已存在但对当前 watch 首次出现、更新旧 metadata 0 条、ignored/accepted 不回退、单源失败、全源失败、截断、重入、lease 过期、进程恢复和 `CancellationException`。
 - GREEN：实现第 6 节固定步骤；每源事务、baseline generation、typed run summary、backoff+jitter、manual force 和 cancellation 安全。
@@ -862,5 +862,6 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 | 2026-08-12 | `AA1-01 / Windows checkpoint` | `TODO → IN_PROGRESS（Windows 已验收）` | parser/index、identity 歧义、merge/split、alias、字段清空、重复回填与批处理行为已覆盖 | shared parser/indexer、事务同步、portable backup、Authors/Manga Detail identity UI 与 Desktop runtime wiring 已接入 production | 首轮 P0/P1 已修复；按用户指示不追加复审 | `scripts/build-desktop.sh feature`：2495 tests / 1 skipped；Windows build/runtime acceptance PASS；最终 EXE `0.11.18.1.99ce812` | 本行所在提交 |
 | 2026-08-12 | `AA1-03` | `TODO → DONE` | watch lease、run/checkpoint 恢复、baseline、discovery/outbox 幂等与原子回滚行为已覆盖 | shared typed persistence、v17 additive unread index、field107 watch backup slice 与 Windows production wiring 已完成 | 主代理对状态转换、原子性、迁移和备份边界收口核对 PASS；未追加独立审查 | `aa103data3`、`aa103desktop1`、`aa103related3`、`aa103spotless3` PASS；本批无用户 UI/发布构建 | 本行所在提交 |
 | 2026-08-12 | `AA2-01 / Windows checkpoint` | `TODO → IN_PROGRESS（Windows 已验收）` | enabled/scope、单/多语言预筛、alias 去重、页数/总页数/并发/时限、structured/fallback、typed failure、取消与 identity gate 已覆盖 | optional AuthorSearchSource、bounded planner、catalogue adapter、result policy、typed source-work relation 与 Windows production wiring 已完成 | 主代理收口核对 PASS；未追加独立审查 | `aa201verify` focused shared/data/Windows PASS；`aa201format` PASS；无发布构建 | 本行所在提交 |
+| 2026-08-12 | `AA2-02` | `TODO → DONE` | 首扫/重扫、新关系、跨 watch、metadata、review 保持、partial/all-fail、截断、重入、lease、恢复、取消、退避及源级回滚均覆盖 | shared archive executor、typed run/checkpoint、baseline generation、原子 source observation + discovery/outbox、manual force 与 backoff/jitter 完成 | pi 双模型对比后采用 DeepSeek 草稿 + 主代理补缺；最终 P0/P1/P2=0 | `aa202-atomic`、`aa202-final-focused`、domain/data SpotlessApply PASS；无 Android/发布构建 | 本行所在提交 |
 
-AA0、AA1-02 与 AA1-03 已关闭；AA1-01 与 AA2-01 的 Windows/shared/data 实现已经验收，顶层任务仍保持未勾选，等待全部功能完成后的 Android 统一验收与最终复审。实现主线进入 `AA2-02`；后续自动通知/canonical UI 仍按依赖顺序保持未开始。
+AA0、AA1-02、AA1-03 与 AA2-02 已关闭；AA1-01 与 AA2-01 的 Windows/shared/data 实现已经验收，顶层任务仍保持未勾选，等待全部功能完成后的 Android 统一验收与最终复审。实现主线进入 `AA2-03`；后续自动通知/canonical UI 仍按依赖顺序保持未开始。

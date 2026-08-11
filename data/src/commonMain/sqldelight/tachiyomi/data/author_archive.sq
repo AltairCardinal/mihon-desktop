@@ -2837,6 +2837,35 @@ FROM author_archive_watch_sources
 WHERE source_id = :sourceId
 AND watch_id = (SELECT _id FROM author_archive_watches WHERE creator_id = :creatorId);
 
+getArchiveWatchSourceBaselines:
+SELECT WS.source_id, WS.baseline_state, WS.baseline_generation
+FROM author_archive_watch_sources WS
+JOIN author_archive_watches W ON W._id = WS.watch_id
+WHERE W.creator_id = :creatorId
+ORDER BY WS.source_id;
+
+sourceWorkInLibraryOrHistoryCount:
+SELECT count(*)
+FROM mangas M
+WHERE M.source = :sourceId
+AND trim(M.url) = trim(:stableSourceUrl)
+AND (
+    M.favorite = 1
+    OR EXISTS (
+        SELECT 1
+        FROM chapters C
+        JOIN history H ON H.chapter_id = C._id
+        WHERE C.manga_id = M._id
+    )
+);
+
+sourceWorkHasConfirmedCanonicalVersionCount:
+SELECT count(*)
+FROM author_archive_canonical_versions CV
+JOIN author_archive_source_works SW ON SW._id = CV.source_work_id
+WHERE SW.source_id = :sourceId
+AND SW.stable_source_url = :stableSourceUrl;
+
 getArchiveSourceCheckpoints:
 SELECT
     W.creator_id, C.source_id, C.cursor, C.result_state, C.consecutive_failures,

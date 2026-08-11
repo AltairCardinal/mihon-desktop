@@ -12,6 +12,7 @@ data class CreatorDiscoveryBounds(
     val maxTotalPagesPerSource: Int = 8,
     val maxConcurrentSources: Int = 3,
     val sourceTimeoutMillis: Long = 20_000,
+    val maxSourcesPerWatch: Int = 8,
 ) {
     init {
         require(maxAliases > 0)
@@ -19,6 +20,33 @@ data class CreatorDiscoveryBounds(
         require(maxTotalPagesPerSource > 0)
         require(maxConcurrentSources > 0)
         require(sourceTimeoutMillis > 0)
+        require(maxSourcesPerWatch > 0)
+    }
+}
+
+/**
+ * Frozen per-source retry schedule used by the discovery executor.
+ *
+ * The first failure waits 30 minutes, then 2 h, 8 h, capped at 24 h. A jitter value (default 0) is
+ * added to spread retries across watches; negative jitter is clamped to zero so a retry can never
+ * become due earlier than the schedule guarantees.
+ */
+object CreatorDiscoveryBackoff {
+    val DELAY_MILLIS: List<Long> = listOf(
+        30 * 60 * 1_000L,
+        2 * 60 * 60 * 1_000L,
+        8 * 60 * 60 * 1_000L,
+        24 * 60 * 60 * 1_000L,
+    )
+
+    fun delayMillis(consecutiveFailures: Long): Long {
+        val index = (consecutiveFailures - 1).coerceAtLeast(0).toInt()
+        return DELAY_MILLIS[index.coerceAtMost(DELAY_MILLIS.lastIndex)]
+    }
+
+    fun backoffUntilMillis(now: Long, consecutiveFailures: Long, jitterMillis: Long = 0L): Long {
+        require(now >= 0)
+        return now + delayMillis(consecutiveFailures) + jitterMillis.coerceAtLeast(0)
     }
 }
 

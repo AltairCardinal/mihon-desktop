@@ -27,6 +27,7 @@ import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.DiscoveryCandidateCreator
 import tachiyomi.domain.creator.model.DiscoveryCandidateState
 import tachiyomi.domain.creator.model.DiscoveryCommit
+import tachiyomi.domain.creator.model.DiscoveryCommitPlan
 import tachiyomi.domain.creator.model.DiscoveryKind
 import tachiyomi.domain.creator.model.DiscoveryLease
 import tachiyomi.domain.creator.model.DiscoveryReadState
@@ -46,8 +47,11 @@ import tachiyomi.domain.creator.model.ReviewDisposition
 import tachiyomi.domain.creator.model.SourceCheckpoint
 import tachiyomi.domain.creator.model.SourceCheckpointResult
 import tachiyomi.domain.creator.model.SourceCheckpointUpdate
+import tachiyomi.domain.creator.model.SourceDiscoveryObservation
+import tachiyomi.domain.creator.model.SourceDiscoveryObservationResult
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WatchBaselineState
+import tachiyomi.domain.creator.model.WatchSourceBaseline
 import tachiyomi.domain.creator.model.WorkDecisionContract
 import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.model.WorkMatchState
@@ -282,6 +286,99 @@ class CreatorRepositoryImpl(
         return handler.awaitList { author_archiveQueries.getArchiveSourceCheckpoints(creatorId, ::mapSourceCheckpoint) }
     }
 
+    override suspend fun getWatchSourceBaselines(creatorId: Long): List<WatchSourceBaseline> {
+        bootstrap.awaitReady()
+        return handler.awaitList {
+            author_archiveQueries.getArchiveWatchSourceBaselines(creatorId, ::mapWatchSourceBaseline)
+        }
+    }
+
+    override suspend fun sourceWorkIsInLibraryOrHistory(key: SourceWorkNaturalKey): Boolean {
+        bootstrap.awaitReady()
+        return handler.await {
+            author_archiveQueries.sourceWorkInLibraryOrHistoryCount(
+                sourceId = key.sourceId,
+                stableSourceUrl = key.stableSourceUrl.trim(),
+            ).executeAsOne() > 0L
+        }
+    }
+
+    override suspend fun sourceWorkHasConfirmedCanonicalVersion(key: SourceWorkNaturalKey): Boolean {
+        bootstrap.awaitReady()
+        return handler.await {
+            author_archiveQueries.sourceWorkHasConfirmedCanonicalVersionCount(
+                sourceId = key.sourceId,
+                stableSourceUrl = key.stableSourceUrl.trim(),
+            ).executeAsOne() > 0L
+        }
+    }
+
+    override suspend fun commitSourceDiscoveryObservation(
+        observation: SourceDiscoveryObservation,
+    ): SourceDiscoveryObservationResult {
+        bootstrap.awaitReady()
+        require(observation.order >= 0) { "Creator order must not be negative" }
+        require(observation.confidence in 0.0..1.0) {
+            "Creator relation confidence must be between 0 and 1"
+        }
+        require(observation.languageIdempotencyKey.isNotBlank()) {
+            "Language assertion idempotency key must not be blank"
+        }
+        return handler.await(inTransaction = true) {
+            val work = upsertSourceWorkRecord(
+                sourceId = observation.sourceWork.sourceId,
+                stableSourceUrl = observation.sourceWork.stableSourceUrl,
+                mangaId = null,
+                title = observation.title,
+                authorText = observation.authorText,
+                artistText = observation.artistText,
+                thumbnailUrl = observation.thumbnailUrl,
+                detailsFetchedAt = observation.detailsFetchedAt,
+                reviewState = null,
+                now = observation.detailsFetchedAt,
+            )
+            appendObservationLanguageAssertion(observation)
+            val relation = upsertObservationCreatorRelation(work.sourceWorkId, observation)
+            val plan = if (observation.notificationsEnabled) {
+                CreatorArchiveV2Policy.planDiscoveryCommit(
+                    baselineState = observation.baselineState,
+                    relationVerification = observation.verification,
+                    watchRelationOutcome = relation,
+                    alreadyInLibraryOrHistory = author_archiveQueries.sourceWorkInLibraryOrHistoryCount(
+                        observation.sourceWork.sourceId,
+                        observation.sourceWork.stableSourceUrl.trim(),
+                    ).executeAsOne() > 0L,
+                    confirmedCanonicalWork = author_archiveQueries
+                        .sourceWorkHasConfirmedCanonicalVersionCount(
+                            observation.sourceWork.sourceId,
+                            observation.sourceWork.stableSourceUrl.trim(),
+                        )
+                        .executeAsOne() > 0L,
+                    idempotencyKey = observation.discoveryIdempotencyKey,
+                )
+            } else {
+                null
+            }
+            val discovery = if (plan is DiscoveryCommitPlan.EventWithOutbox) {
+                commitDiscoveryRecord(
+                    DiscoveryCommit(
+                        creatorId = observation.creatorId,
+                        sourceWork = observation.sourceWork,
+                        kind = plan.kind,
+                        reason = observation.discoveryReason,
+                        baselineGeneration = observation.baselineGeneration,
+                        discoveredAt = observation.discoveredAt,
+                        outboxChannel = observation.outboxChannel,
+                        idempotencyKey = plan.idempotencyKey,
+                    ),
+                )
+            } else {
+                null
+            }
+            SourceDiscoveryObservationResult(relation, discovery)
+        }
+    }
+
     override fun observeSourceCheckpoints(creatorId: Long): Flow<List<SourceCheckpoint>> =
         handler.subscribeToList { author_archiveQueries.getArchiveSourceCheckpoints(creatorId, ::mapSourceCheckpoint) }
             .onStart { bootstrap.awaitReady() }
@@ -291,41 +388,138 @@ class CreatorRepositoryImpl(
         require(commit.reason.isNotBlank()) { "Discovery reason must not be blank" }
         require(commit.outboxChannel.isNotBlank()) { "Outbox channel must not be blank" }
         require(commit.idempotencyKey.isNotBlank()) { "Discovery idempotency key must not be blank" }
-        return handler.await(inTransaction = true) {
-            val existingId = author_archiveQueries.getArchiveDiscoveryByNaturalKey(
-                commit.creatorId,
-                commit.sourceWork.sourceId,
-                commit.sourceWork.stableSourceUrl.trim(),
-            ).executeAsOneOrNull()
-            author_archiveQueries.insertArchiveDiscovery(
-                kind = commit.kind.name,
-                reason = commit.reason,
-                baselineGeneration = commit.baselineGeneration,
-                discoveredAt = commit.discoveredAt,
-                sourceId = commit.sourceWork.sourceId,
-                stableSourceUrl = commit.sourceWork.stableSourceUrl.trim(),
-                creatorId = commit.creatorId,
+        return handler.await(inTransaction = true) { commitDiscoveryRecord(commit) }
+    }
+
+    private fun Database.commitDiscoveryRecord(commit: DiscoveryCommit): ArchiveDiscovery {
+        val existingId = author_archiveQueries.getArchiveDiscoveryByNaturalKey(
+            commit.creatorId,
+            commit.sourceWork.sourceId,
+            commit.sourceWork.stableSourceUrl.trim(),
+        ).executeAsOneOrNull()
+        author_archiveQueries.insertArchiveDiscovery(
+            kind = commit.kind.name,
+            reason = commit.reason,
+            baselineGeneration = commit.baselineGeneration,
+            discoveredAt = commit.discoveredAt,
+            sourceId = commit.sourceWork.sourceId,
+            stableSourceUrl = commit.sourceWork.stableSourceUrl.trim(),
+            creatorId = commit.creatorId,
+        )
+        val discoveryId = author_archiveQueries.getArchiveDiscoveryByNaturalKey(
+            commit.creatorId,
+            commit.sourceWork.sourceId,
+            commit.sourceWork.stableSourceUrl.trim(),
+        ).executeAsOne()
+        if (existingId == null) {
+            author_archiveQueries.insertArchiveNotificationOutbox(
+                discoveryId = discoveryId,
+                channel = commit.outboxChannel,
+                idempotencyKey = commit.idempotencyKey,
+                createdAt = commit.discoveredAt,
             )
-            val discoveryId = author_archiveQueries.getArchiveDiscoveryByNaturalKey(
-                commit.creatorId,
-                commit.sourceWork.sourceId,
-                commit.sourceWork.stableSourceUrl.trim(),
-            ).executeAsOne()
-            if (existingId == null) {
-                author_archiveQueries.insertArchiveNotificationOutbox(
-                    discoveryId = discoveryId,
-                    channel = commit.outboxChannel,
-                    idempotencyKey = commit.idempotencyKey,
-                    createdAt = commit.discoveredAt,
-                )
-                val outbox = author_archiveQueries
-                    .getArchiveNotificationOutboxByIdempotencyKey(commit.idempotencyKey)
-                    .executeAsOne()
-                check(outbox.discovery_id == discoveryId && outbox.channel == commit.outboxChannel) {
-                    "Discovery idempotency key conflicts with another outbox payload"
-                }
+            val outbox = author_archiveQueries
+                .getArchiveNotificationOutboxByIdempotencyKey(commit.idempotencyKey)
+                .executeAsOne()
+            check(outbox.discovery_id == discoveryId && outbox.channel == commit.outboxChannel) {
+                "Discovery idempotency key conflicts with another outbox payload"
             }
-            author_archiveQueries.getArchiveDiscoveryProjectionById(discoveryId, ::mapArchiveDiscovery).executeAsOne()
+        }
+        return author_archiveQueries
+            .getArchiveDiscoveryProjectionById(discoveryId, ::mapArchiveDiscovery)
+            .executeAsOne()
+    }
+
+    private fun Database.appendObservationLanguageAssertion(observation: SourceDiscoveryObservation) {
+        val normalized = observation.languageAssertion.copy(
+            tag = CreatorArchiveLanguageTag.normalize(observation.languageAssertion.tag),
+        )
+        if (normalized.evidenceKind == LanguageEvidenceKind.MANUAL) {
+            require(observation.languageActor != DecisionActor.ALGORITHM) {
+                "Manual language evidence requires USER or RESTORE actor"
+            }
+        }
+        if (observation.languageActor == DecisionActor.ALGORITHM) {
+            require(!observation.languageAlgorithmVersion.isNullOrBlank()) {
+                "Algorithm language assertions require an algorithm version"
+            }
+        }
+        val attempted = LanguageAssertionEvent(
+            subjectType = "SOURCE_WORK",
+            subjectKey = sourceWorkSubjectKey(
+                observation.sourceWork.sourceId,
+                observation.sourceWork.stableSourceUrl.trim(),
+            ),
+            assertion = normalized,
+            actor = observation.languageActor,
+            evidencePayload = observation.languageEvidencePayload,
+            algorithmVersion = observation.languageAlgorithmVersion,
+            assertedAt = observation.languageAssertedAt,
+        )
+        val existing = author_archiveQueries
+            .getArchiveLanguageAssertionByIdempotencyKey(
+                observation.languageIdempotencyKey,
+                ::mapLanguageAssertionEvent,
+            )
+            .executeAsOneOrNull()
+        check(existing == null || existing.copy(assertedAt = attempted.assertedAt) == attempted) {
+            "Language assertion idempotency key conflicts with another observation"
+        }
+        if (existing == null) {
+            author_archiveQueries.upsertArchiveLanguageAssertion(
+                subjectType = attempted.subjectType,
+                subjectKey = attempted.subjectKey,
+                dimension = attempted.assertion.dimension.name,
+                languageTag = attempted.assertion.tag,
+                confidence = attempted.assertion.confidence,
+                evidenceKind = attempted.assertion.evidenceKind.name,
+                evidencePayload = attempted.evidencePayload,
+                actor = attempted.actor.name,
+                algorithmVersion = attempted.algorithmVersion,
+                withdrawn = attempted.assertion.withdrawn,
+                assertedAt = attempted.assertedAt,
+                idempotencyKey = observation.languageIdempotencyKey,
+            )
+        }
+    }
+
+    private fun Database.upsertObservationCreatorRelation(
+        sourceWorkId: Long,
+        observation: SourceDiscoveryObservation,
+    ): ArchiveUpsertOutcome<SourceWorkNaturalKey> {
+        val before = author_archiveQueries
+            .getArchiveSourceWorkCreator(sourceWorkId, observation.creatorId, ::mapRelationSnapshot)
+            .executeAsOneOrNull()
+        val requested = RelationSnapshot(
+            role = observation.role.name,
+            order = observation.order,
+            origin = observation.origin.name,
+            verification = observation.verification.name,
+            sourceText = observation.sourceText,
+            confidence = observation.confidence,
+            evidence = observation.relationEvidence,
+        )
+        if (before == requested) return ArchiveUpsertOutcome.Unchanged(observation.sourceWork)
+        author_archiveQueries.upsertArchiveSourceWorkCreator(
+            sourceWorkId = sourceWorkId,
+            creatorId = observation.creatorId,
+            role = requested.role,
+            creatorOrder = requested.order,
+            origin = requested.origin,
+            verification = requested.verification,
+            sourceText = requested.sourceText,
+            confidence = requested.confidence,
+            evidence = requested.evidence,
+            createdAt = observation.detailsFetchedAt,
+            lastModifiedAt = observation.detailsFetchedAt,
+        )
+        val after = author_archiveQueries
+            .getArchiveSourceWorkCreator(sourceWorkId, observation.creatorId, ::mapRelationSnapshot)
+            .executeAsOne()
+        return when {
+            before == null -> ArchiveUpsertOutcome.Inserted(observation.sourceWork)
+            before == after -> ArchiveUpsertOutcome.Unchanged(observation.sourceWork)
+            else -> ArchiveUpsertOutcome.Updated(observation.sourceWork)
         }
     }
 
@@ -2239,6 +2433,16 @@ private fun mapDueWatchSource(
     baselineState = WatchBaselineState.valueOf(baselineState),
     baselineGeneration = baselineGeneration,
     nextDueAt = nextDueAt,
+)
+
+private fun mapWatchSourceBaseline(
+    sourceId: Long,
+    baselineState: String,
+    baselineGeneration: Long,
+) = WatchSourceBaseline(
+    sourceId = sourceId,
+    baselineState = WatchBaselineState.valueOf(baselineState),
+    baselineGeneration = baselineGeneration,
 )
 
 private fun mapDiscoveryRun(

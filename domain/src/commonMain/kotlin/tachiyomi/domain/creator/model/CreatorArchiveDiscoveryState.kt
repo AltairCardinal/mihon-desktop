@@ -20,6 +20,13 @@ data class DueWatchSource(
     val nextDueAt: Long?,
 )
 
+/** Persistent per-source baseline of a watch; used by the discovery executor before every run. */
+data class WatchSourceBaseline(
+    val sourceId: Long,
+    val baselineState: WatchBaselineState,
+    val baselineGeneration: Long,
+)
+
 data class DiscoveryRun(
     val runKey: String,
     val creatorId: Long,
@@ -81,6 +88,47 @@ data class DiscoveryCommit(
     val discoveredAt: Long,
     val outboxChannel: String,
     val idempotencyKey: String,
+)
+
+/**
+ * One source-work observation committed by the discovery executor.
+ *
+ * Source metadata, language evidence, creator relation and the optional discovery/outbox are one
+ * source-level transaction. This prevents a failed source from leaving a half-written observation.
+ */
+data class SourceDiscoveryObservation(
+    val sourceWork: SourceWorkNaturalKey,
+    val title: String,
+    val authorText: String?,
+    val artistText: String?,
+    val thumbnailUrl: String?,
+    val detailsFetchedAt: Long,
+    val creatorId: Long,
+    val role: CreatorRole,
+    val order: Long,
+    val origin: CreatorRelationOrigin,
+    val verification: CreatorRelationVerification,
+    val sourceText: String?,
+    val confidence: Double,
+    val relationEvidence: String,
+    val languageAssertion: LanguageAssertionContract,
+    val languageActor: DecisionActor,
+    val languageEvidencePayload: String,
+    val languageAlgorithmVersion: String?,
+    val languageAssertedAt: Long,
+    val languageIdempotencyKey: String,
+    val notificationsEnabled: Boolean,
+    val baselineState: WatchBaselineState,
+    val discoveryReason: String,
+    val baselineGeneration: Long,
+    val discoveredAt: Long,
+    val outboxChannel: String,
+    val discoveryIdempotencyKey: String,
+)
+
+data class SourceDiscoveryObservationResult(
+    val relation: ArchiveUpsertOutcome<SourceWorkNaturalKey>,
+    val discovery: ArchiveDiscovery?,
 )
 
 data class ArchiveDiscovery(

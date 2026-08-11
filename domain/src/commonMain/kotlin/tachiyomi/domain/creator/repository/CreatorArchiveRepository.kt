@@ -6,6 +6,7 @@ import tachiyomi.domain.creator.model.ArchiveDiscovery
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.ArchiveUpsertOutcome
 import tachiyomi.domain.creator.model.ArchiveWatchPolicy
+import tachiyomi.domain.creator.model.CreatorArchiveV2Policy
 import tachiyomi.domain.creator.model.CreatorIdentityOption
 import tachiyomi.domain.creator.model.CreatorLibraryIndexEntry
 import tachiyomi.domain.creator.model.CreatorMention
@@ -14,6 +15,7 @@ import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.DecisionActor
 import tachiyomi.domain.creator.model.DiscoveryCommit
+import tachiyomi.domain.creator.model.DiscoveryCommitPlan
 import tachiyomi.domain.creator.model.DiscoveryLease
 import tachiyomi.domain.creator.model.DiscoveryRun
 import tachiyomi.domain.creator.model.DiscoveryRunState
@@ -25,7 +27,10 @@ import tachiyomi.domain.creator.model.NotificationOutboxItem
 import tachiyomi.domain.creator.model.ReviewDisposition
 import tachiyomi.domain.creator.model.SourceCheckpoint
 import tachiyomi.domain.creator.model.SourceCheckpointUpdate
+import tachiyomi.domain.creator.model.SourceDiscoveryObservation
+import tachiyomi.domain.creator.model.SourceDiscoveryObservationResult
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.model.WatchSourceBaseline
 import tachiyomi.domain.creator.model.WorkDecisionContract
 import tachiyomi.domain.manga.model.Manga
 
@@ -97,6 +102,80 @@ interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
     suspend fun getSourceCheckpoints(creatorId: Long): List<SourceCheckpoint>
 
     fun observeSourceCheckpoints(creatorId: Long): Flow<List<SourceCheckpoint>>
+
+    /** Persistent per-source baseline state for a watch, used to plan event creation. */
+    suspend fun getWatchSourceBaselines(creatorId: Long): List<WatchSourceBaseline>
+
+    /** True when the (source, url) already maps to a library or history manga. */
+    suspend fun sourceWorkIsInLibraryOrHistory(key: SourceWorkNaturalKey): Boolean
+
+    /** True when the (source, url) is a confirmed version of a canonical work. */
+    suspend fun sourceWorkHasConfirmedCanonicalVersion(key: SourceWorkNaturalKey): Boolean
+
+    /** Atomically archives one source result and creates its discovery/outbox when eligible. */
+    suspend fun commitSourceDiscoveryObservation(
+        observation: SourceDiscoveryObservation,
+    ): SourceDiscoveryObservationResult {
+        upsertSourceWork(
+            sourceId = observation.sourceWork.sourceId,
+            stableSourceUrl = observation.sourceWork.stableSourceUrl,
+            mangaId = null,
+            title = observation.title,
+            authorText = observation.authorText,
+            artistText = observation.artistText,
+            thumbnailUrl = observation.thumbnailUrl,
+            detailsFetchedAt = observation.detailsFetchedAt,
+        )
+        appendLanguageAssertion(
+            subject = ArchiveLanguageSubject.SourceWork(observation.sourceWork),
+            assertion = observation.languageAssertion,
+            actor = observation.languageActor,
+            evidencePayload = observation.languageEvidencePayload,
+            algorithmVersion = observation.languageAlgorithmVersion,
+            assertedAt = observation.languageAssertedAt,
+            idempotencyKey = observation.languageIdempotencyKey,
+        )
+        val relation = upsertSourceWorkCreator(
+            sourceWork = observation.sourceWork,
+            creatorId = observation.creatorId,
+            role = observation.role,
+            order = observation.order,
+            origin = observation.origin,
+            verification = observation.verification,
+            sourceText = observation.sourceText,
+            confidence = observation.confidence,
+            evidence = observation.relationEvidence,
+        )
+        val plan = if (observation.notificationsEnabled) {
+            CreatorArchiveV2Policy.planDiscoveryCommit(
+                baselineState = observation.baselineState,
+                relationVerification = observation.verification,
+                watchRelationOutcome = relation,
+                alreadyInLibraryOrHistory = sourceWorkIsInLibraryOrHistory(observation.sourceWork),
+                confirmedCanonicalWork = sourceWorkHasConfirmedCanonicalVersion(observation.sourceWork),
+                idempotencyKey = observation.discoveryIdempotencyKey,
+            )
+        } else {
+            null
+        }
+        val discovery = if (plan is DiscoveryCommitPlan.EventWithOutbox) {
+            commitDiscovery(
+                DiscoveryCommit(
+                    creatorId = observation.creatorId,
+                    sourceWork = observation.sourceWork,
+                    kind = plan.kind,
+                    reason = observation.discoveryReason,
+                    baselineGeneration = observation.baselineGeneration,
+                    discoveredAt = observation.discoveredAt,
+                    outboxChannel = observation.outboxChannel,
+                    idempotencyKey = plan.idempotencyKey,
+                ),
+            )
+        } else {
+            null
+        }
+        return SourceDiscoveryObservationResult(relation, discovery)
+    }
 
     suspend fun commitDiscovery(commit: DiscoveryCommit): ArchiveDiscovery
 
