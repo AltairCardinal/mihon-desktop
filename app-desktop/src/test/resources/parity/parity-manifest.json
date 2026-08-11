@@ -1217,7 +1217,7 @@
         {
           "path": "app/src/main/java/eu/kanade/domain/DomainModule.kt",
           "symbol": "override fun InjektRegistrar.registerInjectables",
-          "line": 118
+          "line": 125
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -1225,7 +1225,7 @@
           "kind": "PLATFORM_ADAPTER",
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "fun initDesktopDI",
-          "line": 187
+          "line": 195
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -4187,7 +4187,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 903
+          "line": 936
         }
       ],
       "FIXTURE": [
@@ -11343,17 +11343,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt",
           "symbol": "categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY",
-          "line": 852
+          "line": 911
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
           "symbol": "suspend fun toggleLibrary",
-          "line": 267
+          "line": 273
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
           "symbol": "MangaCategoryDialogMode.ADD_TO_LIBRARY -> model.toggleLibrary",
-          "line": 355
+          "line": 414
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
@@ -20350,7 +20350,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
           "symbol": "suspend fun markSelectedBookmark",
-          "line": 246
+          "line": 252
         }
       ],
       "FIXTURE": [
@@ -32967,7 +32967,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "filterChaptersForDownload.await(manga, chapters)",
-          "line": 926
+          "line": 959
         }
       ],
       "FIXTURE": [
@@ -42231,7 +42231,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreator.kt",
           "symbol": "BackupCodec.encode",
-          "line": 160
+          "line": 170
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -42246,7 +42246,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt",
           "symbol": "suspend fun createFromDatabase",
-          "line": 103
+          "line": 104
         }
       ],
       "FIXTURE": [
@@ -42993,7 +42993,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorer.kt",
           "symbol": "suspend fun restore",
-          "line": 48
+          "line": 54
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -43008,7 +43008,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupRestorer.kt",
           "symbol": "suspend fun restore",
-          "line": 54
+          "line": 56
         }
       ],
       "FIXTURE": [
@@ -43635,14 +43635,14 @@
           "kind": "PLATFORM_ADAPTER",
           "path": "app-desktop/src/main/kotlin/mihon/desktop/backup/AutoBackupScheduler.kt",
           "symbol": "class AutoBackupScheduler(",
-          "line": 44
+          "line": 45
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/backup/AutoBackupScheduler.kt",
           "symbol": "internal suspend fun runDueBackup()",
-          "line": 77
+          "line": 79
         }
       ],
       "FIXTURE": [
@@ -44025,7 +44025,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreator.kt",
           "symbol": "BackupCodec.encode",
-          "line": 160
+          "line": 170
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/BackupDecoder.kt",
@@ -44045,12 +44045,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt",
           "symbol": "fun encodeToBytes",
-          "line": 50
+          "line": 51
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt",
           "symbol": "fun decodeFromBytes",
-          "line": 57
+          "line": 58
         }
       ],
       "FIXTURE": [
@@ -54129,12 +54129,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.initialize",
-          "line": 216
+          "line": 224
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.startApp",
-          "line": 218
+          "line": 226
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt",

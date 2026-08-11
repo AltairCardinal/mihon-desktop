@@ -140,6 +140,10 @@ class LibraryMangaTestModeHttpTest {
                 val chapterRow = insertChapters(manga, total = 1, read = 0).single()
                 Injekt.get<CategoryRepository>().insert(Category(id = 3, name = "Three", order = 0, flags = 0))
                 Injekt.get<CategoryRepository>().insert(Category(id = 4, name = "Four", order = 1, flags = 0))
+                val categoryIds = Injekt.get<CategoryRepository>().getAll()
+                    .filter { it.name == "Three" || it.name == "Four" }
+                    .sortedBy { it.order }
+                    .map { it.id }
                 assertNotNull(
                     awaitLibraryRows(baseUrl) { it == listOf("Detail") },
                     "detail fixture never reached the DI-owned library model",
@@ -162,9 +166,13 @@ class LibraryMangaTestModeHttpTest {
                 assertEquals(200, added.statusCode(), added.body())
                 assertTrue(added.detail().getValue("favorite").jsonPrimitive.boolean)
 
-                val categories = post(baseUrl, "/test/action/detail_categories", """{"categoryIds":"3,4"}""")
+                val categories = post(
+                    baseUrl,
+                    "/test/action/detail_categories",
+                    """{"categoryIds":"${categoryIds.joinToString(",")}"}""",
+                )
                 assertEquals(200, categories.statusCode(), categories.body())
-                assertEquals("[3,4]", categories.detail().getValue("categoryIds").toString())
+                assertEquals(categoryIds.toString().replace(" ", ""), categories.detail().getValue("categoryIds").toString())
 
                 val chapter = post(
                     baseUrl,

@@ -397,7 +397,10 @@ class DesktopMigrateMangaUseCaseIntegrationTest {
             tachiyomi.data.Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
         )
         val handler = JvmDatabaseHandler(database, driver)
-        val mangas = MangaRepositoryImpl(handler)
+        val mangas = MangaRepositoryImpl(
+            handler,
+            tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter,
+        )
         val migrationMangas: MangaRepository = if (faultMembership) FaultingMangaRepository(mangas) else mangas
         val chapters = ChapterRepositoryImpl(handler)
         val categories = CategoryRepositoryImpl(handler)

@@ -11,6 +11,9 @@ import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
+import tachiyomi.domain.creator.model.CreatorLibraryIndexEntry
+import tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter
 import tachiyomi.domain.manga.interactor.FetchInterval
 import tachiyomi.domain.manga.interactor.GetMangaByUrlAndSourceId
 import tachiyomi.domain.manga.model.Manga
@@ -31,6 +34,8 @@ class MangaRestorer(
     private val updateManga: UpdateManga = Injekt.get(),
     private val getTracks: GetTracks = Injekt.get(),
     private val insertTrack: InsertTrack = Injekt.get(),
+    private val creatorIndexWriter: CreatorLibraryIndexWriter = Injekt.get(),
+    private val extractCreators: ExtractCreatorsFromManga = ExtractCreatorsFromManga(),
     fetchInterval: FetchInterval = Injekt.get(),
 ) {
 
@@ -75,6 +80,13 @@ class MangaRestorer(
                 tracks = backupManga.tracking,
                 excludedScanlators = backupManga.excludedScanlators,
             )
+            if (restoredManga.favorite) {
+                creatorIndexWriter.indexLibraryMangaBatch(
+                    listOf(CreatorLibraryIndexEntry(restoredManga, extractCreators.await(restoredManga))),
+                )
+            } else {
+                creatorIndexWriter.removeLibraryMangaIndex(restoredManga.id)
+            }
         }
     }
 
@@ -110,7 +122,9 @@ class MangaRestorer(
                 source = manga.source,
                 url = manga.url,
                 artist = manga.artist,
+                updateArtist = true,
                 author = manga.author,
+                updateAuthor = true,
                 description = manga.description,
                 genre = manga.genre?.joinToString(separator = ", "),
                 title = manga.title,

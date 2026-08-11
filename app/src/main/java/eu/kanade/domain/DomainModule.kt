@@ -73,8 +73,11 @@ import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
+import tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter
+import tachiyomi.domain.creator.repository.CreatorLibraryMangaSource
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
+import tachiyomi.domain.creator.service.CreatorLibraryIndexer
 import tachiyomi.domain.history.interactor.GetHistory
 import tachiyomi.domain.history.interactor.GetNextChapters
 import tachiyomi.domain.history.interactor.GetTotalReadDuration
@@ -131,12 +134,21 @@ class DomainModule : InjektModule {
         addFactory { UpdateCategory(get()) }
         addFactory { DeleteCategory(get(), get(), get()) }
 
-        addSingletonFactory<MangaRepository> { MangaRepositoryImpl(get()) }
         addSingletonFactory { CreatorArchiveLegacyBridge(get()) }
         addSingletonFactory<CreatorArchiveBootstrap> { CreatorArchiveLegacyBootstrap(get()) }
         addSingletonFactory { CreatorRepositoryImpl(handler = get(), bootstrap = get()) }
         addSingletonFactory<CreatorRepository> { get<CreatorRepositoryImpl>() }
         addSingletonFactory<CreatorArchiveRepository> { get<CreatorRepositoryImpl>() }
+        addSingletonFactory<CreatorLibraryIndexWriter> { get<CreatorRepositoryImpl>() }
+        addSingletonFactory<tachiyomi.data.backup.AuthorArchiveBackupContributor> {
+            tachiyomi.data.backup.SqlDelightAuthorArchiveBackupContributor(get())
+        }
+        addSingletonFactory { MangaRepositoryImpl(get(), get<CreatorLibraryIndexWriter>()) }
+        addSingletonFactory<MangaRepository> { get<MangaRepositoryImpl>() }
+        addSingletonFactory<CreatorLibraryMangaSource> { get<MangaRepositoryImpl>() }
+        addSingletonFactory {
+            CreatorLibraryIndexer(get(), get(), tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga())
+        }
         addSingletonFactory { SourceMangaSearchService() }
         addFactory { CreatorDiscoveryService(get(), get()) }
         addFactory { GetDuplicateLibraryManga(get()) }

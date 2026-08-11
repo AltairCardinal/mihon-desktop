@@ -67,6 +67,7 @@ class NavigationContractTest {
     fun `author entry creates a regular Screen target for the nested navigator`() {
         val target = authorDetailScreenOrNull("  Jane Doe  ", creatorId = 42L)
         assertTrue(target is AuthorDetailScreen)
+        assertFalse(requireNotNull(target).collectOnOpen)
         assertTrue(target is Screen)
         assertFalse(target is Tab)
     }

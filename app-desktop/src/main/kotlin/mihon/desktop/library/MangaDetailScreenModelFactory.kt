@@ -15,6 +15,8 @@ import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
 import tachiyomi.domain.creator.interactor.LinkMangaCreator
+import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
 import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
 import tachiyomi.domain.manga.interactor.UpdateManga
@@ -43,6 +45,7 @@ object MangaDetailScreenModelFactory {
             setMangaChapterFlags = Injekt.get<SetMangaChapterFlags>(),
             setMangaCategories = Injekt.get<SetMangaCategories>(),
             linkMangaCreator = Injekt.get<LinkMangaCreator>(),
+            manageCreatorIdentity = ManageCreatorIdentity(Injekt.get<CreatorArchiveRepository>()),
             enqueueDownload = downloadManager?.let { it::enqueue },
             downloadQueue = downloadManager?.queue,
             isDownloaded = downloadManager?.let { manager ->

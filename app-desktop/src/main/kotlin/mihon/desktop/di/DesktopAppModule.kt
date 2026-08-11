@@ -143,6 +143,9 @@ import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
+import tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter
+import tachiyomi.domain.creator.repository.CreatorLibraryMangaSource
+import tachiyomi.domain.creator.service.CreatorLibraryIndexer
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
 import tachiyomi.domain.history.interactor.GetHistory
 import tachiyomi.domain.history.interactor.GetNextChapters
@@ -457,7 +460,6 @@ private fun registerDesktopNetwork(
 
 internal fun initDataLayer(paths: DesktopPlatformPaths): DatabaseHandler {
     val handler = initDatabase(paths.databaseFile)
-    val mangaRepository: MangaRepository = MangaRepositoryImpl(handler)
     val chapterRepository: ChapterRepository = ChapterRepositoryImpl(handler)
     val categoryRepository: CategoryRepository = CategoryRepositoryImpl(handler)
     val historyRepository: HistoryRepository = HistoryRepositoryImpl(handler)
@@ -469,7 +471,15 @@ internal fun initDataLayer(paths: DesktopPlatformPaths): DatabaseHandler {
         handler = handler,
         bootstrap = creatorArchiveBootstrap,
     )
+    val mangaRepositoryImpl = MangaRepositoryImpl(handler, creatorRepositoryImpl)
+    val mangaRepository: MangaRepository = mangaRepositoryImpl
     val creatorRepository: CreatorRepository = creatorRepositoryImpl
+    val creatorLibraryIndexer = CreatorLibraryIndexer(
+        mangaSource = mangaRepositoryImpl,
+        indexWriter = creatorRepositoryImpl,
+        extractCreators = tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga(),
+    )
+    val authorArchiveBackupContributor = tachiyomi.data.backup.SqlDelightAuthorArchiveBackupContributor(handler)
     val extensionRepoRepository: ExtensionRepoRepository = ExtensionRepoRepositoryImpl(handler)
     val trackRepository: TrackRepository = TrackRepositoryImpl(handler)
     Injekt.addSingleton(mangaRepository)
@@ -480,6 +490,10 @@ internal fun initDataLayer(paths: DesktopPlatformPaths): DatabaseHandler {
     Injekt.addSingleton(creatorArchiveBootstrap)
     Injekt.addSingleton(creatorRepository)
     Injekt.addSingleton<CreatorArchiveRepository>(creatorRepositoryImpl)
+    Injekt.addSingleton<CreatorLibraryIndexWriter>(creatorRepositoryImpl)
+    Injekt.addSingleton<CreatorLibraryMangaSource>(mangaRepositoryImpl)
+    Injekt.addSingleton(creatorLibraryIndexer)
+    Injekt.addSingleton<tachiyomi.data.backup.AuthorArchiveBackupContributor>(authorArchiveBackupContributor)
     Injekt.addSingleton(extensionRepoRepository)
     Injekt.addSingleton(trackRepository)
     return handler
@@ -757,6 +771,7 @@ internal fun initUILayer(
             trackRepository = Injekt.get(),
             preferenceStore = preferenceStore,
             extensionRepoRepository = Injekt.get(),
+            authorArchiveBackupContributor = Injekt.get(),
         ),
     )
 
@@ -891,6 +906,10 @@ internal fun initUILayer(
         readerModeMemoryCleaner = Injekt.get<ReaderModeMemoryCleaner>(),
         trackerSyncScheduler = trackerSyncScheduler,
         batchMigrationController = batchMigrationController,
+        creatorLibraryIndexService = mihon.desktop.CreatorLibraryIndexRuntimeService(
+            Injekt.get(),
+            applicationScope,
+        ),
         appLock = appLock,
         scope = applicationScope,
         updateScreenModel = updateScreenModel,
@@ -996,6 +1015,7 @@ private fun registerDesktopBackup(
         excludedScanlatorsForManga = { mangaId ->
             Injekt.get<GetExcludedScanlators>().await(mangaId).toList()
         },
+        authorArchiveBackupContributor = Injekt.get(),
     )
     Injekt.addSingleton(scheduler)
     return scheduler

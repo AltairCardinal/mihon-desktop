@@ -128,7 +128,7 @@ status: in_progress
 
 | Action | 当前事实 | ENTRY / EFFECT / FEEDBACK | 决定/危险反馈 | 后续任务 |
 | --- | --- | --- | --- | --- |
-| index | `PARTIAL` | 导航、repository effect 已测；挂载 UI/回填反馈未测 | N/A | `AA1-01` |
+| index | `COVERED` | 导航、runtime→批量 repository effect、挂载失败/重试/空书架反馈均绑定 production runner | N/A | — |
 | follow | `PARTIAL` | UI entry/反馈未挂载；follow effect 已测 | 可逆；失败反馈缺失 | `AA1-03`、`AA3-03` |
 | manual scan | `PARTIAL` | production interactor→service→repository 已测；按钮与 typed terminal 未测 | 可取消契约未实现 | `AA2-01`、`AA2-02`、`AA3-03` |
 | auto scan | `PARTIAL` | library-success callback 存在，但现有 runner 不证明回调被调用；独立入口/终态缺失 | 可取消/恢复未实现 | `AA2-03` |
@@ -474,9 +474,9 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 #### `AA1-01` 从书架回填并持续同步可解释的作者身份
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `[ ]` · Android `[ ]` · Desktop/UI `[ ]` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`IN_PROGRESS（Windows 已验收，Android 延后）` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `[x]` · Android `[ ]：按用户指示在全部功能完成后统一验收` · Desktop/UI `[x]` · Legacy/Migration `[x]` · Review `[ ]：已完成首轮审查与 P0/P1 修复，最终复审延后` · Verify `[ ]：Windows 已通过，Android 未验收` · Evidence `[x]` · Commit `[x]：本行所在提交`
 >
-> 记录：阻塞 `等待 AA1-02 v16 storage/repository 前置完成；禁止在 v1 上临时双写` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `Android 验收按用户指示延后；不阻塞继续实现后续 Desktop 批次` · 审查 `首轮审查发现的 identity、backup、watch/history 保留与 production wiring P0/P1 已修复；未追加审查轮次` · 验证 `Windows：2495 tests / 1 skipped 全绿；正式构建、扩展运行时验收与未打包应用启动通过` · 运行产物 `Mihon-Desktop-0.11.18.1.99ce812-unpacked/Mihon Desktop.exe；Windows ZIP SHA-256 4c63b92ada1ed08dc416496a42ca2cb564e07791ab5c404a18950c987e4c4eec` · Commit `本行所在提交`
 
 - RED：多人分隔符、author/artist 重叠、别名、罗马字/全半角、空值、同名不同人、人工 merge/split、字段修改、漫画删除、重复 backfill 和 10k 漫画批量样本。
 - GREEN：复用并扩展 `CreatorNameNormalizer`，提取 `ExtractCreatorsFromManga` 与增量 indexer；事务批量回填现有书架，之后订阅 manga 增删改同步关系；人工 identity merge/split 事务化重映射 link/watch/decision 并通过唯一约束消除重复 event。
@@ -494,7 +494,7 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 > 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
 
 - RED：source-level baseline、partial success、due selection、lease 冲突、进程重启恢复、取消、outbox 原子提交、read/review/delivery 独立状态和取消关注后保留归档。
-- GREEN：新增 watch policy、run/checkpoint、discovery event、outbox repository 与 reactive projections；同时实现 versioned optional author backup section 的 creator/alias/watch 基础片段；所有状态转换通过 typed commands，禁止任意字符串 update。
+- GREEN：新增 watch policy、run/checkpoint、discovery event、outbox repository 与 reactive projections；在 `AA1-01` 已落地的 field 107 section v1 fields 1–3 上追加 field 4 watch/source scope/result policy，不重复实现 creator/alias/binding 恢复；所有状态转换通过 typed commands，禁止任意字符串 update。
 - 性能：为 due watch、creator feed、unread、work/source 和 outbox pending 建索引；解释计划/基准样本不得出现每行 N+1。
 - 关闭条件：数据库单独就能回答“谁到期、哪个源失败、哪些是未读新发现、哪些待投递”，不依赖内存 Flow 历史；creator/alias/watch 可双端备份往返后才能进入任何用户 rollout。
 - 预计：3–5 工程日，约 6–11 个文件。
@@ -859,5 +859,6 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 | 2026-08-11 | `AA0-01` | `TODO → DONE` | JUnit 旧报告仅发现 2/9；修复后先暴露 1 个真实断言失败；`aa0-01-inventory-red`；六条 desired behavior 由 `aa0-01-product-gaps-red` 与 `aa0-review-evidence-red` 正确失败 | 9/9 intended data tests；动作 inventory、void runner、导航/手动发现真实边界与诚实 partial/gap 保护全绿 | 首轮 3 个证据 P1 修复；修复复审 PASS，P0/P1/P2=0 | `aa0-review-green`、`aa0-related-green`、`aa0-review-spotless` PASS；无发布构建 | 本行所在提交 |
 | 2026-08-11 | `AA0-02` | `TODO → DONE` | `aa0-review-domain-red`：11 tests / 2 expected failures，暴露非法 algorithm decision 与非显式 review 迁移 | 19 表物理契约、独立状态机、source port、field 107 备份 wire、v15 fixture、commonMain-only authority guard | 首轮状态契约 P1 修复；修复复审 PASS，P0/P1/P2=0 | `aa0-related-green`：domain/data/authority/interface PASS；`aa0-review-green`、`aa0-review-spotless` PASS | 本行所在提交 |
 | 2026-08-11 | `AA1-02` | `TODO → DONE` | `aa1-02-review-fixes-red`：40 tests / 6 expected failures；`aa1-02-rereview-red`：42 tests / 4 expected failures；`aa1-02-legacy-pending-red`：9 tests / 1 expected failure，覆盖 precedence、review attach/reset、URL、跨-work 物化及语言一致性 | v16 全量 schema + typed repository；v1 只读增量 bridge；有效 decision 唯一物化；shared language contract；Android/Desktop 同实例 DI | 首轮 P1=3/P2=1、唯一修复复审 P1=2/P2=1；全部 finding 修复并由新增 production 回归锁定，最终 P0/P1/P2=0 | 13 domain + 42 data + 11 Desktop + 4 Android 全绿；`spotlessCheck` PASS；无发布构建 | 本行所在提交 |
+| 2026-08-12 | `AA1-01 / Windows checkpoint` | `TODO → IN_PROGRESS（Windows 已验收）` | parser/index、identity 歧义、merge/split、alias、字段清空、重复回填与批处理行为已覆盖 | shared parser/indexer、事务同步、portable backup、Authors/Manga Detail identity UI 与 Desktop runtime wiring 已接入 production | 首轮 P0/P1 已修复；按用户指示不追加复审 | `scripts/build-desktop.sh feature`：2495 tests / 1 skipped；Windows build/runtime acceptance PASS；最终 EXE `0.11.18.1.99ce812` | 本行所在提交 |
 
-AA0 与 AA1-02 已关闭。v16 migration、typed repository、rollback bridge、双端 DI 和 FK/version 原子门禁现已完成；当前进度从第一个未勾选项推导为 `AA1-01`。下一批直接在 v2 上实现书架回填与持续 identity 索引，不再向 v1 双写；后续自动通知/canonical UI 仍按依赖顺序保持未开始。
+AA0 与 AA1-02 已关闭。AA1-01 的 Windows/shared/data/backup 实现与正式 Windows 构建验收已完成；顶层任务仍保持未勾选，等待全部功能完成后的 Android 统一验收与最终复审。后续自动通知/canonical UI 仍按依赖顺序保持未开始。

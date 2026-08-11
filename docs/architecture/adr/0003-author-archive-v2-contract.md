@@ -164,7 +164,7 @@ data/src/commonMain/sqldelight/**
 
 creator 备份同时保存 status 与可选 `mergedIntoPortableKey`；source-work relation 保存 creator portable key、role、order、origin、verification 与安全 evidence。恢复只按 portable/natural key 合并：normalized alias 相同绝不能合并 creator；redirect 必须先做无环校验。只保存 creator/alias 而不保存 binding 无法恢复人工 split，因此不得作为 merge/split 往返完成证据。
 
-备份不携带本地 DB ID，不恢复 run、lease、checkpoint、pending outbox 或 delivery attempt。恢复后的 watch/source 一律重新 baseline；可恢复 read/review，但不得据此重建 OS 通知。field 107 的 wire model 与双端 production wiring在 `AA1-03` 接入 `BK-01` shared plan；在此之前不得宣称作者数据已经可备份。
+备份不携带本地 DB ID，不恢复 run、lease、checkpoint、pending outbox 或 delivery attempt。恢复后的 watch/source 一律重新 baseline；可恢复 read/review，但不得据此重建 OS 通知。`AA1-01` 建立 field 107 section v1 的 fields 1–3，并完成 creator、alias、merge redirect、source-work binding 的 Android/Desktop production wiring；`AA1-03` 只能向同一 section 追加 field 4，后续数据任务按本节字段表追加 fields 5–8。各平台 orchestration 复用 shared contributor，不得另建 envelope 字段或按 normalized alias 恢复身份。
 
 ## 8. 性能 reference 与门槛
 

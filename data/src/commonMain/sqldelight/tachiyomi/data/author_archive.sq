@@ -394,7 +394,7 @@ SELECT
     C.last_modified_at
 FROM author_archive_creators C
 WHERE C._id = :id
-AND C.status != 'DELETED';
+AND C.status = 'ACTIVE';
 
 getArchiveCreatorsByAlias:
 SELECT
@@ -469,6 +469,32 @@ INSERT INTO author_archive_creators(
 )
 VALUES (:portableKey, :displayName, :normalizedName, :sortName, 'ACTIVE', NULL, 0, NULL, :createdAt, :lastModifiedAt);
 
+insertArchiveCreatorForReview:
+INSERT INTO author_archive_creators(
+    portable_key,
+    display_name,
+    normalized_name,
+    sort_name,
+    status,
+    merged_into_creator_id,
+    needs_review,
+    legacy_creator_id,
+    created_at,
+    last_modified_at
+)
+VALUES (
+    :portableKey,
+    :displayName,
+    :normalizedName,
+    :sortName,
+    'ACTIVE',
+    NULL,
+    :needsReview,
+    NULL,
+    :createdAt,
+    :lastModifiedAt
+);
+
 insertArchiveCreatorFromLegacy:
 INSERT INTO author_archive_creators(
     portable_key,
@@ -509,6 +535,169 @@ SET display_name = :displayName,
     sort_name = :sortName,
     last_modified_at = :lastModifiedAt
 WHERE _id = :id
+AND status = 'ACTIVE';
+
+getArchiveCreatorIdentityRecord:
+SELECT portable_key, display_name, normalized_name, sort_name, needs_review, status, merged_into_creator_id
+FROM author_archive_creators
+WHERE _id = :id;
+
+getArchiveCreatorsForBackup:
+SELECT
+    C.portable_key,
+    C.display_name,
+    C.normalized_name,
+    C.sort_name,
+    C.status,
+    TARGET.portable_key AS merged_into_portable_key,
+    C.needs_review
+FROM author_archive_creators C
+LEFT JOIN author_archive_creators TARGET ON TARGET._id = C.merged_into_creator_id
+WHERE C.status IN ('ACTIVE', 'MERGED')
+ORDER BY C.portable_key;
+
+getArchiveAliasesForBackup:
+SELECT
+    C.portable_key AS creator_portable_key,
+    A.raw_alias,
+    A.normalized_alias,
+    A.source,
+    A.evidence,
+    A.confidence,
+    A.is_manual
+FROM author_archive_aliases A
+JOIN author_archive_creators C ON C._id = A.creator_id
+WHERE C.status IN ('ACTIVE', 'MERGED')
+ORDER BY C.portable_key, A.is_manual DESC, A._id;
+
+upsertArchiveCreatorFromBackup:
+INSERT INTO author_archive_creators(
+    portable_key,
+    display_name,
+    normalized_name,
+    sort_name,
+    status,
+    merged_into_creator_id,
+    needs_review,
+    legacy_creator_id,
+    created_at,
+    last_modified_at
+)
+VALUES (
+    :portableKey,
+    :displayName,
+    :normalizedName,
+    :sortName,
+    'ACTIVE',
+    NULL,
+    :needsReview,
+    NULL,
+    :createdAt,
+    :lastModifiedAt
+)
+ON CONFLICT(portable_key)
+DO UPDATE SET
+    display_name = excluded.display_name,
+    normalized_name = excluded.normalized_name,
+    sort_name = excluded.sort_name,
+    needs_review = author_archive_creators.needs_review OR excluded.needs_review,
+    last_modified_at = max(author_archive_creators.last_modified_at, excluded.last_modified_at);
+
+markArchiveCreatorMergedFromBackup:
+UPDATE author_archive_creators
+SET status = 'MERGED',
+    merged_into_creator_id = :targetCreatorId,
+    needs_review = 0,
+    last_modified_at = max(last_modified_at, :lastModifiedAt)
+WHERE _id = :sourceCreatorId
+AND status = 'ACTIVE';
+
+getArchiveCreatorIdsByAlias:
+SELECT C._id
+FROM author_archive_creators C
+JOIN author_archive_aliases A ON A.creator_id = C._id
+WHERE A.normalized_alias = :normalizedAlias
+AND C.status = 'ACTIVE'
+ORDER BY C._id;
+
+getArchiveBoundCreatorIdsByAlias:
+SELECT C._id
+FROM author_archive_manga_links ML
+JOIN author_archive_creators C ON C._id = ML.creator_id
+JOIN author_archive_aliases A ON A.creator_id = C._id
+WHERE ML.manga_id = :mangaId
+AND A.normalized_alias = :normalizedAlias
+AND C.status = 'ACTIVE'
+ORDER BY
+    CASE ML.origin WHEN 'USER' THEN 0 WHEN 'RESTORE' THEN 1 ELSE 2 END,
+    C._id;
+
+getArchiveCreatorIdentityOptions:
+SELECT
+    C._id,
+    C.portable_key,
+    C.display_name,
+    coalesce((
+        SELECT group_concat(ORDERED_ALIAS.encoded_alias, ',')
+        FROM (
+            SELECT hex(AL.raw_alias) AS encoded_alias
+            FROM author_archive_aliases AL
+            WHERE AL.creator_id = C._id
+            ORDER BY AL.is_manual DESC, AL._id
+        ) ORDERED_ALIAS
+    ), '') AS aliases,
+    C.needs_review,
+    EXISTS(
+        SELECT 1
+        FROM author_archive_manga_links CURRENT_LINK
+        WHERE CURRENT_LINK.manga_id = :mangaId
+        AND CURRENT_LINK.creator_id = C._id
+    ) AS currently_bound
+FROM author_archive_creators C
+WHERE C.status = 'ACTIVE'
+AND EXISTS(
+    SELECT 1
+    FROM author_archive_aliases MATCHED_ALIAS
+    WHERE MATCHED_ALIAS.creator_id = C._id
+    AND MATCHED_ALIAS.normalized_alias = :normalizedAlias
+)
+ORDER BY currently_bound DESC, C.needs_review, C._id;
+
+getArchiveAliasesForCreatorIdentity:
+SELECT raw_alias, normalized_alias, source, evidence, confidence, is_manual, created_at, last_modified_at
+FROM author_archive_aliases
+WHERE creator_id = :creatorId
+ORDER BY is_manual DESC, _id;
+
+getArchiveManualAliases:
+SELECT raw_alias
+FROM author_archive_aliases
+WHERE creator_id = :creatorId
+AND is_manual = 1
+AND source = 'USER'
+AND evidence = 'manual alias'
+ORDER BY _id;
+
+deleteArchiveManualAlias:
+DELETE FROM author_archive_aliases
+WHERE creator_id = :creatorId
+AND normalized_alias = :normalizedAlias
+AND is_manual = 1
+AND source = 'USER'
+AND evidence = 'manual alias';
+
+deleteArchiveAlias:
+DELETE FROM author_archive_aliases
+WHERE creator_id = :creatorId
+AND normalized_alias = :normalizedAlias;
+
+markArchiveCreatorMerged:
+UPDATE author_archive_creators
+SET status = 'MERGED',
+    merged_into_creator_id = :targetCreatorId,
+    needs_review = 0,
+    last_modified_at = :lastModifiedAt
+WHERE _id = :sourceCreatorId
 AND status = 'ACTIVE';
 
 upsertArchiveAlias:
@@ -621,6 +810,32 @@ FROM author_archive_manga_links
 WHERE manga_id = :mangaId
 AND creator_id = :creatorId;
 
+getArchiveMangaLinksForIndex:
+SELECT creator_id, role, creator_order, origin, source_text, confidence, evidence, created_at, last_modified_at
+FROM author_archive_manga_links
+WHERE manga_id = :mangaId
+ORDER BY creator_order, _id;
+
+deleteArchiveMangaLink:
+DELETE FROM author_archive_manga_links
+WHERE manga_id = :mangaId
+AND creator_id = :creatorId;
+
+deleteAutomaticArchiveMangaLink:
+DELETE FROM author_archive_manga_links
+WHERE manga_id = :mangaId
+AND creator_id = :creatorId
+AND origin IN ('AUTOMATIC', 'MIGRATION');
+
+deleteStaleAutomaticArchiveMangaLinks:
+DELETE FROM author_archive_manga_links
+WHERE origin IN ('AUTOMATIC', 'MIGRATION')
+AND manga_id NOT IN (
+    SELECT _id
+    FROM mangas
+    WHERE favorite = 1
+);
+
 getArchiveSourceWorkByKey:
 SELECT *
 FROM author_archive_source_works
@@ -644,10 +859,65 @@ WHERE manga_id = :mangaId
 ORDER BY _id
 LIMIT 1;
 
+getArchiveSourceWorksByManga:
+SELECT *
+FROM author_archive_source_works
+WHERE manga_id = :mangaId
+ORDER BY _id;
+
+getArchiveSourceWorksForBackup:
+SELECT
+    SW._id,
+    SW.source_id,
+    SW.stable_source_url,
+    SW.title,
+    SW.author_text,
+    SW.artist_text,
+    SW.thumbnail_url
+FROM author_archive_source_works SW
+WHERE EXISTS(
+    SELECT 1
+    FROM author_archive_source_work_creators SWC
+    WHERE SWC.source_work_id = SW._id
+)
+ORDER BY SW.source_id, SW.stable_source_url;
+
+getArchiveSourceWorkBindingsForBackup:
+SELECT
+    SW.source_id,
+    SW.stable_source_url,
+    C.portable_key AS creator_portable_key,
+    SWC.role,
+    SWC.creator_order,
+    SWC.origin,
+    SWC.verification,
+    SWC.source_text,
+    SWC.confidence,
+    SWC.evidence
+FROM author_archive_source_work_creators SWC
+JOIN author_archive_source_works SW ON SW._id = SWC.source_work_id
+JOIN author_archive_creators C ON C._id = SWC.creator_id
+WHERE C.status = 'ACTIVE'
+ORDER BY SW.source_id, SW.stable_source_url, SWC.creator_order, C.portable_key;
+
 getMangaSourceWorkSeed:
 SELECT source, url, title, author, artist, thumbnail_url
 FROM mangas
 WHERE _id = :mangaId;
+
+getArchiveMangaIdByNaturalKey:
+SELECT _id
+FROM mangas
+WHERE source = :sourceId
+AND trim(url) = trim(:stableSourceUrl)
+LIMIT 1;
+
+getArchiveBlankUrlMangaSeeds:
+SELECT _id, url, title, author, artist
+FROM mangas
+WHERE source = :sourceId
+AND length(trim(url)) = 0
+ORDER BY _id;
 
 insertArchiveSourceWork:
 INSERT INTO author_archive_source_works(
@@ -846,6 +1116,646 @@ FROM author_archive_source_work_creators
 WHERE source_work_id = :sourceWorkId
 AND creator_id = :creatorId;
 
+getArchiveSourceWorkCreatorsForIndex:
+SELECT creator_id, role, creator_order, origin, verification, source_text, confidence, evidence, created_at, last_modified_at
+FROM author_archive_source_work_creators
+WHERE source_work_id = :sourceWorkId
+ORDER BY creator_order, _id;
+
+deleteArchiveSourceWorkCreator:
+DELETE FROM author_archive_source_work_creators
+WHERE source_work_id = :sourceWorkId
+AND creator_id = :creatorId;
+
+deleteAutomaticArchiveSourceWorkCreator:
+DELETE FROM author_archive_source_work_creators
+WHERE source_work_id = :sourceWorkId
+AND creator_id = :creatorId
+AND origin IN ('AUTOMATIC', 'MIGRATION');
+
+deleteStaleAutomaticArchiveSourceWorkCreators:
+DELETE FROM author_archive_source_work_creators
+WHERE origin IN ('AUTOMATIC', 'MIGRATION')
+AND source_work_id IN (
+    SELECT SW._id
+    FROM author_archive_source_works SW
+    LEFT JOIN mangas M ON M._id = SW.manga_id
+    WHERE SW.manga_id IS NOT NULL
+    AND (M._id IS NULL OR M.favorite = 0)
+);
+
+detachArchiveSourceWorkFromManga:
+UPDATE author_archive_source_works
+SET manga_id = NULL
+WHERE manga_id = :mangaId;
+
+detachOtherArchiveSourceWorksFromManga:
+UPDATE author_archive_source_works
+SET manga_id = NULL
+WHERE manga_id = :mangaId
+AND (source_id != :sourceId OR stable_source_url != :stableSourceUrl);
+
+detachStaleArchiveSourceWorksFromLibrary:
+UPDATE author_archive_source_works
+SET manga_id = NULL
+WHERE manga_id IS NOT NULL
+AND manga_id NOT IN (
+    SELECT _id
+    FROM mangas
+    WHERE favorite = 1
+);
+
+createArchiveIndexWorkBuffer:
+CREATE TEMP TABLE IF NOT EXISTS author_archive_index_work_buffer(
+    manga_id INTEGER NOT NULL PRIMARY KEY,
+    normalized_title TEXT NOT NULL,
+    stable_source_url TEXT NOT NULL,
+    indexed_at INTEGER NOT NULL
+);
+
+createArchiveIndexMentionBuffer:
+CREATE TEMP TABLE IF NOT EXISTS author_archive_index_mention_buffer(
+    manga_id INTEGER NOT NULL,
+    normalized_title TEXT NOT NULL,
+    stable_source_url TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    normalized_alias TEXT NOT NULL,
+    role TEXT NOT NULL,
+    creator_order INTEGER NOT NULL,
+    source_text TEXT,
+    portable_key TEXT NOT NULL,
+    creator_id INTEGER,
+    new_identity INTEGER NOT NULL DEFAULT 0,
+    needs_review INTEGER NOT NULL DEFAULT 0,
+    indexed_at INTEGER NOT NULL,
+    PRIMARY KEY(manga_id, normalized_alias)
+);
+
+clearArchiveIndexWorkBuffer:
+DELETE FROM author_archive_index_work_buffer;
+
+clearArchiveIndexMentionBuffer:
+DELETE FROM author_archive_index_mention_buffer;
+
+insertArchiveIndexWorkBuffer:
+INSERT INTO author_archive_index_work_buffer(
+    manga_id,
+    normalized_title,
+    stable_source_url,
+    indexed_at
+)
+VALUES (
+    :mangaId,
+    :normalizedTitle,
+    :stableSourceUrl,
+    :indexedAt
+);
+
+insertArchiveIndexMentionBuffer:
+INSERT INTO author_archive_index_mention_buffer(
+    manga_id,
+    normalized_title,
+    stable_source_url,
+    display_name,
+    normalized_alias,
+    role,
+    creator_order,
+    source_text,
+    portable_key,
+    indexed_at
+)
+VALUES (
+    :mangaId,
+    :normalizedTitle,
+    :stableSourceUrl,
+    :displayName,
+    :normalizedAlias,
+    :role,
+    :creatorOrder,
+    :sourceText,
+    :portableKey,
+    :indexedAt
+);
+
+insertArchiveIndexWorkPayload:
+WITH RECURSIVE
+payload_records(row_number, record, remainder) AS (
+    SELECT 0, '', :payload || char(30)
+    UNION ALL
+    SELECT
+        row_number + 1,
+        substr(remainder, 1, instr(remainder, char(30)) - 1),
+        substr(remainder, instr(remainder, char(30)) + 1)
+    FROM payload_records
+    WHERE length(remainder) > 0
+),
+payload_fields(row_number, field_number, value, remainder) AS (
+    SELECT row_number, 0, '', record || char(31)
+    FROM payload_records
+    WHERE row_number > 0
+    UNION ALL
+    SELECT
+        row_number,
+        field_number + 1,
+        substr(remainder, 1, instr(remainder, char(31)) - 1),
+        substr(remainder, instr(remainder, char(31)) + 1)
+    FROM payload_fields
+    WHERE length(remainder) > 0
+),
+payload_rows AS (
+    SELECT
+        row_number,
+        max(CASE WHEN field_number = 1 THEN value END) AS manga_id,
+        max(CASE WHEN field_number = 2 THEN value END) AS normalized_title,
+        max(CASE WHEN field_number = 3 THEN value END) AS stable_source_url,
+        max(CASE WHEN field_number = 4 THEN value END) AS indexed_at
+    FROM payload_fields
+    GROUP BY row_number
+)
+INSERT INTO author_archive_index_work_buffer(manga_id, normalized_title, stable_source_url, indexed_at)
+SELECT
+    manga_id,
+    replace(
+        replace(
+            replace(
+                replace(normalized_title, '%00', char(0)),
+                '%1E',
+                char(30)
+            ),
+            '%1F',
+            char(31)
+        ),
+        '%25',
+        '%'
+    ),
+    replace(replace(replace(replace(stable_source_url, '%00', char(0)), '%1E', char(30)), '%1F', char(31)), '%25', '%'),
+    indexed_at
+FROM payload_rows;
+
+insertArchiveIndexMentionPayload:
+WITH RECURSIVE
+payload_records(row_number, record, remainder) AS (
+    SELECT 0, '', :payload || char(30)
+    UNION ALL
+    SELECT
+        row_number + 1,
+        substr(remainder, 1, instr(remainder, char(30)) - 1),
+        substr(remainder, instr(remainder, char(30)) + 1)
+    FROM payload_records
+    WHERE length(remainder) > 0
+),
+payload_fields(row_number, field_number, value, remainder) AS (
+    SELECT row_number, 0, '', record || char(31)
+    FROM payload_records
+    WHERE row_number > 0
+    UNION ALL
+    SELECT
+        row_number,
+        field_number + 1,
+        substr(remainder, 1, instr(remainder, char(31)) - 1),
+        substr(remainder, instr(remainder, char(31)) + 1)
+    FROM payload_fields
+    WHERE length(remainder) > 0
+),
+payload_rows AS (
+    SELECT
+        row_number,
+        max(CASE WHEN field_number = 1 THEN value END) AS manga_id,
+        max(CASE WHEN field_number = 2 THEN value END) AS normalized_title,
+        max(CASE WHEN field_number = 3 THEN value END) AS stable_source_url,
+        max(CASE WHEN field_number = 4 THEN value END) AS display_name,
+        max(CASE WHEN field_number = 5 THEN value END) AS normalized_alias,
+        max(CASE WHEN field_number = 6 THEN value END) AS role,
+        max(CASE WHEN field_number = 7 THEN value END) AS creator_order,
+        max(CASE WHEN field_number = 8 THEN value END) AS source_text,
+        max(CASE WHEN field_number = 9 THEN value END) AS portable_key,
+        max(CASE WHEN field_number = 10 THEN value END) AS indexed_at
+    FROM payload_fields
+    GROUP BY row_number
+)
+INSERT INTO author_archive_index_mention_buffer(
+    manga_id,
+    normalized_title,
+    stable_source_url,
+    display_name,
+    normalized_alias,
+    role,
+    creator_order,
+    source_text,
+    portable_key,
+    indexed_at
+)
+SELECT
+    manga_id,
+    replace(replace(replace(replace(normalized_title, '%00', char(0)), '%1E', char(30)), '%1F', char(31)), '%25', '%'),
+    replace(replace(replace(replace(stable_source_url, '%00', char(0)), '%1E', char(30)), '%1F', char(31)), '%25', '%'),
+    replace(replace(replace(replace(display_name, '%00', char(0)), '%1E', char(30)), '%1F', char(31)), '%25', '%'),
+    replace(replace(replace(replace(normalized_alias, '%00', char(0)), '%1E', char(30)), '%1F', char(31)), '%25', '%'),
+    role,
+    creator_order,
+    replace(replace(replace(replace(source_text, '%00', char(0)), '%1E', char(30)), '%1F', char(31)), '%25', '%'),
+    replace(replace(replace(replace(portable_key, '%00', char(0)), '%1E', char(30)), '%1F', char(31)), '%25', '%'),
+    indexed_at
+FROM payload_rows;
+
+resolveArchiveIndexUniqueCurrentBindings:
+UPDATE author_archive_index_mention_buffer
+SET creator_id = (
+    SELECT min(ML.creator_id)
+    FROM author_archive_manga_links ML
+    JOIN author_archive_creators C ON C._id = ML.creator_id
+    JOIN author_archive_aliases A ON A.creator_id = C._id
+    WHERE ML.manga_id = author_archive_index_mention_buffer.manga_id
+    AND A.normalized_alias = author_archive_index_mention_buffer.normalized_alias
+    AND C.status = 'ACTIVE'
+)
+WHERE creator_id IS NULL
+AND 1 = (
+    SELECT count(DISTINCT ML.creator_id)
+    FROM author_archive_manga_links ML
+    JOIN author_archive_creators C ON C._id = ML.creator_id
+    JOIN author_archive_aliases A ON A.creator_id = C._id
+    WHERE ML.manga_id = author_archive_index_mention_buffer.manga_id
+    AND A.normalized_alias = author_archive_index_mention_buffer.normalized_alias
+    AND C.status = 'ACTIVE'
+);
+
+resolveArchiveIndexProtectedCurrentBindings:
+UPDATE author_archive_index_mention_buffer
+SET creator_id = (
+    SELECT min(ML.creator_id)
+    FROM author_archive_manga_links ML
+    JOIN author_archive_creators C ON C._id = ML.creator_id
+    JOIN author_archive_aliases A ON A.creator_id = C._id
+    WHERE ML.manga_id = author_archive_index_mention_buffer.manga_id
+    AND A.normalized_alias = author_archive_index_mention_buffer.normalized_alias
+    AND C.status = 'ACTIVE'
+    AND ML.origin IN ('USER', 'RESTORE')
+)
+WHERE creator_id IS NULL
+AND 1 = (
+    SELECT count(DISTINCT ML.creator_id)
+    FROM author_archive_manga_links ML
+    JOIN author_archive_creators C ON C._id = ML.creator_id
+    JOIN author_archive_aliases A ON A.creator_id = C._id
+    WHERE ML.manga_id = author_archive_index_mention_buffer.manga_id
+    AND A.normalized_alias = author_archive_index_mention_buffer.normalized_alias
+    AND C.status = 'ACTIVE'
+    AND ML.origin IN ('USER', 'RESTORE')
+);
+
+markArchiveIndexAmbiguousExistingCreators:
+UPDATE author_archive_creators
+SET needs_review = 1,
+    last_modified_at = (
+        SELECT max(B.indexed_at)
+        FROM author_archive_index_mention_buffer B
+        JOIN author_archive_aliases A ON A.normalized_alias = B.normalized_alias
+        WHERE B.creator_id IS NULL
+        AND A.creator_id = author_archive_creators._id
+    )
+WHERE status = 'ACTIVE'
+AND EXISTS (
+    SELECT 1
+    FROM author_archive_index_mention_buffer B
+    JOIN author_archive_aliases A ON A.normalized_alias = B.normalized_alias
+    WHERE B.creator_id IS NULL
+    AND A.creator_id = author_archive_creators._id
+);
+
+markArchiveIndexNewIdentities:
+UPDATE author_archive_index_mention_buffer
+SET new_identity = 1
+WHERE creator_id IS NULL;
+
+markArchiveIndexNewIdentityReviews:
+UPDATE author_archive_index_mention_buffer
+SET needs_review = 1
+WHERE new_identity = 1
+AND normalized_alias IN (
+    SELECT A.normalized_alias
+    FROM author_archive_aliases A
+    JOIN author_archive_creators C ON C._id = A.creator_id
+    WHERE C.status = 'ACTIVE'
+    UNION
+    SELECT normalized_alias
+    FROM author_archive_index_mention_buffer
+    WHERE new_identity = 1
+    GROUP BY normalized_alias
+    HAVING count(*) > 1
+);
+
+insertArchiveIndexCreators:
+INSERT INTO author_archive_creators(
+    portable_key,
+    display_name,
+    normalized_name,
+    sort_name,
+    status,
+    merged_into_creator_id,
+    needs_review,
+    legacy_creator_id,
+    created_at,
+    last_modified_at
+)
+SELECT
+    B.portable_key,
+    B.display_name,
+    B.normalized_alias,
+    B.display_name,
+    'ACTIVE',
+    NULL,
+    B.needs_review,
+    NULL,
+    B.indexed_at,
+    B.indexed_at
+FROM author_archive_index_mention_buffer B
+WHERE B.new_identity = 1;
+
+resolveArchiveIndexNewCreatorIds:
+UPDATE author_archive_index_mention_buffer
+SET creator_id = (
+    SELECT C._id
+    FROM author_archive_creators C
+    WHERE C.portable_key = author_archive_index_mention_buffer.portable_key
+)
+WHERE new_identity = 1;
+
+insertArchiveIndexAliases:
+INSERT INTO author_archive_aliases(
+    creator_id,
+    raw_alias,
+    normalized_alias,
+    source,
+    evidence,
+    confidence,
+    is_manual,
+    created_at,
+    last_modified_at
+)
+SELECT
+    B.creator_id,
+    B.display_name,
+    B.normalized_alias,
+    'BIBLIOGRAPHY',
+    'library-index:v1',
+    1.0,
+    0,
+    B.indexed_at,
+    B.indexed_at
+FROM author_archive_index_mention_buffer B
+WHERE B.new_identity = 1;
+
+upsertArchiveIndexSourceWorks:
+INSERT INTO author_archive_source_works(
+    source_id,
+    stable_source_url,
+    manga_id,
+    title,
+    normalized_title,
+    author_text,
+    artist_text,
+    thumbnail_url,
+    first_seen_at,
+    last_seen_at,
+    details_fetched_at,
+    legacy_candidate_id,
+    legacy_review_snapshot
+)
+SELECT
+    M.source,
+    B.stable_source_url,
+    M._id,
+    CASE
+        WHEN length(trim(M.title)) = 0 THEN 'Untitled ' || M._id
+        ELSE M.title
+    END,
+    B.normalized_title,
+    M.author,
+    M.artist,
+    M.thumbnail_url,
+    B.indexed_at,
+    B.indexed_at,
+    CASE WHEN M.last_modified_at > 0 THEN M.last_modified_at ELSE NULL END,
+    NULL,
+    NULL
+FROM (
+    SELECT
+        manga_id,
+        max(normalized_title) AS normalized_title,
+        max(stable_source_url) AS stable_source_url,
+        max(indexed_at) AS indexed_at
+    FROM author_archive_index_mention_buffer
+    GROUP BY manga_id
+    UNION ALL
+    SELECT
+        manga_id,
+        normalized_title,
+        stable_source_url,
+        indexed_at
+    FROM author_archive_index_work_buffer
+) B
+JOIN mangas M ON M._id = B.manga_id
+WHERE 1 = 1
+ON CONFLICT(source_id, stable_source_url)
+DO UPDATE SET
+    manga_id = excluded.manga_id,
+    title = excluded.title,
+    normalized_title = excluded.normalized_title,
+    author_text = excluded.author_text,
+    artist_text = excluded.artist_text,
+    thumbnail_url = excluded.thumbnail_url,
+    last_seen_at = excluded.last_seen_at,
+    details_fetched_at = coalesce(excluded.details_fetched_at, author_archive_source_works.details_fetched_at);
+
+detachStaleArchiveIndexSourceWorks:
+UPDATE author_archive_source_works
+SET manga_id = NULL
+WHERE manga_id IN (
+    SELECT manga_id FROM author_archive_index_mention_buffer
+    UNION
+    SELECT manga_id FROM author_archive_index_work_buffer
+)
+AND NOT EXISTS (
+    SELECT 1
+    FROM (
+        SELECT manga_id, stable_source_url FROM author_archive_index_mention_buffer
+        UNION
+        SELECT manga_id, stable_source_url FROM author_archive_index_work_buffer
+    ) B
+    JOIN mangas M ON M._id = B.manga_id
+    WHERE B.manga_id = author_archive_source_works.manga_id
+    AND B.stable_source_url = author_archive_source_works.stable_source_url
+    AND M.source = author_archive_source_works.source_id
+);
+
+upsertArchiveIndexMangaLinks:
+INSERT INTO author_archive_manga_links(
+    manga_id,
+    creator_id,
+    role,
+    creator_order,
+    origin,
+    source_text,
+    confidence,
+    evidence,
+    created_at,
+    last_modified_at
+)
+SELECT
+    B.manga_id,
+    B.creator_id,
+    B.role,
+    B.creator_order,
+    'AUTOMATIC',
+    B.source_text,
+    1.0,
+    'library-index:v1',
+    B.indexed_at,
+    B.indexed_at
+FROM author_archive_index_mention_buffer B
+WHERE B.creator_id IS NOT NULL
+ON CONFLICT(manga_id, creator_id)
+DO UPDATE SET
+    role = CASE
+        WHEN author_archive_manga_links.origin IN ('USER', 'RESTORE') THEN author_archive_manga_links.role
+        ELSE excluded.role
+    END,
+    creator_order = CASE
+        WHEN author_archive_manga_links.origin IN ('USER', 'RESTORE') THEN author_archive_manga_links.creator_order
+        ELSE excluded.creator_order
+    END,
+    origin = CASE
+        WHEN author_archive_manga_links.origin IN ('USER', 'RESTORE') THEN author_archive_manga_links.origin
+        ELSE excluded.origin
+    END,
+    source_text = CASE
+        WHEN author_archive_manga_links.origin IN ('USER', 'RESTORE') THEN author_archive_manga_links.source_text
+        ELSE excluded.source_text
+    END,
+    confidence = CASE
+        WHEN author_archive_manga_links.origin IN ('USER', 'RESTORE') THEN author_archive_manga_links.confidence
+        ELSE excluded.confidence
+    END,
+    evidence = CASE
+        WHEN author_archive_manga_links.origin IN ('USER', 'RESTORE') THEN author_archive_manga_links.evidence
+        ELSE excluded.evidence
+    END,
+    last_modified_at = CASE
+        WHEN author_archive_manga_links.origin IN ('USER', 'RESTORE') THEN author_archive_manga_links.last_modified_at
+        ELSE excluded.last_modified_at
+    END;
+
+upsertArchiveIndexSourceWorkCreators:
+INSERT INTO author_archive_source_work_creators(
+    source_work_id,
+    creator_id,
+    role,
+    creator_order,
+    origin,
+    verification,
+    source_text,
+    confidence,
+    evidence,
+    created_at,
+    last_modified_at
+)
+SELECT
+    SW._id,
+    B.creator_id,
+    B.role,
+    B.creator_order,
+    'AUTOMATIC',
+    'VERIFIED',
+    B.source_text,
+    1.0,
+    'library-index:v1',
+    B.indexed_at,
+    B.indexed_at
+FROM author_archive_index_mention_buffer B
+JOIN mangas M ON M._id = B.manga_id
+JOIN author_archive_source_works SW
+    ON SW.source_id = M.source
+    AND SW.stable_source_url = B.stable_source_url
+WHERE B.creator_id IS NOT NULL
+ON CONFLICT(source_work_id, creator_id)
+DO UPDATE SET
+    role = CASE
+        WHEN author_archive_source_work_creators.origin IN ('USER', 'RESTORE')
+            THEN author_archive_source_work_creators.role
+        ELSE excluded.role
+    END,
+    creator_order = CASE
+        WHEN author_archive_source_work_creators.origin IN ('USER', 'RESTORE')
+            THEN author_archive_source_work_creators.creator_order
+        ELSE excluded.creator_order
+    END,
+    origin = CASE
+        WHEN author_archive_source_work_creators.origin IN ('USER', 'RESTORE')
+            THEN author_archive_source_work_creators.origin
+        ELSE excluded.origin
+    END,
+    verification = CASE
+        WHEN author_archive_source_work_creators.origin IN ('USER', 'RESTORE')
+            THEN author_archive_source_work_creators.verification
+        ELSE excluded.verification
+    END,
+    source_text = CASE
+        WHEN author_archive_source_work_creators.origin IN ('USER', 'RESTORE')
+            THEN author_archive_source_work_creators.source_text
+        ELSE excluded.source_text
+    END,
+    confidence = CASE
+        WHEN author_archive_source_work_creators.origin IN ('USER', 'RESTORE')
+            THEN author_archive_source_work_creators.confidence
+        ELSE excluded.confidence
+    END,
+    evidence = CASE
+        WHEN author_archive_source_work_creators.origin IN ('USER', 'RESTORE')
+            THEN author_archive_source_work_creators.evidence
+        ELSE excluded.evidence
+    END,
+    last_modified_at = CASE
+        WHEN author_archive_source_work_creators.origin IN ('USER', 'RESTORE')
+            THEN author_archive_source_work_creators.last_modified_at
+        ELSE excluded.last_modified_at
+    END;
+
+deleteStaleArchiveIndexMangaLinks:
+DELETE FROM author_archive_manga_links
+WHERE origin IN ('AUTOMATIC', 'MIGRATION')
+AND manga_id IN (
+    SELECT manga_id FROM author_archive_index_mention_buffer
+    UNION
+    SELECT manga_id FROM author_archive_index_work_buffer
+)
+AND NOT EXISTS (
+    SELECT 1
+    FROM author_archive_index_mention_buffer B
+    WHERE B.manga_id = author_archive_manga_links.manga_id
+    AND B.creator_id = author_archive_manga_links.creator_id
+);
+
+deleteStaleArchiveIndexSourceWorkCreators:
+DELETE FROM author_archive_source_work_creators
+WHERE origin IN ('AUTOMATIC', 'MIGRATION')
+AND source_work_id IN (
+    SELECT _id
+    FROM author_archive_source_works
+    WHERE manga_id IN (
+        SELECT manga_id FROM author_archive_index_mention_buffer
+        UNION
+        SELECT manga_id FROM author_archive_index_work_buffer
+    )
+)
+AND NOT EXISTS (
+    SELECT 1
+    FROM author_archive_index_mention_buffer B
+    JOIN author_archive_source_works SW ON SW.manga_id = B.manga_id
+    WHERE SW._id = author_archive_source_work_creators.source_work_id
+    AND B.creator_id = author_archive_source_work_creators.creator_id
+);
+
 getArchiveCandidatesForCreator:
 SELECT
     SW._id,
@@ -989,6 +1899,329 @@ SELECT _id
 FROM author_archive_watches
 WHERE creator_id = :creatorId;
 
+reassignArchiveWatchCreator:
+UPDATE author_archive_watches
+SET creator_id = :targetCreatorId,
+    lease_owner = NULL,
+    lease_expires_at = NULL,
+    last_modified_at = max(last_modified_at, :lastModifiedAt)
+WHERE _id = :sourceWatchId;
+
+mergeArchiveWatchRoot:
+UPDATE author_archive_watches
+SET enabled = max(enabled, (SELECT enabled FROM author_archive_watches WHERE _id = :sourceWatchId)),
+    period_millis = min(period_millis, (SELECT period_millis FROM author_archive_watches WHERE _id = :sourceWatchId)),
+    lease_owner = NULL,
+    lease_expires_at = NULL,
+    last_checked_at = CASE
+        WHEN last_checked_at IS NULL THEN (SELECT last_checked_at FROM author_archive_watches WHERE _id = :sourceWatchId)
+        WHEN (SELECT last_checked_at FROM author_archive_watches WHERE _id = :sourceWatchId) IS NULL THEN last_checked_at
+        ELSE max(last_checked_at, (SELECT last_checked_at FROM author_archive_watches WHERE _id = :sourceWatchId))
+    END,
+    last_success_at = CASE
+        WHEN last_success_at IS NULL THEN (SELECT last_success_at FROM author_archive_watches WHERE _id = :sourceWatchId)
+        WHEN (SELECT last_success_at FROM author_archive_watches WHERE _id = :sourceWatchId) IS NULL THEN last_success_at
+        ELSE max(last_success_at, (SELECT last_success_at FROM author_archive_watches WHERE _id = :sourceWatchId))
+    END,
+    last_error = CASE
+        WHEN (SELECT last_modified_at FROM author_archive_watches WHERE _id = :sourceWatchId) > last_modified_at
+            THEN (SELECT last_error FROM author_archive_watches WHERE _id = :sourceWatchId)
+        ELSE last_error
+    END,
+    created_at = min(created_at, (SELECT created_at FROM author_archive_watches WHERE _id = :sourceWatchId)),
+    last_modified_at = max(last_modified_at, (SELECT last_modified_at FROM author_archive_watches WHERE _id = :sourceWatchId), :lastModifiedAt)
+WHERE _id = :targetWatchId;
+
+mergeArchiveWatchSources:
+INSERT INTO author_archive_watch_sources(
+    watch_id,
+    source_id,
+    baseline_state,
+    baseline_generation,
+    next_due_at,
+    created_at,
+    last_modified_at
+)
+SELECT
+    :targetWatchId,
+    source_id,
+    baseline_state,
+    baseline_generation,
+    next_due_at,
+    created_at,
+    last_modified_at
+FROM author_archive_watch_sources
+WHERE watch_id = :sourceWatchId
+ON CONFLICT(watch_id, source_id)
+DO UPDATE SET
+    baseline_state = CASE
+        WHEN author_archive_watch_sources.baseline_state = 'BASELINED' OR excluded.baseline_state = 'BASELINED'
+            THEN 'BASELINED'
+        ELSE 'NEEDS_BASELINE'
+    END,
+    baseline_generation = max(author_archive_watch_sources.baseline_generation, excluded.baseline_generation),
+    next_due_at = CASE
+        WHEN author_archive_watch_sources.next_due_at IS NULL THEN excluded.next_due_at
+        WHEN excluded.next_due_at IS NULL THEN author_archive_watch_sources.next_due_at
+        ELSE min(author_archive_watch_sources.next_due_at, excluded.next_due_at)
+    END,
+    created_at = min(author_archive_watch_sources.created_at, excluded.created_at),
+    last_modified_at = max(author_archive_watch_sources.last_modified_at, excluded.last_modified_at);
+
+mergeArchiveWatchPolicy:
+INSERT INTO author_archive_watch_result_policies(
+    watch_id,
+    include_probable,
+    include_unknown,
+    notify_probable,
+    notify_unknown,
+    created_at,
+    last_modified_at
+)
+SELECT
+    :targetWatchId,
+    include_probable,
+    include_unknown,
+    notify_probable,
+    notify_unknown,
+    created_at,
+    last_modified_at
+FROM author_archive_watch_result_policies
+WHERE watch_id = :sourceWatchId
+ON CONFLICT(watch_id)
+DO UPDATE SET
+    include_probable = max(author_archive_watch_result_policies.include_probable, excluded.include_probable),
+    include_unknown = max(author_archive_watch_result_policies.include_unknown, excluded.include_unknown),
+    notify_probable = max(author_archive_watch_result_policies.notify_probable, excluded.notify_probable),
+    notify_unknown = max(author_archive_watch_result_policies.notify_unknown, excluded.notify_unknown),
+    created_at = min(author_archive_watch_result_policies.created_at, excluded.created_at),
+    last_modified_at = max(author_archive_watch_result_policies.last_modified_at, excluded.last_modified_at);
+
+mergeArchiveWatchLanguages:
+INSERT INTO author_archive_watch_languages(policy_id, language_tag)
+SELECT :targetPolicyId, WL.language_tag
+FROM author_archive_watch_result_policies WP
+JOIN author_archive_watch_languages WL ON WL.policy_id = WP._id
+WHERE WP.watch_id = :sourceWatchId
+ON CONFLICT(policy_id, language_tag) DO NOTHING;
+
+moveArchiveWatchRuns:
+UPDATE author_archive_runs
+SET watch_id = :targetWatchId
+WHERE watch_id = :sourceWatchId;
+
+mergeArchiveSourceCheckpoints:
+INSERT INTO author_archive_source_checkpoints(
+    watch_id,
+    source_id,
+    cursor,
+    result_state,
+    consecutive_failures,
+    backoff_until,
+    last_checked_at,
+    last_success_at,
+    error_code,
+    error_message
+)
+SELECT
+    :targetWatchId,
+    source_id,
+    cursor,
+    result_state,
+    consecutive_failures,
+    backoff_until,
+    last_checked_at,
+    last_success_at,
+    error_code,
+    error_message
+FROM author_archive_source_checkpoints
+WHERE watch_id = :sourceWatchId
+ON CONFLICT(watch_id, source_id)
+DO UPDATE SET
+    cursor = CASE
+        WHEN coalesce(excluded.last_checked_at, -1) >= coalesce(author_archive_source_checkpoints.last_checked_at, -1)
+            THEN excluded.cursor ELSE author_archive_source_checkpoints.cursor
+    END,
+    result_state = CASE
+        WHEN coalesce(excluded.last_checked_at, -1) >= coalesce(author_archive_source_checkpoints.last_checked_at, -1)
+            THEN excluded.result_state ELSE author_archive_source_checkpoints.result_state
+    END,
+    consecutive_failures = CASE
+        WHEN coalesce(excluded.last_checked_at, -1) >= coalesce(author_archive_source_checkpoints.last_checked_at, -1)
+            THEN excluded.consecutive_failures ELSE author_archive_source_checkpoints.consecutive_failures
+    END,
+    backoff_until = CASE
+        WHEN coalesce(excluded.last_checked_at, -1) >= coalesce(author_archive_source_checkpoints.last_checked_at, -1)
+            THEN excluded.backoff_until ELSE author_archive_source_checkpoints.backoff_until
+    END,
+    last_checked_at = CASE
+        WHEN author_archive_source_checkpoints.last_checked_at IS NULL THEN excluded.last_checked_at
+        WHEN excluded.last_checked_at IS NULL THEN author_archive_source_checkpoints.last_checked_at
+        ELSE max(author_archive_source_checkpoints.last_checked_at, excluded.last_checked_at)
+    END,
+    last_success_at = CASE
+        WHEN author_archive_source_checkpoints.last_success_at IS NULL THEN excluded.last_success_at
+        WHEN excluded.last_success_at IS NULL THEN author_archive_source_checkpoints.last_success_at
+        ELSE max(author_archive_source_checkpoints.last_success_at, excluded.last_success_at)
+    END,
+    error_code = CASE
+        WHEN coalesce(excluded.last_checked_at, -1) >= coalesce(author_archive_source_checkpoints.last_checked_at, -1)
+            THEN excluded.error_code ELSE author_archive_source_checkpoints.error_code
+    END,
+    error_message = CASE
+        WHEN coalesce(excluded.last_checked_at, -1) >= coalesce(author_archive_source_checkpoints.last_checked_at, -1)
+            THEN excluded.error_message ELSE author_archive_source_checkpoints.error_message
+    END;
+
+mergeArchiveDuplicateDiscoveries:
+UPDATE author_archive_discoveries
+SET kind = CASE
+        WHEN kind = 'NEW_WORK_CANDIDATE' OR (
+            SELECT kind FROM author_archive_discoveries SD
+            WHERE SD.watch_id = :sourceWatchId
+            AND SD.source_work_id = author_archive_discoveries.source_work_id
+        ) = 'NEW_WORK_CANDIDATE' THEN 'NEW_WORK_CANDIDATE'
+        ELSE 'NEW_SOURCE_VERSION'
+    END,
+    reason = CASE
+        WHEN reason = (
+            SELECT reason FROM author_archive_discoveries SD
+            WHERE SD.watch_id = :sourceWatchId
+            AND SD.source_work_id = author_archive_discoveries.source_work_id
+        ) THEN reason
+        ELSE reason || char(10) || (
+            SELECT reason FROM author_archive_discoveries SD
+            WHERE SD.watch_id = :sourceWatchId
+            AND SD.source_work_id = author_archive_discoveries.source_work_id
+        )
+    END,
+    baseline_generation = max(baseline_generation, (
+        SELECT baseline_generation FROM author_archive_discoveries SD
+        WHERE SD.watch_id = :sourceWatchId
+        AND SD.source_work_id = author_archive_discoveries.source_work_id
+    )),
+    read_state = CASE
+        WHEN read_state = 'UNSEEN' OR (
+            SELECT read_state FROM author_archive_discoveries SD
+            WHERE SD.watch_id = :sourceWatchId
+            AND SD.source_work_id = author_archive_discoveries.source_work_id
+        ) = 'UNSEEN' THEN 'UNSEEN'
+        ELSE 'SEEN'
+    END,
+    review_disposition = CASE
+        WHEN review_disposition = 'PENDING' OR (
+            SELECT review_disposition FROM author_archive_discoveries SD
+            WHERE SD.watch_id = :sourceWatchId
+            AND SD.source_work_id = author_archive_discoveries.source_work_id
+        ) = 'PENDING' THEN 'PENDING'
+        WHEN review_disposition = 'ACCEPTED' OR (
+            SELECT review_disposition FROM author_archive_discoveries SD
+            WHERE SD.watch_id = :sourceWatchId
+            AND SD.source_work_id = author_archive_discoveries.source_work_id
+        ) = 'ACCEPTED' THEN 'ACCEPTED'
+        ELSE 'IGNORED'
+    END,
+    first_discovered_at = min(first_discovered_at, (
+        SELECT first_discovered_at FROM author_archive_discoveries SD
+        WHERE SD.watch_id = :sourceWatchId
+        AND SD.source_work_id = author_archive_discoveries.source_work_id
+    )),
+    last_modified_at = max(last_modified_at, (
+        SELECT last_modified_at FROM author_archive_discoveries SD
+        WHERE SD.watch_id = :sourceWatchId
+        AND SD.source_work_id = author_archive_discoveries.source_work_id
+    ))
+WHERE watch_id = :targetWatchId
+AND EXISTS(
+    SELECT 1 FROM author_archive_discoveries SD
+    WHERE SD.watch_id = :sourceWatchId
+    AND SD.source_work_id = author_archive_discoveries.source_work_id
+);
+
+repointArchiveDuplicateDiscoveryOutbox:
+UPDATE author_archive_notification_outbox
+SET discovery_id = (
+    SELECT TD._id
+    FROM author_archive_discoveries SD
+    JOIN author_archive_discoveries TD ON TD.source_work_id = SD.source_work_id
+    WHERE SD._id = author_archive_notification_outbox.discovery_id
+    AND SD.watch_id = :sourceWatchId
+    AND TD.watch_id = :targetWatchId
+)
+WHERE discovery_id IN (
+    SELECT SD._id
+    FROM author_archive_discoveries SD
+    JOIN author_archive_discoveries TD ON TD.source_work_id = SD.source_work_id
+    WHERE SD.watch_id = :sourceWatchId
+    AND TD.watch_id = :targetWatchId
+);
+
+deleteArchiveDuplicateDiscoveries:
+DELETE FROM author_archive_discoveries
+WHERE watch_id = :sourceWatchId
+AND EXISTS(
+    SELECT 1
+    FROM author_archive_discoveries TD
+    WHERE TD.watch_id = :targetWatchId
+    AND TD.source_work_id = author_archive_discoveries.source_work_id
+);
+
+moveArchiveWatchDiscoveries:
+UPDATE author_archive_discoveries
+SET watch_id = :targetWatchId
+WHERE watch_id = :sourceWatchId;
+
+moveArchiveDiscoveriesForSourceWorks:
+UPDATE author_archive_discoveries
+SET watch_id = :targetWatchId
+WHERE watch_id = :sourceWatchId
+AND source_work_id IN :sourceWorkIds;
+
+deleteArchiveWatchById:
+DELETE FROM author_archive_watches
+WHERE _id = :watchId;
+
+insertArchiveSplitWatch:
+INSERT INTO author_archive_watches(
+    creator_id,
+    enabled,
+    period_millis,
+    lease_owner,
+    lease_expires_at,
+    last_checked_at,
+    last_success_at,
+    last_error,
+    created_at,
+    last_modified_at
+)
+SELECT
+    :targetCreatorId,
+    enabled,
+    period_millis,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    :createdAt,
+    :lastModifiedAt
+FROM author_archive_watches
+WHERE _id = :sourceWatchId;
+
+insertArchiveSplitWatchSources:
+INSERT INTO author_archive_watch_sources(
+    watch_id,
+    source_id,
+    baseline_state,
+    baseline_generation,
+    next_due_at,
+    created_at,
+    last_modified_at
+)
+SELECT :targetWatchId, source_id, 'NEEDS_BASELINE', 0, NULL, :createdAt, :lastModifiedAt
+FROM author_archive_watch_sources
+WHERE watch_id = :sourceWatchId;
+
 replaceArchiveWatchSources:
 DELETE FROM author_archive_watch_sources
 WHERE watch_id = :watchId;
@@ -1062,6 +2295,10 @@ SET enabled = 0,
     lease_owner = NULL,
     lease_expires_at = NULL,
     last_modified_at = :lastModifiedAt
+WHERE creator_id = :creatorId;
+
+deleteArchiveWatchByCreator:
+DELETE FROM author_archive_watches
 WHERE creator_id = :creatorId;
 
 getArchiveFollowedCreators:
@@ -1188,6 +2425,31 @@ DO UPDATE SET
             THEN author_archive_canonical_creators.evidence
         ELSE excluded.evidence
     END;
+
+getArchiveCanonicalCreatorsForCreator:
+SELECT work_id, role, creator_order, origin, evidence
+FROM author_archive_canonical_creators
+WHERE creator_id = :creatorId
+ORDER BY work_id, creator_order, _id;
+
+getArchiveCanonicalWorkIdsForSourceWorks:
+SELECT DISTINCT work_id
+FROM author_archive_canonical_versions
+WHERE source_work_id IN :sourceWorkIds
+ORDER BY work_id;
+
+countArchiveCanonicalVersionsForCreatorOutsideSelection:
+SELECT count(*)
+FROM author_archive_canonical_versions CV
+JOIN author_archive_source_work_creators SWC ON SWC.source_work_id = CV.source_work_id
+WHERE CV.work_id = :workId
+AND SWC.creator_id = :creatorId
+AND CV.source_work_id NOT IN :selectedSourceWorkIds;
+
+deleteArchiveCanonicalCreator:
+DELETE FROM author_archive_canonical_creators
+WHERE work_id = :workId
+AND creator_id = :creatorId;
 
 getArchiveCanonicalWork:
 SELECT
@@ -1385,3 +2647,9 @@ SELECT
     asserted_at
 FROM author_archive_language_assertions
 WHERE idempotency_key = :idempotencyKey;
+
+remapArchiveCreatorLanguageAssertions:
+UPDATE author_archive_language_assertions
+SET subject_key = :targetSubjectKey
+WHERE subject_type = 'CREATOR'
+AND subject_key = :sourceSubjectKey;

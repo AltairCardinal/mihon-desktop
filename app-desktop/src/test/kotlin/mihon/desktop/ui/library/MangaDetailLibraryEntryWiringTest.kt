@@ -12,6 +12,8 @@ import cafe.adriel.voyager.navigator.Navigator
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.delay
@@ -30,6 +32,7 @@ import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.settings.DesktopAppPreferences
+import mihon.desktop.ui.authors.AuthorDetailScreen
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -37,6 +40,10 @@ import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.creator.model.CreatorIdentityOption
+import tachiyomi.domain.creator.model.CreatorPortableKey
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
+import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
@@ -47,6 +54,88 @@ import tachiyomi.i18n.MR
 
 @OptIn(ExperimentalComposeUiApi::class)
 class MangaDetailLibraryEntryWiringTest {
+
+    @Test
+    fun `real MangaDetailScreen creator chip opens ambiguity chooser binds selection and navigates`() = runBlocking {
+        val mangaRepository = FakeMangaRepository()
+        val manga = Manga.create().copy(id = 44L, title = "Identity fixture", author = "Jane Doe")
+        mangaRepository.seed(manga)
+        val chapterRepository = FakeChapterRepository()
+        val archiveRepository = mockk<CreatorArchiveRepository> {
+            coEvery { getCreatorIdentityOptions(manga.id, any()) } returns listOf(
+                CreatorIdentityOption(
+                    id = 101L,
+                    portableKey = CreatorPortableKey("jane-alpha"),
+                    displayName = "Jane Alpha",
+                    aliases = listOf("Jane Doe"),
+                    needsReview = false,
+                    currentlyBound = false,
+                ),
+                CreatorIdentityOption(
+                    id = 202L,
+                    portableKey = CreatorPortableKey("jane-beta"),
+                    displayName = "Jane Beta",
+                    aliases = listOf("Jane Doe"),
+                    needsReview = true,
+                    currentlyBound = false,
+                ),
+            )
+            coEvery { bindMangaCreatorIdentity(any(), any(), 101L) } returns Unit
+        }
+        val model = MangaDetailScreenModel(
+            mangaId = manga.id,
+            getMangaWithChapters = GetMangaWithChapters(mangaRepository, chapterRepository),
+            sourceManager = EmptySourceManager,
+            getAvailableScanlators = GetAvailableScanlators(chapterRepository),
+            getExcludedScanlators = mockk {
+                every { subscribe(manga.id) } returns flowOf(emptySet())
+            },
+            getCategories = GetCategories(FakeCategoryRepository()),
+            manageCreatorIdentity = ManageCreatorIdentity(archiveRepository),
+            downloadQueue = MutableStateFlow(emptyList()),
+        )
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { appPreferences } returns DesktopAppPreferences(DesktopPreferenceStore())
+            every { saveSourceMangaForDetails } returns SaveSourceMangaForDetails(
+                NetworkToLocalManga(mangaRepository),
+                mangaRepository,
+                chapterRepository,
+            )
+        }
+        lateinit var navigator: Navigator
+        val scene = ImageComposeScene(1_200, 900, coroutineContext = coroutineContext) {}
+
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ProvideMangaDetailScreenModelFactory(factory = { model }) {
+                        MaterialTheme {
+                            Navigator(MangaDetailScreen(manga.id)) { currentNavigator ->
+                                navigator = currentNavigator
+                                CurrentScreen()
+                            }
+                        }
+                    }
+                }
+            }
+            val creatorChip = "${MR.strings.author.localized()} · Jane Doe"
+            renderUntil(scene) { nodes(scene).any { it.hasText(creatorChip) } }
+            click(scene, creatorChip)
+            renderUntil(scene) {
+                nodes(scene).any { it.hasText(MR.strings.desktop_ui_choose_author_identity.localized()) }
+            }
+
+            invokeClick(scene, "Jane Alpha")
+            coVerify(timeout = 5_000, exactly = 1) {
+                archiveRepository.bindMangaCreatorIdentity(any(), any(), 101L)
+            }
+            withTimeout(5_000) {
+                while ((navigator.lastItem as? AuthorDetailScreen)?.creatorId != 101L) delay(10)
+            }
+        } finally {
+            scene.close()
+        }
+    }
 
     @Test
     fun `real MangaDetailScreen add action mounts category dialog and commits selection`() = runBlocking {
@@ -159,12 +248,16 @@ class MangaDetailLibraryEntryWiringTest {
     }
 
     private fun click(scene: ImageComposeScene, label: String) {
+        invokeClick(scene, label)
+        scene.render()
+    }
+
+    private fun invokeClick(scene: ImageComposeScene, label: String) {
         val node = nodes(scene).first { candidate ->
             candidate.config.contains(SemanticsActions.OnClick) &&
                 flatten(candidate).any { it.hasText(label) }
         }
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
-        scene.render()
     }
 
     private fun SemanticsNode.hasText(text: String): Boolean {

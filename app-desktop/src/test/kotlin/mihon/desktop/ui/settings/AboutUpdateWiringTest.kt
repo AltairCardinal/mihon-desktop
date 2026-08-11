@@ -14,6 +14,7 @@ import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.every
 import io.mockk.mockk
+import mihon.desktop.AppVersion
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -318,7 +319,7 @@ class AboutUpdateWiringTest {
                 model.state.first { it is DesktopUpdateState.Cancelled }
                 assertTrue(model.intent(DesktopUpdateIntent.CHECK))
                 model.state.first { it is DesktopUpdateState.UpdateAvailable }
-                assertEquals("0.11.14", arguments?.versionName)
+                assertEquals("0.${AppVersion.STAGE}.${AppVersion.FEATURE}", arguments?.versionName)
                 assertEquals("mihonapp/mihon", arguments?.repository)
                 model.intent(DesktopUpdateIntent.MANUAL)
                 assertEquals(release.releaseLink, opened)

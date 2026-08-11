@@ -49,7 +49,8 @@ object BackupCodec {
             value.backupSources.isEmpty() &&
             value.backupPreferences.isEmpty() &&
             value.backupSourcePreferences.isEmpty() &&
-            value.backupExtensionRepo.isEmpty()
+            value.backupExtensionRepo.isEmpty() &&
+            value.backupAuthorArchive == null
         ) {
             throw InvalidBackupException("Backup contains no restorable data")
         }

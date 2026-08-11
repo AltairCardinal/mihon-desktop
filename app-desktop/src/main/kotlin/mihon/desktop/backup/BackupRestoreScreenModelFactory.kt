@@ -24,6 +24,7 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.util.prefs.Preferences
+import tachiyomi.data.backup.AuthorArchiveBackupContributor
 
 class BackupRestoreScreenModelFactory(
     private val mangaRepository: MangaRepository,
@@ -35,6 +36,7 @@ class BackupRestoreScreenModelFactory(
     private val trackRepository: TrackRepository,
     private val preferenceStore: PreferenceStore,
     private val extensionRepoRepository: ExtensionRepoRepository,
+    private val authorArchiveBackupContributor: AuthorArchiveBackupContributor? = null,
 ) {
     fun create(): BackupRestoreScreenModel = createModel()
 
@@ -69,6 +71,7 @@ class BackupRestoreScreenModelFactory(
                         DesktopPreferenceStore(Preferences.userRoot().node("/mihon/source_$sourceId"))
                     },
                     extensionRepoRepository = extensionRepoRepository,
+                    authorArchiveBackupContributor = authorArchiveBackupContributor,
                 )
                 BackupWorkflow.runRestore {
                     withContext(Dispatchers.IO) { restorer.restore(backup, onProgress) }
@@ -87,6 +90,7 @@ class BackupRestoreScreenModelFactory(
                 excludedScanlatorsForManga = { mangaId ->
                     getExcludedScanlators.await(mangaId).toList()
                 },
+                authorArchiveBackupContributor = authorArchiveBackupContributor,
             )
         }
         return withContext(Dispatchers.IO) { DesktopBackupCreator.writeBackupFile(backup, directory) }

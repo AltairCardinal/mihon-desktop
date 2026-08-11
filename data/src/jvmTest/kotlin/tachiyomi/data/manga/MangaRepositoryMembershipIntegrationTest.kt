@@ -74,7 +74,11 @@ class MangaRepositoryMembershipIntegrationTest {
             ),
         )
         val handler = JvmDatabaseHandler(database, driver)
-        return Fixture(driver, handler, MangaRepositoryImpl(handler))
+        return Fixture(
+            driver,
+            handler,
+            MangaRepositoryImpl(handler, tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter),
+        )
     }
 
     private class Fixture(

@@ -60,6 +60,9 @@ import tachiyomi.domain.creator.interactor.DiscoverCreatorWorks
 import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
+import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
+import tachiyomi.domain.creator.service.CreatorLibraryIndexer
 import tachiyomi.domain.history.repository.HistoryRepository
 import tachiyomi.domain.manga.interactor.GetFavorites
 import tachiyomi.domain.manga.interactor.GetLibraryManga
@@ -142,6 +145,9 @@ data class DesktopUiDependencies(
     val deleteTrack: DeleteTrack,
     val trackerServiceRegistry: TrackerServiceRegistry = DesktopTrackerServiceRegistry(),
     val trackerOAuthCallbackBroker: DesktopTrackerOAuthCallbackBroker = DesktopTrackerOAuthCallbackBroker(),
+    val creatorArchiveRepository: CreatorArchiveRepository? = null,
+    val manageCreatorIdentity: ManageCreatorIdentity? = creatorArchiveRepository?.let(::ManageCreatorIdentity),
+    val creatorLibraryIndexer: CreatorLibraryIndexer? = null,
     val updateController: DesktopUpdateController? = null,
     val updateScreenModel: DesktopUpdateScreenModel? = null,
 ) {
@@ -225,6 +231,8 @@ data class DesktopUiDependencies(
                 deleteTrack = Injekt.get(),
                 trackerServiceRegistry = Injekt.get(),
                 trackerOAuthCallbackBroker = Injekt.get(),
+                creatorArchiveRepository = Injekt.get(),
+                creatorLibraryIndexer = Injekt.get(),
                 updateController = Injekt.get(),
                 updateScreenModel = Injekt.get(),
             )

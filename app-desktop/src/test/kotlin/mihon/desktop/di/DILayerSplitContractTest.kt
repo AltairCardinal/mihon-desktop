@@ -18,6 +18,9 @@ import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
+import tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter
+import tachiyomi.domain.creator.repository.CreatorLibraryMangaSource
+import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -109,6 +112,10 @@ class DILayerSplitContractTest {
         assertNotNull(Injekt.get<SetMangaCategories>())
         assertNotNull(Injekt.get<CreatorRepository>())
         assertSame(Injekt.get<CreatorRepository>(), Injekt.get<CreatorArchiveRepository>())
+        assertSame(Injekt.get<CreatorArchiveRepository>(), Injekt.get<CreatorLibraryIndexWriter>())
+        assertSame(Injekt.get<MangaRepository>(), Injekt.get<CreatorLibraryMangaSource>())
+        assertNotNull(Injekt.get<tachiyomi.domain.creator.service.CreatorLibraryIndexer>())
+        assertNotNull(Injekt.get<tachiyomi.data.backup.AuthorArchiveBackupContributor>())
         assertNotNull(Injekt.get<CreatorArchiveBootstrap>())
         assertNotNull(Injekt.get<CreatorDiscoveryService>())
         assertNotNull(Injekt.get<SourceMangaSearchService>())

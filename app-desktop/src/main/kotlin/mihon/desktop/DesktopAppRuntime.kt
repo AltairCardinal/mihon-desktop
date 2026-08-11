@@ -13,6 +13,7 @@ import mihon.desktop.platform.DesktopExternalActionBroker
 import mihon.desktop.source.LocalSourceScanService
 import mihon.desktop.security.DesktopAppLockLifecycle
 import mihon.desktop.ui.settings.DesktopUpdateScreenModel
+import tachiyomi.domain.creator.service.CreatorLibraryIndexer
 
 interface DesktopRuntimeService {
     fun start()
@@ -26,6 +27,7 @@ class DesktopAppRuntime(
     private val trackerSyncScheduler: DesktopRuntimeService = NoopRuntimeService,
     private val batchMigrationController: DesktopRuntimeService = NoopRuntimeService,
     private val startupCleanup: suspend () -> Unit,
+    private val creatorLibraryIndexService: DesktopRuntimeService = NoopRuntimeService,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     internal val appLock: DesktopAppLockLifecycle = NoopAppLockLifecycle,
     private val updateScreenModel: DesktopUpdateScreenModel? = null,
@@ -35,7 +37,14 @@ class DesktopAppRuntime(
     private var startupJob: Job? = null
     private var instanceBroker: DesktopExternalActionBroker? = null
     private val closeActions = mutableListOf<AutoCloseable>()
-    private val services = listOf(libraryUpdateScheduler, localSourceScanService, autoBackupScheduler, trackerSyncScheduler, batchMigrationController)
+    private val services = listOf(
+        libraryUpdateScheduler,
+        localSourceScanService,
+        autoBackupScheduler,
+        creatorLibraryIndexService,
+        trackerSyncScheduler,
+        batchMigrationController,
+    )
     private val runningServices = BooleanArray(services.size)
     private var closeStarted = false
     @get:Synchronized
@@ -142,6 +151,7 @@ class DesktopAppRuntime(
             readerModeMemoryCleaner: ReaderModeMemoryCleaner,
             trackerSyncScheduler: DesktopRuntimeService = NoopRuntimeService,
             batchMigrationController: DesktopRuntimeService = NoopRuntimeService,
+            creatorLibraryIndexService: DesktopRuntimeService = NoopRuntimeService,
             appLock: DesktopAppLockLifecycle = NoopAppLockLifecycle,
             scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
             updateScreenModel: DesktopUpdateScreenModel? = null,
@@ -153,12 +163,22 @@ class DesktopAppRuntime(
                 trackerSyncScheduler = trackerSyncScheduler,
                 batchMigrationController = batchMigrationController,
                 startupCleanup = { readerModeMemoryCleaner.clearNonFavoriteManga() },
+                creatorLibraryIndexService = creatorLibraryIndexService,
                 scope = scope,
                 appLock = appLock,
                 updateScreenModel = updateScreenModel,
             )
         }
     }
+}
+
+internal class CreatorLibraryIndexRuntimeService(
+    private val indexer: CreatorLibraryIndexer,
+    private val scope: CoroutineScope,
+) : DesktopRuntimeService {
+    override fun start() = indexer.start(scope)
+
+    override fun stop() = indexer.stop()
 }
 
 internal sealed interface DesktopInstanceStartResult {

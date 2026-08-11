@@ -25,6 +25,9 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.data.backup.AuthorArchiveBackupContributor
+import eu.kanade.tachiyomi.data.backup.models.BackupAuthorArchiveSection
+import eu.kanade.tachiyomi.data.backup.models.BackupCreatorIdentity
 import java.io.File
 
 /**
@@ -35,6 +38,31 @@ class DesktopBackupCreatorTest {
 
     @TempDir
     lateinit var tempDir: File
+
+    @Test
+    fun `createFromDatabase includes field 107 from production contributor`() = runTest {
+        val section = BackupAuthorArchiveSection(
+            creators = listOf(BackupCreatorIdentity("creator-one", "ONE", "one")),
+        )
+        val contributor = object : AuthorArchiveBackupContributor {
+            override suspend fun createSection() = section
+            override suspend fun restoreSection(section: BackupAuthorArchiveSection) = Unit
+        }
+
+        val backup = DesktopBackupCreator.createFromDatabase(
+            mangaRepository = FakeMangaRepository(),
+            chapterRepository = FakeChapterRepository(),
+            categoryRepository = FakeCategoryRepository(),
+            historyRepository = FakeHistoryRepository(),
+            trackRepository = trackRepositoryOf(),
+            preferenceStore = preferenceStoreOf(),
+            sourcePreferenceStore = { preferenceStoreOf() },
+            extensionRepoRepository = FakeExtensionRepoRepository(),
+            authorArchiveBackupContributor = contributor,
+        )
+
+        assertEquals(section, backup.backupAuthorArchive)
+    }
 
     @Test
     fun `encodeToBytes encodes Backup to gzip-compressed protobuf bytes`() {

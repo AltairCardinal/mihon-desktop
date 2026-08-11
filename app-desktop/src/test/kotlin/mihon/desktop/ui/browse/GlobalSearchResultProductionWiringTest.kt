@@ -296,7 +296,10 @@ class GlobalSearchResultProductionWiringTest {
             Database(driver, tachiyomi.data.History.Adapter(DateColumnAdapter), tachiyomi.data.Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter)),
             driver,
         )
-        val mangas = MangaRepositoryImpl(handler)
+        val mangas = MangaRepositoryImpl(
+            handler,
+            tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter,
+        )
         val repository = ControlledRepository(mangas)
         val getManga = GetManga(repository)
         val saver = SaveSourceMangaForDetails(NetworkToLocalManga(repository), repository, ChapterRepositoryImpl(handler))

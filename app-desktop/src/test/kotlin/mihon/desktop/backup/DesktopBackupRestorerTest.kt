@@ -35,12 +35,41 @@ import tachiyomi.data.category.CategoryRepositoryImpl
 import tachiyomi.data.chapter.ChapterRepositoryImpl
 import tachiyomi.data.history.HistoryRepositoryImpl
 import tachiyomi.data.manga.MangaRepositoryImpl
+import tachiyomi.data.backup.AuthorArchiveBackupContributor
+import eu.kanade.tachiyomi.data.backup.models.BackupAuthorArchiveSection
+import eu.kanade.tachiyomi.data.backup.models.BackupCreatorIdentity
 
 /**
  * RED tests for DesktopBackupRestorer.
  * These tests define the expected contract before implementation exists.
  */
 class DesktopBackupRestorerTest {
+
+    @Test
+    fun `restore applies field 107 after manga restore and reports progress`() = runTest {
+        val section = BackupAuthorArchiveSection(
+            creators = listOf(BackupCreatorIdentity("creator-one", "ONE", "one")),
+        )
+        var restored: BackupAuthorArchiveSection? = null
+        val contributor = object : AuthorArchiveBackupContributor {
+            override suspend fun createSection(): BackupAuthorArchiveSection? = null
+            override suspend fun restoreSection(section: BackupAuthorArchiveSection) {
+                restored = section
+            }
+        }
+        val progress = mutableListOf<RestoreProgress>()
+
+        DesktopBackupRestorer(
+            mangaRepository = FakeMangaRepository(),
+            chapterRepository = FakeChapterRepository(),
+            categoryRepository = FakeCategoryRepository(),
+            historyRepository = FakeHistoryRepository(),
+            authorArchiveBackupContributor = contributor,
+        ).restore(Backup(backupManga = emptyList(), backupAuthorArchive = section), progress::add)
+
+        assertEquals(section, restored)
+        assertEquals(listOf(RestoreProgress(1, 1)), progress)
+    }
 
     @Test
     fun `restore history uses Android non-regressing merge semantics with real SQL repository`() = runTest {
@@ -56,7 +85,10 @@ class DesktopBackupRestorerTest {
                 ),
             )
             val handler = JvmDatabaseHandler(database, driver)
-            val mangaRepository = MangaRepositoryImpl(handler)
+            val mangaRepository = MangaRepositoryImpl(
+                handler,
+                tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter,
+            )
             val chapterRepository = ChapterRepositoryImpl(handler)
             val historyRepository = HistoryRepositoryImpl(handler)
             val restorer = DesktopBackupRestorer(

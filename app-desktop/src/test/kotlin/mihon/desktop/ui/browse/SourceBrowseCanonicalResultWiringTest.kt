@@ -214,7 +214,10 @@ class SourceBrowseCanonicalResultWiringTest {
             ),
             driver,
         )
-        val repository = MangaRepositoryImpl(handler)
+        val repository = MangaRepositoryImpl(
+            handler,
+            tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter,
+        )
         val saver = SaveSourceMangaForDetails(NetworkToLocalManga(repository), repository, ChapterRepositoryImpl(handler))
         val listed = SManga.create().apply {
             url = "/canonical"

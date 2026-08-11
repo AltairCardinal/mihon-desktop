@@ -8,10 +8,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,12 +23,15 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -60,6 +65,7 @@ import mihon.desktop.ui.library.MangaDetailScreen
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.MangaCreator
+import tachiyomi.domain.creator.service.CreatorLibraryIndexState
 import tachiyomi.domain.creator.interactor.CreatorDetails
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
@@ -94,15 +100,21 @@ class AuthorsRootScreen : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val getCreators = LocalDesktopUiDependencies.current.getCreators
+        val dependencies = LocalDesktopUiDependencies.current
+        val getCreators = dependencies.getCreators
+        val indexer = requireNotNull(dependencies.creatorLibraryIndexer) {
+            "CreatorLibraryIndexer is required by AuthorsRootScreen"
+        }
         val creators by getCreators.subscribe().collectAsState(emptyList())
         val followed by getCreators.subscribeFollowed().collectAsState(emptyList())
+        val indexState by indexer.state.collectAsState()
         var query by remember { mutableStateOf("") }
 
         val followedIds = remember(followed) { followed.map { it.creatorId }.toSet() }
         val filteredCreators = remember(creators, query) {
             creators.filter { it.displayName.contains(query, ignoreCase = true) }
         }
+        val indexPresentation = authorIndexPresentation(indexState, creators.size)
 
         Scaffold(
             topBar = {
@@ -124,9 +136,74 @@ class AuthorsRootScreen : Screen {
                         .padding(16.dp),
                 )
 
-                if (filteredCreators.isEmpty()) {
+                when (val presentation = indexPresentation) {
+                    is AuthorIndexPresentation.Indexing -> {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(
+                                if (presentation.totalManga == 0) {
+                                    MR.strings.desktop_ui_author_index_preparing.localized()
+                                } else {
+                                    MR.strings.desktop_ui_author_index_progress.localized(
+                                        Locale.getDefault(),
+                                        presentation.processedManga,
+                                        presentation.totalManga,
+                                    )
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            if (presentation.totalManga > 0) {
+                                LinearProgressIndicator(
+                                    progress = {
+                                        presentation.processedManga.toFloat() / presentation.totalManga.toFloat()
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            } else {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+                    }
+                    is AuthorIndexPresentation.Failed -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                MR.strings.desktop_ui_author_index_failed.localized(
+                                    Locale.getDefault(),
+                                    presentation.message,
+                                ),
+                                modifier = Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            Button(onClick = indexer::retry) { Text(MR.strings.action_retry.localized()) }
+                        }
+                    }
+                    else -> Unit
+                }
+
+                if (creators.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(MR.strings.desktop_ui_no_authors_indexed_yet.localized())
+                        Text(
+                            when (indexPresentation) {
+                                AuthorIndexPresentation.EmptyLibrary ->
+                                    MR.strings.desktop_ui_author_index_empty_library.localized()
+                                AuthorIndexPresentation.NoAuthorMetadata ->
+                                    MR.strings.desktop_ui_author_index_no_metadata.localized()
+                                is AuthorIndexPresentation.Failed,
+                                is AuthorIndexPresentation.Indexing,
+                                AuthorIndexPresentation.Content,
+                                -> MR.strings.desktop_ui_no_authors_indexed_yet.localized()
+                            },
+                        )
+                    }
+                } else if (filteredCreators.isEmpty()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(MR.strings.no_results_found.localized())
                     }
                 } else {
                     LazyColumn(
@@ -181,7 +258,12 @@ data class AuthorDetailScreen(
         val setCreatorFollow = desktopDependencies.setCreatorFollow
         val sourceManager = desktopDependencies.sourceManager
         val saveSourceMangaForDetails = desktopDependencies.saveSourceMangaForDetails
+        val manageCreatorIdentity = requireNotNull(desktopDependencies.manageCreatorIdentity) {
+            "ManageCreatorIdentity is required by AuthorDetailScreen"
+        }
+        val identityActions = remember(manageCreatorIdentity) { AuthorIdentityActions(manageCreatorIdentity) }
         val scope = rememberCoroutineScope()
+        val allCreators by desktopDependencies.getCreators.subscribe().collectAsState(emptyList())
         val followed by desktopDependencies.getCreators.subscribeFollowed().collectAsState(emptyList())
         var creator by remember { mutableStateOf<Creator?>(null) }
         var candidates by remember { mutableStateOf(emptyList<DiscoveryCandidate>()) }
@@ -189,6 +271,17 @@ data class AuthorDetailScreen(
         var mangaTitles by remember { mutableStateOf(emptyMap<Long, String>()) }
         var checking by remember { mutableStateOf(false) }
         var openingCandidateId by remember { mutableStateOf<Long?>(null) }
+        var showAliasDialog by remember { mutableStateOf(false) }
+        var aliasInput by remember { mutableStateOf("") }
+        var manualAliases by remember { mutableStateOf(emptyList<String>()) }
+        var aliasPendingRemoval by remember { mutableStateOf<String?>(null) }
+        var showMergePicker by remember { mutableStateOf(false) }
+        var mergeTarget by remember { mutableStateOf<Creator?>(null) }
+        var showSplitDialog by remember { mutableStateOf(false) }
+        var splitName by remember { mutableStateOf("") }
+        var splitMangaIds by remember { mutableStateOf(emptySet<Long>()) }
+        var identityActionError by remember { mutableStateOf<String?>(null) }
+        var identityActionRunning by remember { mutableStateOf(false) }
 
         fun applyDetails(details: CreatorDetails) {
             creator = details.creator
@@ -198,6 +291,9 @@ data class AuthorDetailScreen(
 
         LaunchedEffect(creatorId) {
             applyDetails(getCreatorDetails.await(creatorId))
+            runCatching { identityActions.getManualAliases(creatorId) }
+                .onSuccess { manualAliases = it }
+                .onFailure { identityActionError = it.message ?: it::class.simpleName.orEmpty() }
             if (shouldCollectAuthorOnOpen(collectOnOpen, candidates, mangaLinks)) {
                 checking = true
                 applyDetails(discoverCreatorWorks.await(creatorId, sourceManager.getCatalogueSources()))
@@ -210,6 +306,245 @@ data class AuthorDetailScreen(
         }
 
         val isFollowed = followed.any { it.creatorId == creatorId }
+
+        if (showAliasDialog) {
+            AlertDialog(
+                onDismissRequest = { showAliasDialog = false },
+                title = { Text(MR.strings.desktop_ui_add_author_alias.localized()) },
+                text = {
+                    OutlinedTextField(
+                        value = aliasInput,
+                        onValueChange = { aliasInput = it },
+                        label = { Text(MR.strings.desktop_ui_author_alias.localized()) },
+                        singleLine = true,
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = aliasInput.isNotBlank() && !identityActionRunning,
+                        onClick = {
+                            val alias = aliasInput
+                            showAliasDialog = false
+                            scope.launch {
+                                identityActionRunning = true
+                                runCatching { identityActions.addAlias(creatorId, alias) }
+                                    .onSuccess {
+                                        creator = getCreatorDetails.await(creatorId).creator
+                                        manualAliases = identityActions.getManualAliases(creatorId)
+                                        aliasInput = ""
+                                    }
+                                    .onFailure { identityActionError = it.message ?: it::class.simpleName.orEmpty() }
+                                identityActionRunning = false
+                            }
+                        },
+                    ) { Text(MR.strings.action_add.localized()) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAliasDialog = false }) {
+                        Text(MR.strings.action_cancel.localized())
+                    }
+                },
+            )
+        }
+
+        aliasPendingRemoval?.let { alias ->
+            AlertDialog(
+                onDismissRequest = { aliasPendingRemoval = null },
+                title = { Text(MR.strings.desktop_ui_remove_author_alias.localized()) },
+                text = {
+                    Text(
+                        MR.strings.desktop_ui_remove_author_alias_summary.localized(
+                            Locale.getDefault(),
+                            alias,
+                        ),
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = !identityActionRunning,
+                        onClick = {
+                            aliasPendingRemoval = null
+                            scope.launch {
+                                identityActionRunning = true
+                                runCatching { identityActions.removeAlias(creatorId, alias) }
+                                    .onSuccess {
+                                        creator = getCreatorDetails.await(creatorId).creator
+                                        manualAliases = identityActions.getManualAliases(creatorId)
+                                    }
+                                    .onFailure { identityActionError = it.message ?: it::class.simpleName.orEmpty() }
+                                identityActionRunning = false
+                            }
+                        },
+                    ) { Text(MR.strings.action_remove.localized()) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { aliasPendingRemoval = null }) {
+                        Text(MR.strings.action_cancel.localized())
+                    }
+                },
+            )
+        }
+
+        if (showMergePicker) {
+            val targets = allCreators.filter { it.id != creatorId }
+            AlertDialog(
+                onDismissRequest = { showMergePicker = false },
+                title = { Text(MR.strings.desktop_ui_merge_author_identity.localized()) },
+                text = {
+                    if (targets.isEmpty()) {
+                        Text(MR.strings.desktop_ui_no_other_author_identities.localized())
+                    } else {
+                        LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                            items(targets, key = Creator::id) { target ->
+                                ListItem(
+                                    headlineContent = { Text(target.displayName) },
+                                    supportingContent = {
+                                        if (target.aliases.isNotEmpty()) {
+                                            Text(target.aliases.joinToString())
+                                        }
+                                    },
+                                    modifier = Modifier.clickable {
+                                        mergeTarget = target
+                                        showMergePicker = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showMergePicker = false }) {
+                        Text(MR.strings.action_cancel.localized())
+                    }
+                },
+            )
+        }
+
+        mergeTarget?.let { target ->
+            AlertDialog(
+                onDismissRequest = { mergeTarget = null },
+                title = { Text(MR.strings.desktop_ui_merge_author_identity.localized()) },
+                text = {
+                    Text(
+                        MR.strings.desktop_ui_merge_author_identity_summary.localized(
+                            Locale.getDefault(),
+                            creator?.displayName ?: MR.strings.unknown_author.localized(),
+                            target.displayName,
+                        ),
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = !identityActionRunning,
+                        onClick = {
+                            mergeTarget = null
+                            scope.launch {
+                                identityActionRunning = true
+                                runCatching { identityActions.merge(creatorId, target.id) }
+                                    .onSuccess { navigator.pop() }
+                                    .onFailure { identityActionError = it.message ?: it::class.simpleName.orEmpty() }
+                                identityActionRunning = false
+                            }
+                        },
+                    ) { Text(MR.strings.desktop_ui_merge_author_identity.localized()) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { mergeTarget = null }) {
+                        Text(MR.strings.action_cancel.localized())
+                    }
+                },
+            )
+        }
+
+        if (showSplitDialog) {
+            val uniqueMangaIds = mangaLinks.map(MangaCreator::mangaId).distinct()
+            AlertDialog(
+                onDismissRequest = { showSplitDialog = false },
+                title = { Text(MR.strings.desktop_ui_split_author_identity.localized()) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(MR.strings.desktop_ui_split_author_identity_summary.localized())
+                        OutlinedTextField(
+                            value = splitName,
+                            onValueChange = { splitName = it },
+                            label = { Text(MR.strings.desktop_ui_new_identity_name.localized()) },
+                            singleLine = true,
+                        )
+                        LazyColumn(Modifier.heightIn(max = 280.dp)) {
+                            items(uniqueMangaIds, key = { it }) { mangaId ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().clickable {
+                                        splitMangaIds = if (mangaId in splitMangaIds) {
+                                            splitMangaIds - mangaId
+                                        } else {
+                                            splitMangaIds + mangaId
+                                        }
+                                    },
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Checkbox(
+                                        checked = mangaId in splitMangaIds,
+                                        onCheckedChange = { checked ->
+                                            splitMangaIds = if (checked) splitMangaIds + mangaId else splitMangaIds - mangaId
+                                        },
+                                    )
+                                    Text(
+                                        mangaTitles[mangaId]
+                                            ?: MR.strings.desktop_ui_manga_number.localized(Locale.getDefault(), mangaId),
+                                    )
+                                }
+                            }
+                        }
+                        if (splitMangaIds.isEmpty()) {
+                            Text(
+                                MR.strings.desktop_ui_select_at_least_one_manga.localized(),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = splitName.isNotBlank() && splitMangaIds.isNotEmpty() && !identityActionRunning,
+                        onClick = {
+                            val selectedIds = splitMangaIds
+                            val newName = splitName
+                            showSplitDialog = false
+                            scope.launch {
+                                identityActionRunning = true
+                                runCatching { identityActions.split(creatorId, selectedIds, newName) }
+                                    .onSuccess { newCreatorId ->
+                                        splitMangaIds = emptySet()
+                                        splitName = ""
+                                        navigator.replace(AuthorDetailScreen(newCreatorId))
+                                    }
+                                    .onFailure { identityActionError = it.message ?: it::class.simpleName.orEmpty() }
+                                identityActionRunning = false
+                            }
+                        },
+                    ) { Text(MR.strings.desktop_ui_split_author_identity.localized()) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSplitDialog = false }) {
+                        Text(MR.strings.action_cancel.localized())
+                    }
+                },
+            )
+        }
+
+        identityActionError?.let { error ->
+            AlertDialog(
+                onDismissRequest = { identityActionError = null },
+                title = { Text(MR.strings.desktop_ui_identity_action_failed.localized()) },
+                text = { Text(error) },
+                confirmButton = {
+                    TextButton(onClick = { identityActionError = null }) {
+                        Text(MR.strings.action_ok.localized())
+                    }
+                },
+            )
+        }
 
         Scaffold(
             topBar = {
@@ -283,6 +618,59 @@ data class AuthorDetailScreen(
                     ) {
                         Text(if (isFollowed) MR.strings.desktop_ui_unfollow.localized() else MR.strings.desktop_ui_follow.localized())
                     }
+                }
+
+                creator?.aliases?.takeIf { it.isNotEmpty() }?.let { aliases ->
+                    Text(
+                        MR.strings.desktop_ui_author_aliases.localized(
+                            Locale.getDefault(),
+                            aliases.joinToString(),
+                        ),
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                manualAliases.takeIf { it.isNotEmpty() }?.let { aliases ->
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        aliases.forEach { alias ->
+                            TextButton(
+                                enabled = !identityActionRunning,
+                                onClick = { aliasPendingRemoval = alias },
+                            ) {
+                                Text(
+                                    MR.strings.desktop_ui_remove_named_author_alias.localized(
+                                        Locale.getDefault(),
+                                        alias,
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                }
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    TextButton(
+                        enabled = !identityActionRunning,
+                        onClick = { showAliasDialog = true },
+                    ) { Text(MR.strings.desktop_ui_add_author_alias.localized()) }
+                    TextButton(
+                        enabled = !identityActionRunning && allCreators.any { it.id != creatorId },
+                        onClick = { showMergePicker = true },
+                    ) { Text(MR.strings.desktop_ui_merge_author_identity.localized()) }
+                    TextButton(
+                        enabled = !identityActionRunning && mangaLinks.isNotEmpty(),
+                        onClick = {
+                            splitName = creator?.displayName.orEmpty()
+                            splitMangaIds = emptySet()
+                            showSplitDialog = true
+                        },
+                    ) { Text(MR.strings.desktop_ui_split_author_identity.localized()) }
                 }
 
                 HorizontalDivider()

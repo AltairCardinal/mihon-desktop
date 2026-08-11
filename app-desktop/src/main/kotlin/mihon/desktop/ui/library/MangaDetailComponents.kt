@@ -109,6 +109,8 @@ import mihon.desktop.ui.reader.DesktopReaderScreen
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.creator.model.CreatorRole
+import tachiyomi.domain.creator.model.CreatorMention
+import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.manga.model.Manga
 import androidx.compose.foundation.layout.size as layoutSize
 
@@ -123,8 +125,9 @@ internal fun MangaHeader(
     sourceName: String?,
     onTagSearch: (String) -> Unit,
     onTagCopy: (String) -> Unit,
-    onAuthorClick: (String) -> Unit,
-    onArtistClick: (String) -> Unit,
+    creatorMentions: List<CreatorMention>,
+    creatorIdentityLoading: Boolean,
+    onCreatorClick: (CreatorMention) -> Unit,
 ) {
     val coverRequestState = rememberMangaCoverRequestState(manga.id, manga.source, coverModel, coverLastModified)
     var showCoverMenu by remember { mutableStateOf(false) }
@@ -196,25 +199,30 @@ internal fun MangaHeader(
                 text = manga.title,
                 style = MaterialTheme.typography.titleLarge,
             )
-            authorNavigationNameOrNull(manga.author)?.let { author ->
-                Text(
-                    text = MR.strings.desktop_ui_author_value.localized(Locale.getDefault(), author),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .padding(top = 4.dp)
-                        .clickable { onAuthorClick(author) },
-                )
-            }
-            authorNavigationNameOrNull(manga.artist)?.takeIf { it != authorNavigationNameOrNull(manga.author) }?.let { artist ->
-                Text(
-                    text = MR.strings.desktop_ui_artist_value.localized(Locale.getDefault(), artist),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .padding(top = 2.dp)
-                        .clickable { onArtistClick(artist) },
-                )
+            if (creatorMentions.isNotEmpty()) {
+                FlowRow(
+                    modifier = Modifier.padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    creatorMentions.forEach { mention ->
+                        FilterChip(
+                            selected = false,
+                            enabled = !creatorIdentityLoading,
+                            onClick = { onCreatorClick(mention) },
+                            label = {
+                                Text(
+                                    text = "${creatorRoleLabel(mention.role)} · ${mention.displayName}",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                        )
+                    }
+                    if (creatorIdentityLoading) {
+                        CircularProgressIndicator(Modifier.layoutSize(24.dp))
+                    }
+                }
             }
             Text(
                 text = listOfNotNull(
@@ -258,6 +266,57 @@ internal fun MangaHeader(
             }
         }
     }
+}
+
+private fun creatorRoleLabel(role: CreatorRole): String = when (role) {
+    CreatorRole.AUTHOR -> MR.strings.author.localized()
+    CreatorRole.ARTIST -> MR.strings.artist.localized()
+    CreatorRole.BOTH -> MR.strings.desktop_ui_creator_role_both.localized()
+    CreatorRole.UNKNOWN -> MR.strings.unknown.localized()
+}
+
+@Composable
+internal fun CreatorIdentityChooserDialog(
+    request: CreatorMentionResolution.Ambiguous,
+    onSelect: (Long) -> Unit,
+    onCreateDistinct: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(MR.strings.desktop_ui_choose_author_identity.localized()) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    MR.strings.desktop_ui_choose_author_identity_summary.localized(
+                        Locale.getDefault(),
+                        request.mention.displayName,
+                    ),
+                )
+                request.options.forEach { option ->
+                    ListItem(
+                        headlineContent = { Text(option.displayName) },
+                        supportingContent = {
+                            val details = buildList {
+                                if (option.aliases.isNotEmpty()) add(option.aliases.joinToString())
+                                if (option.needsReview) add(MR.strings.desktop_ui_identity_needs_review.localized())
+                            }
+                            if (details.isNotEmpty()) Text(details.joinToString(" · "))
+                        },
+                        modifier = Modifier.clickable { onSelect(option.id) },
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onCreateDistinct) {
+                Text(MR.strings.desktop_ui_create_distinct_identity.localized())
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
+        },
+    )
 }
 
 @Composable

@@ -33,6 +33,7 @@ import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.prefs.Preferences
+import tachiyomi.data.backup.AuthorArchiveBackupContributor
 
 /**
  * Creates and reads `.tachibk` backup files in the same protobuf+gzip format
@@ -112,6 +113,7 @@ object DesktopBackupCreator {
             DesktopPreferenceStore(Preferences.userRoot().node("/mihon/source_$sourceId"))
         },
         extensionRepoRepository: ExtensionRepoRepository = Injekt.get(),
+        authorArchiveBackupContributor: AuthorArchiveBackupContributor? = null,
     ): Backup {
         val mangas = mangaRepository.getFavorites()
         val allCategories = categoryRepository.getAll()
@@ -216,6 +218,7 @@ object DesktopBackupCreator {
             backupPreferences = preferenceStore.getAll().toBackupPreferences(),
             backupSourcePreferences = backupSourcePreferences,
             backupExtensionRepo = extensionRepoRepository.getAll().map(backupExtensionReposMapper),
+            backupAuthorArchive = authorArchiveBackupContributor?.createSection(),
         )
     }
 

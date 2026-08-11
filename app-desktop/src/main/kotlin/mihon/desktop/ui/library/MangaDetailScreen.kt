@@ -105,7 +105,7 @@ import mihon.desktop.ui.reader.readingModeLabel
 import mihon.desktop.ui.source.desktopSourceErrorMessage
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.model.Chapter
-import tachiyomi.domain.creator.model.CreatorRole
+import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.manga.model.Manga
 import mihon.desktop.platform.toDesktopNotification
 import androidx.compose.foundation.layout.size as layoutSize
@@ -175,6 +175,9 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         var categoryDialogMode by remember { mutableStateOf<MangaCategoryDialogMode?>(null) }
         var showFetchIntervalDialog by remember { mutableStateOf(false) }
         var downloadMenuExpanded by remember { mutableStateOf(false) }
+        var creatorIdentityRequest by remember { mutableStateOf<CreatorMentionResolution.Ambiguous?>(null) }
+        var creatorIdentityLoading by remember { mutableStateOf(false) }
+        var creatorIdentityError by remember { mutableStateOf<String?>(null) }
 
         LaunchedEffect(mangaId) {
             model.mangaWithChaptersFlow().collect { (m, ch) ->
@@ -796,6 +799,55 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 )
             }
 
+            val identityManga = manga
+            creatorIdentityRequest?.let { request ->
+                if (identityManga != null) {
+                    CreatorIdentityChooserDialog(
+                        request = request,
+                        onSelect = { creatorId ->
+                            creatorIdentityRequest = null
+                            scope.launch {
+                                creatorIdentityLoading = true
+                                runCatching {
+                                    model.selectCreatorIdentity(identityManga, request.mention, creatorId)
+                                }.onSuccess {
+                                    authorDetailScreenOrNull(request.mention.displayName, creatorId)
+                                        ?.let { navigator.push(it) }
+                                }.onFailure { creatorIdentityError = it.message ?: it::class.simpleName.orEmpty() }
+                                creatorIdentityLoading = false
+                            }
+                        },
+                        onCreateDistinct = {
+                            creatorIdentityRequest = null
+                            scope.launch {
+                                creatorIdentityLoading = true
+                                runCatching {
+                                    model.createDistinctCreatorIdentity(identityManga, request.mention)
+                                }.onSuccess { creatorId ->
+                                    authorDetailScreenOrNull(request.mention.displayName, creatorId)
+                                        ?.let { navigator.push(it) }
+                                }.onFailure { creatorIdentityError = it.message ?: it::class.simpleName.orEmpty() }
+                                creatorIdentityLoading = false
+                            }
+                        },
+                        onDismiss = { creatorIdentityRequest = null },
+                    )
+                }
+            }
+
+            creatorIdentityError?.let { error ->
+                AlertDialog(
+                    onDismissRequest = { creatorIdentityError = null },
+                    title = { Text(MR.strings.desktop_ui_identity_action_failed.localized()) },
+                    text = { Text(error) },
+                    confirmButton = {
+                        TextButton(onClick = { creatorIdentityError = null }) {
+                            Text(MR.strings.action_ok.localized())
+                        }
+                    },
+                )
+            }
+
             if (manga == null) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
@@ -822,16 +874,23 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 dependencies.shareService.copyText(text).toDesktopNotification(),
                             )
                         },
-                        onAuthorClick = { author ->
+                        creatorMentions = model.creatorMentions(manga!!),
+                        creatorIdentityLoading = creatorIdentityLoading,
+                        onCreatorClick = { mention ->
+                            if (creatorIdentityLoading) return@MangaHeader
                             scope.launch {
-                                val creatorId = model.linkCreator(author, CreatorRole.AUTHOR)
-                                authorDetailScreenOrNull(author, creatorId)?.let(navigator::push)
-                            }
-                        },
-                        onArtistClick = { artist ->
-                            scope.launch {
-                                val creatorId = model.linkCreator(artist, CreatorRole.ARTIST)
-                                authorDetailScreenOrNull(artist, creatorId)?.let(navigator::push)
+                                creatorIdentityLoading = true
+                                runCatching {
+                                    model.resolveCreatorMention(manga!!, mention)
+                                }.onSuccess { resolution ->
+                                    when (resolution) {
+                                        is CreatorMentionResolution.Resolved ->
+                                            authorDetailScreenOrNull(mention.displayName, resolution.creatorId)
+                                                ?.let { navigator.push(it) }
+                                        is CreatorMentionResolution.Ambiguous -> creatorIdentityRequest = resolution
+                                    }
+                                }.onFailure { creatorIdentityError = it.message ?: it::class.simpleName.orEmpty() }
+                                creatorIdentityLoading = false
                             }
                         },
                     )

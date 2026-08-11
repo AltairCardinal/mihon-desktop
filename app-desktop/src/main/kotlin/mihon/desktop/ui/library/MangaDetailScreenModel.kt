@@ -31,6 +31,10 @@ import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.creator.interactor.LinkMangaCreator
+import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
+import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
+import tachiyomi.domain.creator.model.CreatorMention
+import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
 import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
@@ -64,6 +68,8 @@ class MangaDetailScreenModel(
     private val setMangaChapterFlags: SetMangaChapterFlags? = null,
     private val setMangaCategories: SetMangaCategories? = null,
     private val linkMangaCreator: LinkMangaCreator? = null,
+    private val manageCreatorIdentity: ManageCreatorIdentity? = null,
+    private val extractCreatorsFromManga: ExtractCreatorsFromManga = ExtractCreatorsFromManga(),
     private val enqueueDownload: ((DownloadItem) -> Unit)? = null,
     private val downloadQueue: StateFlow<List<DownloadItem>>? = null,
     private val isDownloaded: ((sourceId: Long, mangaTitle: String, chapterName: String) -> Boolean)? = null,
@@ -475,6 +481,27 @@ class MangaDetailScreenModel(
     suspend fun linkCreator(name: String, role: CreatorRole): Long {
         return requireNotNull(linkMangaCreator) { "LinkMangaCreator is required" }
             .await(mangaId, name, role)
+    }
+
+    fun creatorMentions(manga: Manga): List<CreatorMention> = extractCreatorsFromManga.await(manga)
+
+    suspend fun resolveCreatorMention(
+        manga: Manga,
+        mention: CreatorMention,
+    ): CreatorMentionResolution {
+        return requireNotNull(manageCreatorIdentity) { "ManageCreatorIdentity is required" }.resolve(manga, mention)
+    }
+
+    suspend fun selectCreatorIdentity(
+        manga: Manga,
+        mention: CreatorMention,
+        creatorId: Long,
+    ) {
+        requireNotNull(manageCreatorIdentity) { "ManageCreatorIdentity is required" }.select(manga, mention, creatorId)
+    }
+
+    suspend fun createDistinctCreatorIdentity(manga: Manga, mention: CreatorMention): Long {
+        return requireNotNull(manageCreatorIdentity) { "ManageCreatorIdentity is required" }.createDistinct(manga, mention)
     }
 }
 

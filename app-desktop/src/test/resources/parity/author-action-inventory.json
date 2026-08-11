@@ -48,15 +48,15 @@
   "actions": [
     {
       "id": "index",
-      "status": "partial",
-      "followUpTasks": ["AA1-01"],
-      "gapReason": "Authors navigation and repository-backed rows exist, but there is no library-wide backfill, multi-author split, progress, or mounted UI production runner.",
-      "ENTRY": {"state":"covered","productionEdge":"MangaDetailNavigation.authorDetailScreenOrNull → AuthorDetailScreen","runnerTest":"mihon.desktop.ui.NavigationContractTest#author entry creates a regular Screen target for the nested navigator"},
-      "EFFECT": {"state":"covered","productionEdge":"GetCreators/GetCreatorDetails → CreatorRepository","runnerTest":"mihon.desktop.ui.authors.AuthorDetailBehaviorTest#author production interactors preserve list details candidate and follow behavior"},
-      "FEEDBACK": {"state":"unverified","productionEdge":"AuthorsRootScreen list and empty state","runnerTest":""},
+      "status": "covered",
+      "followUpTasks": [],
+      "gapReason": "",
+      "ENTRY": {"state":"covered","productionEdge":"Mounted MangaDetailScreen author chip → ambiguity chooser → typed identity binding → AuthorDetailScreen","runnerTest":"mihon.desktop.ui.library.MangaDetailLibraryEntryWiringTest#real MangaDetailScreen creator chip opens ambiguity chooser binds selection and navigates"},
+      "EFFECT": {"state":"covered","productionEdge":"DesktopAppModule → DesktopAppRuntime → production CreatorLibraryIndexer → author archive backfill","runnerTest":"mihon.desktop.CreatorLibraryIndexRuntimeServiceTest#desktop runtime service starts production indexer once and stops with runtime"},
+      "FEEDBACK": {"state":"covered","productionEdge":"AuthorsRootScreen renders index failure, Retry, and distinct empty-library feedback from the production indexer state","runnerTest":"mihon.desktop.ui.authors.AuthorsProductionWiringTest#mounted authors root renders production failure and retry reaches empty library"},
       "CONFIRMATION": {"state":"not-applicable","productionEdge":"Read-only navigation and projection","runnerTest":""},
       "REVERSAL": {"state":"not-applicable","productionEdge":"Read-only navigation and projection has no decision to undo","runnerTest":""},
-      "redBaseline": {"state":"recorded-red","test":"AuthorActionInventoryContractTest#inventory rejects false completion missing follow up and unsafe decision feedback","failureReason":"Marking index covered is rejected because mounted feedback remains unverified."}
+      "redBaseline": {"state":"recorded-red","test":"AuthorActionInventoryContractTest#inventory rejects false completion missing follow up and unsafe decision feedback","failureReason":"Before AA1-01, marking index covered was rejected because mounted feedback and the production library-wide index runner were missing."}
     },
     {
       "id": "follow",

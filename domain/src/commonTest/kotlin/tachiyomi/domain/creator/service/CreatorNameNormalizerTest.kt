@@ -23,4 +23,15 @@ class CreatorNameNormalizerTest {
         CreatorNameNormalizer.splitNames("ONE / / , Murata")
             .shouldContainExactly("ONE", "Murata")
     }
+
+    @Test
+    fun `normalizes full width roman text before identity lookup`() {
+        CreatorNameNormalizer.normalize(" ＯＮＥ　Ｓｅｎｓｅｉ ") shouldBe "one sensei"
+    }
+
+    @Test
+    fun `splits full width and ideographic separators`() {
+        CreatorNameNormalizer.splitNames("ONE，村田雄介＆Boichi、 浦沢直樹")
+            .shouldContainExactly("ONE", "村田雄介", "Boichi", "浦沢直樹")
+    }
 }

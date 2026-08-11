@@ -14,6 +14,7 @@ import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.history.repository.HistoryRepository
 import tachiyomi.domain.manga.repository.MangaRepository
 import java.io.File
+import tachiyomi.data.backup.AuthorArchiveBackupContributor
 
 /** Interval for automatic backups. */
 enum class AutoBackupInterval(val hours: Long) {
@@ -48,6 +49,7 @@ class AutoBackupScheduler(
     private val categoryRepository: CategoryRepository,
     private val historyRepository: HistoryRepository,
     private val excludedScanlatorsForManga: suspend (Long) -> List<String> = { emptyList() },
+    private val authorArchiveBackupContributor: AuthorArchiveBackupContributor? = null,
     private val defaultBackupDir: File = DesktopPlatformPaths.current().backupsDir,
     scope: CoroutineScope? = null,
     private val nowMillis: () -> Long = System::currentTimeMillis,
@@ -117,6 +119,7 @@ class AutoBackupScheduler(
             categoryRepository,
             historyRepository,
             excludedScanlatorsForManga = excludedScanlatorsForManga,
+            authorArchiveBackupContributor = authorArchiveBackupContributor,
         )
         DesktopBackupCreator.writeBackupFile(backup, backupDir)
 

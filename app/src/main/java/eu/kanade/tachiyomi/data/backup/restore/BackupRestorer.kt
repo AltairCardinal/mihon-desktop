@@ -14,12 +14,17 @@ import eu.kanade.tachiyomi.data.backup.restore.restorers.ExtensionRepoRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.MangaRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.PreferenceRestorer
 import eu.kanade.tachiyomi.util.system.createFileInCacheDir
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.data.backup.AuthorArchiveBackupContributor
 import tachiyomi.i18n.MR
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -34,6 +39,7 @@ class BackupRestorer(
     private val preferenceRestorer: PreferenceRestorer = PreferenceRestorer(context),
     private val extensionRepoRestorer: ExtensionRepoRestorer = ExtensionRepoRestorer(),
     private val mangaRestorer: MangaRestorer = MangaRestorer(),
+    private val authorArchiveBackupContributor: AuthorArchiveBackupContributor = Injekt.get(),
 ) {
 
     private var restoreAmount = 0
@@ -72,6 +78,7 @@ class BackupRestorer(
 
         if (options.libraryEntries) {
             restoreAmount += backup.backupManga.size
+            if (backup.backupAuthorArchive != null) restoreAmount += 1
         }
         if (options.categories) {
             restoreAmount += 1
@@ -104,6 +111,25 @@ class BackupRestorer(
             }
 
             // TODO: optionally trigger online library + tracker update
+        }
+        if (options.libraryEntries) {
+            backup.backupAuthorArchive?.let { section ->
+                currentCoroutineContext().ensureActive()
+                try {
+                    authorArchiveBackupContributor.restoreSection(section)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    errors.add(Date() to "Author archive: ${error.message}")
+                }
+                restoreProgress += 1
+                notifier.showRestoreProgress(
+                    context.stringResource(MR.strings.author),
+                    restoreProgress,
+                    restoreAmount,
+                    isSync,
+                )
+            }
         }
     }
 

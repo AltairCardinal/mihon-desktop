@@ -35,6 +35,14 @@ import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
 import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
 import mihon.domain.task.TaskState
 import mihon.domain.error.AppError
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.mockk
+import tachiyomi.domain.creator.model.CreatorIdentityOption
+import tachiyomi.domain.creator.model.CreatorMentionResolution
+import tachiyomi.domain.creator.model.CreatorPortableKey
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
+import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 
 /**
  * Stage 25.1 — MangaDetailScreenModel tests.
@@ -43,6 +51,80 @@ import mihon.domain.error.AppError
  * lives in a ScreenModel with StateFlow<MangaDetailState>.
  */
 class MangaDetailScreenModelTest {
+    @Test
+    fun `creator mentions split bibliography and fold author artist overlap`() {
+        val model = MangaDetailScreenModel(mangaId = 1L)
+        val manga = Manga.create().copy(
+            id = 1L,
+            author = "ONE / Yusuke Murata",
+            artist = "Yusuke Murata; Boichi",
+        )
+
+        val mentions = model.creatorMentions(manga)
+
+        assertEquals(listOf("ONE", "Yusuke Murata", "Boichi"), mentions.map { it.displayName })
+        assertEquals(listOf(CreatorRole.AUTHOR, CreatorRole.BOTH, CreatorRole.ARTIST), mentions.map { it.role })
+    }
+
+    @Test
+    fun `unique identity is bound and returned without chooser`() = runTest {
+        val repository = mockk<CreatorArchiveRepository>()
+        val manga = Manga.create().copy(id = 1L, source = 10L, url = "/one", author = "ONE", favorite = true)
+        val model = MangaDetailScreenModel(mangaId = 1L, manageCreatorIdentity = ManageCreatorIdentity(repository))
+        val mention = model.creatorMentions(manga).single()
+        val option = CreatorIdentityOption(
+            id = 7L,
+            portableKey = CreatorPortableKey("creator-seven"),
+            displayName = "ONE",
+            aliases = listOf("ONE"),
+            needsReview = false,
+            currentlyBound = false,
+        )
+        coEvery { repository.getCreatorIdentityOptions(1L, mention) } returns listOf(option)
+        coEvery { repository.bindMangaCreatorIdentity(manga, mention, 7L) } returns Unit
+
+        val result = model.resolveCreatorMention(manga, mention)
+
+        assertEquals(CreatorMentionResolution.Resolved(7L), result)
+        coVerify(exactly = 1) { repository.bindMangaCreatorIdentity(manga, mention, 7L) }
+    }
+
+    @Test
+    fun `ambiguous same name requires explicit choice before binding`() = runTest {
+        val repository = mockk<CreatorArchiveRepository>()
+        val manga = Manga.create().copy(id = 1L, source = 10L, url = "/same", author = "Same", favorite = true)
+        val model = MangaDetailScreenModel(mangaId = 1L, manageCreatorIdentity = ManageCreatorIdentity(repository))
+        val mention = model.creatorMentions(manga).single()
+        val options = listOf(
+            CreatorIdentityOption(1L, CreatorPortableKey("a"), "Same A", emptyList(), false, false),
+            CreatorIdentityOption(2L, CreatorPortableKey("b"), "Same B", emptyList(), false, false),
+        )
+        coEvery { repository.getCreatorIdentityOptions(1L, mention) } returns options
+        coEvery { repository.bindMangaCreatorIdentity(manga, mention, 2L) } returns Unit
+
+        val result = model.resolveCreatorMention(manga, mention)
+
+        assertEquals(CreatorMentionResolution.Ambiguous(mention, options), result)
+        coVerify(exactly = 0) { repository.bindMangaCreatorIdentity(any(), any(), any()) }
+
+        model.selectCreatorIdentity(manga, mention, creatorId = 2L)
+        coVerify(exactly = 1) { repository.bindMangaCreatorIdentity(manga, mention, 2L) }
+    }
+
+    @Test
+    fun `missing identity creates a distinct portable identity`() = runTest {
+        val repository = mockk<CreatorArchiveRepository>()
+        val manga = Manga.create().copy(id = 1L, source = 10L, url = "/new", author = "New Person", favorite = true)
+        val model = MangaDetailScreenModel(mangaId = 1L, manageCreatorIdentity = ManageCreatorIdentity(repository))
+        val mention = model.creatorMentions(manga).single()
+        coEvery { repository.getCreatorIdentityOptions(1L, mention) } returns emptyList()
+        coEvery { repository.createAndBindMangaCreatorIdentity(manga, mention) } returns 9L
+
+        assertEquals(CreatorMentionResolution.Resolved(9L), model.resolveCreatorMention(manga, mention))
+        assertEquals(9L, model.createDistinctCreatorIdentity(manga, mention))
+
+        coVerify(exactly = 2) { repository.createAndBindMangaCreatorIdentity(manga, mention) }
+    }
     @Test
     fun `categories and manga assignments are read through category use case`() = runTest {
         val repository = FakeCategoryRepository()

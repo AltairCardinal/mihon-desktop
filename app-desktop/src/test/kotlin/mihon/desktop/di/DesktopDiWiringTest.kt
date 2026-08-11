@@ -108,6 +108,7 @@ import tachiyomi.domain.creator.interactor.DiscoverCreatorWorks
 import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
+import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.track.service.TrackerSessionProvider
 import tachiyomi.domain.track.service.TrackerServiceRegistry
 import tachiyomi.domain.release.interactor.GetApplicationRelease

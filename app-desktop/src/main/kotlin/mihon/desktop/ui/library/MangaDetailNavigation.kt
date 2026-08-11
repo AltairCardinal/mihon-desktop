@@ -6,4 +6,4 @@ internal fun authorNavigationNameOrNull(author: String?): String? =
     author?.trim()?.takeIf(String::isNotEmpty)
 
 internal fun authorDetailScreenOrNull(author: String?, creatorId: Long): AuthorDetailScreen? =
-    authorNavigationNameOrNull(author)?.let { AuthorDetailScreen(creatorId, collectOnOpen = true) }
+    authorNavigationNameOrNull(author)?.let { AuthorDetailScreen(creatorId, collectOnOpen = false) }

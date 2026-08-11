@@ -23,8 +23,57 @@ import tachiyomi.domain.creator.interactor.DiscoverCreatorWorks
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
+import tachiyomi.domain.creator.service.CreatorLibraryIndexState
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
+import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 
 class AuthorDetailBehaviorTest {
+    @Test
+    fun `author root presentation distinguishes indexing empty metadata failure and content`() {
+        assertEquals(
+            AuthorIndexPresentation.Indexing(25, 100),
+            authorIndexPresentation(CreatorLibraryIndexState.Indexing(25, 100), creatorCount = 3),
+        )
+        assertEquals(
+            AuthorIndexPresentation.EmptyLibrary,
+            authorIndexPresentation(CreatorLibraryIndexState.Empty, creatorCount = 0),
+        )
+        assertEquals(
+            AuthorIndexPresentation.NoAuthorMetadata,
+            authorIndexPresentation(CreatorLibraryIndexState.Ready(4), creatorCount = 0),
+        )
+        assertEquals(
+            AuthorIndexPresentation.Failed("disk full"),
+            authorIndexPresentation(CreatorLibraryIndexState.Failed(2, 4, "disk full"), creatorCount = 1),
+        )
+        assertEquals(
+            AuthorIndexPresentation.Content,
+            authorIndexPresentation(CreatorLibraryIndexState.Ready(4), creatorCount = 2),
+        )
+    }
+
+    @Test
+    fun `author identity actions call typed repository commands`() = runTest {
+        val repository = mockk<CreatorArchiveRepository>()
+        coEvery { repository.addManualCreatorAlias(1L, "One-sensei") } returns Unit
+        coEvery { repository.getManualCreatorAliases(1L) } returns listOf("One-sensei")
+        coEvery { repository.removeManualCreatorAlias(1L, "One-sensei") } returns Unit
+        coEvery { repository.mergeCreatorIdentities(1L, 2L) } returns Unit
+        coEvery { repository.splitCreatorIdentity(1L, setOf(11L, 12L), "ONE") } returns 3L
+        val actions = AuthorIdentityActions(ManageCreatorIdentity(repository))
+
+        actions.addAlias(1L, "One-sensei")
+        assertEquals(listOf("One-sensei"), actions.getManualAliases(1L))
+        actions.removeAlias(1L, "One-sensei")
+        actions.merge(sourceCreatorId = 1L, targetCreatorId = 2L)
+        assertEquals(3L, actions.split(1L, setOf(11L, 12L), "ONE"))
+
+        coVerify(exactly = 1) { repository.addManualCreatorAlias(1L, "One-sensei") }
+        coVerify(exactly = 1) { repository.getManualCreatorAliases(1L) }
+        coVerify(exactly = 1) { repository.removeManualCreatorAlias(1L, "One-sensei") }
+        coVerify(exactly = 1) { repository.mergeCreatorIdentities(1L, 2L) }
+        coVerify(exactly = 1) { repository.splitCreatorIdentity(1L, setOf(11L, 12L), "ONE") }
+    }
     @Test
     fun `manual discovery interactor executes production service before reloading details`() {
         runTest {

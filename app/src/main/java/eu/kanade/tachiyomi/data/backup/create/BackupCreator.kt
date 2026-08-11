@@ -20,6 +20,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
 import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
+import tachiyomi.data.backup.AuthorArchiveBackupContributor
 import tachiyomi.data.backup.BackupCodec
 import tachiyomi.domain.backup.service.BackupPreferences
 import tachiyomi.domain.manga.interactor.GetFavorites
@@ -47,6 +48,7 @@ class BackupCreator(
     private val preferenceBackupCreator: PreferenceBackupCreator = PreferenceBackupCreator(),
     private val extensionRepoBackupCreator: ExtensionRepoBackupCreator = ExtensionRepoBackupCreator(),
     private val sourcesBackupCreator: SourcesBackupCreator = SourcesBackupCreator(),
+    private val authorArchiveBackupContributor: AuthorArchiveBackupContributor = Injekt.get(),
 ) {
 
     suspend fun backup(uri: Uri, options: BackupOptions): String {
@@ -73,17 +75,7 @@ class BackupCreator(
                 throw IllegalStateException(context.stringResource(MR.strings.create_backup_file_error))
             }
 
-            val nonFavoriteManga = if (options.readEntries) mangaRepository.getReadMangaNotInLibrary() else emptyList()
-            val backupManga = backupMangas(getFavorites.await() + nonFavoriteManga, options)
-
-            val backup = Backup(
-                backupManga = backupManga,
-                backupCategories = backupCategories(options),
-                backupSources = backupSources(backupManga),
-                backupPreferences = backupAppPreferences(options),
-                backupExtensionRepo = backupExtensionRepos(options),
-                backupSourcePreferences = backupSourcePreferences(options),
-            )
+            val backup = createPayload(options)
 
             val byteArray = encodeForBackup(backup)
             if (byteArray.isEmpty()) {
@@ -111,6 +103,24 @@ class BackupCreator(
             file?.delete()
             throw e
         }
+    }
+
+    internal suspend fun createPayload(options: BackupOptions): Backup {
+        val nonFavoriteManga = if (options.readEntries) mangaRepository.getReadMangaNotInLibrary() else emptyList()
+        val backupManga = backupMangas(getFavorites.await() + nonFavoriteManga, options)
+        return Backup(
+            backupManga = backupManga,
+            backupCategories = backupCategories(options),
+            backupSources = backupSources(backupManga),
+            backupPreferences = backupAppPreferences(options),
+            backupExtensionRepo = backupExtensionRepos(options),
+            backupSourcePreferences = backupSourcePreferences(options),
+            backupAuthorArchive = if (options.libraryEntries) {
+                authorArchiveBackupContributor.createSection()
+            } else {
+                null
+            },
+        )
     }
 
     private suspend fun backupCategories(options: BackupOptions): List<BackupCategory> {

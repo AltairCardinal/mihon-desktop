@@ -1,6 +1,8 @@
 package tachiyomi.data.backup
 
 import eu.kanade.tachiyomi.data.backup.models.Backup
+import eu.kanade.tachiyomi.data.backup.models.BackupAuthorArchiveSection
+import eu.kanade.tachiyomi.data.backup.models.BackupCreatorIdentity
 import eu.kanade.tachiyomi.data.backup.models.IntPreferenceValue
 import eu.kanade.tachiyomi.data.backup.models.StringPreferenceValue
 import org.junit.jupiter.api.Assertions.assertArrayEquals
@@ -151,5 +153,37 @@ class BackupCodecContractTest {
                 BackupCodec.encodePlain(Backup.serializer(), Backup(emptyList())),
             )
         }
+    }
+
+    @Test
+    fun `author archive only backup is valid and field 107 round trips`() {
+        val original = Backup(
+            backupManga = emptyList(),
+            backupAuthorArchive = BackupAuthorArchiveSection(
+                creators = listOf(
+                    BackupCreatorIdentity(
+                        portableKey = "creator-one",
+                        displayName = "ONE",
+                        normalizedName = "one",
+                    ),
+                ),
+            ),
+        )
+
+        val decoded = BackupCodec.decode(
+            Backup.serializer(),
+            BackupCodec.encode(Backup.serializer(), original),
+        )
+
+        assertEquals(original, decoded)
+    }
+
+    @Test
+    fun `legacy fixture decodes without author archive section`() {
+        val bytes = requireNotNull(javaClass.getResourceAsStream("/backup/android-full.tachibk")).readBytes()
+
+        val decoded = BackupCodec.decode(Backup.serializer(), bytes)
+
+        assertEquals(null, decoded.backupAuthorArchive)
     }
 }

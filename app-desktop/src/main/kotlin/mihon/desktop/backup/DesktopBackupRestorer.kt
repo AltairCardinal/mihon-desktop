@@ -24,6 +24,7 @@ import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.domain.track.repository.TrackRepository
 import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
 import mihon.desktop.backup.models.*
+import tachiyomi.data.backup.AuthorArchiveBackupContributor
 
 data class RestoreProgress(val completed: Int, val total: Int) {
     val fraction: Float get() = if (total == 0) 1f else completed.toFloat() / total
@@ -45,6 +46,7 @@ class DesktopBackupRestorer(
     private val preferenceStore: PreferenceStore? = null,
     private val sourcePreferenceStore: ((Long) -> PreferenceStore)? = null,
     private val extensionRepoRepository: ExtensionRepoRepository? = null,
+    private val authorArchiveBackupContributor: AuthorArchiveBackupContributor? = null,
 ) {
 
     /**
@@ -55,7 +57,8 @@ class DesktopBackupRestorer(
         val result = RestoreResult()
         val total = backup.backupCategories.size + backup.backupManga.size +
             backup.backupPreferences.size + backup.backupSourcePreferences.sumOf { it.prefs.size } +
-            backup.backupExtensionRepo.size + backup.backupManga.sumOf { it.tracking.size }
+            backup.backupExtensionRepo.size + backup.backupManga.sumOf { it.tracking.size } +
+            if (backup.backupAuthorArchive != null) 1 else 0
         var completed = 0
         suspend fun reportProcessed() {
             if (currentCoroutineContext().isActive) {
@@ -111,6 +114,15 @@ class DesktopBackupRestorer(
             } finally {
                 reportProcessed()
             }
+        }
+
+        backup.backupAuthorArchive?.let { section ->
+            runRestoreUnit("authorArchive", result) {
+                val contributor = authorArchiveBackupContributor
+                    ?: error("author archive backup dependency is missing")
+                contributor.restoreSection(section)
+            }
+            reportProcessed()
         }
 
         return result
@@ -173,7 +185,9 @@ class DesktopBackupRestorer(
                     chapterFlags = backupManga.chapterFlags.toLong(),
                     title = backupManga.title.takeIf { backupHasNewerBibliography && it.isNotBlank() },
                     artist = backupManga.artist.takeIf { backupHasNewerBibliography },
+                    updateArtist = backupHasNewerBibliography,
                     author = backupManga.author.takeIf { backupHasNewerBibliography },
+                    updateAuthor = backupHasNewerBibliography,
                     description = backupManga.description.takeIf { backupHasNewerBibliography },
                     genre = backupManga.genre.takeIf { backupHasNewerBibliography && it.isNotEmpty() },
                     status = backupManga.status.toLong().takeIf { backupHasNewerBibliography },

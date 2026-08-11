@@ -16,7 +16,10 @@ import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
+import tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter
+import tachiyomi.domain.creator.repository.CreatorLibraryMangaSource
 import tachiyomi.domain.creator.repository.CreatorRepository
+import tachiyomi.domain.creator.service.CreatorLibraryIndexer
 import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import uy.kohesive.injekt.Injekt
@@ -55,7 +58,13 @@ class SourceSharedQueryWiringTest {
             Injekt.importModule(DomainModule())
 
             assertSame(Injekt.get<CreatorRepository>(), Injekt.get<CreatorArchiveRepository>())
+            assertSame(Injekt.get<CreatorArchiveRepository>(), Injekt.get<CreatorLibraryIndexWriter>())
+            assertSame(
+                Injekt.get<tachiyomi.domain.manga.repository.MangaRepository>(),
+                Injekt.get<CreatorLibraryMangaSource>(),
+            )
             assertNotNull(Injekt.get<CreatorArchiveBootstrap>())
+            assertNotNull(Injekt.get<CreatorLibraryIndexer>())
         }
     }
 

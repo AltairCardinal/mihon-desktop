@@ -80,6 +80,19 @@ SELECT *
 FROM mangas
 WHERE favorite = 1;
 
+countLibraryMangaForCreatorIndex:
+SELECT count(*)
+FROM mangas
+WHERE favorite = 1;
+
+getLibraryMangaForCreatorIndex:
+SELECT *
+FROM mangas
+WHERE favorite = 1
+AND _id > :afterId
+ORDER BY _id
+LIMIT :limit;
+
 getReadMangaNotInLibrary:
 SELECT *
 FROM mangas
@@ -206,8 +219,8 @@ update:
 UPDATE mangas SET
     source = coalesce(:source, source),
     url = coalesce(:url, url),
-    artist = coalesce(:artist, artist),
-    author = coalesce(:author, author),
+    artist = CASE WHEN :updateArtist THEN :artist ELSE artist END,
+    author = CASE WHEN :updateAuthor THEN :author ELSE author END,
     description = coalesce(:description, description),
     genre = coalesce(:genre, genre),
     title = coalesce(:title, title),

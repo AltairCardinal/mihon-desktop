@@ -16,7 +16,7 @@ import java.nio.file.Path
 class AuthorActionInventoryContractTest {
 
     @Test
-    fun `author actions report the prototype as partial or gap with executable evidence boundaries`() {
+    fun `author actions preserve executable evidence boundaries`() {
         validate(inventory())
     }
 
@@ -26,17 +26,17 @@ class AuthorActionInventoryContractTest {
         val index = inventory.actions.single { it.id == "index" }
         val confirm = inventory.actions.single { it.id == "confirm" }
 
-        inventory.actions.forEach { action ->
+        inventory.actions.filterNot { it.id == "index" }.forEach { action ->
             assertThrows(AssertionError::class.java) {
                 validateAction(action.copy(status = "covered"))
             }
         }
-        assertThrows(AssertionError::class.java) {
-            validateAction(index.copy(followUpTasks = emptyList()))
-        }
+        validateAction(index)
         val executableRole = index.entry
         val unsafeCoveredDecision = confirm.copy(
             status = "covered",
+            followUpTasks = emptyList(),
+            gapReason = "",
             entry = executableRole,
             effect = executableRole,
             feedback = executableRole,
@@ -71,7 +71,10 @@ class AuthorActionInventoryContractTest {
         assertTrue(action.redTest.isNotBlank() && action.redFailureReason.isNotBlank())
 
         when (action.status) {
-            "covered" -> assertTrue(requiredRoles.all { it.state == "covered" })
+            "covered" -> {
+                assertTrue(requiredRoles.all { it.state == "covered" })
+                assertTrue(action.followUpTasks.isEmpty() && action.gapReason.isBlank())
+            }
             "partial" -> {
                 assertTrue(requiredRoles.any { it.state == "covered" || it.state == "unverified" })
                 assertTrue(requiredRoles.any { it.state != "covered" })
@@ -205,7 +208,7 @@ class AuthorActionInventoryContractTest {
             "decision-safety-gate",
         )
         val expectedStatuses = mapOf(
-            "index" to "partial",
+            "index" to "covered",
             "follow" to "partial",
             "manual-scan" to "partial",
             "auto-scan" to "partial",
