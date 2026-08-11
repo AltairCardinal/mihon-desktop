@@ -7,6 +7,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import mihon.desktop.backup.AutoBackupScheduler
+import mihon.desktop.domain.CreatorDiscoveryScheduler
 import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.domain.ReaderModeMemoryCleaner
 import mihon.desktop.platform.DesktopExternalActionBroker
@@ -28,6 +29,7 @@ class DesktopAppRuntime(
     private val batchMigrationController: DesktopRuntimeService = NoopRuntimeService,
     private val startupCleanup: suspend () -> Unit,
     private val creatorLibraryIndexService: DesktopRuntimeService = NoopRuntimeService,
+    private val creatorDiscoveryService: DesktopRuntimeService = NoopRuntimeService,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     internal val appLock: DesktopAppLockLifecycle = NoopAppLockLifecycle,
     private val updateScreenModel: DesktopUpdateScreenModel? = null,
@@ -42,6 +44,7 @@ class DesktopAppRuntime(
         localSourceScanService,
         autoBackupScheduler,
         creatorLibraryIndexService,
+        creatorDiscoveryService,
         trackerSyncScheduler,
         batchMigrationController,
     )
@@ -152,6 +155,7 @@ class DesktopAppRuntime(
             trackerSyncScheduler: DesktopRuntimeService = NoopRuntimeService,
             batchMigrationController: DesktopRuntimeService = NoopRuntimeService,
             creatorLibraryIndexService: DesktopRuntimeService = NoopRuntimeService,
+            creatorDiscoveryScheduler: CreatorDiscoveryScheduler? = null,
             appLock: DesktopAppLockLifecycle = NoopAppLockLifecycle,
             scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
             updateScreenModel: DesktopUpdateScreenModel? = null,
@@ -164,6 +168,7 @@ class DesktopAppRuntime(
                 batchMigrationController = batchMigrationController,
                 startupCleanup = { readerModeMemoryCleaner.clearNonFavoriteManga() },
                 creatorLibraryIndexService = creatorLibraryIndexService,
+                creatorDiscoveryService = creatorDiscoveryScheduler?.asRuntimeService() ?: NoopRuntimeService,
                 scope = scope,
                 appLock = appLock,
                 updateScreenModel = updateScreenModel,
@@ -277,6 +282,14 @@ private object NoopAppLockLifecycle : DesktopAppLockLifecycle {
 }
 
 private fun LibraryUpdateScheduler.asRuntimeService(): DesktopRuntimeService =
+    object : DesktopRuntimeService {
+        override fun start() {
+            this@asRuntimeService.start()
+        }
+        override fun stop() = this@asRuntimeService.stop()
+    }
+
+private fun CreatorDiscoveryScheduler.asRuntimeService(): DesktopRuntimeService =
     object : DesktopRuntimeService {
         override fun start() {
             this@asRuntimeService.start()

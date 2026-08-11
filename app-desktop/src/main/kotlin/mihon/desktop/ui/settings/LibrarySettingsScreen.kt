@@ -126,6 +126,12 @@ class LibrarySettingsScreen : Screen {
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
+                AuthorDiscoverySettingsSection(
+                    scheduler = LocalDesktopUiDependencies.current.creatorDiscoveryScheduler,
+                )
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
                 Text(
                     text = displayTitle,
                     style = MaterialTheme.typography.labelLarge,

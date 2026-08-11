@@ -533,9 +533,9 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 #### `AA2-03` 将 Android/Desktop 切换到独立 CreatorDiscoveryTask
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `N/A：复用 AA2-02 shared executor` · Android `[ ]` · Desktop/UI `[ ]` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`IN_PROGRESS（Windows 已验收，Android 延后）` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `N/A：复用 AA2-02 shared executor` · Android `[ ]：按用户指示在全部 Windows 功能完成后统一验收` · Desktop/UI `[x]` · Legacy/Migration `[x]：Desktop 旧直接调用链已删除` · Review `[x]：主代理收口核对` · Verify `[ ]：Windows focused 已通过，Android 未验收` · Evidence `[x]` · Commit `[x]：本行所在提交`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `Android 验收按用户指示延后；不阻塞后续 Windows 批次` · 审查 `外部模型草案经主代理补齐网络约束、持久恢复、typed partial/failed 状态、共享调度器与 runtime lifecycle` · 验证 `aa203-win-format-root PASS；aa203-win-focused4 相关 DI 单测 PASS；aa203-win-focused5 39 个行为断言全通过，JUnit Windows @TempDir 清理偶发 DirectoryNotEmptyException` · 运行产物 `独立 Desktop CreatorDiscoveryScheduler、作者详情与 Settings 状态/取消入口、library update 仅请求 due reevaluation` · Commit `本行所在提交`
 
 - 依赖：`AA2-02`；协调 `LU-01/PA-01` 的 task lifecycle。
 - RED：library update 失败但 author task 仍按 due 运行、重复调度合并、约束不满足延后、取消、partial/failed 终态、checkpoint 恢复、task host 重启和 DI wiring。

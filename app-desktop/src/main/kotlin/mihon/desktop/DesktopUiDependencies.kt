@@ -8,6 +8,7 @@ import mihon.desktop.domain.DesktopCoverUpdater
 import mihon.desktop.domain.DesktopCustomCoverStore
 import mihon.desktop.domain.DesktopMigrateMangaUseCase
 import mihon.desktop.domain.DesktopNotificationService
+import mihon.desktop.domain.CreatorDiscoveryScheduler
 import mihon.desktop.domain.GetExcludedScanlators
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.domain.SetExcludedScanlators
@@ -148,6 +149,7 @@ data class DesktopUiDependencies(
     val creatorArchiveRepository: CreatorArchiveRepository? = null,
     val manageCreatorIdentity: ManageCreatorIdentity? = creatorArchiveRepository?.let(::ManageCreatorIdentity),
     val creatorLibraryIndexer: CreatorLibraryIndexer? = null,
+    val creatorDiscoveryScheduler: CreatorDiscoveryScheduler? = null,
     val updateController: DesktopUpdateController? = null,
     val updateScreenModel: DesktopUpdateScreenModel? = null,
 ) {
@@ -233,6 +235,7 @@ data class DesktopUiDependencies(
                 trackerOAuthCallbackBroker = Injekt.get(),
                 creatorArchiveRepository = Injekt.get(),
                 creatorLibraryIndexer = Injekt.get(),
+                creatorDiscoveryScheduler = Injekt.get(),
                 updateController = Injekt.get(),
                 updateScreenModel = Injekt.get(),
             )

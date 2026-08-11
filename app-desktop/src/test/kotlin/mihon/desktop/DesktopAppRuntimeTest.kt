@@ -640,11 +640,13 @@ class DesktopAppRuntimeTest {
         val library = RecordingRuntimeService()
         val local = RecordingRuntimeService()
         val backup = RecordingRuntimeService()
+        val creatorDiscovery = RecordingRuntimeService()
         var cleanupCalls = 0
         val runtime = DesktopAppRuntime(
             libraryUpdateScheduler = library,
             localSourceScanService = local,
             autoBackupScheduler = backup,
+            creatorDiscoveryService = creatorDiscovery,
             startupCleanup = { cleanupCalls++ },
             scope = scope,
         )
@@ -654,6 +656,7 @@ class DesktopAppRuntimeTest {
         assertTrue(library.started)
         assertTrue(local.started)
         assertTrue(backup.started)
+        assertTrue(creatorDiscovery.started)
         assertEquals(0, cleanupCalls)
 
         advanceUntilIdle()

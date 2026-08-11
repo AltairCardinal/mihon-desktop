@@ -837,6 +837,7 @@ internal fun initUILayer(
         Injekt.get(),
         libraryProvider,
         updateManga,
+        trackerConnectivity,
     )
     val libraryScreenModel = mihon.desktop.library.LibraryScreenModelFactory.create()
     val libraryTestController = mihon.desktop.test.http.LibraryMangaTestModeController(libraryScreenModel)
@@ -931,6 +932,7 @@ internal fun initUILayer(
             Injekt.get(),
             applicationScope,
         ),
+        creatorDiscoveryScheduler = Injekt.get<mihon.desktop.domain.CreatorDiscoveryScheduler>(),
         appLock = appLock,
         scope = applicationScope,
         updateScreenModel = updateScreenModel,
@@ -948,6 +950,8 @@ private fun registerDesktopLibrary(
     enqueueDownload: mihon.domain.download.EnqueueDownload,
     libraryProvider: (suspend () -> List<tachiyomi.domain.library.model.LibraryManga>)? = null,
     updateManga: (suspend (tachiyomi.domain.manga.model.Manga) -> LibraryUpdateChecker.UpdateResult)? = null,
+    connectivity: mihon.desktop.tracking.DesktopNetworkConnectivity =
+        mihon.desktop.tracking.JvmDesktopNetworkConnectivity,
 ): DesktopNotificationService {
     Injekt.addSingleton(paths)
     Injekt.addSingleton(DesktopCustomCoverStore(paths.coversDir))
@@ -957,6 +961,19 @@ private fun registerDesktopLibrary(
     val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)
     Injekt.addSingleton(taskScheduler)
     Injekt.addSingleton(taskNotifier)
+    val creatorDiscoveryScheduler = mihon.desktop.domain.CreatorDiscoveryScheduler(
+        taskScheduler = taskScheduler,
+        taskNotifier = taskNotifier,
+        discoverDue = { Injekt.get<CreatorDiscoveryService>().discoverDueWatches() },
+        discoverCreator = { creatorId -> Injekt.get<CreatorDiscoveryService>().discoverCreator(creatorId) },
+        hasDueWork = {
+            Injekt.get<CreatorArchiveRepository>()
+                .getDueWatchSources(System.currentTimeMillis(), 1)
+                .isNotEmpty()
+        },
+        connectivity = connectivity,
+    )
+    Injekt.addSingleton(creatorDiscoveryScheduler)
     val libraryPreferences = LibraryPreferences(preferenceStore)
     Injekt.addSingleton(libraryPreferences)
     Injekt.addSingleton(CreateCategoryWithName(categoryRepository, libraryPreferences))
@@ -970,8 +987,7 @@ private fun registerDesktopLibrary(
             getLibraryManga = Injekt.get<GetLibraryManga>(),
             sourceManager = Injekt.get<SourceManager>(),
             categoryRepository = categoryRepository,
-            notificationService = notificationService,
-            creatorDiscoveryService = Injekt.get<CreatorDiscoveryService>(),
+            creatorDiscoveryScheduler = creatorDiscoveryScheduler,
             taskScheduler = taskScheduler,
             taskNotifier = taskNotifier,
             libraryProvider = libraryProvider,

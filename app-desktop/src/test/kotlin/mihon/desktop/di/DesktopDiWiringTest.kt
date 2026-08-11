@@ -27,6 +27,7 @@ import mihon.desktop.backup.AutoBackupScheduler
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
 import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.domain.LibraryUpdateChecker
+import mihon.desktop.domain.CreatorDiscoveryScheduler
 import mihon.desktop.domain.DesktopCustomCoverStore
 import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.domain.DesktopSystemNotifier
@@ -945,6 +946,7 @@ class DesktopDiWiringTest {
         assertNotNull(Injekt.get<DesktopReaderRuntimeFactory>())
         assertSame(Injekt.get<ReaderPreferences>(), DesktopUiDependencies.fromInjekt().readerPreferences)
         assertNotNull(Injekt.get<LibraryUpdateScheduler>())
+        assertNotNull(Injekt.get<CreatorDiscoveryScheduler>())
 
         Injekt.get<LibraryUpdateScheduler>().runNow().join()
 
@@ -1156,6 +1158,14 @@ class DesktopDiWiringTest {
         assertSame(
             sharedTaskScheduler,
             Injekt.get<LibraryUpdateScheduler>().privateField("taskScheduler"),
+        )
+        assertSame(
+            sharedTaskScheduler,
+            Injekt.get<CreatorDiscoveryScheduler>().privateField("taskScheduler"),
+        )
+        assertSame(
+            Injekt.get<CreatorDiscoveryScheduler>(),
+            DesktopUiDependencies.fromInjekt().creatorDiscoveryScheduler,
         )
         assertSame(
             sharedTaskScheduler,

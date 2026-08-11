@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -208,9 +209,15 @@ class LibraryUpdateRecoveryIntegrationTest {
     }
 
     @Test
-    fun `creator discovery failure after successful update does not emit a second terminal`() = runTest {
+    fun `library update success triggers discovery due reevaluation without changing library terminal`() = runTest {
         val delivered = mutableListOf<DesktopNotification>()
         val taskScheduler = DesktopTaskScheduler(FileTaskCheckpointStore(directory.resolve("tasks.json")))
+        val discovery = CreatorDiscoveryScheduler(
+            taskScheduler = taskScheduler,
+            discoverDue = { error("discovery unavailable") },
+            discoverCreator = { error("unused") },
+            scope = this,
+        )
         val scheduler = LibraryUpdateScheduler(
             appPreferences = DesktopAppPreferences(InMemoryPreferenceStore()),
             updateChecker = null,
@@ -221,14 +228,58 @@ class LibraryUpdateRecoveryIntegrationTest {
             scope = this,
             libraryProvider = { listOf(libraryManga(1L)) },
             updateManga = { UpdateResult(0) },
-            discoverCreators = { error("discovery unavailable") },
+            creatorDiscoveryScheduler = discovery,
         )
 
         scheduler.runNow().join()
 
+        // Library update stays Completed; discovery is driven as an independent task
+        // and its failure never leaks into the library terminal state.
         assertEquals(mihon.domain.task.TaskStatus.Completed, scheduler.taskSnapshot()?.status)
+        assertEquals(mihon.domain.task.TaskStatus.Failed, discovery.taskSnapshot()?.status)
         assertEquals(1, delivered.count { it.title == "Library updated" })
         assertEquals(0, delivered.count { it.title.contains("failed", ignoreCase = true) })
+        discovery.stop()
+    }
+
+    @Test
+    fun `library update failure does not block independent discovery due run`() = runTest {
+        val taskScheduler = DesktopTaskScheduler(FileTaskCheckpointStore(directory.resolve("tasks.json")))
+        var dueRuns = 0
+        val discovery = CreatorDiscoveryScheduler(
+            taskScheduler = taskScheduler,
+            discoverDue = {
+                dueRuns += 1
+                tachiyomi.domain.creator.service.CreatorDiscoveryResult(0, 0, emptyList())
+            },
+            discoverCreator = { tachiyomi.domain.creator.service.CreatorDiscoveryResult(0, 0, emptyList()) },
+            hasDueWork = { true },
+            scope = this,
+        )
+        discovery.start().join()
+        advanceTimeBy(CreatorDiscoveryScheduler.CHECK_INTERVAL_MS + 1_000)
+        runCurrent()
+        assertTrue(dueRuns >= 1)
+
+        val scheduler = LibraryUpdateScheduler(
+            appPreferences = DesktopAppPreferences(InMemoryPreferenceStore()),
+            updateChecker = null,
+            getLibraryManga = null,
+            sourceManager = null,
+            taskScheduler = taskScheduler,
+            taskNotifier = DesktopSystemNotifier(system = { true }, fallback = DesktopNotificationService()),
+            scope = this,
+            libraryProvider = { error("library database unavailable") },
+            creatorDiscoveryScheduler = discovery,
+        )
+        scheduler.runNow().join()
+        assertEquals(mihon.domain.task.TaskStatus.Failed, scheduler.taskSnapshot()?.status)
+
+        // The discovery scheduler remains independently drivable after a failed library update.
+        val before = dueRuns
+        discovery.runNow().join()
+        assertEquals(before + 1, dueRuns)
+        discovery.stop()
     }
 
     @Test

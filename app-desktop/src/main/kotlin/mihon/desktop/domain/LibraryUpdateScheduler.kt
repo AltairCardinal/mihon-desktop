@@ -21,7 +21,6 @@ import mihon.domain.task.TaskCheckpoint
 import mihon.domain.task.TaskConstraint
 import mihon.domain.task.TaskStatus
 import tachiyomi.domain.category.repository.CategoryRepository
-import tachiyomi.domain.creator.service.CreatorDiscoveryService
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.model.Manga
@@ -34,14 +33,12 @@ class LibraryUpdateScheduler(
     private val getLibraryManga: GetLibraryManga?,
     private val sourceManager: SourceManager?,
     private val categoryRepository: CategoryRepository? = null,
-    private val notificationService: DesktopNotificationService? = null,
-    private val creatorDiscoveryService: CreatorDiscoveryService? = null,
+    private val creatorDiscoveryScheduler: CreatorDiscoveryScheduler? = null,
     private val taskScheduler: DesktopTaskScheduler? = null,
     private val taskNotifier: DesktopSystemNotifier? = null,
     scope: CoroutineScope? = null,
     private val libraryProvider: (suspend () -> List<LibraryManga>)? = null,
     private val updateManga: (suspend (Manga) -> LibraryUpdateChecker.UpdateResult)? = null,
-    private val discoverCreators: (suspend () -> Unit)? = null,
     private val autoDownload: (suspend (Manga, List<Chapter>) -> Unit)? = null,
 ) {
     private val scope = scope ?: CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -188,18 +185,9 @@ class LibraryUpdateScheduler(
                 if (taskScheduler?.complete(LIBRARY_UPDATE_TASK.id) == true) {
                     taskNotifier?.notify(NotificationEvent.Success(LIBRARY_UPDATE_TASK.id, "Library updated", "$newChapters new chapters found"))
                 }
-                runCatching {
-                    discoverCreators?.invoke() ?: creatorDiscoveryService?.discoverDueWatches()?.let { result ->
-                        if (result.newCandidateCount > 0) {
-                            notificationService?.post(
-                                DesktopNotification(
-                                    "Author works discovered",
-                                    "${result.newCandidateCount} new candidates found",
-                                ),
-                            )
-                        }
-                    }
-                }
+                // Library update only asks the independent author discovery task to re-evaluate due
+                // work; it never runs discovery itself and never swallows its results.
+                creatorDiscoveryScheduler?.runNow()
             } else {
                 val error = AppError.PartialFailure(failures, failedUnits)
                 if (taskScheduler?.fail(LIBRARY_UPDATE_TASK.id, error) == true) {

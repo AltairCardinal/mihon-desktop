@@ -61,10 +61,14 @@ import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.SaveSourceMangaForDetails
+import mihon.desktop.domain.CreatorDiscoveryRunScope
+import mihon.desktop.domain.CreatorDiscoveryTaskState
 import mihon.desktop.ui.library.MangaDetailScreen
+import mihon.domain.task.TaskStatus
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.MangaCreator
+import tachiyomi.domain.creator.model.SourceCheckpoint
 import tachiyomi.domain.creator.service.CreatorLibraryIndexState
 import tachiyomi.domain.creator.interactor.CreatorDetails
 import tachiyomi.domain.manga.repository.MangaRepository
@@ -254,7 +258,7 @@ data class AuthorDetailScreen(
         val navigator = LocalNavigator.currentOrThrow
         val desktopDependencies = LocalDesktopUiDependencies.current
         val getCreatorDetails = desktopDependencies.getCreatorDetails
-        val discoverCreatorWorks = desktopDependencies.discoverCreatorWorks
+        val discoveryScheduler = desktopDependencies.creatorDiscoveryScheduler
         val setCreatorFollow = desktopDependencies.setCreatorFollow
         val sourceManager = desktopDependencies.sourceManager
         val saveSourceMangaForDetails = desktopDependencies.saveSourceMangaForDetails
@@ -269,7 +273,8 @@ data class AuthorDetailScreen(
         var candidates by remember { mutableStateOf(emptyList<DiscoveryCandidate>()) }
         var mangaLinks by remember { mutableStateOf(emptyList<MangaCreator>()) }
         var mangaTitles by remember { mutableStateOf(emptyMap<Long, String>()) }
-        var checking by remember { mutableStateOf(false) }
+        var discoveryState by remember { mutableStateOf<CreatorDiscoveryTaskState?>(null) }
+        var sourceCheckpoints by remember { mutableStateOf(emptyList<SourceCheckpoint>()) }
         var openingCandidateId by remember { mutableStateOf<Long?>(null) }
         var showAliasDialog by remember { mutableStateOf(false) }
         var aliasInput by remember { mutableStateOf("") }
@@ -295,13 +300,40 @@ data class AuthorDetailScreen(
                 .onSuccess { manualAliases = it }
                 .onFailure { identityActionError = it.message ?: it::class.simpleName.orEmpty() }
             if (shouldCollectAuthorOnOpen(collectOnOpen, candidates, mangaLinks)) {
-                checking = true
-                applyDetails(discoverCreatorWorks.await(creatorId))
-                checking = false
+                val job = discoveryScheduler?.runForCreator(creatorId)
+                job?.join()
+                applyDetails(getCreatorDetails.await(creatorId))
             }
             mangaTitles = mangaLinks.associate { link ->
                 link.mangaId to runCatching { desktopDependencies.getMangaTitle(link.mangaId) }
                     .getOrDefault(MR.strings.desktop_ui_manga_number.localized(Locale.getDefault(), link.mangaId))
+            }
+        }
+
+        LaunchedEffect(discoveryScheduler) {
+            discoveryScheduler?.state?.collect { discoveryState = it }
+        }
+
+        LaunchedEffect(creatorId) {
+            desktopDependencies.creatorArchiveRepository?.observeSourceCheckpoints(creatorId)?.collect {
+                sourceCheckpoints = it
+            }
+        }
+
+        val isCurrentCreatorDiscovery = discoveryState?.scope == CreatorDiscoveryRunScope.Creator &&
+            discoveryState?.creatorId == creatorId
+        val isDiscoveryBusy = discoveryState?.status in setOf(TaskStatus.Pending, TaskStatus.Running)
+        val isManualDiscoveryRunning = discoveryState?.status == TaskStatus.Running && isCurrentCreatorDiscovery
+
+        fun refreshAfterDiscovery() {
+            scope.launch {
+                val job = discoveryScheduler?.runForCreator(creatorId)
+                job?.join()
+                applyDetails(getCreatorDetails.await(creatorId))
+                mangaTitles = mangaLinks.associate { link ->
+                    link.mangaId to runCatching { desktopDependencies.getMangaTitle(link.mangaId) }
+                        .getOrDefault(MR.strings.desktop_ui_manga_number.localized(Locale.getDefault(), link.mangaId))
+                }
             }
         }
 
@@ -557,20 +589,10 @@ data class AuthorDetailScreen(
                     },
                     actions = {
                         IconButton(
-                            enabled = !checking,
-                            onClick = {
-                                scope.launch {
-                                    checking = true
-                                    applyDetails(discoverCreatorWorks.await(creatorId))
-                                    mangaTitles = mangaLinks.associate { link ->
-                                        link.mangaId to runCatching { desktopDependencies.getMangaTitle(link.mangaId) }
-                                            .getOrDefault(MR.strings.desktop_ui_manga_number.localized(Locale.getDefault(), link.mangaId))
-                                    }
-                                    checking = false
-                                }
-                            },
+                            enabled = !isDiscoveryBusy,
+                            onClick = { refreshAfterDiscovery() },
                         ) {
-                            if (checking) {
+                            if (isManualDiscoveryRunning) {
                                 CircularProgressIndicator()
                             } else {
                                 Icon(Icons.Default.Refresh, contentDescription = MR.strings.desktop_ui_check_new_works.localized())
@@ -617,6 +639,104 @@ data class AuthorDetailScreen(
                         },
                     ) {
                         Text(if (isFollowed) MR.strings.desktop_ui_unfollow.localized() else MR.strings.desktop_ui_follow.localized())
+                    }
+                }
+
+                discoveryState?.takeIf { state ->
+                    state.scope != CreatorDiscoveryRunScope.Creator || state.creatorId == creatorId
+                }?.let { state ->
+                    when (state.status) {
+                        TaskStatus.Pending -> {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    MR.strings.desktop_ui_author_discovery_waiting_network.localized(),
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                TextButton(onClick = { discoveryScheduler?.cancel() }) {
+                                    Text(MR.strings.desktop_ui_author_discovery_cancel.localized())
+                                }
+                            }
+                        }
+                        TaskStatus.Running -> {
+                            if (state.scope == CreatorDiscoveryRunScope.Creator) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        MR.strings.desktop_ui_author_check_running.localized(
+                                            Locale.getDefault(),
+                                            creator?.displayName ?: MR.strings.unknown_author.localized(),
+                                        ),
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                    TextButton(onClick = { discoveryScheduler?.cancel() }) {
+                                        Text(MR.strings.desktop_ui_author_discovery_cancel.localized())
+                                    }
+                                }
+                                if (state.totalSources > 0) {
+                                    LinearProgressIndicator(
+                                        progress = { state.completedSources.toFloat() / state.totalSources },
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                    )
+                                }
+                                sourceCheckpoints.takeIf { it.isNotEmpty() }?.let { checkpoints ->
+                                    Text(
+                                        MR.strings.desktop_ui_author_discovery_sources.localized(
+                                            Locale.getDefault(),
+                                            checkpoints.count { it.lastCheckedAt != null },
+                                            checkpoints.size,
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 16.dp),
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    MR.strings.desktop_ui_author_discovery_running.localized(),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                )
+                            }
+                        }
+                        TaskStatus.Failed -> {
+                            Text(
+                                MR.strings.desktop_ui_author_discovery_failed.localized(
+                                    Locale.getDefault(),
+                                    state.failureMessage ?: state.failedUnits.joinToString(),
+                                ),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            )
+                        }
+                        TaskStatus.Cancelled -> {
+                            Text(
+                                MR.strings.desktop_ui_author_discovery_cancelled.localized(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            )
+                        }
+                        TaskStatus.Completed -> {
+                            if (state.lastFinishedAt != null) {
+                                Text(
+                                    MR.strings.desktop_ui_author_discovery_result.localized(
+                                        Locale.getDefault(),
+                                        state.newCandidateCount,
+                                        state.errorCount,
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                )
+                            }
+                        }
                     }
                 }
 
