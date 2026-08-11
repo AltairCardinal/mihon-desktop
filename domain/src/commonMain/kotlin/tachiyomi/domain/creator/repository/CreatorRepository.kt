@@ -72,6 +72,8 @@ interface CreatorRepository {
 
     suspend fun getMangaCreatorsForCreator(creatorId: Long): List<MangaCreator>
 
+    suspend fun getMangaTitlesForCreator(creatorId: Long): Map<Long, String> = emptyMap()
+
     suspend fun getDiscoveryCandidateCreatorsForCreator(creatorId: Long): List<DiscoveryCandidateCreator>
 
     suspend fun createCanonicalWork(

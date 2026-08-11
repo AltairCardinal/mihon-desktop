@@ -806,6 +806,13 @@ FROM author_archive_manga_links
 WHERE creator_id = :creatorId
 ORDER BY manga_id, creator_order;
 
+getArchiveMangaTitlesForCreator:
+SELECT DISTINCT ML.manga_id, M.title
+FROM author_archive_manga_links ML
+JOIN mangas M ON M._id = ML.manga_id
+WHERE ML.creator_id = :creatorId
+ORDER BY ML.manga_id;
+
 getArchiveMangaLink:
 SELECT role, origin, source_text, confidence, evidence, last_modified_at
 FROM author_archive_manga_links

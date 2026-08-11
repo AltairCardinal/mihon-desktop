@@ -580,9 +580,9 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 #### `AA3-03` 以 ScreenModel 收口 Desktop Authors 列表、详情与手动检查
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `N/A：消费既有 projections/commands` · Android `N/A：AA7-01` · Desktop/UI `[ ]` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`IN_PROGRESS（Windows 已验收，Android 延后）` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `N/A：消费既有 projections/commands` · Android `N/A：AA7-01` · Desktop/UI `[x]` · Legacy/Migration `[x]` · Review `[x]：主代理收口核对` · Verify `[x]：Windows mounted/navigation/SQL focused` · Evidence `[x]` · Commit `[x]：本行所在提交`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `Android 产品入口按用户指示延后到 Windows 全部完成后` · 审查 `Root/Detail 状态、异步动作与 one-shot navigation effect 收归 ScreenModel；Composable 仅保留瞬时对话框输入；标题改为单次 SQL projection` · 验证 `aa303-green6 mounted retry PASS；aa303-focused2 Authors mounted、导航、Screen smoke、interactor、真实 SQL projection PASS` · 运行产物 `AuthorsScreenModelFactory、AuthorsRootScreenModel、AuthorDetailScreenModel、loading/empty/error、follow baseline 反馈、manual progress/cancel、alias/merge/split、candidate navigation、批量标题` · Commit `本行所在提交`
 
 - RED：Authors Tab nested Navigator、Screen 实例化、DI resolve、loading/empty/error、follow confirm、watch filter、manual progress/cancel/retry、partial result、N+1 title fetch、stable list key 和 one-shot feedback。
 - GREEN：新增/收口 AuthorsRoot/AuthorDetail ScreenModel 与 factory；UI 只渲染 reactive projections 和 effect；批量关联标题由 data projection 一次查询。

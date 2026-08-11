@@ -1475,6 +1475,8 @@
     <string name="desktop_ui_author_discovery_running">Author discovery is running</string>
     <string name="desktop_ui_author_discovery_waiting_network">Author discovery is waiting for a network connection</string>
     <string name="desktop_ui_author_discoveries">Author discoveries</string>
+    <string name="desktop_ui_author_follow_baseline">Following. The first successful check establishes a baseline; later verified works can notify you.</string>
+    <string name="desktop_ui_author_unfollowed">Author updates are no longer checked automatically.</string>
     <string name="desktop_ui_new_work_candidate">New work candidate</string>
     <string name="desktop_ui_new_source_version">New source version</string>
     <string name="action_ignore">Ignore</string>

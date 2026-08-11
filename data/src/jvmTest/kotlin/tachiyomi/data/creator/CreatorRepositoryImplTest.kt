@@ -727,6 +727,7 @@ class CreatorRepositoryImplTest {
 
             links.map { it.mangaId }.shouldContainExactly(11L, 12L)
             links.map { it.role }.shouldContainExactly(CreatorRole.AUTHOR, CreatorRole.ARTIST)
+            repository.getMangaTitlesForCreator(creator.id) shouldBe mapOf(11L to "Eleven", 12L to "Twelve")
             queryLong("SELECT COUNT(*) FROM author_archive_manga_links WHERE manga_id = 11") shouldBe 1L
             queryLong("SELECT COUNT(*) FROM manga_creators") shouldBe 0L
         }

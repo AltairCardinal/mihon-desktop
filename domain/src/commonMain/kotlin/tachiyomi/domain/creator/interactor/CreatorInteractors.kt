@@ -21,6 +21,7 @@ data class CreatorDetails(
     val creator: Creator?,
     val candidates: List<DiscoveryCandidate>,
     val mangaLinks: List<MangaCreator>,
+    val mangaTitles: Map<Long, String> = emptyMap(),
 )
 
 class GetCreatorDetails(
@@ -30,6 +31,7 @@ class GetCreatorDetails(
         creator = repository.getCreator(creatorId),
         candidates = repository.getDiscoveryCandidatesForCreator(creatorId),
         mangaLinks = repository.getMangaCreatorsForCreator(creatorId),
+        mangaTitles = runCatching { repository.getMangaTitlesForCreator(creatorId) }.getOrDefault(emptyMap()),
     )
 
     suspend fun awaitCandidate(candidateId: Long): DiscoveryCandidate? =

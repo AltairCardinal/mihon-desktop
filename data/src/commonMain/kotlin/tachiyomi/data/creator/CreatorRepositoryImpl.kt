@@ -1419,6 +1419,12 @@ class CreatorRepositoryImpl(
         }
     }
 
+    override suspend fun getMangaTitlesForCreator(creatorId: Long): Map<Long, String> {
+        bootstrap.awaitReady()
+        return handler.awaitList { author_archiveQueries.getArchiveMangaTitlesForCreator(creatorId) }
+            .associate { it.manga_id to it.title }
+    }
+
     override suspend fun getDiscoveryCandidateCreatorsForCreator(creatorId: Long): List<DiscoveryCandidateCreator> {
         bootstrap.awaitReady()
         return handler.awaitList {

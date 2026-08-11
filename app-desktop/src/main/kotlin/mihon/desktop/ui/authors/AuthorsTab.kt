@@ -44,7 +44,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +51,7 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
+import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
@@ -60,18 +60,13 @@ import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.launch
-import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.domain.CreatorDiscoveryRunScope
-import mihon.desktop.domain.CreatorDiscoveryTaskState
 import mihon.desktop.ui.library.MangaDetailScreen
 import mihon.domain.task.TaskStatus
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.MangaCreator
-import tachiyomi.domain.creator.model.SourceCheckpoint
 import tachiyomi.domain.creator.service.CreatorLibraryIndexState
-import tachiyomi.domain.creator.interactor.CreatorDetails
-import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import java.util.Locale
 
@@ -105,20 +100,9 @@ class AuthorsRootScreen : Screen {
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val dependencies = LocalDesktopUiDependencies.current
-        val getCreators = dependencies.getCreators
-        val indexer = requireNotNull(dependencies.creatorLibraryIndexer) {
-            "CreatorLibraryIndexer is required by AuthorsRootScreen"
-        }
-        val creators by getCreators.subscribe().collectAsState(emptyList())
-        val followed by getCreators.subscribeFollowed().collectAsState(emptyList())
-        val indexState by indexer.state.collectAsState()
-        var query by remember { mutableStateOf("") }
-
-        val followedIds = remember(followed) { followed.map { it.creatorId }.toSet() }
-        val filteredCreators = remember(creators, query) {
-            creators.filter { it.displayName.contains(query, ignoreCase = true) }
-        }
-        val indexPresentation = authorIndexPresentation(indexState, creators.size)
+        val model = rememberScreenModel { AuthorsScreenModelFactory.root(dependencies) }
+        val state by model.state.collectAsState()
+        val indexPresentation = authorIndexPresentation(state.indexState, state.creators.size)
 
         Scaffold(
             topBar = {
@@ -130,9 +114,13 @@ class AuthorsRootScreen : Screen {
                     .fillMaxSize()
                     .padding(padding),
             ) {
+                if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                state.error?.let { message ->
+                    Text(message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
+                }
                 OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
+                    value = state.query,
+                    onValueChange = model::setQuery,
                     placeholder = { Text(MR.strings.desktop_ui_search_authors.localized()) },
                     singleLine = true,
                     modifier = Modifier
@@ -184,13 +172,13 @@ class AuthorsRootScreen : Screen {
                                 modifier = Modifier.weight(1f),
                                 color = MaterialTheme.colorScheme.error,
                             )
-                            Button(onClick = indexer::retry) { Text(MR.strings.action_retry.localized()) }
+                            Button(onClick = model::retryIndex) { Text(MR.strings.action_retry.localized()) }
                         }
                     }
                     else -> Unit
                 }
 
-                if (creators.isEmpty()) {
+                if (state.creators.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
                             when (indexPresentation) {
@@ -205,7 +193,7 @@ class AuthorsRootScreen : Screen {
                             },
                         )
                     }
-                } else if (filteredCreators.isEmpty()) {
+                } else if (state.filteredCreators.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(MR.strings.no_results_found.localized())
                     }
@@ -214,7 +202,7 @@ class AuthorsRootScreen : Screen {
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(vertical = 4.dp),
                     ) {
-                        if (followedIds.isNotEmpty()) {
+                        if (state.followedIds.isNotEmpty()) {
                             item {
                                 Text(
                                     text = MR.strings.desktop_ui_followed.localized(),
@@ -222,7 +210,7 @@ class AuthorsRootScreen : Screen {
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                 )
                             }
-                            items(filteredCreators.filter { it.id in followedIds }, key = { "followed-${it.id}" }) {
+                            items(state.filteredCreators.filter { it.id in state.followedIds }, key = { "followed-${it.id}" }) {
                                 AuthorListItem(it, followed = true) { navigator.push(AuthorDetailScreen(it.id)) }
                             }
                             item { HorizontalDivider() }
@@ -235,8 +223,8 @@ class AuthorsRootScreen : Screen {
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                             )
                         }
-                        items(filteredCreators, key = { it.id }) {
-                            AuthorListItem(it, followed = it.id in followedIds) {
+                        items(state.filteredCreators, key = { it.id }) {
+                            AuthorListItem(it, followed = it.id in state.followedIds) {
                                 navigator.push(AuthorDetailScreen(it.id))
                             }
                         }
@@ -257,66 +245,35 @@ data class AuthorDetailScreen(
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val desktopDependencies = LocalDesktopUiDependencies.current
-        val getCreatorDetails = desktopDependencies.getCreatorDetails
-        val discoveryScheduler = desktopDependencies.creatorDiscoveryScheduler
-        val setCreatorFollow = desktopDependencies.setCreatorFollow
-        val sourceManager = desktopDependencies.sourceManager
-        val saveSourceMangaForDetails = desktopDependencies.saveSourceMangaForDetails
-        val manageCreatorIdentity = requireNotNull(desktopDependencies.manageCreatorIdentity) {
-            "ManageCreatorIdentity is required by AuthorDetailScreen"
+        val model = rememberScreenModel {
+            AuthorsScreenModelFactory.detail(creatorId, collectOnOpen, desktopDependencies)
         }
-        val identityActions = remember(manageCreatorIdentity) { AuthorIdentityActions(manageCreatorIdentity) }
-        val scope = rememberCoroutineScope()
-        val allCreators by desktopDependencies.getCreators.subscribe().collectAsState(emptyList())
-        val followed by desktopDependencies.getCreators.subscribeFollowed().collectAsState(emptyList())
-        var creator by remember { mutableStateOf<Creator?>(null) }
-        var candidates by remember { mutableStateOf(emptyList<DiscoveryCandidate>()) }
-        var mangaLinks by remember { mutableStateOf(emptyList<MangaCreator>()) }
-        var mangaTitles by remember { mutableStateOf(emptyMap<Long, String>()) }
-        var discoveryState by remember { mutableStateOf<CreatorDiscoveryTaskState?>(null) }
-        var sourceCheckpoints by remember { mutableStateOf(emptyList<SourceCheckpoint>()) }
-        var openingCandidateId by remember { mutableStateOf<Long?>(null) }
+        val state by model.state.collectAsState()
+        val creator = state.details.creator
+        val candidates = state.details.candidates
+        val mangaLinks = state.details.mangaLinks
+        val mangaTitles = state.details.mangaTitles
+        val discoveryState = state.discovery
+        val sourceCheckpoints = state.checkpoints
+        val allCreators = state.allCreators
+        val manualAliases = state.manualAliases
+        val identityActionError = state.error
+        val identityActionRunning = state.actionRunning
         var showAliasDialog by remember { mutableStateOf(false) }
         var aliasInput by remember { mutableStateOf("") }
-        var manualAliases by remember { mutableStateOf(emptyList<String>()) }
         var aliasPendingRemoval by remember { mutableStateOf<String?>(null) }
         var showMergePicker by remember { mutableStateOf(false) }
         var mergeTarget by remember { mutableStateOf<Creator?>(null) }
         var showSplitDialog by remember { mutableStateOf(false) }
         var splitName by remember { mutableStateOf("") }
         var splitMangaIds by remember { mutableStateOf(emptySet<Long>()) }
-        var identityActionError by remember { mutableStateOf<String?>(null) }
-        var identityActionRunning by remember { mutableStateOf(false) }
-
-        fun applyDetails(details: CreatorDetails) {
-            creator = details.creator
-            candidates = details.candidates
-            mangaLinks = details.mangaLinks
-        }
-
-        LaunchedEffect(creatorId) {
-            applyDetails(getCreatorDetails.await(creatorId))
-            runCatching { identityActions.getManualAliases(creatorId) }
-                .onSuccess { manualAliases = it }
-                .onFailure { identityActionError = it.message ?: it::class.simpleName.orEmpty() }
-            if (shouldCollectAuthorOnOpen(collectOnOpen, candidates, mangaLinks)) {
-                val job = discoveryScheduler?.runForCreator(creatorId)
-                job?.join()
-                applyDetails(getCreatorDetails.await(creatorId))
-            }
-            mangaTitles = mangaLinks.associate { link ->
-                link.mangaId to runCatching { desktopDependencies.getMangaTitle(link.mangaId) }
-                    .getOrDefault(MR.strings.desktop_ui_manga_number.localized(Locale.getDefault(), link.mangaId))
-            }
-        }
-
-        LaunchedEffect(discoveryScheduler) {
-            discoveryScheduler?.state?.collect { discoveryState = it }
-        }
-
-        LaunchedEffect(creatorId) {
-            desktopDependencies.creatorArchiveRepository?.observeSourceCheckpoints(creatorId)?.collect {
-                sourceCheckpoints = it
+        LaunchedEffect(model) {
+            model.effects.collect { effect ->
+                when (effect) {
+                    is AuthorDetailEffect.OpenManga -> navigator.push(MangaDetailScreen(effect.mangaId))
+                    is AuthorDetailEffect.OpenCreator -> navigator.replace(AuthorDetailScreen(effect.creatorId))
+                    AuthorDetailEffect.IdentityMerged -> navigator.pop()
+                }
             }
         }
 
@@ -325,19 +282,7 @@ data class AuthorDetailScreen(
         val isDiscoveryBusy = discoveryState?.status in setOf(TaskStatus.Pending, TaskStatus.Running)
         val isManualDiscoveryRunning = discoveryState?.status == TaskStatus.Running && isCurrentCreatorDiscovery
 
-        fun refreshAfterDiscovery() {
-            scope.launch {
-                val job = discoveryScheduler?.runForCreator(creatorId)
-                job?.join()
-                applyDetails(getCreatorDetails.await(creatorId))
-                mangaTitles = mangaLinks.associate { link ->
-                    link.mangaId to runCatching { desktopDependencies.getMangaTitle(link.mangaId) }
-                        .getOrDefault(MR.strings.desktop_ui_manga_number.localized(Locale.getDefault(), link.mangaId))
-                }
-            }
-        }
-
-        val isFollowed = followed.any { it.creatorId == creatorId }
+        val isFollowed = state.followed
 
         if (showAliasDialog) {
             AlertDialog(
@@ -357,17 +302,8 @@ data class AuthorDetailScreen(
                         onClick = {
                             val alias = aliasInput
                             showAliasDialog = false
-                            scope.launch {
-                                identityActionRunning = true
-                                runCatching { identityActions.addAlias(creatorId, alias) }
-                                    .onSuccess {
-                                        creator = getCreatorDetails.await(creatorId).creator
-                                        manualAliases = identityActions.getManualAliases(creatorId)
-                                        aliasInput = ""
-                                    }
-                                    .onFailure { identityActionError = it.message ?: it::class.simpleName.orEmpty() }
-                                identityActionRunning = false
-                            }
+                            model.addAlias(alias)
+                            aliasInput = ""
                         },
                     ) { Text(MR.strings.action_add.localized()) }
                 },
@@ -396,16 +332,7 @@ data class AuthorDetailScreen(
                         enabled = !identityActionRunning,
                         onClick = {
                             aliasPendingRemoval = null
-                            scope.launch {
-                                identityActionRunning = true
-                                runCatching { identityActions.removeAlias(creatorId, alias) }
-                                    .onSuccess {
-                                        creator = getCreatorDetails.await(creatorId).creator
-                                        manualAliases = identityActions.getManualAliases(creatorId)
-                                    }
-                                    .onFailure { identityActionError = it.message ?: it::class.simpleName.orEmpty() }
-                                identityActionRunning = false
-                            }
+                            model.removeAlias(alias)
                         },
                     ) { Text(MR.strings.action_remove.localized()) }
                 },
@@ -471,13 +398,7 @@ data class AuthorDetailScreen(
                         enabled = !identityActionRunning,
                         onClick = {
                             mergeTarget = null
-                            scope.launch {
-                                identityActionRunning = true
-                                runCatching { identityActions.merge(creatorId, target.id) }
-                                    .onSuccess { navigator.pop() }
-                                    .onFailure { identityActionError = it.message ?: it::class.simpleName.orEmpty() }
-                                identityActionRunning = false
-                            }
+                            model.merge(target.id)
                         },
                     ) { Text(MR.strings.desktop_ui_merge_author_identity.localized()) }
                 },
@@ -543,17 +464,9 @@ data class AuthorDetailScreen(
                             val selectedIds = splitMangaIds
                             val newName = splitName
                             showSplitDialog = false
-                            scope.launch {
-                                identityActionRunning = true
-                                runCatching { identityActions.split(creatorId, selectedIds, newName) }
-                                    .onSuccess { newCreatorId ->
-                                        splitMangaIds = emptySet()
-                                        splitName = ""
-                                        navigator.replace(AuthorDetailScreen(newCreatorId))
-                                    }
-                                    .onFailure { identityActionError = it.message ?: it::class.simpleName.orEmpty() }
-                                identityActionRunning = false
-                            }
+                            model.split(selectedIds, newName)
+                            splitMangaIds = emptySet()
+                            splitName = ""
                         },
                     ) { Text(MR.strings.desktop_ui_split_author_identity.localized()) }
                 },
@@ -567,11 +480,11 @@ data class AuthorDetailScreen(
 
         identityActionError?.let { error ->
             AlertDialog(
-                onDismissRequest = { identityActionError = null },
+                onDismissRequest = model::clearError,
                 title = { Text(MR.strings.desktop_ui_identity_action_failed.localized()) },
                 text = { Text(error) },
                 confirmButton = {
-                    TextButton(onClick = { identityActionError = null }) {
+                    TextButton(onClick = model::clearError) {
                         Text(MR.strings.action_ok.localized())
                     }
                 },
@@ -590,7 +503,7 @@ data class AuthorDetailScreen(
                     actions = {
                         IconButton(
                             enabled = !isDiscoveryBusy,
-                            onClick = { refreshAfterDiscovery() },
+                            onClick = model::refreshDiscovery,
                         ) {
                             if (isManualDiscoveryRunning) {
                                 CircularProgressIndicator()
@@ -607,6 +520,7 @@ data class AuthorDetailScreen(
                     .fillMaxSize()
                     .padding(padding),
             ) {
+                if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -628,18 +542,22 @@ data class AuthorDetailScreen(
                         )
                     }
                     Button(
-                        onClick = {
-                            scope.launch {
-                                if (isFollowed) {
-                                    setCreatorFollow.await(creatorId, followed = false)
-                                } else {
-                                    setCreatorFollow.await(creatorId, followed = true)
-                                }
-                            }
-                        },
+                        onClick = model::toggleFollow,
                     ) {
                         Text(if (isFollowed) MR.strings.desktop_ui_unfollow.localized() else MR.strings.desktop_ui_follow.localized())
                     }
+                }
+                state.followFeedback?.let { followed ->
+                    Text(
+                        if (followed) {
+                            MR.strings.desktop_ui_author_follow_baseline.localized()
+                        } else {
+                            MR.strings.desktop_ui_author_unfollowed.localized()
+                        },
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
 
                 discoveryState?.takeIf { state ->
@@ -656,7 +574,7 @@ data class AuthorDetailScreen(
                                     modifier = Modifier.weight(1f),
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
-                                TextButton(onClick = { discoveryScheduler?.cancel() }) {
+                                TextButton(onClick = model::cancelDiscovery) {
                                     Text(MR.strings.desktop_ui_author_discovery_cancel.localized())
                                 }
                             }
@@ -675,7 +593,7 @@ data class AuthorDetailScreen(
                                         modifier = Modifier.weight(1f),
                                         style = MaterialTheme.typography.bodyMedium,
                                     )
-                                    TextButton(onClick = { discoveryScheduler?.cancel() }) {
+                                    TextButton(onClick = model::cancelDiscovery) {
                                         Text(MR.strings.desktop_ui_author_discovery_cancel.localized())
                                     }
                                 }
@@ -824,29 +742,7 @@ data class AuthorDetailScreen(
                                         )
                                     },
                                     leadingContent = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null) },
-                                    modifier = Modifier.clickable {
-                                        val source = sourceManager.getCatalogueSources()
-                                            .find { it.id == candidate.source }
-                                            ?: return@clickable
-                                        if (openingCandidateId != null) return@clickable
-                                        openingCandidateId = candidate.id
-                                        scope.launch {
-                                            val listedManga = authorCandidateSourceManga(candidate)
-                                            val details = saveSourceMangaForDetails.awaitListedForDetails(
-                                                sManga = listedManga,
-                                                sourceId = candidate.source,
-                                            )
-                                            val saved = details.manga
-                                            navigator.push(MangaDetailScreen(saved.id))
-                                            if (details.needsRefresh) {
-                                                saveSourceMangaForDetails.refreshFromSource(
-                                                    source = source,
-                                                    listedManga = listedManga,
-                                                )
-                                            }
-                                            openingCandidateId = null
-                                        }
-                                    },
+                                    modifier = Modifier.clickable { model.openCandidate(candidate) },
                                 )
                                 HorizontalDivider()
                             }

@@ -90,6 +90,7 @@ class AuthorDetailBehaviorTest {
             coEvery { repository.getCreator(7L) } returns creator
             coEvery { repository.getDiscoveryCandidatesForCreator(7L) } returns emptyList()
             coEvery { repository.getMangaCreatorsForCreator(7L) } returns emptyList()
+            coEvery { repository.getMangaTitlesForCreator(7L) } returns emptyMap()
 
             val interactor = DiscoverCreatorWorks(
                 discoveryService = CreatorDiscoveryService(repository),
@@ -99,9 +100,10 @@ class AuthorDetailBehaviorTest {
             val details = interactor.await(7L, emptyList())
 
             assertEquals(creator, details.creator)
-            coVerify(exactly = 2) { repository.getCreator(7L) }
-            coVerify(exactly = 1) { repository.getDiscoveryCandidatesForCreator(7L) }
+            coVerify(exactly = 3) { repository.getCreator(7L) }
+            coVerify(exactly = 2) { repository.getDiscoveryCandidatesForCreator(7L) }
             coVerify(exactly = 1) { repository.getMangaCreatorsForCreator(7L) }
+            coVerify(exactly = 1) { repository.getMangaTitlesForCreator(7L) }
         }
     }
 
