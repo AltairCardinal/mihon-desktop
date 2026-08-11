@@ -32,6 +32,7 @@ import tachiyomi.domain.creator.model.SourceDiscoveryObservationResult
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WatchSourceBaseline
 import tachiyomi.domain.creator.model.WorkDecisionContract
+import tachiyomi.domain.creator.model.WorkDecisionProjection
 import tachiyomi.domain.manga.model.Manga
 
 /**
@@ -273,6 +274,8 @@ interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
         decidedAt: Long,
         idempotencyKey: String,
     ): ArchiveAppendOutcome<WorkDecisionContract>
+
+    suspend fun getWorkDecisions(sourceWork: SourceWorkNaturalKey): List<WorkDecisionProjection>
 
     suspend fun appendLanguageAssertion(
         subject: ArchiveLanguageSubject,

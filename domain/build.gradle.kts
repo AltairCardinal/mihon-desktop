@@ -21,6 +21,7 @@ kotlin {
                 implementation(project.dependencies.platform(kotlinx.coroutines.bom))
                 implementation(kotlinx.bundles.coroutines)
                 implementation(kotlinx.bundles.serialization)
+                implementation(libs.stringSimilarity)
             }
         }
         androidMain {

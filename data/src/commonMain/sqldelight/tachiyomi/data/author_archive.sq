@@ -2397,6 +2397,48 @@ INSERT INTO author_archive_canonical_works(
 )
 VALUES (:portableKey, :primaryTitle, :normalizedTitle, 'ACTIVE', NULL, :createdAt, :lastModifiedAt);
 
+upsertArchiveCanonicalWorkFromBackup:
+INSERT INTO author_archive_canonical_works(
+    portable_key, primary_title, normalized_title, status, legacy_work_id, created_at, last_modified_at
+)
+VALUES (:portableKey, :primaryTitle, :normalizedTitle, 'ACTIVE', NULL, :createdAt, :lastModifiedAt)
+ON CONFLICT(portable_key) DO UPDATE SET
+    primary_title = excluded.primary_title,
+    normalized_title = excluded.normalized_title,
+    status = 'ACTIVE',
+    last_modified_at = max(author_archive_canonical_works.last_modified_at, excluded.last_modified_at);
+
+getArchiveCanonicalWorksForBackup:
+SELECT portable_key, primary_title
+FROM author_archive_canonical_works
+WHERE status = 'ACTIVE'
+ORDER BY portable_key;
+
+getArchiveWorkDecisionsForBackup:
+SELECT
+    SW.source_id,
+    SW.stable_source_url,
+    CW.portable_key,
+    WD.state,
+    WD.score,
+    WD.evidence,
+    WD.decided_at
+FROM author_archive_work_decisions WD
+JOIN author_archive_source_works SW ON SW._id = WD.source_work_id
+JOIN author_archive_canonical_works CW ON CW._id = WD.work_id
+WHERE WD.actor = 'USER'
+AND WD.state IN ('CONFIRMED', 'REJECTED')
+AND WD._id = (
+    SELECT LAST_USER._id
+    FROM author_archive_work_decisions LAST_USER
+    WHERE LAST_USER.source_work_id = WD.source_work_id
+    AND LAST_USER.work_id = WD.work_id
+    AND LAST_USER.actor = 'USER'
+    ORDER BY LAST_USER.decided_at DESC, LAST_USER._id DESC
+    LIMIT 1
+)
+ORDER BY SW.source_id, SW.stable_source_url, CW.portable_key;
+
 insertArchiveCanonicalWorkFromLegacy:
 INSERT INTO author_archive_canonical_works(
     portable_key,
@@ -2578,6 +2620,41 @@ ORDER BY
     CASE WHEN actor != 'RESTORE' THEN decided_at END DESC,
     CASE WHEN actor != 'RESTORE' THEN _id END DESC
 LIMIT 1;
+
+getArchiveWorkDecisionProjections:
+SELECT
+    WD.work_id,
+    CW.portable_key,
+    CW.primary_title,
+    WD.state,
+    WD.actor,
+    WD.explicit,
+    WD.score,
+    WD.evidence,
+    WD.decided_at
+FROM author_archive_work_decisions WD
+JOIN author_archive_source_works SW ON SW._id = WD.source_work_id
+JOIN author_archive_canonical_works CW ON CW._id = WD.work_id
+WHERE SW.source_id = :sourceId
+AND SW.stable_source_url = :stableSourceUrl
+AND CW.status = 'ACTIVE'
+AND WD._id = (
+    SELECT CURRENT_WD._id
+    FROM author_archive_work_decisions CURRENT_WD
+    WHERE CURRENT_WD.source_work_id = WD.source_work_id
+    AND CURRENT_WD.work_id = WD.work_id
+    ORDER BY
+        CASE CURRENT_WD.actor
+            WHEN 'USER' THEN 3
+            WHEN 'RESTORE' THEN 2
+            ELSE 1
+        END DESC,
+        CASE WHEN CURRENT_WD.actor = 'RESTORE' THEN CURRENT_WD._id END ASC,
+        CASE WHEN CURRENT_WD.actor != 'RESTORE' THEN CURRENT_WD.decided_at END DESC,
+        CASE WHEN CURRENT_WD.actor != 'RESTORE' THEN CURRENT_WD._id END DESC
+    LIMIT 1
+)
+ORDER BY WD.decided_at DESC, WD._id DESC;
 
 getArchiveWorkDecisionsForBinding:
 SELECT work_id, state, actor, evidence, decided_at

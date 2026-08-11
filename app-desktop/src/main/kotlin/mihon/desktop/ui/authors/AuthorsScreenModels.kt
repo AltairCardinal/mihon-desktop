@@ -25,10 +25,16 @@ import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.SourceCheckpoint
+import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.model.WorkDecisionState
+import tachiyomi.domain.creator.model.WorkMatchState
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
+import tachiyomi.domain.creator.repository.CreatorRepository
+import tachiyomi.domain.creator.service.WorkMatchInput
+import tachiyomi.domain.creator.service.WorkMatchScore
+import tachiyomi.domain.creator.service.WorkMatchScorer
 import tachiyomi.domain.creator.service.CreatorLibraryIndexState
 import tachiyomi.domain.creator.service.CreatorLibraryIndexer
-import tachiyomi.domain.source.service.SourceManager
 import mihon.desktop.DesktopUiDependencies
 
 internal object AuthorsScreenModelFactory {
@@ -54,10 +60,18 @@ internal object AuthorsScreenModelFactory {
             identityActions = AuthorIdentityActions(
                 requireNotNull(dependencies.manageCreatorIdentity),
             ),
-            sourceManager = dependencies.sourceManager,
-            saveSourceMangaForDetails = dependencies.saveSourceMangaForDetails,
         )
     }
+
+    fun compare(candidateId: Long, creatorId: Long, dependencies: DesktopUiDependencies): WorkCompareScreenModel =
+        WorkCompareScreenModel(
+            candidateId = candidateId,
+            creatorId = creatorId,
+            getCreatorDetails = dependencies.getCreatorDetails,
+            creatorRepository = requireNotNull(dependencies.creatorRepository),
+            archiveRepository = requireNotNull(dependencies.creatorArchiveRepository),
+            saveSourceMangaForDetails = dependencies.saveSourceMangaForDetails,
+        )
 }
 
 data class AuthorsRootState(
@@ -109,7 +123,6 @@ data class AuthorDetailState(
     val checkpoints: List<SourceCheckpoint> = emptyList(),
     val loading: Boolean = true,
     val actionRunning: Boolean = false,
-    val openingCandidateId: Long? = null,
     val followFeedback: Boolean? = null,
     val error: String? = null,
 )
@@ -117,6 +130,7 @@ data class AuthorDetailState(
 sealed interface AuthorDetailEffect {
     data class OpenManga(val mangaId: Long) : AuthorDetailEffect
     data class OpenCreator(val creatorId: Long) : AuthorDetailEffect
+    data class OpenWorkCompare(val candidateId: Long, val creatorId: Long) : AuthorDetailEffect
     data object IdentityMerged : AuthorDetailEffect
 }
 
@@ -129,8 +143,6 @@ internal class AuthorDetailScreenModel(
     private val discoveryScheduler: CreatorDiscoveryScheduler?,
     private val archiveRepository: CreatorArchiveRepository?,
     private val identityActions: AuthorIdentityActions,
-    private val sourceManager: SourceManager,
-    private val saveSourceMangaForDetails: SaveSourceMangaForDetails,
 ) : ScreenModel {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val mutableState = MutableStateFlow(AuthorDetailState())
@@ -207,21 +219,7 @@ internal class AuthorDetailScreenModel(
     }
 
     fun openCandidate(candidate: DiscoveryCandidate) {
-        if (mutableState.value.openingCandidateId != null) return
-        val source = sourceManager.getCatalogueSources().find { it.id == candidate.source } ?: return
-        mutableState.update { it.copy(openingCandidateId = candidate.id) }
-        scope.launch {
-            try {
-                val listed = authorCandidateSourceManga(candidate)
-                val result = saveSourceMangaForDetails.awaitListedForDetails(listed, candidate.source)
-                mutableEffects.emit(AuthorDetailEffect.OpenManga(result.manga.id))
-                if (result.needsRefresh) saveSourceMangaForDetails.refreshFromSource(source, listed)
-            } catch (error: Exception) {
-                mutableState.update { it.copy(error = error.message ?: error::class.simpleName) }
-            } finally {
-                mutableState.update { it.copy(openingCandidateId = null) }
-            }
-        }
+        mutableEffects.tryEmit(AuthorDetailEffect.OpenWorkCompare(candidate.id, creatorId))
     }
 
     fun clearError() = mutableState.update { it.copy(error = null) }
@@ -245,5 +243,122 @@ internal class AuthorDetailScreenModel(
         runCatching { action() }
             .onFailure { error -> mutableState.update { it.copy(error = error.message ?: error::class.simpleName) } }
         mutableState.update { it.copy(actionRunning = false) }
+    }
+}
+
+data class WorkComparisonSuggestion(
+    val mangaId: Long,
+    val title: String,
+    val score: WorkMatchScore,
+)
+
+data class WorkCompareState(
+    val candidate: DiscoveryCandidate? = null,
+    val suggestions: List<WorkComparisonSuggestion> = emptyList(),
+    val currentDecision: tachiyomi.domain.creator.model.WorkDecisionProjection? = null,
+    val loading: Boolean = true,
+    val actionRunning: Boolean = false,
+    val error: String? = null,
+)
+
+internal class WorkCompareScreenModel(
+    private val candidateId: Long,
+    private val creatorId: Long,
+    private val getCreatorDetails: GetCreatorDetails,
+    private val creatorRepository: CreatorRepository,
+    private val archiveRepository: CreatorArchiveRepository,
+    private val saveSourceMangaForDetails: SaveSourceMangaForDetails,
+) : ScreenModel {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val mutableState = MutableStateFlow(WorkCompareState())
+    val state: StateFlow<WorkCompareState> = mutableState.asStateFlow()
+
+    init { scope.launch { load() } }
+
+    fun confirm(target: WorkComparisonSuggestion? = null) = review(target, WorkDecisionState.CONFIRMED)
+
+    fun reject(target: WorkComparisonSuggestion? = null) = review(target, WorkDecisionState.REJECTED)
+
+    fun undo() = review(null, WorkDecisionState.SUGGESTED)
+
+    override fun onDispose() = scope.cancel()
+
+    private fun review(target: WorkComparisonSuggestion?, state: WorkDecisionState) {
+        if (mutableState.value.actionRunning) return
+        scope.launch {
+            mutableState.update { it.copy(actionRunning = true, error = null) }
+            runCatching {
+                val candidate = checkNotNull(mutableState.value.candidate)
+                val listed = saveSourceMangaForDetails.awaitListedForDetails(
+                    authorCandidateSourceManga(candidate),
+                    candidate.source,
+                )
+                val existing = mutableState.value.currentDecision
+                val workId = existing?.workId ?: creatorRepository.createCanonicalWork(
+                    primaryTitle = target?.title ?: candidate.title,
+                    primaryCreatorId = creatorId,
+                    originalLanguage = null,
+                ).id
+                if (target != null && existing == null) {
+                    creatorRepository.upsertMangaWorkMatch(
+                        mangaId = target.mangaId,
+                        workId = workId,
+                        confidence = target.score.value,
+                        matchReason = target.score.reason,
+                        state = WorkMatchState.CONFIRMED,
+                        manuallyConfirmed = true,
+                    )
+                }
+                creatorRepository.upsertMangaWorkMatch(
+                    mangaId = listed.manga.id,
+                    workId = workId,
+                    confidence = target?.score?.value ?: 1.0,
+                    matchReason = target?.score?.reason ?: "manual singleton review",
+                    state = when (state) {
+                        WorkDecisionState.SUGGESTED -> WorkMatchState.CANDIDATE
+                        WorkDecisionState.CONFIRMED -> WorkMatchState.CONFIRMED
+                        WorkDecisionState.REJECTED -> WorkMatchState.REJECTED
+                    },
+                    manuallyConfirmed = true,
+                )
+                load()
+            }.onFailure { error ->
+                mutableState.update { it.copy(error = error.message ?: error::class.simpleName) }
+            }
+            mutableState.update { it.copy(actionRunning = false) }
+        }
+    }
+
+    private suspend fun load() {
+        val details = getCreatorDetails.await(creatorId)
+        val candidate = details.candidates.firstOrNull { it.id == candidateId }
+            ?: creatorRepository.getDiscoveryCandidate(candidateId)
+        if (candidate == null) {
+            mutableState.value = WorkCompareState(loading = false)
+            return
+        }
+        val candidateInput = WorkMatchInput(
+            title = candidate.title,
+            creators = listOfNotNull(candidate.authorText, candidate.artistText),
+            language = candidate.languageTag,
+        )
+        val suggestions = details.mangaLinks.distinctBy { it.mangaId }.map { link ->
+            val title = details.mangaTitles[link.mangaId] ?: "Manga ${link.mangaId}"
+            WorkComparisonSuggestion(
+                mangaId = link.mangaId,
+                title = title,
+                score = WorkMatchScorer.score(
+                    candidateInput,
+                    WorkMatchInput(title = title, creators = listOfNotNull(link.sourceText), language = null),
+                ),
+            )
+        }.sortedByDescending { it.score.value }
+        val decisions = archiveRepository.getWorkDecisions(SourceWorkNaturalKey(candidate.source, candidate.url))
+        mutableState.value = WorkCompareState(
+            candidate = candidate,
+            suggestions = suggestions,
+            currentDecision = decisions.firstOrNull(),
+            loading = false,
+        )
     }
 }

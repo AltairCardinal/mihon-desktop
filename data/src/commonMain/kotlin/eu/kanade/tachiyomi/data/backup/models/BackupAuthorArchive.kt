@@ -16,11 +16,30 @@ data class BackupAuthorArchiveSection(
     @ProtoNumber(3) val sourceWorks: List<BackupAuthorSourceWork> = emptyList(),
     @ProtoNumber(4) val watches: List<BackupAuthorWatch> = emptyList(),
     @ProtoNumber(5) val discoveries: List<BackupAuthorDiscovery> = emptyList(),
+    @ProtoNumber(6) val canonicalWorks: List<BackupAuthorCanonicalWork> = emptyList(),
+    @ProtoNumber(7) val workDecisions: List<BackupAuthorWorkDecision> = emptyList(),
 ) {
     companion object {
-        const val CURRENT_VERSION = 2
+        const val CURRENT_VERSION = 3
     }
 }
+
+@Serializable
+data class BackupAuthorCanonicalWork(
+    @ProtoNumber(1) val portableKey: String,
+    @ProtoNumber(2) val primaryTitle: String,
+)
+
+@Serializable
+data class BackupAuthorWorkDecision(
+    @ProtoNumber(1) val sourceId: Long,
+    @ProtoNumber(2) val stableSourceUrl: String,
+    @ProtoNumber(3) val workPortableKey: String,
+    @ProtoNumber(4) val state: String,
+    @ProtoNumber(5) val score: Double? = null,
+    @ProtoNumber(6) val evidence: String,
+    @ProtoNumber(7) val decidedAt: Long,
+)
 
 @Serializable
 data class BackupAuthorDiscovery(

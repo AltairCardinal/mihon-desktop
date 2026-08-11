@@ -272,6 +272,9 @@ data class AuthorDetailScreen(
                 when (effect) {
                     is AuthorDetailEffect.OpenManga -> navigator.push(MangaDetailScreen(effect.mangaId))
                     is AuthorDetailEffect.OpenCreator -> navigator.replace(AuthorDetailScreen(effect.creatorId))
+                    is AuthorDetailEffect.OpenWorkCompare -> navigator.push(
+                        WorkCompareScreen(effect.candidateId, effect.creatorId),
+                    )
                     AuthorDetailEffect.IdentityMerged -> navigator.pop()
                 }
             }
@@ -803,24 +806,20 @@ internal fun authorCandidateSourceManga(candidate: DiscoveryCandidate): SManga {
     }
 }
 
-data class WorkCompareScreen(val workId: Long) : Screen {
+data class WorkCompareScreen(val workId: Long, val creatorId: Long = -1L) : Screen {
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val getCreatorDetails = LocalDesktopUiDependencies.current.getCreatorDetails
-        val sourceManager = LocalDesktopUiDependencies.current.sourceManager
-        var candidate by remember { mutableStateOf<DiscoveryCandidate?>(null) }
-
-        LaunchedEffect(workId) {
-            candidate = getCreatorDetails.awaitCandidate(workId)
-        }
+        val dependencies = LocalDesktopUiDependencies.current
+        val model = rememberScreenModel { AuthorsScreenModelFactory.compare(workId, creatorId, dependencies) }
+        val state by model.state.collectAsState()
 
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(candidate?.title ?: MR.strings.desktop_ui_work_comparison.localized()) },
+                    title = { Text(state.candidate?.title ?: MR.strings.desktop_ui_work_comparison.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
@@ -836,15 +835,19 @@ data class WorkCompareScreen(val workId: Long) : Screen {
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                val item = candidate
+                if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                val item = state.candidate
                 if (item == null) {
-                    Text(MR.strings.desktop_ui_work_candidate_was_not_found.localized(), style = MaterialTheme.typography.titleLarge)
+                    if (!state.loading) {
+                        Text(MR.strings.desktop_ui_work_candidate_was_not_found.localized(), style = MaterialTheme.typography.titleLarge)
+                    }
                 } else {
                     Text(item.title, style = MaterialTheme.typography.titleLarge)
                     Text(
                         MR.strings.desktop_ui_source_language_state.localized(
                             Locale.getDefault(),
-                            sourceManager.getOrStub(item.source).name,
+                            dependencies.sourceManager.getOrStub(item.source).name,
                             item.languageTag.uppercase(),
                             item.state.name.lowercase(),
                         ),
@@ -858,11 +861,53 @@ data class WorkCompareScreen(val workId: Long) : Screen {
                     Text(MR.strings.desktop_ui_source_url.localized(Locale.getDefault(), item.url))
                     Text(MR.strings.desktop_ui_first_seen.localized(Locale.getDefault(), item.firstSeenAt.toString()))
                     Text(MR.strings.desktop_ui_last_seen.localized(Locale.getDefault(), item.lastSeenAt.toString()))
+                    val decision = state.currentDecision
                     Text(
-                        MR.strings.desktop_ui_chapter_grouping_and_confirmed_cross_source_versions_wil.localized(),
-                        style = MaterialTheme.typography.bodyMedium,
+                        decision?.let {
+                            MR.strings.desktop_ui_work_decision.localized(
+                                Locale.getDefault(),
+                                it.decision.state.name.lowercase(),
+                                it.workTitle,
+                            )
+                        } ?: MR.strings.desktop_ui_work_has_no_manual_decision.localized(),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    state.suggestions.forEach { suggestion ->
+                        ListItem(
+                            headlineContent = { Text(suggestion.title) },
+                            supportingContent = {
+                                Text(
+                                    MR.strings.desktop_ui_work_match_evidence.localized(
+                                        Locale.getDefault(),
+                                        suggestion.score.tier.name.lowercase(),
+                                        suggestion.score.reason,
+                                    ),
+                                )
+                            },
+                            trailingContent = {
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    TextButton(
+                                        enabled = !state.actionRunning,
+                                        onClick = { model.confirm(suggestion) },
+                                    ) { Text(MR.strings.desktop_ui_confirm_same_work.localized()) }
+                                    TextButton(
+                                        enabled = !state.actionRunning,
+                                        onClick = { model.reject(suggestion) },
+                                    ) { Text(MR.strings.desktop_ui_reject_same_work.localized()) }
+                                }
+                            },
+                        )
+                    }
+                    if (state.suggestions.isEmpty()) {
+                        Button(enabled = !state.actionRunning, onClick = { model.confirm() }) {
+                            Text(MR.strings.desktop_ui_confirm_singleton_work.localized())
+                        }
+                    }
+                    if (decision != null) {
+                        TextButton(enabled = !state.actionRunning, onClick = model::undo) {
+                            Text(MR.strings.action_undo.localized())
+                        }
+                    }
                 }
                 TextButton(onClick = { navigator.pop() }) {
                     Text(MR.strings.action_bar_up_description.localized())

@@ -598,9 +598,9 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 #### `AA4-01` 建立可解释 matcher、suggestion 与持久决定
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `[ ]` · Android `N/A：shared` · Desktop/UI `N/A：shared` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`IN_PROGRESS（Windows 已验收，Android 延后）` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `[x]` · Android `[ ]` · Desktop/UI `[x]` · Legacy/Migration `[x]` · Review `[ ]` · Verify `[x]` · Evidence `[x]` · Commit `[ ]`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `Android 统一验收延后到 Windows 功能全部完成后` · 审查 `主代理范围核对 PASS` · 验证 `aa401-focused-green、aa401-windows-ui-green PASS` · 运行产物 `Windows focused tests；无发布构建` · Commit `本批提交`
 
 - RED：标题别名、同名不同作者、不同语言版本、外部 ID 一致、章节差异、阈值边界、算法版本升级、人工 confirmed/rejected 优先、撤销拒绝和 source work 已属于另一 work。
 - GREEN：复用 `SmartSourceSearchEngine` 可共享的归一化/相似度，不另建重复 Levenshtein；`WorkMatchScorer` 输出分数、逐项证据、算法版本和等级；backup section 用 source/work 自然键保存人工决定。
@@ -610,9 +610,9 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 #### `AA4-02` 接入 grouped archive、可达比较页和确认/拒绝/拆分 UI
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `[ ]` · Android `N/A：AA7-01` · Desktop/UI `[ ]` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`IN_PROGRESS（Windows compare/decision 已接入，grouped archive 待完成）` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `[x]` · Android `N/A：AA7-01` · Desktop/UI `[x]` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[x]` · Evidence `[x]` · Commit `[ ]`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `grouped archive/source-quality projection 尚未完成` · 审查 `主代理范围核对 PASS` · 验证 `mounted Work Compare production wiring PASS` · 运行产物 `Windows focused test；无发布构建` · Commit `本批提交`
 
 - RED：`CanonicalWorkWithVersions` reactive projection、同一 candidate 不重复、confirmed/candidate/ignored 分组、compare navigation、源缺失、可读性/成功率/新鲜度/章节覆盖等源质量证据、确认/拒绝/撤销、拆分确认、并发 stale decision 和失败反馈。
 - GREEN：Author Detail 只消费 grouped projection；Work Compare 从作品卡和候选卡都有真实 push；typed commands 使用 optimistic version 防止覆盖较新决定。
@@ -863,5 +863,7 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 | 2026-08-12 | `AA1-03` | `TODO → DONE` | watch lease、run/checkpoint 恢复、baseline、discovery/outbox 幂等与原子回滚行为已覆盖 | shared typed persistence、v17 additive unread index、field107 watch backup slice 与 Windows production wiring 已完成 | 主代理对状态转换、原子性、迁移和备份边界收口核对 PASS；未追加独立审查 | `aa103data3`、`aa103desktop1`、`aa103related3`、`aa103spotless3` PASS；本批无用户 UI/发布构建 | 本行所在提交 |
 | 2026-08-12 | `AA2-01 / Windows checkpoint` | `TODO → IN_PROGRESS（Windows 已验收）` | enabled/scope、单/多语言预筛、alias 去重、页数/总页数/并发/时限、structured/fallback、typed failure、取消与 identity gate 已覆盖 | optional AuthorSearchSource、bounded planner、catalogue adapter、result policy、typed source-work relation 与 Windows production wiring 已完成 | 主代理收口核对 PASS；未追加独立审查 | `aa201verify` focused shared/data/Windows PASS；`aa201format` PASS；无发布构建 | 本行所在提交 |
 | 2026-08-12 | `AA2-02` | `TODO → DONE` | 首扫/重扫、新关系、跨 watch、metadata、review 保持、partial/all-fail、截断、重入、lease、恢复、取消、退避及源级回滚均覆盖 | shared archive executor、typed run/checkpoint、baseline generation、原子 source observation + discovery/outbox、manual force 与 backoff/jitter 完成 | pi 双模型对比后采用 DeepSeek 草稿 + 主代理补缺；最终 P0/P1/P2=0 | `aa202-atomic`、`aa202-final-focused`、domain/data SpotlessApply PASS；无 Android/发布构建 | 本行所在提交 |
+| 2026-08-12 | `AA4-01 / Windows checkpoint` | `TODO → IN_PROGRESS（Windows 已验收）` | alias、同名异作者、跨语言、稳定外部 ID、章节覆盖和证据等级 matcher RED 已转绿；决定自然键读取与备份往返已覆盖 | migration search 与 archive 共用相似度；逐项证据/算法版本/tier；稳定 ID 以外只建议；人工 confirmed/rejected 使用自然键备份 | 主代理范围核对 PASS；Android 延后 | `aa401-focused-green`、`aa401-windows-ui-green` PASS；无发布构建 | 本行所在提交 |
+| 2026-08-12 | `AA4-02 / Windows compare checkpoint` | `TODO → IN_PROGRESS` | mounted Work Compare 真实点击驱动 canonical work 与两条 source-version 决定 | candidate → compare production navigation；同作品/保持分离/撤销/单例作品入口与持久决定已接入 | grouped archive 与 source-quality projection 尚未关闭 | `aa401-windows-ui-green` PASS；无发布构建 | 本行所在提交 |
 
-AA0、AA1-02、AA1-03 与 AA2-02 已关闭；AA1-01 与 AA2-01 的 Windows/shared/data 实现已经验收，顶层任务仍保持未勾选，等待全部功能完成后的 Android 统一验收与最终复审。实现主线进入 `AA2-03`；后续自动通知/canonical UI 仍按依赖顺序保持未开始。
+AA0、AA1-02、AA1-03 与 AA2-02 已关闭；AA1-01、AA2-01、AA2-03、AA3 与 AA4-01 的 Windows/shared/data 实现已经验收，顶层任务仍保持未勾选，等待全部 Windows 功能完成后的 Android 统一验收与最终复审。实现主线位于 `AA4-02` grouped archive/source-quality projection；语言与章节阶段尚未开始。

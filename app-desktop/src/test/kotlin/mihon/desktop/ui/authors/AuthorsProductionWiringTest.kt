@@ -9,6 +9,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
 import java.util.Locale
@@ -21,6 +22,7 @@ import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.CreatorDiscoveryScheduler
+import mihon.desktop.domain.ListedMangaForDetails
 import mihon.desktop.task.DesktopTaskScheduler
 import mihon.desktop.task.FileTaskCheckpointStore
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -32,6 +34,12 @@ import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.model.Creator
+import tachiyomi.domain.creator.model.CanonicalWork
+import tachiyomi.domain.creator.model.CreatorRole
+import tachiyomi.domain.creator.model.DiscoveryCandidate
+import tachiyomi.domain.creator.model.DiscoveryCandidateState
+import tachiyomi.domain.creator.model.MangaCreator
+import tachiyomi.domain.creator.model.WorkMatchState
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorLibraryMangaSource
 import tachiyomi.domain.creator.repository.CreatorRepository
@@ -48,6 +56,74 @@ class AuthorsProductionWiringTest {
 
     @TempDir
     lateinit var directory: Path
+
+    @Test
+    fun `mounted work comparison confirms a suggested source version through production repositories`() = runBlocking {
+        val creator = Creator(7L, "Jane Doe", "jane doe", null, emptyList(), 1L, 1L)
+        val candidate = DiscoveryCandidate(
+            id = 30L,
+            source = 10L,
+            url = "/candidate",
+            title = "Shared work",
+            normalizedTitle = "shared work",
+            authorText = "Jane Doe",
+            artistText = null,
+            languageTag = "en",
+            languageConfidence = 1.0,
+            languageEvidence = "structured source language",
+            thumbnailUrl = null,
+            firstSeenAt = 1L,
+            lastSeenAt = 2L,
+            detailsFetchedAt = 2L,
+            state = DiscoveryCandidateState.NEW,
+        )
+        val creatorRepository = mockk<CreatorRepository> {
+            coEvery { getCreator(7L) } returns creator
+            coEvery { getDiscoveryCandidatesForCreator(7L) } returns listOf(candidate)
+            coEvery { getMangaCreatorsForCreator(7L) } returns listOf(
+                MangaCreator(11L, 7L, CreatorRole.AUTHOR, "Jane Doe", 1.0, "library index"),
+            )
+            coEvery { getMangaTitlesForCreator(7L) } returns mapOf(11L to "Shared work")
+            coEvery { getDiscoveryCandidate(30L) } returns candidate
+            coEvery { createCanonicalWork("Shared work", 7L, null) } returns
+                CanonicalWork(90L, "Shared work", "shared work", 7L, null, 1L, 1L)
+            coEvery { upsertMangaWorkMatch(any(), any(), any(), any(), any(), any()) } returns mockk()
+        }
+        val archiveRepository = mockk<CreatorArchiveRepository> {
+            coEvery { getWorkDecisions(any()) } returns emptyList()
+        }
+        val saved = Manga.create().copy(id = 12L, source = 10L, url = "/candidate", title = "Shared work")
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { getCreatorDetails } returns GetCreatorDetails(creatorRepository)
+            every { this@mockk.creatorRepository } returns creatorRepository
+            every { creatorArchiveRepository } returns archiveRepository
+            every { saveSourceMangaForDetails } returns mockk {
+                coEvery { awaitListedForDetails(any(), 10L) } returns ListedMangaForDetails(saved, false)
+            }
+            every { sourceManager } returns mockk(relaxed = true)
+        }
+        val scene = ImageComposeScene(1100, 800, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(WorkCompareScreen(workId = 30L, creatorId = 7L))
+                }
+            }
+            val action = MR.strings.desktop_ui_confirm_same_work.localized()
+            withTimeout(5_000) {
+                while (action !in texts(scene)) scene.render()
+            }
+            clickableTextNode(scene, action).config[SemanticsActions.OnClick].action?.invoke()
+
+            coVerifyOrder {
+                creatorRepository.createCanonicalWork("Shared work", 7L, null)
+                creatorRepository.upsertMangaWorkMatch(11L, 90L, any(), any(), WorkMatchState.CONFIRMED, true)
+                creatorRepository.upsertMangaWorkMatch(12L, 90L, any(), any(), WorkMatchState.CONFIRMED, true)
+            }
+        } finally {
+            scene.close()
+        }
+    }
 
 
     @Test

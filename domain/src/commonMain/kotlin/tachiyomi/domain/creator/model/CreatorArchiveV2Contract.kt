@@ -196,6 +196,16 @@ data class WorkDecisionContract(
     val explicit: Boolean,
 )
 
+data class WorkDecisionProjection(
+    val workId: Long,
+    val workPortableKey: String,
+    val workTitle: String,
+    val decision: WorkDecisionContract,
+    val score: Double?,
+    val evidence: String,
+    val decidedAt: Long,
+)
+
 enum class LanguageDimension {
     READING,
     ORIGINAL,

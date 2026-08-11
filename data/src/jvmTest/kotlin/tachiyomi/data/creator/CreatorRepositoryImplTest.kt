@@ -471,6 +471,41 @@ class CreatorRepositoryImplTest {
     }
 
     @Test
+    fun `work decision projection returns the effective manual decision by natural key`() = runBlocking {
+        val key = SourceWorkNaturalKey(7L, "/typed/projection")
+        repository.upsertSourceWork(7L, key.stableSourceUrl, null, "Projected", null, null, null, 1L)
+        val work = repository.createCanonicalWork("Canonical projected work", null, null)
+        repository.appendWorkDecision(
+            sourceWork = key,
+            workId = work.id,
+            decision = WorkDecisionContract(WorkDecisionState.SUGGESTED, DecisionActor.ALGORITHM, explicit = false),
+            algorithmVersion = "v1",
+            score = 0.91,
+            evidence = "algorithm suggestion",
+            decidedAt = 1L,
+            idempotencyKey = "projection-algorithm",
+        )
+        repository.appendWorkDecision(
+            sourceWork = key,
+            workId = work.id,
+            decision = WorkDecisionContract(WorkDecisionState.REJECTED, DecisionActor.USER, explicit = true),
+            algorithmVersion = null,
+            score = 0.91,
+            evidence = "user kept separate",
+            decidedAt = 2L,
+            idempotencyKey = "projection-user",
+        )
+
+        val projected = repository.getWorkDecisions(key).single()
+
+        projected.workId shouldBe work.id
+        projected.workTitle shouldBe "Canonical projected work"
+        projected.decision shouldBe
+            WorkDecisionContract(WorkDecisionState.REJECTED, DecisionActor.USER, explicit = true)
+        projected.evidence shouldBe "user kept separate"
+    }
+
+    @Test
     fun `canonical version follows effective decisions instead of late lower authority events`() {
         runBlocking {
             val sourceWork = SourceWorkNaturalKey(7L, "/decision/effective")

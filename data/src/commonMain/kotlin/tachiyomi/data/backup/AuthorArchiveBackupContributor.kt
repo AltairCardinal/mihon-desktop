@@ -2,13 +2,16 @@ package tachiyomi.data.backup
 
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorArchiveSection
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorBinding
+import eu.kanade.tachiyomi.data.backup.models.BackupAuthorCanonicalWork
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorDiscovery
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorSourceWork
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorWatch
+import eu.kanade.tachiyomi.data.backup.models.BackupAuthorWorkDecision
 import eu.kanade.tachiyomi.data.backup.models.BackupCreatorAlias
 import eu.kanade.tachiyomi.data.backup.models.BackupCreatorIdentity
 import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.creator.reconcileArchiveCanonicalVersion
 import tachiyomi.domain.creator.model.CreatorArchiveLanguageTag
 import tachiyomi.domain.creator.model.CreatorRelationOrigin
 import tachiyomi.domain.creator.model.CreatorRelationVerification
@@ -16,6 +19,7 @@ import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.DiscoveryKind
 import tachiyomi.domain.creator.model.DiscoveryReadState
 import tachiyomi.domain.creator.model.ReviewDisposition
+import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.service.CreatorNameNormalizer
 import tachiyomi.domain.creator.service.CreatorSourceWorkKey
 
@@ -127,14 +131,30 @@ class SqlDelightAuthorArchiveBackupContributor(
                 firstDiscoveredAt = discovery.first_discovered_at,
             )
         }
+        val canonicalWorks = author_archiveQueries.getArchiveCanonicalWorksForBackup().executeAsList().map { work ->
+            BackupAuthorCanonicalWork(work.portable_key, work.primary_title)
+        }
+        val workDecisions = author_archiveQueries.getArchiveWorkDecisionsForBackup().executeAsList().map { decision ->
+            BackupAuthorWorkDecision(
+                sourceId = decision.source_id,
+                stableSourceUrl = decision.stable_source_url,
+                workPortableKey = decision.portable_key,
+                state = decision.state,
+                score = decision.score,
+                evidence = decision.evidence,
+                decidedAt = decision.decided_at,
+            )
+        }
         BackupAuthorArchiveSection(
             creators = creators,
             sourceWorks = sourceWorks,
             watches = watches,
             discoveries = discoveries,
+            canonicalWorks = canonicalWorks,
+            workDecisions = workDecisions,
         ).takeIf {
             it.creators.isNotEmpty() || it.sourceWorks.isNotEmpty() || it.watches.isNotEmpty() ||
-                it.discoveries.isNotEmpty()
+                it.discoveries.isNotEmpty() || it.canonicalWorks.isNotEmpty() || it.workDecisions.isNotEmpty()
         }
     }
 
@@ -176,6 +196,44 @@ class SqlDelightAuthorArchiveBackupContributor(
             }
             validated.sourceWorks.forEach { work ->
                 restoreSourceWork(work, creatorIds, now)
+            }
+            validated.canonicalWorks.forEach { work ->
+                author_archiveQueries.upsertArchiveCanonicalWorkFromBackup(
+                    portableKey = work.portableKey,
+                    primaryTitle = work.primaryTitle,
+                    normalizedTitle = CreatorNameNormalizer.normalize(work.primaryTitle),
+                    createdAt = now,
+                    lastModifiedAt = now,
+                )
+            }
+            validated.workDecisions.forEach { decision ->
+                val restoreKey = listOf(
+                    "restore",
+                    decision.sourceId,
+                    decision.stableSourceUrl,
+                    decision.workPortableKey,
+                    decision.state,
+                ).joinToString(":")
+                val sourceWorkId = author_archiveQueries.getArchiveSourceWorkByKey(
+                    decision.sourceId,
+                    decision.stableSourceUrl,
+                ).executeAsOne()._id
+                val workId = author_archiveQueries.getArchiveCanonicalWorkIdByPortableKey(
+                    decision.workPortableKey,
+                ).executeAsOne()
+                author_archiveQueries.upsertArchiveWorkDecision(
+                    sourceWorkId = sourceWorkId,
+                    workId = workId,
+                    state = decision.state,
+                    actor = "RESTORE",
+                    explicit = true,
+                    algorithmVersion = null,
+                    score = decision.score,
+                    evidence = decision.evidence,
+                    decidedAt = decision.decidedAt,
+                    idempotencyKey = restoreKey,
+                )
+                reconcileArchiveCanonicalVersion(sourceWorkId)
             }
             validated.watches.forEach { watch ->
                 restoreWatch(watch, creatorIds.getValue(watch.creatorPortableKey), now)
@@ -347,6 +405,12 @@ class SqlDelightAuthorArchiveBackupContributor(
                         ?: discovery.stableSourceUrl.trim(),
                 )
             },
+            workDecisions = section.workDecisions.map { decision ->
+                decision.copy(
+                    stableSourceUrl = portableUrls[decision.sourceId to decision.stableSourceUrl]
+                        ?: decision.stableSourceUrl.trim(),
+                )
+            },
         )
         val creators = normalizedSection.creators.associateBy(BackupCreatorIdentity::portableKey)
         require(creators.size == normalizedSection.creators.size) { "Duplicate creator portable key" }
@@ -431,6 +495,31 @@ class SqlDelightAuthorArchiveBackupContributor(
             enumValueOf<ReviewDisposition>(discovery.reviewDisposition)
             require(discovery.reason.isNotBlank()) { "Discovery reason must not be blank" }
             require(discovery.baselineGeneration >= 0) { "Discovery baseline generation is invalid" }
+        }
+        val canonicalKeys = normalizedSection.canonicalWorks.map(BackupAuthorCanonicalWork::portableKey)
+        require(canonicalKeys.distinct().size == canonicalKeys.size) { "Duplicate canonical work portable key" }
+        normalizedSection.canonicalWorks.forEach { work ->
+            require(work.portableKey.isNotBlank()) { "Canonical work portable key must not be blank" }
+            require(work.primaryTitle.isNotBlank()) { "Canonical work title must not be blank" }
+        }
+        require(
+            normalizedSection.workDecisions.distinctBy {
+                Triple(it.sourceId to it.stableSourceUrl, it.workPortableKey, it.state)
+            }.size == normalizedSection.workDecisions.size,
+        ) { "Duplicate work decision" }
+        normalizedSection.workDecisions.forEach { decision ->
+            require(decision.sourceId to decision.stableSourceUrl in sourceWorkKeys) {
+                "Work decision references an unknown source work"
+            }
+            require(decision.workPortableKey in canonicalKeys) { "Work decision references an unknown canonical work" }
+            require(
+                WorkDecisionState.valueOf(decision.state) in
+                    setOf(WorkDecisionState.CONFIRMED, WorkDecisionState.REJECTED),
+            ) {
+                "Only confirmed or rejected manual work decisions are portable"
+            }
+            require(decision.score == null || decision.score in 0.0..1.0) { "Work decision score is invalid" }
+            require(decision.evidence.isNotBlank()) { "Work decision evidence must not be blank" }
         }
         return normalizedSection
     }

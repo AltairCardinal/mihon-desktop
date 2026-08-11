@@ -302,9 +302,6 @@ dependencies {
     // Shizuku
     implementation(libs.bundles.shizuku)
 
-    // String similarity
-    implementation(libs.stringSimilarity)
-
     // Tests
     testImplementation(libs.bundles.test)
     testImplementation(libs.okhttp.mockwebserver)

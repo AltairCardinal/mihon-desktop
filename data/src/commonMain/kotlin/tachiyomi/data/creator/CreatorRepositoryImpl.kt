@@ -53,6 +53,7 @@ import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WatchBaselineState
 import tachiyomi.domain.creator.model.WatchSourceBaseline
 import tachiyomi.domain.creator.model.WorkDecisionContract
+import tachiyomi.domain.creator.model.WorkDecisionProjection
 import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.model.WorkMatchState
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
@@ -1274,6 +1275,30 @@ class CreatorRepositoryImpl(
             )
             reconcileArchiveCanonicalVersion(sourceWorkId)
             ArchiveAppendOutcome.Inserted(decision)
+        }
+    }
+
+    override suspend fun getWorkDecisions(sourceWork: SourceWorkNaturalKey): List<WorkDecisionProjection> {
+        bootstrap.awaitReady()
+        return handler.awaitList {
+            author_archiveQueries.getArchiveWorkDecisionProjections(
+                sourceId = sourceWork.sourceId,
+                stableSourceUrl = sourceWork.stableSourceUrl,
+            ) { workId, portableKey, title, state, actor, explicit, score, evidence, decidedAt ->
+                WorkDecisionProjection(
+                    workId = workId,
+                    workPortableKey = portableKey,
+                    workTitle = title,
+                    decision = WorkDecisionContract(
+                        state = WorkDecisionState.valueOf(state),
+                        actor = DecisionActor.valueOf(actor),
+                        explicit = explicit,
+                    ),
+                    score = score,
+                    evidence = evidence,
+                    decidedAt = decidedAt,
+                )
+            }
         }
     }
 

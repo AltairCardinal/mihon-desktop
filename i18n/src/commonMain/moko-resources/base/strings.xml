@@ -1598,6 +1598,12 @@
     <string name="desktop_ui_source_id">%1$s · Source %2$d</string>
     <string name="desktop_ui_role_confidence">%1$s · %2$s · Confidence %3$s</string>
     <string name="desktop_ui_work_comparison">Work comparison</string>
+    <string name="desktop_ui_work_decision">Decision: %1$s · %2$s</string>
+    <string name="desktop_ui_work_has_no_manual_decision">No manual decision yet. Similarity is a suggestion only.</string>
+    <string name="desktop_ui_work_match_evidence">%1$s match · %2$s</string>
+    <string name="desktop_ui_confirm_same_work">Same work</string>
+    <string name="desktop_ui_reject_same_work">Keep separate</string>
+    <string name="desktop_ui_confirm_singleton_work">Create standalone work</string>
     <string name="desktop_ui_source_language_state">%1$s · %2$s · %3$s</string>
     <string name="desktop_ui_author_value">Author: %1$s</string>
     <string name="desktop_ui_artist_value">Artist: %1$s</string>

@@ -62,6 +62,7 @@ import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
+import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.service.CreatorLibraryIndexer
 import tachiyomi.domain.history.repository.HistoryRepository
@@ -147,6 +148,7 @@ data class DesktopUiDependencies(
     val trackerServiceRegistry: TrackerServiceRegistry = DesktopTrackerServiceRegistry(),
     val trackerOAuthCallbackBroker: DesktopTrackerOAuthCallbackBroker = DesktopTrackerOAuthCallbackBroker(),
     val creatorArchiveRepository: CreatorArchiveRepository? = null,
+    val creatorRepository: CreatorRepository? = null,
     val manageCreatorIdentity: ManageCreatorIdentity? = creatorArchiveRepository?.let(::ManageCreatorIdentity),
     val creatorLibraryIndexer: CreatorLibraryIndexer? = null,
     val creatorDiscoveryScheduler: CreatorDiscoveryScheduler? = null,
@@ -234,6 +236,7 @@ data class DesktopUiDependencies(
                 trackerServiceRegistry = Injekt.get(),
                 trackerOAuthCallbackBroker = Injekt.get(),
                 creatorArchiveRepository = Injekt.get(),
+                creatorRepository = Injekt.get(),
                 creatorLibraryIndexer = Injekt.get(),
                 creatorDiscoveryScheduler = Injekt.get(),
                 updateController = Injekt.get(),

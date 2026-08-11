@@ -52,6 +52,9 @@ class AuthorArchiveBackupContributorTest {
                     "WHERE read_state = 'SEEN' AND review_disposition = 'IGNORED'",
             ) shouldBe 1L
             target.long("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 0L
+            target.long("SELECT COUNT(*) FROM author_archive_canonical_works") shouldBe 2L
+            target.long("SELECT COUNT(*) FROM author_archive_work_decisions WHERE actor = 'RESTORE'") shouldBe 2L
+            target.long("SELECT COUNT(*) FROM author_archive_canonical_versions") shouldBe 1L
             target.long(
                 "SELECT COUNT(*) FROM author_archive_watch_result_policies " +
                     "WHERE include_probable = 1 AND notify_probable = 1",
@@ -208,6 +211,22 @@ class AuthorArchiveBackupContributorTest {
                     "origin, verification, confidence, evidence, created_at, last_modified_at) VALUES " +
                     "(1, 1, 'AUTHOR', 0, 'USER', 'VERIFIED', 1, 'split a', 1, 1), " +
                     "(2, 2, 'AUTHOR', 0, 'USER', 'VERIFIED', 1, 'split b', 1, 1)",
+                0,
+            )
+            driver.execute(
+                null,
+                "INSERT INTO author_archive_canonical_works(_id, portable_key, primary_title, normalized_title, " +
+                    "status, created_at, last_modified_at) VALUES " +
+                    "(1, 'work-one', 'One', 'one', 'ACTIVE', 1, 1), " +
+                    "(2, 'work-two', 'Two', 'two', 'ACTIVE', 1, 1)",
+                0,
+            )
+            driver.execute(
+                null,
+                "INSERT INTO author_archive_work_decisions(source_work_id, work_id, state, actor, explicit, score, " +
+                    "evidence, decided_at, idempotency_key) VALUES " +
+                    "(1, 1, 'CONFIRMED', 'USER', 1, 1, 'same work', 2, 'backup-confirmed'), " +
+                    "(2, 2, 'REJECTED', 'USER', 1, 0.8, 'keep separate', 3, 'backup-rejected')",
                 0,
             )
             driver.execute(
