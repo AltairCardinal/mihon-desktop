@@ -1,0 +1,1387 @@
+import kotlin.Boolean;
+
+CREATE TABLE author_archive_creators(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    portable_key TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL,
+    sort_name TEXT,
+    status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'MERGED', 'DELETED')),
+    merged_into_creator_id INTEGER,
+    needs_review INTEGER AS Boolean NOT NULL DEFAULT 0,
+    legacy_creator_id INTEGER UNIQUE,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    FOREIGN KEY(merged_into_creator_id) REFERENCES author_archive_creators(_id) ON DELETE RESTRICT,
+    CHECK(
+        (status = 'MERGED' AND merged_into_creator_id IS NOT NULL) OR
+        (status IN ('ACTIVE', 'DELETED') AND merged_into_creator_id IS NULL)
+    )
+);
+
+CREATE INDEX idx_author_archive_creators_normalized_name
+ON author_archive_creators(normalized_name);
+CREATE INDEX idx_author_archive_creators_status
+ON author_archive_creators(status);
+CREATE INDEX idx_author_archive_creators_merged_into
+ON author_archive_creators(merged_into_creator_id);
+
+CREATE TABLE author_archive_aliases(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    creator_id INTEGER NOT NULL,
+    raw_alias TEXT NOT NULL,
+    normalized_alias TEXT NOT NULL,
+    source TEXT NOT NULL,
+    evidence TEXT NOT NULL,
+    confidence REAL NOT NULL CHECK(confidence >= 0.0 AND confidence <= 1.0),
+    is_manual INTEGER AS Boolean NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    UNIQUE(creator_id, normalized_alias),
+    FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_aliases_normalized
+ON author_archive_aliases(normalized_alias);
+CREATE INDEX idx_author_archive_aliases_creator
+ON author_archive_aliases(creator_id);
+
+CREATE TABLE author_archive_manga_links(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    manga_id INTEGER NOT NULL,
+    creator_id INTEGER NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('AUTHOR', 'ARTIST', 'BOTH', 'UNKNOWN')),
+    creator_order INTEGER NOT NULL,
+    origin TEXT NOT NULL CHECK(origin IN ('AUTOMATIC', 'USER', 'MIGRATION', 'RESTORE')),
+    source_text TEXT,
+    confidence REAL NOT NULL CHECK(confidence >= 0.0 AND confidence <= 1.0),
+    evidence TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    UNIQUE(manga_id, creator_id),
+    FOREIGN KEY(manga_id) REFERENCES mangas(_id) ON DELETE CASCADE,
+    FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_manga_links_creator
+ON author_archive_manga_links(creator_id);
+CREATE INDEX idx_author_archive_manga_links_manga_order
+ON author_archive_manga_links(manga_id, creator_order);
+
+CREATE TABLE author_archive_source_works(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    source_id INTEGER NOT NULL,
+    stable_source_url TEXT NOT NULL CHECK(length(trim(stable_source_url)) > 0),
+    manga_id INTEGER,
+    title TEXT NOT NULL,
+    normalized_title TEXT NOT NULL,
+    author_text TEXT,
+    artist_text TEXT,
+    thumbnail_url TEXT,
+    first_seen_at INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL,
+    details_fetched_at INTEGER,
+    legacy_candidate_id INTEGER UNIQUE,
+    legacy_review_snapshot TEXT CHECK(
+        legacy_review_snapshot IS NULL OR
+        legacy_review_snapshot IN ('PENDING', 'ACCEPTED', 'IGNORED', 'MERGED')
+    ),
+    UNIQUE(source_id, stable_source_url),
+    FOREIGN KEY(manga_id) REFERENCES mangas(_id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_author_archive_source_works_manga
+ON author_archive_source_works(manga_id);
+CREATE INDEX idx_author_archive_source_works_title
+ON author_archive_source_works(normalized_title);
+CREATE INDEX idx_author_archive_source_works_last_seen
+ON author_archive_source_works(last_seen_at);
+
+CREATE TABLE author_archive_source_work_creators(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    source_work_id INTEGER NOT NULL,
+    creator_id INTEGER NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('AUTHOR', 'ARTIST', 'BOTH', 'UNKNOWN')),
+    creator_order INTEGER NOT NULL,
+    origin TEXT NOT NULL CHECK(origin IN ('AUTOMATIC', 'USER', 'MIGRATION', 'RESTORE')),
+    verification TEXT NOT NULL CHECK(verification IN ('POSSIBLE', 'VERIFIED')),
+    source_text TEXT,
+    confidence REAL NOT NULL CHECK(confidence >= 0.0 AND confidence <= 1.0),
+    evidence TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    UNIQUE(source_work_id, creator_id),
+    FOREIGN KEY(source_work_id) REFERENCES author_archive_source_works(_id) ON DELETE CASCADE,
+    FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_source_work_creators_creator
+ON author_archive_source_work_creators(creator_id);
+CREATE INDEX idx_author_archive_source_work_creators_work_order
+ON author_archive_source_work_creators(source_work_id, creator_order);
+
+CREATE TABLE author_archive_watches(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    creator_id INTEGER NOT NULL UNIQUE,
+    enabled INTEGER AS Boolean NOT NULL,
+    period_millis INTEGER NOT NULL,
+    lease_owner TEXT,
+    lease_expires_at INTEGER,
+    last_checked_at INTEGER,
+    last_success_at INTEGER,
+    last_error TEXT,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE CASCADE,
+    CHECK((lease_owner IS NULL) = (lease_expires_at IS NULL))
+);
+
+CREATE INDEX idx_author_archive_watches_due
+ON author_archive_watches(enabled, last_success_at);
+CREATE INDEX idx_author_archive_watches_lease
+ON author_archive_watches(lease_expires_at);
+
+CREATE TABLE author_archive_watch_sources(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    watch_id INTEGER NOT NULL,
+    source_id INTEGER NOT NULL,
+    baseline_state TEXT NOT NULL CHECK(baseline_state IN ('NEEDS_BASELINE', 'BASELINED')),
+    baseline_generation INTEGER NOT NULL,
+    next_due_at INTEGER,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    UNIQUE(watch_id, source_id),
+    FOREIGN KEY(watch_id) REFERENCES author_archive_watches(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_watch_sources_due
+ON author_archive_watch_sources(next_due_at, watch_id);
+
+CREATE TABLE author_archive_watch_result_policies(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    watch_id INTEGER NOT NULL UNIQUE,
+    include_probable INTEGER AS Boolean NOT NULL,
+    include_unknown INTEGER AS Boolean NOT NULL,
+    notify_probable INTEGER AS Boolean NOT NULL,
+    notify_unknown INTEGER AS Boolean NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    FOREIGN KEY(watch_id) REFERENCES author_archive_watches(_id) ON DELETE CASCADE
+);
+
+CREATE TABLE author_archive_watch_languages(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    policy_id INTEGER NOT NULL,
+    language_tag TEXT NOT NULL,
+    UNIQUE(policy_id, language_tag),
+    FOREIGN KEY(policy_id) REFERENCES author_archive_watch_result_policies(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_watch_languages_tag
+ON author_archive_watch_languages(language_tag);
+
+CREATE TABLE author_archive_runs(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    run_key TEXT NOT NULL UNIQUE,
+    watch_id INTEGER NOT NULL,
+    state TEXT NOT NULL CHECK(state IN ('QUEUED', 'RUNNING', 'PARTIAL', 'SUCCEEDED', 'FAILED', 'CANCELLED')),
+    completed_sources INTEGER NOT NULL,
+    total_sources INTEGER NOT NULL,
+    truncated INTEGER AS Boolean NOT NULL,
+    error_code TEXT,
+    error_message TEXT,
+    queued_at INTEGER NOT NULL,
+    started_at INTEGER,
+    finished_at INTEGER,
+    FOREIGN KEY(watch_id) REFERENCES author_archive_watches(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_runs_watch_state
+ON author_archive_runs(watch_id, state, queued_at);
+
+CREATE TABLE author_archive_source_checkpoints(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    watch_id INTEGER NOT NULL,
+    source_id INTEGER NOT NULL,
+    cursor TEXT,
+    result_state TEXT NOT NULL CHECK(result_state IN ('NEVER', 'SUCCESS', 'EMPTY', 'TRUNCATED', 'FAILED', 'CANCELLED')),
+    consecutive_failures INTEGER NOT NULL,
+    backoff_until INTEGER,
+    last_checked_at INTEGER,
+    last_success_at INTEGER,
+    error_code TEXT,
+    error_message TEXT,
+    UNIQUE(watch_id, source_id),
+    FOREIGN KEY(watch_id) REFERENCES author_archive_watches(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_source_checkpoints_backoff
+ON author_archive_source_checkpoints(backoff_until, watch_id);
+
+CREATE TABLE author_archive_discoveries(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    watch_id INTEGER NOT NULL,
+    source_work_id INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('NEW_WORK_CANDIDATE', 'NEW_SOURCE_VERSION')),
+    reason TEXT NOT NULL,
+    baseline_generation INTEGER NOT NULL,
+    read_state TEXT NOT NULL CHECK(read_state IN ('UNSEEN', 'SEEN')),
+    review_disposition TEXT NOT NULL CHECK(review_disposition IN ('PENDING', 'ACCEPTED', 'IGNORED')),
+    first_discovered_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    UNIQUE(watch_id, source_work_id),
+    FOREIGN KEY(watch_id) REFERENCES author_archive_watches(_id) ON DELETE CASCADE,
+    FOREIGN KEY(source_work_id) REFERENCES author_archive_source_works(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_discoveries_feed
+ON author_archive_discoveries(watch_id, read_state, first_discovered_at DESC);
+CREATE INDEX idx_author_archive_discoveries_review
+ON author_archive_discoveries(review_disposition, first_discovered_at DESC);
+
+CREATE TABLE author_archive_canonical_works(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    portable_key TEXT NOT NULL UNIQUE,
+    primary_title TEXT NOT NULL,
+    normalized_title TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'DELETED')),
+    legacy_work_id INTEGER UNIQUE,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL
+);
+
+CREATE INDEX idx_author_archive_canonical_works_title
+ON author_archive_canonical_works(normalized_title);
+
+CREATE TABLE author_archive_canonical_creators(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    work_id INTEGER NOT NULL,
+    creator_id INTEGER NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('AUTHOR', 'ARTIST', 'BOTH', 'UNKNOWN')),
+    creator_order INTEGER NOT NULL,
+    origin TEXT NOT NULL CHECK(origin IN ('ALGORITHM', 'USER', 'MIGRATION', 'RESTORE')),
+    evidence TEXT NOT NULL,
+    UNIQUE(work_id, creator_id),
+    FOREIGN KEY(work_id) REFERENCES author_archive_canonical_works(_id) ON DELETE CASCADE,
+    FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_canonical_creators_creator
+ON author_archive_canonical_creators(creator_id);
+
+CREATE TABLE author_archive_canonical_versions(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    work_id INTEGER NOT NULL,
+    source_work_id INTEGER NOT NULL UNIQUE,
+    confirmation TEXT NOT NULL CHECK(confirmation IN ('CONFIRMED', 'RESTORED')),
+    evidence TEXT NOT NULL,
+    confirmed_at INTEGER NOT NULL,
+    FOREIGN KEY(work_id) REFERENCES author_archive_canonical_works(_id) ON DELETE CASCADE,
+    FOREIGN KEY(source_work_id) REFERENCES author_archive_source_works(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_canonical_versions_work
+ON author_archive_canonical_versions(work_id);
+
+CREATE TABLE author_archive_work_decisions(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    source_work_id INTEGER NOT NULL,
+    work_id INTEGER NOT NULL,
+    state TEXT NOT NULL CHECK(state IN ('SUGGESTED', 'CONFIRMED', 'REJECTED')),
+    actor TEXT NOT NULL CHECK(actor IN ('ALGORITHM', 'USER', 'RESTORE')),
+    explicit INTEGER AS Boolean NOT NULL,
+    algorithm_version TEXT,
+    score REAL,
+    evidence TEXT NOT NULL,
+    decided_at INTEGER NOT NULL,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    FOREIGN KEY(source_work_id) REFERENCES author_archive_source_works(_id) ON DELETE CASCADE,
+    FOREIGN KEY(work_id) REFERENCES author_archive_canonical_works(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_work_decisions_pair
+ON author_archive_work_decisions(source_work_id, work_id, decided_at DESC);
+CREATE INDEX idx_author_archive_work_decisions_state
+ON author_archive_work_decisions(state, decided_at DESC);
+
+CREATE TABLE author_archive_language_assertions(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    subject_type TEXT NOT NULL CHECK(subject_type IN ('SOURCE_WORK', 'CANONICAL_WORK', 'CREATOR')),
+    subject_key TEXT NOT NULL,
+    dimension TEXT NOT NULL CHECK(dimension IN ('READING', 'ORIGINAL')),
+    language_tag TEXT NOT NULL,
+    confidence REAL NOT NULL CHECK(confidence >= 0.0 AND confidence <= 1.0),
+    evidence_kind TEXT NOT NULL CHECK(
+        evidence_kind IN ('UNKNOWN', 'TEXT_DETECTION', 'SINGLE_LANGUAGE_SOURCE', 'SOURCE_FILTER_OR_TAG', 'STRUCTURED_METADATA', 'MANUAL')
+    ),
+    evidence_payload TEXT NOT NULL,
+    actor TEXT NOT NULL CHECK(actor IN ('ALGORITHM', 'USER', 'RESTORE')),
+    algorithm_version TEXT,
+    withdrawn INTEGER AS Boolean NOT NULL,
+    asserted_at INTEGER NOT NULL,
+    idempotency_key TEXT NOT NULL UNIQUE
+);
+
+CREATE INDEX idx_author_archive_language_assertions_subject
+ON author_archive_language_assertions(subject_type, subject_key, dimension, withdrawn, asserted_at DESC);
+CREATE INDEX idx_author_archive_language_assertions_tag
+ON author_archive_language_assertions(dimension, language_tag, withdrawn);
+
+CREATE TABLE author_archive_chapter_variants(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    source_work_id INTEGER NOT NULL,
+    chapter_natural_key TEXT NOT NULL,
+    volume_number REAL,
+    chapter_number REAL,
+    part_number REAL,
+    variant_type TEXT NOT NULL CHECK(variant_type IN ('REGULAR', 'EXTRA', 'OMAKE', 'SPECIAL', 'UNKNOWN')),
+    raw_name TEXT NOT NULL,
+    evidence TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    UNIQUE(source_work_id, chapter_natural_key),
+    FOREIGN KEY(source_work_id) REFERENCES author_archive_source_works(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_chapter_variants_work_order
+ON author_archive_chapter_variants(source_work_id, volume_number, chapter_number, part_number);
+
+CREATE TABLE author_archive_notification_outbox(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    discovery_id INTEGER NOT NULL,
+    channel TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    attempt_count INTEGER NOT NULL,
+    state TEXT NOT NULL CHECK(state IN ('PENDING', 'DELIVERED', 'FAILED', 'CANCELLED')),
+    last_error TEXT,
+    next_attempt_at INTEGER,
+    created_at INTEGER NOT NULL,
+    last_attempt_at INTEGER,
+    delivered_at INTEGER,
+    FOREIGN KEY(discovery_id) REFERENCES author_archive_discoveries(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_notification_outbox_pending
+ON author_archive_notification_outbox(state, next_attempt_at, created_at);
+
+CREATE TABLE author_archive_legacy_import_state(
+    entity_type TEXT NOT NULL,
+    legacy_key TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    imported_at INTEGER NOT NULL,
+    PRIMARY KEY(entity_type, legacy_key)
+);
+
+CREATE INDEX idx_author_archive_legacy_import_state_imported
+ON author_archive_legacy_import_state(imported_at);
+
+getArchiveCreator:
+SELECT
+    C._id,
+    C.display_name,
+    C.normalized_name,
+    C.sort_name,
+    coalesce((
+        SELECT group_concat(ORDERED_ALIAS.encoded_alias, ',')
+        FROM (
+            SELECT hex(A.raw_alias) AS encoded_alias
+            FROM author_archive_aliases A
+            WHERE A.creator_id = C._id
+            ORDER BY A.is_manual DESC, A._id
+        ) ORDERED_ALIAS
+    ), '') AS aliases,
+    C.created_at,
+    C.last_modified_at
+FROM author_archive_creators C
+WHERE C._id = :id
+AND C.status != 'DELETED';
+
+getArchiveCreatorsByAlias:
+SELECT
+    C._id,
+    C.display_name,
+    C.normalized_name,
+    C.sort_name,
+    coalesce((
+        SELECT group_concat(ORDERED_ALIAS.encoded_alias, ',')
+        FROM (
+            SELECT hex(A.raw_alias) AS encoded_alias
+            FROM author_archive_aliases A
+            WHERE A.creator_id = C._id
+            ORDER BY A.is_manual DESC, A._id
+        ) ORDERED_ALIAS
+    ), '') AS aliases,
+    C.created_at,
+    C.last_modified_at
+FROM author_archive_creators C
+WHERE EXISTS(
+    SELECT 1
+    FROM author_archive_aliases MATCHED_ALIAS
+    WHERE MATCHED_ALIAS.creator_id = C._id
+    AND MATCHED_ALIAS.normalized_alias = :normalizedAlias
+)
+AND C.status = 'ACTIVE'
+ORDER BY C._id;
+
+getArchiveCreators:
+SELECT
+    C._id,
+    C.display_name,
+    C.normalized_name,
+    C.sort_name,
+    coalesce((
+        SELECT group_concat(ORDERED_ALIAS.encoded_alias, ',')
+        FROM (
+            SELECT hex(A.raw_alias) AS encoded_alias
+            FROM author_archive_aliases A
+            WHERE A.creator_id = C._id
+            ORDER BY A.is_manual DESC, A._id
+        ) ORDERED_ALIAS
+    ), '') AS aliases,
+    C.created_at,
+    C.last_modified_at
+FROM author_archive_creators C
+WHERE C.status = 'ACTIVE'
+ORDER BY C.sort_name COLLATE NOCASE, C.display_name COLLATE NOCASE, C._id;
+
+getArchiveCreatorIdByLegacyId:
+SELECT _id
+FROM author_archive_creators
+WHERE legacy_creator_id = :legacyCreatorId;
+
+getArchiveCreatorIdByPortableKey:
+SELECT _id
+FROM author_archive_creators
+WHERE portable_key = :portableKey;
+
+insertArchiveCreator:
+INSERT INTO author_archive_creators(
+    portable_key,
+    display_name,
+    normalized_name,
+    sort_name,
+    status,
+    merged_into_creator_id,
+    needs_review,
+    legacy_creator_id,
+    created_at,
+    last_modified_at
+)
+VALUES (:portableKey, :displayName, :normalizedName, :sortName, 'ACTIVE', NULL, 0, NULL, :createdAt, :lastModifiedAt);
+
+insertArchiveCreatorFromLegacy:
+INSERT INTO author_archive_creators(
+    portable_key,
+    display_name,
+    normalized_name,
+    sort_name,
+    status,
+    merged_into_creator_id,
+    needs_review,
+    legacy_creator_id,
+    created_at,
+    last_modified_at
+)
+VALUES (
+    :portableKey,
+    :displayName,
+    :normalizedName,
+    :sortName,
+    'ACTIVE',
+    NULL,
+    0,
+    :legacyCreatorId,
+    :createdAt,
+    :lastModifiedAt
+);
+
+markArchiveCreatorNeedsReview:
+UPDATE author_archive_creators
+SET needs_review = 1,
+    last_modified_at = max(last_modified_at, :lastModifiedAt)
+WHERE _id = :id
+AND status = 'ACTIVE';
+
+updateArchiveCreator:
+UPDATE author_archive_creators
+SET display_name = :displayName,
+    normalized_name = :normalizedName,
+    sort_name = :sortName,
+    last_modified_at = :lastModifiedAt
+WHERE _id = :id
+AND status = 'ACTIVE';
+
+upsertArchiveAlias:
+INSERT INTO author_archive_aliases(
+    creator_id,
+    raw_alias,
+    normalized_alias,
+    source,
+    evidence,
+    confidence,
+    is_manual,
+    created_at,
+    last_modified_at
+)
+VALUES (
+    :creatorId,
+    :rawAlias,
+    :normalizedAlias,
+    :source,
+    :evidence,
+    :confidence,
+    :isManual,
+    :createdAt,
+    :lastModifiedAt
+)
+ON CONFLICT(creator_id, normalized_alias)
+DO UPDATE SET
+    raw_alias = CASE WHEN author_archive_aliases.is_manual THEN author_archive_aliases.raw_alias ELSE excluded.raw_alias END,
+    source = CASE WHEN author_archive_aliases.is_manual THEN author_archive_aliases.source ELSE excluded.source END,
+    evidence = CASE WHEN author_archive_aliases.is_manual THEN author_archive_aliases.evidence ELSE excluded.evidence END,
+    confidence = max(author_archive_aliases.confidence, excluded.confidence),
+    is_manual = author_archive_aliases.is_manual OR excluded.is_manual,
+    last_modified_at = excluded.last_modified_at;
+
+selectArchiveLastInsertedRowId:
+SELECT last_insert_rowid();
+
+upsertArchiveMangaLink:
+INSERT INTO author_archive_manga_links(
+    manga_id,
+    creator_id,
+    role,
+    creator_order,
+    origin,
+    source_text,
+    confidence,
+    evidence,
+    created_at,
+    last_modified_at
+)
+VALUES (
+    :mangaId,
+    :creatorId,
+    :role,
+    :creatorOrder,
+    :origin,
+    :sourceText,
+    :confidence,
+    :evidence,
+    :createdAt,
+    :lastModifiedAt
+)
+ON CONFLICT(manga_id, creator_id)
+DO UPDATE SET
+    role = CASE
+        WHEN author_archive_manga_links.origin IN ('USER', 'RESTORE') AND excluded.origin != 'USER'
+            THEN author_archive_manga_links.role
+        ELSE excluded.role
+    END,
+    creator_order = CASE
+        WHEN author_archive_manga_links.origin IN ('USER', 'RESTORE') AND excluded.origin != 'USER'
+            THEN author_archive_manga_links.creator_order
+        ELSE excluded.creator_order
+    END,
+    origin = CASE
+        WHEN author_archive_manga_links.origin IN ('USER', 'RESTORE') AND excluded.origin != 'USER'
+            THEN author_archive_manga_links.origin
+        ELSE excluded.origin
+    END,
+    source_text = CASE
+        WHEN author_archive_manga_links.origin IN ('USER', 'RESTORE') AND excluded.origin != 'USER'
+            THEN author_archive_manga_links.source_text
+        ELSE excluded.source_text
+    END,
+    confidence = CASE
+        WHEN author_archive_manga_links.origin IN ('USER', 'RESTORE') AND excluded.origin != 'USER'
+            THEN author_archive_manga_links.confidence
+        ELSE excluded.confidence
+    END,
+    evidence = CASE
+        WHEN author_archive_manga_links.origin IN ('USER', 'RESTORE') AND excluded.origin != 'USER'
+            THEN author_archive_manga_links.evidence
+        ELSE excluded.evidence
+    END,
+    last_modified_at = CASE
+        WHEN author_archive_manga_links.origin IN ('USER', 'RESTORE') AND excluded.origin != 'USER'
+            THEN author_archive_manga_links.last_modified_at
+        ELSE excluded.last_modified_at
+    END;
+
+getArchiveMangaCreatorsForCreator:
+SELECT manga_id, creator_id, role, source_text, confidence, evidence
+FROM author_archive_manga_links
+WHERE creator_id = :creatorId
+ORDER BY manga_id, creator_order;
+
+getArchiveMangaLink:
+SELECT role, origin, source_text, confidence, evidence, last_modified_at
+FROM author_archive_manga_links
+WHERE manga_id = :mangaId
+AND creator_id = :creatorId;
+
+getArchiveSourceWorkByKey:
+SELECT *
+FROM author_archive_source_works
+WHERE source_id = :sourceId
+AND stable_source_url = :stableSourceUrl;
+
+getArchiveSourceWorkById:
+SELECT *
+FROM author_archive_source_works
+WHERE _id = :id;
+
+getArchiveSourceWorkIdByLegacyId:
+SELECT _id
+FROM author_archive_source_works
+WHERE legacy_candidate_id = :legacyCandidateId;
+
+getArchiveSourceWorkByManga:
+SELECT *
+FROM author_archive_source_works
+WHERE manga_id = :mangaId
+ORDER BY _id
+LIMIT 1;
+
+getMangaSourceWorkSeed:
+SELECT source, url, title, author, artist, thumbnail_url
+FROM mangas
+WHERE _id = :mangaId;
+
+insertArchiveSourceWork:
+INSERT INTO author_archive_source_works(
+    source_id,
+    stable_source_url,
+    manga_id,
+    title,
+    normalized_title,
+    author_text,
+    artist_text,
+    thumbnail_url,
+    first_seen_at,
+    last_seen_at,
+    details_fetched_at,
+    legacy_candidate_id,
+    legacy_review_snapshot
+)
+VALUES (
+    :sourceId,
+    :stableSourceUrl,
+    :mangaId,
+    :title,
+    :normalizedTitle,
+    :authorText,
+    :artistText,
+    :thumbnailUrl,
+    :firstSeenAt,
+    :lastSeenAt,
+    :detailsFetchedAt,
+    NULL,
+    :legacyReviewSnapshot
+);
+
+insertArchiveSourceWorkFromLegacy:
+INSERT INTO author_archive_source_works(
+    source_id,
+    stable_source_url,
+    manga_id,
+    title,
+    normalized_title,
+    author_text,
+    artist_text,
+    thumbnail_url,
+    first_seen_at,
+    last_seen_at,
+    details_fetched_at,
+    legacy_candidate_id,
+    legacy_review_snapshot
+)
+VALUES (
+    :sourceId,
+    :stableSourceUrl,
+    NULL,
+    :title,
+    :normalizedTitle,
+    :authorText,
+    :artistText,
+    :thumbnailUrl,
+    :firstSeenAt,
+    :lastSeenAt,
+    :detailsFetchedAt,
+    :legacyCandidateId,
+    :legacyReviewSnapshot
+);
+
+attachArchiveLegacyCandidateId:
+UPDATE author_archive_source_works
+SET legacy_candidate_id = :legacyCandidateId
+WHERE _id = :id
+AND legacy_candidate_id IS NULL;
+
+updateArchiveSourceWorkFromLegacyBridge:
+UPDATE author_archive_source_works
+SET title = :title,
+    normalized_title = :normalizedTitle,
+    author_text = :authorText,
+    artist_text = :artistText,
+    thumbnail_url = :thumbnailUrl,
+    first_seen_at = min(first_seen_at, :firstSeenAt),
+    last_seen_at = max(last_seen_at, :lastSeenAt),
+    details_fetched_at = coalesce(:detailsFetchedAt, details_fetched_at),
+    legacy_candidate_id = coalesce(legacy_candidate_id, :legacyCandidateId)
+WHERE _id = :id;
+
+updateArchiveSourceWorkReviewFromLegacyBridge:
+UPDATE author_archive_source_works
+SET legacy_review_snapshot = CASE
+        WHEN legacy_review_snapshot IN ('ACCEPTED', 'IGNORED', 'MERGED')
+            AND :legacyReviewSnapshot = 'PENDING'
+            THEN legacy_review_snapshot
+        ELSE :legacyReviewSnapshot
+    END
+WHERE _id = :id;
+
+updateArchiveSourceWorkMetadata:
+UPDATE author_archive_source_works
+SET manga_id = coalesce(:mangaId, manga_id),
+    title = :title,
+    normalized_title = :normalizedTitle,
+    author_text = :authorText,
+    artist_text = :artistText,
+    thumbnail_url = :thumbnailUrl,
+    last_seen_at = :lastSeenAt,
+    details_fetched_at = coalesce(:detailsFetchedAt, details_fetched_at)
+WHERE _id = :id;
+
+updateArchiveSourceWorkLegacyReviewSnapshot:
+UPDATE author_archive_source_works
+SET legacy_review_snapshot = CASE
+        WHEN legacy_review_snapshot IN ('ACCEPTED', 'IGNORED', 'MERGED')
+            AND :legacyReviewSnapshot = 'PENDING'
+            THEN legacy_review_snapshot
+        ELSE :legacyReviewSnapshot
+    END
+WHERE _id = :id;
+
+upsertArchiveSourceWorkCreator:
+INSERT INTO author_archive_source_work_creators(
+    source_work_id,
+    creator_id,
+    role,
+    creator_order,
+    origin,
+    verification,
+    source_text,
+    confidence,
+    evidence,
+    created_at,
+    last_modified_at
+)
+VALUES (
+    :sourceWorkId,
+    :creatorId,
+    :role,
+    :creatorOrder,
+    :origin,
+    :verification,
+    :sourceText,
+    :confidence,
+    :evidence,
+    :createdAt,
+    :lastModifiedAt
+)
+ON CONFLICT(source_work_id, creator_id)
+DO UPDATE SET
+    role = CASE
+        WHEN author_archive_source_work_creators.origin IN ('USER', 'RESTORE') AND excluded.origin != 'USER'
+            THEN author_archive_source_work_creators.role
+        ELSE excluded.role
+    END,
+    creator_order = CASE
+        WHEN author_archive_source_work_creators.origin IN ('USER', 'RESTORE') AND excluded.origin != 'USER'
+            THEN author_archive_source_work_creators.creator_order
+        ELSE excluded.creator_order
+    END,
+    origin = CASE
+        WHEN author_archive_source_work_creators.origin IN ('USER', 'RESTORE') AND excluded.origin != 'USER'
+            THEN author_archive_source_work_creators.origin
+        ELSE excluded.origin
+    END,
+    verification = CASE
+        WHEN author_archive_source_work_creators.origin IN ('USER', 'RESTORE') AND excluded.origin != 'USER'
+            THEN author_archive_source_work_creators.verification
+        ELSE excluded.verification
+    END,
+    source_text = CASE
+        WHEN author_archive_source_work_creators.origin IN ('USER', 'RESTORE') AND excluded.origin != 'USER'
+            THEN author_archive_source_work_creators.source_text
+        ELSE excluded.source_text
+    END,
+    confidence = CASE
+        WHEN author_archive_source_work_creators.origin IN ('USER', 'RESTORE') AND excluded.origin != 'USER'
+            THEN author_archive_source_work_creators.confidence
+        ELSE excluded.confidence
+    END,
+    evidence = CASE
+        WHEN author_archive_source_work_creators.origin IN ('USER', 'RESTORE') AND excluded.origin != 'USER'
+            THEN author_archive_source_work_creators.evidence
+        ELSE excluded.evidence
+    END,
+    last_modified_at = CASE
+        WHEN author_archive_source_work_creators.origin IN ('USER', 'RESTORE') AND excluded.origin != 'USER'
+            THEN author_archive_source_work_creators.last_modified_at
+        ELSE excluded.last_modified_at
+    END;
+
+getArchiveSourceWorkCreatorsForCreator:
+SELECT source_work_id, creator_id, role, source_text, confidence, evidence
+FROM author_archive_source_work_creators
+WHERE creator_id = :creatorId
+ORDER BY source_work_id, creator_order;
+
+getArchiveSourceWorkCreator:
+SELECT role, creator_order, origin, verification, source_text, confidence, evidence
+FROM author_archive_source_work_creators
+WHERE source_work_id = :sourceWorkId
+AND creator_id = :creatorId;
+
+getArchiveCandidatesForCreator:
+SELECT
+    SW._id,
+    SW.source_id,
+    SW.stable_source_url,
+    SW.title,
+    SW.normalized_title,
+    SW.author_text,
+    SW.artist_text,
+    coalesce((
+        SELECT LA.language_tag
+        FROM author_archive_language_assertions LA
+        WHERE LA.subject_type = 'SOURCE_WORK'
+        AND LA.subject_key = 'source:' || SW.source_id || ':' || SW.stable_source_url
+        AND LA.dimension = 'READING'
+        AND LA.withdrawn = 0
+        ORDER BY
+            CASE LA.evidence_kind
+                WHEN 'MANUAL' THEN 5
+                WHEN 'STRUCTURED_METADATA' THEN 4
+                WHEN 'SOURCE_FILTER_OR_TAG' THEN 3
+                WHEN 'SINGLE_LANGUAGE_SOURCE' THEN 2
+                WHEN 'TEXT_DETECTION' THEN 1
+                ELSE 0
+            END DESC,
+            LA.confidence DESC,
+            LA.asserted_at DESC
+        LIMIT 1
+    ), 'und') AS language_tag,
+    coalesce((
+        SELECT LA.confidence
+        FROM author_archive_language_assertions LA
+        WHERE LA.subject_type = 'SOURCE_WORK'
+        AND LA.subject_key = 'source:' || SW.source_id || ':' || SW.stable_source_url
+        AND LA.dimension = 'READING'
+        AND LA.withdrawn = 0
+        ORDER BY
+            CASE LA.evidence_kind
+                WHEN 'MANUAL' THEN 5
+                WHEN 'STRUCTURED_METADATA' THEN 4
+                WHEN 'SOURCE_FILTER_OR_TAG' THEN 3
+                WHEN 'SINGLE_LANGUAGE_SOURCE' THEN 2
+                WHEN 'TEXT_DETECTION' THEN 1
+                ELSE 0
+            END DESC,
+            LA.confidence DESC,
+            LA.asserted_at DESC
+        LIMIT 1
+    ), 0.0) AS language_confidence,
+    coalesce((
+        SELECT LA.evidence_kind
+        FROM author_archive_language_assertions LA
+        WHERE LA.subject_type = 'SOURCE_WORK'
+        AND LA.subject_key = 'source:' || SW.source_id || ':' || SW.stable_source_url
+        AND LA.dimension = 'READING'
+        AND LA.withdrawn = 0
+        ORDER BY
+            CASE LA.evidence_kind
+                WHEN 'MANUAL' THEN 5
+                WHEN 'STRUCTURED_METADATA' THEN 4
+                WHEN 'SOURCE_FILTER_OR_TAG' THEN 3
+                WHEN 'SINGLE_LANGUAGE_SOURCE' THEN 2
+                WHEN 'TEXT_DETECTION' THEN 1
+                ELSE 0
+            END DESC,
+            LA.confidence DESC,
+            LA.asserted_at DESC
+        LIMIT 1
+    ), 'UNKNOWN') AS language_evidence,
+    SW.thumbnail_url,
+    SW.first_seen_at,
+    SW.last_seen_at,
+    SW.details_fetched_at,
+    coalesce(SW.legacy_review_snapshot, 'PENDING') AS review_state
+FROM author_archive_source_works SW
+WHERE SW._id = :sourceWorkId
+OR SW._id IN (
+    SELECT SWC.source_work_id
+    FROM author_archive_source_work_creators SWC
+    WHERE :creatorId IS NOT NULL
+    AND SWC.creator_id = :creatorId
+)
+ORDER BY SW.first_seen_at DESC, SW._id
+LIMIT :limit;
+
+upsertArchiveWatch:
+INSERT INTO author_archive_watches(
+    creator_id,
+    enabled,
+    period_millis,
+    lease_owner,
+    lease_expires_at,
+    last_checked_at,
+    last_success_at,
+    last_error,
+    created_at,
+    last_modified_at
+)
+VALUES (:creatorId, 1, :periodMillis, NULL, NULL, NULL, NULL, NULL, :createdAt, :lastModifiedAt)
+ON CONFLICT(creator_id)
+DO UPDATE SET
+    enabled = 1,
+    last_error = NULL,
+    last_modified_at = excluded.last_modified_at;
+
+upsertArchiveWatchFromLegacy:
+INSERT INTO author_archive_watches(
+    creator_id,
+    enabled,
+    period_millis,
+    lease_owner,
+    lease_expires_at,
+    last_checked_at,
+    last_success_at,
+    last_error,
+    created_at,
+    last_modified_at
+)
+VALUES (
+    :creatorId,
+    :enabled,
+    :periodMillis,
+    NULL,
+    NULL,
+    :lastCheckedAt,
+    :lastSuccessAt,
+    :lastError,
+    :createdAt,
+    :lastModifiedAt
+)
+ON CONFLICT(creator_id)
+DO UPDATE SET
+    enabled = excluded.enabled,
+    last_checked_at = excluded.last_checked_at,
+    last_success_at = excluded.last_success_at,
+    last_error = excluded.last_error,
+    last_modified_at = excluded.last_modified_at;
+
+getArchiveWatchIdByCreator:
+SELECT _id
+FROM author_archive_watches
+WHERE creator_id = :creatorId;
+
+replaceArchiveWatchSources:
+DELETE FROM author_archive_watch_sources
+WHERE watch_id = :watchId;
+
+getArchiveWatchSourceIds:
+SELECT source_id
+FROM author_archive_watch_sources
+WHERE watch_id = :watchId
+ORDER BY source_id;
+
+deleteArchiveWatchSource:
+DELETE FROM author_archive_watch_sources
+WHERE watch_id = :watchId
+AND source_id = :sourceId;
+
+insertArchiveWatchSource:
+INSERT INTO author_archive_watch_sources(
+    watch_id,
+    source_id,
+    baseline_state,
+    baseline_generation,
+    next_due_at,
+    created_at,
+    last_modified_at
+)
+VALUES (:watchId, :sourceId, 'NEEDS_BASELINE', 0, NULL, :createdAt, :lastModifiedAt)
+ON CONFLICT(watch_id, source_id) DO NOTHING;
+
+upsertArchiveWatchPolicy:
+INSERT INTO author_archive_watch_result_policies(
+    watch_id,
+    include_probable,
+    include_unknown,
+    notify_probable,
+    notify_unknown,
+    created_at,
+    last_modified_at
+)
+VALUES (:watchId, 0, 0, 0, 0, :createdAt, :lastModifiedAt)
+ON CONFLICT(watch_id)
+DO UPDATE SET last_modified_at = excluded.last_modified_at;
+
+getArchiveWatchPolicyId:
+SELECT _id
+FROM author_archive_watch_result_policies
+WHERE watch_id = :watchId;
+
+replaceArchiveWatchLanguages:
+DELETE FROM author_archive_watch_languages
+WHERE policy_id = :policyId;
+
+getArchiveWatchLanguages:
+SELECT language_tag
+FROM author_archive_watch_languages
+WHERE policy_id = :policyId
+ORDER BY language_tag;
+
+deleteArchiveWatchLanguage:
+DELETE FROM author_archive_watch_languages
+WHERE policy_id = :policyId
+AND language_tag = :languageTag;
+
+insertArchiveWatchLanguage:
+INSERT INTO author_archive_watch_languages(policy_id, language_tag)
+VALUES (:policyId, :languageTag)
+ON CONFLICT(policy_id, language_tag) DO NOTHING;
+
+unfollowArchiveCreator:
+UPDATE author_archive_watches
+SET enabled = 0,
+    lease_owner = NULL,
+    lease_expires_at = NULL,
+    last_modified_at = :lastModifiedAt
+WHERE creator_id = :creatorId;
+
+getArchiveFollowedCreators:
+SELECT
+    W.creator_id,
+    W.enabled,
+    coalesce((
+        SELECT group_concat(ORDERED_SOURCE.source_id, char(31))
+        FROM (
+            SELECT WS.source_id
+            FROM author_archive_watch_sources WS
+            WHERE WS.watch_id = W._id
+            ORDER BY WS.source_id
+        ) ORDERED_SOURCE
+    ), '') AS source_ids,
+    coalesce((
+        SELECT group_concat(ORDERED_LANGUAGE.language_tag, char(31))
+        FROM (
+            SELECT WL.language_tag
+            FROM author_archive_watch_result_policies WP
+            JOIN author_archive_watch_languages WL ON WL.policy_id = WP._id
+            WHERE WP.watch_id = W._id
+            ORDER BY WL.language_tag
+        ) ORDERED_LANGUAGE
+    ), '') AS language_tags,
+    W.last_checked_at,
+    W.last_success_at,
+    W.last_error,
+    W.created_at
+FROM author_archive_watches W
+WHERE W.enabled = 1
+ORDER BY W.created_at DESC, W._id;
+
+updateArchiveWatchCheckResult:
+UPDATE author_archive_watches
+SET last_checked_at = :checkedAt,
+    last_success_at = CASE WHEN :success THEN :checkedAt ELSE last_success_at END,
+    last_error = :error,
+    last_modified_at = :checkedAt
+WHERE creator_id = :creatorId;
+
+insertArchiveCanonicalWork:
+INSERT INTO author_archive_canonical_works(
+    portable_key,
+    primary_title,
+    normalized_title,
+    status,
+    legacy_work_id,
+    created_at,
+    last_modified_at
+)
+VALUES (:portableKey, :primaryTitle, :normalizedTitle, 'ACTIVE', NULL, :createdAt, :lastModifiedAt);
+
+insertArchiveCanonicalWorkFromLegacy:
+INSERT INTO author_archive_canonical_works(
+    portable_key,
+    primary_title,
+    normalized_title,
+    status,
+    legacy_work_id,
+    created_at,
+    last_modified_at
+)
+VALUES (
+    :portableKey,
+    :primaryTitle,
+    :normalizedTitle,
+    'ACTIVE',
+    :legacyWorkId,
+    :createdAt,
+    :lastModifiedAt
+);
+
+getArchiveCanonicalWorkIdByLegacyId:
+SELECT _id
+FROM author_archive_canonical_works
+WHERE legacy_work_id = :legacyWorkId;
+
+getArchiveCanonicalWorkPortableKey:
+SELECT portable_key
+FROM author_archive_canonical_works
+WHERE _id = :id;
+
+updateArchiveCanonicalWorkFromLegacyBridge:
+UPDATE author_archive_canonical_works
+SET primary_title = :primaryTitle,
+    normalized_title = :normalizedTitle,
+    last_modified_at = max(last_modified_at, :lastModifiedAt)
+WHERE _id = :id;
+
+upsertArchiveCanonicalCreator:
+INSERT INTO author_archive_canonical_creators(
+    work_id,
+    creator_id,
+    role,
+    creator_order,
+    origin,
+    evidence
+)
+VALUES (:workId, :creatorId, :role, :creatorOrder, :origin, :evidence)
+ON CONFLICT(work_id, creator_id)
+DO UPDATE SET
+    role = CASE
+        WHEN author_archive_canonical_creators.origin IN ('USER', 'RESTORE')
+        AND excluded.origin != 'USER'
+            THEN author_archive_canonical_creators.role
+        ELSE excluded.role
+    END,
+    creator_order = CASE
+        WHEN author_archive_canonical_creators.origin IN ('USER', 'RESTORE')
+        AND excluded.origin != 'USER'
+            THEN author_archive_canonical_creators.creator_order
+        ELSE excluded.creator_order
+    END,
+    origin = CASE
+        WHEN author_archive_canonical_creators.origin IN ('USER', 'RESTORE')
+        AND excluded.origin != 'USER'
+            THEN author_archive_canonical_creators.origin
+        ELSE excluded.origin
+    END,
+    evidence = CASE
+        WHEN author_archive_canonical_creators.origin IN ('USER', 'RESTORE')
+        AND excluded.origin != 'USER'
+            THEN author_archive_canonical_creators.evidence
+        ELSE excluded.evidence
+    END;
+
+getArchiveCanonicalWork:
+SELECT
+    CW._id,
+    CW.primary_title,
+    CW.normalized_title,
+    CC.creator_id AS primary_creator_id,
+    LA.language_tag AS original_language,
+    CW.created_at,
+    CW.last_modified_at
+FROM author_archive_canonical_works CW
+LEFT JOIN author_archive_canonical_creators CC
+    ON CC._id = (
+        SELECT FIRST_CC._id
+        FROM author_archive_canonical_creators FIRST_CC
+        WHERE FIRST_CC.work_id = CW._id
+        ORDER BY FIRST_CC.creator_order, FIRST_CC._id
+        LIMIT 1
+    )
+LEFT JOIN author_archive_language_assertions LA
+    ON LA._id = (
+        SELECT CURRENT_LA._id
+        FROM author_archive_language_assertions CURRENT_LA
+        WHERE CURRENT_LA.subject_type = 'CANONICAL_WORK'
+        AND CURRENT_LA.subject_key = 'canonical:' || CW.portable_key
+        AND CURRENT_LA.dimension = 'ORIGINAL'
+        AND CURRENT_LA.withdrawn = 0
+        ORDER BY
+            CASE CURRENT_LA.evidence_kind
+                WHEN 'MANUAL' THEN 5
+                WHEN 'STRUCTURED_METADATA' THEN 4
+                WHEN 'SOURCE_FILTER_OR_TAG' THEN 3
+                WHEN 'SINGLE_LANGUAGE_SOURCE' THEN 2
+                WHEN 'TEXT_DETECTION' THEN 1
+                ELSE 0
+            END DESC,
+            CURRENT_LA.asserted_at DESC
+        LIMIT 1
+    )
+WHERE CW._id = :id
+AND CW.status = 'ACTIVE';
+
+getArchiveCanonicalWorkIdByPortableKey:
+SELECT _id
+FROM author_archive_canonical_works
+WHERE portable_key = :portableKey
+AND status = 'ACTIVE';
+
+upsertArchiveCanonicalVersion:
+INSERT INTO author_archive_canonical_versions(
+    work_id,
+    source_work_id,
+    confirmation,
+    evidence,
+    confirmed_at
+)
+VALUES (:workId, :sourceWorkId, :confirmation, :evidence, :confirmedAt)
+ON CONFLICT(source_work_id)
+DO UPDATE SET
+    work_id = excluded.work_id,
+    confirmation = excluded.confirmation,
+    evidence = excluded.evidence,
+    confirmed_at = excluded.confirmed_at;
+
+deleteArchiveCanonicalVersion:
+DELETE FROM author_archive_canonical_versions
+WHERE source_work_id = :sourceWorkId;
+
+getLatestArchiveWorkDecision:
+SELECT state, actor, explicit, score, evidence, decided_at
+FROM author_archive_work_decisions
+WHERE source_work_id = :sourceWorkId
+AND work_id = :workId
+ORDER BY
+    CASE actor
+        WHEN 'USER' THEN 3
+        WHEN 'RESTORE' THEN 2
+        ELSE 1
+    END DESC,
+    CASE WHEN actor = 'RESTORE' THEN _id END ASC,
+    CASE WHEN actor != 'RESTORE' THEN decided_at END DESC,
+    CASE WHEN actor != 'RESTORE' THEN _id END DESC
+LIMIT 1;
+
+getArchiveWorkDecisionsForBinding:
+SELECT work_id, state, actor, evidence, decided_at
+FROM author_archive_work_decisions
+WHERE source_work_id = :sourceWorkId
+ORDER BY
+    CASE actor
+        WHEN 'USER' THEN 3
+        WHEN 'RESTORE' THEN 2
+        ELSE 1
+    END DESC,
+    CASE WHEN actor = 'RESTORE' THEN _id END ASC,
+    CASE WHEN actor != 'RESTORE' THEN decided_at END DESC,
+    CASE WHEN actor != 'RESTORE' THEN _id END DESC;
+
+getArchiveWorkDecisionByIdempotencyKey:
+SELECT
+    source_work_id,
+    work_id,
+    state,
+    actor,
+    explicit,
+    algorithm_version,
+    score,
+    evidence,
+    decided_at
+FROM author_archive_work_decisions
+WHERE idempotency_key = :idempotencyKey;
+
+getLegacyImportFingerprint:
+SELECT fingerprint
+FROM author_archive_legacy_import_state
+WHERE entity_type = :entityType
+AND legacy_key = :legacyKey;
+
+upsertLegacyImportFingerprint:
+INSERT INTO author_archive_legacy_import_state(entity_type, legacy_key, fingerprint, imported_at)
+VALUES (:entityType, :legacyKey, :fingerprint, :importedAt)
+ON CONFLICT(entity_type, legacy_key)
+DO UPDATE SET fingerprint = excluded.fingerprint, imported_at = excluded.imported_at;
+
+upsertArchiveWorkDecision:
+INSERT INTO author_archive_work_decisions(
+    source_work_id,
+    work_id,
+    state,
+    actor,
+    explicit,
+    algorithm_version,
+    score,
+    evidence,
+    decided_at,
+    idempotency_key
+)
+VALUES (
+    :sourceWorkId,
+    :workId,
+    :state,
+    :actor,
+    :explicit,
+    :algorithmVersion,
+    :score,
+    :evidence,
+    :decidedAt,
+    :idempotencyKey
+)
+ON CONFLICT(idempotency_key) DO NOTHING;
+
+upsertArchiveLanguageAssertion:
+INSERT INTO author_archive_language_assertions(
+    subject_type,
+    subject_key,
+    dimension,
+    language_tag,
+    confidence,
+    evidence_kind,
+    evidence_payload,
+    actor,
+    algorithm_version,
+    withdrawn,
+    asserted_at,
+    idempotency_key
+)
+VALUES (
+    :subjectType,
+    :subjectKey,
+    :dimension,
+    :languageTag,
+    :confidence,
+    :evidenceKind,
+    :evidencePayload,
+    :actor,
+    :algorithmVersion,
+    :withdrawn,
+    :assertedAt,
+    :idempotencyKey
+)
+ON CONFLICT(idempotency_key) DO NOTHING;
+
+getArchiveLanguageAssertionByIdempotencyKey:
+SELECT
+    subject_type,
+    subject_key,
+    dimension,
+    language_tag,
+    confidence,
+    evidence_kind,
+    evidence_payload,
+    actor,
+    algorithm_version,
+    withdrawn,
+    asserted_at
+FROM author_archive_language_assertions
+WHERE idempotency_key = :idempotencyKey;

@@ -44,6 +44,11 @@ object CreatorArchivePhysicalSchema {
         table("author_archive_language_assertions", "idempotency_key", ArchiveDeletionPolicy.RETAIN_HISTORY),
         table("author_archive_chapter_variants", "source_work_id,chapter_natural_key", ArchiveDeletionPolicy.CASCADE),
         table("author_archive_notification_outbox", "idempotency_key", ArchiveDeletionPolicy.CASCADE),
+        table(
+            "author_archive_legacy_import_state",
+            "entity_type,legacy_key",
+            ArchiveDeletionPolicy.RETAIN_HISTORY,
+        ),
     )
 
     private fun table(
@@ -76,6 +81,28 @@ data class SourceWorkNaturalKey(
     }
 }
 
+object CreatorArchiveSubjectKey {
+    fun sourceWork(key: SourceWorkNaturalKey): String = "source:${key.sourceId}:${key.stableSourceUrl}"
+
+    fun canonicalWork(key: CanonicalWorkPortableKey): String = "canonical:${key.value}"
+
+    fun creator(key: CreatorPortableKey): String = "creator:${key.value}"
+}
+
+object CreatorArchiveLanguageTag {
+    fun normalize(value: String): String {
+        val raw = value.trim()
+        val normalized = raw.lowercase()
+        if (raw.uppercase() in NON_LANGUAGE_TAGS || normalized in NON_LANGUAGE_VALUES) return UNKNOWN
+        return if (LANGUAGE_TAG.matches(normalized)) normalized else UNKNOWN
+    }
+
+    private const val UNKNOWN = "und"
+    private val NON_LANGUAGE_TAGS = setOf("BL", "GL", "SF")
+    private val NON_LANGUAGE_VALUES = setOf("", "unknown", UNKNOWN)
+    private val LANGUAGE_TAG = Regex("^[a-z]{2,3}(-[a-z0-9]{2,8})*$")
+}
+
 sealed interface ArchiveUpsertOutcome<out T> {
     val value: T
 
@@ -84,6 +111,36 @@ sealed interface ArchiveUpsertOutcome<out T> {
     data class Updated<T>(override val value: T) : ArchiveUpsertOutcome<T>
 
     data class Unchanged<T>(override val value: T) : ArchiveUpsertOutcome<T>
+}
+
+sealed interface ArchiveAppendOutcome<out T> {
+    val value: T
+
+    data class Inserted<T>(override val value: T) : ArchiveAppendOutcome<T>
+
+    data class Unchanged<T>(override val value: T) : ArchiveAppendOutcome<T>
+
+    data class Conflict<T>(
+        val existing: T,
+        val attempted: T,
+    ) : ArchiveAppendOutcome<T> {
+        override val value: T = existing
+    }
+}
+
+enum class CreatorRelationOrigin {
+    AUTOMATIC,
+    USER,
+    MIGRATION,
+    RESTORE,
+}
+
+sealed interface ArchiveLanguageSubject {
+    data class SourceWork(val naturalKey: SourceWorkNaturalKey) : ArchiveLanguageSubject
+
+    data class CanonicalWork(val portableKey: CanonicalWorkPortableKey) : ArchiveLanguageSubject
+
+    data class Creator(val portableKey: CreatorPortableKey) : ArchiveLanguageSubject
 }
 
 enum class WatchBaselineState {

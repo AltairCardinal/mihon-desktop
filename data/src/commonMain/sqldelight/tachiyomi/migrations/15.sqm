@@ -1,0 +1,923 @@
+CREATE TABLE author_archive_creators(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    portable_key TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL,
+    sort_name TEXT,
+    status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'MERGED', 'DELETED')),
+    merged_into_creator_id INTEGER,
+    needs_review INTEGER NOT NULL DEFAULT 0,
+    legacy_creator_id INTEGER UNIQUE,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    FOREIGN KEY(merged_into_creator_id) REFERENCES author_archive_creators(_id) ON DELETE RESTRICT,
+    CHECK(
+        (status = 'MERGED' AND merged_into_creator_id IS NOT NULL) OR
+        (status IN ('ACTIVE', 'DELETED') AND merged_into_creator_id IS NULL)
+    )
+);
+
+CREATE INDEX idx_author_archive_creators_normalized_name
+ON author_archive_creators(normalized_name);
+CREATE INDEX idx_author_archive_creators_status
+ON author_archive_creators(status);
+CREATE INDEX idx_author_archive_creators_merged_into
+ON author_archive_creators(merged_into_creator_id);
+
+CREATE TABLE author_archive_aliases(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    creator_id INTEGER NOT NULL,
+    raw_alias TEXT NOT NULL,
+    normalized_alias TEXT NOT NULL,
+    source TEXT NOT NULL,
+    evidence TEXT NOT NULL,
+    confidence REAL NOT NULL CHECK(confidence >= 0.0 AND confidence <= 1.0),
+    is_manual INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    UNIQUE(creator_id, normalized_alias),
+    FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_aliases_normalized
+ON author_archive_aliases(normalized_alias);
+CREATE INDEX idx_author_archive_aliases_creator
+ON author_archive_aliases(creator_id);
+
+CREATE TABLE author_archive_manga_links(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    manga_id INTEGER NOT NULL,
+    creator_id INTEGER NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('AUTHOR', 'ARTIST', 'BOTH', 'UNKNOWN')),
+    creator_order INTEGER NOT NULL,
+    origin TEXT NOT NULL CHECK(origin IN ('AUTOMATIC', 'USER', 'MIGRATION', 'RESTORE')),
+    source_text TEXT,
+    confidence REAL NOT NULL CHECK(confidence >= 0.0 AND confidence <= 1.0),
+    evidence TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    UNIQUE(manga_id, creator_id),
+    FOREIGN KEY(manga_id) REFERENCES mangas(_id) ON DELETE CASCADE,
+    FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_manga_links_creator
+ON author_archive_manga_links(creator_id);
+CREATE INDEX idx_author_archive_manga_links_manga_order
+ON author_archive_manga_links(manga_id, creator_order);
+
+CREATE TABLE author_archive_source_works(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    source_id INTEGER NOT NULL,
+    stable_source_url TEXT NOT NULL CHECK(length(trim(stable_source_url)) > 0),
+    manga_id INTEGER,
+    title TEXT NOT NULL,
+    normalized_title TEXT NOT NULL,
+    author_text TEXT,
+    artist_text TEXT,
+    thumbnail_url TEXT,
+    first_seen_at INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL,
+    details_fetched_at INTEGER,
+    legacy_candidate_id INTEGER UNIQUE,
+    legacy_review_snapshot TEXT CHECK(
+        legacy_review_snapshot IS NULL OR
+        legacy_review_snapshot IN ('PENDING', 'ACCEPTED', 'IGNORED', 'MERGED')
+    ),
+    UNIQUE(source_id, stable_source_url),
+    FOREIGN KEY(manga_id) REFERENCES mangas(_id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_author_archive_source_works_manga
+ON author_archive_source_works(manga_id);
+CREATE INDEX idx_author_archive_source_works_title
+ON author_archive_source_works(normalized_title);
+CREATE INDEX idx_author_archive_source_works_last_seen
+ON author_archive_source_works(last_seen_at);
+
+CREATE TABLE author_archive_source_work_creators(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    source_work_id INTEGER NOT NULL,
+    creator_id INTEGER NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('AUTHOR', 'ARTIST', 'BOTH', 'UNKNOWN')),
+    creator_order INTEGER NOT NULL,
+    origin TEXT NOT NULL CHECK(origin IN ('AUTOMATIC', 'USER', 'MIGRATION', 'RESTORE')),
+    verification TEXT NOT NULL CHECK(verification IN ('POSSIBLE', 'VERIFIED')),
+    source_text TEXT,
+    confidence REAL NOT NULL CHECK(confidence >= 0.0 AND confidence <= 1.0),
+    evidence TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    UNIQUE(source_work_id, creator_id),
+    FOREIGN KEY(source_work_id) REFERENCES author_archive_source_works(_id) ON DELETE CASCADE,
+    FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_source_work_creators_creator
+ON author_archive_source_work_creators(creator_id);
+CREATE INDEX idx_author_archive_source_work_creators_work_order
+ON author_archive_source_work_creators(source_work_id, creator_order);
+
+CREATE TABLE author_archive_watches(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    creator_id INTEGER NOT NULL UNIQUE,
+    enabled INTEGER NOT NULL,
+    period_millis INTEGER NOT NULL,
+    lease_owner TEXT,
+    lease_expires_at INTEGER,
+    last_checked_at INTEGER,
+    last_success_at INTEGER,
+    last_error TEXT,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE CASCADE,
+    CHECK((lease_owner IS NULL) = (lease_expires_at IS NULL))
+);
+
+CREATE INDEX idx_author_archive_watches_due
+ON author_archive_watches(enabled, last_success_at);
+CREATE INDEX idx_author_archive_watches_lease
+ON author_archive_watches(lease_expires_at);
+
+CREATE TABLE author_archive_watch_sources(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    watch_id INTEGER NOT NULL,
+    source_id INTEGER NOT NULL,
+    baseline_state TEXT NOT NULL CHECK(baseline_state IN ('NEEDS_BASELINE', 'BASELINED')),
+    baseline_generation INTEGER NOT NULL,
+    next_due_at INTEGER,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    UNIQUE(watch_id, source_id),
+    FOREIGN KEY(watch_id) REFERENCES author_archive_watches(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_watch_sources_due
+ON author_archive_watch_sources(next_due_at, watch_id);
+
+CREATE TABLE author_archive_watch_result_policies(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    watch_id INTEGER NOT NULL UNIQUE,
+    include_probable INTEGER NOT NULL,
+    include_unknown INTEGER NOT NULL,
+    notify_probable INTEGER NOT NULL,
+    notify_unknown INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    FOREIGN KEY(watch_id) REFERENCES author_archive_watches(_id) ON DELETE CASCADE
+);
+
+CREATE TABLE author_archive_watch_languages(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    policy_id INTEGER NOT NULL,
+    language_tag TEXT NOT NULL,
+    UNIQUE(policy_id, language_tag),
+    FOREIGN KEY(policy_id) REFERENCES author_archive_watch_result_policies(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_watch_languages_tag
+ON author_archive_watch_languages(language_tag);
+
+CREATE TABLE author_archive_runs(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    run_key TEXT NOT NULL UNIQUE,
+    watch_id INTEGER NOT NULL,
+    state TEXT NOT NULL CHECK(state IN ('QUEUED', 'RUNNING', 'PARTIAL', 'SUCCEEDED', 'FAILED', 'CANCELLED')),
+    completed_sources INTEGER NOT NULL,
+    total_sources INTEGER NOT NULL,
+    truncated INTEGER NOT NULL,
+    error_code TEXT,
+    error_message TEXT,
+    queued_at INTEGER NOT NULL,
+    started_at INTEGER,
+    finished_at INTEGER,
+    FOREIGN KEY(watch_id) REFERENCES author_archive_watches(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_runs_watch_state
+ON author_archive_runs(watch_id, state, queued_at);
+
+CREATE TABLE author_archive_source_checkpoints(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    watch_id INTEGER NOT NULL,
+    source_id INTEGER NOT NULL,
+    cursor TEXT,
+    result_state TEXT NOT NULL CHECK(result_state IN ('NEVER', 'SUCCESS', 'EMPTY', 'TRUNCATED', 'FAILED', 'CANCELLED')),
+    consecutive_failures INTEGER NOT NULL,
+    backoff_until INTEGER,
+    last_checked_at INTEGER,
+    last_success_at INTEGER,
+    error_code TEXT,
+    error_message TEXT,
+    UNIQUE(watch_id, source_id),
+    FOREIGN KEY(watch_id) REFERENCES author_archive_watches(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_source_checkpoints_backoff
+ON author_archive_source_checkpoints(backoff_until, watch_id);
+
+CREATE TABLE author_archive_discoveries(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    watch_id INTEGER NOT NULL,
+    source_work_id INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('NEW_WORK_CANDIDATE', 'NEW_SOURCE_VERSION')),
+    reason TEXT NOT NULL,
+    baseline_generation INTEGER NOT NULL,
+    read_state TEXT NOT NULL CHECK(read_state IN ('UNSEEN', 'SEEN')),
+    review_disposition TEXT NOT NULL CHECK(review_disposition IN ('PENDING', 'ACCEPTED', 'IGNORED')),
+    first_discovered_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    UNIQUE(watch_id, source_work_id),
+    FOREIGN KEY(watch_id) REFERENCES author_archive_watches(_id) ON DELETE CASCADE,
+    FOREIGN KEY(source_work_id) REFERENCES author_archive_source_works(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_discoveries_feed
+ON author_archive_discoveries(watch_id, read_state, first_discovered_at DESC);
+CREATE INDEX idx_author_archive_discoveries_review
+ON author_archive_discoveries(review_disposition, first_discovered_at DESC);
+
+CREATE TABLE author_archive_canonical_works(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    portable_key TEXT NOT NULL UNIQUE,
+    primary_title TEXT NOT NULL,
+    normalized_title TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'DELETED')),
+    legacy_work_id INTEGER UNIQUE,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL
+);
+
+CREATE INDEX idx_author_archive_canonical_works_title
+ON author_archive_canonical_works(normalized_title);
+
+CREATE TABLE author_archive_canonical_creators(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    work_id INTEGER NOT NULL,
+    creator_id INTEGER NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('AUTHOR', 'ARTIST', 'BOTH', 'UNKNOWN')),
+    creator_order INTEGER NOT NULL,
+    origin TEXT NOT NULL CHECK(origin IN ('ALGORITHM', 'USER', 'MIGRATION', 'RESTORE')),
+    evidence TEXT NOT NULL,
+    UNIQUE(work_id, creator_id),
+    FOREIGN KEY(work_id) REFERENCES author_archive_canonical_works(_id) ON DELETE CASCADE,
+    FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_canonical_creators_creator
+ON author_archive_canonical_creators(creator_id);
+
+CREATE TABLE author_archive_canonical_versions(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    work_id INTEGER NOT NULL,
+    source_work_id INTEGER NOT NULL UNIQUE,
+    confirmation TEXT NOT NULL CHECK(confirmation IN ('CONFIRMED', 'RESTORED')),
+    evidence TEXT NOT NULL,
+    confirmed_at INTEGER NOT NULL,
+    FOREIGN KEY(work_id) REFERENCES author_archive_canonical_works(_id) ON DELETE CASCADE,
+    FOREIGN KEY(source_work_id) REFERENCES author_archive_source_works(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_canonical_versions_work
+ON author_archive_canonical_versions(work_id);
+
+CREATE TABLE author_archive_work_decisions(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    source_work_id INTEGER NOT NULL,
+    work_id INTEGER NOT NULL,
+    state TEXT NOT NULL CHECK(state IN ('SUGGESTED', 'CONFIRMED', 'REJECTED')),
+    actor TEXT NOT NULL CHECK(actor IN ('ALGORITHM', 'USER', 'RESTORE')),
+    explicit INTEGER NOT NULL,
+    algorithm_version TEXT,
+    score REAL,
+    evidence TEXT NOT NULL,
+    decided_at INTEGER NOT NULL,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    FOREIGN KEY(source_work_id) REFERENCES author_archive_source_works(_id) ON DELETE CASCADE,
+    FOREIGN KEY(work_id) REFERENCES author_archive_canonical_works(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_work_decisions_pair
+ON author_archive_work_decisions(source_work_id, work_id, decided_at DESC);
+CREATE INDEX idx_author_archive_work_decisions_state
+ON author_archive_work_decisions(state, decided_at DESC);
+
+CREATE TABLE author_archive_language_assertions(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    subject_type TEXT NOT NULL CHECK(subject_type IN ('SOURCE_WORK', 'CANONICAL_WORK', 'CREATOR')),
+    subject_key TEXT NOT NULL,
+    dimension TEXT NOT NULL CHECK(dimension IN ('READING', 'ORIGINAL')),
+    language_tag TEXT NOT NULL,
+    confidence REAL NOT NULL CHECK(confidence >= 0.0 AND confidence <= 1.0),
+    evidence_kind TEXT NOT NULL CHECK(
+        evidence_kind IN ('UNKNOWN', 'TEXT_DETECTION', 'SINGLE_LANGUAGE_SOURCE', 'SOURCE_FILTER_OR_TAG', 'STRUCTURED_METADATA', 'MANUAL')
+    ),
+    evidence_payload TEXT NOT NULL,
+    actor TEXT NOT NULL CHECK(actor IN ('ALGORITHM', 'USER', 'RESTORE')),
+    algorithm_version TEXT,
+    withdrawn INTEGER NOT NULL,
+    asserted_at INTEGER NOT NULL,
+    idempotency_key TEXT NOT NULL UNIQUE
+);
+
+CREATE INDEX idx_author_archive_language_assertions_subject
+ON author_archive_language_assertions(subject_type, subject_key, dimension, withdrawn, asserted_at DESC);
+CREATE INDEX idx_author_archive_language_assertions_tag
+ON author_archive_language_assertions(dimension, language_tag, withdrawn);
+
+CREATE TABLE author_archive_chapter_variants(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    source_work_id INTEGER NOT NULL,
+    chapter_natural_key TEXT NOT NULL,
+    volume_number REAL,
+    chapter_number REAL,
+    part_number REAL,
+    variant_type TEXT NOT NULL CHECK(variant_type IN ('REGULAR', 'EXTRA', 'OMAKE', 'SPECIAL', 'UNKNOWN')),
+    raw_name TEXT NOT NULL,
+    evidence TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    UNIQUE(source_work_id, chapter_natural_key),
+    FOREIGN KEY(source_work_id) REFERENCES author_archive_source_works(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_chapter_variants_work_order
+ON author_archive_chapter_variants(source_work_id, volume_number, chapter_number, part_number);
+
+CREATE TABLE author_archive_notification_outbox(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    discovery_id INTEGER NOT NULL,
+    channel TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    attempt_count INTEGER NOT NULL,
+    state TEXT NOT NULL CHECK(state IN ('PENDING', 'DELIVERED', 'FAILED', 'CANCELLED')),
+    last_error TEXT,
+    next_attempt_at INTEGER,
+    created_at INTEGER NOT NULL,
+    last_attempt_at INTEGER,
+    delivered_at INTEGER,
+    FOREIGN KEY(discovery_id) REFERENCES author_archive_discoveries(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_notification_outbox_pending
+ON author_archive_notification_outbox(state, next_attempt_at, created_at);
+
+CREATE TABLE author_archive_legacy_import_state(
+    entity_type TEXT NOT NULL,
+    legacy_key TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    imported_at INTEGER NOT NULL,
+    PRIMARY KEY(entity_type, legacy_key)
+);
+
+CREATE INDEX idx_author_archive_legacy_import_state_imported
+ON author_archive_legacy_import_state(imported_at);
+
+INSERT INTO author_archive_creators(
+    _id, portable_key, display_name, normalized_name, sort_name, status,
+    merged_into_creator_id, needs_review, legacy_creator_id, created_at, last_modified_at
+)
+SELECT
+    _id,
+    lower(hex(randomblob(16))),
+    display_name,
+    normalized_name,
+    sort_name,
+    'ACTIVE',
+    NULL,
+    CASE
+        WHEN display_name LIKE '%,%' OR display_name LIKE '%/%' OR display_name LIKE '%;%' OR
+             display_name LIKE '%、%' OR display_name LIKE '%，%' OR display_name LIKE '%&%' OR
+             display_name LIKE '%＆%' OR display_name LIKE '%+%'
+        THEN 1 ELSE 0
+    END,
+    _id,
+    created_at,
+    last_modified_at
+FROM creators;
+
+INSERT INTO author_archive_aliases(
+    creator_id, raw_alias, normalized_alias, source, evidence, confidence,
+    is_manual, created_at, last_modified_at
+)
+SELECT
+    _id, display_name, normalized_name, 'LEGACY_PRIMARY', 'v1 creator display name', 1.0,
+    0, created_at, last_modified_at
+FROM creators;
+
+WITH RECURSIVE split_alias(creator_id, rest, raw_alias, created_at, last_modified_at) AS (
+    SELECT _id, aliases || '|', '', created_at, last_modified_at
+    FROM creators
+    WHERE aliases <> ''
+    UNION ALL
+    SELECT
+        creator_id,
+        substr(rest, instr(rest, '|') + 1),
+        trim(substr(rest, 1, instr(rest, '|') - 1)),
+        created_at,
+        last_modified_at
+    FROM split_alias
+    WHERE rest <> ''
+)
+INSERT OR IGNORE INTO author_archive_aliases(
+    creator_id, raw_alias, normalized_alias, source, evidence, confidence,
+    is_manual, created_at, last_modified_at
+)
+SELECT
+    creator_id, raw_alias, lower(trim(raw_alias)), 'LEGACY_ALIAS', 'v1 packed alias', 0.75,
+    0, created_at, last_modified_at
+FROM split_alias
+WHERE raw_alias <> '';
+
+INSERT INTO author_archive_manga_links(
+    manga_id, creator_id, role, creator_order, origin, source_text,
+    confidence, evidence, created_at, last_modified_at
+)
+SELECT
+    MC.manga_id,
+    MC.creator_id,
+    CASE
+        WHEN MAX(CASE WHEN upper(MC.role) = 'BOTH' THEN 1 ELSE 0 END) = 1 OR
+             (
+                 MAX(CASE WHEN upper(MC.role) = 'AUTHOR' THEN 1 ELSE 0 END) = 1 AND
+                 MAX(CASE WHEN upper(MC.role) = 'ARTIST' THEN 1 ELSE 0 END) = 1
+             )
+        THEN 'BOTH'
+        WHEN MAX(CASE WHEN upper(MC.role) = 'AUTHOR' THEN 1 ELSE 0 END) = 1 THEN 'AUTHOR'
+        WHEN MAX(CASE WHEN upper(MC.role) = 'ARTIST' THEN 1 ELSE 0 END) = 1 THEN 'ARTIST'
+        ELSE 'UNKNOWN'
+    END,
+    0,
+    'MIGRATION',
+    MAX(MC.source_text),
+    MAX(MC.confidence),
+    'v1 manga relation: ' || group_concat(MC.evidence, ' | '),
+    MIN(C.created_at),
+    MAX(C.last_modified_at)
+FROM manga_creators MC
+JOIN author_archive_creators C ON C.legacy_creator_id = MC.creator_id
+JOIN mangas M ON M._id = MC.manga_id
+GROUP BY MC.manga_id, MC.creator_id;
+
+INSERT INTO author_archive_source_works(
+    source_id, stable_source_url, manga_id, title, normalized_title,
+    author_text, artist_text, thumbnail_url, first_seen_at, last_seen_at,
+    details_fetched_at, legacy_candidate_id, legacy_review_snapshot
+)
+SELECT
+    DC.source,
+    CASE WHEN trim(DC.url) = '' THEN 'legacy-candidate:' || DC._id ELSE trim(DC.url) END,
+    M._id,
+    DC.title,
+    DC.normalized_title,
+    DC.author_text,
+    DC.artist_text,
+    DC.thumbnail_url,
+    DC.first_seen_at,
+    DC.last_seen_at,
+    DC.details_fetched_at,
+    DC._id,
+    CASE upper(DC.state)
+        WHEN 'ACCEPTED' THEN 'ACCEPTED'
+        WHEN 'IGNORED' THEN 'IGNORED'
+        WHEN 'MERGED' THEN 'MERGED'
+        ELSE 'PENDING'
+    END
+FROM discovery_candidates DC
+LEFT JOIN mangas M
+    ON M.source = DC.source
+    AND CASE WHEN trim(M.url) = '' THEN 'legacy-manga:' || M._id ELSE trim(M.url) END =
+        CASE WHEN trim(DC.url) = '' THEN 'legacy-candidate:' || DC._id ELSE trim(DC.url) END;
+
+INSERT INTO author_archive_source_work_creators(
+    source_work_id, creator_id, role, creator_order, origin, verification,
+    source_text, confidence, evidence, created_at, last_modified_at
+)
+SELECT
+    SW._id,
+    DCC.creator_id,
+    CASE
+        WHEN MAX(CASE WHEN upper(DCC.role) = 'BOTH' THEN 1 ELSE 0 END) = 1 OR
+             (
+                 MAX(CASE WHEN upper(DCC.role) = 'AUTHOR' THEN 1 ELSE 0 END) = 1 AND
+                 MAX(CASE WHEN upper(DCC.role) = 'ARTIST' THEN 1 ELSE 0 END) = 1
+             )
+        THEN 'BOTH'
+        WHEN MAX(CASE WHEN upper(DCC.role) = 'AUTHOR' THEN 1 ELSE 0 END) = 1 THEN 'AUTHOR'
+        WHEN MAX(CASE WHEN upper(DCC.role) = 'ARTIST' THEN 1 ELSE 0 END) = 1 THEN 'ARTIST'
+        ELSE 'UNKNOWN'
+    END,
+    0,
+    'MIGRATION',
+    CASE WHEN MAX(DCC.confidence) >= 1.0 THEN 'VERIFIED' ELSE 'POSSIBLE' END,
+    MAX(DCC.source_text),
+    MAX(DCC.confidence),
+    'v1 candidate relation: ' || group_concat(DCC.evidence, ' | '),
+    SW.first_seen_at,
+    SW.last_seen_at
+FROM discovery_candidate_creators DCC
+JOIN author_archive_source_works SW ON SW.legacy_candidate_id = DCC.candidate_id
+JOIN author_archive_creators C ON C.legacy_creator_id = DCC.creator_id
+GROUP BY SW._id, DCC.creator_id;
+
+INSERT INTO author_archive_watches(
+    _id, creator_id, enabled, period_millis, lease_owner, lease_expires_at,
+    last_checked_at, last_success_at, last_error, created_at, last_modified_at
+)
+SELECT
+    CW.creator_id,
+    CW.creator_id,
+    CW.enabled,
+    86400000,
+    NULL,
+    NULL,
+    CW.last_checked_at,
+    CW.last_success_at,
+    CW.last_error,
+    CW.created_at,
+    MAX(CW.created_at, coalesce(CW.last_checked_at, CW.created_at))
+FROM creator_watches CW
+JOIN author_archive_creators C ON C.legacy_creator_id = CW.creator_id;
+
+INSERT OR IGNORE INTO author_archive_watches(
+    creator_id, enabled, period_millis, lease_owner, lease_expires_at,
+    last_checked_at, last_success_at, last_error, created_at, last_modified_at
+)
+SELECT DISTINCT
+    DCC.creator_id,
+    0,
+    86400000,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    SW.first_seen_at,
+    SW.last_seen_at
+FROM discovery_candidate_creators DCC
+JOIN author_archive_source_works SW ON SW.legacy_candidate_id = DCC.candidate_id
+JOIN author_archive_creators C ON C.legacy_creator_id = DCC.creator_id;
+
+WITH RECURSIVE split_source(watch_id, rest, raw_source, created_at, last_modified_at) AS (
+    SELECT W._id, CW.source_ids || '|', '', W.created_at, W.last_modified_at
+    FROM creator_watches CW
+    JOIN author_archive_watches W ON W.creator_id = CW.creator_id
+    WHERE CW.source_ids <> ''
+    UNION ALL
+    SELECT
+        watch_id,
+        substr(rest, instr(rest, '|') + 1),
+        trim(substr(rest, 1, instr(rest, '|') - 1)),
+        created_at,
+        last_modified_at
+    FROM split_source
+    WHERE rest <> ''
+)
+INSERT OR IGNORE INTO author_archive_watch_sources(
+    watch_id, source_id, baseline_state, baseline_generation, next_due_at,
+    created_at, last_modified_at
+)
+SELECT watch_id, CAST(raw_source AS INTEGER), 'BASELINED', 1, NULL, created_at, last_modified_at
+FROM split_source
+WHERE raw_source <> '' AND CAST(raw_source AS INTEGER) <> 0;
+
+INSERT INTO author_archive_watch_result_policies(
+    watch_id, include_probable, include_unknown, notify_probable, notify_unknown,
+    created_at, last_modified_at
+)
+SELECT _id, 0, 0, 0, 0, created_at, last_modified_at
+FROM author_archive_watches;
+
+CREATE TEMP TABLE author_archive_legacy_language_tags(
+    subject_type TEXT NOT NULL,
+    legacy_id INTEGER NOT NULL,
+    normalized_tag TEXT NOT NULL,
+    is_valid INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(subject_type, legacy_id, normalized_tag)
+);
+
+WITH RECURSIVE split_language(policy_id, rest, raw_language) AS (
+    SELECT P._id, CW.language_tags || '|', ''
+    FROM creator_watches CW
+    JOIN author_archive_watches W ON W.creator_id = CW.creator_id
+    JOIN author_archive_watch_result_policies P ON P.watch_id = W._id
+    WHERE CW.language_tags <> ''
+    UNION ALL
+    SELECT
+        policy_id,
+        substr(rest, instr(rest, '|') + 1),
+        lower(trim(substr(rest, 1, instr(rest, '|') - 1)))
+    FROM split_language
+    WHERE rest <> ''
+)
+INSERT OR IGNORE INTO author_archive_legacy_language_tags(subject_type, legacy_id, normalized_tag)
+SELECT 'WATCH_POLICY', policy_id, raw_language
+FROM split_language
+WHERE raw_language <> '';
+
+INSERT INTO author_archive_discoveries(
+    watch_id, source_work_id, kind, reason, baseline_generation,
+    read_state, review_disposition, first_discovered_at, last_modified_at
+)
+SELECT DISTINCT
+    W._id,
+    SWC.source_work_id,
+    'NEW_WORK_CANDIDATE',
+    'legacy candidate imported as baseline archive',
+    1,
+    CASE WHEN SW.legacy_review_snapshot = 'PENDING' THEN 'UNSEEN' ELSE 'SEEN' END,
+    CASE SW.legacy_review_snapshot
+        WHEN 'ACCEPTED' THEN 'ACCEPTED'
+        WHEN 'IGNORED' THEN 'IGNORED'
+        ELSE 'PENDING'
+    END,
+    SW.first_seen_at,
+    SW.last_seen_at
+FROM author_archive_source_work_creators SWC
+JOIN author_archive_source_works SW ON SW._id = SWC.source_work_id
+JOIN author_archive_watches W ON W.creator_id = SWC.creator_id;
+
+INSERT INTO author_archive_canonical_works(
+    _id, portable_key, primary_title, normalized_title, status,
+    legacy_work_id, created_at, last_modified_at
+)
+SELECT
+    _id,
+    lower(hex(randomblob(16))),
+    primary_title,
+    normalized_title,
+    'ACTIVE',
+    _id,
+    created_at,
+    last_modified_at
+FROM canonical_works;
+
+INSERT INTO author_archive_canonical_creators(
+    work_id, creator_id, role, creator_order, origin, evidence
+)
+SELECT CW._id, CW.primary_creator_id, 'UNKNOWN', 0, 'MIGRATION', 'v1 primary creator'
+FROM canonical_works CW
+JOIN author_archive_creators C ON C.legacy_creator_id = CW.primary_creator_id
+WHERE CW.primary_creator_id IS NOT NULL;
+
+INSERT INTO author_archive_legacy_language_tags(subject_type, legacy_id, normalized_tag)
+SELECT 'CANONICAL_WORK', _id, lower(trim(original_language))
+FROM canonical_works
+WHERE original_language IS NOT NULL AND trim(original_language) <> '';
+
+INSERT INTO author_archive_legacy_language_tags(subject_type, legacy_id, normalized_tag)
+SELECT 'SOURCE_WORK', _id, lower(trim(language_tag))
+FROM discovery_candidates;
+
+WITH RECURSIVE language_parts(
+    subject_type,
+    legacy_id,
+    normalized_tag,
+    remainder,
+    part_index,
+    is_valid
+) AS (
+    SELECT
+        subject_type,
+        legacy_id,
+        normalized_tag,
+        normalized_tag,
+        0,
+        normalized_tag <> ''
+            AND normalized_tag NOT IN ('bl', 'gl', 'sf', 'unknown', 'und')
+            AND normalized_tag NOT LIKE '-%'
+            AND normalized_tag NOT LIKE '%-'
+            AND normalized_tag NOT LIKE '%--%'
+    FROM author_archive_legacy_language_tags
+    UNION ALL
+    SELECT
+        subject_type,
+        legacy_id,
+        normalized_tag,
+        CASE
+            WHEN instr(remainder, '-') = 0 THEN ''
+            ELSE substr(remainder, instr(remainder, '-') + 1)
+        END,
+        part_index + 1,
+        is_valid AND CASE
+            WHEN part_index = 0 THEN
+                length(
+                    CASE
+                        WHEN instr(remainder, '-') = 0 THEN remainder
+                        ELSE substr(remainder, 1, instr(remainder, '-') - 1)
+                    END
+                ) BETWEEN 2 AND 3
+                AND CASE
+                    WHEN instr(remainder, '-') = 0 THEN remainder
+                    ELSE substr(remainder, 1, instr(remainder, '-') - 1)
+                END NOT GLOB '*[^a-z]*'
+            ELSE
+                length(
+                    CASE
+                        WHEN instr(remainder, '-') = 0 THEN remainder
+                        ELSE substr(remainder, 1, instr(remainder, '-') - 1)
+                    END
+                ) BETWEEN 2 AND 8
+                AND CASE
+                    WHEN instr(remainder, '-') = 0 THEN remainder
+                    ELSE substr(remainder, 1, instr(remainder, '-') - 1)
+                END NOT GLOB '*[^a-z0-9]*'
+        END
+    FROM language_parts
+    WHERE remainder <> ''
+)
+UPDATE author_archive_legacy_language_tags
+SET is_valid = coalesce((
+    SELECT LP.is_valid
+    FROM language_parts LP
+    WHERE LP.subject_type = author_archive_legacy_language_tags.subject_type
+      AND LP.legacy_id = author_archive_legacy_language_tags.legacy_id
+      AND LP.normalized_tag = author_archive_legacy_language_tags.normalized_tag
+      AND LP.remainder = ''
+    ORDER BY LP.part_index DESC
+    LIMIT 1
+), 0);
+
+INSERT OR IGNORE INTO author_archive_watch_languages(policy_id, language_tag)
+SELECT
+    legacy_id,
+    CASE WHEN is_valid = 1 THEN normalized_tag ELSE 'und' END
+FROM author_archive_legacy_language_tags
+WHERE subject_type = 'WATCH_POLICY';
+
+INSERT INTO author_archive_language_assertions(
+    subject_type, subject_key, dimension, language_tag, confidence,
+    evidence_kind, evidence_payload, actor, algorithm_version, withdrawn,
+    asserted_at, idempotency_key
+)
+SELECT
+    'CANONICAL_WORK',
+    'canonical:' || ACW.portable_key,
+    'ORIGINAL',
+    CASE WHEN LT.is_valid = 1 THEN LT.normalized_tag ELSE 'und' END,
+    CASE WHEN LT.is_valid = 1 THEN 1.0 ELSE 0.0 END,
+    CASE WHEN LT.is_valid = 1 THEN 'MANUAL' ELSE 'UNKNOWN' END,
+    'v1 canonical original_language',
+    'RESTORE',
+    NULL,
+    0,
+    CW.last_modified_at,
+    'legacy-canonical-language:' || CW._id || ':original'
+FROM canonical_works CW
+JOIN author_archive_canonical_works ACW ON ACW.legacy_work_id = CW._id
+JOIN author_archive_legacy_language_tags LT
+    ON LT.subject_type = 'CANONICAL_WORK' AND LT.legacy_id = CW._id
+WHERE CW.original_language IS NOT NULL AND trim(CW.original_language) <> '';
+
+UPDATE author_archive_source_works
+SET manga_id = (
+    SELECT M._id
+    FROM mangas M
+    WHERE M.source = author_archive_source_works.source_id
+      AND CASE WHEN trim(M.url) = '' THEN 'legacy-manga:' || M._id ELSE trim(M.url) END =
+          author_archive_source_works.stable_source_url
+    LIMIT 1
+)
+WHERE manga_id IS NULL
+  AND EXISTS(
+      SELECT 1
+      FROM mangas M
+      WHERE M.source = author_archive_source_works.source_id
+        AND CASE WHEN trim(M.url) = '' THEN 'legacy-manga:' || M._id ELSE trim(M.url) END =
+            author_archive_source_works.stable_source_url
+  );
+
+INSERT OR IGNORE INTO author_archive_source_works(
+    source_id, stable_source_url, manga_id, title, normalized_title,
+    author_text, artist_text, thumbnail_url, first_seen_at, last_seen_at,
+    details_fetched_at, legacy_candidate_id, legacy_review_snapshot
+)
+SELECT
+    M.source,
+    CASE WHEN trim(M.url) = '' THEN 'legacy-manga:' || M._id ELSE trim(M.url) END,
+    M._id,
+    M.title,
+    lower(trim(M.title)),
+    M.author,
+    M.artist,
+    M.thumbnail_url,
+    0,
+    0,
+    NULL,
+    NULL,
+    NULL
+FROM manga_work_matches MWM
+JOIN mangas M ON M._id = MWM.manga_id;
+
+INSERT INTO author_archive_work_decisions(
+    source_work_id, work_id, state, actor, explicit, algorithm_version,
+    score, evidence, decided_at, idempotency_key
+)
+SELECT
+    SW._id,
+    MWM.work_id,
+    CASE upper(MWM.state)
+        WHEN 'CONFIRMED' THEN 'CONFIRMED'
+        WHEN 'REJECTED' THEN 'REJECTED'
+        ELSE 'SUGGESTED'
+    END,
+    CASE WHEN upper(MWM.state) = 'CANDIDATE' THEN 'ALGORITHM' ELSE 'RESTORE' END,
+    CASE WHEN upper(MWM.state) = 'CANDIDATE' THEN 0 ELSE 1 END,
+    'legacy-v1',
+    MWM.confidence,
+    MWM.match_reason,
+    MWM.last_modified_at,
+    'legacy-work-decision:' || MWM.manga_id || ':' || MWM.work_id
+FROM manga_work_matches MWM
+JOIN mangas M ON M._id = MWM.manga_id
+JOIN author_archive_source_works SW
+    ON SW.source_id = M.source
+    AND SW.stable_source_url =
+        CASE WHEN trim(M.url) = '' THEN 'legacy-manga:' || M._id ELSE trim(M.url) END
+JOIN author_archive_canonical_works CW ON CW.legacy_work_id = MWM.work_id
+ORDER BY MWM.created_at ASC, MWM.manga_id ASC, MWM.work_id ASC;
+
+WITH first_restore AS (
+    SELECT WD.*
+    FROM author_archive_work_decisions WD
+    WHERE WD.actor = 'RESTORE'
+      AND NOT EXISTS(
+          SELECT 1
+          FROM author_archive_work_decisions EARLIER
+          WHERE EARLIER.source_work_id = WD.source_work_id
+            AND EARLIER.work_id = WD.work_id
+            AND EARLIER.actor = 'RESTORE'
+            AND EARLIER._id < WD._id
+      )
+), effective_binding AS (
+    SELECT FR.*
+    FROM first_restore FR
+    WHERE FR.state = 'CONFIRMED'
+      AND NOT EXISTS(
+          SELECT 1
+          FROM first_restore EARLIER
+          WHERE EARLIER.source_work_id = FR.source_work_id
+            AND EARLIER.state = 'CONFIRMED'
+            AND EARLIER._id < FR._id
+      )
+)
+INSERT INTO author_archive_canonical_versions(
+    work_id, source_work_id, confirmation, evidence, confirmed_at
+)
+SELECT work_id, source_work_id, 'RESTORED', evidence, decided_at
+FROM effective_binding;
+
+INSERT INTO author_archive_language_assertions(
+    subject_type, subject_key, dimension, language_tag, confidence,
+    evidence_kind, evidence_payload, actor, algorithm_version, withdrawn,
+    asserted_at, idempotency_key
+)
+SELECT
+    'SOURCE_WORK',
+    'source:' || SW.source_id || ':' || SW.stable_source_url,
+    'READING',
+    CASE WHEN LT.is_valid = 1 THEN LT.normalized_tag ELSE 'und' END,
+    CASE WHEN LT.is_valid = 1 THEN MIN(1.0, MAX(0.0, DC.language_confidence)) ELSE 0.0 END,
+    CASE
+        WHEN LT.is_valid = 0 THEN 'UNKNOWN'
+        WHEN upper(DC.language_evidence) = 'EXPLICIT_METADATA' THEN 'STRUCTURED_METADATA'
+        WHEN upper(DC.language_evidence) = 'SOURCE_LANGUAGE' THEN 'SINGLE_LANGUAGE_SOURCE'
+        ELSE 'TEXT_DETECTION'
+    END,
+    DC.language_evidence,
+    'ALGORITHM',
+    'legacy-v1',
+    0,
+    DC.last_seen_at,
+    'legacy-language:' || DC._id || ':reading'
+FROM discovery_candidates DC
+JOIN author_archive_source_works SW ON SW.legacy_candidate_id = DC._id
+JOIN author_archive_legacy_language_tags LT
+    ON LT.subject_type = 'SOURCE_WORK' AND LT.legacy_id = DC._id;
+
+DROP TABLE author_archive_legacy_language_tags;
+
+CREATE TABLE author_archive_migration_guard(
+    value INTEGER NOT NULL CHECK(value = 0)
+);
+
+INSERT INTO author_archive_migration_guard(value)
+SELECT COUNT(*)
+FROM manga_creators MC
+LEFT JOIN creators C ON C._id = MC.creator_id
+LEFT JOIN mangas M ON M._id = MC.manga_id
+WHERE C._id IS NULL OR M._id IS NULL;
+
+INSERT INTO author_archive_migration_guard(value)
+SELECT COUNT(*)
+FROM discovery_candidate_creators DCC
+LEFT JOIN discovery_candidates DC ON DC._id = DCC.candidate_id
+LEFT JOIN creators C ON C._id = DCC.creator_id
+WHERE DC._id IS NULL OR C._id IS NULL;
+
+INSERT INTO author_archive_migration_guard(value)
+SELECT COUNT(*)
+FROM pragma_foreign_key_check
+WHERE "table" LIKE 'author_archive_%';
+
+DROP TABLE author_archive_migration_guard;

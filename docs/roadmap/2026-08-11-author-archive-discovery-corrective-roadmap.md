@@ -404,7 +404,7 @@ source scope 与 reading-language result policy 是两个独立概念：
 单人顺序执行预计 69–109 工程日，约 14–22 周；在 shared contract 冻结后最多两个低冲突工作流并行，预计 10–16 周。估算不含等待 Android/macOS/Windows 构建机、真实源恢复、上游接口变化或扩展维护者响应的外部时间。
 
 ```text
-AA0-01 → AA0-02 → AA1-01 → AA1-02 → AA1-03
+AA0-01 → AA0-02 → AA1-02 → AA1-01 → AA1-03
                                         ├→ AA2-01 → AA2-02 → AA2-03 ─┐
                                         └→ AA3-01 ────────────────────┴→ AA3-02 → AA3-03
 AA1-02 + AA1-03 ────────────────────────────────────────────────→ AA4-01 → AA4-02
@@ -450,37 +450,42 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 ### Phase AA1：作者身份、索引与 v2 数据基础
 
+- [x] `AA1-02` 迁移统一 SourceWork、关系、语言 assertion 与聚合基础
 - [ ] `AA1-01` 从书架回填并持续同步可解释的作者身份
-- [ ] `AA1-02` 迁移统一 SourceWork、关系、语言 assertion 与聚合基础
 - [ ] `AA1-03` 建立 watch、run/checkpoint、discovery 与 outbox 持久状态
+
+#### `AA1-02` 迁移统一 SourceWork、关系、语言 assertion 与聚合基础
+
+> 状态卡：`DONE` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `[x]` · Android `[x]：同一 gated repository wiring` · Desktop/UI `[x]：production FK/原子迁移/同一 repository wiring；UI N/A` · Legacy/Migration `[x]` · Review `[x]` · Verify `[x]` · Evidence `[x]` · Commit `[x]：本行所在提交`
+>
+> 记录：阻塞 `—` · 审查 `独立审查与唯一修复复审共发现 5 个 P1、2 个 P2；decision/canonical 物化、candidate review fingerprint、URL fallback、watch/assertion language、FK/version 原子性均已用回归关闭，最终 P0/P1/P2=0` · 验证 `aa1-02-final-related-data：13 domain；aa1-02-final-related-data-2：42 data；aa1-02-final-related-desktop：11；aa1-02-final-related-android：4；aa1-02-final-spotless-check-2：PASS` · 运行产物 `N/A：本批为 shared/data storage cutover，无用户可见 Desktop 迭代或发布构建` · Commit `本行所在提交`
+
+- RED：当前 DB fixture 升级、candidate state preservation、role UNKNOWN→AUTHOR、重复 JOIN、source/url 规范化、confirmed/rejected 迁移、非法 language tag、事务失败回滚，以及回滚构建按既定策略忽略新表或明确拒绝不安全 downgrade。
+- GREEN：实现第 5 节统一 source version、关系、decision 和 assertion schema；repository 返回 typed upsert outcome；grouped query 使用 `DISTINCT`/唯一关系保证稳定 key。
+- 数据完整性：增加适合当前 SQLite 配置的 FK/cascade 或显式清理事务；所有 orphan 查询有测试。
+- 身份/关系前置契约：creator 保存 `ACTIVE/MERGED/DELETED` 与无环 `merged_into_creator_id`；manga/source-work relation 保存 typed origin，区分自动解析与人工绑定。相同规范 alias 可属于多位 creator，不得重新引入全局姓名唯一约束。
+- 迁移原子性：`15.sqm` 一次创建 ADR 冻结的全部 v2 表；AA1-01/AA1-03 只能消费或扩展 repository，不得继续改写同一个已发布迁移。Android/Desktop production driver 都必须开启 `PRAGMA foreign_keys=ON`。
+- Legacy：停止向旧 candidate/match 表写入；只读迁移桥在 `AA4-02` 前删除。
+- Legacy bridge：增加内部 fingerprint state，以 `(entity type, legacy key)` 区分 migration 基线与旧 binary 回滚期间的真实增量；无变化重启不得重灌 stale v1 关系，内部指纹不进入用户备份。
+- 一致性门禁：candidate metadata/review 分别 fingerprint；SourceWork URL 在 migration/repository/bridge 使用同一 trim + legacy fallback 规则；work decision 只通过有效投影物化 canonical version；语言 migration 与运行时复用同一有效性向量。
+- 关闭条件：旧 fixture 每个用户状态、时间戳和人工决定可追溯；重复 scan 不会把 review state 恢复为 NEW。
+- 内聚性与风险：本批超过 8 文件/400 行，因为一次性 `15.sqm`、typed repository、只读 rollback bridge、双端 DI 与真实迁移/FK 测试共同组成不可拆分的 v16 storage cutover；若拆开提交，已升级用户不会重跑同一 migration。风险由失败回滚、fresh/upgraded 等价、legacy 增量幂等、双端同实例 wiring 和 70 条相关测试约束。
+- 预计：4–6 工程日，约 7–13 个 schema/repository/migration/test 文件。
 
 #### `AA1-01` 从书架回填并持续同步可解释的作者身份
 
 > 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `[ ]` · Android `[ ]` · Desktop/UI `[ ]` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `等待 AA1-02 v16 storage/repository 前置完成；禁止在 v1 上临时双写` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
 
 - RED：多人分隔符、author/artist 重叠、别名、罗马字/全半角、空值、同名不同人、人工 merge/split、字段修改、漫画删除、重复 backfill 和 10k 漫画批量样本。
 - GREEN：复用并扩展 `CreatorNameNormalizer`，提取 `ExtractCreatorsFromManga` 与增量 indexer；事务批量回填现有书架，之后订阅 manga 增删改同步关系；人工 identity merge/split 事务化重映射 link/watch/decision 并通过唯一约束消除重复 event。
 - UI：Authors Root 首次打开显示索引进度、空书架与失败重试；Manga Detail 把多人 chips 拆开，同名歧义先让用户选择/创建 identity；Author Detail 可管理人工 alias，并以确认对话框执行 identity merge/split。
 - Android/Desktop：同一 parser/index use case；平台只决定后台触发与进度呈现。
-- Backup：本任务建立 versioned optional section 的 creator/alias 片段；creator、alias 与人工 identity merge/split 使用自然键往返，恢复不得因同名规范值合并两位作者。
+- Backup：本任务建立 versioned optional section 的 creator/alias/binding 片段；creator、alias、merge redirect 与 source-work binding 使用 portable/natural key 往返，恢复不得因同名规范值合并两位作者。只备份 creator/alias 而不备份 binding 不能关闭 split 往返门禁。
 - Legacy：`LinkMangaCreator` 不再是唯一建索引入口；旧整段 Creator 迁移为可审查 alias，不能静默删除人工关注。
 - 关闭条件：新安装与升级用户无需逐本点击即可看到完整作者列表；重复执行不产生重复 identity/link。
 - 预计：4–6 工程日，约 8–14 个文件。
-
-#### `AA1-02` 迁移统一 SourceWork、关系、语言 assertion 与聚合基础
-
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `[ ]` · Android `N/A：data/shared` · Desktop/UI `N/A：data/shared` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
->
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
-
-- RED：当前 DB fixture 升级、candidate state preservation、role UNKNOWN→AUTHOR、重复 JOIN、source/url 规范化、confirmed/rejected 迁移、非法 language tag、事务失败回滚，以及回滚构建按既定策略忽略新表或明确拒绝不安全 downgrade。
-- GREEN：实现第 5 节统一 source version、关系、decision 和 assertion schema；repository 返回 typed upsert outcome；grouped query 使用 `DISTINCT`/唯一关系保证稳定 key。
-- 数据完整性：增加适合当前 SQLite 配置的 FK/cascade 或显式清理事务；所有 orphan 查询有测试。
-- Legacy：停止向旧 candidate/match 表写入；只读迁移桥在 `AA4-02` 前删除。
-- 关闭条件：旧 fixture 每个用户状态、时间戳和人工决定可追溯；重复 scan 不会把 review state 恢复为 NEW。
-- 预计：4–6 工程日，约 7–13 个 schema/repository/migration/test 文件。
 
 #### `AA1-03` 建立 watch、run/checkpoint、discovery 与 outbox 持久状态
 
@@ -853,5 +858,6 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-08-11 | `AA0-01` | `TODO → DONE` | JUnit 旧报告仅发现 2/9；修复后先暴露 1 个真实断言失败；`aa0-01-inventory-red`；六条 desired behavior 由 `aa0-01-product-gaps-red` 与 `aa0-review-evidence-red` 正确失败 | 9/9 intended data tests；动作 inventory、void runner、导航/手动发现真实边界与诚实 partial/gap 保护全绿 | 首轮 3 个证据 P1 修复；修复复审 PASS，P0/P1/P2=0 | `aa0-review-green`、`aa0-related-green`、`aa0-review-spotless` PASS；无发布构建 | 本行所在提交 |
 | 2026-08-11 | `AA0-02` | `TODO → DONE` | `aa0-review-domain-red`：11 tests / 2 expected failures，暴露非法 algorithm decision 与非显式 review 迁移 | 19 表物理契约、独立状态机、source port、field 107 备份 wire、v15 fixture、commonMain-only authority guard | 首轮状态契约 P1 修复；修复复审 PASS，P0/P1/P2=0 | `aa0-related-green`：domain/data/authority/interface PASS；`aa0-review-green`、`aa0-review-spotless` PASS | 本行所在提交 |
+| 2026-08-11 | `AA1-02` | `TODO → DONE` | `aa1-02-review-fixes-red`：40 tests / 6 expected failures；`aa1-02-rereview-red`：42 tests / 4 expected failures；`aa1-02-legacy-pending-red`：9 tests / 1 expected failure，覆盖 precedence、review attach/reset、URL、跨-work 物化及语言一致性 | v16 全量 schema + typed repository；v1 只读增量 bridge；有效 decision 唯一物化；shared language contract；Android/Desktop 同实例 DI | 首轮 P1=3/P2=1、唯一修复复审 P1=2/P2=1；全部 finding 修复并由新增 production 回归锁定，最终 P0/P1/P2=0 | 13 domain + 42 data + 11 Desktop + 4 Android 全绿；`spotlessCheck` PASS；无发布构建 | 本行所在提交 |
 
-AA0 已关闭；当前进度从第一个未勾选项推导为 `AA1-01`。在 `AA1-01` 的 production RED 建立前，不开始 `AA1-02` schema migration 或后续自动通知/canonical UI。
+AA0 与 AA1-02 已关闭。v16 migration、typed repository、rollback bridge、双端 DI 和 FK/version 原子门禁现已完成；当前进度从第一个未勾选项推导为 `AA1-01`。下一批直接在 v2 上实现书架回填与持续 identity 索引，不再向 v1 双写；后续自动通知/canonical UI 仍按依赖顺序保持未开始。

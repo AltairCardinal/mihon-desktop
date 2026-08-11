@@ -106,6 +106,8 @@ import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import tachiyomi.data.category.CategoryRepositoryImpl
 import tachiyomi.data.chapter.ChapterRepositoryImpl
 import tachiyomi.data.creator.CreatorRepositoryImpl
+import tachiyomi.data.creator.CreatorArchiveLegacyBootstrap
+import tachiyomi.data.creator.CreatorArchiveLegacyBridge
 import tachiyomi.data.history.HistoryRepositoryImpl
 import tachiyomi.data.track.TrackRepositoryImpl
 import tachiyomi.data.manga.MangaRepositoryImpl
@@ -139,6 +141,8 @@ import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.repository.CreatorRepository
+import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
 import tachiyomi.domain.history.interactor.GetHistory
 import tachiyomi.domain.history.interactor.GetNextChapters
@@ -179,6 +183,7 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.get
 import java.io.File
+import java.util.Properties
 
 /**
  * Initializes all desktop DI bindings.
@@ -457,7 +462,14 @@ internal fun initDataLayer(paths: DesktopPlatformPaths): DatabaseHandler {
     val categoryRepository: CategoryRepository = CategoryRepositoryImpl(handler)
     val historyRepository: HistoryRepository = HistoryRepositoryImpl(handler)
     val updatesRepository: UpdatesRepository = UpdatesRepositoryImpl(handler)
-    val creatorRepository: CreatorRepository = CreatorRepositoryImpl(handler)
+    val creatorArchiveBootstrap: CreatorArchiveBootstrap = CreatorArchiveLegacyBootstrap(
+        CreatorArchiveLegacyBridge(handler),
+    )
+    val creatorRepositoryImpl = CreatorRepositoryImpl(
+        handler = handler,
+        bootstrap = creatorArchiveBootstrap,
+    )
+    val creatorRepository: CreatorRepository = creatorRepositoryImpl
     val extensionRepoRepository: ExtensionRepoRepository = ExtensionRepoRepositoryImpl(handler)
     val trackRepository: TrackRepository = TrackRepositoryImpl(handler)
     Injekt.addSingleton(mangaRepository)
@@ -465,7 +477,9 @@ internal fun initDataLayer(paths: DesktopPlatformPaths): DatabaseHandler {
     Injekt.addSingleton(categoryRepository)
     Injekt.addSingleton(historyRepository)
     Injekt.addSingleton(updatesRepository)
+    Injekt.addSingleton(creatorArchiveBootstrap)
     Injekt.addSingleton(creatorRepository)
+    Injekt.addSingleton<CreatorArchiveRepository>(creatorRepositoryImpl)
     Injekt.addSingleton(extensionRepoRepository)
     Injekt.addSingleton(trackRepository)
     return handler
@@ -997,8 +1011,11 @@ private fun registerDesktopBackup(
 internal fun createDriver(dbFile: File): SqlDriver {
     val schema = tachiyomi.data.Database.Schema
     val isNew = !dbFile.exists() || dbFile.length() == 0L
-    val driver = JdbcSqliteDriver("jdbc:sqlite:${dbFile.absolutePath}")
+    val sqliteProperties = Properties().apply { setProperty("foreign_keys", "true") }
+    val driver = JdbcSqliteDriver("jdbc:sqlite:${dbFile.absolutePath}", sqliteProperties)
     try {
+        driver.execute(null, "PRAGMA foreign_keys = ON", 0, null)
+        check(driver.foreignKeysEnabled()) { "SQLite foreign key enforcement could not be enabled" }
         if (isNew) {
             schema.create(driver)
             driver.execute(null, "PRAGMA user_version = ${schema.version}", 0, null)
@@ -1016,8 +1033,11 @@ internal fun createDriver(dbFile: File): SqlDriver {
             ).value
             if (currentVersion < schema.version) {
                 val migrationVersion = recoverInterruptedMigrationVersion(driver, currentVersion)
-                schema.migrate(driver, migrationVersion.toLong(), schema.version)
-                driver.execute(null, "PRAGMA user_version = ${schema.version}", 0, null)
+                tachiyomi.data.DatabaseMigration.migrateAtomically(
+                    driver = driver,
+                    oldVersion = migrationVersion.toLong(),
+                    newVersion = schema.version,
+                )
             }
         }
     } catch (e: Exception) {
@@ -1029,6 +1049,16 @@ internal fun createDriver(dbFile: File): SqlDriver {
     }
     return driver
 }
+
+private fun SqlDriver.foreignKeysEnabled(): Boolean = executeQuery(
+    identifier = null,
+    sql = "PRAGMA foreign_keys",
+    parameters = 0,
+    mapper = { cursor ->
+        app.cash.sqldelight.db.QueryResult.Value(cursor.next().value && cursor.getLong(0) == 1L)
+    },
+    binders = null,
+).value
 
 private fun recoverInterruptedMigrationVersion(driver: SqlDriver, recordedVersion: Int): Int {
     var recoveredVersion = recordedVersion

@@ -39,6 +39,8 @@ import mihon.domain.migration.usecases.MigrateMangaUseCase
 import mihon.domain.upcoming.interactor.GetUpcomingManga
 import tachiyomi.data.category.CategoryRepositoryImpl
 import tachiyomi.data.chapter.ChapterRepositoryImpl
+import tachiyomi.data.creator.CreatorArchiveLegacyBootstrap
+import tachiyomi.data.creator.CreatorArchiveLegacyBridge
 import tachiyomi.data.creator.CreatorRepositoryImpl
 import tachiyomi.data.history.HistoryRepositoryImpl
 import tachiyomi.data.manga.MangaRepositoryImpl
@@ -69,6 +71,8 @@ import tachiyomi.domain.chapter.interactor.SetMangaDefaultChapterFlags
 import tachiyomi.domain.chapter.interactor.ShouldUpdateDbChapter
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
 import tachiyomi.domain.history.interactor.GetHistory
@@ -128,7 +132,11 @@ class DomainModule : InjektModule {
         addFactory { DeleteCategory(get(), get(), get()) }
 
         addSingletonFactory<MangaRepository> { MangaRepositoryImpl(get()) }
-        addSingletonFactory<CreatorRepository> { CreatorRepositoryImpl(get()) }
+        addSingletonFactory { CreatorArchiveLegacyBridge(get()) }
+        addSingletonFactory<CreatorArchiveBootstrap> { CreatorArchiveLegacyBootstrap(get()) }
+        addSingletonFactory { CreatorRepositoryImpl(handler = get(), bootstrap = get()) }
+        addSingletonFactory<CreatorRepository> { get<CreatorRepositoryImpl>() }
+        addSingletonFactory<CreatorArchiveRepository> { get<CreatorRepositoryImpl>() }
         addSingletonFactory { SourceMangaSearchService() }
         addFactory { CreatorDiscoveryService(get(), get()) }
         addFactory { GetDuplicateLibraryManga(get()) }

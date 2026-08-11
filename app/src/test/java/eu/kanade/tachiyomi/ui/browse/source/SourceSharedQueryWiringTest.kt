@@ -10,9 +10,13 @@ import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
+import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
+import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import uy.kohesive.injekt.Injekt
@@ -41,6 +45,17 @@ class SourceSharedQueryWiringTest {
 
             assertNotNull(Injekt.get<UpdateLibraryMembership>())
             assertNotNull(Injekt.get<BatchUpdateChapters>())
+        }
+    }
+
+    @Test
+    fun `Android creator facades resolve the same gated archive repository`() {
+        withIsolatedInjekt {
+            Injekt.addSingleton<DatabaseHandler>(mockk(relaxed = true))
+            Injekt.importModule(DomainModule())
+
+            assertSame(Injekt.get<CreatorRepository>(), Injekt.get<CreatorArchiveRepository>())
+            assertNotNull(Injekt.get<CreatorArchiveBootstrap>())
         }
     }
 

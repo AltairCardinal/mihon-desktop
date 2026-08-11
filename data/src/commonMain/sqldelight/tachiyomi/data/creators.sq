@@ -272,3 +272,76 @@ upsertMangaWorkMatch {
     WHERE manga_id = :mangaId
     LIMIT 1;
 }
+
+legacyCreatorsForArchiveBridge:
+SELECT _id, display_name, normalized_name, sort_name, aliases, created_at, last_modified_at
+FROM creators
+ORDER BY _id;
+
+legacyMangaCreatorsForArchiveBridge:
+SELECT manga_id, creator_id, role, source_text, confidence, evidence
+FROM manga_creators
+ORDER BY manga_id, creator_id, role;
+
+legacyDiscoveryCandidatesForArchiveBridge:
+SELECT
+    _id,
+    source,
+    url,
+    title,
+    normalized_title,
+    author_text,
+    artist_text,
+    language_tag,
+    language_confidence,
+    language_evidence,
+    thumbnail_url,
+    first_seen_at,
+    last_seen_at,
+    details_fetched_at,
+    state
+FROM discovery_candidates
+ORDER BY _id;
+
+legacyDiscoveryCandidateCreatorsForArchiveBridge:
+SELECT candidate_id, creator_id, role, source_text, confidence, evidence
+FROM discovery_candidate_creators
+ORDER BY candidate_id, creator_id, role;
+
+legacyCreatorWatchesForArchiveBridge:
+SELECT
+    creator_id,
+    enabled,
+    source_ids,
+    language_tags,
+    last_checked_at,
+    last_success_at,
+    last_error,
+    created_at
+FROM creator_watches
+ORDER BY creator_id;
+
+legacyCanonicalWorksForArchiveBridge:
+SELECT
+    _id,
+    primary_title,
+    normalized_title,
+    primary_creator_id,
+    original_language,
+    created_at,
+    last_modified_at
+FROM canonical_works
+ORDER BY _id;
+
+legacyMangaWorkMatchesForArchiveBridge:
+SELECT
+    manga_id,
+    work_id,
+    confidence,
+    match_reason,
+    state,
+    manually_confirmed,
+    created_at,
+    last_modified_at
+FROM manga_work_matches
+ORDER BY manga_id;

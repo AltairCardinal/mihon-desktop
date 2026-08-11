@@ -48,11 +48,11 @@ data/src/commonMain/sqldelight/**
 
 | 物理表 | 关键列与唯一键 | FK / 保留规则 |
 | --- | --- | --- |
-| `author_archive_creators` | `_id`；`portable_key UNIQUE`；display/sort/status/timestamps；normalized name **不唯一** | identity 默认软删除；显式 purge 才级联 |
+| `author_archive_creators` | `_id`；`portable_key UNIQUE`；display/sort/status/timestamps；`merged_into_creator_id`；normalized name **不唯一** | identity 默认软删除；`ACTIVE/MERGED/DELETED`；merge redirect 同表引用且禁止成环；显式 purge 才级联 |
 | `author_archive_aliases` | creator、raw、normalized、source/evidence/confidence/manual；`UNIQUE(creator_id, normalized_alias)` | creator `ON DELETE CASCADE`；同一 alias 可属于不同 creator |
-| `author_archive_manga_links` | manga、creator、role/order/evidence；`UNIQUE(manga_id, creator_id)` | manga、creator `ON DELETE CASCADE`；role 变化 UPDATE 同一行 |
+| `author_archive_manga_links` | manga、creator、role/order/origin/evidence；`UNIQUE(manga_id, creator_id)` | manga、creator `ON DELETE CASCADE`；role 变化 UPDATE 同一行；metadata refresh 不覆盖人工 binding |
 | `author_archive_source_works` | source、stable URL、metadata、first/last/details、optional manga；`UNIQUE(source_id, stable_source_url)` | source 不设 FK，扩展缺失时保留 tombstone；manga `ON DELETE SET NULL` |
-| `author_archive_source_work_creators` | source work、creator、role、verification/evidence；`UNIQUE(source_work_id, creator_id)` | 两端 `ON DELETE CASCADE`；POSSIBLE 不产生事件 |
+| `author_archive_source_work_creators` | source work、creator、role/order/origin/verification/evidence；`UNIQUE(source_work_id, creator_id)` | 两端 `ON DELETE CASCADE`；POSSIBLE 不产生事件；metadata refresh 不覆盖人工 binding |
 | `author_archive_watches` | creator、enabled、period、lease owner/expiry、created/modified；`UNIQUE(creator_id)` | creator `ON DELETE CASCADE`；unfollow 不删除行 |
 | `author_archive_watch_sources` | watch、source、baseline/generation/due；`UNIQUE(watch_id, source_id)` | watch `ON DELETE CASCADE`；source 无 FK |
 | `author_archive_watch_result_policies` | watch、probable/unknown/notification policy；`UNIQUE(watch_id)` | watch `ON DELETE CASCADE` |
@@ -62,11 +62,12 @@ data/src/commonMain/sqldelight/**
 | `author_archive_discoveries` | watch、source work、kind/generation/read/review/first time；`UNIQUE(watch_id, source_work_id)` | watch/source work `ON DELETE CASCADE` |
 | `author_archive_canonical_works` | `portable_key UNIQUE`、主标题、status/timestamps | 默认软删除，避免 decision 失去目标 |
 | `author_archive_canonical_creators` | work、creator、role/order/evidence；`UNIQUE(work_id, creator_id)` | 两端 `ON DELETE CASCADE` |
-| `author_archive_canonical_versions` | work、source work、confirmation/evidence；`source_work_id UNIQUE` | 两端 `ON DELETE CASCADE`；一个源版本最多属于一个已确认 work |
-| `author_archive_work_decisions` | source work、work、state/actor/algorithm/evidence/time/idempotency；`idempotency_key UNIQUE` | 保留历史；当前投影按 explicit manual > algorithm |
+| `author_archive_canonical_versions` | work、source work、confirmation/evidence；`source_work_id UNIQUE` | 两端 `ON DELETE CASCADE`；只作为有效 work decision 的事务内物化投影，一个源版本最多属于一个已确认 work |
+| `author_archive_work_decisions` | source work、work、state/actor/algorithm/evidence/time/idempotency；`idempotency_key UNIQUE` | 保留不可变历史；当前投影按 `USER > RESTORE > ALGORITHM`，同一 work 的首个 RESTORE 决定不可被后续 RESTORE 改写 |
 | `author_archive_language_assertions` | subject type/key、dimension/tag/confidence/evidence/actor/algorithm/withdrawn/time；`idempotency_key UNIQUE` | subject natural key + dimension 建索引；人工记录撤销而不物理覆盖 |
 | `author_archive_chapter_variants` | source work、chapter natural key、volume/chapter/part/type/raw/evidence；`UNIQUE(source_work_id, chapter_natural_key)` | source work `ON DELETE CASCADE`；解析失败保存 UNKNOWN/raw |
 | `author_archive_notification_outbox` | discovery、channel/idempotency/attempt/state/error/timestamps；`idempotency_key UNIQUE` | discovery `ON DELETE CASCADE`；投递失败不删除 discovery |
+| `author_archive_legacy_import_state` | entity type、legacy key、canonical fingerprint、imported time；`PRIMARY KEY(entity_type, legacy_key)` | 仅用于识别旧 binary 回滚期间的 v1 增量；不进入备份，随 bridge 在 `AA4-02` 停用 |
 
 所有引用均显式使用 FK 或记录“不设 FK、保留 tombstone”的理由。Android 与 Desktop production driver 都必须启用 `PRAGMA foreign_keys=ON`；升级、删除和恢复测试必须断言 `PRAGMA foreign_key_check` 为空。
 
@@ -81,7 +82,9 @@ data/src/commonMain/sqldelight/**
 7. discovery 与 outbox 必须同一事务插入；注入故障时两者皆无。外部投递失败只更新 outbox，不回滚 feed。
 8. 同一 watch 同时最多一个未过期 lease；过期 lease可回收。`CancellationException` 向上传播；取消后不得写成功 checkpoint、candidate、discovery 或 outbox。
 9. 一个 source 失败只回滚该源事务；其他 source 可提交，run 汇总为 `PARTIAL`。
-10. 算法只能写入非显式 `SUGGESTED`；`USER` 决定必须显式，`RESTORE` 只能恢复显式 `CONFIRMED/REJECTED`。算法与 restore merge 不得覆盖既有 `USER/RESTORE` 决定，只有新的显式用户动作可撤销或改变它。
+10. 算法只能写入非显式 `SUGGESTED`；`USER` 决定必须显式，`RESTORE` 只能恢复显式 `CONFIRMED/REJECTED`。每次 typed write 或 legacy import 都先追加不可变事件，再从完整历史解析有效决定，并在同一事务重建 `canonical_versions`；被更高优先级压制的事件只能留作审计，不得直接增删物化关系。优先级为 `USER > RESTORE > ALGORITHM`；同一 work 的最新 USER 生效，首个 RESTORE 在没有 USER 时生效，只有新的显式用户动作可撤销或改变既有人工结果。
+11. identity merge 保留 source portable key tombstone，并写入 surviving creator redirect；事务必须折叠所有唯一关系、重映射 watch/discovery/creator relation 与 portable-key subject，且拒绝 redirect cycle。split 生成新的随机 portable key，并以用户选择的 source-work natural-key binding 表达最终归属；同名或同 alias 不触发重新合并。
+12. 运行时语言标签统一由 `CreatorArchiveLanguageTag` 规范化：trim、lowercase，主标签仅允许 2–3 个小写字母，后续子标签仅允许 2–8 个小写字母或数字；空值、`unknown/und`、`BL/GL/SF` 与非法格式一律降为 `und`。migration 必须对 tag、confidence 与 evidence 使用同一个有效性判定。
 
 `CreatorArchiveV2Contract.kt` 是上述规则的 executable projection；AA1 的 SQLDelight repository 必须复用同一 contract vectors，而不是另写一套期望。
 
@@ -108,9 +111,9 @@ data/src/commonMain/sqldelight/**
 
 1. 建立全部 v2 表、唯一键、索引与 FK；
 2. 为 v1 creator/canonical work 生成持久随机 `portable_key`；不得用 normalized name 或标题作 identity；
-3. v1 candidate 映射 SourceWork，保留 first/last/details/thumbnail/review；历史项进入 baseline archive，不建 outbox；
+3. v1 candidate 映射 SourceWork，保留 first/last/details/thumbnail/review；stable URL 先 trim，空 candidate/manga URL 分别使用含 legacy ID 的稳定 fallback key；历史项进入 baseline archive，不建 outbox；
 4. `(candidate, creator)` 多 role 折叠为一条关系，保留证据并按 `BOTH > AUTHOR/ARTIST > UNKNOWN` 投影 role；
-5. confirmed match 迁 version + decision，rejected 只迁 decision；
+5. 所有 match 先按 v1 `created_at`、manga ID 稳定追加 decision；同一 SourceWork 的 confirmed version 再由完整有效 decision history 唯一物化，rejected 只保留 decision；
 6. v1 language 迁 automatic assertion；非法 tag/未知证据降为 `und/UNKNOWN`；
 7. v1 watch 的 source IDs 与 language tags 分别迁 source scope 与 result policy；
 8. 运行 duplicate/orphan/`foreign_key_check`；任一失败回滚，`user_version` 保持 15，v1 数据仍可读；
@@ -122,6 +125,7 @@ data/src/commonMain/sqldelight/**
 
 - 新版不向 v1 表双写。
 - `AA1-02` 起提供只读、幂等 legacy import bridge；若用户短暂回滚旧 binary 并写入 v1，重新升级时 bridge 可再次吸收增量。
+- bridge 以 `author_archive_legacy_import_state` 保存长度前缀 canonical fingerprint；candidate metadata 与 review 使用不同 entity fingerprint，metadata-only 回滚刷新不得修改 v2 人工 review，旧版扫描带来的 `PENDING` 不得覆盖已有 `ACCEPTED/IGNORED/MERGED`。首次启动先登记 migration 已吸收的快照，之后只应用 fingerprint 变化，避免把未变化的 stale v1 关系重新灌入用户已 split/人工绑定的 v2 状态。
 - bridge 最迟 `AA4-02` 删除；删除后不再承诺旧 binary 的 Authors 写入能重新合并，回滚必须使用升级前数据库快照或备份。
 - v1 物理表与 migration tooling 保留到 `AA7-02` 完成升级样本、备份兼容和观察期后再清理。
 - 不安全 downgrade 不自动改 `user_version`，不删除 v2 表，不静默丢弃 portable key 或人工决定。
@@ -140,7 +144,7 @@ data/src/commonMain/sqldelight/**
 | --- | --- |
 | 1 | version |
 | 2 | creators（alias 嵌套） |
-| 3 | source works（creator relation 嵌套） |
+| 3 | source works（creator relation/binding 嵌套） |
 | 4 | watches / source scope / result policy |
 | 5 | discovery read/review disposition |
 | 6 | canonical works / confirmed versions |
@@ -156,6 +160,9 @@ data/src/commonMain/sqldelight/**
 - Discovery：`(creatorPortableKey, sourceId, stableSourceUrl)`；
 - WorkDecision：`(sourceId, stableSourceUrl, canonicalWorkPortableKey)`；
 - LanguageAssertion：`(subjectType, subject portable/natural key, dimension)`。
+- LanguageAssertion subject key 固定为：SourceWork `source:<sourceId>:<stableSourceUrl>`、CanonicalWork `canonical:<portableKey>`、Creator `creator:<portableKey>`；本地数据库 `_id` 不得进入该键。
+
+creator 备份同时保存 status 与可选 `mergedIntoPortableKey`；source-work relation 保存 creator portable key、role、order、origin、verification 与安全 evidence。恢复只按 portable/natural key 合并：normalized alias 相同绝不能合并 creator；redirect 必须先做无环校验。只保存 creator/alias 而不保存 binding 无法恢复人工 split，因此不得作为 merge/split 往返完成证据。
 
 备份不携带本地 DB ID，不恢复 run、lease、checkpoint、pending outbox 或 delivery attempt。恢复后的 watch/source 一律重新 baseline；可恢复 read/review，但不得据此重建 OS 通知。field 107 的 wire model 与双端 production wiring在 `AA1-03` 接入 `BK-01` shared plan；在此之前不得宣称作者数据已经可备份。
 

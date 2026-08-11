@@ -8,9 +8,13 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.creator.model.ArchiveDeletionPolicy
 import tachiyomi.domain.creator.model.ArchiveUpsertOutcome
+import tachiyomi.domain.creator.model.CanonicalWorkPortableKey
+import tachiyomi.domain.creator.model.CreatorArchiveLanguageTag
 import tachiyomi.domain.creator.model.CreatorArchivePhysicalSchema
+import tachiyomi.domain.creator.model.CreatorArchiveSubjectKey
 import tachiyomi.domain.creator.model.CreatorArchiveV2Contract
 import tachiyomi.domain.creator.model.CreatorArchiveV2Policy
+import tachiyomi.domain.creator.model.CreatorPortableKey
 import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.DecisionActor
 import tachiyomi.domain.creator.model.DiscoveryCommitPlan
@@ -56,10 +60,45 @@ class CreatorArchiveV2ContractTest {
     }
 
     @Test
+    fun `language assertion subject keys use portable identities instead of local ids`() {
+        assertEquals(
+            "source:7:/stable/work",
+            CreatorArchiveSubjectKey.sourceWork(SourceWorkNaturalKey(7L, "/stable/work")),
+        )
+        assertEquals(
+            "canonical:work-portable",
+            CreatorArchiveSubjectKey.canonicalWork(CanonicalWorkPortableKey("work-portable")),
+        )
+        assertEquals(
+            "creator:creator-portable",
+            CreatorArchiveSubjectKey.creator(CreatorPortableKey("creator-portable")),
+        )
+    }
+
+    @Test
+    fun `language tags share one normalized validity contract`() {
+        val vectors = mapOf(
+            "EN" to "en",
+            " zh-Hans " to "zh-hans",
+            "pt-BR" to "pt-br",
+            "BL" to "und",
+            "unknown" to "und",
+            "abcd" to "und",
+            "en-a" to "und",
+            "en-abcdefghi" to "und",
+            "en_US" to "und",
+        )
+
+        vectors.forEach { (raw, expected) ->
+            assertEquals(expected, CreatorArchiveLanguageTag.normalize(raw), raw)
+        }
+    }
+
+    @Test
     fun `physical table names unique keys and deletion policies are frozen`() {
         val tables = CreatorArchivePhysicalSchema.tables
 
-        assertEquals(19, tables.size)
+        assertEquals(20, tables.size)
         assertEquals(tables.size, tables.map { it.name }.toSet().size)
         assertTrue(tables.all { it.name.startsWith("author_archive_") && it.uniqueKeys.isNotEmpty() })
         assertEquals(

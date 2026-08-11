@@ -4,19 +4,31 @@ import app.cash.sqldelight.db.SqlDriver
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopPlatformPaths
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.api.parallel.Isolated
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.creator.repository.CreatorRepository
+import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.InjektScope
 import uy.kohesive.injekt.api.get
+import uy.kohesive.injekt.registry.default.DefaultRegistrar
 import java.io.File
+import java.sql.DriverManager
 
 /**
  * Stage 23.0 — DI layer split contract tests.
@@ -31,7 +43,21 @@ import java.io.File
  * - Tests can call initDataLayer() + initDomainLayer() without initialising
  *   the network, extension, or UI layers
  */
+@Isolated
 class DILayerSplitContractTest {
+
+    private lateinit var previousInjekt: InjektScope
+
+    @BeforeEach
+    fun isolateInjekt() {
+        previousInjekt = Injekt
+        Injekt = InjektScope(DefaultRegistrar())
+    }
+
+    @AfterEach
+    fun restoreInjekt() {
+        Injekt = previousInjekt
+    }
 
     /**
      * Compile-time contract: all five layer-init functions must exist with the
@@ -82,9 +108,30 @@ class DILayerSplitContractTest {
         assertNotNull(Injekt.get<CategoryRepository>())
         assertNotNull(Injekt.get<SetMangaCategories>())
         assertNotNull(Injekt.get<CreatorRepository>())
+        assertSame(Injekt.get<CreatorRepository>(), Injekt.get<CreatorArchiveRepository>())
+        assertNotNull(Injekt.get<CreatorArchiveBootstrap>())
         assertNotNull(Injekt.get<CreatorDiscoveryService>())
         assertNotNull(Injekt.get<SourceMangaSearchService>())
         assertNotNull(Injekt.get<SaveSourceMangaForDetails>())
+    }
+
+    @Test
+    fun `desktop production repository imports rollback legacy rows before first author read`(
+        @TempDir tempDir: File,
+    ) {
+        initDataLayer(tempDir)
+        DriverManager.getConnection("jdbc:sqlite:${File(tempDir, "mihon.db").absolutePath}").use { connection ->
+            connection.createStatement().use { statement ->
+                statement.executeUpdate(
+                    "INSERT INTO creators VALUES " +
+                        "(900, 'Rollback Creator', 'rollback creator', 'Rollback Creator', '', 1, 1)",
+                )
+            }
+        }
+
+        val creators = runBlocking { Injekt.get<CreatorRepository>().getCreatorsAsFlow().first() }
+
+        assertEquals(listOf("Rollback Creator"), creators.map { it.displayName })
     }
 
     /**
