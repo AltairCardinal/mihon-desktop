@@ -3,10 +3,12 @@ package tachiyomi.data.backup
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorArchiveSection
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorBinding
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorSourceWork
+import eu.kanade.tachiyomi.data.backup.models.BackupAuthorWatch
 import eu.kanade.tachiyomi.data.backup.models.BackupCreatorAlias
 import eu.kanade.tachiyomi.data.backup.models.BackupCreatorIdentity
 import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
+import tachiyomi.domain.creator.model.CreatorArchiveLanguageTag
 import tachiyomi.domain.creator.model.CreatorRelationOrigin
 import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.CreatorRole
@@ -91,8 +93,25 @@ class SqlDelightAuthorArchiveBackupContributor(
                         .map { candidates -> candidates.maxBy { relationOriginRank(it.origin) } },
                 )
             }
-        BackupAuthorArchiveSection(creators = creators, sourceWorks = sourceWorks)
-            .takeIf { it.creators.isNotEmpty() || it.sourceWorks.isNotEmpty() }
+        val watchSources = author_archiveQueries.getArchiveWatchSourcesForBackup().executeAsList()
+            .groupBy({ it.creator_portable_key }, { it.source_id })
+        val watchLanguages = author_archiveQueries.getArchiveWatchLanguagesForBackup().executeAsList()
+            .groupBy({ it.creator_portable_key }, { it.language_tag })
+        val watches = author_archiveQueries.getArchiveWatchPoliciesForBackup().executeAsList().map { watch ->
+            BackupAuthorWatch(
+                creatorPortableKey = watch.creator_portable_key,
+                enabled = watch.enabled,
+                periodMillis = watch.period_millis,
+                sourceIds = watchSources[watch.creator_portable_key].orEmpty(),
+                readingLanguageTags = watchLanguages[watch.creator_portable_key].orEmpty(),
+                includeProbable = watch.include_probable,
+                includeUnknown = watch.include_unknown,
+                notifyProbable = watch.notify_probable,
+                notifyUnknown = watch.notify_unknown,
+            )
+        }
+        BackupAuthorArchiveSection(creators = creators, sourceWorks = sourceWorks, watches = watches)
+            .takeIf { it.creators.isNotEmpty() || it.sourceWorks.isNotEmpty() || it.watches.isNotEmpty() }
     }
 
     override suspend fun restoreSection(section: BackupAuthorArchiveSection) {
@@ -134,6 +153,9 @@ class SqlDelightAuthorArchiveBackupContributor(
             validated.sourceWorks.forEach { work ->
                 restoreSourceWork(work, creatorIds, now)
             }
+            validated.watches.forEach { watch ->
+                restoreWatch(watch, creatorIds.getValue(watch.creatorPortableKey), now)
+            }
             validated.creators.filter { it.status == STATUS_MERGED }.forEach { creator ->
                 author_archiveQueries.markArchiveCreatorMergedFromBackup(
                     targetCreatorId = creatorIds.getValue(checkNotNull(creator.mergedIntoPortableKey)),
@@ -141,6 +163,38 @@ class SqlDelightAuthorArchiveBackupContributor(
                     sourceCreatorId = creatorIds.getValue(creator.portableKey),
                 )
             }
+        }
+    }
+
+    private fun Database.restoreWatch(watch: BackupAuthorWatch, creatorId: Long, now: Long) {
+        author_archiveQueries.upsertArchiveWatchPolicyCommand(
+            creatorId = creatorId,
+            enabled = watch.enabled,
+            periodMillis = watch.periodMillis,
+            now = now,
+        )
+        val watchId = author_archiveQueries.getArchiveWatchIdByCreator(creatorId).executeAsOne()
+        val existingSources = author_archiveQueries.getArchiveWatchSourceIds(watchId).executeAsList().toSet()
+        (existingSources - watch.sourceIds.toSet()).forEach { sourceId ->
+            author_archiveQueries.deleteArchiveWatchSource(watchId, sourceId)
+            author_archiveQueries.deleteArchiveSourceCheckpoint(watchId, sourceId)
+        }
+        watch.sourceIds.forEach { sourceId ->
+            author_archiveQueries.upsertArchiveWatchSourceCommand(watchId, sourceId, now, now)
+        }
+        author_archiveQueries.upsertArchiveWatchPolicy(watchId, now, now)
+        author_archiveQueries.updateArchiveWatchResultPolicyCommand(
+            includeProbable = watch.includeProbable,
+            includeUnknown = watch.includeUnknown,
+            notifyProbable = watch.notifyProbable,
+            notifyUnknown = watch.notifyUnknown,
+            now = now,
+            watchId = watchId,
+        )
+        val policyId = author_archiveQueries.getArchiveWatchPolicyId(watchId).executeAsOne()
+        author_archiveQueries.replaceArchiveWatchLanguages(policyId)
+        watch.readingLanguageTags.forEach { language ->
+            author_archiveQueries.insertArchiveWatchLanguage(policyId, language)
         }
     }
 
@@ -287,6 +341,25 @@ class SqlDelightAuthorArchiveBackupContributor(
                 require(binding.order >= 0) { "Creator binding order must not be negative" }
                 require(binding.confidence in 0.0..1.0) { "Creator binding confidence is invalid" }
                 require(binding.evidence.isNotBlank()) { "Creator binding evidence must not be blank" }
+            }
+        }
+        require(
+            normalizedSection.watches.distinctBy(BackupAuthorWatch::creatorPortableKey).size ==
+                normalizedSection.watches.size,
+        ) {
+            "Duplicate creator watch"
+        }
+        normalizedSection.watches.forEach { watch ->
+            require(watch.creatorPortableKey in creators) { "Watch references an unknown creator" }
+            require(watch.periodMillis > 0) { "Watch period must be positive" }
+            require(watch.sourceIds.all { it >= 0 } && watch.sourceIds.distinct().size == watch.sourceIds.size) {
+                "Watch source IDs are invalid"
+            }
+            require(watch.readingLanguageTags.all { CreatorArchiveLanguageTag.normalize(it) == it && it != "und" }) {
+                "Watch language tags must be normalized"
+            }
+            require(watch.readingLanguageTags.distinct().size == watch.readingLanguageTags.size) {
+                "Duplicate watch language tag"
             }
         }
         return normalizedSection

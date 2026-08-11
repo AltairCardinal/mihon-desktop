@@ -238,6 +238,8 @@ CREATE INDEX idx_author_archive_discoveries_feed
 ON author_archive_discoveries(watch_id, read_state, first_discovered_at DESC);
 CREATE INDEX idx_author_archive_discoveries_review
 ON author_archive_discoveries(review_disposition, first_discovered_at DESC);
+CREATE INDEX idx_author_archive_discoveries_unread
+ON author_archive_discoveries(read_state, first_discovered_at DESC);
 
 CREATE TABLE author_archive_canonical_works(
     _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -2237,6 +2239,11 @@ DELETE FROM author_archive_watch_sources
 WHERE watch_id = :watchId
 AND source_id = :sourceId;
 
+deleteArchiveSourceCheckpoint:
+DELETE FROM author_archive_source_checkpoints
+WHERE watch_id = :watchId
+AND source_id = :sourceId;
+
 insertArchiveWatchSource:
 INSERT INTO author_archive_watch_sources(
     watch_id,
@@ -2653,3 +2660,296 @@ UPDATE author_archive_language_assertions
 SET subject_key = :targetSubjectKey
 WHERE subject_type = 'CREATOR'
 AND subject_key = :sourceSubjectKey;
+
+upsertArchiveWatchPolicyCommand:
+INSERT INTO author_archive_watches(
+    creator_id, enabled, period_millis, lease_owner, lease_expires_at,
+    last_checked_at, last_success_at, last_error, created_at, last_modified_at
+)
+VALUES (:creatorId, :enabled, :periodMillis, NULL, NULL, NULL, NULL, NULL, :now, :now)
+ON CONFLICT(creator_id) DO UPDATE SET
+    enabled = excluded.enabled,
+    period_millis = excluded.period_millis,
+    lease_owner = CASE WHEN excluded.enabled THEN author_archive_watches.lease_owner ELSE NULL END,
+    lease_expires_at = CASE WHEN excluded.enabled THEN author_archive_watches.lease_expires_at ELSE NULL END,
+    last_modified_at = excluded.last_modified_at;
+
+upsertArchiveWatchSourceCommand:
+INSERT INTO author_archive_watch_sources(
+    watch_id, source_id, baseline_state, baseline_generation, next_due_at, created_at, last_modified_at
+)
+VALUES (:watchId, :sourceId, 'NEEDS_BASELINE', 0, :nextDueAt, :now, :now)
+ON CONFLICT(watch_id, source_id) DO UPDATE SET
+    next_due_at = coalesce(author_archive_watch_sources.next_due_at, excluded.next_due_at),
+    last_modified_at = excluded.last_modified_at;
+
+updateArchiveWatchResultPolicyCommand:
+UPDATE author_archive_watch_result_policies
+SET include_probable = :includeProbable,
+    include_unknown = :includeUnknown,
+    notify_probable = :notifyProbable,
+    notify_unknown = :notifyUnknown,
+    last_modified_at = :now
+WHERE watch_id = :watchId;
+
+getArchiveDueWatchSources:
+SELECT
+    W.creator_id,
+    WS.source_id,
+    WS.baseline_state,
+    WS.baseline_generation,
+    WS.next_due_at
+FROM author_archive_watch_sources WS
+JOIN author_archive_watches W ON W._id = WS.watch_id
+WHERE W.enabled = 1
+AND (W.lease_expires_at IS NULL OR W.lease_expires_at <= :now)
+AND (WS.next_due_at IS NULL OR WS.next_due_at <= :now)
+ORDER BY coalesce(WS.next_due_at, 0), W.creator_id, WS.source_id
+LIMIT :limit;
+
+getArchiveWatchLease:
+SELECT enabled, lease_owner, lease_expires_at
+FROM author_archive_watches
+WHERE creator_id = :creatorId;
+
+tryAcquireArchiveWatchLease:
+UPDATE author_archive_watches
+SET lease_owner = :ownerToken,
+    lease_expires_at = :expiresAt,
+    last_modified_at = :now
+WHERE creator_id = :creatorId
+AND enabled = 1
+AND (
+    lease_owner IS NULL OR
+    lease_expires_at <= :now OR
+    lease_owner = :ownerToken
+);
+
+releaseArchiveWatchLease:
+UPDATE author_archive_watches
+SET lease_owner = NULL,
+    lease_expires_at = NULL,
+    last_modified_at = :now
+WHERE creator_id = :creatorId
+AND lease_owner = :ownerToken;
+
+insertArchiveDiscoveryRun:
+INSERT INTO author_archive_runs(
+    run_key, watch_id, state, completed_sources, total_sources, truncated,
+    error_code, error_message, queued_at, started_at, finished_at
+)
+SELECT :runKey, W._id, 'QUEUED', 0, :totalSources, 0, NULL, NULL, :queuedAt, NULL, NULL
+FROM author_archive_watches W
+WHERE W.creator_id = :creatorId
+ON CONFLICT(run_key) DO NOTHING;
+
+getArchiveDiscoveryRunByKey:
+SELECT
+    R.run_key, W.creator_id, R.state, R.completed_sources, R.total_sources,
+    R.truncated, R.error_code, R.error_message, R.queued_at, R.started_at, R.finished_at
+FROM author_archive_runs R
+JOIN author_archive_watches W ON W._id = R.watch_id
+WHERE R.run_key = :runKey;
+
+getArchiveRecoverableDiscoveryRuns:
+SELECT
+    R.run_key, W.creator_id, R.state, R.completed_sources, R.total_sources,
+    R.truncated, R.error_code, R.error_message, R.queued_at, R.started_at, R.finished_at
+FROM author_archive_runs R
+JOIN author_archive_watches W ON W._id = R.watch_id
+WHERE R.state IN ('QUEUED', 'RUNNING')
+ORDER BY R.queued_at, R._id;
+
+updateArchiveDiscoveryRun:
+UPDATE author_archive_runs
+SET state = :state,
+    completed_sources = :completedSources,
+    truncated = :truncated,
+    error_code = :errorCode,
+    error_message = :errorMessage,
+    started_at = CASE WHEN :state = 'RUNNING' THEN coalesce(started_at, :occurredAt) ELSE started_at END,
+    finished_at = CASE WHEN :state IN ('SUCCEEDED', 'FAILED', 'CANCELLED') THEN :occurredAt ELSE NULL END
+WHERE run_key = :runKey;
+
+upsertArchiveSourceCheckpoint:
+INSERT INTO author_archive_source_checkpoints(
+    watch_id, source_id, cursor, result_state, consecutive_failures, backoff_until,
+    last_checked_at, last_success_at, error_code, error_message
+)
+SELECT
+    W._id, :sourceId, :cursor, :resultState, :consecutiveFailures, :backoffUntil,
+    :checkedAt, :successAt, :errorCode, :errorMessage
+FROM author_archive_watches W
+WHERE W.creator_id = :creatorId
+ON CONFLICT(watch_id, source_id) DO UPDATE SET
+    cursor = excluded.cursor,
+    result_state = excluded.result_state,
+    consecutive_failures = excluded.consecutive_failures,
+    backoff_until = excluded.backoff_until,
+    last_checked_at = excluded.last_checked_at,
+    last_success_at = coalesce(excluded.last_success_at, author_archive_source_checkpoints.last_success_at),
+    error_code = excluded.error_code,
+    error_message = excluded.error_message;
+
+updateArchiveWatchSourceAfterCheckpoint:
+UPDATE author_archive_watch_sources
+SET baseline_state = :baselineState,
+    baseline_generation = :baselineGeneration,
+    next_due_at = :nextDueAt,
+    last_modified_at = :checkedAt
+WHERE source_id = :sourceId
+AND watch_id = (SELECT _id FROM author_archive_watches WHERE creator_id = :creatorId);
+
+getArchiveWatchSourceState:
+SELECT baseline_state, baseline_generation
+FROM author_archive_watch_sources
+WHERE source_id = :sourceId
+AND watch_id = (SELECT _id FROM author_archive_watches WHERE creator_id = :creatorId);
+
+getArchiveSourceCheckpoints:
+SELECT
+    W.creator_id, C.source_id, C.cursor, C.result_state, C.consecutive_failures,
+    C.backoff_until, C.last_checked_at, C.last_success_at, C.error_code, C.error_message
+FROM author_archive_source_checkpoints C
+JOIN author_archive_watches W ON W._id = C.watch_id
+WHERE W.creator_id = :creatorId
+ORDER BY C.source_id;
+
+updateArchiveWatchAfterCheckpoint:
+UPDATE author_archive_watches
+SET last_checked_at = :checkedAt,
+    last_success_at = CASE WHEN :successAt IS NULL THEN last_success_at ELSE :successAt END,
+    last_error = :errorMessage,
+    last_modified_at = :checkedAt
+WHERE creator_id = :creatorId;
+
+insertArchiveDiscovery:
+INSERT INTO author_archive_discoveries(
+    watch_id, source_work_id, kind, reason, baseline_generation,
+    read_state, review_disposition, first_discovered_at, last_modified_at
+)
+SELECT
+    W._id, SW._id, :kind, :reason, :baselineGeneration,
+    'UNSEEN', 'PENDING', :discoveredAt, :discoveredAt
+FROM author_archive_watches W
+JOIN author_archive_source_works SW
+    ON SW.source_id = :sourceId AND SW.stable_source_url = :stableSourceUrl
+WHERE W.creator_id = :creatorId
+ON CONFLICT(watch_id, source_work_id) DO NOTHING;
+
+getArchiveDiscoveryByNaturalKey:
+SELECT D._id
+FROM author_archive_discoveries D
+JOIN author_archive_watches W ON W._id = D.watch_id
+JOIN author_archive_source_works SW ON SW._id = D.source_work_id
+WHERE W.creator_id = :creatorId
+AND SW.source_id = :sourceId
+AND SW.stable_source_url = :stableSourceUrl;
+
+insertArchiveNotificationOutbox:
+INSERT INTO author_archive_notification_outbox(
+    discovery_id, channel, idempotency_key, attempt_count, state,
+    last_error, next_attempt_at, created_at, last_attempt_at, delivered_at
+)
+VALUES (:discoveryId, :channel, :idempotencyKey, 0, 'PENDING', NULL, NULL, :createdAt, NULL, NULL)
+ON CONFLICT(idempotency_key) DO NOTHING;
+
+getArchiveNotificationOutboxByIdempotencyKey:
+SELECT discovery_id, channel
+FROM author_archive_notification_outbox
+WHERE idempotency_key = :idempotencyKey;
+
+getArchiveDiscoveryProjectionById:
+SELECT
+    D._id, W.creator_id, SW.source_id, SW.stable_source_url, SW.title,
+    D.kind, D.reason, D.baseline_generation, D.read_state, D.review_disposition,
+    coalesce(O.state, 'CANCELLED') AS delivery_state,
+    D.first_discovered_at, D.last_modified_at
+FROM author_archive_discoveries D
+JOIN author_archive_watches W ON W._id = D.watch_id
+JOIN author_archive_source_works SW ON SW._id = D.source_work_id
+LEFT JOIN author_archive_notification_outbox O ON O.discovery_id = D._id
+WHERE D._id = :discoveryId;
+
+getArchiveUnreadDiscoveries:
+SELECT
+    D._id, W.creator_id, SW.source_id, SW.stable_source_url, SW.title,
+    D.kind, D.reason, D.baseline_generation, D.read_state, D.review_disposition,
+    coalesce(O.state, 'CANCELLED') AS delivery_state,
+    D.first_discovered_at, D.last_modified_at
+FROM author_archive_discoveries D
+JOIN author_archive_watches W ON W._id = D.watch_id
+JOIN author_archive_source_works SW ON SW._id = D.source_work_id
+LEFT JOIN author_archive_notification_outbox O ON O.discovery_id = D._id
+WHERE D.read_state = 'UNSEEN'
+ORDER BY D.first_discovered_at DESC, D._id DESC
+LIMIT :limit;
+
+getArchiveDiscoveryState:
+SELECT read_state, review_disposition
+FROM author_archive_discoveries
+WHERE _id = :discoveryId;
+
+markArchiveDiscoverySeen:
+UPDATE author_archive_discoveries
+SET read_state = 'SEEN', last_modified_at = :now
+WHERE _id = :discoveryId AND read_state = 'UNSEEN';
+
+updateArchiveDiscoveryReview:
+UPDATE author_archive_discoveries
+SET review_disposition = :disposition, last_modified_at = :now
+WHERE _id = :discoveryId;
+
+getArchivePendingNotificationOutbox:
+SELECT
+    _id, discovery_id, channel, idempotency_key, attempt_count, state,
+    last_error, next_attempt_at, created_at, last_attempt_at, delivered_at
+FROM author_archive_notification_outbox
+WHERE state IN ('PENDING', 'FAILED')
+AND (next_attempt_at IS NULL OR next_attempt_at <= :now)
+ORDER BY coalesce(next_attempt_at, created_at), _id
+LIMIT :limit;
+
+getArchiveNotificationOutboxState:
+SELECT state
+FROM author_archive_notification_outbox
+WHERE _id = :outboxId;
+
+updateArchiveNotificationDelivery:
+UPDATE author_archive_notification_outbox
+SET state = :state,
+    attempt_count = CASE WHEN :state = 'PENDING' THEN attempt_count ELSE attempt_count + 1 END,
+    last_error = :error,
+    next_attempt_at = :nextAttemptAt,
+    last_attempt_at = CASE WHEN :state = 'PENDING' THEN last_attempt_at ELSE :occurredAt END,
+    delivered_at = CASE WHEN :state = 'DELIVERED' THEN :occurredAt ELSE delivered_at END
+WHERE _id = :outboxId;
+
+getArchiveWatchPoliciesForBackup:
+SELECT
+    C.portable_key AS creator_portable_key,
+    W.enabled,
+    W.period_millis,
+    P.include_probable,
+    P.include_unknown,
+    P.notify_probable,
+    P.notify_unknown
+FROM author_archive_watches W
+JOIN author_archive_creators C ON C._id = W.creator_id
+JOIN author_archive_watch_result_policies P ON P.watch_id = W._id
+ORDER BY C.portable_key;
+
+getArchiveWatchSourcesForBackup:
+SELECT C.portable_key AS creator_portable_key, S.source_id
+FROM author_archive_watch_sources S
+JOIN author_archive_watches W ON W._id = S.watch_id
+JOIN author_archive_creators C ON C._id = W.creator_id
+ORDER BY C.portable_key, S.source_id;
+
+getArchiveWatchLanguagesForBackup:
+SELECT C.portable_key AS creator_portable_key, L.language_tag
+FROM author_archive_watch_languages L
+JOIN author_archive_watch_result_policies P ON P._id = L.policy_id
+JOIN author_archive_watches W ON W._id = P.watch_id
+JOIN author_archive_creators C ON C._id = W.creator_id
+ORDER BY C.portable_key, L.language_tag;

@@ -2,6 +2,7 @@ package tachiyomi.data.backup
 
 import eu.kanade.tachiyomi.data.backup.models.Backup
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorArchiveSection
+import eu.kanade.tachiyomi.data.backup.models.BackupAuthorWatch
 import eu.kanade.tachiyomi.data.backup.models.BackupCreatorIdentity
 import eu.kanade.tachiyomi.data.backup.models.IntPreferenceValue
 import eu.kanade.tachiyomi.data.backup.models.StringPreferenceValue
@@ -165,6 +166,17 @@ class BackupCodecContractTest {
                         portableKey = "creator-one",
                         displayName = "ONE",
                         normalizedName = "one",
+                    ),
+                ),
+                watches = listOf(
+                    BackupAuthorWatch(
+                        creatorPortableKey = "creator-one",
+                        enabled = true,
+                        periodMillis = 86_400_000L,
+                        sourceIds = listOf(10L),
+                        readingLanguageTags = listOf("ja"),
+                        includeProbable = true,
+                        notifyProbable = true,
                     ),
                 ),
             ),

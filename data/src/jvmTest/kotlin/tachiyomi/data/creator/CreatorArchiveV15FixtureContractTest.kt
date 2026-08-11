@@ -41,7 +41,7 @@ class CreatorArchiveV15FixtureContractTest {
 
     @Test
     fun `current generated schema and target migration version match the frozen contract`() {
-        DatabaseVersion.current() shouldBe CreatorArchiveV2Contract.TARGET_SCHEMA_VERSION
+        DatabaseVersion.current() shouldBe CreatorArchiveV2Contract.LATEST_SCHEMA_VERSION
         CreatorArchiveV2Contract.TARGET_SCHEMA_VERSION shouldBe CreatorArchiveV2Contract.CURRENT_SCHEMA_VERSION + 1
         CreatorArchiveV2Contract.TARGET_MIGRATION shouldBe "${CreatorArchiveV2Contract.CURRENT_SCHEMA_VERSION}.sqm"
     }

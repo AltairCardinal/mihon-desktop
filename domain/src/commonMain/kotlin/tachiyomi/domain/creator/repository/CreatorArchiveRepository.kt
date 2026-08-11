@@ -1,8 +1,11 @@
 package tachiyomi.domain.creator.repository
 
+import kotlinx.coroutines.flow.Flow
 import tachiyomi.domain.creator.model.ArchiveAppendOutcome
+import tachiyomi.domain.creator.model.ArchiveDiscovery
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.ArchiveUpsertOutcome
+import tachiyomi.domain.creator.model.ArchiveWatchPolicy
 import tachiyomi.domain.creator.model.CreatorIdentityOption
 import tachiyomi.domain.creator.model.CreatorLibraryIndexEntry
 import tachiyomi.domain.creator.model.CreatorMention
@@ -10,7 +13,18 @@ import tachiyomi.domain.creator.model.CreatorRelationOrigin
 import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.DecisionActor
+import tachiyomi.domain.creator.model.DiscoveryCommit
+import tachiyomi.domain.creator.model.DiscoveryLease
+import tachiyomi.domain.creator.model.DiscoveryRun
+import tachiyomi.domain.creator.model.DiscoveryRunState
+import tachiyomi.domain.creator.model.DueWatchSource
 import tachiyomi.domain.creator.model.LanguageAssertionContract
+import tachiyomi.domain.creator.model.LeaseAcquireResult
+import tachiyomi.domain.creator.model.NotificationDeliveryState
+import tachiyomi.domain.creator.model.NotificationOutboxItem
+import tachiyomi.domain.creator.model.ReviewDisposition
+import tachiyomi.domain.creator.model.SourceCheckpoint
+import tachiyomi.domain.creator.model.SourceCheckpointUpdate
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WorkDecisionContract
 import tachiyomi.domain.manga.model.Manga
@@ -48,6 +62,61 @@ interface CreatorLibraryMangaSource {
 }
 
 interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
+
+    suspend fun upsertWatchPolicy(policy: ArchiveWatchPolicy, now: Long)
+
+    suspend fun getDueWatchSources(now: Long, limit: Long): List<DueWatchSource>
+
+    suspend fun acquireWatchLease(
+        creatorId: Long,
+        ownerToken: String,
+        expiresAt: Long,
+        now: Long,
+    ): LeaseAcquireResult
+
+    suspend fun releaseWatchLease(creatorId: Long, ownerToken: String, now: Long)
+
+    suspend fun createDiscoveryRun(runKey: String, creatorId: Long, totalSources: Long, queuedAt: Long): DiscoveryRun
+
+    suspend fun getRecoverableDiscoveryRuns(): List<DiscoveryRun>
+
+    suspend fun updateDiscoveryRun(
+        runKey: String,
+        state: DiscoveryRunState,
+        completedSources: Long,
+        truncated: Boolean,
+        errorCode: String?,
+        errorMessage: String?,
+        occurredAt: Long,
+    )
+
+    suspend fun updateSourceCheckpoint(update: SourceCheckpointUpdate)
+
+    suspend fun getSourceCheckpoints(creatorId: Long): List<SourceCheckpoint>
+
+    fun observeSourceCheckpoints(creatorId: Long): Flow<List<SourceCheckpoint>>
+
+    suspend fun commitDiscovery(commit: DiscoveryCommit): ArchiveDiscovery
+
+    suspend fun getUnreadDiscoveries(limit: Long): List<ArchiveDiscovery>
+
+    fun observeUnreadDiscoveries(limit: Long): Flow<List<ArchiveDiscovery>>
+
+    suspend fun markDiscoverySeen(discoveryId: Long, now: Long)
+
+    suspend fun setDiscoveryReview(discoveryId: Long, disposition: ReviewDisposition, now: Long)
+
+    suspend fun getPendingNotificationOutbox(now: Long, limit: Long): List<NotificationOutboxItem>
+
+    fun observePendingNotificationOutbox(now: Long, limit: Long): Flow<List<NotificationOutboxItem>>
+
+    suspend fun updateNotificationDelivery(
+        outboxId: Long,
+        state: NotificationDeliveryState,
+        error: String?,
+        nextAttemptAt: Long?,
+        occurredAt: Long,
+    )
 
     suspend fun getCreatorIdentityOptions(
         mangaId: Long,

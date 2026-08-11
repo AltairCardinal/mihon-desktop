@@ -14,12 +14,12 @@ import tachiyomi.domain.creator.model.CreatorArchiveV2Contract
 class CreatorArchiveMigration15Test {
 
     @Test
-    fun `fresh schema is v16 and contains the complete frozen archive`() {
+    fun `fresh schema is latest and contains the complete frozen archive`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         Database.Schema.create(driver)
         driver.execute(null, "PRAGMA foreign_keys = ON", 0)
 
-        Database.Schema.version shouldBe CreatorArchiveV2Contract.TARGET_SCHEMA_VERSION
+        Database.Schema.version shouldBe CreatorArchiveV2Contract.LATEST_SCHEMA_VERSION
         archiveTables(driver).shouldContainExactlyInAnyOrder(
             CreatorArchivePhysicalSchema.tables.map { it.name },
         )
@@ -117,13 +117,13 @@ class CreatorArchiveMigration15Test {
     }
 
     @Test
-    fun `fresh and migrated v16 expose equivalent archive tables indexes and foreign keys`() {
+    fun `fresh and fully migrated schemas expose equivalent archive tables indexes and foreign keys`() {
         val fresh = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         Database.Schema.create(fresh)
         fresh.execute(null, "PRAGMA foreign_keys = ON", 0)
 
         val migrated = legacyDriver()
-        DatabaseMigration.migrateAtomically(migrated, 15, CreatorArchiveV2Contract.TARGET_SCHEMA_VERSION)
+        DatabaseMigration.migrateAtomically(migrated, 15, CreatorArchiveV2Contract.LATEST_SCHEMA_VERSION)
 
         archiveTables(migrated) shouldBe archiveTables(fresh)
         archiveIndexes(migrated) shouldBe archiveIndexes(fresh)

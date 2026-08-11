@@ -4,6 +4,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.BeforeEach
@@ -15,9 +16,19 @@ import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.data.manga.MangaRepositoryImpl
 import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
+import tachiyomi.domain.creator.model.ArchiveWatchPolicy
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.DecisionActor
+import tachiyomi.domain.creator.model.DiscoveryCommit
+import tachiyomi.domain.creator.model.DiscoveryKind
+import tachiyomi.domain.creator.model.DiscoveryRunState
+import tachiyomi.domain.creator.model.LeaseAcquireResult
+import tachiyomi.domain.creator.model.NotificationDeliveryState
+import tachiyomi.domain.creator.model.ReviewDisposition
+import tachiyomi.domain.creator.model.SourceCheckpointResult
+import tachiyomi.domain.creator.model.SourceCheckpointUpdate
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.model.WatchBaselineState
 import tachiyomi.domain.creator.model.WorkDecisionContract
 import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.manga.model.Manga
@@ -532,6 +543,178 @@ class CreatorLibraryIndexRepositoryTest {
                 "SELECT COUNT(*) FROM author_archive_aliases " +
                     "WHERE creator_id = $creatorId AND normalized_alias = 'one'",
             ) shouldBe 1L
+        }
+    }
+
+    @Test
+    fun `watch lease run checkpoint discovery and outbox survive repository restart independently`() {
+        runBlocking {
+            val manga = manga(id = 70L, author = "Watched Author", artist = null)
+            seedManga(manga)
+            repository.indexLibraryManga(manga, extract.await(manga))
+            val creatorId = queryLong("SELECT creator_id FROM author_archive_manga_links WHERE manga_id = 70")
+            val sourceWork = SourceWorkNaturalKey(manga.source, manga.url)
+            val watchPolicy = ArchiveWatchPolicy(
+                creatorId = creatorId,
+                enabled = true,
+                periodMillis = 1_000L,
+                sourceIds = setOf(10L, 20L),
+                readingLanguageTags = setOf("en", "ja"),
+                includeProbable = true,
+                notifyProbable = true,
+            )
+            repository.upsertWatchPolicy(watchPolicy, now = 1_000L)
+
+            repository.getDueWatchSources(1_000L, 10L).map { it.sourceId }
+                .shouldContainExactly(10L, 20L)
+            repository.acquireWatchLease(creatorId, "worker-a", 2_000L, 1_000L)
+                .shouldBeInstanceOf<LeaseAcquireResult.Acquired>()
+            repository.acquireWatchLease(creatorId, "worker-b", 2_000L, 1_000L)
+                .shouldBeInstanceOf<LeaseAcquireResult.Busy>()
+
+            repository.createDiscoveryRun("run-1", creatorId, 2L, 1_000L)
+            repository.updateDiscoveryRun("run-1", DiscoveryRunState.RUNNING, 0L, false, null, null, 1_010L)
+            repository.updateSourceCheckpoint(
+                SourceCheckpointUpdate(
+                    creatorId = creatorId,
+                    sourceId = 10L,
+                    cursor = "page-2",
+                    result = SourceCheckpointResult.FAILED,
+                    consecutiveFailures = 1L,
+                    backoffUntil = 3_000L,
+                    checkedAt = 1_020L,
+                    successAt = null,
+                    errorCode = "HTTP_500",
+                    errorMessage = "temporary",
+                    nextDueAt = 3_000L,
+                    baselineState = WatchBaselineState.NEEDS_BASELINE,
+                    baselineGeneration = 0L,
+                ),
+            )
+            repository.updateSourceCheckpoint(
+                SourceCheckpointUpdate(
+                    creatorId = creatorId,
+                    sourceId = 20L,
+                    cursor = null,
+                    result = SourceCheckpointResult.SUCCESS,
+                    consecutiveFailures = 0L,
+                    backoffUntil = null,
+                    checkedAt = 1_025L,
+                    successAt = 1_025L,
+                    nextDueAt = 5_000L,
+                    baselineState = WatchBaselineState.BASELINED,
+                    baselineGeneration = 1L,
+                ),
+            )
+            repository.updateDiscoveryRun(
+                "run-1",
+                DiscoveryRunState.PARTIAL,
+                1L,
+                false,
+                "PARTIAL_SOURCE_FAILURE",
+                "one source failed",
+                1_030L,
+            )
+            repository.createDiscoveryRun("run-2", creatorId, 2L, 1_040L)
+            repository.updateDiscoveryRun("run-2", DiscoveryRunState.RUNNING, 0L, false, null, null, 1_050L)
+            repository.createDiscoveryRun("run-cancelled", creatorId, 2L, 1_045L)
+            repository.updateDiscoveryRun(
+                "run-cancelled",
+                DiscoveryRunState.CANCELLED,
+                0L,
+                false,
+                null,
+                null,
+                1_050L,
+            )
+            repository.upsertWatchPolicy(watchPolicy, now = 1_060L)
+
+            val restarted = CreatorRepositoryImpl(handler, clock = { 2_000L }, portableKeyFactory = sequentialKeys())
+            restarted.getRecoverableDiscoveryRuns().map { it.runKey }.shouldContainExactly("run-2")
+            queryLong(
+                "SELECT COUNT(*) FROM author_archive_watch_sources " +
+                    "WHERE source_id = 20 AND baseline_state = 'BASELINED' AND baseline_generation = 1",
+            ) shouldBe 1L
+            queryLong(
+                "SELECT COUNT(*) FROM author_archive_source_checkpoints " +
+                    "WHERE result_state = 'FAILED' AND backoff_until = 3000",
+            ) shouldBe 1L
+            restarted.getSourceCheckpoints(creatorId).single { it.sourceId == 10L }.errorCode shouldBe "HTTP_500"
+            restarted.observeSourceCheckpoints(creatorId).first().size shouldBe 2
+
+            val discovery = restarted.commitDiscovery(
+                DiscoveryCommit(
+                    creatorId = creatorId,
+                    sourceWork = sourceWork,
+                    kind = DiscoveryKind.NEW_WORK_CANDIDATE,
+                    reason = "verified creator relation",
+                    baselineGeneration = 1L,
+                    discoveredAt = 2_000L,
+                    outboxChannel = "DESKTOP",
+                    idempotencyKey = "discovery-70",
+                ),
+            )
+            restarted.getUnreadDiscoveries(10L).single().id shouldBe discovery.id
+            restarted.observeUnreadDiscoveries(10L).first().single().id shouldBe discovery.id
+            val outbox = restarted.getPendingNotificationOutbox(2_000L, 10L).single()
+            restarted.observePendingNotificationOutbox(2_000L, 10L).first().single().id shouldBe outbox.id
+            restarted.markDiscoverySeen(discovery.id, 2_010L)
+            restarted.setDiscoveryReview(discovery.id, ReviewDisposition.ACCEPTED, 2_020L)
+            restarted.updateNotificationDelivery(
+                outbox.id,
+                NotificationDeliveryState.FAILED,
+                "offline",
+                3_000L,
+                2_030L,
+            )
+
+            restarted.getUnreadDiscoveries(10L) shouldBe emptyList()
+            queryLong(
+                "SELECT COUNT(*) FROM author_archive_discoveries " +
+                    "WHERE read_state = 'SEEN' AND review_disposition = 'ACCEPTED'",
+            ) shouldBe 1L
+            queryLong(
+                "SELECT COUNT(*) FROM author_archive_notification_outbox " +
+                    "WHERE state = 'FAILED' AND next_attempt_at = 3000",
+            ) shouldBe 1L
+
+            restarted.unfollowCreator(creatorId)
+            queryLong("SELECT COUNT(*) FROM author_archive_discoveries") shouldBe 1L
+            queryLong("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 1L
+            restarted.getDueWatchSources(4_000L, 10L) shouldBe emptyList()
+        }
+    }
+
+    @Test
+    fun `discovery and outbox commit rolls back on idempotency payload conflict`() {
+        runBlocking {
+            val first = manga(id = 71L, author = "Atomic Author", artist = null)
+            val second = manga(id = 72L, author = "Atomic Author", artist = null)
+            seedManga(first)
+            seedManga(second)
+            repository.indexLibraryManga(first, extract.await(first))
+            repository.indexLibraryManga(second, extract.await(second))
+            val creatorId = queryLong("SELECT creator_id FROM author_archive_manga_links WHERE manga_id = 71")
+            repository.upsertWatchPolicy(
+                ArchiveWatchPolicy(creatorId, true, 1_000L, setOf(10L), emptySet()),
+                now = 1_000L,
+            )
+            fun commit(manga: Manga) = DiscoveryCommit(
+                creatorId = creatorId,
+                sourceWork = SourceWorkNaturalKey(manga.source, manga.url),
+                kind = DiscoveryKind.NEW_WORK_CANDIDATE,
+                reason = "atomic",
+                baselineGeneration = 1L,
+                discoveredAt = manga.id,
+                outboxChannel = "DESKTOP",
+                idempotencyKey = "same-key",
+            )
+
+            repository.commitDiscovery(commit(first))
+            shouldThrow<IllegalStateException> { repository.commitDiscovery(commit(second)) }
+
+            queryLong("SELECT COUNT(*) FROM author_archive_discoveries") shouldBe 1L
+            queryLong("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 1L
         }
     }
 

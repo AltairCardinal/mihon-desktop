@@ -35,7 +35,7 @@ class DesktopDatabaseMigrationSafetyTest {
     }
 
     @Test
-    fun `existing v16 database re-enables foreign keys on every connection`() {
+    fun `existing current database re-enables foreign keys on every connection`() {
         val database = File(directory, "mihon.db")
         createDriver(database).close()
 
@@ -51,7 +51,7 @@ class DesktopDatabaseMigrationSafetyTest {
         createSyntheticV15(database, recordedVersion = 15)
 
         createDriver(database).use { driver ->
-            queryUserVersion(driver) shouldBe 16
+            queryUserVersion(driver) shouldBe Database.Schema.version.toInt()
             queryLong(
                 driver,
                 "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name LIKE 'author_archive_%'",

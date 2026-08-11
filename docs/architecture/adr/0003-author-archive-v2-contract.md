@@ -16,7 +16,7 @@ SQLDelight schema 与 migration 的唯一源码权威是：
 data/src/commonMain/sqldelight/**
 ```
 
-`data/src/main/sqldelight/**` 旧镜像不参与当前 KMP 构建，已删除并由 `:data:verifySqlDelightAuthority` 阻止重建。当前生成 schema version 为 `15`；v2 使用 `15.sqm` 完成 `15 → 16` 升级。
+`data/src/main/sqldelight/**` 旧镜像不参与当前 KMP 构建，已删除并由 `:data:verifySqlDelightAuthority` 阻止重建。v2 使用不可变的 `15.sqm` 完成 `15 → 16` 升级；AA1-03 以 `16.sqm` 仅追加全局未读发现索引，当前生成 schema version 为 `17`。
 
 本文有限取代以下旧设计：
 

@@ -14,6 +14,7 @@ data class BackupAuthorArchiveSection(
     @ProtoNumber(1) val version: Int = CURRENT_VERSION,
     @ProtoNumber(2) val creators: List<BackupCreatorIdentity> = emptyList(),
     @ProtoNumber(3) val sourceWorks: List<BackupAuthorSourceWork> = emptyList(),
+    @ProtoNumber(4) val watches: List<BackupAuthorWatch> = emptyList(),
 ) {
     companion object {
         const val CURRENT_VERSION = 1
@@ -30,6 +31,19 @@ data class BackupCreatorIdentity(
     @ProtoNumber(6) val mergedIntoPortableKey: String? = null,
     @ProtoNumber(7) val needsReview: Boolean = false,
     @ProtoNumber(8) val aliases: List<BackupCreatorAlias> = emptyList(),
+)
+
+@Serializable
+data class BackupAuthorWatch(
+    @ProtoNumber(1) val creatorPortableKey: String,
+    @ProtoNumber(2) val enabled: Boolean,
+    @ProtoNumber(3) val periodMillis: Long,
+    @ProtoNumber(4) val sourceIds: List<Long> = emptyList(),
+    @ProtoNumber(5) val readingLanguageTags: List<String> = emptyList(),
+    @ProtoNumber(6) val includeProbable: Boolean = false,
+    @ProtoNumber(7) val includeUnknown: Boolean = false,
+    @ProtoNumber(8) val notifyProbable: Boolean = false,
+    @ProtoNumber(9) val notifyUnknown: Boolean = false,
 )
 
 @Serializable

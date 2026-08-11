@@ -452,7 +452,7 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 - [x] `AA1-02` 迁移统一 SourceWork、关系、语言 assertion 与聚合基础
 - [ ] `AA1-01` 从书架回填并持续同步可解释的作者身份
-- [ ] `AA1-03` 建立 watch、run/checkpoint、discovery 与 outbox 持久状态
+- [x] `AA1-03` 建立 watch、run/checkpoint、discovery 与 outbox 持久状态
 
 #### `AA1-02` 迁移统一 SourceWork、关系、语言 assertion 与聚合基础
 
@@ -489,9 +489,9 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 #### `AA1-03` 建立 watch、run/checkpoint、discovery 与 outbox 持久状态
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `[ ]` · Android `N/A：data/shared` · Desktop/UI `N/A：data/shared` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`DONE` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `[x]` · Android `N/A：data/shared；按用户要求最终阶段统一验收` · Desktop/UI `[x]：Windows migration/DI/backup production wiring；UI N/A` · Legacy/Migration `[x]` · Review `[x]：主代理收口核对` · Verify `[x]` · Evidence `[x]` · Commit `[x]：本行所在提交`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `—` · 审查 `typed transition、原子提交、备份与 migration 边界自检 PASS；按用户要求未追加独立审查` · 验证 `aa103data3 focused PASS；aa103desktop1 Windows migration/DI/backup PASS；aa103related3 domain/data 全量 PASS；aa103spotless3 PASS` · 运行产物 `v17 additive index、typed watch/run/checkpoint/discovery/outbox repository、field107 watch slice；18 个文件均属于同一持久化/迁移/备份契约边界；本批无 UI，未重复生成 Windows 发布包` · Commit `本行所在提交`
 
 - RED：source-level baseline、partial success、due selection、lease 冲突、进程重启恢复、取消、outbox 原子提交、read/review/delivery 独立状态和取消关注后保留归档。
 - GREEN：新增 watch policy、run/checkpoint、discovery event、outbox repository 与 reactive projections；在 `AA1-01` 已落地的 field 107 section v1 fields 1–3 上追加 field 4 watch/source scope/result policy，不重复实现 creator/alias/binding 恢复；所有状态转换通过 typed commands，禁止任意字符串 update。
@@ -860,5 +860,6 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 | 2026-08-11 | `AA0-02` | `TODO → DONE` | `aa0-review-domain-red`：11 tests / 2 expected failures，暴露非法 algorithm decision 与非显式 review 迁移 | 19 表物理契约、独立状态机、source port、field 107 备份 wire、v15 fixture、commonMain-only authority guard | 首轮状态契约 P1 修复；修复复审 PASS，P0/P1/P2=0 | `aa0-related-green`：domain/data/authority/interface PASS；`aa0-review-green`、`aa0-review-spotless` PASS | 本行所在提交 |
 | 2026-08-11 | `AA1-02` | `TODO → DONE` | `aa1-02-review-fixes-red`：40 tests / 6 expected failures；`aa1-02-rereview-red`：42 tests / 4 expected failures；`aa1-02-legacy-pending-red`：9 tests / 1 expected failure，覆盖 precedence、review attach/reset、URL、跨-work 物化及语言一致性 | v16 全量 schema + typed repository；v1 只读增量 bridge；有效 decision 唯一物化；shared language contract；Android/Desktop 同实例 DI | 首轮 P1=3/P2=1、唯一修复复审 P1=2/P2=1；全部 finding 修复并由新增 production 回归锁定，最终 P0/P1/P2=0 | 13 domain + 42 data + 11 Desktop + 4 Android 全绿；`spotlessCheck` PASS；无发布构建 | 本行所在提交 |
 | 2026-08-12 | `AA1-01 / Windows checkpoint` | `TODO → IN_PROGRESS（Windows 已验收）` | parser/index、identity 歧义、merge/split、alias、字段清空、重复回填与批处理行为已覆盖 | shared parser/indexer、事务同步、portable backup、Authors/Manga Detail identity UI 与 Desktop runtime wiring 已接入 production | 首轮 P0/P1 已修复；按用户指示不追加复审 | `scripts/build-desktop.sh feature`：2495 tests / 1 skipped；Windows build/runtime acceptance PASS；最终 EXE `0.11.18.1.99ce812` | 本行所在提交 |
+| 2026-08-12 | `AA1-03` | `TODO → DONE` | watch lease、run/checkpoint 恢复、baseline、discovery/outbox 幂等与原子回滚行为已覆盖 | shared typed persistence、v17 additive unread index、field107 watch backup slice 与 Windows production wiring 已完成 | 主代理对状态转换、原子性、迁移和备份边界收口核对 PASS；未追加独立审查 | `aa103data3`、`aa103desktop1`、`aa103related3`、`aa103spotless3` PASS；本批无用户 UI/发布构建 | 本行所在提交 |
 
-AA0 与 AA1-02 已关闭。AA1-01 的 Windows/shared/data/backup 实现与正式 Windows 构建验收已完成；顶层任务仍保持未勾选，等待全部功能完成后的 Android 统一验收与最终复审。后续自动通知/canonical UI 仍按依赖顺序保持未开始。
+AA0、AA1-02 与 AA1-03 已关闭；AA1-01 的 Windows/shared/data/backup 实现与正式 Windows 构建验收已完成，顶层任务仍保持未勾选，等待全部功能完成后的 Android 统一验收与最终复审。实现主线进入 `AA2-01`；后续自动通知/canonical UI 仍按依赖顺序保持未开始。

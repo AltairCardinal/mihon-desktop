@@ -5,8 +5,10 @@ import kotlinx.coroutines.flow.onStart
 import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.creator.model.ArchiveAppendOutcome
+import tachiyomi.domain.creator.model.ArchiveDiscovery
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.ArchiveUpsertOutcome
+import tachiyomi.domain.creator.model.ArchiveWatchPolicy
 import tachiyomi.domain.creator.model.CanonicalWork
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.CreatorArchiveLanguageTag
@@ -24,12 +26,28 @@ import tachiyomi.domain.creator.model.DecisionActor
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.DiscoveryCandidateCreator
 import tachiyomi.domain.creator.model.DiscoveryCandidateState
+import tachiyomi.domain.creator.model.DiscoveryCommit
+import tachiyomi.domain.creator.model.DiscoveryKind
+import tachiyomi.domain.creator.model.DiscoveryLease
+import tachiyomi.domain.creator.model.DiscoveryReadState
+import tachiyomi.domain.creator.model.DiscoveryRun
+import tachiyomi.domain.creator.model.DiscoveryRunState
+import tachiyomi.domain.creator.model.DiscoveryStateVector
+import tachiyomi.domain.creator.model.DueWatchSource
 import tachiyomi.domain.creator.model.LanguageAssertionContract
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.LanguageEvidenceKind
+import tachiyomi.domain.creator.model.LeaseAcquireResult
 import tachiyomi.domain.creator.model.MangaCreator
 import tachiyomi.domain.creator.model.MangaWorkMatch
+import tachiyomi.domain.creator.model.NotificationDeliveryState
+import tachiyomi.domain.creator.model.NotificationOutboxItem
+import tachiyomi.domain.creator.model.ReviewDisposition
+import tachiyomi.domain.creator.model.SourceCheckpoint
+import tachiyomi.domain.creator.model.SourceCheckpointResult
+import tachiyomi.domain.creator.model.SourceCheckpointUpdate
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.model.WatchBaselineState
 import tachiyomi.domain.creator.model.WorkDecisionContract
 import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.model.WorkMatchState
@@ -50,6 +68,320 @@ class CreatorRepositoryImpl(
     private val portableKeyFactory: () -> String = { Uuid.random().toHexDashString() },
     private val bootstrap: CreatorArchiveBootstrap = ReadyCreatorArchiveBootstrap,
 ) : CreatorRepository, CreatorArchiveRepository {
+
+    override suspend fun upsertWatchPolicy(policy: ArchiveWatchPolicy, now: Long) {
+        bootstrap.awaitReady()
+        require(policy.periodMillis > 0) { "Watch period must be positive" }
+        require(policy.sourceIds.all { it >= 0 }) { "Source IDs must not be negative" }
+        val languageTags = policy.readingLanguageTags
+            .map(CreatorArchiveLanguageTag::normalize)
+            .filter { it != "und" }
+            .toSet()
+        handler.await(inTransaction = true) {
+            author_archiveQueries.upsertArchiveWatchPolicyCommand(
+                creatorId = policy.creatorId,
+                enabled = policy.enabled,
+                periodMillis = policy.periodMillis,
+                now = now,
+            )
+            val watchId = author_archiveQueries.getArchiveWatchIdByCreator(policy.creatorId).executeAsOne()
+            val existingSources = author_archiveQueries.getArchiveWatchSourceIds(watchId).executeAsList().toSet()
+            (existingSources - policy.sourceIds).forEach { sourceId ->
+                author_archiveQueries.deleteArchiveWatchSource(watchId, sourceId)
+                author_archiveQueries.deleteArchiveSourceCheckpoint(watchId, sourceId)
+            }
+            policy.sourceIds.forEach { sourceId ->
+                author_archiveQueries.upsertArchiveWatchSourceCommand(watchId, sourceId, now, now)
+            }
+            author_archiveQueries.upsertArchiveWatchPolicy(watchId, now, now)
+            author_archiveQueries.updateArchiveWatchResultPolicyCommand(
+                includeProbable = policy.includeProbable,
+                includeUnknown = policy.includeUnknown,
+                notifyProbable = policy.notifyProbable,
+                notifyUnknown = policy.notifyUnknown,
+                now = now,
+                watchId = watchId,
+            )
+            val policyId = author_archiveQueries.getArchiveWatchPolicyId(watchId).executeAsOne()
+            val existingLanguages = author_archiveQueries.getArchiveWatchLanguages(policyId).executeAsList().toSet()
+            (existingLanguages - languageTags).forEach { language ->
+                author_archiveQueries.deleteArchiveWatchLanguage(policyId, language)
+            }
+            (languageTags - existingLanguages).forEach { language ->
+                author_archiveQueries.insertArchiveWatchLanguage(policyId, language)
+            }
+        }
+    }
+
+    override suspend fun getDueWatchSources(now: Long, limit: Long): List<DueWatchSource> {
+        bootstrap.awaitReady()
+        require(limit > 0) { "Due watch limit must be positive" }
+        return handler.awaitList {
+            author_archiveQueries.getArchiveDueWatchSources(now, limit, ::mapDueWatchSource)
+        }
+    }
+
+    override suspend fun acquireWatchLease(
+        creatorId: Long,
+        ownerToken: String,
+        expiresAt: Long,
+        now: Long,
+    ): LeaseAcquireResult {
+        bootstrap.awaitReady()
+        require(ownerToken.isNotBlank()) { "Lease owner must not be blank" }
+        require(expiresAt > now) { "Lease expiry must be in the future" }
+        return handler.await(inTransaction = true) {
+            author_archiveQueries.tryAcquireArchiveWatchLease(ownerToken, expiresAt, now, creatorId)
+            val row = author_archiveQueries.getArchiveWatchLease(creatorId).executeAsOne()
+            check(row.enabled) { "Disabled watch cannot be leased" }
+            val lease = DiscoveryLease(checkNotNull(row.lease_owner), checkNotNull(row.lease_expires_at))
+            if (lease.ownerToken == ownerToken && lease.expiresAtMillis == expiresAt) {
+                LeaseAcquireResult.Acquired(lease)
+            } else {
+                LeaseAcquireResult.Busy(lease)
+            }
+        }
+    }
+
+    override suspend fun releaseWatchLease(creatorId: Long, ownerToken: String, now: Long) {
+        bootstrap.awaitReady()
+        require(ownerToken.isNotBlank()) { "Lease owner must not be blank" }
+        handler.await { author_archiveQueries.releaseArchiveWatchLease(now, creatorId, ownerToken) }
+    }
+
+    override suspend fun createDiscoveryRun(
+        runKey: String,
+        creatorId: Long,
+        totalSources: Long,
+        queuedAt: Long,
+    ): DiscoveryRun {
+        bootstrap.awaitReady()
+        require(runKey.isNotBlank()) { "Run key must not be blank" }
+        require(totalSources >= 0) { "Total sources must not be negative" }
+        return handler.await(inTransaction = true) {
+            author_archiveQueries.insertArchiveDiscoveryRun(runKey, totalSources, queuedAt, creatorId)
+            author_archiveQueries.getArchiveDiscoveryRunByKey(runKey, ::mapDiscoveryRun).executeAsOne()
+        }
+    }
+
+    override suspend fun getRecoverableDiscoveryRuns(): List<DiscoveryRun> {
+        bootstrap.awaitReady()
+        return handler.awaitList { author_archiveQueries.getArchiveRecoverableDiscoveryRuns(::mapDiscoveryRun) }
+    }
+
+    override suspend fun updateDiscoveryRun(
+        runKey: String,
+        state: DiscoveryRunState,
+        completedSources: Long,
+        truncated: Boolean,
+        errorCode: String?,
+        errorMessage: String?,
+        occurredAt: Long,
+    ) {
+        bootstrap.awaitReady()
+        require(completedSources >= 0) { "Completed sources must not be negative" }
+        handler.await(inTransaction = true) {
+            val current = author_archiveQueries.getArchiveDiscoveryRunByKey(runKey, ::mapDiscoveryRun).executeAsOne()
+            if (current.state == state) return@await
+            require(CreatorArchiveV2Policy.canTransitionRun(current.state, state)) {
+                "Invalid discovery run transition: ${current.state} -> $state"
+            }
+            require(completedSources <= current.totalSources) { "Completed sources exceed the run total" }
+            author_archiveQueries.updateArchiveDiscoveryRun(
+                state = state.name,
+                completedSources = completedSources,
+                truncated = truncated,
+                errorCode = errorCode,
+                errorMessage = errorMessage,
+                occurredAt = occurredAt,
+                runKey = runKey,
+            )
+        }
+    }
+
+    override suspend fun updateSourceCheckpoint(update: SourceCheckpointUpdate) {
+        bootstrap.awaitReady()
+        require(update.consecutiveFailures >= 0) { "Consecutive failures must not be negative" }
+        require(update.baselineGeneration >= 0) { "Baseline generation must not be negative" }
+        handler.await(inTransaction = true) {
+            val currentBaseline = author_archiveQueries
+                .getArchiveWatchSourceState(update.sourceId, update.creatorId)
+                .executeAsOne()
+            val currentBaselineState = WatchBaselineState.valueOf(currentBaseline.baseline_state)
+            if (currentBaselineState != update.baselineState) {
+                require(
+                    CreatorArchiveV2Policy.canTransitionBaseline(
+                        currentBaselineState,
+                        update.baselineState,
+                        sourceScopeChanged = false,
+                    ),
+                ) {
+                    "Invalid watch baseline transition: $currentBaselineState -> ${update.baselineState}"
+                }
+            }
+            author_archiveQueries.upsertArchiveSourceCheckpoint(
+                sourceId = update.sourceId,
+                cursor = update.cursor,
+                resultState = update.result.name,
+                consecutiveFailures = update.consecutiveFailures,
+                backoffUntil = update.backoffUntil,
+                checkedAt = update.checkedAt,
+                successAt = update.successAt,
+                errorCode = update.errorCode,
+                errorMessage = update.errorMessage,
+                creatorId = update.creatorId,
+            )
+            author_archiveQueries.updateArchiveWatchSourceAfterCheckpoint(
+                baselineState = update.baselineState.name,
+                baselineGeneration = update.baselineGeneration,
+                nextDueAt = update.nextDueAt,
+                checkedAt = update.checkedAt,
+                sourceId = update.sourceId,
+                creatorId = update.creatorId,
+            )
+            author_archiveQueries.updateArchiveWatchAfterCheckpoint(
+                checkedAt = update.checkedAt,
+                successAt = update.successAt,
+                errorMessage = update.errorMessage,
+                creatorId = update.creatorId,
+            )
+        }
+    }
+
+    override suspend fun getSourceCheckpoints(creatorId: Long): List<SourceCheckpoint> {
+        bootstrap.awaitReady()
+        return handler.awaitList { author_archiveQueries.getArchiveSourceCheckpoints(creatorId, ::mapSourceCheckpoint) }
+    }
+
+    override fun observeSourceCheckpoints(creatorId: Long): Flow<List<SourceCheckpoint>> =
+        handler.subscribeToList { author_archiveQueries.getArchiveSourceCheckpoints(creatorId, ::mapSourceCheckpoint) }
+            .onStart { bootstrap.awaitReady() }
+
+    override suspend fun commitDiscovery(commit: DiscoveryCommit): ArchiveDiscovery {
+        bootstrap.awaitReady()
+        require(commit.reason.isNotBlank()) { "Discovery reason must not be blank" }
+        require(commit.outboxChannel.isNotBlank()) { "Outbox channel must not be blank" }
+        require(commit.idempotencyKey.isNotBlank()) { "Discovery idempotency key must not be blank" }
+        return handler.await(inTransaction = true) {
+            val existingId = author_archiveQueries.getArchiveDiscoveryByNaturalKey(
+                commit.creatorId,
+                commit.sourceWork.sourceId,
+                commit.sourceWork.stableSourceUrl.trim(),
+            ).executeAsOneOrNull()
+            author_archiveQueries.insertArchiveDiscovery(
+                kind = commit.kind.name,
+                reason = commit.reason,
+                baselineGeneration = commit.baselineGeneration,
+                discoveredAt = commit.discoveredAt,
+                sourceId = commit.sourceWork.sourceId,
+                stableSourceUrl = commit.sourceWork.stableSourceUrl.trim(),
+                creatorId = commit.creatorId,
+            )
+            val discoveryId = author_archiveQueries.getArchiveDiscoveryByNaturalKey(
+                commit.creatorId,
+                commit.sourceWork.sourceId,
+                commit.sourceWork.stableSourceUrl.trim(),
+            ).executeAsOne()
+            if (existingId == null) {
+                author_archiveQueries.insertArchiveNotificationOutbox(
+                    discoveryId = discoveryId,
+                    channel = commit.outboxChannel,
+                    idempotencyKey = commit.idempotencyKey,
+                    createdAt = commit.discoveredAt,
+                )
+                val outbox = author_archiveQueries
+                    .getArchiveNotificationOutboxByIdempotencyKey(commit.idempotencyKey)
+                    .executeAsOne()
+                check(outbox.discovery_id == discoveryId && outbox.channel == commit.outboxChannel) {
+                    "Discovery idempotency key conflicts with another outbox payload"
+                }
+            }
+            author_archiveQueries.getArchiveDiscoveryProjectionById(discoveryId, ::mapArchiveDiscovery).executeAsOne()
+        }
+    }
+
+    override suspend fun getUnreadDiscoveries(limit: Long): List<ArchiveDiscovery> {
+        bootstrap.awaitReady()
+        require(limit > 0) { "Discovery limit must be positive" }
+        return handler.awaitList { author_archiveQueries.getArchiveUnreadDiscoveries(limit, ::mapArchiveDiscovery) }
+    }
+
+    override fun observeUnreadDiscoveries(limit: Long): Flow<List<ArchiveDiscovery>> {
+        require(limit > 0) { "Discovery limit must be positive" }
+        return handler.subscribeToList {
+            author_archiveQueries.getArchiveUnreadDiscoveries(limit, ::mapArchiveDiscovery)
+        }
+            .onStart { bootstrap.awaitReady() }
+    }
+
+    override suspend fun markDiscoverySeen(discoveryId: Long, now: Long) {
+        bootstrap.awaitReady()
+        handler.await(inTransaction = true) {
+            val state = author_archiveQueries.getArchiveDiscoveryState(discoveryId).executeAsOne()
+            if (state.read_state == DiscoveryReadState.SEEN.name) return@await
+            require(
+                CreatorArchiveV2Policy.canTransitionRead(
+                    DiscoveryReadState.valueOf(state.read_state),
+                    DiscoveryReadState.SEEN,
+                ),
+            )
+            author_archiveQueries.markArchiveDiscoverySeen(now, discoveryId)
+        }
+    }
+
+    override suspend fun setDiscoveryReview(discoveryId: Long, disposition: ReviewDisposition, now: Long) {
+        bootstrap.awaitReady()
+        handler.await(inTransaction = true) {
+            val state = author_archiveQueries.getArchiveDiscoveryState(discoveryId).executeAsOne()
+            val current = ReviewDisposition.valueOf(state.review_disposition)
+            if (current == disposition) return@await
+            require(CreatorArchiveV2Policy.canTransitionReview(current, disposition, explicitUserAction = true)) {
+                "Invalid discovery review transition: $current -> $disposition"
+            }
+            author_archiveQueries.updateArchiveDiscoveryReview(disposition.name, now, discoveryId)
+        }
+    }
+
+    override suspend fun getPendingNotificationOutbox(now: Long, limit: Long): List<NotificationOutboxItem> {
+        bootstrap.awaitReady()
+        require(limit > 0) { "Outbox limit must be positive" }
+        return handler.awaitList {
+            author_archiveQueries.getArchivePendingNotificationOutbox(now, limit, ::mapOutboxItem)
+        }
+    }
+
+    override fun observePendingNotificationOutbox(now: Long, limit: Long): Flow<List<NotificationOutboxItem>> {
+        require(limit > 0) { "Outbox limit must be positive" }
+        return handler.subscribeToList {
+            author_archiveQueries.getArchivePendingNotificationOutbox(now, limit, ::mapOutboxItem)
+        }.onStart { bootstrap.awaitReady() }
+    }
+
+    override suspend fun updateNotificationDelivery(
+        outboxId: Long,
+        state: NotificationDeliveryState,
+        error: String?,
+        nextAttemptAt: Long?,
+        occurredAt: Long,
+    ) {
+        bootstrap.awaitReady()
+        handler.await(inTransaction = true) {
+            val current = NotificationDeliveryState.valueOf(
+                author_archiveQueries.getArchiveNotificationOutboxState(outboxId).executeAsOne(),
+            )
+            if (current == state) return@await
+            require(CreatorArchiveV2Policy.canTransitionDelivery(current, state)) {
+                "Invalid notification delivery transition: $current -> $state"
+            }
+            author_archiveQueries.updateArchiveNotificationDelivery(
+                state = state.name,
+                error = error,
+                nextAttemptAt = nextAttemptAt,
+                occurredAt = occurredAt,
+                outboxId = outboxId,
+            )
+        }
+    }
 
     override suspend fun upsertCreator(displayName: String, aliases: List<String>): Creator {
         bootstrap.awaitReady()
@@ -1865,6 +2197,127 @@ class CreatorRepositoryImpl(
         val AUTOMATIC_RELATION_ORIGINS = setOf("AUTOMATIC", "MIGRATION")
     }
 }
+
+private fun mapDueWatchSource(
+    creatorId: Long,
+    sourceId: Long,
+    baselineState: String,
+    baselineGeneration: Long,
+    nextDueAt: Long?,
+) = DueWatchSource(
+    creatorId = creatorId,
+    sourceId = sourceId,
+    baselineState = WatchBaselineState.valueOf(baselineState),
+    baselineGeneration = baselineGeneration,
+    nextDueAt = nextDueAt,
+)
+
+private fun mapDiscoveryRun(
+    runKey: String,
+    creatorId: Long,
+    state: String,
+    completedSources: Long,
+    totalSources: Long,
+    truncated: Boolean,
+    errorCode: String?,
+    errorMessage: String?,
+    queuedAt: Long,
+    startedAt: Long?,
+    finishedAt: Long?,
+) = DiscoveryRun(
+    runKey = runKey,
+    creatorId = creatorId,
+    state = DiscoveryRunState.valueOf(state),
+    completedSources = completedSources,
+    totalSources = totalSources,
+    truncated = truncated,
+    errorCode = errorCode,
+    errorMessage = errorMessage,
+    queuedAt = queuedAt,
+    startedAt = startedAt,
+    finishedAt = finishedAt,
+)
+
+private fun mapSourceCheckpoint(
+    creatorId: Long,
+    sourceId: Long,
+    cursor: String?,
+    resultState: String,
+    consecutiveFailures: Long,
+    backoffUntil: Long?,
+    lastCheckedAt: Long?,
+    lastSuccessAt: Long?,
+    errorCode: String?,
+    errorMessage: String?,
+) = SourceCheckpoint(
+    creatorId = creatorId,
+    sourceId = sourceId,
+    cursor = cursor,
+    result = SourceCheckpointResult.valueOf(resultState),
+    consecutiveFailures = consecutiveFailures,
+    backoffUntil = backoffUntil,
+    lastCheckedAt = lastCheckedAt,
+    lastSuccessAt = lastSuccessAt,
+    errorCode = errorCode,
+    errorMessage = errorMessage,
+)
+
+private fun mapArchiveDiscovery(
+    id: Long,
+    creatorId: Long,
+    sourceId: Long,
+    stableSourceUrl: String,
+    title: String,
+    kind: String,
+    reason: String,
+    baselineGeneration: Long,
+    readState: String,
+    reviewDisposition: String,
+    deliveryState: String,
+    firstDiscoveredAt: Long,
+    lastModifiedAt: Long,
+) = ArchiveDiscovery(
+    id = id,
+    creatorId = creatorId,
+    sourceWork = SourceWorkNaturalKey(sourceId, stableSourceUrl),
+    title = title,
+    kind = DiscoveryKind.valueOf(kind),
+    reason = reason,
+    baselineGeneration = baselineGeneration,
+    state = DiscoveryStateVector(
+        readState = DiscoveryReadState.valueOf(readState),
+        reviewDisposition = ReviewDisposition.valueOf(reviewDisposition),
+        deliveryState = NotificationDeliveryState.valueOf(deliveryState),
+    ),
+    firstDiscoveredAt = firstDiscoveredAt,
+    lastModifiedAt = lastModifiedAt,
+)
+
+private fun mapOutboxItem(
+    id: Long,
+    discoveryId: Long,
+    channel: String,
+    idempotencyKey: String,
+    attemptCount: Long,
+    state: String,
+    lastError: String?,
+    nextAttemptAt: Long?,
+    createdAt: Long,
+    lastAttemptAt: Long?,
+    deliveredAt: Long?,
+) = NotificationOutboxItem(
+    id = id,
+    discoveryId = discoveryId,
+    channel = channel,
+    idempotencyKey = idempotencyKey,
+    attemptCount = attemptCount,
+    state = NotificationDeliveryState.valueOf(state),
+    lastError = lastError,
+    nextAttemptAt = nextAttemptAt,
+    createdAt = createdAt,
+    lastAttemptAt = lastAttemptAt,
+    deliveredAt = deliveredAt,
+)
 
 internal fun Database.reconcileArchiveCanonicalVersion(sourceWorkId: Long) {
     val binding = author_archiveQueries

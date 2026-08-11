@@ -4,6 +4,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import tachiyomi.domain.creator.model.CreatorArchiveV2Contract
 import java.io.File
 
 class DatabaseVersion11MigrationTest {
@@ -23,8 +24,8 @@ class DatabaseVersion11MigrationTest {
         driver.execute(null, "INSERT INTO chapters VALUES (42)", 0)
         driver.execute(null, "PRAGMA user_version = 11", 0)
 
-        Database.Schema.migrate(driver, 11, Database.Schema.version)
-        driver.execute(null, "PRAGMA user_version = ${Database.Schema.version}", 0)
+        Database.Schema.migrate(driver, 11, CreatorArchiveV2Contract.CURRENT_SCHEMA_VERSION)
+        driver.execute(null, "PRAGMA user_version = ${CreatorArchiveV2Contract.CURRENT_SCHEMA_VERSION}", 0)
         val database = Database(
             driver,
             historyAdapter = History.Adapter(DateColumnAdapter),
@@ -58,7 +59,7 @@ class DatabaseVersion11MigrationTest {
         )
         driver.execute(null, "PRAGMA user_version = 11", 0)
 
-        Database.Schema.migrate(driver, 11, Database.Schema.version)
+        Database.Schema.migrate(driver, 11, CreatorArchiveV2Contract.CURRENT_SCHEMA_VERSION)
         val database = Database(
             driver,
             historyAdapter = History.Adapter(DateColumnAdapter),
@@ -91,7 +92,7 @@ class DatabaseVersion11MigrationTest {
             0,
         )
 
-        Database.Schema.migrate(driver, 13, Database.Schema.version)
+        Database.Schema.migrate(driver, 13, CreatorArchiveV2Contract.CURRENT_SCHEMA_VERSION)
         val database = Database(
             driver,
             historyAdapter = History.Adapter(DateColumnAdapter),

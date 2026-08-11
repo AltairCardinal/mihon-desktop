@@ -37,6 +37,20 @@ class AuthorArchiveBackupContributorTest {
             target.long("SELECT COUNT(*) FROM author_archive_source_works") shouldBe 2L
             target.long("SELECT COUNT(*) FROM author_archive_source_work_creators") shouldBe 2L
             target.long("SELECT COUNT(*) FROM author_archive_manga_links") shouldBe 2L
+            target.long(
+                "SELECT COUNT(*) FROM author_archive_watches WHERE enabled = 1 AND period_millis = 60000",
+            ) shouldBe
+                1L
+            target.long("SELECT COUNT(*) FROM author_archive_watch_sources") shouldBe 2L
+            target.long(
+                "SELECT COUNT(*) FROM author_archive_watch_sources WHERE baseline_state = 'NEEDS_BASELINE'",
+            ) shouldBe
+                2L
+            target.long("SELECT COUNT(*) FROM author_archive_watch_languages WHERE language_tag = 'ja'") shouldBe 1L
+            target.long(
+                "SELECT COUNT(*) FROM author_archive_watch_result_policies " +
+                    "WHERE include_probable = 1 AND notify_probable = 1",
+            ) shouldBe 1L
             target.string(
                 "SELECT TARGET.portable_key FROM author_archive_creators SOURCE " +
                     "JOIN author_archive_creators TARGET ON TARGET._id = SOURCE.merged_into_creator_id " +
@@ -189,6 +203,33 @@ class AuthorArchiveBackupContributorTest {
                     "origin, verification, confidence, evidence, created_at, last_modified_at) VALUES " +
                     "(1, 1, 'AUTHOR', 0, 'USER', 'VERIFIED', 1, 'split a', 1, 1), " +
                     "(2, 2, 'AUTHOR', 0, 'USER', 'VERIFIED', 1, 'split b', 1, 1)",
+                0,
+            )
+            driver.execute(
+                null,
+                "INSERT INTO author_archive_watches(" +
+                    "_id, creator_id, enabled, period_millis, created_at, last_modified_at" +
+                    ") " +
+                    "VALUES (1, 1, 1, 60000, 1, 1)",
+                0,
+            )
+            driver.execute(
+                null,
+                "INSERT INTO author_archive_watch_sources(watch_id, source_id, baseline_state, baseline_generation, " +
+                    "next_due_at, created_at, last_modified_at) VALUES " +
+                    "(1, 10, 'BASELINED', 4, 100, 1, 1), (1, 20, 'BASELINED', 4, 100, 1, 1)",
+                0,
+            )
+            driver.execute(
+                null,
+                "INSERT INTO author_archive_watch_result_policies(_id, watch_id, include_probable, include_unknown, " +
+                    "notify_probable, notify_unknown, created_at, last_modified_at) " +
+                    "VALUES (1, 1, 1, 0, 1, 0, 1, 1)",
+                0,
+            )
+            driver.execute(
+                null,
+                "INSERT INTO author_archive_watch_languages(policy_id, language_tag) VALUES (1, 'ja')",
                 0,
             )
         }

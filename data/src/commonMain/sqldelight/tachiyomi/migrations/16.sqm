@@ -1,0 +1,2 @@
+CREATE INDEX idx_author_archive_discoveries_unread
+ON author_archive_discoveries(read_state, first_discovered_at DESC);
