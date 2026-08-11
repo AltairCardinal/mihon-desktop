@@ -274,6 +274,7 @@ internal suspend fun initDesktopDIForTest(
         handler = handler as JvmDatabaseHandler,
         networkHelper = networkHelper,
         scheduler = Injekt.get(),
+        creatorDiscoveryScheduler = Injekt.get(),
         downloadManager = Injekt.get(),
         extensionManager = Injekt.get(),
         extensionScreenModel = Injekt.get(),
@@ -297,6 +298,7 @@ internal class DesktopTestDIContext(
     val handler: JvmDatabaseHandler,
     private val networkHelper: DesktopNetworkHelper,
     private val scheduler: LibraryUpdateScheduler,
+    private val creatorDiscoveryScheduler: mihon.desktop.domain.CreatorDiscoveryScheduler,
     private val downloadManager: mihon.desktop.download.DesktopDownloadManager,
     private val extensionManager: DesktopExtensionManager,
     val extensionScreenModel: ExtensionsScreenModel,
@@ -312,6 +314,7 @@ internal class DesktopTestDIContext(
         libraryController.close()
         runtime.close()
         scheduler.stop()
+        creatorDiscoveryScheduler.stop()
     }
 
     suspend fun closeAndJoin() {
@@ -319,6 +322,7 @@ internal class DesktopTestDIContext(
         closed = true
         runtime.closeAndJoin()
         scheduler.stopAndJoin()
+        creatorDiscoveryScheduler.stopAndJoin()
         libraryController.closeAndJoin()
         SourceExtensionTestModeBridge.clear(extensionController)
         extensionScreenModel.closeAndJoin()
@@ -838,6 +842,7 @@ internal fun initUILayer(
         libraryProvider,
         updateManga,
         trackerConnectivity,
+        applicationScope,
     )
     val libraryScreenModel = mihon.desktop.library.LibraryScreenModelFactory.create()
     val libraryTestController = mihon.desktop.test.http.LibraryMangaTestModeController(libraryScreenModel)
@@ -933,6 +938,7 @@ internal fun initUILayer(
             applicationScope,
         ),
         creatorDiscoveryScheduler = Injekt.get<mihon.desktop.domain.CreatorDiscoveryScheduler>(),
+        creatorDiscoveryOutboxService = Injekt.get<mihon.desktop.domain.CreatorDiscoveryOutboxService>(),
         appLock = appLock,
         scope = applicationScope,
         updateScreenModel = updateScreenModel,
@@ -952,6 +958,7 @@ private fun registerDesktopLibrary(
     updateManga: (suspend (tachiyomi.domain.manga.model.Manga) -> LibraryUpdateChecker.UpdateResult)? = null,
     connectivity: mihon.desktop.tracking.DesktopNetworkConnectivity =
         mihon.desktop.tracking.JvmDesktopNetworkConnectivity,
+    applicationScope: CoroutineScope,
 ): DesktopNotificationService {
     Injekt.addSingleton(paths)
     Injekt.addSingleton(DesktopCustomCoverStore(paths.coversDir))
@@ -974,6 +981,14 @@ private fun registerDesktopLibrary(
         connectivity = connectivity,
     )
     Injekt.addSingleton(creatorDiscoveryScheduler)
+    val creatorDiscoveryOutboxService = mihon.desktop.domain.CreatorDiscoveryOutboxService(
+        worker = tachiyomi.domain.creator.service.CreatorDiscoveryOutboxWorker(
+            store = tachiyomi.domain.creator.service.RepositoryCreatorDiscoveryOutboxStore(Injekt.get()),
+            deliveryPort = mihon.desktop.domain.desktopCreatorDiscoveryNotificationPort(taskNotifier),
+        ),
+        scope = applicationScope,
+    )
+    Injekt.addSingleton(creatorDiscoveryOutboxService)
     val libraryPreferences = LibraryPreferences(preferenceStore)
     Injekt.addSingleton(libraryPreferences)
     Injekt.addSingleton(CreateCategoryWithName(categoryRepository, libraryPreferences))

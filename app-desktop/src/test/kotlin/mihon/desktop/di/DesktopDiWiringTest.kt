@@ -28,6 +28,7 @@ import mihon.desktop.backup.BackupRestoreScreenModelFactory
 import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.domain.CreatorDiscoveryScheduler
+import mihon.desktop.domain.CreatorDiscoveryOutboxService
 import mihon.desktop.domain.DesktopCustomCoverStore
 import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.domain.DesktopSystemNotifier
@@ -947,6 +948,7 @@ class DesktopDiWiringTest {
         assertSame(Injekt.get<ReaderPreferences>(), DesktopUiDependencies.fromInjekt().readerPreferences)
         assertNotNull(Injekt.get<LibraryUpdateScheduler>())
         assertNotNull(Injekt.get<CreatorDiscoveryScheduler>())
+        assertNotNull(Injekt.get<CreatorDiscoveryOutboxService>())
 
         Injekt.get<LibraryUpdateScheduler>().runNow().join()
 

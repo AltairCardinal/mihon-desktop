@@ -553,9 +553,9 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 #### `AA3-01` 实现持久 inbox/outbox 与投递恢复
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `[ ]` · Android `[ ]` · Desktop/UI `[ ]` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`IN_PROGRESS（Windows 已验收，Android 延后）` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `[x]` · Android `[ ]：平台 worker 留待最终统一接入` · Desktop/UI `[x]：持久 feed/outbox production runtime` · Legacy/Migration `[x]：field107 v2 read/review；不恢复 outbox` · Review `[x]：主代理收口核对` · Verify `[ ]：Windows/shared focused 已通过，Android 未验收` · Evidence `[x]` · Commit `[x]：本行所在提交`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `Android 验收按用户指示延后；不阻塞后续 Windows 批次` · 审查 `复用既有 discovery/outbox 表，补齐独立 worker、FAILED→PENDING 重试、批量已读/清理与备份自然键；通知投递不修改 read state` · 验证 `aa301-red-worker 正确 RED；aa301-green2 shared worker/backup PASS；aa301-green4 repository/backup/runtime/DI focused PASS` · 运行产物 `持久全量 feed projection、批量 read/cleanup、指数退避 outbox worker、Desktop runtime、field107 v2 discovery disposition；pending/delivered outbox 不进入备份` · Commit `本行所在提交`
 
 - 依赖：`AA1-03`；其 data/outbox 与 platform port 可在 `AA2-01/AA2-02` 期间并行，但真实自动投递集成在 `AA3-02` 等待 `AA2-03`。
 - RED：UI collector 晚启动、进程在 commit/投递边界崩溃、投递重试、同一 idempotency key、`NEW_WORK_CANDIDATE/NEW_SOURCE_VERSION` 分类、通知权限拒绝、系统 notifier 不可用、点击已删除目标、批量已读和清理已读。

@@ -183,9 +183,19 @@ interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
 
     fun observeUnreadDiscoveries(limit: Long): Flow<List<ArchiveDiscovery>>
 
+    suspend fun getDiscoveries(limit: Long): List<ArchiveDiscovery>
+
+    fun observeDiscoveries(limit: Long): Flow<List<ArchiveDiscovery>>
+
+    suspend fun getDiscovery(discoveryId: Long): ArchiveDiscovery?
+
     suspend fun markDiscoverySeen(discoveryId: Long, now: Long)
 
+    suspend fun markDiscoveriesSeen(discoveryIds: Set<Long>, now: Long)
+
     suspend fun setDiscoveryReview(discoveryId: Long, disposition: ReviewDisposition, now: Long)
+
+    suspend fun deleteReviewedDiscoveries(before: Long)
 
     suspend fun getPendingNotificationOutbox(now: Long, limit: Long): List<NotificationOutboxItem>
 

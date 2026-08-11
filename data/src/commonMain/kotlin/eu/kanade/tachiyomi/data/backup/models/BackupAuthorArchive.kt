@@ -15,11 +15,25 @@ data class BackupAuthorArchiveSection(
     @ProtoNumber(2) val creators: List<BackupCreatorIdentity> = emptyList(),
     @ProtoNumber(3) val sourceWorks: List<BackupAuthorSourceWork> = emptyList(),
     @ProtoNumber(4) val watches: List<BackupAuthorWatch> = emptyList(),
+    @ProtoNumber(5) val discoveries: List<BackupAuthorDiscovery> = emptyList(),
 ) {
     companion object {
-        const val CURRENT_VERSION = 1
+        const val CURRENT_VERSION = 2
     }
 }
+
+@Serializable
+data class BackupAuthorDiscovery(
+    @ProtoNumber(1) val creatorPortableKey: String,
+    @ProtoNumber(2) val sourceId: Long,
+    @ProtoNumber(3) val stableSourceUrl: String,
+    @ProtoNumber(4) val kind: String,
+    @ProtoNumber(5) val reason: String,
+    @ProtoNumber(6) val baselineGeneration: Long,
+    @ProtoNumber(7) val readState: String,
+    @ProtoNumber(8) val reviewDisposition: String,
+    @ProtoNumber(9) val firstDiscoveredAt: Long,
+)
 
 @Serializable
 data class BackupCreatorIdentity(

@@ -16,6 +16,11 @@ class DesktopSystemNotifier(
                 is NotificationEvent.Cancelled -> "Cancelled"
             },
         )
+        post(notification)
+    }
+
+    fun post(notification: DesktopNotification): Boolean {
         if (runCatching { system(notification) }.getOrDefault(false).not()) fallback.post(notification)
+        return true
     }
 }

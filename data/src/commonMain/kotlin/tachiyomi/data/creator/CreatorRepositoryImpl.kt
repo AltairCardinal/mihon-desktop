@@ -537,6 +537,26 @@ class CreatorRepositoryImpl(
             .onStart { bootstrap.awaitReady() }
     }
 
+    override suspend fun getDiscoveries(limit: Long): List<ArchiveDiscovery> {
+        bootstrap.awaitReady()
+        require(limit > 0) { "Discovery limit must be positive" }
+        return handler.awaitList { author_archiveQueries.getArchiveDiscoveries(limit, ::mapArchiveDiscovery) }
+    }
+
+    override fun observeDiscoveries(limit: Long): Flow<List<ArchiveDiscovery>> {
+        require(limit > 0) { "Discovery limit must be positive" }
+        return handler.subscribeToList {
+            author_archiveQueries.getArchiveDiscoveries(limit, ::mapArchiveDiscovery)
+        }.onStart { bootstrap.awaitReady() }
+    }
+
+    override suspend fun getDiscovery(discoveryId: Long): ArchiveDiscovery? {
+        bootstrap.awaitReady()
+        return handler.awaitOneOrNull {
+            author_archiveQueries.getArchiveDiscoveryProjectionById(discoveryId, ::mapArchiveDiscovery)
+        }
+    }
+
     override suspend fun markDiscoverySeen(discoveryId: Long, now: Long) {
         bootstrap.awaitReady()
         handler.await(inTransaction = true) {
@@ -552,6 +572,14 @@ class CreatorRepositoryImpl(
         }
     }
 
+    override suspend fun markDiscoveriesSeen(discoveryIds: Set<Long>, now: Long) {
+        bootstrap.awaitReady()
+        if (discoveryIds.isEmpty()) return
+        handler.await(inTransaction = true) {
+            author_archiveQueries.markArchiveDiscoveriesSeen(now, discoveryIds)
+        }
+    }
+
     override suspend fun setDiscoveryReview(discoveryId: Long, disposition: ReviewDisposition, now: Long) {
         bootstrap.awaitReady()
         handler.await(inTransaction = true) {
@@ -562,6 +590,13 @@ class CreatorRepositoryImpl(
                 "Invalid discovery review transition: $current -> $disposition"
             }
             author_archiveQueries.updateArchiveDiscoveryReview(disposition.name, now, discoveryId)
+        }
+    }
+
+    override suspend fun deleteReviewedDiscoveries(before: Long) {
+        bootstrap.awaitReady()
+        handler.await(inTransaction = true) {
+            author_archiveQueries.deleteArchiveReviewedDiscoveries(before)
         }
     }
 

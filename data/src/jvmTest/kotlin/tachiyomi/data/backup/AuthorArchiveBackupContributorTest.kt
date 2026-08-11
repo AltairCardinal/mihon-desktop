@@ -48,6 +48,11 @@ class AuthorArchiveBackupContributorTest {
                 2L
             target.long("SELECT COUNT(*) FROM author_archive_watch_languages WHERE language_tag = 'ja'") shouldBe 1L
             target.long(
+                "SELECT COUNT(*) FROM author_archive_discoveries " +
+                    "WHERE read_state = 'SEEN' AND review_disposition = 'IGNORED'",
+            ) shouldBe 1L
+            target.long("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 0L
+            target.long(
                 "SELECT COUNT(*) FROM author_archive_watch_result_policies " +
                     "WHERE include_probable = 1 AND notify_probable = 1",
             ) shouldBe 1L
@@ -230,6 +235,21 @@ class AuthorArchiveBackupContributorTest {
             driver.execute(
                 null,
                 "INSERT INTO author_archive_watch_languages(policy_id, language_tag) VALUES (1, 'ja')",
+                0,
+            )
+            driver.execute(
+                null,
+                "INSERT INTO author_archive_discoveries(" +
+                    "_id, watch_id, source_work_id, kind, reason, baseline_generation, read_state, " +
+                    "review_disposition, first_discovered_at, last_modified_at" +
+                    ") VALUES (1, 1, 1, 'NEW_WORK_CANDIDATE', 'verified', 4, 'SEEN', 'IGNORED', 10, 11)",
+                0,
+            )
+            driver.execute(
+                null,
+                "INSERT INTO author_archive_notification_outbox(" +
+                    "discovery_id, channel, idempotency_key, attempt_count, state, created_at" +
+                    ") VALUES (1, 'DESKTOP', 'do-not-restore', 0, 'PENDING', 10)",
                 0,
             )
         }

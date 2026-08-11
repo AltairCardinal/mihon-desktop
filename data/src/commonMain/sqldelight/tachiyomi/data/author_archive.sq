@@ -2945,6 +2945,19 @@ WHERE D.read_state = 'UNSEEN'
 ORDER BY D.first_discovered_at DESC, D._id DESC
 LIMIT :limit;
 
+getArchiveDiscoveries:
+SELECT
+    D._id, W.creator_id, SW.source_id, SW.stable_source_url, SW.title,
+    D.kind, D.reason, D.baseline_generation, D.read_state, D.review_disposition,
+    coalesce(O.state, 'CANCELLED') AS delivery_state,
+    D.first_discovered_at, D.last_modified_at
+FROM author_archive_discoveries D
+JOIN author_archive_watches W ON W._id = D.watch_id
+JOIN author_archive_source_works SW ON SW._id = D.source_work_id
+LEFT JOIN author_archive_notification_outbox O ON O.discovery_id = D._id
+ORDER BY D.first_discovered_at DESC, D._id DESC
+LIMIT :limit;
+
 getArchiveDiscoveryState:
 SELECT read_state, review_disposition
 FROM author_archive_discoveries
@@ -2955,10 +2968,21 @@ UPDATE author_archive_discoveries
 SET read_state = 'SEEN', last_modified_at = :now
 WHERE _id = :discoveryId AND read_state = 'UNSEEN';
 
+markArchiveDiscoveriesSeen:
+UPDATE author_archive_discoveries
+SET read_state = 'SEEN', last_modified_at = :now
+WHERE _id IN :discoveryIds AND read_state = 'UNSEEN';
+
 updateArchiveDiscoveryReview:
 UPDATE author_archive_discoveries
 SET review_disposition = :disposition, last_modified_at = :now
 WHERE _id = :discoveryId;
+
+deleteArchiveReviewedDiscoveries:
+DELETE FROM author_archive_discoveries
+WHERE read_state = 'SEEN'
+AND review_disposition != 'PENDING'
+AND last_modified_at < :before;
 
 getArchivePendingNotificationOutbox:
 SELECT
@@ -2998,6 +3022,41 @@ FROM author_archive_watches W
 JOIN author_archive_creators C ON C._id = W.creator_id
 JOIN author_archive_watch_result_policies P ON P.watch_id = W._id
 ORDER BY C.portable_key;
+
+getArchiveDiscoveriesForBackup:
+SELECT
+    C.portable_key AS creator_portable_key,
+    SW.source_id,
+    SW.stable_source_url,
+    D.kind,
+    D.reason,
+    D.baseline_generation,
+    D.read_state,
+    D.review_disposition,
+    D.first_discovered_at
+FROM author_archive_discoveries D
+JOIN author_archive_watches W ON W._id = D.watch_id
+JOIN author_archive_creators C ON C._id = W.creator_id
+JOIN author_archive_source_works SW ON SW._id = D.source_work_id
+ORDER BY D.first_discovered_at, D._id;
+
+restoreArchiveDiscoveryState:
+INSERT INTO author_archive_discoveries(
+    watch_id, source_work_id, kind, reason, baseline_generation,
+    read_state, review_disposition, first_discovered_at, last_modified_at
+)
+SELECT
+    W._id, SW._id, :kind, :reason, :baselineGeneration,
+    :readState, :reviewDisposition, :firstDiscoveredAt, :now
+FROM author_archive_watches W
+JOIN author_archive_creators C ON C._id = W.creator_id
+JOIN author_archive_source_works SW
+    ON SW.source_id = :sourceId AND SW.stable_source_url = :stableSourceUrl
+WHERE C.portable_key = :creatorPortableKey
+ON CONFLICT(watch_id, source_work_id) DO UPDATE SET
+    read_state = excluded.read_state,
+    review_disposition = excluded.review_disposition,
+    last_modified_at = excluded.last_modified_at;
 
 getArchiveWatchSourcesForBackup:
 SELECT C.portable_key AS creator_portable_key, S.source_id

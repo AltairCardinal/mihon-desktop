@@ -2,6 +2,7 @@ package tachiyomi.data.backup
 
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorArchiveSection
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorBinding
+import eu.kanade.tachiyomi.data.backup.models.BackupAuthorDiscovery
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorSourceWork
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorWatch
 import eu.kanade.tachiyomi.data.backup.models.BackupCreatorAlias
@@ -12,6 +13,9 @@ import tachiyomi.domain.creator.model.CreatorArchiveLanguageTag
 import tachiyomi.domain.creator.model.CreatorRelationOrigin
 import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.CreatorRole
+import tachiyomi.domain.creator.model.DiscoveryKind
+import tachiyomi.domain.creator.model.DiscoveryReadState
+import tachiyomi.domain.creator.model.ReviewDisposition
 import tachiyomi.domain.creator.service.CreatorNameNormalizer
 import tachiyomi.domain.creator.service.CreatorSourceWorkKey
 
@@ -110,8 +114,28 @@ class SqlDelightAuthorArchiveBackupContributor(
                 notifyUnknown = watch.notify_unknown,
             )
         }
-        BackupAuthorArchiveSection(creators = creators, sourceWorks = sourceWorks, watches = watches)
-            .takeIf { it.creators.isNotEmpty() || it.sourceWorks.isNotEmpty() || it.watches.isNotEmpty() }
+        val discoveries = author_archiveQueries.getArchiveDiscoveriesForBackup().executeAsList().map { discovery ->
+            BackupAuthorDiscovery(
+                creatorPortableKey = discovery.creator_portable_key,
+                sourceId = discovery.source_id,
+                stableSourceUrl = discovery.stable_source_url,
+                kind = discovery.kind,
+                reason = discovery.reason,
+                baselineGeneration = discovery.baseline_generation,
+                readState = discovery.read_state,
+                reviewDisposition = discovery.review_disposition,
+                firstDiscoveredAt = discovery.first_discovered_at,
+            )
+        }
+        BackupAuthorArchiveSection(
+            creators = creators,
+            sourceWorks = sourceWorks,
+            watches = watches,
+            discoveries = discoveries,
+        ).takeIf {
+            it.creators.isNotEmpty() || it.sourceWorks.isNotEmpty() || it.watches.isNotEmpty() ||
+                it.discoveries.isNotEmpty()
+        }
     }
 
     override suspend fun restoreSection(section: BackupAuthorArchiveSection) {
@@ -155,6 +179,20 @@ class SqlDelightAuthorArchiveBackupContributor(
             }
             validated.watches.forEach { watch ->
                 restoreWatch(watch, creatorIds.getValue(watch.creatorPortableKey), now)
+            }
+            validated.discoveries.forEach { discovery ->
+                author_archiveQueries.restoreArchiveDiscoveryState(
+                    kind = discovery.kind,
+                    reason = discovery.reason,
+                    baselineGeneration = discovery.baselineGeneration,
+                    readState = discovery.readState,
+                    reviewDisposition = discovery.reviewDisposition,
+                    firstDiscoveredAt = discovery.firstDiscoveredAt,
+                    now = now,
+                    sourceId = discovery.sourceId,
+                    stableSourceUrl = discovery.stableSourceUrl,
+                    creatorPortableKey = discovery.creatorPortableKey,
+                )
             }
             validated.creators.filter { it.status == STATUS_MERGED }.forEach { creator ->
                 author_archiveQueries.markArchiveCreatorMergedFromBackup(
@@ -281,8 +319,16 @@ class SqlDelightAuthorArchiveBackupContributor(
     }
 
     private fun validate(section: BackupAuthorArchiveSection): BackupAuthorArchiveSection {
-        require(section.version == BackupAuthorArchiveSection.CURRENT_VERSION) {
+        require(section.version in 1..BackupAuthorArchiveSection.CURRENT_VERSION) {
             "Unsupported author archive backup version: ${section.version}"
+        }
+        val portableUrls = section.sourceWorks.associate { work ->
+            (work.sourceId to work.stableSourceUrl) to CreatorSourceWorkKey.portableUrl(
+                work.stableSourceUrl,
+                work.title,
+                work.authorText,
+                work.artistText,
+            )
         }
         val normalizedSection = section.copy(
             sourceWorks = section.sourceWorks.map { work ->
@@ -293,6 +339,12 @@ class SqlDelightAuthorArchiveBackupContributor(
                         work.authorText,
                         work.artistText,
                     ),
+                )
+            },
+            discoveries = section.discoveries.map { discovery ->
+                discovery.copy(
+                    stableSourceUrl = portableUrls[discovery.sourceId to discovery.stableSourceUrl]
+                        ?: discovery.stableSourceUrl.trim(),
                 )
             },
         )
@@ -361,6 +413,24 @@ class SqlDelightAuthorArchiveBackupContributor(
             require(watch.readingLanguageTags.distinct().size == watch.readingLanguageTags.size) {
                 "Duplicate watch language tag"
             }
+        }
+        val watchCreators = normalizedSection.watches.map(BackupAuthorWatch::creatorPortableKey).toSet()
+        val sourceWorkKeys = normalizedSection.sourceWorks.map { it.sourceId to it.stableSourceUrl }.toSet()
+        require(
+            normalizedSection.discoveries.distinctBy {
+                Triple(it.creatorPortableKey, it.sourceId, it.stableSourceUrl)
+            }.size == normalizedSection.discoveries.size,
+        ) { "Duplicate author discovery" }
+        normalizedSection.discoveries.forEach { discovery ->
+            require(discovery.creatorPortableKey in watchCreators) { "Discovery references an unknown watch" }
+            require(discovery.sourceId to discovery.stableSourceUrl in sourceWorkKeys) {
+                "Discovery references an unknown source work"
+            }
+            enumValueOf<DiscoveryKind>(discovery.kind)
+            enumValueOf<DiscoveryReadState>(discovery.readState)
+            enumValueOf<ReviewDisposition>(discovery.reviewDisposition)
+            require(discovery.reason.isNotBlank()) { "Discovery reason must not be blank" }
+            require(discovery.baselineGeneration >= 0) { "Discovery baseline generation is invalid" }
         }
         return normalizedSection
     }

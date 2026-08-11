@@ -666,9 +666,12 @@ class CreatorLibraryIndexRepositoryTest {
             )
             restarted.getUnreadDiscoveries(10L).single().id shouldBe discovery.id
             restarted.observeUnreadDiscoveries(10L).first().single().id shouldBe discovery.id
+            restarted.getDiscovery(discovery.id)?.id shouldBe discovery.id
+            restarted.getDiscoveries(10L).single().id shouldBe discovery.id
+            restarted.observeDiscoveries(10L).first().single().id shouldBe discovery.id
             val outbox = restarted.getPendingNotificationOutbox(2_000L, 10L).single()
             restarted.observePendingNotificationOutbox(2_000L, 10L).first().single().id shouldBe outbox.id
-            restarted.markDiscoverySeen(discovery.id, 2_010L)
+            restarted.markDiscoveriesSeen(setOf(discovery.id), 2_010L)
             restarted.setDiscoveryReview(discovery.id, ReviewDisposition.ACCEPTED, 2_020L)
             restarted.updateNotificationDelivery(
                 outbox.id,
@@ -692,6 +695,9 @@ class CreatorLibraryIndexRepositoryTest {
             queryLong("SELECT COUNT(*) FROM author_archive_discoveries") shouldBe 1L
             queryLong("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 1L
             restarted.getDueWatchSources(4_000L, 10L) shouldBe emptyList()
+            restarted.deleteReviewedDiscoveries(3_000L)
+            queryLong("SELECT COUNT(*) FROM author_archive_discoveries") shouldBe 0L
+            queryLong("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 0L
         }
     }
 
