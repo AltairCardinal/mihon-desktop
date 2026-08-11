@@ -1,5 +1,15 @@
 # 作者作品归档与新作品发现追踪方案
 
+> 实施 Roadmap：[`2026-08-11-author-archive-discovery-corrective-roadmap.md`](./roadmap/2026-08-11-author-archive-discovery-corrective-roadmap.md)。本文保留产品目标、用户流程、诚实性边界与非目标；审计后冲突的技术方案和全部施工状态以实施 Roadmap/后续 ADR 为准。
+
+| 本文内容 | 继续有效的权威 | 被实施 Roadmap 有限 supersede 的内容 |
+| --- | --- | --- |
+| 第 1、3、13 节 | 产品目标、用户旅程、风险意图 | 风险的具体工程控制和完成状态 |
+| 第 2 节 | 2026-06-15 当时的代码证据历史 | 当前实现事实与完成判断 |
+| 第 4–10 节 | 需要作者、候选、作品、语言、章节、调度和 UI 闭环的设计意图 | `normalized_name/manga_id` 唯一、单一 candidate state、单值语言优先级、library-success 后置 discovery、具体物理 schema 与 wiring |
+| 第 11 节 | TDD 与真实集成验证原则 | 具体测试矩阵、门禁和证据状态 |
+| 第 12、14 节 | 历史阶段构想与 MVP 动机 | 施工顺序、任务状态、依赖、迁移、发布和完成定义 |
+
 ## 0. 中期成果记录
 
 - 2026-06-15：完成只读代码探查，确认本功能属于规划文档产出，本轮不修改功能代码，不触发实现阶段 TDD。
