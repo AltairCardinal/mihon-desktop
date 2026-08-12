@@ -7,6 +7,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import eu.kanade.tachiyomi.util.system.workManager
@@ -57,6 +58,18 @@ class CreatorDiscoveryJob(context: Context, params: WorkerParameters) : Coroutin
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .build()
             context.workManager.enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.KEEP, request)
+        }
+
+        fun schedule(context: Context) {
+            val request = PeriodicWorkRequestBuilder<CreatorDiscoveryJob>(12, TimeUnit.HOURS)
+                .setConstraints(Constraints(requiredNetworkType = NetworkType.CONNECTED))
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .build()
+            context.workManager.enqueueUniquePeriodicWork(
+                "$WORK_NAME-periodic",
+                androidx.work.ExistingPeriodicWorkPolicy.UPDATE,
+                request,
+            )
         }
     }
 }

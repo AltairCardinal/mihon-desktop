@@ -10,11 +10,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -43,6 +45,9 @@ import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.CreatorWorkArchive
 import tachiyomi.domain.creator.model.LanguageCertainty
+import tachiyomi.domain.creator.model.LanguageDimension
+import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
+import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
@@ -173,9 +178,43 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                         )
                     }
                 }
-                items(state.archive.pending, key = { "pending-${it.sourceWorkId}" }) { Text("Review: ${it.title}") }
+                items(state.archive.pending, key = { "pending-${it.sourceWorkId}" }) { version ->
+                    Text(
+                        "Review: ${version.title}",
+                        Modifier.clickable { model.openReview(version) }.padding(vertical = 8.dp),
+                    )
+                }
                 items(state.archive.rejected, key = { "rejected-${it.sourceWorkId}" }) { Text("Rejected: ${it.title}") }
             }
+        }
+        state.reviewing?.let { version ->
+            AlertDialog(
+                onDismissRequest = model::closeReview,
+                title = { Text(version.title) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(MR.strings.desktop_ui_pending_work_suggestions))
+                        OutlinedTextField(
+                            value = state.languageTag,
+                            onValueChange = model::languageTag,
+                            label = { Text(stringResource(MR.strings.desktop_ui_language_tag)) },
+                        )
+                        Button(onClick = model::setReadingLanguage) {
+                            Text(stringResource(MR.strings.desktop_ui_correct_reading_language))
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { model.decide(WorkDecisionState.CONFIRMED) }) {
+                        Text(stringResource(MR.strings.desktop_ui_confirm_same_work))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { model.decide(WorkDecisionState.REJECTED) }) {
+                        Text(stringResource(MR.strings.desktop_ui_reject_same_work))
+                    }
+                },
+            )
         }
     }
 }
@@ -188,6 +227,8 @@ private data class AuthorState(
     val loading: Boolean = true,
     val running: Boolean = false,
     val error: String? = null,
+    val reviewing: SourceWorkArchiveVersion? = null,
+    val languageTag: String = "",
 )
 
 private class AndroidAuthorDetailScreenModel(
@@ -238,6 +279,38 @@ private class AndroidAuthorDetailScreenModel(
                     it.language
             },
         )
+    }
+    fun openReview(version: SourceWorkArchiveVersion) = mutableState.update { it.copy(reviewing = version) }
+    fun closeReview() = mutableState.update { it.copy(reviewing = null, languageTag = "") }
+    fun languageTag(value: String) = mutableState.update { it.copy(languageTag = value) }
+    fun decide(state: WorkDecisionState) = screenModelScope.launch {
+        val version = mutableState.value.reviewing ?: return@launch
+        val now = System.currentTimeMillis()
+        runCatching {
+            val workId = version.decision?.workId ?: archive.createWork(version.title, creatorId, null).id
+            archive.decide(
+                sourceWork = version.naturalKey,
+                workId = workId,
+                state = state,
+                expectedDecidedAt = version.decision?.decidedAt,
+                score = 1.0,
+                evidence = "android-manual-review",
+                decidedAt = now,
+                idempotencyKey = "android-review:${version.sourceWorkId}:$workId:$now",
+            )
+        }.onSuccess { closeReview() }.onFailure(::fail)
+    }
+    fun setReadingLanguage() = screenModelScope.launch {
+        val version = mutableState.value.reviewing ?: return@launch
+        val tag = mutableState.value.languageTag.trim().takeIf(String::isNotEmpty) ?: return@launch
+        runCatching {
+            archive.setLanguage(
+                tachiyomi.domain.creator.model.ArchiveLanguageSubject.SourceWork(version.naturalKey),
+                LanguageDimension.READING,
+                tag,
+                System.currentTimeMillis(),
+            )
+        }.onSuccess { closeReview() }.onFailure(::fail)
     }
     private fun load() = screenModelScope.launch {
         runCatching {
