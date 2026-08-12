@@ -27,6 +27,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -66,6 +67,7 @@ import mihon.domain.task.TaskStatus
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.MangaCreator
+import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.service.CreatorLibraryIndexState
 import tachiyomi.domain.source.service.SourceManager
 import java.util.Locale
@@ -253,7 +255,7 @@ data class AuthorDetailScreen(
         val candidates = state.details.candidates
         val mangaLinks = state.details.mangaLinks
         val mangaTitles = state.details.mangaTitles
-        val workArchive = state.workArchive
+        val workArchive = state.visibleWorkArchive
         val discoveryState = state.discovery
         val sourceCheckpoints = state.checkpoints
         val allCreators = state.allCreators
@@ -717,9 +719,40 @@ data class AuthorDetailScreen(
 
                 HorizontalDivider()
 
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    val summary = state.languageSummary
+                    listOf(
+                        LanguageArchiveFilter.ALL to MR.strings.all.localized(),
+                        LanguageArchiveFilter.CONFIRMED to
+                            MR.strings.desktop_ui_language_confirmed_count.localized(Locale.getDefault(), summary.confirmed),
+                        LanguageArchiveFilter.PROBABLE to
+                            MR.strings.desktop_ui_language_possible_count.localized(Locale.getDefault(), summary.probable),
+                        LanguageArchiveFilter.NEEDS_REVIEW to
+                            MR.strings.desktop_ui_language_needs_review_count.localized(Locale.getDefault(), summary.needsReview),
+                    ).forEach { (filter, label) ->
+                        FilterChip(
+                            selected = state.languageFilter == filter,
+                            onClick = { model.setLanguageFilter(filter) },
+                            label = { Text(label) },
+                        )
+                    }
+                }
+
                 if (workArchive.works.isEmpty() && workArchive.pending.isEmpty() && workArchive.rejected.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(MR.strings.desktop_ui_no_discovered_works_yet.localized())
+                        Text(
+                            if (state.workArchive.works.isEmpty() &&
+                                state.workArchive.pending.isEmpty() &&
+                                state.workArchive.rejected.isEmpty()
+                            ) {
+                                MR.strings.desktop_ui_no_discovered_works_yet.localized()
+                            } else {
+                                MR.strings.desktop_ui_language_filter_empty.localized()
+                            },
+                        )
                     }
                 } else {
                     LazyColumn(Modifier.fillMaxSize()) {
@@ -853,6 +886,46 @@ data class WorkCompareScreen(val workId: Long, val creatorId: Long = -1L) : Scre
         val dependencies = LocalDesktopUiDependencies.current
         val model = rememberScreenModel { AuthorsScreenModelFactory.compare(workId, creatorId, dependencies) }
         val state by model.state.collectAsState()
+        var languageDimension by remember { mutableStateOf<LanguageDimension?>(null) }
+        var languageTag by remember { mutableStateOf("") }
+
+        languageDimension?.let { dimension ->
+            AlertDialog(
+                onDismissRequest = { languageDimension = null },
+                title = {
+                    Text(
+                        if (dimension == LanguageDimension.READING) {
+                            MR.strings.desktop_ui_correct_reading_language.localized()
+                        } else {
+                            MR.strings.desktop_ui_correct_original_language.localized()
+                        },
+                    )
+                },
+                text = {
+                    OutlinedTextField(
+                        value = languageTag,
+                        onValueChange = { languageTag = it },
+                        label = { Text(MR.strings.desktop_ui_language_tag.localized()) },
+                        singleLine = true,
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = languageTag.isNotBlank() && !state.actionRunning,
+                        onClick = {
+                            model.setLanguage(dimension, languageTag)
+                            languageDimension = null
+                            languageTag = ""
+                        },
+                    ) { Text(MR.strings.action_ok.localized()) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { languageDimension = null }) {
+                        Text(MR.strings.action_cancel.localized())
+                    }
+                },
+            )
+        }
 
         Scaffold(
             topBar = {
@@ -901,6 +974,38 @@ data class WorkCompareScreen(val workId: Long, val creatorId: Long = -1L) : Scre
                             item.readingLanguage.certainty.name.lowercase(),
                         ),
                     )
+                    Text(
+                        MR.strings.desktop_ui_original_language_evidence.localized(
+                            Locale.getDefault(),
+                            item.originalLanguage.tag.uppercase(),
+                            item.originalLanguage.evidenceKind.name.lowercase(),
+                            item.originalLanguage.certainty.name.lowercase(),
+                        ),
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(
+                            enabled = !state.actionRunning,
+                            onClick = {
+                                languageTag = item.readingLanguage.tag.takeUnless { it == "und" }.orEmpty()
+                                languageDimension = LanguageDimension.READING
+                            },
+                        ) { Text(MR.strings.desktop_ui_correct_reading_language.localized()) }
+                        TextButton(
+                            enabled = !state.actionRunning,
+                            onClick = {
+                                languageTag = item.originalLanguage.tag.takeUnless { it == "und" }.orEmpty()
+                                languageDimension = LanguageDimension.ORIGINAL
+                            },
+                        ) { Text(MR.strings.desktop_ui_correct_original_language.localized()) }
+                        TextButton(
+                            enabled = !state.actionRunning,
+                            onClick = { model.undoLanguage(LanguageDimension.READING) },
+                        ) { Text(MR.strings.desktop_ui_undo_reading_language.localized()) }
+                        TextButton(
+                            enabled = !state.actionRunning,
+                            onClick = { model.undoLanguage(LanguageDimension.ORIGINAL) },
+                        ) { Text(MR.strings.desktop_ui_undo_original_language.localized()) }
+                    }
                     Text(MR.strings.desktop_ui_source_url.localized(Locale.getDefault(), item.naturalKey.stableSourceUrl))
                     Text(MR.strings.desktop_ui_last_seen.localized(Locale.getDefault(), item.lastSeenAt.toString()))
                     Text(MR.strings.desktop_ui_chapter_count.localized(Locale.getDefault(), item.chapterCount))

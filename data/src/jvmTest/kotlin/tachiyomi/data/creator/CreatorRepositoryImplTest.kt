@@ -812,6 +812,60 @@ class CreatorRepositoryImplTest {
     }
 
     @Test
+    fun `creator archive projects reading and original language independently`() {
+        runBlocking {
+            val creator = repository.upsertCreator("Language Author")
+            val work = SourceWorkNaturalKey(17L, "/language-work")
+            repository.upsertSourceWork(17L, work.stableSourceUrl, null, "Language Work", null, null, null, 2L)
+            repository.upsertSourceWorkCreator(
+                work,
+                creator.id,
+                CreatorRole.AUTHOR,
+                0,
+                CreatorRelationOrigin.USER,
+                CreatorRelationVerification.VERIFIED,
+                "Language Author",
+                1.0,
+                "test",
+            )
+            repository.appendLanguageAssertion(
+                ArchiveLanguageSubject.SourceWork(work),
+                LanguageAssertionContract(
+                    LanguageDimension.READING,
+                    "en",
+                    1.0,
+                    LanguageEvidenceKind.STRUCTURED_METADATA,
+                ),
+                DecisionActor.ALGORITHM,
+                "reading",
+                "test-v1",
+                3L,
+                "reading-language",
+            )
+            repository.appendLanguageAssertion(
+                ArchiveLanguageSubject.SourceWork(work),
+                LanguageAssertionContract(
+                    LanguageDimension.ORIGINAL,
+                    "ja",
+                    1.0,
+                    LanguageEvidenceKind.STRUCTURED_METADATA,
+                ),
+                DecisionActor.ALGORITHM,
+                "original",
+                "test-v1",
+                4L,
+                "original-language",
+            )
+
+            val version = repository.getCreatorWorkArchive(creator.id).pending.single()
+
+            version.readingLanguage.tag shouldBe "en"
+            version.originalLanguage.tag shouldBe "ja"
+            version.originalLanguage.dimension shouldBe LanguageDimension.ORIGINAL
+        }
+    }
+
+    @Test
     fun `upsertCreator reuses normalized name`() {
         runBlocking {
             val first = repository.upsertCreator(" ONE ")

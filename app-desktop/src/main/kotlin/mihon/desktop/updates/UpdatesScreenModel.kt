@@ -14,8 +14,11 @@ import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.creator.model.ArchiveDiscovery
+import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.DiscoveryReadState
 import tachiyomi.domain.creator.model.ReviewDisposition
+import tachiyomi.domain.creator.model.LanguageDimension
+import mihon.desktop.ui.authors.LanguageArchiveFilter
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.updates.interactor.GetUpdates
@@ -36,12 +39,21 @@ data class UpdatesState(
     val filterExcludedScanlators: Boolean = false,
     val creatorDiscoveries: List<ArchiveDiscovery> = emptyList(),
     val showCreatorDiscoveries: Boolean = true,
+    val creatorLanguageFilter: LanguageArchiveFilter = LanguageArchiveFilter.ALL,
 ) {
     val unreadDiscoveryCount: Int get() = creatorDiscoveries.count { it.state.readState == DiscoveryReadState.UNSEEN }
 
     val hasActiveFilters: Boolean
         get() = listOf(filterUnread, filterDownloaded, filterStarted, filterBookmarked)
-            .any { it != TriState.DISABLED } || filterExcludedScanlators || !showCreatorDiscoveries
+            .any { it != TriState.DISABLED } || filterExcludedScanlators || !showCreatorDiscoveries ||
+            creatorLanguageFilter != LanguageArchiveFilter.ALL
+
+    val visibleCreatorDiscoveries: List<ArchiveDiscovery>
+        get() = if (!showCreatorDiscoveries) {
+            emptyList()
+        } else {
+            creatorDiscoveries.filter { creatorLanguageFilter.accepts(it.readingLanguage.certainty) }
+        }
 }
 
 data class UpdatesReaderRequest(
@@ -87,7 +99,16 @@ class UpdatesScreenModel(
             bookmarked = filters.filterBookmarked.toBooleanOrNull(),
             hideExcludedScanlators = filters.filterExcludedScanlators,
         ).first()
-        val discoveries = creatorArchiveRepository?.getDiscoveries(DISCOVERY_LIMIT).orEmpty()
+        val discoveries = creatorArchiveRepository?.let { repository ->
+            repository.getDiscoveries(DISCOVERY_LIMIT).map { discovery ->
+                discovery.copy(
+                    readingLanguage = repository.getLanguageProjection(
+                        ArchiveLanguageSubject.SourceWork(discovery.sourceWork),
+                        LanguageDimension.READING,
+                    ),
+                )
+            }
+        }.orEmpty()
         _state.update { it.copy(creatorDiscoveries = discoveries) }
         applyVisibleItems()
     }
@@ -158,6 +179,10 @@ class UpdatesScreenModel(
 
     fun toggleCreatorDiscoveries() {
         _state.update { it.copy(showCreatorDiscoveries = !it.showCreatorDiscoveries) }
+    }
+
+    fun setCreatorLanguageFilter(filter: LanguageArchiveFilter) {
+        _state.update { it.copy(creatorLanguageFilter = filter) }
     }
 
     suspend fun markRead(item: UpdatesWithRelations) {

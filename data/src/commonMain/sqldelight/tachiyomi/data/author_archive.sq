@@ -2713,7 +2713,21 @@ SELECT
         AND OTHER_LA.evidence_kind = LA.evidence_kind
         AND OTHER_LA.evidence_kind != 'MANUAL'
         AND OTHER_LA.language_tag != LA.language_tag
-    ) THEN 1 ELSE 0 END AS language_conflict
+    ) THEN 1 ELSE 0 END AS language_conflict,
+    OLA.language_tag AS original_language_tag,
+    OLA.confidence AS original_language_confidence,
+    OLA.evidence_kind AS original_language_evidence_kind,
+    CASE WHEN EXISTS(
+        SELECT 1
+        FROM author_archive_language_assertions OTHER_OLA
+        WHERE OTHER_OLA.subject_type = OLA.subject_type
+        AND OTHER_OLA.subject_key = OLA.subject_key
+        AND OTHER_OLA.dimension = OLA.dimension
+        AND OTHER_OLA.withdrawn = 0
+        AND OTHER_OLA.evidence_kind = OLA.evidence_kind
+        AND OTHER_OLA.evidence_kind != 'MANUAL'
+        AND OTHER_OLA.language_tag != OLA.language_tag
+    ) THEN 1 ELSE 0 END AS original_language_conflict
 FROM author_archive_source_works SW
 JOIN author_archive_source_work_creators SWC ON SWC.source_work_id = SW._id
 LEFT JOIN author_archive_watches W ON W.creator_id = SWC.creator_id
@@ -2765,6 +2779,39 @@ LEFT JOIN author_archive_language_assertions LA ON LA._id = (
         END DESC,
         CURRENT_LA.asserted_at DESC,
         CURRENT_LA._id DESC
+    LIMIT 1
+)
+LEFT JOIN author_archive_language_assertions OLA ON OLA._id = (
+    SELECT CURRENT_OLA._id
+    FROM author_archive_language_assertions CURRENT_OLA
+    WHERE CURRENT_OLA.subject_type = 'SOURCE_WORK'
+    AND CURRENT_OLA.subject_key = 'source:' || SW.source_id || ':' || SW.stable_source_url
+    AND CURRENT_OLA.dimension = 'ORIGINAL'
+    AND CURRENT_OLA.withdrawn = 0
+    AND (
+        CURRENT_OLA.evidence_kind != 'MANUAL'
+        OR CURRENT_OLA._id = (
+            SELECT LAST_MANUAL_OLA._id
+            FROM author_archive_language_assertions LAST_MANUAL_OLA
+            WHERE LAST_MANUAL_OLA.subject_type = CURRENT_OLA.subject_type
+            AND LAST_MANUAL_OLA.subject_key = CURRENT_OLA.subject_key
+            AND LAST_MANUAL_OLA.dimension = CURRENT_OLA.dimension
+            AND LAST_MANUAL_OLA.evidence_kind = 'MANUAL'
+            ORDER BY LAST_MANUAL_OLA.asserted_at DESC, LAST_MANUAL_OLA._id DESC
+            LIMIT 1
+        )
+    )
+    ORDER BY
+        CASE CURRENT_OLA.evidence_kind
+            WHEN 'MANUAL' THEN 5
+            WHEN 'STRUCTURED_METADATA' THEN 4
+            WHEN 'SOURCE_FILTER_OR_TAG' THEN 3
+            WHEN 'SINGLE_LANGUAGE_SOURCE' THEN 2
+            WHEN 'TEXT_DETECTION' THEN 1
+            ELSE 0
+        END DESC,
+        CURRENT_OLA.asserted_at DESC,
+        CURRENT_OLA._id DESC
     LIMIT 1
 )
 WHERE SWC.creator_id = :creatorId

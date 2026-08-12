@@ -12,6 +12,7 @@ import mihon.desktop.domain.CreatorDiscoveryScheduler
 import mihon.desktop.domain.GetExcludedScanlators
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.domain.SetExcludedScanlators
+import tachiyomi.domain.creator.service.CreatorDiscoverySourcePort
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadQueuePort
 import mihon.desktop.download.DesktopDownloadPreferences
@@ -152,6 +153,7 @@ data class DesktopUiDependencies(
     val manageCreatorIdentity: ManageCreatorIdentity? = creatorArchiveRepository?.let(::ManageCreatorIdentity),
     val creatorLibraryIndexer: CreatorLibraryIndexer? = null,
     val creatorDiscoveryScheduler: CreatorDiscoveryScheduler? = null,
+    val creatorDiscoverySourcePort: CreatorDiscoverySourcePort? = null,
     val updateController: DesktopUpdateController? = null,
     val updateScreenModel: DesktopUpdateScreenModel? = null,
 ) {
@@ -239,6 +241,7 @@ data class DesktopUiDependencies(
                 creatorRepository = Injekt.get(),
                 creatorLibraryIndexer = Injekt.get(),
                 creatorDiscoveryScheduler = Injekt.get(),
+                creatorDiscoverySourcePort = Injekt.get(),
                 updateController = Injekt.get(),
                 updateScreenModel = Injekt.get(),
             )

@@ -31,6 +31,11 @@ import tachiyomi.domain.creator.model.DiscoveryStateVector
 import tachiyomi.domain.creator.model.NotificationDeliveryState
 import tachiyomi.domain.creator.model.ReviewDisposition
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.model.LanguageCertainty
+import tachiyomi.domain.creator.model.LanguageDimension
+import tachiyomi.domain.creator.model.LanguageEvidenceKind
+import tachiyomi.domain.creator.model.LanguageProjectionContract
+import mihon.desktop.ui.authors.LanguageArchiveFilter
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.updates.interactor.GetUpdates
 import tachiyomi.domain.updates.model.UpdatesWithRelations
@@ -147,13 +152,23 @@ class UpdatesScreenModelTest {
         val archive = mockk<CreatorArchiveRepository>()
         val discovery = sampleDiscovery()
         coEvery { archive.getDiscoveries(any()) } returns listOf(discovery)
+        coEvery { archive.getLanguageProjection(any(), LanguageDimension.READING) } returns LanguageProjectionContract(
+            LanguageDimension.READING,
+            "ja",
+            LanguageCertainty.CONFIRMED,
+            LanguageEvidenceKind.MANUAL,
+        )
         coEvery { archive.markDiscoveriesSeen(any(), any()) } returns Unit
         coEvery { archive.setDiscoveryReview(any(), any(), any()) } returns Unit
         val model = buildModel(creatorArchiveRepository = archive)
 
         model.loadUpdates(Instant.EPOCH)
-        assertEquals(listOf(discovery), model.state.value.creatorDiscoveries)
+        assertEquals("ja", model.state.value.creatorDiscoveries.single().readingLanguage.tag)
         assertEquals(1, model.state.value.unreadDiscoveryCount)
+        model.setCreatorLanguageFilter(LanguageArchiveFilter.NEEDS_REVIEW)
+        assertEquals(emptyList<ArchiveDiscovery>(), model.state.value.visibleCreatorDiscoveries)
+        model.setCreatorLanguageFilter(LanguageArchiveFilter.CONFIRMED)
+        assertEquals(1, model.state.value.visibleCreatorDiscoveries.size)
 
         model.markAllRead()
         coVerify { archive.markDiscoveriesSeen(setOf(discovery.id), any()) }

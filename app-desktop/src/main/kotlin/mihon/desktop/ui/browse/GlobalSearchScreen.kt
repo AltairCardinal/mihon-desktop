@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,9 +33,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -79,8 +83,18 @@ import mihon.desktop.settings.BROWSE_RECENT_SEARCH_LIMIT
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.getEnabledCatalogueSourceCandidates
 import mihon.desktop.ui.library.MangaDetailScreen
+import mihon.desktop.ui.authors.LanguageArchiveFilter
+import mihon.desktop.ui.authors.AuthorDetailScreen
 import mihon.domain.error.AppError
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.creator.model.CreatorRelationVerification
+import tachiyomi.domain.creator.model.CreatorIdentityOption
+import tachiyomi.domain.creator.model.CreatorMention
+import tachiyomi.domain.creator.model.CreatorMentionEvidence
+import tachiyomi.domain.creator.model.CreatorMentionResolution
+import tachiyomi.domain.creator.model.CreatorMetadataField
+import tachiyomi.domain.creator.model.CreatorRole
+import tachiyomi.domain.creator.service.CreatorNameNormalizer
 import tachiyomi.domain.source.service.GlobalSearchSourceFilter
 import tachiyomi.domain.source.service.GlobalSearchSourcePolicy
 import tachiyomi.domain.source.service.SourceManager
@@ -331,20 +345,31 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
-        val sourceManager = LocalDesktopUiDependencies.current.sourceManager
-        val appPreferences = LocalDesktopUiDependencies.current.appPreferences
-        val sourceMangaSearchService = LocalDesktopUiDependencies.current.sourceMangaSearchService
-        val saveSourceMangaForDetails = LocalDesktopUiDependencies.current.saveSourceMangaForDetails
-        val getManga = LocalDesktopUiDependencies.current.getManga
-        val sourceLoginSessionFactory = LocalDesktopUiDependencies.current.sourceLoginSessionFactory
+        val dependencies = LocalDesktopUiDependencies.current
+        val sourceManager = dependencies.sourceManager
+        val appPreferences = dependencies.appPreferences
+        val sourceMangaSearchService = dependencies.sourceMangaSearchService
+        val saveSourceMangaForDetails = dependencies.saveSourceMangaForDetails
+        val getManga = dependencies.getManga
+        val sourceLoginSessionFactory = dependencies.sourceLoginSessionFactory
         val scope = rememberCoroutineScope()
 
         var query by remember { mutableStateOf(initialQuery) }
+        var searchMode by remember { mutableStateOf(GlobalSearchMode.MANGA) }
+        var mangaLanguageFilter by remember { mutableStateOf(LanguageArchiveFilter.ALL) }
+        var authorIdentityFilter by remember { mutableStateOf(AuthorIdentityFilter.ALL) }
+        var pendingIdentityChoice by remember { mutableStateOf<PendingAuthorIdentityChoice?>(null) }
+        var authorActionError by remember { mutableStateOf<String?>(null) }
         var sourceFilter by remember { mutableStateOf(GlobalSearchSourceFilter.PinnedOnly) }
         var openingMangaUrl by remember { mutableStateOf<String?>(null) }
         val coordinatorFactory = LocalGlobalSearchCoordinatorFactory.current
         val materializerFactory = LocalSourceResultMaterializerFactory.current
         val queryCoordinator = remember(sourceMangaSearchService, coordinatorFactory) { coordinatorFactory(sourceMangaSearchService) }
+        val authorCoordinator = remember(dependencies.creatorDiscoverySourcePort) {
+            dependencies.creatorDiscoverySourcePort?.let(::AuthorGlobalSearchCoordinator)
+        }
+        val authorSearchState by authorCoordinator?.state?.collectAsState()
+            ?: remember { mutableStateOf(AuthorGlobalSearchState()) }
         val resultMaterializer = remember(saveSourceMangaForDetails, scope, materializerFactory) {
             materializerFactory(scope, saveSourceMangaForDetails::awaitSearchResults)
         }
@@ -378,6 +403,55 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
         }
         val loginCopy = remember { desktopSourceLoginCopy { it.localized() } }
 
+        pendingIdentityChoice?.let { pending ->
+            AlertDialog(
+                onDismissRequest = { pendingIdentityChoice = null },
+                title = { Text(MR.strings.desktop_ui_choose_author_identity.localized()) },
+                text = {
+                    LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                        items(pending.options, key = CreatorIdentityOption::id) { option ->
+                            ListItem(
+                                headlineContent = { Text(option.displayName) },
+                                supportingContent = { Text(option.aliases.joinToString()) },
+                                modifier = Modifier.clickable {
+                                    scope.launch {
+                                        dependencies.manageCreatorIdentity?.select(
+                                            pending.manga,
+                                            pending.mention,
+                                            option.id,
+                                        )
+                                        dependencies.setCreatorFollow.await(option.id, true)
+                                        pendingIdentityChoice = null
+                                        navigator.push(AuthorDetailScreen(option.id))
+                                    }
+                                },
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                val creatorId = dependencies.manageCreatorIdentity?.createDistinct(
+                                    pending.manga,
+                                    pending.mention,
+                                ) ?: return@launch
+                                dependencies.setCreatorFollow.await(creatorId, true)
+                                pendingIdentityChoice = null
+                                navigator.push(AuthorDetailScreen(creatorId))
+                            }
+                        },
+                    ) { Text(MR.strings.desktop_ui_create_distinct_author.localized()) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingIdentityChoice = null }) {
+                        Text(MR.strings.action_cancel.localized())
+                    }
+                },
+            )
+        }
+
         DisposableEffect(queryCoordinator, resultMaterializer) {
             onDispose {
                 queryCoordinator.close()
@@ -396,6 +470,10 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
                 if (updated != current) recentSearchesPreference.set(updated)
             }
             scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                if (searchMode == GlobalSearchMode.AUTHOR) {
+                    authorCoordinator?.search(normalizedQuery)
+                    return@launch
+                }
                 val sources = GlobalSearchSourcePolicy.select(
                     sourceManager.getCatalogueSources(),
                     appPreferences.enabledLanguages.get(),
@@ -549,6 +627,22 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
                     modifier = Modifier.padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    FilterChip(
+                        selected = searchMode == GlobalSearchMode.MANGA,
+                        onClick = { searchMode = GlobalSearchMode.MANGA },
+                        label = { Text(MR.strings.desktop_ui_search_manga_mode.localized()) },
+                    )
+                    FilterChip(
+                        selected = searchMode == GlobalSearchMode.AUTHOR,
+                        onClick = { searchMode = GlobalSearchMode.AUTHOR },
+                        label = { Text(MR.strings.desktop_ui_search_author_mode.localized()) },
+                    )
+                }
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (searchMode == GlobalSearchMode.MANGA) {
                     listOf(
                         GlobalSearchSourceFilter.PinnedOnly to MR.strings.pinned_sources.localized(),
                         GlobalSearchSourceFilter.All to MR.strings.all.localized(),
@@ -573,9 +667,51 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
                         },
                         label = { Text(MR.strings.has_results.localized()) },
                     )
+                    } else {
+                        listOf(
+                            AuthorIdentityFilter.ALL to MR.strings.all.localized(),
+                            AuthorIdentityFilter.VERIFIED to MR.strings.desktop_ui_verified_author_results.localized(),
+                            AuthorIdentityFilter.POSSIBLE to MR.strings.desktop_ui_possible_author_results.localized(),
+                        ).forEach { (filter, label) ->
+                            FilterChip(
+                                selected = authorIdentityFilter == filter,
+                                onClick = { authorIdentityFilter = filter },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
                 }
 
-                if (searchUiState.loading) {
+                if (searchMode == GlobalSearchMode.MANGA) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(
+                            LanguageArchiveFilter.ALL to MR.strings.all.localized(),
+                            LanguageArchiveFilter.CONFIRMED to MR.strings.desktop_ui_language_confirmed.localized(),
+                            LanguageArchiveFilter.PROBABLE to MR.strings.desktop_ui_language_possible.localized(),
+                            LanguageArchiveFilter.NEEDS_REVIEW to MR.strings.desktop_ui_language_needs_review.localized(),
+                        ).forEach { (filter, label) ->
+                            FilterChip(
+                                selected = mangaLanguageFilter == filter,
+                                onClick = { mangaLanguageFilter = filter },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
+                    if (mangaLanguageFilter == LanguageArchiveFilter.CONFIRMED ||
+                        mangaLanguageFilter == LanguageArchiveFilter.PROBABLE
+                    ) {
+                        Text(
+                            MR.strings.desktop_ui_search_language_metadata_unavailable.localized(),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+
+                if (searchMode == GlobalSearchMode.MANGA && searchUiState.loading) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                         horizontalArrangement = Arrangement.Center,
@@ -590,7 +726,7 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
                     }
                 }
 
-                if (searchUiState.total > 0) {
+                if (searchMode == GlobalSearchMode.MANGA && searchUiState.total > 0) {
                     Text(
                         "${searchUiState.completed} / ${searchUiState.total}",
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -598,13 +734,20 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
                     )
                 }
 
-                if (searchUiState.empty) {
+                if (searchMode == GlobalSearchMode.MANGA && searchUiState.empty) {
                     Text(MR.strings.no_results_found.localized(), modifier = Modifier.padding(16.dp))
                 }
 
                 // Fixed-main ordering: non-empty results, pinned sources, then name/language.
-                val sortedResults = searchUiState.results
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                val sortedResults = if (
+                    mangaLanguageFilter == LanguageArchiveFilter.ALL ||
+                    mangaLanguageFilter == LanguageArchiveFilter.NEEDS_REVIEW
+                ) {
+                    searchUiState.results
+                } else {
+                    emptyList()
+                }
+                if (searchMode == GlobalSearchMode.MANGA) LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(sortedResults, key = { it.source.id }) { sourceResult ->
                         Text(
                             text = "${sourceResult.source.name} (${sourceResult.results.size})",
@@ -681,6 +824,48 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
                         HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
                     }
                 }
+                if (searchMode == GlobalSearchMode.AUTHOR) {
+                    authorActionError?.let { error ->
+                        Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
+                    }
+                    AuthorGlobalSearchResults(
+                        state = authorSearchState,
+                        filter = authorIdentityFilter,
+                        onOpen = { item ->
+                            scope.launch {
+                                val listed = item.work.toSourceManga()
+                                val saved = saveSourceMangaForDetails.awaitListedForDetails(listed, item.work.key.sourceId)
+                                navigator.push(MangaDetailScreen(saved.manga.id))
+                            }
+                        },
+                        onFollow = { item ->
+                            scope.launch {
+                                runCatching {
+                                    val listed = item.work.toSourceManga()
+                                    val saved = saveSourceMangaForDetails.awaitListedForDetails(
+                                        listed,
+                                        item.work.key.sourceId,
+                                    )
+                                    val mention = item.toCreatorMention()
+                                    when (val resolution = dependencies.manageCreatorIdentity?.resolve(saved.manga, mention)) {
+                                        is CreatorMentionResolution.Resolved -> {
+                                            dependencies.setCreatorFollow.await(resolution.creatorId, true)
+                                            navigator.push(AuthorDetailScreen(resolution.creatorId))
+                                        }
+                                        is CreatorMentionResolution.Ambiguous -> {
+                                            pendingIdentityChoice = PendingAuthorIdentityChoice(
+                                                saved.manga,
+                                                resolution.mention,
+                                                resolution.options,
+                                            )
+                                        }
+                                        null -> error("Author identity service is unavailable")
+                                    }
+                                }.onFailure { authorActionError = it.message ?: it::class.simpleName }
+                            }
+                        },
+                    )
+                }
             }
         }
     }
@@ -735,4 +920,128 @@ private fun GlobalSearchMangaCard(
             }
         }
     }
+}
+
+@Composable
+private fun AuthorGlobalSearchResults(
+    state: AuthorGlobalSearchState,
+    filter: AuthorIdentityFilter,
+    onOpen: (AuthorGlobalSearchItem) -> Unit,
+    onFollow: (AuthorGlobalSearchItem) -> Unit,
+) {
+    val rows = state.rows.map { row ->
+        row.copy(
+            items = row.items.filter { item ->
+                when (filter) {
+                    AuthorIdentityFilter.ALL -> true
+                    AuthorIdentityFilter.VERIFIED ->
+                        item.identity.verification == CreatorRelationVerification.VERIFIED
+                    AuthorIdentityFilter.POSSIBLE ->
+                        item.identity.verification == CreatorRelationVerification.POSSIBLE
+                }
+            },
+        )
+    }
+    Column(Modifier.fillMaxSize()) {
+        if (state.rows.isNotEmpty()) {
+            Text(
+                MR.strings.desktop_ui_author_search_summary.localized(
+                    java.util.Locale.getDefault(),
+                    state.verifiedCount,
+                    state.possibleCount,
+                ),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        LazyColumn(Modifier.fillMaxSize()) {
+            rows.forEach { row ->
+                item(key = "author-source-${row.source.sourceId}") {
+                    Text(
+                        row.source.displayName,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                    )
+                    when {
+                        row.loading -> Text(MR.strings.loading.localized(), modifier = Modifier.padding(16.dp))
+                        row.failure != null -> Text(
+                            MR.strings.desktop_ui_author_search_source_failed.localized(
+                                java.util.Locale.getDefault(),
+                                row.failure::class.simpleName ?: "error",
+                            ),
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                        row.items.isEmpty() -> Text(
+                            MR.strings.no_results_found.localized(),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                    }
+                }
+                items(row.items, key = { "author-work-${it.work.key.sourceId}:${it.work.key.stableSourceUrl}" }) { item ->
+                    ListItem(
+                        headlineContent = { Text(item.work.title) },
+                        supportingContent = {
+                            Text(
+                                MR.strings.desktop_ui_author_identity_evidence.localized(
+                                    java.util.Locale.getDefault(),
+                                    item.identity.verification.name.lowercase(),
+                                    item.identity.evidence,
+                                ),
+                            )
+                        },
+                        trailingContent = {
+                            Row {
+                                TextButton(onClick = { onOpen(item) }) {
+                                    Text(MR.strings.desktop_ui_open_work.localized())
+                                }
+                                if (item.identity.verification == CreatorRelationVerification.VERIFIED) {
+                                    TextButton(onClick = { onFollow(item) }) {
+                                        Text(MR.strings.desktop_ui_follow_author.localized())
+                                    }
+                                }
+                            }
+                        },
+                    )
+                }
+                item(key = "author-divider-${row.source.sourceId}") { HorizontalDivider() }
+            }
+        }
+    }
+}
+
+private fun tachiyomi.domain.creator.service.CreatorSourceWorkSnapshot.toSourceManga(): SManga =
+    SManga.create().apply {
+        url = key.stableSourceUrl
+        title = this@toSourceManga.title
+        author = authorText
+        artist = artistText
+        thumbnail_url = thumbnailUrl
+    }
+
+private data class PendingAuthorIdentityChoice(
+    val manga: Manga,
+    val mention: CreatorMention,
+    val options: List<CreatorIdentityOption>,
+)
+
+private fun AuthorGlobalSearchItem.toCreatorMention(): CreatorMention {
+    val displayName = checkNotNull(identity.matchedAlias)
+    val field = if (identity.role == CreatorRole.ARTIST) CreatorMetadataField.ARTIST else CreatorMetadataField.AUTHOR
+    val rawField = if (field == CreatorMetadataField.ARTIST) work.artistText else work.authorText
+    return CreatorMention(
+        displayName = displayName,
+        normalizedName = CreatorNameNormalizer.normalize(displayName),
+        role = identity.role,
+        order = 0,
+        evidence = listOf(
+            CreatorMentionEvidence(
+                field = field,
+                rawField = rawField ?: displayName,
+                rawToken = displayName,
+                tokenIndex = 0,
+            ),
+        ),
+    )
 }

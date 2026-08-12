@@ -142,6 +142,12 @@ data class ArchiveDiscovery(
     val state: DiscoveryStateVector,
     val firstDiscoveredAt: Long,
     val lastModifiedAt: Long,
+    val readingLanguage: LanguageProjectionContract = LanguageProjectionContract(
+        dimension = LanguageDimension.READING,
+        tag = "und",
+        certainty = LanguageCertainty.UNKNOWN,
+        evidenceKind = LanguageEvidenceKind.UNKNOWN,
+    ),
 )
 
 data class NotificationOutboxItem(

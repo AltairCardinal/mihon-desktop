@@ -2692,6 +2692,10 @@ private fun mapCreatorWorkArchiveRow(
     languageConfidence: Double?,
     languageEvidenceKind: String?,
     languageConflict: Long,
+    originalLanguageTag: String?,
+    originalLanguageConfidence: Double?,
+    originalLanguageEvidenceKind: String?,
+    originalLanguageConflict: Long,
 ): CreatorWorkArchiveRow {
     val language = if (languageConflict != 0L && languageEvidenceKind != null) {
         LanguageProjectionContract(
@@ -2716,6 +2720,33 @@ private fun mapCreatorWorkArchiveRow(
                     tag = languageTag,
                     confidence = languageConfidence ?: 0.0,
                     evidenceKind = LanguageEvidenceKind.valueOf(checkNotNull(languageEvidenceKind)),
+                ),
+            ),
+        )
+    }
+    val originalLanguage = if (originalLanguageConflict != 0L && originalLanguageEvidenceKind != null) {
+        LanguageProjectionContract(
+            dimension = LanguageDimension.ORIGINAL,
+            tag = "und",
+            certainty = LanguageCertainty.CONFLICT,
+            evidenceKind = LanguageEvidenceKind.valueOf(originalLanguageEvidenceKind),
+        )
+    } else if (originalLanguageTag == null) {
+        LanguageProjectionContract(
+            dimension = LanguageDimension.ORIGINAL,
+            tag = "und",
+            certainty = LanguageCertainty.UNKNOWN,
+            evidenceKind = LanguageEvidenceKind.UNKNOWN,
+        )
+    } else {
+        CreatorArchiveV2Policy.projectLanguage(
+            LanguageDimension.ORIGINAL,
+            listOf(
+                LanguageAssertionContract(
+                    dimension = LanguageDimension.ORIGINAL,
+                    tag = originalLanguageTag,
+                    confidence = originalLanguageConfidence ?: 0.0,
+                    evidenceKind = LanguageEvidenceKind.valueOf(checkNotNull(originalLanguageEvidenceKind)),
                 ),
             ),
         )
@@ -2747,6 +2778,7 @@ private fun mapCreatorWorkArchiveRow(
             detailsFetchedAt = detailsFetchedAt,
             lastSeenAt = lastSeenAt,
             decision = decision,
+            originalLanguage = originalLanguage,
             lastCheckResult = lastCheckResult?.let(SourceCheckpointResult::valueOf),
             consecutiveFailures = consecutiveFailures,
             lastSuccessAt = lastSuccessAt,

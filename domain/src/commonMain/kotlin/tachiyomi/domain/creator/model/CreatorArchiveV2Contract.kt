@@ -217,6 +217,12 @@ data class SourceWorkArchiveVersion(
     val detailsFetchedAt: Long?,
     val lastSeenAt: Long,
     val decision: WorkDecisionProjection?,
+    val originalLanguage: LanguageProjectionContract = LanguageProjectionContract(
+        dimension = LanguageDimension.ORIGINAL,
+        tag = "und",
+        certainty = LanguageCertainty.UNKNOWN,
+        evidenceKind = LanguageEvidenceKind.UNKNOWN,
+    ),
     val lastCheckResult: SourceCheckpointResult? = null,
     val consecutiveFailures: Long = 0,
     val lastSuccessAt: Long? = null,

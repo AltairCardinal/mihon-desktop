@@ -628,7 +628,7 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 #### `AA5-01` 实现 typed language assertions、冲突投影和人工覆盖
 
-> 状态卡：`IN_PROGRESS（shared/data 与 Windows consumer 前置已验收，Android 延后）` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `[x]` · Android `[ ]` · Desktop/UI `N/A：production UI consumer 在 AA5-02` · Legacy/Migration `[x]` · Review `[ ]` · Verify `[x]` · Evidence `[x]` · Commit `[ ]`
+> 状态卡：`IN_PROGRESS（shared/data 与 Windows consumer 已验收，Android 延后）` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `[x]` · Android `[ ]` · Desktop/UI `[x]` · Legacy/Migration `[x]` · Review `[x]` · Verify `[x]` · Evidence `[x]` · Commit `[x]`
 >
 > 记录：阻塞 `Android 统一验收延后` · 审查 `主代理范围核对 PASS` · 验证 `aa501-language-red → aa501-core-green；aa501-data-green PASS` · 运行产物 `focused shared/data tests；无发布构建` · Commit `本批提交`
 
@@ -642,9 +642,9 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 #### `AA5-02` 接入语言 UI/筛选和全局作者搜索模式
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `N/A：消费 AA5-01 language projection` · Android `N/A：AA7-01` · Desktop/UI `[ ]` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`IN_PROGRESS（Windows 已验收，Android 延后）` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `N/A：消费 AA5-01 language projection` · Android `N/A：AA7-01` · Desktop/UI `[x]` · Legacy/Migration `N/A` · Review `[x]` · Verify `[x]` · Evidence `[x]` · Commit `[ ]`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `Android 统一验收延后` · 审查 `主代理范围核对 PASS` · 验证 `aa502-final-focused-2 PASS` · 运行产物 `Authors/Work Compare/Updates 共用语言投影与筛选；Global Search 作者模式复用 bounded source port 与 identity gate` · Commit `本批提交`
 
 - RED：确定/可能/未知计数、filter threshold、手工更正范围、撤销、冲突 UI、作者模式切换、普通漫画搜索语言筛选、per-source progress/error、普通搜索 POSSIBLE、打开/关注 identity 和导航/DI。
 - GREEN：Authors/Work Compare/Updates/Global Search 消费同一 language projection；普通漫画搜索只对有界取得的 metadata evidence 进行确定/可能/未知投影；全局作者模式复用 source/query port 与 identity gate，不复制 discovery engine。

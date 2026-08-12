@@ -6,6 +6,7 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
 import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -128,6 +129,24 @@ class AuthorsProductionWiringTest {
                 )
             }
             coVerify(exactly = 0) { creatorRepository.createCanonicalWork(any(), any(), any()) }
+
+            val correctLanguage = MR.strings.desktop_ui_correct_reading_language.localized()
+            clickableTextNode(scene, correctLanguage).config[SemanticsActions.OnClick].action?.invoke()
+            scene.render()
+            val input = nodes(scene).single { it.config.contains(SemanticsActions.SetText) }
+            assertTrue(requireNotNull(input.config[SemanticsActions.SetText].action).invoke(AnnotatedString("ja")))
+            clickableTextNode(scene, MR.strings.action_ok.localized())
+                .config[SemanticsActions.OnClick].action?.invoke()
+            coVerify(timeout = 5_000) {
+                archiveRepository.setManualLanguage(
+                    tachiyomi.domain.creator.model.ArchiveLanguageSubject.SourceWork(
+                        tachiyomi.domain.creator.model.SourceWorkNaturalKey(10L, "/pending"),
+                    ),
+                    tachiyomi.domain.creator.model.LanguageDimension.READING,
+                    "ja",
+                    any(),
+                )
+            }
         } finally {
             scene.close()
         }

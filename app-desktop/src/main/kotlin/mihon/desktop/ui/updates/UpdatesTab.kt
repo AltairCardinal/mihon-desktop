@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -62,6 +64,7 @@ import kotlinx.coroutines.launch
 import mihon.desktop.ui.reader.DesktopReaderScreen
 import mihon.desktop.ui.authors.AuthorDetailScreen
 import mihon.desktop.updates.UpdatesScreenModelFactory
+import mihon.desktop.ui.authors.LanguageArchiveFilter
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.updates.model.UpdatesWithRelations
 import tachiyomi.domain.creator.model.ArchiveDiscovery
@@ -143,6 +146,7 @@ class UpdatesRootScreen : Screen {
                 filterBookmarked = state.filterBookmarked,
                 filterExcludedScanlators = state.filterExcludedScanlators,
                 showCreatorDiscoveries = state.showCreatorDiscoveries,
+                creatorLanguageFilter = state.creatorLanguageFilter,
                 onToggleUnread = {
                     scope.launch { model.toggleUnreadFilter() }
                 },
@@ -159,6 +163,7 @@ class UpdatesRootScreen : Screen {
                     scope.launch { model.toggleExcludedScanlatorsFilter() }
                 },
                 onToggleCreatorDiscoveries = model::toggleCreatorDiscoveries,
+                onCreatorLanguageFilter = model::setCreatorLanguageFilter,
                 onDismiss = { model.setShowFilterDialog(false) },
             )
         }
@@ -234,7 +239,7 @@ class UpdatesRootScreen : Screen {
                 }
             }
 
-            val visibleDiscoveries = if (state.showCreatorDiscoveries) state.creatorDiscoveries else emptyList()
+            val visibleDiscoveries = state.visibleCreatorDiscoveries
             val listItems = remember(state.items, visibleDiscoveries) {
                 buildUpdatesListItems(state.items, visibleDiscoveries)
             }
@@ -342,12 +347,14 @@ private fun UpdatesFilterDialog(
     filterBookmarked: TriState,
     filterExcludedScanlators: Boolean,
     showCreatorDiscoveries: Boolean,
+    creatorLanguageFilter: LanguageArchiveFilter,
     onToggleUnread: () -> Unit,
     onToggleDownloaded: () -> Unit,
     onToggleStarted: () -> Unit,
     onToggleBookmarked: () -> Unit,
     onToggleExcludedScanlators: () -> Unit,
     onToggleCreatorDiscoveries: () -> Unit,
+    onCreatorLanguageFilter: (LanguageArchiveFilter) -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
@@ -370,6 +377,26 @@ private fun UpdatesFilterDialog(
                 ) {
                     Text(MR.strings.desktop_ui_author_discoveries.localized(), style = MaterialTheme.typography.bodyMedium)
                     Switch(checked = showCreatorDiscoveries, onCheckedChange = { onToggleCreatorDiscoveries() })
+                }
+                if (showCreatorDiscoveries) {
+                    Text(
+                        MR.strings.desktop_ui_discovery_language_confidence.localized(),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf(
+                            LanguageArchiveFilter.ALL to MR.strings.all.localized(),
+                            LanguageArchiveFilter.CONFIRMED to MR.strings.desktop_ui_language_confirmed.localized(),
+                            LanguageArchiveFilter.PROBABLE to MR.strings.desktop_ui_language_possible.localized(),
+                            LanguageArchiveFilter.NEEDS_REVIEW to MR.strings.desktop_ui_language_needs_review.localized(),
+                        ).forEach { (filter, label) ->
+                            FilterChip(
+                                selected = creatorLanguageFilter == filter,
+                                onClick = { onCreatorLanguageFilter(filter) },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
                 }
                 Row(
                     modifier = Modifier
@@ -549,6 +576,15 @@ private fun DiscoveryItem(
                 )
                 Text(discovery.title, style = MaterialTheme.typography.titleSmall)
                 Text(discovery.reason, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    MR.strings.desktop_ui_discovery_language.localized(
+                        Locale.getDefault(),
+                        discovery.readingLanguage.tag.uppercase(),
+                        discovery.readingLanguage.certainty.name.lowercase(),
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             if (discovery.state.readState == DiscoveryReadState.UNSEEN) {
                 TextButton(onClick = onMarkRead) { Text(MR.strings.action_mark_as_read.localized()) }

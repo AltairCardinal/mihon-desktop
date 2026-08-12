@@ -25,8 +25,10 @@ import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.CreatorWorkArchive
+import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.SourceCheckpoint
+import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorRepository
@@ -121,11 +123,29 @@ data class AuthorDetailState(
     val discovery: CreatorDiscoveryTaskState? = null,
     val checkpoints: List<SourceCheckpoint> = emptyList(),
     val workArchive: CreatorWorkArchive = CreatorWorkArchive(emptyList(), emptyList(), emptyList()),
+    val languageFilter: LanguageArchiveFilter = LanguageArchiveFilter.ALL,
     val loading: Boolean = true,
     val actionRunning: Boolean = false,
     val followFeedback: Boolean? = null,
     val error: String? = null,
-)
+) {
+    val languageSummary: LanguageFilterSummary
+        get() = LanguageFilterSummary.from(
+            workArchive.works.flatMap { it.versions }.map { it.readingLanguage.certainty } +
+                workArchive.pending.map { it.readingLanguage.certainty } +
+                workArchive.rejected.map { it.readingLanguage.certainty },
+        )
+
+    val visibleWorkArchive: CreatorWorkArchive
+        get() = CreatorWorkArchive(
+            works = workArchive.works.mapNotNull { work ->
+                work.copy(versions = work.versions.filter { languageFilter.accepts(it.readingLanguage.certainty) })
+                    .takeIf { it.versions.isNotEmpty() }
+            },
+            pending = workArchive.pending.filter { languageFilter.accepts(it.readingLanguage.certainty) },
+            rejected = workArchive.rejected.filter { languageFilter.accepts(it.readingLanguage.certainty) },
+        )
+}
 
 sealed interface AuthorDetailEffect {
     data class OpenManga(val mangaId: Long) : AuthorDetailEffect
@@ -227,6 +247,8 @@ internal class AuthorDetailScreenModel(
         mutableEffects.tryEmit(AuthorDetailEffect.OpenWorkCompare(candidate.id, creatorId))
     }
 
+    fun setLanguageFilter(filter: LanguageArchiveFilter) = mutableState.update { it.copy(languageFilter = filter) }
+
     fun clearError() = mutableState.update { it.copy(error = null) }
 
     override fun onDispose() = scope.cancel()
@@ -287,6 +309,45 @@ internal class WorkCompareScreenModel(
     fun reject(target: WorkComparisonSuggestion? = null) = review(target, WorkDecisionState.REJECTED)
 
     fun undo() = review(null, WorkDecisionState.SUGGESTED)
+
+    fun setLanguage(dimension: LanguageDimension, tag: String) {
+        if (mutableState.value.actionRunning || tag.isBlank()) return
+        scope.launch {
+            mutableState.update { it.copy(actionRunning = true, error = null) }
+            runCatching {
+                val version = checkNotNull(mutableState.value.version)
+                archiveRepository.setManualLanguage(
+                    ArchiveLanguageSubject.SourceWork(version.naturalKey),
+                    dimension,
+                    tag,
+                    System.currentTimeMillis(),
+                )
+                load()
+            }.onFailure { error ->
+                mutableState.update { it.copy(error = error.message ?: error::class.simpleName) }
+            }
+            mutableState.update { it.copy(actionRunning = false) }
+        }
+    }
+
+    fun undoLanguage(dimension: LanguageDimension) {
+        if (mutableState.value.actionRunning) return
+        scope.launch {
+            mutableState.update { it.copy(actionRunning = true, error = null) }
+            runCatching {
+                val version = checkNotNull(mutableState.value.version)
+                archiveRepository.withdrawManualLanguage(
+                    ArchiveLanguageSubject.SourceWork(version.naturalKey),
+                    dimension,
+                    System.currentTimeMillis(),
+                )
+                load()
+            }.onFailure { error ->
+                mutableState.update { it.copy(error = error.message ?: error::class.simpleName) }
+            }
+            mutableState.update { it.copy(actionRunning = false) }
+        }
+    }
 
     override fun onDispose() = scope.cancel()
 
