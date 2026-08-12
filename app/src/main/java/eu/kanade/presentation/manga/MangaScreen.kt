@@ -64,6 +64,7 @@ import eu.kanade.tachiyomi.ui.manga.MangaScreenModel
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.service.missingChaptersCount
+import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.StubSource
@@ -100,6 +101,8 @@ fun MangaScreen(
     onRefresh: () -> Unit,
     onContinueReading: () -> Unit,
     onSearch: (query: String, global: Boolean) -> Unit,
+    creatorMentions: List<CreatorMention>,
+    onCreatorClick: (CreatorMention) -> Unit,
 
     // For cover dialog
     onCoverClicked: () -> Unit,
@@ -153,6 +156,8 @@ fun MangaScreen(
             onRefresh = onRefresh,
             onContinueReading = onContinueReading,
             onSearch = onSearch,
+            creatorMentions = creatorMentions,
+            onCreatorClick = onCreatorClick,
             onCoverClicked = onCoverClicked,
             onShareClicked = onShareClicked,
             onDownloadActionClicked = onDownloadActionClicked,
@@ -189,6 +194,8 @@ fun MangaScreen(
             onRefresh = onRefresh,
             onContinueReading = onContinueReading,
             onSearch = onSearch,
+            creatorMentions = creatorMentions,
+            onCreatorClick = onCreatorClick,
             onCoverClicked = onCoverClicked,
             onShareClicked = onShareClicked,
             onDownloadActionClicked = onDownloadActionClicked,
@@ -231,6 +238,8 @@ private fun MangaScreenSmallImpl(
     onRefresh: () -> Unit,
     onContinueReading: () -> Unit,
     onSearch: (query: String, global: Boolean) -> Unit,
+    creatorMentions: List<CreatorMention>,
+    onCreatorClick: (CreatorMention) -> Unit,
 
     // For cover dialog
     onCoverClicked: () -> Unit,
@@ -382,6 +391,8 @@ private fun MangaScreenSmallImpl(
                             isStubSource = remember { state.source is StubSource },
                             onCoverClick = onCoverClicked,
                             doSearch = onSearch,
+                            creatorMentions = creatorMentions,
+                            onCreatorClick = onCreatorClick,
                         )
                     }
 
@@ -473,6 +484,8 @@ fun MangaScreenLargeImpl(
     onRefresh: () -> Unit,
     onContinueReading: () -> Unit,
     onSearch: (query: String, global: Boolean) -> Unit,
+    creatorMentions: List<CreatorMention>,
+    onCreatorClick: (CreatorMention) -> Unit,
 
     // For cover dialog
     onCoverClicked: () -> Unit,
@@ -618,6 +631,8 @@ fun MangaScreenLargeImpl(
                             isStubSource = remember { state.source is StubSource },
                             onCoverClick = onCoverClicked,
                             doSearch = onSearch,
+                            creatorMentions = creatorMentions,
+                            onCreatorClick = onCreatorClick,
                         )
                         MangaActionRow(
                             favorite = state.manga.favorite,

@@ -39,20 +39,71 @@ import kotlinx.coroutines.launch
 import tachiyomi.domain.creator.interactor.CreatorArchive
 import tachiyomi.domain.creator.interactor.CreatorDetails
 import tachiyomi.domain.creator.interactor.DiscoverCreatorWorks
+import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
 import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreators
+import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.model.Creator
+import tachiyomi.domain.creator.model.CreatorMention
+import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.creator.model.CreatorWorkArchive
 import tachiyomi.domain.creator.model.LanguageCertainty
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
 import tachiyomi.domain.creator.model.WorkDecisionState
+import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+
+class AndroidMangaCreatorNavigator(
+    private val extractCreators: ExtractCreatorsFromManga = ExtractCreatorsFromManga(),
+    private val manageCreatorIdentity: ManageCreatorIdentity = Injekt.get(),
+) {
+    fun mentions(manga: Manga): List<CreatorMention> = extractCreators.await(manga)
+
+    suspend fun resolve(manga: Manga, mention: CreatorMention): CreatorMentionResolution =
+        manageCreatorIdentity.resolve(manga, mention)
+
+    suspend fun select(manga: Manga, request: CreatorMentionResolution.Ambiguous, creatorId: Long) =
+        manageCreatorIdentity.select(manga, request.mention, creatorId)
+
+    suspend fun createDistinct(manga: Manga, request: CreatorMentionResolution.Ambiguous): Long =
+        manageCreatorIdentity.createDistinct(manga, request.mention)
+}
+
+@Composable
+fun AndroidCreatorIdentityChooserDialog(
+    request: CreatorMentionResolution.Ambiguous,
+    onSelect: (Long) -> Unit,
+    onCreateDistinct: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(MR.strings.desktop_ui_choose_author_identity)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                request.options.forEach { option ->
+                    TextButton(onClick = { onSelect(option.id) }) {
+                        Text(option.displayName)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onCreateDistinct) {
+                Text(stringResource(MR.strings.desktop_ui_create_distinct_identity))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(MR.strings.action_cancel)) }
+        },
+    )
+}
 
 @Composable
 fun Screen.authorsTab(): TabContent {

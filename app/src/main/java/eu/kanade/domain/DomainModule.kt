@@ -145,6 +145,7 @@ class DomainModule : InjektModule {
         addSingletonFactory<CreatorRepository> { get<CreatorRepositoryImpl>() }
         addSingletonFactory<CreatorArchiveRepository> { get<CreatorRepositoryImpl>() }
         addSingletonFactory { CreatorArchive(get<CreatorRepository>(), get<CreatorArchiveRepository>()) }
+        addFactory { tachiyomi.domain.creator.interactor.ManageCreatorIdentity(get<CreatorArchiveRepository>()) }
         addSingletonFactory<CreatorLibraryIndexWriter> { get<CreatorRepositoryImpl>() }
         addSingletonFactory<tachiyomi.data.backup.AuthorArchiveBackupContributor> {
             tachiyomi.data.backup.SqlDelightAuthorArchiveBackupContributor(get())

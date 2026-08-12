@@ -94,6 +94,7 @@ import eu.kanade.tachiyomi.util.system.copyToClipboard
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.findChildOfType
+import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.DISABLED_ALPHA
@@ -118,6 +119,8 @@ fun MangaInfoBox(
     isStubSource: Boolean,
     onCoverClick: () -> Unit,
     doSearch: (query: String, global: Boolean) -> Unit,
+    creatorMentions: List<CreatorMention>,
+    onCreatorClick: (CreatorMention) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier) {
@@ -155,6 +158,8 @@ fun MangaInfoBox(
                     isStubSource = isStubSource,
                     onCoverClick = onCoverClick,
                     doSearch = doSearch,
+                    creatorMentions = creatorMentions,
+                    onCreatorClick = onCreatorClick,
                 )
             } else {
                 MangaAndSourceTitlesLarge(
@@ -164,6 +169,8 @@ fun MangaInfoBox(
                     isStubSource = isStubSource,
                     onCoverClick = onCoverClick,
                     doSearch = doSearch,
+                    creatorMentions = creatorMentions,
+                    onCreatorClick = onCreatorClick,
                 )
             }
         }
@@ -348,6 +355,8 @@ private fun MangaAndSourceTitlesLarge(
     isStubSource: Boolean,
     onCoverClick: () -> Unit,
     doSearch: (query: String, global: Boolean) -> Unit,
+    creatorMentions: List<CreatorMention>,
+    onCreatorClick: (CreatorMention) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -373,6 +382,8 @@ private fun MangaAndSourceTitlesLarge(
             sourceName = sourceName,
             isStubSource = isStubSource,
             doSearch = doSearch,
+            creatorMentions = creatorMentions,
+            onCreatorClick = onCreatorClick,
             textAlign = TextAlign.Center,
         )
     }
@@ -386,6 +397,8 @@ private fun MangaAndSourceTitlesSmall(
     isStubSource: Boolean,
     onCoverClick: () -> Unit,
     doSearch: (query: String, global: Boolean) -> Unit,
+    creatorMentions: List<CreatorMention>,
+    onCreatorClick: (CreatorMention) -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -416,6 +429,8 @@ private fun MangaAndSourceTitlesSmall(
                 sourceName = sourceName,
                 isStubSource = isStubSource,
                 doSearch = doSearch,
+                creatorMentions = creatorMentions,
+                onCreatorClick = onCreatorClick,
             )
         }
     }
@@ -430,6 +445,8 @@ private fun ColumnScope.MangaContentInfo(
     sourceName: String,
     isStubSource: Boolean,
     doSearch: (query: String, global: Boolean) -> Unit,
+    creatorMentions: List<CreatorMention>,
+    onCreatorClick: (CreatorMention) -> Unit,
     textAlign: TextAlign? = LocalTextStyle.current.textAlign,
 ) {
     val context = LocalContext.current
@@ -462,27 +479,25 @@ private fun ColumnScope.MangaContentInfo(
             contentDescription = null,
             modifier = Modifier.size(16.dp),
         )
-        Text(
-            text = author?.takeIf { it.isNotBlank() }
-                ?: stringResource(MR.strings.unknown_author),
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier
-                .clickableNoIndication(
-                    onLongClick = {
-                        if (!author.isNullOrBlank()) {
-                            context.copyToClipboard(
-                                author,
-                                author,
-                            )
-                        }
-                    },
-                    onClick = { if (!author.isNullOrBlank()) doSearch(author, true) },
-                ),
-            textAlign = textAlign,
-        )
+        if (creatorMentions.isEmpty()) {
+            Text(
+                text = stringResource(MR.strings.unknown_author),
+                style = MaterialTheme.typography.titleSmall,
+                textAlign = textAlign,
+            )
+        } else {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall)) {
+                creatorMentions.forEach { mention ->
+                    SuggestionChip(
+                        onClick = { onCreatorClick(mention) },
+                        label = { Text(mention.displayName) },
+                    )
+                }
+            }
+        }
     }
 
-    if (!artist.isNullOrBlank() && author != artist) {
+    if (creatorMentions.isEmpty() && !artist.isNullOrBlank() && author != artist) {
         Row(
             modifier = Modifier.secondaryItemAlpha(),
             horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),

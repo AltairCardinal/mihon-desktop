@@ -42,6 +42,9 @@ import eu.kanade.presentation.util.isTabletUi
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.isLocalOrStub
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.ui.browse.author.AndroidAuthorDetailScreen
+import eu.kanade.tachiyomi.ui.browse.author.AndroidCreatorIdentityChooserDialog
+import eu.kanade.tachiyomi.ui.browse.author.AndroidMangaCreatorNavigator
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
@@ -61,6 +64,7 @@ import mihon.feature.migration.dialog.MigrateMangaDialog
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.presentation.core.screens.LoadingScreen
 
@@ -98,6 +102,13 @@ class MangaScreen(
 
         val successState = state as MangaScreenModel.State.Success
         val isHttpSource = remember { successState.source is HttpSource }
+        val creatorNavigator = remember { AndroidMangaCreatorNavigator() }
+        val creatorMentions = remember(successState.manga.author, successState.manga.artist) {
+            creatorNavigator.mentions(successState.manga)
+        }
+        var creatorIdentityRequest by remember {
+            mutableStateOf<CreatorMentionResolution.Ambiguous?>(null)
+        }
 
         LaunchedEffect(successState.manga, screenModel.source) {
             if (isHttpSource) {
@@ -151,6 +162,16 @@ class MangaScreen(
             onRefresh = screenModel::fetchAllFromSource,
             onContinueReading = { continueReading(context, screenModel.getNextUnreadChapter()) },
             onSearch = { query, global -> scope.launch { performSearch(navigator, query, global) } },
+            creatorMentions = creatorMentions,
+            onCreatorClick = { mention ->
+                scope.launch {
+                    when (val resolution = creatorNavigator.resolve(successState.manga, mention)) {
+                        is CreatorMentionResolution.Resolved ->
+                            navigator.push(AndroidAuthorDetailScreen(resolution.creatorId))
+                        is CreatorMentionResolution.Ambiguous -> creatorIdentityRequest = resolution
+                    }
+                }
+            },
             onCoverClicked = screenModel::showCoverDialog,
             onShareClicked = { shareManga(context, screenModel.manga, screenModel.source) }.takeIf { isHttpSource },
             onDownloadActionClicked = screenModel::runDownloadAction.takeIf { !successState.source.isLocalOrStub() },
@@ -174,6 +195,27 @@ class MangaScreen(
             onAllChapterSelected = screenModel::toggleAllSelection,
             onInvertSelection = screenModel::invertSelection,
         )
+
+        creatorIdentityRequest?.let { request ->
+            AndroidCreatorIdentityChooserDialog(
+                request = request,
+                onSelect = { creatorId ->
+                    scope.launch {
+                        creatorNavigator.select(successState.manga, request, creatorId)
+                        creatorIdentityRequest = null
+                        navigator.push(AndroidAuthorDetailScreen(creatorId))
+                    }
+                },
+                onCreateDistinct = {
+                    scope.launch {
+                        val creatorId = creatorNavigator.createDistinct(successState.manga, request)
+                        creatorIdentityRequest = null
+                        navigator.push(AndroidAuthorDetailScreen(creatorId))
+                    }
+                },
+                onDismiss = { creatorIdentityRequest = null },
+            )
+        }
 
         var showScanlatorsDialog by remember { mutableStateOf(false) }
 
