@@ -666,6 +666,7 @@ class CreatorDiscoveryService(
             if (identity.verification == CreatorRelationVerification.POSSIBLE) possible += 1 else matched += 1
 
             val languageAssertion = details.toReadingLanguageAssertion(sourcePlan.source)
+            val originalLanguageAssertion = details.toOriginalLanguageAssertion()
             val languageProjection = CreatorArchiveV2Policy.projectLanguage(
                 LanguageDimension.READING,
                 listOf(languageAssertion),
@@ -698,6 +699,8 @@ class CreatorDiscoveryService(
                     languageAlgorithmVersion = DISCOVERY_ALGORITHM_VERSION,
                     languageAssertedAt = clock(),
                     languageIdempotencyKey = languageAssertion.idempotencyKey(details.work.key),
+                    originalLanguageAssertion = originalLanguageAssertion,
+                    originalLanguageIdempotencyKey = originalLanguageAssertion?.idempotencyKey(details.work.key),
                     notificationsEnabled = commitEvents && policyDecision.notify,
                     baselineState = baseline.baselineState,
                     discoveryReason = "verified creator relation",
@@ -910,6 +913,27 @@ class CreatorDiscoveryService(
                 LanguageEvidence.SOURCE_LANGUAGE -> LanguageEvidenceKind.SINGLE_LANGUAGE_SOURCE
                 LanguageEvidence.TEXT_DETECTED -> LanguageEvidenceKind.TEXT_DETECTION
                 LanguageEvidence.UNKNOWN -> LanguageEvidenceKind.UNKNOWN
+            },
+        )
+    }
+
+    private fun CreatorSourceDetails.toOriginalLanguageAssertion(): LanguageAssertionContract? {
+        val explicitTag = originalLanguageTag ?: return null
+        val detection = MangaLanguageDetector.detect(
+            sourceLang = null,
+            explicitLanguage = explicitTag,
+            title = work.title,
+            description = metadata["description"],
+            genres = metadata["genres"]?.split('\u001f').orEmpty(),
+        )
+        return LanguageAssertionContract(
+            dimension = LanguageDimension.ORIGINAL,
+            tag = detection.tag,
+            confidence = detection.confidence,
+            evidenceKind = if (detection.evidence == LanguageEvidence.EXPLICIT_METADATA) {
+                LanguageEvidenceKind.STRUCTURED_METADATA
+            } else {
+                LanguageEvidenceKind.UNKNOWN
             },
         )
     }

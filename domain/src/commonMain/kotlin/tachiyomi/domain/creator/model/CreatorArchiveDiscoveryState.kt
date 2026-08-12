@@ -124,6 +124,8 @@ data class SourceDiscoveryObservation(
     val discoveredAt: Long,
     val outboxChannel: String,
     val discoveryIdempotencyKey: String,
+    val originalLanguageAssertion: LanguageAssertionContract? = null,
+    val originalLanguageIdempotencyKey: String? = null,
 )
 
 data class SourceDiscoveryObservationResult(

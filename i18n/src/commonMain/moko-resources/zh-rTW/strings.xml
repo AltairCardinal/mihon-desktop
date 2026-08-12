@@ -1418,6 +1418,8 @@
     <string name="desktop_ui_hide_raw_chapters">收合原始章節名</string>
     <string name="desktop_ui_raw_chapter_variant">%1$s · %2$s · %3$s</string>
     <string name="desktop_ui_chapter_compare_failed">章節比較暫時無法使用：%1$s</string>
+    <string name="desktop_ui_structured_author_source">結構化作者介面</string>
+    <string name="desktop_ui_catalogue_author_fallback">透過一般目錄搜尋發現</string>
     <string name="desktop_ui_source_url">來源網址：%1$s</string>
     <string name="desktop_ui_first_seen">首次發現：%1$s</string>
     <string name="desktop_ui_last_seen">最近發現：%1$s</string>

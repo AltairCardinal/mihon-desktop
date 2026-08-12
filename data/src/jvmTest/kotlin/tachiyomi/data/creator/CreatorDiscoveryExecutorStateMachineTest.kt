@@ -675,6 +675,35 @@ class CreatorDiscoveryExecutorStateMachineTest {
         }
     }
 
+    @Test
+    fun `source observation persists structured reading and original language in one transaction`() {
+        runBlocking {
+            val now = MutableClock(1_000L)
+            val creatorId = seedWatch(now)
+            val key = SourceWorkNaturalKey(10L, "/bilingual")
+            repository.commitSourceDiscoveryObservation(
+                observation(creatorId, key, "bilingual-outbox", now.value).copy(
+                    originalLanguageAssertion = LanguageAssertionContract(
+                        dimension = LanguageDimension.ORIGINAL,
+                        tag = "ja",
+                        confidence = 1.0,
+                        evidenceKind = LanguageEvidenceKind.STRUCTURED_METADATA,
+                    ),
+                    originalLanguageIdempotencyKey = "original-language:10:/bilingual",
+                ),
+            )
+
+            repository.getLanguageProjection(
+                tachiyomi.domain.creator.model.ArchiveLanguageSubject.SourceWork(key),
+                LanguageDimension.READING,
+            ).tag shouldBe "en"
+            repository.getLanguageProjection(
+                tachiyomi.domain.creator.model.ArchiveLanguageSubject.SourceWork(key),
+                LanguageDimension.ORIGINAL,
+            ).tag shouldBe "ja"
+        }
+    }
+
     // ── helpers ────────────────────────────────────────────────────────────────────────────────
 
     private suspend fun seedWatch(

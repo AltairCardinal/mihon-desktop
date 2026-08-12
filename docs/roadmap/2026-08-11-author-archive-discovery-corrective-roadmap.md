@@ -672,9 +672,9 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 #### `AA6-02` 增加可选作者搜索/结构化元数据协议并保持旧扩展兼容
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `[ ]` · Android `[ ]` · Desktop/UI `[ ]` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`IN_PROGRESS（shared 与 Windows consumer 已验收，Android/真实旧扩展发布验收延后）` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `[x]` · Android `[ ]` · Desktop/UI `[x]` · Legacy/Migration `[x]` · Review `[x]` · Verify `[x]` · Evidence `[x]` · Commit `[ ]`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `Android 与真实旧扩展发布验收延后` · 审查 `主代理复用核对 PASS：沿用既有可选 AuthorSearchSource/CatalogueSource` · 验证 `aa602-green-1 PASS` · 运行产物 `结构化接口失败自动回退普通搜索；reading/original 结构化语言同事务进入 projector；Windows 标记证据来源` · Commit `本批提交`
 
 - RED：旧编译扩展加载、只实现 `CatalogueSource`、实现 `AuthorSearchSource`、实现结构化 metadata、接口抛错 fallback、分页/取消、binary/classloader compatibility 和真实旧扩展 fixture。
 - GREEN：在 `source-api` 新增可选 capability interface，不修改旧接口强制方法；发现服务按 capability 优先，失败后按明确策略 fallback 并保存 evidence。

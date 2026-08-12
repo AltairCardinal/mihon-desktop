@@ -165,6 +165,27 @@ class CreatorDiscoveryPlanningTest {
         }
     }
 
+    @Test
+    fun `structured author search failure falls back without claiming verified identity`() {
+        runBlocking {
+            val source = FailingStructuredSource(1)
+            val adapter = CatalogueCreatorDiscoverySourceAdapter(
+                enabledSourcesProvider = { listOf(source) },
+                sourceResolver = { source },
+                clock = { 1_000 },
+            )
+            adapter.enabledSourcesSnapshot()
+
+            val result = adapter.searchPage(
+                BoundedAuthorSearchPageRequest(1, "ONE", page = 1, pageLimit = 1, deadlineAtMillis = 2_000),
+            ) as CreatorSourcePageResult.Content
+
+            assertEquals(1, source.authorSearchCalls)
+            assertEquals(1, source.fallbackSearchCalls)
+            assertTrue(result.works.single().structuredCreatorMatches.isEmpty())
+        }
+    }
+
     private fun source(
         id: Long,
         profile: CreatorSourceReadingLanguageProfile = CreatorSourceReadingLanguageProfile.Unknown,
@@ -257,6 +278,15 @@ private class StructuredSource(id: Long) : FallbackSource(id), AuthorSearchSourc
             ),
             hasNextPage = false,
         )
+    }
+}
+
+private class FailingStructuredSource(id: Long) : FallbackSource(id), AuthorSearchSource {
+    var authorSearchCalls = 0
+
+    override suspend fun getAuthorSearchManga(page: Int, authorQuery: String): AuthorSearchPage {
+        authorSearchCalls += 1
+        error("optional author endpoint unavailable")
     }
 }
 

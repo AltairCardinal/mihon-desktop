@@ -410,6 +410,13 @@ class CreatorRepositoryImpl(
                 now = observation.detailsFetchedAt,
             )
             appendObservationLanguageAssertion(observation)
+            observation.originalLanguageAssertion?.let { assertion ->
+                appendObservationLanguageAssertion(
+                    observation,
+                    assertion,
+                    checkNotNull(observation.originalLanguageIdempotencyKey),
+                )
+            }
             val relation = upsertObservationCreatorRelation(work.sourceWorkId, observation)
             val plan = if (observation.notificationsEnabled) {
                 CreatorArchiveV2Policy.planDiscoveryCommit(
@@ -502,9 +509,13 @@ class CreatorRepositoryImpl(
             .executeAsOne()
     }
 
-    private fun Database.appendObservationLanguageAssertion(observation: SourceDiscoveryObservation) {
-        val normalized = observation.languageAssertion.copy(
-            tag = CreatorArchiveLanguageTag.normalize(observation.languageAssertion.tag),
+    private fun Database.appendObservationLanguageAssertion(
+        observation: SourceDiscoveryObservation,
+        assertion: LanguageAssertionContract = observation.languageAssertion,
+        idempotencyKey: String = observation.languageIdempotencyKey,
+    ) {
+        val normalized = assertion.copy(
+            tag = CreatorArchiveLanguageTag.normalize(assertion.tag),
         )
         if (normalized.evidenceKind == LanguageEvidenceKind.MANUAL) {
             require(observation.languageActor != DecisionActor.ALGORITHM) {
@@ -530,7 +541,7 @@ class CreatorRepositoryImpl(
         )
         val existing = author_archiveQueries
             .getArchiveLanguageAssertionByIdempotencyKey(
-                observation.languageIdempotencyKey,
+                idempotencyKey,
                 ::mapLanguageAssertionEvent,
             )
             .executeAsOneOrNull()
@@ -550,7 +561,7 @@ class CreatorRepositoryImpl(
                 algorithmVersion = attempted.algorithmVersion,
                 withdrawn = attempted.assertion.withdrawn,
                 assertedAt = attempted.assertedAt,
-                idempotencyKey = observation.languageIdempotencyKey,
+                idempotencyKey = idempotencyKey,
             )
         }
     }

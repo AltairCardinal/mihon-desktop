@@ -1654,6 +1654,8 @@
     <string name="desktop_ui_hide_raw_chapters">Hide original chapter names</string>
     <string name="desktop_ui_raw_chapter_variant">%1$s · %2$s · %3$s</string>
     <string name="desktop_ui_chapter_compare_failed">Chapter comparison unavailable: %1$s</string>
+    <string name="desktop_ui_structured_author_source">Structured author interface</string>
+    <string name="desktop_ui_catalogue_author_fallback">Discovered through normal catalogue search</string>
     <string name="desktop_ui_source_url">Source URL: %1$s</string>
     <string name="desktop_ui_first_seen">First seen: %1$s</string>
     <string name="desktop_ui_last_seen">Last seen: %1$s</string>

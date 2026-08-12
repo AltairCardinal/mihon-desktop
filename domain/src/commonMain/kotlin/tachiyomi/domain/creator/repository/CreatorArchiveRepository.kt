@@ -153,6 +153,17 @@ interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
             assertedAt = observation.languageAssertedAt,
             idempotencyKey = observation.languageIdempotencyKey,
         )
+        observation.originalLanguageAssertion?.let { assertion ->
+            appendLanguageAssertion(
+                subject = ArchiveLanguageSubject.SourceWork(observation.sourceWork),
+                assertion = assertion,
+                actor = observation.languageActor,
+                evidencePayload = observation.languageEvidencePayload,
+                algorithmVersion = observation.languageAlgorithmVersion,
+                assertedAt = observation.languageAssertedAt,
+                idempotencyKey = checkNotNull(observation.originalLanguageIdempotencyKey),
+            )
+        }
         val relation = upsertSourceWorkCreator(
             sourceWork = observation.sourceWork,
             creatorId = observation.creatorId,

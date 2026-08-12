@@ -95,6 +95,7 @@ import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.creator.model.CreatorMetadataField
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.service.CreatorNameNormalizer
+import tachiyomi.domain.creator.service.CreatorSourceCapability
 import tachiyomi.domain.source.service.GlobalSearchSourceFilter
 import tachiyomi.domain.source.service.GlobalSearchSourcePolicy
 import tachiyomi.domain.source.service.SourceManager
@@ -962,6 +963,16 @@ private fun AuthorGlobalSearchResults(
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                    )
+                    Text(
+                        if (CreatorSourceCapability.AUTHOR_SEARCH in row.source.capabilities) {
+                            MR.strings.desktop_ui_structured_author_source.localized()
+                        } else {
+                            MR.strings.desktop_ui_catalogue_author_fallback.localized()
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp),
                     )
                     when {
                         row.loading -> Text(MR.strings.loading.localized(), modifier = Modifier.padding(16.dp))

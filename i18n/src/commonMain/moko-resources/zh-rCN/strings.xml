@@ -1448,6 +1448,8 @@
     <string name="desktop_ui_hide_raw_chapters">收起原始章节名</string>
     <string name="desktop_ui_raw_chapter_variant">%1$s · %2$s · %3$s</string>
     <string name="desktop_ui_chapter_compare_failed">章节比较暂不可用：%1$s</string>
+    <string name="desktop_ui_structured_author_source">结构化作者接口</string>
+    <string name="desktop_ui_catalogue_author_fallback">通过普通目录搜索发现</string>
     <string name="desktop_ui_source_url">来源网址：%1$s</string>
     <string name="desktop_ui_first_seen">首次发现：%1$s</string>
     <string name="desktop_ui_last_seen">最近发现：%1$s</string>

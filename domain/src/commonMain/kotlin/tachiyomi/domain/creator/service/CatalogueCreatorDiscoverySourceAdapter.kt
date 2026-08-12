@@ -67,8 +67,18 @@ class CatalogueCreatorDiscoverySourceAdapter(
         return try {
             withTimeout(remainingMillis) {
                 val page = if (source is AuthorSearchSource) {
-                    source.getAuthorSearchManga(request.page, request.alias).let { result ->
-                        SearchPage(result.mangas, result.hasNextPage)
+                    try {
+                        source.getAuthorSearchManga(request.page, request.alias).let { result ->
+                            SearchPage(result.mangas, result.hasNextPage)
+                        }
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Exception) {
+                        sourceMangaSearchService.loadPage(
+                            source = source,
+                            page = request.page,
+                            request = SourceMangaSearchRequest.Search(request.alias, source.getFilterList()),
+                        ).toSearchPage()
                     }
                 } else {
                     sourceMangaSearchService.loadPage(
