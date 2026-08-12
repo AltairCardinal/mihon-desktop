@@ -55,7 +55,6 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.NoChaptersException
-import tachiyomi.domain.creator.service.CreatorDiscoveryService
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.DEVICE_CHARGING
@@ -98,7 +97,6 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
     private val syncChaptersWithSource: SyncChaptersWithSource = Injekt.get()
     private val fetchInterval: FetchInterval = Injekt.get()
     private val filterChaptersForDownload: FilterChaptersForDownload = Injekt.get()
-    private val creatorDiscoveryService: CreatorDiscoveryService = Injekt.get()
 
     private val notifier = LibraryUpdateNotifier(context)
 
@@ -137,7 +135,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
         return withIOContext {
             try {
                 updateChapterList()
-                discoverCreatorWorks()
+                CreatorDiscoveryJob.enqueue(context)
                 finishLifecycle(lifecycleOccurrence, TaskLifecycleEvent.Complete, Result.success())
             } catch (e: Exception) {
                 if (e is CancellationException) {
@@ -340,10 +338,6 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                 errorFile.getUriCompat(context),
             )
         }
-    }
-
-    private suspend fun discoverCreatorWorks() {
-        creatorDiscoveryService.discoverDueWatches(sourceManager.getCatalogueSources())
     }
 
     private fun downloadChapters(manga: Manga, chapters: List<Chapter>) {

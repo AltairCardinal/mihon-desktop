@@ -71,6 +71,11 @@ import tachiyomi.domain.chapter.interactor.SetMangaDefaultChapterFlags
 import tachiyomi.domain.chapter.interactor.ShouldUpdateDbChapter
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.creator.interactor.CreatorArchive
+import tachiyomi.domain.creator.interactor.DiscoverCreatorWorks
+import tachiyomi.domain.creator.interactor.GetCreatorDetails
+import tachiyomi.domain.creator.interactor.GetCreators
+import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter
@@ -139,6 +144,7 @@ class DomainModule : InjektModule {
         addSingletonFactory { CreatorRepositoryImpl(handler = get(), bootstrap = get()) }
         addSingletonFactory<CreatorRepository> { get<CreatorRepositoryImpl>() }
         addSingletonFactory<CreatorArchiveRepository> { get<CreatorRepositoryImpl>() }
+        addSingletonFactory { CreatorArchive(get<CreatorRepository>(), get<CreatorArchiveRepository>()) }
         addSingletonFactory<CreatorLibraryIndexWriter> { get<CreatorRepositoryImpl>() }
         addSingletonFactory<tachiyomi.data.backup.AuthorArchiveBackupContributor> {
             tachiyomi.data.backup.SqlDelightAuthorArchiveBackupContributor(get())
@@ -151,6 +157,10 @@ class DomainModule : InjektModule {
         }
         addSingletonFactory { SourceMangaSearchService() }
         addFactory { CreatorDiscoveryService(get(), get()) }
+        addFactory { GetCreators(get<CreatorRepository>()) }
+        addFactory { GetCreatorDetails(get<CreatorRepository>()) }
+        addFactory { SetCreatorFollow(get<CreatorRepository>()) }
+        addFactory { DiscoverCreatorWorks(get<CreatorDiscoveryService>(), get<GetCreatorDetails>()) }
         addFactory { GetDuplicateLibraryManga(get()) }
         addFactory { GetFavorites(get()) }
         addFactory { GetLibraryManga(get()) }

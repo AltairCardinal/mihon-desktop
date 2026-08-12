@@ -44,6 +44,9 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.interactor.GetChapter
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
+import tachiyomi.domain.creator.interactor.CreatorArchive
+import tachiyomi.domain.creator.model.ArchiveDiscovery
+import tachiyomi.domain.creator.model.ReviewDisposition
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.applyFilter
@@ -66,6 +69,7 @@ class UpdatesScreenModel(
     private val getChapter: GetChapter = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val updatesPreferences: UpdatesPreferences = Injekt.get(),
+    private val creatorArchive: CreatorArchive = Injekt.get(),
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
 ) : StateScreenModel<UpdatesScreenModel.State>(State()) {
 
@@ -141,6 +145,24 @@ class UpdatesScreenModel(
                 }
             }
             .launchIn(screenModelScope)
+
+        creatorArchive.observeDiscoveries(100L)
+            .onEach { discoveries ->
+                mutableState.update { it.copy(authorDiscoveries = discoveries.toPersistentList()) }
+            }
+            .launchIn(screenModelScope)
+    }
+
+    fun markAuthorDiscoverySeen(id: Long) = screenModelScope.launchIO {
+        creatorArchive.markSeen(id, System.currentTimeMillis())
+    }
+
+    fun ignoreAuthorDiscovery(id: Long) = screenModelScope.launchIO {
+        creatorArchive.review(id, ReviewDisposition.IGNORED, System.currentTimeMillis())
+    }
+
+    fun undoAuthorDiscovery(id: Long) = screenModelScope.launchIO {
+        creatorArchive.review(id, ReviewDisposition.PENDING, System.currentTimeMillis())
     }
 
     private fun List<UpdatesItem>.applyFilters(
@@ -454,6 +476,7 @@ class UpdatesScreenModel(
         val isLoading: Boolean = true,
         val hasActiveFilters: Boolean = false,
         val items: PersistentList<UpdatesItem> = persistentListOf(),
+        val authorDiscoveries: PersistentList<ArchiveDiscovery> = persistentListOf(),
         val dialog: Dialog? = null,
     ) {
         val selected = items.filter { it.selected }

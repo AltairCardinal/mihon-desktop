@@ -6,6 +6,7 @@ import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.CanonicalWork
 import tachiyomi.domain.creator.model.CreatorWorkArchive
 import tachiyomi.domain.creator.model.LanguageDimension
+import tachiyomi.domain.creator.model.ReviewDisposition
 import tachiyomi.domain.creator.model.SourceCheckpoint
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WorkDecisionState
@@ -23,6 +24,13 @@ class CreatorArchive(
     fun observeCheckpoints(creatorId: Long): Flow<List<SourceCheckpoint>> = archive.observeSourceCheckpoints(creatorId)
 
     fun observeUnread(limit: Long): Flow<List<ArchiveDiscovery>> = archive.observeUnreadDiscoveries(limit)
+
+    fun observeDiscoveries(limit: Long): Flow<List<ArchiveDiscovery>> = archive.observeDiscoveries(limit)
+
+    suspend fun markSeen(discoveryId: Long, now: Long) = archive.markDiscoverySeen(discoveryId, now)
+
+    suspend fun review(discoveryId: Long, disposition: ReviewDisposition, now: Long) =
+        archive.setDiscoveryReview(discoveryId, disposition, now)
 
     suspend fun get(creatorId: Long): CreatorWorkArchive = archive.getCreatorWorkArchive(creatorId)
 
@@ -58,6 +66,9 @@ class CreatorArchive(
     suspend fun getChapterVariants(sourceWork: SourceWorkNaturalKey): List<ChapterVariantRecord> =
         archive.getChapterVariants(sourceWork)
 
-    suspend fun replaceChapterVariants(sourceWork: SourceWorkNaturalKey, variants: List<ChapterVariantRecord>, now: Long) =
-        archive.replaceChapterVariants(sourceWork, variants, now)
+    suspend fun replaceChapterVariants(
+        sourceWork: SourceWorkNaturalKey,
+        variants: List<ChapterVariantRecord>,
+        now: Long,
+    ) = archive.replaceChapterVariants(sourceWork, variants, now)
 }

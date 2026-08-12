@@ -3,12 +3,21 @@ package eu.kanade.tachiyomi.ui.updates
 import androidx.compose.animation.graphics.res.animatedVectorResource
 import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
 import androidx.compose.animation.graphics.vector.AnimatedImageVector
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
@@ -20,6 +29,7 @@ import eu.kanade.presentation.updates.UpdatesDeleteConfirmationDialog
 import eu.kanade.presentation.updates.UpdatesFilterDialog
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.R
+import eu.kanade.tachiyomi.ui.browse.author.AndroidAuthorDetailScreen
 import eu.kanade.tachiyomi.ui.download.DownloadQueueScreen
 import eu.kanade.tachiyomi.ui.home.HomeScreen
 import eu.kanade.tachiyomi.ui.main.MainActivity
@@ -79,6 +89,29 @@ data object UpdatesTab : Tab {
             onFilterClicked = screenModel::showFilterDialog,
             hasActiveFilters = state.hasActiveFilters,
         )
+
+        if (state.authorDiscoveries.isNotEmpty()) {
+            LazyColumn(Modifier.padding(top = 64.dp)) {
+                items(state.authorDiscoveries, key = { "author-${it.id}" }) { discovery ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = {
+                            screenModel.markAuthorDiscoverySeen(discovery.id)
+                            navigator.push(AndroidAuthorDetailScreen(discovery.creatorId))
+                        }) { Text(discovery.title) }
+                        Button(onClick = { screenModel.ignoreAuthorDiscovery(discovery.id) }) {
+                            Text(stringResource(MR.strings.action_ignore))
+                        }
+                        if (discovery.state.reviewDisposition ==
+                            tachiyomi.domain.creator.model.ReviewDisposition.IGNORED
+                        ) {
+                            Button(onClick = { screenModel.undoAuthorDiscovery(discovery.id) }) {
+                                Text(stringResource(MR.strings.action_undo))
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         val onDismissDialog = { screenModel.setDialog(null) }
         when (val dialog = state.dialog) {
