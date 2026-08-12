@@ -2656,6 +2656,78 @@ AND WD._id = (
 )
 ORDER BY WD.decided_at DESC, WD._id DESC;
 
+getCreatorWorkArchiveRows:
+SELECT
+    SW._id AS source_work_id,
+    SW.source_id,
+    SW.stable_source_url,
+    SW.manga_id,
+    SW.title,
+    SW.details_fetched_at,
+    SW.last_seen_at,
+    SC.result_state AS last_check_result,
+    coalesce(SC.consecutive_failures, 0) AS consecutive_failures,
+    SC.last_success_at,
+    coalesce(M.favorite, 0) AS in_library,
+    (SELECT count(*) FROM chapters CH WHERE CH.manga_id = SW.manga_id) AS chapter_count,
+    CV.work_id AS canonical_work_id,
+    CW.portable_key AS canonical_portable_key,
+    CW.primary_title AS canonical_title,
+    WD.work_id AS decision_work_id,
+    DCW.portable_key AS decision_work_portable_key,
+    DCW.primary_title AS decision_work_title,
+    WD.state AS decision_state,
+    WD.actor AS decision_actor,
+    WD.explicit AS decision_explicit,
+    WD.score AS decision_score,
+    WD.evidence AS decision_evidence,
+    WD.decided_at AS decision_decided_at,
+    LA.language_tag,
+    LA.confidence AS language_confidence,
+    LA.evidence_kind AS language_evidence_kind
+FROM author_archive_source_works SW
+JOIN author_archive_source_work_creators SWC ON SWC.source_work_id = SW._id
+LEFT JOIN author_archive_watches W ON W.creator_id = SWC.creator_id
+LEFT JOIN author_archive_source_checkpoints SC ON SC.watch_id = W._id AND SC.source_id = SW.source_id
+LEFT JOIN mangas M ON M._id = SW.manga_id
+LEFT JOIN author_archive_canonical_versions CV ON CV.source_work_id = SW._id
+LEFT JOIN author_archive_canonical_works CW ON CW._id = CV.work_id AND CW.status = 'ACTIVE'
+LEFT JOIN author_archive_work_decisions WD ON WD._id = (
+    SELECT CURRENT_WD._id
+    FROM author_archive_work_decisions CURRENT_WD
+    WHERE CURRENT_WD.source_work_id = SW._id
+    AND (CV.work_id IS NULL OR CURRENT_WD.work_id = CV.work_id)
+    ORDER BY
+        CASE CURRENT_WD.actor WHEN 'USER' THEN 3 WHEN 'RESTORE' THEN 2 ELSE 1 END DESC,
+        CASE WHEN CURRENT_WD.actor = 'RESTORE' THEN CURRENT_WD._id END ASC,
+        CASE WHEN CURRENT_WD.actor != 'RESTORE' THEN CURRENT_WD.decided_at END DESC,
+        CASE WHEN CURRENT_WD.actor != 'RESTORE' THEN CURRENT_WD._id END DESC
+    LIMIT 1
+)
+LEFT JOIN author_archive_canonical_works DCW ON DCW._id = WD.work_id AND DCW.status = 'ACTIVE'
+LEFT JOIN author_archive_language_assertions LA ON LA._id = (
+    SELECT CURRENT_LA._id
+    FROM author_archive_language_assertions CURRENT_LA
+    WHERE CURRENT_LA.subject_type = 'SOURCE_WORK'
+    AND CURRENT_LA.subject_key = 'source:' || SW.source_id || ':' || SW.stable_source_url
+    AND CURRENT_LA.dimension = 'READING'
+    AND CURRENT_LA.withdrawn = 0
+    ORDER BY
+        CASE CURRENT_LA.evidence_kind
+            WHEN 'MANUAL' THEN 5
+            WHEN 'STRUCTURED_METADATA' THEN 4
+            WHEN 'SOURCE_FILTER_OR_TAG' THEN 3
+            WHEN 'SINGLE_LANGUAGE_SOURCE' THEN 2
+            WHEN 'TEXT_DETECTION' THEN 1
+            ELSE 0
+        END DESC,
+        CURRENT_LA.asserted_at DESC,
+        CURRENT_LA._id DESC
+    LIMIT 1
+)
+WHERE SWC.creator_id = :creatorId
+ORDER BY coalesce(CW.primary_title, SW.title), SW.source_id, SW.stable_source_url;
+
 getArchiveWorkDecisionsForBinding:
 SELECT work_id, state, actor, evidence, decided_at
 FROM author_archive_work_decisions

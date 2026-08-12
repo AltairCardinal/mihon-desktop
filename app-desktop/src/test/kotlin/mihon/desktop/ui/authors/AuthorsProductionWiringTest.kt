@@ -36,10 +36,10 @@ import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.CanonicalWork
 import tachiyomi.domain.creator.model.CreatorRole
+import tachiyomi.domain.creator.model.CreatorWorkArchive
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.DiscoveryCandidateState
 import tachiyomi.domain.creator.model.MangaCreator
-import tachiyomi.domain.creator.model.WorkMatchState
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorLibraryMangaSource
 import tachiyomi.domain.creator.repository.CreatorRepository
@@ -89,8 +89,8 @@ class AuthorsProductionWiringTest {
                 CanonicalWork(90L, "Shared work", "shared work", 7L, null, 1L, 1L)
             coEvery { upsertMangaWorkMatch(any(), any(), any(), any(), any(), any()) } returns mockk()
         }
-        val archiveRepository = mockk<CreatorArchiveRepository> {
-            coEvery { getWorkDecisions(any()) } returns emptyList()
+        val archiveRepository = mockk<CreatorArchiveRepository>(relaxed = true) {
+            coEvery { getCreatorWorkArchive(7L) } returns comparisonArchive()
         }
         val saved = Manga.create().copy(id = 12L, source = 10L, url = "/candidate", title = "Shared work")
         val dependencies = mockk<DesktopUiDependencies> {
@@ -116,10 +116,18 @@ class AuthorsProductionWiringTest {
             clickableTextNode(scene, action).config[SemanticsActions.OnClick].action?.invoke()
 
             coVerifyOrder {
-                creatorRepository.createCanonicalWork("Shared work", 7L, null)
-                creatorRepository.upsertMangaWorkMatch(11L, 90L, any(), any(), WorkMatchState.CONFIRMED, true)
-                creatorRepository.upsertMangaWorkMatch(12L, 90L, any(), any(), WorkMatchState.CONFIRMED, true)
+                archiveRepository.appendUserWorkDecisionIfCurrent(
+                    tachiyomi.domain.creator.model.SourceWorkNaturalKey(10L, "/pending"),
+                    80L,
+                    tachiyomi.domain.creator.model.WorkDecisionState.CONFIRMED,
+                    null,
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                )
             }
+            coVerify(exactly = 0) { creatorRepository.createCanonicalWork(any(), any(), any()) }
         } finally {
             scene.close()
         }
@@ -151,13 +159,14 @@ class AuthorsProductionWiringTest {
             )
             coEvery { removeManualCreatorAlias(7L, "J. Doe") } returns Unit
             every { observeSourceCheckpoints(7L) } returns flowOf(emptyList())
+            every { observeCreatorWorkArchive(7L) } returns flowOf(pendingArchive("Pending grouped work"))
         }
         val dependencies = mockk<DesktopUiDependencies> {
             every { getCreators } returns GetCreators(creatorRepository)
             every { getCreatorDetails } returns GetCreatorDetails(creatorRepository)
             every { setCreatorFollow } returns SetCreatorFollow(creatorRepository)
             every { discoverCreatorWorks } returns mockk()
-            every { sourceManager } returns mockk()
+            every { sourceManager } returns mockk(relaxed = true)
             every { saveSourceMangaForDetails } returns mockk()
             every { creatorArchiveRepository } returns archiveRepository
             every { manageCreatorIdentity } returns ManageCreatorIdentity(archiveRepository)
@@ -176,6 +185,7 @@ class AuthorsProductionWiringTest {
                     scene.render()
                 }
             }
+            assertTrue("Pending grouped work" in texts(scene))
 
             clickableTextNode(scene, removeLabel).config[SemanticsActions.OnClick].action?.invoke()
             scene.render()
@@ -263,6 +273,7 @@ class AuthorsProductionWiringTest {
         val archiveRepository = mockk<CreatorArchiveRepository> {
             coEvery { getManualCreatorAliases(7L) } returns emptyList()
             every { observeSourceCheckpoints(7L) } returns flowOf(emptyList())
+            every { observeCreatorWorkArchive(7L) } returns flowOf(CreatorWorkArchive(emptyList(), emptyList(), emptyList()))
         }
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
@@ -326,6 +337,52 @@ class AuthorsProductionWiringTest {
         node.config.contains(SemanticsActions.OnClick) &&
             node.config.contains(SemanticsProperties.Text) &&
             node.config[SemanticsProperties.Text].any { it.text == MR.strings.action_retry.localized() }
+    }
+
+    private fun pendingArchive(title: String): CreatorWorkArchive = CreatorWorkArchive(
+        works = emptyList(),
+        pending = listOf(
+            tachiyomi.domain.creator.model.SourceWorkArchiveVersion(
+                sourceWorkId = 30L,
+                naturalKey = tachiyomi.domain.creator.model.SourceWorkNaturalKey(10L, "/pending"),
+                mangaId = null,
+                title = title,
+                readingLanguage = tachiyomi.domain.creator.model.LanguageProjectionContract(
+                    dimension = tachiyomi.domain.creator.model.LanguageDimension.READING,
+                    tag = "und",
+                    certainty = tachiyomi.domain.creator.model.LanguageCertainty.UNKNOWN,
+                    evidenceKind = tachiyomi.domain.creator.model.LanguageEvidenceKind.UNKNOWN,
+                ),
+                chapterCount = 0L,
+                inLibrary = false,
+                detailsFetchedAt = null,
+                lastSeenAt = 1L,
+                decision = null,
+            ),
+        ),
+        rejected = emptyList(),
+    )
+
+    private fun comparisonArchive(): CreatorWorkArchive {
+        val candidate = pendingArchive("Shared work").pending.single()
+        val libraryVersion = candidate.copy(
+            sourceWorkId = 31L,
+            naturalKey = tachiyomi.domain.creator.model.SourceWorkNaturalKey(11L, "/library-version"),
+            mangaId = 11L,
+            inLibrary = true,
+        )
+        return CreatorWorkArchive(
+            works = listOf(
+                tachiyomi.domain.creator.model.CanonicalWorkArchiveGroup(
+                    workId = 80L,
+                    portableKey = "existing-work",
+                    title = "Shared work",
+                    versions = listOf(libraryVersion),
+                ),
+            ),
+            pending = listOf(candidate),
+            rejected = emptyList(),
+        )
     }
 
     private fun clickableTextNode(scene: ImageComposeScene, text: String): SemanticsNode = nodes(scene).single { node ->

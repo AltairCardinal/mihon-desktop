@@ -253,6 +253,7 @@ data class AuthorDetailScreen(
         val candidates = state.details.candidates
         val mangaLinks = state.details.mangaLinks
         val mangaTitles = state.details.mangaTitles
+        val workArchive = state.workArchive
         val discoveryState = state.discovery
         val sourceCheckpoints = state.checkpoints
         val allCreators = state.allCreators
@@ -716,71 +717,69 @@ data class AuthorDetailScreen(
 
                 HorizontalDivider()
 
-                if (candidates.isEmpty() && mangaLinks.isEmpty()) {
+                if (workArchive.works.isEmpty() && workArchive.pending.isEmpty() && workArchive.rejected.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(MR.strings.desktop_ui_no_discovered_works_yet.localized())
                     }
                 } else {
                     LazyColumn(Modifier.fillMaxSize()) {
-                        if (candidates.isNotEmpty()) {
+                        if (workArchive.works.isNotEmpty()) {
                             item {
                                 Text(
-                                    text = MR.strings.desktop_ui_discovered_works.localized(),
+                                    text = MR.strings.desktop_ui_canonical_works.localized(),
                                     style = MaterialTheme.typography.titleSmall,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                 )
                             }
-                            items(candidates, key = { it.id }) { candidate ->
-                                ListItem(
-                                    headlineContent = {
-                                        Text(candidate.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    },
-                                    supportingContent = {
-                                        Text(
-                                            MR.strings.desktop_ui_source_id.localized(
-                                                Locale.getDefault(),
-                                                candidate.languageTag.uppercase(),
-                                                candidate.source,
-                                            ),
-                                        )
-                                    },
-                                    leadingContent = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null) },
-                                    modifier = Modifier.clickable { model.openCandidate(candidate) },
-                                )
-                                HorizontalDivider()
+                            workArchive.works.forEach { work ->
+                                item(key = "work-${work.workId}") {
+                                    ListItem(
+                                        headlineContent = { Text(work.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                        supportingContent = {
+                                            Text(
+                                                MR.strings.desktop_ui_source_versions.localized(
+                                                    Locale.getDefault(),
+                                                    work.versions.size,
+                                                ),
+                                            )
+                                        },
+                                        leadingContent = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null) },
+                                    )
+                                }
+                                items(work.versions, key = { "version-${it.sourceWorkId}" }) { version ->
+                                    ArchiveVersionListItem(version, desktopDependencies.sourceManager) {
+                                        navigator.push(WorkCompareScreen(version.sourceWorkId, creatorId))
+                                    }
+                                }
+                                item(key = "work-divider-${work.workId}") { HorizontalDivider() }
                             }
                         }
-                        if (mangaLinks.isNotEmpty()) {
+                        if (workArchive.pending.isNotEmpty()) {
                             item {
                                 Text(
-                                    text = MR.strings.desktop_ui_archived_works.localized(),
+                                    text = MR.strings.desktop_ui_pending_work_suggestions.localized(),
                                     style = MaterialTheme.typography.titleSmall,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                 )
                             }
-                            items(mangaLinks, key = { "${it.mangaId}-${it.role}" }) { link ->
-                                ListItem(
-                                    headlineContent = {
-                                        Text(
-                                            mangaTitles[link.mangaId]
-                                                ?: MR.strings.desktop_ui_manga_number.localized(Locale.getDefault(), link.mangaId),
-                                        )
-                                    },
-                                    supportingContent = {
-                                        Text(
-                                            MR.strings.desktop_ui_role_confidence.localized(
-                                                Locale.getDefault(),
-                                                link.role.name.lowercase(),
-                                                link.evidence,
-                                                link.confidence.toString(),
-                                            ),
-                                        )
-                                    },
-                                    modifier = Modifier.clickable {
-                                        navigator.push(MangaDetailScreen(link.mangaId))
-                                    },
+                            items(workArchive.pending, key = { "pending-${it.sourceWorkId}" }) { version ->
+                                ArchiveVersionListItem(version, desktopDependencies.sourceManager) {
+                                    navigator.push(WorkCompareScreen(version.sourceWorkId, creatorId))
+                                }
+                            }
+                        }
+                        if (workArchive.rejected.isNotEmpty()) {
+                            item {
+                                Text(
+                                    text = MR.strings.desktop_ui_separated_work_versions.localized(),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                 )
-                                HorizontalDivider()
+                            }
+                            items(workArchive.rejected, key = { "rejected-${it.sourceWorkId}" }) { version ->
+                                ArchiveVersionListItem(version, desktopDependencies.sourceManager) {
+                                    navigator.push(WorkCompareScreen(version.sourceWorkId, creatorId))
+                                }
                             }
                         }
                     }
@@ -788,6 +787,45 @@ data class AuthorDetailScreen(
             }
         }
     }
+}
+
+@Composable
+private fun ArchiveVersionListItem(
+    version: tachiyomi.domain.creator.model.SourceWorkArchiveVersion,
+    sourceManager: SourceManager,
+    onClick: () -> Unit,
+) {
+    val sourceName = sourceManager.getOrStub(version.naturalKey.sourceId).name
+    val availability = if (sourceManager.get(version.naturalKey.sourceId) != null) {
+        MR.strings.desktop_ui_source_available.localized()
+    } else {
+        MR.strings.desktop_ui_source_missing.localized()
+    }
+    val checkResult = version.lastCheckResult?.name?.lowercase()
+        ?: MR.strings.desktop_ui_source_not_checked.localized()
+    ListItem(
+        headlineContent = { Text(version.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        supportingContent = {
+            Text(
+                MR.strings.desktop_ui_archive_version_evidence.localized(
+                    Locale.getDefault(),
+                    sourceName,
+                    availability,
+                    version.readingLanguage.tag.uppercase(),
+                    version.readingLanguage.certainty.name.lowercase(),
+                    version.chapterCount,
+                    if (version.inLibrary) {
+                        MR.strings.desktop_ui_in_library.localized()
+                    } else {
+                        MR.strings.desktop_ui_not_in_library.localized()
+                    },
+                    checkResult,
+                    version.lastSuccessAt?.toString() ?: MR.strings.unknown.localized(),
+                ),
+            )
+        },
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+    )
 }
 
 internal fun shouldCollectAuthorOnOpen(
@@ -819,7 +857,7 @@ data class WorkCompareScreen(val workId: Long, val creatorId: Long = -1L) : Scre
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(state.candidate?.title ?: MR.strings.desktop_ui_work_comparison.localized()) },
+                    title = { Text(state.version?.title ?: MR.strings.desktop_ui_work_comparison.localized()) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = MR.strings.action_bar_up_description.localized())
@@ -837,7 +875,7 @@ data class WorkCompareScreen(val workId: Long, val creatorId: Long = -1L) : Scre
             ) {
                 if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                val item = state.candidate
+                val item = state.version
                 if (item == null) {
                     if (!state.loading) {
                         Text(MR.strings.desktop_ui_work_candidate_was_not_found.localized(), style = MaterialTheme.typography.titleLarge)
@@ -847,20 +885,34 @@ data class WorkCompareScreen(val workId: Long, val creatorId: Long = -1L) : Scre
                     Text(
                         MR.strings.desktop_ui_source_language_state.localized(
                             Locale.getDefault(),
-                            dependencies.sourceManager.getOrStub(item.source).name,
-                            item.languageTag.uppercase(),
-                            item.state.name.lowercase(),
+                            dependencies.sourceManager.getOrStub(item.naturalKey.sourceId).name,
+                            item.readingLanguage.tag.uppercase(),
+                            item.decision?.decision?.state?.name?.lowercase()
+                                ?: MR.strings.desktop_ui_pending_decision.localized(),
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     HorizontalDivider()
-                    Text(MR.strings.desktop_ui_author_value.localized(Locale.getDefault(), item.authorText ?: MR.strings.unknown.localized()))
-                    Text(MR.strings.desktop_ui_artist_value.localized(Locale.getDefault(), item.artistText ?: MR.strings.unknown.localized()))
-                    Text(MR.strings.desktop_ui_language_evidence.localized(Locale.getDefault(), item.languageEvidence, item.languageConfidence.toString()))
-                    Text(MR.strings.desktop_ui_source_url.localized(Locale.getDefault(), item.url))
-                    Text(MR.strings.desktop_ui_first_seen.localized(Locale.getDefault(), item.firstSeenAt.toString()))
+                    Text(
+                        MR.strings.desktop_ui_language_evidence.localized(
+                            Locale.getDefault(),
+                            item.readingLanguage.evidenceKind.name.lowercase(),
+                            item.readingLanguage.certainty.name.lowercase(),
+                        ),
+                    )
+                    Text(MR.strings.desktop_ui_source_url.localized(Locale.getDefault(), item.naturalKey.stableSourceUrl))
                     Text(MR.strings.desktop_ui_last_seen.localized(Locale.getDefault(), item.lastSeenAt.toString()))
+                    Text(MR.strings.desktop_ui_chapter_count.localized(Locale.getDefault(), item.chapterCount))
+                    Text(
+                        MR.strings.desktop_ui_source_check_quality.localized(
+                            Locale.getDefault(),
+                            item.lastCheckResult?.name?.lowercase()
+                                ?: MR.strings.desktop_ui_source_not_checked.localized(),
+                            item.consecutiveFailures,
+                            item.lastSuccessAt?.toString() ?: MR.strings.unknown.localized(),
+                        ),
+                    )
                     val decision = state.currentDecision
                     Text(
                         decision?.let {

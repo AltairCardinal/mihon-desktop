@@ -26,6 +26,7 @@ import tachiyomi.domain.creator.model.LanguageAssertionContract
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.LanguageEvidenceKind
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.model.StaleWorkDecisionException
 import tachiyomi.domain.creator.model.WorkDecisionContract
 import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.model.WorkMatchState
@@ -503,6 +504,99 @@ class CreatorRepositoryImplTest {
         projected.decision shouldBe
             WorkDecisionContract(WorkDecisionState.REJECTED, DecisionActor.USER, explicit = true)
         projected.evidence shouldBe "user kept separate"
+    }
+
+    @Test
+    fun `creator archive groups confirmed pending and rejected source works reactively`() {
+        runBlocking {
+            val creator = repository.upsertCreator("Jane")
+            val confirmed = SourceWorkNaturalKey(7L, "/grouped/confirmed")
+            val pending = SourceWorkNaturalKey(8L, "/grouped/pending")
+            val rejected = SourceWorkNaturalKey(9L, "/grouped/rejected")
+            listOf(confirmed, pending, rejected).forEachIndexed { index, sourceWork ->
+                repository.upsertSourceWork(
+                    sourceWork.sourceId,
+                    sourceWork.stableSourceUrl,
+                    null,
+                    "Work ${index + 1}",
+                    "Jane",
+                    null,
+                    null,
+                    index.toLong(),
+                )
+                repository.upsertSourceWorkCreator(
+                    sourceWork,
+                    creator.id,
+                    CreatorRole.AUTHOR,
+                    0L,
+                    CreatorRelationOrigin.USER,
+                    CreatorRelationVerification.VERIFIED,
+                    "Jane",
+                    1.0,
+                    "manual identity",
+                )
+            }
+            val work = repository.createCanonicalWork("Grouped work", creator.id, null)
+            repository.appendWorkDecision(
+                confirmed,
+                work.id,
+                WorkDecisionContract(WorkDecisionState.CONFIRMED, DecisionActor.USER, true),
+                null,
+                1.0,
+                "same work",
+                10L,
+                "grouped-confirmed",
+            )
+            repository.appendWorkDecision(
+                rejected,
+                work.id,
+                WorkDecisionContract(WorkDecisionState.REJECTED, DecisionActor.USER, true),
+                null,
+                0.8,
+                "keep separate",
+                11L,
+                "grouped-rejected",
+            )
+
+            val archive = repository.observeCreatorWorkArchive(creator.id).first()
+
+            archive.works.single().versions.single().naturalKey shouldBe confirmed
+            archive.pending.single().naturalKey shouldBe pending
+            archive.rejected.single().naturalKey shouldBe rejected
+            repository.getCreatorWorkArchive(creator.id) shouldBe archive
+            val reviewed = repository.appendUserWorkDecisionIfCurrent(
+                sourceWork = confirmed,
+                workId = work.id,
+                state = WorkDecisionState.REJECTED,
+                expectedDecidedAt = 10L,
+                score = 1.0,
+                evidence = "new rejection",
+                decidedAt = 12L,
+                idempotencyKey = "grouped-new-rejection",
+            )
+            repository.appendUserWorkDecisionIfCurrent(
+                sourceWork = confirmed,
+                workId = work.id,
+                state = WorkDecisionState.REJECTED,
+                expectedDecidedAt = 10L,
+                score = 1.0,
+                evidence = "new rejection",
+                decidedAt = 12L,
+                idempotencyKey = "grouped-new-rejection",
+            ) shouldBe reviewed
+            shouldThrow<StaleWorkDecisionException> {
+                repository.appendUserWorkDecisionIfCurrent(
+                    sourceWork = confirmed,
+                    workId = work.id,
+                    state = WorkDecisionState.REJECTED,
+                    expectedDecidedAt = 9L,
+                    score = 1.0,
+                    evidence = "stale rejection",
+                    decidedAt = 12L,
+                    idempotencyKey = "stale-grouped-rejection",
+                )
+            }
+        }
     }
 
     @Test

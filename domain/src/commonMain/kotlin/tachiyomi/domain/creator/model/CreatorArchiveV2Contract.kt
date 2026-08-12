@@ -206,6 +206,37 @@ data class WorkDecisionProjection(
     val decidedAt: Long,
 )
 
+data class SourceWorkArchiveVersion(
+    val sourceWorkId: Long,
+    val naturalKey: SourceWorkNaturalKey,
+    val mangaId: Long?,
+    val title: String,
+    val readingLanguage: LanguageProjectionContract,
+    val chapterCount: Long,
+    val inLibrary: Boolean,
+    val detailsFetchedAt: Long?,
+    val lastSeenAt: Long,
+    val decision: WorkDecisionProjection?,
+    val lastCheckResult: SourceCheckpointResult? = null,
+    val consecutiveFailures: Long = 0,
+    val lastSuccessAt: Long? = null,
+)
+
+data class CanonicalWorkArchiveGroup(
+    val workId: Long,
+    val portableKey: String,
+    val title: String,
+    val versions: List<SourceWorkArchiveVersion>,
+)
+
+data class CreatorWorkArchive(
+    val works: List<CanonicalWorkArchiveGroup>,
+    val pending: List<SourceWorkArchiveVersion>,
+    val rejected: List<SourceWorkArchiveVersion>,
+)
+
+class StaleWorkDecisionException : IllegalStateException("The work decision changed while it was being reviewed")
+
 enum class LanguageDimension {
     READING,
     ORIGINAL,

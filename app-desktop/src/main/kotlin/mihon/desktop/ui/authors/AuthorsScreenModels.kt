@@ -1,6 +1,7 @@
 package mihon.desktop.ui.authors
 
 import cafe.adriel.voyager.core.model.ScreenModel
+import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -23,11 +24,10 @@ import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.model.Creator
+import tachiyomi.domain.creator.model.CreatorWorkArchive
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.SourceCheckpoint
-import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WorkDecisionState
-import tachiyomi.domain.creator.model.WorkMatchState
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.service.WorkMatchInput
@@ -67,7 +67,6 @@ internal object AuthorsScreenModelFactory {
         WorkCompareScreenModel(
             candidateId = candidateId,
             creatorId = creatorId,
-            getCreatorDetails = dependencies.getCreatorDetails,
             creatorRepository = requireNotNull(dependencies.creatorRepository),
             archiveRepository = requireNotNull(dependencies.creatorArchiveRepository),
             saveSourceMangaForDetails = dependencies.saveSourceMangaForDetails,
@@ -121,6 +120,7 @@ data class AuthorDetailState(
     val manualAliases: List<String> = emptyList(),
     val discovery: CreatorDiscoveryTaskState? = null,
     val checkpoints: List<SourceCheckpoint> = emptyList(),
+    val workArchive: CreatorWorkArchive = CreatorWorkArchive(emptyList(), emptyList(), emptyList()),
     val loading: Boolean = true,
     val actionRunning: Boolean = false,
     val followFeedback: Boolean? = null,
@@ -163,6 +163,11 @@ internal class AuthorDetailScreenModel(
             scope.launch { scheduler.state.collect { task -> mutableState.update { it.copy(discovery = task) } } }
         }
         archiveRepository?.let { repository ->
+            scope.launch {
+                repository.observeCreatorWorkArchive(creatorId).collect { archive ->
+                    mutableState.update { it.copy(workArchive = archive) }
+                }
+            }
             scope.launch {
                 repository.observeSourceCheckpoints(creatorId).collect { checkpoints ->
                     mutableState.update { it.copy(checkpoints = checkpoints) }
@@ -247,13 +252,16 @@ internal class AuthorDetailScreenModel(
 }
 
 data class WorkComparisonSuggestion(
-    val mangaId: Long,
-    val title: String,
+    val version: tachiyomi.domain.creator.model.SourceWorkArchiveVersion,
+    val canonicalWorkId: Long?,
     val score: WorkMatchScore,
-)
+) {
+    val mangaId: Long get() = checkNotNull(version.mangaId)
+    val title: String get() = version.title
+}
 
 data class WorkCompareState(
-    val candidate: DiscoveryCandidate? = null,
+    val version: tachiyomi.domain.creator.model.SourceWorkArchiveVersion? = null,
     val suggestions: List<WorkComparisonSuggestion> = emptyList(),
     val currentDecision: tachiyomi.domain.creator.model.WorkDecisionProjection? = null,
     val loading: Boolean = true,
@@ -264,7 +272,6 @@ data class WorkCompareState(
 internal class WorkCompareScreenModel(
     private val candidateId: Long,
     private val creatorId: Long,
-    private val getCreatorDetails: GetCreatorDetails,
     private val creatorRepository: CreatorRepository,
     private val archiveRepository: CreatorArchiveRepository,
     private val saveSourceMangaForDetails: SaveSourceMangaForDetails,
@@ -288,38 +295,39 @@ internal class WorkCompareScreenModel(
         scope.launch {
             mutableState.update { it.copy(actionRunning = true, error = null) }
             runCatching {
-                val candidate = checkNotNull(mutableState.value.candidate)
+                val version = checkNotNull(mutableState.value.version)
                 val listed = saveSourceMangaForDetails.awaitListedForDetails(
-                    authorCandidateSourceManga(candidate),
-                    candidate.source,
+                    authorArchiveVersionSourceManga(version),
+                    version.naturalKey.sourceId,
                 )
                 val existing = mutableState.value.currentDecision
-                val workId = existing?.workId ?: creatorRepository.createCanonicalWork(
-                    primaryTitle = target?.title ?: candidate.title,
+                val workId = existing?.workId ?: target?.canonicalWorkId ?: creatorRepository.createCanonicalWork(
+                    primaryTitle = target?.title ?: version.title,
                     primaryCreatorId = creatorId,
                     originalLanguage = null,
                 ).id
-                if (target != null && existing == null) {
-                    creatorRepository.upsertMangaWorkMatch(
-                        mangaId = target.mangaId,
+                val now = System.currentTimeMillis()
+                if (target != null && target.canonicalWorkId == null && existing == null) {
+                    archiveRepository.appendUserWorkDecisionIfCurrent(
+                        sourceWork = target.version.naturalKey,
                         workId = workId,
-                        confidence = target.score.value,
-                        matchReason = target.score.reason,
-                        state = WorkMatchState.CONFIRMED,
-                        manuallyConfirmed = true,
+                        state = WorkDecisionState.CONFIRMED,
+                        expectedDecidedAt = target.version.decision?.decidedAt,
+                        score = target.score.value,
+                        evidence = target.score.reason,
+                        decidedAt = now,
+                        idempotencyKey = "desktop-review:${target.version.sourceWorkId}:$workId:$now",
                     )
                 }
-                creatorRepository.upsertMangaWorkMatch(
-                    mangaId = listed.manga.id,
+                archiveRepository.appendUserWorkDecisionIfCurrent(
+                    sourceWork = version.naturalKey,
                     workId = workId,
-                    confidence = target?.score?.value ?: 1.0,
-                    matchReason = target?.score?.reason ?: "manual singleton review",
-                    state = when (state) {
-                        WorkDecisionState.SUGGESTED -> WorkMatchState.CANDIDATE
-                        WorkDecisionState.CONFIRMED -> WorkMatchState.CONFIRMED
-                        WorkDecisionState.REJECTED -> WorkMatchState.REJECTED
-                    },
-                    manuallyConfirmed = true,
+                    state = state,
+                    expectedDecidedAt = existing?.decidedAt,
+                    score = target?.score?.value ?: 1.0,
+                    evidence = target?.score?.reason ?: "manual-singleton-review",
+                    decidedAt = now + 1,
+                    idempotencyKey = "desktop-review:${listed.manga.id}:$workId:${now + 1}",
                 )
                 load()
             }.onFailure { error ->
@@ -330,35 +338,47 @@ internal class WorkCompareScreenModel(
     }
 
     private suspend fun load() {
-        val details = getCreatorDetails.await(creatorId)
-        val candidate = details.candidates.firstOrNull { it.id == candidateId }
-            ?: creatorRepository.getDiscoveryCandidate(candidateId)
-        if (candidate == null) {
+        val archive = archiveRepository.getCreatorWorkArchive(creatorId)
+        val versions = archive.works.flatMap { it.versions } + archive.pending + archive.rejected
+        val version = versions.firstOrNull { it.sourceWorkId == candidateId }
+        if (version == null) {
             mutableState.value = WorkCompareState(loading = false)
             return
         }
         val candidateInput = WorkMatchInput(
-            title = candidate.title,
-            creators = listOfNotNull(candidate.authorText, candidate.artistText),
-            language = candidate.languageTag,
+            title = version.title,
+            creators = emptyList(),
+            language = version.readingLanguage.tag.takeUnless { it == "und" },
+            chapterCount = version.chapterCount.toInt(),
         )
-        val suggestions = details.mangaLinks.distinctBy { it.mangaId }.map { link ->
-            val title = details.mangaTitles[link.mangaId] ?: "Manga ${link.mangaId}"
+        val canonicalWorkIds = archive.works.flatMap { work -> work.versions.map { it.sourceWorkId to work.workId } }.toMap()
+        val suggestions = versions.filter { it.sourceWorkId != version.sourceWorkId && it.mangaId != null }.map { other ->
             WorkComparisonSuggestion(
-                mangaId = link.mangaId,
-                title = title,
+                version = other,
+                canonicalWorkId = canonicalWorkIds[other.sourceWorkId],
                 score = WorkMatchScorer.score(
                     candidateInput,
-                    WorkMatchInput(title = title, creators = listOfNotNull(link.sourceText), language = null),
+                    WorkMatchInput(
+                        title = other.title,
+                        creators = emptyList(),
+                        language = other.readingLanguage.tag.takeUnless { it == "und" },
+                        chapterCount = other.chapterCount.toInt(),
+                    ),
                 ),
             )
         }.sortedByDescending { it.score.value }
-        val decisions = archiveRepository.getWorkDecisions(SourceWorkNaturalKey(candidate.source, candidate.url))
         mutableState.value = WorkCompareState(
-            candidate = candidate,
+            version = version,
             suggestions = suggestions,
-            currentDecision = decisions.firstOrNull(),
+            currentDecision = version.decision,
             loading = false,
         )
     }
 }
+
+internal fun authorArchiveVersionSourceManga(version: tachiyomi.domain.creator.model.SourceWorkArchiveVersion): SManga =
+    SManga.create().apply {
+        url = version.naturalKey.stableSourceUrl
+        title = version.title
+        thumbnail_url = null
+    }

@@ -13,6 +13,7 @@ import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.creator.model.CreatorRelationOrigin
 import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.CreatorRole
+import tachiyomi.domain.creator.model.CreatorWorkArchive
 import tachiyomi.domain.creator.model.DecisionActor
 import tachiyomi.domain.creator.model.DiscoveryCommit
 import tachiyomi.domain.creator.model.DiscoveryCommitPlan
@@ -33,6 +34,7 @@ import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WatchSourceBaseline
 import tachiyomi.domain.creator.model.WorkDecisionContract
 import tachiyomi.domain.creator.model.WorkDecisionProjection
+import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.manga.model.Manga
 
 /**
@@ -68,6 +70,10 @@ interface CreatorLibraryMangaSource {
 }
 
 interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
+
+    suspend fun getCreatorWorkArchive(creatorId: Long): CreatorWorkArchive
+
+    fun observeCreatorWorkArchive(creatorId: Long): Flow<CreatorWorkArchive>
 
     suspend fun upsertWatchPolicy(policy: ArchiveWatchPolicy, now: Long)
 
@@ -276,6 +282,17 @@ interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
     ): ArchiveAppendOutcome<WorkDecisionContract>
 
     suspend fun getWorkDecisions(sourceWork: SourceWorkNaturalKey): List<WorkDecisionProjection>
+
+    suspend fun appendUserWorkDecisionIfCurrent(
+        sourceWork: SourceWorkNaturalKey,
+        workId: Long,
+        state: WorkDecisionState,
+        expectedDecidedAt: Long?,
+        score: Double?,
+        evidence: String,
+        decidedAt: Long,
+        idempotencyKey: String,
+    ): WorkDecisionProjection
 
     suspend fun appendLanguageAssertion(
         subject: ArchiveLanguageSubject,

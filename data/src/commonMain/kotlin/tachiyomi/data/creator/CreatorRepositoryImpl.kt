@@ -1,6 +1,7 @@
 package tachiyomi.data.creator
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
@@ -10,6 +11,7 @@ import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.ArchiveUpsertOutcome
 import tachiyomi.domain.creator.model.ArchiveWatchPolicy
 import tachiyomi.domain.creator.model.CanonicalWork
+import tachiyomi.domain.creator.model.CanonicalWorkArchiveGroup
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.CreatorArchiveLanguageTag
 import tachiyomi.domain.creator.model.CreatorArchiveSubjectKey
@@ -22,6 +24,7 @@ import tachiyomi.domain.creator.model.CreatorRelationOrigin
 import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.CreatorWatch
+import tachiyomi.domain.creator.model.CreatorWorkArchive
 import tachiyomi.domain.creator.model.DecisionActor
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.DiscoveryCandidateCreator
@@ -36,8 +39,10 @@ import tachiyomi.domain.creator.model.DiscoveryRunState
 import tachiyomi.domain.creator.model.DiscoveryStateVector
 import tachiyomi.domain.creator.model.DueWatchSource
 import tachiyomi.domain.creator.model.LanguageAssertionContract
+import tachiyomi.domain.creator.model.LanguageCertainty
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.LanguageEvidenceKind
+import tachiyomi.domain.creator.model.LanguageProjectionContract
 import tachiyomi.domain.creator.model.LeaseAcquireResult
 import tachiyomi.domain.creator.model.MangaCreator
 import tachiyomi.domain.creator.model.MangaWorkMatch
@@ -49,7 +54,9 @@ import tachiyomi.domain.creator.model.SourceCheckpointResult
 import tachiyomi.domain.creator.model.SourceCheckpointUpdate
 import tachiyomi.domain.creator.model.SourceDiscoveryObservation
 import tachiyomi.domain.creator.model.SourceDiscoveryObservationResult
+import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.model.StaleWorkDecisionException
 import tachiyomi.domain.creator.model.WatchBaselineState
 import tachiyomi.domain.creator.model.WatchSourceBaseline
 import tachiyomi.domain.creator.model.WorkDecisionContract
@@ -73,6 +80,21 @@ class CreatorRepositoryImpl(
     private val portableKeyFactory: () -> String = { Uuid.random().toHexDashString() },
     private val bootstrap: CreatorArchiveBootstrap = ReadyCreatorArchiveBootstrap,
 ) : CreatorRepository, CreatorArchiveRepository {
+
+    override suspend fun getCreatorWorkArchive(creatorId: Long): CreatorWorkArchive {
+        bootstrap.awaitReady()
+        return handler.awaitList {
+            author_archiveQueries.getCreatorWorkArchiveRows(creatorId, ::mapCreatorWorkArchiveRow)
+        }
+            .toCreatorWorkArchive()
+    }
+
+    override fun observeCreatorWorkArchive(creatorId: Long): Flow<CreatorWorkArchive> =
+        handler.subscribeToList {
+            author_archiveQueries.getCreatorWorkArchiveRows(creatorId, ::mapCreatorWorkArchiveRow)
+        }
+            .map(List<CreatorWorkArchiveRow>::toCreatorWorkArchive)
+            .onStart { bootstrap.awaitReady() }
 
     override suspend fun upsertWatchPolicy(policy: ArchiveWatchPolicy, now: Long) {
         bootstrap.awaitReady()
@@ -1284,21 +1306,70 @@ class CreatorRepositoryImpl(
             author_archiveQueries.getArchiveWorkDecisionProjections(
                 sourceId = sourceWork.sourceId,
                 stableSourceUrl = sourceWork.stableSourceUrl,
-            ) { workId, portableKey, title, state, actor, explicit, score, evidence, decidedAt ->
-                WorkDecisionProjection(
-                    workId = workId,
-                    workPortableKey = portableKey,
-                    workTitle = title,
-                    decision = WorkDecisionContract(
-                        state = WorkDecisionState.valueOf(state),
-                        actor = DecisionActor.valueOf(actor),
-                        explicit = explicit,
-                    ),
-                    score = score,
-                    evidence = evidence,
-                    decidedAt = decidedAt,
-                )
+                mapper = ::mapWorkDecisionProjection,
+            )
+        }
+    }
+
+    override suspend fun appendUserWorkDecisionIfCurrent(
+        sourceWork: SourceWorkNaturalKey,
+        workId: Long,
+        state: WorkDecisionState,
+        expectedDecidedAt: Long?,
+        score: Double?,
+        evidence: String,
+        decidedAt: Long,
+        idempotencyKey: String,
+    ): WorkDecisionProjection {
+        bootstrap.awaitReady()
+        require(score == null || score in 0.0..1.0)
+        require(evidence.isNotBlank() && idempotencyKey.isNotBlank())
+        return handler.await(inTransaction = true) {
+            val sourceWorkId = author_archiveQueries.getArchiveSourceWorkByKey(
+                sourceWork.sourceId,
+                sourceWork.stableSourceUrl,
+            ).executeAsOne()._id
+            val attempted = WorkDecisionEvent(
+                sourceWorkId = sourceWorkId,
+                workId = workId,
+                decision = WorkDecisionContract(state, DecisionActor.USER, explicit = true),
+                algorithmVersion = null,
+                score = score,
+                evidence = evidence,
+                decidedAt = decidedAt,
+            )
+            val existing = author_archiveQueries.getArchiveWorkDecisionByIdempotencyKey(
+                idempotencyKey,
+                ::mapWorkDecisionEvent,
+            ).executeAsOneOrNull()
+            if (existing != null) {
+                require(existing == attempted) { "Work decision idempotency key already contains another review" }
+                return@await author_archiveQueries.getArchiveWorkDecisionProjections(
+                    sourceId = sourceWork.sourceId,
+                    stableSourceUrl = sourceWork.stableSourceUrl,
+                    mapper = ::mapWorkDecisionProjection,
+                ).executeAsList().first { it.workId == workId }
             }
+            val current = author_archiveQueries.getLatestArchiveWorkDecision(sourceWorkId, workId).executeAsOneOrNull()
+            if (current?.decided_at != expectedDecidedAt) throw StaleWorkDecisionException()
+            author_archiveQueries.upsertArchiveWorkDecision(
+                sourceWorkId = sourceWorkId,
+                workId = workId,
+                state = state.name,
+                actor = DecisionActor.USER.name,
+                explicit = true,
+                algorithmVersion = null,
+                score = score,
+                evidence = evidence,
+                decidedAt = decidedAt,
+                idempotencyKey = idempotencyKey,
+            )
+            reconcileArchiveCanonicalVersion(sourceWorkId)
+            author_archiveQueries.getArchiveWorkDecisionProjections(
+                sourceId = sourceWork.sourceId,
+                stableSourceUrl = sourceWork.stableSourceUrl,
+                mapper = ::mapWorkDecisionProjection,
+            ).executeAsList().first { it.workId == workId }
         }
     }
 
@@ -2485,6 +2556,142 @@ class CreatorRepositoryImpl(
         const val INDEX_EVIDENCE = "library bibliography parser v1"
         val AUTOMATIC_RELATION_ORIGINS = setOf("AUTOMATIC", "MIGRATION")
     }
+}
+
+private data class CreatorWorkArchiveRow(
+    val version: SourceWorkArchiveVersion,
+    val canonicalWorkId: Long?,
+    val canonicalPortableKey: String?,
+    val canonicalTitle: String?,
+)
+
+private fun mapWorkDecisionProjection(
+    workId: Long,
+    portableKey: String,
+    title: String,
+    state: String,
+    actor: String,
+    explicit: Boolean,
+    score: Double?,
+    evidence: String,
+    decidedAt: Long,
+) = WorkDecisionProjection(
+    workId = workId,
+    workPortableKey = portableKey,
+    workTitle = title,
+    decision = WorkDecisionContract(
+        state = WorkDecisionState.valueOf(state),
+        actor = DecisionActor.valueOf(actor),
+        explicit = explicit,
+    ),
+    score = score,
+    evidence = evidence,
+    decidedAt = decidedAt,
+)
+
+private fun mapCreatorWorkArchiveRow(
+    sourceWorkId: Long,
+    sourceId: Long,
+    stableSourceUrl: String,
+    mangaId: Long?,
+    title: String,
+    detailsFetchedAt: Long?,
+    lastSeenAt: Long,
+    lastCheckResult: String?,
+    consecutiveFailures: Long,
+    lastSuccessAt: Long?,
+    inLibrary: Long,
+    chapterCount: Long,
+    canonicalWorkId: Long?,
+    canonicalPortableKey: String?,
+    canonicalTitle: String?,
+    decisionWorkId: Long?,
+    decisionWorkPortableKey: String?,
+    decisionWorkTitle: String?,
+    decisionState: String?,
+    decisionActor: String?,
+    decisionExplicit: Boolean?,
+    decisionScore: Double?,
+    decisionEvidence: String?,
+    decisionDecidedAt: Long?,
+    languageTag: String?,
+    languageConfidence: Double?,
+    languageEvidenceKind: String?,
+): CreatorWorkArchiveRow {
+    val language = if (languageTag == null) {
+        LanguageProjectionContract(
+            dimension = LanguageDimension.READING,
+            tag = "und",
+            certainty = LanguageCertainty.UNKNOWN,
+            evidenceKind = LanguageEvidenceKind.UNKNOWN,
+        )
+    } else {
+        CreatorArchiveV2Policy.projectLanguage(
+            LanguageDimension.READING,
+            listOf(
+                LanguageAssertionContract(
+                    dimension = LanguageDimension.READING,
+                    tag = languageTag,
+                    confidence = languageConfidence ?: 0.0,
+                    evidenceKind = LanguageEvidenceKind.valueOf(checkNotNull(languageEvidenceKind)),
+                ),
+            ),
+        )
+    }
+    val decision = decisionWorkId?.let { workId ->
+        WorkDecisionProjection(
+            workId = workId,
+            workPortableKey = checkNotNull(decisionWorkPortableKey),
+            workTitle = checkNotNull(decisionWorkTitle),
+            decision = WorkDecisionContract(
+                state = WorkDecisionState.valueOf(checkNotNull(decisionState)),
+                actor = DecisionActor.valueOf(checkNotNull(decisionActor)),
+                explicit = checkNotNull(decisionExplicit),
+            ),
+            score = decisionScore,
+            evidence = checkNotNull(decisionEvidence),
+            decidedAt = checkNotNull(decisionDecidedAt),
+        )
+    }
+    return CreatorWorkArchiveRow(
+        version = SourceWorkArchiveVersion(
+            sourceWorkId = sourceWorkId,
+            naturalKey = SourceWorkNaturalKey(sourceId, stableSourceUrl),
+            mangaId = mangaId,
+            title = title,
+            readingLanguage = language,
+            chapterCount = chapterCount,
+            inLibrary = inLibrary != 0L,
+            detailsFetchedAt = detailsFetchedAt,
+            lastSeenAt = lastSeenAt,
+            decision = decision,
+            lastCheckResult = lastCheckResult?.let(SourceCheckpointResult::valueOf),
+            consecutiveFailures = consecutiveFailures,
+            lastSuccessAt = lastSuccessAt,
+        ),
+        canonicalWorkId = canonicalWorkId,
+        canonicalPortableKey = canonicalPortableKey,
+        canonicalTitle = canonicalTitle,
+    )
+}
+
+private fun List<CreatorWorkArchiveRow>.toCreatorWorkArchive(): CreatorWorkArchive {
+    val grouped = filter { it.canonicalWorkId != null }.groupBy(CreatorWorkArchiveRow::canonicalWorkId)
+    val works = grouped.values.map { versions ->
+        val first = versions.first()
+        CanonicalWorkArchiveGroup(
+            workId = checkNotNull(first.canonicalWorkId),
+            portableKey = checkNotNull(first.canonicalPortableKey),
+            title = checkNotNull(first.canonicalTitle),
+            versions = versions.map(CreatorWorkArchiveRow::version),
+        )
+    }
+    val ungrouped = filter { it.canonicalWorkId == null }.map(CreatorWorkArchiveRow::version)
+    return CreatorWorkArchive(
+        works = works,
+        pending = ungrouped.filter { it.decision?.decision?.state != WorkDecisionState.REJECTED },
+        rejected = ungrouped.filter { it.decision?.decision?.state == WorkDecisionState.REJECTED },
+    )
 }
 
 private fun mapDueWatchSource(
