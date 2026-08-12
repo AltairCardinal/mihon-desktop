@@ -298,22 +298,14 @@ class DesktopArchitectureGuardTest {
                     "mihon.desktop.ui.library.MangaDetailScreenModel",
                     "tachiyomi.domain.manga.interactor.UpdateLibraryMembership",
                 ),
-                CompiledEdge("mihon.desktop.ui.authors.AuthorsRootScreen", "tachiyomi.domain.creator.interactor.GetCreators"),
+                CompiledEdge("mihon.desktop.ui.authors.AuthorsRootScreenModel", "tachiyomi.domain.creator.interactor.GetCreators"),
                 CompiledEdge(
-                    "mihon.desktop.ui.authors.AuthorDetailScreen",
+                    "mihon.desktop.ui.authors.AuthorDetailScreenModel",
                     "tachiyomi.domain.creator.interactor.GetCreatorDetails",
                 ),
                 CompiledEdge(
-                    "mihon.desktop.ui.authors.AuthorDetailScreen",
-                    "tachiyomi.domain.creator.interactor.DiscoverCreatorWorks",
-                ),
-                CompiledEdge(
-                    "mihon.desktop.ui.authors.AuthorDetailScreen",
+                    "mihon.desktop.ui.authors.AuthorDetailScreenModel",
                     "tachiyomi.domain.creator.interactor.SetCreatorFollow",
-                ),
-                CompiledEdge(
-                    "mihon.desktop.ui.authors.WorkCompareScreen",
-                    "tachiyomi.domain.creator.interactor.GetCreatorDetails",
                 ),
                 CompiledEdge("mihon.desktop.ui.tracking.TrackingScreenModel", "tachiyomi.domain.track.interactor.GetTracks"),
                 CompiledEdge("mihon.desktop.ui.tracking.TrackingScreenModel", "tachiyomi.domain.track.interactor.InsertTrack"),

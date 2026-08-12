@@ -1225,7 +1225,7 @@
           "kind": "PLATFORM_ADAPTER",
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "fun initDesktopDI",
-          "line": 195
+          "line": 198
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -4187,7 +4187,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 936
+          "line": 970
         }
       ],
       "FIXTURE": [
@@ -27685,7 +27685,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/SourcePreferencesScreen.kt",
           "symbol": "DesktopAndroidPreferenceAdapter.setupPreferenceScreen",
-          "line": 83
+          "line": 80
         }
       ],
       "FIXTURE": [
@@ -32967,7 +32967,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "filterChaptersForDownload.await(manga, chapters)",
-          "line": 959
+          "line": 1013
         }
       ],
       "FIXTURE": [
@@ -53651,11 +53651,9 @@
         "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.manga.interactor.UpdateManga",
         "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.manga.interactor.SetMangaChapterFlags",
         "mihon.desktop.ui.library.MangaDetailScreenModel -> tachiyomi.domain.manga.interactor.UpdateLibraryMembership",
-        "mihon.desktop.ui.authors.AuthorsRootScreen -> tachiyomi.domain.creator.interactor.GetCreators",
-        "mihon.desktop.ui.authors.AuthorDetailScreen -> tachiyomi.domain.creator.interactor.GetCreatorDetails",
-        "mihon.desktop.ui.authors.AuthorDetailScreen -> tachiyomi.domain.creator.interactor.DiscoverCreatorWorks",
-        "mihon.desktop.ui.authors.AuthorDetailScreen -> tachiyomi.domain.creator.interactor.SetCreatorFollow",
-        "mihon.desktop.ui.authors.WorkCompareScreen -> tachiyomi.domain.creator.interactor.GetCreatorDetails",
+        "mihon.desktop.ui.authors.AuthorsRootScreenModel -> tachiyomi.domain.creator.interactor.GetCreators",
+        "mihon.desktop.ui.authors.AuthorDetailScreenModel -> tachiyomi.domain.creator.interactor.GetCreatorDetails",
+        "mihon.desktop.ui.authors.AuthorDetailScreenModel -> tachiyomi.domain.creator.interactor.SetCreatorFollow",
         "mihon.desktop.ui.tracking.TrackingScreenModel -> tachiyomi.domain.track.interactor.GetTracks",
         "mihon.desktop.ui.tracking.TrackingScreenModel -> tachiyomi.domain.track.interactor.InsertTrack",
         "mihon.desktop.ui.tracking.TrackingScreenModel -> tachiyomi.domain.track.interactor.DeleteTrack",

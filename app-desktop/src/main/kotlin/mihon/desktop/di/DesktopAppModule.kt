@@ -141,6 +141,7 @@ import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.repository.CreatorRepository
+import tachiyomi.domain.creator.interactor.CreatorArchive
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter
@@ -496,6 +497,7 @@ internal fun initDataLayer(paths: DesktopPlatformPaths): DatabaseHandler {
     Injekt.addSingleton(creatorArchiveBootstrap)
     Injekt.addSingleton(creatorRepository)
     Injekt.addSingleton<CreatorArchiveRepository>(creatorRepositoryImpl)
+    Injekt.addSingleton(CreatorArchive(creatorRepositoryImpl, creatorRepositoryImpl))
     Injekt.addSingleton<CreatorLibraryIndexWriter>(creatorRepositoryImpl)
     Injekt.addSingleton<CreatorLibraryMangaSource>(mangaRepositoryImpl)
     Injekt.addSingleton(creatorLibraryIndexer)

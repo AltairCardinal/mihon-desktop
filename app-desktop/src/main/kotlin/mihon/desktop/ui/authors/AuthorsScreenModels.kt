@@ -30,8 +30,7 @@ import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.SourceCheckpoint
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.WorkDecisionState
-import tachiyomi.domain.creator.repository.CreatorArchiveRepository
-import tachiyomi.domain.creator.repository.CreatorRepository
+import tachiyomi.domain.creator.interactor.CreatorArchive
 import tachiyomi.domain.creator.service.WorkMatchInput
 import tachiyomi.domain.creator.service.WorkMatchScore
 import tachiyomi.domain.creator.service.WorkMatchScorer
@@ -56,7 +55,7 @@ internal object AuthorsScreenModelFactory {
         collectOnOpen: Boolean,
         dependencies: DesktopUiDependencies,
     ): AuthorDetailScreenModel {
-        val archive = requireNotNull(dependencies.creatorArchiveRepository)
+        val archive = requireNotNull(dependencies.creatorArchive)
         return AuthorDetailScreenModel(
             creatorId = creatorId,
             collectOnOpen = collectOnOpen,
@@ -64,7 +63,7 @@ internal object AuthorsScreenModelFactory {
             getCreators = dependencies.getCreators,
             setCreatorFollow = dependencies.setCreatorFollow,
             discoveryScheduler = dependencies.creatorDiscoveryScheduler,
-            archiveRepository = archive,
+            creatorArchive = archive,
             identityActions = AuthorIdentityActions(
                 requireNotNull(dependencies.manageCreatorIdentity),
             ),
@@ -75,8 +74,7 @@ internal object AuthorsScreenModelFactory {
         WorkCompareScreenModel(
             candidateId = candidateId,
             creatorId = creatorId,
-            creatorRepository = requireNotNull(dependencies.creatorRepository),
-            archiveRepository = requireNotNull(dependencies.creatorArchiveRepository),
+            creatorArchive = requireNotNull(dependencies.creatorArchive),
             saveSourceMangaForDetails = dependencies.saveSourceMangaForDetails,
             getChaptersByMangaId = dependencies.getChaptersByMangaId,
             sourceManager = dependencies.sourceManager,
@@ -169,7 +167,7 @@ internal class AuthorDetailScreenModel(
     getCreators: GetCreators,
     private val setCreatorFollow: SetCreatorFollow,
     private val discoveryScheduler: CreatorDiscoveryScheduler?,
-    private val archiveRepository: CreatorArchiveRepository?,
+    private val creatorArchive: CreatorArchive?,
     private val identityActions: AuthorIdentityActions,
 ) : ScreenModel {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -190,14 +188,14 @@ internal class AuthorDetailScreenModel(
         discoveryScheduler?.let { scheduler ->
             scope.launch { scheduler.state.collect { task -> mutableState.update { it.copy(discovery = task) } } }
         }
-        archiveRepository?.let { repository ->
+        creatorArchive?.let { archive ->
             scope.launch {
-                repository.observeCreatorWorkArchive(creatorId).collect { archive ->
-                    mutableState.update { it.copy(workArchive = archive) }
+                archive.observe(creatorId).collect { workArchive ->
+                    mutableState.update { it.copy(workArchive = workArchive) }
                 }
             }
             scope.launch {
-                repository.observeSourceCheckpoints(creatorId).collect { checkpoints ->
+                archive.observeCheckpoints(creatorId).collect { checkpoints ->
                     mutableState.update { it.copy(checkpoints = checkpoints) }
                 }
             }
@@ -304,8 +302,7 @@ data class WorkCompareState(
 internal class WorkCompareScreenModel(
     private val candidateId: Long,
     private val creatorId: Long,
-    private val creatorRepository: CreatorRepository,
-    private val archiveRepository: CreatorArchiveRepository,
+    private val creatorArchive: CreatorArchive,
     private val saveSourceMangaForDetails: SaveSourceMangaForDetails,
     private val getChaptersByMangaId: GetChaptersByMangaId,
     private val sourceManager: SourceManager,
@@ -328,7 +325,7 @@ internal class WorkCompareScreenModel(
             mutableState.update { it.copy(actionRunning = true, error = null) }
             runCatching {
                 val version = checkNotNull(mutableState.value.version)
-                archiveRepository.setManualLanguage(
+                creatorArchive.setLanguage(
                     ArchiveLanguageSubject.SourceWork(version.naturalKey),
                     dimension,
                     tag,
@@ -348,7 +345,7 @@ internal class WorkCompareScreenModel(
             mutableState.update { it.copy(actionRunning = true, error = null) }
             runCatching {
                 val version = checkNotNull(mutableState.value.version)
-                archiveRepository.withdrawManualLanguage(
+                creatorArchive.withdrawLanguage(
                     ArchiveLanguageSubject.SourceWork(version.naturalKey),
                     dimension,
                     System.currentTimeMillis(),
@@ -374,14 +371,14 @@ internal class WorkCompareScreenModel(
                     version.naturalKey.sourceId,
                 )
                 val existing = mutableState.value.currentDecision
-                val workId = existing?.workId ?: target?.canonicalWorkId ?: creatorRepository.createCanonicalWork(
-                    primaryTitle = target?.title ?: version.title,
-                    primaryCreatorId = creatorId,
+                val workId = existing?.workId ?: target?.canonicalWorkId ?: creatorArchive.createWork(
+                    title = target?.title ?: version.title,
+                    creatorId = creatorId,
                     originalLanguage = null,
                 ).id
                 val now = System.currentTimeMillis()
                 if (target != null && target.canonicalWorkId == null && existing == null) {
-                    archiveRepository.appendUserWorkDecisionIfCurrent(
+                    creatorArchive.decide(
                         sourceWork = target.version.naturalKey,
                         workId = workId,
                         state = WorkDecisionState.CONFIRMED,
@@ -392,7 +389,7 @@ internal class WorkCompareScreenModel(
                         idempotencyKey = "desktop-review:${target.version.sourceWorkId}:$workId:$now",
                     )
                 }
-                archiveRepository.appendUserWorkDecisionIfCurrent(
+                creatorArchive.decide(
                     sourceWork = version.naturalKey,
                     workId = workId,
                     state = state,
@@ -411,7 +408,7 @@ internal class WorkCompareScreenModel(
     }
 
     private suspend fun load() {
-        val archive = archiveRepository.getCreatorWorkArchive(creatorId)
+        val archive = creatorArchive.get(creatorId)
         val versions = archive.works.flatMap { it.versions } + archive.pending + archive.rejected
         val version = versions.firstOrNull { it.sourceWorkId == candidateId }
         if (version == null) {
@@ -454,7 +451,7 @@ internal class WorkCompareScreenModel(
     private suspend fun loadChapterSummary(
         version: tachiyomi.domain.creator.model.SourceWorkArchiveVersion,
     ): ChapterVariantSummary {
-        val cached = archiveRepository.getChapterVariants(version.naturalKey)
+        val cached = creatorArchive.getChapterVariants(version.naturalKey)
         if (cached.isNotEmpty()) {
             return ChapterVariantNormalizer.summarize(
                 cached.map { ChapterVariantInput(it.naturalKey, it.rawName, it.chapterNumber ?: -1.0, it.scanlator) },
@@ -478,7 +475,7 @@ internal class WorkCompareScreenModel(
         }
         val summary = ChapterVariantNormalizer.summarize(inputs)
         if (summary.variants.isNotEmpty()) {
-            archiveRepository.replaceChapterVariants(version.naturalKey, summary.variants, System.currentTimeMillis())
+            creatorArchive.replaceChapterVariants(version.naturalKey, summary.variants, System.currentTimeMillis())
         }
         return summary
     }

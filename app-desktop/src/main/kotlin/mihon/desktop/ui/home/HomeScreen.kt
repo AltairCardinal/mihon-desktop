@@ -77,8 +77,8 @@ class HomeScreen : Screen {
         val navigator = LocalNavigator.currentOrThrow
         val challengePort = dependencies.challengeUiPort
         val notificationService = dependencies.notificationService
-        val authorDiscoveries by remember(dependencies.creatorArchiveRepository) {
-            dependencies.creatorArchiveRepository?.observeUnreadDiscoveries(100L) ?: flowOf(emptyList())
+        val authorDiscoveries by remember(dependencies.creatorArchive) {
+            dependencies.creatorArchive?.observeUnread(100L) ?: flowOf(emptyList())
         }.collectAsState(emptyList())
         val controller = remember(challengePort, dependencies.challengeBrowserLoginBridge, dependencies.appPreferences) {
             DesktopChallengeLoginController(
