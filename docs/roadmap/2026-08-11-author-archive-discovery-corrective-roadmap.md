@@ -685,15 +685,15 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 ### Phase AA7：双端、备份、Test Mode 与发布收口
 
-- [ ] `AA7-01` 完成 Android Authors、详情、Updates 与通知产品入口
+- [x] `AA7-01` 完成 Android Authors、详情、Updates 与通知产品入口
 - [ ] `AA7-02` 完成跨平台备份矩阵、引用清理、升级/回滚与 legacy 物理清理
 - [ ] `AA7-03` 完成 Test Mode、性能、可观测性、双端/跨平台最终验收
 
 #### `AA7-01` 完成 Android Authors、详情、Updates 与通知产品入口
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `N/A：消费前序 shared core` · Android `[ ]` · Desktop/UI `N/A：前序阶段既有消费者不在本批修改` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`DONE` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `N/A：消费前序 shared core` · Android `[x]` · Desktop/UI `N/A：前序阶段既有消费者不在本批修改` · Legacy/Migration `[x]` · Review `[x]` · Verify `[x]` · Evidence `[x]` · Commit `[x]`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `—` · 审查 `主代理范围核对 PASS；平台只保留 Compose、WorkManager 和通知 adapter` · 验证 `aa701-android-compile-real-2、aa701-android-focused、aa701-android-assemble PASS` · 运行产物 `app-universal-debug.apk；Browse Authors、详情、关注/手动检查、作品决定/语言修正、Updates feed、周期任务与通知` · Commit `1f52259b6、163f76798`
 
 - RED：Browse 二级 Authors 入口、Manga Detail chips、Author/Work screens、Updates author segment、notification deep link、WorkManager state、导航类型、DI 和 process recreation。
 - GREEN：Android ScreenModel/presentation 消费相同 projections/commands；Android 通知 adapter 投递同一 outbox，不复制 baseline、matcher 或语言判断。
@@ -704,9 +704,9 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 #### `AA7-02` 完成跨平台备份矩阵、引用清理、升级/回滚与 legacy 物理清理
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `[ ]` · Android `[ ]` · Desktop/UI `[ ]` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`BLOCKED（备份矩阵通过；legacy 物理删除等待一个正式版本观察期）` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `[x]` · Android `[x]` · Desktop/UI `[x]` · Legacy/Migration `[ ]` · Review `[x]` · Verify `[x]` · Evidence `[x]` · Commit `[x]`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `roadmap 11.2 要求兼容备份、升级 fixture 和一个正式版本观察期全部满足后才能删除 legacy 表；当前首次完整构建刚生成，尚无观察期证据` · 审查 `field107 v4 已覆盖 identity/alias/binding/watch/discovery/confirmed/rejected/manual-language；restore 预检后单事务合并且不恢复 outbox` · 验证 `aa702-focused：BackupCodecContractTest、AuthorArchiveBackupContributorTest、CreatorArchivePerformanceContractTest PASS；Android/Desktop backup production wiring 既有 focused 证据 PASS` · 运行产物 `跨本地 ID 的 natural-key remap、幂等 restore、旧备份无 section 兼容；legacy bridge 暂保留只读增量导入` · Commit `既有 field107 提交；本行所在治理提交`
 
 - 依赖：协调 `BK-01`；备份是数据安全边界，同一模型上的写入在审查期间串行。
 - RED：Android→Desktop→Android round-trip、旧备份无新 section、新备份被旧 reader 忽略、自然键 `(source,url)`/alias 到本地 ID remap、duplicate creator/source work、confirmed/rejected/manual language/watch/event、corrupt/truncated、partial restore、取消和 rollback。
@@ -718,9 +718,9 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 #### `AA7-03` 完成 Test Mode、性能、可观测性、双端/跨平台最终验收
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `[ ]` · Android `[ ]` · Desktop/UI `[ ]` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`BLOCKED（Windows/Android 已验收；macOS、正式观察期与完整最终矩阵未完成）` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `[x]` · Android `[x]` · Desktop/UI `[x]` · Legacy/Migration `[ ]` · Review `[x]` · Verify `[ ]` · Evidence `[x]` · Commit `[x]`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `AA7-02 正式版本观察期尚未满足；当前 Windows 主机无法执行 roadmap 要求的 macOS 正式构建/运行；完整 Desktop 测试仍有既有 Compose/MockK 与 parity 行号漂移失败，不能伪报全绿` · 审查 `Test Mode 驱动 DI-owned production repository/scheduler，作者 UI repository 越层依赖已收敛到 shared CreatorArchive interactor` · 验证 `Windows：author focused、spotlessCheck、架构守卫 PASS；正式 0.11.19.1.62aabea build/extension runtime acceptance PASS。Android：compileReleaseKotlin、focused test、assembleDebug PASS。数据：backup/performance focused PASS` · 运行产物 `Mihon-Desktop-0.11.19.1.62aabea-unpacked/Mihon Desktop.exe；app-universal-debug.apk` · Commit `665f80f53、62aabea05、1f52259b6、163f76798、本行所在治理提交`
 
 - Test Mode：新增 authors state、follow/unfollow、manual scan、cancel、feed、confirm/reject、language override 和 compare actions；必须驱动 DI-owned production owners，不建立 test-only 状态机。
 - E2E：用确定性 fake source/clock 执行“回填→关注 baseline→新增作品→后台扫描→重启→Updates→比较→确认→语言更正→备份恢复”的完整链。
@@ -867,4 +867,4 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 | 2026-08-12 | `AA4-02 / Windows checkpoint` | `TODO → IN_PROGRESS（Windows 已验收）` | reactive grouped projection、mounted compare navigation、已有 canonical 复用、stale decision 拒绝均由 production tests 覆盖 | 作者页按规范作品/待处理/已分离分组；比较页展示源可用性、语言、章节、书架、检查结果与新鲜度证据；typed optimistic 决定不覆盖新状态 | 主代理范围核对 PASS；Android 延后 | `aa402-grouped-ui-green3`、`aa402-optimistic-green`、`aa402-quality-green` PASS；无发布构建 | 本行所在提交 |
 | 2026-08-12 | `AA5-01 / Windows checkpoint` | `TODO → IN_PROGRESS（shared/data 已验收）` | 非语言标签、非法 BCP-47、纯 Han、Kana、Hangul、alias、冲突、manual override/undo RED 已转绿 | typed assertion/projector 保留 UNKNOWN/CONFLICT；人工值抵抗重扫并可撤销；field 107 v4 携带最新人工语言决定 | 主代理范围核对 PASS；Android 延后 | `aa501-core-green`、`aa501-data-green` PASS；无发布构建 | 本行所在提交 |
 
-AA0、AA1-02、AA1-03 与 AA2-02 已关闭；AA1-01、AA2-01、AA2-03、AA3、AA4 与 AA5 的 Windows/shared/data 实现已经验收，顶层任务仍保持未勾选，等待全部 Windows 功能完成后的 Android 统一验收与最终复审。实现主线进入 `AA6-01`。
+AA0 至 AA6 的 shared/data/Windows 能力与 AA7-01 Android 产品入口已经实现并验收；Windows 正式构建与 Android debug 构建均已生成。当前唯一实施主线是 `AA7-02`：field107 v4 备份矩阵已通过，但按 11.2 数据安全门禁，legacy 物理删除必须等待首个完整正式版本的观察期。`AA7-03` 同时等待该门禁、macOS 正式构建/运行环境以及既有 Desktop 全量测试债收口；在这些真实条件满足前不得把计划宣称为完整设计完成。
