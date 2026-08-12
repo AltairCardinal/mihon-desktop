@@ -693,7 +693,7 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 > 状态卡：`DONE` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `N/A：消费前序 shared core` · Android `[x]` · Desktop/UI `N/A：前序阶段既有消费者不在本批修改` · Legacy/Migration `[x]` · Review `[x]` · Verify `[x]` · Evidence `[x]` · Commit `[x]`
 >
-> 记录：阻塞 `—` · 审查 `主代理范围核对 PASS；平台只保留 Compose、WorkManager 和通知 adapter` · 验证 `aa701-android-compile-real-2、aa701-android-focused、aa701-android-assemble PASS` · 运行产物 `app-universal-debug.apk；Browse Authors、详情、关注/手动检查、作品决定/语言修正、Updates feed、周期任务与通知` · Commit `1f52259b6、163f76798`
+> 记录：阻塞 `—` · 审查 `主代理范围核对 PASS；平台只保留 Compose、WorkManager 和通知 adapter；Manga Detail 复用 shared ExtractCreatorsFromManga/ManageCreatorIdentity` · 验证 `aa701-android-compile-real-2、aa701-android-focused、aa701-android-assemble PASS；aa701-manga-chip-red 按预期因缺少 production navigator 失败，aa701-manga-chip-final 转绿且 :app:spotlessCheck PASS` · 运行产物 `app-universal-debug.apk；Browse Authors、详情、关注/手动检查、作品决定/语言修正、Updates feed、周期任务与通知；Manga Detail 拆分 author/artist chips，同名歧义选择后进入作者页` · Commit `1f52259b6、163f76798、97a9dc17f`
 
 - RED：Browse 二级 Authors 入口、Manga Detail chips、Author/Work screens、Updates author segment、notification deep link、WorkManager state、导航类型、DI 和 process recreation。
 - GREEN：Android ScreenModel/presentation 消费相同 projections/commands；Android 通知 adapter 投递同一 outbox，不复制 baseline、matcher 或语言判断。
@@ -718,9 +718,9 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 #### `AA7-03` 完成 Test Mode、性能、可观测性、双端/跨平台最终验收
 
-> 状态卡：`BLOCKED（Windows/Android 已验收；macOS、正式观察期与完整最终矩阵未完成）` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `[x]` · Android `[x]` · Desktop/UI `[x]` · Legacy/Migration `[ ]` · Review `[x]` · Verify `[ ]` · Evidence `[x]` · Commit `[x]`
+> 状态卡：`BLOCKED（Windows/Android 已验收；macOS 正式构建被既有 Desktop 全量测试债阻断，正式观察期与完整最终矩阵未完成）` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `[x]` · Android `[x]` · Desktop/UI `[x]` · Legacy/Migration `[ ]` · Review `[x]` · Verify `[ ]` · Evidence `[x]` · Commit `[x]`
 >
-> 记录：阻塞 `AA7-02 正式版本观察期尚未满足；当前 Windows 主机无法执行 roadmap 要求的 macOS 正式构建/运行；完整 Desktop 测试仍有既有 Compose/MockK 与 parity 行号漂移失败，不能伪报全绿` · 审查 `Test Mode 驱动 DI-owned production repository/scheduler，作者 UI repository 越层依赖已收敛到 shared CreatorArchive interactor` · 验证 `Windows：author focused、spotlessCheck、架构守卫 PASS；正式 0.11.19.1.62aabea build/extension runtime acceptance PASS。Android：compileReleaseKotlin、focused test、assembleDebug PASS。数据：backup/performance focused PASS` · 运行产物 `Mihon-Desktop-0.11.19.1.62aabea-unpacked/Mihon Desktop.exe；app-universal-debug.apk` · Commit `665f80f53、62aabea05、1f52259b6、163f76798、本行所在治理提交`
+> 记录：阻塞 `AA7-02 正式版本观察期尚未满足；macOS 在隔离 worktree 以 97a9dc17f 运行正式 scripts/build-desktop.sh，2521 tests / 26 failed / 4 skipped，因既有 Compose/MockK、设置资源类型和 parity 行号漂移测试债在 jvmTest 门禁停止，未生成 .app；不能伪报全绿` · 审查 `Test Mode 驱动 DI-owned production repository/scheduler，作者 UI repository 越层依赖已收敛到 shared CreatorArchive interactor` · 验证 `Windows：author focused、spotlessCheck、架构守卫 PASS；正式 0.11.19.1.62aabea build/extension runtime acceptance PASS。Android：compileReleaseKotlin、focused test、assembleDebug PASS。macOS：0.11.19.2.97a9dc1 正式脚本真实执行并记录上述失败。数据：backup/performance focused PASS` · 运行产物 `Mihon-Desktop-0.11.19.1.62aabea-unpacked/Mihon Desktop.exe；app-universal-debug.apk；macOS 无产物` · Commit `665f80f53、62aabea05、1f52259b6、163f76798、97a9dc17f、本行所在治理提交`
 
 - Test Mode：新增 authors state、follow/unfollow、manual scan、cancel、feed、confirm/reject、language override 和 compare actions；必须驱动 DI-owned production owners，不建立 test-only 状态机。
 - E2E：用确定性 fake source/clock 执行“回填→关注 baseline→新增作品→后台扫描→重启→Updates→比较→确认→语言更正→备份恢复”的完整链。
@@ -867,4 +867,4 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 | 2026-08-12 | `AA4-02 / Windows checkpoint` | `TODO → IN_PROGRESS（Windows 已验收）` | reactive grouped projection、mounted compare navigation、已有 canonical 复用、stale decision 拒绝均由 production tests 覆盖 | 作者页按规范作品/待处理/已分离分组；比较页展示源可用性、语言、章节、书架、检查结果与新鲜度证据；typed optimistic 决定不覆盖新状态 | 主代理范围核对 PASS；Android 延后 | `aa402-grouped-ui-green3`、`aa402-optimistic-green`、`aa402-quality-green` PASS；无发布构建 | 本行所在提交 |
 | 2026-08-12 | `AA5-01 / Windows checkpoint` | `TODO → IN_PROGRESS（shared/data 已验收）` | 非语言标签、非法 BCP-47、纯 Han、Kana、Hangul、alias、冲突、manual override/undo RED 已转绿 | typed assertion/projector 保留 UNKNOWN/CONFLICT；人工值抵抗重扫并可撤销；field 107 v4 携带最新人工语言决定 | 主代理范围核对 PASS；Android 延后 | `aa501-core-green`、`aa501-data-green` PASS；无发布构建 | 本行所在提交 |
 
-AA0 至 AA6 的 shared/data/Windows 能力与 AA7-01 Android 产品入口已经实现并验收；Windows 正式构建与 Android debug 构建均已生成。当前唯一实施主线是 `AA7-02`：field107 v4 备份矩阵已通过，但按 11.2 数据安全门禁，legacy 物理删除必须等待首个完整正式版本的观察期。`AA7-03` 同时等待该门禁、macOS 正式构建/运行环境以及既有 Desktop 全量测试债收口；在这些真实条件满足前不得把计划宣称为完整设计完成。
+AA0 至 AA6 的 shared/data/Windows 能力与 AA7-01 Android 产品入口已经实现并验收；Windows 正式构建与 Android debug 构建均已生成。当前唯一实施主线是 `AA7-02`：field107 v4 备份矩阵已通过，但按 11.2 数据安全门禁，legacy 物理删除必须等待首个完整正式版本的观察期。`AA7-03` 同时等待该门禁以及 macOS/Windows 暴露的既有 Desktop 全量测试债收口；macOS 验收机已真实执行正式脚本，不再是环境不可用阻塞，但 jvmTest 的 26 个失败使本轮没有 `.app` 产物。在这些条件满足前不得把计划宣称为完整设计完成。
