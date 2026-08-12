@@ -24,6 +24,8 @@ import mihon.desktop.test.http.SettingsTestModeController
 import mihon.desktop.test.http.TrackingTestBridge
 import mihon.desktop.test.http.UpdatesTestModeBridge
 import mihon.desktop.test.http.UpdatesTestModeController
+import mihon.desktop.test.http.AuthorArchiveTestModeController
+import mihon.desktop.test.http.AuthorArchiveTestModeBridge
 import mihon.desktop.test.http.testHttpServer
 import mihon.desktop.test.state.applicationState
 import mihon.desktop.tracking.TrackingTestModeController
@@ -63,6 +65,7 @@ object TestMode {
     private var historyController: HistoryTestModeController? = null
     private var settingsController: SettingsTestModeController? = null
     private var trackingController: TrackingTestModeController? = null
+    private var authorController: AuthorArchiveTestModeController? = null
 
     /**
      * Start test mode with the given configuration.
@@ -130,6 +133,15 @@ object TestMode {
         TrackingTestBridge.install(tracking)
         synchronized(lifecycleLock) {
             trackingController = tracking
+        }
+        val authors = AuthorArchiveTestModeController(
+            creatorRepository = Injekt.get(),
+            archiveRepository = Injekt.get(),
+            scheduler = Injekt.get(),
+        )
+        AuthorArchiveTestModeBridge.install(authors)
+        synchronized(lifecycleLock) {
+            authorController = authors
         }
 
         // Register available screens
@@ -217,11 +229,25 @@ object TestMode {
                 "tracking_bind",
                 "tracking_update",
                 "tracking_cancel",
+                "authors_state",
+                "author_follow",
+                "author_unfollow",
+                "author_manual_scan",
+                "author_cancel_scan",
+                "author_feed_seen",
+                "author_feed_ignore",
+                "author_feed_undo",
+                "author_compare",
+                "author_confirm",
+                "author_reject",
+                "author_decision_undo",
+                "author_language_override",
+                "author_language_undo",
             ),
         )
 
         // Start HTTP server
-        startHttpServer(args, run, updates, history)
+        startHttpServer(args, run, updates, history, authors)
 
         isStarted = true
         logger.info("Test mode started successfully on port ${args.httpPort}")
@@ -235,6 +261,7 @@ object TestMode {
         run: TestModeRun,
         updates: UpdatesTestModeController,
         history: HistoryTestModeController,
+        authors: AuthorArchiveTestModeController,
     ) {
         val platformAcceptance = createPlatformAcceptanceController(
             args = args,
@@ -243,7 +270,7 @@ object TestMode {
         val job = serverScope.launch {
             var startedServer: ApplicationEngine? = null
             try {
-                hydrateTimelineTestModeOwners(updates, history)
+                hydrateTimelineTestModeOwners(updates, history, authors)
                 startedServer = embeddedServer(Netty, host = TEST_MODE_HOST, port = args.httpPort) {
                     testHttpServer(platformAcceptanceController = platformAcceptance)
                 }.start(wait = false)
@@ -320,6 +347,9 @@ object TestMode {
         val activeTracking = synchronized(lifecycleLock) {
             trackingController.also { trackingController = null }
         }
+        val activeAuthors = synchronized(lifecycleLock) {
+            authorController.also { authorController = null }
+        }
         completeTestModeStop(
             run,
             { activeBrowse?.close() },
@@ -332,6 +362,12 @@ object TestMode {
                 activeTracking?.let {
                     it.closeAndWait()
                     TrackingTestBridge.clear(it)
+                }
+            },
+            {
+                activeAuthors?.let {
+                    it.close()
+                    AuthorArchiveTestModeBridge.clear(it)
                 }
             },
             { activeServer?.stop(SERVER_STOP_GRACE_MS, SERVER_STOP_TIMEOUT_MS) },
@@ -363,6 +399,15 @@ object TestMode {
     private const val SERVER_STOP_GRACE_MS = 100L
     private const val SERVER_STOP_TIMEOUT_MS = 1_000L
     internal const val TEST_MODE_HOST = "127.0.0.1"
+}
+
+internal suspend fun hydrateTimelineTestModeOwners(
+    updates: UpdatesTestModeController,
+    history: HistoryTestModeController,
+    authors: AuthorArchiveTestModeController,
+) {
+    hydrateTimelineTestModeOwners(updates, history)
+    authors.hydrate()
 }
 
 internal suspend fun hydrateTimelineTestModeOwners(

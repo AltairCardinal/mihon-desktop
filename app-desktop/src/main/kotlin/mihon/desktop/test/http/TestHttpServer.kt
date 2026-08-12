@@ -119,6 +119,7 @@ internal fun currentTestStateJson(updateModel: DesktopUpdateScreenModel? = null)
     val backup = BackupTestModeBridge.controller?.snapshot()
     val settings = SettingsTestModeBridge.controller?.snapshot()
     val tracking = TrackingTestBridge.controller?.snapshot()
+    val authors = AuthorArchiveTestModeBridge.controller?.snapshot()
     return jsonText(buildJsonObject {
         put("currentScreen", JsonPrimitive(state.currentScreen.value ?: "HomeScreen"))
         put("isLoading", JsonPrimitive(state.isLoading.value))
@@ -175,6 +176,12 @@ internal fun currentTestStateJson(updateModel: DesktopUpdateScreenModel? = null)
             } ?: JsonNull,
         )
         put(
+            "authors",
+            authors?.let {
+                Json.encodeToJsonElement(AuthorArchiveTestSnapshot.serializer(), it)
+            } ?: JsonNull,
+        )
+        put(
             "extension",
             SourceExtensionTestModeBridge.controller?.snapshot()?.let {
                 Json.encodeToJsonElement(SourceExtensionTestSnapshot.serializer(), it)
@@ -222,6 +229,7 @@ private fun actionJson(
     library: kotlinx.serialization.json.JsonElement = JsonNull,
     detail: kotlinx.serialization.json.JsonElement = JsonNull,
     tracking: kotlinx.serialization.json.JsonElement = JsonNull,
+    authors: kotlinx.serialization.json.JsonElement = JsonNull,
 ) = buildJsonObject {
     put("success", JsonPrimitive(success))
     put("action", JsonPrimitive(action))
@@ -238,6 +246,7 @@ private fun actionJson(
     put("library", library)
     put("detail", detail)
     put("tracking", tracking)
+    put("authors", authors)
 }
 
 /**
@@ -390,6 +399,42 @@ internal fun Application.testHttpServer(
             val params = parseJsonBody(body)
 
             applicationState.recordAction(action, actionHistoryParams(action, params))
+
+            if (action == "authors_state" || action.startsWith("author_")) {
+                val controller = AuthorArchiveTestModeBridge.controller
+                if (controller == null) {
+                    call.respondText(
+                        jsonText(actionJson(action, false, "AUTHOR_ARCHIVE_OWNER_UNAVAILABLE")),
+                        ContentType.Application.Json,
+                        HttpStatusCode.ServiceUnavailable,
+                    )
+                    return@post
+                }
+                val result = controller.execute(action, params)
+                val status = when (result.failureCode) {
+                    null -> HttpStatusCode.OK
+                    AuthorArchiveTestFailureCode.MISSING_PARAMETER,
+                    AuthorArchiveTestFailureCode.INVALID_PARAMETER,
+                    AuthorArchiveTestFailureCode.UNSUPPORTED_ACTION,
+                    -> HttpStatusCode.BadRequest
+                    AuthorArchiveTestFailureCode.ROW_NOT_FOUND -> HttpStatusCode.NotFound
+                    AuthorArchiveTestFailureCode.OPERATION_REJECTED -> HttpStatusCode.Conflict
+                    AuthorArchiveTestFailureCode.OWNER_CLOSED -> HttpStatusCode.ServiceUnavailable
+                }
+                call.respondText(
+                    jsonText(
+                        actionJson(
+                            action = action,
+                            success = result.success,
+                            error = result.failureCode?.name,
+                            authors = Json.encodeToJsonElement(AuthorArchiveTestSnapshot.serializer(), result.snapshot),
+                        ),
+                    ),
+                    ContentType.Application.Json,
+                    status,
+                )
+                return@post
+            }
 
             if (action.startsWith("update_")) {
                 val intent = when (action) {
