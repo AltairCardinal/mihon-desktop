@@ -101,6 +101,17 @@ class AuthorsProductionWiringTest {
             every { saveSourceMangaForDetails } returns mockk {
                 coEvery { awaitListedForDetails(any(), 10L) } returns ListedMangaForDetails(saved, false)
             }
+            every { getChaptersByMangaId } returns mockk {
+                coEvery { await(any()) } returns listOf(
+                    tachiyomi.domain.chapter.model.Chapter.create().copy(
+                        id = 1L,
+                        mangaId = 12L,
+                        url = "/chapter-1-part-2",
+                        name = "Ch. 1 Part 2",
+                        chapterNumber = 1.0,
+                    ),
+                )
+            }
             every { sourceManager } returns mockk(relaxed = true)
         }
         val scene = ImageComposeScene(1100, 800, coroutineContext = coroutineContext) {}
@@ -114,6 +125,19 @@ class AuthorsProductionWiringTest {
             withTimeout(5_000) {
                 while (action !in texts(scene)) scene.render()
             }
+            assertTrue(
+                MR.strings.desktop_ui_chapter_variant_summary.localized(
+                    Locale.getDefault(),
+                    0,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                ) in texts(scene),
+            )
             clickableTextNode(scene, action).config[SemanticsActions.OnClick].action?.invoke()
 
             coVerifyOrder {
@@ -129,6 +153,13 @@ class AuthorsProductionWiringTest {
                 )
             }
             coVerify(exactly = 0) { creatorRepository.createCanonicalWork(any(), any(), any()) }
+            coVerify {
+                archiveRepository.replaceChapterVariants(
+                    tachiyomi.domain.creator.model.SourceWorkNaturalKey(10L, "/pending"),
+                    match { it.single().type == tachiyomi.domain.creator.service.ChapterVariantType.SPLIT },
+                    any(),
+                )
+            }
 
             val correctLanguage = MR.strings.desktop_ui_correct_reading_language.localized()
             clickableTextNode(scene, correctLanguage).config[SemanticsActions.OnClick].action?.invoke()

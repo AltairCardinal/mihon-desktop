@@ -37,6 +37,12 @@ import tachiyomi.domain.creator.service.WorkMatchScore
 import tachiyomi.domain.creator.service.WorkMatchScorer
 import tachiyomi.domain.creator.service.CreatorLibraryIndexState
 import tachiyomi.domain.creator.service.CreatorLibraryIndexer
+import tachiyomi.domain.creator.service.ChapterVariantInput
+import tachiyomi.domain.creator.service.ChapterVariantNormalizer
+import tachiyomi.domain.creator.service.ChapterVariantSummary
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
+import tachiyomi.domain.source.service.SourceManager
+import eu.kanade.tachiyomi.source.CatalogueSource
 import mihon.desktop.DesktopUiDependencies
 
 internal object AuthorsScreenModelFactory {
@@ -72,6 +78,8 @@ internal object AuthorsScreenModelFactory {
             creatorRepository = requireNotNull(dependencies.creatorRepository),
             archiveRepository = requireNotNull(dependencies.creatorArchiveRepository),
             saveSourceMangaForDetails = dependencies.saveSourceMangaForDetails,
+            getChaptersByMangaId = dependencies.getChaptersByMangaId,
+            sourceManager = dependencies.sourceManager,
         )
 }
 
@@ -286,6 +294,8 @@ data class WorkCompareState(
     val version: tachiyomi.domain.creator.model.SourceWorkArchiveVersion? = null,
     val suggestions: List<WorkComparisonSuggestion> = emptyList(),
     val currentDecision: tachiyomi.domain.creator.model.WorkDecisionProjection? = null,
+    val chapterSummary: ChapterVariantSummary? = null,
+    val chapterError: String? = null,
     val loading: Boolean = true,
     val actionRunning: Boolean = false,
     val error: String? = null,
@@ -297,6 +307,8 @@ internal class WorkCompareScreenModel(
     private val creatorRepository: CreatorRepository,
     private val archiveRepository: CreatorArchiveRepository,
     private val saveSourceMangaForDetails: SaveSourceMangaForDetails,
+    private val getChaptersByMangaId: GetChaptersByMangaId,
+    private val sourceManager: SourceManager,
 ) : ScreenModel {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val mutableState = MutableStateFlow(WorkCompareState())
@@ -428,12 +440,47 @@ internal class WorkCompareScreenModel(
                 ),
             )
         }.sortedByDescending { it.score.value }
+        val chapterResult = runCatching { loadChapterSummary(version) }
         mutableState.value = WorkCompareState(
             version = version,
             suggestions = suggestions,
             currentDecision = version.decision,
+            chapterSummary = chapterResult.getOrNull(),
+            chapterError = chapterResult.exceptionOrNull()?.message,
             loading = false,
         )
+    }
+
+    private suspend fun loadChapterSummary(
+        version: tachiyomi.domain.creator.model.SourceWorkArchiveVersion,
+    ): ChapterVariantSummary {
+        val cached = archiveRepository.getChapterVariants(version.naturalKey)
+        if (cached.isNotEmpty()) {
+            return ChapterVariantNormalizer.summarize(
+                cached.map { ChapterVariantInput(it.naturalKey, it.rawName, it.chapterNumber ?: -1.0, it.scanlator) },
+            )
+        }
+        val listed = authorArchiveVersionSourceManga(version)
+        var saved = saveSourceMangaForDetails.awaitListedForDetails(listed, version.naturalKey.sourceId)
+        if (saved.needsRefresh) {
+            val source = sourceManager.get(version.naturalKey.sourceId) as? CatalogueSource
+            if (source != null) {
+                saved = saved.copy(manga = saveSourceMangaForDetails.awaitFromSource(source, listed), needsRefresh = false)
+            }
+        }
+        val inputs = getChaptersByMangaId.await(saved.manga.id).map { chapter ->
+            ChapterVariantInput(
+                naturalKey = chapter.url,
+                rawName = chapter.name,
+                recognizedChapterNumber = chapter.chapterNumber,
+                scanlator = chapter.scanlator,
+            )
+        }
+        val summary = ChapterVariantNormalizer.summarize(inputs)
+        if (summary.variants.isNotEmpty()) {
+            archiveRepository.replaceChapterVariants(version.naturalKey, summary.variants, System.currentTimeMillis())
+        }
+        return summary
     }
 }
 

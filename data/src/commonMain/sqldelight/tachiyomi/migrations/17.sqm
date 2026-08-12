@@ -1,0 +1,33 @@
+ALTER TABLE author_archive_chapter_variants RENAME TO author_archive_chapter_variants_v17;
+
+CREATE TABLE author_archive_chapter_variants(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    source_work_id INTEGER NOT NULL,
+    chapter_natural_key TEXT NOT NULL,
+    volume_number REAL,
+    chapter_number REAL,
+    part_number REAL,
+    variant_type TEXT NOT NULL CHECK(
+        variant_type IN ('REGULAR', 'SPLIT', 'VOLUME', 'EXTRA', 'OMAKE', 'SPECIAL', 'UNKNOWN')
+    ),
+    raw_name TEXT NOT NULL,
+    evidence TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    UNIQUE(source_work_id, chapter_natural_key),
+    FOREIGN KEY(source_work_id) REFERENCES author_archive_source_works(_id) ON DELETE CASCADE
+);
+
+INSERT INTO author_archive_chapter_variants(
+    _id, source_work_id, chapter_natural_key, volume_number, chapter_number, part_number,
+    variant_type, raw_name, evidence, created_at, last_modified_at
+)
+SELECT
+    _id, source_work_id, chapter_natural_key, volume_number, chapter_number, part_number,
+    variant_type, raw_name, evidence, created_at, last_modified_at
+FROM author_archive_chapter_variants_v17;
+
+DROP TABLE author_archive_chapter_variants_v17;
+
+CREATE INDEX idx_author_archive_chapter_variants_work_order
+ON author_archive_chapter_variants(source_work_id, volume_number, chapter_number, part_number);

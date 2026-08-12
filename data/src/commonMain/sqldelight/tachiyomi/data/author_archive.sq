@@ -336,7 +336,7 @@ CREATE TABLE author_archive_chapter_variants(
     volume_number REAL,
     chapter_number REAL,
     part_number REAL,
-    variant_type TEXT NOT NULL CHECK(variant_type IN ('REGULAR', 'EXTRA', 'OMAKE', 'SPECIAL', 'UNKNOWN')),
+    variant_type TEXT NOT NULL CHECK(variant_type IN ('REGULAR', 'SPLIT', 'VOLUME', 'EXTRA', 'OMAKE', 'SPECIAL', 'UNKNOWN')),
     raw_name TEXT NOT NULL,
     evidence TEXT NOT NULL,
     created_at INTEGER NOT NULL,
@@ -347,6 +347,33 @@ CREATE TABLE author_archive_chapter_variants(
 
 CREATE INDEX idx_author_archive_chapter_variants_work_order
 ON author_archive_chapter_variants(source_work_id, volume_number, chapter_number, part_number);
+
+deleteArchiveChapterVariants:
+DELETE FROM author_archive_chapter_variants
+WHERE source_work_id = (
+    SELECT _id FROM author_archive_source_works
+    WHERE source_id = :sourceId AND stable_source_url = :stableSourceUrl
+);
+
+insertArchiveChapterVariant:
+INSERT INTO author_archive_chapter_variants(
+    source_work_id, chapter_natural_key, volume_number, chapter_number, part_number,
+    variant_type, raw_name, evidence, created_at, last_modified_at
+)
+SELECT
+    SW._id, :chapterNaturalKey, :volumeNumber, :chapterNumber, :partNumber,
+    :variantType, :rawName, :evidence, :createdAt, :lastModifiedAt
+FROM author_archive_source_works SW
+WHERE SW.source_id = :sourceId AND SW.stable_source_url = :stableSourceUrl;
+
+getArchiveChapterVariants:
+SELECT
+    CV.chapter_natural_key, CV.volume_number, CV.chapter_number, CV.part_number,
+    CV.variant_type, CV.raw_name, CV.evidence
+FROM author_archive_chapter_variants CV
+JOIN author_archive_source_works SW ON SW._id = CV.source_work_id
+WHERE SW.source_id = :sourceId AND SW.stable_source_url = :stableSourceUrl
+ORDER BY CV._id;
 
 CREATE TABLE author_archive_notification_outbox(
     _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,

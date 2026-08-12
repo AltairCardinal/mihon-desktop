@@ -10,7 +10,7 @@ import tachiyomi.domain.creator.model.CreatorArchiveV2Contract
 class CreatorArchiveMigration16Test {
 
     @Test
-    fun `v16 adds the global unread discovery index without rewriting archive data`() {
+    fun `v16 through latest preserves archive data and accepts split chapter variants`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         Database.Schema.create(driver)
         driver.execute(null, "DROP INDEX idx_author_archive_discoveries_unread", 0)
@@ -25,7 +25,7 @@ class CreatorArchiveMigration16Test {
 
         DatabaseMigration.migrateAtomically(driver, 16, CreatorArchiveV2Contract.LATEST_SCHEMA_VERSION)
 
-        queryLong(driver, "PRAGMA user_version") shouldBe 17L
+        queryLong(driver, "PRAGMA user_version") shouldBe 18L
         queryLong(driver, "SELECT COUNT(*) FROM author_archive_creators") shouldBe 1L
         queryLong(
             driver,
@@ -38,6 +38,20 @@ class CreatorArchiveMigration16Test {
                 "ORDER BY first_discovered_at DESC LIMIT 20",
         )
             .contains("idx_author_archive_discoveries_unread") shouldBe true
+        driver.execute(
+            null,
+            "INSERT INTO author_archive_source_works(_id, source_id, stable_source_url, title, normalized_title, " +
+                "first_seen_at, last_seen_at) VALUES (1, 7, '/work', 'Work', 'work', 1, 1)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO author_archive_chapter_variants(source_work_id, chapter_natural_key, chapter_number, " +
+                "part_number, variant_type, raw_name, evidence, created_at, last_modified_at) " +
+                "VALUES (1, '/chapter-1-part-2', 1, 2, 'SPLIT', 'Ch. 1 Part 2', 'part token', 1, 1)",
+            0,
+        )
+        queryLong(driver, "SELECT COUNT(*) FROM author_archive_chapter_variants") shouldBe 1L
         driver.close()
     }
 

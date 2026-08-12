@@ -9,6 +9,38 @@ data class ChapterVariant(
     val evidence: String,
 )
 
+data class ChapterVariantInput(
+    val naturalKey: String,
+    val rawName: String,
+    val recognizedChapterNumber: Double,
+    val scanlator: String?,
+)
+
+data class ChapterVariantRecord(
+    val naturalKey: String,
+    val rawName: String,
+    val scanlator: String?,
+    val volumeNumber: Double?,
+    val chapterNumber: Double?,
+    val partNumber: Double?,
+    val type: ChapterVariantType,
+    val confidence: Double,
+    val evidence: String,
+)
+
+data class ChapterVariantSummary(
+    val variants: List<ChapterVariantRecord>,
+    val regularChapterCount: Int,
+    val splitChapterCount: Int,
+    val decimalChapterCount: Int,
+    val volumeCount: Int,
+    val extraChapterCount: Int,
+    val specialChapterCount: Int,
+    val duplicateReleaseCount: Int,
+    val missingChapterNumbers: List<Long>,
+    val unknownRawNames: List<String>,
+)
+
 enum class ChapterVariantType {
     REGULAR,
     SPLIT,
@@ -48,4 +80,50 @@ object ChapterVariantNormalizer {
             else -> ChapterVariant(null, null, null, ChapterVariantType.UNKNOWN, 0.0, "unrecognized")
         }
     }
+
+    fun summarize(inputs: List<ChapterVariantInput>): ChapterVariantSummary {
+        val variants = inputs.distinctBy(ChapterVariantInput::naturalKey).map { input ->
+            val variant = normalize(input.rawName, input.recognizedChapterNumber)
+            ChapterVariantRecord(
+                naturalKey = input.naturalKey,
+                rawName = input.rawName,
+                scanlator = input.scanlator,
+                volumeNumber = variant.volumeNumber,
+                chapterNumber = variant.chapterNumber,
+                partNumber = variant.partNumber,
+                type = variant.type,
+                confidence = variant.confidence,
+                evidence = variant.evidence,
+            )
+        }
+        val numbered = variants.filter { it.chapterNumber != null && it.type != ChapterVariantType.UNKNOWN }
+        val integerNumbers = numbered.mapNotNull { record ->
+            record.chapterNumber?.takeIf { it % 1.0 == 0.0 }?.toLong()
+        }.distinct().sorted()
+        val missing = integerNumbers.zipWithNext().flatMap { (left, right) ->
+            val gap = right - left
+            if (gap in 2..MAX_TRUSTED_MISSING_GAP) ((left + 1) until right).toList() else emptyList()
+        }
+        val duplicateReleases = numbered
+            .filter { it.partNumber == null && it.type == ChapterVariantType.REGULAR }
+            .groupBy { it.chapterNumber }
+            .values
+            .sumOf { (it.size - 1).coerceAtLeast(0) }
+        return ChapterVariantSummary(
+            variants = variants,
+            regularChapterCount = variants.count { it.type == ChapterVariantType.REGULAR },
+            splitChapterCount = variants.count { it.type == ChapterVariantType.SPLIT },
+            decimalChapterCount = numbered.count { checkNotNull(it.chapterNumber) % 1.0 != 0.0 },
+            volumeCount = variants.mapNotNull(ChapterVariantRecord::volumeNumber).distinct().size,
+            extraChapterCount = variants.count { it.type == ChapterVariantType.EXTRA },
+            specialChapterCount = variants.count { it.type == ChapterVariantType.SPECIAL },
+            duplicateReleaseCount = duplicateReleases,
+            missingChapterNumbers = missing,
+            unknownRawNames = variants.filter {
+                it.type == ChapterVariantType.UNKNOWN
+            }.map(ChapterVariantRecord::rawName),
+        )
+    }
+
+    private const val MAX_TRUSTED_MISSING_GAP = 3L
 }

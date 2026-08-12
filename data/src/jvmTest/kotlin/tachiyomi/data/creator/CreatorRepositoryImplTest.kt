@@ -32,6 +32,8 @@ import tachiyomi.domain.creator.model.WorkDecisionContract
 import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.model.WorkMatchState
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
+import tachiyomi.domain.creator.service.ChapterVariantRecord
+import tachiyomi.domain.creator.service.ChapterVariantType
 
 class CreatorRepositoryImplTest {
 
@@ -862,6 +864,31 @@ class CreatorRepositoryImplTest {
             version.readingLanguage.tag shouldBe "en"
             version.originalLanguage.tag shouldBe "ja"
             version.originalLanguage.dimension shouldBe LanguageDimension.ORIGINAL
+        }
+    }
+
+    @Test
+    fun `chapter variants replace atomically and preserve split and raw names`() {
+        runBlocking {
+            val work = SourceWorkNaturalKey(17L, "/chapter-work")
+            repository.upsertSourceWork(17L, work.stableSourceUrl, null, "Chapter Work", null, null, null, 1L)
+            val split = ChapterVariantRecord(
+                naturalKey = "/chapter-1-part-2",
+                rawName = "Ch. 1 Part 2",
+                scanlator = "A",
+                volumeNumber = null,
+                chapterNumber = 1.0,
+                partNumber = 2.0,
+                type = ChapterVariantType.SPLIT,
+                confidence = 0.9,
+                evidence = "part token",
+            )
+
+            repository.replaceChapterVariants(work, listOf(split), 2L)
+            repository.getChapterVariants(work).single().copy(scanlator = "A", confidence = 0.9) shouldBe split
+
+            repository.replaceChapterVariants(work, emptyList(), 3L)
+            repository.getChapterVariants(work) shouldBe emptyList()
         }
     }
 

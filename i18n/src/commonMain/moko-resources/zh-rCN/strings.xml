@@ -1442,6 +1442,12 @@
     <string name="desktop_ui_follow_author">关注作者</string>
     <string name="desktop_ui_choose_author_identity">选择作者身份</string>
     <string name="desktop_ui_create_distinct_author">新建独立作者</string>
+    <string name="desktop_ui_chapter_variant_summary">章节：%1$d 独立话 · %2$d 拆分话 · %3$d 小数话 · %4$d 卷 · %5$d 额外话 · %6$d 特别篇 · %7$d 重复发布 · %8$d 未知</string>
+    <string name="desktop_ui_missing_chapters">可能缺失的章节号：%1$s</string>
+    <string name="desktop_ui_show_raw_chapters">展开原始章节名</string>
+    <string name="desktop_ui_hide_raw_chapters">收起原始章节名</string>
+    <string name="desktop_ui_raw_chapter_variant">%1$s · %2$s · %3$s</string>
+    <string name="desktop_ui_chapter_compare_failed">章节比较暂不可用：%1$s</string>
     <string name="desktop_ui_source_url">来源网址：%1$s</string>
     <string name="desktop_ui_first_seen">首次发现：%1$s</string>
     <string name="desktop_ui_last_seen">最近发现：%1$s</string>

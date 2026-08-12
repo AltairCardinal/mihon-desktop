@@ -1412,6 +1412,12 @@
     <string name="desktop_ui_follow_author">關注作者</string>
     <string name="desktop_ui_choose_author_identity">選擇作者身分</string>
     <string name="desktop_ui_create_distinct_author">新增獨立作者</string>
+    <string name="desktop_ui_chapter_variant_summary">章節：%1$d 獨立話 · %2$d 拆分話 · %3$d 小數話 · %4$d 卷 · %5$d 額外話 · %6$d 特別篇 · %7$d 重複發佈 · %8$d 未知</string>
+    <string name="desktop_ui_missing_chapters">可能缺少的章節號：%1$s</string>
+    <string name="desktop_ui_show_raw_chapters">展開原始章節名</string>
+    <string name="desktop_ui_hide_raw_chapters">收合原始章節名</string>
+    <string name="desktop_ui_raw_chapter_variant">%1$s · %2$s · %3$s</string>
+    <string name="desktop_ui_chapter_compare_failed">章節比較暫時無法使用：%1$s</string>
     <string name="desktop_ui_source_url">來源網址：%1$s</string>
     <string name="desktop_ui_first_seen">首次發現：%1$s</string>
     <string name="desktop_ui_last_seen">最近發現：%1$s</string>

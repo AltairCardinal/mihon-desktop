@@ -67,6 +67,8 @@ import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.repository.ReadyCreatorArchiveBootstrap
+import tachiyomi.domain.creator.service.ChapterVariantRecord
+import tachiyomi.domain.creator.service.ChapterVariantType
 import tachiyomi.domain.creator.service.CreatorNameNormalizer
 import tachiyomi.domain.creator.service.CreatorSourceWorkKey
 import tachiyomi.domain.manga.model.Manga
@@ -96,6 +98,53 @@ class CreatorRepositoryImpl(
             .map(List<CreatorWorkArchiveRow>::toCreatorWorkArchive)
             .onStart { bootstrap.awaitReady() }
 
+    override suspend fun replaceChapterVariants(
+        sourceWork: SourceWorkNaturalKey,
+        variants: List<ChapterVariantRecord>,
+        now: Long,
+    ) {
+        bootstrap.awaitReady()
+        handler.await(inTransaction = true) {
+            author_archiveQueries.deleteArchiveChapterVariants(sourceWork.sourceId, sourceWork.stableSourceUrl)
+            variants.forEach { variant ->
+                author_archiveQueries.insertArchiveChapterVariant(
+                    chapterNaturalKey = variant.naturalKey,
+                    volumeNumber = variant.volumeNumber,
+                    chapterNumber = variant.chapterNumber,
+                    partNumber = variant.partNumber,
+                    variantType = variant.type.name,
+                    rawName = variant.rawName,
+                    evidence = variant.evidence,
+                    createdAt = now,
+                    lastModifiedAt = now,
+                    sourceId = sourceWork.sourceId,
+                    stableSourceUrl = sourceWork.stableSourceUrl,
+                )
+            }
+        }
+    }
+
+    override suspend fun getChapterVariants(sourceWork: SourceWorkNaturalKey): List<ChapterVariantRecord> {
+        bootstrap.awaitReady()
+        return handler.awaitList {
+            author_archiveQueries.getArchiveChapterVariants(
+                sourceWork.sourceId,
+                sourceWork.stableSourceUrl,
+            ) { naturalKey, volume, chapter, part, type, rawName, evidence ->
+                ChapterVariantRecord(
+                    naturalKey = naturalKey,
+                    rawName = rawName,
+                    scanlator = null,
+                    volumeNumber = volume,
+                    chapterNumber = chapter,
+                    partNumber = part,
+                    type = ChapterVariantType.valueOf(type),
+                    confidence = if (type == ChapterVariantType.UNKNOWN.name) 0.0 else 1.0,
+                    evidence = evidence,
+                )
+            }
+        }
+    }
     override suspend fun upsertWatchPolicy(policy: ArchiveWatchPolicy, now: Long) {
         bootstrap.awaitReady()
         require(policy.periodMillis > 0) { "Watch period must be positive" }

@@ -888,6 +888,7 @@ data class WorkCompareScreen(val workId: Long, val creatorId: Long = -1L) : Scre
         val state by model.state.collectAsState()
         var languageDimension by remember { mutableStateOf<LanguageDimension?>(null) }
         var languageTag by remember { mutableStateOf("") }
+        var showRawChapters by remember { mutableStateOf(false) }
 
         languageDimension?.let { dimension ->
             AlertDialog(
@@ -1018,6 +1019,58 @@ data class WorkCompareScreen(val workId: Long, val creatorId: Long = -1L) : Scre
                             item.lastSuccessAt?.toString() ?: MR.strings.unknown.localized(),
                         ),
                     )
+                    state.chapterError?.let { error ->
+                        Text(
+                            MR.strings.desktop_ui_chapter_compare_failed.localized(Locale.getDefault(), error),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    state.chapterSummary?.let { summary ->
+                        Text(
+                            MR.strings.desktop_ui_chapter_variant_summary.localized(
+                                Locale.getDefault(),
+                                summary.regularChapterCount,
+                                summary.splitChapterCount,
+                                summary.decimalChapterCount,
+                                summary.volumeCount,
+                                summary.extraChapterCount,
+                                summary.specialChapterCount,
+                                summary.duplicateReleaseCount,
+                                summary.unknownRawNames.size,
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        if (summary.missingChapterNumbers.isNotEmpty()) {
+                            Text(
+                                MR.strings.desktop_ui_missing_chapters.localized(
+                                    Locale.getDefault(),
+                                    summary.missingChapterNumbers.joinToString(),
+                                ),
+                            )
+                        }
+                        TextButton(onClick = { showRawChapters = !showRawChapters }) {
+                            Text(
+                                if (showRawChapters) {
+                                    MR.strings.desktop_ui_hide_raw_chapters.localized()
+                                } else {
+                                    MR.strings.desktop_ui_show_raw_chapters.localized()
+                                },
+                            )
+                        }
+                        if (showRawChapters) {
+                            summary.variants.forEach { variant ->
+                                Text(
+                                    MR.strings.desktop_ui_raw_chapter_variant.localized(
+                                        Locale.getDefault(),
+                                        variant.rawName,
+                                        variant.type.name.lowercase(),
+                                        variant.evidence,
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    }
                     val decision = state.currentDecision
                     Text(
                         decision?.let {

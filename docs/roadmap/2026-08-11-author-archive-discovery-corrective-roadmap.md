@@ -659,9 +659,9 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 #### `AA6-01` 将章节归一化接入 source version 并展示差异摘要
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `[ ]` · Android `N/A：production compare UI 在 AA7-01` · Desktop/UI `[ ]` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`IN_PROGRESS（shared/data 与 Windows UI 已验收，Android 延后）` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `[x]` · Android `N/A：production compare UI 在 AA7-01` · Desktop/UI `[x]` · Legacy/Migration `[x]` · Review `[x]` · Verify `[x]` · Evidence `[x]` · Commit `[ ]`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `Android 统一验收延后` · 审查 `主代理范围核对 PASS` · 验证 `aa601-green-2 PASS` · 运行产物 `shared normalizer/summary；v18 chapter variant storage；Desktop Work Compare 摘要与原始名展开` · Commit `本批提交`
 
 - RED：`Vol. 1 Ch. 1`、`Ch. 10 Part 1/2`、`10.5`、Extra/Omake/Special、重复 scanlator release、缺章节、乱序、未知/本地化名称、源错误、取消和缓存失效。
 - GREEN：复用现有 ChapterRecognition 语义，扩展 `ChapterVariantNormalizer`；只在用户打开比较或后台预算允许时抓章节，保存原始名、结构化字段、证据与详情时间。
@@ -867,4 +867,4 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 | 2026-08-12 | `AA4-02 / Windows checkpoint` | `TODO → IN_PROGRESS（Windows 已验收）` | reactive grouped projection、mounted compare navigation、已有 canonical 复用、stale decision 拒绝均由 production tests 覆盖 | 作者页按规范作品/待处理/已分离分组；比较页展示源可用性、语言、章节、书架、检查结果与新鲜度证据；typed optimistic 决定不覆盖新状态 | 主代理范围核对 PASS；Android 延后 | `aa402-grouped-ui-green3`、`aa402-optimistic-green`、`aa402-quality-green` PASS；无发布构建 | 本行所在提交 |
 | 2026-08-12 | `AA5-01 / Windows checkpoint` | `TODO → IN_PROGRESS（shared/data 已验收）` | 非语言标签、非法 BCP-47、纯 Han、Kana、Hangul、alias、冲突、manual override/undo RED 已转绿 | typed assertion/projector 保留 UNKNOWN/CONFLICT；人工值抵抗重扫并可撤销；field 107 v4 携带最新人工语言决定 | 主代理范围核对 PASS；Android 延后 | `aa501-core-green`、`aa501-data-green` PASS；无发布构建 | 本行所在提交 |
 
-AA0、AA1-02、AA1-03 与 AA2-02 已关闭；AA1-01、AA2-01、AA2-03、AA3 与 AA4 的 Windows/shared/data 实现已经验收，顶层任务仍保持未勾选，等待全部 Windows 功能完成后的 Android 统一验收与最终复审。实现主线进入 `AA5-01`；章节阶段尚未开始。
+AA0、AA1-02、AA1-03 与 AA2-02 已关闭；AA1-01、AA2-01、AA2-03、AA3、AA4 与 AA5 的 Windows/shared/data 实现已经验收，顶层任务仍保持未勾选，等待全部 Windows 功能完成后的 Android 统一验收与最终复审。实现主线进入 `AA6-01`。

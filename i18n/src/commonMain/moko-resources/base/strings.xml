@@ -1648,6 +1648,12 @@
     <string name="desktop_ui_follow_author">Follow author</string>
     <string name="desktop_ui_choose_author_identity">Choose the author identity</string>
     <string name="desktop_ui_create_distinct_author">Create separate author</string>
+    <string name="desktop_ui_chapter_variant_summary">Chapters: %1$d regular · %2$d split · %3$d decimal · %4$d volumes · %5$d extras · %6$d specials · %7$d duplicate releases · %8$d unknown</string>
+    <string name="desktop_ui_missing_chapters">Likely missing chapter numbers: %1$s</string>
+    <string name="desktop_ui_show_raw_chapters">Show original chapter names</string>
+    <string name="desktop_ui_hide_raw_chapters">Hide original chapter names</string>
+    <string name="desktop_ui_raw_chapter_variant">%1$s · %2$s · %3$s</string>
+    <string name="desktop_ui_chapter_compare_failed">Chapter comparison unavailable: %1$s</string>
     <string name="desktop_ui_source_url">Source URL: %1$s</string>
     <string name="desktop_ui_first_seen">First seen: %1$s</string>
     <string name="desktop_ui_last_seen">Last seen: %1$s</string>

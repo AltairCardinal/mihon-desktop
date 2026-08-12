@@ -37,6 +37,7 @@ import tachiyomi.domain.creator.model.WatchSourceBaseline
 import tachiyomi.domain.creator.model.WorkDecisionContract
 import tachiyomi.domain.creator.model.WorkDecisionProjection
 import tachiyomi.domain.creator.model.WorkDecisionState
+import tachiyomi.domain.creator.service.ChapterVariantRecord
 import tachiyomi.domain.manga.model.Manga
 
 /**
@@ -76,6 +77,14 @@ interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
     suspend fun getCreatorWorkArchive(creatorId: Long): CreatorWorkArchive
 
     fun observeCreatorWorkArchive(creatorId: Long): Flow<CreatorWorkArchive>
+
+    suspend fun replaceChapterVariants(
+        sourceWork: SourceWorkNaturalKey,
+        variants: List<ChapterVariantRecord>,
+        now: Long,
+    )
+
+    suspend fun getChapterVariants(sourceWork: SourceWorkNaturalKey): List<ChapterVariantRecord>
 
     suspend fun upsertWatchPolicy(policy: ArchiveWatchPolicy, now: Long)
 
