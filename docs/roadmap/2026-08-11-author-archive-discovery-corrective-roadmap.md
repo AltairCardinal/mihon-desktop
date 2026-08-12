@@ -628,9 +628,9 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 
 #### `AA5-01` 实现 typed language assertions、冲突投影和人工覆盖
 
-> 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared/Data `[ ]` · Android `N/A：production UI consumer 在 AA7-01` · Desktop/UI `N/A：production UI consumer 在 AA5-02` · Legacy/Migration `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
+> 状态卡：`IN_PROGRESS（shared/data 与 Windows consumer 前置已验收，Android 延后）` · 权威/范围 `[x]` · RED/基线 `[x]` · Shared/Data `[x]` · Android `[ ]` · Desktop/UI `N/A：production UI consumer 在 AA5-02` · Legacy/Migration `[x]` · Review `[ ]` · Verify `[x]` · Evidence `[x]` · Commit `[ ]`
 >
-> 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 运行产物 `—` · Commit `—`
+> 记录：阻塞 `Android 统一验收延后` · 审查 `主代理范围核对 PASS` · 验证 `aa501-language-red → aa501-core-green；aa501-data-green PASS` · 运行产物 `focused shared/data tests；无发布构建` · Commit `本批提交`
 
 - RED：BCP-47 aliases、`BL/GL/SF`、空/非法 tag、纯汉字日文、Kana、Hangul、简繁混合、multi-language source、结构化 metadata、冲突 evidence、manual override/undo、reading/original 分离和自动重扫不覆盖人工值。
 - GREEN：用 `LanguageAssertion` 和 projector 替换裸字符串 detector 返回；文本检测无法可靠区分时返回 UNKNOWN/CONFLICT，不为了覆盖率硬猜。
@@ -865,5 +865,6 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 | 2026-08-12 | `AA2-02` | `TODO → DONE` | 首扫/重扫、新关系、跨 watch、metadata、review 保持、partial/all-fail、截断、重入、lease、恢复、取消、退避及源级回滚均覆盖 | shared archive executor、typed run/checkpoint、baseline generation、原子 source observation + discovery/outbox、manual force 与 backoff/jitter 完成 | pi 双模型对比后采用 DeepSeek 草稿 + 主代理补缺；最终 P0/P1/P2=0 | `aa202-atomic`、`aa202-final-focused`、domain/data SpotlessApply PASS；无 Android/发布构建 | 本行所在提交 |
 | 2026-08-12 | `AA4-01 / Windows checkpoint` | `TODO → IN_PROGRESS（Windows 已验收）` | alias、同名异作者、跨语言、稳定外部 ID、章节覆盖和证据等级 matcher RED 已转绿；决定自然键读取与备份往返已覆盖 | migration search 与 archive 共用相似度；逐项证据/算法版本/tier；稳定 ID 以外只建议；人工 confirmed/rejected 使用自然键备份 | 主代理范围核对 PASS；Android 延后 | `aa401-focused-green`、`aa401-windows-ui-green` PASS；无发布构建 | 本行所在提交 |
 | 2026-08-12 | `AA4-02 / Windows checkpoint` | `TODO → IN_PROGRESS（Windows 已验收）` | reactive grouped projection、mounted compare navigation、已有 canonical 复用、stale decision 拒绝均由 production tests 覆盖 | 作者页按规范作品/待处理/已分离分组；比较页展示源可用性、语言、章节、书架、检查结果与新鲜度证据；typed optimistic 决定不覆盖新状态 | 主代理范围核对 PASS；Android 延后 | `aa402-grouped-ui-green3`、`aa402-optimistic-green`、`aa402-quality-green` PASS；无发布构建 | 本行所在提交 |
+| 2026-08-12 | `AA5-01 / Windows checkpoint` | `TODO → IN_PROGRESS（shared/data 已验收）` | 非语言标签、非法 BCP-47、纯 Han、Kana、Hangul、alias、冲突、manual override/undo RED 已转绿 | typed assertion/projector 保留 UNKNOWN/CONFLICT；人工值抵抗重扫并可撤销；field 107 v4 携带最新人工语言决定 | 主代理范围核对 PASS；Android 延后 | `aa501-core-green`、`aa501-data-green` PASS；无发布构建 | 本行所在提交 |
 
 AA0、AA1-02、AA1-03 与 AA2-02 已关闭；AA1-01、AA2-01、AA2-03、AA3 与 AA4 的 Windows/shared/data 实现已经验收，顶层任务仍保持未勾选，等待全部 Windows 功能完成后的 Android 统一验收与最终复审。实现主线进入 `AA5-01`；章节阶段尚未开始。

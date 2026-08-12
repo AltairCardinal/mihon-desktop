@@ -48,4 +48,35 @@ class MangaLanguageDetectorTest {
         result.confidence shouldBe 0.65
         result.evidence shouldBe LanguageEvidence.SOURCE_LANGUAGE
     }
+
+    @Test
+    fun `non-language genre tags and invalid BCP47 values stay unknown`() {
+        val result = MangaLanguageDetector.detect(
+            sourceLang = "unknown",
+            explicitLanguage = "BL",
+            title = "Example",
+            description = null,
+            genres = listOf("GL", "SF"),
+        )
+
+        result.tag shouldBe "und"
+        result.evidence shouldBe LanguageEvidence.UNKNOWN
+    }
+
+    @Test
+    fun `pure Han text stays unknown instead of pretending to distinguish Chinese from Japanese`() {
+        MangaLanguageDetector.detect(null, null, "進撃的巨人", null, emptyList()).tag shouldBe "und"
+        MangaLanguageDetector.detect(null, null, "进击的巨人", null, emptyList()).tag shouldBe "und"
+    }
+
+    @Test
+    fun `Kana and Hangul provide bounded text evidence`() {
+        MangaLanguageDetector.detect(null, null, "進撃の巨人", null, emptyList()).tag shouldBe "ja"
+        MangaLanguageDetector.detect(null, null, "신의 탑", null, emptyList()).tag shouldBe "ko"
+    }
+
+    @Test
+    fun `normalizes BCP47 aliases without treating content categories as languages`() {
+        MangaLanguageDetector.detect(null, "PT_br", "Example", null, emptyList()).tag shouldBe "pt-br"
+    }
 }

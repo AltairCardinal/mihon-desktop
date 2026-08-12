@@ -23,6 +23,7 @@ import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.DecisionActor
 import tachiyomi.domain.creator.model.DiscoveryCandidateState
 import tachiyomi.domain.creator.model.LanguageAssertionContract
+import tachiyomi.domain.creator.model.LanguageCertainty
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.LanguageEvidenceKind
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
@@ -557,11 +558,28 @@ class CreatorRepositoryImplTest {
                 11L,
                 "grouped-rejected",
             )
+            listOf("en", "ja").forEach { tag ->
+                repository.appendLanguageAssertion(
+                    ArchiveLanguageSubject.SourceWork(pending),
+                    LanguageAssertionContract(
+                        LanguageDimension.READING,
+                        tag,
+                        1.0,
+                        LanguageEvidenceKind.STRUCTURED_METADATA,
+                    ),
+                    DecisionActor.ALGORITHM,
+                    "conflicting structured metadata",
+                    "v1",
+                    9L,
+                    "grouped-language-$tag",
+                )
+            }
 
             val archive = repository.observeCreatorWorkArchive(creator.id).first()
 
             archive.works.single().versions.single().naturalKey shouldBe confirmed
             archive.pending.single().naturalKey shouldBe pending
+            archive.pending.single().readingLanguage.certainty shouldBe LanguageCertainty.CONFLICT
             archive.rejected.single().naturalKey shouldBe rejected
             repository.getCreatorWorkArchive(creator.id) shouldBe archive
             val reviewed = repository.appendUserWorkDecisionIfCurrent(
@@ -745,6 +763,51 @@ class CreatorRepositoryImplTest {
             queryString("SELECT subject_key FROM author_archive_language_assertions") shouldBe
                 "source:7:/typed/language"
             queryString("SELECT language_tag FROM author_archive_language_assertions") shouldBe "pt-br"
+        }
+    }
+
+    @Test
+    fun `manual language override survives rescans and withdrawal restores automatic evidence`() {
+        runBlocking {
+            val key = SourceWorkNaturalKey(7L, "/typed/manual-language")
+            repository.upsertSourceWork(7L, key.stableSourceUrl, null, "Language", null, null, null, 1L)
+            val subject = ArchiveLanguageSubject.SourceWork(key)
+            repository.appendLanguageAssertion(
+                subject,
+                LanguageAssertionContract(
+                    LanguageDimension.READING,
+                    "ja",
+                    1.0,
+                    LanguageEvidenceKind.STRUCTURED_METADATA,
+                ),
+                DecisionActor.ALGORITHM,
+                "structured metadata",
+                "v1",
+                1L,
+                "language-automatic-ja",
+            )
+            repository.setManualLanguage(subject, LanguageDimension.READING, "zh-Hant", 2L)
+            repository.appendLanguageAssertion(
+                subject,
+                LanguageAssertionContract(
+                    LanguageDimension.READING,
+                    "ko",
+                    0.8,
+                    LanguageEvidenceKind.TEXT_DETECTION,
+                ),
+                DecisionActor.ALGORITHM,
+                "later text scan",
+                "v2",
+                3L,
+                "language-automatic-ko",
+            )
+
+            repository.getLanguageProjection(subject, LanguageDimension.READING).tag shouldBe "zh-hant"
+
+            repository.withdrawManualLanguage(subject, LanguageDimension.READING, 4L)
+            val restored = repository.getLanguageProjection(subject, LanguageDimension.READING)
+            restored.tag shouldBe "ja"
+            restored.certainty shouldBe LanguageCertainty.CONFIRMED
         }
     }
 

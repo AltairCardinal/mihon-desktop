@@ -1430,6 +1430,74 @@ class CreatorRepositoryImpl(
         }
     }
 
+    override suspend fun getLanguageProjection(
+        subject: ArchiveLanguageSubject,
+        dimension: LanguageDimension,
+    ): LanguageProjectionContract {
+        bootstrap.awaitReady()
+        return handler.await {
+            val resolved = resolveLanguageSubject(subject)
+            val assertions = author_archiveQueries.getArchiveLanguageAssertions(
+                subjectType = resolved.first,
+                subjectKey = resolved.second,
+                dimension = dimension.name,
+            ) { tag, confidence, evidenceKind, withdrawn ->
+                LanguageAssertionContract(
+                    dimension = dimension,
+                    tag = tag,
+                    confidence = confidence,
+                    evidenceKind = LanguageEvidenceKind.valueOf(evidenceKind),
+                    withdrawn = withdrawn,
+                )
+            }.executeAsList()
+            CreatorArchiveV2Policy.projectLanguage(dimension, assertions)
+        }
+    }
+
+    override suspend fun setManualLanguage(
+        subject: ArchiveLanguageSubject,
+        dimension: LanguageDimension,
+        languageTag: String,
+        now: Long,
+    ) {
+        appendLanguageAssertion(
+            subject = subject,
+            assertion = LanguageAssertionContract(
+                dimension = dimension,
+                tag = CreatorArchiveLanguageTag.normalize(languageTag),
+                confidence = 1.0,
+                evidenceKind = LanguageEvidenceKind.MANUAL,
+            ),
+            actor = DecisionActor.USER,
+            evidencePayload = "manual-language-override",
+            algorithmVersion = null,
+            assertedAt = now,
+            idempotencyKey = "manual-language:${subject.languageSubjectKey()}:${dimension.name}:$now",
+        )
+    }
+
+    override suspend fun withdrawManualLanguage(
+        subject: ArchiveLanguageSubject,
+        dimension: LanguageDimension,
+        now: Long,
+    ) {
+        appendLanguageAssertion(
+            subject = subject,
+            assertion = LanguageAssertionContract(
+                dimension = dimension,
+                tag = "und",
+                confidence = 1.0,
+                evidenceKind = LanguageEvidenceKind.MANUAL,
+                withdrawn = true,
+            ),
+            actor = DecisionActor.USER,
+            evidencePayload = "manual-language-withdrawal",
+            algorithmVersion = null,
+            assertedAt = now,
+            idempotencyKey = "manual-language-withdraw:${subject.languageSubjectKey()}:${dimension.name}:$now",
+        )
+    }
+
     override suspend fun upsertDiscoveryCandidate(
         source: Long,
         url: String,
@@ -2089,6 +2157,12 @@ class CreatorRepositoryImpl(
         }
     }
 
+    private fun ArchiveLanguageSubject.languageSubjectKey(): String = when (this) {
+        is ArchiveLanguageSubject.SourceWork -> CreatorArchiveSubjectKey.sourceWork(naturalKey)
+        is ArchiveLanguageSubject.CanonicalWork -> CreatorArchiveSubjectKey.canonicalWork(portableKey)
+        is ArchiveLanguageSubject.Creator -> CreatorArchiveSubjectKey.creator(portableKey)
+    }
+
     private fun mapRelationSnapshot(
         role: String,
         creatorOrder: Long,
@@ -2617,8 +2691,16 @@ private fun mapCreatorWorkArchiveRow(
     languageTag: String?,
     languageConfidence: Double?,
     languageEvidenceKind: String?,
+    languageConflict: Long,
 ): CreatorWorkArchiveRow {
-    val language = if (languageTag == null) {
+    val language = if (languageConflict != 0L && languageEvidenceKind != null) {
+        LanguageProjectionContract(
+            dimension = LanguageDimension.READING,
+            tag = "und",
+            certainty = LanguageCertainty.CONFLICT,
+            evidenceKind = LanguageEvidenceKind.valueOf(languageEvidenceKind),
+        )
+    } else if (languageTag == null) {
         LanguageProjectionContract(
             dimension = LanguageDimension.READING,
             tag = "und",

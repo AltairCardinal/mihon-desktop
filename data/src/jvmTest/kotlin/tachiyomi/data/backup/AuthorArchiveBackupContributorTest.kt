@@ -55,6 +55,14 @@ class AuthorArchiveBackupContributorTest {
             target.long("SELECT COUNT(*) FROM author_archive_canonical_works") shouldBe 2L
             target.long("SELECT COUNT(*) FROM author_archive_work_decisions WHERE actor = 'RESTORE'") shouldBe 2L
             target.long("SELECT COUNT(*) FROM author_archive_canonical_versions") shouldBe 1L
+            target.long("SELECT COUNT(*) FROM author_archive_language_assertions WHERE actor = 'RESTORE'") shouldBe 2L
+            target.string(
+                "SELECT language_tag FROM author_archive_language_assertions " +
+                    "WHERE subject_key = 'source:10:/one' AND withdrawn = 0",
+            ) shouldBe "zh-hant"
+            target.long(
+                "SELECT withdrawn FROM author_archive_language_assertions WHERE subject_key = 'source:10:/two'",
+            ) shouldBe 1L
             target.long(
                 "SELECT COUNT(*) FROM author_archive_watch_result_policies " +
                     "WHERE include_probable = 1 AND notify_probable = 1",
@@ -227,6 +235,17 @@ class AuthorArchiveBackupContributorTest {
                     "evidence, decided_at, idempotency_key) VALUES " +
                     "(1, 1, 'CONFIRMED', 'USER', 1, 1, 'same work', 2, 'backup-confirmed'), " +
                     "(2, 2, 'REJECTED', 'USER', 1, 0.8, 'keep separate', 3, 'backup-rejected')",
+                0,
+            )
+            driver.execute(
+                null,
+                "INSERT INTO author_archive_language_assertions(subject_type, subject_key, dimension, language_tag, " +
+                    "confidence, evidence_kind, evidence_payload, actor, withdrawn, asserted_at, " +
+                    "idempotency_key) VALUES " +
+                    "('SOURCE_WORK', 'source:10:/one', 'READING', 'zh-hant', 1, 'MANUAL', " +
+                    "'override', 'USER', 0, 2, 'language-one'), " +
+                    "('SOURCE_WORK', 'source:10:/two', 'READING', 'und', 1, 'MANUAL', " +
+                    "'undo', 'USER', 1, 3, 'language-two-undo')",
                 0,
             )
             driver.execute(

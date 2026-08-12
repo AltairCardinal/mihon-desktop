@@ -4,6 +4,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupAuthorArchiveSection
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorBinding
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorCanonicalWork
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorDiscovery
+import eu.kanade.tachiyomi.data.backup.models.BackupAuthorLanguageDecision
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorSourceWork
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorWatch
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorWorkDecision
@@ -18,6 +19,7 @@ import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.DiscoveryKind
 import tachiyomi.domain.creator.model.DiscoveryReadState
+import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.ReviewDisposition
 import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.service.CreatorNameNormalizer
@@ -145,6 +147,17 @@ class SqlDelightAuthorArchiveBackupContributor(
                 decidedAt = decision.decided_at,
             )
         }
+        val languageDecisions = author_archiveQueries.getArchiveManualLanguageDecisionsForBackup().executeAsList()
+            .map { decision ->
+                BackupAuthorLanguageDecision(
+                    subjectType = decision.subject_type,
+                    subjectKey = decision.subject_key,
+                    dimension = decision.dimension,
+                    languageTag = decision.language_tag,
+                    withdrawn = decision.withdrawn,
+                    assertedAt = decision.asserted_at,
+                )
+            }
         BackupAuthorArchiveSection(
             creators = creators,
             sourceWorks = sourceWorks,
@@ -152,9 +165,11 @@ class SqlDelightAuthorArchiveBackupContributor(
             discoveries = discoveries,
             canonicalWorks = canonicalWorks,
             workDecisions = workDecisions,
+            languageDecisions = languageDecisions,
         ).takeIf {
             it.creators.isNotEmpty() || it.sourceWorks.isNotEmpty() || it.watches.isNotEmpty() ||
-                it.discoveries.isNotEmpty() || it.canonicalWorks.isNotEmpty() || it.workDecisions.isNotEmpty()
+                it.discoveries.isNotEmpty() || it.canonicalWorks.isNotEmpty() || it.workDecisions.isNotEmpty() ||
+                it.languageDecisions.isNotEmpty()
         }
     }
 
@@ -234,6 +249,31 @@ class SqlDelightAuthorArchiveBackupContributor(
                     idempotencyKey = restoreKey,
                 )
                 reconcileArchiveCanonicalVersion(sourceWorkId)
+            }
+            validated.languageDecisions.forEach { decision ->
+                author_archiveQueries.upsertArchiveLanguageAssertion(
+                    subjectType = decision.subjectType,
+                    subjectKey = decision.subjectKey,
+                    dimension = decision.dimension,
+                    languageTag = decision.languageTag,
+                    confidence = 1.0,
+                    evidenceKind = "MANUAL",
+                    evidencePayload = "restored-manual-language",
+                    actor = "RESTORE",
+                    algorithmVersion = null,
+                    withdrawn = decision.withdrawn,
+                    assertedAt = decision.assertedAt,
+                    idempotencyKey = buildString {
+                        append("restore-language:")
+                        append(decision.subjectType)
+                        append(':')
+                        append(decision.subjectKey)
+                        append(':')
+                        append(decision.dimension)
+                        append(':')
+                        append(decision.assertedAt)
+                    },
+                )
             }
             validated.watches.forEach { watch ->
                 restoreWatch(watch, creatorIds.getValue(watch.creatorPortableKey), now)
@@ -520,6 +560,25 @@ class SqlDelightAuthorArchiveBackupContributor(
             }
             require(decision.score == null || decision.score in 0.0..1.0) { "Work decision score is invalid" }
             require(decision.evidence.isNotBlank()) { "Work decision evidence must not be blank" }
+        }
+        val portableSubjectKeys = buildSet {
+            normalizedSection.sourceWorks.forEach { add("source:${it.sourceId}:${it.stableSourceUrl}") }
+            normalizedSection.canonicalWorks.forEach { add("canonical:${it.portableKey}") }
+            normalizedSection.creators.forEach { add("creator:${it.portableKey}") }
+        }
+        require(
+            normalizedSection.languageDecisions.distinctBy { it.subjectKey to it.dimension }.size ==
+                normalizedSection.languageDecisions.size,
+        ) { "Duplicate manual language decision" }
+        normalizedSection.languageDecisions.forEach { decision ->
+            require(decision.subjectType in setOf("SOURCE_WORK", "CANONICAL_WORK", "CREATOR")) {
+                "Unsupported language subject type"
+            }
+            require(decision.subjectKey in portableSubjectKeys) { "Language decision references an unknown subject" }
+            enumValueOf<LanguageDimension>(decision.dimension)
+            require(CreatorArchiveLanguageTag.normalize(decision.languageTag) == decision.languageTag) {
+                "Language decision tag must be normalized"
+            }
         }
         return normalizedSection
     }

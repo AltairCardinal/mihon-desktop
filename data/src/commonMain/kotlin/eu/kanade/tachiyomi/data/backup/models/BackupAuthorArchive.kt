@@ -18,11 +18,22 @@ data class BackupAuthorArchiveSection(
     @ProtoNumber(5) val discoveries: List<BackupAuthorDiscovery> = emptyList(),
     @ProtoNumber(6) val canonicalWorks: List<BackupAuthorCanonicalWork> = emptyList(),
     @ProtoNumber(7) val workDecisions: List<BackupAuthorWorkDecision> = emptyList(),
+    @ProtoNumber(8) val languageDecisions: List<BackupAuthorLanguageDecision> = emptyList(),
 ) {
     companion object {
-        const val CURRENT_VERSION = 3
+        const val CURRENT_VERSION = 4
     }
 }
+
+@Serializable
+data class BackupAuthorLanguageDecision(
+    @ProtoNumber(1) val subjectType: String,
+    @ProtoNumber(2) val subjectKey: String,
+    @ProtoNumber(3) val dimension: String,
+    @ProtoNumber(4) val languageTag: String,
+    @ProtoNumber(5) val withdrawn: Boolean,
+    @ProtoNumber(6) val assertedAt: Long,
+)
 
 @Serializable
 data class BackupAuthorCanonicalWork(

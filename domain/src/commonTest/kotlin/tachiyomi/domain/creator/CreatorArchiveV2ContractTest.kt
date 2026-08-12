@@ -261,7 +261,7 @@ class CreatorArchiveV2ContractTest {
         val overridden = CreatorArchiveV2Policy.projectLanguage(LanguageDimension.READING, listOf(structured, manual))
         val restored = CreatorArchiveV2Policy.projectLanguage(
             LanguageDimension.READING,
-            listOf(structured, manual.copy(withdrawn = true)),
+            listOf(structured, manual, manual.copy(withdrawn = true)),
         )
         val original = CreatorArchiveV2Policy.projectLanguage(LanguageDimension.ORIGINAL, listOf(structured, manual))
 

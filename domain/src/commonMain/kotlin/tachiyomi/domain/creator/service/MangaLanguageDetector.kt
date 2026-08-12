@@ -1,5 +1,7 @@
 package tachiyomi.domain.creator.service
 
+import tachiyomi.domain.creator.model.CreatorArchiveLanguageTag
+
 data class LanguageDetection(
     val tag: String,
     val confidence: Double,
@@ -59,19 +61,19 @@ object MangaLanguageDetector {
             return LanguageDetection(it, 0.65, LanguageEvidence.SOURCE_LANGUAGE)
         }
 
-        return LanguageDetection("unknown", 0.0, LanguageEvidence.UNKNOWN)
+        return LanguageDetection("und", 0.0, LanguageEvidence.UNKNOWN)
     }
 
     private fun normalizeLanguage(value: String?): String? {
-        val normalized = value?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: return null
-        return languageAliases[normalized] ?: normalized.takeIf { it.length == 2 }
+        val normalized = value?.trim()?.lowercase()?.replace('_', '-')?.takeIf { it.isNotBlank() } ?: return null
+        val alias = languageAliases[normalized] ?: normalized
+        return CreatorArchiveLanguageTag.normalize(alias).takeUnless { it == "und" }
     }
 
     private fun detectFromText(text: String): String? {
         return when {
             text.any { it in '\u3040'..'\u30ff' } -> "ja"
             text.any { it in '\uac00'..'\ud7af' } -> "ko"
-            text.any { it in '\u4e00'..'\u9fff' } -> "zh"
             else -> null
         }
     }

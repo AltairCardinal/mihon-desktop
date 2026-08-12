@@ -357,7 +357,17 @@ object CreatorArchiveV2Policy {
         assertions: List<LanguageAssertionContract>,
         probableThreshold: Double = 0.7,
     ): LanguageProjectionContract {
-        val candidates = assertions.filter { it.dimension == dimension && !it.withdrawn }
+        val dimensionAssertions = assertions.filter { it.dimension == dimension }
+        val latestManual = dimensionAssertions.lastOrNull { it.evidenceKind == LanguageEvidenceKind.MANUAL }
+        val candidates = if (latestManual != null) {
+            if (latestManual.withdrawn) {
+                dimensionAssertions.filter { it.evidenceKind != LanguageEvidenceKind.MANUAL && !it.withdrawn }
+            } else {
+                listOf(latestManual)
+            }
+        } else {
+            dimensionAssertions.filter { !it.withdrawn }
+        }
         if (candidates.isEmpty()) {
             return LanguageProjectionContract(
                 dimension = dimension,

@@ -22,6 +22,8 @@ import tachiyomi.domain.creator.model.DiscoveryRun
 import tachiyomi.domain.creator.model.DiscoveryRunState
 import tachiyomi.domain.creator.model.DueWatchSource
 import tachiyomi.domain.creator.model.LanguageAssertionContract
+import tachiyomi.domain.creator.model.LanguageDimension
+import tachiyomi.domain.creator.model.LanguageProjectionContract
 import tachiyomi.domain.creator.model.LeaseAcquireResult
 import tachiyomi.domain.creator.model.NotificationDeliveryState
 import tachiyomi.domain.creator.model.NotificationOutboxItem
@@ -303,6 +305,24 @@ interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
         assertedAt: Long,
         idempotencyKey: String,
     ): ArchiveAppendOutcome<LanguageAssertionContract>
+
+    suspend fun getLanguageProjection(
+        subject: ArchiveLanguageSubject,
+        dimension: LanguageDimension,
+    ): LanguageProjectionContract
+
+    suspend fun setManualLanguage(
+        subject: ArchiveLanguageSubject,
+        dimension: LanguageDimension,
+        languageTag: String,
+        now: Long,
+    )
+
+    suspend fun withdrawManualLanguage(
+        subject: ArchiveLanguageSubject,
+        dimension: LanguageDimension,
+        now: Long,
+    )
 }
 
 /**

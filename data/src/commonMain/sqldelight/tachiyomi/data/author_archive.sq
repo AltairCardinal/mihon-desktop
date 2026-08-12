@@ -2439,6 +2439,24 @@ AND WD._id = (
 )
 ORDER BY SW.source_id, SW.stable_source_url, CW.portable_key;
 
+getArchiveManualLanguageDecisionsForBackup:
+SELECT subject_type, subject_key, dimension, language_tag, withdrawn, asserted_at
+FROM author_archive_language_assertions LA
+WHERE evidence_kind = 'MANUAL'
+AND actor IN ('USER', 'RESTORE')
+AND LA._id = (
+    SELECT LAST_MANUAL._id
+    FROM author_archive_language_assertions LAST_MANUAL
+    WHERE LAST_MANUAL.subject_type = LA.subject_type
+    AND LAST_MANUAL.subject_key = LA.subject_key
+    AND LAST_MANUAL.dimension = LA.dimension
+    AND LAST_MANUAL.evidence_kind = 'MANUAL'
+    AND LAST_MANUAL.actor IN ('USER', 'RESTORE')
+    ORDER BY LAST_MANUAL.asserted_at DESC, LAST_MANUAL._id DESC
+    LIMIT 1
+)
+ORDER BY subject_type, subject_key, dimension;
+
 insertArchiveCanonicalWorkFromLegacy:
 INSERT INTO author_archive_canonical_works(
     portable_key,
@@ -2684,7 +2702,18 @@ SELECT
     WD.decided_at AS decision_decided_at,
     LA.language_tag,
     LA.confidence AS language_confidence,
-    LA.evidence_kind AS language_evidence_kind
+    LA.evidence_kind AS language_evidence_kind,
+    CASE WHEN EXISTS(
+        SELECT 1
+        FROM author_archive_language_assertions OTHER_LA
+        WHERE OTHER_LA.subject_type = LA.subject_type
+        AND OTHER_LA.subject_key = LA.subject_key
+        AND OTHER_LA.dimension = LA.dimension
+        AND OTHER_LA.withdrawn = 0
+        AND OTHER_LA.evidence_kind = LA.evidence_kind
+        AND OTHER_LA.evidence_kind != 'MANUAL'
+        AND OTHER_LA.language_tag != LA.language_tag
+    ) THEN 1 ELSE 0 END AS language_conflict
 FROM author_archive_source_works SW
 JOIN author_archive_source_work_creators SWC ON SWC.source_work_id = SW._id
 LEFT JOIN author_archive_watches W ON W.creator_id = SWC.creator_id
@@ -2712,6 +2741,19 @@ LEFT JOIN author_archive_language_assertions LA ON LA._id = (
     AND CURRENT_LA.subject_key = 'source:' || SW.source_id || ':' || SW.stable_source_url
     AND CURRENT_LA.dimension = 'READING'
     AND CURRENT_LA.withdrawn = 0
+    AND (
+        CURRENT_LA.evidence_kind != 'MANUAL'
+        OR CURRENT_LA._id = (
+            SELECT LAST_MANUAL._id
+            FROM author_archive_language_assertions LAST_MANUAL
+            WHERE LAST_MANUAL.subject_type = CURRENT_LA.subject_type
+            AND LAST_MANUAL.subject_key = CURRENT_LA.subject_key
+            AND LAST_MANUAL.dimension = CURRENT_LA.dimension
+            AND LAST_MANUAL.evidence_kind = 'MANUAL'
+            ORDER BY LAST_MANUAL.asserted_at DESC, LAST_MANUAL._id DESC
+            LIMIT 1
+        )
+    )
     ORDER BY
         CASE CURRENT_LA.evidence_kind
             WHEN 'MANUAL' THEN 5
@@ -2841,6 +2883,14 @@ SELECT
     asserted_at
 FROM author_archive_language_assertions
 WHERE idempotency_key = :idempotencyKey;
+
+getArchiveLanguageAssertions:
+SELECT language_tag, confidence, evidence_kind, withdrawn
+FROM author_archive_language_assertions
+WHERE subject_type = :subjectType
+AND subject_key = :subjectKey
+AND dimension = :dimension
+ORDER BY asserted_at, _id;
 
 remapArchiveCreatorLanguageAssertions:
 UPDATE author_archive_language_assertions
