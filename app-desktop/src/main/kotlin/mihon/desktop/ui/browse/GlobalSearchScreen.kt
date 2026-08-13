@@ -650,6 +650,7 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
                     ).forEach { (filter, label) ->
                         FilterChip(
                             selected = sourceFilter == filter,
+                            modifier = Modifier.testTag(globalSearchSourceFilterTag(filter)),
                             onClick = {
                                 if (sourceFilter != filter) {
                                     sourceFilter = filter
@@ -875,6 +876,9 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
 private const val GLOBAL_SEARCH_INPUT_TAG = "global-search-input"
 private const val GLOBAL_SEARCH_SUBMIT_TAG = "global-search-submit"
 private const val GLOBAL_SEARCH_HISTORY_TAG = "global-search-history"
+
+internal fun globalSearchSourceFilterTag(filter: GlobalSearchSourceFilter) =
+    "global-search-source-filter-${filter.name.lowercase()}"
 
 private fun recordRecentSearch(current: List<String>, query: String): List<String> {
     val normalizedQuery = query.trim()

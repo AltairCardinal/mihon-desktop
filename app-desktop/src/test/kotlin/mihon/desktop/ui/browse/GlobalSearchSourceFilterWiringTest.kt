@@ -61,6 +61,7 @@ class GlobalSearchSourceFilterWiringTest {
             every { saveSourceMangaForDetails } returns mockk(relaxed = true)
             every { getManga } returns staticGetManga()
             every { sourceLoginSessionFactory } returns mockk(relaxed = true)
+            every { creatorDiscoverySourcePort } returns null
         }
         var coordinator: DesktopGlobalSearchCoordinator? = null
         val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
@@ -76,19 +77,17 @@ class GlobalSearchSourceFilterWiringTest {
         withTimeout(2_000) { requireNotNull(coordinator).states.first { it.generation == 1L && !it.isSearching } }
         scene.render()
 
-        val pinnedLabel = MR.strings.pinned_sources.localized()
-        val allLabel = MR.strings.all.localized()
-        assertTrue(selected(scene, pinnedLabel))
-        assertFalse(selected(scene, allLabel))
+        assertTrue(selected(scene, tachiyomi.domain.source.service.GlobalSearchSourceFilter.PinnedOnly))
+        assertFalse(selected(scene, tachiyomi.domain.source.service.GlobalSearchSourceFilter.All))
         assertEquals(1, pinnedCalls.get())
         assertEquals(0, unpinnedCalls.get())
 
-        click(scene, allLabel)
+        click(scene, tachiyomi.domain.source.service.GlobalSearchSourceFilter.All)
         withTimeout(2_000) { requireNotNull(coordinator).states.first { it.generation == 2L && !it.isSearching } }
         scene.render()
 
-        assertFalse(selected(scene, pinnedLabel))
-        assertTrue(selected(scene, allLabel))
+        assertFalse(selected(scene, tachiyomi.domain.source.service.GlobalSearchSourceFilter.PinnedOnly))
+        assertTrue(selected(scene, tachiyomi.domain.source.service.GlobalSearchSourceFilter.All))
         assertEquals(1, pinnedCalls.get(), "same-query intersection must be reused")
         assertEquals(1, unpinnedCalls.get(), "only the newly included source should load")
         scene.close()
@@ -107,7 +106,7 @@ class GlobalSearchSourceFilterWiringTest {
         assertEquals(0, firstCalls.get())
         assertEquals(0, secondCalls.get())
 
-        click(mounted.scene, MR.strings.all.localized())
+        click(mounted.scene, tachiyomi.domain.source.service.GlobalSearchSourceFilter.All)
         withTimeout(2_000) { mounted.coordinator.states.first { it.generation == 2L && !it.isSearching } }
         mounted.scene.render()
 
@@ -125,31 +124,28 @@ class GlobalSearchSourceFilterWiringTest {
         val pinned = source(21, "Pinned source", pinnedCalls, pinnedQueries)
         val unpinned = source(22, "Unpinned source", unpinnedCalls, unpinnedQueries)
         val mounted = mount("", listOf(pinned, unpinned), setOf(pinned.id.toString()), coroutineContext)
-        val allLabel = MR.strings.all.localized()
-        val pinnedLabel = MR.strings.pinned_sources.localized()
-
-        click(mounted.scene, allLabel)
+        click(mounted.scene, tachiyomi.domain.source.service.GlobalSearchSourceFilter.All)
         mounted.scene.render()
-        assertTrue(selected(mounted.scene, allLabel))
+        assertTrue(selected(mounted.scene, tachiyomi.domain.source.service.GlobalSearchSourceFilter.All))
         assertEquals(0L, mounted.coordinator.state.generation)
 
         setText(mounted.scene, "all query")
         mounted.scene.render()
-        click(mounted.scene, "Search")
+        clickText(mounted.scene, "Search")
         withTimeout(2_000) { mounted.coordinator.states.first { it.generation == 1L && !it.isSearching } }
         assertEquals(1, pinnedCalls.get())
         assertEquals(1, unpinnedCalls.get())
         assertEquals(listOf("all query"), pinnedQueries)
         assertEquals(listOf("all query"), unpinnedQueries)
 
-        click(mounted.scene, pinnedLabel)
+        click(mounted.scene, tachiyomi.domain.source.service.GlobalSearchSourceFilter.PinnedOnly)
         withTimeout(2_000) { mounted.coordinator.states.first { it.generation == 2L && !it.isSearching } }
         mounted.scene.render()
-        assertTrue(selected(mounted.scene, pinnedLabel))
+        assertTrue(selected(mounted.scene, tachiyomi.domain.source.service.GlobalSearchSourceFilter.PinnedOnly))
 
         setText(mounted.scene, "pinned query")
         mounted.scene.render()
-        click(mounted.scene, "Search")
+        clickText(mounted.scene, "Search")
         withTimeout(2_000) { mounted.coordinator.states.first { it.generation == 3L && !it.isSearching } }
         assertEquals(2, pinnedCalls.get())
         assertEquals(1, unpinnedCalls.get(), "Pinned manual search must not request the unpinned source")
@@ -183,6 +179,7 @@ class GlobalSearchSourceFilterWiringTest {
             every { saveSourceMangaForDetails } returns mockk(relaxed = true)
             every { getManga } returns staticGetManga()
             every { sourceLoginSessionFactory } returns mockk(relaxed = true)
+            every { creatorDiscoverySourcePort } returns null
         }
         lateinit var coordinator: DesktopGlobalSearchCoordinator
         val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
@@ -222,11 +219,28 @@ class GlobalSearchSourceFilterWiringTest {
     }
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
     private fun nodes(scene: ImageComposeScene) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
-    private fun selected(scene: ImageComposeScene, label: String) = nodes(scene).any {
-        it.config.toString().contains(label) && it.config.contains(SemanticsProperties.Selected) && it.config[SemanticsProperties.Selected]
+    private fun selected(
+        scene: ImageComposeScene,
+        filter: tachiyomi.domain.source.service.GlobalSearchSourceFilter,
+    ) = nodes(scene).any {
+        it.config.contains(SemanticsProperties.TestTag) &&
+            it.config[SemanticsProperties.TestTag] == globalSearchSourceFilterTag(filter) &&
+            it.config.contains(SemanticsProperties.Selected) &&
+            it.config[SemanticsProperties.Selected]
     }
-    private fun click(scene: ImageComposeScene, label: String) {
-        val node = nodes(scene).first { it.config.toString().contains(label) && it.config.contains(SemanticsActions.OnClick) }
+    private fun click(scene: ImageComposeScene, filter: tachiyomi.domain.source.service.GlobalSearchSourceFilter) {
+        val node = nodes(scene).first {
+            it.config.contains(SemanticsProperties.TestTag) &&
+                it.config[SemanticsProperties.TestTag] == globalSearchSourceFilterTag(filter) &&
+                it.config.contains(SemanticsActions.OnClick)
+        }
+        assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
+    }
+
+    private fun clickText(scene: ImageComposeScene, label: String) {
+        val node = nodes(scene).first {
+            it.config.toString().contains(label) && it.config.contains(SemanticsActions.OnClick)
+        }
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
     }
 

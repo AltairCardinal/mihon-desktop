@@ -124,6 +124,7 @@ class GlobalSearchRecentHistoryWiringTest {
                     every { subscribe(any<String>(), any<Long>()) } returns flowOf(null)
                 }
                 every { sourceLoginSessionFactory } returns mockk(relaxed = true)
+                every { creatorDiscoverySourcePort } returns null
             }
         }
 

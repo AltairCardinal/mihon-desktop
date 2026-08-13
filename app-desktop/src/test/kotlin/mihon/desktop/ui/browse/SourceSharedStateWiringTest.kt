@@ -711,6 +711,7 @@ class SourceSharedStateWiringTest {
                     DesktopAuthenticatedSessionCommitter(cookieJar),
                     DesktopBrowserOpener { _, _ -> true },
                 )
+                every { creatorDiscoverySourcePort } returns null
             }
             var coordinator: DesktopGlobalSearchCoordinator? = null
             val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
@@ -826,6 +827,7 @@ class SourceSharedStateWiringTest {
                 AuthenticatedSessionCommitter { _, _ -> },
                 DesktopBrowserOpener { _, _ -> false },
             )
+            every { creatorDiscoverySourcePort } returns null
         }
         var coordinator: DesktopGlobalSearchCoordinator? = null
         val factory: (SourceMangaSearchService) -> DesktopGlobalSearchCoordinator = { service ->

@@ -86,6 +86,7 @@ class GlobalSearchResultProductionWiringTest {
                 every { saveSourceMangaForDetails } returns fixture.saver
                 every { getManga } returns fixture.getManga
                 every { sourceLoginSessionFactory } returns mockk(relaxed = true)
+                every { creatorDiscoverySourcePort } returns null
             }
             var navigator: Navigator? = null
             var resultMaterializer: SourceResultMaterializer? = null
@@ -184,6 +185,7 @@ class GlobalSearchResultProductionWiringTest {
                 every { saveSourceMangaForDetails } returns fixture.saver
                 every { getManga } returns fixture.getManga
                 every { sourceLoginSessionFactory } returns mockk(relaxed = true)
+                every { creatorDiscoverySourcePort } returns null
             }
             val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
             try {

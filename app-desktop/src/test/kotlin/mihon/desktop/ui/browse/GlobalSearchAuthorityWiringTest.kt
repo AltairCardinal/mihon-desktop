@@ -74,9 +74,10 @@ class GlobalSearchAuthorityWiringTest {
             }
             every { getManga } returns staticGetManga()
             every { sourceLoginSessionFactory } returns mockk(relaxed = true)
+            every { creatorDiscoverySourcePort } returns null
         }
         var coordinator: DesktopGlobalSearchCoordinator? = null
-        fun newScene(lifecycle: Job) = ImageComposeScene(900, 700, coroutineContext = coroutineContext + lifecycle) {}
+        fun newScene(lifecycle: Job) = ImageComposeScene(900, 1_200, coroutineContext = coroutineContext + lifecycle) {}
         var lifecycle = Job(coroutineContext[Job])
         var scene = newScene(lifecycle)
         suspend fun closeScene() {
@@ -127,8 +128,8 @@ class GlobalSearchAuthorityWiringTest {
             scene.render()
             val hasResults = MR.strings.has_results.localized()
             assertFalse(selected(scene, hasResults))
-            assertTrue(selected(scene, MR.strings.pinned_sources.localized()))
-            assertFalse(selected(scene, MR.strings.all.localized()))
+            assertTrue(sourceFilterSelected(scene, tachiyomi.domain.source.service.GlobalSearchSourceFilter.PinnedOnly))
+            assertFalse(sourceFilterSelected(scene, tachiyomi.domain.source.service.GlobalSearchSourceFilter.All))
             assertTrue(semantics(scene).contains("4 / 4"))
 
             click(scene, hasResults)
@@ -184,6 +185,16 @@ class GlobalSearchAuthorityWiringTest {
     private fun semantics(scene: ImageComposeScene) = nodes(scene).joinToString { it.config.toString() }
     private fun selected(scene: ImageComposeScene, label: String) = nodes(scene).any {
         it.config.toString().contains(label) && it.config.contains(SemanticsProperties.Selected) && it.config[SemanticsProperties.Selected]
+    }
+
+    private fun sourceFilterSelected(
+        scene: ImageComposeScene,
+        filter: tachiyomi.domain.source.service.GlobalSearchSourceFilter,
+    ) = nodes(scene).any {
+        it.config.contains(SemanticsProperties.TestTag) &&
+            it.config[SemanticsProperties.TestTag] == globalSearchSourceFilterTag(filter) &&
+            it.config.contains(SemanticsProperties.Selected) &&
+            it.config[SemanticsProperties.Selected]
     }
     private suspend fun awaitSelected(scene: ImageComposeScene, label: String) = withTimeout(2_000) {
         while (!selected(scene, label)) {

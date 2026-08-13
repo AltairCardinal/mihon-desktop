@@ -193,6 +193,7 @@ class GlobalSearchResultNavigationTest {
                 }
             }
             every { sourceLoginSessionFactory } returns mockk(relaxed = true)
+            every { creatorDiscoverySourcePort } returns null
         }
         var navigator: Navigator? = null
 
