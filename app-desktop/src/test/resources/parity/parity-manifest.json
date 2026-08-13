@@ -1217,7 +1217,7 @@
         {
           "path": "app/src/main/java/eu/kanade/domain/DomainModule.kt",
           "symbol": "override fun InjektRegistrar.registerInjectables",
-          "line": 125
+          "line": 130
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -3108,7 +3108,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
           "symbol": "class LibraryUpdateJob",
-          "line": 88
+          "line": 87
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -27685,7 +27685,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/SourcePreferencesScreen.kt",
           "symbol": "DesktopAndroidPreferenceAdapter.setupPreferenceScreen",
-          "line": 80
+          "line": 83
         }
       ],
       "FIXTURE": [
@@ -32952,7 +32952,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
           "symbol": "filterChaptersForDownload.await(manga, newChapters)",
-          "line": 294
+          "line": 292
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -34216,7 +34216,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
           "symbol": "override suspend fun doWork",
-          "line": 107
+          "line": 105
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -34231,7 +34231,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt",
           "symbol": "fun runNow",
-          "line": 83
+          "line": 80
         }
       ],
       "FIXTURE": [
@@ -35662,7 +35662,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/updates/UpdatesScreenModel.kt",
           "symbol": "getUpdates.subscribe(",
-          "line": 91
+          "line": 95
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -35677,7 +35677,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/updates/UpdatesScreenModel.kt",
           "symbol": "rawItems = getUpdates.subscribe(",
-          "line": 74
+          "line": 95
         }
       ],
       "FIXTURE": [
@@ -45830,7 +45830,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/updates/UpdatesScreenModel.kt",
           "symbol": "private val getUpdates: GetUpdates",
-          "line": 51
+          "line": 71
         }
       ],
       "FIXTURE": [
@@ -46924,7 +46924,7 @@
           "kind": "SHARED",
           "path": "i18n/src/commonMain/moko-resources/base/strings.xml",
           "symbol": "pref_app_language",
-          "line": 256
+          "line": 257
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -54127,12 +54127,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.initialize",
-          "line": 224
+          "line": 227
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.startApp",
-          "line": 226
+          "line": 229
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt",
