@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
+import tachiyomi.domain.creator.interactor.CreatorArchive
 import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
@@ -98,6 +99,7 @@ class AuthorsProductionWiringTest {
             every { getCreatorDetails } returns GetCreatorDetails(creatorRepository)
             every { this@mockk.creatorRepository } returns creatorRepository
             every { creatorArchiveRepository } returns archiveRepository
+            every { creatorArchive } returns CreatorArchive(creatorRepository, archiveRepository)
             every { saveSourceMangaForDetails } returns mockk {
                 coEvery { awaitListedForDetails(any(), 10L) } returns ListedMangaForDetails(saved, false)
             }
@@ -219,6 +221,7 @@ class AuthorsProductionWiringTest {
             every { sourceManager } returns mockk(relaxed = true)
             every { saveSourceMangaForDetails } returns mockk()
             every { creatorArchiveRepository } returns archiveRepository
+            every { creatorArchive } returns CreatorArchive(creatorRepository, archiveRepository)
             every { manageCreatorIdentity } returns ManageCreatorIdentity(archiveRepository)
             every { creatorDiscoveryScheduler } returns null
         }
@@ -344,6 +347,7 @@ class AuthorsProductionWiringTest {
             every { sourceManager } returns mockk()
             every { saveSourceMangaForDetails } returns mockk()
             every { creatorArchiveRepository } returns archiveRepository
+            every { creatorArchive } returns CreatorArchive(creatorRepository, archiveRepository)
             every { manageCreatorIdentity } returns ManageCreatorIdentity(archiveRepository)
             every { creatorDiscoveryScheduler } returns scheduler
         }
