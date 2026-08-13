@@ -204,6 +204,7 @@ class DesktopSettingsContentAccessibilityTest {
             every { this@mockk.readerPreferences } returns readerPreferences
             every { downloadPreferences } returns DesktopDownloadPreferences(store)
             every { getCategories } returns categories
+            every { creatorDiscoveryScheduler } returns null
             every { backupRestoreScreenModelFactory } returns factory
             every { backupFilePicker } returns mockk<DesktopBackupFilePicker>(relaxed = true)
         }

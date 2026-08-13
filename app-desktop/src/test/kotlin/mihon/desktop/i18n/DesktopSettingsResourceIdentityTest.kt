@@ -1048,6 +1048,7 @@ class DesktopSettingsResourceIdentityTest {
             every { readerPreferences } returns readerPrefs
             every { downloadPreferences } returns downloadPrefs
             every { getCategories } returns categoryLoader
+            every { creatorDiscoveryScheduler } returns null
         }
         val previousLocale = Locale.getDefault()
         try {

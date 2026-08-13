@@ -522,6 +522,7 @@ class DesktopSettingsSearchWiringTest {
             every { downloadQueuePort } returns downloads
             every { networkHelper } returns network
             every { networkRoutingPort } returns network
+            every { creatorDiscoveryScheduler } returns null
         }
         CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies, content = content)
     }
