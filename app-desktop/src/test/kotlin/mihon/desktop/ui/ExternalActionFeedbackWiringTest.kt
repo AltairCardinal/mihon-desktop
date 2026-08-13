@@ -4,6 +4,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsNode
+import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first
@@ -131,7 +132,7 @@ class ExternalActionFeedbackWiringTest {
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
                     ProvideLibraryNavigationHost(mockk<LibraryNavigationHost>(relaxed = true)) {
-                        DesktopTheme { HomeScreen().Content() }
+                        DesktopTheme { Navigator(HomeScreen()) }
                     }
                 }
             }
@@ -164,7 +165,7 @@ class ExternalActionFeedbackWiringTest {
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
                     ProvideLibraryNavigationHost(mockk<LibraryNavigationHost>(relaxed = true)) {
-                        DesktopTheme { HomeScreen().Content() }
+                        DesktopTheme { Navigator(HomeScreen()) }
                     }
                 }
             }
@@ -217,7 +218,7 @@ class ExternalActionFeedbackWiringTest {
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
                     ProvideLibraryNavigationHost(mockk<LibraryNavigationHost>(relaxed = true)) {
-                        DesktopTheme { HomeScreen().Content() }
+                        DesktopTheme { Navigator(HomeScreen()) }
                     }
                 }
             }
