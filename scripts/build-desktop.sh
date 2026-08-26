@@ -7,6 +7,7 @@
 #   ./scripts/build-desktop.sh stage       # bump STAGE, reset FEATURE/BUILD, then build
 #   ./scripts/build-desktop.sh msi         # bump BUILD, build MSI, then rebuild unpackaged app
 #   ./scripts/build-desktop.sh evidence    # build a committed version allocation and seal provenance
+#   ./scripts/build-desktop.sh build-only  # bump BUILD and build after equivalent tests already passed
 #   ./scripts/build-desktop.sh test-only   # run tests only where supported
 #   ./scripts/build-desktop.sh full-tests  # run full tests only where supported
 
@@ -34,7 +35,7 @@ replace_version_constant() {
 
 print_usage_and_exit() {
   echo "Unknown mode: $MODE"
-  echo "Use: hash, feature, stage, msi, evidence, test-only, or full-tests."
+  echo "Use: hash, feature, stage, msi, evidence, build-only, test-only, or full-tests."
   exit 1
 }
 
@@ -59,7 +60,7 @@ case "$MODE" in
     replace_version_constant FEATURE "$FEATURE"
     replace_version_constant BUILD "$BUILD"
     ;;
-  hash|msi)
+  hash|msi|build-only)
     BUILD=$((BUILD + 1))
     echo "Build bump: 0.$STAGE.$FEATURE.$BUILD"
     replace_version_constant BUILD "$BUILD"
@@ -105,11 +106,15 @@ run_macos() {
       --repo "$REPO_ROOT" --require-version-allocation --output "$PROVENANCE_SOURCE"
   fi
   echo ""
-  echo "Running desktop JVM tests..."
-  if [[ "$MODE" == "full-tests" ]]; then
-    ./gradlew :app-desktop:jvmTest -PincludeIntegrationTests=true
+  if [[ "$MODE" != "build-only" ]]; then
+    echo "Running desktop JVM tests..."
+    if [[ "$MODE" == "full-tests" ]]; then
+      ./gradlew :app-desktop:jvmTest -PincludeIntegrationTests=true
+    else
+      ./gradlew :app-desktop:jvmTest
+    fi
   else
-    ./gradlew :app-desktop:jvmTest
+    echo "Skipping desktop JVM tests because build-only was explicitly requested."
   fi
 
   if [[ "$MODE" == "test-only" || "$MODE" == "full-tests" ]]; then
@@ -173,6 +178,9 @@ run_windows() {
       ;;
     evidence)
       ps_args+=(-VersionAllocated -EvidenceProvenance -ExpectedVersion "$FULL_VERSION")
+      ;;
+    build-only)
+      ps_args+=(-SkipTests -VersionAllocated -ExpectedVersion "$FULL_VERSION")
       ;;
     hash|feature|stage)
       ps_args+=(-VersionAllocated -ExpectedVersion "$FULL_VERSION")

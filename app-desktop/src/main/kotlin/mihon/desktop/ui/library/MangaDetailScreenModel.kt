@@ -43,6 +43,7 @@ import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.manga.interactor.LibraryMembershipResult
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.source.service.SourceManager
 import mihon.domain.task.TaskState
 
@@ -62,6 +63,7 @@ class MangaDetailScreenModel(
     private val getExcludedScanlators: GetExcludedScanlators? = null,
     private val setExcludedScanlators: SetExcludedScanlators? = null,
     private val getCategories: GetCategories? = null,
+    private val libraryPreferences: LibraryPreferences? = null,
     private val updateChapter: UpdateChapter? = null,
     private val setChapterReadStatus: SetChapterReadStatus? = null,
     private val updateManga: UpdateManga? = null,
@@ -284,6 +286,25 @@ class MangaDetailScreenModel(
             )
     }
 
+    internal suspend fun addToLibraryUsingDefault(
+        manga: Manga,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): MangaDetailAddToLibraryResult {
+        require(!manga.favorite) { "Manga is already in the library" }
+        val categories = categories()
+        val defaultCategoryId = libraryPreferences?.defaultCategory()?.get()?.toLong() ?: -1L
+        val defaultCategory = categories.find { it.id == defaultCategoryId }
+        val categoryIds = when {
+            defaultCategory != null -> listOf(defaultCategory.id)
+            defaultCategoryId == Category.UNCATEGORIZED_ID || categories.isEmpty() -> emptyList()
+            else -> return MangaDetailAddToLibraryResult.CHOOSE_CATEGORY
+        }
+        return when (toggleLibrary(manga, categoryIds, nowMillis)) {
+            is LibraryMembershipResult.Success -> MangaDetailAddToLibraryResult.ADDED
+            is LibraryMembershipResult.Failure -> MangaDetailAddToLibraryResult.FAILED
+        }
+    }
+
     suspend fun chooseCustomCover() {
         _state.update { it.copy(coverTask = TaskState.Running(), coverFeedback = null) }
         val result = requireNotNull(coverAdapter) { "Cover adapter is required" }.chooseAndUpdate(mangaId)
@@ -430,7 +451,10 @@ class MangaDetailScreenModel(
     }
 
     suspend fun categories(): List<Category> {
-        return requireNotNull(getCategories) { "GetCategories is required" }.await().sortedBy { it.order }
+        return requireNotNull(getCategories) { "GetCategories is required" }
+            .await()
+            .filterNot(Category::isSystemCategory)
+            .sortedBy { it.order }
     }
 
     suspend fun categoryIdsForManga(mangaId: Long): Set<Long> {
@@ -503,6 +527,12 @@ class MangaDetailScreenModel(
     suspend fun createDistinctCreatorIdentity(manga: Manga, mention: CreatorMention): Long {
         return requireNotNull(manageCreatorIdentity) { "ManageCreatorIdentity is required" }.createDistinct(manga, mention)
     }
+}
+
+internal enum class MangaDetailAddToLibraryResult {
+    ADDED,
+    CHOOSE_CATEGORY,
+    FAILED,
 }
 
 data class MangaDetailReaderRequest(

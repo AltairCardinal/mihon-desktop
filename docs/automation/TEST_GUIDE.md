@@ -14,6 +14,16 @@
 ./scripts/build-desktop.sh
 ```
 
+如果当前未提交 diff 已经通过等价的完整 Desktop JVM 测试，只需避免收口构建重复测试时，必须显式使用：
+
+```bash
+./scripts/build-desktop.sh build-only
+```
+
+`build-only` 仍会分配新的 BUILD 版本、构建正式未打包应用、执行生产扩展安装与运行版本验收，
+但跳过脚本内的 `:app-desktop:jvmTest`。默认、`feature`、`stage`、`msi` 和 `evidence` 模式仍会运行测试；
+没有同一 diff 的完整测试证据时不得使用 `build-only`。
+
 Windows 默认先在 Gradle 临时目录生成未打包应用并完成运行验收，然后将完整应用发布到持久目录；
 不会生成 MSI。构建成功后可直接运行、并应写入完成报告的最终 EXE 为：
 

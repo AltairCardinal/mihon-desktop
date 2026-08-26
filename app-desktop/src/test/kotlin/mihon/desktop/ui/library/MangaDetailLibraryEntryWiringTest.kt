@@ -11,6 +11,8 @@ import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -28,6 +30,7 @@ import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.GetAvailableScanlators
 import mihon.desktop.domain.GetExcludedScanlators
 import mihon.desktop.domain.SaveSourceMangaForDetails
+import mihon.desktop.domain.fakes.FakeCatalogueSource
 import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
@@ -54,6 +57,73 @@ import tachiyomi.i18n.MR
 
 @OptIn(ExperimentalComposeUiApi::class)
 class MangaDetailLibraryEntryWiringTest {
+
+    @Test
+    fun `real MangaDetailScreen automatically refreshes an initially empty chapter list`() = runBlocking {
+        val mangaRepository = FakeMangaRepository()
+        val manga = Manga.create().copy(
+            id = 45L,
+            source = 42L,
+            url = "/auto-refresh",
+            title = "Auto refresh fixture",
+            initialized = true,
+        )
+        mangaRepository.seed(manga)
+        val chapterRepository = FakeChapterRepository()
+        val details = SManga.create().apply {
+            url = manga.url
+            title = manga.title
+            initialized = true
+        }
+        val source = FakeCatalogueSource(
+            details = details,
+            chapters = listOf(
+                SChapter.create().apply {
+                    url = "/auto-refresh/chapter-1"
+                    name = "Auto-loaded chapter"
+                },
+            ),
+        )
+        val sourceManager = SingleSourceManager(source)
+        val saveSourceMangaForDetails = SaveSourceMangaForDetails(
+            NetworkToLocalManga(mangaRepository),
+            mangaRepository,
+            chapterRepository,
+        )
+        val model = MangaDetailScreenModel(
+            mangaId = manga.id,
+            getMangaWithChapters = GetMangaWithChapters(mangaRepository, chapterRepository),
+            sourceManager = sourceManager,
+            getAvailableScanlators = GetAvailableScanlators(chapterRepository),
+            getExcludedScanlators = mockk {
+                every { subscribe(manga.id) } returns flowOf(emptySet())
+            },
+            getCategories = GetCategories(FakeCategoryRepository()),
+            downloadQueue = MutableStateFlow(emptyList()),
+        )
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { appPreferences } returns DesktopAppPreferences(DesktopPreferenceStore())
+            every { this@mockk.saveSourceMangaForDetails } returns saveSourceMangaForDetails
+        }
+        val scene = ImageComposeScene(1_200, 900, coroutineContext = coroutineContext) {}
+
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ProvideMangaDetailScreenModelFactory(factory = { model }) {
+                        MaterialTheme {
+                            Navigator(MangaDetailScreen(manga.id)) { CurrentScreen() }
+                        }
+                    }
+                }
+            }
+
+            renderUntil(scene) { chapterRepository.addedChapters.any { it.name == "Auto-loaded chapter" } }
+            assertEquals(1, chapterRepository.addedChapters.size)
+        } finally {
+            scene.close()
+        }
+    }
 
     @Test
     fun `real MangaDetailScreen creator chip opens ambiguity chooser binds selection and navigates`() = runBlocking {
@@ -200,6 +270,65 @@ class MangaDetailLibraryEntryWiringTest {
     }
 
     @Test
+    fun `real MangaDetailScreen adds directly when there are no user categories`() = runBlocking {
+        val mangaRepository = FakeMangaRepository()
+        val manga = Manga.create().copy(id = 46L, title = "No categories fixture", favorite = false)
+        mangaRepository.seed(manga)
+        val chapterRepository = FakeChapterRepository()
+        val model = MangaDetailScreenModel(
+            mangaId = manga.id,
+            getMangaWithChapters = GetMangaWithChapters(mangaRepository, chapterRepository),
+            sourceManager = EmptySourceManager,
+            getAvailableScanlators = GetAvailableScanlators(chapterRepository),
+            getExcludedScanlators = mockk {
+                every { subscribe(manga.id) } returns flowOf(emptySet())
+            },
+            getCategories = GetCategories(FakeCategoryRepository()),
+            downloadQueue = MutableStateFlow(emptyList()),
+            updateLibraryMembership = UpdateLibraryMembership(mangaRepository),
+        )
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { appPreferences } returns DesktopAppPreferences(DesktopPreferenceStore())
+            every { saveSourceMangaForDetails } returns SaveSourceMangaForDetails(
+                NetworkToLocalManga(mangaRepository),
+                mangaRepository,
+                chapterRepository,
+            )
+        }
+        val scene = ImageComposeScene(1_200, 900, coroutineContext = coroutineContext) {}
+
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ProvideMangaDetailScreenModelFactory(factory = { model }) {
+                        MaterialTheme {
+                            Navigator(MangaDetailScreen(manga.id)) { CurrentScreen() }
+                        }
+                    }
+                }
+            }
+            val addToLibrary = MR.strings.add_to_library.localized()
+            renderUntil(scene) { nodes(scene).any { it.hasText(addToLibrary) } }
+
+            click(scene, addToLibrary)
+
+            withTimeout(5_000) {
+                while (!mangaRepository.get(manga.id)!!.favorite) {
+                    scene.render()
+                    delay(10)
+                }
+            }
+            assertTrue(
+                nodes(scene).none {
+                    it.hasText(MR.strings.desktop_ui_no_categories_create_categories_from_library_first.localized())
+                },
+            )
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
     fun `add to library dialog passes selected category ids through the production caller`() = runBlocking {
         val mangaRepository = FakeMangaRepository()
         val manga = Manga.create().copy(id = 42L, title = "Fixture manga", favorite = false)
@@ -284,6 +413,23 @@ class MangaDetailLibraryEntryWiringTest {
         override fun getOnlineSources(): List<HttpSource> = emptyList()
 
         override fun getCatalogueSources(): List<CatalogueSource> = emptyList()
+
+        override fun getStubSources(): List<StubSource> = emptyList()
+    }
+
+    private class SingleSourceManager(
+        private val source: CatalogueSource,
+    ) : SourceManager {
+        override val isInitialized: StateFlow<Boolean> = MutableStateFlow(true)
+        override val catalogueSources: Flow<List<CatalogueSource>> = flowOf(listOf(source))
+
+        override fun get(sourceKey: Long): Source? = source.takeIf { it.id == sourceKey }
+
+        override fun getOrStub(sourceKey: Long): Source = get(sourceKey) ?: error("No source for $sourceKey")
+
+        override fun getOnlineSources(): List<HttpSource> = emptyList()
+
+        override fun getCatalogueSources(): List<CatalogueSource> = listOf(source)
 
         override fun getStubSources(): List<StubSource> = emptyList()
     }

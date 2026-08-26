@@ -17,9 +17,11 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
 import tachiyomi.domain.chapter.model.ChapterUpdate
@@ -32,6 +34,7 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.manga.interactor.UpdateManga
 import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
 import mihon.domain.task.TaskState
 import mihon.domain.error.AppError
@@ -138,6 +141,22 @@ class MangaDetailScreenModelTest {
 
         assertEquals(listOf(2L, 1L), model.categories().map { it.id })
         assertEquals(setOf(1L), model.categoryIdsForManga(42L))
+    }
+
+    @Test
+    fun `category choices exclude the unnamed system default like Android Mihon`() = runTest {
+        val repository = mockk<CategoryRepository> {
+            coEvery { getAll() } returns listOf(
+                Category(id = Category.UNCATEGORIZED_ID, name = "", order = 0L, flags = 0L),
+                Category(id = 7L, name = "Reading", order = 1L, flags = 0L),
+            )
+        }
+        val model = MangaDetailScreenModel(
+            mangaId = 42L,
+            getCategories = GetCategories(repository),
+        )
+
+        assertEquals(listOf(7L), model.categories().map(Category::id))
     }
 
     @Test
@@ -645,6 +664,40 @@ class MangaDetailScreenModelTest {
         assertTrue(mangaRepository.get(1L)!!.favorite)
         assertEquals(123L, mangaRepository.get(1L)!!.dateAdded)
         assertEquals(listOf(7L, 9L), mangaRepository.getMangaCategoryIds(1L))
+    }
+
+    @Test
+    fun `add to library uses the configured default category without asking`() = runTest {
+        val mangaRepository = FakeMangaRepository()
+        val manga = createFakeManga(id = 1L).copy(favorite = false, dateAdded = 0L)
+        mangaRepository.seed(manga)
+        val categoryRepository = FakeCategoryRepository().apply {
+            insert(Category(id = 7L, name = "Default shelf", order = 0L, flags = 0L))
+            insert(Category(id = 9L, name = "Other shelf", order = 1L, flags = 0L))
+        }
+        val libraryPreferences = LibraryPreferences(
+            InMemoryPreferenceStore(
+                sequenceOf(
+                    InMemoryPreferenceStore.InMemoryPreference(
+                        LibraryPreferences.DEFAULT_CATEGORY_PREF_KEY,
+                        7,
+                        -1,
+                    ),
+                ),
+            ),
+        )
+        val model = MangaDetailScreenModel(
+            mangaId = manga.id,
+            getCategories = GetCategories(categoryRepository),
+            libraryPreferences = libraryPreferences,
+            updateLibraryMembership = UpdateLibraryMembership(mangaRepository),
+        )
+
+        val result = model.addToLibraryUsingDefault(manga, nowMillis = 123L)
+
+        assertEquals(MangaDetailAddToLibraryResult.ADDED, result)
+        assertTrue(mangaRepository.get(manga.id)!!.favorite)
+        assertEquals(listOf(7L), mangaRepository.getMangaCategoryIds(manga.id))
     }
 
     @Test

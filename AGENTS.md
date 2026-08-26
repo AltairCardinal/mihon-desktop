@@ -133,7 +133,11 @@ Android 与 Desktop 预期一致的行为必须使用共享契约测试覆盖；
 ./scripts/build-desktop.sh feature   # FEATURE +1，BUILD 重置为 1
 ./scripts/build-desktop.sh stage     # STAGE +1，FEATURE 重置为 0，BUILD 重置为 1
 ./scripts/build-desktop.sh msi       # 显式生成 MSI，最后重新生成并验收未打包应用
+./scripts/build-desktop.sh build-only # 同一未提交 diff 已通过等价全量测试时，仅构建与运行验收
 ```
+
+`build-only` 只用于当前未提交 diff 已有等价完整 Desktop JVM 测试证据、需要避免收口构建重复测试的情况；
+它不得替代批次或阶段要求的全量测试。该模式仍须完成版本分配、正式产物构建、production runtime 验收与最终产物发布。
 
 Windows 构建在运行验收后，会把完整未打包应用发布到
 `app-desktop/artifacts/windows/Mihon-Desktop-<完整版本>-unpacked/`。构建日志中的

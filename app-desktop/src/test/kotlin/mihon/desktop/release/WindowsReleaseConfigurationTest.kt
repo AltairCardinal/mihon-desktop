@@ -217,6 +217,26 @@ class WindowsReleaseConfigurationTest {
     }
 
     @Test
+    fun `desktop build script exposes explicit build-only mode without weakening default validation`() {
+        val text = Files.readString(repoRoot.resolve("scripts/build-desktop.sh"))
+
+        assertTrue(text.contains("build-only"), "Unified script must expose an explicit build-only mode")
+        assertTrue(
+            text.contains("build-only)") && text.contains("-SkipTests"),
+            "Windows build-only mode must explicitly forward SkipTests",
+        )
+        assertTrue(
+            text.contains("if [[ \"${'$'}MODE\" != \"build-only\" ]]") &&
+                text.contains("./gradlew :app-desktop:jvmTest"),
+            "macOS must skip tests only in build-only mode",
+        )
+        assertTrue(
+            text.contains("hash|msi|build-only)"),
+            "Build-only must allocate a normal per-build version",
+        )
+    }
+
+    @Test
     fun `desktop build script allocates per-build version and exposes explicit MSI mode`() {
         val text = Files.readString(repoRoot.resolve("scripts/build-desktop.sh"))
 

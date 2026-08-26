@@ -235,6 +235,16 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 listedManga = currentManga.toSourceMangaForRefresh(),
             )
         }
+        LaunchedEffect(manga?.id) {
+            val currentManga = manga ?: return@LaunchedEffect
+            if (model.state.value.chapters.isNotEmpty()) return@LaunchedEffect
+            if (sourceRefreshState is SourceMangaRefreshState.Loading) return@LaunchedEffect
+            val currentSource = model.sourceFor(currentManga) ?: return@LaunchedEffect
+            dependencies.saveSourceMangaForDetails.refreshFromSource(
+                source = currentSource,
+                listedManga = currentManga.toSourceMangaForRefresh(),
+            )
+        }
         val mangaUrl = remember(manga?.url, source) {
             val m = manga
             val httpSource = source as? eu.kanade.tachiyomi.source.online.HttpSource
@@ -908,7 +918,14 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                     model.toggleLibrary(current)
                                 }
                             } else {
-                                categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY
+                                scope.launch {
+                                    if (
+                                        model.addToLibraryUsingDefault(current) ==
+                                        MangaDetailAddToLibraryResult.CHOOSE_CATEGORY
+                                    ) {
+                                        categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY
+                                    }
+                                }
                             }
                         },
                         onEditCategories = {

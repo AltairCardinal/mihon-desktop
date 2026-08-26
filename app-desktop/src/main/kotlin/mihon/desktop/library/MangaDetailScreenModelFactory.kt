@@ -21,6 +21,7 @@ import tachiyomi.domain.manga.interactor.GetMangaWithChapters
 import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
 import tachiyomi.domain.manga.interactor.UpdateManga
 import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -39,6 +40,7 @@ object MangaDetailScreenModelFactory {
             getExcludedScanlators = Injekt.get<GetExcludedScanlators>(),
             setExcludedScanlators = Injekt.get<SetExcludedScanlators>(),
             getCategories = Injekt.get<GetCategories>(),
+            libraryPreferences = Injekt.get<LibraryPreferences>(),
             updateChapter = Injekt.get<UpdateChapter>(),
             setChapterReadStatus = Injekt.get<SetChapterReadStatus>(),
             updateManga = Injekt.get<UpdateManga>(),
