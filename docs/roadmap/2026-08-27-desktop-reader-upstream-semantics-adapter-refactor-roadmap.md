@@ -1,23 +1,23 @@
 ---
 parent-plan: 2026-06-30-mihon-desktop-refactor-roadmap.md
-status: proposed
+status: in_progress
 ---
 
 # Mihon Desktop 阅读器原版语义复用与平台适配层收口 Roadmap
 
 - 制定日期：2026-08-27
-- 状态：`PROPOSED / NOT_ACTIVE`（只完成计划制定；未修改父路线唯一活动指针，未开始产品实现）
+- 状态：`IN_PROGRESS`（2026-08-27 已成为父路线唯一 `active-child-plan`）
 - 上级路线：[`2026-06-30-mihon-desktop-refactor-roadmap.md`](./2026-06-30-mihon-desktop-refactor-roadmap.md)
-- 当前唯一活动计划：[`2026-08-11-author-archive-discovery-corrective-roadmap.md`](./2026-08-11-author-archive-discovery-corrective-roadmap.md)
+- 前一活动计划：[`2026-08-11-author-archive-discovery-corrective-roadmap.md`](./2026-08-11-author-archive-discovery-corrective-roadmap.md)（已在 `AA7-02 / AA7-03` legacy 清理门禁前安全暂停）
 - 历史 Reader 计划：[`2026-08-02-reader-core-migration-and-presentation-roadmap.md`](./2026-08-02-reader-core-migration-and-presentation-roadmap.md)
 - 历史纠正计划：[`2026-08-05-reader-non-upstream-capability-corrective-roadmap.md`](./2026-08-05-reader-non-upstream-capability-corrective-roadmap.md)
 - 固定原版权威：`main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8`
 - 本次上游跟踪点：`upstream/main@deb7b33118616d37536f1e5ef2ef85c8b5db0799`（2026-08-26）
-- 本次只读审计基线：`main@8d3a92d91`
+- 激活基线：`main@b97487d0bb47b310b86a3d44cacf326ddd1eba34`
 - 机器状态权威：[`parity-manifest.json`](../../app-desktop/src/test/resources/parity/parity-manifest.json)；本文不创建第二份 capability 状态源
-- 当前进度：未激活；激活后从第 10 节第一个未勾选顶层任务推导，不另设 `active-task`
+- 当前进度：从第 10 节第一个未勾选顶层任务推导，不另设 `active-task`
 
-本文只是一份可执行计划，不宣称任何 Reader bug 已修复，也不把现有 capability 状态改写为完成或失败。开始施工前，必须先完成第 2 节的原子激活流程；在此之前不得让本文与当前作者归档计划并行修改 shared domain/data、Desktop DI、Test Mode、manifest 或发布脚本。
+本文于 2026-08-27 原子激活：作者归档计划在 `AA7-02 / AA7-03` legacy 观察期与清理门禁前记录安全停止点并改为 `PAUSED`，父路线唯一 `active-child-plan` 切换到本文，本文 frontmatter/正文同步改为 `IN_PROGRESS`。激活前重新 fetch 的 `upstream/main` 仍为 `deb7b33118616d37536f1e5ef2ef85c8b5db0799`，相对本文审计跟踪点没有 Reader 路径漂移。当前工作树中与本文无关的改动不属于实现证据，也不得被回滚或纳入后续功能提交。
 
 ## 1. 执行裁决与最终目标
 
@@ -48,15 +48,14 @@ status: proposed
 
 ## 2. 计划状态、激活与有限 supersede
 
-### 2.1 当前不激活的原因
+### 2.1 激活前的冲突与当前裁决
 
-父路线当前唯一 `active-child-plan` 是作者归档纠正计划，且该计划会修改 shared domain/data、Desktop UI/DI、Test Mode 和 manifest。Reader 施工与其并行会产生共享可变状态和完成权威冲突。因此本文保持 `PROPOSED / NOT_ACTIVE`，本次提交只新增本文，不修改：
+激活前父路线唯一 `active-child-plan` 是作者归档纠正计划，且该计划会修改 shared domain/data、Desktop UI/DI、Test Mode 和 manifest。Reader 施工与其并行会产生共享可变状态和完成权威冲突。因此 2026-08-27 已在作者归档计划记录 `AA7-02 / AA7-03` 安全停止点，并原子切换到本文；施工期间不得并行恢复作者归档或非 Reader 计划。
 
-- 父路线 `active-child-plan`；
-- 当前作者归档计划状态；
-- 暂停中的非 Reader 计划状态；
-- parity manifest capability 状态；
-- Reader production、测试或构建版本。
+- 父路线现在只指向本文；
+- 作者归档计划与非 Reader 计划保持 `PAUSED`；
+- Reader capability 的既有大范围 `VERIFIED` 状态不被粗暴清空，只精确 reopen RUA-00 已确认失真的单一 decode、decoded-budget 和 scheduler/prefetch evidence slice；
+- 本次激活本身不宣称 Reader production bug 已修复，也不分配新的构建版本。
 
 ### 2.2 原子激活流程
 
@@ -70,6 +69,8 @@ status: proposed
 6. 记录激活时的 Fork commit、固定原版权威和最新 `upstream/main` 跟踪点；若上游 Reader 语义有新变化，先做 provenance 审查再开始 RED。
 
 不得仅把本文状态改成 `IN_PROGRESS` 而保留父路线指向其他计划，也不得让两个计划同时宣称 active。
+
+上述流程已于 2026-08-27 执行；后续恢复其他计划时必须先为本文记录安全停止点，再反向原子切换，不得只修改父路线链接。
 
 ### 2.3 对历史完成结论的有限纠正
 

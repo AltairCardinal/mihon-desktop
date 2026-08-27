@@ -485,6 +485,40 @@ class ReaderFixedMainAuthorityTest {
     }
 
     @Test
+    fun `RUA00 precisely reopens contradicted Desktop reader evidence slices`() {
+        val items = Json.parseToJsonElement(Files.readString(manifestPath)).jsonArray
+            .associateBy { it.jsonObject.getValue("id").jsonPrimitive.content.toInt() }
+        val expectedReopenedClaims =
+            mapOf(
+                9 to setOf("DESKTOP_SINGLE_DECODE_OWNER"),
+                44 to setOf("DESKTOP_SINGLE_DECODE_OWNER"),
+                45 to
+                    setOf(
+                        "DESKTOP_SINGLE_SCHEDULER_OWNER",
+                        "DESKTOP_FIRST_FRAME_CACHE_GATE",
+                        "DESKTOP_NEXT_CHAPTER_PREFETCH_DEFAULT",
+                    ),
+            )
+        val reopenedItems = items.filterValues { "readerUpstreamAdapterRefactor" in it.jsonObject }
+
+        assertEquals(expectedReopenedClaims.keys, reopenedItems.keys)
+        expectedReopenedClaims.forEach { (id, expectedClaims) ->
+            val item = items.getValue(id).jsonObject
+            val refactor = item.getValue("readerUpstreamAdapterRefactor").jsonObject
+            assertEquals("VERIFIED", item.requiredText("status"), "ID $id broad capability remains verified")
+            assertEquals("RUA-00", refactor.requiredText("task"), "ID $id corrective owner")
+            assertEquals("IN_PROGRESS", refactor.requiredText("status"), "ID $id corrective slice state")
+            assertEquals(
+                expectedClaims,
+                refactor.getValue("reopenedClaims").jsonArray.mapTo(mutableSetOf()) { it.jsonPrimitive.content },
+                "ID $id reopened claims",
+            )
+            assertTrue(refactor.getValue("preservedClaims").jsonArray.isNotEmpty(), "ID $id preserved claims")
+            assertTrue(refactor.requiredText("reason").isNotBlank(), "ID $id corrective reason")
+        }
+    }
+
+    @Test
     fun `RD02 records bounded encoded next chapter prefetch as a Desktop policy`() {
         val fixture = Json.parseToJsonElement(Files.readString(fixturePath)).jsonObject
         val deviation = fixture.getValue("deviations").jsonArray

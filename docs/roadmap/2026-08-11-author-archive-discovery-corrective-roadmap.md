@@ -1,12 +1,12 @@
 ---
 parent-plan: 2026-06-30-mihon-desktop-refactor-roadmap.md
-status: in_progress
+status: paused
 ---
 
 # 作者作品聚合、新作提醒与语言证据闭环 Roadmap
 
 - 制定日期：2026-08-11
-- 状态：`IN_PROGRESS`（父路线当前唯一 `active-child-plan`）
+- 状态：`PAUSED`（2026-08-27 为 Reader 原版语义与平台适配层收口计划让出父路线唯一 `active-child-plan`）
 - 产品规格：[`author-archive-discovery-plan.md`](../author-archive-discovery-plan.md)
 - 审计基线：`main@024212ac6`（2026-08-11，只读审计）
 - 上级路线：[`2026-06-30-mihon-desktop-refactor-roadmap.md`](./2026-06-30-mihon-desktop-refactor-roadmap.md)
@@ -16,7 +16,7 @@ status: in_progress
 
 本文把 2026-08-11 审计确认的“可运行原型”推进到产品规格定义的完整闭环。产品语义、用户承诺和非目标仍以产品规格为准；本文是唯一的纠偏施工顺序与任务状态来源。产品规格中的“阶段 1–6”不再表示实现进度，也不得用于宣称功能完成。
 
-本文于 2026-08-11 原子激活：非 Reader 核心计划在 `NR0-01.F3（TODO，尚未开始）` 前记录安全停止点并改为 `PAUSED`，父路线唯一 `active-child-plan` 切换到本文，本文 frontmatter/正文同步改为 `IN_PROGRESS`。恢复非 Reader 计划时必须反向执行同一套唯一活动计划切换。当前工作树中与本计划无关的改动不属于实现证据，也不得被回滚或纳入后续功能提交。
+本文于 2026-08-11 原子激活：非 Reader 核心计划在 `NR0-01.F3（TODO，尚未开始）` 前记录安全停止点并改为 `PAUSED`，父路线唯一 `active-child-plan` 切换到本文，本文 frontmatter/正文同步改为 `IN_PROGRESS`。2026-08-27 本文在 `AA7-02 / AA7-03` 的 legacy 观察期与清理门禁前安全暂停：Windows/macOS/Android 产品与发布候选证据保持有效，field107 legacy 物理表和只读 bridge 尚未删除，清理后最终矩阵尚未运行。父路线活动指针切换到 Reader 原版语义计划；恢复本文时必须反向执行同一套唯一活动计划切换，并从 `AA7-02` 的观察期核验、legacy 物理清理与 `AA7-03` 清理后复验继续。当前工作树中与本文无关的改动不属于实现证据，也不得被回滚或纳入后续功能提交。
 
 ## 1. 执行结论与最终完成定义
 
@@ -868,4 +868,4 @@ AA2-03 + AA3-03 + AA4-02 + AA5-02 + AA6-02 ────────────�
 | 2026-08-12 | `AA5-01 / Windows checkpoint` | `TODO → IN_PROGRESS（shared/data 已验收）` | 非语言标签、非法 BCP-47、纯 Han、Kana、Hangul、alias、冲突、manual override/undo RED 已转绿 | typed assertion/projector 保留 UNKNOWN/CONFLICT；人工值抵抗重扫并可撤销；field 107 v4 携带最新人工语言决定 | 主代理范围核对 PASS；Android 延后 | `aa501-core-green`、`aa501-data-green` PASS；无发布构建 | 本行所在提交 |
 | 2026-08-13 | `AA7-03 / platform checkpoint` | `BLOCKED → BLOCKED（平台矩阵完成，等待观察期与 legacy 清理）` | Desktop 全量从 macOS 26 项、9 项失败逐批收敛；依赖公告与 parity 锚点 focused RED/GREEN | 作者归档完整产品链在 Windows/macOS 同提交正式产物中通过；Android 入口与 APK 已验收 | 主代理对剩余失败、真实导航宿主、DI 可选依赖、manifest 状态不变做范围核对 PASS | Windows/macOS 各 2521 tests / 0 failed；Windows 发布 EXE 隔离数据库完成作者动作与重启恢复；扩展 runtime acceptance、双端 provenance PASS；产物版本 `0.11.19.2.bf5b088` | 本行所在提交 |
 
-AA0 至 AA6 的 shared/data/Windows 能力与 AA7-01 Android 产品入口已经实现并验收；完整正式候选版本 `0.11.19.2.bf5b088` 已在 Windows/macOS 通过 2521 项 Desktop 测试、正式构建与 provenance，Android debug 构建亦已生成。当前唯一实施主线是 `AA7-02`：field107 v4 备份矩阵已通过，按 11.2 数据安全门禁从 2026-08-13 开始正式版本观察；观察期结束后删除 legacy 物理表/bridge，再执行清理后最终矩阵并关闭 `AA7-02/AA7-03`。在这些条件满足前不得把计划宣称为完整设计完成。
+AA0 至 AA6 的 shared/data/Windows 能力与 AA7-01 Android 产品入口已经实现并验收；完整正式候选版本 `0.11.19.2.bf5b088` 已在 Windows/macOS 通过 2521 项 Desktop 测试、正式构建与 provenance，Android debug 构建亦已生成。本文已于 2026-08-27 安全暂停并让出父路线活动指针；恢复入口固定为 `AA7-02`：先核验从 2026-08-13 开始的正式版本观察证据，再删除 legacy 物理表/bridge，随后执行清理后最终矩阵并关闭 `AA7-02/AA7-03`。在这些条件满足前不得把计划宣称为完整设计完成。

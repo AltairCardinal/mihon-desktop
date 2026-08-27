@@ -3072,6 +3072,18 @@
       "legacyReaderExecutors": "REMOVED",
       "readerArchitectureGuard": "ENFORCED"
     },
+    "readerUpstreamAdapterRefactor": {
+      "task": "RUA-00",
+      "status": "IN_PROGRESS",
+      "reopenedClaims": [
+        "DESKTOP_SINGLE_DECODE_OWNER"
+      ],
+      "preservedClaims": [
+        "PLATFORM_DECODE_CONTRACT",
+        "ANDROID_DECODE_ADAPTER"
+      ],
+      "reason": "Desktop production still mounts PagePreloader, Coil and direct local Skia paths; platform decode capability remains verified while the single-owner completion claim requires production I/O/decode evidence."
+    },
     "verificationScope": "VERIFIED for platform-neutral decode request/result contracts and Android/Desktop decoder adapters; the Desktop canonical ReaderSessionCore now supplies the encoded refs consumed by the bounded Skia decode/cache path.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -29156,6 +29168,18 @@
       "legacyReaderExecutors": "REMOVED",
       "readerArchitectureGuard": "ENFORCED"
     },
+    "readerUpstreamAdapterRefactor": {
+      "task": "RUA-00",
+      "status": "IN_PROGRESS",
+      "reopenedClaims": [
+        "DESKTOP_SINGLE_DECODE_OWNER"
+      ],
+      "preservedClaims": [
+        "PLATFORM_DECODE_BUDGET_CONTRACT",
+        "BOUNDED_REGION_DECODE"
+      ],
+      "reason": "The decoded budget contract remains verified, but PagePreloader is not the only production decode owner and the single-owner claim needs a mounted production behavior gate."
+    },
     "verificationScope": "VERIFIED for bounded region decode and decoded-cache budget adapters; the Desktop canonical ReaderSessionCore owns encoded-page identity while PagePreloader performs only bounded decode/cache work.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
@@ -29477,6 +29501,21 @@
       "closedProductGaps": [
         "HTTP_RETRY_FORCE_DRIFT"
       ]
+    },
+    "readerUpstreamAdapterRefactor": {
+      "task": "RUA-00",
+      "status": "IN_PROGRESS",
+      "reopenedClaims": [
+        "DESKTOP_SINGLE_SCHEDULER_OWNER",
+        "DESKTOP_FIRST_FRAME_CACHE_GATE",
+        "DESKTOP_NEXT_CHAPTER_PREFETCH_DEFAULT"
+      ],
+      "preservedClaims": [
+        "SHARED_PRIORITY_SCHEDULER_CONTRACT",
+        "ENCODED_STORE_LIFECYCLE_CONTRACT",
+        "HTTP_RETRY_FORCE"
+      ],
+      "reason": "Desktop has a second PagePreloader scheduler, begins the global encoded-store scan before chapter materialization, and defaults to full-next image prefetch; these Desktop evidence slices are reopened without revoking the shared scheduler/store/Retry contracts."
     },
     "verificationScope": "VERIFIED for the single shared priority/generation scheduler, encoded-store lifecycle, Storage classification and explicit Retry forces a fresh fetch across both platform chains. Android retains its integrated fixed-original traffic policy. The Desktop canonical ReaderSessionCore executes online/download/local/archive materialization and RD-02 OFF / FIRST_VIEWPORT / FULL_NEXT_CHAPTER policy through the same scheduler and factory-scoped encoded store: all-current-Ready gates P4, visible P0 preempts, policy-only work cancels on OFF/activation/exit, non-cooperative image and chapter-metadata I/O stays within policy plus one stale request, stale Storage failures are target-sequence/request-identity guarded, runtime preference changes alter the real request set, the mounted production Screen launches the wiring, and adjacent work emits no progress or chapter-sized decoded cache.",
     "platformExemptionEvidence": "NONE",
