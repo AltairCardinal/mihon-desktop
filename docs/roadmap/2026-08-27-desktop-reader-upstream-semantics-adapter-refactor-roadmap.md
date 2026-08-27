@@ -564,6 +564,54 @@ python scripts/gradle-coordinator.py run --key reader-upstream-adapter-android-a
 - 构建日志中的 `Final unpacked EXE:` 是 Windows 交付地址的唯一权威；必须确认文件实际存在；
 - Android/macOS 若受环境阻塞，记录真实原因和已完成证据；不得把未运行写成通过，也不得仅用系统 JDK/辅助客户端替代 production 调用链。
 
+### 12.1 RUA-00 实测纠正与 Gradle 启动预算
+
+RUA-00 的 `.gradle-coordinator/rua00-*.json/.log` 共记录 **14 次 Gradle 启动、按 coordinator wall-clock 累计 168.9 分钟，其中 9 次失败、5 次通过**；单次启动与执行耗时约 9～18 分钟。8 次调用重复携带根级 `spotlessApply`，另有一次因调用不存在的 `:app-desktop:spotlessApply` 而完整消耗 8.7 分钟。后续优化目标是减少昂贵启动与无信息量重跑，不是削减 RED、production behavior 或最终验证证据。
+
+每个 RUA 批次固定采用以下流水线：
+
+1. **零 Gradle 预检**：先完成调用图、类型签名、DI/composition root、测试 fixture、准确 Gradle task 名称与断言时序的静态检查；确认 production wiring 被断开时测试会失败。不得用 Gradle 发现源码检查即可发现的缺 import、错误作用域或不存在的 task。
+2. **RED（1 次）**：把本批行为测试合并为一次最小 focused invocation，确认测试因预期缺失的 production 行为失败；只有缺少待实现 production contract 导致的编译失败才是有效 RED。
+3. **实现收口**：一次完成同一内聚 contract 的 production、adapter、wiring 和 fixture 修改；不按文件逐次启动 Gradle。
+4. **可选编译门禁（0～1 次）**：仅在跨模块修改 public signature、DI、generated API 或大范围 test wiring 时运行受影响模块的 compile task。它只证明类型与接线成立，不能替代 GREEN 或行为证据。
+5. **GREEN（1 次）**：运行合并后的 focused behavior suite。失败后先读完整报告并完成一次静态归因；tracked diff 没有变化时禁止原样重跑。
+6. **失败修复（最多 1 次 targeted rerun）**：只重跑实际失败的测试类。相同失败原因连续出现两次时暂停，重新审视测试时序、fixture 和架构假设，不能继续试错式重跑。
+7. **批次收口（1 次）**：代码稳定后只执行一次格式化，并把相关模块测试、wiring tests 与 `spotlessCheck` 尽量合并为一个协调器调用；RUA-07 前不重复全量矩阵或正式构建。
+8. **冻结、审查、提交**：交付独立审查后冻结本批审查范围；审查通过且该范围的 diff 指纹不变才提交。审查修复按第 14 节只允许一次复审，并只增加一次与修复范围相符的验证调用。
+
+正常批次的 Gradle 启动预算为 **3 次**（RED、GREEN、批次收口）；跨模块编译门禁可增加到 **4 次**；确有一次失败修复或并发时序复验时上限为 **5 次**。独立审查发现阻塞问题后的唯一修复可再增加 **1 次**。预算不是跳过强制验证的理由；即将超出预算时必须先记录失败归因、剩余验证与合并执行方案，再决定是否重规划，不能静默继续启动任务。
+
+并发/Compose 时序测试仅在首次失败显示非确定性风险时，才允许在首次通过后额外复验一次；复验只运行该测试类。所有 Gradle 仍由同一协调者串行执行；外层等待超时不代表 Gradle 已结束，必须先查 coordinator 状态，不能启动重复进程。
+
+### 12.2 测试设计门禁与审查工作树冻结
+
+第一次 GREEN 前必须完成行为测试的 mutation checklist：
+
+- 断开 shared owner、Android/Desktop composition root 或 production DI wiring 时，测试必须失败；
+- action/render/release 前先验证负断言，之后再按 chapter/page/generation/purpose 验证身份化正断言；
+- 至少覆盖一次 cancellation、late event 或 generation 交错，不能只证明顺序执行的 happy path；
+- fixture 只能控制真实 production seam，不能手工记录本应由 production 发出的事件来证明自身正确；
+- focused tests 按共享 contract 合并调用，避免 Android、Desktop、domain 为同一根因分别启动 Gradle。
+
+交付独立审查前记录当前 `HEAD`、`git status --short`、本批审查范围的 `git diff --stat`、diff 指纹以及所用 Gradle log key/result。从交接到审查回执期间，主代理不得修改本批范围内的 production、test、fixture、manifest 或文档，也不得运行会改写这些文件的 formatter；可以继续只读分析。审查者默认复用与该范围 diff 指纹一致的测试日志，不重复运行相同的重型命令，除非证据缺失或需要验证一个具体风险。
+
+审查期间本批范围内的 tracked diff 一旦变化，当前结论立即失效，后续审查计入唯一修复复审。不得一边审查当前批次，一边在同一 worktree 开始下一批次实现。一个批次只保留一个写入 owner；子代理只承担已经冻结边界的上游核对、日志分析或独立只读审查。
+
+### 12.3 模型档位裁决
+
+[OpenAI 官方模型说明](https://developers.openai.com/api/docs/models)将 `gpt-5.6-sol` 定位为复杂推理与编码的旗舰模型，`gpt-5.6-terra` 定位为智能与成本的平衡，`gpt-5.6-luna` 定位为成本敏感的高吞吐工作负载。本路线图同时涉及上游语义裁决、Android/Desktop 双端 production wiring、并发调度、generation/cancellation、文件与归档生命周期、Compose 首帧和高成本真实验证；一次错误 Gradle 启动通常比增加模型推理成本更昂贵。因此，**执行本路线图最合适的主档位是 `gpt-5.6-sol / xhigh`**，而不是以中档模型承担整体架构裁决。
+
+| 工作类型 | 推荐模型档位 | 边界 |
+| --- | --- | --- |
+| `RUA-01`、`RUA-03`、`RUA-04` 的共享 owner、调度、生命周期和唯一 pipeline 裁决 | `gpt-5.6-sol / xhigh` | 主实现与独立审查均不降档 |
+| `RUA-02`、`RUA-05` 的平台集成、兼容迁移和失败诊断 | `gpt-5.6-sol / high` | 出现跨 owner、持久化或 cancellation 矛盾时升至 `xhigh` |
+| `RUA-06` owner 删除、mutation 证据和 authority 收口 | `gpt-5.6-sol / high` | 已冻结接口下的机械删除/文档核对可交给 Terra |
+| `RUA-07` 全量验证、构建与关闭审计 | `gpt-5.6-sol / high` | 无法解释的 production 失败或最终架构矛盾升至 `xhigh` |
+| 已冻结接口下的单一 adapter、fixture 扩充和机械清理 | `gpt-5.6-terra / high` | 由 Sol 主代理整合，不独立改变语义 |
+| 日志汇总、链接核对、checkbox/evidence 搬运、无语义格式整理 | `gpt-5.6-luna / medium` | 只读或机械任务，不承担最终裁决 |
+
+`max` 不作为常规档位。只有 `xhigh` 完成一次静态架构审计后仍存在相互冲突的 owner/lifecycle 方案，或 `RUA-04` cutover、`RUA-07` 收口出现无法解释的 production 失败时才升级。提高模型档位不能替代 Gradle 启动预算、工作树冻结、TDD 或 production wiring 真实性门禁。
+
 ## 13. 风险、停止条件与回滚
 
 | 风险 | 预防 | 停止/回滚条件 |
