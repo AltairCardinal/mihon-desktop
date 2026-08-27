@@ -40,6 +40,10 @@ object ReaderKeyboardAction {
             totalPages,
         )
 
+    fun forNext(currentPage: Int, totalPages: Int): ReaderPageAction = advance(currentPage, totalPages)
+
+    fun forPrevious(currentPage: Int): ReaderPageAction = retreat(currentPage)
+
     /**
      * Applies a shared logical command, then maps its logical target to the always-LTR pager.
      */

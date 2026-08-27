@@ -44,6 +44,30 @@ class ReaderKeyboardActionTest {
     }
 
     @Test
+    fun `logical next advances regardless of physical reading direction`() {
+        assertEquals(
+            ReaderPageAction.GoToPage(3),
+            ReaderKeyboardAction.forNext(currentPage = 2, totalPages = 5),
+        )
+        assertEquals(
+            ReaderPageAction.NoNextPage,
+            ReaderKeyboardAction.forNext(currentPage = 4, totalPages = 5),
+        )
+    }
+
+    @Test
+    fun `logical previous retreats and crosses chapter boundary at first page`() {
+        assertEquals(
+            ReaderPageAction.GoToPage(1),
+            ReaderKeyboardAction.forPrevious(currentPage = 2),
+        )
+        assertEquals(
+            ReaderPageAction.NoPrevPage,
+            ReaderKeyboardAction.forPrevious(currentPage = 0),
+        )
+    }
+
+    @Test
     fun `Home always goes to first page`() {
         val action = ReaderKeyboardAction.forHome()
         assertEquals(ReaderPageAction.GoToPage(0), action)

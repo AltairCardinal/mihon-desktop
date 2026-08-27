@@ -502,11 +502,8 @@ private fun ReaderViewport(
                     handleReaderKeyEvent(event, state, model, navigator, readerNav, onPrevChapter, onNextChapter)
                 }
                 .onPointerEvent(PointerEventType.Scroll) { event ->
-                    val native = event.nativeEvent as? java.awt.event.MouseWheelEvent
-                    if (native?.isControlDown == true) {
-                        val delta = native.preciseWheelRotation.toFloat()
-                        model.setZoomState(if (delta > 0f) state.zoomState.zoomOut() else state.zoomState.zoomIn())
-                    }
+                    val native = event.nativeEvent as? java.awt.event.MouseWheelEvent ?: return@onPointerEvent
+                    handleReaderWheelEvent(native, state, model, onPrevChapter, onNextChapter)
                 },
         ) {
             when (readerViewportBody(state)) {
@@ -596,6 +593,27 @@ internal fun Modifier.readerKeyboardFocus(
         .onPointerEvent(PointerEventType.Scroll) { focusRequester.requestFocus() }
         .onKeyEvent(onKeyEvent)
 
+internal enum class ReaderWheelIntent {
+    NONE,
+    PREVIOUS_PAGE,
+    NEXT_PAGE,
+    ZOOM_IN,
+    ZOOM_OUT,
+}
+
+internal fun readerWheelIntent(
+    rotation: Double,
+    isControlDown: Boolean,
+    readingMode: ReadingMode,
+): ReaderWheelIntent = when {
+    rotation == 0.0 -> ReaderWheelIntent.NONE
+    isControlDown && rotation > 0.0 -> ReaderWheelIntent.ZOOM_OUT
+    isControlDown -> ReaderWheelIntent.ZOOM_IN
+    readingMode == ReadingMode.WEBTOON -> ReaderWheelIntent.NONE
+    rotation > 0.0 -> ReaderWheelIntent.NEXT_PAGE
+    else -> ReaderWheelIntent.PREVIOUS_PAGE
+}
+
 internal enum class ReaderViewportBody {
     CONTENT,
     LOADING,
@@ -620,6 +638,38 @@ internal fun ReaderViewportColorLayer(
     content: @Composable () -> Unit,
 ) {
     Box(Modifier.fillMaxSize().readerColorTransform(colorFilter), content = { content() })
+}
+
+private fun handleReaderWheelEvent(
+    event: java.awt.event.MouseWheelEvent,
+    state: ReaderState,
+    model: ReaderScreenModel,
+    onPrevChapter: () -> Unit,
+    onNextChapter: () -> Unit,
+): Boolean {
+    val intent = readerWheelIntent(event.preciseWheelRotation, event.isControlDown, state.readingMode)
+    return when (intent) {
+        ReaderWheelIntent.NONE -> false
+        ReaderWheelIntent.ZOOM_IN -> {
+            model.setZoomState(state.zoomState.zoomIn())
+            true
+        }
+        ReaderWheelIntent.ZOOM_OUT -> {
+            model.setZoomState(state.zoomState.zoomOut())
+            true
+        }
+        ReaderWheelIntent.PREVIOUS_PAGE,
+        ReaderWheelIntent.NEXT_PAGE,
+        -> {
+            val navPosition = readerKeyboardNavigationPosition(state)
+            val action = when (intent) {
+                ReaderWheelIntent.NEXT_PAGE -> ReaderKeyboardAction.forNext(navPosition.current, navPosition.total)
+                ReaderWheelIntent.PREVIOUS_PAGE -> ReaderKeyboardAction.forPrevious(navPosition.current)
+                else -> error("Unexpected non-page wheel intent: $intent")
+            }
+            applyReaderPageAction(action, state, model, onPrevChapter, onNextChapter)
+        }
+    }
 }
 
 private fun handleReaderKeyEvent(
@@ -664,19 +714,27 @@ private fun handleReaderKeyEvent(
         Key.Escape -> { navigator.pop(); return true }
         else -> null
     } ?: return false
-    return when (action) {
-        is ReaderPageAction.GoToPage -> {
-            val target = if (state.dualPageMode && state.session.activeChapter.pages.isNotEmpty()) {
-                val presentation = state.dualPresentationSnapshot()
-                presentation.firstDualPageIndex(action.page.coerceIn(presentation.displayUnits.indices))
-            } else if (state.virtualPages != null) {
-                state.virtualPages.realPageIndex(action.page.coerceIn(0, state.virtualPages.size - 1))
-            } else action.page
-            model.goToPage(target); true
-        }
-        is ReaderPageAction.NoPrevPage -> { onPrevChapter(); true }
-        is ReaderPageAction.NoNextPage -> { onNextChapter(); true }
+    return applyReaderPageAction(action, state, model, onPrevChapter, onNextChapter)
+}
+
+private fun applyReaderPageAction(
+    action: ReaderPageAction,
+    state: ReaderState,
+    model: ReaderScreenModel,
+    onPrevChapter: () -> Unit,
+    onNextChapter: () -> Unit,
+): Boolean = when (action) {
+    is ReaderPageAction.GoToPage -> {
+        val target = if (state.dualPageMode && state.session.activeChapter.pages.isNotEmpty()) {
+            val presentation = state.dualPresentationSnapshot()
+            presentation.firstDualPageIndex(action.page.coerceIn(presentation.displayUnits.indices))
+        } else if (state.virtualPages != null) {
+            state.virtualPages.realPageIndex(action.page.coerceIn(0, state.virtualPages.size - 1))
+        } else action.page
+        model.goToPage(target); true
     }
+    is ReaderPageAction.NoPrevPage -> { onPrevChapter(); true }
+    is ReaderPageAction.NoNextPage -> { onNextChapter(); true }
 }
 
 internal data class ReaderKeyboardNavigationPosition(
