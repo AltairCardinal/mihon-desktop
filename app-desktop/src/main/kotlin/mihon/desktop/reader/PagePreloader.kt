@@ -22,6 +22,7 @@ import mihon.domain.reader.scheduler.ReaderScheduledRequest
 import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
 import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderPageId
 
 /**
  * Desktop adapter for the shared preload-window contract.
@@ -41,6 +42,7 @@ class PagePreloader(
             maxConcurrentRequests = DEFAULT_CONCURRENT_REQUESTS,
         ),
     ),
+    private val ioGate: ReaderIoGate = ReaderIoGate.None,
 ) {
     private data class Decoded(
         val index: Int,
@@ -66,10 +68,22 @@ class PagePreloader(
         require(largeImagePixelThreshold > 0) { "largeImagePixelThreshold must be positive" }
     }
 
-    suspend fun preloadEncoded(currentPage: Int, encodedPageRefs: List<EncodedPageRef?>) =
-        preloadSources(currentPage, encodedPageRefs)
+    suspend fun preloadEncoded(
+        currentPage: Int,
+        encodedPageRefs: List<EncodedPageRef?>,
+        pageIds: List<ReaderPageId>? = null,
+        observer: ReaderPageIoObserver? = null,
+        sessionGeneration: Long? = null,
+    ) = preloadSources(currentPage, encodedPageRefs, pageIds, observer, sessionGeneration)
 
-    private suspend fun preloadSources(currentPage: Int, sources: List<EncodedPageRef?>) = supervisorScope {
+    private suspend fun preloadSources(
+        currentPage: Int,
+        sources: List<EncodedPageRef?>,
+        pageIds: List<ReaderPageId>?,
+        observer: ReaderPageIoObserver?,
+        sessionGeneration: Long?,
+    ) = supervisorScope {
+        require(pageIds == null || pageIds.size == sources.size) { "pageIds must match sources" }
         val plan = synchronized(lock) {
             requestScheduler.moveTo(SCHEDULER_CHAPTER_ID, currentPage, sources.size).also {
                 it.cancelRequests.forEach { jobKey -> activeJobs.remove(jobKey)?.cancel() }
@@ -91,7 +105,13 @@ class PagePreloader(
                                 continue
                             }
                             val job = async(Dispatchers.IO, start = CoroutineStart.LAZY) {
-                                decodePage(request, sources[index])
+                                decodePage(
+                                    request,
+                                    sources[index],
+                                    pageIds?.get(index),
+                                    observer,
+                                    sessionGeneration,
+                                )
                             }
                             activeJobs[request.jobKey] = job
                             add(request to job)
@@ -161,8 +181,19 @@ class PagePreloader(
 
     fun cacheSnapshot(): PageCacheSnapshot = cache.snapshot()
 
-    private suspend fun decodePage(request: ReaderScheduledRequest, source: EncodedPageRef?): Decoded? {
-        val bytes = source?.let { encodedPageReader(it) } ?: return null
+    private suspend fun decodePage(
+        request: ReaderScheduledRequest,
+        source: EncodedPageRef?,
+        pageId: ReaderPageId?,
+        observer: ReaderPageIoObserver?,
+        sessionGeneration: Long?,
+    ): Decoded? {
+        val observedGeneration = sessionGeneration ?: request.generation
+        request.gatePoint(isAdjacentPrefetch = false)?.let { ioGate.await(it) }
+        val bytes = source?.let {
+            pageId?.let { observer?.pageOpened(it, observedGeneration) }
+            encodedPageReader(it)
+        } ?: return null
         val size = SkiaImageDecoder.peekSize(bytes) ?: return null
         val decodeRequest = PageDecodeRequest(
             pageIndex = request.pageIndex,
@@ -177,6 +208,7 @@ class PagePreloader(
         } else {
             pageDecoder.decode(bytes, decodeRequest.copy(region = null))
         }
+        pageId?.let { observer?.pageDecoded(it, observedGeneration) }
         return Decoded(request.pageIndex, result, size.first, size.second)
     }
 

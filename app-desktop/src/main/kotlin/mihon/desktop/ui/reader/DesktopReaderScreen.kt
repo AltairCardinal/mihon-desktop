@@ -55,6 +55,7 @@ import mihon.desktop.reader.DesktopReaderChapterContext
 import mihon.desktop.reader.DesktopReaderRuntimeFactory
 import mihon.desktop.reader.EdgePixelMatcher
 import mihon.desktop.reader.PagePreloader
+import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderColorFilter
@@ -137,7 +138,7 @@ data class DesktopReaderScreen(
         }
 
         // Compute: zoom reset, preload, focus, edge-scan, virtual pages
-        ReaderSideEffects(state, model, runtime.preloader, focusRequester)
+        ReaderSideEffects(state, model, runtime.preloader, focusRequester, runtime.pageIoObserver)
 
         // Chapter navigation lambdas
         val skipRead = state.skipReadChapters
@@ -252,6 +253,7 @@ data class DesktopReaderScreen(
             readerNav = readerNav,
             onPrevChapter = onPrevChapter,
             onNextChapter = onNextChapter,
+            ioObserver = runtime.pageIoObserver,
         )
     }
 
@@ -400,6 +402,7 @@ private fun ReaderSideEffects(
     model: ReaderScreenModel,
     preloader: PagePreloader,
     focusRequester: FocusRequester,
+    ioObserver: ReaderPageIoObserver?,
 ) {
     LaunchedEffect(state.currentPage) { model.setZoomState(ZoomState()) }
     LaunchedEffect(state.currentPage, state.session.activeChapter.pages) {
@@ -407,6 +410,9 @@ private fun ReaderSideEffects(
             preloader.preloadEncoded(
                 state.currentPage,
                 state.session.activeChapter.pages.map { it.encodedPageRef },
+                state.session.activeChapter.pages.map { it.id },
+                ioObserver,
+                state.session.generation,
             )
         }
     }
@@ -487,6 +493,7 @@ private fun ReaderViewport(
     readerNav: ReaderNavigator?,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
+    ioObserver: mihon.desktop.reader.ReaderPageIoObserver?,
 ) {
     val bgColor = when (state.backgroundTheme) {
         ReaderBackgroundTheme.BLACK -> Color.Black
@@ -529,6 +536,7 @@ private fun ReaderViewport(
                                 readerNav,
                                 onPrevChapter,
                                 onNextChapter,
+                                ioObserver,
                             )
                         }
                     }
@@ -771,6 +779,7 @@ private fun ReaderContent(
     readerNav: ReaderNavigator?,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
+    ioObserver: mihon.desktop.reader.ReaderPageIoObserver?,
 ) {
     when (state.readingMode) {
         ReadingMode.WEBTOON -> WebtoonPresentationViewer(
@@ -786,6 +795,7 @@ private fun ReaderContent(
             onRetryPage = model::retryPage,
             onSpreadDetected = { realIdx -> if (realIdx !in state.spreadPages) model.setSpreadPages(state.spreadPages + realIdx) },
             onNextChapter = if (readerNav?.nextToRead != null) onNextChapter else null,
+            ioObserver = ioObserver,
         )
         ReadingMode.LTR, ReadingMode.RTL -> {
             val rtl = state.readingMode == ReadingMode.RTL
@@ -807,6 +817,7 @@ private fun ReaderContent(
                 onTapCenter = { model.toggleUI() },
                 onPrevChapter = onPrevChapter,
                 onNextChapter = onNextChapter,
+                ioObserver = ioObserver,
             )
         }
     }

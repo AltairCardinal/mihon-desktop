@@ -11,6 +11,9 @@ import kotlinx.coroutines.launch
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.ui.reader.ReaderScreenModel
+import mihon.domain.reader.observability.ReaderIoProbe
+import mihon.domain.reader.observability.ReaderIoReporter
+import mihon.domain.reader.observability.ReaderMonotonicClock
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
 import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
 import mihon.domain.reader.session.ReaderChapterId
@@ -29,6 +32,7 @@ data class DesktopReaderRuntime(
     val session: DesktopReaderSession,
     internal val encodedPageStore: DesktopReaderEncodedPageStore,
     private val prefetchPreferenceJob: Job,
+    val pageIoObserver: ReaderPageIoObserver? = null,
 ) : AutoCloseable {
     override fun close() {
         prefetchPreferenceJob.cancel()
@@ -47,7 +51,11 @@ class DesktopReaderRuntimeFactory(
     private val progressTracker: ReaderProgressTracker,
     private val mangaRepository: MangaRepository?,
     private val encodedCacheDirectory: File,
+    private val readerIoProbe: ReaderIoProbe = ReaderIoProbe.None,
+    private val readerMonotonicClock: ReaderMonotonicClock = ReaderMonotonicClock(System::nanoTime),
+    private val readerIoGate: ReaderIoGate = ReaderIoGate.None,
 ) {
+    internal val configuredReaderIoProbe: ReaderIoProbe get() = readerIoProbe
     private val encodedPageStoreCoordinator = DesktopReaderEncodedPageStoreCoordinator(encodedCacheDirectory)
 
     fun createRuntime(
@@ -55,6 +63,7 @@ class DesktopReaderRuntimeFactory(
         parentScope: CoroutineScope,
         progressTrackerOverride: ReaderProgressTracker? = null,
     ): DesktopReaderRuntime {
+        val ioReporter = ReaderIoReporter(readerIoProbe.bind(), readerMonotonicClock)
         val store = encodedPageStoreCoordinator.openSessionStore()
         val core = ReaderSessionCore(
             initialChapterId = ReaderChapterId(initialContext.chapterId),
@@ -94,14 +103,21 @@ class DesktopReaderRuntimeFactory(
             },
             parentScope = parentScope,
             initialNextChapterPrefetchMode = prefs.nextChapterPrefetchMode,
+            ioReporter = ioReporter,
+            ioGate = readerIoGate,
         )
         val prefetchPreferenceJob = parentScope.launch {
             prefs.nextChapterPrefetchPreference.changes().collect(session::setNextChapterPrefetchMode)
         }
         return DesktopReaderRuntime(
             prefs = prefs,
-            preloader = PagePreloader(encodedPageReader = store::read, windowSize = 3),
+            preloader = PagePreloader(
+                encodedPageReader = store::read,
+                windowSize = 3,
+                ioGate = readerIoGate,
+            ),
             session = session,
+            pageIoObserver = ioReporter.takeIf(ReaderIoReporter::enabled)?.let(::ReaderPageIoObserver),
             encodedPageStore = store,
             prefetchPreferenceJob = prefetchPreferenceJob,
         ).also { session.start() }

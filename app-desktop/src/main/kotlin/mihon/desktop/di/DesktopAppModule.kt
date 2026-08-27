@@ -918,6 +918,7 @@ internal fun initUILayer(
             progressTracker = readerProgressTracker,
             mangaRepository = mangaRepository,
             encodedCacheDirectory = paths.networkCacheDir.resolve("reader-encoded"),
+            readerIoProbe = mihon.desktop.test.http.ReaderIoTestModeBridge,
         ),
     )
 

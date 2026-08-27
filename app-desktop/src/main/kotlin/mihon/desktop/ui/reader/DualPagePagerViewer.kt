@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
 import mihon.desktop.reader.PagePreloader
 import mihon.desktop.reader.ReaderKeyboardAction
 import mihon.desktop.reader.ReaderPageAction
+import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.SinglePageSide
 import mihon.desktop.reader.ZoomState
@@ -214,6 +215,8 @@ internal fun DualPagePagerViewer(
     onTapCenter: (() -> Unit)? = null,
     onPrevChapter: (() -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
+    ioObserver: ReaderPageIoObserver? = null,
+    generation: Long = 0L,
 ) {
     require(presentation.mode == ReaderPresentationMode.DUAL_PAGED) { "Dual viewer requires a dual presentation" }
     val displayUnits = presentation.displayUnits
@@ -306,6 +309,9 @@ internal fun DualPagePagerViewer(
                     navigationMode = navigationMode,
                     isRtl = isRtl,
                     handlesTapNavigation = false,
+                    pageId = page.id,
+                    generation = generation,
+                    ioObserver = ioObserver,
                 )
             }
         }

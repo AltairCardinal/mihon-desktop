@@ -35,12 +35,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import mihon.desktop.reader.PagePreloader
 import mihon.desktop.reader.PreloadedPageBitmap
+import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.SkiaImageDecoder
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.image.LocalDesktopSourceImageId
 import mihon.desktop.image.desktopSourceImageModel
 import mihon.domain.reader.PixelBounds
+import mihon.domain.reader.session.ReaderPageId
 import org.jetbrains.skia.Bitmap as SkiaBitmap
 import org.jetbrains.skia.Canvas as SkiaCanvas
 import org.jetbrains.skia.Image as SkiaImage
@@ -63,6 +65,19 @@ internal fun loadLocalPageBitmap(url: String): ImageBitmap? = runCatching {
     val uri = URI(url)
     if (!uri.scheme.equals("file", ignoreCase = true)) return null
     SkiaImageDecoder.decode(Files.readAllBytes(Path.of(uri)))
+}.getOrNull()
+
+private fun loadLocalPageBitmap(
+    url: String,
+    onOpen: () -> Unit,
+    onDecode: () -> Unit,
+): ImageBitmap? = runCatching {
+    val uri = URI(url)
+    if (!uri.scheme.equals("file", ignoreCase = true)) return null
+    onOpen()
+    val decoded = SkiaImageDecoder.decode(Files.readAllBytes(Path.of(uri)))
+    onDecode()
+    decoded
 }.getOrNull()
 
 /** Crops the already-decoded Coil image to the requested half — no re-download. */
@@ -162,6 +177,9 @@ internal fun ZoomablePageBox(
     onTapPrevious: (() -> Unit)? = null,
     onTapNext: (() -> Unit)? = null,
     onTapCenter: (() -> Unit)? = null,
+    pageId: ReaderPageId? = null,
+    generation: Long = 0L,
+    ioObserver: ReaderPageIoObserver? = null,
 ) {
     // Blank URL = page not yet downloaded. Show a loading spinner directly
     // rather than letting Coil attempt a request and return an error state.
@@ -215,7 +233,11 @@ internal fun ZoomablePageBox(
 
     val localBitmap by produceState<ImageBitmap?>(initialValue = null, url, splitHalf, sourceBounds, cropBorders) {
         value = withContext(Dispatchers.IO) {
-            val bitmap = loadLocalPageBitmap(url) ?: return@withContext null
+            val bitmap = loadLocalPageBitmap(
+                url = url,
+                onOpen = { pageId?.let { ioObserver?.pageOpened(it, generation) } },
+                onDecode = { pageId?.let { ioObserver?.pageDecoded(it, generation) } },
+            ) ?: return@withContext null
             transformCachedPageBitmap(bitmap, splitHalf, sourceBounds, cropBorders)
         }
     }
@@ -228,6 +250,10 @@ internal fun ZoomablePageBox(
     LaunchedEffect(painterState, cropBorders, splitHalf, sourceBounds) {
         val s = painterState
         if (s is AsyncImagePainter.State.Success) {
+            pageId?.let {
+                ioObserver?.pageOpened(it, generation)
+                ioObserver?.pageDecoded(it, generation)
+            }
             val img = s.result.image
 
             // Spread detection (only when not already splitting)
@@ -434,6 +460,7 @@ internal fun ZoomablePageBox(
             }
 
             val displayBitmap = croppedBitmap ?: transformedPreloadedBitmap ?: localBitmap
+            val decoded = displayBitmap != null || painterState is AsyncImagePainter.State.Success
             val imageModifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer(
@@ -442,12 +469,15 @@ internal fun ZoomablePageBox(
                     translationX = zoomState.offsetX,
                     translationY = zoomState.offsetY,
                 )
+            val observedImageModifier = pageId?.let {
+                imageModifier.observeReaderPageDraw(it, generation, decoded, ioObserver)
+            } ?: imageModifier
             if (displayBitmap != null) {
                 Image(
                     bitmap = displayBitmap,
                     contentDescription = pageLabel,
                     alignment = imageAlignment,
-                    modifier = imageModifier,
+                    modifier = observedImageModifier,
                     contentScale = resolvedScale,
                 )
             } else {
@@ -455,7 +485,7 @@ internal fun ZoomablePageBox(
                     painter = painter,
                     contentDescription = pageLabel,
                     alignment = imageAlignment,
-                    modifier = imageModifier,
+                    modifier = observedImageModifier,
                     contentScale = resolvedScale,
                 )
             }

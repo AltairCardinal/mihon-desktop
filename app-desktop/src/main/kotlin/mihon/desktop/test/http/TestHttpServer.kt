@@ -621,6 +621,11 @@ internal fun Application.testHttpServer(
                         // Then open reader
                         val chapterId = params["chapterId"]?.toLongOrNull() ?: mangaId
                         val chapterTitle = params["chapterTitle"] ?: "Chapter ${params["chapterIndex"] ?: 0}"
+                        val fixtureKind = when (params["readerFixture"]?.lowercase()) {
+                            "cbz" -> ReaderTestFixtureKind.CBZ
+                            else -> ReaderTestFixtureKind.DOWNLOADED_DIRECTORY
+                        }
+                        val fixture = ReaderIoTestModeBridge.controller?.createFixture(fixtureKind)
                         TestNavigationController.openReader(
                             mangaId = mangaId,
                             chapterId = chapterId,
@@ -629,6 +634,8 @@ internal fun Application.testHttpServer(
                             chapterUrl = "",
                             sourceId = 0L,
                             initialPage = params["chapterIndex"]?.toIntOrNull() ?: 0,
+                            pageCount = fixture?.pageCount ?: 0,
+                            localChapterPath = fixture?.localChapterPath,
                         )
 
                         applicationState.setCurrentScreen("ReaderScreen")
@@ -994,19 +1001,21 @@ internal fun Application.testHttpServer(
                 contentType = ContentType.Application.Json,
                 status = HttpStatusCode.OK,
             ) {
-                """{
-                    |"isOpen": ${readerState.isOpen},
-                    |"currentPage": ${readerState.currentPage},
-                    |"totalPages": ${readerState.totalPages},
-                    |"currentChapterId": ${readerState.currentChapterId},
-                    |"isWebtoon": ${readerState.isWebtoon},
-                    |"mangaTitle": "${readerState.mangaTitle}",
-                    |"chapterTitle": "${readerState.chapterTitle}",
-                    |"hasNextChapter": ${readerState.hasNextChapter},
-                    |"hasPrevChapter": ${readerState.hasPrevChapter},
-                    |"timestamp": "${Instant.now()}"
-                |}
-                """.trimMargin()
+                val events = ReaderIoTestModeBridge.controller?.snapshot().orEmpty()
+                buildJsonObject {
+                    put("isOpen", JsonPrimitive(readerState.isOpen))
+                    put("currentPage", JsonPrimitive(readerState.currentPage))
+                    put("totalPages", JsonPrimitive(readerState.totalPages))
+                    put("currentChapterId", JsonPrimitive(readerState.currentChapterId))
+                    put("isWebtoon", JsonPrimitive(readerState.isWebtoon))
+                    put("mangaTitle", JsonPrimitive(readerState.mangaTitle))
+                    put("chapterTitle", JsonPrimitive(readerState.chapterTitle))
+                    put("hasNextChapter", JsonPrimitive(readerState.hasNextChapter))
+                    put("hasPrevChapter", JsonPrimitive(readerState.hasPrevChapter))
+                    put("productionEvents", Json.encodeToJsonElement(events))
+                    put("firstPagePresented", JsonPrimitive(events.any { it.type == "FIRST_PAGE_PRESENTED" }))
+                    put("timestamp", JsonPrimitive(Instant.now().toString()))
+                }.toString()
             }
         }
 
@@ -1019,6 +1028,7 @@ internal fun Application.testHttpServer(
             updatesState.reset()
             historyState.reset()
             readerState.reset()
+            ReaderIoTestModeBridge.beginScenario()
             call.respondText(
                 contentType = ContentType.Application.Json,
                 status = HttpStatusCode.OK,

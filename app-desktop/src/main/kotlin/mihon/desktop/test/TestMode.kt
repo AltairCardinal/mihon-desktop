@@ -19,6 +19,8 @@ import mihon.desktop.test.http.DownloadTestModeBridge
 import mihon.desktop.test.http.DownloadTestModeController
 import mihon.desktop.test.http.HistoryTestModeBridge
 import mihon.desktop.test.http.HistoryTestModeController
+import mihon.desktop.test.http.ReaderIoTestModeBridge
+import mihon.desktop.test.http.ReaderTestModeController
 import mihon.desktop.test.http.SettingsTestModeBridge
 import mihon.desktop.test.http.SettingsTestModeController
 import mihon.desktop.test.http.TrackingTestBridge
@@ -66,6 +68,7 @@ object TestMode {
     private var settingsController: SettingsTestModeController? = null
     private var trackingController: TrackingTestModeController? = null
     private var authorController: AuthorArchiveTestModeController? = null
+    private var readerController: ReaderTestModeController? = null
 
     /**
      * Start test mode with the given configuration.
@@ -84,6 +87,11 @@ object TestMode {
 
         // Initialize test state
         applicationState.testMode = true
+        val reader = ReaderTestModeController()
+        ReaderIoTestModeBridge.install(reader)
+        synchronized(lifecycleLock) {
+            readerController = reader
+        }
         val browse = BrowseSearchTestModeController(
             coordinator = mihon.desktop.ui.browse.DesktopGlobalSearchCoordinator(Injekt.get()),
             sourcesProvider = { Injekt.get<tachiyomi.domain.source.service.SourceManager>().getCatalogueSources() },
@@ -350,6 +358,9 @@ object TestMode {
         val activeAuthors = synchronized(lifecycleLock) {
             authorController.also { authorController = null }
         }
+        val activeReader = synchronized(lifecycleLock) {
+            readerController.also { readerController = null }
+        }
         completeTestModeStop(
             run,
             { activeBrowse?.close() },
@@ -368,6 +379,12 @@ object TestMode {
                 activeAuthors?.let {
                     it.close()
                     AuthorArchiveTestModeBridge.clear(it)
+                }
+            },
+            {
+                activeReader?.let {
+                    ReaderIoTestModeBridge.clear(it)
+                    it.close()
                 }
             },
             { activeServer?.stop(SERVER_STOP_GRACE_MS, SERVER_STOP_TIMEOUT_MS) },

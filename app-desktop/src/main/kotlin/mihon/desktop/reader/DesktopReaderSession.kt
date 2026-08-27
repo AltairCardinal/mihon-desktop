@@ -24,6 +24,11 @@ import mihon.domain.reader.materialize.ReaderPageFetchPort
 import mihon.domain.reader.materialize.ReaderPageFetchRequest
 import mihon.domain.reader.materialize.ReaderPageMaterializeEvent
 import mihon.domain.reader.materialize.ReaderPageMaterializeResult
+import mihon.domain.reader.observability.ReaderIoEventType
+import mihon.domain.reader.observability.ReaderIoPurpose
+import mihon.domain.reader.observability.ReaderIoReporter
+import mihon.domain.reader.observability.ReaderMonotonicClock
+import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.progress.ReaderProgressEffect
 import mihon.domain.reader.scheduler.ReaderEnqueueResult
 import mihon.domain.reader.scheduler.ReaderRequestCancellation
@@ -31,6 +36,7 @@ import mihon.domain.reader.scheduler.ReaderRequestKey
 import mihon.domain.reader.scheduler.ReaderSchedulePlan
 import mihon.domain.reader.scheduler.ReaderScheduledRequest
 import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderPageDescriptor
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
@@ -78,6 +84,11 @@ class DesktopReaderSession(
     parentScope: CoroutineScope,
     private val materializeExecutor: ReaderMaterializeExecutor = CanonicalReaderMaterializeExecutor,
     initialNextChapterPrefetchMode: NextChapterPrefetchMode = NextChapterPrefetchMode.FULL_NEXT_CHAPTER,
+    private val ioReporter: ReaderIoReporter = ReaderIoReporter(
+        ReaderIoProbe.None,
+        ReaderMonotonicClock { 0L },
+    ),
+    private val ioGate: ReaderIoGate = ReaderIoGate.None,
 ) : AutoCloseable {
     private val lock = Any()
     private val storeMutex = Mutex()
@@ -139,11 +150,16 @@ class DesktopReaderSession(
             lastSettledPageIndex = null
             chapterJob?.cancel()
             val update = core.openChapter(ReaderChapterId(target.chapterId))
+            ioReporter.report(
+                ReaderIoEventType.OPEN_READER_INTENT,
+                update.snapshot.activeChapter.id,
+                generation = update.snapshot.generation,
+                purpose = ReaderIoPurpose.READER_OPEN,
+            )
             applySchedulePlanLocked(update.schedulePlan)
             publishStateLocked()
         }
         chapterJob = scope.launch {
-            ensureStoreStarted()
             val opening = synchronized(lock) {
                 if (closed || activationSequence != sequence) return@launch
                 core.snapshot
@@ -162,12 +178,26 @@ class DesktopReaderSession(
                 }
             val adjacentPageListJob = synchronized(lock) {
                 if (closed || activationSequence != sequence) return@launch
-                core.acceptChapterMaterialization(request.chapterId, request.generation, result)
+                val update = core.acceptChapterMaterialization(request.chapterId, request.generation, result)
+                val acceptedLoadedPageList =
+                    result is ReaderChapterMaterializeResult.Loaded &&
+                        update.snapshot.activeChapter.id == request.chapterId &&
+                        update.snapshot.generation == request.generation &&
+                        update.snapshot.activeChapter.loadState is ReaderChapterLoadState.Loaded
+                if (acceptedLoadedPageList) {
+                    ioReporter.report(
+                        ReaderIoEventType.PAGE_LIST_READY,
+                        request.chapterId,
+                        generation = request.generation,
+                        purpose = ReaderIoPurpose.PAGE_LIST,
+                    )
+                }
                 publishStateLocked()
                 enqueueAdjacentImagesLocked()
                 maybeStartAdjacentPageListLocked()
             }
             adjacentPageListJob?.start()
+            scope.launch { ensureStoreStarted() }
             pumpPageRequests()
         }
     }
@@ -311,6 +341,14 @@ class DesktopReaderSession(
     private suspend fun ensureStoreStarted() {
         storeMutex.withLock {
             if (!storeStarted) {
+                ioGate.await(ReaderIoGatePoint.CACHE_SCAN)
+                val snapshot = synchronized(lock) { core.snapshot }
+                ioReporter.report(
+                    ReaderIoEventType.CACHE_RECONCILE,
+                    snapshot.activeChapter.id,
+                    generation = snapshot.generation,
+                    purpose = ReaderIoPurpose.CACHE_MAINTENANCE,
+                )
                 encodedPageStore.beginSession(emptySet())
                 storeStarted = true
             }
@@ -350,6 +388,25 @@ class DesktopReaderSession(
         var acceptedAdjacentStorageFailure = false
         var adjacentPageListJob: Job? = null
         try {
+            request.gatePoint(scheduledPage.isAdjacentPrefetch)?.let { ioGate.await(it) }
+            if (scheduledPage.descriptor.encodedPageRef == null) ensureStoreStarted()
+            if (scheduledPage.isAdjacentPrefetch) {
+                ioReporter.report(
+                    ReaderIoEventType.ADJACENT_IO,
+                    request.pageId.chapterId,
+                    request.pageId,
+                    request.generation,
+                    ReaderIoPurpose.ADJACENT_PREFETCH,
+                )
+            } else {
+                ioReporter.report(
+                    ReaderIoEventType.OPEN_PAGE,
+                    request.pageId.chapterId,
+                    request.pageId,
+                    request.generation,
+                    ReaderIoPurpose.CURRENT_PAGE,
+                )
+            }
             physicalRequestPermits.withPermit {
                 terminalResult = materializeExecutor.materializePage(
                     request = ReaderPageFetchRequest(
@@ -474,6 +531,13 @@ class DesktopReaderSession(
         val generation = core.snapshot.generation
         lateinit var job: Job
         job = scope.launch(start = CoroutineStart.LAZY) {
+            ioGate.await(ReaderIoGatePoint.ADJACENT_IO)
+            ioReporter.report(
+                ReaderIoEventType.ADJACENT_IO,
+                ReaderChapterId(target.chapterId),
+                generation = generation,
+                purpose = ReaderIoPurpose.ADJACENT_PREFETCH,
+            )
             val result = physicalRequestPermits.withPermit {
                 materializeExecutor.materializeChapter(
                     ReaderChapterContentRequest(ReaderChapterId(target.chapterId), generation),

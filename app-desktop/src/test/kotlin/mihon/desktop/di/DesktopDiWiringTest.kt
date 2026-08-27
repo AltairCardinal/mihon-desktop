@@ -74,6 +74,7 @@ import mihon.desktop.task.DesktopTaskScheduler
 import mihon.desktop.test.http.SourceExtensionTestModeBridge
 import mihon.desktop.test.http.SourceExtensionTestModeController
 import mihon.desktop.test.http.LibraryMangaTestModeController
+import mihon.desktop.test.http.ReaderIoTestModeBridge
 import mihon.desktop.ui.library.LibraryScreenModel
 import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.network.ChallengeRecoveryFailure
@@ -944,7 +945,7 @@ class DesktopDiWiringTest {
         assertSame(secondHandler, Injekt.get<DatabaseHandler>())
         assertNotNull(Injekt.get<DesktopAppPreferences>())
         assertNotNull(Injekt.get<ReaderPreferences>())
-        assertNotNull(Injekt.get<DesktopReaderRuntimeFactory>())
+        assertSame(ReaderIoTestModeBridge, Injekt.get<DesktopReaderRuntimeFactory>().configuredReaderIoProbe)
         assertSame(Injekt.get<ReaderPreferences>(), DesktopUiDependencies.fromInjekt().readerPreferences)
         assertNotNull(Injekt.get<LibraryUpdateScheduler>())
         assertNotNull(Injekt.get<CreatorDiscoveryScheduler>())

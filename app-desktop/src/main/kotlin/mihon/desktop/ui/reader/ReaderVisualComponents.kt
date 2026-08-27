@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import mihon.desktop.reader.PagePreloader
 import mihon.desktop.reader.ReaderColorFilter
+import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.ui.reader.presentation.DesktopReaderPresentationRegistry
@@ -116,6 +117,7 @@ internal fun ZoomablePagerViewer(
     onTapCenter: (() -> Unit)? = null,
     onPrevChapter: (() -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
+    ioObserver: ReaderPageIoObserver? = null,
 ) {
     if (chapter.pages.isEmpty()) return
     val direction = if (isRtl) ReaderDirection.RTL else ReaderDirection.LTR
@@ -161,6 +163,8 @@ internal fun ZoomablePagerViewer(
             onRetryPage = { pageId -> onRetryPage?.invoke(pageId) },
             onSpreadDetected = onSpreadDetected,
             onTapCenter = onTapCenter, onPrevChapter = onPrevChapter, onNextChapter = onNextChapter,
+            ioObserver = ioObserver,
+            generation = chapter.generation,
         )
     } else {
         val request = remember(chapter, direction, autoSplitPages, splitPageIndices) {
@@ -194,6 +198,8 @@ internal fun ZoomablePagerViewer(
             onRetryPage = { pageId -> onRetryPage?.invoke(pageId) },
             onSpreadDetected = onSpreadDetected, onTapCenter = onTapCenter,
             onPrevChapter = onPrevChapter, onNextChapter = onNextChapter,
+            ioObserver = ioObserver,
+            generation = chapter.generation,
         )
     }
 }
@@ -218,6 +224,7 @@ internal fun WebtoonPresentationViewer(
     onRetryPage: ((ReaderPageId) -> Unit)? = null,
     onSpreadDetected: ((Int) -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
+    ioObserver: ReaderPageIoObserver? = null,
 ) {
     if (chapter.pages.isEmpty()) return
     val request = remember(chapter, autoSplitPages, splitPageIndices) {
@@ -250,6 +257,8 @@ internal fun WebtoonPresentationViewer(
         onRetryPage = { pageId -> onRetryPage?.invoke(pageId) },
         onSpreadDetected = onSpreadDetected,
         onNextChapter = onNextChapter,
+        ioObserver = ioObserver,
+        generation = chapter.generation,
     )
 }
 

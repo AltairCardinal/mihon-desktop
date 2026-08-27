@@ -49,6 +49,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import mihon.desktop.reader.PagePreloader
+import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.ui.reader.presentation.DisplaySlot
 import mihon.desktop.ui.reader.presentation.DisplayUnit
@@ -89,6 +90,8 @@ internal fun WebtoonViewer(
     onRetryPage: (ReaderPageId) -> Unit,
     onSpreadDetected: ((Int) -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
+    ioObserver: ReaderPageIoObserver? = null,
+    generation: Long = 0L,
 ) {
     WebtoonDisplayUnitList(
         presentation = presentation,
@@ -111,6 +114,8 @@ internal fun WebtoonViewer(
             chapterTitle = chapterTitle,
             preloader = preloader,
             onSpreadDetected = onSpreadDetected,
+            generation = generation,
+            ioObserver = ioObserver,
         )
     }
 }
@@ -464,6 +469,8 @@ private fun WebtoonPageItem(
     chapterTitle: String,
     preloader: PagePreloader?,
     onSpreadDetected: ((Int) -> Unit)?,
+    generation: Long,
+    ioObserver: ReaderPageIoObserver?,
 ) {
     val page = requireNotNull(slot.page)
     val pageIndex = page.id.sourcePageIndex
@@ -496,6 +503,12 @@ private fun WebtoonPageItem(
     val sourceId = LocalDesktopSourceImageId.current
     val painter = rememberAsyncImagePainter(readerPagePainterModel(url, preloadedPage?.bitmap, sourceId))
     val painterState by painter.state.collectAsState()
+    LaunchedEffect(painterState) {
+        if (painterState is AsyncImagePainter.State.Success) {
+            ioObserver?.pageOpened(page.id, generation)
+            ioObserver?.pageDecoded(page.id, generation)
+        }
+    }
     val transformedPainterBitmap by produceState<ImageBitmap?>(
         initialValue = null,
         painterState,
@@ -526,11 +539,13 @@ private fun WebtoonPageItem(
 
     val pageContent: @Composable () -> Unit = {
         val bitmap = transformedPreloadedBitmap ?: transformedPainterBitmap
+        val decoded = bitmap != null || painterState is AsyncImagePainter.State.Success
+        val observedModifier = modifier.observeReaderPageDraw(page.id, generation, decoded, ioObserver)
         if (bitmap != null) {
             Image(
                 bitmap = bitmap,
                 contentDescription = null,
-                modifier = modifier,
+                modifier = observedModifier,
                 contentScale = ContentScale.FillWidth,
             )
         } else {
@@ -538,7 +553,7 @@ private fun WebtoonPageItem(
                 is AsyncImagePainter.State.Loading,
                 is AsyncImagePainter.State.Empty,
                 -> Box(
-                    modifier = modifier.aspectRatio(2f / 3f),
+                    modifier = observedModifier.aspectRatio(2f / 3f),
                     contentAlignment = Alignment.Center,
                 ) {
                     CircularProgressIndicator(color = Color.White)
@@ -546,7 +561,7 @@ private fun WebtoonPageItem(
                 else -> Image(
                     painter = painter,
                     contentDescription = null,
-                    modifier = modifier,
+                    modifier = observedModifier,
                     contentScale = ContentScale.FillWidth,
                 )
             }

@@ -8,6 +8,11 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import mihon.desktop.test.state.applicationState
+import mihon.domain.reader.observability.ReaderIoEvent
+import mihon.domain.reader.observability.ReaderIoEventType
+import mihon.domain.reader.observability.ReaderIoPurpose
+import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderPageId
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import java.net.URI
@@ -109,6 +114,42 @@ class TestHttpServerJsonTest {
         } finally {
             server.stop(0, 0)
             applicationState.reset()
+        }
+    }
+
+    @Test
+    fun `reader state endpoint exposes production first presentation events`() = runBlocking {
+        val controller = ReaderTestModeController()
+        ReaderIoTestModeBridge.install(controller)
+        controller.record(
+            ReaderIoEvent(
+                type = ReaderIoEventType.FIRST_PAGE_PRESENTED,
+                monotonicNanos = 21L,
+                chapterId = ReaderChapterId(7L),
+                pageId = ReaderPageId(ReaderChapterId(7L), 0),
+                generation = 1L,
+                purpose = ReaderIoPurpose.FIRST_PRESENTATION,
+            ),
+        )
+        val server = embeddedServer(CIO, host = "127.0.0.1", port = 0) { testHttpServer() }.start()
+        try {
+            val port = server.resolvedConnectors().single().port
+            val response = HttpClient.newHttpClient().send(
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:$port/test/reader/state")).GET().build(),
+                HttpResponse.BodyHandlers.ofString(),
+            )
+            val state = Json.parseToJsonElement(response.body()).jsonObject
+            val event = state.getValue("productionEvents").jsonArray.single().jsonObject
+
+            assertEquals(true, state.getValue("firstPagePresented").jsonPrimitive.content.toBoolean())
+            assertEquals("FIRST_PAGE_PRESENTED", event.getValue("type").jsonPrimitive.content)
+            assertEquals("FIRST_PRESENTATION", event.getValue("purpose").jsonPrimitive.content)
+            assertEquals(7L, event.getValue("chapterId").jsonPrimitive.content.toLong())
+            assertEquals(0, event.getValue("pageIndex").jsonPrimitive.content.toInt())
+        } finally {
+            server.stop(0, 0)
+            ReaderIoTestModeBridge.clear(controller)
+            controller.close()
         }
     }
 }

@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import mihon.desktop.test.state.readerState
+import mihon.desktop.test.http.ReaderIoTestModeBridge
 import mihon.desktop.ui.authors.AuthorsTab
 import mihon.desktop.ui.browse.BrowseTab
 import mihon.desktop.ui.history.HistoryTab
@@ -234,7 +235,9 @@ object TestNavigationController {
         sourceId: Long,
         initialPage: Int = 0,
         pageCount: Int = 20,
+        localChapterPath: String? = null,
     ) {
+        ReaderIoTestModeBridge.beginScenario()
         val readerScreen = mihon.desktop.ui.reader.DesktopReaderScreen(
             chapterTitle = chapterTitle,
             mangaTitle = mangaTitle,
@@ -248,6 +251,7 @@ object TestNavigationController {
             mangaViewerFlags = 0L,
             isRtl = false,
             isDualPage = false,
+            localChapterPath = localChapterPath,
         )
         _pendingReaderScreen.value = readerScreen
         _pushedScreens.value = _pushedScreens.value + readerScreen

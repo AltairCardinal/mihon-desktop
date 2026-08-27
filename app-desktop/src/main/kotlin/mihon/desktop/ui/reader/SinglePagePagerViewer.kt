@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 import mihon.desktop.reader.PagePreloader
 import mihon.desktop.reader.ReaderKeyboardAction
 import mihon.desktop.reader.ReaderPageAction
+import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.ui.reader.presentation.DisplaySlot
@@ -70,6 +71,8 @@ internal fun SinglePagePagerViewer(
     onTapCenter: (() -> Unit)? = null,
     onPrevChapter: (() -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
+    ioObserver: ReaderPageIoObserver? = null,
+    generation: Long = 0L,
 ) {
     val displayUnits = presentation.displayUnits
     if (displayUnits.isEmpty()) return
@@ -149,6 +152,9 @@ internal fun SinglePagePagerViewer(
                 onTapPrevious = { executeTapCommand(ReaderNavigationCommand.Previous) },
                 onTapNext = { executeTapCommand(ReaderNavigationCommand.Next) },
                 onTapCenter = onTapCenter,
+                pageId = page.id,
+                generation = generation,
+                ioObserver = ioObserver,
             )
         }
     }

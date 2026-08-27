@@ -297,7 +297,7 @@ Android Reader UI                 Desktop Reader presentation
 
 每个改变产品行为的批次都必须在同一内聚任务内完成 RED → GREEN → 重构 → focused 验证 → 独立审查 → 提交。RED 必须运行真实 production 实现或其 composition root；不能用源码文本扫描、复制算法或 fake-only helper 代替。每个顶层批次原则上一个提交，审查修复最多再一个提交。
 
-- [ ] `RUA-00` 激活、authority 冻结与可观测性基础
+- [x] `RUA-00` 激活、authority 冻结与可观测性基础
 - [ ] `RUA-01` 共享 route/download/page-list 契约与两端决策接线
 - [ ] `RUA-02` Desktop 下载/local/archive adapter 与无损兼容
 - [ ] `RUA-03` 首帧 critical path 与 shared runtime owner 收口
@@ -328,6 +328,17 @@ Android Reader UI                 Desktop Reader presentation
 **focused 验证**：probe wiring、Test Mode reader production fixture、Screen/runtime factory DI 与 Compose mount。
 
 **预计**：2–3 工程日，约 6–10 个 production/test/doc 文件。
+
+**完成证据（2026-08-28）**：
+
+- domain 增加默认 disabled/no-op 的 `ReaderIoProbe`、可绑定场景的 probe view 与 monotonic clock；release disabled 时在读取 clock 和构造 event 前返回；
+- Desktop production runtime/session、实际 materialize、preloader/Skia、Coil fallback 与 draw pass 已接入带 chapter/page/generation/purpose 的事件；`OPEN_PAGE / DECODE` 保留真实发生次数，只有同一 page/generation 的 `FIRST_PAGE_PRESENTED` 去重；
+- Test Mode 使用真实目录/CBZ、MockWebServer、Compose scene 与按场景隔离的 production bridge；旧 runtime 的迟到事件因携带旧 scenario token 不会进入当前 snapshot；
+- production-mounted Single reader 在 `CACHE_SCAN / NON_CURRENT_PAGE / ADJACENT_IO` 三个真实 gate 均保持阻塞时先到达首帧；释放后按章节、页码和 purpose 验证 background 事件确实发生；render 前明确验证不能提前报告首帧；
+- focused GREEN：`ReaderIoObservationTest`、`ReaderIoProductionWiringTest`、`ReaderPageIoObserverTest`、`ReaderProductionTestFixtureTest`、`ReaderTestModeControllerTest`、`TestHttpServerJsonTest` 与 Desktop DI wiring；最终 production mount 重跑日志 `.gradle-coordinator/rua00-production-final.log` 为 `PASSED`；
+- 独立审查与唯一修复复审均已完成。复审最后指出的身份化 gate 断言与 scenario TOCTOU 已按建议修复，并由上述直接测试覆盖；未进行第三轮审查；
+- 本批实际涉及 production → Test Mode → Single/Dual/Webtoon presentation 的完整 wiring，超过 6–10 文件估算，但没有拆开会使 production wiring 断开后测试仍绿，因此作为一个内聚 RUA-00 批次提交；
+- manifest 中激活时精确 reopen 的单一 decode、decoded budget、scheduler/prefetch evidence slice 继续保持 `IN_PROGRESS`；RUA-00 只建立真实可观测性，不提前宣称 RUA-04/RUA-05 的最终行为已验证。
 
 ### `RUA-01` 共享 route/download/page-list 契约与两端决策接线
 
