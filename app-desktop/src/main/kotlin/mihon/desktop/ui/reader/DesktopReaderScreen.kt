@@ -498,17 +498,15 @@ private fun ReaderViewport(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .focusRequester(focusRequester)
-                .focusable()
+                .readerKeyboardFocus(focusRequester) { event ->
+                    handleReaderKeyEvent(event, state, model, navigator, readerNav, onPrevChapter, onNextChapter)
+                }
                 .onPointerEvent(PointerEventType.Scroll) { event ->
                     val native = event.nativeEvent as? java.awt.event.MouseWheelEvent
                     if (native?.isControlDown == true) {
                         val delta = native.preciseWheelRotation.toFloat()
                         model.setZoomState(if (delta > 0f) state.zoomState.zoomOut() else state.zoomState.zoomIn())
                     }
-                }
-                .onKeyEvent { event ->
-                    handleReaderKeyEvent(event, state, model, navigator, readerNav, onPrevChapter, onNextChapter)
                 },
         ) {
             when (readerViewportBody(state)) {
@@ -586,6 +584,17 @@ private fun ReaderViewport(
         }
     }
 }
+
+@OptIn(ExperimentalComposeUiApi::class)
+internal fun Modifier.readerKeyboardFocus(
+    focusRequester: FocusRequester,
+    onKeyEvent: (androidx.compose.ui.input.key.KeyEvent) -> Boolean,
+): Modifier =
+    focusRequester(focusRequester)
+        .focusable()
+        .onPointerEvent(PointerEventType.Press) { focusRequester.requestFocus() }
+        .onPointerEvent(PointerEventType.Scroll) { focusRequester.requestFocus() }
+        .onKeyEvent(onKeyEvent)
 
 internal enum class ReaderViewportBody {
     CONTENT,
