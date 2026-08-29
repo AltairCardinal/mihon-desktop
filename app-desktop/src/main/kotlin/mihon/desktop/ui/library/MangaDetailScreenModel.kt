@@ -74,8 +74,8 @@ class MangaDetailScreenModel(
     private val extractCreatorsFromManga: ExtractCreatorsFromManga = ExtractCreatorsFromManga(),
     private val enqueueDownload: ((DownloadItem) -> Unit)? = null,
     private val downloadQueue: StateFlow<List<DownloadItem>>? = null,
-    private val isDownloaded: ((sourceId: Long, mangaTitle: String, chapterName: String) -> Boolean)? = null,
-    private val deleteDownload: ((sourceId: Long, mangaTitle: String, chapterName: String) -> Unit)? = null,
+    private val isDownloaded: ((manga: Manga, chapter: Chapter) -> Boolean)? = null,
+    private val deleteDownload: ((manga: Manga, chapter: Chapter) -> Unit)? = null,
     private val cancelDownload: ((chapterId: Long) -> Unit)? = null,
     private val batchUpdateChapters: BatchUpdateChapters = BatchUpdateChapters(),
     private val updateLibraryMembership: UpdateLibraryMembership? = null,
@@ -402,12 +402,12 @@ class MangaDetailScreenModel(
     }
 
     fun deleteChapterDownload(manga: Manga, chapter: Chapter) {
-        requireNotNull(deleteDownload) { "Delete download callback is required" }(manga.source, manga.title, chapter.name)
+        requireNotNull(deleteDownload) { "Delete download callback is required" }(manga, chapter)
     }
 
     suspend fun deleteDownloadBatch(manga: Manga, chapters: List<Chapter>): BatchChapterResult {
         val delete = requireNotNull(deleteDownload) { "Delete download callback is required" }
-        return runChapterBatch(chapters) { chapter -> delete(manga.source, manga.title, chapter.name) }
+        return runChapterBatch(chapters) { chapter -> delete(manga, chapter) }
     }
 
     fun cancelChapterDownload(chapterId: Long) {
@@ -415,7 +415,7 @@ class MangaDetailScreenModel(
     }
 
     fun isChapterDownloaded(manga: Manga, chapter: Chapter): Boolean {
-        return isDownloaded?.invoke(manga.source, manga.title, chapter.name) ?: false
+        return isDownloaded?.invoke(manga, chapter) ?: false
     }
 
     fun readerRequest(

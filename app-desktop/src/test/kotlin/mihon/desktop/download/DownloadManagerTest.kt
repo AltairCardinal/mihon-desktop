@@ -12,7 +12,10 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.first
@@ -23,19 +26,26 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import mihon.desktop.domain.DesktopSystemNotifier
 import okhttp3.Response
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.OkHttpClient
+import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import mihon.domain.reader.content.DownloadChapterIdentity
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import java.io.File
 import java.net.ServerSocket
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 /** RED — DesktopDownloadManager does not exist yet. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -244,6 +254,319 @@ class DownloadManagerTest {
         File(dir, "001.jpg").writeBytes(jpegBytes())
 
         assertTrue(mgr.isDownloaded(sourceId = 1L, mangaTitle = "Test", chapterName = "Ch 1"))
+    }
+
+    @Test
+    fun `download single-writes canonical cbz and reader filter delete share the same identity`() = runTest {
+        val provider = DesktopDownloadProvider(tempDir.resolve("canonical-downloads"))
+        val identity = DownloadChapterIdentity(
+            sourceDisplayName = "Source 中文",
+            mangaTitle = "Manga 中文",
+            chapterName = "Chapter 1",
+            scanlator = "Group",
+            chapterUrl = "/chapter/1",
+            disallowNonAsciiFilenames = false,
+        )
+        val preferences = DesktopDownloadPreferences(InMemoryPreferenceStore()).apply {
+            downloadAsCbz.set(true)
+        }
+        val mgr = DesktopDownloadManager(
+            provider = provider,
+            networkHelper = NetworkHelper(OkHttpClient()),
+            downloadPreferences = preferences,
+            workerScope = this,
+            downloadIdentityResolver = { identity },
+            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun execute(client: OkHttpClient, url: String): Response = Response.Builder()
+                    .request(Request.Builder().url(url).build())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(jpegBytes().toResponseBody())
+                    .build()
+            },
+        )
+        val worker = mgr.start()
+        try {
+            mgr.enqueue(
+                DownloadItem(
+                    sourceId = 42L,
+                    mangaTitle = identity.mangaTitle,
+                    chapterName = identity.chapterName,
+                    chapterId = 420L,
+                    chapterUrl = identity.chapterUrl,
+                    pageUrls = listOf("https://fixture.invalid/001.jpg"),
+                ),
+            )
+            advanceUntilIdle()
+
+            val canonicalDirectory = provider.canonicalChapterDownloadDir(identity)
+            val canonicalCbz = CbzCreator.defaultOutputFile(canonicalDirectory)
+            assertFalse(canonicalDirectory.exists())
+            assertTrue(canonicalCbz.isFile)
+            assertFalse(provider.chapterDownloadDir(42L, identity.mangaTitle, identity.chapterName).exists())
+            assertEquals(canonicalCbz.absolutePath, provider.downloadArtifactLookup(42L).locate(identity)?.opaqueLocation)
+            assertTrue(mgr.isDownloaded(42L, identity))
+            assertTrue(provider.hasMangaDownloads(42L, identity))
+
+            mgr.deleteDownload(42L, identity)
+
+            assertFalse(canonicalCbz.exists())
+            assertFalse(mgr.isDownloaded(42L, identity))
+        } finally {
+            worker.cancel()
+        }
+    }
+
+    @Test
+    fun `clear errors removes the canonical temporary directory resolved by the failed worker`() = runTest {
+        val provider = DesktopDownloadProvider(tempDir.resolve("canonical-error-downloads"))
+        val identity = DownloadChapterIdentity(
+            sourceDisplayName = "Canonical Source",
+            mangaTitle = "Canonical Manga",
+            chapterName = "Chapter 2",
+            scanlator = "Group",
+            chapterUrl = "/chapter/2",
+            disallowNonAsciiFilenames = false,
+        )
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            networkHelper = NetworkHelper(OkHttpClient()),
+            workerScope = this,
+            retryDelay = { },
+            downloadIdentityResolver = { identity },
+            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun execute(client: OkHttpClient, url: String): Response = Response.Builder()
+                    .request(Request.Builder().url(url).build())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body("not an image".toResponseBody())
+                    .build()
+            },
+        )
+        val worker = manager.start()
+        try {
+            manager.enqueue(
+                DownloadItem(
+                    sourceId = 42L,
+                    mangaTitle = identity.mangaTitle,
+                    chapterName = identity.chapterName,
+                    chapterId = 421L,
+                    chapterUrl = identity.chapterUrl,
+                    pageUrls = listOf("https://fixture.invalid/001.jpg"),
+                ),
+            )
+            advanceUntilIdle()
+
+            assertEquals(DownloadStatus.ERROR, manager.queue.value.single().status)
+            assertTrue(provider.canonicalChapterTmpDir(identity).isDirectory)
+
+            manager.clearErrors()
+
+            assertTrue(manager.queue.value.isEmpty())
+            assertFalse(provider.canonicalChapterTmpDir(identity).exists())
+        } finally {
+            worker.cancel()
+        }
+    }
+
+    @Test
+    fun `cancelled worker cannot remove or overwrite an immediate same id reenqueue`() = runTest {
+        val provider = DesktopDownloadProvider(tempDir.resolve("same-id-generation"))
+        val identity = DownloadChapterIdentity(
+            sourceDisplayName = "Generation Source",
+            mangaTitle = "Generation Manga",
+            chapterName = "Chapter 3",
+            scanlator = null,
+            chapterUrl = "/chapter/3",
+            disallowNonAsciiFilenames = false,
+        )
+        val firstStarted = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        val secondStarted = CompletableDeferred<Unit>()
+        val firstBytes = jpegBytes() + 0x01.toByte()
+        val secondBytes = jpegBytes() + 0x02.toByte()
+        val writtenGenerations = mutableListOf<Byte>()
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            networkHelper = NetworkHelper(OkHttpClient()),
+            workerScope = this,
+            downloadIdentityResolver = { identity },
+            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun execute(client: OkHttpClient, url: String): Response = Response.Builder()
+                    .request(Request.Builder().url(url).build())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(byteArrayOf().toResponseBody())
+                    .build()
+
+                override suspend fun readBody(response: Response): ByteArray =
+                    if (response.request.url.encodedPath.endsWith("first.jpg")) {
+                        firstStarted.complete(Unit)
+                        releaseFirst.await()
+                        firstBytes
+                    } else {
+                        secondStarted.complete(Unit)
+                        secondBytes
+                    }
+
+                override fun writePage(file: File, bytes: ByteArray) {
+                    writtenGenerations += bytes.last()
+                    DefaultDownloadFileOperations.writePage(file, bytes)
+                }
+            },
+        )
+        val worker = manager.start()
+        try {
+            manager.enqueue(
+                DownloadItem(
+                    sourceId = 42L,
+                    mangaTitle = identity.mangaTitle,
+                    chapterName = identity.chapterName,
+                    chapterId = 422L,
+                    chapterUrl = identity.chapterUrl,
+                    pageUrls = listOf("https://fixture.invalid/first.jpg"),
+                ),
+            )
+            withTimeout(2_000) { firstStarted.await() }
+
+            assertTrue(manager.cancel(422L))
+            manager.enqueue(
+                DownloadItem(
+                    sourceId = 42L,
+                    mangaTitle = identity.mangaTitle,
+                    chapterName = identity.chapterName,
+                    chapterId = 422L,
+                    chapterUrl = identity.chapterUrl,
+                    pageUrls = listOf("https://fixture.invalid/second.jpg"),
+                ),
+            )
+            releaseFirst.complete(Unit)
+            advanceUntilIdle()
+
+            withTimeout(2_000) { secondStarted.await() }
+            assertTrue(manager.queue.value.isEmpty())
+            assertEquals(listOf(0x02.toByte()), writtenGenerations)
+            assertArrayEquals(
+                secondBytes,
+                File(provider.canonicalChapterDownloadDir(identity), "001.jpg").readBytes(),
+            )
+        } finally {
+            worker.cancel()
+        }
+    }
+
+    @Test
+    fun `cbz packaging failure after chapter rename preserves completed page files`() = runTest {
+        val provider = DesktopDownloadProvider(tempDir.resolve("cbz-finalize-failure"))
+        val identity = DownloadChapterIdentity(
+            sourceDisplayName = "CBZ Source",
+            mangaTitle = "CBZ Manga",
+            chapterName = "Chapter 4",
+            scanlator = null,
+            chapterUrl = "/chapter/4",
+            disallowNonAsciiFilenames = false,
+        )
+        val preferences = DesktopDownloadPreferences(InMemoryPreferenceStore()).apply {
+            downloadAsCbz.set(true)
+        }
+        val finalDirectory = provider.canonicalChapterDownloadDir(identity)
+        val blockedCbzTarget = CbzCreator.defaultOutputFile(finalDirectory).also { target ->
+            target.mkdirs()
+            File(target, "do-not-delete.txt").writeText("occupied")
+        }
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            networkHelper = NetworkHelper(OkHttpClient()),
+            downloadPreferences = preferences,
+            workerScope = this,
+            retryDelay = { },
+            downloadIdentityResolver = { identity },
+            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun execute(client: OkHttpClient, url: String): Response = Response.Builder()
+                    .request(Request.Builder().url(url).build())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(jpegBytes().toResponseBody())
+                    .build()
+            },
+        )
+        val worker = manager.start()
+        try {
+            manager.enqueue(
+                DownloadItem(
+                    sourceId = 42L,
+                    mangaTitle = identity.mangaTitle,
+                    chapterName = identity.chapterName,
+                    chapterId = 423L,
+                    chapterUrl = identity.chapterUrl,
+                    pageUrls = listOf("https://fixture.invalid/page.jpg"),
+                ),
+            )
+            advanceUntilIdle()
+
+            assertEquals(DownloadStatus.ERROR, manager.queue.value.single().status)
+            assertArrayEquals(jpegBytes(), File(finalDirectory, "001.jpg").readBytes())
+            assertTrue(File(blockedCbzTarget, "do-not-delete.txt").isFile)
+        } finally {
+            worker.cancel()
+        }
+    }
+
+    @Test
+    fun `failure notification is committed before same id cancellation and reenqueue`() = runBlocking {
+        val notificationStarted = CountDownLatch(1)
+        val releaseNotification = CountDownLatch(1)
+        val replacementQueued = CountDownLatch(1)
+        val notifier = DesktopSystemNotifier(
+            system = {
+                notificationStarted.countDown()
+                check(releaseNotification.await(2, TimeUnit.SECONDS))
+                true
+            },
+            fallback = mihon.desktop.domain.DesktopNotificationService(),
+        )
+        val manager = DesktopDownloadManager(
+            provider = DesktopDownloadProvider(tempDir.resolve("notification-generation")),
+            networkHelper = NetworkHelper(OkHttpClient()),
+            workerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            retryDelay = { },
+            taskNotifier = notifier,
+            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun execute(client: OkHttpClient, url: String): Response {
+                    throw java.io.IOException("terminal failure")
+                }
+            },
+        )
+        val item = DownloadItem(
+            sourceId = 42L,
+            mangaTitle = "Notification Manga",
+            chapterName = "Chapter 5",
+            chapterId = 424L,
+            pageUrls = listOf("https://fixture.invalid/failure.jpg"),
+        )
+        val worker = manager.start()
+        try {
+            manager.enqueue(item)
+            assertTrue(notificationStarted.await(2, TimeUnit.SECONDS))
+            val replacement = thread(name = "same-id-reenqueue") {
+                assertTrue(manager.cancel(item.chapterId))
+                manager.enqueue(item.copy(pageUrls = listOf("https://fixture.invalid/replacement.jpg")))
+                replacementQueued.countDown()
+            }
+
+            assertFalse(replacementQueued.await(150, TimeUnit.MILLISECONDS))
+            releaseNotification.countDown()
+            assertTrue(replacementQueued.await(2, TimeUnit.SECONDS))
+            replacement.join(2_000)
+        } finally {
+            releaseNotification.countDown()
+            manager.stopAndJoin()
+            worker.cancel()
+        }
     }
 
     @Test

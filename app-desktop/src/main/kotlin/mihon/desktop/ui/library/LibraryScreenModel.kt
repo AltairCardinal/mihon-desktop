@@ -89,6 +89,7 @@ class LibraryScreenModel(
     private val setMangaCategories: SetMangaCategories? = null,
     private val enqueueDownload: ((DownloadItem) -> Unit)? = null,
     private val downloadProvider: DesktopDownloadProvider? = null,
+    private val isMangaDownloaded: ((LibraryManga) -> Boolean)? = null,
     private val downloadPreferences: DesktopDownloadPreferences? = null,
     private val categoryPrefs: LibraryCategoryPrefs? = null,
     private val getTracksPerManga: GetTracksPerManga? = null,
@@ -332,7 +333,10 @@ class LibraryScreenModel(
     fun downloadedMangaIds(items: List<LibraryManga>): Set<Long> {
         val provider = downloadProvider ?: return emptySet()
         return items
-            .filter { provider.hasMangaDownloads(it.manga.source, it.manga.title) }
+            .filter { item ->
+                isMangaDownloaded?.invoke(item)
+                    ?: provider.hasMangaDownloads(item.manga.source, item.manga.title)
+            }
             .map { it.id }
             .toSet()
     }

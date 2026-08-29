@@ -314,9 +314,9 @@ class MangaDetailScreenModelTest {
         val deleted = mutableListOf<String>()
         val model = MangaDetailScreenModel(
             mangaId = 1L,
-            deleteDownload = { _, _, chapterName ->
-                if (chapterName == "Chapter 2") error("delete failed")
-                deleted += chapterName
+            deleteDownload = { _, chapter ->
+                if (chapter.name == "Chapter 2") error("delete failed")
+                deleted += chapter.name
             },
         )
 
@@ -745,7 +745,7 @@ class MangaDetailScreenModelTest {
         val model = MangaDetailScreenModel(
             mangaId = 1L,
             enqueueDownload = enqueued::add,
-            isDownloaded = { _, _, chapterName -> chapterName == "Chapter 1" },
+            isDownloaded = { _, chapter -> chapter.name == "Chapter 1" },
         )
         val manga = createFakeManga(id = 1L, title = "M")
         val chapters = listOf(createFakeChapter(1L), createFakeChapter(2L))

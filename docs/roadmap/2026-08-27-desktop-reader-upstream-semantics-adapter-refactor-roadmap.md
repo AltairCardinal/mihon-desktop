@@ -301,7 +301,7 @@ Android Reader UI                 Desktop Reader presentation
 - [x] `RUA-01` 共享 route/download/page-list 契约与两端决策接线
 - [ ] `RUA-02` Desktop 下载/local/archive adapter 与无损兼容
   - [x] `RUA-02A` artifact identity、有限候选与 dual-read/single-write
-  - [ ] `RUA-02B` 下载 lifecycle、恢复/删除与消费者 identity
+  - [x] `RUA-02B` 下载 lifecycle、恢复/删除与消费者 identity
   - [ ] `RUA-02C` directory/archive adapter、惰性 entry 与 lease/generation
   - [ ] `RUA-02D` production Reader/DI 接线、离线打开与 DownloadIndex gate
 - [ ] `RUA-03` 首帧 critical path 与 shared runtime owner 收口
@@ -413,6 +413,13 @@ Android Reader UI                 Desktop Reader presentation
 - Desktop provider 使用 RUA-01 共享 naming/candidate contract 有限探测 canonical/current/legacy/non-ASCII/hash/scanlator directory/CBZ，再读取旧 Desktop raw directory/sibling CBZ；新写入目标固定为 canonical，未迁移用户文件。
 - `CbzCreator` 保留 shared policy 支持的全部已知图片扩展；provider/CbzCreator focused tests、相关 Reader wiring 与根级 `spotlessCheck` 已在 `.gradle-coordinator/rua02-review-close.json/.log` 同一调用中通过。
 - 两轮整体只读审查对该冻结 scope 没有 P0/P1/P2；后续发现仅属于 02B 的 worker generation、02C 的 archive generation 与 02D 的 gate 证明强度，不反向扩大 02A。
+
+**RUA-02B 完成证据（2026-08-29）**：
+
+- enqueue、worker、cancel、retry、recovery、delete/filter 与 Library/Updates/Manga detail 消费者统一使用共享 download identity；每次入队分配独立 generation，旧 worker 在非协作 I/O 返回后不能写页、改状态、清理或完成同 chapter ID 的新任务。
+- rename 与 CBZ packing 已分成不可回退的两个阶段：`_tmp` 成功改名后，即使打包失败也保留完整页面目录；旧 generation 的失败状态、持久化与通知在同一 queue lock 内线性提交，cancel/requeue 不会被迟到通知污染。
+- 严格 TDD 证据：`.gradle-coordinator/rua02b-same-id-red2.log` 与 `rua02b-finalize-notify-red.log` 分别按旧 worker 越代写入、打包失败丢页/通知晚到的正确原因失败；`rua02b-same-id-green3.log`、`rua02b-finalize-notify-green.log` 与最终 `rua02b-final-close.log` 均通过。最终收口包含根级 `spotlessCheck` 以及 download manager、retry、recovery、parallel limit 和三个消费者 focused tests。
+- 最终冻结 9 文件、`712+/146-`，Git 原始 diff 为 63,491 字节，SHA-256 为 `e26308dbf98d6333eba49be5027da1d0d453ebf8d0f8df67f39226e3a8184f34`；限定增量复审结论为 `PASS`，P0/P1/P2 均为零。PowerShell 文本管道会转换换行，后续 diff 指纹统一用 Python `subprocess.PIPE` 捕获 `git.exe` 原始 stdout。
 
 **RED**：
 

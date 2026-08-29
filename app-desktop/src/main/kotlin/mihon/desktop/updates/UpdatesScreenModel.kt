@@ -10,6 +10,7 @@ import mihon.domain.download.DownloadQueueEntry
 import mihon.domain.download.DownloadQueueStatus
 import mihon.domain.download.EnqueueDownload
 import mihon.domain.download.IsChapterDownloaded
+import mihon.domain.reader.content.DownloadChapterIdentity
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
@@ -74,6 +75,16 @@ class UpdatesScreenModel(
     private val updatesPreferences: UpdatesPreferences,
     private val isChapterDownloaded: IsChapterDownloaded,
     private val enqueueDownload: EnqueueDownload,
+    private val downloadIdentity: (UpdatesWithRelations) -> DownloadChapterIdentity = { item ->
+        DownloadChapterIdentity(
+            sourceDisplayName = item.sourceId.toString(),
+            mangaTitle = item.mangaTitle,
+            chapterName = item.chapterName,
+            scanlator = item.scanlator,
+            chapterUrl = item.chapterUrl,
+            disallowNonAsciiFilenames = false,
+        )
+    },
     private val creatorArchiveRepository: CreatorArchiveRepository? = null,
 ) : ScreenModel {
 
@@ -265,10 +276,10 @@ class UpdatesScreenModel(
                 items = when (downloadedFilter) {
                     TriState.DISABLED -> rawItems
                     TriState.ENABLED_IS -> rawItems.filter { item ->
-                        isChapterDownloaded(item.sourceId, item.mangaTitle, item.chapterName)
+                        isChapterDownloaded(item.sourceId, downloadIdentity(item))
                     }
                     TriState.ENABLED_NOT -> rawItems.filterNot { item ->
-                        isChapterDownloaded(item.sourceId, item.mangaTitle, item.chapterName)
+                        isChapterDownloaded(item.sourceId, downloadIdentity(item))
                     }
                 },
             )

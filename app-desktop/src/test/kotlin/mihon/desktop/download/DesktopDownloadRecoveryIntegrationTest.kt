@@ -1,11 +1,13 @@
 package mihon.desktop.download
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import eu.kanade.tachiyomi.network.NetworkHelper
 import io.kotest.matchers.shouldBe
 import mihon.domain.download.DownloadQueueEntry
 import mihon.domain.download.DownloadQueueStatus
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import mihon.domain.reader.content.DownloadChapterIdentity
 import okhttp3.OkHttpClient
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -13,7 +15,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import tachiyomi.data.Database
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
@@ -128,6 +138,59 @@ class DesktopDownloadRecoveryIntegrationTest {
             provider.isChapterDownloaded(3, "Manga", "Chapter") shouldBe true
             persistentStore(dbFile).entries() shouldBe emptyList()
         } finally { server.close() }
+    }
+
+    @Test
+    fun `recovered queue resolves canonical identity before resuming its write`() = runBlocking {
+        val dbFile = File(directory, "canonical-recovery.db")
+        val store = persistentStore(dbFile)
+        store.replaceAll(listOf(entry(DownloadQueueStatus.QUEUED, 0).copy(
+            pageUrls = listOf("https://fixture.invalid/001.jpg"),
+        )))
+        val provider = DesktopDownloadProvider(File(directory, "canonical-recovery-downloads"))
+        val identity = DownloadChapterIdentity(
+            sourceDisplayName = "Recovered Source",
+            mangaTitle = "Manga",
+            chapterName = "Chapter",
+            scanlator = "Recovered Group",
+            chapterUrl = "/chapter",
+            disallowNonAsciiFilenames = false,
+        )
+        var resolvedChapterId: Long? = null
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            store = store,
+            networkHelper = NetworkHelper(OkHttpClient()),
+            workerScope = this,
+            downloadIdentityResolver = { item ->
+                resolvedChapterId = item.chapterId
+                identity
+            },
+            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun execute(client: OkHttpClient, url: String): Response = Response.Builder()
+                    .request(Request.Builder().url(url).build())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(GIF.encodeToByteArray().toResponseBody())
+                    .build()
+            },
+        )
+        val worker = manager.start()
+        try {
+            withTimeout(5_000) {
+                while (manager.queue.value.isNotEmpty()) delay(10)
+            }
+
+            assertEquals(1L, resolvedChapterId)
+            assertTrue(provider.canonicalChapterDownloadDir(identity).isDirectory)
+            assertEquals(
+                provider.canonicalChapterDownloadDir(identity).absolutePath,
+                provider.downloadArtifactLookup(sourceId = 3L).locate(identity)?.opaqueLocation,
+            )
+        } finally {
+            worker.cancelAndJoin()
+        }
     }
 
     private fun persistentStore(file: File): PersistentDownloadStore {

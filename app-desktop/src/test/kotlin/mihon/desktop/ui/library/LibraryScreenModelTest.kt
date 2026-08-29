@@ -19,6 +19,7 @@ import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DownloadStatus
 import mihon.desktop.reader.ReaderNavigator
+import mihon.domain.reader.content.DownloadChapterIdentity
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -225,6 +226,31 @@ class LibraryScreenModelTest {
         assertTrue(model.state.value.filterStarted)
         assertFalse(model.state.value.filterCompleted)
         assertTrue(model.state.value.filterDownloaded)
+    }
+
+    @Test
+    fun `downloaded manga projection uses canonical identity lookup before legacy directory fallback`() {
+        val provider = DesktopDownloadProvider(tempDir.toFile())
+        val manga = sampleManga(id = 7L, source = 42L, title = "Canonical Manga")
+        val identity = DownloadChapterIdentity(
+            sourceDisplayName = "Canonical Source",
+            mangaTitle = manga.title,
+            chapterName = "Chapter 1",
+            scanlator = "Group",
+            chapterUrl = "/chapter/1",
+            disallowNonAsciiFilenames = false,
+        )
+        val canonicalCbz = provider.canonicalMangaDownloadDir(identity).resolve("chapter.cbz")
+        canonicalCbz.parentFile.mkdirs()
+        canonicalCbz.writeBytes(byteArrayOf(1))
+        val model = LibraryScreenModel(
+            downloadProvider = provider,
+            isMangaDownloaded = { item ->
+                provider.hasMangaDownloads(item.manga.source, identity.copy(mangaTitle = item.manga.title))
+            },
+        )
+
+        assertEquals(setOf(manga.id), model.downloadedMangaIds(listOf(sampleLibraryManga(manga))))
     }
 
     // ── Category selection ────────────────────────────────────────────────────

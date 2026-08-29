@@ -10,6 +10,7 @@ import mihon.domain.download.DownloadQueueStatus
 import mihon.domain.download.DownloadQueueStateMachine
 import mihon.domain.download.DownloadRepository
 import mihon.domain.error.AppError
+import mihon.domain.reader.content.DownloadChapterIdentity
 import mihon.desktop.domain.DesktopSystemNotifier
 import mihon.domain.task.NotificationEvent
 import kotlinx.coroutines.CoroutineScope
@@ -37,6 +38,7 @@ import tachiyomi.data.download.PersistentDownloadStore
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Manages the chapter download queue.
@@ -63,12 +65,29 @@ class DesktopDownloadManager(
         Injekt.get<SourceManager>().getCatalogueSources().find { it.id == sourceId }
     },
     private val sourceCallTimeoutMs: Long = 30_000L,
+    private val downloadIdentityResolver: suspend (DownloadItem) -> DownloadChapterIdentity? = { null },
 ) : DownloadRepository, DesktopDownloadQueuePort {
+    private data class DownloadAttempt(
+        val item: DownloadItem,
+        val generation: Long,
+    ) {
+        val key = DownloadAttemptKey(item.chapterId, generation)
+    }
+
+    private data class DownloadAttemptKey(
+        val chapterId: Long,
+        val generation: Long,
+    )
+
     private val lifecycleLock = Any()
+    private val queueStateLock = Any()
     private var stopped = false
     private var workerJob: Job? = null
     private val activeJobs = mutableSetOf<Job>()
+    private val generationSequence = AtomicLong()
     private val recoveredItems = store?.recover()?.map { it.toItem() } ?: emptyList()
+    private val queueGenerations = recoveredItems.associate { it.chapterId to nextGeneration() }.toMutableMap()
+    private val resolvedDownloadIdentities = mutableMapOf<DownloadAttemptKey, DownloadChapterIdentity>()
     private val _queue = MutableStateFlow(recoveredItems)
     override val queue: StateFlow<List<DownloadItem>> = _queue.asStateFlow()
     private val _failures = MutableStateFlow(recoveredItems.mapNotNull { item -> item.failure?.let { item.chapterId to it } }.toMap())
@@ -82,12 +101,13 @@ class DesktopDownloadManager(
     val isPaused: StateFlow<Boolean> = _isPaused.asStateFlow()
 
     /** Add a chapter to the download queue (no-op if already queued or downloaded). */
-    fun enqueue(item: DownloadItem) {
+    fun enqueue(item: DownloadItem) = synchronized(queueStateLock) {
         val current = _queue.value
-        if (current.any { it.chapterId == item.chapterId }) return
-        if (provider.isChapterDownloaded(item.sourceId, item.mangaTitle, item.chapterName)) return
+        if (current.any { it.chapterId == item.chapterId }) return@synchronized
+        if (provider.isChapterDownloaded(item.sourceId, item.mangaTitle, item.chapterName)) return@synchronized
         // Clean up any leftover _tmp directory from a previous attempt
         provider.cleanupTmpDir(item.sourceId, item.mangaTitle, item.chapterName)
+        queueGenerations[item.chapterId] = nextGeneration()
         _queue.value = current + item
         persistQueue()
     }
@@ -95,14 +115,23 @@ class DesktopDownloadManager(
     override fun enqueue(entry: DownloadQueueEntry) = enqueue(entry.toItem())
 
     /** Remove a queued item by chapter ID and clean up its _tmp directory. */
-    override fun cancel(chapterId: Long): Boolean {
+    override fun cancel(chapterId: Long): Boolean = synchronized(queueStateLock) {
         val item = _queue.value.find { it.chapterId == chapterId }
-        if (item == null || stateMachine.transition(item.toEntry(0), DownloadQueueStatus.CANCELLED) == null) return false
+        val generation = queueGenerations[chapterId]
+        if (
+            item == null ||
+            generation == null ||
+            stateMachine.transition(item.toEntry(0), DownloadQueueStatus.CANCELLED) == null
+        ) {
+            return@synchronized false
+        }
         _queue.value = _queue.value.filterNot { it.chapterId == chapterId }
-        persistQueue()
+        queueGenerations.remove(chapterId)
         // Clean up _tmp directory if one exists
         provider.cleanupTmpDir(item.sourceId, item.mangaTitle, item.chapterName)
-        return true
+        resolvedDownloadIdentities.remove(DownloadAttemptKey(chapterId, generation))?.let(provider::cleanupTmpDir)
+        persistQueue()
+        true
     }
 
     /** Cancel and clear the entire queue, cleaning up all _tmp directories. */
@@ -125,39 +154,55 @@ class DesktopDownloadManager(
 
     override fun retry(chapterId: Long): Boolean = transition(chapterId, DownloadQueueStatus.QUEUED)
 
-    override fun transition(chapterId: Long, target: DownloadQueueStatus): Boolean {
+    override fun transition(chapterId: Long, target: DownloadQueueStatus): Boolean = synchronized(queueStateLock) {
+        transitionLocked(chapterId, target, expectedGeneration = null)
+    }
+
+    private fun transitionLocked(
+        chapterId: Long,
+        target: DownloadQueueStatus,
+        expectedGeneration: Long?,
+    ): Boolean {
+        val currentGeneration = queueGenerations[chapterId] ?: return false
+        if (expectedGeneration != null && currentGeneration != expectedGeneration) return false
         var changed = false
-        _queue.update { items -> items.map { item ->
+        _queue.value = _queue.value.map { item ->
             if (item.chapterId != chapterId) item else stateMachine.transition(item.toEntry(0), target)?.toItem()
                 ?.let { transitioned -> if (target == DownloadQueueStatus.QUEUED) transitioned.copy(failure = null, retryCount = 0) else transitioned }
                 ?.also { changed = true } ?: item
-        } }
+        }
         if (changed) {
-            if (target == DownloadQueueStatus.QUEUED) _failures.update { it - chapterId }
+            if (target == DownloadQueueStatus.QUEUED) {
+                resolvedDownloadIdentities.remove(DownloadAttemptKey(chapterId, currentGeneration))
+                queueGenerations[chapterId] = nextGeneration()
+                _failures.update { it - chapterId }
+            }
             persistQueue()
         }
         return changed
     }
 
-    override fun recover(): List<DownloadQueueEntry> = stateMachine.recover(
-        _queue.value.mapIndexed { index, item -> item.toEntry(index.toLong()) },
-    )
+    override fun recover(): List<DownloadQueueEntry> = synchronized(queueStateLock) {
+        stateMachine.recover(
+            _queue.value.mapIndexed { index, item -> item.toEntry(index.toLong()) },
+        )
+    }
 
     /**
      * Move a queue item from [from] index to [to] index.
      * DOWNLOADING items are included in the index space so drag handles
      * feel contiguous. Does nothing if indices are equal or out of bounds.
      */
-    fun reorderItem(from: Int, to: Int) {
-        if (from == to) return
-        _queue.update { items ->
-            if (from !in items.indices || to !in items.indices) return@update items
+    fun reorderItem(from: Int, to: Int) = synchronized(queueStateLock) {
+        if (from == to) return@synchronized
+        _queue.value = _queue.value.let { items ->
+            if (from !in items.indices || to !in items.indices) return@let items
             val sourceId = items[from].sourceId
-            if (items[to].sourceId != sourceId) return@update items
+            if (items[to].sourceId != sourceId) return@let items
             val sourceIndices = items.indices.filter { items[it].sourceId == sourceId }
             val fromInSource = sourceIndices.indexOf(from)
             val toInSource = sourceIndices.indexOf(to)
-            if (fromInSource < 0 || toInSource < 0) return@update items
+            if (fromInSource < 0 || toInSource < 0) return@let items
             val reorderedSource = sourceIndices.map(items::get).toMutableList().apply {
                 add(toInSource, removeAt(fromInSource))
             }
@@ -169,8 +214,8 @@ class DesktopDownloadManager(
     }
 
     /** Sort each source group by a key selector while preserving source group order. */
-    fun <R : Comparable<R>> sortQueue(selector: (DownloadItem) -> R) {
-        _queue.update { items ->
+    fun <R : Comparable<R>> sortQueue(selector: (DownloadItem) -> R) = synchronized(queueStateLock) {
+        _queue.value = _queue.value.let { items ->
             items.groupBy(DownloadItem::sourceId).values.flatMap { sourceItems ->
                 val (downloading, pending) = sourceItems.partition { it.status == DownloadStatus.DOWNLOADING }
                 downloading + pending.sortedBy(selector)
@@ -180,8 +225,8 @@ class DesktopDownloadManager(
     }
 
     /** Sort each source group by a comparator while preserving source group order. */
-    fun sortQueue(comparator: Comparator<DownloadItem>) {
-        _queue.update { items ->
+    fun sortQueue(comparator: Comparator<DownloadItem>) = synchronized(queueStateLock) {
+        _queue.value = _queue.value.let { items ->
             items.groupBy(DownloadItem::sourceId).values.flatMap { sourceItems ->
                 val (downloading, pending) = sourceItems.partition { it.status == DownloadStatus.DOWNLOADING }
                 downloading + pending.sortedWith(comparator)
@@ -191,8 +236,8 @@ class DesktopDownloadManager(
     }
 
     /** Reverse items inside each source group while preserving source group order. */
-    fun reverseQueue() {
-        _queue.update { items ->
+    fun reverseQueue() = synchronized(queueStateLock) {
+        _queue.value = _queue.value.let { items ->
             items.groupBy(DownloadItem::sourceId).values.flatMap { sourceItems ->
                 val (downloading, pending) = sourceItems.partition { it.status == DownloadStatus.DOWNLOADING }
                 downloading + pending.reversed()
@@ -212,9 +257,16 @@ class DesktopDownloadManager(
         provider.deleteChapterDownload(sourceId, mangaTitle, chapterName)
     }
 
+    fun deleteDownload(sourceId: Long, identity: DownloadChapterIdentity) {
+        provider.deleteChapterDownload(sourceId, identity)
+    }
+
     /** Delegates to [DesktopDownloadProvider]. */
     override fun isDownloaded(sourceId: Long, mangaTitle: String, chapterName: String): Boolean =
         provider.isChapterDownloaded(sourceId, mangaTitle, chapterName)
+
+    override fun isDownloaded(sourceId: Long, identity: DownloadChapterIdentity): Boolean =
+        provider.isChapterDownloaded(sourceId, identity)
 
     /**
      * Start the background worker. Call once at app startup.
@@ -270,28 +322,29 @@ class DesktopDownloadManager(
         val limit = (downloadPreferences ?: runCatching { Injekt.get<DesktopDownloadPreferences>() }.getOrNull())
             ?.parallelDownloadLimit?.get()?.coerceIn(1, 5) ?: 1
         while (true) {
-            val batch = stateMachine.schedule(
-                _queue.value.mapIndexed { index, queued -> queued.toEntry(index.toLong()) },
-                limit = limit,
-            ).map { it.toItem() }
+            val batch = synchronized(queueStateLock) {
+                stateMachine.schedule(
+                    _queue.value.mapIndexed { index, queued -> queued.toEntry(index.toLong()) },
+                    limit = limit,
+                ).mapNotNull { entry ->
+                    queueGenerations[entry.chapterId]?.let { generation ->
+                        DownloadAttempt(entry.toItem(), generation)
+                    }
+                }
+            }
             if (batch.isEmpty()) break
-            val jobs = batch.mapNotNull { item ->
+            val jobs = batch.mapNotNull { attempt ->
                 val job = workerScope.launch(start = CoroutineStart.LAZY) {
-                    val success = downloadChapter(item)
-                    if (success) {
-                        transition(item.chapterId, DownloadQueueStatus.COMPLETED)
-                        _queue.value = _queue.value.filterNot { it.chapterId == item.chapterId }
-                        persistQueue()
-                    } else if (!isStopped()) {
-                        setStatus(item.chapterId, DownloadStatus.ERROR)
+                    val success = downloadChapter(attempt)
+                    if (!success && !isStopped()) {
+                        setStatus(attempt, DownloadStatus.ERROR)
                     }
                 }
                 synchronized(lifecycleLock) {
-                    if (stopped) {
+                    if (stopped || !setStatus(attempt, DownloadStatus.DOWNLOADING)) {
                         job.cancel()
                         null
                     } else {
-                        setStatus(item.chapterId, DownloadStatus.DOWNLOADING)
                         activeJobs += job
                         job.invokeOnCompletion { synchronized(lifecycleLock) { activeJobs -= job } }
                         job.start()
@@ -310,8 +363,15 @@ class DesktopDownloadManager(
      * 3. On success, rename _tmp dir to final dir
      * 4. On failure, _tmp dir remains (will be cleaned on cancel/retry)
      */
-    private suspend fun downloadChapter(item: DownloadItem): Boolean {
+    private suspend fun downloadChapter(attempt: DownloadAttempt): Boolean {
+        val item = attempt.item
         return try {
+            val downloadIdentity = downloadIdentityResolver(item)
+            if (downloadIdentity != null && !registerIdentity(attempt, downloadIdentity)) return false
+            if (!isCurrentAttempt(attempt)) return false
+            if (downloadIdentity != null && provider.isChapterDownloaded(item.sourceId, downloadIdentity)) {
+                return completeAttempt(attempt)
+            }
             val client = httpClient
                 ?: networkHelper?.clientForSource(item.sourceId)
                 ?: Injekt.get<NetworkHelper>().clientForSource(item.sourceId)
@@ -320,7 +380,7 @@ class DesktopDownloadManager(
                 item.pageUrls.isNotEmpty() -> item.pageUrls
                 item.chapterUrl.isNotBlank() -> {
                     val source = sourceResolver(item.sourceId) ?: return fail(
-                        item.chapterId,
+                        attempt,
                         AppError.Unknown(IllegalStateException("Source ${item.sourceId} is unavailable")),
                     )
                     val sChapter = SChapter.create().apply {
@@ -330,116 +390,116 @@ class DesktopDownloadManager(
                     val pagesResult = safeSourceCall(timeoutMs = sourceCallTimeoutMs) { source.getPageList(sChapter) }
                     when (pagesResult) {
                         is SourceCallResult.Success -> pagesResult.value.mapNotNull { it.imageUrl }
-                        is SourceCallResult.Timeout -> return fail(item.chapterId, pagesResult.error)
+                        is SourceCallResult.Timeout -> return fail(attempt, pagesResult.error)
                         is SourceCallResult.Error -> return fail(
-                            item.chapterId,
+                            attempt,
                             pagesResult.error,
                         )
                     }
                 }
                 else -> return fail(
-                    item.chapterId,
+                    attempt,
                     AppError.MalformedData(IllegalArgumentException("Chapter URL is missing")),
                 )
             }
             if (urls.isEmpty()) return fail(
-                item.chapterId,
+                attempt,
                 AppError.MalformedData(IllegalStateException("Source returned no downloadable pages")),
             )
 
             // Update queue item with resolved URL count so progress display is accurate
-            _queue.value = _queue.value.map {
-                if (it.chapterId == item.chapterId) it.copy(pageUrls = urls) else it
-            }
-            persistQueue()
+            if (!updateAttempt(attempt) { it.copy(pageUrls = urls) }) return false
 
             // Use _tmp directory for in-progress download (Android pattern)
-            val tmpDir = provider.chapterTmpDir(item.sourceId, item.mangaTitle, item.chapterName)
-            tmpDir.mkdirs()
-
-            // Clean up any leftover .tmp files from previous partial downloads
-            tmpDir.listFiles()
-                ?.filter { it.extension == "tmp" }
-                ?.forEach { it.delete() }
+            val tmpDir = downloadIdentity?.let(provider::canonicalChapterTmpDir)
+                ?: provider.chapterTmpDir(item.sourceId, item.mangaTitle, item.chapterName)
+            withCurrentAttempt(attempt) {
+                tmpDir.mkdirs()
+                // Clean up any leftover .tmp files from previous partial downloads
+                tmpDir.listFiles()
+                    ?.filter { it.extension == "tmp" }
+                    ?.forEach { it.delete() }
+                Unit
+            } ?: return false
 
             urls.forEachIndexed { index, url ->
-                // Check if item was cancelled before each page — mirrors Android's CancellationException handling
-                if (_queue.value.none { it.chapterId == item.chapterId }) {
-                    provider.cleanupTmpDir(item.sourceId, item.mangaTitle, item.chapterName)
-                    return false
-                }
+                if (!isCurrentAttempt(attempt)) return false
 
                 val baseName = "%03d".format(index + 1)
                 val tmpFile = File(tmpDir, "$baseName.tmp")
 
                 // Skip if this page was already fully downloaded in a previous attempt
-                val alreadyDownloaded = tmpDir.listFiles()
-                    ?.any {
-                        it.nameWithoutExtension == baseName &&
-                            it.extension != "tmp" &&
-                            provider.isValidDownloadedImage(it)
-                    }
-                    ?: false
+                val alreadyDownloaded = withCurrentAttempt(attempt) {
+                    tmpDir.listFiles()
+                        ?.any {
+                            it.nameWithoutExtension == baseName &&
+                                it.extension != "tmp" &&
+                                provider.isValidDownloadedImage(it)
+                        }
+                        ?: false
+                } ?: return false
 
                 if (!alreadyDownloaded) {
                     // Download to .tmp file first
                     val finalFile = File(tmpDir, "$baseName.${extensionFromUrl(url)}")
-                    finalFile.delete()
                     var pageDownloaded = false
-                    var attempt = 0
+                    var retryAttempt = 0
                     var lastError: Throwable? = null
                     while (!pageDownloaded) {
                         pageDownloaded = try {
-                            fileOperations.execute(client, url).use { response ->
+                            val bytes = fileOperations.execute(client, url).use { response ->
                                 val bytes = fileOperations.readBody(response)
-                                fileOperations.writePage(tmpFile, bytes)
+                                if (!isCurrentAttempt(attempt)) return false
+                                bytes
                             }
-                            fileOperations.renamePage(tmpFile, finalFile)
-                            provider.isValidDownloadedImage(finalFile)
+                            withCurrentAttempt(attempt) {
+                                finalFile.delete()
+                                fileOperations.writePage(tmpFile, bytes)
+                                fileOperations.renamePage(tmpFile, finalFile)
+                                provider.isValidDownloadedImage(finalFile)
+                            } ?: return false
                         } catch (error: Exception) {
                             if (error is CancellationException) throw error
                             lastError = error
                             false
                         }
                         if (!pageDownloaded) {
-                            tmpFile.delete()
-                            finalFile.delete()
-                            val wait = stateMachine.retryDelayMillis(attempt++) ?: break
-                            updateRetryCount(item.chapterId, attempt)
+                            withCurrentAttempt(attempt) {
+                                tmpFile.delete()
+                                finalFile.delete()
+                            } ?: return false
+                            val wait = stateMachine.retryDelayMillis(retryAttempt++) ?: break
+                            if (!updateRetryCount(attempt, retryAttempt)) return false
                             retryDelay(wait)
                         }
                     }
                     if (!pageDownloaded) {
-                        recordFailure(item.chapterId, lastError.toAppError())
-                        tmpFile.delete()
-                        finalFile.delete()
+                        recordFailure(attempt, lastError.toAppError())
+                        withCurrentAttempt(attempt) {
+                            tmpFile.delete()
+                            finalFile.delete()
+                        } ?: return false
                         return false
                     }
                 }
 
-                _queue.value = _queue.value.map {
-                    if (it.chapterId == item.chapterId) it.copy(progress = index + 1, retryCount = 0) else it
-                }
-                persistQueue()
-                _failures.update { it - item.chapterId }
-            }
-
-            // Final cancellation check before renaming — prevents race where cancel() arrived
-            // just after the last page loop iteration but before renameTmpToFinal()
-            if (_queue.value.none { it.chapterId == item.chapterId }) {
-                provider.cleanupTmpDir(item.sourceId, item.mangaTitle, item.chapterName)
-                return false
+                if (!updateAttempt(attempt) { it.copy(progress = index + 1, retryCount = 0) }) return false
+                clearFailure(attempt)
             }
 
             // All pages downloaded — rename _tmp to final directory
-            val finalDir = provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
+            val finalDir = downloadIdentity?.let(provider::canonicalChapterDownloadDir)
+                ?: provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
+            val prefs = downloadPreferences ?: runCatching { Injekt.get<DesktopDownloadPreferences>() }.getOrNull()
             var renamed = false
             var renameAttempt = 0
             var renameError: Throwable? = null
             while (!renamed) {
                 renamed = try {
-                    finalDir.deleteRecursively()
-                    fileOperations.renameChapter(tmpDir, finalDir)
+                    withCurrentAttempt(attempt) {
+                        finalDir.deleteRecursively()
+                        fileOperations.renameChapter(tmpDir, finalDir)
+                    } ?: return false
                 } catch (error: Exception) {
                     if (error is CancellationException) throw error
                     renameError = error
@@ -447,30 +507,35 @@ class DesktopDownloadManager(
                 }
                 if (!renamed) {
                     val wait = stateMachine.retryDelayMillis(renameAttempt++) ?: break
-                    updateRetryCount(item.chapterId, renameAttempt)
+                    if (!updateRetryCount(attempt, renameAttempt)) return false
                     retryDelay(wait)
                 }
             }
-            if (!renamed) recordFailure(item.chapterId, AppError.Storage(renameError))
-
-            // Optionally package pages into a CBZ archive
-            if (renamed) {
-                val prefs = downloadPreferences ?: runCatching { Injekt.get<DesktopDownloadPreferences>() }.getOrNull()
-                if (prefs?.downloadAsCbz?.get() == true) {
-                    val finalDir = provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
-                    val cbzFile = CbzCreator.defaultOutputFile(finalDir)
-                    val packed = CbzCreator.create(finalDir, cbzFile)
-                    if (packed) {
-                        // Remove individual image files — CBZ replaces them
-                        finalDir.deleteRecursively()
-                    }
-                }
+            if (!renamed) {
+                recordFailure(attempt, AppError.Storage(renameError))
+                return false
             }
 
-            renamed
+            try {
+                withCurrentAttempt(attempt) {
+                    if (prefs?.downloadAsCbz?.get() == true) {
+                        val cbzFile = CbzCreator.defaultOutputFile(finalDir)
+                        val packed = CbzCreator.create(finalDir, cbzFile)
+                        if (packed) {
+                            // Remove individual image files — CBZ replaces them
+                            finalDir.deleteRecursively()
+                        }
+                    }
+                    completeAttempt(attempt)
+                } ?: false
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                recordFailure(attempt, error.toAppError())
+                false
+            }
         } catch (error: Exception) {
             if (error is CancellationException) throw error
-            recordFailure(item.chapterId, error.toAppError())
+            recordFailure(attempt, error.toAppError())
             // _tmp directory remains on disk but won't be counted as "downloaded"
             false
         }
@@ -478,35 +543,103 @@ class DesktopDownloadManager(
 
     private fun isStopped(): Boolean = synchronized(lifecycleLock) { stopped }
 
-    private fun setStatus(chapterId: Long, status: DownloadStatus) {
-        transition(chapterId, DownloadQueueStatus.valueOf(status.name.replace("DONE", "COMPLETED")))
+    private fun nextGeneration(): Long = generationSequence.incrementAndGet()
+
+    private fun isCurrentAttempt(attempt: DownloadAttempt): Boolean = synchronized(queueStateLock) {
+        isCurrentAttemptLocked(attempt)
+    }
+
+    private fun isCurrentAttemptLocked(attempt: DownloadAttempt): Boolean =
+        queueGenerations[attempt.item.chapterId] == attempt.generation &&
+            _queue.value.any { it.chapterId == attempt.item.chapterId }
+
+    private inline fun <T : Any> withCurrentAttempt(attempt: DownloadAttempt, block: () -> T): T? =
+        synchronized(queueStateLock) {
+            if (isCurrentAttemptLocked(attempt)) block() else null
+        }
+
+    private fun registerIdentity(
+        attempt: DownloadAttempt,
+        identity: DownloadChapterIdentity,
+    ): Boolean = synchronized(queueStateLock) {
+        if (!isCurrentAttemptLocked(attempt)) return@synchronized false
+        resolvedDownloadIdentities[attempt.key] = identity
+        true
+    }
+
+    private fun completeAttempt(attempt: DownloadAttempt): Boolean = synchronized(queueStateLock) {
+        if (!isCurrentAttemptLocked(attempt)) {
+            resolvedDownloadIdentities.remove(attempt.key)
+            return@synchronized false
+        }
+        val item = _queue.value.first { it.chapterId == attempt.item.chapterId }
+        if (stateMachine.transition(item.toEntry(0), DownloadQueueStatus.COMPLETED) == null) {
+            return@synchronized false
+        }
+        resolvedDownloadIdentities.remove(attempt.key)
+        queueGenerations.remove(attempt.item.chapterId)
+        _queue.value = _queue.value.filterNot { it.chapterId == attempt.item.chapterId }
+        _failures.update { it - attempt.item.chapterId }
+        persistQueue()
+        true
+    }
+
+    private fun setStatus(attempt: DownloadAttempt, status: DownloadStatus): Boolean = synchronized(queueStateLock) {
+        transitionLocked(
+            chapterId = attempt.item.chapterId,
+            target = DownloadQueueStatus.valueOf(status.name.replace("DONE", "COMPLETED")),
+            expectedGeneration = attempt.generation,
+        )
     }
 
     private fun persistQueue() = store?.replaceAll(_queue.value.mapIndexed { index, item -> item.toEntry(index.toLong()) })
 
-    private fun updateRetryCount(chapterId: Long, retryCount: Int) {
-        _queue.update { items -> items.map { if (it.chapterId == chapterId) it.copy(retryCount = retryCount) else it } }
+    private fun updateAttempt(
+        attempt: DownloadAttempt,
+        transform: (DownloadItem) -> DownloadItem,
+    ): Boolean = synchronized(queueStateLock) {
+        if (!isCurrentAttemptLocked(attempt)) return@synchronized false
+        _queue.value = _queue.value.map { item ->
+            if (item.chapterId == attempt.item.chapterId) transform(item) else item
+        }
         persistQueue()
+        true
     }
 
-    private fun recordFailure(chapterId: Long, error: AppError) {
-        var recorded = false
-        _queue.update { items -> items.map { item ->
-            if (item.chapterId == chapterId && item.status != DownloadStatus.CANCELLED) {
-                recorded = true
-                item.copy(failure = error)
-            } else item
-        } }
-        if (!recorded) return
-        _failures.update { it + (chapterId to error) }
-        persistQueue()
-        (taskNotifier ?: runCatching { Injekt.get<DesktopSystemNotifier>() }.getOrNull())?.notify(
-            NotificationEvent.Failure("download:$chapterId", "下载失败", error.notificationMessage()),
-        )
+    private fun updateRetryCount(attempt: DownloadAttempt, retryCount: Int): Boolean =
+        updateAttempt(attempt) { it.copy(retryCount = retryCount) }
+
+    private fun clearFailure(attempt: DownloadAttempt) = synchronized(queueStateLock) {
+        if (isCurrentAttemptLocked(attempt)) _failures.update { it - attempt.item.chapterId }
     }
 
-    private fun fail(chapterId: Long, error: AppError): Boolean {
-        recordFailure(chapterId, error)
+    private fun recordFailure(attempt: DownloadAttempt, error: AppError) {
+        val chapterId = attempt.item.chapterId
+        val notifier = taskNotifier ?: runCatching { Injekt.get<DesktopSystemNotifier>() }.getOrNull()
+        synchronized(queueStateLock) {
+            if (!isCurrentAttemptLocked(attempt)) return@synchronized
+            var changed = false
+            _queue.value = _queue.value.map { item ->
+                if (item.chapterId == chapterId && item.status != DownloadStatus.CANCELLED) {
+                    changed = true
+                    item.copy(failure = error)
+                } else {
+                    item
+                }
+            }
+            if (changed) {
+                _failures.update { it + (chapterId to error) }
+                persistQueue()
+                notifier?.notify(
+                    NotificationEvent.Failure("download:$chapterId:${attempt.generation}", "下载失败", error.notificationMessage()),
+                )
+            }
+            Unit
+        }
+    }
+
+    private fun fail(attempt: DownloadAttempt, error: AppError): Boolean {
+        recordFailure(attempt, error)
         return false
     }
 
