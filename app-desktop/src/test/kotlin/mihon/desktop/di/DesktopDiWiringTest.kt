@@ -34,6 +34,8 @@ import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.domain.DesktopSystemNotifier
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadManager
+import mihon.desktop.download.DesktopDownloadIdentityResolver
+import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DefaultDownloadFileOperations
 import mihon.desktop.download.DownloadFileOperations
 import mihon.desktop.download.DownloadItem
@@ -69,6 +71,7 @@ import mihon.desktop.ui.more.StatsScreenModel
 import mihon.desktop.update.DesktopUpdateController
 import mihon.desktop.update.DesktopUpdateInstaller
 import mihon.desktop.update.InstallerTrust
+import mihon.desktop.updates.UpdatesScreenModelFactory
 import mihon.desktop.ui.settings.DesktopUpdateScreenModel
 import mihon.desktop.task.DesktopTaskScheduler
 import mihon.desktop.test.http.SourceExtensionTestModeBridge
@@ -89,6 +92,7 @@ import mihon.domain.download.DownloadRepository
 import mihon.domain.download.EnqueueDownload
 import mihon.domain.download.IsChapterDownloaded
 import mihon.domain.download.DownloadQueueStatus
+import mihon.domain.reader.content.DownloadChapterIdentity
 import mihon.domain.platform.SharePayload
 import mihon.domain.task.NotificationEvent
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -144,9 +148,11 @@ import tachiyomi.domain.source.service.SourceLoginRequest
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaCover
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.updates.model.UpdatesWithRelations
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.category.interactor.CreateCategoryWithName
 import tachiyomi.domain.category.interactor.DeleteCategory
@@ -200,6 +206,8 @@ class DesktopDiWiringTest {
             assertEquals(Proxy.Type.HTTP, proxy?.type())
             assertEquals(InetSocketAddress("127.0.0.1", 10808), proxy?.address())
             assertNotNull(Injekt.get<DesktopExtensionApi>())
+            assertNotNull(Injekt.get<DesktopDownloadIdentityResolver>())
+            assertNotNull(Injekt.get<DesktopReaderRuntimeFactory>())
         } finally {
             context.closeAndJoin()
         }
@@ -1206,6 +1214,112 @@ class DesktopDiWiringTest {
         val changed = async(start = CoroutineStart.UNDISPATCHED) { preference.changes().first() }
         preference.set("updated")
         assertEquals("updated", withTimeout(1_000) { changed.await() })
+        } finally {
+            context.closeAndJoin()
+        }
+    }
+
+    @Test
+    fun `production DI single-writes canonical download identity and wires every reader consumer`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
+        val store = isolatedDesktopPreferenceStore()
+        store.getBoolean("disallow_non_ascii_filenames", false).set(true)
+        val context = initDesktopDIForTest(
+            tempDir,
+            store,
+            startDownloadWorker = true,
+            downloadFileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun execute(client: OkHttpClient, url: String): Response = Response.Builder()
+                    .request(Request.Builder().url(url).build())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte()).toResponseBody())
+                    .build()
+            },
+        )
+
+        try {
+            val sourceId = 4242L
+            val manga = Injekt.get<MangaRepository>().insertNetworkManga(
+                listOf(
+                    Manga.create().copy(
+                        source = sourceId,
+                        url = "/manga",
+                        title = "Manga 中文",
+                        favorite = true,
+                    ),
+                ),
+            ).single()
+            Injekt.get<ChapterRepository>().addAll(
+                listOf(
+                    Chapter.create().copy(
+                        mangaId = manga.id,
+                        url = "/canonical/chapter",
+                        name = "Canonical 章节",
+                        scanlator = "Canonical 组",
+                    ),
+                ),
+            )
+            val chapter = Injekt.get<ChapterRepository>().getChapterByMangaId(manga.id).single()
+            val persistedItem = DownloadItem(
+                sourceId = sourceId,
+                mangaTitle = manga.title,
+                chapterName = "Persisted stale chapter",
+                chapterId = chapter.id,
+                mangaId = manga.id,
+                chapterUrl = "/persisted/stale-chapter",
+                pageUrls = listOf("https://fixture.invalid/001.jpg"),
+            )
+            val resolver = Injekt.get<DesktopDownloadIdentityResolver>()
+            val expectedIdentity = resolver.resolve(manga, chapter)
+
+            assertEquals(expectedIdentity, resolver.resolve(persistedItem))
+            @Suppress("UNCHECKED_CAST")
+            val readerFilenamePreference = Injekt.get<DesktopReaderRuntimeFactory>()
+                .privateField("disallowNonAsciiFilenames") as () -> Boolean
+            assertTrue(readerFilenamePreference())
+
+            val manager = Injekt.get<DesktopDownloadManager>()
+            val provider = Injekt.get<DesktopDownloadProvider>()
+            manager.enqueue(persistedItem)
+            withTimeout(5_000) {
+                while (manager.queue.value.any { it.chapterId == chapter.id }) delay(10)
+            }
+
+            assertTrue(provider.isChapterDownloaded(sourceId, expectedIdentity))
+            val hybridIdentity = expectedIdentity.copy(
+                chapterName = persistedItem.chapterName,
+                chapterUrl = persistedItem.chapterUrl,
+            )
+            assertFalse(provider.canonicalChapterDownloadDir(hybridIdentity).exists())
+
+            val libraryItem = LibraryManga(manga, emptyList(), 0, 0, 0, 0, 0, 0)
+            assertEquals(
+                setOf(manga.id),
+                LibraryScreenModelFactory.create().downloadedMangaIds(listOf(libraryItem)),
+            )
+            assertTrue(MangaDetailScreenModelFactory.create(manga.id).isChapterDownloaded(manga, chapter))
+
+            val update = UpdatesWithRelations(
+                mangaId = manga.id,
+                mangaTitle = manga.title,
+                chapterId = chapter.id,
+                chapterName = chapter.name,
+                scanlator = chapter.scanlator,
+                chapterUrl = chapter.url,
+                read = false,
+                bookmark = false,
+                lastPageRead = 0,
+                sourceId = sourceId,
+                dateFetch = 0,
+                coverData = MangaCover(manga.id, sourceId, true, null, 0),
+            )
+            @Suppress("UNCHECKED_CAST")
+            val updatesIdentity = UpdatesScreenModelFactory.create()
+                .privateField("downloadIdentity") as (UpdatesWithRelations) -> DownloadChapterIdentity
+            assertEquals(expectedIdentity, updatesIdentity(update))
         } finally {
             context.closeAndJoin()
         }

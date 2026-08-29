@@ -803,10 +803,13 @@ internal fun initUILayer(
     )
 
     val database = (handler as JvmDatabaseHandler).db
+    val libraryPreferences = LibraryPreferences(preferenceStore)
+    Injekt.addSingleton(libraryPreferences)
     val (downloadPreferences, downloadManager) = registerDesktopDownload(
         paths,
         preferenceStore,
         database,
+        libraryPreferences,
         startDownloadWorker,
         downloadFileOperations,
     )
@@ -919,6 +922,9 @@ internal fun initUILayer(
             mangaRepository = mangaRepository,
             encodedCacheDirectory = paths.networkCacheDir.resolve("reader-encoded"),
             readerIoProbe = mihon.desktop.test.http.ReaderIoTestModeBridge,
+            disallowNonAsciiFilenames = {
+                Injekt.get<LibraryPreferences>().disallowNonAsciiFilenames().get()
+            },
         ),
     )
 
@@ -992,8 +998,7 @@ private fun registerDesktopLibrary(
         scope = applicationScope,
     )
     Injekt.addSingleton(creatorDiscoveryOutboxService)
-    val libraryPreferences = LibraryPreferences(preferenceStore)
-    Injekt.addSingleton(libraryPreferences)
+    val libraryPreferences = Injekt.get<LibraryPreferences>()
     Injekt.addSingleton(CreateCategoryWithName(categoryRepository, libraryPreferences))
     Injekt.addSingleton(RenameCategory(categoryRepository))
     Injekt.addSingleton(DeleteCategory(categoryRepository, libraryPreferences, Injekt.get()))
@@ -1036,20 +1041,28 @@ private fun registerDesktopDownload(
     paths: DesktopPlatformPaths,
     preferenceStore: PreferenceStore,
     database: tachiyomi.data.Database,
+    libraryPreferences: LibraryPreferences,
     startWorker: Boolean = true,
     fileOperations: mihon.desktop.download.DownloadFileOperations = mihon.desktop.download.DefaultDownloadFileOperations,
 ): Pair<DesktopDownloadPreferences, mihon.desktop.download.DesktopDownloadManager> {
     val downloadPreferences = DesktopDownloadPreferences(preferenceStore)
     val downloadProvider = mihon.desktop.download.DesktopDownloadProvider(paths.downloadsDir)
+    val downloadIdentityResolver = mihon.desktop.download.DesktopDownloadIdentityResolver(
+        sourceManager = Injekt.get(),
+        chapterRepository = Injekt.get(),
+        libraryPreferences = libraryPreferences,
+    )
     val downloadManager = mihon.desktop.download.DesktopDownloadManager(
         provider = downloadProvider,
         downloadPreferences = downloadPreferences,
         store = PersistentDownloadStore(database),
         fileOperations = fileOperations,
+        downloadIdentityResolver = downloadIdentityResolver::resolve,
     )
     if (startWorker) downloadManager.start()
     Injekt.addSingleton(downloadPreferences)
     Injekt.addSingleton(downloadProvider)
+    Injekt.addSingleton(downloadIdentityResolver)
     Injekt.addSingleton(downloadManager)
     return downloadPreferences to downloadManager
 }

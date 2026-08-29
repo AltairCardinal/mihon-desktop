@@ -5,6 +5,7 @@ import mihon.desktop.domain.GetExcludedScanlators
 import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.domain.SetExcludedScanlators
 import mihon.desktop.download.DesktopDownloadManager
+import mihon.desktop.download.DesktopDownloadIdentityResolver
 import mihon.desktop.ui.library.MangaDetailScreenModel
 import mihon.desktop.ui.library.MangaCoverAdapter
 import mihon.desktop.ui.library.DesktopCoverFilePicker
@@ -29,6 +30,7 @@ import uy.kohesive.injekt.api.get
 object MangaDetailScreenModelFactory {
     fun create(mangaId: Long): MangaDetailScreenModel {
         val downloadManager = runCatching { Injekt.get<DesktopDownloadManager>() }.getOrNull()
+        val downloadIdentityResolver = runCatching { Injekt.get<DesktopDownloadIdentityResolver>() }.getOrNull()
         val coverStore = Injekt.get<DesktopCustomCoverStore>()
         val coverUpdater = DesktopCoverUpdater(coverStore, Injekt.get())
         return MangaDetailScreenModel(
@@ -51,13 +53,17 @@ object MangaDetailScreenModelFactory {
             enqueueDownload = downloadManager?.let { it::enqueue },
             downloadQueue = downloadManager?.queue,
             isDownloaded = downloadManager?.let { manager ->
-                { sourceId, mangaTitle, chapterName ->
-                    manager.isDownloaded(sourceId, mangaTitle, chapterName)
+                { manga, chapter ->
+                    val identity = requireNotNull(downloadIdentityResolver) { "Download identity resolver is required" }
+                        .resolve(manga, chapter)
+                    manager.isDownloaded(manga.source, identity)
                 }
             },
             deleteDownload = downloadManager?.let { manager ->
-                { sourceId, mangaTitle, chapterName ->
-                    manager.deleteDownload(sourceId, mangaTitle, chapterName)
+                { manga, chapter ->
+                    val identity = requireNotNull(downloadIdentityResolver) { "Download identity resolver is required" }
+                        .resolve(manga, chapter)
+                    manager.deleteDownload(manga.source, identity)
                 }
             },
             cancelDownload = downloadManager?.let { manager ->

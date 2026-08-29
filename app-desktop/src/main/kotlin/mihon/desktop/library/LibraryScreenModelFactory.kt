@@ -10,6 +10,7 @@ import mihon.desktop.domain.LibraryUpdateScheduler
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.download.DesktopDownloadIdentityResolver
 import mihon.desktop.settings.LibraryCategoryPrefs
 import mihon.desktop.ui.library.LibraryScreenModel
 import tachiyomi.domain.category.interactor.SetMangaCategories
@@ -29,6 +30,8 @@ import uy.kohesive.injekt.api.get
 object LibraryScreenModelFactory {
     fun create(): LibraryScreenModel {
         val downloadManager = runCatching { Injekt.get<DesktopDownloadManager>() }.getOrNull()
+        val downloadProvider = runCatching { Injekt.get<DesktopDownloadProvider>() }.getOrNull()
+        val downloadIdentityResolver = runCatching { Injekt.get<DesktopDownloadIdentityResolver>() }.getOrNull()
         val updateScheduler = Injekt.get<LibraryUpdateScheduler>()
         return LibraryScreenModel(
             getLibraryManga = Injekt.get<GetLibraryManga>(),
@@ -46,7 +49,17 @@ object LibraryScreenModelFactory {
             updateManga = Injekt.get<UpdateManga>(),
             setMangaCategories = Injekt.get<SetMangaCategories>(),
             enqueueDownload = downloadManager?.let { it::enqueue },
-            downloadProvider = runCatching { Injekt.get<DesktopDownloadProvider>() }.getOrNull(),
+            downloadProvider = downloadProvider,
+            isMangaDownloaded = if (downloadProvider != null && downloadIdentityResolver != null) {
+                { item ->
+                    downloadProvider.hasMangaDownloads(
+                        item.manga.source,
+                        downloadIdentityResolver.resolve(item.manga),
+                    )
+                }
+            } else {
+                null
+            },
             downloadPreferences = runCatching { Injekt.get<DesktopDownloadPreferences>() }.getOrNull(),
             categoryPrefs = runCatching { Injekt.get<LibraryCategoryPrefs>() }.getOrNull(),
             getTracksPerManga = Injekt.get<GetTracksPerManga>(),

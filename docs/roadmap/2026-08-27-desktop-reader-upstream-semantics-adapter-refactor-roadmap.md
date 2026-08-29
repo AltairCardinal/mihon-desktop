@@ -299,13 +299,13 @@ Android Reader UI                 Desktop Reader presentation
 
 - [x] `RUA-00` 激活、authority 冻结与可观测性基础
 - [x] `RUA-01` 共享 route/download/page-list 契约与两端决策接线
-- [ ] `RUA-02` Desktop 下载/local/archive adapter 与无损兼容
+- [x] `RUA-02` Desktop 下载/local/archive adapter 与无损兼容
   - [x] `RUA-02A` artifact identity、有限候选与 dual-read/single-write
   - [x] `RUA-02B` 下载 lifecycle、恢复/删除与消费者 identity
   - [x] `RUA-02C` directory/archive adapter、惰性 entry 与 lease/generation
-  - [ ] `RUA-02D` production Reader/DI 接线、离线打开与 DownloadIndex gate
+  - [x] `RUA-02D` production Reader/DI 接线、离线打开与 DownloadIndex gate
     - [x] `RUA-02D1` Reader adapter/runtime/session 接线与 generation-aware lease
-    - [ ] `RUA-02D2` 原子 download identity、production DI 与 consumer 行为接线
+    - [x] `RUA-02D2` 原子 download identity、production DI 与 consumer 行为接线
 - [ ] `RUA-03` 首帧 critical path 与 shared runtime owner 收口
   - [ ] `RUA-03A` session/store 启动关键路径瘦身
   - [ ] `RUA-03B` shared runner、优先级、取消与 generation
@@ -438,6 +438,13 @@ Android Reader UI                 Desktop Reader presentation
 - session 使用私有且单调递增的 lease generation 管理 active/adjacent/same-chapter 所有权，generation 不进入 `DesktopReaderChapterContext` 或 UI 语义；adapter 在 open/snapshot/install/close 边界校验 reservation，并保留每章生命周期级最高 generation watermark，倒序到达的旧 reserve 不能覆盖或复活已释放的新 owner。
 - 严格 TDD 证据：`.gradle-coordinator/rua02d1-lease-generation-red.log` 先证明 close/同章晚到 lease API 缺失；`.gradle-coordinator/rua02d1-watermark-red.log` 再按倒序 reserve 与并发同章 activation 的正确原因失败；对应 GREEN 以及最终 `.gradle-coordinator/rua02d1-close3.log` 均通过。最终收口包含根级 Spotless、domain reader content，以及 Desktop adapter/materialize/runtime/session/章节切换相关测试，共 106 tasks。
 - 限定独立复审最终结论 `PASS`、P0/P1/P2 为零；10 个 production/test 文件超过 7～9 个初估但仍低于强制重划阈值，原因是同一个 Reader production wiring 必须同时提交共享 lookup contract、adapter、runtime/session owner、离线/gate 集成证据与 content factory 接口的章节切换机械适配，未混入 D2 的下载 resolver、DI 或三个消费者行为实现。
+
+**RUA-02D2 完成证据（2026-08-29）**：
+
+- `DesktopDownloadIdentityResolver` 对队列项只读取一次 domain chapter：存在时从同一 snapshot 原子采用 name/url/scanlator，缺失时才整体回退 persisted name/url 且 scanlator 为 null；source label、manga title 与非 ASCII 文件名偏好继续由各自既有 authority 提供。
+- production DI 把同一个 resolver 注入下载 manager、Library、Manga detail 与 Updates，并把真实 `LibraryPreferences.disallowNonAsciiFilenames()` supplier 注入 Reader runtime；管理器从旧 persisted metadata 入队后只生成 canonical artifact，三个消费者能查询同一 artifact，未删除既有 enqueue/cancel/删除等 Desktop 行为。
+- 严格 TDD 证据：`.gradle-coordinator/rua02d2-identity-di-red.log` 中 resolver 与 production DI 测试按 hybrid identity 的正确原因失败；`rua02d2-identity-di-green.log` 通过；最终 `.gradle-coordinator/rua02d2-close.log` 通过根级 Spotless、完整 Desktop DI wiring、resolver 及 Library/Manga detail/Updates 模型测试，共 103 tasks。
+- 独立只读审查结论 `PASS`、P0/P1/P2 为零；现有集成测试在移除 manager resolver、Reader preference supplier 或任一 factory identity callback 时均会失败。最终 7 个 production/test 文件处于 7～10 个预计范围内，未混入 RUA-03 首帧调度或 RUA-04 decoder/presentation 工作。
 
 **RED**：
 
