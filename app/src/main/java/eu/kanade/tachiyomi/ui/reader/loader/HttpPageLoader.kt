@@ -9,16 +9,10 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
@@ -27,6 +21,11 @@ import mihon.domain.reader.materialize.ReaderMaterializeExecutor
 import mihon.domain.reader.materialize.ReaderPageFetchRequest
 import mihon.domain.reader.materialize.ReaderPageMaterializeEvent
 import mihon.domain.reader.materialize.ReaderPageMaterializeResult
+import mihon.domain.reader.scheduler.ReaderPageMaterializeCompletion
+import mihon.domain.reader.scheduler.ReaderPageMaterializeRunner
+import mihon.domain.reader.scheduler.ReaderPageMaterializeRunnerPort
+import mihon.domain.reader.scheduler.ReaderPageMaterializeRunnerSnapshot
+import mihon.domain.reader.scheduler.ReaderPageMaterializeWork
 import mihon.domain.reader.scheduler.ReaderRequestKey
 import mihon.domain.reader.scheduler.ReaderRequestKind
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
@@ -39,6 +38,11 @@ import mihon.domain.reader.storage.ReaderEncodedPageStore
 import tachiyomi.core.common.util.lang.launchIO
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+
+private data class AndroidReaderPageBinding(
+    val page: ReaderPage,
+    val fetchPort: AndroidReaderPageFetchPort,
+)
 
 /**
  * Loader used to load chapters from an online source.
@@ -57,25 +61,17 @@ internal class HttpPageLoader(
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
 
-    private val queueSignal = Channel<Unit>(Channel.CONFLATED)
-    private val physicalRequestPermits = Semaphore(
-        requestScheduler.snapshot().maxConcurrentRequests + MAX_STALE_PHYSICAL_REQUESTS,
-    )
-
     private val preloadJobLock = Any()
     private val scheduledPages = mutableMapOf<ReaderRequestKey, ReaderPage>()
-    private val activePreloadJobs = mutableMapOf<ReaderRequestKey, Job>()
+    private val pageRunner = ReaderPageMaterializeRunner(
+        scope = scope,
+        maxConcurrentRequests = requestScheduler.snapshot().maxConcurrentRequests,
+        maxStalePhysicalRequests = MAX_STALE_PHYSICAL_REQUESTS,
+        materializeExecutor = materializeExecutor,
+        port = AndroidPageMaterializeRunnerPort(),
+    )
 
-    init {
-        scope.launch {
-            for (signal in queueSignal) {
-                while (true) {
-                    val scheduled = synchronized(preloadJobLock, ::pollNextStartableLocked) ?: break
-                    runScheduledPage(scheduled.first, scheduled.second)
-                }
-            }
-        }
-    }
+    internal fun pageRunnerSnapshot(): ReaderPageMaterializeRunnerSnapshot = pageRunner.snapshot()
 
     override var isLocal: Boolean = false
 
@@ -128,26 +124,27 @@ internal class HttpPageLoader(
             page.status = Page.State.Queue
         }
 
-        val scheduledRequest = synchronized(preloadJobLock) {
+        val enqueueResult = synchronized(preloadJobLock) {
             val result = requestScheduler.enqueue(
                 pageId = readerPageId(page.index),
                 kind = ReaderRequestKind.INTERACTIVE_VISIBLE,
             )
             registerEnqueueResultLocked(result, page.chapter.pages.orEmpty())
-            result.request
+            result
         }
-        if (scheduledRequest != null) queueSignal.trySend(Unit)
+        pageRunner.cancel(enqueueResult.cancelRequests)
+        pageRunner.pump()
 
         suspendCancellableCoroutine<Nothing> { continuation ->
             continuation.invokeOnCancellation {
-                scheduledRequest?.let(::removePendingRequest)
+                enqueueResult.request?.let(::removePendingRequest)
             }
         }
     }
 
     override fun onPageSelected(page: ReaderPage) {
         val pages = page.chapter.pages.orEmpty()
-        val registered = synchronized(preloadJobLock) {
+        val preloadPlan = synchronized(preloadJobLock) {
             val preloadPlan = requestScheduler.moveTo(readerChapterId(), page.index, pages.size)
 
             // Register replacements before cancellation can restore an overlapping page to Queue.
@@ -161,10 +158,10 @@ internal class HttpPageLoader(
                 scheduledPages[request.jobKey] = candidate
             }
             preloadPlan.discardRequests.forEach(scheduledPages::remove)
-            cancelActiveRequestsLocked(preloadPlan.cancelRequests)
-            preloadPlan.requests.isNotEmpty()
+            preloadPlan
         }
-        if (registered) queueSignal.trySend(Unit)
+        pageRunner.cancel(preloadPlan.cancelRequests)
+        pageRunner.pump()
     }
 
     /**
@@ -175,7 +172,7 @@ internal class HttpPageLoader(
             page.status = Page.State.Queue
         }
         val pages = page.chapter.pages.orEmpty()
-        val registered = synchronized(preloadJobLock) {
+        val retryPlan = synchronized(preloadJobLock) {
             val retryPlan = requestScheduler.retry(readerPageId(page.index), pages.size)
             retryPlan.requests.forEach { request ->
                 val candidate = pages.getOrNull(request.pageIndex) ?: page.takeIf { it.index == request.pageIndex }
@@ -189,21 +186,22 @@ internal class HttpPageLoader(
                 }
             }
             retryPlan.discardRequests.forEach(scheduledPages::remove)
-            cancelActiveRequestsLocked(retryPlan.cancelRequests)
-            retryPlan.requests.isNotEmpty()
+            retryPlan
         }
-        if (registered) queueSignal.trySend(Unit)
+        pageRunner.cancel(retryPlan.cancelRequests)
+        pageRunner.pump()
     }
 
     override fun recycle() {
         super.recycle()
-        queueSignal.close()
-        scope.cancel()
-        synchronized(preloadJobLock) {
-            requestScheduler.moveTo(chapterId = readerChapterId(), currentPage = 0, pageCount = 0)
-            scheduledPages.clear()
-            activePreloadJobs.clear()
+        val closePlan = synchronized(preloadJobLock) {
+            requestScheduler.moveTo(chapterId = readerChapterId(), currentPage = 0, pageCount = 0).also {
+                scheduledPages.clear()
+            }
         }
+        pageRunner.cancel(closePlan.cancelRequests)
+        pageRunner.close()
+        scope.cancel()
         encodedPageStore.endSession()
 
         // Cache current page list progress for online chapters to allow a faster reopen
@@ -222,40 +220,62 @@ internal class HttpPageLoader(
         }
     }
 
-    /**
-     * Loads the page, retrieving the image URL and downloading the image if necessary.
-     * Downloaded images are stored in the chapter cache.
-     *
-     * @param page the page whose source image has to be downloaded.
-     */
-    private suspend fun internalLoadPage(
-        page: ReaderPage,
-        jobKey: ReaderRequestKey,
-        forceRefresh: Boolean,
-    ) {
-        val port = AndroidReaderPageFetchPort(page, source, chapterCache, encodedPageStore)
-        val request = ReaderPageFetchRequest(
-            pageId = ReaderPageId(
-                chapterId = ReaderChapterId(checkNotNull(chapter.chapter.id)),
-                sourcePageIndex = page.index,
-            ),
-            generation = jobKey.generation,
-            url = page.url,
-            imageUrl = page.imageUrl,
-        )
-        try {
-            val result = materializeExecutor.materializePage(
-                request = request,
-                port = port,
-                forceRefresh = forceRefresh,
-                publish = { event -> publishIfAccepted(jobKey) { page.applyMaterializeEvent(event, port) } },
-            )
-            if (result is ReaderPageMaterializeResult.Rejected) {
-                discardStaleResult(page, jobKey)
+    private inner class AndroidPageMaterializeRunnerPort :
+        ReaderPageMaterializeRunnerPort<AndroidReaderPageBinding> {
+
+        override fun pollNext(): ReaderPageMaterializeWork<AndroidReaderPageBinding>? =
+            synchronized(preloadJobLock) {
+                while (true) {
+                    val request = requestScheduler.pollNext() ?: return@synchronized null
+                    val page = scheduledPages[request.jobKey]
+                    if (page == null || page.status != Page.State.Queue) {
+                        requestScheduler.complete(request.jobKey)
+                        scheduledPages.remove(request.jobKey)
+                        continue
+                    }
+                    val fetchPort = AndroidReaderPageFetchPort(page, source, chapterCache, encodedPageStore)
+                    return@synchronized ReaderPageMaterializeWork(
+                        request = request,
+                        fetchRequest = ReaderPageFetchRequest(
+                            pageId = request.pageId,
+                            generation = request.generation,
+                            url = page.url,
+                            imageUrl = page.imageUrl,
+                        ),
+                        fetchPort = fetchPort,
+                        binding = AndroidReaderPageBinding(page, fetchPort),
+                    )
+                }
+                @Suppress("UNREACHABLE_CODE")
+                null
             }
-        } catch (e: CancellationException) {
-            discardStaleResult(page, jobKey)
-            throw e
+
+        override fun accepts(work: ReaderPageMaterializeWork<AndroidReaderPageBinding>): Boolean =
+            synchronized(preloadJobLock) { requestScheduler.accepts(work.request.jobKey) }
+
+        override fun publish(
+            work: ReaderPageMaterializeWork<AndroidReaderPageBinding>,
+            event: ReaderPageMaterializeEvent,
+        ): Boolean = synchronized(preloadJobLock) {
+            if (!requestScheduler.accepts(work.request.jobKey)) return@synchronized false
+            work.binding.page.applyMaterializeEvent(event, work.binding.fetchPort)
+            true
+        }
+
+        override fun complete(
+            work: ReaderPageMaterializeWork<AndroidReaderPageBinding>,
+            completion: ReaderPageMaterializeCompletion,
+        ) {
+            synchronized(preloadJobLock) {
+                val rejected =
+                    completion is ReaderPageMaterializeCompletion.Cancelled ||
+                        completion is ReaderPageMaterializeCompletion.Failed ||
+                        (completion as? ReaderPageMaterializeCompletion.Completed)?.result is
+                            ReaderPageMaterializeResult.Rejected
+                if (rejected) discardStaleResultLocked(work.binding.page, work.request.jobKey)
+                requestScheduler.complete(work.request.jobKey)
+                scheduledPages.remove(work.request.jobKey)
+            }
         }
     }
 
@@ -281,39 +301,6 @@ internal class HttpPageLoader(
         }
     }
 
-    private fun runScheduledPage(request: ReaderScheduledRequest, page: ReaderPage) {
-        val loadJob = scope.launch(start = CoroutineStart.LAZY) {
-            physicalRequestPermits.withPermit {
-                internalLoadPage(page, request.jobKey, request.forceRefresh)
-            }
-        }
-        synchronized(preloadJobLock) { activePreloadJobs[request.jobKey] = loadJob }
-        loadJob.invokeOnCompletion {
-            synchronized(preloadJobLock) {
-                if (activePreloadJobs[request.jobKey] === loadJob) {
-                    activePreloadJobs.remove(request.jobKey)
-                }
-                requestScheduler.complete(request.jobKey)
-                scheduledPages.remove(request.jobKey)
-            }
-            queueSignal.trySend(Unit)
-        }
-        loadJob.start()
-    }
-
-    private fun pollNextStartableLocked(): Pair<ReaderScheduledRequest, ReaderPage>? {
-        while (true) {
-            val request = requestScheduler.pollNext() ?: return null
-            val page = scheduledPages[request.jobKey]
-            if (page == null || page.status != Page.State.Queue) {
-                requestScheduler.complete(request.jobKey)
-                scheduledPages.remove(request.jobKey)
-                continue
-            }
-            return request to page
-        }
-    }
-
     private fun registerEnqueueResultLocked(
         result: mihon.domain.reader.scheduler.ReaderEnqueueResult,
         pages: List<ReaderPage>,
@@ -333,7 +320,6 @@ internal class HttpPageLoader(
                 cancelledPage.status = Page.State.Queue
             }
         }
-        cancelActiveRequestsLocked(result.cancelRequests)
     }
 
     private fun removePendingRequest(request: ReaderScheduledRequest) {
@@ -342,27 +328,13 @@ internal class HttpPageLoader(
                 scheduledPages.remove(request.jobKey)
             }
         }
+        pageRunner.pump()
     }
 
-    private fun cancelActiveRequestsLocked(cancelRequests: Set<ReaderRequestKey>) {
-        cancelRequests.forEach { jobKey -> activePreloadJobs[jobKey]?.cancel() }
-    }
-
-    private fun publishIfAccepted(jobKey: ReaderRequestKey, publish: () -> Unit): Boolean =
-        synchronized(preloadJobLock) {
-            if (!requestScheduler.accepts(jobKey) || !activePreloadJobs.containsKey(jobKey)) {
-                return@synchronized false
-            }
-            publish()
-            true
-        }
-
-    private fun discardStaleResult(page: ReaderPage, jobKey: ReaderRequestKey) {
-        synchronized(preloadJobLock) {
-            val hasCurrentReplacement = requestScheduler.hasCurrentReplacement(readerPageId(page.index), jobKey)
-            if (!hasCurrentReplacement && page.status != Page.State.Ready && page.status !is Page.State.Error) {
-                page.status = Page.State.Queue
-            }
+    private fun discardStaleResultLocked(page: ReaderPage, jobKey: ReaderRequestKey) {
+        val hasCurrentReplacement = requestScheduler.hasCurrentReplacement(readerPageId(page.index), jobKey)
+        if (!hasCurrentReplacement && page.status != Page.State.Ready && page.status !is Page.State.Error) {
+            page.status = Page.State.Queue
         }
     }
 

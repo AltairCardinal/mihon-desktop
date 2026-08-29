@@ -308,7 +308,7 @@ Android Reader UI                 Desktop Reader presentation
     - [x] `RUA-02D2` 原子 download identity、production DI 与 consumer 行为接线
 - [ ] `RUA-03` 首帧 critical path 与 shared runtime owner 收口
   - [x] `RUA-03A` session/store 启动关键路径瘦身
-  - [ ] `RUA-03B` shared runner、优先级、取消与 generation
+  - [x] `RUA-03B` shared runner、优先级、取消与 generation
   - [ ] `RUA-03C` production TTFF、1/180 页与切章集成门禁
 - [ ] `RUA-04` 唯一内容读取/解码 pipeline 与三种 presentation cutover
   - [ ] `RUA-04A` 唯一 open/materialize owner 与 single-flight
@@ -507,6 +507,14 @@ Android Reader UI                 Desktop Reader presentation
 - reconcile 将所有活跃 session lease 聚合为 pinned refs；pinned 总量可暂时超过 512 MiB 软配额而不会删除正在显示或预加载的文件，此时新写入被拒绝。lease 释放后立即以剩余 pins 重新 trim，回收已不再使用的文件并恢复配额与写入能力；索引不靠漏记文件维持虚假的预算值。
 - 严格 TDD 证据：`.gradle-coordinator/rua03a-first-frame-red2.log` 先按缺少首帧后维护入口与 observer callback 的正确原因失败；`rua03a-first-frame-green3.log` 通过。首次收口暴露旧 fixture 绕过 production presentation，修正后 `rua03a-repair-green.log` 与 `rua03a-close2.log` 通过。独立审查发现小配额双 fast-session 会误删 active ref，`rua03a-pinned-red.log` 复现失败，`rua03a-pinned-green.log`、`rua03a-domain-contract.log` 与最终 `rua03a-close3.log` 全部通过；最终收口包含根级 `spotlessCheck`、共享 store contract 以及 Desktop materialize/session/runtime/observer/production wiring 测试。
 - 限定修复复审结论为 `PASS`，P0/P1/P2 均为零；最终 8 个 production/test 文件处于 4～8 个预计范围内，只修改 store/session 首帧关键路径及其 production observer 接线，未混入 RUA-03B shared scheduler、RUA-03C production TTFF fixture 或 RUA-04 decoder/presentation cutover。未运行 Desktop 发布构建；正式构建仍只在 `RUA-07` 执行。
+
+**RUA-03B 完成证据（2026-08-30）**：
+
+- domain 新增平台无关的 `ReaderPageMaterializeRunner`，统一持有页面 coroutine/job、物理请求 permit、pump、取消、P0/background 调度接受条件和 generation 发布权；Android `HttpPageLoader` 与 Desktop `DesktopReaderSession` 只通过 port 绑定平台 page/context/fetch/status，已删除两端各自的页面 job、semaphore 与 pump owner。
+- runner 在物化前、非协作 prepare 返回后和每次发布前同时校验 active registration 与平台 scheduler/session generation；被取消的旧任务可以释放迟到的物理 I/O，但不能发布状态或占用新的逻辑并发槽。LAZY job 即使在 body 调度前被取消，也通过同一原子 `finalized` 路径恰好一次调用 `port.complete`，Android 不再泄漏旧 `scheduledPages` key。
+- Desktop gate 返回后先校验 generation；可写 store fast-init 返回后，在同一个 session lock 内完成最终校验与 `OPEN_PAGE / ADJACENT_IO` 上报。切章或关闭不能插入“校验后、上报前”的过期窗口，旧 work 也不会进入 materializer；取消期间最多保留幂等的共享 store fast-init，不会产生旧页 fetch。
+- 严格 TDD 证据：`.gradle-coordinator/rua03b-runner-red.log` 先因 shared runner contract 不存在而正确失败，`rua03b-runner-green.log` 通过；首次 `rua03b-close.log` 通过相关 shared/Android/Desktop suite。独立审查发现 cancel-before-dispatch completion 与 non-cooperative Desktop gate 两个 P2 后，`rua03b-review-red.log` 在旧实现上分别按 completion 缺失和 stale `OPEN_PAGE` 正确失败；最终 `rua03b-review-close.log` 为 `BUILD SUCCESSFUL in 18m 25s`，340 个 task 中 35 个执行、305 个命中缓存，包含根级 Spotless 及相关 domain、Android、Desktop production wiring 测试。
+- 限定修复复审结论为 `PASS`，P0/P1/P2 均为零；冻结代码 diff 为 7 个 production/test 文件、`781+/213-`、57,186 原始字节，SHA-256 为 `644cf543c768bdc64a3e534a95e7738cb19e015ac08182d03590ac4a180a0a44`，处于 6～10 文件预计范围内。本批未修改 decoder、presentation 或 TTFF fixture；未运行 Desktop 发布构建，正式构建仍只在 `RUA-07` 执行。
 
 ### `RUA-04` 唯一内容读取/解码 pipeline 与三种 presentation cutover
 

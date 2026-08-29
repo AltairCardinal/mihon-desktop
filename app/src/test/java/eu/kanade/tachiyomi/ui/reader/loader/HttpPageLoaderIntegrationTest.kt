@@ -45,6 +45,10 @@ class HttpPageLoaderIntegrationTest {
         runCurrent()
 
         assertEquals(listOf(0, 1), fixture.started)
+        assertEquals(
+            setOf(0, 1),
+            fixture.loader.pageRunnerSnapshot().activeRequestKeys.mapTo(mutableSetOf()) { it.pageIndex },
+        )
         fixture.release(0)
         runCurrent()
         assertEquals(listOf(0, 1, 2), fixture.started)

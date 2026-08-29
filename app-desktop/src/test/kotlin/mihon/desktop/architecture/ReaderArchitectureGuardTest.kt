@@ -64,6 +64,7 @@ class ReaderArchitectureGuardTest {
         )
 
         assertSourceOwners("ReaderRequestScheduler(", schedulerOwners)
+        assertSourceOwners("ReaderPageMaterializeRunner(", pageMaterializeRunnerConsumers)
         assertSourceOwners("ReaderProgressPolicy.reduce(", progressPolicyOwners)
         assertSourceOwners("ReaderChapterWindowReducer.reduce(", chapterWindowOwners)
         assertSourceOwners("ReaderSessionReducer.reduce(", sessionReducerOwners)
@@ -345,6 +346,11 @@ class ReaderArchitectureGuardTest {
             "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt",
         )
 
+        val pageMaterializeRunnerConsumers = setOf(
+            "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt",
+            "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt",
+        )
+
         val progressPolicyOwners = setOf(
             "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderSessionCore.kt",
             "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
@@ -369,6 +375,9 @@ class ReaderArchitectureGuardTest {
         val decisionDeclarationOwners = mapOf(
             Regex("""\b(?:class|object)\s+Reader\w*RequestScheduler\b""") to setOf(
                 "domain/src/commonMain/kotlin/mihon/domain/reader/scheduler/ReaderRequestScheduler.kt",
+            ),
+            Regex("""\b(?:class|object)\s+Reader\w*PageMaterializeRunner\b""") to setOf(
+                "domain/src/commonMain/kotlin/mihon/domain/reader/scheduler/ReaderPageMaterializeRunner.kt",
             ),
             Regex("""\b(?:class|object)\s+Reader\w*ProgressPolicy\b""") to setOf(
                 "domain/src/commonMain/kotlin/mihon/domain/reader/progress/ReaderProgressPolicy.kt",

@@ -527,6 +527,10 @@ class DesktopReaderSessionIntegrationTest {
             runCurrent()
 
             assertEquals(listOf(0, 1), startedPages)
+            assertEquals(
+                setOf(2),
+                session.pageRunnerSnapshot().activeRequestKeys.mapTo(mutableSetOf()) { it.pageIndex },
+            )
 
             releasePages[0].complete(Unit)
             pageStarted[2].await()
@@ -751,6 +755,81 @@ class DesktopReaderSessionIntegrationTest {
             assertEquals(1, events.count { it.type == ReaderIoEventType.CACHE_RECONCILE })
         } finally {
             cacheGate.release()
+            session.close()
+            advanceUntilIdle()
+        }
+    }
+
+    @Test
+    fun `cancelled noncurrent gate cannot report stale open page`() = runTest {
+        val gateEntered = CompletableDeferred<Unit>()
+        val releaseGate = CompletableDeferred<Unit>()
+        val events = mutableListOf<ReaderIoEvent>()
+        val fetchedPages = mutableListOf<ReaderPageId>()
+        val session = DesktopReaderSession(
+            initialContext = context(1L),
+            core = core(initialChapterId = 1L),
+            encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-stale-gate")),
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter, _ ->
+                ReaderChapterContentPort {
+                    if (chapter.chapterId == 1L) {
+                        List(2) { index ->
+                            ReaderPageDescriptor(
+                                sourcePageIndex = index,
+                                url = "/1/$index",
+                                imageUrl = "image:$index",
+                                encodedPageRef = EncodedPageRef("existing:1:$index"),
+                            )
+                        }
+                    } else {
+                        listOf(readyDescriptor(chapter.chapterId, 0))
+                    }
+                }
+            },
+            pageFetchPortFactory = DesktopReaderPageFetchPortFactory { _, descriptor ->
+                object : ReaderPageFetchPort {
+                    override suspend fun resolveImageUrl(request: ReaderPageFetchRequest) = requireNotNull(request.imageUrl)
+
+                    override suspend fun findEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef? =
+                        descriptor.encodedPageRef
+
+                    override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef {
+                        fetchedPages += request.pageId
+                        return EncodedPageRef("fetched:${request.pageId.sourcePageIndex}")
+                    }
+                }
+            },
+            progressPort = DesktopReaderProgressPort { _, _ -> },
+            parentScope = this,
+            ioReporter = ReaderIoReporter(
+                ReaderIoProbe(events::add),
+                ReaderMonotonicClock { events.size.toLong() },
+            ),
+            ioGate = ReaderIoGate { point ->
+                if (point == ReaderIoGatePoint.NON_CURRENT_PAGE) {
+                    gateEntered.complete(Unit)
+                    withContext(NonCancellable) { releaseGate.await() }
+                }
+            },
+        )
+
+        try {
+            session.start()
+            advanceUntilIdle()
+            val oldPages = session.state.value.snapshot.activeChapter.pages
+            session.settleViewport(setOf(oldPages[0].id), oldPages[0].id)
+            gateEntered.await()
+
+            session.activate(context(2L))
+            releaseGate.complete(Unit)
+            advanceUntilIdle()
+
+            assertTrue(events.none { event ->
+                event.type == ReaderIoEventType.OPEN_PAGE && event.pageId == oldPages[1].id
+            })
+            assertTrue(oldPages[1].id !in fetchedPages)
+        } finally {
+            releaseGate.complete(Unit)
             session.close()
             advanceUntilIdle()
         }

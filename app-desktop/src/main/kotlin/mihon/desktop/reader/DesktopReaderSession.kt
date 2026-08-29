@@ -31,8 +31,12 @@ import mihon.domain.reader.observability.ReaderMonotonicClock
 import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.progress.ReaderProgressEffect
 import mihon.domain.reader.scheduler.ReaderEnqueueResult
+import mihon.domain.reader.scheduler.ReaderPageMaterializeCompletion
+import mihon.domain.reader.scheduler.ReaderPageMaterializeRunner
+import mihon.domain.reader.scheduler.ReaderPageMaterializeRunnerPort
+import mihon.domain.reader.scheduler.ReaderPageMaterializeRunnerSnapshot
+import mihon.domain.reader.scheduler.ReaderPageMaterializeWork
 import mihon.domain.reader.scheduler.ReaderRequestCancellation
-import mihon.domain.reader.scheduler.ReaderRequestKey
 import mihon.domain.reader.scheduler.ReaderSchedulePlan
 import mihon.domain.reader.scheduler.ReaderScheduledRequest
 import mihon.domain.reader.session.ReaderChapterId
@@ -87,6 +91,7 @@ private data class DesktopReaderScheduledPage(
     val descriptor: ReaderPageDescriptor,
     val isAdjacentPrefetch: Boolean,
     val adjacentSequence: Long? = null,
+    var acceptedStorageFailure: Boolean = false,
 )
 
 private data class DesktopReaderChapterLeaseOwner(
@@ -118,10 +123,9 @@ class DesktopReaderSession(
     private val scope = CoroutineScope(parentScope.coroutineContext + sessionJob)
     private val progressSupervisor: CompletableJob = SupervisorJob()
     private val progressScope = CoroutineScope(parentScope.coroutineContext.minusKey(Job) + progressSupervisor)
-    private val physicalRequestPermits = Semaphore(
+    private val chapterContentPermits = Semaphore(
         core.schedulerSnapshot().maxConcurrentRequests + MAX_STALE_PHYSICAL_REQUESTS,
     )
-    private val activePageJobs = mutableMapOf<ReaderRequestKey, Job>()
     private val progressJobs = mutableSetOf<Job>()
     private val readChapterIds = mutableSetOf<Long>().apply {
         if (initialContext.wasRead) add(initialContext.chapterId)
@@ -148,10 +152,19 @@ class DesktopReaderSession(
     private var started = false
     private var closed = false
 
+    private val pageRunner = ReaderPageMaterializeRunner(
+        scope = scope,
+        maxConcurrentRequests = core.schedulerSnapshot().maxConcurrentRequests,
+        maxStalePhysicalRequests = MAX_STALE_PHYSICAL_REQUESTS,
+        materializeExecutor = materializeExecutor,
+        port = DesktopPageMaterializeRunnerPort(),
+    )
+
     private val _state = MutableStateFlow(DesktopReaderSessionState(initialContext, core.snapshot))
     val state: StateFlow<DesktopReaderSessionState> = _state.asStateFlow()
     internal val currentNextChapterPrefetchMode: NextChapterPrefetchMode
         get() = synchronized(lock) { nextChapterPrefetchMode }
+    internal fun pageRunnerSnapshot(): ReaderPageMaterializeRunnerSnapshot = pageRunner.snapshot()
 
     fun start() {
         synchronized(lock) {
@@ -227,7 +240,7 @@ class DesktopReaderSession(
             )
             val result = cachedAdjacentPages
                 ?.let(ReaderChapterMaterializeResult::Loaded)
-                ?: physicalRequestPermits.withPermit {
+                ?: chapterContentPermits.withPermit {
                     materializeExecutor.materializeChapter(
                         request,
                         chapterContentPortFactory.create(materializationContext, materializationLeaseGeneration),
@@ -381,11 +394,10 @@ class DesktopReaderSession(
             chapterJob = null
             clearAdjacentPrefetchLocked()
             applySchedulePlanLocked(core.close().schedulePlan)
-            activePageJobs.values.forEach(Job::cancel)
-            activePageJobs.clear()
             if (storeStarted) encodedPageStore.endSession()
             progressSupervisor.complete()
         }
+        pageRunner.close()
         leaseOwnersToRelease.forEach { owner ->
             chapterLeasePort.releaseChapter(owner.chapterId, owner.leaseGeneration)
         }
@@ -458,96 +470,118 @@ class DesktopReaderSession(
         !closeImmediately
     }
 
-    private fun pumpPageRequests() {
-        val jobs = synchronized(lock) {
-            if (closed) return
-            buildList {
-                while (true) {
-                    val request = core.pollNextPageRequest() ?: break
-                    val scheduledPage = scheduledPageLocked(request)
-                    if (
-                        scheduledPage == null ||
-                        (scheduledPage.descriptor.initialLoadState is ReaderPageLoadState.Ready && !request.forceRefresh)
-                    ) {
-                        core.completePageRequest(request.jobKey)
-                        continue
-                    }
-                    val job = scope.launch(start = CoroutineStart.LAZY) {
-                        materializePage(scheduledPage, request)
-                    }
-                    activePageJobs[request.jobKey] = job
-                    add(job)
-                }
-            }
-        }
-        jobs.forEach(Job::start)
-    }
+    private fun pumpPageRequests() = pageRunner.pump()
 
-    private suspend fun materializePage(
-        scheduledPage: DesktopReaderScheduledPage,
-        request: ReaderScheduledRequest,
-    ) {
-        var terminalResult: ReaderPageMaterializeResult? = null
-        var acceptedAdjacentStorageFailure = false
-        var adjacentPageListJob: Job? = null
-        try {
-            request.gatePoint(scheduledPage.isAdjacentPrefetch)?.let { ioGate.await(it) }
-            if (scheduledPage.descriptor.encodedPageRef == null && !ensureStoreWritable()) return
-            if (scheduledPage.isAdjacentPrefetch) {
-                ioReporter.report(
-                    ReaderIoEventType.ADJACENT_IO,
-                    request.pageId.chapterId,
-                    request.pageId,
-                    request.generation,
-                    ReaderIoPurpose.ADJACENT_PREFETCH,
-                )
-            } else {
-                ioReporter.report(
-                    ReaderIoEventType.OPEN_PAGE,
-                    request.pageId.chapterId,
-                    request.pageId,
-                    request.generation,
-                    ReaderIoPurpose.CURRENT_PAGE,
-                )
-            }
-            physicalRequestPermits.withPermit {
-                terminalResult = materializeExecutor.materializePage(
-                    request = ReaderPageFetchRequest(
+    private inner class DesktopPageMaterializeRunnerPort :
+        ReaderPageMaterializeRunnerPort<DesktopReaderScheduledPage> {
+
+        override fun pollNext(): ReaderPageMaterializeWork<DesktopReaderScheduledPage>? = synchronized(lock) {
+            if (closed) return@synchronized null
+            while (true) {
+                val request = core.pollNextPageRequest() ?: return@synchronized null
+                val scheduledPage = scheduledPageLocked(request)
+                if (
+                    scheduledPage == null ||
+                    (scheduledPage.descriptor.initialLoadState is ReaderPageLoadState.Ready && !request.forceRefresh)
+                ) {
+                    core.completePageRequest(request.jobKey)
+                    continue
+                }
+                return@synchronized ReaderPageMaterializeWork(
+                    request = request,
+                    fetchRequest = ReaderPageFetchRequest(
                         pageId = request.pageId,
                         generation = request.generation,
                         url = scheduledPage.descriptor.url,
                         imageUrl = scheduledPage.descriptor.imageUrl,
                     ),
-                    port = pageFetchPortFactory.create(scheduledPage.context, scheduledPage.descriptor),
-                    forceRefresh = request.forceRefresh,
-                    publish = { event ->
-                        synchronized(lock) {
-                            if (closed) {
-                                false
-                            } else if (scheduledPage.isAdjacentPrefetch) {
-                                acceptAdjacentMaterializationLocked(scheduledPage, request, event).also { accepted ->
-                                    if (accepted && event is ReaderPageMaterializeEvent.Failed && event.error is AppError.Storage) {
-                                        acceptedAdjacentStorageFailure = true
-                                    }
-                                }
-                            } else {
-                                core.acceptPageMaterialization(request, event).also { accepted ->
-                                    if (accepted) publishStateLocked()
-                                }
-                            }
-                        }
-                    },
+                    fetchPort = pageFetchPortFactory.create(scheduledPage.context, scheduledPage.descriptor),
+                    binding = scheduledPage,
                 )
             }
-        } finally {
+            @Suppress("UNREACHABLE_CODE")
+            null
+        }
+
+        override fun accepts(work: ReaderPageMaterializeWork<DesktopReaderScheduledPage>): Boolean =
             synchronized(lock) {
+                acceptsLocked(work)
+            }
+
+        override suspend fun prepare(work: ReaderPageMaterializeWork<DesktopReaderScheduledPage>): Boolean {
+            val scheduledPage = work.binding
+            val request = work.request
+            request.gatePoint(scheduledPage.isAdjacentPrefetch)?.let { ioGate.await(it) }
+            if (!accepts(work)) return false
+            if (scheduledPage.descriptor.encodedPageRef == null && !ensureStoreWritable()) return false
+            return synchronized(lock) {
+                if (!acceptsLocked(work)) return@synchronized false
+                if (scheduledPage.isAdjacentPrefetch) {
+                    ioReporter.report(
+                        ReaderIoEventType.ADJACENT_IO,
+                        request.pageId.chapterId,
+                        request.pageId,
+                        request.generation,
+                        ReaderIoPurpose.ADJACENT_PREFETCH,
+                    )
+                } else {
+                    ioReporter.report(
+                        ReaderIoEventType.OPEN_PAGE,
+                        request.pageId.chapterId,
+                        request.pageId,
+                        request.generation,
+                        ReaderIoPurpose.CURRENT_PAGE,
+                    )
+                }
+                true
+            }
+        }
+
+        private fun acceptsLocked(work: ReaderPageMaterializeWork<DesktopReaderScheduledPage>): Boolean {
+            if (closed || !core.acceptsPageRequest(work.request.jobKey)) return false
+            val scheduledPage = work.binding
+            return if (scheduledPage.isAdjacentPrefetch) {
+                scheduledPage.adjacentSequence == adjacentSequence &&
+                    adjacentContext?.chapterId == scheduledPage.context.chapterId
+            } else {
+                core.snapshot.activeChapter.pages.any { it.id == work.request.pageId }
+            }
+        }
+
+        override fun publish(
+            work: ReaderPageMaterializeWork<DesktopReaderScheduledPage>,
+            event: ReaderPageMaterializeEvent,
+        ): Boolean = synchronized(lock) {
+            if (closed) {
+                false
+            } else if (work.binding.isAdjacentPrefetch) {
+                acceptAdjacentMaterializationLocked(work.binding, work.request, event).also { accepted ->
+                    if (accepted && event is ReaderPageMaterializeEvent.Failed && event.error is AppError.Storage) {
+                        work.binding.acceptedStorageFailure = true
+                    }
+                }
+            } else {
+                core.acceptPageMaterialization(work.request, event).also { accepted ->
+                    if (accepted) publishStateLocked()
+                }
+            }
+        }
+
+        override fun complete(
+            work: ReaderPageMaterializeWork<DesktopReaderScheduledPage>,
+            completion: ReaderPageMaterializeCompletion,
+        ) {
+            var adjacentPageListJob: Job? = null
+            synchronized(lock) {
+                val terminalResult = (completion as? ReaderPageMaterializeCompletion.Completed)?.result
+                val scheduledPage = work.binding
+                val request = work.request
                 val blocksCurrentAdjacentTarget =
-                    acceptedAdjacentStorageFailure &&
+                    scheduledPage.acceptedStorageFailure &&
                         (terminalResult as? ReaderPageMaterializeResult.Failed)?.error is AppError.Storage &&
                         scheduledPage.adjacentSequence == adjacentSequence &&
                         adjacentContext?.chapterId == scheduledPage.context.chapterId &&
                         core.acceptsPageRequest(request.jobKey)
-                activePageJobs.remove(request.jobKey)
                 core.completePageRequest(request.jobKey)
                 if (blocksCurrentAdjacentTarget) {
                     adjacentQuotaBlocked = true
@@ -563,7 +597,6 @@ class DesktopReaderSession(
                 }
             }
             adjacentPageListJob?.start()
-            pumpPageRequests()
         }
     }
 
@@ -642,7 +675,7 @@ class DesktopReaderSession(
                 generation = generation,
                 purpose = ReaderIoPurpose.ADJACENT_PREFETCH,
             )
-            val result = physicalRequestPermits.withPermit {
+            val result = chapterContentPermits.withPermit {
                 materializeExecutor.materializeChapter(
                     ReaderChapterContentRequest(ReaderChapterId(target.chapterId), generation),
                     chapterContentPortFactory.create(target, leaseGeneration),
@@ -732,16 +765,16 @@ class DesktopReaderSession(
         }
 
     private fun applyEnqueueResultLocked(result: ReaderEnqueueResult) {
-        result.cancelRequests.forEach { requestKey -> activePageJobs.remove(requestKey)?.cancel() }
+        pageRunner.cancel(result.cancelRequests)
     }
 
     private fun applyRequestCancellationLocked(cancellation: ReaderRequestCancellation) {
-        cancellation.cancelRequests.forEach { requestKey -> activePageJobs.remove(requestKey)?.cancel() }
+        pageRunner.cancel(cancellation.cancelRequests)
     }
 
     private fun applySchedulePlanLocked(plan: ReaderSchedulePlan?) {
         plan ?: return
-        plan.cancelRequests.forEach { requestKey -> activePageJobs.remove(requestKey)?.cancel() }
+        pageRunner.cancel(plan.cancelRequests)
     }
 
     private fun publishStateLocked() {
