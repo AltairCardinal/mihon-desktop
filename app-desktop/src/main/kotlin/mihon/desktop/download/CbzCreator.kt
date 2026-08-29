@@ -4,7 +4,7 @@ import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "avif")
+private val IMAGE_EXTENSIONS = setOf("avif", "gif", "heif", "jpeg", "jpg", "jp2", "jpx", "jxl", "png", "webp")
 
 /**
  * Packages a downloaded chapter directory into a `.cbz` (Comic Book Zip) file.

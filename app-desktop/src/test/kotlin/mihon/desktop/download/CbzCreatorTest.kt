@@ -64,4 +64,19 @@ class CbzCreatorTest {
         assertEquals(1, entries.size, "CBZ must only contain image files")
         assertEquals("001.jpg", entries[0].name)
     }
+
+    @Test
+    fun `createCbz retains every upstream known image extension`() {
+        val chapterDir = File(tempDir, "known-extensions").also { it.mkdirs() }
+        listOf("avif", "gif", "heif", "jpg", "jp2", "jpx", "jxl", "png", "webp").forEach { extension ->
+            File(chapterDir, "page.$extension").writeBytes(byteArrayOf(1))
+        }
+        val cbzFile = CbzCreator.defaultOutputFile(chapterDir)
+
+        assertTrue(CbzCreator.create(chapterDir, cbzFile))
+
+        ZipFile(cbzFile).use { archive ->
+            assertEquals(9, archive.entries().asSequence().count())
+        }
+    }
 }

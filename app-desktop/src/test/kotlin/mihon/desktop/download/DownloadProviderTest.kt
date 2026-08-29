@@ -1,6 +1,7 @@
 package mihon.desktop.download
 
 import mihon.domain.reader.content.DownloadArtifactLocator
+import mihon.domain.reader.content.DownloadArtifactNamingPolicy
 import mihon.domain.reader.content.DownloadChapterIdentity
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -155,6 +156,66 @@ class DownloadProviderTest {
         assertEquals(directory.absolutePath, match?.opaqueLocation)
     }
 
+    @Test
+    fun `production artifact lookup checks every upstream candidate before old desktop fallback`() {
+        val provider = provider()
+        val identity = downloadIdentity()
+        val candidates = DownloadArtifactNamingPolicy.chapterCandidates(identity)
+        val canonicalManga = provider.canonicalMangaDownloadDir(identity).also(File::mkdirs)
+        val oldDesktop = provider.chapterDownloadDir(42L, identity.mangaTitle, identity.chapterName)
+            .also(File::mkdirs)
+        val laterCanonical = canonicalManga.resolve(candidates[3].name).also { candidate ->
+            candidate.parentFile.mkdirs()
+            candidate.writeBytes(byteArrayOf(0x50, 0x4B))
+        }
+
+        val match = provider.downloadArtifactLookup(42L).locate(identity)
+
+        assertEquals(laterCanonical.absolutePath, match?.opaqueLocation)
+        assertEquals(candidates[3], match?.candidate)
+        assertTrue(oldDesktop.isDirectory)
+    }
+
+    @Test
+    fun `production artifact lookup reads all upstream directory and cbz candidates`() {
+        val provider = provider()
+        val identity = downloadIdentity()
+        val canonicalManga = provider.canonicalMangaDownloadDir(identity).also(File::mkdirs)
+
+        DownloadArtifactNamingPolicy.chapterCandidates(identity).distinct().forEach { candidate ->
+            canonicalManga.deleteRecursively()
+            canonicalManga.mkdirs()
+            val artifact = canonicalManga.resolve(candidate.name)
+            if (candidate.kind == mihon.domain.reader.content.DownloadArtifactKind.DIRECTORY) {
+                artifact.mkdirs()
+            } else {
+                artifact.writeBytes(byteArrayOf(0x50, 0x4B))
+            }
+
+            val match = provider.downloadArtifactLookup(42L).locate(identity)
+
+            assertEquals(candidate, match?.candidate)
+            assertEquals(artifact.absolutePath, match?.opaqueLocation)
+        }
+    }
+
+    @Test
+    fun `production artifact lookup reads old desktop directory and sibling cbz after canonical candidates`() {
+        val provider = provider()
+        val identity = downloadIdentity()
+        val oldDirectory = provider.chapterDownloadDir(42L, identity.mangaTitle, identity.chapterName)
+            .also(File::mkdirs)
+
+        assertEquals(oldDirectory.absolutePath, provider.downloadArtifactLookup(42L).locate(identity)?.opaqueLocation)
+
+        oldDirectory.deleteRecursively()
+        val oldCbz = File(oldDirectory.parentFile, "${oldDirectory.name}.cbz").also {
+            it.writeBytes(byteArrayOf(0x50, 0x4B))
+        }
+
+        assertEquals(oldCbz.absolutePath, provider.downloadArtifactLookup(42L).locate(identity)?.opaqueLocation)
+    }
+
     // ── hasMangaDownloads ─────────────────────────────────────────────────────
 
     @Test
@@ -196,4 +257,13 @@ class DownloadProviderTest {
         val chapterName = dir.name
         assertFalse(chapterName.contains('/'))
     }
+
+    private fun downloadIdentity() = DownloadChapterIdentity(
+        sourceDisplayName = "Source 中文",
+        mangaTitle = "Manga 中文",
+        chapterName = "Chapter 1",
+        scanlator = "Group",
+        chapterUrl = "/chapter/1",
+        disallowNonAsciiFilenames = false,
+    )
 }

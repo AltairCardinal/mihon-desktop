@@ -300,7 +300,7 @@ Android Reader UI                 Desktop Reader presentation
 - [x] `RUA-00` 激活、authority 冻结与可观测性基础
 - [x] `RUA-01` 共享 route/download/page-list 契约与两端决策接线
 - [ ] `RUA-02` Desktop 下载/local/archive adapter 与无损兼容
-  - [ ] `RUA-02A` artifact identity、有限候选与 dual-read/single-write
+  - [x] `RUA-02A` artifact identity、有限候选与 dual-read/single-write
   - [ ] `RUA-02B` 下载 lifecycle、恢复/删除与消费者 identity
   - [ ] `RUA-02C` directory/archive adapter、惰性 entry 与 lease/generation
   - [ ] `RUA-02D` production Reader/DI 接线、离线打开与 DownloadIndex gate
@@ -407,6 +407,12 @@ Android Reader UI                 Desktop Reader presentation
 02A → 02B，02A + 02C → 02D；02B 与 02C 在接口冻结后可以独立推进，但同一工作树仍保持单写入 owner。每个子批次分别提交和审查；02D 的集成审查只检查跨子批次 wiring，不重新审查已经冻结的内部实现。
 
 **2026-08-29 中途重划状态**：现有未提交实现形成于子批次规则之前，不能据此提前勾选任何子项。已完成的两轮整体只读审查可以分别作为未变化 scope 的初审/复审证据；最新发现的 same-ID 重入竞态归 02B，同路径/同大小/恢复 mtime 的 archive replacement 归 02C，DownloadIndex 证明强度归 02D。后续先按文件和 invariant 冻结各子批次 scope，再分别完成缺失 TDD、确认和提交；不推倒已验证的 02A 实现，也不把 02B/02C 的内部返工扩成新产品范围。
+
+**RUA-02A 完成证据（2026-08-29）**：
+
+- Desktop provider 使用 RUA-01 共享 naming/candidate contract 有限探测 canonical/current/legacy/non-ASCII/hash/scanlator directory/CBZ，再读取旧 Desktop raw directory/sibling CBZ；新写入目标固定为 canonical，未迁移用户文件。
+- `CbzCreator` 保留 shared policy 支持的全部已知图片扩展；provider/CbzCreator focused tests、相关 Reader wiring 与根级 `spotlessCheck` 已在 `.gradle-coordinator/rua02-review-close.json/.log` 同一调用中通过。
+- 两轮整体只读审查对该冻结 scope 没有 P0/P1/P2；后续发现仅属于 02B 的 worker generation、02C 的 archive generation 与 02D 的 gate 证明强度，不反向扩大 02A。
 
 **RED**：
 

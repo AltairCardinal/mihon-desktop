@@ -1,7 +1,13 @@
 package mihon.desktop.download
 
 import mihon.domain.reader.content.DownloadArtifactKind
+import mihon.domain.reader.content.DownloadArtifactCandidate
+import mihon.domain.reader.content.DownloadArtifactLocator
+import mihon.domain.reader.content.DownloadArtifactLookup
+import mihon.domain.reader.content.DownloadArtifactMatch
+import mihon.domain.reader.content.DownloadArtifactNamingPolicy
 import mihon.domain.reader.content.DownloadArtifactProbe
+import mihon.domain.reader.content.DownloadChapterIdentity
 import mihon.domain.reader.content.ReaderImageCandidatePolicy
 import mihon.domain.reader.content.ReaderImageSortMode
 import java.io.File
@@ -50,6 +56,19 @@ class DesktopDownloadProvider(
     fun chapterTmpDir(sourceId: Long, mangaTitle: String, chapterName: String): File =
         File(baseDir, "${sanitize(sourceId.toString())}/${sanitize(mangaTitle)}/${sanitize(chapterName)}$TMP_DIR_SUFFIX")
 
+    /** Canonical upstream-style source/manga directory used by new Desktop downloads. */
+    fun canonicalMangaDownloadDir(identity: DownloadChapterIdentity): File = File(
+        File(baseDir, DownloadArtifactNamingPolicy.sourceDirectoryName(identity)),
+        DownloadArtifactNamingPolicy.mangaDirectoryName(identity),
+    )
+
+    /** Canonical single-write chapter directory. Existing Desktop paths remain read-only fallbacks. */
+    fun canonicalChapterDownloadDir(identity: DownloadChapterIdentity): File =
+        File(canonicalMangaDownloadDir(identity), DownloadArtifactNamingPolicy.currentChapterName(identity))
+
+    fun canonicalChapterTmpDir(identity: DownloadChapterIdentity): File =
+        File(canonicalMangaDownloadDir(identity), DownloadArtifactNamingPolicy.currentChapterName(identity) + TMP_DIR_SUFFIX)
+
     /**
      * A chapter is considered downloaded only when the **final** directory
      * (without `_tmp` suffix) exists and contains at least one image file.
@@ -60,6 +79,16 @@ class DesktopDownloadProvider(
         val dir = chapterDownloadDir(sourceId, mangaTitle, chapterName)
         return dir.isDirectory && dir.listFiles()?.any { it.isReadableImageFile() } == true
     }
+
+    fun isChapterDownloaded(sourceId: Long, identity: DownloadChapterIdentity): Boolean =
+        downloadArtifactLookup(sourceId).locate(identity)?.let { match ->
+            val artifact = File(match.opaqueLocation)
+            when (match.candidate.kind) {
+                DownloadArtifactKind.DIRECTORY ->
+                    artifact.isDirectory && artifact.listFiles()?.any { it.isReaderImageCandidate() } == true
+                DownloadArtifactKind.CBZ -> artifact.isFile && artifact.length() > 0L
+            }
+        } == true
 
     /** Returns true if a `_tmp` directory exists for this chapter (download in progress or abandoned). */
     fun isChapterDownloading(sourceId: Long, mangaTitle: String, chapterName: String): Boolean {
@@ -100,6 +129,49 @@ class DesktopDownloadProvider(
         }
     }
 
+    /** Maps shared candidates to Desktop files without scanning the download tree. */
+    fun canonicalArtifactProbe(): DownloadArtifactProbe = DownloadArtifactProbe { identity, candidate ->
+        val artifact = File(canonicalMangaDownloadDir(identity), candidate.name)
+        when (candidate.kind) {
+            DownloadArtifactKind.DIRECTORY -> artifact.absolutePath.takeIf { artifact.isDirectory }
+            DownloadArtifactKind.CBZ -> artifact.absolutePath.takeIf { artifact.isFile }
+        }
+    }
+
+    /**
+     * Production dual-read lookup. Every shared canonical/legacy/non-ASCII candidate is checked first;
+     * only then are the historical Desktop raw directory and sibling CBZ considered.
+     */
+    fun downloadArtifactLookup(
+        sourceId: Long,
+        candidateProbe: DownloadArtifactProbe = canonicalArtifactProbe(),
+    ): DownloadArtifactLookup {
+        val shared = DownloadArtifactLocator(candidateProbe)
+        return DownloadArtifactLookup { identity ->
+            shared.locate(identity) ?: currentDesktopArtifact(sourceId, identity)
+        }
+    }
+
+    private fun currentDesktopArtifact(
+        sourceId: Long,
+        identity: DownloadChapterIdentity,
+    ): DownloadArtifactMatch? {
+        val directory = chapterDownloadDir(sourceId, identity.mangaTitle, identity.chapterName)
+        if (directory.isDirectory) {
+            return DownloadArtifactMatch(
+                DownloadArtifactCandidate(directory.name, DownloadArtifactKind.DIRECTORY),
+                directory.absolutePath,
+            )
+        }
+        val cbz = File(directory.parentFile, "${directory.name}.cbz")
+        return cbz.takeIf(File::isFile)?.let { artifact ->
+            DownloadArtifactMatch(
+                DownloadArtifactCandidate(artifact.name, DownloadArtifactKind.CBZ),
+                artifact.absolutePath,
+            )
+        }
+    }
+
     /**
      * Returns true if the manga has at least one fully-downloaded chapter.
      * Temporary (`_tmp`) directories are excluded — same rule as [isChapterDownloaded].
@@ -114,6 +186,21 @@ class DesktopDownloadProvider(
         } == true
     }
 
+    fun hasMangaDownloads(sourceId: Long, identity: DownloadChapterIdentity): Boolean {
+        fun File.hasChapterArtifact(): Boolean = listFiles().orEmpty().any { artifact ->
+            when {
+                artifact.name.endsWith(TMP_DIR_SUFFIX) -> false
+                artifact.isDirectory -> artifact.listFiles()?.any { it.isReaderImageCandidate() } == true
+                artifact.isFile && artifact.extension.equals("cbz", ignoreCase = true) -> artifact.length() > 0L
+                else -> false
+            }
+        }
+        return canonicalMangaDownloadDir(identity).takeIf(File::isDirectory)?.hasChapterArtifact() == true ||
+            File(baseDir, "${sanitize(sourceId.toString())}/${sanitize(identity.mangaTitle)}")
+                .takeIf(File::isDirectory)
+                ?.hasChapterArtifact() == true
+    }
+
     /** Returns true when a downloaded image has a supported extension and a matching file signature. */
     fun isValidDownloadedImage(file: File): Boolean = file.isReadableImageFile()
 
@@ -123,10 +210,24 @@ class DesktopDownloadProvider(
         dir.deleteRecursively()
     }
 
+    /** Deletes only the finite aliases belonging to this identity; no download-tree scan or migration is performed. */
+    fun deleteChapterDownload(sourceId: Long, identity: DownloadChapterIdentity) {
+        DownloadArtifactNamingPolicy.chapterCandidates(identity).distinct().forEach { candidate ->
+            File(canonicalMangaDownloadDir(identity), candidate.name).deleteRecursively()
+        }
+        val currentDesktop = chapterDownloadDir(sourceId, identity.mangaTitle, identity.chapterName)
+        currentDesktop.deleteRecursively()
+        File(currentDesktop.parentFile, "${currentDesktop.name}.cbz").delete()
+    }
+
     /** Deletes the temporary download directory for a chapter. */
     fun cleanupTmpDir(sourceId: Long, mangaTitle: String, chapterName: String) {
         val tmpDir = chapterTmpDir(sourceId, mangaTitle, chapterName)
         tmpDir.deleteRecursively()
+    }
+
+    fun cleanupTmpDir(identity: DownloadChapterIdentity) {
+        canonicalChapterTmpDir(identity).deleteRecursively()
     }
 
     /**
