@@ -295,16 +295,37 @@ Android Reader UI                 Desktop Reader presentation
 
 ## 10. 实施任务与严格 TDD 顺序
 
-每个改变产品行为的批次都必须在同一内聚任务内完成 RED → GREEN → 重构 → focused 验证 → 独立审查 → 提交。RED 必须运行真实 production 实现或其 composition root；不能用源码文本扫描、复制算法或 fake-only helper 代替。每个顶层批次原则上一个提交，审查修复最多再一个提交。
+每个改变产品行为的**子批次**都必须在同一内聚任务内完成 RED → GREEN → 重构 → focused 验证 → 独立审查 → 提交。RED 必须运行真实 production 实现或其 composition root；不能用源码文本扫描、复制算法或 fake-only helper 代替。`RUA-00`、`RUA-01` 保留已经完成时的顶层批次历史；从 `RUA-02` 起，父 RUA 只聚合目标与依赖，预算、审查和提交均以第一个未勾选的子批次为单位。父项只有在全部子项完成后才能勾选，不得用父项的一次审查覆盖多个独立状态机或平台 seam。
 
 - [x] `RUA-00` 激活、authority 冻结与可观测性基础
 - [x] `RUA-01` 共享 route/download/page-list 契约与两端决策接线
 - [ ] `RUA-02` Desktop 下载/local/archive adapter 与无损兼容
+  - [ ] `RUA-02A` artifact identity、有限候选与 dual-read/single-write
+  - [ ] `RUA-02B` 下载 lifecycle、恢复/删除与消费者 identity
+  - [ ] `RUA-02C` directory/archive adapter、惰性 entry 与 lease/generation
+  - [ ] `RUA-02D` production Reader/DI 接线、离线打开与 DownloadIndex gate
 - [ ] `RUA-03` 首帧 critical path 与 shared runtime owner 收口
+  - [ ] `RUA-03A` session/store 启动关键路径瘦身
+  - [ ] `RUA-03B` shared runner、优先级、取消与 generation
+  - [ ] `RUA-03C` production TTFF、1/180 页与切章集成门禁
 - [ ] `RUA-04` 唯一内容读取/解码 pipeline 与三种 presentation cutover
+  - [ ] `RUA-04A` 唯一 open/materialize owner 与 single-flight
+  - [ ] `RUA-04B` 唯一 decoder、decoded cache 与 transform consumers
+  - [ ] `RUA-04C` Single/Dual/Webtoon presentation cutover
+  - [ ] `RUA-04D` 动画/超大图/lifecycle 矩阵与 legacy owner 删除
 - [ ] `RUA-05` 原版相邻章默认语义与 Desktop opt-in decorator
+  - [ ] `RUA-05A` canonical last-five page-list-only 语义
+  - [ ] `RUA-05B` 偏好迁移、默认值与设置 UI wiring
+  - [ ] `RUA-05C` Desktop opt-in 图片预取 decorator
 - [ ] `RUA-06` 假阳性测试、旧 owner、authority 与文档清理
+  - [ ] `RUA-06A` 旧 owner/DI/第二链删除
+  - [ ] `RUA-06B` production mutation 证据与假阳性测试替换
+  - [ ] `RUA-06C` authority、manifest 与文档收口
 - [ ] `RUA-07` 跨平台全量验证、Test Mode、正式构建与关闭审计
+  - [ ] `RUA-07A` 跨平台测试矩阵、Spotless 与 final parity
+  - [ ] `RUA-07B` Test Mode、deterministic/Windows 性能与手动行为验收
+  - [ ] `RUA-07C` Windows/macOS/Android 正式构建验收
+  - [ ] `RUA-07D` manifest、路线图与唯一 active plan 关闭审计
 
 ### `RUA-00` 激活、authority 冻结与可观测性基础
 
@@ -376,6 +397,17 @@ Android Reader UI                 Desktop Reader presentation
 
 ### `RUA-02` Desktop 下载/local/archive adapter 与无损兼容
 
+**子批次边界与依赖**：
+
+- `RUA-02A` 只建立 `DownloadChapterIdentity` 到 canonical/current/legacy/non-ASCII/hash/scanlator directory/CBZ 的有限候选、first-match locator、canonical single-write 与旧路径 dual-read；不改 worker 生命周期或 Reader session。focused 验证覆盖候选顺序、命名、存在性和无迁移兼容，预计 5～9 个 production/test 文件。
+- `RUA-02B` 在 02A 之上统一 enqueue/worker/cancel/retry/recovery/delete/filter 的 identity；每次入队必须有独立 generation，旧 worker 不得修改或清理同 chapter ID 的新任务。focused 验证覆盖 active cancel → same-ID re-enqueue、失败 `_tmp` 清理、恢复及 Library/Updates/Manga detail 消费者，预计 7～13 个文件。
+- `RUA-02C` 独立完成 local directory/ZIP/CBZ/EPUB/RAR 页表、opaque entry ref、逐 entry 惰性打开、archive replacement generation、并发串行和 chapter lease；不接管 route 顺序或 Reader session 调度。focused 验证覆盖同路径/同大小/恢复 mtime 的归档替换、真实 RAR、空/坏 archive、release/close，预计 4～8 个文件。
+- `RUA-02D` 只负责把 02A/02C 接入 production Reader/runtime/session/DI，以 production `CbzCreator` 离线打开和被 gate 的 DownloadIndex 证明 critical path 只做有限 locator 探测；同时完成跨 02A～02C 的集成验收，预计 5～9 个文件。
+
+02A → 02B，02A + 02C → 02D；02B 与 02C 在接口冻结后可以独立推进，但同一工作树仍保持单写入 owner。每个子批次分别提交和审查；02D 的集成审查只检查跨子批次 wiring，不重新审查已经冻结的内部实现。
+
+**2026-08-29 中途重划状态**：现有未提交实现形成于子批次规则之前，不能据此提前勾选任何子项。已完成的两轮整体只读审查可以分别作为未变化 scope 的初审/复审证据；最新发现的 same-ID 重入竞态归 02B，同路径/同大小/恢复 mtime 的 archive replacement 归 02C，DownloadIndex 证明强度归 02D。后续先按文件和 invariant 冻结各子批次 scope，再分别完成缺失 TDD、确认和提交；不推倒已验证的 02A 实现，也不把 02B/02C 的内部返工扩成新产品范围。
+
 **RED**：
 
 - 用 production `CbzCreator` 生成下载 CBZ、删除源目录并让 online source fail-fast 后，Reader 无法首帧；
@@ -397,9 +429,17 @@ Android Reader UI                 Desktop Reader presentation
 
 **focused 验证**：真实目录/CBZ/EPUB/RAR（支持范围内）、current/legacy/non-ASCII/hash/scanlator、route-specific 页序、DownloadIndex gate、空/坏 archive、offline source fail-fast、资源关闭。
 
-**预计**：3–5 工程日，约 8–14 个文件。
+**预计**：父 RUA 总计约 4～7 工程日；文件和 Gradle 预算按 02A～02D 分别计算，不再使用一个 8～14 文件预算覆盖全部 storage/lifecycle/archive/wiring。
 
 ### `RUA-03` 首帧 critical path 与 shared runtime owner 收口
+
+**子批次边界与依赖**：
+
+- `RUA-03A` 只移除 session activate 前的全局 store/cache 工作，让 downloaded/local 外部 ref 直接形成稳定页表，并把 reconcile/eviction 推迟到首帧后；预计 4～8 个文件。
+- `RUA-03B` 在 03A 的稳定入口上把 I/O runner、P0/background 优先级、cooperative cancellation 与 generation 发布权移入 shared owner；Desktop session 只保留 lifecycle/port binding，预计 6～10 个文件。
+- `RUA-03C` 挂载 production fixture，统一验证 downloaded/local/online、1/180 页、cache gate、切章/关闭和实体缺失 journal；只修 integration wiring，不新增第二套调度，预计 4～8 个文件。
+
+03A → 03B → 03C。任一子批次若需要同时重写 decoder 或 presentation，应停止并把该发现移交 RUA-04，不得扩大当前提交。
 
 **RED**：
 
@@ -420,9 +460,18 @@ Android Reader UI                 Desktop Reader presentation
 
 **focused 验证**：downloaded/local/online critical path、store gate、1/180 页 deterministic cost、快速切章/关闭、journal 命中实体缺失。
 
-**预计**：4–6 工程日，约 10–16 个文件。
+**预计**：父 RUA 总计约 4～6 工程日；文件和验证预算按 03A～03C 分别计算。
 
 ### `RUA-04` 唯一内容读取/解码 pipeline 与三种 presentation cutover
+
+**子批次边界与依赖**：
+
+- `RUA-04A` 建立唯一 page open/materialize single-flight owner 与 opaque ref 输入，先用 production runtime 证明同 page/generation 只有一次内容打开；预计 5～9 个文件。
+- `RUA-04B` 在 04A 上建立唯一 decoder、有界 decoded cache，以及 edge/crop/filter/split 对同一 decoded result 的消费；动画/region 只定义带 purpose 的扩展口，不切 presentation，预计 6～10 个文件。
+- `RUA-04C` 逐一把 Single、Dual、Webtoon 切到稳定 image asset/state；本子批必须同时覆盖三种 presentation，避免保留某一种 UI 私有 fetch，预计 6～12 个文件。
+- `RUA-04D` 收口动画、超大图、Retry、cancel/stale generation、detach/recycle/close 与内存预算，确认矩阵全绿后删除 legacy loader/painter/preloader owner，预计 6～12 个文件。
+
+04A → 04B → 04C → 04D。双页配对、手势和 viewport 始终不属于这些子批次；如 cutover 需要改变它们，必须单独 replan。
 
 **RED**：
 
@@ -444,9 +493,17 @@ Android Reader UI                 Desktop Reader presentation
 
 **focused 验证**：三 presentation × download directory/CBZ/online 的 open/decode matrix；动画、超大图、crop/split/filter、edge matcher、Retry、cancel/stale generation、内存预算。
 
-**预计**：5–8 工程日，约 12–20 个文件；这是最高风险切点，必须全矩阵通过后才能删除 legacy renderer 分支。
+**预计**：父 RUA 总计约 5～8 工程日；这是最高风险切点，预算按 04A～04D 分别计算，且必须在 04D 全矩阵通过后才能删除 legacy renderer 分支。
 
 ### `RUA-05` 原版相邻章默认语义与 Desktop opt-in decorator
+
+**子批次边界与依赖**：
+
+- `RUA-05A` 只恢复 shared canonical last-five page-list-only：第 6 页不触发、第 5 页恰好一次，且不打开下一章图片；预计 3～6 个文件。
+- `RUA-05B` 只处理默认值、已有显式值保留、偏好读取/迁移和设置 UI 文案/wiring；不启动任何 prefetch job，预计 3～6 个文件。
+- `RUA-05C` 在 05A/05B 上实现显式 opt-in decorator，等待首帧与 idle，以 P4 materialize encoded 内容，并覆盖抢占、quota、cancel、target switch 和无进度副作用；预计 4～8 个文件。
+
+05A 与 05B 可在共享接口冻结后独立实现，05A + 05B → 05C。Android 不消费 05C，且 05C 不得反向改变 05A 的 canonical 默认。
 
 **RED**：
 
@@ -467,9 +524,17 @@ Android Reader UI                 Desktop Reader presentation
 
 **focused 验证**：last-five 精确边界、默认/显式偏好迁移、P0/P4、quota/cancel/target switch、首帧隔离、无 progress side effect、设置 UI wiring。
 
-**预计**：2–4 工程日，约 6–12 个文件。
+**预计**：父 RUA 总计约 2～4 工程日；文件和验证预算按 05A～05C 分别计算。
 
 ### `RUA-06` 假阳性测试、旧 owner、authority 与文档清理
+
+**子批次边界与依赖**：
+
+- `RUA-06A` 根据 RUA-03/04/05 已绿的 production 路径删除旧 loader/painter/preloader/session orchestration owner、过期 DI 和不可达 helper；每次删除都由现有行为测试保护，预计 4～8 个文件。
+- `RUA-06B` 用 production mutation/IO probe 证据替换源码 marker、自洽 fake 和第二链保护测试；静态 guard 只证明禁止依赖不可达，预计 4～8 个 test/fixture 文件。
+- `RUA-06C` 在代码与测试冻结后更新 authority、shared-core、历史 supersede 链接、fixed-main fixture 和 manifest evidence；只做实际 capability 状态转换，预计 4～8 个 fixture/doc 文件。
+
+06A → 06B → 06C。06C 是纯治理子批次，不能用文档状态掩盖 06A/06B 尚未通过的 production mutation。
 
 **RED**：
 
@@ -489,9 +554,18 @@ Android Reader UI                 Desktop Reader presentation
 
 **focused 验证**：architecture mutations、authority/deviation tests、manifest JSON parse、文档链接、`git diff --check`。
 
-**预计**：2–3 工程日，约 6–12 个 test/fixture/doc 文件；原则上无新的产品范围。
+**预计**：父 RUA 总计约 2～3 工程日；文件和验证预算按 06A～06C 分别计算，原则上无新的产品范围。
 
 ### `RUA-07` 跨平台全量验证、Test Mode、正式构建与关闭审计
+
+**子批次边界与依赖**：
+
+- `RUA-07A` 在冻结提交上运行 shared domain、Android、Desktop、storage/HTTP integration、architecture/authority、`spotlessCheck` 与 `finalParityAudit`；只修确定的回归，不顺手新增能力。
+- `RUA-07B` 运行 Test Mode、production-mounted deterministic TTFF、Windows 性能预算，以及 downloaded directory/CBZ/local archive/online 的手动可执行验收。
+- `RUA-07C` 对同一提交运行 Windows `scripts/build-desktop.sh`、macOS production fixture/build 和 Android debug assemble，并保存真实发布产物路径与日志。
+- `RUA-07D` 只在 07A～07C 全部通过且提交未漂移后更新 manifest、本文、父路线和唯一 active plan；任何构建后代码变化都会使 07A～07C 证据失效。
+
+07A → 07B → 07C → 07D。07A～07C 是验证子批次，可各自形成证据提交或与唯一必要修复提交合并；不得为纯 checkbox 推进额外创建无内容提交。
 
 **前置**：RUA-00～RUA-06 均已实现、独立审查、focused tests 和提交完成；没有遗留双轨 production seam。
 
@@ -574,11 +648,19 @@ python scripts/gradle-coordinator.py run --key reader-upstream-adapter-android-a
 - 构建日志中的 `Final unpacked EXE:` 是 Windows 交付地址的唯一权威；必须确认文件实际存在；
 - Android/macOS 若受环境阻塞，记录真实原因和已完成证据；不得把未运行写成通过，也不得仅用系统 JDK/辅助客户端替代 production 调用链。
 
-### 12.1 RUA-00 实测纠正与 Gradle 启动预算
+### 12.1 实测纠正、子批次颗粒度与 Gradle 启动预算
 
-RUA-00 的 `.gradle-coordinator/rua00-*.json/.log` 共记录 **14 次 Gradle 启动、按 coordinator wall-clock 累计 168.9 分钟，其中 9 次失败、5 次通过**；单次启动与执行耗时约 9～18 分钟。8 次调用重复携带根级 `spotlessApply`，另有一次因调用不存在的 `:app-desktop:spotlessApply` 而完整消耗 8.7 分钟。后续优化目标是减少昂贵启动与无信息量重跑，不是削减 RED、production behavior 或最终验证证据。
+RUA-00 的 `.gradle-coordinator/rua00-*.json/.log` 共记录 **14 次 Gradle 启动、按 coordinator wall-clock 累计 168.9 分钟，其中 9 次失败、5 次通过**；单次启动与执行耗时约 9～18 分钟。8 次调用重复携带根级 `spotlessApply`，另有一次因调用不存在的 `:app-desktop:spotlessApply` 而完整消耗 8.7 分钟。RUA-02 在尚未拆分时又形成 25 个文件、多个独立 lifecycle/archive/wiring 状态簇，并出现 26 次 Gradle 调用；这证明只给大父任务设置统一次数上限不能替代颗粒度治理。后续优化目标是减少昂贵启动与无信息量重跑，不是削减 RED、production behavior 或最终验证证据。
 
-每个 RUA 批次固定采用以下流水线：
+**颗粒度门禁**：
+
+- 预算单位是第 10 节的可提交子批次，不是父 RUA、单个文件或单个测试类；父 RUA 只聚合依赖与完成状态。
+- 一个子批次原则上只拥有一个主要状态机或 lifecycle owner、最多两个紧密耦合的 production seam，并能用一组 focused behavior tests 独立判定完成。预计 3～8 个文件最合适；9～14 个文件需要记录不可拆的内聚性理由。
+- 静态影响面一旦超过 14 个文件、包含三个以上可独立验证的上下文簇，或同时改动两个互不依赖的状态机，必须在第一次 RED 前拆分。实现中途才发现超过上限时，先停止新的 Gradle，保留现有 diff，重划子批次和依赖后继续；不得等到独立审查才处理。
+- 文件数只是预警，不是为了压缩格式或复制代码的硬指标。共享 contract 无法独立编译/验收时保持内聚；可以独立交付的 adapter、lifecycle、presentation 或治理证据不得因为属于同一父 RUA 而合并。
+- 已声明 invariant 的缺陷、修复引入的回归和缺失测试仍属于当前子批次，不构成产品范围扩张；新增用户能力、DB/格式迁移、不可逆文件迁移、网络策略或重新设计 UI 才需要新的范围授权。
+
+每个子批次固定采用以下流水线：
 
 1. **零 Gradle 预检**：先完成调用图、类型签名、DI/composition root、测试 fixture、准确 Gradle task 名称与断言时序的静态检查；确认 production wiring 被断开时测试会失败。不得用 Gradle 发现源码检查即可发现的缺 import、错误作用域或不存在的 task。
 2. **RED（1 次）**：把本批行为测试合并为一次最小 focused invocation，确认测试因预期缺失的 production 行为失败；只有缺少待实现 production contract 导致的编译失败才是有效 RED。
@@ -587,15 +669,17 @@ RUA-00 的 `.gradle-coordinator/rua00-*.json/.log` 共记录 **14 次 Gradle 启
 5. **GREEN（1 次）**：运行合并后的 focused behavior suite。失败后先读完整报告并完成一次静态归因；tracked diff 没有变化时禁止原样重跑。
 6. **失败修复（最多 1 次 targeted rerun）**：只重跑实际失败的测试类。相同失败原因连续出现两次时暂停，重新审视测试时序、fixture 和架构假设，不能继续试错式重跑。
 7. **批次收口（1 次）**：代码稳定后只执行一次格式化，并把相关模块测试、wiring tests 与 `spotlessCheck` 尽量合并为一个协调器调用；RUA-07 前不重复全量矩阵或正式构建。
-8. **冻结、审查、提交**：交付独立审查后冻结本批审查范围；审查通过且该范围的 diff 指纹不变才提交。审查修复按第 14 节只允许一次复审，并只增加一次与修复范围相符的验证调用。
+8. **冻结、审查、提交**：交付独立审查后冻结本批审查范围；审查通过且该范围的 diff 指纹不变才提交。审查发现行为缺陷时必须先补 RED 再修复，不能因为预算只运行 GREEN；审查闭环按第 14 节执行。
 
-正常批次的 Gradle 启动预算为 **3 次**（RED、GREEN、批次收口）；跨模块编译门禁可增加到 **4 次**；确有一次失败修复或并发时序复验时上限为 **5 次**。独立审查发现阻塞问题后的唯一修复可再增加 **1 次**。预算不是跳过强制验证的理由；即将超出预算时必须先记录失败归因、剩余验证与合并执行方案，再决定是否重规划，不能静默继续启动任务。
+正常子批次的 Gradle 启动预算为 **3 次**（RED、GREEN、批次收口）；跨模块编译门禁可增加到 **4 次**；确有一次失败修复或并发时序复验时上限为 **5 次**。独立审查发现 P0/P1/P2 行为问题后，修复 TDD 可增加 **2 次**（一次 targeted RED、一次合并 GREEN/close）；纯文档、格式或既有测试 fixture 纠正只增加一次对应验证。把审查修复限制为一次调用与强制 RED/GREEN 冲突，禁止再采用该旧规则。
+
+预算是诊断和重划触发器，不是质量硬停机：即将超出时先记录每次调用的预期信息、失败根因、剩余验证与合并方案。若原因是范围过粗，立即按上述门禁拆分；若是同一失败根因连续两次、架构前提失效或出现新增产品范围，暂停并请求 replan。若复审发现的是本轮修复引入的回归，或第一次 GREEN 前已经声明但遗漏的 invariant，允许一次**有界收口纠正**：最多一组 targeted RED/GREEN、一次只核对该 delta 的确认，不重新启动全量独立审查，也无需把代理内部返工再次交给用户审批。该纠正必须在完成证据中记录根因；同一根因再次失败时停止，不能继续循环。
 
 并发/Compose 时序测试仅在首次失败显示非确定性风险时，才允许在首次通过后额外复验一次；复验只运行该测试类。所有 Gradle 仍由同一协调者串行执行；外层等待超时不代表 Gradle 已结束，必须先查 coordinator 状态，不能启动重复进程。
 
 ### 12.2 测试设计门禁与审查工作树冻结
 
-第一次 GREEN 前必须完成行为测试的 mutation checklist：
+每个子批次第一次 GREEN 前必须完成行为测试的 mutation checklist：
 
 - 断开 shared owner、Android/Desktop composition root 或 production DI wiring 时，测试必须失败；
 - action/render/release 前先验证负断言，之后再按 chapter/page/generation/purpose 验证身份化正断言；
@@ -603,9 +687,9 @@ RUA-00 的 `.gradle-coordinator/rua00-*.json/.log` 共记录 **14 次 Gradle 启
 - fixture 只能控制真实 production seam，不能手工记录本应由 production 发出的事件来证明自身正确；
 - focused tests 按共享 contract 合并调用，避免 Android、Desktop、domain 为同一根因分别启动 Gradle。
 
-交付独立审查前记录当前 `HEAD`、`git status --short`、本批审查范围的 `git diff --stat`、diff 指纹以及所用 Gradle log key/result。从交接到审查回执期间，主代理不得修改本批范围内的 production、test、fixture、manifest 或文档，也不得运行会改写这些文件的 formatter；可以继续只读分析。审查者默认复用与该范围 diff 指纹一致的测试日志，不重复运行相同的重型命令，除非证据缺失或需要验证一个具体风险。
+交付独立审查前记录当前 `HEAD`、`git status --short`、当前子批次审查范围的 `git diff --stat`、diff 指纹以及所用 Gradle log key/result。从交接到审查回执期间，主代理不得修改该子批次范围内的 production、test、fixture、manifest 或文档，也不得运行会改写这些文件的 formatter；可以继续只读分析。审查者默认复用与该范围 diff 指纹一致的测试日志，不重复运行相同的重型命令，除非证据缺失或需要验证一个具体风险。
 
-审查期间本批范围内的 tracked diff 一旦变化，当前结论立即失效，后续审查计入唯一修复复审。不得一边审查当前批次，一边在同一 worktree 开始下一批次实现。一个批次只保留一个写入 owner；子代理只承担已经冻结边界的上游核对、日志分析或独立只读审查。
+审查期间该子批次范围内的 tracked diff 一旦变化，当前结论立即失效，后续确认按第 14 节计入修复复审或有界收口纠正。不得一边审查当前子批次，一边在同一 worktree 开始下一子批次实现。一个子批次只保留一个写入 owner；子代理只承担已经冻结边界的上游核对、日志分析或独立只读审查。
 
 ### 12.3 模型档位裁决
 
@@ -638,7 +722,7 @@ RUA-00 的 `.gradle-coordinator/rua00-*.json/.log` 共记录 **14 次 Gradle 启
 
 ## 14. 独立审查规则
 
-每个 RUA 批次完成实现与 focused tests 后进行一次独立审查；只在审查发现 P0/P1/P2 时允许一次修复复审。审查至少回答：
+每个可提交子批次完成实现与 focused tests 后进行一次独立审查；父 RUA 不重复做一轮覆盖全部内部实现的审查，最后一个 integration 子批次只检查子批次之间的 production wiring。初审发现 P0/P1/P2 时允许一次修复复审，行为修复必须保留对应 RED/GREEN 证据。审查至少回答：
 
 1. shared contract 是否来自原版 production 代码谱系，而不是 Desktop 行为描述的再实现；
 2. Android 与 Desktop production composition root 是否都消费同一决策；
@@ -648,13 +732,20 @@ RUA-00 的 `.gradle-coordinator/rua00-*.json/.log` 共记录 **14 次 Gradle 启
 6. 用户下载、偏好、进度和 cache 回滚边界是否无损；
 7. 文档、manifest、fixture、测试和代码是否描述同一行为。
 
-checkbox 只有在实现、独立审查、验证和提交全部完成后才能勾选；测试已绿但尚未审查/提交时保持未勾选。
+修复复审后的裁决按以下边界处理：
+
+- `PASS`：提交当前子批次并冻结接口。
+- 修复引入的新回归，或初始任务/测试门禁已经明确要求但在初审前遗漏的 invariant：执行第 12.1 节的一次有界收口纠正，由同一审查者只确认新增 delta；这不是第三次全量审查，也不扩大产品范围。
+- 与当前修复无关的新 P2，且不影响该子批次完成定义或 production 安全：记录到最早负责该证据/清理的后续子批次，不阻塞当前提交；不得借此掩盖 P0/P1。
+- 新用户能力、架构前提失效、不可逆迁移，或同一根因在有界纠正后再次出现：停止当前子批次，重划任务并请求必要授权。
+
+子批次 checkbox 只有在实现、独立审查、验证和提交全部完成后才能勾选；测试已绿但尚未审查/提交时保持未勾选。父 RUA checkbox 从全部子项推导，不另建第二套进度状态。
 
 ## 15. 完成定义
 
 本计划只有满足以下全部条件才能改为 `DONE`：
 
-- [ ] 第 10 节 RUA-00～RUA-07 全部完成并各有提交/evidence；
+- [ ] 第 10 节 RUA-00～RUA-07 及其全部子批次完成，并各有与自身 scope 对应的提交/evidence；
 - [ ] 原版 route、artifact、页列表、current+4、Retry、last-five 与生命周期由共享核心唯一拥有；
 - [ ] Android/Desktop production 都消费这些共享语义，平台只保留列明的 adapter/presentation/decorator；
 - [ ] Desktop 下载目录与下载 CBZ 离线打开，legacy/current/canonical artifact 无损兼容；
