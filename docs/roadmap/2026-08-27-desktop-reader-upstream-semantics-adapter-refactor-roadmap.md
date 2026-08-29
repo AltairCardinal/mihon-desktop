@@ -309,7 +309,8 @@ Android Reader UI                 Desktop Reader presentation
 - [ ] `RUA-03` 首帧 critical path 与 shared runtime owner 收口
   - [x] `RUA-03A` session/store 启动关键路径瘦身
   - [x] `RUA-03B` shared runner、优先级、取消与 generation
-  - [ ] `RUA-03C` production TTFF、1/180 页与切章集成门禁
+  - [x] `RUA-03C1` production TTFF、1/180 页、路由适用门与隐性内容 I/O 门禁
+  - [ ] `RUA-03C2` journal 实体缺失与非协作页表 late-result 门禁
 - [ ] `RUA-04` 唯一内容读取/解码 pipeline 与三种 presentation cutover
   - [ ] `RUA-04A` 唯一 open/materialize owner 与 single-flight
   - [ ] `RUA-04B` 唯一 decoder、decoded cache 与 transform consumers
@@ -475,9 +476,10 @@ Android Reader UI                 Desktop Reader presentation
 
 - `RUA-03A` 只移除 session activate 前的全局 store/cache 工作，让 downloaded/local 外部 ref 直接形成稳定页表，并把 reconcile/eviction 推迟到首帧后；预计 4～8 个文件。
 - `RUA-03B` 在 03A 的稳定入口上把 I/O runner、P0/background 优先级、cooperative cancellation 与 generation 发布权移入 shared owner；Desktop session 只保留 lifecycle/port binding，预计 6～10 个文件。
-- `RUA-03C` 挂载 production fixture，统一验证 downloaded/local/online、1/180 页、cache gate、切章/关闭和实体缺失 journal；只修 integration wiring，不新增第二套调度，预计 4～8 个文件。
+- `RUA-03C1` 挂载 production fixture，验证 downloaded/local/online、1/180 页、cache/background gate 与目录/归档隐性内容读取；只建立 production critical-path 证据和必要探针，不新增第二套调度，预计 4～7 个文件。
+- `RUA-03C2` 独立验证 journal 记录命中但实体缺失时的 production refetch，以及非协作页表在切章/关闭后的 late-result 拒绝；它不修改 C1 的 TTFF fixture，预计 1～3 个文件。
 
-03A → 03B → 03C。任一子批次若需要同时重写 decoder 或 presentation，应停止并把该发现移交 RUA-04，不得扩大当前提交。
+03A → 03B → 03C1 → 03C2。任一子批次若需要同时重写 decoder 或 presentation，应停止并把该发现移交 RUA-04，不得扩大当前提交。
 
 **RED**：
 
@@ -498,7 +500,7 @@ Android Reader UI                 Desktop Reader presentation
 
 **focused 验证**：downloaded/local/online critical path、store gate、1/180 页 deterministic cost、快速切章/关闭、journal 命中实体缺失。
 
-**预计**：父 RUA 总计约 4～6 工程日；文件和验证预算按 03A～03C 分别计算。
+**预计**：父 RUA 总计约 4～6 工程日；文件和验证预算按 03A、03B、03C1、03C2 分别计算。
 
 **RUA-03A 完成证据（2026-08-29）**：
 
@@ -515,6 +517,14 @@ Android Reader UI                 Desktop Reader presentation
 - Desktop gate 返回后先校验 generation；可写 store fast-init 返回后，在同一个 session lock 内完成最终校验与 `OPEN_PAGE / ADJACENT_IO` 上报。切章或关闭不能插入“校验后、上报前”的过期窗口，旧 work 也不会进入 materializer；取消期间最多保留幂等的共享 store fast-init，不会产生旧页 fetch。
 - 严格 TDD 证据：`.gradle-coordinator/rua03b-runner-red.log` 先因 shared runner contract 不存在而正确失败，`rua03b-runner-green.log` 通过；首次 `rua03b-close.log` 通过相关 shared/Android/Desktop suite。独立审查发现 cancel-before-dispatch completion 与 non-cooperative Desktop gate 两个 P2 后，`rua03b-review-red.log` 在旧实现上分别按 completion 缺失和 stale `OPEN_PAGE` 正确失败；最终 `rua03b-review-close.log` 为 `BUILD SUCCESSFUL in 18m 25s`，340 个 task 中 35 个执行、305 个命中缓存，包含根级 Spotless 及相关 domain、Android、Desktop production wiring 测试。
 - 限定修复复审结论为 `PASS`，P0/P1/P2 均为零；冻结代码 diff 为 7 个 production/test 文件、`781+/213-`、57,186 原始字节，SHA-256 为 `644cf543c768bdc64a3e534a95e7738cb19e015ac08182d03590ac4a180a0a44`，处于 6～10 文件预计范围内。本批未修改 decoder、presentation 或 TTFF fixture；未运行 Desktop 发布构建，正式构建仍只在 `RUA-07` 执行。
+
+**RUA-03C1 完成证据（2026-08-30）**：
+
+- 新增挂载真实 `DesktopReaderScreen → Navigator → DesktopReaderRuntimeFactory` 的离屏 production fixture，覆盖 downloaded directory、local directory、local CBZ、online 四条路由以及 1/180 页矩阵。首帧 trace 必须以当前页 `FIRST_PAGE_PRESENTED` 收尾，首帧前不得出现 cache reconcile、adjacent I/O 或非当前页 open/decode；online 只允许一次 page-list 与当前图片请求。
+- deterministic cost 改用可归因的 production 事件、内容操作、source 调用和网络请求计数，不再把并发 reporter 的时钟差值冒充成本。content operation probe 能发现已知目录逐页 signature、CBZ signature/eager entry 和 EPUB metadata 预读；默认 `None` 在构造 operation 或调用 SevenZip native identity 前返回，不给正常运行路径增加 O(N) 查询。
+- fixture 在不释放 gate 的前提下证明各路由可达门已真实进入：所有路由进入首帧后 cache scan，180 页 queued 路由进入 non-current page，首帧页表已全部 Ready 的 directory 路由进入 adjacent I/O。CBZ/online 在 non-current work 未完成前不会错误地被要求进入 adjacent gate。
+- 严格 TDD 与审查修复证据：初始 `.gradle-coordinator/rua03c-red.log` 暴露 presentation 仍有双 decode，该 exact-one 缺口按边界移交 `RUA-04`；C1 只要求至少一次当前页 decode。`rua03c1-close2.log` 完成 root Spotless 与 production 矩阵；独立审查指出 disabled probe 会提前求值 native identity 后，`rua03c1-probe-red.log` 因 lazy contract 缺失正确失败，最终 `rua03c1-probe-close.log` 为 `BUILD SUCCESSFUL in 16m 18s`，103 个 task 中 13 个执行、90 个命中缓存。
+- 有界复审结论为 `PASS`，P0/P1/P2 均为零；复审冻结范围为 6 个 production/test/roadmap 文件、29,635 原始字节，SHA-256 为 `f720b01b42f41eaeea78c5457d96aeeb82ea32c3c9227e112901dd03157a417d`。本批没有改动 decoder 或 presentation owner；exact-one decode、decoded cache 与三种 presentation cutover 仍由 `RUA-04` 验证。未运行 Desktop 发布构建，正式构建仍只在 `RUA-07` 执行。
 
 ### `RUA-04` 唯一内容读取/解码 pipeline 与三种 presentation cutover
 
@@ -740,6 +750,9 @@ RUA-00 的 `.gradle-coordinator/rua00-*.json/.log` 共记录 **14 次 Gradle 启
 - 至少覆盖一次 cancellation、late event 或 generation 交错，不能只证明顺序执行的 happy path；
 - fixture 只能控制真实 production seam，不能手工记录本应由 production 发出的事件来证明自身正确；
 - focused tests 按共享 contract 合并调用，避免 Android、Desktop、domain 为同一根因分别启动 Gradle。
+- 纯测试/证据子批次若不改变 product behavior，可以在静态 mutation 检查后直接运行一次合并的 focused + close；不得为了形式上的 RED 故意破坏 production。只要测试暴露出需要修改 behavior 的缺陷，就立即切回完整 RED → GREEN → close 流程。
+- 首帧成本必须由 production 事件、实际内容操作、源调用和网络请求等可归因操作计数构成；探针时钟只用于事件排序，不能把并发 reporter 的时间戳差值当作 deterministic cost。
+- I/O gate 断言按 production 路由的可达能力建立：必须证明本路由可触发的 gate 确实进入且在释放前无副作用；静态上不可达的 gate 不得为了统一矩阵而强制触发，适用集合必须写在 fixture 中并在失败时报告路由与缺失 gate。
 
 交付独立审查前记录当前 `HEAD`、`git status --short`、当前子批次审查范围的 `git diff --stat`、diff 指纹以及所用 Gradle log key/result。从交接到审查回执期间，主代理不得修改该子批次范围内的 production、test、fixture、manifest 或文档，也不得运行会改写这些文件的 formatter；可以继续只读分析。审查者默认复用与该范围 diff 指纹一致的测试日志，不重复运行相同的重型命令，除非证据缺失或需要验证一个具体风险。
 

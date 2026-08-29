@@ -27,6 +27,9 @@ internal class ControllableReaderIoGate(
 
     suspend fun awaitEntered() = entered.await()
 
+    val isEntered: Boolean
+        get() = entered.isCompleted
+
     fun release() = released.complete(Unit)
 }
 

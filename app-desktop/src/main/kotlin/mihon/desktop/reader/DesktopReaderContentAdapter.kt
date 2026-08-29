@@ -38,6 +38,7 @@ internal interface DesktopReaderArchiveOperationProbe {
 /** Desktop storage adapter for Reader page tables and lazy per-page content. */
 class DesktopReaderContentAdapter internal constructor(
     private val archiveOperationProbe: DesktopReaderArchiveOperationProbe = DesktopReaderArchiveOperationProbe.None,
+    private val contentOperationProbe: DesktopReaderContentOperationProbe = DesktopReaderContentOperationProbe.None,
 ) : AutoCloseable, DesktopReaderChapterLeasePort {
     private val lock = Any()
     private val archiveLeases = mutableMapOf<Long, ArchiveLeaseBinding>()
@@ -54,6 +55,10 @@ class DesktopReaderContentAdapter internal constructor(
             .orEmpty()
             .filter { file ->
                 file.isFile && ReaderImageCandidatePolicy.accepts(file.name) {
+                    recordContentOperation(
+                        DesktopReaderContentOperationKind.DIRECTORY_SIGNATURE,
+                        itemIdentity = file.name,
+                    )
                     file.inputStream().use(DesktopReaderImageSignature::matches)
                 }
             }
@@ -204,9 +209,9 @@ class DesktopReaderContentAdapter internal constructor(
         require(file.isFile) { "Archive is missing: ${file.absolutePath}" }
         return when {
             epub || file.extension.equals("epub", ignoreCase = true) ->
-                SevenZipArchiveLease(file, archiveOperationProbe, epub = true)
+                SevenZipArchiveLease(file, archiveOperationProbe, contentOperationProbe, epub = true)
             file.extension.lowercase() in ZIP_EXTENSIONS + RAR_EXTENSIONS ->
-                SevenZipArchiveLease(file, archiveOperationProbe, epub = false)
+                SevenZipArchiveLease(file, archiveOperationProbe, contentOperationProbe, epub = false)
             else -> error("Unsupported local archive: ${file.extension}")
         }
     }
@@ -228,6 +233,15 @@ class DesktopReaderContentAdapter internal constructor(
         archiveFingerprint: String,
         pageName: String,
     ): String = "$OPAQUE_PREFIX$chapterId/$pageIndex/${sha256("$archiveFingerprint\u0000$pageName").take(32)}"
+
+    private fun recordContentOperation(
+        kind: DesktopReaderContentOperationKind,
+        pageIndex: Int? = null,
+        itemIdentity: String? = null,
+    ) {
+        if (!contentOperationProbe.enabled) return
+        contentOperationProbe.record(DesktopReaderContentOperation(kind, pageIndex, itemIdentity))
+    }
 
     private companion object {
         const val OPAQUE_PREFIX = "desktop-reader-content://"
@@ -317,6 +331,7 @@ private abstract class RefCountedArchiveLease : ArchiveLease {
 private class SevenZipArchiveLease(
     file: File,
     private val operationProbe: DesktopReaderArchiveOperationProbe,
+    private val contentOperationProbe: DesktopReaderContentOperationProbe,
     private val epub: Boolean,
 ) : RefCountedArchiveLease() {
     private val operationLock = Any()
@@ -365,6 +380,11 @@ private class SevenZipArchiveLease(
     override fun copyPageContent(pageIndex: Int, destination: File) {
         withSerializedArchiveOperation {
             val archiveIndex = pageEntries.getOrNull(pageIndex)?.first ?: error("Archive page index is missing: $pageIndex")
+            recordContentOperation(
+                DesktopReaderContentOperationKind.ARCHIVE_PAGE_COPY,
+                pageIndex = pageIndex,
+                itemIdentity = { pageEntries[pageIndex].second },
+            )
             destination.outputStream().buffered().use { output ->
                 archive.simpleInterface.archiveItems[archiveIndex].extractSlow(ISequentialOutStream { bytes ->
                     output.write(bytes)
@@ -380,6 +400,10 @@ private class SevenZipArchiveLease(
     }
 
     private fun probe(index: Int): Boolean {
+        recordContentOperation(
+            DesktopReaderContentOperationKind.ARCHIVE_SIGNATURE,
+            itemIdentity = { archive.getStringProperty(index, PropID.PATH) },
+        )
         val header = java.io.ByteArrayOutputStream(32)
         archive.simpleInterface.archiveItems[index].extractSlow(ISequentialOutStream { bytes ->
             if (header.size() < 32) header.write(bytes, 0, minOf(bytes.size, 32 - header.size()))
@@ -444,6 +468,10 @@ private class SevenZipArchiveLease(
     }
 
     private fun extractBytes(index: Int): ByteArray = java.io.ByteArrayOutputStream().also { output ->
+        recordContentOperation(
+            DesktopReaderContentOperationKind.ARCHIVE_METADATA_READ,
+            itemIdentity = { archive.getStringProperty(index, PropID.PATH) },
+        )
         archive.simpleInterface.archiveItems[index].extractSlow(ISequentialOutStream { bytes ->
             output.write(bytes)
             bytes.size
@@ -492,6 +520,14 @@ private class SevenZipArchiveLease(
         archive.getProperty(index, PropID.CRC).stableIdentity(),
         archive.getProperty(index, PropID.METHOD).stableIdentity(),
     ).joinToString(separator = "\u0000")
+
+    private inline fun recordContentOperation(
+        kind: DesktopReaderContentOperationKind,
+        pageIndex: Int? = null,
+        itemIdentity: () -> String? = { null },
+    ) {
+        contentOperationProbe.record(kind, pageIndex, itemIdentity)
+    }
 
     private fun <T> withSerializedArchiveOperation(block: () -> T): T = synchronized(operationLock) {
         operationProbe.onStart()

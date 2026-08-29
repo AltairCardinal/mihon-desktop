@@ -60,6 +60,7 @@ class DesktopReaderRuntimeFactory(
     private val readerIoProbe: ReaderIoProbe = ReaderIoProbe.None,
     private val readerMonotonicClock: ReaderMonotonicClock = ReaderMonotonicClock(System::nanoTime),
     private val readerIoGate: ReaderIoGate = ReaderIoGate.None,
+    private val readerContentOperationProbe: DesktopReaderContentOperationProbe = DesktopReaderContentOperationProbe.None,
     private val disallowNonAsciiFilenames: () -> Boolean = { false },
 ) {
     internal val configuredReaderIoProbe: ReaderIoProbe get() = readerIoProbe
@@ -72,7 +73,9 @@ class DesktopReaderRuntimeFactory(
     ): DesktopReaderRuntime {
         val ioReporter = ReaderIoReporter(readerIoProbe.bind(), readerMonotonicClock)
         val store = encodedPageStoreCoordinator.openSessionStore()
-        val contentAdapter = DesktopReaderContentAdapter()
+        val contentAdapter = DesktopReaderContentAdapter(
+            contentOperationProbe = readerContentOperationProbe,
+        )
         val core = ReaderSessionCore(
             initialChapterId = ReaderChapterId(initialContext.chapterId),
             sessionId = UUID.randomUUID().toString(),
