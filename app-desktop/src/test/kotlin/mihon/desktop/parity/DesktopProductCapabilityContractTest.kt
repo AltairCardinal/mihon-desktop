@@ -88,7 +88,7 @@ class DesktopProductCapabilityContractTest {
                 ),
         )
     private val task3ProvenanceStatuses =
-        mapOf(24 to "SHARED", 26 to "WIRED", 44 to "VERIFIED", 45 to "VERIFIED", 47 to "VERIFIED", 49 to "VERIFIED", 51 to "VERIFIED", 53 to "VERIFIED")
+        mapOf(24 to "SHARED", 26 to "WIRED", 44 to "SHARED", 45 to "VERIFIED", 47 to "VERIFIED", 49 to "VERIFIED", 51 to "VERIFIED", 53 to "VERIFIED")
     private val task3BehaviorMethods =
         mapOf(
             24 to
@@ -114,8 +114,8 @@ class DesktopProductCapabilityContractTest {
                 mapOf(
                     "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt" to
                         setOf("fixed original Mihon preload window keeps forward-only behavior"),
-                    "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt" to
-                        setOf("page change cancels every active or queued old generation request"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipelineTest.kt" to
+                        setOf("generation fence rejects and releases a non cooperative stale decode"),
                 ),
             47 to
                 mapOf(
@@ -683,7 +683,7 @@ class DesktopProductCapabilityContractTest {
                 ),
         )
     private val task9Statuses =
-        mapOf(39 to "VERIFIED", 40 to "VERIFIED", 43 to "VERIFIED", 44 to "VERIFIED", 45 to "VERIFIED", 47 to "VERIFIED", 49 to "VERIFIED", 51 to "VERIFIED")
+        mapOf(39 to "VERIFIED", 40 to "VERIFIED", 43 to "VERIFIED", 44 to "SHARED", 45 to "VERIFIED", 47 to "VERIFIED", 49 to "VERIFIED", 51 to "VERIFIED")
     private val task9FollowUps =
         mapOf(39 to "Task 14", 40 to "NONE", 43 to "NONE", 44 to "NONE", 45 to "NONE", 47 to "NONE", 49 to "NONE", 51 to "NONE")
     private val task9BehaviorMethods =
@@ -717,7 +717,6 @@ class DesktopProductCapabilityContractTest {
                 mapOf(
                     "app/src/test/java/eu/kanade/tachiyomi/data/coil/AndroidReaderPageDecoderContractTest.kt" to setOf("Android reader cache adapter keeps tiled pages out of Coil decoded caches"),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt" to setOf("Skia region adapter decodes only the requested tile"),
-                    "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt" to setOf("ordinary non large page path still enforces decoded dimension bounds"),
                 ),
             45 to
                 mapOf(
@@ -747,9 +746,9 @@ class DesktopProductCapabilityContractTest {
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderStorageClassificationTest.kt" to setOf(
                         "encoded cache session startup failure is published as chapter storage error",
                     ),
-                    "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt" to setOf(
-                        "fast page change cancels stale preload and prevents a late cache write",
-                        "page change cancels every active or queued old generation request",
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipelineTest.kt" to setOf(
+                        "generation fence rejects and releases a non cooperative stale decode",
+                        "decode concurrency is bounded and a stale queued request never starts",
                     ),
                 ),
             47 to
@@ -1713,17 +1712,20 @@ class DesktopProductCapabilityContractTest {
                             "Android reader cache adapter keeps tiled pages out of Coil decoded caches" to
                                 setOf("mapAndroidReaderCachePolicy", "PageDecodeCachePolicy.TILED_READER"),
                         ),
-                    "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt" to
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderImageAssetTest.kt" to
                         mapOf(
-                            "Skia region adapter returns pixels from the requested PNG region" to
-                                setOf("SkiaRegionPageDecoder().decodeRegion", "result.value.asSkiaBitmap()"),
-                            "byte budgeted page cache rejects oversized decoded values without evicting entries" to
-                                setOf("DesktopPageCache", "PageCacheCommitResult.REJECTED_OVERSIZED"),
+                            "byte limit uses the same access ordered eviction policy" to
+                                setOf("DesktopReaderImageCache", "cache.snapshot().usedBytes"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipelineTest.kt" to
+                        mapOf(
+                            "concurrent acquire single flights one content open and one decode" to
+                                setOf("pipeline.acquire(key)", "ReaderIoEventType.DECODE"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt" to
                         mapOf(
-                            "large pages are downsampled before entering the ordinary cache" to
-                                setOf("PagePreloader(", "preloader.cacheSnapshot()"),
+                            "decoded dimensions and byte accounting stay within configured bounds" to
+                                setOf("createTestPagePreloader(", "preloader.cacheSnapshot().usedBytes"),
                         ),
                 ),
             43 to
@@ -1867,11 +1869,6 @@ class DesktopProductCapabilityContractTest {
                             "Skia region adapter decodes only the requested tile" to
                                 setOf("SkiaRegionPageDecoder().decodeRegion", "PixelBounds"),
                         ),
-                    "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt" to
-                        mapOf(
-                            "ordinary non large page path still enforces decoded dimension bounds" to
-                                setOf("PagePreloader(", "maxDecodedWidth", "cacheSnapshot().usedBytes"),
-                        ),
                 ),
             45 to
                 mapOf(
@@ -1921,12 +1918,12 @@ class DesktopProductCapabilityContractTest {
                             "encoded cache session startup failure is published as chapter storage error" to
                                 setOf("encodedStore.beginSession", "AppError.Storage"),
                         ),
-                    "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt" to
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipelineTest.kt" to
                         mapOf(
-                            "fast page change cancels stale preload and prevents a late cache write" to
-                                setOf("preloader.preload", "preloader.cacheSnapshot().keys"),
-                            "page change cancels every active or queued old generation request" to
-                                setOf("PagePreloader(", "firstOld0Finished", "firstOld1Finished"),
+                            "generation fence rejects and releases a non cooperative stale decode" to
+                                setOf("pipeline.beginGeneration(2L)", "disposeCalls.get()"),
+                            "decode concurrency is bounded and a stale queued request never starts" to
+                                setOf("maxConcurrentDecodes = 2", "peakActiveDecodes.get()"),
                         ),
                     "domain/src/commonTest/kotlin/mihon/domain/reader/session/ReaderSessionCoreTest.kt" to
                         mapOf(
@@ -2093,8 +2090,10 @@ class DesktopProductCapabilityContractTest {
                     "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt" to setOf("interface PageDecoder"),
                     "app/src/main/java/eu/kanade/tachiyomi/data/coil/TachiyomiImageDecoder.kt" to
                         setOf("decodeWithSharedPageDecoder"),
-                    "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt" to
-                        setOf("SkiaRegionPageDecoder", "DesktopPageCache"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipeline.kt" to
+                        setOf("SkiaDesktopReaderPageImageDecoder", "decodePermits.withPermit"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderImageAsset.kt" to
+                        setOf("class DesktopReaderImageCache", "maxBytes"),
                 ),
             43 to
                 mapOf(
@@ -2147,8 +2146,6 @@ class DesktopProductCapabilityContractTest {
                         setOf("applySharedReaderCachePolicy(PageDecodeCachePolicy.TILED_READER)"),
                     "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt" to
                         setOf("class SkiaRegionPageDecoder", "ceilDiv"),
-                    "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt" to
-                        setOf("regionDecoder.decodeRegion"),
                 ),
             45 to
                 mapOf(
@@ -2166,8 +2163,6 @@ class DesktopProductCapabilityContractTest {
                         setOf("class AndroidReaderEncodedPageStore", "chapterCache.isImageInCache", "index.commit"),
                     "app/src/main/java/eu/kanade/tachiyomi/data/cache/ChapterCache.kt" to
                         setOf("maxCacheBytes", "removeImageFromCache"),
-                    "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt" to
-                        setOf("requestScheduler.moveTo", "requestScheduler.pollNext", "activeJobs"),
                     "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderEncodedPageStore.kt" to
                         setOf("class DesktopReaderEncodedPageStore", "override suspend fun store"),
                     "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderMaterializePorts.kt" to
@@ -2176,8 +2171,8 @@ class DesktopProductCapabilityContractTest {
                         setOf(
                             "CanonicalReaderMaterializeExecutor",
                             "materializeExecutor.materializeChapter",
-                            "materializeExecutor.materializePage",
-                            "physicalRequestPermits.withPermit",
+                            "ReaderPageMaterializeRunner(",
+                            "materializeExecutor = materializeExecutor",
                             "scheduledPage.adjacentSequence == adjacentSequence",
                             "core.enqueueAdjacentPage",
                             "NextChapterPrefetchMode.FULL_NEXT_CHAPTER",
@@ -3358,7 +3353,7 @@ class DesktopProductCapabilityContractTest {
         val expectedStatuses = mapOf(
             9 to "VERIFIED",
             43 to "VERIFIED",
-            44 to "VERIFIED",
+            44 to "SHARED",
             45 to "VERIFIED",
             47 to "VERIFIED",
             49 to "VERIFIED",

@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import mihon.domain.error.AppError
+import mihon.domain.reader.content.ReaderPageContentOpenRequest
 
 /** Platform-neutral page metadata consumed by both reader front ends. */
 data class ReaderPageModel(
@@ -52,6 +53,44 @@ data class ReaderChapterTransitionModel(
         (state as? ReaderChapterState.Error)?.retryCommand()
             ?: to?.let { ReaderNavigationCommand.RetryChapter(it.id) }
             ?: ReaderNavigationCommand.ChapterBoundary(direction)
+}
+
+enum class PageDecodePurpose { FULL_PAGE, ANIMATION_FRAME, REGION_TILE }
+
+/** Stable decoded-page identity that does not expose Bitmap, ImageBitmap, or Skia types. */
+data class ReaderPageDecodeKey(
+    val contentKey: ReaderPageContentOpenRequest,
+    val purpose: PageDecodePurpose,
+    val maxWidth: Int,
+    val maxHeight: Int,
+    val region: PixelBounds? = null,
+    val frameIndex: Int? = null,
+) {
+    init {
+        require(maxWidth > 0 && maxHeight > 0) { "Decode bounds must be positive" }
+        when (purpose) {
+            PageDecodePurpose.FULL_PAGE -> {
+                require(region == null) { "Full-page decode must not specify a region" }
+                require(frameIndex == null) { "Full-page decode must not specify a frame" }
+            }
+            PageDecodePurpose.REGION_TILE -> {
+                require(region != null) { "Region decode requires a region" }
+                require(region.x >= 0 && region.y >= 0 && region.width > 0 && region.height > 0) {
+                    "Region decode bounds must have a non-negative origin and positive size"
+                }
+                require(frameIndex == null) { "Region decode must not specify a frame" }
+            }
+            PageDecodePurpose.ANIMATION_FRAME -> {
+                require(region == null) { "Animation-frame decode must not specify a region" }
+                require(frameIndex != null && frameIndex >= 0) {
+                    "Animation-frame decode requires a non-negative frame"
+                }
+            }
+        }
+    }
+
+    val pageIndex: Int get() = contentKey.pageId.sourcePageIndex
+    val generation: Long get() = contentKey.generation
 }
 
 /** A decode request that does not expose Bitmap, ImageBitmap, or Skia types. */

@@ -2825,7 +2825,10 @@
       "app/src/main/java/eu/kanade/tachiyomi/data/coil/TachiyomiImageDecoder.kt"
     ],
     "desktopConsumerAdapterPaths": [
-      "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderImageAsset.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipeline.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -2848,7 +2851,7 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt",
           "symbol": "interface PageDecoder",
-          "line": 97
+          "line": 136
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -2860,9 +2863,10 @@
       ],
       "FIXTURE": [
         {
-          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt#Skia region adapter decodes only the requested tile",
+          "artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipelineTest.kt#concurrent acquire single flights one content open and one decode",
           "productionMarkers": [
-            "SkiaRegionPageDecoder().decodeRegion"
+            "pipeline.acquire(key)",
+            "ReaderIoEventType.DECODE"
           ]
         }
       ]
@@ -3048,11 +3052,13 @@
       }
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #9: TachiyomiImageDecoder owns Android image decoding.",
-    "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt、app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageCache.kt 与 app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt 以 Skia ImageBitmap 消费共享解码/缓存契约",
+    "desktopImplementation": "DesktopReaderPageImagePipeline 是 production 唯一 full-page decoder owner；DesktopReaderImageCache 以 entry/byte 双预算和引用计数 lease 管理 Skia ImageBitmap，PagePreloader 仅是共享 pipeline 的兼容适配层。",
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/data/coil/AndroidReaderPageDecoderContractTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderImageAssetTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipelineTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt"
     ],
     "behaviorMethods": {
@@ -4199,7 +4205,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 971
+          "line": 977
         }
       ],
       "FIXTURE": [
@@ -9823,12 +9829,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "internal suspend fun enqueueDownloads(",
-          "line": 437
+          "line": 441
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 538
+          "line": 542
         }
       ],
       "FIXTURE": [
@@ -11370,7 +11376,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 538
+          "line": 542
         }
       ],
       "FIXTURE": [
@@ -29062,26 +29068,23 @@
       "fixedMainRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
       "currentForkBaseline": "current-fork@95b82fc1039f772d4f8688855f2b06e16f983eb5"
     },
-    "status": "VERIFIED",
+    "status": "SHARED",
     "statusDecision": {
-      "task": "Task 9",
-      "decision": "PROMOTE_VERIFIED",
+      "task": "Task 18",
+      "decision": "KEEP_SHARED",
       "followUp": "NONE",
-      "gap": "NONE",
+      "gap": "RUA-04D must wire true bounded region decoding into the production image pipeline before Desktop can reclaim the upstream large-image capability.",
       "behaviorMethods": {
         "app/src/test/java/eu/kanade/tachiyomi/data/coil/AndroidReaderPageDecoderContractTest.kt": [
           "Android reader cache adapter keeps tiled pages out of Coil decoded caches"
         ],
         "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt": [
           "Skia region adapter decodes only the requested tile"
-        ],
-        "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt": [
-          "ordinary non large page path still enforces decoded dimension bounds"
         ]
       }
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #44: ReaderPageImageView configures bounded tile decoding through setMaxTileSize; shared decode-size and cache-budget contracts are Fork migration output consumed by platform image adapters.",
-    "desktopImplementation": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt 通过 SkiaRegionPageDecoder 物化有界输出，app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt 禁止超大完整 bitmap 长驻普通缓存",
+    "desktopImplementation": "共享 RegionDecoder 契约和 Desktop Skia region adapter 仍存在，但 RUA-04B 已删除 PagePreloader 的私有 region owner；production pipeline 的真正 region consumer 由 RUA-04D 接线。",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
       {
@@ -29096,8 +29099,7 @@
       "app/src/main/java/eu/kanade/tachiyomi/ui/reader/viewer/ReaderPageImageView.kt"
     ],
     "desktopConsumerAdapterPaths": [
-      "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt"
     ],
     "deviations": [
       {
@@ -29126,7 +29128,7 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt",
           "symbol": "interface PageDecoder",
-          "line": 97
+          "line": 136
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -29148,8 +29150,7 @@
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/data/coil/AndroidReaderPageDecoderContractTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt"
     ],
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt": [
@@ -29172,15 +29173,15 @@
       "task": "RUA-00",
       "status": "IN_PROGRESS",
       "reopenedClaims": [
-        "DESKTOP_SINGLE_DECODE_OWNER"
+        "DESKTOP_REGION_DECODE_CONSUMER"
       ],
       "preservedClaims": [
         "PLATFORM_DECODE_BUDGET_CONTRACT",
-        "BOUNDED_REGION_DECODE"
+        "REGION_DECODE_ADAPTER"
       ],
-      "reason": "The decoded budget contract remains verified, but PagePreloader is not the only production decode owner and the single-owner claim needs a mounted production behavior gate."
+      "reason": "RUA-04B established the single full-page decode owner and removed PagePreloader's private region path; RUA-04D must wire a true region consumer without restoring a second owner."
     },
-    "verificationScope": "VERIFIED for bounded region decode and decoded-cache budget adapters; the Desktop canonical ReaderSessionCore owns encoded-page identity while PagePreloader performs only bounded decode/cache work.",
+    "verificationScope": "SHARED contract and Desktop region adapter are protected; production bounded-region consumption remains explicitly open for RUA-04D.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -29238,14 +29239,14 @@
         "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderStorageClassificationTest.kt": [
           "encoded cache session startup failure is published as chapter storage error"
         ],
-        "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt": [
-          "fast page change cancels stale preload and prevents a late cache write",
-          "page change cancels every active or queued old generation request"
+        "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipelineTest.kt": [
+          "generation fence rejects and releases a non cooperative stale decode",
+          "decode concurrency is bounded and a stale queued request never starts"
         ]
       }
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #45: HttpPageLoader uses one serial PriorityBlockingQueue where the selected page outranks four forward adjacent pages and an explicit Retry outranks both.",
-    "desktopImplementation": "ReaderRequestScheduler is the single priority/generation policy consumed by Android HttpPageLoader and Desktop ReaderSessionCore/PagePreloader. RD-02 adds a Desktop-only OFF / FIRST_VIEWPORT / FULL_NEXT_CHAPTER preference, defaulting to FULL_NEXT_CHAPTER: only after every current page is Ready does the canonical session enqueue bounded encoded-only P4 work; activation cancels that work and reissues visible pages as P0. Image and chapter-metadata materialization share a physical permit capped at scheduler policy plus one stale request, and Storage side effects require the current target sequence and request identity. OFF preserves only the fixed-original last-five-page page-list policy, quota/storage failure stops remaining background work, and no adjacent prefetch emits progress or retains a decoded chapter.",
+    "desktopImplementation": "ReaderRequestScheduler is the single priority/generation policy consumed by Android HttpPageLoader and Desktop ReaderSessionCore. DesktopReaderPageImagePipeline separately caps physical decode concurrency and rejects queued stale generations. RD-02 adds a Desktop-only OFF / FIRST_VIEWPORT / FULL_NEXT_CHAPTER preference, defaulting to FULL_NEXT_CHAPTER: only after every current page is Ready does the canonical session enqueue bounded encoded-only P4 work; activation cancels that work and reissues visible pages as P0. Image and chapter-metadata materialization share a physical permit capped at scheduler policy plus one stale request, and Storage side effects require the current target sequence and request identity. OFF preserves only the fixed-original last-five-page page-list policy, quota/storage failure stops remaining background work, and no adjacent prefetch emits progress or retains a decoded chapter.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
       {
@@ -29265,7 +29266,7 @@
       "app/src/main/java/eu/kanade/tachiyomi/data/cache/ChapterCache.kt"
     ],
     "desktopConsumerAdapterPaths": [
-      "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipeline.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderEncodedPageStore.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderMaterializePorts.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt",
@@ -29331,7 +29332,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt",
           "symbol": "private val requestScheduler",
-          "line": 52
+          "line": 56
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -29362,24 +29363,24 @@
       ],
       "DESKTOP_CONSUMER": [
         {
-          "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt",
-          "symbol": "private val requestScheduler",
-          "line": 38
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipeline.kt",
+          "symbol": "private val decodePermits",
+          "line": 98
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderEncodedPageStore.kt",
           "symbol": "class DesktopReaderEncodedPageStore",
-          "line": 45
+          "line": 46
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderMaterializePorts.kt",
           "symbol": "class DesktopReaderPageFetchPort",
-          "line": 143
+          "line": 136
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt",
           "symbol": "class DesktopReaderRuntimeFactory",
-          "line": 48
+          "line": 53
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderPreferences.kt",
@@ -29389,7 +29390,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt",
           "symbol": "private fun enqueueAdjacentImagesLocked",
-          "line": 569
+          "line": 706
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/ReaderSettingsScreen.kt",
@@ -29403,7 +29404,7 @@
         {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt#quota eviction survives cache reopen with physical presence as authority", "productionMarkers": ["AndroidReaderEncodedPageStore(", "reopenedStore.beginSession"]},
         {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt#physical LRU eviction is reconciled before the logical commit chooses another victim", "productionMarkers": ["cache.isImageInCache(firstRef.value)", "store.diagnostics().refs"]},
         {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt#quota commit does not advance the logical index when physical victim removal fails", "productionMarkers": ["store.store", "store.diagnostics().refs"]},
-        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt#page change cancels every active or queued old generation request", "productionMarkers": ["preloader.preload"]},
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipelineTest.kt#decode concurrency is bounded and a stale queued request never starts", "productionMarkers": ["maxConcurrentDecodes = 2", "peakActiveDecodes.get()"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt#online page uses source client and headers then decode reads the same encoded ref", "productionMarkers": ["DesktopReaderPageFetchPort", "store.read"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt#concurrent reader stores share staging quota and active ref leases", "productionMarkers": ["coordinator.openSessionStore", "firstStore.store", "EncodedPageStoreWriteResult.RejectedQuota"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt#successful HTTP with a truncated pixel stream fails before the encoded ref becomes ready", "productionMarkers": ["SkiaImageDecoder.peekSize", "DesktopReaderPageFetchPort"]},
@@ -29438,7 +29439,7 @@
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ReaderMaterializeProductionWiringTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderStorageClassificationTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/data/cache/ChapterCacheFilePresenceTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipelineTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt",
@@ -29457,7 +29458,7 @@
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/AndroidReaderEncodedPageStoreIntegrationTest.kt": ["quota eviction survives cache reopen with physical presence as authority", "session begin counts physically observed entries and startup quota eviction", "physical LRU eviction is reconciled before the logical commit chooses another victim", "logical commit rejects a writer result when the physical entry is absent", "quota commit does not advance the logical index when physical victim removal fails"],
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ReaderMaterializeProductionWiringTest.kt": ["HTTP page request runs through canonical executor and retry forces redownload", "cache editor rejection is published as storage failure instead of ready"],
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderStorageClassificationTest.kt": ["encoded cache session startup failure is published as chapter storage error"],
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt": ["page change cancels every active or queued old generation request"],
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipelineTest.kt": ["generation fence rejects and releases a non cooperative stale decode", "decode concurrency is bounded and a stale queued request never starts"],
       "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt": ["failed encoded write removes partial bytes before retry lookup", "empty encoded write is rejected instead of publishing a ready blank page", "concurrent reader stores share staging quota and active ref leases", "a new store instance reconciles prior cache bytes and enforces one cross-session quota", "replacement bytes stay invisible until one atomic commit", "same ref has one writer and cancelling a stale writer cannot delete the committed file", "download and local directory page lists expose ready encoded refs without copying", "archive page is materialized per page into the shared encoded store", "online page uses source client and headers then decode reads the same encoded ref", "online page executes the source image request method body and per-page headers", "child loaded source executes reflective getImage with its request semantics", "online failures retain shared empty authentication rate limit server and malformed errors", "successful HTTP with a malformed image body fails before the encoded ref becomes ready", "successful HTTP with a truncated pixel stream fails before the encoded ref becomes ready"],
       "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt": ["full next chapter waits for every current page then materializes all encoded pages without progress", "first viewport mode materializes only its bounded next chapter prefix", "off mode keeps last five page-list preload but never fetches adjacent images", "switching off cancels a policy-only next chapter page-list request", "activating a prefetched chapter cancels P4 and retries its visible page as P0", "adjacent storage failure stops the remaining background chapter without changing active state", "non cooperative page cancellation keeps physical image requests within policy plus one stale request", "non cooperative target switches keep physical chapter requests within policy plus one stale request", "late storage failure from an old target cannot cancel the new target prefetch"],
       "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt": ["production runtime follows persisted next chapter prefetch changes", "production runtime preference changes drive off first viewport and full request sets", "production runtime preloader reads its own encoded page store", "production runtime binds the independent 512 MiB encoded cache policy", "production factory creates one shared core and exposes its canonical state to the model", "production factory coordinates encoded cache across concurrent reader runtimes"],
@@ -29645,7 +29646,7 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt",
           "symbol": "sealed interface ReaderChapterState",
-          "line": 26
+          "line": 27
         },
         {
           "kind": "SHARED",
@@ -29670,12 +29671,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt",
           "symbol": "class DesktopReaderSession",
-          "line": 77
+          "line": 103
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt",
           "symbol": "class DesktopReaderRuntimeFactory",
-          "line": 48
+          "line": 53
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
@@ -30209,7 +30210,7 @@
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "private suspend fun updateChapterProgress", "line": 534}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "recordReadingProgress.await", "line": 670}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiter.kt", "symbol": "internal class ReaderViewportSettlementArbiter", "line": 7}],
       "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/progress/ReaderProgressPolicy.kt", "symbol": "object ReaderProgressPolicy", "line": 46}, {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/reader/interactor/RecordReadingProgress.kt", "symbol": "class RecordReadingProgress", "line": 6}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt", "symbol": "recordReadingProgress.await", "line": 52}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt", "symbol": "class DesktopReaderSession", "line": 77}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt", "symbol": "recordReadingProgress.await", "line": 52}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt", "symbol": "class DesktopReaderSession", "line": 103}],
       "FIXTURE": [{"artifact": "domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt#only a settled viewport in the active chapter produces a progress effect", "productionMarkers": ["ReaderProgressPolicy.reduce"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressProductionWiringTest.kt#Android current settled page records progress through the canonical shared transaction", "productionMarkers": ["viewModel.onPageSelected", "awaitRecordedEvent"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt#newer current settlement rejects older adjacent activation and progress", "productionMarkers": ["viewModel.onPageSelected", "releaseAdjacentLoad.complete"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt#an in-flight write completes before the latest settlement enters the serialized transaction", "productionMarkers": ["ReaderViewportSettlementArbiter", "runIfLatest"]}, {"artifact": "data/src/jvmTest/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepositoryTest.kt#reading a later chapter updates only that row and requires its last page to mark read", "productionMarkers": ["recorder.await"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#dual presentation settles both source pages through screen model and session progress port", "productionMarkers": ["DualPagedPresentation.present", "model.settleDualPage", "progress.single"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#settling the last page then paging backward never makes the chapter unread", "productionMarkers": ["session.settleViewport", "wasRead"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#closing immediately after settlement lets the final progress write finish", "productionMarkers": ["session.close", "allowWrite.complete", "writeCompleted"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#local reader session identity never becomes a durable chapter progress id", "productionMarkers": ["localReaderScreen", "progressTracker.track"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt#settling an already read chapter mid chapter keeps it read", "productionMarkers": ["tracker.track", "wasRead"]}]
     },
     "protectionTests": ["domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressProductionWiringTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderDuplicateCompletionPolicyTest.kt", "data/src/jvmTest/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepositoryTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerIntegrationTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/library/ChapterReadPresentationTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt"],
@@ -32583,18 +32584,18 @@
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
-          "symbol": "val batch = stateMachine.schedule",
-          "line": 273
+          "symbol": "stateMachine.schedule(",
+          "line": 326
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
-          "symbol": "stateMachine.retryDelayMillis(attempt++)",
-          "line": 407
+          "symbol": "val wait = stateMachine.retryDelayMillis(retryAttempt++) ?: break",
+          "line": 471
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
-          "symbol": "stateMachine.retryDelayMillis(renameAttempt++)",
-          "line": 449
+          "symbol": "val wait = stateMachine.retryDelayMillis(renameAttempt++) ?: break",
+          "line": 509
         }
       ],
       "FIXTURE": [
@@ -33006,7 +33007,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "filterChaptersForDownload.await(manga, chapters)",
-          "line": 1014
+          "line": 1019
         }
       ],
       "FIXTURE": [
@@ -35716,7 +35717,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/updates/UpdatesScreenModel.kt",
           "symbol": "rawItems = getUpdates.subscribe(",
-          "line": 95
+          "line": 106
         }
       ],
       "FIXTURE": [
@@ -45869,7 +45870,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/updates/UpdatesScreenModel.kt",
           "symbol": "private val getUpdates: GetUpdates",
-          "line": 71
+          "line": 72
         }
       ],
       "FIXTURE": [

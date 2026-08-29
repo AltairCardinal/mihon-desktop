@@ -16,6 +16,8 @@ import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.ui.browse.localReaderScreen
 import mihon.desktop.ui.reader.ReaderLifecycleEffect
 import mihon.desktop.ui.reader.ReaderModeState
+import mihon.domain.reader.PageDecodePurpose
+import mihon.domain.reader.ReaderPageDecodeKey
 import mihon.domain.reader.content.ReaderPageContentOpenRequest
 import mihon.domain.reader.observability.ReaderIoEvent
 import mihon.domain.reader.observability.ReaderIoEventType
@@ -32,6 +34,7 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
@@ -372,7 +375,7 @@ class DesktopReaderRuntimeFactoryTest {
     }
 
     @Test
-    fun `production preloader and visible consumer share one content open lease`() = runTest {
+    fun `production preloader and visible consumer share one image pipeline open and decode`() = runTest {
         val events = CopyOnWriteArrayList<ReaderIoEvent>()
         val now = AtomicLong()
         val factory = DesktopReaderRuntimeFactory(
@@ -406,16 +409,29 @@ class DesktopReaderRuntimeFactoryTest {
             )
 
             val visibleLease = requireNotNull(
-                runtime.pageContentOwner.acquire(
-                    ReaderPageContentOpenRequest(page.id, snapshot.generation, ref),
+                runtime.pageImagePipeline.acquire(
+                    ReaderPageDecodeKey(
+                        contentKey = ReaderPageContentOpenRequest(page.id, snapshot.generation, ref),
+                        purpose = PageDecodePurpose.FULL_PAGE,
+                        maxWidth = 2_048,
+                        maxHeight = 2_048,
+                    ),
                 ),
             )
             try {
-                assertArrayEquals(bytes, visibleLease.content)
+                assertSame(runtime.preloader.get(0), visibleLease.asset.bitmap)
                 assertEquals(
                     1,
                     events.count { event ->
                         event.type == ReaderIoEventType.OPEN_PAGE &&
+                            event.pageId == page.id &&
+                            event.generation == snapshot.generation
+                        },
+                )
+                assertEquals(
+                    1,
+                    events.count { event ->
+                        event.type == ReaderIoEventType.DECODE &&
                             event.pageId == page.id &&
                             event.generation == snapshot.generation
                     },
@@ -463,6 +479,46 @@ class DesktopReaderRuntimeFactoryTest {
         } finally {
             runtime.close()
         }
+    }
+
+    @Test
+    fun `production runtime binds and closes the default decoded image cache policy`() = runTest {
+        val factory = DesktopReaderRuntimeFactory(
+            prefs = ReaderPreferences(),
+            downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads-decoded-budget")),
+            sourceManager = mockk<SourceManager>(relaxed = true),
+            networkHelper = NetworkHelper(OkHttpClient()),
+            progressTracker = mockk<ReaderProgressTracker>(relaxed = true),
+            mangaRepository = null,
+            encodedCacheDirectory = tempDir.resolve("encoded-decoded-budget"),
+        )
+        val runtime = factory.createRuntime(
+            DesktopReaderChapterContext(
+                chapterId = 84L,
+                sourceId = 42L,
+                chapterUrl = "/chapter/84",
+                mangaTitle = "Manga",
+                chapterTitle = "Chapter 84",
+                chapterNumber = 84.0,
+                chapterIndex = 0,
+                initialPage = 0,
+                wasRead = false,
+            ),
+            this,
+        )
+
+        try {
+            val openSnapshot = runtime.pageImagePipeline.snapshot()
+            assertEquals(DesktopReaderPageImagePipeline.DEFAULT_CACHE_ENTRIES, openSnapshot.cache.maxEntries)
+            assertEquals(DesktopReaderPageImagePipeline.DEFAULT_CACHE_BYTES, openSnapshot.cache.maxBytes)
+        } finally {
+            runtime.close()
+        }
+
+        val closedSnapshot = runtime.pageImagePipeline.snapshot()
+        assertTrue(closedSnapshot.closed)
+        assertTrue(closedSnapshot.cache.keys.isEmpty())
+        assertEquals(0, closedSnapshot.cache.entryCount)
     }
 
     @Test

@@ -30,6 +30,7 @@ import java.util.UUID
 data class DesktopReaderRuntime(
     val prefs: ReaderPreferences,
     val preloader: PagePreloader,
+    val pageImagePipeline: DesktopReaderPageImagePipeline,
     val pageContentOwner: DesktopReaderPageContentOwner,
     val session: DesktopReaderSession,
     internal val encodedPageStore: DesktopReaderEncodedPageStore,
@@ -39,7 +40,8 @@ data class DesktopReaderRuntime(
 ) : AutoCloseable {
     override fun close() {
         prefetchPreferenceJob.cancel()
-        preloader.clear()
+        preloader.close()
+        pageImagePipeline.close()
         session.close()
         pageContentOwner.close()
         contentAdapter.close()
@@ -76,6 +78,11 @@ class DesktopReaderRuntimeFactory(
         val ioReporter = ReaderIoReporter(readerIoProbe.bind(), readerMonotonicClock)
         val store = encodedPageStoreCoordinator.openSessionStore()
         val pageContentOwner = DesktopReaderPageContentOwner(parentScope, store::read, ioReporter)
+        val pageImagePipeline = DesktopReaderPageImagePipeline(
+            scope = parentScope,
+            pageContentOwner = pageContentOwner,
+            ioReporter = ioReporter,
+        )
         val contentAdapter = DesktopReaderContentAdapter(
             contentOperationProbe = readerContentOperationProbe,
         )
@@ -138,10 +145,10 @@ class DesktopReaderRuntimeFactory(
         return DesktopReaderRuntime(
             prefs = prefs,
             preloader = PagePreloader(
-                pageContentOwner = pageContentOwner,
+                pageImagePipeline = pageImagePipeline,
                 windowSize = 3,
-                ioGate = readerIoGate,
             ),
+            pageImagePipeline = pageImagePipeline,
             pageContentOwner = pageContentOwner,
             session = session,
             pageIoObserver = ReaderPageIoObserver(ioReporter, session::onFirstPagePresented),

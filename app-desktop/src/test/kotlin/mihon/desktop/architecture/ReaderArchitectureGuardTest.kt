@@ -42,9 +42,27 @@ class ReaderArchitectureGuardTest {
             forbiddenMarkers = presentationIoMarkers,
         )
 
-        val decodeAdapter = source("app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt")
-        assertTrue("encodedPageReader" in decodeAdapter)
-        assertTrue("ReaderPageContentOpenRequest" in decodeAdapter)
+        val decodeAdapter = executableSource(
+            source("app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt"),
+        )
+        assertTrue(
+            Regex(
+                """\bconstructor\s*\([^)]*\bpageImagePipeline\s*:\s*DesktopReaderPageImagePipeline\b""",
+                RegexOption.DOT_MATCHES_ALL,
+            ).containsMatchIn(decodeAdapter),
+            "PagePreloader must accept the runtime's shared page-image pipeline",
+        )
+        assertTrue(
+            Regex("""\bpageImagePipeline\s*\.\s*(?:acquire|acquireCached|snapshot)\s*\(""")
+                .containsMatchIn(decodeAdapter),
+            "PagePreloader must delegate through the shared page-image pipeline",
+        )
+        preloaderIndependentPipelineOwnerPatterns.forEach { owner ->
+            assertFalse(
+                owner.containsMatchIn(decodeAdapter),
+                "PagePreloader regained an independent scheduling, decode, or cache owner: ${owner.pattern}",
+            )
+        }
         presentationIoMarkers.forEach { marker ->
             assertFalse(marker in decodeAdapter, "Decoded viewport adapter regained I/O dependency: $marker")
         }
@@ -59,14 +77,22 @@ class ReaderArchitectureGuardTest {
             "Desktop runtime must keep one decoded-only preloader owner",
         )
         assertTrue(
-            "val pageContentOwner = DesktopReaderPageContentOwner(parentScope, store::read, ioReporter)" in
-                runtimeFactory.replace(Regex("""\s+"""), " "),
+            Regex(
+                """\bval\s+pageContentOwner\s*=\s*DesktopReaderPageContentOwner\s*\(""",
+            ).containsMatchIn(runtimeFactory),
             "Desktop runtime must bind its session store to one page-content owner",
         )
+        assertEquals(
+            1,
+            Regex("""\bDesktopReaderPageImagePipeline\s*\(""").findAll(runtimeFactory).count(),
+            "Desktop runtime must construct exactly one page-image pipeline",
+        )
         assertTrue(
-            "preloader = PagePreloader( pageContentOwner = pageContentOwner, windowSize = 3, ioGate = readerIoGate, )" in
-                runtimeFactory.replace(Regex("""\s+"""), " "),
-            "Desktop runtime preloader must consume the shared page-content owner",
+            Regex(
+                """\bpreloader\s*=\s*PagePreloader\s*\((?=[^)]*\bpageImagePipeline\s*=\s*pageImagePipeline\b)""",
+                RegexOption.DOT_MATCHES_ALL,
+            ).containsMatchIn(runtimeFactory),
+            "Desktop runtime preloader must consume the shared page-image pipeline",
         )
         assertEquals(
             1,
@@ -355,7 +381,21 @@ class ReaderArchitectureGuardTest {
             "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderSessionCore.kt",
             "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt",
             "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt",
-            "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt",
+        )
+
+        val preloaderIndependentPipelineOwnerPatterns = setOf(
+            Regex("""\bencodedPageReader\s*:"""),
+            Regex("""\bpageContentOwner\s*:\s*DesktopReaderPageContentOwner\b"""),
+            Regex("""\bDesktopReaderPageContentOwner\s*\("""),
+            Regex("""\bDesktopReaderPageImagePipeline\s*\("""),
+            Regex("""\bCoroutineScope\s*\("""),
+            Regex("""\bSupervisorJob\s*\("""),
+            Regex("""\bReaderRequestScheduler\s*\("""),
+            Regex("""\bDesktopPageCache\s*\("""),
+            Regex("""\bDesktopReaderImageCache\s*\("""),
+            Regex("""\bSkiaPageDecoder\s*\("""),
+            Regex("""\bSkiaRegionPageDecoder\s*\("""),
+            Regex("""\bSkiaDesktopReaderPageImageDecoder\s*\("""),
         )
 
         val pageMaterializeRunnerConsumers = setOf(

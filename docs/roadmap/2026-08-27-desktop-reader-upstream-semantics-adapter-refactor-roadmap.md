@@ -313,7 +313,7 @@ Android Reader UI                 Desktop Reader presentation
   - [x] `RUA-03C2` journal 实体缺失与非协作页表 late-result 门禁
 - [ ] `RUA-04` 唯一内容读取/解码 pipeline 与三种 presentation cutover
   - [x] `RUA-04A` 唯一 open/materialize owner 与 single-flight
-  - [ ] `RUA-04B` 唯一 decoder、decoded cache 与 transform consumers
+  - [x] `RUA-04B` 唯一 decoder、decoded cache 与 transform consumers
   - [ ] `RUA-04C` Single/Dual/Webtoon presentation cutover
   - [ ] `RUA-04D` 动画/超大图/lifecycle 矩阵与 legacy owner 删除
 - [ ] `RUA-05` 原版相邻章默认语义与 Desktop opt-in decorator
@@ -572,6 +572,15 @@ Android Reader UI                 Desktop Reader presentation
 - 取消、close、非协作解码和 prompt-cancellation 均由显式 lease handoff 收口；只有外层消费者实际取得结果后才转移所有权，迟到或未认领内容会关闭且不能重新进入 active snapshot。
 - TDD 证据覆盖缺 API、重复 physical open、close race、非协作解码和 child 已完成但 outer 尚未恢复的取消窗口；最终 `.gradle-coordinator/rua04a-prompt-close.log` 完成 root Spotless、shared coordinator、PagePreloader、runtime/materialize、章节切换与 architecture guard，`BUILD SUCCESSFUL in 15m 13s`。
 - 独立审查先发现 2 个 P1 与 1 个 P2，第一次修复复审发现 1 个残余 prompt-cancellation P1；限定复审确认全部关闭，最终为 `PASS`。本批 9 个 product/test 文件共 `789+/35-`，超出行数估算来自同一 lease 生命周期及确定性竞态测试，未拆开不可独立验收的上下文；Desktop 正式构建仍只在 `RUA-07` 执行。
+
+**`RUA-04B` 完成证据（2026-08-30）**：
+
+- domain 新增稳定 `ReaderPageDecodeKey` 与 `FULL_PAGE / ANIMATION_FRAME / REGION_TILE` purpose，键显式包含 content identity、generation、decode bounds、region 和 frame；Desktop runtime 只创建一个 `DesktopReaderPageImagePipeline`，以同 key single-flight 共用唯一 content open 与 decoder，物理解码并发上限为 3。
+- decoded asset 使用显式引用计数 lease；access-order LRU 同时受 7 项与 128 MiB 双预算约束。cache eviction 不会释放仍由可见 presentation 固定的 asset，换页、clear、generation 切换与 runtime close 会释放相应 lease；非协作迟到 decode 不能重新安装旧 generation。
+- `PagePreloader` 已降为只注入 shared pipeline 的兼容适配器，不再创建 scope、scheduler、content owner、decoder 或 cache。edge matcher、crop、filter、split 的契约测试均消费同一 decoded asset 且保持 `OPEN=1 / DECODE=1`；实际 Single/Dual/Webtoon Compose cutover 仍属于 `RUA-04C`，manifest ID 44 因 region adapter 尚未进入 production consumer 而诚实保持 `SHARED`。
+- 严格 TDD 证据包括 `rua04b-domain-red2`、`rua04b-pipeline-red`、`rua04b-runtime-red`、bounds/region/concurrency/visible-pin RED，以及对应 GREEN。独立审查发现 2 个 P1 与 1 个 P2（第二 owner、permit 生命周期、bounds/pin），限定修复复审结论为 `PASS`、P0/P1/P2 均为零。
+- 首次合并收口暴露 parity role evidence 漂移，批量静态扫描并修正后 `rua04b-parity-contract-green3` 通过；第二次收口又以 production fixture 暴露 04B→04C 期间 legacy presentation/shared pipeline 的同 identity decode 时序竞态。`rua04b-critical-cost-green4` 证明该过渡重复严格有界为 2，并仅为 1/180 页结构成本比较归一化这一项；`RUA-04C` 必须删除归一化并恢复 mounted presentation `DECODE == 1`。最终 `rua04b-close3` 完成根级 Spotless、domain key contract 与 129 项 Desktop focused tests，`BUILD SUCCESSFUL in 5m 6s`。
+- 本批 20 个 product/test/manifest 文件约 `2142+/838-`，超过 6～10 文件提示值的主要原因是删除 358 行 legacy preloader owner、把三处既有测试迁到 test-only factory，以及为 single-flight、双预算、并发、取消和 lease 生命周期提供同一内聚行为证据；没有切 presentation、手势、viewport 或双页配对。两次误用不存在的模块级 Spotless task 各在约 8 秒内失败且没有执行测试，后续统一只使用根级 `spotlessApply/spotlessCheck`。Desktop 正式构建仍只在 `RUA-07` 执行。
 
 ### `RUA-05` 原版相邻章默认语义与 Desktop opt-in decorator
 

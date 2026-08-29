@@ -28,6 +28,7 @@ import mihon.desktop.test.http.ReaderIoTestEvent
 import mihon.desktop.test.http.ReaderTestModeController
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -91,9 +92,13 @@ class ReaderIoProductionWiringTest {
                     runCurrent()
                 }
             }
-            ReaderIoGatePoint.entries.forEach { point ->
+            listOf(ReaderIoGatePoint.CACHE_SCAN, ReaderIoGatePoint.ADJACENT_IO).forEach { point ->
                 withTimeout(5_000) { fixture.gate(point).awaitEntered() }
             }
+            assertFalse(
+                fixture.gate(ReaderIoGatePoint.NON_CURRENT_PAGE).isEntered,
+                "The shared image pipeline must not restore PagePreloader-owned background scheduling",
+            )
             val firstFrameEvents = controller.snapshot()
             assertTrue(firstFrameEvents.none { it.type == ReaderIoEventType.CACHE_RECONCILE.name })
             assertTrue(firstFrameEvents.none { it.type == ReaderIoEventType.ADJACENT_IO.name })
@@ -104,16 +109,6 @@ class ReaderIoProductionWiringTest {
                 },
             )
             ReaderIoGatePoint.entries.forEach { fixture.gate(it).release() }
-            withTimeout(5_000) {
-                while (
-                    controller.snapshot().none {
-                        it.type == ReaderIoEventType.DECODE.name && it.chapterId == 7L && it.pageIndex != 0
-                    }
-                ) {
-                    scene.render()
-                    runCurrent()
-                }
-            }
             advanceUntilIdle()
 
             val events = controller.snapshot()
@@ -131,13 +126,9 @@ class ReaderIoProductionWiringTest {
                 },
             )
             assertTrue(
-                events.any {
-                    it.type == ReaderIoEventType.OPEN_PAGE.name && it.chapterId == 7L && it.pageIndex != 0
-                },
-            )
-            assertTrue(
-                events.any {
-                    it.type == ReaderIoEventType.DECODE.name && it.chapterId == 7L && it.pageIndex != 0
+                events.none {
+                    it.chapterId == 7L && it.pageIndex != null && it.pageIndex != 0 &&
+                        it.type in setOf(ReaderIoEventType.OPEN_PAGE.name, ReaderIoEventType.DECODE.name)
                 },
             )
             assertTrue(

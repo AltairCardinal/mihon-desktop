@@ -533,7 +533,7 @@ class DesktopReaderMaterializePortsIntegrationTest {
             val ready = assertInstanceOf(ReaderPageMaterializeResult.Ready::class.java, result)
             assertEquals(1, sourceRequests)
             assertArrayEquals(bytes, store.read(ready.encodedPageRef))
-            val preloader = PagePreloader(encodedPageReader = store::read, windowSize = 0)
+            val preloader = createTestPagePreloader(encodedPageReader = store::read, windowSize = 0)
             preloader.preloadEncoded(0, listOf(ready.encodedPageRef))
             assertTrue(preloader.get(0) != null)
         }
