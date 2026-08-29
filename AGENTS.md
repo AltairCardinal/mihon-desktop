@@ -52,6 +52,21 @@
 - 外层等待超时不代表 Gradle 结束；先查询协调器状态，仍为 `STARTING/RUNNING` 时不得启动第二个 Gradle。
 - 需要终止时只停止协调器记录的进程树，不使用全局 Java/Gradle 进程清理。
 
+### 本机 Android SDK
+
+- 本机 Android SDK 固定安装在 `D:\Android\Sdk`。截至 2026-08-29，已安装 command-line tools 22.0、`platforms;android-36`、`build-tools;36.0.0` 与 `platform-tools`，满足当前 `compileSdk = 36` 的 Android 编译和 JVM 单元测试要求。
+- 用户级 `ANDROID_HOME`、`ANDROID_SDK_ROOT` 均指向 `D:\Android\Sdk`；用户 PATH 包含 `D:\Android\Sdk\platform-tools` 和 `D:\Android\Sdk\cmdline-tools\latest\bin`。已经打开的 PowerShell/Codex 进程不会自动刷新用户环境，必要时在当前会话显式设置：
+
+```powershell
+$env:ANDROID_HOME = 'D:\Android\Sdk'
+$env:ANDROID_SDK_ROOT = 'D:\Android\Sdk'
+```
+
+- 仓库忽略的 `local.properties` 使用 `sdk.dir=D\:\\Android\\Sdk`，不得提交该机器专属文件。Gradle 应优先通过该文件发现 SDK；删除或迁移 SDK 时必须同步更新用户环境和 `local.properties`。
+- command-line tools 必须从 Android 官方下载页取得并校验官方 SHA-256。本次安装包为 `commandlinetools-win-15859902_latest.zip`，校验值为 `90ae805d20434428bffcb699c290860f19bb5f66a67e6b330067e3de801fb04a`。下载和 `sdkmanager` 访问境外网络时遵循仓库代理规则。
+- 当前 `sdkmanager` 22.0 会提示迁移到新的 Android CLI，但仍能完成 SDK package 安装。`android.exe` 首次运行会额外下载 CLI；除非任务明确需要，不要把这个下载加入普通 Gradle 验证流程。
+- SDK 自检以真实文件和 Gradle Android task 为准：至少确认 `platforms\android-36\android.jar`、`build-tools\36.0.0\aapt2.exe`、`platform-tools\adb.exe` 存在，再运行受影响的 Android focused tests；历史 AVD 配置不能代替 SDK 安装证据。
+
 ---
 
 

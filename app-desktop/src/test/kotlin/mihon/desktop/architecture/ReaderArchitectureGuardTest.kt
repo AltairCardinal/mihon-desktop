@@ -58,7 +58,7 @@ class ReaderArchitectureGuardTest {
             "Desktop runtime must keep one decoded-only preloader owner",
         )
         assertTrue(
-            "preloader = PagePreloader(encodedPageReader = store::read, windowSize = 3)" in
+            "preloader = PagePreloader( encodedPageReader = store::read, windowSize = 3, ioGate = readerIoGate, )" in
                 runtimeFactory.replace(Regex("""\s+"""), " "),
             "Desktop runtime preloader must read only from its session encoded store",
         )
@@ -131,12 +131,101 @@ class ReaderArchitectureGuardTest {
         assertEquals(expectedCount, actualCount, "Unexpected production occurrence count for $marker")
     }
 
-    private fun executableSource(content: String): String = content
-        .replace(Regex("""(?s)\"\"\".*?\"\"\""""), "\"\"")
-        .replace(Regex("""\"(?:\\.|[^\"\\])*\""""), "\"\"")
-        .replace(Regex("""'(?:(?:\\.)|[^'\\])'"""), "''")
-        .replace(Regex("""(?s)/\*.*?\*/"""), "")
-        .replace(Regex("""(?m)//.*$"""), "")
+    private fun executableSource(content: String): String = buildString(content.length) {
+        var index = 0
+        var state = SourceState.CODE
+        var blockCommentDepth = 0
+        while (index < content.length) {
+            val current = content[index]
+            val next = content.getOrNull(index + 1)
+            when (state) {
+                SourceState.CODE -> when {
+                    content.startsWith("\"\"\"", index) -> {
+                        append("   ")
+                        index += 3
+                        state = SourceState.TRIPLE_QUOTED_STRING
+                    }
+                    current == '"' -> {
+                        append(' ')
+                        index++
+                        state = SourceState.QUOTED_STRING
+                    }
+                    current == '\'' -> {
+                        append(' ')
+                        index++
+                        state = SourceState.CHARACTER_LITERAL
+                    }
+                    current == '/' && next == '/' -> {
+                        append("  ")
+                        index += 2
+                        state = SourceState.LINE_COMMENT
+                    }
+                    current == '/' && next == '*' -> {
+                        append("  ")
+                        index += 2
+                        blockCommentDepth = 1
+                        state = SourceState.BLOCK_COMMENT
+                    }
+                    else -> {
+                        append(current)
+                        index++
+                    }
+                }
+                SourceState.QUOTED_STRING,
+                SourceState.CHARACTER_LITERAL,
+                -> {
+                    val terminator = if (state == SourceState.QUOTED_STRING) '"' else '\''
+                    when {
+                        current == '\\' && next != null -> {
+                            append("  ")
+                            index += 2
+                        }
+                        current == terminator -> {
+                            append(' ')
+                            index++
+                            state = SourceState.CODE
+                        }
+                        else -> {
+                            append(if (current == '\n') '\n' else ' ')
+                            index++
+                        }
+                    }
+                }
+                SourceState.TRIPLE_QUOTED_STRING -> {
+                    if (content.startsWith("\"\"\"", index)) {
+                        append("   ")
+                        index += 3
+                        state = SourceState.CODE
+                    } else {
+                        append(if (current == '\n') '\n' else ' ')
+                        index++
+                    }
+                }
+                SourceState.LINE_COMMENT -> {
+                    append(if (current == '\n') '\n' else ' ')
+                    index++
+                    if (current == '\n') state = SourceState.CODE
+                }
+                SourceState.BLOCK_COMMENT -> when {
+                    current == '/' && next == '*' -> {
+                        append("  ")
+                        index += 2
+                        blockCommentDepth++
+                    }
+                    current == '*' && next == '/' -> {
+                        append("  ")
+                        index += 2
+                        blockCommentDepth--
+                        if (blockCommentDepth == 0) state = SourceState.CODE
+                    }
+                    else -> {
+                        append(if (current == '\n') '\n' else ' ')
+                        index++
+                    }
+                }
+            }
+        }
+    }
 
     private fun kotlinSources(relativeRoot: String): Map<String, String> =
         repositoryRoot.resolve(relativeRoot).toFile().walkTopDown()
@@ -152,6 +241,15 @@ class ReaderArchitectureGuardTest {
             .first { Files.isDirectory(it.resolve("app-desktop")) && Files.isDirectory(it.resolve("domain")) }
 
     private companion object {
+        private enum class SourceState {
+            CODE,
+            QUOTED_STRING,
+            TRIPLE_QUOTED_STRING,
+            CHARACTER_LITERAL,
+            LINE_COMMENT,
+            BLOCK_COMMENT,
+        }
+
         val readerCapabilityIds = setOf(9, 43, 44, 45, 47, 49, 51, 53, 54)
 
         val legacyReaderFiles = setOf(

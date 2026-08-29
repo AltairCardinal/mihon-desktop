@@ -4,6 +4,10 @@ import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
+import mihon.domain.reader.content.ReaderChapterContentResolver
+import mihon.domain.reader.content.ReaderChapterRoute
+import mihon.domain.reader.content.ReaderChapterRouteResolver
+import mihon.domain.reader.content.ReaderSourceContentKind
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.source.local.LocalSource
 import tachiyomi.source.local.io.Format
@@ -31,18 +35,49 @@ class ReaderPageLoaderFactories internal constructor(
 internal fun selectReaderChapterContentRoute(
     downloaded: Boolean,
     source: Source,
+    routeResolver: ReaderChapterRouteResolver = ReaderChapterContentResolver,
     localFormat: (() -> Format)? = null,
-): ReaderChapterContentRoute = when {
-    downloaded -> ReaderChapterContentRoute.Download
-    source is LocalSource -> when (val format = checkNotNull(localFormat).invoke()) {
-        is Format.Directory -> ReaderChapterContentRoute.LocalDirectory(format.file)
-        is Format.Archive -> ReaderChapterContentRoute.LocalArchive(format.file)
-        is Format.Epub -> ReaderChapterContentRoute.LocalEpub(format.file)
+): ReaderChapterContentRoute {
+    val resolvedLocalFormat = if (source is LocalSource && !downloaded) {
+        checkNotNull(localFormat).invoke()
+    } else {
+        null
     }
-    source is HttpSource -> ReaderChapterContentRoute.Online
-    source is StubSource -> ReaderChapterContentRoute.MissingSource
-    else -> ReaderChapterContentRoute.Unsupported
+    val sourceKind = when {
+        resolvedLocalFormat is Format.Directory -> ReaderSourceContentKind.LOCAL_DIRECTORY
+        resolvedLocalFormat is Format.Archive -> ReaderSourceContentKind.LOCAL_ARCHIVE
+        resolvedLocalFormat is Format.Epub -> ReaderSourceContentKind.LOCAL_EPUB
+        source is HttpSource -> ReaderSourceContentKind.ONLINE
+        source is StubSource -> ReaderSourceContentKind.MISSING_SOURCE
+        else -> ReaderSourceContentKind.UNSUPPORTED
+    }
+    return when (routeResolver.resolve(downloaded, sourceKind)) {
+        ReaderChapterRoute.DOWNLOAD -> ReaderChapterContentRoute.Download
+        ReaderChapterRoute.LOCAL_DIRECTORY -> ReaderChapterContentRoute.LocalDirectory(
+            (resolvedLocalFormat as Format.Directory).file,
+        )
+        ReaderChapterRoute.LOCAL_ARCHIVE -> ReaderChapterContentRoute.LocalArchive(
+            (resolvedLocalFormat as Format.Archive).file,
+        )
+        ReaderChapterRoute.LOCAL_EPUB -> ReaderChapterContentRoute.LocalEpub(
+            (resolvedLocalFormat as Format.Epub).file,
+        )
+        ReaderChapterRoute.ONLINE -> ReaderChapterContentRoute.Online
+        ReaderChapterRoute.MISSING_SOURCE -> ReaderChapterContentRoute.MissingSource
+        ReaderChapterRoute.UNSUPPORTED -> ReaderChapterContentRoute.Unsupported
+    }
 }
+
+internal val ReaderChapterContentRoute.sharedRoute: ReaderChapterRoute
+    get() = when (this) {
+        ReaderChapterContentRoute.Download -> ReaderChapterRoute.DOWNLOAD
+        is ReaderChapterContentRoute.LocalDirectory -> ReaderChapterRoute.LOCAL_DIRECTORY
+        is ReaderChapterContentRoute.LocalArchive -> ReaderChapterRoute.LOCAL_ARCHIVE
+        is ReaderChapterContentRoute.LocalEpub -> ReaderChapterRoute.LOCAL_EPUB
+        ReaderChapterContentRoute.Online -> ReaderChapterRoute.ONLINE
+        ReaderChapterContentRoute.MissingSource -> ReaderChapterRoute.MISSING_SOURCE
+        ReaderChapterContentRoute.Unsupported -> ReaderChapterRoute.UNSUPPORTED
+    }
 
 internal fun createReaderPageLoader(
     route: ReaderChapterContentRoute,

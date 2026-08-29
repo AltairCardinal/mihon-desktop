@@ -298,7 +298,7 @@ Android Reader UI                 Desktop Reader presentation
 每个改变产品行为的批次都必须在同一内聚任务内完成 RED → GREEN → 重构 → focused 验证 → 独立审查 → 提交。RED 必须运行真实 production 实现或其 composition root；不能用源码文本扫描、复制算法或 fake-only helper 代替。每个顶层批次原则上一个提交，审查修复最多再一个提交。
 
 - [x] `RUA-00` 激活、authority 冻结与可观测性基础
-- [ ] `RUA-01` 共享 route/download/page-list 契约与两端决策接线
+- [x] `RUA-01` 共享 route/download/page-list 契约与两端决策接线
 - [ ] `RUA-02` Desktop 下载/local/archive adapter 与无损兼容
 - [ ] `RUA-03` 首帧 critical path 与 shared runtime owner 收口
 - [ ] `RUA-04` 唯一内容读取/解码 pipeline 与三种 presentation cutover
@@ -363,6 +363,16 @@ Android Reader UI                 Desktop Reader presentation
 **focused 验证**：共享参数化 route/candidate/sort 契约、Android route production wiring、Desktop composition-root locator delegation、known/unknown extension policy、空列表/错误 taxonomy。test locator 只证明 production owner 委托，不作为 Desktop storage 行为证据。
 
 **预计**：3–5 工程日，约 8–14 个文件；若超过范围，只记录内聚性，不拆开不能独立验收的 identity/route/candidate 契约。
+
+**完成证据（2026-08-29）**：
+
+- domain 已建立平台无关的 chapter route、download identity/naming/candidate/locator、image candidate 与 route-specific sort 契约；下载目录保持区分大小写的名字典序，本地目录/归档保持忽略大小写的自然序，下载 artifact 优先于 source route，且 `DownloadIndex` 不进入 resolver 输入；
+- Android `DownloadProvider`、`DownloadManager.buildPageList`、`ReaderChapterContentRoute`、`DirectoryPageLoader` 与 `ArchivePageLoader` 已消费共享决策，Android API 只留在 adapter。直接 production 测试覆盖 null name、known extension 零内容打开、unknown extension 单次打开、Ready 状态与两种页序；`.jp2/.jpx` 差异性 fixture 已实际证明退回当前 Android 私有 `ImageUtil` 时测试会红；
+- Desktop production composition root 已把 artifact 选择委托给共享 `DownloadArtifactLocator`，默认 adapter 仅保留当前 `<sourceId>/<mangaTitle>/<raw chapterName>` 目录的存在性兼容探测；页表支持九种上游已知扩展，并对改名后的 JPEG/HEIF/JXL/JP2 做一次内容签名探测。完整 canonical/legacy/non-ASCII/hash/scanlator 目录/CBZ、真实 File/CBZ locator、DownloadIndex gate 与 archive lease 仍明确属于 `RUA-02`；
+- 严格 TDD 证据：`.gradle-coordinator/rua01-jp2-red-shared-desktop.log` 与 `rua01-jp2-red-android.log` 均按 JP2/JPX 共享语义缺失的正确原因失败；`rua01-jp2-green-shared-desktop.log`（含完整 domain 352 项）、`rua01-jp2-green-android.log` 和最终 `rua01-jp2-close-final.log` 均为 `PASSED`。最终收口包含根级 `spotlessCheck`、RUA-01 Desktop wiring、architecture guard 与 parity role-evidence contract；
+- 本机 Android SDK 已按仓库 `AGENTS.md` 固定为 `D:\Android\Sdk` 并由真实 Android Gradle task 验证，Android 测试不再因缺 SDK 被跳过；机器专属 `local.properties` 保持忽略且未纳入提交；
+- 用户明确授权了额外 TDD 修复以及第三、第四次只读复审。最终冻结 diff 指纹为 `acd6122e7e808d09f80d708c699ab66ed8e2ff3f76641914bc03ba1f543db06b`，第四次最终复审结论为 `PASS`，P0/P1/P2 均为零；
+- 本批超过 8–14 文件估算，原因是同一共享契约必须同时包含 Android/Desktop production consumer、直接 wiring 测试、治理守卫与证据校准；拆开会允许任一平台旁路共享决策而测试仍绿，因此保持为一个内聚提交。未运行 Desktop 发布构建；完整 Desktop/Android、Test Mode、Windows/macOS 构建与运行验收仍只在 `RUA-07` 执行。
 
 ### `RUA-02` Desktop 下载/local/archive adapter 与无损兼容
 

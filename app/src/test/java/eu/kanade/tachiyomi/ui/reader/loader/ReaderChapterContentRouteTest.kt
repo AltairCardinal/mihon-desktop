@@ -14,11 +14,18 @@ import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import mihon.core.archive.ArchiveReader
 import mihon.core.archive.EpubReader
+import mihon.domain.reader.content.DownloadChapterIdentity
+import mihon.domain.reader.content.ReaderChapterRoute
+import mihon.domain.reader.content.ReaderChapterRouteResolver
+import mihon.domain.reader.content.ReaderSourceContentKind
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.Preference
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.source.local.LocalSource
 import tachiyomi.source.local.io.Format
 
@@ -32,6 +39,7 @@ class ReaderChapterContentRouteTest {
         )
 
         assertInstanceOf(ReaderChapterContentRoute.Download::class.java, route)
+        assertEquals(ReaderChapterRoute.DOWNLOAD, route.sharedRoute)
     }
 
     @Test
@@ -42,6 +50,7 @@ class ReaderChapterContentRouteTest {
         )
 
         assertInstanceOf(ReaderChapterContentRoute.Online::class.java, route)
+        assertEquals(ReaderChapterRoute.ONLINE, route.sharedRoute)
     }
 
     @Test
@@ -56,6 +65,63 @@ class ReaderChapterContentRouteTest {
         assertInstanceOf(ReaderChapterContentRoute.LocalDirectory::class.java, directory)
         assertInstanceOf(ReaderChapterContentRoute.LocalArchive::class.java, archive)
         assertInstanceOf(ReaderChapterContentRoute.LocalEpub::class.java, epub)
+        assertEquals(ReaderChapterRoute.LOCAL_DIRECTORY, directory.sharedRoute)
+        assertEquals(ReaderChapterRoute.LOCAL_ARCHIVE, archive.sharedRoute)
+        assertEquals(ReaderChapterRoute.LOCAL_EPUB, epub.sharedRoute)
+    }
+
+    @Test
+    fun `android production selector delegates the final route decision to the shared resolver`() {
+        var receivedDownloadFact: Boolean? = null
+        var receivedSourceKind: ReaderSourceContentKind? = null
+        val resolver = ReaderChapterRouteResolver { downloadLocated, sourceKind ->
+            receivedDownloadFact = downloadLocated
+            receivedSourceKind = sourceKind
+            ReaderChapterRoute.UNSUPPORTED
+        }
+
+        val route = selectReaderChapterContentRoute(
+            downloaded = true,
+            source = mockk<HttpSource>(),
+            routeResolver = resolver,
+        )
+
+        assertInstanceOf(ReaderChapterContentRoute.Unsupported::class.java, route)
+        assertEquals(true, receivedDownloadFact)
+        assertEquals(ReaderSourceContentKind.ONLINE, receivedSourceKind)
+    }
+
+    @Test
+    fun `android download provider consumes the shared ordered chapter candidates`() {
+        val nonAsciiPreference = mockk<Preference<Boolean>>()
+        every { nonAsciiPreference.get() } returns false
+        val libraryPreferences = mockk<LibraryPreferences>()
+        every { libraryPreferences.disallowNonAsciiFilenames() } returns nonAsciiPreference
+        val provider = DownloadProvider(
+            context = mockk(relaxed = true),
+            storageManager = mockk<StorageManager>(),
+            libraryPreferences = libraryPreferences,
+        )
+        val identity = DownloadChapterIdentity(
+            sourceDisplayName = "Source",
+            mangaTitle = "Manga",
+            chapterName = "Chapter 1",
+            scanlator = "Group",
+            chapterUrl = "/chapter/1",
+            disallowNonAsciiFilenames = false,
+        )
+
+        assertEquals(
+            listOf(
+                "Group_Chapter 1_690668",
+                "Group_Chapter 1_690668.cbz",
+                "Group_Chapter 1",
+                "Group_Chapter 1.cbz",
+                "Group_Chapter 1_690668",
+                "Group_Chapter 1_690668.cbz",
+            ),
+            provider.getValidChapterDirNames(identity.chapterName, identity.scanlator, identity.chapterUrl),
+        )
     }
 
     @Test

@@ -1,5 +1,9 @@
 package mihon.desktop.download
 
+import mihon.domain.reader.content.DownloadArtifactKind
+import mihon.domain.reader.content.DownloadArtifactProbe
+import mihon.domain.reader.content.ReaderImageCandidatePolicy
+import mihon.domain.reader.content.ReaderImageSortMode
 import java.io.File
 
 private val ILLEGAL_CHARS = Regex("""[/\\:*?"<>|]""")
@@ -21,6 +25,21 @@ class DesktopDownloadProvider(
     companion object {
         /** Suffix appended to chapter directories while downloading (mirrors Android Downloader.TMP_DIR_SUFFIX). */
         const val TMP_DIR_SUFFIX = "_tmp"
+
+        private val SUPPORTED_ISO_BMFF_BRANDS = setOf(
+            "avif",
+            "avis",
+            "heic",
+            "heix",
+            "hevc",
+            "hevx",
+            "heim",
+            "heis",
+            "hevm",
+            "hevs",
+            "mif1",
+            "msf1",
+        )
     }
 
     /** Returns the final (non-tmp) chapter directory path. */
@@ -50,11 +69,35 @@ class DesktopDownloadProvider(
 
     fun getDownloadedPages(sourceId: Long, mangaTitle: String, chapterName: String): List<File> {
         val dir = chapterDownloadDir(sourceId, mangaTitle, chapterName)
-        if (!dir.isDirectory) return emptyList()
-        return dir.listFiles()
-            ?.filter { it.isReadableImageFile() }
-            ?.sortedBy { it.name }
+        return getDownloadedPages(dir)
+    }
+
+    fun getDownloadedPages(directory: File): List<File> {
+        if (!directory.isDirectory) return emptyList()
+        return directory.listFiles()
+            ?.filter { it.isReaderImageCandidate() }
+            ?.sortedWith { first, second ->
+                ReaderImageCandidatePolicy.compare(
+                    ReaderImageSortMode.DOWNLOAD_LEXICAL_CASE_SENSITIVE,
+                    first.name,
+                    second.name,
+                )
+            }
             ?: emptyList()
+    }
+
+    /**
+     * RUA-01 compatibility adapter: keeps the existing raw chapter-name directory lookup behind
+     * the shared locator seam. Canonical/legacy/CBZ dual-read remains RUA-02.
+     */
+    fun currentDirectoryArtifactProbe(sourceId: Long): DownloadArtifactProbe {
+        var probed = false
+        return DownloadArtifactProbe { identity, candidate ->
+            if (probed || candidate.kind != DownloadArtifactKind.DIRECTORY) return@DownloadArtifactProbe null
+            probed = true
+            val directory = chapterDownloadDir(sourceId, identity.mangaTitle, identity.chapterName)
+            directory.absolutePath.takeIf { directory.isDirectory }
+        }
     }
 
     /**
@@ -104,19 +147,29 @@ class DesktopDownloadProvider(
         if (ext !in setOf("jpg", "jpeg", "png", "webp", "gif", "avif")) return false
         if (!isFile || length() <= 0L) return false
 
+        return hasReadableImageSignature()
+    }
+
+    private fun File.isReaderImageCandidate(): Boolean {
+        if (!isFile) return false
+        return ReaderImageCandidatePolicy.accepts(name) { hasReadableImageSignature() }
+    }
+
+    private fun File.hasReadableImageSignature(): Boolean {
         val header = inputStream().use { input ->
             ByteArray(32).also { bytes -> input.read(bytes) }
         }
 
-        return when (ext) {
-            "jpg", "jpeg" -> header.startsWith(0xFF, 0xD8)
-            "png" -> header.startsWith(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
-            "gif" -> header.startsWith("GIF87a") || header.startsWith("GIF89a")
-            "webp" -> header.startsWith("RIFF") && header.hasAsciiAt(8, "WEBP")
-            "avif" -> header.hasAsciiAt(4, "ftyp") &&
-                listOf("avif", "avis", "mif1", "msf1").any { brand -> header.containsAscii(brand) }
-            else -> false
-        }
+        return header.startsWith(0xFF, 0xD8) ||
+            header.startsWith(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A) ||
+            header.startsWith("GIF87a") ||
+            header.startsWith("GIF89a") ||
+            (header.startsWith("RIFF") && header.hasAsciiAt(8, "WEBP")) ||
+            header.startsWith(0xFF, 0x0A) ||
+            header.startsWith(0x00, 0x00, 0x00, 0x0C, 0x4A, 0x58, 0x4C, 0x20, 0x0D, 0x0A, 0x87, 0x0A) ||
+            header.startsWith(0x00, 0x00, 0x00, 0x0C, 0x6A, 0x50, 0x20, 0x20, 0x0D, 0x0A, 0x87, 0x0A) ||
+            header.startsWith(0xFF, 0x4F, 0xFF, 0x51) ||
+            header.hasSupportedIsoBmffBrand()
     }
 
     private fun ByteArray.startsWith(vararg bytes: Int): Boolean =
@@ -127,10 +180,11 @@ class DesktopDownloadProvider(
     private fun ByteArray.hasAsciiAt(offset: Int, ascii: String): Boolean =
         ascii.indices.all { index -> getOrNull(offset + index) == ascii[index].code.toByte() }
 
-    private fun ByteArray.containsAscii(ascii: String): Boolean {
-        if (ascii.isEmpty() || ascii.length > size) return false
-        return indices.any { offset ->
-            offset + ascii.length <= size && hasAsciiAt(offset, ascii)
+    private fun ByteArray.hasSupportedIsoBmffBrand(): Boolean {
+        if (!hasAsciiAt(4, "ftyp")) return false
+        return SUPPORTED_ISO_BMFF_BRANDS.any { brand ->
+            hasAsciiAt(8, brand) || (16..28 step 4).any { offset -> hasAsciiAt(offset, brand) }
         }
     }
+
 }

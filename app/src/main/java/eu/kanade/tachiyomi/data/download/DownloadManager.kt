@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.runBlocking
 import logcat.LogPriority
+import mihon.domain.reader.content.ReaderImageCandidatePolicy
+import mihon.domain.reader.content.ReaderImageSortMode
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.storage.extension
 import tachiyomi.core.common.util.lang.launchIO
@@ -161,13 +163,24 @@ class DownloadManager(
     fun buildPageList(source: Source, manga: Manga, chapter: Chapter): List<Page> {
         val chapterDir = provider.findChapterDir(chapter.name, chapter.scanlator, chapter.url, manga.title, source)
         val files = chapterDir?.listFiles().orEmpty()
-            .filter { it.isFile && ImageUtil.isImage(it.name) { it.openInputStream() } }
+            .filter {
+                val name = it.name ?: return@filter false
+                it.isFile && ReaderImageCandidatePolicy.accepts(name) {
+                    ImageUtil.findImageType { it.openInputStream() } != null
+                }
+            }
 
         if (files.isEmpty()) {
             throw Exception(context.stringResource(MR.strings.page_list_empty_error))
         }
 
-        return files.sortedBy { it.name }
+        return files.sortedWith { first, second ->
+            ReaderImageCandidatePolicy.compare(
+                ReaderImageSortMode.DOWNLOAD_LEXICAL_CASE_SENSITIVE,
+                first.name.orEmpty(),
+                second.name.orEmpty(),
+            )
+        }
             .mapIndexed { i, file ->
                 Page(i, uri = file.uri).apply { status = Page.State.Ready }
             }

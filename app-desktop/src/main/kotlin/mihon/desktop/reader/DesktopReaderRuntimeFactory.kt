@@ -11,6 +11,8 @@ import kotlinx.coroutines.launch
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.ui.reader.ReaderScreenModel
+import mihon.domain.reader.content.DownloadArtifactLocator
+import mihon.domain.reader.content.DownloadArtifactProbe
 import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.observability.ReaderMonotonicClock
@@ -51,6 +53,9 @@ class DesktopReaderRuntimeFactory(
     private val progressTracker: ReaderProgressTracker,
     private val mangaRepository: MangaRepository?,
     private val encodedCacheDirectory: File,
+    private val downloadArtifactProbeFactory: (DesktopReaderChapterContext) -> DownloadArtifactProbe = { context ->
+        downloadProvider.currentDirectoryArtifactProbe(context.sourceId)
+    },
     private val readerIoProbe: ReaderIoProbe = ReaderIoProbe.None,
     private val readerMonotonicClock: ReaderMonotonicClock = ReaderMonotonicClock(System::nanoTime),
     private val readerIoGate: ReaderIoGate = ReaderIoGate.None,
@@ -82,7 +87,12 @@ class DesktopReaderRuntimeFactory(
             core = core,
             encodedPageStore = store,
             chapterContentPortFactory = DesktopReaderChapterContentPortFactory { context ->
-                DesktopReaderChapterContentPort(context, downloadProvider, sourceManager)
+                DesktopReaderChapterContentPort(
+                    context = context,
+                    downloadProvider = downloadProvider,
+                    sourceManager = sourceManager,
+                    downloadArtifactLocator = DownloadArtifactLocator(downloadArtifactProbeFactory(context)),
+                )
             },
             pageFetchPortFactory = DesktopReaderPageFetchPortFactory { context, descriptor ->
                 DesktopReaderPageFetchPort(context, descriptor, sourceManager, networkHelper, store)

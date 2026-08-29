@@ -13,6 +13,14 @@ import mihon.desktop.source.LocalPage
 import mihon.desktop.source.LocalSourceReader
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
+import mihon.domain.reader.content.DownloadArtifactKind
+import mihon.domain.reader.content.DownloadArtifactLocator
+import mihon.domain.reader.content.DownloadArtifactMatch
+import mihon.domain.reader.content.DownloadChapterIdentity
+import mihon.domain.reader.content.ReaderChapterContentResolver
+import mihon.domain.reader.content.ReaderChapterRoute
+import mihon.domain.reader.content.ReaderChapterRouteResolver
+import mihon.domain.reader.content.ReaderSourceContentKind
 import mihon.domain.reader.materialize.ReaderChapterContentPort
 import mihon.domain.reader.materialize.ReaderChapterContentRequest
 import mihon.domain.reader.materialize.ReaderPageFetchPort
@@ -28,24 +36,43 @@ class DesktopReaderChapterContentPort(
     private val context: DesktopReaderChapterContext,
     private val downloadProvider: DesktopDownloadProvider,
     private val sourceManager: SourceManager,
+    private val downloadArtifactLocator: DownloadArtifactLocator = DownloadArtifactLocator(
+        downloadProvider.currentDirectoryArtifactProbe(context.sourceId),
+    ),
+    private val routeResolver: ReaderChapterRouteResolver = ReaderChapterContentResolver,
 ) : ReaderChapterContentPort {
 
     override suspend fun loadChapterContent(request: ReaderChapterContentRequest): List<ReaderPageDescriptor> {
         require(request.chapterId.value == context.chapterId) { "Chapter context does not match the request" }
-        context.localChapterPath?.let { localPath ->
-            return localDescriptors(File(localPath))
+        val downloaded = context.downloadIdentity()
+            .takeIf { context.mangaTitle.isNotBlank() }
+            ?.let(downloadArtifactLocator::locate)
+        val localPath = context.localChapterPath?.let(::File)
+        val source = if (downloaded == null && localPath == null) findSource() else null
+        val sourceKind = when {
+            localPath?.isDirectory == true -> ReaderSourceContentKind.LOCAL_DIRECTORY
+            localPath != null && localPath.extension.equals("epub", ignoreCase = true) ->
+                ReaderSourceContentKind.LOCAL_EPUB
+            localPath != null -> ReaderSourceContentKind.LOCAL_ARCHIVE
+            source != null -> ReaderSourceContentKind.ONLINE
+            else -> ReaderSourceContentKind.MISSING_SOURCE
         }
 
-        if (context.mangaTitle.isNotBlank()) {
-            val downloaded = downloadProvider.getDownloadedPages(
-                sourceId = context.sourceId,
-                mangaTitle = context.mangaTitle,
-                chapterName = context.chapterTitle,
+        return when (routeResolver.resolve(downloaded != null, sourceKind)) {
+            ReaderChapterRoute.DOWNLOAD -> downloadDescriptors(checkNotNull(downloaded))
+            ReaderChapterRoute.LOCAL_DIRECTORY,
+            ReaderChapterRoute.LOCAL_ARCHIVE,
+            ReaderChapterRoute.LOCAL_EPUB,
+            -> localDescriptors(checkNotNull(localPath))
+            ReaderChapterRoute.ONLINE -> sourceDescriptors(checkNotNull(source))
+            ReaderChapterRoute.MISSING_SOURCE -> throw missingSourceError()
+            ReaderChapterRoute.UNSUPPORTED -> throw AppErrorException(
+                AppError.MalformedData(IllegalStateException("Unsupported reader source (id=${context.sourceId})")),
             )
-            if (downloaded.isNotEmpty()) return downloaded.mapIndexed(::readyFileDescriptor)
         }
+    }
 
-        val source = source()
+    private suspend fun sourceDescriptors(source: CatalogueSource): List<ReaderPageDescriptor> {
         val chapter = SChapter.create().apply {
             url = context.chapterUrl
             name = context.chapterTitle
@@ -61,6 +88,23 @@ class DesktopReaderChapterContentPort(
                 url = page.url,
                 imageUrl = page.imageUrl,
             )
+        }
+    }
+
+    private fun DesktopReaderChapterContext.downloadIdentity() = DownloadChapterIdentity(
+        sourceDisplayName = sourceDisplayName,
+        mangaTitle = mangaTitle,
+        chapterName = chapterTitle,
+        scanlator = scanlator,
+        chapterUrl = chapterUrl,
+        disallowNonAsciiFilenames = disallowNonAsciiFilenames,
+    )
+
+    private fun downloadDescriptors(match: DownloadArtifactMatch): List<ReaderPageDescriptor> {
+        val artifact = File(match.opaqueLocation)
+        return when (match.candidate.kind) {
+            DownloadArtifactKind.DIRECTORY -> downloadProvider.getDownloadedPages(artifact).mapIndexed(::readyFileDescriptor)
+            DownloadArtifactKind.CBZ -> localDescriptors(artifact)
         }
     }
 
@@ -89,10 +133,11 @@ class DesktopReaderChapterContentPort(
         initialLoadState = ReaderPageLoadState.Ready,
     )
 
-    private fun source(): CatalogueSource = sourceManager.getCatalogueSources().firstOrNull { it.id == context.sourceId }
-        ?: throw AppErrorException(
-            AppError.MalformedData(IllegalStateException("Source not found (id=${context.sourceId})")),
-        )
+    private fun findSource(): CatalogueSource? = sourceManager.getCatalogueSources().firstOrNull { it.id == context.sourceId }
+
+    private fun missingSourceError() = AppErrorException(
+        AppError.MalformedData(IllegalStateException("Source not found (id=${context.sourceId})")),
+    )
 }
 
 class DesktopReaderPageFetchPort(

@@ -12,4 +12,7 @@ data class DesktopReaderChapterContext(
     val wasRead: Boolean,
     val localChapterPath: String? = null,
     val mangaId: Long = 0L,
+    val scanlator: String? = null,
+    val sourceDisplayName: String = sourceId.toString(),
+    val disallowNonAsciiFilenames: Boolean = false,
 )

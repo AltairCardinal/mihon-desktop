@@ -319,6 +319,7 @@ data class DesktopReaderScreen(
         ),
         wasRead = target.isRead,
         mangaId = mangaId,
+        scanlator = target.scanlator,
     )
 
     internal fun initialContext() = DesktopReaderChapterContext(
@@ -333,6 +334,7 @@ data class DesktopReaderScreen(
         wasRead = chapters.getOrNull(currentChapterIndex)?.isRead ?: false,
         localChapterPath = localChapterPath,
         mangaId = mangaId,
+        scanlator = chapters.getOrNull(currentChapterIndex)?.scanlator,
     )
 
     private companion object {
