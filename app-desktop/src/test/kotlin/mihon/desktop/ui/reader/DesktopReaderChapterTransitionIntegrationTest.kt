@@ -15,6 +15,7 @@ import mihon.desktop.reader.DesktopReaderChapterContext
 import mihon.desktop.reader.DesktopReaderChapterContentPortFactory
 import mihon.desktop.reader.DesktopReaderEncodedPageStore
 import mihon.desktop.reader.DesktopReaderPageFetchPortFactory
+import mihon.desktop.reader.DesktopReaderPageContentOwner
 import mihon.desktop.reader.DesktopReaderProgressPort
 import mihon.desktop.reader.DesktopReaderRuntime
 import mihon.desktop.reader.DesktopReaderRuntimeFactory
@@ -29,6 +30,8 @@ import mihon.domain.reader.ReaderNavigationCommand
 import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.materialize.ReaderChapterContentPort
 import mihon.domain.reader.materialize.ReaderChapterMaterializeResult
+import mihon.domain.reader.observability.ReaderIoReporter
+import mihon.domain.reader.observability.ReaderMonotonicClock
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderPageDescriptor
@@ -232,9 +235,15 @@ class DesktopReaderChapterTransitionIntegrationTest {
             parentScope = this,
         )
         val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy)
+        val pageContentOwner = DesktopReaderPageContentOwner(
+            scope = this,
+            encodedPageReader = store::read,
+            ioReporter = ReaderIoReporter(clock = ReaderMonotonicClock(System::nanoTime)),
+        )
         val runtime = DesktopReaderRuntime(
             prefs = prefs,
             preloader = PagePreloader(encodedPageReader = { null }),
+            pageContentOwner = pageContentOwner,
             session = session,
             encodedPageStore = store,
             prefetchPreferenceJob = Job(),

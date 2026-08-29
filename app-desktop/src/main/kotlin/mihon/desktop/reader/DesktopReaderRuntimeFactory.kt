@@ -30,6 +30,7 @@ import java.util.UUID
 data class DesktopReaderRuntime(
     val prefs: ReaderPreferences,
     val preloader: PagePreloader,
+    val pageContentOwner: DesktopReaderPageContentOwner,
     val session: DesktopReaderSession,
     internal val encodedPageStore: DesktopReaderEncodedPageStore,
     private val prefetchPreferenceJob: Job,
@@ -40,6 +41,7 @@ data class DesktopReaderRuntime(
         prefetchPreferenceJob.cancel()
         preloader.clear()
         session.close()
+        pageContentOwner.close()
         contentAdapter.close()
     }
 }
@@ -73,6 +75,7 @@ class DesktopReaderRuntimeFactory(
     ): DesktopReaderRuntime {
         val ioReporter = ReaderIoReporter(readerIoProbe.bind(), readerMonotonicClock)
         val store = encodedPageStoreCoordinator.openSessionStore()
+        val pageContentOwner = DesktopReaderPageContentOwner(parentScope, store::read, ioReporter)
         val contentAdapter = DesktopReaderContentAdapter(
             contentOperationProbe = readerContentOperationProbe,
         )
@@ -135,10 +138,11 @@ class DesktopReaderRuntimeFactory(
         return DesktopReaderRuntime(
             prefs = prefs,
             preloader = PagePreloader(
-                encodedPageReader = store::read,
+                pageContentOwner = pageContentOwner,
                 windowSize = 3,
                 ioGate = readerIoGate,
             ),
+            pageContentOwner = pageContentOwner,
             session = session,
             pageIoObserver = ReaderPageIoObserver(ioReporter, session::onFirstPagePresented),
             encodedPageStore = store,

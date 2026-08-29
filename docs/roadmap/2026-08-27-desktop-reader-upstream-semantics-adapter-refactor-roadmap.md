@@ -312,7 +312,7 @@ Android Reader UI                 Desktop Reader presentation
   - [x] `RUA-03C1` production TTFF、1/180 页、路由适用门与隐性内容 I/O 门禁
   - [x] `RUA-03C2` journal 实体缺失与非协作页表 late-result 门禁
 - [ ] `RUA-04` 唯一内容读取/解码 pipeline 与三种 presentation cutover
-  - [ ] `RUA-04A` 唯一 open/materialize owner 与 single-flight
+  - [x] `RUA-04A` 唯一 open/materialize owner 与 single-flight
   - [ ] `RUA-04B` 唯一 decoder、decoded cache 与 transform consumers
   - [ ] `RUA-04C` Single/Dual/Webtoon presentation cutover
   - [ ] `RUA-04D` 动画/超大图/lifecycle 矩阵与 legacy owner 删除
@@ -565,6 +565,13 @@ Android Reader UI                 Desktop Reader presentation
 **focused 验证**：三 presentation × download directory/CBZ/online 的 open/decode matrix；动画、超大图、crop/split/filter、edge matcher、Retry、cancel/stale generation、内存预算。
 
 **预计**：父 RUA 总计约 5～8 工程日；这是最高风险切点，预算按 04A～04D 分别计算，且必须在 04D 全矩阵通过后才能删除 legacy renderer 分支。
+
+**`RUA-04A` 完成证据（2026-08-30）**：
+
+- shared `ReaderPageContentOpenCoordinator` 以 opaque content key 提供 single-flight 与引用计数 lease；Desktop production runtime 只创建一个 `DesktopReaderPageContentOwner`，`PagePreloader` 与可见页消费者共享同一次 `store::read` 打开。
+- 取消、close、非协作解码和 prompt-cancellation 均由显式 lease handoff 收口；只有外层消费者实际取得结果后才转移所有权，迟到或未认领内容会关闭且不能重新进入 active snapshot。
+- TDD 证据覆盖缺 API、重复 physical open、close race、非协作解码和 child 已完成但 outer 尚未恢复的取消窗口；最终 `.gradle-coordinator/rua04a-prompt-close.log` 完成 root Spotless、shared coordinator、PagePreloader、runtime/materialize、章节切换与 architecture guard，`BUILD SUCCESSFUL in 15m 13s`。
+- 独立审查先发现 2 个 P1 与 1 个 P2，第一次修复复审发现 1 个残余 prompt-cancellation P1；限定复审确认全部关闭，最终为 `PASS`。本批 9 个 product/test 文件共 `789+/35-`，超出行数估算来自同一 lease 生命周期及确定性竞态测试，未拆开不可独立验收的上下文；Desktop 正式构建仍只在 `RUA-07` 执行。
 
 ### `RUA-05` 原版相邻章默认语义与 Desktop opt-in decorator
 

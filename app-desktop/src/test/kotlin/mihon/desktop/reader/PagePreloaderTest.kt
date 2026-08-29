@@ -1,12 +1,24 @@
 package mihon.desktop.reader
 
+import androidx.compose.ui.graphics.ImageBitmap
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.withContext
+import mihon.domain.reader.PageDecodeRequest
+import mihon.domain.reader.PageDecodeResult
+import mihon.domain.reader.PageDecoder
+import mihon.domain.reader.observability.ReaderIoReporter
+import mihon.domain.reader.observability.ReaderMonotonicClock
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
 import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
 import mihon.domain.reader.session.EncodedPageRef
+import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderPageId
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
@@ -14,7 +26,11 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
+import kotlin.coroutines.CoroutineContext
 
 class PagePreloaderTest {
 
@@ -290,5 +306,112 @@ class PagePreloaderTest {
         assertNotNull(preloader.get(2))
         assertEquals(2, attempts[refs[1]])
         assertEquals(setOf(1, 2), preloader.cacheSnapshot().keys)
+    }
+
+    @Test
+    fun `clear during non cooperative decode releases the acquired content lease`() = runTest {
+        val decodeEntered = CountDownLatch(1)
+        val decodeReleased = CountDownLatch(1)
+        val bytes = makePngBytes(7)
+        val owner = DesktopReaderPageContentOwner(
+            scope = this,
+            encodedPageReader = { bytes },
+            ioReporter = ReaderIoReporter(clock = ReaderMonotonicClock(System::nanoTime)),
+        )
+        val pageId = ReaderPageId(ReaderChapterId(17L), sourcePageIndex = 0)
+        val preloader = PagePreloader(
+            pageContentOwner = owner,
+            windowSize = 0,
+            largeImagePixelThreshold = Long.MAX_VALUE,
+            pageDecoder = object : PageDecoder<ByteArray, ImageBitmap> {
+                override suspend fun decode(
+                    encoded: ByteArray,
+                    request: PageDecodeRequest,
+                ): PageDecodeResult<ImageBitmap> {
+                    decodeEntered.countDown()
+                    check(decodeReleased.await(5, TimeUnit.SECONDS))
+                    return SkiaPageDecoder().decode(encoded, request)
+                }
+            },
+        )
+        val preload = async {
+            preloader.preloadEncoded(
+                currentPage = 0,
+                encodedPageRefs = listOf(EncodedPageRef("opaque://cancelled-decode")),
+                pageIds = listOf(pageId),
+                sessionGeneration = 3L,
+            )
+        }
+        try {
+            assertTrue(withContext(Dispatchers.IO) { decodeEntered.await(5, TimeUnit.SECONDS) })
+            assertEquals(1, owner.snapshot().activeLeaseCounts.values.single())
+
+            preloader.clear()
+            decodeReleased.countDown()
+            preload.await()
+
+            assertTrue(owner.snapshot().activeLeaseCounts.isEmpty())
+        } finally {
+            decodeReleased.countDown()
+            preloader.clear()
+            owner.close()
+        }
+    }
+
+    @Test
+    fun `parent cancellation after decode completion releases an unclaimed content lease`() = runTest {
+        val decodeDispatcher = ManualCoroutineDispatcher()
+        val bytes = makePngBytes(8)
+        val owner = DesktopReaderPageContentOwner(
+            scope = this,
+            encodedPageReader = { bytes },
+            ioReporter = ReaderIoReporter(clock = ReaderMonotonicClock(System::nanoTime)),
+        )
+        val pageId = ReaderPageId(ReaderChapterId(18L), sourcePageIndex = 0)
+        val preloader = PagePreloader(
+            pageContentOwner = owner,
+            windowSize = 0,
+            decodeDispatcher = decodeDispatcher,
+        )
+        val preload = async {
+            preloader.preloadEncoded(
+                currentPage = 0,
+                encodedPageRefs = listOf(EncodedPageRef("opaque://completed-decode")),
+                pageIds = listOf(pageId),
+                sessionGeneration = 4L,
+            )
+        }
+        try {
+            runCurrent()
+            decodeDispatcher.runUntilIdle()
+            runCurrent()
+            decodeDispatcher.runUntilIdle()
+            assertEquals(1, owner.snapshot().activeLeaseCounts.values.single())
+
+            preload.cancel()
+            runCurrent()
+            preload.join()
+
+            assertTrue(owner.snapshot().activeLeaseCounts.isEmpty())
+        } finally {
+            preload.cancel()
+            preloader.clear()
+            owner.close()
+        }
+    }
+
+    private class ManualCoroutineDispatcher : CoroutineDispatcher() {
+        private val tasks = ConcurrentLinkedQueue<Runnable>()
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            tasks += block
+        }
+
+        fun runUntilIdle() {
+            while (true) {
+                val task = tasks.poll() ?: return
+                task.run()
+            }
+        }
     }
 }

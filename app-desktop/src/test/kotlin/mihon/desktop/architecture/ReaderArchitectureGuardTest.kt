@@ -44,6 +44,7 @@ class ReaderArchitectureGuardTest {
 
         val decodeAdapter = source("app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt")
         assertTrue("encodedPageReader" in decodeAdapter)
+        assertTrue("ReaderPageContentOpenRequest" in decodeAdapter)
         presentationIoMarkers.forEach { marker ->
             assertFalse(marker in decodeAdapter, "Decoded viewport adapter regained I/O dependency: $marker")
         }
@@ -58,9 +59,19 @@ class ReaderArchitectureGuardTest {
             "Desktop runtime must keep one decoded-only preloader owner",
         )
         assertTrue(
-            "preloader = PagePreloader( encodedPageReader = store::read, windowSize = 3, ioGate = readerIoGate, )" in
+            "val pageContentOwner = DesktopReaderPageContentOwner(parentScope, store::read, ioReporter)" in
                 runtimeFactory.replace(Regex("""\s+"""), " "),
-            "Desktop runtime preloader must read only from its session encoded store",
+            "Desktop runtime must bind its session store to one page-content owner",
+        )
+        assertTrue(
+            "preloader = PagePreloader( pageContentOwner = pageContentOwner, windowSize = 3, ioGate = readerIoGate, )" in
+                runtimeFactory.replace(Regex("""\s+"""), " "),
+            "Desktop runtime preloader must consume the shared page-content owner",
+        )
+        assertEquals(
+            1,
+            Regex("""\bstore::read\b""").findAll(runtimeFactory).count(),
+            "Desktop runtime must expose exactly one encoded-content open port",
         )
 
         assertSourceOwners("ReaderRequestScheduler(", schedulerOwners)
@@ -68,8 +79,9 @@ class ReaderArchitectureGuardTest {
         assertSourceOwners("ReaderProgressPolicy.reduce(", progressPolicyOwners)
         assertSourceOwners("ReaderChapterWindowReducer.reduce(", chapterWindowOwners)
         assertSourceOwners("ReaderSessionReducer.reduce(", sessionReducerOwners)
-        assertSourceOwners("PagePreloader(", preloaderOwners)
-        assertMarkerOccurrenceCount("PagePreloader(", expectedCount = 2)
+        assertSourceOwners("class PagePreloader", preloaderDeclarationOwners)
+        assertSourceOwners("PagePreloader(", preloaderConstructionOwners)
+        assertMarkerOccurrenceCount("PagePreloader(", expectedCount = 1)
         decisionDeclarationOwners.forEach { (declaration, expectedPaths) ->
             assertRegexOwners(declaration, expectedPaths)
         }
@@ -367,9 +379,12 @@ class ReaderArchitectureGuardTest {
             "app/src/main/java/eu/kanade/tachiyomi/ui/reader/model/ReaderChapter.kt",
         )
 
-        val preloaderOwners = setOf(
-            "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt",
+        val preloaderDeclarationOwners = setOf(
             "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt",
+        )
+
+        val preloaderConstructionOwners = setOf(
+            "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt",
         )
 
         val decisionDeclarationOwners = mapOf(

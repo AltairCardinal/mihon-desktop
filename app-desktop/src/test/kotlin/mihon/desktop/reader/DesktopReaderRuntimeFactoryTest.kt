@@ -5,6 +5,8 @@ import androidx.compose.ui.ImageComposeScene
 import eu.kanade.tachiyomi.network.NetworkHelper
 import io.mockk.coVerify
 import io.mockk.mockk
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -14,11 +16,17 @@ import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.ui.browse.localReaderScreen
 import mihon.desktop.ui.reader.ReaderLifecycleEffect
 import mihon.desktop.ui.reader.ReaderModeState
+import mihon.domain.reader.content.ReaderPageContentOpenRequest
+import mihon.domain.reader.observability.ReaderIoEvent
+import mihon.domain.reader.observability.ReaderIoEventType
+import mihon.domain.reader.observability.ReaderIoProbe
+import mihon.domain.reader.observability.ReaderMonotonicClock
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderPageId
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
+import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -339,8 +347,9 @@ class DesktopReaderRuntimeFactoryTest {
             val snapshot = runtime.session.state.value.snapshot
             runtime.pageIoObserver?.pagePresented(snapshot.activeChapter.pages.single().id, snapshot.generation)
             advanceUntilIdle()
+            val pageId = ReaderPageId(ReaderChapterId(81L), sourcePageIndex = 0)
             val ref = runtime.encodedPageStore.cacheRef(
-                ReaderPageId(ReaderChapterId(81L), sourcePageIndex = 0),
+                pageId,
                 discriminator = "factory-store-wiring",
             )
             val bytes = pngBytes()
@@ -349,9 +358,71 @@ class DesktopReaderRuntimeFactoryTest {
                 bytes.size.toLong()
             }
 
-            runtime.preloader.preloadEncoded(currentPage = 0, encodedPageRefs = listOf(ref))
+            runtime.preloader.preloadEncoded(
+                currentPage = 0,
+                encodedPageRefs = listOf(ref),
+                pageIds = listOf(pageId),
+                sessionGeneration = snapshot.generation,
+            )
 
             assertNotNull(runtime.preloader.get(0))
+        } finally {
+            runtime.close()
+        }
+    }
+
+    @Test
+    fun `production preloader and visible consumer share one content open lease`() = runTest {
+        val events = CopyOnWriteArrayList<ReaderIoEvent>()
+        val now = AtomicLong()
+        val factory = DesktopReaderRuntimeFactory(
+            prefs = ReaderPreferences(),
+            downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads-content-owner")),
+            sourceManager = mockk<SourceManager>(relaxed = true),
+            networkHelper = NetworkHelper(OkHttpClient()),
+            progressTracker = mockk<ReaderProgressTracker>(relaxed = true),
+            mangaRepository = null,
+            encodedCacheDirectory = tempDir.resolve("encoded-content-owner"),
+            readerIoProbe = ReaderIoProbe(events::add),
+            readerMonotonicClock = ReaderMonotonicClock(now::incrementAndGet),
+        )
+        val bytes = pngBytes()
+        val localDirectory = tempDir.resolve("content-owner-local").also { directory ->
+            directory.mkdirs()
+            directory.resolve("001.png").writeBytes(bytes)
+        }
+        val runtime = factory.createRuntime(localContext(83L, localDirectory), this)
+        try {
+            advanceUntilIdle()
+            val snapshot = runtime.session.state.value.snapshot
+            val page = snapshot.activeChapter.pages.single()
+            val ref = requireNotNull(page.encodedPageRef)
+            runtime.preloader.preloadEncoded(
+                currentPage = 0,
+                encodedPageRefs = listOf(ref),
+                pageIds = listOf(page.id),
+                observer = runtime.pageIoObserver,
+                sessionGeneration = snapshot.generation,
+            )
+
+            val visibleLease = requireNotNull(
+                runtime.pageContentOwner.acquire(
+                    ReaderPageContentOpenRequest(page.id, snapshot.generation, ref),
+                ),
+            )
+            try {
+                assertArrayEquals(bytes, visibleLease.content)
+                assertEquals(
+                    1,
+                    events.count { event ->
+                        event.type == ReaderIoEventType.OPEN_PAGE &&
+                            event.pageId == page.id &&
+                            event.generation == snapshot.generation
+                    },
+                )
+            } finally {
+                visibleLease.close()
+            }
         } finally {
             runtime.close()
         }

@@ -2,9 +2,11 @@ package mihon.desktop.reader
 
 import androidx.compose.ui.graphics.ImageBitmap
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.StateFlow
@@ -15,7 +17,11 @@ import mihon.domain.reader.PageCacheSnapshot
 import mihon.domain.reader.PageCacheWrite
 import mihon.domain.reader.PageDecodeRequest
 import mihon.domain.reader.PageDecodeResult
+import mihon.domain.reader.PageDecoder
 import mihon.domain.reader.PixelBounds
+import mihon.domain.reader.RegionDecoder
+import mihon.domain.reader.content.ReaderPageContentLease
+import mihon.domain.reader.content.ReaderPageContentOpenRequest
 import mihon.domain.reader.scheduler.ReaderRequestKey
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
 import mihon.domain.reader.scheduler.ReaderScheduledRequest
@@ -28,8 +34,8 @@ import mihon.domain.reader.session.ReaderPageId
  * Desktop adapter for the shared preload-window contract.
  * Late results are generation-checked, stale jobs are cancelled, and decoded pages obey a byte budget.
  */
-class PagePreloader(
-    private val encodedPageReader: suspend (ref: EncodedPageRef) -> ByteArray?,
+class PagePreloader private constructor(
+    private val contentSource: ContentSource,
     val windowSize: Int = 3,
     private val maxDecodedWidth: Int = 2048,
     private val maxDecodedHeight: Int = 2048,
@@ -43,22 +49,130 @@ class PagePreloader(
         ),
     ),
     private val ioGate: ReaderIoGate = ReaderIoGate.None,
+    private val pageDecoder: PageDecoder<ByteArray, ImageBitmap> = SkiaPageDecoder(),
+    private val regionDecoder: RegionDecoder<ByteArray, ImageBitmap> = SkiaRegionPageDecoder(),
+    private val decodeDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
+    constructor(
+        encodedPageReader: suspend (ref: EncodedPageRef) -> ByteArray?,
+        windowSize: Int = 3,
+        maxDecodedWidth: Int = 2048,
+        maxDecodedHeight: Int = 2048,
+        maxCacheBytes: Long = DEFAULT_CACHE_BYTES,
+        largeImagePixelThreshold: Long = DEFAULT_LARGE_IMAGE_PIXELS,
+        requestScheduler: ReaderRequestScheduler = ReaderRequestScheduler(
+            ReaderSchedulerPolicy(
+                nearbyForward = windowSize,
+                nearbyBackward = windowSize,
+                maxConcurrentRequests = DEFAULT_CONCURRENT_REQUESTS,
+            ),
+        ),
+        ioGate: ReaderIoGate = ReaderIoGate.None,
+        pageDecoder: PageDecoder<ByteArray, ImageBitmap> = SkiaPageDecoder(),
+        regionDecoder: RegionDecoder<ByteArray, ImageBitmap> = SkiaRegionPageDecoder(),
+        decodeDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    ) : this(
+        contentSource = ContentSource.Legacy(encodedPageReader),
+        windowSize = windowSize,
+        maxDecodedWidth = maxDecodedWidth,
+        maxDecodedHeight = maxDecodedHeight,
+        maxCacheBytes = maxCacheBytes,
+        largeImagePixelThreshold = largeImagePixelThreshold,
+        requestScheduler = requestScheduler,
+        ioGate = ioGate,
+        pageDecoder = pageDecoder,
+        regionDecoder = regionDecoder,
+        decodeDispatcher = decodeDispatcher,
+    )
+
+    internal constructor(
+        pageContentOwner: DesktopReaderPageContentOwner,
+        windowSize: Int = 3,
+        maxDecodedWidth: Int = 2048,
+        maxDecodedHeight: Int = 2048,
+        maxCacheBytes: Long = DEFAULT_CACHE_BYTES,
+        largeImagePixelThreshold: Long = DEFAULT_LARGE_IMAGE_PIXELS,
+        requestScheduler: ReaderRequestScheduler = ReaderRequestScheduler(
+            ReaderSchedulerPolicy(
+                nearbyForward = windowSize,
+                nearbyBackward = windowSize,
+                maxConcurrentRequests = DEFAULT_CONCURRENT_REQUESTS,
+            ),
+        ),
+        ioGate: ReaderIoGate = ReaderIoGate.None,
+        pageDecoder: PageDecoder<ByteArray, ImageBitmap> = SkiaPageDecoder(),
+        regionDecoder: RegionDecoder<ByteArray, ImageBitmap> = SkiaRegionPageDecoder(),
+        decodeDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    ) : this(
+        contentSource = ContentSource.Owned(pageContentOwner),
+        windowSize = windowSize,
+        maxDecodedWidth = maxDecodedWidth,
+        maxDecodedHeight = maxDecodedHeight,
+        maxCacheBytes = maxCacheBytes,
+        largeImagePixelThreshold = largeImagePixelThreshold,
+        requestScheduler = requestScheduler,
+        ioGate = ioGate,
+        pageDecoder = pageDecoder,
+        regionDecoder = regionDecoder,
+        decodeDispatcher = decodeDispatcher,
+    )
+
+    private sealed interface ContentSource {
+        class Legacy(val reader: suspend (EncodedPageRef) -> ByteArray?) : ContentSource
+        class Owned(val owner: DesktopReaderPageContentOwner) : ContentSource
+    }
+
     private data class Decoded(
         val index: Int,
         val result: PageDecodeResult<ImageBitmap>,
         val sourceWidth: Int,
         val sourceHeight: Int,
+        val contentLease: ReaderPageContentLease<ByteArray>?,
+        val contentLeaseHandoff: ContentLeaseHandoff,
     )
+
+    private class ContentLeaseHandoff {
+        private val lock = Any()
+        private var contentLease: ReaderPageContentLease<ByteArray>? = null
+        private var claimed = false
+
+        fun attach(lease: ReaderPageContentLease<ByteArray>) {
+            val releaseImmediately = synchronized(lock) {
+                if (claimed) {
+                    true
+                } else {
+                    check(contentLease == null) { "Content lease is already attached" }
+                    contentLease = lease
+                    false
+                }
+            }
+            if (releaseImmediately) lease.close()
+        }
+
+        fun claim() = synchronized(lock) {
+            claimed = true
+        }
+
+        fun closeIfUnclaimed() {
+            val lease = synchronized(lock) {
+                if (claimed) {
+                    null
+                } else {
+                    claimed = true
+                    contentLease
+                }
+            }
+            lease?.close()
+        }
+    }
 
     private data class SourceSize(val width: Int, val height: Int)
 
     private val lock = Any()
     private val cache = DesktopPageCache(maxCacheBytes)
-    private val pageDecoder = SkiaPageDecoder()
-    private val regionDecoder = SkiaRegionPageDecoder()
     private val activeJobs = mutableMapOf<ReaderRequestKey, Deferred<Decoded?>>()
     private val sourceSizes = mutableMapOf<Int, SourceSize>()
+    private val contentLeases = mutableMapOf<Int, ReaderPageContentLease<ByteArray>>()
 
     val cacheRevision: StateFlow<Long> = cache.revision
     val cacheGeneration: StateFlow<Long> = cacheRevision
@@ -84,11 +198,13 @@ class PagePreloader(
         sessionGeneration: Long?,
     ) = supervisorScope {
         require(pageIds == null || pageIds.size == sources.size) { "pageIds must match sources" }
+        val preloadJob = currentCoroutineContext()[Job]
         val plan = synchronized(lock) {
             requestScheduler.moveTo(SCHEDULER_CHAPTER_ID, currentPage, sources.size).also {
                 it.cancelRequests.forEach { jobKey -> activeJobs.remove(jobKey)?.cancel() }
                 check(cache.beginGeneration(it.generation, it.evictPageIndices))
                 sourceSizes.keys.retainAll(cache.snapshot().keys)
+                releaseContentLeasesExcept(cache.snapshot().keys)
             }
         }
         while (true) {
@@ -104,13 +220,18 @@ class PagePreloader(
                                 requestScheduler.complete(request.jobKey)
                                 continue
                             }
-                            val job = async(Dispatchers.IO, start = CoroutineStart.LAZY) {
+                            val contentLeaseHandoff = ContentLeaseHandoff()
+                            preloadJob?.invokeOnCompletion { cause ->
+                                if (cause != null) contentLeaseHandoff.closeIfUnclaimed()
+                            }
+                            val job = async(decodeDispatcher, start = CoroutineStart.LAZY) {
                                 decodePage(
                                     request,
                                     sources[index],
                                     pageIds?.get(index),
                                     observer,
                                     sessionGeneration,
+                                    contentLeaseHandoff,
                                 )
                             }
                             activeJobs[request.jobKey] = job
@@ -125,7 +246,7 @@ class PagePreloader(
             try {
                 jobs.forEach { (request, job) ->
                     val decoded = try {
-                        job.await()
+                        job.await()?.also { it.contentLeaseHandoff.claim() }
                     } catch (error: CancellationException) {
                         if (!currentCoroutineContext().isActive) throw error
                         null
@@ -134,6 +255,8 @@ class PagePreloader(
                         synchronized(lock) {
                             if (requestScheduler.accepts(request.jobKey) && decoded.index in plan.keepPageIndices) {
                                 commitDecodedPage(decoded)
+                            } else {
+                                decoded.contentLease?.close()
                             }
                         }
                     }
@@ -174,6 +297,7 @@ class PagePreloader(
             check(cache.beginGeneration(plan.generation, plan.evictPageIndices))
             cache.clear()
             sourceSizes.clear()
+            releaseContentLeasesExcept(emptySet())
         }
     }
 
@@ -187,29 +311,75 @@ class PagePreloader(
         pageId: ReaderPageId?,
         observer: ReaderPageIoObserver?,
         sessionGeneration: Long?,
+        contentLeaseHandoff: ContentLeaseHandoff,
     ): Decoded? {
         val observedGeneration = sessionGeneration ?: request.generation
         request.gatePoint(isAdjacentPrefetch = false)?.let { ioGate.await(it) }
-        val bytes = source?.let {
-            pageId?.let { observer?.pageOpened(it, observedGeneration) }
-            encodedPageReader(it)
-        } ?: return null
-        val size = SkiaImageDecoder.peekSize(bytes) ?: return null
-        val decodeRequest = PageDecodeRequest(
-            pageIndex = request.pageIndex,
-            generation = request.generation,
-            maxWidth = maxDecodedWidth,
-            maxHeight = maxDecodedHeight,
-            region = PixelBounds(0, 0, size.first, size.second),
-        )
-        val pixelCount = size.first.toLong() * size.second
-        val result = if (pixelCount > largeImagePixelThreshold) {
-            regionDecoder.decodeRegion(bytes, decodeRequest)
-        } else {
-            pageDecoder.decode(bytes, decodeRequest.copy(region = null))
+        val opened = openContent(source, pageId, observer, observedGeneration, contentLeaseHandoff) ?: return null
+        try {
+            val size = SkiaImageDecoder.peekSize(opened.bytes)
+            if (size == null) {
+                opened.lease?.close()
+                return null
+            }
+            val decodeRequest = PageDecodeRequest(
+                pageIndex = request.pageIndex,
+                generation = request.generation,
+                maxWidth = maxDecodedWidth,
+                maxHeight = maxDecodedHeight,
+                region = PixelBounds(0, 0, size.first, size.second),
+            )
+            val pixelCount = size.first.toLong() * size.second
+            val result = if (pixelCount > largeImagePixelThreshold) {
+                regionDecoder.decodeRegion(opened.bytes, decodeRequest)
+            } else {
+                pageDecoder.decode(opened.bytes, decodeRequest.copy(region = null))
+            }
+            pageId?.let { observer?.pageDecoded(it, observedGeneration) }
+            return Decoded(
+                request.pageIndex,
+                result,
+                size.first,
+                size.second,
+                opened.lease,
+                contentLeaseHandoff,
+            )
+        } catch (error: Throwable) {
+            opened.lease?.close()
+            throw error
         }
-        pageId?.let { observer?.pageDecoded(it, observedGeneration) }
-        return Decoded(request.pageIndex, result, size.first, size.second)
+    }
+
+    private data class OpenedContent(
+        val bytes: ByteArray,
+        val lease: ReaderPageContentLease<ByteArray>?,
+    )
+
+    private suspend fun openContent(
+        source: EncodedPageRef?,
+        pageId: ReaderPageId?,
+        observer: ReaderPageIoObserver?,
+        generation: Long,
+        contentLeaseHandoff: ContentLeaseHandoff,
+    ): OpenedContent? {
+        source ?: return null
+        return when (val sourceOwner = contentSource) {
+            is ContentSource.Legacy -> {
+                pageId?.let { observer?.pageOpened(it, generation) }
+                sourceOwner.reader(source)?.let { OpenedContent(it, null) }
+            }
+            is ContentSource.Owned -> {
+                val resolvedPageId = requireNotNull(pageId) { "Owned page content requires a stable page id" }
+                val lease = sourceOwner.owner.acquire(
+                    ReaderPageContentOpenRequest(resolvedPageId, generation, source),
+                ) ?: return null
+                contentLeaseHandoff.attach(lease)
+                currentCoroutineContext()[Job]?.invokeOnCompletion { cause ->
+                    if (cause != null) contentLeaseHandoff.closeIfUnclaimed()
+                }
+                OpenedContent(lease.content, lease)
+            }
+        }
     }
 
     private fun commitDecodedPage(decoded: Decoded) {
@@ -225,11 +395,20 @@ class PagePreloader(
                 )
                 if (commitResult == PageCacheCommitResult.STORED) {
                     sourceSizes[decoded.index] = SourceSize(decoded.sourceWidth, decoded.sourceHeight)
+                    decoded.contentLease?.let { lease -> contentLeases.put(decoded.index, lease)?.close() }
+                } else {
+                    decoded.contentLease?.close()
                 }
                 sourceSizes.keys.retainAll(cache.snapshot().keys)
+                releaseContentLeasesExcept(cache.snapshot().keys)
             }
-            is PageDecodeResult.Failure -> Unit
+            is PageDecodeResult.Failure -> decoded.contentLease?.close()
         }
+    }
+
+    private fun releaseContentLeasesExcept(retainedPageIndices: Set<Int>) {
+        val evicted = contentLeases.keys - retainedPageIndices
+        evicted.forEach { pageIndex -> contentLeases.remove(pageIndex)?.close() }
     }
 
     companion object {
