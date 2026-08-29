@@ -11,12 +11,15 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.extension.ExtensionClassLoader
@@ -28,6 +31,10 @@ import mihon.domain.reader.materialize.ReaderChapterMaterializeResult
 import mihon.domain.reader.materialize.ReaderPageFetchRequest
 import mihon.domain.reader.materialize.ReaderPageMaterializeEvent
 import mihon.domain.reader.materialize.ReaderPageMaterializeResult
+import mihon.domain.reader.observability.ReaderIoEvent
+import mihon.domain.reader.observability.ReaderIoEventType
+import mihon.domain.reader.observability.ReaderIoProbe
+import mihon.domain.reader.observability.ReaderMonotonicClock
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
@@ -52,6 +59,7 @@ import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
 import java.util.zip.ZipEntry
@@ -100,6 +108,56 @@ class DesktopReaderMaterializePortsIntegrationTest {
         assertInstanceOf(IllegalStateException::class.java, failure)
         assertFalse(destination.exists())
         assertFalse(store.contains(ref))
+    }
+
+    @Test
+    fun `recorded cache hit with a missing entity refetches through the production port`() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            val bytes = pngBytes(Color.CYAN)
+            server.enqueue(MockResponse.Builder().body(Buffer().write(bytes)).build())
+            val source = PageSource(emptyList(), OkHttpClient())
+            val sourceManager = FakeDesktopSourceManager(listOf(source))
+            val store = DesktopReaderEncodedPageStore(
+                tempDir.resolve("encoded-missing-entity"),
+                maxBytes = 1_000_000L,
+            )
+            store.beginSession(emptySet())
+            val request = ReaderPageFetchRequest(
+                pageId = ReaderPageId(ReaderChapterId(1L), 0),
+                generation = 1L,
+                url = "/page/0",
+                imageUrl = server.url("/page-0.png").toString(),
+            )
+            val staleRef = store.cacheRef(request.pageId, requireNotNull(request.imageUrl))
+            store.store(staleRef) {
+                store.destinationFile(staleRef).writeBytes(byteArrayOf(1, 2, 3))
+                3L
+            }
+            assertTrue(store.contains(staleRef), "The store index must first observe the cached entity")
+            assertTrue(store.destinationFile(staleRef).delete(), "The fixture must remove only the cached entity")
+
+            val result = CanonicalReaderMaterializeExecutor.materializePage(
+                request = request,
+                port = DesktopReaderPageFetchPort(
+                    context = context(),
+                    descriptor = mihon.domain.reader.session.ReaderPageDescriptor(
+                        sourcePageIndex = 0,
+                        url = request.url,
+                        imageUrl = request.imageUrl,
+                    ),
+                    sourceManager = sourceManager,
+                    networkHelper = NetworkHelper(source.httpClient),
+                    encodedPageStore = store,
+                ),
+                publish = { true },
+            )
+
+            val ready = assertInstanceOf(ReaderPageMaterializeResult.Ready::class.java, result)
+            assertEquals(staleRef, ready.encodedPageRef)
+            assertArrayEquals(bytes, store.read(staleRef))
+            assertEquals(1, server.requestCount)
+        }
     }
 
     @Test
@@ -364,6 +422,74 @@ class DesktopReaderMaterializePortsIntegrationTest {
             assertTrue(runtime.contentAdapter.hasArchiveLease(32L))
             assertTrue(first.delete(), "Chapter release must close the previous archive before reader exit")
         } finally {
+            runtime.close()
+        }
+    }
+
+    @Test
+    fun `production page list rejects late switch and close results`() = runTest {
+        val oldEntered = CompletableDeferred<Unit>()
+        val releaseOld = CompletableDeferred<Unit>()
+        val oldReturned = CompletableDeferred<Unit>()
+        val closingEntered = CompletableDeferred<Unit>()
+        val releaseClosing = CompletableDeferred<Unit>()
+        val closingReturned = CompletableDeferred<Unit>()
+        val events = CopyOnWriteArrayList<ReaderIoEvent>()
+        val source = GatedPageListSource(
+            gates = mapOf(
+                "/chapter/1" to PageListGate(oldEntered, releaseOld, oldReturned),
+                "/chapter/3" to PageListGate(closingEntered, releaseClosing, closingReturned),
+            ),
+        )
+        val factory = DesktopReaderRuntimeFactory(
+            prefs = ReaderPreferences(),
+            downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads-late-page-list")),
+            sourceManager = FakeDesktopSourceManager(listOf(source)),
+            networkHelper = NetworkHelper(OkHttpClient()),
+            progressTracker = mockk<ReaderProgressTracker>(relaxed = true),
+            mangaRepository = null,
+            encodedCacheDirectory = tempDir.resolve("encoded-late-page-list"),
+            readerIoProbe = ReaderIoProbe(events::add),
+            readerMonotonicClock = ReaderMonotonicClock { events.size.toLong() },
+        )
+        val runtime = factory.createRuntime(context(chapterId = 1L), this)
+        try {
+            oldEntered.await()
+            runtime.session.activate(context(chapterId = 2L))
+            withTimeout(5_000) {
+                while (
+                    events.none {
+                        it.type == ReaderIoEventType.PAGE_LIST_READY && it.chapterId == ReaderChapterId(2L)
+                    }
+                ) {
+                    runCurrent()
+                }
+            }
+
+            releaseOld.complete(Unit)
+            oldReturned.await()
+            runCurrent()
+            assertTrue(
+                events.none {
+                    it.type == ReaderIoEventType.PAGE_LIST_READY && it.chapterId == ReaderChapterId(1L)
+                },
+            )
+            assertEquals(ReaderChapterId(2L), runtime.session.state.value.snapshot.activeChapter.id)
+
+            runtime.session.activate(context(chapterId = 3L))
+            closingEntered.await()
+            runtime.close()
+            releaseClosing.complete(Unit)
+            closingReturned.await()
+            runCurrent()
+            assertTrue(
+                events.none {
+                    it.type == ReaderIoEventType.PAGE_LIST_READY && it.chapterId == ReaderChapterId(3L)
+                },
+            )
+        } finally {
+            releaseOld.complete(Unit)
+            releaseClosing.complete(Unit)
             runtime.close()
         }
     }
@@ -739,6 +865,38 @@ class DesktopReaderMaterializePortsIntegrationTest {
         suspend fun getImageUrl(page: Page): String = page.imageUrl.orEmpty()
 
         override suspend fun getPageList(chapter: SChapter): List<Page> = pages
+        override suspend fun getMangaDetails(manga: SManga): SManga = manga
+        override suspend fun getChapterList(manga: SManga): List<SChapter> = emptyList()
+        override suspend fun getPopularManga(page: Int): MangasPage = MangasPage(emptyList(), false)
+        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage =
+            MangasPage(emptyList(), false)
+        override suspend fun getLatestUpdates(page: Int): MangasPage = MangasPage(emptyList(), false)
+        override fun getFilterList(): FilterList = FilterList()
+    }
+
+    private data class PageListGate(
+        val entered: CompletableDeferred<Unit>,
+        val released: CompletableDeferred<Unit>,
+        val returned: CompletableDeferred<Unit>,
+    )
+
+    private class GatedPageListSource(
+        private val gates: Map<String, PageListGate>,
+    ) : CatalogueSource {
+        override val id = 42L
+        override val name = "gated-page-list"
+        override val lang = "en"
+        override val supportsLatest = false
+
+        override suspend fun getPageList(chapter: SChapter): List<Page> {
+            gates[chapter.url]?.let { gate ->
+                gate.entered.complete(Unit)
+                withContext(NonCancellable) { gate.released.await() }
+                gate.returned.complete(Unit)
+            }
+            return listOf(Page(0, url = "${chapter.url}/page-0"))
+        }
+
         override suspend fun getMangaDetails(manga: SManga): SManga = manga
         override suspend fun getChapterList(manga: SManga): List<SChapter> = emptyList()
         override suspend fun getPopularManga(page: Int): MangasPage = MangasPage(emptyList(), false)

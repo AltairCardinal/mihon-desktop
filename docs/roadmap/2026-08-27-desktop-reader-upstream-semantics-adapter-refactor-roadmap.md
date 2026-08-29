@@ -306,11 +306,11 @@ Android Reader UI                 Desktop Reader presentation
   - [x] `RUA-02D` production Reader/DI 接线、离线打开与 DownloadIndex gate
     - [x] `RUA-02D1` Reader adapter/runtime/session 接线与 generation-aware lease
     - [x] `RUA-02D2` 原子 download identity、production DI 与 consumer 行为接线
-- [ ] `RUA-03` 首帧 critical path 与 shared runtime owner 收口
+- [x] `RUA-03` 首帧 critical path 与 shared runtime owner 收口
   - [x] `RUA-03A` session/store 启动关键路径瘦身
   - [x] `RUA-03B` shared runner、优先级、取消与 generation
   - [x] `RUA-03C1` production TTFF、1/180 页、路由适用门与隐性内容 I/O 门禁
-  - [ ] `RUA-03C2` journal 实体缺失与非协作页表 late-result 门禁
+  - [x] `RUA-03C2` journal 实体缺失与非协作页表 late-result 门禁
 - [ ] `RUA-04` 唯一内容读取/解码 pipeline 与三种 presentation cutover
   - [ ] `RUA-04A` 唯一 open/materialize owner 与 single-flight
   - [ ] `RUA-04B` 唯一 decoder、decoded cache 与 transform consumers
@@ -525,6 +525,13 @@ Android Reader UI                 Desktop Reader presentation
 - fixture 在不释放 gate 的前提下证明各路由可达门已真实进入：所有路由进入首帧后 cache scan，180 页 queued 路由进入 non-current page，首帧页表已全部 Ready 的 directory 路由进入 adjacent I/O。CBZ/online 在 non-current work 未完成前不会错误地被要求进入 adjacent gate。
 - 严格 TDD 与审查修复证据：初始 `.gradle-coordinator/rua03c-red.log` 暴露 presentation 仍有双 decode，该 exact-one 缺口按边界移交 `RUA-04`；C1 只要求至少一次当前页 decode。`rua03c1-close2.log` 完成 root Spotless 与 production 矩阵；独立审查指出 disabled probe 会提前求值 native identity 后，`rua03c1-probe-red.log` 因 lazy contract 缺失正确失败，最终 `rua03c1-probe-close.log` 为 `BUILD SUCCESSFUL in 16m 18s`，103 个 task 中 13 个执行、90 个命中缓存。
 - 有界复审结论为 `PASS`，P0/P1/P2 均为零；复审冻结范围为 6 个 production/test/roadmap 文件、29,635 原始字节，SHA-256 为 `f720b01b42f41eaeea78c5457d96aeeb82ea32c3c9227e112901dd03157a417d`。本批没有改动 decoder 或 presentation owner；exact-one decode、decoded cache 与三种 presentation cutover 仍由 `RUA-04` 验证。未运行 Desktop 发布构建，正式构建仍只在 `RUA-07` 执行。
+
+**RUA-03C2 完成证据（2026-08-30）**：
+
+- production store 测试先通过真实 `store/contains` 建立并观察 journal 记录，再只删除实体文件；随后经 `CanonicalReaderMaterializeExecutor → DesktopReaderPageFetchPort` 触发一次 MockWebServer 请求，以相同 ref 和最终 bytes 证明“索引命中、实体缺失”会安全回落到 refetch，不能把 stale journal 当作可读缓存。
+- production runtime 测试让旧章节页表 I/O 在 `NonCancellable` 中跨过取消屏障：切章后旧 chapter 1 的迟到结果不能发布 `PAGE_LIST_READY`，也不能覆盖已 Ready 的 chapter 2；close 后 chapter 3 的迟到结果同样不能发布。关键等待均有界，所有 deferred 在 `finally` 放行，runtime close 幂等，没有协程或句柄泄漏。
+- 本批是单文件纯证据增量，没有修改 product behavior，因此复用已覆盖当前未变 diff 的验证：`.gradle-coordinator/rua03c-green.log` 精确运行两条新增测试并 `BUILD SUCCESSFUL in 2m 14s`；`rua03c-close.log` 运行完整 MaterializePorts、session/runtime/wiring/architecture 与 root Spotless，`BUILD SUCCESSFUL in 6m 3s`。
+- 独立只读审查结论为 `PASS`，P0/P1/P2 均为零；冻结测试 diff 为 `158+/0-`、9,740 原始字节，SHA-256 为 `a66ce877cf47e231947be51fa88f9272fce9f7da0a23bce9b8e78b37090bcd23`。本批未运行 Desktop 发布构建，正式构建仍只在 `RUA-07` 执行。
 
 ### `RUA-04` 唯一内容读取/解码 pipeline 与三种 presentation cutover
 
