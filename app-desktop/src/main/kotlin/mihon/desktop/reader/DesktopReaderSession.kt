@@ -420,6 +420,8 @@ class DesktopReaderSession(
         scope.launch {
             if (!ensureStoreWritable()) return@launch
             ioGate.await(ReaderIoGatePoint.CACHE_SCAN)
+            val canReconcile = synchronized(lock) { !closed && storeStarted }
+            if (!canReconcile) return@launch
             ioReporter.report(
                 ReaderIoEventType.CACHE_RECONCILE,
                 pageId.chapterId,

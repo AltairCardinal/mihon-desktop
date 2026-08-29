@@ -31,6 +31,7 @@ data class DesktopReaderRuntime(
     val prefs: ReaderPreferences,
     val preloader: PagePreloader,
     val pageImagePipeline: DesktopReaderPageImagePipeline,
+    val presentationImageOwner: DesktopReaderPresentationImageOwner,
     val pageContentOwner: DesktopReaderPageContentOwner,
     val session: DesktopReaderSession,
     internal val encodedPageStore: DesktopReaderEncodedPageStore,
@@ -40,6 +41,7 @@ data class DesktopReaderRuntime(
 ) : AutoCloseable {
     override fun close() {
         prefetchPreferenceJob.cancel()
+        presentationImageOwner.close()
         preloader.close()
         pageImagePipeline.close()
         session.close()
@@ -142,6 +144,12 @@ class DesktopReaderRuntimeFactory(
         val prefetchPreferenceJob = parentScope.launch {
             prefs.nextChapterPrefetchPreference.changes().collect(session::setNextChapterPrefetchMode)
         }
+        val pageIoObserver = ReaderPageIoObserver(ioReporter, session::onFirstPagePresented)
+        val presentationImageOwner = DesktopReaderPresentationImageOwner(
+            scope = parentScope,
+            pageImagePipeline = pageImagePipeline,
+            pageIoObserver = pageIoObserver,
+        )
         return DesktopReaderRuntime(
             prefs = prefs,
             preloader = PagePreloader(
@@ -149,9 +157,10 @@ class DesktopReaderRuntimeFactory(
                 windowSize = 3,
             ),
             pageImagePipeline = pageImagePipeline,
+            presentationImageOwner = presentationImageOwner,
             pageContentOwner = pageContentOwner,
             session = session,
-            pageIoObserver = ReaderPageIoObserver(ioReporter, session::onFirstPagePresented),
+            pageIoObserver = pageIoObserver,
             encodedPageStore = store,
             contentAdapter = contentAdapter,
             prefetchPreferenceJob = prefetchPreferenceJob,

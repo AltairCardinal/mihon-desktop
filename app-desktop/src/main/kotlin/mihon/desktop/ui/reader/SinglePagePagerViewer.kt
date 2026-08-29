@@ -28,10 +28,9 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import mihon.desktop.reader.PagePreloader
+import mihon.desktop.reader.DesktopReaderPresentationImageOwner
 import mihon.desktop.reader.ReaderKeyboardAction
 import mihon.desktop.reader.ReaderPageAction
-import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.ui.reader.presentation.DisplaySlot
@@ -63,7 +62,7 @@ internal fun SinglePagePagerViewer(
     chapterTitle: String = "",
     scaleType: ScaleType = ScaleType.FIT_SCREEN,
     navigationMode: NavigationMode = NavigationMode.RightAndLeft,
-    preloader: PagePreloader? = null,
+    presentationImageOwner: DesktopReaderPresentationImageOwner,
     onVisiblePagesChanged: (VisiblePageSet) -> Unit,
     onZoomChange: (ZoomState) -> Unit,
     onRetryPage: (ReaderPageId) -> Unit,
@@ -71,7 +70,6 @@ internal fun SinglePagePagerViewer(
     onTapCenter: (() -> Unit)? = null,
     onPrevChapter: (() -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
-    ioObserver: ReaderPageIoObserver? = null,
     generation: Long = 0L,
 ) {
     val displayUnits = presentation.displayUnits
@@ -128,19 +126,23 @@ internal fun SinglePagePagerViewer(
             onRetry = onRetryPage,
         ) { readySlot ->
             val readyPage = requireNotNull(readySlot.page)
+            val presentationImage = rememberReaderPresentationImage(
+                owner = presentationImageOwner,
+                page = readyPage,
+                generation = generation,
+                splitHalf = readySlot.splitHalf,
+                sourceBounds = readySlot.sourceBounds,
+            )
             ZoomablePageBox(
-                url = readyPage.encodedContentUri(),
+                presentationImage = presentationImage,
                 pageLabel = MR.strings.desktop_ui_page_number.localized(Locale.getDefault(), page.id.sourcePageIndex + 1),
                 zoomState = zoomState,
                 onZoomChange = onZoomChange,
                 cropBorders = cropBorders,
-                splitHalf = readySlot.splitHalf,
-                sourceBounds = readySlot.sourceBounds,
                 contextMenuScope = contextMenuScope,
                 mangaTitle = mangaTitle,
                 chapterTitle = chapterTitle,
                 pageIndex = page.id.sourcePageIndex,
-                preloader = preloader,
                 onSpreadDetected = if (readySlot.splitHalf == null && onSpreadDetected != null) {
                     { onSpreadDetected(page.id.sourcePageIndex) }
                 } else {
@@ -152,9 +154,6 @@ internal fun SinglePagePagerViewer(
                 onTapPrevious = { executeTapCommand(ReaderNavigationCommand.Previous) },
                 onTapNext = { executeTapCommand(ReaderNavigationCommand.Next) },
                 onTapCenter = onTapCenter,
-                pageId = page.id,
-                generation = generation,
-                ioObserver = ioObserver,
             )
         }
     }

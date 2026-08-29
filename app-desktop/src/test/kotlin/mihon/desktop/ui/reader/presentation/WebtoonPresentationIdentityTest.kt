@@ -94,6 +94,7 @@ class WebtoonPresentationIdentityTest {
     @Test
     fun `production webtoon selector mounts registry display units with stable lazy identities`() = runTest {
         val scene = ImageComposeScene(640, 480, coroutineContext = currentCoroutineContext()) {}
+        val imageOwner = PresentationImageOwnerFixture(this)
         try {
             scene.setContent {
                 MaterialTheme {
@@ -107,6 +108,7 @@ class WebtoonPresentationIdentityTest {
                         currentPage = 0,
                         currentDisplayUnitId = null,
                         initialAnchor = null,
+                        presentationImageOwner = imageOwner.owner,
                         onViewportChanged = {},
                     )
                 }
@@ -122,6 +124,7 @@ class WebtoonPresentationIdentityTest {
             assertEquals(pageId, unitIds.first().slots.single().pageId)
         } finally {
             scene.close()
+            imageOwner.close()
         }
     }
 

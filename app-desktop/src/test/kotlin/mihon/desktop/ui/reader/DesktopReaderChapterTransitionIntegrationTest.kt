@@ -17,6 +17,7 @@ import mihon.desktop.reader.DesktopReaderEncodedPageStore
 import mihon.desktop.reader.DesktopReaderPageFetchPortFactory
 import mihon.desktop.reader.DesktopReaderPageContentOwner
 import mihon.desktop.reader.DesktopReaderPageImagePipeline
+import mihon.desktop.reader.DesktopReaderPresentationImageOwner
 import mihon.desktop.reader.DesktopReaderProgressPort
 import mihon.desktop.reader.DesktopReaderRuntime
 import mihon.desktop.reader.DesktopReaderRuntimeFactory
@@ -26,6 +27,7 @@ import mihon.desktop.reader.PagePreloader
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.reader.ReaderPreferences
+import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.ReadingMode
 import mihon.domain.reader.ReaderNavigationCommand
 import mihon.domain.reader.ReaderTransitionDirection
@@ -251,6 +253,11 @@ class DesktopReaderChapterTransitionIntegrationTest {
             prefs = prefs,
             preloader = PagePreloader(pageImagePipeline),
             pageImagePipeline = pageImagePipeline,
+            presentationImageOwner = DesktopReaderPresentationImageOwner(
+                scope = this,
+                pageImagePipeline = pageImagePipeline,
+                pageIoObserver = ReaderPageIoObserver(ioReporter) { _, _ -> },
+            ),
             pageContentOwner = pageContentOwner,
             session = session,
             encodedPageStore = store,

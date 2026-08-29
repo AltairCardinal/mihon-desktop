@@ -1,27 +1,25 @@
 package mihon.desktop.reader
 
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotNull
-import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Test
-import org.jetbrains.skia.Bitmap
-import org.jetbrains.skia.Canvas
-import org.jetbrains.skia.Color
-import org.jetbrains.skia.EncodedImageFormat
-import org.jetbrains.skia.Image
-import mihon.desktop.ui.reader.pageContextMenuLabels
-import tachiyomi.i18n.MR
+import androidx.compose.ui.graphics.asComposeImageBitmap
 import java.awt.image.BufferedImage
-import java.io.File
 import java.nio.file.Files
 import java.util.Locale
+import mihon.desktop.ui.reader.loadPageContextMenuImage
+import mihon.desktop.ui.reader.pageContextMenuLabels
+import mihon.domain.reader.PageSplitHalf
+import mihon.domain.reader.PixelBounds
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Canvas
+import org.jetbrains.skia.Paint
+import org.jetbrains.skia.Rect
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import tachiyomi.i18n.MR
 
-/**
- * RED — PageSaveHelper does not exist yet.
- * Tests will fail until the production class is implemented.
- *
- * Tests the page save / copy logic independent of the UI layer.
- */
+/** Tests page action naming and stable decoded-asset conversion independently from Compose. */
 class PageContextMenuActionTest {
 
     // ── PageSaveHelper ────────────────────────────────────────────────────────
@@ -96,28 +94,158 @@ class PageContextMenuActionTest {
     }
 
     @Test
-    fun `loadImage decodes webp page files used by the reader`() {
-        val tmpFile = Files.createTempFile("page-save-webp", ".webp").toFile()
+    fun `stable RGBA asset converts without reopening encoded content`() = withAsset(
+        bitmapWidth = 1,
+        bitmapHeight = 1,
+        colorAt = { _, _ -> 0x80402010.toInt() },
+    ) { asset ->
+        val image = requireNotNull(loadPageContextMenuImage(asset = asset))
+
+        assertEquals(1, image.width)
+        assertEquals(1, image.height)
+        assertEquals(0x80402010.toInt(), image.getRGB(0, 0))
+    }
+
+    @Test
+    fun `stable asset keeps the complete page when no visible bounds are supplied`() = withAsset(
+        bitmapWidth = 5,
+        bitmapHeight = 3,
+    ) { asset ->
+        val image = requireNotNull(loadPageContextMenuImage(asset = asset))
+
+        assertEquals(5, image.width)
+        assertEquals(3, image.height)
+        assertEquals(pixelColor(4, 2), image.getRGB(4, 2))
+    }
+
+    @Test
+    fun `stable asset splits odd width without dropping the center pixel`() = withAsset(
+        bitmapWidth = 5,
+        bitmapHeight = 2,
+    ) { asset ->
+        val left = requireNotNull(
+            loadPageContextMenuImage(asset = asset, splitHalf = PageSplitHalf.LEFT),
+        )
+        val right = requireNotNull(
+            loadPageContextMenuImage(asset = asset, splitHalf = PageSplitHalf.RIGHT),
+        )
+
+        assertEquals(2, left.width)
+        assertEquals(pixelColor(0, 0), left.getRGB(0, 0))
+        assertEquals(pixelColor(1, 0), left.getRGB(1, 0))
+        assertEquals(3, right.width)
+        assertEquals(pixelColor(2, 0), right.getRGB(0, 0))
+        assertEquals(pixelColor(4, 1), right.getRGB(2, 1))
+    }
+
+    @Test
+    fun `source bounds take precedence over split hints`() = withAsset(
+        bitmapWidth = 5,
+        bitmapHeight = 3,
+    ) { asset ->
+        val image = requireNotNull(
+            loadPageContextMenuImage(
+                asset = asset,
+                splitHalf = PageSplitHalf.RIGHT,
+                sourceBounds = PixelBounds(x = 1, y = 1, width = 3, height = 2),
+            ),
+        )
+
+        assertEquals(3, image.width)
+        assertEquals(2, image.height)
+        assertEquals(pixelColor(1, 1), image.getRGB(0, 0))
+        assertEquals(pixelColor(3, 2), image.getRGB(2, 1))
+    }
+
+    @Test
+    fun `stable asset rejects invalid and overflowing source bounds`() = withAsset(
+        bitmapWidth = 5,
+        bitmapHeight = 3,
+    ) { asset ->
+        assertNull(
+            loadPageContextMenuImage(
+                asset = asset,
+                sourceBounds = PixelBounds(x = -1, y = 0, width = 1, height = 1),
+            ),
+        )
+        assertNull(
+            loadPageContextMenuImage(
+                asset = asset,
+                sourceBounds = PixelBounds(x = 0, y = 0, width = 0, height = 1),
+            ),
+        )
+        assertNull(
+            loadPageContextMenuImage(
+                asset = asset,
+                sourceBounds = PixelBounds(x = Int.MAX_VALUE, y = 0, width = 2, height = 1),
+            ),
+        )
+        assertNull(
+            loadPageContextMenuImage(
+                asset = asset,
+                sourceBounds = PixelBounds(x = 0, y = Int.MAX_VALUE, width = 1, height = 2),
+            ),
+        )
+    }
+
+    @Test
+    fun `sampled stable asset maps original source bounds to decoded pixels`() = withAsset(
+        bitmapWidth = 5,
+        bitmapHeight = 3,
+        sourceWidth = 10,
+        sourceHeight = 6,
+        sampled = true,
+    ) { asset ->
+        val image = requireNotNull(
+            loadPageContextMenuImage(
+                asset = asset,
+                sourceBounds = PixelBounds(x = 2, y = 2, width = 4, height = 2),
+            ),
+        )
+
+        assertEquals(2, image.width)
+        assertEquals(1, image.height)
+        assertEquals(pixelColor(1, 1), image.getRGB(0, 0))
+        assertEquals(pixelColor(2, 1), image.getRGB(1, 0))
+    }
+
+    private fun withAsset(
+        bitmapWidth: Int,
+        bitmapHeight: Int,
+        sourceWidth: Int = bitmapWidth,
+        sourceHeight: Int = bitmapHeight,
+        sampled: Boolean = false,
+        colorAt: (Int, Int) -> Int = ::pixelColor,
+        block: (DesktopReaderImageAsset) -> Unit,
+    ) {
+        val bitmap = Bitmap().apply { allocN32Pixels(bitmapWidth, bitmapHeight) }
+        val canvas = Canvas(bitmap)
+        val paint = Paint()
         try {
-            tmpFile.writeBytes(testWebpBytes())
-
-            val img = PageSaveHelper.loadImage(tmpFile.toURI().toURL().toString())
-
-            assertNotNull(img)
-            assertEquals(2, img!!.width)
-            assertEquals(2, img.height)
+            repeat(bitmapHeight) { y ->
+                repeat(bitmapWidth) { x ->
+                    paint.color = colorAt(x, y)
+                    canvas.drawRect(Rect.makeXYWH(x.toFloat(), y.toFloat(), 1f, 1f), paint)
+                }
+            }
         } finally {
-            tmpFile.delete()
+            paint.close()
+        }
+        val asset = DesktopReaderImageAsset(
+            bitmap = bitmap.asComposeImageBitmap(),
+            sourceWidth = sourceWidth,
+            sourceHeight = sourceHeight,
+            estimatedBytes = bitmapWidth * bitmapHeight * 4L,
+            sampled = sampled,
+            disposer = bitmap::close,
+        )
+        try {
+            block(asset)
+        } finally {
+            asset.close()
         }
     }
 
-    private fun testWebpBytes(): ByteArray {
-        val bitmap = Bitmap().apply {
-            allocN32Pixels(2, 2)
-        }
-        Canvas(bitmap).clear(Color.RED)
-        return Image.makeFromBitmap(bitmap)
-            .encodeToData(EncodedImageFormat.WEBP, 90)!!
-            .bytes
-    }
+    private fun pixelColor(x: Int, y: Int): Int =
+        0xFF000000.toInt() or (x shl 16) or (y shl 8) or ((x + y) and 0xFF)
 }

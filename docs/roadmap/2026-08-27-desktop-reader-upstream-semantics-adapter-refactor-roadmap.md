@@ -314,10 +314,17 @@ Android Reader UI                 Desktop Reader presentation
 - [ ] `RUA-04` 唯一内容读取/解码 pipeline 与三种 presentation cutover
   - [x] `RUA-04A` 唯一 open/materialize owner 与 single-flight
   - [x] `RUA-04B` 唯一 decoder、decoded cache 与 transform consumers
-  - [ ] `RUA-04C` Single/Dual/Webtoon presentation cutover
+  - [x] `RUA-04C` Single/Dual/Webtoon presentation cutover
   - [ ] `RUA-04D` 动画/超大图/lifecycle 矩阵与 legacy owner 删除
+    - [ ] `RUA-04D1` 动画 purpose-aware decode owner
+    - [ ] `RUA-04D2` 超大图与 region tile owner
+    - [ ] `RUA-04D3` Retry/cancel/stale attempt 线性化
+    - [ ] `RUA-04D4` detach/recycle/close 与统一内存预算
+    - [ ] `RUA-04D5` legacy owner 删除与最终矩阵门禁
 - [ ] `RUA-05` 原版相邻章默认语义与 Desktop opt-in decorator
   - [ ] `RUA-05A` canonical last-five page-list-only 语义
+    - [ ] `RUA-05A1` shared contract 与 Android consumer
+    - [ ] `RUA-05A2` Desktop adapter 消费 shared effect
   - [ ] `RUA-05B` 偏好迁移、默认值与设置 UI wiring
   - [ ] `RUA-05C` Desktop opt-in 图片预取 decorator
 - [ ] `RUA-06` 假阳性测试、旧 owner、authority 与文档清理
@@ -540,9 +547,15 @@ Android Reader UI                 Desktop Reader presentation
 - `RUA-04A` 建立唯一 page open/materialize single-flight owner 与 opaque ref 输入，先用 production runtime 证明同 page/generation 只有一次内容打开；预计 5～9 个文件。
 - `RUA-04B` 在 04A 上建立唯一 decoder、有界 decoded cache，以及 edge/crop/filter/split 对同一 decoded result 的消费；动画/region 只定义带 purpose 的扩展口，不切 presentation，预计 6～10 个文件。
 - `RUA-04C` 逐一把 Single、Dual、Webtoon 切到稳定 image asset/state；本子批必须同时覆盖三种 presentation，避免保留某一种 UI 私有 fetch，预计 6～12 个文件。
-- `RUA-04D` 收口动画、超大图、Retry、cancel/stale generation、detach/recycle/close 与内存预算，确认矩阵全绿后删除 legacy loader/painter/preloader owner，预计 6～12 个文件。
+- `RUA-04D1` 先在唯一 content/image pipeline 内建立动画 purpose dispatcher 与 frame lease，静态页不得回落到第二条 loader；预计 4～8 个文件。
+- `RUA-04D2` 在 04D1 dispatcher 冻结后接入超大图 preview/region tile owner 与独立有界预算；预计 4～8 个文件。
+- `RUA-04D3` 覆盖 full/frame/region 的 Retry、cancel 与 stale attempt 线性化，同 generation 的旧 attempt 不得覆盖 Retry 结果；预计 4～8 个文件。
+- `RUA-04D4` 收口 detach/recycle/close、非协作迟到结果、runtime 关闭顺序与 decoded/derived/frame/tile 统一内存权威；预计 4～8 个文件。
+- `RUA-04D5` 只在 04D1～04D4 全绿后删除 legacy loader/painter/preloader owner，并运行最终 presentation/architecture 矩阵；预计 4～8 个文件。
 
-04A → 04B → 04C → 04D。双页配对、手势和 viewport 始终不属于这些子批次；如 cutover 需要改变它们，必须单独 replan。
+04A → 04B → 04C → 04D1 → 04D2 → 04D3 → 04D4 → 04D5。双页配对、手势和一般 viewport 几何始终不属于这些子批次；如 cutover 需要改变它们，必须单独 replan。
+
+**RUA-04C Webtoon 首次 viewport 微重划（2026-08-30）**：production-mounted RED 证明 Webtoon 在页表异步到达、尚无 `currentDisplayUnitId` 与恢复 anchor 时，没有 viewport effect 就不会安排首个可见页，页面会永久停留在 queued。04C 因而只增加一个 provisional first-visible bootstrap：仅在 display identity 与 anchor 同时为空时，对当前 display unit 提交一次零偏移 viewport；任一恢复身份存在时禁止提交，同一 identity 不重复提交，真实 `LazyColumn` settled viewport 一到即永久接管。该例外不改变滚动几何、anchor 恢复、手势、双页配对或后续 viewport 算法，也不得扩展成第二套 viewport owner。
 
 **RED**：
 
@@ -560,7 +573,7 @@ Android Reader UI                 Desktop Reader presentation
 - 删除 `loadLocalPageBitmap`、独立 preloader scheduler/read/decode 与对应 source-string 假证明；如保留 `PagePreloader` 名称，只能是 shared effect 的薄 decoded-cache adapter，不得拥有 I/O/调度；
 - detach、recycle、切章和 close 释放 single-flight lease 与 archive stream。
 
-**重构/边界**：presentation identity、双页配对、手势和 viewport 不变；不得顺手重做 UI。
+**重构/边界**：presentation identity、双页配对、手势和一般 viewport 行为不变；唯一例外是上文已重划且受 one-shot gate 约束的 Webtoon 首次可见页 bootstrap。不得顺手重做 UI。
 
 **focused 验证**：三 presentation × download directory/CBZ/online 的 open/decode matrix；动画、超大图、crop/split/filter、edge matcher、Retry、cancel/stale generation、内存预算。
 
@@ -582,15 +595,24 @@ Android Reader UI                 Desktop Reader presentation
 - 首次合并收口暴露 parity role evidence 漂移，批量静态扫描并修正后 `rua04b-parity-contract-green3` 通过；第二次收口又以 production fixture 暴露 04B→04C 期间 legacy presentation/shared pipeline 的同 identity decode 时序竞态。`rua04b-critical-cost-green4` 证明该过渡重复严格有界为 2，并仅为 1/180 页结构成本比较归一化这一项；`RUA-04C` 必须删除归一化并恢复 mounted presentation `DECODE == 1`。最终 `rua04b-close3` 完成根级 Spotless、domain key contract 与 129 项 Desktop focused tests，`BUILD SUCCESSFUL in 5m 6s`。
 - 本批 20 个 product/test/manifest 文件约 `2142+/838-`，超过 6～10 文件提示值的主要原因是删除 358 行 legacy preloader owner、把三处既有测试迁到 test-only factory，以及为 single-flight、双预算、并发、取消和 lease 生命周期提供同一内聚行为证据；没有切 presentation、手势、viewport 或双页配对。两次误用不存在的模块级 Spotless task 各在约 8 秒内失败且没有执行测试，后续统一只使用根级 `spotlessApply/spotlessCheck`。Desktop 正式构建仍只在 `RUA-07` 执行。
 
+**`RUA-04C` 完成证据（2026-08-30）**：
+
+- Single、Dual、Webtoon 三种 production presentation 均改为消费 runtime 唯一 `DesktopReaderPresentationImageOwner` 提供的稳定 image state/asset；挂载目录、CBZ 与在线三类来源时，同一 page/generation 的首帧严格保持 `OPEN_PAGE == 1`、full-page `DECODE == 1`。UI 不再接收 URL/File/store reader，也不再通过 Coil painter、`loadLocalPageBitmap` 或 legacy preloader 建立第二条读取/解码链。
+- render、crop/filter/split transform 与右键菜单均持有显式 lease：runtime/holder close 不会提前释放正在绘制或复制的 bitmap，stale/非协作迟到 transform 不能覆盖新身份；真实 Skia ownership 测试确认裁边替换 source-bounds 中间 bitmap 时立即关闭 owned intermediate，Canvas/Image 也按作用域释放。右键复制/保存复用稳定 decoded asset 与精确 source bounds，不重新读取或解码内容。
+- production-mounted RED 证明 Webtoon 在 page-list 异步到达且 display identity/恢复 anchor 均为空时会永久 queued，因此按本节微重划增加 one-shot provisional viewport bootstrap；真实 settled viewport 到达后永久接管，恢复 anchor、滚动几何、手势与双页配对语义不变。
+- TDD 证据覆盖 presentation owner、绘制确认竞态、transform stale/close、真实 transform-chain ownership、右键菜单、Webtoon bootstrap，以及三 presentation × 三来源 mounted matrix。`.gradle-coordinator/rua04c-close.log` 完成 root Spotless 与 17 个相关测试类，`BUILD SUCCESSFUL in 5m 10s`；后续限定修复由 `rua04c-bounded-close` 与 `rua04c-transform-chain-green` 通过，最终 `.gradle-coordinator/rua04c-final-close.log` 再次通过 root Spotless 与 8 个关键测试类。首次误用 `./gradlew` 在 Windows 进程创建阶段立即失败，改用 `.\\gradlew.bat`；一次 78 项收口测试暴露并修复 encoded-store close/reconcile 的真实竞态，不作为 flaky 重跑。
+- 独立审查先发现 render lease、stale transform、context-menu production 证据、acknowledgement 竞态与 Webtoon bootstrap 边界问题；修复复审进一步发现 native Skia intermediate 生命周期与 roadmap 微重划遗漏，均以有界 RED/GREEN 收口，最终限定确认结论为 `PASS`、P0/P1/P2 均为零。本批横跨 presentation/runtime/测试的文件数超过原估算，是三种 presentation 原子 cutover、删除假阳性测试和同一 asset 生命周期修复所必需；Desktop 正式构建仍只在 `RUA-07` 执行。
+
 ### `RUA-05` 原版相邻章默认语义与 Desktop opt-in decorator
 
 **子批次边界与依赖**：
 
-- `RUA-05A` 只恢复 shared canonical last-five page-list-only：第 6 页不触发、第 5 页恰好一次，且不打开下一章图片；预计 3～6 个文件。
+- `RUA-05A1` 先在 shared 层建立 canonical last-five page-list-only policy，并让 Android Pager/Webtoon consumer 消费同一 effect：第 6 页不触发、第 5 页恰好一次，且不打开下一章图片；预计 5～9 个文件。
+- `RUA-05A2` 等 05A1 shared API 冻结后，把 Desktop session 的私有阈值与 visible-set 最大页判断替换为 anchor page 对 shared effect 的消费；不引入图片预取 decorator，预计 2～4 个文件。
 - `RUA-05B` 只处理默认值、已有显式值保留、偏好读取/迁移和设置 UI 文案/wiring；不启动任何 prefetch job，预计 3～6 个文件。
 - `RUA-05C` 在 05A/05B 上实现显式 opt-in decorator，等待首帧与 idle，以 P4 materialize encoded 内容，并覆盖抢占、quota、cancel、target switch 和无进度副作用；预计 4～8 个文件。
 
-05A 与 05B 可在共享接口冻结后独立实现，05A + 05B → 05C。Android 不消费 05C，且 05C 不得反向改变 05A 的 canonical 默认。
+05A1 → 05A2；04D 完成后，05A1/05A2 链与 05B 可并行推进，但 05C 必须等待 05A2 + 05B。Android 不消费 05C，且 05C 不得反向改变 05A 的 canonical 默认。
 
 **RED**：
 

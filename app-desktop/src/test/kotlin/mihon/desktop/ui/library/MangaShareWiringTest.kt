@@ -8,16 +8,17 @@ import androidx.compose.foundation.ContextMenuState
 import androidx.compose.foundation.LocalContextMenuRepresentation
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import java.awt.image.BufferedImage
-import java.io.File
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
@@ -30,6 +31,7 @@ import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.DesktopNotificationService
+import mihon.desktop.reader.DesktopReaderImageAsset
 import mihon.desktop.reader.PageSaveHelper
 import mihon.desktop.platform.DesktopClipboardPort
 import mihon.desktop.platform.DesktopNativeShareOutcome
@@ -40,6 +42,9 @@ import mihon.desktop.platform.DesktopNativeShareTerminal
 import mihon.desktop.platform.DesktopRevealPort
 import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.ui.reader.PageContextMenu
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Canvas
+import org.jetbrains.skia.Color
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -146,7 +151,7 @@ class MangaShareWiringTest {
     }
 
     @Test
-    fun `real reader menu callbacks share copy save and publish feedback through injected service`() = runBlocking {
+    fun `real reader menu lazily shares copies saves and preserves set cover callback`() = runBlocking {
         var copied = false
         var nativeShares = 0
         var nativeContent: DesktopNativeShareContent? = null
@@ -165,11 +170,21 @@ class MangaShareWiringTest {
             isHeadless = { false },
             revealPort = DesktopRevealPort {},
         )
-        val image = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB)
+        val bitmap = Bitmap().apply { allocN32Pixels(1, 1) }
+        Canvas(bitmap).clear(Color.RED)
+        val imageAsset = DesktopReaderImageAsset(
+            bitmap = bitmap.asComposeImageBitmap(),
+            sourceWidth = 1,
+            sourceHeight = 1,
+            estimatedBytes = 4,
+            sampled = false,
+            disposer = bitmap::close,
+        )
+        val imageLeaseRequests = AtomicInteger()
+        val saveDirectoryRequests = AtomicInteger()
+        val setCoverRequests = AtomicInteger()
         val directory = kotlin.io.path.createTempDirectory("mihon-page-actions").toFile()
-        val source = File(directory, "source.png")
-        val saved = File(directory, PageSaveHelper.buildSaveFileName("Manga", "Chapter", 0))
-        PageSaveHelper.saveImageToFile(image, source)
+        val saved = directory.resolve(PageSaveHelper.buildSaveFileName("Manga", "Chapter", 0))
         val dependencies = mockk<DesktopUiDependencies> {
             every { shareService } returns service
             every { notificationService } returns notifications
@@ -190,16 +205,54 @@ class MangaShareWiringTest {
                     LocalContextMenuRepresentation provides representation,
                 ) {
                     PageContextMenu(
-                        source.toURI().toString(), "Manga", "Chapter", 0, this@runBlocking, null,
-                        saveDirectory = directory,
+                        imageLeaseProvider = {
+                            imageLeaseRequests.incrementAndGet()
+                            imageAsset.retain()
+                        },
+                        mangaTitle = "Manga",
+                        chapterTitle = "Chapter",
+                        pageIndex = 0,
+                        scope = this@runBlocking,
+                        onSetAsCover = {
+                            setCoverRequests.incrementAndGet()
+                            Unit
+                        },
+                        saveDirectoryProvider = {
+                            saveDirectoryRequests.incrementAndGet()
+                            directory
+                        },
                     ) {}
                 }
             }
             scene.render()
-            capturedItems.forEach { it.onClick() }
+            assertEquals(4, capturedItems.size)
+            assertEquals(0, imageLeaseRequests.get(), "Rendering the menu must not retain or load its image")
+            assertEquals(
+                0,
+                saveDirectoryRequests.get(),
+                "Rendering the menu must not resolve or create a save directory",
+            )
+
+            capturedItems.take(3).forEach { it.onClick() }
             withTimeout(5_000) {
-                while (nativeShares != 1 || !copied || !saved.isFile) delay(10)
+                while (
+                    nativeShares != 1 ||
+                    !copied ||
+                    !saved.isFile ||
+                    imageLeaseRequests.get() != 3 ||
+                    saveDirectoryRequests.get() != 1
+                ) {
+                    delay(10)
+                }
             }
+            assertEquals(3, imageLeaseRequests.get())
+            assertEquals(1, saveDirectoryRequests.get())
+
+            capturedItems.last().onClick()
+            assertEquals(1, setCoverRequests.get())
+            assertEquals(3, imageLeaseRequests.get(), "Set as cover keeps its existing callback-only contract")
+            assertEquals(1, saveDirectoryRequests.get())
+
             val terminalNotification = async(start = CoroutineStart.UNDISPATCHED) {
                 notifications.notifications.first { it.message == MR.strings.cancelled.localized() }
             }
@@ -207,10 +260,10 @@ class MangaShareWiringTest {
             assertEquals(MR.strings.cancelled.localized(), terminalNotification.await().message)
         } finally {
             scene.close()
+            imageAsset.close()
             directory.deleteRecursively()
         }
 
-        assertEquals(3, capturedItems.size)
         assertTrue(nativeContent is DesktopNativeShareContent.LocalFile)
         assertEquals(
             MR.strings.share_page_info.localized(Locale.getDefault(), "Manga", "Chapter", 1),

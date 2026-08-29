@@ -224,6 +224,7 @@ class DualPagePresentationIdentityTest {
     @Test
     fun `production dual selector mounts registry display units`() = runTest {
         val scene = ImageComposeScene(1_600, 900, coroutineContext = currentCoroutineContext()) {}
+        val imageOwner = PresentationImageOwnerFixture(this)
         try {
             scene.setContent {
                 MaterialTheme {
@@ -239,6 +240,7 @@ class DualPagePresentationIdentityTest {
                         isDualPage = true,
                         zoomState = ZoomState(),
                         navigationMode = NavigationMode.RightAndLeft,
+                        presentationImageOwner = imageOwner.owner,
                         onPageChange = {},
                         onZoomChange = {},
                     )
@@ -251,6 +253,7 @@ class DualPagePresentationIdentityTest {
             assertEquals(pageId(0), unitId.slots.first().pageId)
         } finally {
             scene.close()
+            imageOwner.close()
         }
     }
 

@@ -35,10 +35,9 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import mihon.desktop.reader.PagePreloader
+import mihon.desktop.reader.DesktopReaderPresentationImageOwner
 import mihon.desktop.reader.ReaderKeyboardAction
 import mihon.desktop.reader.ReaderPageAction
-import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.SinglePageSide
 import mihon.desktop.reader.ZoomState
@@ -205,7 +204,7 @@ internal fun DualPagePagerViewer(
     contextMenuScope: CoroutineScope? = null,
     mangaTitle: String = "",
     chapterTitle: String = "",
-    preloader: PagePreloader? = null,
+    presentationImageOwner: DesktopReaderPresentationImageOwner,
     scaleType: ScaleType = ScaleType.FIT_SCREEN,
     navigationMode: NavigationMode = NavigationMode.RightAndLeft,
     onVisiblePagesChanged: (VisiblePageSet) -> Unit,
@@ -215,7 +214,6 @@ internal fun DualPagePagerViewer(
     onTapCenter: (() -> Unit)? = null,
     onPrevChapter: (() -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
-    ioObserver: ReaderPageIoObserver? = null,
     generation: Long = 0L,
 ) {
     require(presentation.mode == ReaderPresentationMode.DUAL_PAGED) { "Dual viewer requires a dual presentation" }
@@ -278,8 +276,15 @@ internal fun DualPagePagerViewer(
             ) { slot, modifier ->
                 val page = requireNotNull(slot.page)
                 val physicalSlot = unit.slots.indexOf(slot)
+                val presentationImage = rememberReaderPresentationImage(
+                    owner = presentationImageOwner,
+                    page = page,
+                    generation = generation,
+                    splitHalf = slot.splitHalf,
+                    sourceBounds = slot.sourceBounds,
+                )
                 ZoomablePageBox(
-                    url = page.encodedContentUri(),
+                    presentationImage = presentationImage,
                     pageLabel = MR.strings.desktop_ui_page_number.localized(
                         Locale.getDefault(),
                         page.id.sourcePageIndex + 1,
@@ -287,13 +292,10 @@ internal fun DualPagePagerViewer(
                     zoomState = zoomState,
                     onZoomChange = onZoomChange,
                     cropBorders = cropBorders,
-                    splitHalf = slot.splitHalf,
-                    sourceBounds = slot.sourceBounds,
                     contextMenuScope = contextMenuScope,
                     mangaTitle = mangaTitle,
                     chapterTitle = chapterTitle,
                     pageIndex = page.id.sourcePageIndex,
-                    preloader = preloader,
                     modifier = modifier,
                     imageAlignment = when {
                         unit.slots.size == 1 -> Alignment.Center
@@ -309,9 +311,6 @@ internal fun DualPagePagerViewer(
                     navigationMode = navigationMode,
                     isRtl = isRtl,
                     handlesTapNavigation = false,
-                    pageId = page.id,
-                    generation = generation,
-                    ioObserver = ioObserver,
                 )
             }
         }

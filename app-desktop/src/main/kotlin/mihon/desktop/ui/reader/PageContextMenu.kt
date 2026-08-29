@@ -5,6 +5,7 @@ import tachiyomi.i18n.MR
 import androidx.compose.foundation.ContextMenuArea
 import androidx.compose.foundation.ContextMenuItem
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.asSkiaBitmap
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.platform.DesktopShareFailureReason
@@ -14,6 +15,8 @@ import mihon.desktop.platform.toDesktopNotification
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import mihon.desktop.reader.DesktopReaderImageAsset
+import mihon.desktop.reader.DesktopReaderImageAssetLease
 import mihon.desktop.reader.PageSaveHelper
 import mihon.domain.reader.PixelBounds
 import mihon.domain.reader.splitPageBounds
@@ -30,7 +33,7 @@ import java.util.Locale
  *
  * Android reference: presentation/reader/ReaderPageActionsDialog.kt
  *
- * @param pageUrl       URL of the current page image.
+ * @param imageLeaseProvider Lazily retains the visible slot's stable decoded image.
  * @param mangaTitle    Used to build the save filename.
  * @param chapterTitle  Used to build the save filename.
  * @param pageIndex     0-based index; shown as p(n+1) in the filename.
@@ -41,7 +44,7 @@ import java.util.Locale
  */
 @Composable
 internal fun PageContextMenu(
-    pageUrl: String,
+    imageLeaseProvider: () -> DesktopReaderImageAssetLease?,
     mangaTitle: String,
     chapterTitle: String,
     pageIndex: Int,
@@ -49,7 +52,7 @@ internal fun PageContextMenu(
     onSetAsCover: (() -> Unit)?,
     splitHalf: PageSplitHalf? = null,
     sourceBounds: PixelBounds? = null,
-    saveDirectory: File = PageSaveHelper.defaultSaveDirectory(),
+    saveDirectoryProvider: () -> File = PageSaveHelper::defaultSaveDirectory,
     content: @Composable () -> Unit,
 ) {
     val dependencies = LocalDesktopUiDependencies.current
@@ -57,11 +60,11 @@ internal fun PageContextMenu(
     val items = buildList {
         add(ContextMenuItem(labels[0]) {
             scope.launch(Dispatchers.IO) {
-                val sharedImage = loadPageContextMenuImage(pageUrl, splitHalf, sourceBounds)
+                val sharedImage = imageLeaseProvider().useAsset(splitHalf, sourceBounds)
                 performPageContextMenuImageAction(
                     PageContextMenuImageAction.SHARE,
                     sharedImage,
-                    File(saveDirectory, "shared-page.png"),
+                    File("shared-page.png"),
                     dependencies.shareService,
                     dependencies.notificationService,
                     shareMessage = MR.strings.share_page_info.localized(
@@ -75,11 +78,11 @@ internal fun PageContextMenu(
         })
         add(ContextMenuItem(labels[1]) {
             scope.launch(Dispatchers.IO) {
-                val img = loadPageContextMenuImage(pageUrl, splitHalf, sourceBounds)
+                val img = imageLeaseProvider().useAsset(splitHalf, sourceBounds)
                 performPageContextMenuImageAction(
                     PageContextMenuImageAction.COPY,
                     img,
-                    File(saveDirectory, "page.png"),
+                    File("page.png"),
                     dependencies.shareService,
                     dependencies.notificationService,
                 )
@@ -87,8 +90,8 @@ internal fun PageContextMenu(
         })
         add(ContextMenuItem(labels[2]) {
             scope.launch(Dispatchers.IO) {
-                val img = loadPageContextMenuImage(pageUrl, splitHalf, sourceBounds)
-                val destination = saveDirectory.resolve(
+                val img = imageLeaseProvider().useAsset(splitHalf, sourceBounds)
+                val destination = saveDirectoryProvider().resolve(
                     PageSaveHelper.buildSaveFileName(mangaTitle, chapterTitle, pageIndex),
                 )
                 performPageContextMenuImageAction(
@@ -111,24 +114,48 @@ internal fun PageContextMenu(
 }
 
 internal fun loadPageContextMenuImage(
-    pageUrl: String,
+    asset: DesktopReaderImageAsset,
     splitHalf: PageSplitHalf? = null,
     sourceBounds: PixelBounds? = null,
 ): BufferedImage? {
-    val source = PageSaveHelper.loadImage(pageUrl) ?: return null
-    val bounds = sourceBounds ?: splitHalf?.let { splitPageBounds(source.width, source.height, it) }
-        ?: return source
+    val bitmap = asset.bitmap.asSkiaBitmap()
+    val bounds = when {
+        sourceBounds != null -> runCatching {
+            sourceBounds.mapToBitmap(
+                sourceWidth = asset.sourceWidth,
+                sourceHeight = asset.sourceHeight,
+                bitmapWidth = bitmap.width,
+                bitmapHeight = bitmap.height,
+            )
+        }.getOrNull() ?: return null
+        splitHalf != null -> splitPageBounds(bitmap.width, bitmap.height, splitHalf) ?: return null
+        else -> PixelBounds(0, 0, bitmap.width, bitmap.height)
+    }
     if (
         bounds.x < 0 ||
         bounds.y < 0 ||
         bounds.width <= 0 ||
         bounds.height <= 0 ||
-        bounds.x.toLong() + bounds.width.toLong() > source.width.toLong() ||
-        bounds.y.toLong() + bounds.height.toLong() > source.height.toLong()
+            bounds.x.toLong() + bounds.width.toLong() > bitmap.width.toLong() ||
+            bounds.y.toLong() + bounds.height.toLong() > bitmap.height.toLong()
     ) {
         return null
     }
-    return source.getSubimage(bounds.x, bounds.y, bounds.width, bounds.height)
+    val argb = IntArray(bounds.width * bounds.height) { index ->
+        val x = bounds.x + index % bounds.width
+        val y = bounds.y + index / bounds.width
+        bitmap.getColor(x, y)
+    }
+    return BufferedImage(bounds.width, bounds.height, BufferedImage.TYPE_INT_ARGB).apply {
+        setRGB(0, 0, bounds.width, bounds.height, argb, 0, bounds.width)
+    }
+}
+
+private fun DesktopReaderImageAssetLease?.useAsset(
+    splitHalf: PageSplitHalf?,
+    sourceBounds: PixelBounds?,
+): BufferedImage? = this?.use { lease ->
+    loadPageContextMenuImage(lease.asset, splitHalf, sourceBounds)
 }
 
 internal fun pageContextMenuLabels(

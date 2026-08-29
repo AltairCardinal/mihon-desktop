@@ -25,9 +25,8 @@ import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
-import mihon.desktop.reader.PagePreloader
+import mihon.desktop.reader.DesktopReaderPresentationImageOwner
 import mihon.desktop.reader.ReaderColorFilter
-import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.ui.reader.presentation.DesktopReaderPresentationRegistry
@@ -105,7 +104,7 @@ internal fun ZoomablePagerViewer(
     forcedSinglePages: Set<Int> = emptySet(),
     matchedPairs: Set<Pair<Int, Int>> = emptySet(),
     splitPageIndices: Set<Int> = emptySet(),
-    preloader: PagePreloader? = null,
+    presentationImageOwner: DesktopReaderPresentationImageOwner,
     scaleType: ScaleType = ScaleType.FIT_SCREEN,
     navigationMode: NavigationMode = NavigationMode.RightAndLeft,
     onPageChange: (Int) -> Unit,
@@ -117,7 +116,6 @@ internal fun ZoomablePagerViewer(
     onTapCenter: (() -> Unit)? = null,
     onPrevChapter: (() -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
-    ioObserver: ReaderPageIoObserver? = null,
 ) {
     if (chapter.pages.isEmpty()) return
     val direction = if (isRtl) ReaderDirection.RTL else ReaderDirection.LTR
@@ -150,7 +148,7 @@ internal fun ZoomablePagerViewer(
             currentDisplayUnitId = currentDisplayUnitId, isRtl = isRtl,
             cropBorders = cropBorders, contextMenuScope = contextMenuScope,
             mangaTitle = mangaTitle, chapterTitle = chapterTitle, zoomState = zoomState,
-            preloader = preloader,
+            presentationImageOwner = presentationImageOwner,
             scaleType = scaleType, navigationMode = navigationMode,
             onVisiblePagesChanged = { visiblePages ->
                 if (onDualVisiblePagesChanged != null) {
@@ -163,7 +161,6 @@ internal fun ZoomablePagerViewer(
             onRetryPage = { pageId -> onRetryPage?.invoke(pageId) },
             onSpreadDetected = onSpreadDetected,
             onTapCenter = onTapCenter, onPrevChapter = onPrevChapter, onNextChapter = onNextChapter,
-            ioObserver = ioObserver,
             generation = chapter.generation,
         )
     } else {
@@ -186,7 +183,7 @@ internal fun ZoomablePagerViewer(
             currentDisplayUnitId = currentDisplayUnitId, isRtl = isRtl,
             cropBorders = cropBorders, contextMenuScope = contextMenuScope,
             mangaTitle = mangaTitle, chapterTitle = chapterTitle, zoomState = zoomState,
-            preloader = preloader, scaleType = scaleType,
+            presentationImageOwner = presentationImageOwner, scaleType = scaleType,
             navigationMode = navigationMode, onZoomChange = onZoomChange,
             onVisiblePagesChanged = { visiblePages ->
                 if (onSingleVisiblePagesChanged != null) {
@@ -198,7 +195,6 @@ internal fun ZoomablePagerViewer(
             onRetryPage = { pageId -> onRetryPage?.invoke(pageId) },
             onSpreadDetected = onSpreadDetected, onTapCenter = onTapCenter,
             onPrevChapter = onPrevChapter, onNextChapter = onNextChapter,
-            ioObserver = ioObserver,
             generation = chapter.generation,
         )
     }
@@ -219,12 +215,11 @@ internal fun WebtoonPresentationViewer(
     contextMenuScope: CoroutineScope? = null,
     mangaTitle: String = "",
     chapterTitle: String = "",
-    preloader: PagePreloader? = null,
+    presentationImageOwner: DesktopReaderPresentationImageOwner,
     onViewportChanged: (WebtoonViewportUpdate) -> Unit,
     onRetryPage: ((ReaderPageId) -> Unit)? = null,
     onSpreadDetected: ((Int) -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
-    ioObserver: ReaderPageIoObserver? = null,
 ) {
     if (chapter.pages.isEmpty()) return
     val request = remember(chapter, autoSplitPages, splitPageIndices) {
@@ -252,12 +247,11 @@ internal fun WebtoonPresentationViewer(
         contextMenuScope = contextMenuScope,
         mangaTitle = mangaTitle,
         chapterTitle = chapterTitle,
-        preloader = preloader,
+        presentationImageOwner = presentationImageOwner,
         onViewportChanged = onViewportChanged,
         onRetryPage = { pageId -> onRetryPage?.invoke(pageId) },
         onSpreadDetected = onSpreadDetected,
         onNextChapter = onNextChapter,
-        ioObserver = ioObserver,
         generation = chapter.generation,
     )
 }

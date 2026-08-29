@@ -16,23 +16,23 @@ class WebtoonContextMenuTest {
     }
 
     @Test
-    fun `webtoon context menu is enabled only when a scope and page url are available`() {
+    fun `webtoon context menu is enabled only when a scope and ready image asset are available`() {
         assertTrue(
             shouldShowWebtoonPageContextMenu(
                 hasContextMenuScope = true,
-                pageUrl = "file:///tmp/page.webp",
+                hasReadyImageAsset = true,
             ),
         )
         assertFalse(
             shouldShowWebtoonPageContextMenu(
                 hasContextMenuScope = false,
-                pageUrl = "file:///tmp/page.webp",
+                hasReadyImageAsset = true,
             ),
         )
         assertFalse(
             shouldShowWebtoonPageContextMenu(
                 hasContextMenuScope = true,
-                pageUrl = "",
+                hasReadyImageAsset = false,
             ),
         )
     }

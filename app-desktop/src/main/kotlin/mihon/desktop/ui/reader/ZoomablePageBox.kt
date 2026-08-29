@@ -10,91 +10,29 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import coil3.BitmapImage
-import coil3.Image as CoilImage
-import coil3.compose.AsyncImagePainter
-import coil3.compose.rememberAsyncImagePainter
-import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import mihon.desktop.reader.PagePreloader
+import mihon.desktop.reader.DesktopReaderPresentationImageState
 import mihon.desktop.reader.PreloadedPageBitmap
-import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.ScaleType
-import mihon.desktop.reader.SkiaImageDecoder
 import mihon.desktop.reader.ZoomState
-import mihon.desktop.image.LocalDesktopSourceImageId
-import mihon.desktop.image.desktopSourceImageModel
 import mihon.domain.reader.PixelBounds
-import mihon.domain.reader.session.ReaderPageId
 import org.jetbrains.skia.Bitmap as SkiaBitmap
 import org.jetbrains.skia.Canvas as SkiaCanvas
 import org.jetbrains.skia.Image as SkiaImage
 import org.jetbrains.skia.Rect as SkiaRect
 import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.graphics.asSkiaBitmap
-import java.net.URI
-import java.nio.file.Files
-import java.nio.file.Path
-
-// Kept for binary-compat with existing tests that call it directly.
-internal fun loadSplitHalf(url: String, half: PageSplitHalf): ImageBitmap? = try {
-    val bytes = java.net.URL(url).readBytes()
-    splitHalfFromBytes(bytes, half)
-} catch (_: Exception) {
-    null
-}
-
-internal fun loadLocalPageBitmap(url: String): ImageBitmap? = runCatching {
-    val uri = URI(url)
-    if (!uri.scheme.equals("file", ignoreCase = true)) return null
-    SkiaImageDecoder.decode(Files.readAllBytes(Path.of(uri)))
-}.getOrNull()
-
-private fun loadLocalPageBitmap(
-    url: String,
-    onOpen: () -> Unit,
-    onDecode: () -> Unit,
-): ImageBitmap? = runCatching {
-    val uri = URI(url)
-    if (!uri.scheme.equals("file", ignoreCase = true)) return null
-    onOpen()
-    val decoded = SkiaImageDecoder.decode(Files.readAllBytes(Path.of(uri)))
-    onDecode()
-    decoded
-}.getOrNull()
-
-/** Crops the already-decoded Coil image to the requested half — no re-download. */
-internal fun splitHalfFromCoilImage(image: CoilImage, half: PageSplitHalf): ImageBitmap? {
-    val skiaBitmap = image.toSkiaBitmap() ?: return null
-    return splitSkiaBitmap(skiaBitmap, half)
-}
-
-private fun splitHalfFromBytes(bytes: ByteArray, half: PageSplitHalf): ImageBitmap? {
-    val imageBitmap = mihon.desktop.reader.SkiaImageDecoder.decode(bytes)
-    return splitSkiaBitmap(imageBitmap.asSkiaBitmap(), half)
-}
-
-private fun splitSkiaBitmap(src: SkiaBitmap, half: PageSplitHalf): ImageBitmap? {
-    val bounds = splitBounds(src.width, src.height, half)
-    return extractSkiaSubBitmap(src, bounds.x, bounds.y, bounds.width, bounds.height)
-}
 
 internal data class ZoomableGestureCapabilities(
     val transformEnabled: Boolean,
@@ -120,17 +58,9 @@ internal fun zoomableGestureCapabilities(
  * which viewer hosts it.
  *
  * ──────────────────────────────────────────────────────────
- * Android migration note
- * ──────────────────────────────────────────────────────────
- * When porting to Android, replace:
- *  • [rememberAsyncImagePainter] → Coil's `AsyncImage` or the same painter API
- *    (Coil 3 supports both platforms)
- *  • [detectTransformGestures] → same API (Compose Multiplatform ≈ Compose Android)
- *  • [ZoomState] → same pure-Kotlin data class, no platform dependency
- *  • Crop borders: Android uses SubsamplingScaleImageView built-in support;
- *    desktop re-loads with ImageIO (same URL, disk-cached) and uses [CropBorderScanner].
+ * The presentation supplies a stable decoded asset owned by the reader runtime; this component
+ * performs only viewport transforms and gesture handling.
  *
- * @param url             Remote or local URL of the page image.
  * @param pageLabel       Accessibility / content description (e.g. "Page 3").
  * @param zoomState       Current zoom/pan state driven by the parent.
  * @param onZoomChange    Called whenever the user changes the zoom/pan state.
@@ -144,14 +74,14 @@ internal fun zoomableGestureCapabilities(
  *   The viewer always runs in LTR layout direction (RTL scroll is handled
  *   by reversing pager indices), so these values use physical semantics.
  * @param onSpreadDetected
- *   Called once after Coil decodes the image and its width > height
+ *   Called once after the shared pipeline decodes an image whose width > height
  *   (landscape / double-page spread image).  Pass `null` to skip detection.
  * @param onTapCenter
  *   Called when the user taps the center zone (for toggling UI visibility).
  */
 @Composable
 internal fun ZoomablePageBox(
-    url: String,
+    presentationImage: ReaderPresentationImage,
     pageLabel: String,
     zoomState: ZoomState,
     onZoomChange: (ZoomState) -> Unit,
@@ -161,9 +91,6 @@ internal fun ZoomablePageBox(
     chapterTitle: String = "",
     pageIndex: Int = 0,
     onSetAsCover: (() -> Unit)? = null,
-    splitHalf: PageSplitHalf? = null,
-    sourceBounds: PixelBounds? = null,
-    preloader: PagePreloader? = null,
     modifier: Modifier = Modifier.fillMaxSize(),
     imageAlignment: Alignment = Alignment.Center,
     loadingAlignment: Alignment = Alignment.Center,
@@ -177,110 +104,22 @@ internal fun ZoomablePageBox(
     onTapPrevious: (() -> Unit)? = null,
     onTapNext: (() -> Unit)? = null,
     onTapCenter: (() -> Unit)? = null,
-    pageId: ReaderPageId? = null,
-    generation: Long = 0L,
-    ioObserver: ReaderPageIoObserver? = null,
 ) {
-    // Blank URL = page not yet downloaded. Show a loading spinner directly
-    // rather than letting Coil attempt a request and return an error state.
-    if (url.isBlank()) {
-        LaunchedEffect(url) {
-            onLoadingStateChange?.invoke(true)
-        }
-        Box(modifier = modifier, contentAlignment = loadingAlignment) {
-            if (showLoadingIndicator) {
-                CircularProgressIndicator(color = Color.White)
-            }
-        }
-        return
-    }
-
     val gestureCapabilities = zoomableGestureCapabilities(
         handlesTapNavigation = handlesTapNavigation,
         hasNavigationCallbacks = onTapPrevious != null || onTapNext != null || onTapCenter != null,
     )
 
     val latestZoom by rememberUpdatedState(zoomState)
+    val identity = presentationImage.holder.identity
+    val splitHalf = identity.splitHalf
+    val sourceBounds = identity.sourceBounds
+    val readyState = presentationImage.state as? DesktopReaderPresentationImageState.Ready
+    val asset = readyState?.asset
+    val renderedImage = rememberReaderPresentationRenderedImage(presentationImage, cropBorders)
 
-    // Fast path: if the preloader already has this page decoded, use it directly.
-    // This eliminates the Coil loading indicator for pre-warmed pages.
-    val preloadRevision = if (preloader != null) {
-        preloader.cacheRevision.collectAsState().value
-    } else {
-        0L
-    }
-    val preloadedPage = remember(url, pageIndex, preloader, preloadRevision) { preloader?.getCachedPage(pageIndex) }
-    val preloadedBitmap = preloadedPage?.bitmap
-
-    val transformedPreloadedBitmap by produceState<ImageBitmap?>(
-        initialValue = preloadedBitmap.takeIf { splitHalf == null && sourceBounds == null && !cropBorders },
-        url,
-        preloadedPage,
-        splitHalf,
-        sourceBounds,
-        cropBorders,
-    ) {
-        value = preloadedPage?.let { cachedPage ->
-            withContext(Dispatchers.Default) {
-                transformCachedPageBitmap(cachedPage, splitHalf, sourceBounds, cropBorders)
-            }
-        }
-    }
-
-    val sourceId = LocalDesktopSourceImageId.current
-    val painter = rememberAsyncImagePainter(readerPagePainterModel(url, preloadedBitmap, sourceId))
-    val painterState by painter.state.collectAsState()
-
-    val localBitmap by produceState<ImageBitmap?>(initialValue = null, url, splitHalf, sourceBounds, cropBorders) {
-        value = withContext(Dispatchers.IO) {
-            val bitmap = loadLocalPageBitmap(
-                url = url,
-                onOpen = { pageId?.let { ioObserver?.pageOpened(it, generation) } },
-                onDecode = { pageId?.let { ioObserver?.pageDecoded(it, generation) } },
-            ) ?: return@withContext null
-            transformCachedPageBitmap(bitmap, splitHalf, sourceBounds, cropBorders)
-        }
-    }
-
-    // Transformed Coil bitmap. Reset for every virtual half/bounds change so pager slot reuse
-    // cannot briefly display the previous half of the same source URL.
-    var croppedBitmap by remember(url, splitHalf, sourceBounds, cropBorders) { mutableStateOf<ImageBitmap?>(null) }
-
-    // Detect spread pages and optionally apply crop borders after Coil decodes the image.
-    LaunchedEffect(painterState, cropBorders, splitHalf, sourceBounds) {
-        val s = painterState
-        if (s is AsyncImagePainter.State.Success) {
-            pageId?.let {
-                ioObserver?.pageOpened(it, generation)
-                ioObserver?.pageDecoded(it, generation)
-            }
-            val img = s.result.image
-
-            // Spread detection (only when not already splitting)
-            if (onSpreadDetected != null && splitHalf == null && img.width > img.height) {
-                onSpreadDetected()
-            }
-
-            croppedBitmap = if (sourceBounds != null || splitHalf != null || cropBorders) {
-                withContext(Dispatchers.Default) {
-                    s.result.image.toSkiaBitmap()?.let { bitmap ->
-                        transformCachedPageBitmap(
-                            bitmap = bitmap.asComposeImageBitmap(),
-                            splitHalf = splitHalf,
-                            sourceBounds = sourceBounds,
-                            cropBorders = cropBorders,
-                        )
-                    }
-                }
-            } else {
-                null
-            }
-        }
-    }
-
-    LaunchedEffect(localBitmap, splitHalf) {
-        val bitmap = localBitmap
-        if (bitmap != null && onSpreadDetected != null && splitHalf == null && bitmap.width > bitmap.height) {
+    LaunchedEffect(asset, splitHalf, onSpreadDetected) {
+        if (asset != null && onSpreadDetected != null && splitHalf == null && asset.sourceWidth > asset.sourceHeight) {
             onSpreadDetected()
         }
     }
@@ -422,14 +261,7 @@ internal fun ZoomablePageBox(
                 .then(doubleTapModifier),
             contentAlignment = imageAlignment,
         ) {
-            // Loading indicator — suppressed when preloaded bitmap or crop is ready
-            val isLoading = painterState is AsyncImagePainter.State.Loading ||
-                painterState is AsyncImagePainter.State.Empty
-            val isCachedTransformLoading = preloadedBitmap != null && transformedPreloadedBitmap == null
-            val shouldShowLoading =
-                (isLoading && preloadedBitmap == null || isCachedTransformLoading) &&
-                    croppedBitmap == null &&
-                    localBitmap == null
+            val shouldShowLoading = asset == null || renderedImage == null
             LaunchedEffect(shouldShowLoading) {
                 onLoadingStateChange?.invoke(shouldShowLoading)
             }
@@ -449,18 +281,14 @@ internal fun ZoomablePageBox(
                 ScaleType.FIT_WIDTH -> ContentScale.FillWidth
                 ScaleType.FIT_HEIGHT -> ContentScale.FillHeight
                 ScaleType.ORIGINAL_SIZE -> ContentScale.None
-                ScaleType.SMART_FIT -> {
-                    val s = painterState
-                    if (s is AsyncImagePainter.State.Success && s.result.image.height > s.result.image.width) {
+                ScaleType.SMART_FIT ->
+                    if (asset != null && asset.sourceHeight > asset.sourceWidth) {
                         ContentScale.FillWidth
                     } else {
                         ContentScale.Fit
                     }
-                }
             }
 
-            val displayBitmap = croppedBitmap ?: transformedPreloadedBitmap ?: localBitmap
-            val decoded = displayBitmap != null || painterState is AsyncImagePainter.State.Success
             val imageModifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer(
@@ -469,23 +297,13 @@ internal fun ZoomablePageBox(
                     translationX = zoomState.offsetX,
                     translationY = zoomState.offsetY,
                 )
-            val observedImageModifier = pageId?.let {
-                imageModifier.observeReaderPageDraw(it, generation, decoded, ioObserver)
-            } ?: imageModifier
-            if (displayBitmap != null) {
+                .observeReaderPageDraw(renderedImage?.acknowledgeDraw)
+            if (renderedImage != null) {
                 Image(
-                    bitmap = displayBitmap,
+                    bitmap = renderedImage.bitmap,
                     contentDescription = pageLabel,
                     alignment = imageAlignment,
-                    modifier = observedImageModifier,
-                    contentScale = resolvedScale,
-                )
-            } else {
-                Image(
-                    painter = painter,
-                    contentDescription = pageLabel,
-                    alignment = imageAlignment,
-                    modifier = observedImageModifier,
+                    modifier = imageModifier,
                     contentScale = resolvedScale,
                 )
             }
@@ -493,28 +311,23 @@ internal fun ZoomablePageBox(
     }
 
     val scope = contextMenuScope
-    if (scope != null) {
+    if (scope != null && asset != null) {
+        val binding = readerPageContextMenuBinding(presentationImage)
         PageContextMenu(
-            pageUrl = url,
+            imageLeaseProvider = binding.imageLeaseProvider,
             mangaTitle = mangaTitle,
             chapterTitle = chapterTitle,
             pageIndex = pageIndex,
             scope = scope,
             onSetAsCover = onSetAsCover,
-            splitHalf = splitHalf,
-            sourceBounds = sourceBounds,
+            splitHalf = binding.splitHalf,
+            sourceBounds = binding.sourceBounds,
             content = innerContent,
         )
     } else {
         innerContent()
     }
 }
-
-internal fun readerPagePainterModel(
-    url: String,
-    preloadedBitmap: ImageBitmap?,
-    sourceId: Long,
-): Any? = desktopSourceImageModel(url, sourceId).takeIf { preloadedBitmap == null }
 
 internal fun transformCachedPageBitmap(
     bitmap: ImageBitmap,
@@ -540,11 +353,27 @@ internal fun transformCachedPageBitmap(
         splitHalf != null -> splitSkiaBitmap(skiaBitmap, splitHalf) ?: bitmap
         else -> bitmap
     }
-    return if (cropBorders) {
-        cropBordersFromSkiaBitmap(bounded.asSkiaBitmap()) ?: bounded
-    } else {
-        bounded
-    }
+    if (!cropBorders) return bounded
+    return selectPresentationCropResult(
+        base = bitmap,
+        bounded = bounded,
+        cropped = cropBordersFromSkiaBitmap(bounded.asSkiaBitmap()),
+    )
+}
+
+internal fun selectPresentationCropResult(
+    base: ImageBitmap,
+    bounded: ImageBitmap,
+    cropped: ImageBitmap?,
+): ImageBitmap {
+    if (cropped == null) return bounded
+    if (bounded !== base && cropped !== bounded) bounded.asSkiaBitmap().close()
+    return cropped
+}
+
+private fun splitSkiaBitmap(src: SkiaBitmap, half: PageSplitHalf): ImageBitmap? {
+    val bounds = splitBounds(src.width, src.height, half)
+    return extractSkiaSubBitmap(src, bounds.x, bounds.y, bounds.width, bounds.height)
 }
 
 internal fun transformCachedPageBitmap(
@@ -561,7 +390,7 @@ internal fun transformCachedPageBitmap(
     sourceHeight = cachedPage.sourceHeight,
 )
 
-private fun PixelBounds.mapToBitmap(
+internal fun PixelBounds.mapToBitmap(
     sourceWidth: Int,
     sourceHeight: Int,
     bitmapWidth: Int,
@@ -593,21 +422,6 @@ private fun PixelBounds.mapToBitmap(
 private fun scaleCoordinate(coordinate: Int, sourceExtent: Int, bitmapExtent: Int): Int =
     // Round shared edges identically so odd virtual halves remain contiguous after sampling.
     ((coordinate.toLong() * bitmapExtent + sourceExtent / 2L) / sourceExtent).toInt()
-
-/** Crops the already-decoded Coil image's white borders — no re-download. */
-internal fun cropBordersFromCoilImage(image: CoilImage): ImageBitmap? {
-    val skiaBitmap = image.toSkiaBitmap() ?: return null
-    return cropBordersFromSkiaBitmap(skiaBitmap)
-}
-
-/**
- * Extracts a [SkiaBitmap] from a [CoilImage].
- * For [BitmapImage] the backing SkiaBitmap is reused directly (zero-copy).
- */
-private fun CoilImage.toSkiaBitmap(): SkiaBitmap? = when (this) {
-    is BitmapImage -> bitmap
-    else -> null
-}
 
 /**
  * Scans [src] for white borders using [CropBorderScanner] and returns a cropped
@@ -661,12 +475,15 @@ private fun cropBordersFromSkiaBitmap(src: SkiaBitmap): ImageBitmap? {
 private fun extractSkiaSubBitmap(src: SkiaBitmap, x: Int, y: Int, w: Int, h: Int): ImageBitmap {
     val dst = SkiaBitmap()
     dst.allocN32Pixels(w, h)
-    val canvas = SkiaCanvas(dst)
-    canvas.drawImageRect(
-        SkiaImage.makeFromBitmap(src),
-        SkiaRect.makeLTRB(x.toFloat(), y.toFloat(), (x + w).toFloat(), (y + h).toFloat()),
-        SkiaRect.makeWH(w.toFloat(), h.toFloat()),
-    )
+    SkiaCanvas(dst).use { canvas ->
+        SkiaImage.makeFromBitmap(src).use { sourceImage ->
+            canvas.drawImageRect(
+                sourceImage,
+                SkiaRect.makeLTRB(x.toFloat(), y.toFloat(), (x + w).toFloat(), (y + h).toFloat()),
+                SkiaRect.makeWH(w.toFloat(), h.toFloat()),
+            )
+        }
+    }
     return dst.asComposeImageBitmap()
 }
 

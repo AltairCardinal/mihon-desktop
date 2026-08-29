@@ -115,6 +115,24 @@ class ReaderArchitectureGuardTest {
     }
 
     @Test
+    fun `desktop presentations consume only the shared stable image state`() {
+        val renderingSources = desktopPresentationRenderingPaths.associateWith { path ->
+            executableSource(source(path))
+        }
+        val violations = renderingSources.flatMap { (path, content) ->
+            legacyPresentationImageOwnerMarkers
+                .filter { marker -> marker in content }
+                .map { marker -> "$path: $marker" }
+        }
+
+        assertEquals(
+            emptyList<String>(),
+            violations,
+            "Single, Dual, and Webtoon must not regain a private image fetch, decoder, painter, or preloader owner",
+        )
+    }
+
+    @Test
     fun `parity manifest records RG01 cleanup and enforced reader guard`() {
         val capabilities = Json.parseToJsonElement(
             source("app-desktop/src/test/resources/parity/parity-manifest.json"),
@@ -425,6 +443,27 @@ class ReaderArchitectureGuardTest {
 
         val preloaderConstructionOwners = setOf(
             "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt",
+        )
+
+        val desktopPresentationRenderingPaths = setOf(
+            "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ZoomablePageBox.kt",
+            "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt",
+            "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt",
+            "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt",
+            "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/PageContextMenu.kt",
+        )
+
+        val legacyPresentationImageOwnerMarkers = setOf(
+            "rememberAsyncImagePainter",
+            "AsyncImagePainter",
+            "readerPagePainterModel",
+            "loadLocalPageBitmap",
+            "PagePreloader",
+            "getCachedPage(",
+            "pageUrl",
+            "PageSaveHelper.loadImage",
+            "readBytes(",
+            "makeFromEncoded",
         )
 
         val decisionDeclarationOwners = mapOf(

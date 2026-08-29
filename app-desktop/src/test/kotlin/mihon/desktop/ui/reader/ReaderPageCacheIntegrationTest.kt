@@ -21,14 +21,12 @@ import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import javax.imageio.ImageIO
-import mihon.desktop.image.DesktopSourceImage
 
 class ReaderPageCacheIntegrationTest {
 
@@ -103,24 +101,6 @@ class ReaderPageCacheIntegrationTest {
         awaitUpdate(preloader.cacheRevision.value, setOf(1 to 2))
         assertEquals(3, synchronized(fetchCounts) { fetchCounts.values.sum() })
         assertEquals(refs.toSet(), synchronized(fetchCounts) { fetchCounts.keys.toSet() })
-    }
-
-    @Test
-    fun `late preload revision replaces the ordinary full image request with a cache hit`() = runTest {
-        val bytes = ByteArrayOutputStream().also {
-            ImageIO.write(BufferedImage(8, 8, BufferedImage.TYPE_INT_ARGB), "png", it)
-        }.toByteArray()
-        val preloader = createTestPagePreloader(encodedPageReader = { bytes }, windowSize = 0)
-        val url = "https://example.invalid/page.png"
-        val ref = EncodedPageRef("test:late-page")
-        val initialRevision = preloader.cacheRevision.value
-
-        assertEquals(DesktopSourceImage(url, 42L), readerPagePainterModel(url, preloader.get(0), sourceId = 42L))
-
-        preloader.preloadEncoded(0, listOf(ref))
-
-        assertTrue(preloader.cacheRevision.value > initialRevision)
-        assertNull(readerPagePainterModel(url, preloader.get(0), sourceId = 42L))
     }
 
     @Test
@@ -293,7 +273,7 @@ class ReaderPageCacheIntegrationTest {
     }
 
     @Test
-    fun `downsampled cache keeps pager border crop and null painter model`() = runTest {
+    fun `downsampled cache keeps pager border crop`() = runTest {
         val cachedPage = preloadDownsampled(
             width = 12,
             height = 12,
@@ -307,7 +287,6 @@ class ReaderPageCacheIntegrationTest {
         assertEquals(4, cropped.width)
         assertEquals(2, cropped.height)
         assertEquals(BLACK, cropped.asSkiaBitmap().getColor(0, 0))
-        assertNull(readerPagePainterModel("cached-page", cachedPage.bitmap, sourceId = 42L))
     }
 
     @Test

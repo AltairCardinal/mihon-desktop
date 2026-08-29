@@ -11,17 +11,12 @@ import mihon.desktop.ui.reader.presentation.DesktopReaderPresentationRegistry
 import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
 import mihon.desktop.ui.reader.presentation.desktopReaderPresentationRequest
 import mihon.domain.reader.ReaderDirection
-import mihon.domain.reader.PixelBounds
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import java.awt.Color
-import java.awt.image.BufferedImage
 import java.io.File
-import javax.imageio.ImageIO
 
 class DesktopReaderProductRegressionTest {
 
@@ -193,15 +188,13 @@ class DesktopReaderProductRegressionTest {
     }
 
     @Test
-    fun `reader product wiring retains entry retry transitions auto scroll and context menu`() {
+    fun `reader product wiring retains entry retry transitions and auto scroll`() {
         val detail = source("app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt")
         val reader = readerSource("DesktopReaderScreen.kt")
         val readerVisuals = readerSource("ReaderVisualComponents.kt")
         val webtoon = readerSource("WebtoonViewer.kt")
         val settings = readerSource("ReaderSettingsPanel.kt")
         val dual = readerSource("DualPagePagerViewer.kt")
-        val page = readerSource("ZoomablePageBox.kt")
-        val pageContextMenuSource = readerSource("PageContextMenu.kt")
 
         assertTrue(detail.contains("DesktopReaderScreen("), "Manga detail must remain the reader entry point")
         assertTrue(reader.contains("onRetry"), "Loading errors must expose retry")
@@ -210,7 +203,6 @@ class DesktopReaderProductRegressionTest {
         assertFalse(reader.contains("navigator.replace("), "Chapter navigation must not replace the reader Screen")
         assertFalse(readerVisuals.contains("showContinue"), "Loaded chapter transitions must not expose Continue")
         assertTrue(reader.contains("state.session.activeChapter"), "The reader must render the canonical session snapshot")
-        assertTrue(reader.contains("state.session.activeChapter.pages.map { it.encodedPageRef }"))
         assertTrue(reader.contains("ReadingMode.WEBTOON -> WebtoonPresentationViewer("))
         assertTrue(readerVisuals.contains(".require(ReaderPresentationMode.WEBTOON)"))
         assertTrue(readerVisuals.contains(".require(ReaderPresentationMode.DUAL_PAGED)"))
@@ -218,37 +210,6 @@ class DesktopReaderProductRegressionTest {
         assertTrue(webtoon.contains("key = DisplayUnit::id"), "Webtoon Lazy items must keep stable display identities")
         assertTrue(settings.contains("if (currentMode == ReadingMode.WEBTOON)"))
         assertTrue(settings.contains("desktop_ui_split_wide_pages"), "Webtoon must expose its wide-page split option")
-        val edgeObserverCall = callBlock(reader, "observeDesktopMatchedPairs(")
-        assertTrue(edgeObserverCall.contains("autoSpreadMatching = state.autoSpreadMatching"))
-        assertTrue(edgeObserverCall.contains("dualPageMode = state.dualPageMode"))
-        assertTrue(edgeObserverCall.contains("pageCount = state.session.activeChapter.pages.size"))
-        assertTrue(edgeObserverCall.contains("retainedMatchedPairs = state.matchedPairs"))
-        assertTrue(edgeObserverCall.contains("onMatchedPairsChanged = model::setMatchedPairs"))
-        assertEquals(
-            1,
-            occurrenceCount(reader, "internal suspend fun observeDesktopMatchedPairs("),
-            "The cache-revision observer must have one authoritative declaration",
-        )
-        val edgeObserverStart = reader.indexOf("internal suspend fun observeDesktopMatchedPairs(")
-        val edgeObserverEnd = reader.indexOf("internal suspend fun resolveDesktopMatchedPairs(")
-        val edgeObserverDeclaration = reader.substring(edgeObserverStart, edgeObserverEnd)
-        assertTrue(edgeObserverDeclaration.contains("preloader.cacheRevision.collect"))
-        assertTrue(edgeObserverDeclaration.contains("retained + resolveDesktopMatchedPairs("))
-        assertTrue(edgeObserverDeclaration.contains("pageAt = preloader::get"))
-        assertEquals(
-            1,
-            occurrenceCount(reader, "internal suspend fun resolveDesktopMatchedPairs("),
-            "The production matcher adapter must have one authoritative declaration",
-        )
-        val matcherDeclaration = callBlock(reader, "internal suspend fun resolveDesktopMatchedPairs(")
-        assertTrue(
-            matcherDeclaration.contains(
-                "findMatchedPairs: suspend (Int, (Int) -> androidx.compose.ui.graphics.ImageBitmap?) -> Set<Pair<Int, Int>>",
-            ),
-            "The production matcher must consume caller-owned bounded decoded images",
-        )
-        assertTrue(matcherDeclaration.contains("EdgePixelMatcher().findMatchedPairs(count, provider)"))
-
         val autoScrollEffect = bracedBlock(webtoon, "LaunchedEffect(autoScroll, autoScrollSpeed, autoScrollLoopEnabled)")
         assertTrue(autoScrollEffect.contains("autoScrollGate.action("))
         assertTrue(autoScrollEffect.contains("enabled = autoScroll"))
@@ -261,23 +222,6 @@ class DesktopReaderProductRegressionTest {
         assertTrue(autoScrollPause.contains("isUserDragging"))
         assertTrue(autoScrollPause.contains("isScrollInProgress"))
 
-        val webtoonContextMenu = callBlock(webtoon, "        PageContextMenu(")
-        assertTrue(webtoonContextMenu.contains("pageUrl = url"), "Webtoon right-click must receive the visible URL")
-        val pageContextMenu = callBlock(page, "        PageContextMenu(")
-        assertTrue(pageContextMenu.contains("splitHalf = splitHalf"), "Right-click must receive the visible split half")
-        assertTrue(pageContextMenu.contains("sourceBounds = sourceBounds"), "Right-click must receive virtual-page source bounds")
-        val dualPageBoxes = callBlocks(dual, "ZoomablePageBox(")
-        assertTrue(dualPageBoxes.isNotEmpty())
-        assertTrue(
-            dualPageBoxes.all { it.contains("contextMenuScope = contextMenuScope") },
-            "Every dual-page image must retain its context-menu scope",
-        )
-        val visibleImageLoads = callBlocks(pageContextMenuSource, "val img = loadPageContextMenuImage(")
-        assertEquals(2, visibleImageLoads.size, "Save and copy must both load the visible image region")
-        assertTrue(
-            visibleImageLoads.all { it.contains("pageUrl, splitHalf, sourceBounds") },
-            "Save and copy must both forward the exact split/sourceBounds parameters",
-        )
     }
 
     @Test
@@ -291,20 +235,9 @@ class DesktopReaderProductRegressionTest {
         assertTrue(keyboard.contains("Key.DirectionLeft, Key.A -> ReaderKeyboardAction.forLeft(isRtl, navCurrent, totalPages)"))
         assertTrue(keyboard.contains("Key.DirectionRight, Key.D, Key.Spacebar -> ReaderKeyboardAction.forRight(isRtl, navCurrent, totalPages)"))
 
-        val singlePage = callBlock(single, "            ZoomablePageBox(")
-        assertTrue(singlePage.contains("isRtl = isRtl"))
-        assertTrue(singlePage.contains("onTapPrevious = { executeTapCommand(ReaderNavigationCommand.Previous) }"))
-        assertTrue(singlePage.contains("onTapNext = { executeTapCommand(ReaderNavigationCommand.Next) }"))
         assertTrue(single.contains("ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, displayUnits.size)"))
         assertTrue(single.contains("settledPagerIndex = { pagerState.settledPage }"))
 
-        val dualPageBoxes = callBlocks(dual, "ZoomablePageBox(")
-        assertEquals(1, dualPageBoxes.size, "All physical slots must share the same renderer path")
-        val delegatedPageBox = dualPageBoxes.single()
-        assertTrue(delegatedPageBox.contains("handlesTapNavigation = false"))
-        assertTrue(delegatedPageBox.contains("isRtl = isRtl"))
-        assertTrue(delegatedPageBox.contains("splitHalf = slot.splitHalf"))
-        assertTrue(delegatedPageBox.contains("sourceBounds = slot.sourceBounds"))
         assertEquals(1, Regex("readerPrimaryTapInput\\(zoomState\\.scale, navigationMode, isRtl\\)").findAll(dual).count())
         assertTrue(dual.contains("ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, displayUnits.size)"))
         assertTrue(dual.contains("settledPagerIndex = { pagerState.settledPage }"))
@@ -317,101 +250,6 @@ class DesktopReaderProductRegressionTest {
         assertTrue(page.contains("tapNavRegion(tapX, tapY, tapWidth, tapHeight, navigationMode, isRtl)"))
         assertTrue(page.contains("TapNavRegion.PREV -> onTapPrevious?.invoke()"))
         assertTrue(page.contains("TapNavRegion.NEXT -> onTapNext?.invoke()"))
-    }
-
-    @Test
-    fun `right click image actions use the visible virtual half instead of the full source page`() {
-        val source = BufferedImage(5, 2, BufferedImage.TYPE_INT_ARGB).apply {
-            for (y in 0 until height) {
-                for (x in 0 until width) {
-                    setRGB(x, y, if (x < 2) Color.RED.rgb else Color.BLUE.rgb)
-                }
-            }
-        }
-        val file = File.createTempFile("mihon-visible-half-", ".png").apply { deleteOnExit() }
-        ImageIO.write(source, "png", file)
-
-        val visible = loadPageContextMenuImage(file.toURI().toString(), splitHalf = PageSplitHalf.RIGHT)
-
-        requireNotNull(visible)
-        assertEquals(3, visible.width)
-        assertEquals(2, visible.height)
-        assertTrue((0 until visible.width).all { x -> visible.getRGB(x, 0) == Color.BLUE.rgb })
-    }
-
-    @Test
-    fun `right click image actions crop exact source bounds before split hints`() {
-        withContextMenuImage(width = 5, height = 3) { file ->
-            val visible =
-                loadPageContextMenuImage(
-                    pageUrl = file.toURI().toString(),
-                    splitHalf = PageSplitHalf.RIGHT,
-                    sourceBounds = PixelBounds(x = 1, y = 1, width = 3, height = 2),
-                )
-
-            requireNotNull(visible)
-            assertEquals(3, visible.width)
-            assertEquals(2, visible.height)
-            assertEquals(Color(1, 1, 0).rgb, visible.getRGB(0, 0))
-            assertEquals(Color(3, 2, 0).rgb, visible.getRGB(2, 1))
-        }
-    }
-
-    @Test
-    fun `right click image actions keep the full page without visible bounds`() {
-        withContextMenuImage(width = 5, height = 3) { file ->
-            val visible = loadPageContextMenuImage(file.toURI().toString())
-
-            requireNotNull(visible)
-            assertEquals(5, visible.width)
-            assertEquals(3, visible.height)
-            assertEquals(Color(4, 2, 0).rgb, visible.getRGB(4, 2))
-        }
-    }
-
-    @Test
-    fun `right click image actions reject ordinary and overflowing invalid bounds`() {
-        withContextMenuImage(width = 5, height = 3) { file ->
-            assertNull(
-                loadPageContextMenuImage(
-                    file.toURI().toString(),
-                    sourceBounds = PixelBounds(x = -1, y = 0, width = 1, height = 1),
-                ),
-            )
-            assertNull(
-                loadPageContextMenuImage(
-                    file.toURI().toString(),
-                    sourceBounds = PixelBounds(x = Int.MAX_VALUE, y = 0, width = 2, height = 1),
-                ),
-            )
-            assertNull(
-                loadPageContextMenuImage(
-                    file.toURI().toString(),
-                    sourceBounds = PixelBounds(x = 0, y = Int.MAX_VALUE, width = 1, height = 2),
-                ),
-            )
-        }
-    }
-
-    @Test
-    fun `all production viewers observe the bounded preload cache and stop duplicate full image loading`() {
-        val reader = readerSource("DesktopReaderScreen.kt")
-        val single = readerSource("SinglePagePagerViewer.kt")
-        val dual = readerSource("DualPagePagerViewer.kt")
-        val webtoon = readerSource("WebtoonViewer.kt")
-        val page = readerSource("ZoomablePageBox.kt")
-
-        assertTrue(reader.contains("preloader = preloader"), "Reader dispatcher must forward the production preloader")
-        assertTrue(single.contains("preloader = preloader"), "Single-page viewer must forward the production preloader")
-        assertTrue(dual.contains("preloader: PagePreloader?"), "Dual-page viewer must accept the production preloader")
-        assertTrue(dual.contains("preloader = preloader"), "Every dual-page image path must consume the preload cache")
-        assertTrue(webtoon.contains("preloader: PagePreloader?"), "Webtoon viewer must accept the production preloader")
-        assertTrue(webtoon.contains("preloader = preloader"), "Webtoon items must consume the preload cache")
-        assertTrue(page.contains("cacheRevision.collectAsState"), "Late preload writes must recompose visible pages")
-        assertTrue(
-            page.contains("rememberAsyncImagePainter(readerPagePainterModel(url, preloadedBitmap, sourceId))"),
-            "A bounded/tiled preload hit must stop the ordinary full-image Coil request",
-        )
     }
 
     @Test
@@ -466,60 +304,10 @@ class DesktopReaderProductRegressionTest {
     private fun readerSource(name: String): String =
         source("app-desktop/src/main/kotlin/mihon/desktop/ui/reader/$name")
 
-    private fun withContextMenuImage(
-        width: Int,
-        height: Int,
-        block: (File) -> Unit,
-    ) {
-        val image = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB).apply {
-            for (y in 0 until height) {
-                for (x in 0 until width) {
-                    setRGB(x, y, Color(x, y, 0).rgb)
-                }
-            }
-        }
-        val file = File.createTempFile("mihon-context-menu-", ".png")
-        try {
-            ImageIO.write(image, "png", file)
-            block(file)
-        } finally {
-            file.delete()
-        }
-    }
-
     private fun source(path: String): String {
         val cwd = File(System.getProperty("user.dir"))
         val root = if (File(cwd, "app-desktop").exists()) cwd else cwd.parentFile
         return File(root, path).readText()
-    }
-
-    private fun callBlock(source: String, marker: String): String {
-        val start = source.indexOf(marker)
-        require(start >= 0) { "Missing production call: $marker" }
-        val open = source.indexOf('(', start)
-        var depth = 0
-        for (index in open until source.length) {
-            when (source[index]) {
-                '(' -> depth++
-                ')' -> {
-                    depth--
-                    if (depth == 0) return source.substring(start, index + 1)
-                }
-            }
-        }
-        error("Unclosed production call: $marker")
-    }
-
-    private fun callBlocks(source: String, marker: String): List<String> {
-        val blocks = mutableListOf<String>()
-        var offset = 0
-        while (true) {
-            val relative = source.substring(offset).indexOf(marker)
-            if (relative < 0) return blocks
-            val start = offset + relative
-            blocks += callBlock(source.substring(start), marker)
-            offset = start + marker.length
-        }
     }
 
     private fun bracedBlock(source: String, marker: String): String {
@@ -539,34 +327,4 @@ class DesktopReaderProductRegressionTest {
         error("Unclosed production block: $marker")
     }
 
-    private fun trailingLambdaCallBlocks(source: String, marker: String): List<String> {
-        val blocks = mutableListOf<String>()
-        var offset = 0
-        while (true) {
-            val relative = source.substring(offset).indexOf(marker)
-            if (relative < 0) return blocks
-            val start = offset + relative
-            val call = callBlock(source.substring(start), marker)
-            val lambdaOpen = source.indexOf('{', start + call.length)
-            require(lambdaOpen >= 0) { "Missing trailing lambda for production call: $marker" }
-            var depth = 0
-            for (index in lambdaOpen until source.length) {
-                when (source[index]) {
-                    '{' -> depth++
-                    '}' -> {
-                        depth--
-                        if (depth == 0) {
-                            blocks += source.substring(start, index + 1)
-                            offset = index + 1
-                            break
-                        }
-                    }
-                }
-            }
-            require(offset > start) { "Unclosed trailing lambda for production call: $marker" }
-        }
-    }
-
-    private fun occurrenceCount(source: String, marker: String): Int =
-        Regex(Regex.escape(marker)).findAll(source).count()
 }

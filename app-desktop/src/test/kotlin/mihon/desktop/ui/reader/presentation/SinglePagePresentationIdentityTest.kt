@@ -92,6 +92,7 @@ class SinglePagePresentationIdentityTest {
         )
         var retries = 0
         val scene = ImageComposeScene(640, 480, coroutineContext = currentCoroutineContext()) {}
+        val imageOwner = PresentationImageOwnerFixture(this)
         try {
             scene.setContent {
                 MaterialTheme {
@@ -102,6 +103,7 @@ class SinglePagePresentationIdentityTest {
                         isDualPage = false,
                         zoomState = ZoomState(),
                         navigationMode = NavigationMode.RightAndLeft,
+                        presentationImageOwner = imageOwner.owner,
                         onPageChange = {},
                         onZoomChange = {},
                         onRetryPage = { retries++ },
@@ -136,6 +138,7 @@ class SinglePagePresentationIdentityTest {
             assertEquals(ReaderPageLoadState.Queued, retryLoadingNode.config[ReaderDisplayUnitLoadStateKey])
         } finally {
             scene.close()
+            imageOwner.close()
         }
     }
 

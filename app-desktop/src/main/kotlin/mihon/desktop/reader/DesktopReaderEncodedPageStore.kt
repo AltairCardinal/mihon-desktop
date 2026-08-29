@@ -102,7 +102,9 @@ class DesktopReaderEncodedPageStore internal constructor(
 
     /** Reconciles existing cache files once after the first page has been presented. */
     internal suspend fun reconcileSession(): EncodedPageStoreLifecycleResult = synchronized(sharedState.lock) {
-        activeLeaseLocked()
+        if (!leaseActive || leaseId !in sharedState.leases) {
+            return@synchronized currentLifecycleLocked(emptySet())
+        }
         if (sharedState.reconciled) return@synchronized currentLifecycleLocked(emptySet())
 
         prepareDirectoryLocked()

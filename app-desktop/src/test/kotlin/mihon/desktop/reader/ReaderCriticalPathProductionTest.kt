@@ -64,10 +64,10 @@ class ReaderCriticalPathProductionTest {
         Route.entries.filter { it.isDirectory }.forEach { route ->
             val routeTraces = traces.filter { it.route == route }.sortedBy { it.pageCount }
             assertEquals(2, routeTraces.size)
-            assertEquals(routeTraces.first().eventTypesWithoutDecode, routeTraces.last().eventTypesWithoutDecode)
+            assertEquals(routeTraces.first().eventTypes, routeTraces.last().eventTypes)
             assertEquals(
-                routeTraces.first().normalizedStructuralCostExcludingTransitionalDecodeRace,
-                routeTraces.last().normalizedStructuralCostExcludingTransitionalDecodeRace,
+                routeTraces.first().structuralCost,
+                routeTraces.last().structuralCost,
             )
         }
     }
@@ -233,8 +233,8 @@ class ReaderCriticalPathProductionTest {
         assertEquals(ReaderIoEventType.OPEN_READER_INTENT.name, types.first())
         assertEquals(ReaderIoEventType.FIRST_PAGE_PRESENTED.name, types.last())
         assertEquals(1, types.count { it == ReaderIoEventType.PAGE_LIST_READY.name })
-        assertTrue(trace.currentPageDecodeCount in 1..2)
-        assertEquals(trace.currentPageDecodeCount, types.count { it == ReaderIoEventType.DECODE.name })
+        assertEquals(1, trace.currentPageDecodeCount)
+        assertEquals(1, types.count { it == ReaderIoEventType.DECODE.name })
         assertTrue(ReaderIoEventType.OPEN_PAGE.name in types)
         assertTrue(ReaderIoEventType.CACHE_RECONCILE.name !in types)
         assertTrue(ReaderIoEventType.ADJACENT_IO.name !in types)
@@ -314,7 +314,6 @@ class ReaderCriticalPathProductionTest {
         val enteredGates: Set<ReaderIoGatePoint>,
     ) {
         val eventTypes = events.map(ReaderIoTestEvent::type)
-        val eventTypesWithoutDecode = eventTypes.filterNot { it == ReaderIoEventType.DECODE.name }
         val currentPageDecodeCount = events.count {
             it.type == ReaderIoEventType.DECODE.name &&
                 it.chapterId == CURRENT_CHAPTER_ID &&
@@ -322,12 +321,7 @@ class ReaderCriticalPathProductionTest {
                 it.generation == 1L
         }
 
-        // During the 04B -> 04C cutover the legacy presentation and shared pipeline can both report the
-        // same visible decode. Only that single bounded duplicate is normalized here; every other event
-        // and physical operation remains part of the page-count cost. RUA-04C removes this normalization.
-        val normalizedStructuralCostExcludingTransitionalDecodeRace =
-            events.size - (currentPageDecodeCount - 1) +
-                contentOperations.size + sourcePageListCalls + imageRequests
+        val structuralCost = events.size + contentOperations.size + sourcePageListCalls + imageRequests
     }
 
     private class CriticalPathSource(

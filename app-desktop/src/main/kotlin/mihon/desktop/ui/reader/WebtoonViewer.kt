@@ -19,11 +19,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -31,36 +29,29 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import coil3.BitmapImage
-import coil3.compose.AsyncImagePainter
-import coil3.compose.rememberAsyncImagePainter
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withContext
-import mihon.desktop.reader.PagePreloader
-import mihon.desktop.reader.ReaderPageIoObserver
+import mihon.desktop.reader.DesktopReaderPresentationImageOwner
+import mihon.desktop.reader.DesktopReaderPresentationImageState
 import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.ui.reader.presentation.DisplaySlot
 import mihon.desktop.ui.reader.presentation.DisplayUnit
 import mihon.desktop.ui.reader.presentation.DisplayUnitId
 import mihon.desktop.ui.reader.presentation.ReaderPresentationSnapshot
 import mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor
+import mihon.desktop.ui.reader.presentation.WebtoonInitialViewportBootstrapGate
 import mihon.desktop.ui.reader.presentation.WebtoonViewportUpdate
 import mihon.desktop.ui.reader.presentation.WebtoonVisibleItem
 import mihon.desktop.ui.reader.presentation.resolveWebtoonViewport
 import mihon.desktop.ui.reader.presentation.restoreWebtoonAnchorIndex
-import mihon.desktop.image.LocalDesktopSourceImageId
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
 
@@ -85,12 +76,11 @@ internal fun WebtoonViewer(
     contextMenuScope: CoroutineScope? = null,
     mangaTitle: String = "",
     chapterTitle: String = "",
-    preloader: PagePreloader? = null,
+    presentationImageOwner: DesktopReaderPresentationImageOwner,
     onViewportChanged: (WebtoonViewportUpdate) -> Unit,
     onRetryPage: (ReaderPageId) -> Unit,
     onSpreadDetected: ((Int) -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
-    ioObserver: ReaderPageIoObserver? = null,
     generation: Long = 0L,
 ) {
     WebtoonDisplayUnitList(
@@ -112,10 +102,9 @@ internal fun WebtoonViewer(
             contextMenuScope = contextMenuScope,
             mangaTitle = mangaTitle,
             chapterTitle = chapterTitle,
-            preloader = preloader,
+            presentationImageOwner = presentationImageOwner,
             onSpreadDetected = onSpreadDetected,
             generation = generation,
-            ioObserver = ioObserver,
         )
     }
 }
@@ -152,6 +141,9 @@ internal fun WebtoonDisplayUnitList(
     )
     val listState = listStateOverride ?: rememberedListState
     val autoScrollGate = remember { WebtoonAutoScrollGate() }
+    val initialViewportBootstrapGate = remember(currentPageId.chapterId) {
+        WebtoonInitialViewportBootstrapGate()
+    }
     val autoScrollPauseState = remember { WebtoonAutoScrollPauseState() }
     val measuredItemSizes = remember { mutableStateMapOf<DisplayUnitId, Int>() }
     var lastRestoredAnchor by remember { mutableStateOf<WebtoonAnchorRestoration?>(null) }
@@ -162,6 +154,15 @@ internal fun WebtoonDisplayUnitList(
         isUserDragging = isUserDragging,
         isScrollInProgress = isScrollInProgress,
     )
+
+    LaunchedEffect(currentPageId, currentDisplayUnitId, initialAnchor, displayUnitIds) {
+        initialViewportBootstrapGate.take(
+            presentation = presentation,
+            currentPageId = currentPageId,
+            currentDisplayUnitId = currentDisplayUnitId,
+            initialAnchor = initialAnchor,
+        )?.let(onViewportChanged)
+    }
 
     val anchorTargetIndex = initialAnchor
         ?.let(presentation::restoreWebtoonAnchorIndex)
@@ -228,7 +229,10 @@ internal fun WebtoonDisplayUnitList(
         presentation = presentation,
         listState = listState,
         enabled = !awaitsAnchorMeasurement && !restoresAnchor,
-        onViewportChanged = onViewportChanged,
+        onViewportChanged = { update ->
+            initialViewportBootstrapGate.onSettledViewport(update)
+            onViewportChanged(update)
+        },
     )
 
     LaunchedEffect(autoScroll, autoScrollSpeed, autoScrollLoopEnabled) {
@@ -456,8 +460,8 @@ internal fun webtoonPageContextMenuLabels(): List<String> =
 
 internal fun shouldShowWebtoonPageContextMenu(
     hasContextMenuScope: Boolean,
-    pageUrl: String,
-): Boolean = hasContextMenuScope && pageUrl.isNotBlank()
+    hasReadyImageAsset: Boolean,
+): Boolean = hasContextMenuScope && hasReadyImageAsset
 
 @Composable
 private fun WebtoonPageItem(
@@ -467,118 +471,63 @@ private fun WebtoonPageItem(
     contextMenuScope: CoroutineScope?,
     mangaTitle: String,
     chapterTitle: String,
-    preloader: PagePreloader?,
+    presentationImageOwner: DesktopReaderPresentationImageOwner,
     onSpreadDetected: ((Int) -> Unit)?,
     generation: Long,
-    ioObserver: ReaderPageIoObserver?,
 ) {
     val page = requireNotNull(slot.page)
     val pageIndex = page.id.sourcePageIndex
-    val url = page.encodedContentUri()
-    val preloadRevision = if (preloader != null) {
-        preloader.cacheRevision.collectAsState().value
-    } else {
-        0L
-    }
-    val preloadedPage = remember(url, pageIndex, preloader, preloadRevision) {
-        preloader?.getCachedPage(pageIndex)
-    }
-    val transformedPreloadedBitmap by produceState<ImageBitmap?>(
-        initialValue = preloadedPage?.bitmap.takeIf {
-            slot.splitHalf == null && slot.sourceBounds == null && !cropBorders
-        },
-        url,
-        preloadedPage,
-        slot.splitHalf,
-        slot.sourceBounds,
-        cropBorders,
-    ) {
-        value = preloadedPage?.let { cachedPage ->
-            withContext(Dispatchers.Default) {
-                transformCachedPageBitmap(cachedPage, slot.splitHalf, slot.sourceBounds, cropBorders)
-            }
-        }
-    }
+    val presentationImage = rememberReaderPresentationImage(
+        owner = presentationImageOwner,
+        page = page,
+        generation = generation,
+        splitHalf = slot.splitHalf,
+        sourceBounds = slot.sourceBounds,
+    )
+    val readyState = presentationImage.state as? DesktopReaderPresentationImageState.Ready
+    val asset = readyState?.asset
+    val renderedImage = rememberReaderPresentationRenderedImage(presentationImage, cropBorders)
 
-    val sourceId = LocalDesktopSourceImageId.current
-    val painter = rememberAsyncImagePainter(readerPagePainterModel(url, preloadedPage?.bitmap, sourceId))
-    val painterState by painter.state.collectAsState()
-    LaunchedEffect(painterState) {
-        if (painterState is AsyncImagePainter.State.Success) {
-            ioObserver?.pageOpened(page.id, generation)
-            ioObserver?.pageDecoded(page.id, generation)
-        }
-    }
-    val transformedPainterBitmap by produceState<ImageBitmap?>(
-        initialValue = null,
-        painterState,
-        slot.splitHalf,
-        slot.sourceBounds,
-        cropBorders,
-    ) {
-        val success = painterState as? AsyncImagePainter.State.Success ?: return@produceState
-        val bitmap = (success.result.image as? BitmapImage)?.bitmap ?: return@produceState
-        value = withContext(Dispatchers.Default) {
-            transformCachedPageBitmap(
-                bitmap = bitmap.asComposeImageBitmap(),
-                splitHalf = slot.splitHalf,
-                sourceBounds = slot.sourceBounds,
-                cropBorders = cropBorders,
-            )
-        }
-    }
-
-    LaunchedEffect(preloadedPage, painterState, slot.splitHalf, onSpreadDetected) {
+    LaunchedEffect(asset, slot.splitHalf, onSpreadDetected) {
         if (slot.splitHalf != null || onSpreadDetected == null) return@LaunchedEffect
-        val preloadedIsWide = preloadedPage?.let { it.sourceWidth > it.sourceHeight } == true
-        val painterIsWide = (painterState as? AsyncImagePainter.State.Success)?.result?.image?.let {
-            it.width > it.height
-        } == true
-        if (preloadedIsWide || painterIsWide) onSpreadDetected(pageIndex)
+        if (asset != null && asset.sourceWidth > asset.sourceHeight) onSpreadDetected(pageIndex)
     }
 
     val pageContent: @Composable () -> Unit = {
-        val bitmap = transformedPreloadedBitmap ?: transformedPainterBitmap
-        val decoded = bitmap != null || painterState is AsyncImagePainter.State.Success
-        val observedModifier = modifier.observeReaderPageDraw(page.id, generation, decoded, ioObserver)
-        if (bitmap != null) {
+        if (renderedImage != null) {
             Image(
-                bitmap = bitmap,
+                bitmap = renderedImage.bitmap,
                 contentDescription = null,
-                modifier = observedModifier,
+                modifier = modifier.observeReaderPageDraw(renderedImage.acknowledgeDraw),
                 contentScale = ContentScale.FillWidth,
             )
         } else {
-            when (painterState) {
-                is AsyncImagePainter.State.Loading,
-                is AsyncImagePainter.State.Empty,
-                -> Box(
-                    modifier = observedModifier.aspectRatio(2f / 3f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = Color.White)
-                }
-                else -> Image(
-                    painter = painter,
-                    contentDescription = null,
-                    modifier = observedModifier,
-                    contentScale = ContentScale.FillWidth,
-                )
+            Box(
+                modifier = modifier.aspectRatio(2f / 3f),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(color = Color.White)
             }
         }
     }
 
     val scope = contextMenuScope
-    if (scope != null && shouldShowWebtoonPageContextMenu(hasContextMenuScope = true, pageUrl = url)) {
+    if (
+        shouldShowWebtoonPageContextMenu(
+            hasContextMenuScope = scope != null,
+            hasReadyImageAsset = asset != null,
+        )
+    ) {
+        val binding = readerPageContextMenuBinding(presentationImage)
         PageContextMenu(
-            pageUrl = url,
+            imageLeaseProvider = binding.imageLeaseProvider,
             mangaTitle = mangaTitle,
             chapterTitle = chapterTitle,
             pageIndex = pageIndex,
-            scope = scope,
+            scope = requireNotNull(scope),
             onSetAsCover = null,
-            splitHalf = slot.splitHalf,
-            sourceBounds = slot.sourceBounds,
+            splitHalf = binding.splitHalf,
+            sourceBounds = binding.sourceBounds,
             content = pageContent,
         )
     } else {

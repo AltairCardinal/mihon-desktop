@@ -21,7 +21,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -50,8 +49,8 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.ReaderProgressTracker
-import mihon.desktop.image.LocalDesktopSourceImageId
 import mihon.desktop.reader.DesktopReaderChapterContext
+import mihon.desktop.reader.DesktopReaderPresentationImageOwner
 import mihon.desktop.reader.DesktopReaderRuntimeFactory
 import mihon.desktop.reader.EdgePixelMatcher
 import mihon.desktop.reader.PagePreloader
@@ -243,17 +242,15 @@ data class DesktopReaderScreen(
         ReaderViewport(
             state = state,
             model = model,
-            sourceId = state.context.sourceId,
             navigator = navigator,
             focusRequester = focusRequester,
             contextMenuScope = scope,
             mangaTitle = state.context.mangaTitle,
             chapterTitle = state.context.chapterTitle,
-            preloader = runtime.preloader,
+            presentationImageOwner = runtime.presentationImageOwner,
             readerNav = readerNav,
             onPrevChapter = onPrevChapter,
             onNextChapter = onNextChapter,
-            ioObserver = runtime.pageIoObserver,
         )
     }
 
@@ -485,17 +482,15 @@ internal suspend fun resolveDesktopMatchedPairs(
 private fun ReaderViewport(
     state: ReaderState,
     model: ReaderScreenModel,
-    sourceId: Long,
     navigator: Navigator,
     focusRequester: FocusRequester,
     contextMenuScope: kotlinx.coroutines.CoroutineScope,
     mangaTitle: String,
     chapterTitle: String,
-    preloader: PagePreloader,
+    presentationImageOwner: DesktopReaderPresentationImageOwner,
     readerNav: ReaderNavigator?,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
-    ioObserver: mihon.desktop.reader.ReaderPageIoObserver?,
 ) {
     val bgColor = when (state.backgroundTheme) {
         ReaderBackgroundTheme.BLACK -> Color.Black
@@ -526,21 +521,18 @@ private fun ReaderViewport(
                 )
                 ReaderViewportBody.EMPTY -> EmptyState(onBack = { navigator.pop() })
                 ReaderViewportBody.CONTENT -> {
-                    CompositionLocalProvider(LocalDesktopSourceImageId provides sourceId) {
-                        ReaderViewportColorLayer(state.colorFilter) {
-                            ReaderContent(
-                                state,
-                                model,
-                                contextMenuScope,
-                                mangaTitle,
-                                chapterTitle,
-                                preloader,
-                                readerNav,
-                                onPrevChapter,
-                                onNextChapter,
-                                ioObserver,
-                            )
-                        }
+                    ReaderViewportColorLayer(state.colorFilter) {
+                        ReaderContent(
+                            state,
+                            model,
+                            contextMenuScope,
+                            mangaTitle,
+                            chapterTitle,
+                            presentationImageOwner,
+                            readerNav,
+                            onPrevChapter,
+                            onNextChapter,
+                        )
                     }
                     ColorFilterOverlay(state.colorFilter)
                     if (state.showUI) {
@@ -777,11 +769,10 @@ private fun ReaderContent(
     contextMenuScope: kotlinx.coroutines.CoroutineScope,
     mangaTitle: String,
     chapterTitle: String,
-    preloader: PagePreloader,
+    presentationImageOwner: DesktopReaderPresentationImageOwner,
     readerNav: ReaderNavigator?,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
-    ioObserver: mihon.desktop.reader.ReaderPageIoObserver?,
 ) {
     when (state.readingMode) {
         ReadingMode.WEBTOON -> WebtoonPresentationViewer(
@@ -792,12 +783,11 @@ private fun ReaderContent(
             cropBorders = state.cropBordersWebtoon, sidePadding = state.webtoonSidePadding,
             autoScroll = state.webtoonAutoScroll, autoScrollSpeed = state.webtoonAutoScrollSpeed,
             contextMenuScope = contextMenuScope, mangaTitle = mangaTitle, chapterTitle = chapterTitle,
-            preloader = preloader,
+            presentationImageOwner = presentationImageOwner,
             onViewportChanged = model::settleWebtoon,
             onRetryPage = model::retryPage,
             onSpreadDetected = { realIdx -> if (realIdx !in state.spreadPages) model.setSpreadPages(state.spreadPages + realIdx) },
             onNextChapter = if (readerNav?.nextToRead != null) onNextChapter else null,
-            ioObserver = ioObserver,
         )
         ReadingMode.LTR, ReadingMode.RTL -> {
             val rtl = state.readingMode == ReadingMode.RTL
@@ -808,7 +798,9 @@ private fun ReaderContent(
                 cropBorders = state.cropBordersPager, contextMenuScope = contextMenuScope,
                 mangaTitle = mangaTitle, chapterTitle = chapterTitle, zoomState = state.zoomState,
                 forcedSinglePages = state.forcedSinglePages, matchedPairs = state.effectiveMatchedPairs(),
-                splitPageIndices = state.spreadPages, preloader = preloader, scaleType = state.scaleType,
+                splitPageIndices = state.spreadPages,
+                presentationImageOwner = presentationImageOwner,
+                scaleType = state.scaleType,
                 navigationMode = state.navigationMode,
                 onPageChange = model::goToPage,
                 onZoomChange = { model.setZoomState(it) },
@@ -819,7 +811,6 @@ private fun ReaderContent(
                 onTapCenter = { model.toggleUI() },
                 onPrevChapter = onPrevChapter,
                 onNextChapter = onNextChapter,
-                ioObserver = ioObserver,
             )
         }
     }
