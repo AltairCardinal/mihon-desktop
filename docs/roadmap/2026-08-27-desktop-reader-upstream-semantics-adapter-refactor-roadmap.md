@@ -302,7 +302,7 @@ Android Reader UI                 Desktop Reader presentation
 - [ ] `RUA-02` Desktop 下载/local/archive adapter 与无损兼容
   - [x] `RUA-02A` artifact identity、有限候选与 dual-read/single-write
   - [x] `RUA-02B` 下载 lifecycle、恢复/删除与消费者 identity
-  - [ ] `RUA-02C` directory/archive adapter、惰性 entry 与 lease/generation
+  - [x] `RUA-02C` directory/archive adapter、惰性 entry 与 lease/generation
   - [ ] `RUA-02D` production Reader/DI 接线、离线打开与 DownloadIndex gate
 - [ ] `RUA-03` 首帧 critical path 与 shared runtime owner 收口
   - [ ] `RUA-03A` session/store 启动关键路径瘦身
@@ -420,6 +420,14 @@ Android Reader UI                 Desktop Reader presentation
 - rename 与 CBZ packing 已分成不可回退的两个阶段：`_tmp` 成功改名后，即使打包失败也保留完整页面目录；旧 generation 的失败状态、持久化与通知在同一 queue lock 内线性提交，cancel/requeue 不会被迟到通知污染。
 - 严格 TDD 证据：`.gradle-coordinator/rua02b-same-id-red2.log` 与 `rua02b-finalize-notify-red.log` 分别按旧 worker 越代写入、打包失败丢页/通知晚到的正确原因失败；`rua02b-same-id-green3.log`、`rua02b-finalize-notify-green.log` 与最终 `rua02b-final-close.log` 均通过。最终收口包含根级 `spotlessCheck` 以及 download manager、retry、recovery、parallel limit 和三个消费者 focused tests。
 - 最终冻结 9 文件、`712+/146-`，Git 原始 diff 为 63,491 字节，SHA-256 为 `e26308dbf98d6333eba49be5027da1d0d453ebf8d0f8df67f39226e3a8184f34`；限定增量复审结论为 `PASS`，P0/P1/P2 均为零。PowerShell 文本管道会转换换行，后续 diff 指纹统一用 Python `subprocess.PIPE` 捕获 `git.exe` 原始 stdout。
+
+**RUA-02C 完成证据（2026-08-29）**：
+
+- Desktop directory adapter 按 route 保留下载目录区分大小写名字典序与本地目录忽略大小写自然序，并直接发布 Ready file refs；ZIP/CBZ/EPUB/RAR 统一由 SevenZip-backed lease 枚举稳定 entry 元数据，启动只解析页表及 EPUB container/OPF/spine 文档，图片仍按请求逐 entry 提取。
+- opaque page ref 包含由 entry path/folder/size/packed-size/CRC/method 生成的内容 generation；同 chapter 重新索引先等待旧 lease 的活动操作结束并关闭句柄，copy 再以完整 opaque ref 校验当前 binding。旧 descriptor 不能把替换归档的新字节写入旧 encoded ref，跨 adapter 也不再受 JDK `ZipFile` path/fileKey/size/mtime 全局缓存污染。
+- EPUB adapter 接受 XHTML 与 SVG content document，支持普通 `href` 及 `xlink:href`，按 URI path 解码 percent encoding、剥离 query/fragment、拒绝外部 scheme/authority，并阻止路径越过 archive root；空/坏 archive、真实 RAR 并发串行、release/close 后 Windows 句柄删除均有 production behavior tests。
+- 严格 TDD 证据：`.gradle-coordinator/rua02c-archive-generation-red-final.log`、`rua02c-stale-generation-red.log`、`rua02c-cross-adapter-red.log`、`rua02c-epub-cross-adapter-red.log` 与 `rua02c-epub-review-red.log` 分别按伪装替换未失效、copy API 缺 generation、JDK cache 跨 adapter 污染及 EPUB SVG/URI 缺口的正确原因失败；最终 `rua02c-review-fix-close.log` 通过根级 Spotless、新 adapter 全测试与完整 materialize 集成类。
+- 最终生产/test 两个 blob 分别为 `043edba48ed9c176f23c1a05ad58271eb39eb947` 与 `1d3d739a0832c894735c0bff3acef3eb3e6617dc`；独立审查及限定修复复审均已完成，最终结论 `PASS`、P0/P1/P2 为零。两个文件共 871 行超过初估，原因是同一个 archive lifecycle owner 必须内聚覆盖四种格式、EPUB 结构解析、generation/lease/concurrency 与真实格式 fixture；未混入 route、Reader session 或 DI wiring。
 
 **RED**：
 
