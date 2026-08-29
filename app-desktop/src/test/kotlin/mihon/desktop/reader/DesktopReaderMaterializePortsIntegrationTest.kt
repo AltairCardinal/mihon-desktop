@@ -8,13 +8,16 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
+import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.extension.ExtensionClassLoader
 import mihon.desktop.source.FakeDesktopSourceManager
@@ -290,7 +293,13 @@ class DesktopReaderMaterializePortsIntegrationTest {
         val downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads"))
         val sourceManager = FakeDesktopSourceManager(emptyList())
         val context = context(chapterId = 3L, localChapterPath = archive.absolutePath)
-        val descriptor = DesktopReaderChapterContentPort(context, downloadProvider, sourceManager)
+        val adapter = DesktopReaderContentAdapter()
+        val descriptor = DesktopReaderChapterContentPort(
+            context,
+            downloadProvider,
+            sourceManager,
+            contentAdapter = adapter,
+        )
             .loadChapterContent(ReaderChapterContentRequest(ReaderChapterId(3L), generation = 1L))
             .single()
         val store = DesktopReaderEncodedPageStore(tempDir.resolve("encoded"), maxBytes = 1_000_000L)
@@ -310,6 +319,7 @@ class DesktopReaderMaterializePortsIntegrationTest {
                 sourceManager = sourceManager,
                 networkHelper = NetworkHelper(OkHttpClient()),
                 encodedPageStore = store,
+                contentAdapter = adapter,
             ),
             publish = { events += it; true },
         )
@@ -324,6 +334,38 @@ class DesktopReaderMaterializePortsIntegrationTest {
             ),
             events,
         )
+        adapter.close()
+    }
+
+    @Test
+    fun `activating another chapter releases the previous archive lease`() = runTest {
+        val first = createZipNamed(tempDir.resolve("first.cbz"), "001.png", pngBytes(Color.RED))
+        val second = createZipNamed(tempDir.resolve("second.cbz"), "001.png", pngBytes(Color.BLUE))
+        val sourceManager = FakeDesktopSourceManager(emptyList())
+        val factory = DesktopReaderRuntimeFactory(
+            prefs = ReaderPreferences(),
+            downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads-lease")),
+            sourceManager = sourceManager,
+            networkHelper = NetworkHelper(OkHttpClient()),
+            progressTracker = mockk<ReaderProgressTracker>(relaxed = true),
+            mangaRepository = null,
+            encodedCacheDirectory = tempDir.resolve("encoded-lease"),
+        )
+        val firstContext = context(chapterId = 31L, localChapterPath = first.absolutePath)
+        val runtime = factory.createRuntime(firstContext, this)
+        try {
+            advanceUntilIdle()
+            assertTrue(runtime.contentAdapter.hasArchiveLease(31L))
+
+            runtime.session.activate(context(chapterId = 32L, localChapterPath = second.absolutePath))
+            advanceUntilIdle()
+
+            assertFalse(runtime.contentAdapter.hasArchiveLease(31L))
+            assertTrue(runtime.contentAdapter.hasArchiveLease(32L))
+            assertTrue(first.delete(), "Chapter release must close the previous archive before reader exit")
+        } finally {
+            runtime.close()
+        }
     }
 
     @Test
@@ -645,6 +687,14 @@ class DesktopReaderMaterializePortsIntegrationTest {
         val image = BufferedImage(3, 3, BufferedImage.TYPE_INT_ARGB)
         image.setRGB(0, 0, color.rgb)
         return ByteArrayOutputStream().also { ImageIO.write(image, "png", it) }.toByteArray()
+    }
+
+    private fun createZipNamed(file: File, entryName: String, bytes: ByteArray): File = file.also { archive ->
+        ZipOutputStream(archive.outputStream()).use { output ->
+            output.putNextEntry(ZipEntry(entryName))
+            output.write(bytes)
+            output.closeEntry()
+        }
     }
 
     private fun truncatedPngPixelStream(): ByteArray {

@@ -2,8 +2,10 @@ package mihon.desktop.reader
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
@@ -43,6 +45,9 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.zip.ZipOutputStream
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DesktopReaderSessionIntegrationTest {
@@ -57,7 +62,7 @@ class DesktopReaderSessionIntegrationTest {
             initialContext = context(1L),
             core = core(initialChapterId = 1L),
             encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-dual-progress-wiring")),
-            chapterContentPortFactory = DesktopReaderChapterContentPortFactory {
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { _, _ ->
                 ReaderChapterContentPort {
                     List(4) { index -> readyDescriptor(chapterId = 1L, index = index) }
                 }
@@ -113,7 +118,7 @@ class DesktopReaderSessionIntegrationTest {
             initialContext = context(1L),
             core = core,
             encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded")),
-            chapterContentPortFactory = DesktopReaderChapterContentPortFactory {
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { _, _ ->
                 ReaderChapterContentPort {
                     pageListGate.await()
                     listOf(
@@ -164,7 +169,7 @@ class DesktopReaderSessionIntegrationTest {
             initialContext = context(1L),
             core = core(initialChapterId = 1L),
             encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-monotonic")),
-            chapterContentPortFactory = DesktopReaderChapterContentPortFactory {
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { _, _ ->
                 ReaderChapterContentPort {
                     List(3) { index ->
                         ReaderPageDescriptor(index, url = "/page/$index", imageUrl = "https://example.test/$index")
@@ -201,7 +206,7 @@ class DesktopReaderSessionIntegrationTest {
             initialContext = context(1L),
             core = core(initialChapterId = 1L),
             encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-close-flush")),
-            chapterContentPortFactory = DesktopReaderChapterContentPortFactory {
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { _, _ ->
                 ReaderChapterContentPort {
                     listOf(ReaderPageDescriptor(0, url = "/page/0", imageUrl = "https://example.test/0"))
                 }
@@ -236,7 +241,7 @@ class DesktopReaderSessionIntegrationTest {
             initialContext = context(1L),
             core = core,
             encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded")),
-            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter ->
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter, _ ->
                 ReaderChapterContentPort {
                     if (chapter.chapterId == 2L) targetGate.await()
                     listOf(ReaderPageDescriptor(0, url = "/${chapter.chapterId}/0", imageUrl = "image"))
@@ -308,7 +313,7 @@ class DesktopReaderSessionIntegrationTest {
             initialContext = context(1L),
             core = core(initialChapterId = 1L),
             encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-full-next")),
-            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter ->
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter, _ ->
                 ReaderChapterContentPort {
                     if (chapter.chapterId == 2L) nextPageLists += chapter.chapterId
                     List(if (chapter.chapterId == 1L) 6 else 3) { index ->
@@ -397,7 +402,7 @@ class DesktopReaderSessionIntegrationTest {
             initialContext = context(1L),
             core = core(initialChapterId = 1L),
             encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-off")),
-            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter ->
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter, _ ->
                 ReaderChapterContentPort {
                     if (chapter.chapterId == 2L) nextPageListLoads++
                     List(if (chapter.chapterId == 1L) 10 else 3) { index -> readyDescriptor(chapter.chapterId, index) }
@@ -437,7 +442,7 @@ class DesktopReaderSessionIntegrationTest {
             initialContext = context(1L),
             core = core(initialChapterId = 1L),
             encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-switch-off")),
-            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter ->
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter, _ ->
                 ReaderChapterContentPort {
                     if (chapter.chapterId == 2L) {
                         nextPageListStarted.complete(Unit)
@@ -480,7 +485,7 @@ class DesktopReaderSessionIntegrationTest {
             initialContext = context(1L),
             core = core(initialChapterId = 1L),
             encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-physical-page-bound")),
-            chapterContentPortFactory = DesktopReaderChapterContentPortFactory {
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { _, _ ->
                 ReaderChapterContentPort {
                     List(3) { index -> ReaderPageDescriptor(index, url = "/1/$index", imageUrl = "image:$index") }
                 }
@@ -536,7 +541,7 @@ class DesktopReaderSessionIntegrationTest {
             initialContext = context(1L),
             core = core(initialChapterId = 1L),
             encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-physical-chapter-bound")),
-            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter ->
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter, _ ->
                 ReaderChapterContentPort {
                     if (chapter.chapterId == 1L) {
                         listOf(readyDescriptor(1L, 0))
@@ -574,6 +579,98 @@ class DesktopReaderSessionIntegrationTest {
             session.close()
             advanceUntilIdle()
         }
+    }
+
+    @Test
+    fun `same chapter reactivation releases only the old lease generation`() = runTest {
+        val reserved = mutableListOf<DesktopReaderChapterLeaseOwnerFixture>()
+        val released = mutableListOf<DesktopReaderChapterLeaseOwnerFixture>()
+        val leasePort = object : DesktopReaderChapterLeasePort {
+            override fun reserveChapter(chapterId: Long, leaseGeneration: Long) {
+                reserved += DesktopReaderChapterLeaseOwnerFixture(chapterId, leaseGeneration)
+            }
+
+            override fun releaseChapter(chapterId: Long, leaseGeneration: Long) {
+                released += DesktopReaderChapterLeaseOwnerFixture(chapterId, leaseGeneration)
+            }
+        }
+        val session = DesktopReaderSession(
+            initialContext = context(1L),
+            core = core(initialChapterId = 1L),
+            encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-lease-generation")),
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { _, _ ->
+                ReaderChapterContentPort { listOf(readyDescriptor(1L, 0)) }
+            },
+            pageFetchPortFactory = DesktopReaderPageFetchPortFactory { _, descriptor -> readyPort(descriptor) },
+            progressPort = DesktopReaderProgressPort { _, _ -> },
+            chapterLeasePort = leasePort,
+            parentScope = this,
+        )
+
+        session.start()
+        advanceUntilIdle()
+        val first = reserved.single()
+
+        session.activate(context(1L))
+        advanceUntilIdle()
+
+        val second = reserved.last()
+        assertEquals(2, reserved.size)
+        assertTrue(second.leaseGeneration > first.leaseGeneration)
+        assertEquals(listOf(first), released)
+
+        session.close()
+        assertEquals(listOf(first, second), released)
+    }
+
+    @Test
+    fun `late concurrent same chapter reserve cannot replace the current generation`() = runTest {
+        val adapter = DesktopReaderContentAdapter()
+        val oldReserveStarted = CountDownLatch(1)
+        val releaseOldReserve = CountDownLatch(1)
+        val gatedLeasePort = object : DesktopReaderChapterLeasePort {
+            override fun reserveChapter(chapterId: Long, leaseGeneration: Long) {
+                if (leaseGeneration == 2L) {
+                    oldReserveStarted.countDown()
+                    releaseOldReserve.await()
+                }
+                adapter.reserveChapter(chapterId, leaseGeneration)
+            }
+
+            override fun releaseChapter(chapterId: Long, leaseGeneration: Long) {
+                adapter.releaseChapter(chapterId, leaseGeneration)
+            }
+        }
+        val session = DesktopReaderSession(
+            initialContext = context(1L),
+            core = core(initialChapterId = 1L),
+            encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-concurrent-lease-generation")),
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { _, _ ->
+                ReaderChapterContentPort { listOf(readyDescriptor(1L, 0)) }
+            },
+            pageFetchPortFactory = DesktopReaderPageFetchPortFactory { _, descriptor -> readyPort(descriptor) },
+            progressPort = DesktopReaderProgressPort { _, _ -> },
+            chapterLeasePort = gatedLeasePort,
+            parentScope = this,
+        )
+        val archive = tempDir.resolve("concurrent-lease-generation.cbz")
+        ZipOutputStream(archive.outputStream()).use { }
+
+        session.start()
+        advanceUntilIdle()
+        val oldActivation = async(Dispatchers.Default) { session.activate(context(1L)) }
+        assertTrue(oldReserveStarted.await(2, TimeUnit.SECONDS))
+
+        session.activate(context(1L))
+        releaseOldReserve.countDown()
+        oldActivation.await()
+
+        adapter.archiveDescriptors(chapterId = 1L, archive = archive, leaseGeneration = 3L)
+        assertTrue(adapter.hasArchiveLease(1L))
+
+        session.close()
+        assertTrue(archive.delete())
+        adapter.close()
     }
 
     @Test
@@ -625,7 +722,7 @@ class DesktopReaderSessionIntegrationTest {
             initialContext = context(1L),
             core = core(initialChapterId = 1L),
             encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-stale-storage")),
-            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter ->
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter, _ ->
                 ReaderChapterContentPort {
                     if (chapter.chapterId == 1L) {
                         listOf(readyDescriptor(1L, 0))
@@ -680,7 +777,7 @@ class DesktopReaderSessionIntegrationTest {
             initialContext = context(1L),
             core = core(initialChapterId = 1L),
             encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-prefetch-activation")),
-            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter ->
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter, _ ->
                 ReaderChapterContentPort {
                     List(if (chapter.chapterId == 1L) 1 else 2) { index ->
                         if (chapter.chapterId == 1L) readyDescriptor(1L, index) else ReaderPageDescriptor(
@@ -746,7 +843,7 @@ class DesktopReaderSessionIntegrationTest {
             initialContext = context(1L),
             core = core(initialChapterId = 1L),
             encodedPageStore = encodedStore,
-            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter ->
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter, _ ->
                 ReaderChapterContentPort {
                     List(if (chapter.chapterId == 1L) 1 else 3) { index ->
                         if (chapter.chapterId == 1L) readyDescriptor(1L, index) else ReaderPageDescriptor(
@@ -810,7 +907,7 @@ class DesktopReaderSessionIntegrationTest {
         initialContext = context(1L),
         core = core(initialChapterId = 1L),
         encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve(directory)),
-        chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter ->
+        chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter, _ ->
             ReaderChapterContentPort {
                 List(if (chapter.chapterId == 1L) 1 else 4) { index ->
                     if (chapter.chapterId == 1L) readyDescriptor(1L, index) else ReaderPageDescriptor(
@@ -836,6 +933,11 @@ class DesktopReaderSessionIntegrationTest {
         imageUrl = "image:$index",
         encodedPageRef = EncodedPageRef("existing:$chapterId:$index"),
         initialLoadState = ReaderPageLoadState.Ready,
+    )
+
+    private data class DesktopReaderChapterLeaseOwnerFixture(
+        val chapterId: Long,
+        val leaseGeneration: Long,
     )
 
     private fun readyPort(descriptor: ReaderPageDescriptor) = object : ReaderPageFetchPort {

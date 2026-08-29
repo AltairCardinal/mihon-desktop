@@ -1,6 +1,7 @@
 package mihon.desktop.reader
 
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.CancellationException
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
 import mihon.domain.reader.content.ReaderImageCandidatePolicy
@@ -37,9 +38,12 @@ internal interface DesktopReaderArchiveOperationProbe {
 /** Desktop storage adapter for Reader page tables and lazy per-page content. */
 class DesktopReaderContentAdapter internal constructor(
     private val archiveOperationProbe: DesktopReaderArchiveOperationProbe = DesktopReaderArchiveOperationProbe.None,
-) : AutoCloseable {
+) : AutoCloseable, DesktopReaderChapterLeasePort {
     private val lock = Any()
     private val archiveLeases = mutableMapOf<Long, ArchiveLeaseBinding>()
+    private val leaseReservations = mutableMapOf<Long, Long>()
+    private val leaseGenerationWatermarks = mutableMapOf<Long, Long>()
+    private var closed = false
 
     fun directoryDescriptors(
         directory: File,
@@ -61,10 +65,16 @@ class DesktopReaderContentAdapter internal constructor(
         chapterId: Long,
         archive: File,
         epub: Boolean = false,
+        leaseGeneration: Long = 0L,
     ): List<ReaderPageDescriptor> {
-        synchronized(lock) { archiveLeases.remove(chapterId) }
+        val previous = synchronized(lock) {
+            checkLeaseReservationLocked(chapterId, leaseGeneration)
+            archiveLeases.remove(chapterId)
+        }
+        previous
             ?.lease
             ?.releaseAndAwaitClosed()
+        synchronized(lock) { checkLeaseReservationLocked(chapterId, leaseGeneration) }
         val lease = try {
             openArchive(archive, epub)
         } catch (error: AppErrorException) {
@@ -84,12 +94,25 @@ class DesktopReaderContentAdapter internal constructor(
                 url = opaquePageRef(chapterId, index, snapshot.contentFingerprint, name),
             )
         }
-        synchronized(lock) {
-            archiveLeases.put(
-                chapterId,
-                ArchiveLeaseBinding(lease, descriptors.map(ReaderPageDescriptor::url)),
-            )?.lease?.release()
+        val replaced = synchronized(lock) {
+            if (!acceptsLeaseLocked(chapterId, leaseGeneration)) {
+                null
+            } else {
+                archiveLeases.put(
+                    chapterId,
+                    ArchiveLeaseBinding(
+                        lease = lease,
+                        pageRefs = descriptors.map(ReaderPageDescriptor::url),
+                        leaseGeneration = leaseGeneration,
+                    ),
+                )
+            }
         }
+        if (!acceptsLease(chapterId, leaseGeneration)) {
+            lease.releaseAndAwaitClosed()
+            throw CancellationException("Reader archive lease generation is stale for chapter $chapterId")
+        }
+        replaced?.lease?.release()
         return descriptors
     }
 
@@ -119,8 +142,35 @@ class DesktopReaderContentAdapter internal constructor(
         }
     }
 
+    override fun reserveChapter(chapterId: Long, leaseGeneration: Long) {
+        synchronized(lock) {
+            check(!closed) { "Reader content adapter is closed" }
+            val watermark = leaseGenerationWatermarks[chapterId]
+            if (watermark != null && leaseGeneration < watermark) return
+            if (watermark == leaseGeneration && leaseReservations[chapterId] != leaseGeneration) return
+            leaseGenerationWatermarks[chapterId] = leaseGeneration
+            leaseReservations[chapterId] = leaseGeneration
+        }
+    }
+
+    override fun releaseChapter(chapterId: Long, leaseGeneration: Long) {
+        val lease = synchronized(lock) {
+            if (leaseReservations[chapterId] == leaseGeneration) {
+                leaseReservations.remove(chapterId)
+            }
+            archiveLeases[chapterId]
+                ?.takeIf { it.leaseGeneration == leaseGeneration }
+                ?.also { archiveLeases.remove(chapterId) }
+        }
+        lease?.lease?.release()
+    }
+
     fun releaseChapter(chapterId: Long) {
-        synchronized(lock) { archiveLeases.remove(chapterId) }?.lease?.release()
+        val lease = synchronized(lock) {
+            leaseReservations.remove(chapterId)
+            archiveLeases.remove(chapterId)
+        }
+        lease?.lease?.release()
     }
 
     internal fun hasArchiveLease(chapterId: Long): Boolean = synchronized(lock) {
@@ -128,8 +178,26 @@ class DesktopReaderContentAdapter internal constructor(
     }
 
     override fun close() {
-        val leases = synchronized(lock) { archiveLeases.values.toList().also { archiveLeases.clear() } }
+        val leases = synchronized(lock) {
+            closed = true
+            leaseReservations.clear()
+            leaseGenerationWatermarks.clear()
+            archiveLeases.values.toList().also { archiveLeases.clear() }
+        }
         leases.forEach { it.lease.release() }
+    }
+
+    private fun acceptsLease(chapterId: Long, leaseGeneration: Long): Boolean = synchronized(lock) {
+        acceptsLeaseLocked(chapterId, leaseGeneration)
+    }
+
+    private fun acceptsLeaseLocked(chapterId: Long, leaseGeneration: Long): Boolean =
+        !closed && (leaseGeneration == 0L || leaseReservations[chapterId] == leaseGeneration)
+
+    private fun checkLeaseReservationLocked(chapterId: Long, leaseGeneration: Long) {
+        if (!acceptsLeaseLocked(chapterId, leaseGeneration)) {
+            throw CancellationException("Reader archive lease generation is stale for chapter $chapterId")
+        }
     }
 
     private fun openArchive(file: File, epub: Boolean): ArchiveLease {
@@ -176,6 +244,7 @@ private data class ArchiveSnapshot(
 private data class ArchiveLeaseBinding(
     val lease: ArchiveLease,
     val pageRefs: List<String>,
+    val leaseGeneration: Long,
 )
 
 private interface ArchiveLease {

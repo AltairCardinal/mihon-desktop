@@ -11,7 +11,6 @@ import kotlinx.coroutines.launch
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.ui.reader.ReaderScreenModel
-import mihon.domain.reader.content.DownloadArtifactLocator
 import mihon.domain.reader.content.DownloadArtifactProbe
 import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderIoReporter
@@ -35,11 +34,13 @@ data class DesktopReaderRuntime(
     internal val encodedPageStore: DesktopReaderEncodedPageStore,
     private val prefetchPreferenceJob: Job,
     val pageIoObserver: ReaderPageIoObserver? = null,
+    internal val contentAdapter: DesktopReaderContentAdapter = DesktopReaderContentAdapter(),
 ) : AutoCloseable {
     override fun close() {
         prefetchPreferenceJob.cancel()
         preloader.clear()
         session.close()
+        contentAdapter.close()
     }
 }
 
@@ -54,11 +55,12 @@ class DesktopReaderRuntimeFactory(
     private val mangaRepository: MangaRepository?,
     private val encodedCacheDirectory: File,
     private val downloadArtifactProbeFactory: (DesktopReaderChapterContext) -> DownloadArtifactProbe = { context ->
-        downloadProvider.currentDirectoryArtifactProbe(context.sourceId)
+        downloadProvider.canonicalArtifactProbe()
     },
     private val readerIoProbe: ReaderIoProbe = ReaderIoProbe.None,
     private val readerMonotonicClock: ReaderMonotonicClock = ReaderMonotonicClock(System::nanoTime),
     private val readerIoGate: ReaderIoGate = ReaderIoGate.None,
+    private val disallowNonAsciiFilenames: () -> Boolean = { false },
 ) {
     internal val configuredReaderIoProbe: ReaderIoProbe get() = readerIoProbe
     private val encodedPageStoreCoordinator = DesktopReaderEncodedPageStoreCoordinator(encodedCacheDirectory)
@@ -70,6 +72,7 @@ class DesktopReaderRuntimeFactory(
     ): DesktopReaderRuntime {
         val ioReporter = ReaderIoReporter(readerIoProbe.bind(), readerMonotonicClock)
         val store = encodedPageStoreCoordinator.openSessionStore()
+        val contentAdapter = DesktopReaderContentAdapter()
         val core = ReaderSessionCore(
             initialChapterId = ReaderChapterId(initialContext.chapterId),
             sessionId = UUID.randomUUID().toString(),
@@ -86,16 +89,22 @@ class DesktopReaderRuntimeFactory(
             initialContext = initialContext,
             core = core,
             encodedPageStore = store,
-            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { context ->
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { context, leaseGeneration ->
                 DesktopReaderChapterContentPort(
                     context = context,
                     downloadProvider = downloadProvider,
                     sourceManager = sourceManager,
-                    downloadArtifactLocator = DownloadArtifactLocator(downloadArtifactProbeFactory(context)),
+                    contentAdapter = contentAdapter,
+                    downloadArtifactLocator = downloadProvider.downloadArtifactLookup(
+                        sourceId = context.sourceId,
+                        candidateProbe = downloadArtifactProbeFactory(context),
+                    ),
+                    disallowNonAsciiFilenames = disallowNonAsciiFilenames(),
+                    leaseGeneration = leaseGeneration,
                 )
             },
             pageFetchPortFactory = DesktopReaderPageFetchPortFactory { context, descriptor ->
-                DesktopReaderPageFetchPort(context, descriptor, sourceManager, networkHelper, store)
+                DesktopReaderPageFetchPort(context, descriptor, sourceManager, networkHelper, store, contentAdapter)
             },
             progressPort = DesktopReaderProgressPort { context, effect ->
                 if (context.localChapterPath == null) {
@@ -111,6 +120,7 @@ class DesktopReaderRuntimeFactory(
                     )
                 }
             },
+            chapterLeasePort = contentAdapter,
             parentScope = parentScope,
             initialNextChapterPrefetchMode = prefs.nextChapterPrefetchMode,
             ioReporter = ioReporter,
@@ -129,6 +139,7 @@ class DesktopReaderRuntimeFactory(
             session = session,
             pageIoObserver = ioReporter.takeIf(ReaderIoReporter::enabled)?.let(::ReaderPageIoObserver),
             encodedPageStore = store,
+            contentAdapter = contentAdapter,
             prefetchPreferenceJob = prefetchPreferenceJob,
         ).also { session.start() }
     }

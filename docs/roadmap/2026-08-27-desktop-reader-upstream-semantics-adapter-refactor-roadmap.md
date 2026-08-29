@@ -304,6 +304,8 @@ Android Reader UI                 Desktop Reader presentation
   - [x] `RUA-02B` 下载 lifecycle、恢复/删除与消费者 identity
   - [x] `RUA-02C` directory/archive adapter、惰性 entry 与 lease/generation
   - [ ] `RUA-02D` production Reader/DI 接线、离线打开与 DownloadIndex gate
+    - [x] `RUA-02D1` Reader adapter/runtime/session 接线与 generation-aware lease
+    - [ ] `RUA-02D2` 原子 download identity、production DI 与 consumer 行为接线
 - [ ] `RUA-03` 首帧 critical path 与 shared runtime owner 收口
   - [ ] `RUA-03A` session/store 启动关键路径瘦身
   - [ ] `RUA-03B` shared runner、优先级、取消与 generation
@@ -402,9 +404,10 @@ Android Reader UI                 Desktop Reader presentation
 - `RUA-02A` 只建立 `DownloadChapterIdentity` 到 canonical/current/legacy/non-ASCII/hash/scanlator directory/CBZ 的有限候选、first-match locator、canonical single-write 与旧路径 dual-read；不改 worker 生命周期或 Reader session。focused 验证覆盖候选顺序、命名、存在性和无迁移兼容，预计 5～9 个 production/test 文件。
 - `RUA-02B` 在 02A 之上统一 enqueue/worker/cancel/retry/recovery/delete/filter 的 identity；每次入队必须有独立 generation，旧 worker 不得修改或清理同 chapter ID 的新任务。focused 验证覆盖 active cancel → same-ID re-enqueue、失败 `_tmp` 清理、恢复及 Library/Updates/Manga detail 消费者，预计 7～13 个文件。
 - `RUA-02C` 独立完成 local directory/ZIP/CBZ/EPUB/RAR 页表、opaque entry ref、逐 entry 惰性打开、archive replacement generation、并发串行和 chapter lease；不接管 route 顺序或 Reader session 调度。focused 验证覆盖同路径/同大小/恢复 mtime 的归档替换、真实 RAR、空/坏 archive、release/close，预计 4～8 个文件。
-- `RUA-02D` 只负责把 02A/02C 接入 production Reader/runtime/session/DI，以 production `CbzCreator` 离线打开和被 gate 的 DownloadIndex 证明 critical path 只做有限 locator 探测；同时完成跨 02A～02C 的集成验收，预计 5～9 个文件。
+- `RUA-02D1` 只负责把 02A/02C 接入 production Reader runtime/session：共享一个 content adapter，使用 generation/close-aware lease 拒绝晚到注册，并以 production `CbzCreator` 离线打开和被 gate 的 DownloadIndex 证明 critical path 只做有限 locator 探测。focused 验证覆盖普通切章/close，以及非协作 current/adjacent/same-chapter/close 晚到，预计 7～9 个文件。
+- `RUA-02D2` 在 D1 之上统一 production download identity 与 DI/consumer wiring：一次读取同一个 domain chapter 快照，原子使用其 name/url/scanlator，缺失时才整体回退 persisted item；真实 DI 必须驱动 manager canonical single-write、Reader 非 ASCII 偏好与 Library/MangaDetail/Updates canonical 查询。focused 验证覆盖 divergent metadata、DI manager/Reader 和三个 factory consumer，预计 7～10 个文件。
 
-02A → 02B，02A + 02C → 02D；02B 与 02C 在接口冻结后可以独立推进，但同一工作树仍保持单写入 owner。每个子批次分别提交和审查；02D 的集成审查只检查跨子批次 wiring，不重新审查已经冻结的内部实现。
+02A → 02B，02A + 02C → 02D1，02A + 02B + 02D1 → 02D2；02B 与 02C 在接口冻结后可以独立推进，但同一工作树仍保持单写入 owner。每个叶子子批次分别提交和审查；D1/D2 的集成审查只检查跨子批次 wiring，不重新审查已经冻结的内部实现。
 
 **2026-08-29 中途重划状态**：现有未提交实现形成于子批次规则之前，不能据此提前勾选任何子项。已完成的两轮整体只读审查可以分别作为未变化 scope 的初审/复审证据；最新发现的 same-ID 重入竞态归 02B，同路径/同大小/恢复 mtime 的 archive replacement 归 02C，DownloadIndex 证明强度归 02D。后续先按文件和 invariant 冻结各子批次 scope，再分别完成缺失 TDD、确认和提交；不推倒已验证的 02A 实现，也不把 02B/02C 的内部返工扩成新产品范围。
 
@@ -428,6 +431,13 @@ Android Reader UI                 Desktop Reader presentation
 - EPUB adapter 接受 XHTML 与 SVG content document，支持普通 `href` 及 `xlink:href`，按 URI path 解码 percent encoding、剥离 query/fragment、拒绝外部 scheme/authority，并阻止路径越过 archive root；空/坏 archive、真实 RAR 并发串行、release/close 后 Windows 句柄删除均有 production behavior tests。
 - 严格 TDD 证据：`.gradle-coordinator/rua02c-archive-generation-red-final.log`、`rua02c-stale-generation-red.log`、`rua02c-cross-adapter-red.log`、`rua02c-epub-cross-adapter-red.log` 与 `rua02c-epub-review-red.log` 分别按伪装替换未失效、copy API 缺 generation、JDK cache 跨 adapter 污染及 EPUB SVG/URI 缺口的正确原因失败；最终 `rua02c-review-fix-close.log` 通过根级 Spotless、新 adapter 全测试与完整 materialize 集成类。
 - 最终生产/test 两个 blob 分别为 `043edba48ed9c176f23c1a05ad58271eb39eb947` 与 `1d3d739a0832c894735c0bff3acef3eb3e6617dc`；独立审查及限定修复复审均已完成，最终结论 `PASS`、P0/P1/P2 为零。两个文件共 871 行超过初估，原因是同一个 archive lifecycle owner 必须内聚覆盖四种格式、EPUB 结构解析、generation/lease/concurrency 与真实格式 fixture；未混入 route、Reader session 或 DI wiring。
+
+**RUA-02D1 完成证据（2026-08-29）**：
+
+- production Reader runtime 为章节页表与逐页读取共享同一个 `DesktopReaderContentAdapter`，downloaded/local directory/archive 均经共享 route 与有限 artifact lookup 进入该 adapter；production `CbzCreator` 离线 CBZ、online source fail-fast 与被 gate 的 `DownloadIndex` 集成测试证明首帧不依赖全盘索引初始化。
+- session 使用私有且单调递增的 lease generation 管理 active/adjacent/same-chapter 所有权，generation 不进入 `DesktopReaderChapterContext` 或 UI 语义；adapter 在 open/snapshot/install/close 边界校验 reservation，并保留每章生命周期级最高 generation watermark，倒序到达的旧 reserve 不能覆盖或复活已释放的新 owner。
+- 严格 TDD 证据：`.gradle-coordinator/rua02d1-lease-generation-red.log` 先证明 close/同章晚到 lease API 缺失；`.gradle-coordinator/rua02d1-watermark-red.log` 再按倒序 reserve 与并发同章 activation 的正确原因失败；对应 GREEN 以及最终 `.gradle-coordinator/rua02d1-close3.log` 均通过。最终收口包含根级 Spotless、domain reader content，以及 Desktop adapter/materialize/runtime/session/章节切换相关测试，共 106 tasks。
+- 限定独立复审最终结论 `PASS`、P0/P1/P2 为零；10 个 production/test 文件超过 7～9 个初估但仍低于强制重划阈值，原因是同一个 Reader production wiring 必须同时提交共享 lookup contract、adapter、runtime/session owner、离线/gate 集成证据与 content factory 接口的章节切换机械适配，未混入 D2 的下载 resolver、DI 或三个消费者行为实现。
 
 **RED**：
 

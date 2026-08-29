@@ -8,26 +8,23 @@ import kotlinx.coroutines.CancellationException
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.extension.SourceCallResult
 import mihon.desktop.extension.safeSourceCall
-import mihon.desktop.source.LocalChapterEntry
-import mihon.desktop.source.LocalPage
-import mihon.desktop.source.LocalSourceReader
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
 import mihon.domain.reader.content.DownloadArtifactKind
-import mihon.domain.reader.content.DownloadArtifactLocator
+import mihon.domain.reader.content.DownloadArtifactLookup
 import mihon.domain.reader.content.DownloadArtifactMatch
 import mihon.domain.reader.content.DownloadChapterIdentity
 import mihon.domain.reader.content.ReaderChapterContentResolver
 import mihon.domain.reader.content.ReaderChapterRoute
 import mihon.domain.reader.content.ReaderChapterRouteResolver
 import mihon.domain.reader.content.ReaderSourceContentKind
+import mihon.domain.reader.content.ReaderImageSortMode
 import mihon.domain.reader.materialize.ReaderChapterContentPort
 import mihon.domain.reader.materialize.ReaderChapterContentRequest
 import mihon.domain.reader.materialize.ReaderPageFetchPort
 import mihon.domain.reader.materialize.ReaderPageFetchRequest
 import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderPageDescriptor
-import mihon.domain.reader.session.ReaderPageLoadState
 import mihon.domain.reader.storage.EncodedPageStoreWriteResult
 import tachiyomi.domain.source.service.SourceManager
 import java.io.File
@@ -36,9 +33,10 @@ class DesktopReaderChapterContentPort(
     private val context: DesktopReaderChapterContext,
     private val downloadProvider: DesktopDownloadProvider,
     private val sourceManager: SourceManager,
-    private val downloadArtifactLocator: DownloadArtifactLocator = DownloadArtifactLocator(
-        downloadProvider.currentDirectoryArtifactProbe(context.sourceId),
-    ),
+    private val contentAdapter: DesktopReaderContentAdapter = DesktopReaderContentAdapter(),
+    private val downloadArtifactLocator: DownloadArtifactLookup = downloadProvider.downloadArtifactLookup(context.sourceId),
+    private val disallowNonAsciiFilenames: Boolean = context.disallowNonAsciiFilenames,
+    private val leaseGeneration: Long = 0L,
     private val routeResolver: ReaderChapterRouteResolver = ReaderChapterContentResolver,
 ) : ReaderChapterContentPort {
 
@@ -92,46 +90,41 @@ class DesktopReaderChapterContentPort(
     }
 
     private fun DesktopReaderChapterContext.downloadIdentity() = DownloadChapterIdentity(
-        sourceDisplayName = sourceDisplayName,
+        sourceDisplayName = sourceManager.get(sourceId)?.toString() ?: sourceDisplayName,
         mangaTitle = mangaTitle,
         chapterName = chapterTitle,
         scanlator = scanlator,
         chapterUrl = chapterUrl,
-        disallowNonAsciiFilenames = disallowNonAsciiFilenames,
+        disallowNonAsciiFilenames = this@DesktopReaderChapterContentPort.disallowNonAsciiFilenames,
     )
 
     private fun downloadDescriptors(match: DownloadArtifactMatch): List<ReaderPageDescriptor> {
         val artifact = File(match.opaqueLocation)
         return when (match.candidate.kind) {
-            DownloadArtifactKind.DIRECTORY -> downloadProvider.getDownloadedPages(artifact).mapIndexed(::readyFileDescriptor)
-            DownloadArtifactKind.CBZ -> localDescriptors(artifact)
+            DownloadArtifactKind.DIRECTORY -> contentAdapter.directoryDescriptors(
+                artifact,
+                ReaderImageSortMode.DOWNLOAD_LEXICAL_CASE_SENSITIVE,
+            )
+            DownloadArtifactKind.CBZ -> contentAdapter.archiveDescriptors(
+                chapterId = context.chapterId,
+                archive = artifact,
+                leaseGeneration = leaseGeneration,
+            )
         }
     }
 
     private fun localDescriptors(path: File): List<ReaderPageDescriptor> {
-        val chapter = LocalChapterEntry(context.chapterTitle, path)
-        val pages = LocalSourceReader.readChapter(chapter)
         return if (path.isDirectory) {
-            pages.mapIndexed { index, page ->
-                readyFileDescriptor(index, requireNotNull(page.file) { "Local page has no file: ${page.name}" })
-            }
+            contentAdapter.directoryDescriptors(path, ReaderImageSortMode.LOCAL_NATURAL_CASE_INSENSITIVE)
         } else {
-            pages.mapIndexed { index, page ->
-                ReaderPageDescriptor(
-                    sourcePageIndex = index,
-                    url = requireNotNull(page.archiveEntry) { "Archive page has no entry: ${page.name}" },
-                )
-            }
+            contentAdapter.archiveDescriptors(
+                chapterId = context.chapterId,
+                archive = path,
+                epub = path.extension.equals("epub", ignoreCase = true),
+                leaseGeneration = leaseGeneration,
+            )
         }
     }
-
-    private fun readyFileDescriptor(index: Int, file: File) = ReaderPageDescriptor(
-        sourcePageIndex = index,
-        url = file.name,
-        imageUrl = file.toURI().toString(),
-        encodedPageRef = EncodedPageRef(file.toURI().toString()),
-        initialLoadState = ReaderPageLoadState.Ready,
-    )
 
     private fun findSource(): CatalogueSource? = sourceManager.getCatalogueSources().firstOrNull { it.id == context.sourceId }
 
@@ -146,11 +139,12 @@ class DesktopReaderPageFetchPort(
     private val sourceManager: SourceManager,
     private val networkHelper: NetworkHelper,
     private val encodedPageStore: DesktopReaderEncodedPageStore,
+    private val contentAdapter: DesktopReaderContentAdapter = DesktopReaderContentAdapter(),
 ) : ReaderPageFetchPort {
 
     override suspend fun resolveImageUrl(request: ReaderPageFetchRequest): String {
         descriptor.encodedPageRef?.let { return it.value }
-        if (context.localChapterPath != null) return archiveImageIdentity(request)
+        if (contentAdapter.owns(descriptor)) return archiveImageIdentity(request)
         return sourceFetcher().resolveImageUrl(sourcePage(request))
     }
 
@@ -166,7 +160,7 @@ class DesktopReaderPageFetchPort(
         val ref = cacheRef(request)
         val result = try {
             encodedPageStore.store(ref) {
-                if (context.localChapterPath != null) {
+                if (contentAdapter.owns(descriptor)) {
                     extractArchivePage(request, ref)
                 } else {
                     fetchSourcePage(request, ref)
@@ -199,15 +193,13 @@ class DesktopReaderPageFetchPort(
     private fun archiveImageIdentity(request: ReaderPageFetchRequest): String =
         "archive:${context.chapterId}:${request.pageId.sourcePageIndex}:${descriptor.url}"
 
-    private fun extractArchivePage(request: ReaderPageFetchRequest, ref: EncodedPageRef): Long {
-        val chapterFile = File(requireNotNull(context.localChapterPath))
-        val page = LocalPage(name = File(descriptor.url).name, archiveEntry = descriptor.url)
-        return LocalSourceReader.extractPage(
-            chapter = LocalChapterEntry(context.chapterTitle, chapterFile),
-            page = page,
+    private suspend fun extractArchivePage(request: ReaderPageFetchRequest, ref: EncodedPageRef): Long =
+        contentAdapter.copyArchivePage(
+            chapterId = context.chapterId,
+            pageIndex = request.pageId.sourcePageIndex,
+            opaquePageRef = descriptor.url,
             destination = encodedPageStore.destinationFile(ref),
         )
-    }
 
     private suspend fun fetchSourcePage(request: ReaderPageFetchRequest, ref: EncodedPageRef): Long {
         val page = sourcePage(request).apply { imageUrl = request.imageUrl }

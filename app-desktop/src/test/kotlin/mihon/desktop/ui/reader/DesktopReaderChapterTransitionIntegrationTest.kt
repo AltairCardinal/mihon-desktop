@@ -222,7 +222,7 @@ class DesktopReaderChapterTransitionIntegrationTest {
             initialContext = initialContext,
             core = core,
             encodedPageStore = store,
-            chapterContentPortFactory = DesktopReaderChapterContentPortFactory {
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { _, _ ->
                 ReaderChapterContentPort { error("page-list I/O is not needed for the wiring assertion") }
             },
             pageFetchPortFactory = DesktopReaderPageFetchPortFactory { _, _ ->

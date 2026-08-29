@@ -1,5 +1,6 @@
 package mihon.desktop.reader
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -21,6 +22,8 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.attribute.FileTime
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.CRC32
 import java.util.zip.ZipEntry
@@ -259,6 +262,97 @@ class DesktopReaderContentAdapterTest {
         assertArrayEquals(page10, destinations[1].readBytes())
         adapter.close()
         assertTrue(rar.delete())
+    }
+
+    @Test
+    fun `adapter close rejects a lease that finishes opening after close`() = runTest {
+        val archive = createStoredZip(tempDir.resolve("late-close.cbz"), listOf("001.png" to imageBytes(60)))
+        val snapshotStarted = CountDownLatch(1)
+        val releaseSnapshot = CountDownLatch(1)
+        val adapter = DesktopReaderContentAdapter(
+            object : DesktopReaderArchiveOperationProbe {
+                override fun onStart() {
+                    snapshotStarted.countDown()
+                    releaseSnapshot.await()
+                }
+
+                override fun onFinish() = Unit
+            },
+        )
+        adapter.reserveChapter(chapterId = 60L, leaseGeneration = 1L)
+        val lateOpen = async(Dispatchers.IO) {
+            runCatching { adapter.archiveDescriptors(60L, archive, leaseGeneration = 1L) }
+        }
+        assertTrue(snapshotStarted.await(2, TimeUnit.SECONDS))
+
+        adapter.close()
+        releaseSnapshot.countDown()
+
+        assertNotNull(lateOpen.await().exceptionOrNull())
+        assertFalse(adapter.hasArchiveLease(60L))
+        assertTrue(archive.delete(), "A post-close archive open must release its own handle")
+    }
+
+    @Test
+    fun `late old generation cannot replace a newer same chapter lease`() = runTest {
+        val oldArchive = createStoredZip(tempDir.resolve("old-generation.cbz"), listOf("001.png" to imageBytes(61)))
+        val newBytes = imageBytes(62)
+        val newArchive = createStoredZip(tempDir.resolve("new-generation.cbz"), listOf("001.png" to newBytes))
+        val firstSnapshotStarted = CountDownLatch(1)
+        val releaseFirstSnapshot = CountDownLatch(1)
+        val snapshotCount = AtomicInteger()
+        val adapter = DesktopReaderContentAdapter(
+            object : DesktopReaderArchiveOperationProbe {
+                override fun onStart() {
+                    if (snapshotCount.incrementAndGet() == 1) {
+                        firstSnapshotStarted.countDown()
+                        releaseFirstSnapshot.await()
+                    }
+                }
+
+                override fun onFinish() = Unit
+            },
+        )
+        adapter.reserveChapter(chapterId = 61L, leaseGeneration = 1L)
+        val oldOpen = async(Dispatchers.IO) {
+            runCatching { adapter.archiveDescriptors(61L, oldArchive, leaseGeneration = 1L) }
+        }
+        assertTrue(firstSnapshotStarted.await(2, TimeUnit.SECONDS))
+
+        adapter.releaseChapter(chapterId = 61L, leaseGeneration = 1L)
+        adapter.reserveChapter(chapterId = 61L, leaseGeneration = 2L)
+        val current = adapter.archiveDescriptors(61L, newArchive, leaseGeneration = 2L).single()
+        releaseFirstSnapshot.countDown()
+
+        assertNotNull(oldOpen.await().exceptionOrNull())
+        assertTrue(adapter.hasArchiveLease(61L))
+        val destination = tempDir.resolve("new-generation-page.png")
+        adapter.copyArchivePage(61L, 0, current.url, destination)
+        assertArrayEquals(newBytes, destination.readBytes())
+        assertTrue(oldArchive.delete())
+        adapter.close()
+        assertTrue(newArchive.delete())
+    }
+
+    @Test
+    fun `released newer generation cannot be reactivated by a late older reserve`() {
+        val archive = createStoredZip(tempDir.resolve("late-reserve.cbz"), listOf("001.png" to imageBytes(63)))
+        val adapter = DesktopReaderContentAdapter()
+
+        adapter.reserveChapter(chapterId = 63L, leaseGeneration = 3L)
+        adapter.releaseChapter(chapterId = 63L, leaseGeneration = 3L)
+        adapter.reserveChapter(chapterId = 63L, leaseGeneration = 2L)
+
+        val staleFailure = runCatching {
+            adapter.archiveDescriptors(63L, archive, leaseGeneration = 2L)
+        }.exceptionOrNull()
+        assertInstanceOf(CancellationException::class.java, staleFailure)
+        assertFalse(adapter.hasArchiveLease(63L))
+
+        adapter.reserveChapter(chapterId = 63L, leaseGeneration = 4L)
+        assertEquals(1, adapter.archiveDescriptors(63L, archive, leaseGeneration = 4L).size)
+        adapter.close()
+        assertTrue(archive.delete())
     }
 
     @Test

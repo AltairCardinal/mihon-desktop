@@ -44,7 +44,10 @@ import mihon.domain.reader.session.ReaderSessionCore
 import mihon.domain.reader.session.ReaderSessionSnapshot
 
 fun interface DesktopReaderChapterContentPortFactory {
-    fun create(context: DesktopReaderChapterContext): ReaderChapterContentPort
+    fun create(
+        context: DesktopReaderChapterContext,
+        leaseGeneration: Long,
+    ): ReaderChapterContentPort
 }
 
 fun interface DesktopReaderPageFetchPortFactory {
@@ -61,6 +64,19 @@ fun interface DesktopReaderProgressPort {
     )
 }
 
+interface DesktopReaderChapterLeasePort {
+    fun reserveChapter(chapterId: Long, leaseGeneration: Long)
+
+    fun releaseChapter(chapterId: Long, leaseGeneration: Long)
+
+    companion object {
+        val None = object : DesktopReaderChapterLeasePort {
+            override fun reserveChapter(chapterId: Long, leaseGeneration: Long) = Unit
+            override fun releaseChapter(chapterId: Long, leaseGeneration: Long) = Unit
+        }
+    }
+}
+
 data class DesktopReaderSessionState(
     val context: DesktopReaderChapterContext,
     val snapshot: ReaderSessionSnapshot,
@@ -73,6 +89,11 @@ private data class DesktopReaderScheduledPage(
     val adjacentSequence: Long? = null,
 )
 
+private data class DesktopReaderChapterLeaseOwner(
+    val chapterId: Long,
+    val leaseGeneration: Long,
+)
+
 /** Executes Desktop I/O around the generation-checked shared reader core. */
 class DesktopReaderSession(
     private val initialContext: DesktopReaderChapterContext,
@@ -81,6 +102,7 @@ class DesktopReaderSession(
     private val chapterContentPortFactory: DesktopReaderChapterContentPortFactory,
     private val pageFetchPortFactory: DesktopReaderPageFetchPortFactory,
     private val progressPort: DesktopReaderProgressPort,
+    private val chapterLeasePort: DesktopReaderChapterLeasePort = DesktopReaderChapterLeasePort.None,
     parentScope: CoroutineScope,
     private val materializeExecutor: ReaderMaterializeExecutor = CanonicalReaderMaterializeExecutor,
     initialNextChapterPrefetchMode: NextChapterPrefetchMode = NextChapterPrefetchMode.FULL_NEXT_CHAPTER,
@@ -110,7 +132,10 @@ class DesktopReaderSession(
     private var context = initialContext
     private var activationSequence = 0L
     private var adjacentSequence = 0L
+    private var contentLeaseGeneration = 0L
+    private var activeContentLeaseGeneration = 0L
     private var adjacentContext: DesktopReaderChapterContext? = null
+    private var adjacentContentLeaseGeneration: Long? = null
     private var adjacentPages: MutableList<ReaderPageDescriptor>? = null
     private val adjacentFailedPageIds = mutableSetOf<ReaderPageId>()
     private var adjacentPageListFailed = false
@@ -138,13 +163,35 @@ class DesktopReaderSession(
     fun activate(target: DesktopReaderChapterContext) {
         val sequence: Long
         val cachedAdjacentPages: List<ReaderPageDescriptor>?
+        val materializationContext: DesktopReaderChapterContext
+        val materializationLeaseGeneration: Long
+        val leaseOwnersToRelease: Set<DesktopReaderChapterLeaseOwner>
+        val reserveMaterializationLease: Boolean
         synchronized(lock) {
             check(!closed) { "Reader session is closed" }
+            val cachedAdjacentContext = adjacentContext
+                ?.takeIf { it.chapterId == target.chapterId && adjacentPages != null }
             cachedAdjacentPages = adjacentPages
-                ?.takeIf { adjacentContext?.chapterId == target.chapterId }
+                ?.takeIf { cachedAdjacentContext != null }
                 ?.toList()
+            materializationContext = target
+            materializationLeaseGeneration = adjacentContentLeaseGeneration
+                ?.takeIf { cachedAdjacentContext != null }
+                ?: nextContentLeaseGenerationLocked()
+            val materializationOwner = DesktopReaderChapterLeaseOwner(
+                materializationContext.chapterId,
+                materializationLeaseGeneration,
+            )
+            leaseOwnersToRelease = buildSet {
+                activeLeaseOwnerOrNull()?.takeIf { it != materializationOwner }?.let(::add)
+                adjacentLeaseOwnerOrNull()?.takeIf { it != materializationOwner }?.let(::add)
+            }
+            reserveMaterializationLease = cachedAdjacentContext == null
             clearAdjacentPrefetchLocked()
-            context = target.copy(wasRead = target.wasRead || target.chapterId in readChapterIds)
+            context = materializationContext.copy(
+                wasRead = target.wasRead || target.chapterId in readChapterIds,
+            )
+            activeContentLeaseGeneration = materializationLeaseGeneration
             activationSequence++
             sequence = activationSequence
             lastSettledPageIndex = null
@@ -159,13 +206,22 @@ class DesktopReaderSession(
             applySchedulePlanLocked(update.schedulePlan)
             publishStateLocked()
         }
+        leaseOwnersToRelease.forEach { owner ->
+            chapterLeasePort.releaseChapter(owner.chapterId, owner.leaseGeneration)
+        }
+        if (reserveMaterializationLease) {
+            chapterLeasePort.reserveChapter(
+                materializationContext.chapterId,
+                materializationLeaseGeneration,
+            )
+        }
         chapterJob = scope.launch {
             val opening = synchronized(lock) {
                 if (closed || activationSequence != sequence) return@launch
                 core.snapshot
             }
             val request = ReaderChapterContentRequest(
-                chapterId = ReaderChapterId(target.chapterId),
+                chapterId = ReaderChapterId(materializationContext.chapterId),
                 generation = opening.generation,
             )
             val result = cachedAdjacentPages
@@ -173,7 +229,7 @@ class DesktopReaderSession(
                 ?: physicalRequestPermits.withPermit {
                     materializeExecutor.materializeChapter(
                         request,
-                        chapterContentPortFactory.create(target),
+                        chapterContentPortFactory.create(materializationContext, materializationLeaseGeneration),
                     )
                 }
             val adjacentPageListJob = synchronized(lock) {
@@ -208,12 +264,18 @@ class DesktopReaderSession(
     ) {
         require(firstViewportPageCount > 0) { "firstViewportPageCount must be positive" }
         val pageListJob: Job?
+        var leaseOwnerToRelease: DesktopReaderChapterLeaseOwner? = null
+        var leaseOwnerToReserve: DesktopReaderChapterLeaseOwner? = null
         synchronized(lock) {
             if (closed) return
             val sameTarget = target != null && target.chapterId == adjacentContext?.chapterId
             if (!sameTarget) {
+                leaseOwnerToRelease = adjacentLeaseOwnerOrNull()
+                    ?.takeIf { it != activeLeaseOwnerOrNull() }
                 clearAdjacentPrefetchLocked()
                 adjacentContext = target
+                adjacentContentLeaseGeneration = target?.let { nextContentLeaseGenerationLocked() }
+                leaseOwnerToReserve = adjacentLeaseOwnerOrNull()
                 adjacentPages = null
                 adjacentFailedPageIds.clear()
                 adjacentPageListFailed = false
@@ -229,6 +291,12 @@ class DesktopReaderSession(
             adjacentFirstViewportPageCount = firstViewportPageCount
             pageListJob = maybeStartAdjacentPageListLocked()
             enqueueAdjacentImagesLocked()
+        }
+        leaseOwnerToRelease?.let { owner ->
+            chapterLeasePort.releaseChapter(owner.chapterId, owner.leaseGeneration)
+        }
+        leaseOwnerToReserve?.let { owner ->
+            chapterLeasePort.reserveChapter(owner.chapterId, owner.leaseGeneration)
         }
         pageListJob?.start()
         pumpPageRequests()
@@ -301,9 +369,14 @@ class DesktopReaderSession(
     }
 
     override fun close() {
+        val leaseOwnersToRelease: Set<DesktopReaderChapterLeaseOwner>
         synchronized(lock) {
             if (closed) return
             closed = true
+            leaseOwnersToRelease = buildSet {
+                activeLeaseOwnerOrNull()?.let(::add)
+                adjacentLeaseOwnerOrNull()?.let(::add)
+            }
             chapterJob?.cancel()
             chapterJob = null
             clearAdjacentPrefetchLocked()
@@ -312,6 +385,9 @@ class DesktopReaderSession(
             activePageJobs.clear()
             if (storeStarted) encodedPageStore.endSession()
             progressSupervisor.complete()
+        }
+        leaseOwnersToRelease.forEach { owner ->
+            chapterLeasePort.releaseChapter(owner.chapterId, owner.leaseGeneration)
         }
         scope.cancel()
     }
@@ -529,6 +605,7 @@ class DesktopReaderSession(
 
         val sequence = adjacentSequence
         val generation = core.snapshot.generation
+        val leaseGeneration = requireNotNull(adjacentContentLeaseGeneration)
         lateinit var job: Job
         job = scope.launch(start = CoroutineStart.LAZY) {
             ioGate.await(ReaderIoGatePoint.ADJACENT_IO)
@@ -541,7 +618,7 @@ class DesktopReaderSession(
             val result = physicalRequestPermits.withPermit {
                 materializeExecutor.materializeChapter(
                     ReaderChapterContentRequest(ReaderChapterId(target.chapterId), generation),
-                    chapterContentPortFactory.create(target),
+                    chapterContentPortFactory.create(target, leaseGeneration),
                 )
             }
             val accepted = synchronized(lock) {
@@ -607,11 +684,25 @@ class DesktopReaderSession(
             applyRequestCancellationLocked(core.cancelChapterPageRequests(ReaderChapterId(chapter.chapterId)))
         }
         adjacentContext = null
+        adjacentContentLeaseGeneration = null
         adjacentPages = null
         adjacentFailedPageIds.clear()
         adjacentPageListFailed = false
         adjacentQuotaBlocked = false
     }
+
+    private fun nextContentLeaseGenerationLocked(): Long = ++contentLeaseGeneration
+
+    private fun activeLeaseOwnerOrNull(): DesktopReaderChapterLeaseOwner? =
+        activeContentLeaseGeneration.takeIf { it > 0L }
+            ?.let { DesktopReaderChapterLeaseOwner(context.chapterId, it) }
+
+    private fun adjacentLeaseOwnerOrNull(): DesktopReaderChapterLeaseOwner? =
+        adjacentContext?.let { chapter ->
+            adjacentContentLeaseGeneration?.let { generation ->
+                DesktopReaderChapterLeaseOwner(chapter.chapterId, generation)
+            }
+        }
 
     private fun applyEnqueueResultLocked(result: ReaderEnqueueResult) {
         result.cancelRequests.forEach { requestKey -> activePageJobs.remove(requestKey)?.cancel() }

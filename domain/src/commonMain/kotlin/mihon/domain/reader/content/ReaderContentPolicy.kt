@@ -67,10 +67,14 @@ fun interface DownloadArtifactProbe {
     fun probe(identity: DownloadChapterIdentity, candidate: DownloadArtifactCandidate): String?
 }
 
+fun interface DownloadArtifactLookup {
+    fun locate(identity: DownloadChapterIdentity): DownloadArtifactMatch?
+}
+
 class DownloadArtifactLocator(
     private val probe: DownloadArtifactProbe,
-) {
-    fun locate(identity: DownloadChapterIdentity): DownloadArtifactMatch? =
+) : DownloadArtifactLookup {
+    override fun locate(identity: DownloadChapterIdentity): DownloadArtifactMatch? =
         DownloadArtifactNamingPolicy.chapterCandidates(identity).firstNotNullOfOrNull { candidate ->
             probe.probe(identity, candidate)?.let { DownloadArtifactMatch(candidate, it) }
         }
