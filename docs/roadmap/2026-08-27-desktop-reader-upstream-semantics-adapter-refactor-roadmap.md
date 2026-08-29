@@ -307,7 +307,7 @@ Android Reader UI                 Desktop Reader presentation
     - [x] `RUA-02D1` Reader adapter/runtime/session 接线与 generation-aware lease
     - [x] `RUA-02D2` 原子 download identity、production DI 与 consumer 行为接线
 - [ ] `RUA-03` 首帧 critical path 与 shared runtime owner 收口
-  - [ ] `RUA-03A` session/store 启动关键路径瘦身
+  - [x] `RUA-03A` session/store 启动关键路径瘦身
   - [ ] `RUA-03B` shared runner、优先级、取消与 generation
   - [ ] `RUA-03C` production TTFF、1/180 页与切章集成门禁
 - [ ] `RUA-04` 唯一内容读取/解码 pipeline 与三种 presentation cutover
@@ -499,6 +499,14 @@ Android Reader UI                 Desktop Reader presentation
 **focused 验证**：downloaded/local/online critical path、store gate、1/180 页 deterministic cost、快速切章/关闭、journal 命中实体缺失。
 
 **预计**：父 RUA 总计约 4～6 工程日；文件和验证预算按 03A～03C 分别计算。
+
+**RUA-03A 完成证据（2026-08-29）**：
+
+- `DesktopReaderSession` 不再在页表到达后无条件启动 encoded store 或枚举共享缓存；downloaded/local 已有稳定外部 ref 的 Ready 页面不触发 store，online/archive 只有在当前页确实需要写入时才用 `beginSessionFast` 建立可写租约，P0 当前页不等待全局 cache scan。
+- production presentation observer 只在首个有效 `pagePresented` 后通知 session，随后在后台执行 gate → `CACHE_RECONCILE`；即使 I/O probe/reporting 关闭，runtime 仍安装 maintenance callback。重复呈现、旧 generation、切章和 close 后回调不会重启整理。
+- reconcile 将所有活跃 session lease 聚合为 pinned refs；pinned 总量可暂时超过 512 MiB 软配额而不会删除正在显示或预加载的文件，此时新写入被拒绝。lease 释放后立即以剩余 pins 重新 trim，回收已不再使用的文件并恢复配额与写入能力；索引不靠漏记文件维持虚假的预算值。
+- 严格 TDD 证据：`.gradle-coordinator/rua03a-first-frame-red2.log` 先按缺少首帧后维护入口与 observer callback 的正确原因失败；`rua03a-first-frame-green3.log` 通过。首次收口暴露旧 fixture 绕过 production presentation，修正后 `rua03a-repair-green.log` 与 `rua03a-close2.log` 通过。独立审查发现小配额双 fast-session 会误删 active ref，`rua03a-pinned-red.log` 复现失败，`rua03a-pinned-green.log`、`rua03a-domain-contract.log` 与最终 `rua03a-close3.log` 全部通过；最终收口包含根级 `spotlessCheck`、共享 store contract 以及 Desktop materialize/session/runtime/observer/production wiring 测试。
+- 限定修复复审结论为 `PASS`，P0/P1/P2 均为零；最终 8 个 production/test 文件处于 4～8 个预计范围内，只修改 store/session 首帧关键路径及其 production observer 接线，未混入 RUA-03B shared scheduler、RUA-03C production TTFF fixture 或 RUA-04 decoder/presentation cutover。未运行 Desktop 发布构建；正式构建仍只在 `RUA-07` 执行。
 
 ### `RUA-04` 唯一内容读取/解码 pipeline 与三种 presentation cutover
 

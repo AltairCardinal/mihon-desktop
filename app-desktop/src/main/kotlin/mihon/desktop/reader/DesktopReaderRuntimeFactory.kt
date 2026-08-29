@@ -137,7 +137,7 @@ class DesktopReaderRuntimeFactory(
                 ioGate = readerIoGate,
             ),
             session = session,
-            pageIoObserver = ioReporter.takeIf(ReaderIoReporter::enabled)?.let(::ReaderPageIoObserver),
+            pageIoObserver = ReaderPageIoObserver(ioReporter, session::onFirstPagePresented),
             encodedPageStore = store,
             contentAdapter = contentAdapter,
             prefetchPreferenceJob = prefetchPreferenceJob,

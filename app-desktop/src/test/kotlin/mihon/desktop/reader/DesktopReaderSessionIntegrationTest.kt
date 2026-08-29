@@ -22,6 +22,11 @@ import mihon.domain.reader.materialize.ReaderPageFetchRequest
 import mihon.domain.reader.materialize.ReaderPageFetchPort
 import mihon.domain.reader.materialize.ReaderPageMaterializeEvent
 import mihon.domain.reader.materialize.ReaderPageMaterializeResult
+import mihon.domain.reader.observability.ReaderIoEvent
+import mihon.domain.reader.observability.ReaderIoEventType
+import mihon.domain.reader.observability.ReaderIoProbe
+import mihon.domain.reader.observability.ReaderIoReporter
+import mihon.domain.reader.observability.ReaderMonotonicClock
 import mihon.domain.reader.progress.ReaderProgressEffect
 import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
@@ -39,6 +44,7 @@ import mihon.desktop.ui.reader.presentation.DualPagedPresentation
 import mihon.desktop.ui.reader.presentation.ReaderPresentationRequest
 import mihon.desktop.ui.reader.presentation.resolveDualVisiblePages
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -671,6 +677,131 @@ class DesktopReaderSessionIntegrationTest {
         session.close()
         assertTrue(archive.delete())
         adapter.close()
+    }
+
+    @Test
+    fun `current page write bypasses cache reconcile until first presentation`() = runTest {
+        val cacheDirectory = tempDir.resolve("encoded-first-presentation")
+        val seedFile = cacheDirectory.resolve("seed.encoded").also {
+            it.parentFile.mkdirs()
+            it.writeBytes(byteArrayOf(9))
+        }
+        val seedRef = EncodedPageRef(seedFile.toURI().toString())
+        val encodedStore = DesktopReaderEncodedPageStore(cacheDirectory)
+        val cacheGate = ControllableReaderIoGate(ReaderIoGatePoint.CACHE_SCAN)
+        val events = mutableListOf<ReaderIoEvent>()
+        val session = DesktopReaderSession(
+            initialContext = context(1L),
+            core = core(initialChapterId = 1L),
+            encodedPageStore = encodedStore,
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { _, _ ->
+                ReaderChapterContentPort {
+                    listOf(ReaderPageDescriptor(0, url = "/1/0", imageUrl = "image:0"))
+                }
+            },
+            pageFetchPortFactory = DesktopReaderPageFetchPortFactory { _, _ ->
+                object : ReaderPageFetchPort {
+                    override suspend fun resolveImageUrl(request: ReaderPageFetchRequest): String =
+                        requireNotNull(request.imageUrl)
+
+                    override suspend fun findEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef? = null
+
+                    override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef {
+                        val ref = encodedStore.cacheRef(request.pageId, requireNotNull(request.imageUrl))
+                        return when (val result = encodedStore.store(ref) {
+                            encodedStore.destinationFile(ref).writeBytes(byteArrayOf(1, 2, 3, 4))
+                            4L
+                        }) {
+                            is EncodedPageStoreWriteResult.Stored -> result.entry.ref
+                            is EncodedPageStoreWriteResult.RejectedQuota -> error("fixture exceeds cache quota")
+                        }
+                    }
+                }
+            },
+            progressPort = DesktopReaderProgressPort { _, _ -> },
+            parentScope = this,
+            ioReporter = ReaderIoReporter(
+                ReaderIoProbe(events::add),
+                ReaderMonotonicClock { events.size.toLong() },
+            ),
+            ioGate = ReaderIoGate(cacheGate::await),
+        )
+
+        try {
+            session.start()
+            advanceUntilIdle()
+            val visiblePage = session.state.value.snapshot.activeChapter.pages.single().id
+            session.settleViewport(setOf(visiblePage), visiblePage)
+            advanceUntilIdle()
+            val snapshot = session.state.value.snapshot
+            val page = snapshot.activeChapter.pages.single()
+
+            assertEquals(ReaderPageLoadState.Ready, page.loadState)
+            assertTrue(seedRef !in encodedStore.diagnostics().refs)
+            assertTrue(events.none { it.type == ReaderIoEventType.CACHE_RECONCILE })
+
+            session.onFirstPagePresented(page.id, snapshot.generation)
+            cacheGate.awaitEntered()
+            assertTrue(events.none { it.type == ReaderIoEventType.CACHE_RECONCILE })
+
+            cacheGate.release()
+            advanceUntilIdle()
+
+            assertTrue(seedRef in encodedStore.diagnostics().refs)
+            assertEquals(1, events.count { it.type == ReaderIoEventType.CACHE_RECONCILE })
+        } finally {
+            cacheGate.release()
+            session.close()
+            advanceUntilIdle()
+        }
+    }
+
+    @Test
+    fun `fast reconcile pins active refs until their lease releases`() = runTest {
+        val cacheDirectory = tempDir.resolve("encoded-fast-reconcile-pins")
+        val firstFile = cacheDirectory.resolve("first.encoded").also {
+            it.parentFile.mkdirs()
+            it.writeBytes(byteArrayOf(1, 2, 3, 4))
+        }
+        val secondFile = cacheDirectory.resolve("second.encoded").also {
+            it.writeBytes(byteArrayOf(5, 6, 7, 8))
+        }
+        val firstRef = EncodedPageRef(firstFile.toURI().toString())
+        val secondRef = EncodedPageRef(secondFile.toURI().toString())
+        val coordinator = DesktopReaderEncodedPageStoreCoordinator(cacheDirectory, maxBytes = 6)
+        val firstStore = coordinator.openSessionStore()
+        val secondStore = coordinator.openSessionStore()
+
+        try {
+            firstStore.beginSessionFast(emptySet())
+            assertTrue(firstStore.contains(firstRef))
+            secondStore.beginSessionFast(emptySet())
+            assertTrue(secondStore.contains(secondRef))
+
+            firstStore.reconcileSession()
+
+            assertTrue(firstFile.isFile)
+            assertTrue(secondFile.isFile)
+            assertEquals(byteArrayOf(1, 2, 3, 4).toList(), firstStore.read(firstRef)?.toList())
+            assertEquals(byteArrayOf(5, 6, 7, 8).toList(), secondStore.read(secondRef)?.toList())
+
+            firstStore.endSession()
+
+            assertFalse(firstFile.exists())
+            assertTrue(secondFile.isFile)
+            assertTrue(secondStore.diagnostics().usedBytes <= 6)
+            val thirdRef = secondStore.cacheRef(ReaderPageId(ReaderChapterId(3L), 0), "third")
+            assertInstanceOf(
+                EncodedPageStoreWriteResult.Stored::class.java,
+                secondStore.store(thirdRef) {
+                    secondStore.destinationFile(thirdRef).writeBytes(byteArrayOf(9, 10))
+                    2L
+                },
+            )
+        } finally {
+            firstStore.endSession()
+            secondStore.endSession()
+        }
     }
 
     @Test

@@ -46,7 +46,7 @@ data class EncodedPageStoreDiagnostics(
 ) {
     init {
         require(maxBytes >= 0) { "maxBytes must be non-negative" }
-        require(usedBytes in 0..maxBytes) { "usedBytes must be within maxBytes" }
+        require(usedBytes >= 0) { "usedBytes must be non-negative" }
         require(hitCount >= 0 && missCount >= 0 && writeCount >= 0 && evictionCount >= 0) {
             "diagnostic counters must be non-negative"
         }
@@ -84,6 +84,7 @@ class ByteBudgetEncodedPageStoreIndex(
     fun beginSession(
         availableEntries: List<EncodedPageStoreEntry>,
         missingRefs: Set<EncodedPageRef>,
+        pinnedRefs: Set<EncodedPageRef> = emptySet(),
     ): EncodedPageStoreLifecycleResult {
         entries.clear()
         usedBytes = 0
@@ -93,7 +94,7 @@ class ByteBudgetEncodedPageStoreIndex(
         evictionCount = 0
         isSessionOpen = true
         availableEntries.forEach(::restore)
-        val evictedRefs = trimToBudget()
+        val evictedRefs = trimToBudget(pinnedRefs)
         return EncodedPageStoreLifecycleResult(
             availableRefs = entries.keys.toSet(),
             missingRefs = missingRefs,
@@ -105,6 +106,7 @@ class ByteBudgetEncodedPageStoreIndex(
         ref: EncodedPageRef,
         exists: Boolean,
         byteCount: Long? = null,
+        pinned: Boolean = false,
     ): Boolean {
         ensureSession()
         if (!exists) {
@@ -116,7 +118,7 @@ class ByteBudgetEncodedPageStoreIndex(
         val tracked = entries.remove(ref)
         when {
             tracked != null -> entries[ref] = tracked
-            byteCount != null && byteCount >= 0 && usedBytes + byteCount <= maxBytes -> {
+            byteCount != null && byteCount >= 0 && (pinned || usedBytes + byteCount <= maxBytes) -> {
                 val entry = EncodedPageStoreEntry(ref, byteCount)
                 entries[ref] = entry
                 usedBytes += byteCount
@@ -186,22 +188,24 @@ class ByteBudgetEncodedPageStoreIndex(
         return diagnostics()
     }
 
-    private fun restore(entry: EncodedPageStoreEntry) {
-        entries.remove(entry.ref)?.let { usedBytes -= it.byteCount }
-        entries[entry.ref] = entry
-        usedBytes += entry.byteCount
-    }
-
-    private fun trimToBudget(): Set<EncodedPageRef> {
+    /** Trims unpinned entries to quota, allowing active reader leases to exceed the soft limit temporarily. */
+    fun trimToBudget(pinnedRefs: Set<EncodedPageRef> = emptySet()): Set<EncodedPageRef> {
+        ensureSession()
         val evicted = mutableSetOf<EncodedPageRef>()
-        while (usedBytes > maxBytes && entries.isNotEmpty()) {
-            val oldest = entries.keys.first()
+        while (usedBytes > maxBytes) {
+            val oldest = entries.keys.firstOrNull { it !in pinnedRefs } ?: break
             val removed = entries.remove(oldest) ?: continue
             usedBytes -= removed.byteCount
             evictionCount++
             evicted += removed.ref
         }
         return evicted
+    }
+
+    private fun restore(entry: EncodedPageStoreEntry) {
+        entries.remove(entry.ref)?.let { usedBytes -= it.byteCount }
+        entries[entry.ref] = entry
+        usedBytes += entry.byteCount
     }
 
     private fun ensureSession() {

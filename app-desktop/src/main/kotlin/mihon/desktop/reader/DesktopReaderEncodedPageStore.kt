@@ -35,6 +35,7 @@ internal class DesktopReaderEncodedPageStoreSharedState(
     val writeGates = mutableMapOf<EncodedPageRef, DesktopReaderEncodedPageWriteGate>()
     val activeWriteFiles = mutableMapOf<EncodedPageRef, File>()
     val leases = mutableMapOf<Any, MutableSet<EncodedPageRef>>()
+    var reconciled = false
 }
 
 internal class DesktopReaderEncodedPageWriteGate(
@@ -64,7 +65,11 @@ class DesktopReaderEncodedPageStore internal constructor(
                 sharedState.index.beginSession(
                     availableEntries = availableEntries,
                     missingRefs = retainedRefs.filterTo(mutableSetOf()) { it !in availableRefs },
-                ).also { lifecycle -> lifecycle.evictedRefs.forEach(::deleteOwnedFile) }
+                    pinnedRefs = retainedRefs,
+                ).also { lifecycle ->
+                    lifecycle.evictedRefs.forEach(::deleteOwnedFile)
+                    sharedState.reconciled = true
+                }
             } else {
                 currentLifecycleLocked(retainedRefs)
             }
@@ -74,11 +79,51 @@ class DesktopReaderEncodedPageStore internal constructor(
             result
         }
 
+    /** Opens a writable session without enumerating the shared cache directory. */
+    internal suspend fun beginSessionFast(retainedRefs: Set<EncodedPageRef>): EncodedPageStoreLifecycleResult =
+        synchronized(sharedState.lock) {
+            sharedState.cacheDirectory.mkdirs()
+            if (leaseActive) return@synchronized currentLifecycleLocked(retainedRefs)
+
+            val result = if (sharedState.leases.isEmpty()) {
+                sharedState.reconciled = false
+                sharedState.index.beginSession(
+                    availableEntries = emptyList(),
+                    missingRefs = retainedRefs,
+                )
+            } else {
+                currentLifecycleLocked(retainedRefs)
+            }
+            sharedState.leases[leaseId] = retainedRefs
+                .filterTo(mutableSetOf()) { ref -> ref.fileOrNull()?.hasEncodedBytes() == true }
+            leaseActive = true
+            result
+        }
+
+    /** Reconciles existing cache files once after the first page has been presented. */
+    internal suspend fun reconcileSession(): EncodedPageStoreLifecycleResult = synchronized(sharedState.lock) {
+        activeLeaseLocked()
+        if (sharedState.reconciled) return@synchronized currentLifecycleLocked(emptySet())
+
+        prepareDirectoryLocked()
+        val retainedRefs = sharedState.leases.values.flatten().toSet()
+        val availableEntries = scanAvailableEntriesLocked(retainedRefs)
+        val availableRefs = availableEntries.mapTo(mutableSetOf(), EncodedPageStoreEntry::ref)
+        sharedState.index.beginSession(
+            availableEntries = availableEntries,
+            missingRefs = retainedRefs.filterTo(mutableSetOf()) { it !in availableRefs },
+            pinnedRefs = retainedRefs,
+        ).also { lifecycle ->
+            lifecycle.evictedRefs.forEach(::deleteOwnedFile)
+            sharedState.reconciled = true
+        }
+    }
+
     override suspend fun contains(ref: EncodedPageRef): Boolean = synchronized(sharedState.lock) {
         val file = ref.fileOrNull()
         val exists = file?.hasEncodedBytes() == true
         if (file?.isOwnedCacheFile() == true) {
-            sharedState.index.recordLookup(ref, exists, file.length().takeIf { exists })
+            sharedState.index.recordLookup(ref, exists, file.length().takeIf { exists }, pinned = exists)
             if (exists) activeLeaseLocked().add(ref)
         }
         exists
@@ -114,7 +159,10 @@ class DesktopReaderEncodedPageStore internal constructor(
         if (!leaseActive) return@synchronized sharedState.index.diagnostics()
         sharedState.leases.remove(leaseId)
         leaseActive = false
+        val pinnedRefs = sharedState.leases.values.flatten().toSet()
+        sharedState.index.trimToBudget(pinnedRefs).forEach(::deleteOwnedFile)
         if (sharedState.leases.isEmpty()) {
+            sharedState.reconciled = false
             sharedState.index.endSession()
         } else {
             sharedState.index.diagnostics()
@@ -179,7 +227,7 @@ class DesktopReaderEncodedPageStore internal constructor(
             val file = ref.fileOrNull()
             val exists = file?.hasEncodedBytes() == true
             if (file?.isOwnedCacheFile() == true) {
-                sharedState.index.recordLookup(ref, exists, file.length().takeIf { exists })
+                sharedState.index.recordLookup(ref, exists, file.length().takeIf { exists }, pinned = exists)
             }
             exists
         }

@@ -144,6 +144,7 @@ class DesktopReaderSession(
     private var nextChapterPrefetchMode = initialNextChapterPrefetchMode
     private var lastSettledPageIndex: Int? = null
     private var storeStarted = false
+    private var storeReconcileStarted = false
     private var started = false
     private var closed = false
 
@@ -253,7 +254,6 @@ class DesktopReaderSession(
                 maybeStartAdjacentPageListLocked()
             }
             adjacentPageListJob?.start()
-            scope.launch { ensureStoreStarted() }
             pumpPageRequests()
         }
     }
@@ -392,6 +392,32 @@ class DesktopReaderSession(
         scope.cancel()
     }
 
+    fun onFirstPagePresented(pageId: ReaderPageId, generation: Long) {
+        synchronized(lock) {
+            val snapshot = core.snapshot
+            if (
+                closed ||
+                storeReconcileStarted ||
+                snapshot.generation != generation ||
+                snapshot.activeChapter.id != pageId.chapterId
+            ) {
+                return
+            }
+            storeReconcileStarted = true
+        }
+        scope.launch {
+            if (!ensureStoreWritable()) return@launch
+            ioGate.await(ReaderIoGatePoint.CACHE_SCAN)
+            ioReporter.report(
+                ReaderIoEventType.CACHE_RECONCILE,
+                pageId.chapterId,
+                generation = generation,
+                purpose = ReaderIoPurpose.CACHE_MAINTENANCE,
+            )
+            encodedPageStore.reconcileSession()
+        }
+    }
+
     /** Serializes durable progress effects and lets already accepted writes drain after reader disposal. */
     private fun enqueueProgressLocked(
         progressContext: DesktopReaderChapterContext,
@@ -414,21 +440,22 @@ class DesktopReaderSession(
         return job
     }
 
-    private suspend fun ensureStoreStarted() {
-        storeMutex.withLock {
-            if (!storeStarted) {
-                ioGate.await(ReaderIoGatePoint.CACHE_SCAN)
-                val snapshot = synchronized(lock) { core.snapshot }
-                ioReporter.report(
-                    ReaderIoEventType.CACHE_RECONCILE,
-                    snapshot.activeChapter.id,
-                    generation = snapshot.generation,
-                    purpose = ReaderIoPurpose.CACHE_MAINTENANCE,
-                )
-                encodedPageStore.beginSession(emptySet())
+    private suspend fun ensureStoreWritable(): Boolean = storeMutex.withLock {
+        synchronized(lock) {
+            if (closed) return@withLock false
+            if (storeStarted) return@withLock true
+        }
+        encodedPageStore.beginSessionFast(emptySet())
+        val closeImmediately = synchronized(lock) {
+            if (closed) {
+                true
+            } else {
                 storeStarted = true
+                false
             }
         }
+        if (closeImmediately) encodedPageStore.endSession()
+        !closeImmediately
     }
 
     private fun pumpPageRequests() {
@@ -465,7 +492,7 @@ class DesktopReaderSession(
         var adjacentPageListJob: Job? = null
         try {
             request.gatePoint(scheduledPage.isAdjacentPrefetch)?.let { ioGate.await(it) }
-            if (scheduledPage.descriptor.encodedPageRef == null) ensureStoreStarted()
+            if (scheduledPage.descriptor.encodedPageRef == null && !ensureStoreWritable()) return
             if (scheduledPage.isAdjacentPrefetch) {
                 ioReporter.report(
                     ReaderIoEventType.ADJACENT_IO,

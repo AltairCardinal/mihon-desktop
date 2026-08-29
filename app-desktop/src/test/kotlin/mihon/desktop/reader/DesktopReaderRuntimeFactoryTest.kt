@@ -72,6 +72,7 @@ class DesktopReaderRuntimeFactoryTest {
             this,
         )
         try {
+            assertNotNull(runtime.pageIoObserver)
             assertEquals(NextChapterPrefetchMode.OFF, runtime.session.currentNextChapterPrefetchMode)
 
             prefs.nextChapterPrefetchMode = NextChapterPrefetchMode.FIRST_VIEWPORT
@@ -327,19 +328,16 @@ class DesktopReaderRuntimeFactoryTest {
             mangaRepository = null,
             encodedCacheDirectory = tempDir.resolve("encoded-preloader-wiring"),
         )
-        val context = DesktopReaderChapterContext(
-            chapterId = 81L,
-            sourceId = 42L,
-            chapterUrl = "/chapter/81",
-            mangaTitle = "Manga",
-            chapterTitle = "Chapter 81",
-            chapterNumber = 81.0,
-            chapterIndex = 0,
-            initialPage = 0,
-            wasRead = false,
-        )
+        val localDirectory = tempDir.resolve("preloader-wiring-local").also { directory ->
+            directory.mkdirs()
+            directory.resolve("001.png").writeBytes(pngBytes())
+        }
+        val context = localContext(81L, localDirectory)
         val runtime = factory.createRuntime(context, this)
         try {
+            advanceUntilIdle()
+            val snapshot = runtime.session.state.value.snapshot
+            runtime.pageIoObserver?.pagePresented(snapshot.activeChapter.pages.single().id, snapshot.generation)
             advanceUntilIdle()
             val ref = runtime.encodedPageStore.cacheRef(
                 ReaderPageId(ReaderChapterId(81L), sourcePageIndex = 0),

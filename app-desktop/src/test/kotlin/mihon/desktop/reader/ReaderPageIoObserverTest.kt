@@ -15,8 +15,10 @@ class ReaderPageIoObserverTest {
     @Test
     fun `real opens and decodes remain countable while first presentation is unique`() {
         val events = CopyOnWriteArrayList<ReaderIoEvent>()
+        val firstPresentations = CopyOnWriteArrayList<Pair<ReaderPageId, Long>>()
         val observer = ReaderPageIoObserver(
             ReaderIoReporter(ReaderIoProbe(events::add), ReaderMonotonicClock { 1L }),
+            onFirstPagePresented = { pageId, generation -> firstPresentations += pageId to generation },
         )
         val pageId = ReaderPageId(ReaderChapterId(7L), 0)
 
@@ -29,5 +31,6 @@ class ReaderPageIoObserverTest {
         assertEquals(2, events.count { it.type == ReaderIoEventType.OPEN_PAGE })
         assertEquals(2, events.count { it.type == ReaderIoEventType.DECODE })
         assertEquals(1, events.count { it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED })
+        assertEquals(listOf(pageId to 3L), firstPresentations)
     }
 }
