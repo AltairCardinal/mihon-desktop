@@ -118,6 +118,9 @@ class DesktopReaderRuntimeFactoryTest {
         val runtime = factory.createRuntime(localContext(71L, currentDirectory), this)
         try {
             advanceUntilIdle()
+            val opening = runtime.session.state.value.snapshot
+            runtime.session.onFirstPagePresented(opening.activeChapter.pages.single().id, opening.generation)
+            advanceUntilIdle()
             runtime.session.updateNextChapter(localContext(72L, nextArchive), firstViewportPageCount = 2)
             advanceUntilIdle()
 

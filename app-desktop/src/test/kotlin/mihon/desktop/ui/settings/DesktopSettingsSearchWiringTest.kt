@@ -90,6 +90,22 @@ class DesktopSettingsSearchWiringTest {
         }
         assertEquals(previous, Locale.getDefault())
     }
+
+    @Test
+    fun `catalog exposes image prefetch by its user facing title`() = withRestoredLocale {
+        Locale.setDefault(Locale.forLanguageTag("zh-CN"))
+
+        val readerScreen = DesktopSettingsCatalog.screens().single { it.route is ReaderSettingsScreen }
+        val readerEntries = readerScreen.preferences.map { it.title }
+
+        assertTrue("图片预取" in readerEntries)
+        assertFalse("预取下一章" in readerEntries)
+        assertTrue(
+            DesktopSettingsCatalog.search("图片预取")
+                .any { it.route is ReaderSettingsScreen && it.anchorTitle == "图片预取" },
+        )
+    }
+
     @Test
     fun `catalog delegates search to shared policy`() {
         mockkObject(SettingsSearchPolicy)

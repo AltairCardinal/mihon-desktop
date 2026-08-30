@@ -61,6 +61,7 @@ import kotlinx.coroutines.runBlocking
 import logcat.LogPriority
 import mihon.domain.error.AppError
 import mihon.domain.reader.ChapterSkipPolicy
+import mihon.domain.reader.ReaderAdjacentChapterEffect
 import mihon.domain.reader.ReaderChapterEntry
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderNavigationCommand
@@ -439,11 +440,17 @@ class ReaderViewModel @JvmOverloads constructor(
         }
     }
 
-    /**
-     * Called when the viewers decide it's a good time to preload a [chapter] and improve the UX so
-     * that the user doesn't have to wait too long to continue reading.
-     */
-    suspend fun preload(chapter: ReaderChapter) {
+    /** Consumes the shared adjacent-chapter policy without permitting image-prefetch semantics. */
+    internal suspend fun consumeAdjacentChapterEffect(
+        chapter: ReaderChapter,
+        effect: ReaderAdjacentChapterEffect,
+    ) {
+        when (effect) {
+            ReaderAdjacentChapterEffect.LoadAdjacentChapterPageList -> preload(chapter)
+        }
+    }
+
+    private suspend fun preload(chapter: ReaderChapter) {
         val purpose = when (chapter.sharedSessionStateFlow.value.activeChapter.loadState) {
             ReaderChapterLoadState.Wait -> ReaderChapterLoadPurpose.PREFETCH
             is ReaderChapterLoadState.Error -> ReaderChapterLoadPurpose.RETRY

@@ -256,7 +256,7 @@ class DesktopReaderSessionIntegrationTest {
             pageFetchPortFactory = DesktopReaderPageFetchPortFactory { chapter, descriptor ->
                 object : ReaderPageFetchPort {
                     override suspend fun resolveImageUrl(request: mihon.domain.reader.materialize.ReaderPageFetchRequest) =
-                        requireNotNull(request.imageUrl)
+                        request.imageUrl ?: "image"
 
                     override suspend fun findEncodedPage(
                         request: mihon.domain.reader.materialize.ReaderPageFetchRequest,
@@ -310,6 +310,254 @@ class DesktopReaderSessionIntegrationTest {
     }
 
     @Test
+    fun `canonical adjacent metadata uses anchor before first presentation without fetching images`() = runTest {
+        var nextPageListLoads = 0
+        val nextPageFetches = mutableListOf<Int>()
+        val progress = mutableListOf<ReaderProgressEffect>()
+        val session = DesktopReaderSession(
+            initialContext = context(1L),
+            core = core(initialChapterId = 1L),
+            encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-anchor-metadata")),
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter, _ ->
+                ReaderChapterContentPort {
+                    if (chapter.chapterId == 2L) nextPageListLoads++
+                    List(if (chapter.chapterId == 1L) 10 else 3) { index ->
+                        if (chapter.chapterId == 1L) {
+                            readyDescriptor(chapter.chapterId, index)
+                        } else {
+                            ReaderPageDescriptor(index, url = "/2/$index", imageUrl = "image:$index")
+                        }
+                    }
+                }
+            },
+            pageFetchPortFactory = DesktopReaderPageFetchPortFactory { chapter, descriptor ->
+                if (chapter.chapterId == 2L) nextPageFetches += descriptor.sourcePageIndex
+                readyPort(descriptor)
+            },
+            progressPort = DesktopReaderProgressPort { _, effect -> progress += effect },
+            parentScope = this,
+            initialNextChapterPrefetchMode = NextChapterPrefetchMode.OFF,
+        )
+
+        try {
+            session.start()
+            session.updateNextChapter(context(2L), firstViewportPageCount = 2)
+            advanceUntilIdle()
+            val snapshot = session.state.value.snapshot
+            val pages = snapshot.activeChapter.pages
+            val dualViewport = setOf(pages[4].id, pages[5].id)
+
+            session.settleViewport(dualViewport, anchorPageId = pages[4].id)
+            advanceUntilIdle()
+
+            assertEquals(0, nextPageListLoads, "Anchor index 4 still has six pages remaining")
+            assertTrue(nextPageFetches.isEmpty())
+            assertEquals(1, progress.size)
+
+            session.settleViewport(dualViewport, anchorPageId = pages[5].id)
+            advanceUntilIdle()
+
+            assertEquals(1, nextPageListLoads, "Anchor index 5 loads metadata without waiting for first presentation")
+            assertTrue(nextPageFetches.isEmpty(), "Canonical metadata must remain page-list-only in OFF mode")
+            assertEquals(2, progress.size)
+
+            repeat(2) { session.onFirstPagePresented(pages[5].id, snapshot.generation) }
+            advanceUntilIdle()
+
+            assertEquals(1, nextPageListLoads)
+            assertEquals(2, progress.size, "Repeated presentation must not add progress side effects")
+        } finally {
+            session.close()
+            advanceUntilIdle()
+        }
+    }
+
+    @Test
+    fun `opt in decorator waits for current generation first presentation and shared scheduler idle`() = runTest {
+        val currentReadyPublished = CompletableDeferred<Unit>()
+        val allowCurrentTerminal = CompletableDeferred<Unit>()
+        val nextPageLists = mutableListOf<Long>()
+        val nextPageFetches = mutableListOf<Int>()
+        val progress = mutableListOf<ReaderProgressEffect>()
+        val executor = object : ReaderMaterializeExecutor {
+            override suspend fun materializeChapter(
+                request: ReaderChapterContentRequest,
+                port: ReaderChapterContentPort,
+            ): ReaderChapterMaterializeResult = CanonicalReaderMaterializeExecutor.materializeChapter(request, port)
+
+            override suspend fun materializePage(
+                request: ReaderPageFetchRequest,
+                port: ReaderPageFetchPort,
+                forceRefresh: Boolean,
+                publish: (ReaderPageMaterializeEvent) -> Boolean,
+            ): ReaderPageMaterializeResult {
+                if (request.pageId.chapterId == ReaderChapterId(1L)) {
+                    val imageUrl = requireNotNull(request.imageUrl)
+                    val encodedRef = EncodedPageRef("encoded:1:0")
+                    check(publish(ReaderPageMaterializeEvent.Ready(imageUrl, encodedRef)))
+                    currentReadyPublished.complete(Unit)
+                    allowCurrentTerminal.await()
+                    return ReaderPageMaterializeResult.Ready(imageUrl, encodedRef)
+                }
+                return CanonicalReaderMaterializeExecutor.materializePage(request, port, forceRefresh, publish)
+            }
+        }
+        val session = DesktopReaderSession(
+            initialContext = context(1L),
+            core = core(initialChapterId = 1L),
+            encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-first-presented-idle")),
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter, _ ->
+                ReaderChapterContentPort {
+                    if (chapter.chapterId == 2L) nextPageLists += chapter.chapterId
+                    List(if (chapter.chapterId == 1L) 10 else 2) { index ->
+                        if (chapter.chapterId == 1L && index > 0) {
+                            readyDescriptor(chapter.chapterId, index)
+                        } else {
+                            ReaderPageDescriptor(
+                                index,
+                                url = "/${chapter.chapterId}/$index",
+                                imageUrl = "image:$index",
+                            )
+                        }
+                    }
+                }
+            },
+            pageFetchPortFactory = DesktopReaderPageFetchPortFactory { chapter, descriptor ->
+                object : ReaderPageFetchPort {
+                    override suspend fun resolveImageUrl(request: ReaderPageFetchRequest) =
+                        requireNotNull(request.imageUrl)
+
+                    override suspend fun findEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef? = null
+
+                    override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef {
+                        if (chapter.chapterId == 2L) nextPageFetches += descriptor.sourcePageIndex
+                        return EncodedPageRef("encoded:${chapter.chapterId}:${descriptor.sourcePageIndex}")
+                    }
+                }
+            },
+            progressPort = DesktopReaderProgressPort { _, effect -> progress += effect },
+            parentScope = this,
+            materializeExecutor = executor,
+            initialNextChapterPrefetchMode = NextChapterPrefetchMode.FULL_NEXT_CHAPTER,
+        )
+
+        try {
+            session.start()
+            advanceUntilIdle()
+            val opening = session.state.value.snapshot
+            val currentPage = opening.activeChapter.pages.first().id
+            session.updateNextChapter(context(2L), firstViewportPageCount = 1)
+            session.settleViewport(setOf(currentPage), currentPage)
+            currentReadyPublished.await()
+
+            assertTrue(session.core.schedulerSnapshot().activeRequests.isNotEmpty())
+            assertEquals(ReaderPageLoadState.Ready, session.state.value.snapshot.activeChapter.pages.first().loadState)
+            assertTrue(nextPageLists.isEmpty(), "Explicit prefetch must not open a page list before presentation")
+            assertTrue(nextPageFetches.isEmpty())
+
+            session.onFirstPagePresented(currentPage, opening.generation)
+            runCurrent()
+
+            assertTrue(nextPageLists.isEmpty(), "A Ready event is not scheduler idle until its request completes")
+            assertTrue(nextPageFetches.isEmpty())
+            assertEquals(1, progress.size)
+
+            allowCurrentTerminal.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(listOf(2L), nextPageLists)
+            assertEquals(listOf(0, 1), nextPageFetches)
+            assertEquals(1, progress.size, "P4 encoded materialization must not write reading progress")
+        } finally {
+            allowCurrentTerminal.complete(Unit)
+            session.close()
+            advanceUntilIdle()
+        }
+    }
+
+    @Test
+    fun `stale generation target and repeated first presentation cannot release old adjacent work`() = runTest {
+        val adjacentPageLists = mutableListOf<Long>()
+        val adjacentPageFetches = mutableListOf<Pair<Long, Int>>()
+        val session = DesktopReaderSession(
+            initialContext = context(1L),
+            core = core(initialChapterId = 1L),
+            encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-stale-first-presented")),
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter, _ ->
+                ReaderChapterContentPort {
+                    if (chapter.chapterId != 1L) adjacentPageLists += chapter.chapterId
+                    listOf(
+                        if (chapter.chapterId == 1L) {
+                            readyDescriptor(chapter.chapterId, 0)
+                        } else {
+                            ReaderPageDescriptor(0, url = "/${chapter.chapterId}/0", imageUrl = "image:0")
+                        },
+                    )
+                }
+            },
+            pageFetchPortFactory = DesktopReaderPageFetchPortFactory { chapter, descriptor ->
+                object : ReaderPageFetchPort {
+                    override suspend fun resolveImageUrl(request: ReaderPageFetchRequest) =
+                        requireNotNull(request.imageUrl)
+
+                    override suspend fun findEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef? = null
+
+                    override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef {
+                        adjacentPageFetches += chapter.chapterId to descriptor.sourcePageIndex
+                        return EncodedPageRef("encoded:${chapter.chapterId}:${descriptor.sourcePageIndex}")
+                    }
+                }
+            },
+            progressPort = DesktopReaderProgressPort { _, _ -> error("Adjacent work must not write reading progress") },
+            parentScope = this,
+            initialNextChapterPrefetchMode = NextChapterPrefetchMode.FULL_NEXT_CHAPTER,
+        )
+
+        try {
+            session.start()
+            advanceUntilIdle()
+            val firstSnapshot = session.state.value.snapshot
+            val firstPage = firstSnapshot.activeChapter.pages.single().id
+
+            session.updateNextChapter(context(2L), firstViewportPageCount = 1)
+            session.updateNextChapter(context(3L), firstViewportPageCount = 1)
+            runCurrent()
+            assertTrue(adjacentPageLists.isEmpty(), "Target switches before first presentation must remain I/O-free")
+
+            repeat(2) { session.onFirstPagePresented(firstPage, firstSnapshot.generation + 1L) }
+            runCurrent()
+            assertTrue(adjacentPageLists.isEmpty(), "A stale generation must not release the current target")
+
+            repeat(2) { session.onFirstPagePresented(firstPage, firstSnapshot.generation) }
+            advanceUntilIdle()
+
+            assertEquals(listOf(3L), adjacentPageLists)
+            assertEquals(listOf(3L to 0), adjacentPageFetches)
+
+            session.activate(context(3L))
+            advanceUntilIdle()
+            val secondSnapshot = session.state.value.snapshot
+            val secondPage = secondSnapshot.activeChapter.pages.single().id
+            session.updateNextChapter(context(4L), firstViewportPageCount = 1)
+            runCurrent()
+            assertEquals(listOf(3L), adjacentPageLists)
+
+            repeat(2) { session.onFirstPagePresented(firstPage, firstSnapshot.generation) }
+            runCurrent()
+            assertEquals(listOf(3L), adjacentPageLists, "Old chapter presentation must not release the new target")
+
+            repeat(2) { session.onFirstPagePresented(secondPage, secondSnapshot.generation) }
+            advanceUntilIdle()
+
+            assertEquals(listOf(3L, 4L), adjacentPageLists)
+            assertEquals(listOf(3L to 0, 4L to 0), adjacentPageFetches)
+        } finally {
+            session.close()
+            advanceUntilIdle()
+        }
+    }
+
+    @Test
     fun `full next chapter waits for every current page then materializes all encoded pages without progress`() = runTest {
         val releaseLastCurrentPage = CompletableDeferred<Unit>()
         val nextPageLists = mutableListOf<Long>()
@@ -358,6 +606,8 @@ class DesktopReaderSessionIntegrationTest {
 
         session.settleViewport(setOf(first), first)
         advanceUntilIdle()
+        presentCurrentGeneration(session)
+        runCurrent()
 
         assertTrue(nextPageLists.isEmpty())
         assertTrue(nextPageFetches.isEmpty())
@@ -395,6 +645,8 @@ class DesktopReaderSessionIntegrationTest {
         session.start()
         session.updateNextChapter(context(2L), firstViewportPageCount = 2)
         advanceUntilIdle()
+        presentCurrentGeneration(session)
+        advanceUntilIdle()
 
         assertEquals(listOf(0, 1), nextPageFetches)
         session.close()
@@ -428,6 +680,8 @@ class DesktopReaderSessionIntegrationTest {
         val pages = session.state.value.snapshot.activeChapter.pages
 
         session.settleViewport(setOf(pages[0].id), pages[0].id)
+        advanceUntilIdle()
+        presentCurrentGeneration(session)
         advanceUntilIdle()
         assertEquals(0, nextPageListLoads)
 
@@ -471,6 +725,8 @@ class DesktopReaderSessionIntegrationTest {
         )
         session.start()
         session.updateNextChapter(context(2L), firstViewportPageCount = 1)
+        advanceUntilIdle()
+        presentCurrentGeneration(session)
         nextPageListStarted.await()
 
         session.setNextChapterPrefetchMode(NextChapterPrefetchMode.OFF)
@@ -570,7 +826,8 @@ class DesktopReaderSessionIntegrationTest {
         )
         session.start()
         try {
-            runCurrent()
+            advanceUntilIdle()
+            presentCurrentGeneration(session)
 
             session.updateNextChapter(context(2L), firstViewportPageCount = 1)
             chapterStarted.getValue(2L).await()
@@ -950,6 +1207,7 @@ class DesktopReaderSessionIntegrationTest {
         session.start()
         try {
             runCurrent()
+            presentCurrentGeneration(session)
             session.updateNextChapter(context(2L), firstViewportPageCount = 1)
             oldFailurePublished.await()
 
@@ -1028,6 +1286,8 @@ class DesktopReaderSessionIntegrationTest {
         )
         session.start()
         session.updateNextChapter(context(2L), firstViewportPageCount = 1)
+        advanceUntilIdle()
+        presentCurrentGeneration(session)
         prefetchStarted.await()
 
         session.activate(context(2L))
@@ -1100,6 +1360,8 @@ class DesktopReaderSessionIntegrationTest {
         session.start()
         session.updateNextChapter(context(2L), firstViewportPageCount = 2)
         advanceUntilIdle()
+        presentCurrentGeneration(session)
+        advanceUntilIdle()
 
         assertEquals(listOf(0), nextPageFetches)
         assertEquals(0L, encodedStore.diagnostics().usedBytes)
@@ -1144,6 +1406,11 @@ class DesktopReaderSessionIntegrationTest {
         encodedPageRef = EncodedPageRef("existing:$chapterId:$index"),
         initialLoadState = ReaderPageLoadState.Ready,
     )
+
+    private fun presentCurrentGeneration(session: DesktopReaderSession, pageIndex: Int = 0) {
+        val snapshot = session.state.value.snapshot
+        session.onFirstPagePresented(snapshot.activeChapter.pages[pageIndex].id, snapshot.generation)
+    }
 
     private data class DesktopReaderChapterLeaseOwnerFixture(
         val chapterId: Long,

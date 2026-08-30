@@ -94,6 +94,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 import logcat.LogPriority
+import mihon.domain.reader.ReaderAdjacentChapterEffect
 import mihon.domain.reader.ReaderColorFilterParams
 import mihon.domain.reader.ReaderNavigationCommand
 import tachiyomi.core.common.Constants
@@ -108,7 +109,7 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.ByteArrayOutputStream
 
-class ReaderActivity : BaseActivity() {
+open class ReaderActivity : BaseActivity() {
 
     companion object {
         fun newIntent(context: Context, mangaId: Long?, chapterId: Long?): Intent {
@@ -709,7 +710,7 @@ class ReaderActivity : BaseActivity() {
      * Called from the viewer whenever a [page] is marked as active. It updates the values of the
      * bottom menu and delegates the change to the presenter.
      */
-    fun onPageSelected(page: ReaderPage) {
+    open fun onPageSelected(page: ReaderPage) {
         viewModel.onPageSelected(page)
     }
 
@@ -721,12 +722,12 @@ class ReaderActivity : BaseActivity() {
         viewModel.openPageDialog(page)
     }
 
-    /**
-     * Called from the viewer when the given [chapter] should be preloaded. It should be called when
-     * the viewer is reaching the beginning or end of a chapter or the transition page is active.
-     */
-    fun requestPreloadChapter(chapter: ReaderChapter) {
-        lifecycleScope.launchIO { viewModel.preload(chapter) }
+    /** Dispatches a shared adjacent-chapter effect through the single Android production seam. */
+    open fun requestPreloadChapter(
+        chapter: ReaderChapter,
+        effect: ReaderAdjacentChapterEffect,
+    ) {
+        lifecycleScope.launchIO { viewModel.consumeAdjacentChapterEffect(chapter, effect) }
     }
 
     /**

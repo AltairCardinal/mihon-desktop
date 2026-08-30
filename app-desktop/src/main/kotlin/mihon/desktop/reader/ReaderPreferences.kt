@@ -47,7 +47,7 @@ class ReaderPreferences(
     private val skipFilteredPref = store.getBoolean("reader_skip_filtered_chapters", false).legacy("skipFilteredChapters") { legacy.getBoolean("skipFilteredChapters", false) }
     private val skipDuplicatePref = store.getBoolean("reader_skip_duplicate_chapters", false).legacy("skipDuplicateChapters") { legacy.getBoolean("skipDuplicateChapters", false) }
     val nextChapterPrefetchPreference: Preference<NextChapterPrefetchMode> = store
-        .getEnum("reader_next_chapter_prefetch", NextChapterPrefetchMode.FULL_NEXT_CHAPTER)
+        .getEnum("reader_next_chapter_prefetch", NextChapterPrefetchMode.OFF)
         .legacy("nextChapterPrefetchMode") {
             legacy.get("nextChapterPrefetchMode", null)?.let {
                 runCatching { NextChapterPrefetchMode.valueOf(it) }.getOrNull()

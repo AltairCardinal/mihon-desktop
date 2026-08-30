@@ -4,6 +4,7 @@ import android.content.Context
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapterWindowOwner
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
@@ -30,6 +31,51 @@ import tachiyomi.domain.manga.model.Manga
 import java.util.concurrent.atomic.AtomicInteger
 
 class ChapterLoaderWindowEffectIntegrationTest {
+
+    @Test
+    fun `adjacent metadata effect calls getPages once without loading or opening any image`() = runTest {
+        val pageListCalls = AtomicInteger()
+        val loadPageCalls = AtomicInteger()
+        val imageOpenCalls = AtomicInteger()
+        val chapter = readerChapter(3)
+        val page = ReaderPage(0, "/page/0").apply {
+            status = Page.State.Ready
+            stream = {
+                imageOpenCalls.incrementAndGet()
+                error("Adjacent metadata load must not open page image content")
+            }
+        }
+        val pageLoader = object : PageLoader() {
+            override var isLocal = false
+
+            override suspend fun getPages(): List<ReaderPage> {
+                pageListCalls.incrementAndGet()
+                return listOf(page)
+            }
+
+            override suspend fun loadPage(page: ReaderPage) {
+                loadPageCalls.incrementAndGet()
+            }
+        }
+        val loader = chapterLoader { pageLoader }
+        val effect = ReaderChapterWindowEffect.BeginPageListLoad(
+            chapterId = ReaderChapterId(3),
+            purpose = ReaderChapterLoadPurpose.PREFETCH,
+        )
+        chapter.ref()
+
+        try {
+            loader.loadChapter(chapter, effect)
+            loader.loadChapter(chapter, effect)
+
+            assertEquals(1, pageListCalls.get())
+            assertEquals(0, loadPageCalls.get())
+            assertEquals(0, imageOpenCalls.get())
+            assertSame(page, chapter.pages?.single())
+        } finally {
+            chapter.unref()
+        }
+    }
 
     @Test
     fun `stale prefetch effect cannot restart a chapter after it leaves the retained window`() = runTest {

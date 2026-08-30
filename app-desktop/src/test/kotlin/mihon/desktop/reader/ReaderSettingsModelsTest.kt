@@ -178,22 +178,67 @@ class ReaderSettingsModelsTest {
     }
 
     @Test
-    fun `next chapter prefetch defaults to full and persists every policy`() {
-        val root = Preferences.userRoot().node("/mihon/reader-prefetch-test/${System.nanoTime()}")
+    fun `image prefetch enum retains every persisted policy value`() {
+        assertEquals(
+            listOf("OFF", "FIRST_VIEWPORT", "FULL_NEXT_CHAPTER"),
+            NextChapterPrefetchMode.entries.map(NextChapterPrefetchMode::name),
+        )
+    }
+
+    @Test
+    fun `image prefetch defaults to off without persisting an implicit value`() {
+        val root = Preferences.userRoot().node("/mihon/reader-prefetch-default-test/${System.nanoTime()}")
         try {
             val store = DesktopPreferenceStore(root.node("store"))
             val legacy = root.node("legacy")
             val preferences = ReaderPreferences(store, legacy)
 
-            assertEquals(NextChapterPrefetchMode.FULL_NEXT_CHAPTER, preferences.nextChapterPrefetchMode)
-            assertEquals(
-                listOf("OFF", "FIRST_VIEWPORT", "FULL_NEXT_CHAPTER"),
-                NextChapterPrefetchMode.entries.map(NextChapterPrefetchMode::name),
-            )
+            assertEquals(NextChapterPrefetchMode.OFF, preferences.nextChapterPrefetchMode)
+            assertFalse(preferences.nextChapterPrefetchPreference.isSet())
+            assertFalse(store.getString(IMAGE_PREFETCH_KEY).isSet())
+            assertEquals(null, legacy.get(LEGACY_IMAGE_PREFETCH_KEY, null))
+        } finally {
+            root.removeNode()
+        }
+    }
 
-            NextChapterPrefetchMode.entries.forEach { mode ->
-                preferences.nextChapterPrefetchMode = mode
-                assertEquals(mode, ReaderPreferences(store, legacy).nextChapterPrefetchMode)
+    @Test
+    fun `explicit new image prefetch values win and remain persisted`() {
+        val root = Preferences.userRoot().node("/mihon/reader-prefetch-new-key-test/${System.nanoTime()}")
+        try {
+            listOf(NextChapterPrefetchMode.FIRST_VIEWPORT, NextChapterPrefetchMode.FULL_NEXT_CHAPTER).forEach { mode ->
+                val store = DesktopPreferenceStore(root.node("store-${mode.name}"))
+                val legacy = root.node("legacy-${mode.name}")
+                store.getString(IMAGE_PREFETCH_KEY).set(mode.name)
+                legacy.put(LEGACY_IMAGE_PREFETCH_KEY, NextChapterPrefetchMode.OFF.name)
+
+                val preferences = ReaderPreferences(store, legacy)
+
+                assertEquals(mode, preferences.nextChapterPrefetchMode)
+                assertEquals(mode.name, store.getString(IMAGE_PREFETCH_KEY).get())
+                assertEquals(NextChapterPrefetchMode.OFF.name, legacy.get(LEGACY_IMAGE_PREFETCH_KEY, null))
+            }
+        } finally {
+            root.removeNode()
+        }
+    }
+
+    @Test
+    fun `explicit legacy image prefetch values migrate to the new key and remain retained`() {
+        val root = Preferences.userRoot().node("/mihon/reader-prefetch-legacy-test/${System.nanoTime()}")
+        try {
+            listOf(NextChapterPrefetchMode.FIRST_VIEWPORT, NextChapterPrefetchMode.FULL_NEXT_CHAPTER).forEach { mode ->
+                val store = DesktopPreferenceStore(root.node("store-${mode.name}"))
+                val legacy = root.node("legacy-${mode.name}")
+                legacy.put(LEGACY_IMAGE_PREFETCH_KEY, mode.name)
+                legacy.flush()
+
+                val preferences = ReaderPreferences(store, legacy)
+
+                assertEquals(mode, preferences.nextChapterPrefetchMode)
+                assertTrue(preferences.nextChapterPrefetchPreference.isSet())
+                assertEquals(mode.name, store.getString(IMAGE_PREFETCH_KEY).get())
+                assertEquals(mode.name, legacy.get(LEGACY_IMAGE_PREFETCH_KEY, null))
             }
         } finally {
             root.removeNode()
@@ -250,5 +295,10 @@ class ReaderSettingsModelsTest {
         assertEquals("Fit Screen", ScaleType.FIT_SCREEN.displayName)
         assertEquals("Fit Width", ScaleType.FIT_WIDTH.displayName)
         assertEquals("Smart Fit", ScaleType.SMART_FIT.displayName)
+    }
+
+    private companion object {
+        const val IMAGE_PREFETCH_KEY = "reader_next_chapter_prefetch"
+        const val LEGACY_IMAGE_PREFETCH_KEY = "nextChapterPrefetchMode"
     }
 }

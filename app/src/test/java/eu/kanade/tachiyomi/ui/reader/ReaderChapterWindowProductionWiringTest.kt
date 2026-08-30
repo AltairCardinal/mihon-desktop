@@ -21,6 +21,8 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import mihon.domain.reader.ReaderAdjacentChapterEffect
+import mihon.domain.reader.ReaderAdjacentChapterPolicy
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderChapterLoadState
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -37,7 +39,7 @@ import tachiyomi.domain.source.service.SourceManager
 class ReaderChapterWindowProductionWiringTest {
 
     @Test
-    fun `ReaderViewModel preloads only an adjacent target and commits the shared window on activation`() = runTest {
+    fun `ReaderViewModel consumes the shared adjacent effect once and commits the window on activation`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         try {
             val manga = Manga.create().copy(
@@ -127,9 +129,14 @@ class ReaderChapterWindowProductionWiringTest {
             every {
                 downloadManager.isChapterDownloaded(any(), any(), any(), any(), any(), any())
             } returns true
-            viewModel.preload(next)
+            val pageListEffect = requireNotNull(
+                ReaderAdjacentChapterPolicy.effectForPageAnchor(anchorPageIndex = 5, pageCount = 10),
+            )
+            assertSame(ReaderAdjacentChapterEffect.LoadAdjacentChapterPageList, pageListEffect)
+            viewModel.consumeAdjacentChapterEffect(next, pageListEffect)
+            viewModel.consumeAdjacentChapterEffect(next, pageListEffect)
             val outsider = ReaderChapter(chapter(99))
-            viewModel.preload(outsider)
+            viewModel.consumeAdjacentChapterEffect(outsider, pageListEffect)
 
             assertTrue(staleOnlineLoader.isRecycled)
             assertEquals(listOf(3L to ReaderChapterLoadState.Wait), windowLoadEntryStates)

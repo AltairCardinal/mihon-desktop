@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import mihon.domain.error.AppError
+import mihon.domain.reader.ReaderAdjacentChapterEffect
+import mihon.domain.reader.ReaderAdjacentChapterPolicy
 import mihon.domain.reader.materialize.CanonicalReaderMaterializeExecutor
 import mihon.domain.reader.materialize.ReaderChapterContentPort
 import mihon.domain.reader.materialize.ReaderChapterContentRequest
@@ -118,7 +120,7 @@ class DesktopReaderSession(
     private val chapterLeasePort: DesktopReaderChapterLeasePort = DesktopReaderChapterLeasePort.None,
     parentScope: CoroutineScope,
     private val materializeExecutor: ReaderMaterializeExecutor = CanonicalReaderMaterializeExecutor,
-    initialNextChapterPrefetchMode: NextChapterPrefetchMode = NextChapterPrefetchMode.FULL_NEXT_CHAPTER,
+    initialNextChapterPrefetchMode: NextChapterPrefetchMode = NextChapterPrefetchMode.OFF,
     private val ioReporter: ReaderIoReporter = ReaderIoReporter(
         ReaderIoProbe.None,
         ReaderMonotonicClock { 0L },
@@ -155,7 +157,8 @@ class DesktopReaderSession(
     private var adjacentQuotaBlocked = false
     private var adjacentFirstViewportPageCount = 1
     private var nextChapterPrefetchMode = initialNextChapterPrefetchMode
-    private var lastSettledPageIndex: Int? = null
+    private var lastSettledAnchorPageIndex: Int? = null
+    private var firstPagePresentedGeneration: Long? = null
     private var storeStarted = false
     private var storeReconcileStarted = false
     private var started = false
@@ -218,7 +221,8 @@ class DesktopReaderSession(
             activeContentLeaseGeneration = materializationLeaseGeneration
             activationSequence++
             sequence = activationSequence
-            lastSettledPageIndex = null
+            lastSettledAnchorPageIndex = null
+            firstPagePresentedGeneration = null
             chapterJob?.cancel()
             val update = core.openChapter(ReaderChapterId(target.chapterId))
             ioReporter.report(
@@ -333,7 +337,7 @@ class DesktopReaderSession(
             adjacentContext?.let { chapter ->
                 applyRequestCancellationLocked(core.cancelChapterPageRequests(ReaderChapterId(chapter.chapterId)))
             }
-            if (mode == NextChapterPrefetchMode.OFF && !isWithinOriginalMetadataWindowLocked()) {
+            if (mode == NextChapterPrefetchMode.OFF && !canonicalMetadataRequestedLocked()) {
                 adjacentSequence++
                 adjacentChapterJob?.cancel()
                 adjacentChapterJob = null
@@ -366,7 +370,7 @@ class DesktopReaderSession(
                 readChapterIds += context.chapterId
                 context = context.copy(wasRead = true)
             }
-            lastSettledPageIndex = visiblePageIds.maxOf(ReaderPageId::sourcePageIndex)
+            lastSettledAnchorPageIndex = anchorPageId.sourcePageIndex
             progressJob = progress?.let { enqueueProgressLocked(context, it) }
             adjacentPageListJob = maybeStartAdjacentPageListLocked()
             enqueueAdjacentImagesLocked()
@@ -415,18 +419,27 @@ class DesktopReaderSession(
     }
 
     fun onFirstPagePresented(pageId: ReaderPageId, generation: Long) {
+        val adjacentPageListJob: Job?
+        val shouldStartStoreReconcile: Boolean
         synchronized(lock) {
             val snapshot = core.snapshot
             if (
                 closed ||
-                storeReconcileStarted ||
                 snapshot.generation != generation ||
-                snapshot.activeChapter.id != pageId.chapterId
+                snapshot.activeChapter.id != pageId.chapterId ||
+                snapshot.activeChapter.pages.none { it.id == pageId }
             ) {
                 return
             }
-            storeReconcileStarted = true
+            firstPagePresentedGeneration = generation
+            adjacentPageListJob = maybeStartAdjacentPageListLocked()
+            enqueueAdjacentImagesLocked()
+            shouldStartStoreReconcile = !storeReconcileStarted
+            if (shouldStartStoreReconcile) storeReconcileStarted = true
         }
+        adjacentPageListJob?.start()
+        pumpPageRequests()
+        if (!shouldStartStoreReconcile) return
         scope.launch {
             if (!ensureStoreWritable()) return@launch
             ioGate.await(ReaderIoGatePoint.CACHE_SCAN)
@@ -487,33 +500,48 @@ class DesktopReaderSession(
     private inner class DesktopPageMaterializeRunnerPort :
         ReaderPageMaterializeRunnerPort<DesktopReaderScheduledPage> {
 
-        override fun pollNext(): ReaderPageMaterializeWork<DesktopReaderScheduledPage>? = synchronized(lock) {
-            if (closed) return@synchronized null
-            while (true) {
-                val request = core.pollNextPageRequest() ?: return@synchronized null
-                val scheduledPage = scheduledPageLocked(request)
-                if (
-                    scheduledPage == null ||
-                    (scheduledPage.descriptor.initialLoadState is ReaderPageLoadState.Ready && !request.forceRefresh)
-                ) {
-                    core.completePageRequest(request.jobKey)
-                    continue
+        override fun pollNext(): ReaderPageMaterializeWork<DesktopReaderScheduledPage>? {
+            var adjacentPageListJob: Job? = null
+            val work = synchronized(lock) {
+                if (closed) return@synchronized null
+                var skippedReadyWork = false
+                while (true) {
+                    val request = core.pollNextPageRequest()
+                    if (request == null) {
+                        if (!skippedReadyWork) return@synchronized null
+                        adjacentPageListJob = maybeStartAdjacentPageListLocked()
+                        enqueueAdjacentImagesLocked()
+                        skippedReadyWork = false
+                        continue
+                    }
+                    val scheduledPage = scheduledPageLocked(request)
+                    if (scheduledPage == null) {
+                        core.completePageRequest(request.jobKey)
+                        continue
+                    }
+                    if (scheduledPage.descriptor.initialLoadState is ReaderPageLoadState.Ready && !request.forceRefresh) {
+                        skippedReadyWork = true
+                        core.completePageRequest(request.jobKey)
+                        continue
+                    }
+                    return@synchronized ReaderPageMaterializeWork(
+                        request = request,
+                        fetchRequest = ReaderPageFetchRequest(
+                            pageId = request.pageId,
+                            generation = request.generation,
+                            url = scheduledPage.descriptor.url,
+                            imageUrl = scheduledPage.descriptor.imageUrl,
+                            attemptGeneration = scheduledPage.attemptGeneration,
+                        ),
+                        fetchPort = pageFetchPortFactory.create(scheduledPage.context, scheduledPage.descriptor),
+                        binding = scheduledPage,
+                    )
                 }
-                return@synchronized ReaderPageMaterializeWork(
-                    request = request,
-                    fetchRequest = ReaderPageFetchRequest(
-                        pageId = request.pageId,
-                        generation = request.generation,
-                        url = scheduledPage.descriptor.url,
-                        imageUrl = scheduledPage.descriptor.imageUrl,
-                        attemptGeneration = scheduledPage.attemptGeneration,
-                    ),
-                    fetchPort = pageFetchPortFactory.create(scheduledPage.context, scheduledPage.descriptor),
-                    binding = scheduledPage,
-                )
+                @Suppress("UNREACHABLE_CODE")
+                null
             }
-            @Suppress("UNREACHABLE_CODE")
-            null
+            adjacentPageListJob?.start()
+            return work
         }
 
         override fun accepts(work: ReaderPageMaterializeWork<DesktopReaderScheduledPage>): Boolean =
@@ -677,10 +705,9 @@ class DesktopReaderSession(
     private fun maybeStartAdjacentPageListLocked(): Job? {
         val target = adjacentContext ?: return null
         if (adjacentPages != null || adjacentChapterJob != null || adjacentPageListFailed) return null
-        val isWithinOriginalMetadataWindow = isWithinOriginalMetadataWindowLocked()
-        val fullImagePolicyNeedsPageList = nextChapterPrefetchMode != NextChapterPrefetchMode.OFF &&
-            activeChapterAllReadyLocked()
-        if (!isWithinOriginalMetadataWindow && !fullImagePolicyNeedsPageList) return null
+        val canonicalMetadataNeedsPageList = canonicalMetadataRequestedLocked()
+        val imageDecoratorNeedsPageList = imageDecoratorCanRunLocked()
+        if (!canonicalMetadataNeedsPageList && !imageDecoratorNeedsPageList) return null
 
         val sequence = adjacentSequence
         val generation = core.snapshot.generation
@@ -723,7 +750,7 @@ class DesktopReaderSession(
     }
 
     private fun enqueueAdjacentImagesLocked() {
-        if (!activeChapterAllReadyLocked() || adjacentQuotaBlocked) return
+        if (!imageDecoratorCanRunLocked() || adjacentQuotaBlocked) return
         val target = adjacentContext ?: return
         val pages = adjacentPages ?: return
         val selectedPages = when (nextChapterPrefetchMode) {
@@ -748,11 +775,29 @@ class DesktopReaderSession(
         return pages.isNotEmpty() && pages.all { it.loadState is ReaderPageLoadState.Ready }
     }
 
-    private fun isWithinOriginalMetadataWindowLocked(): Boolean {
+    private fun hasPresentedCurrentGenerationLocked(): Boolean =
+        firstPagePresentedGeneration == core.snapshot.generation
+
+    private fun imageDecoratorCanRunLocked(): Boolean =
+        nextChapterPrefetchMode != NextChapterPrefetchMode.OFF &&
+            hasPresentedCurrentGenerationLocked() &&
+            activeChapterAllReadyLocked() &&
+            schedulerIdleLocked()
+
+    private fun schedulerIdleLocked(): Boolean = core.schedulerSnapshot().let { scheduler ->
+        scheduler.pendingRequests.isEmpty() && scheduler.activeRequests.isEmpty()
+    }
+
+    private fun canonicalMetadataRequestedLocked(): Boolean {
         val chapter = core.snapshot.activeChapter
-        return lastSettledPageIndex?.let { pageIndex ->
-            chapter.pages.isNotEmpty() && chapter.pages.size - pageIndex <= ORIGINAL_PAGE_LIST_PRELOAD_WINDOW
-        } == true
+        return when (
+            lastSettledAnchorPageIndex?.let { anchorPageIndex ->
+                ReaderAdjacentChapterPolicy.effectForPageAnchor(anchorPageIndex, chapter.pages.size)
+            }
+        ) {
+            ReaderAdjacentChapterEffect.LoadAdjacentChapterPageList -> true
+            null -> false
+        }
     }
 
     private fun clearAdjacentPrefetchLocked() {
@@ -807,6 +852,5 @@ class DesktopReaderSession(
 
     private companion object {
         const val MAX_STALE_PHYSICAL_REQUESTS = 1
-        const val ORIGINAL_PAGE_LIST_PRELOAD_WINDOW = 5
     }
 }

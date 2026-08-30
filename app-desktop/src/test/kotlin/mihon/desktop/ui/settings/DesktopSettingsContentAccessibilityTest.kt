@@ -34,11 +34,14 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.i18n.MR
 import java.util.Locale
+import java.util.prefs.Preferences
 
 @OptIn(ExperimentalComposeUiApi::class)
 @org.junit.jupiter.api.parallel.Isolated
@@ -129,7 +132,7 @@ class DesktopSettingsContentAccessibilityTest {
             assertToggle(scene, MR.strings.desktop_reader_rtl.localized(), Role.Switch, toggled = ToggleableState.Off)
             assertToggle(
                 scene,
-                MR.strings.desktop_reader_prefetch_full_next_chapter.localized(),
+                MR.strings.off.localized(),
                 Role.RadioButton,
                 selected = true,
             )
@@ -165,6 +168,51 @@ class DesktopSettingsContentAccessibilityTest {
     }
 
     @Test
+    fun `Reader image prefetch copy explains retained metadata and production selection persists`() = runBlocking {
+        val root = Preferences.userRoot().node("/mihon/reader-prefetch-settings-test/${System.nanoTime()}")
+        val previousLocale = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.forLanguageTag("zh-CN"))
+            val store = DesktopPreferenceStore(root.node("store"))
+            val legacy = root.node("legacy")
+            val readerPreferences = ReaderPreferences(store, legacy)
+            val dependencies = dependencies(store, this, readerPreferences)
+
+            withScene(ReaderSettingsScreen(), dependencies) { scene ->
+                val title = MR.strings.desktop_reader_prefetch_next_chapter.localized()
+                val summary = MR.strings.desktop_reader_prefetch_summary.localized()
+                val renderedText = nodes(scene, true).flatMap(::subtreeText).toSet()
+
+                assertEquals("图片预取", title)
+                assertTrue(title in renderedText)
+                assertTrue("末五页" in summary, summary)
+                assertTrue("页面列表元数据" in summary, summary)
+                assertTrue("始终保留" in summary, summary)
+                assertTrue(summary in renderedText)
+                assertToggle(scene, MR.strings.off.localized(), Role.RadioButton, selected = true)
+
+                requireNotNull(
+                    semanticBranch(
+                        scene,
+                        MR.strings.desktop_reader_prefetch_first_viewport.localized(),
+                        Role.RadioButton,
+                    ).config[SemanticsActions.OnClick].action,
+                ).invoke()
+                render(scene)
+
+                assertEquals(NextChapterPrefetchMode.FIRST_VIEWPORT, readerPreferences.nextChapterPrefetchMode)
+                assertEquals(
+                    NextChapterPrefetchMode.FIRST_VIEWPORT,
+                    ReaderPreferences(DesktopPreferenceStore(root.node("store")), legacy).nextChapterPrefetchMode,
+                )
+            }
+        } finally {
+            Locale.setDefault(previousLocale)
+            root.removeNode()
+        }
+    }
+
+    @Test
     fun `highlighted content anchor remains one shot and focus is an independent enhancement`() = runBlocking {
         val dependencies = dependencies(InMemoryPreferenceStore(), this)
         DesktopSettingsAnchorOwner.publish(DownloadSettingsScreen(), MR.strings.pref_download_new.localized())
@@ -185,7 +233,7 @@ class DesktopSettingsContentAccessibilityTest {
     }
 
     private fun dependencies(
-        store: InMemoryPreferenceStore,
+        store: PreferenceStore,
         scope: kotlinx.coroutines.CoroutineScope,
         readerPreferences: ReaderPreferences = ReaderPreferences(store),
     ): DesktopUiDependencies {

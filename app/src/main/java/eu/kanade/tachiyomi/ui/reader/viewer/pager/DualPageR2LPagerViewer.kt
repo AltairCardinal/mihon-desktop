@@ -20,6 +20,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import mihon.domain.reader.ReaderAdjacentChapterPolicy
 import tachiyomi.core.common.util.system.logcat
 import uy.kohesive.injekt.injectLazy
 import kotlin.math.min
@@ -58,7 +59,14 @@ class DualPageR2LPagerViewer(override val activity: ReaderActivity) : Viewer, Vi
                     setChaptersInternal(viewerChapters)
                     awaitingIdleViewerChapters = null
                     if (viewerChapters.currChapter.pages?.size == 1) {
-                        adapter.nextTransition?.to?.let(activity::requestPreloadChapter)
+                        val effect = ReaderAdjacentChapterPolicy.effectForPageAnchor(
+                            anchorPageIndex = 0,
+                            pageCount = 1,
+                        )
+                        val target = adapter.nextTransition?.to
+                        if (effect != null && target != null) {
+                            activity.requestPreloadChapter(target, effect)
+                        }
                     }
                 }
             }
@@ -253,24 +261,29 @@ class DualPageR2LPagerViewer(override val activity: ReaderActivity) : Viewer, Vi
         }
     }
 
-    private fun onDisplayPageSelected(displayPage: DisplayPage) {
+    internal fun onDisplayPageSelected(displayPage: DisplayPage) {
         val page = displayPage.firstPage
         val pages = page.chapter.pages ?: return
         logcat { "onDisplayPageSelected: ${page.number}/${pages.size}" }
         activity.onPageSelected(page)
 
         // Preload next chapter when near the end
-        val inPreloadRange = pages.size - page.number < 5
-        if (inPreloadRange && page.chapter == adapter.currentChapter) {
-            adapter.nextTransition?.to?.let(activity::requestPreloadChapter)
+        val adjacentEffect = ReaderAdjacentChapterPolicy.effectForPageAnchor(page.index, pages.size)
+        if (adjacentEffect != null && page.chapter == adapter.currentChapter) {
+            adapter.nextTransition?.to?.let { target ->
+                activity.requestPreloadChapter(target, adjacentEffect)
+            }
         }
     }
 
-    private fun onTransitionSelected(transition: ChapterTransition) {
+    internal fun onTransitionSelected(transition: ChapterTransition) {
         logcat { "onTransitionSelected: $transition" }
         val toChapter = transition.to
         if (toChapter != null) {
-            activity.requestPreloadChapter(toChapter)
+            activity.requestPreloadChapter(
+                toChapter,
+                ReaderAdjacentChapterPolicy.transitionPageEffect(),
+            )
         } else if (transition is ChapterTransition.Next) {
             activity.showMenu()
         }

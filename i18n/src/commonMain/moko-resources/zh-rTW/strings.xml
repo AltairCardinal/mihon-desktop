@@ -1118,8 +1118,8 @@
     <string name="desktop_reader_pager_mode">分頁（水平翻頁）</string>
     <string name="desktop_reader_rtl">預設從右向左</string>
     <string name="desktop_reader_rtl_summary">從右向左翻頁（日漫順序）</string>
-    <string name="desktop_reader_prefetch_next_chapter">預取下一章</string>
-    <string name="desktop_reader_prefetch_summary">目前章節的所有頁面準備完成後，在背景快取下一章的編碼圖片；不會把整章解碼圖片留在記憶體中。</string>
+    <string name="desktop_reader_prefetch_next_chapter">圖片預取</string>
+    <string name="desktop_reader_prefetch_summary">進入目前章節末五頁時，下一章的頁面清單中繼資料一律保留，不受此設定影響。啟用後會另外預取編碼圖片；不會在記憶體中保留整章解碼圖片。</string>
     <string name="desktop_reader_prefetch_first_viewport">首屏</string>
     <string name="desktop_reader_prefetch_full_next_chapter">完整下一章</string>
     <string name="desktop_reader_webtoon_mode">條漫（垂直滾動）</string>

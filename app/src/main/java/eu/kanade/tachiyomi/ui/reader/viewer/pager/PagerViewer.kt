@@ -21,6 +21,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import mihon.domain.reader.ReaderAdjacentChapterPolicy
 import tachiyomi.core.common.util.system.logcat
 import uy.kohesive.injekt.injectLazy
 import kotlin.math.min
@@ -74,7 +75,14 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
                     setChaptersInternal(viewerChapters)
                     awaitingIdleViewerChapters = null
                     if (viewerChapters.currChapter.pages?.size == 1) {
-                        adapter.nextTransition?.to?.let(activity::requestPreloadChapter)
+                        val effect = ReaderAdjacentChapterPolicy.effectForPageAnchor(
+                            anchorPageIndex = 0,
+                            pageCount = 1,
+                        )
+                        val target = adapter.nextTransition?.to
+                        if (effect != null && target != null) {
+                            activity.requestPreloadChapter(target, effect)
+                        }
                     }
                 }
             }
@@ -222,7 +230,7 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
      * Called when a [ReaderPage] is marked as active. It notifies the
      * activity of the change and requests the preload of the next chapter if this is the last page.
      */
-    private fun onReaderPageSelected(page: ReaderPage, allowPreload: Boolean, forward: Boolean) {
+    internal fun onReaderPageSelected(page: ReaderPage, allowPreload: Boolean, forward: Boolean) {
         val pages = page.chapter.pages ?: return
         logcat { "onReaderPageSelected: ${page.number}/${pages.size}" }
         activity.onPageSelected(page)
@@ -236,10 +244,12 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
         }
 
         // Preload next chapter once we're within the last 5 pages of the current chapter
-        val inPreloadRange = pages.size - page.number < 5
-        if (inPreloadRange && allowPreload && page.chapter == adapter.currentChapter) {
+        val adjacentEffect = ReaderAdjacentChapterPolicy.effectForPageAnchor(page.index, pages.size)
+        if (adjacentEffect != null && allowPreload && page.chapter == adapter.currentChapter) {
             logcat { "Request preload next chapter because we're at page ${page.number} of ${pages.size}" }
-            adapter.nextTransition?.to?.let(activity::requestPreloadChapter)
+            adapter.nextTransition?.to?.let { target ->
+                activity.requestPreloadChapter(target, adjacentEffect)
+            }
         }
     }
 
@@ -247,12 +257,15 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
      * Called when a [ChapterTransition] is marked as active. It request the
      * preload of the destination chapter of the transition.
      */
-    private fun onTransitionSelected(transition: ChapterTransition) {
+    internal fun onTransitionSelected(transition: ChapterTransition) {
         logcat { "onTransitionSelected: $transition" }
         val toChapter = transition.to
         if (toChapter != null) {
             logcat { "Request preload destination chapter because we're on the transition" }
-            activity.requestPreloadChapter(toChapter)
+            activity.requestPreloadChapter(
+                toChapter,
+                ReaderAdjacentChapterPolicy.transitionPageEffect(),
+            )
         } else if (transition is ChapterTransition.Next) {
             // No more chapters, show menu because the user is probably going to close the reader
             activity.showMenu()

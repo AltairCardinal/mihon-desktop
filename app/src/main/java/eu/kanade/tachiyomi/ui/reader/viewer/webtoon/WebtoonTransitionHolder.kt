@@ -19,6 +19,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import mihon.domain.reader.ReaderAdjacentChapterPolicy
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderNavigationCommand
 import tachiyomi.core.common.i18n.stringResource
@@ -137,7 +138,12 @@ class WebtoonTransitionHolder(
             setOnClickListener {
                 listOfNotNull(transition.to, transition.from)
                     .firstOrNull { it.chapter.id == retryTargetChapterId }
-                    ?.let(viewer.activity::requestPreloadChapter)
+                    ?.let { target ->
+                        viewer.activity.requestPreloadChapter(
+                            target,
+                            ReaderAdjacentChapterPolicy.transitionPageEffect(),
+                        )
+                    }
             }
         }
 

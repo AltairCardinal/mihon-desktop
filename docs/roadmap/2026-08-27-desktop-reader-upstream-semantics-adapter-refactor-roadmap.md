@@ -321,12 +321,12 @@ Android Reader UI                 Desktop Reader presentation
     - [x] `RUA-04D3` Retry/cancel/stale attempt 线性化
     - [x] `RUA-04D4` detach/recycle/close 与统一内存预算
     - [x] `RUA-04D5` legacy owner 删除与最终矩阵门禁
-- [ ] `RUA-05` 原版相邻章默认语义与 Desktop opt-in decorator
-  - [ ] `RUA-05A` canonical last-five page-list-only 语义
-    - [ ] `RUA-05A1` shared contract 与 Android consumer
-    - [ ] `RUA-05A2` Desktop adapter 消费 shared effect
-  - [ ] `RUA-05B` 偏好迁移、默认值与设置 UI wiring
-  - [ ] `RUA-05C` Desktop opt-in 图片预取 decorator
+- [x] `RUA-05` 原版相邻章默认语义与 Desktop opt-in decorator
+  - [x] `RUA-05A` canonical last-five page-list-only 语义
+    - [x] `RUA-05A1` shared contract 与 Android consumer
+    - [x] `RUA-05A2` Desktop adapter 消费 shared effect
+  - [x] `RUA-05B` 偏好迁移、默认值与设置 UI wiring
+  - [x] `RUA-05C` Desktop opt-in 图片预取 decorator
 - [ ] `RUA-06` 假阳性测试、旧 owner、authority 与文档清理
   - [ ] `RUA-06A` 旧 owner/DI/第二链删除
   - [ ] `RUA-06B` production mutation 证据与假阳性测试替换
@@ -675,6 +675,15 @@ Android Reader UI                 Desktop Reader presentation
 
 **预计**：父 RUA 总计约 2～4 工程日；文件和验证预算按 05A～05C 分别计算。
 
+**完成证据（2026-08-31）**：
+
+- shared `ReaderAdjacentChapterPolicy` 成为 canonical 末五页 page-list effect 的唯一语义；Android Pager、Dual Pager、Webtoon 与 transition consumer 均通过 typed `ReaderActivity` seam 消费。Robolectric production wiring 逐个验证 index 4 不触发、index 5 恰好触发一次和 transition 无条件触发，能杀死 `page.index` 误写为 `page.number` 的 off-by-one 回归。
+- Desktop session 只按最后 settled anchor 消费 canonical metadata effect，不再用 visible-set 最大页；canonical page-list-only 不受首帧门禁。显式图片 decorator 默认 `OFF`，仅在当前 generation 首帧已呈现、当前章全 Ready 且 shared scheduler idle 后以 P4 进入同一 core；P0 抢占、quota、cancel、target switch、失败与 progress 隔离均由 session/runtime 行为测试覆盖。`pollNext` 在排空已 Ready 的 scheduler work 后重新评估 idle，关闭了显式 decorator 永久不启动的 liveness 缺口。
+- Reader 设置标题与中/繁/英文说明改为“图片预取”，明确区分始终保留的末五页下一章页表 metadata 与显式 encoded image prefetch；新安装默认关闭，new key 优先，旧 `FIRST_VIEWPORT/FULL_NEXT_CHAPTER` 仅在新 key 未设置时迁移保留。真实设置页面点击、持久化和搜索结果均有 wiring 测试。
+- RED 证据分别保存在 `.gradle-coordinator/rua05a1-domain-red3.log`、`rua05b-red.log`、`rua05a2c-red.log` 和 `rua05-android-viewer-red2.log`；focused GREEN 证据为 `rua05a1-domain-green.log`、`rua05a1-android-green.log`、`rua05b-green.log`、`rua05a2c-green3.log` 与 `rua05-android-viewer-green2.log`。最终相关矩阵 `rua05-final-domain.log`、`rua05-final-android.log`、`rua05-final-desktop2.log` 全绿，root `rua05-spotless.log` 通过；Desktop 首次矩阵暴露的两条旧默认/首帧夹具假设由 `rua05-desktop-fixture-fix.log` 定点复验关闭。
+- 独立只读审查最终为 `PASS_WITH_P2`，无 P0/P1。null-binding 防御重评估、`allowPreload=false`/单页/holder retry 的补充 consumer 覆盖和 legacy 显式 `OFF` 迁移枚举登记到 RUA-06；manifest、fixed-main 与 ID45 authority 继续留给 RUA-06C，未用提前改写机器状态制造假绿。
+- 本批共 24 个内聚文件（含本文）；超过子批次文件提示值来自 shared+Android 三类真实 viewer wiring、Desktop 并发/代际门控与设置 production wiring 必须在同一语义冻结点一起交付。没有执行全量发布测试或 Desktop 正式构建，它们按分层验证规则集中在 RUA-07，避免每个功能批重复消耗 Gradle/打包时间。
+
 ### `RUA-06` 假阳性测试、旧 owner、authority 与文档清理
 
 **子批次边界与依赖**：
@@ -682,6 +691,7 @@ Android Reader UI                 Desktop Reader presentation
 - `RUA-06A` 根据 RUA-03/04/05 已绿的 production 路径删除旧 loader/painter/preloader/session orchestration owner、过期 DI 和不可达 helper；每次删除都由现有行为测试保护，预计 4～8 个文件。
 - `RUA-06B` 用 production mutation/IO probe 证据替换源码 marker、自洽 fake 和第二链保护测试；静态 guard 只证明禁止依赖不可达，预计 4～8 个 test/fixture 文件。
 - `RUA-06C` 在代码与测试冻结后更新 authority、shared-core、历史 supersede 链接、fixed-main fixture 和 manifest evidence；只做实际 capability 状态转换，预计 4～8 个 fixture/doc 文件。
+- RUA-05 审查遗留的非阻塞强化按既有边界吸收：06A 统一 null-binding/completed-without-materialization 的 idle 重评估；06B 补 `allowPreload=false`、单页快速路径、transition holder retry 与 legacy 显式 `OFF` 迁移枚举的 production/compatibility 证据；06C 才更新默认预取与 ID45 authority。
 
 06A → 06B → 06C。06C 是纯治理子批次，不能用文档状态掩盖 06A/06B 尚未通过的 production mutation。
 

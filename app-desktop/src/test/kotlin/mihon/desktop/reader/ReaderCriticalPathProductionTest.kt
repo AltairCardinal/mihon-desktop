@@ -193,10 +193,7 @@ class ReaderCriticalPathProductionTest {
                 }
             }
             val firstFrameEvents = controller.snapshot()
-            val requiredGates = buildSet {
-                add(ReaderIoGatePoint.CACHE_SCAN)
-                if (route.isDirectory) add(ReaderIoGatePoint.ADJACENT_IO)
-            }
+            val requiredGates = setOf(ReaderIoGatePoint.CACHE_SCAN)
             var gatePumpAttempts = 0
             while (requiredGates.any { !fixture.gate(it).isEntered } && gatePumpAttempts < 100) {
                 fixture.scene.render()
@@ -256,9 +253,6 @@ class ReaderCriticalPathProductionTest {
             }
         }
         assertTrue(ReaderIoGatePoint.CACHE_SCAN in trace.enteredGates)
-        if (trace.route.isDirectory) {
-            assertTrue(ReaderIoGatePoint.ADJACENT_IO in trace.enteredGates)
-        }
         when (trace.route) {
             Route.DOWNLOADED_DIRECTORY,
             Route.LOCAL_DIRECTORY,
