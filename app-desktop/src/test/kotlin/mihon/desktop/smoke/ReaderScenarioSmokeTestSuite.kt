@@ -13,6 +13,12 @@ import io.ktor.server.engine.ApplicationEngine
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import mihon.desktop.test.http.testHttpServer
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -63,10 +69,10 @@ class ReaderScenarioSmokeTestSuite {
         val response = client.get("$baseUrl/reader/state")
 
         assertEquals(HttpStatusCode.OK, response.status)
-        val body = response.bodyAsText()
-        assertTrue(body.contains("\"isOpen\": false"))
-        assertTrue(body.contains("\"currentPage\": 0"))
-        assertTrue(body.contains("\"totalPages\": 0"))
+        val state = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+        assertEquals(false, state.getValue("isOpen").jsonPrimitive.boolean)
+        assertEquals(0, state.getValue("currentPage").jsonPrimitive.int)
+        assertEquals(0, state.getValue("totalPages").jsonPrimitive.int)
     }
 
     @Test
@@ -87,11 +93,11 @@ class ReaderScenarioSmokeTestSuite {
         }
         assertEquals(HttpStatusCode.OK, response.status)
 
-        val state = client.get("$baseUrl/reader/state").bodyAsText()
-        assertTrue(state.contains("\"isOpen\": true"))
-        assertTrue(state.contains("\"currentChapterId\": 7"))
-        assertTrue(state.contains("\"totalPages\": 20"))
-        assertTrue(state.contains("\"chapterTitle\": \"Chapter 7: Start, Part A\""))
+        val state = Json.parseToJsonElement(client.get("$baseUrl/reader/state").bodyAsText()).jsonObject
+        assertEquals(true, state.getValue("isOpen").jsonPrimitive.boolean)
+        assertEquals(7L, state.getValue("currentChapterId").jsonPrimitive.long)
+        assertEquals(20, state.getValue("totalPages").jsonPrimitive.int)
+        assertEquals("Chapter 7: Start, Part A", state.getValue("chapterTitle").jsonPrimitive.content)
     }
 
     @Test
@@ -129,8 +135,8 @@ class ReaderScenarioSmokeTestSuite {
         val response = client.post("$baseUrl/reader/close")
 
         assertEquals(HttpStatusCode.OK, response.status)
-        val state = client.get("$baseUrl/reader/state").bodyAsText()
-        assertTrue(state.contains("\"isOpen\": false"))
+        val state = Json.parseToJsonElement(client.get("$baseUrl/reader/state").bodyAsText()).jsonObject
+        assertEquals(false, state.getValue("isOpen").jsonPrimitive.boolean)
         assertTrue(client.get("$baseUrl/history").bodyAsText().contains("reader_close"))
     }
 

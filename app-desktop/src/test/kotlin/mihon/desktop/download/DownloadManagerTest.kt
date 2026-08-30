@@ -13,11 +13,11 @@ import io.ktor.server.routing.routing
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.newSingleThreadContext
 import kotlinx.coroutines.test.TestScope
@@ -518,54 +518,63 @@ class DownloadManagerTest {
 
     @Test
     fun `failure notification is committed before same id cancellation and reenqueue`() = runBlocking {
-        val notificationStarted = CountDownLatch(1)
-        val releaseNotification = CountDownLatch(1)
-        val replacementQueued = CountDownLatch(1)
-        val notifier = DesktopSystemNotifier(
-            system = {
-                notificationStarted.countDown()
-                check(releaseNotification.await(2, TimeUnit.SECONDS))
-                true
-            },
-            fallback = mihon.desktop.domain.DesktopNotificationService(),
-        )
-        val manager = DesktopDownloadManager(
-            provider = DesktopDownloadProvider(tempDir.resolve("notification-generation")),
-            networkHelper = NetworkHelper(OkHttpClient()),
-            workerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-            retryDelay = { },
-            taskNotifier = notifier,
-            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
-                override fun execute(client: OkHttpClient, url: String): Response {
-                    throw java.io.IOException("terminal failure")
+        newSingleThreadContext("notification-download-worker").use { dispatcher ->
+            // This fixture deliberately blocks the notifier, so it must own and bound its worker lifecycle.
+            val workerParent = SupervisorJob()
+            val notificationStarted = CountDownLatch(1)
+            val releaseNotification = CountDownLatch(1)
+            val replacementQueued = CountDownLatch(1)
+            val notifier = DesktopSystemNotifier(
+                system = {
+                    notificationStarted.countDown()
+                    check(releaseNotification.await(2, TimeUnit.SECONDS))
+                    true
+                },
+                fallback = mihon.desktop.domain.DesktopNotificationService(),
+            )
+            val manager = DesktopDownloadManager(
+                provider = DesktopDownloadProvider(tempDir.resolve("notification-generation")),
+                networkHelper = NetworkHelper(OkHttpClient()),
+                workerScope = CoroutineScope(workerParent + dispatcher),
+                retryDelay = { },
+                taskNotifier = notifier,
+                fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                    override fun execute(client: OkHttpClient, url: String): Response {
+                        throw java.io.IOException("terminal failure")
+                    }
+                },
+            )
+            val item = DownloadItem(
+                sourceId = 42L,
+                mangaTitle = "Notification Manga",
+                chapterName = "Chapter 5",
+                chapterId = 424L,
+                pageUrls = listOf("https://fixture.invalid/failure.jpg"),
+            )
+            val worker = manager.start()
+            var replacement: Thread? = null
+            try {
+                manager.enqueue(item)
+                assertTrue(notificationStarted.await(2, TimeUnit.SECONDS))
+                val replacementThread = thread(name = "same-id-reenqueue", isDaemon = true) {
+                    assertTrue(manager.cancel(item.chapterId))
+                    manager.enqueue(item.copy(pageUrls = listOf("https://fixture.invalid/replacement.jpg")))
+                    replacementQueued.countDown()
                 }
-            },
-        )
-        val item = DownloadItem(
-            sourceId = 42L,
-            mangaTitle = "Notification Manga",
-            chapterName = "Chapter 5",
-            chapterId = 424L,
-            pageUrls = listOf("https://fixture.invalid/failure.jpg"),
-        )
-        val worker = manager.start()
-        try {
-            manager.enqueue(item)
-            assertTrue(notificationStarted.await(2, TimeUnit.SECONDS))
-            val replacement = thread(name = "same-id-reenqueue") {
-                assertTrue(manager.cancel(item.chapterId))
-                manager.enqueue(item.copy(pageUrls = listOf("https://fixture.invalid/replacement.jpg")))
-                replacementQueued.countDown()
-            }
+                replacement = replacementThread
 
-            assertFalse(replacementQueued.await(150, TimeUnit.MILLISECONDS))
-            releaseNotification.countDown()
-            assertTrue(replacementQueued.await(2, TimeUnit.SECONDS))
-            replacement.join(2_000)
-        } finally {
-            releaseNotification.countDown()
-            manager.stopAndJoin()
-            worker.cancel()
+                assertFalse(replacementQueued.await(150, TimeUnit.MILLISECONDS))
+                releaseNotification.countDown()
+                assertTrue(replacementQueued.await(2, TimeUnit.SECONDS))
+                replacementThread.join(2_000)
+                assertFalse(replacementThread.isAlive)
+            } finally {
+                releaseNotification.countDown()
+                replacement?.join(2_000)
+                withTimeout(2_000) { manager.stopAndJoin() }
+                withTimeout(2_000) { worker.cancelAndJoin() }
+                withTimeout(2_000) { workerParent.cancelAndJoin() }
+            }
         }
     }
 

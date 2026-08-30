@@ -12,13 +12,13 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -56,7 +56,11 @@ class MigrationListScreenModelBatchWiringTest {
     fun `production ScreenModel batch action calls shared runner`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val runner = mockk<AndroidBatchMigrationRunner<MigratingManga>>()
-        every { runner.run(any(), any(), any()) } returns flowOf(BatchMigrationEvent.Completed(0))
+        val runnerCalled = CompletableDeferred<Unit>()
+        every { runner.run(any(), any(), any()) } answers {
+            runnerCalled.complete(Unit)
+            flowOf(BatchMigrationEvent.Completed(0))
+        }
         val falsePreference = mockk<Preference<Boolean>>()
         every { falsePreference.get() } returns false
         val sourceIdsPreference = mockk<Preference<List<Long>>>()
@@ -82,7 +86,7 @@ class MigrationListScreenModelBatchWiringTest {
         )
 
         screenModel.migrateMangas()
-        advanceUntilIdle()
+        withTimeout(5_000) { runnerCalled.await() }
 
         verify(exactly = 1) { runner.run(emptyList(), 0, any()) }
     }
