@@ -4,11 +4,8 @@ import kotlinx.coroutines.test.runTest
 import androidx.compose.ui.graphics.asSkiaBitmap
 import mihon.domain.reader.PageDecodeRequest
 import mihon.domain.reader.PageDecodeResult
-import mihon.domain.reader.PageCacheCommitResult
-import mihon.domain.reader.PageCacheWrite
 import mihon.domain.reader.PixelBounds
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -154,48 +151,4 @@ class SkiaImageDecoderTest {
         assertTrue(result.height <= 4)
     }
 
-    @Test
-    fun `byte budgeted page cache evicts least recently used entries deterministically`() {
-        val cache = DesktopPageCache(maxBytes = 400)
-        val first = SkiaImageDecoder.decode(makePngBytes(10, 10))
-        val second = SkiaImageDecoder.decode(makePngBytes(10, 10))
-
-        assertTrue(cache.beginGeneration(1, emptySet()))
-        assertEquals(PageCacheCommitResult.STORED, cache.commit(PageCacheWrite(1, 1, first, 400)))
-        assertEquals(PageCacheCommitResult.STORED, cache.commit(PageCacheWrite(2, 1, second, 400)))
-
-        assertNull(cache.get(1))
-        assertNotNull(cache.get(2))
-        assertEquals(setOf(2), cache.snapshot().keys)
-        assertEquals(400, cache.snapshot().usedBytes)
-    }
-
-    @Test
-    fun `byte budgeted page cache rejects oversized decoded values without evicting entries`() {
-        val cache = DesktopPageCache(maxBytes = 400)
-        val bitmap = SkiaImageDecoder.decode(makePngBytes(10, 10))
-        cache.beginGeneration(1, emptySet())
-        cache.commit(PageCacheWrite(1, 1, bitmap, 400))
-        val revisionBeforeOversize = cache.revision.value
-
-        val result = cache.commit(PageCacheWrite(2, 1, bitmap, 401))
-
-        assertEquals(PageCacheCommitResult.REJECTED_OVERSIZED, result)
-        assertEquals(setOf(1), cache.snapshot().keys)
-        assertEquals(400, cache.snapshot().usedBytes)
-        assertEquals(revisionBeforeOversize, cache.revision.value)
-    }
-
-    @Test
-    fun `zero byte cache keeps shared no decoded memory semantics`() {
-        val cache = DesktopPageCache(maxBytes = 0)
-        val bitmap = SkiaImageDecoder.decode(makePngBytes(1, 1))
-        cache.beginGeneration(1, emptySet())
-
-        assertEquals(
-            PageCacheCommitResult.REJECTED_OVERSIZED,
-            cache.commit(PageCacheWrite(0, 1, bitmap, 4)),
-        )
-        assertTrue(cache.snapshot().keys.isEmpty())
-    }
 }

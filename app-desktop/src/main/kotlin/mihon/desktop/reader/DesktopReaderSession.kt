@@ -504,23 +504,25 @@ class DesktopReaderSession(
             var adjacentPageListJob: Job? = null
             val work = synchronized(lock) {
                 if (closed) return@synchronized null
-                var skippedReadyWork = false
+                var completedWithoutMaterialization = false
                 while (true) {
                     val request = core.pollNextPageRequest()
                     if (request == null) {
-                        if (!skippedReadyWork) return@synchronized null
+                        if (!completedWithoutMaterialization) return@synchronized null
+                        // Completing a missing or already-ready entry can be the transition to shared scheduler idle.
                         adjacentPageListJob = maybeStartAdjacentPageListLocked()
                         enqueueAdjacentImagesLocked()
-                        skippedReadyWork = false
+                        completedWithoutMaterialization = false
                         continue
                     }
                     val scheduledPage = scheduledPageLocked(request)
                     if (scheduledPage == null) {
                         core.completePageRequest(request.jobKey)
+                        completedWithoutMaterialization = true
                         continue
                     }
                     if (scheduledPage.descriptor.initialLoadState is ReaderPageLoadState.Ready && !request.forceRefresh) {
-                        skippedReadyWork = true
+                        completedWithoutMaterialization = true
                         core.completePageRequest(request.jobKey)
                         continue
                     }

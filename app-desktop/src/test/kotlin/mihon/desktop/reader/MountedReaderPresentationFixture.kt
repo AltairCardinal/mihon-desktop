@@ -77,6 +77,7 @@ internal class MountedReaderPresentationFixture(
     root: File,
     coroutineContext: CoroutineContext,
     val case: MountedReaderPresentationCase,
+    pageImageDecoder: DesktopReaderPageImageDecoder = SkiaDesktopReaderPageImageDecoder(),
 ) : AutoCloseable {
     private val productionFixture = ReaderProductionTestFixture(root, coroutineContext)
     private val previousInjekt = Injekt
@@ -131,6 +132,7 @@ internal class MountedReaderPresentationFixture(
             readerIoProbe = ReaderIoTestModeBridge,
             readerMonotonicClock = ReaderMonotonicClock { ++now },
             readerIoGate = productionFixture.ioGate,
+            pageImageDecoder = pageImageDecoder,
         )
         patchInjekt()
         Injekt.addSingleton(runtimeFactory)

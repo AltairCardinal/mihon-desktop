@@ -91,18 +91,18 @@ class ReaderDecodedAssetConsumerIntegrationTest {
             try {
                 val cached = cachedLease.asset
                 val visibleLease = requireNotNull(pipeline.acquire(key))
-                val split = transformCachedPageBitmap(
+                val split = transformCachedPageBitmapWithSourceBounds(
                     bitmap = cached.bitmap,
                     splitHalf = PageSplitHalf.LEFT,
                     sourceWidth = cached.sourceWidth,
                     sourceHeight = cached.sourceHeight,
-                )
-                val cropped = transformCachedPageBitmap(
+                ).bitmap
+                val cropped = transformCachedPageBitmapWithSourceBounds(
                     bitmap = cached.bitmap,
                     cropBorders = true,
                     sourceWidth = cached.sourceWidth,
                     sourceHeight = cached.sourceHeight,
-                )
+                ).bitmap
                 try {
                     assertSame(cached.bitmap, visibleLease.asset.bitmap)
                     EdgePixelMatcher().findMatchedPairs(pageCount = 3) { index ->

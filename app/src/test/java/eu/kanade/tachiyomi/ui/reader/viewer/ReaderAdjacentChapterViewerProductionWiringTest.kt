@@ -78,11 +78,11 @@ class ReaderAdjacentChapterViewerProductionWiringTest {
                 case.setChapters(viewer, chapters)
                 activity.requests.clear()
 
-                case.selectPage(viewer, beforeAnchor)
+                case.selectPage(viewer, beforeAnchor, true)
 
                 assertEquals(0, activity.requests.size)
 
-                case.selectPage(viewer, anchor)
+                case.selectPage(viewer, anchor, true)
 
                 assertSingleTypedRequest(activity, next)
                 activity.requests.clear()
@@ -92,6 +92,79 @@ class ReaderAdjacentChapterViewerProductionWiringTest {
                 assertSingleTypedRequest(activity, next)
             } catch (failure: AssertionError) {
                 throw AssertionError("${case.name} did not dispatch through the typed Activity seam", failure)
+            } finally {
+                case.destroy(viewer)
+            }
+        }
+    }
+
+    @Test
+    fun `pager and webtoon suppress adjacent work when preload is not allowed`() {
+        val activity = recordingReaderActivity()
+        val current = loadedChapter(id = 1, pageCount = 10)
+        val next = ReaderChapter(chapter(id = 2))
+        val chapters = ViewerChapters(current, prevChapter = null, nextChapter = next)
+        val anchor = requireNotNull(current.pages)[5]
+
+        viewerCases().filter(ViewerCase::supportsPreloadGate).forEach { case ->
+            val viewer = case.create(activity)
+            try {
+                case.setChapters(viewer, chapters)
+                activity.requests.clear()
+
+                case.selectPage(viewer, anchor, false)
+
+                assertEquals("${case.name} must honor allowPreload=false", 0, activity.requests.size)
+            } finally {
+                case.destroy(viewer)
+            }
+        }
+    }
+
+    @Test
+    fun `single page anchor immediately dispatches the shared adjacent effect`() {
+        val activity = recordingReaderActivity()
+        val current = loadedChapter(id = 1, pageCount = 1)
+        val next = ReaderChapter(chapter(id = 2))
+        val chapters = ViewerChapters(current, prevChapter = null, nextChapter = next)
+        val onlyPage = requireNotNull(current.pages).single()
+
+        viewerCases().forEach { case ->
+            val viewer = case.create(activity)
+            try {
+                case.setChapters(viewer, chapters)
+                activity.requests.clear()
+
+                case.selectPage(viewer, onlyPage, true)
+
+                assertSingleTypedRequest(activity, next)
+            } catch (failure: AssertionError) {
+                throw AssertionError("${case.name} did not apply the single-page anchor policy", failure)
+            } finally {
+                case.destroy(viewer)
+            }
+        }
+    }
+
+    @Test
+    fun `pager single page fast path dispatches when queued chapters become idle`() {
+        val activity = recordingReaderActivity()
+        val current = loadedChapter(id = 1, pageCount = 1)
+        val next = ReaderChapter(chapter(id = 2))
+        val chapters = ViewerChapters(current, prevChapter = null, nextChapter = next)
+
+        viewerCases().filter(ViewerCase::supportsSinglePageIdleFastPath).forEach { case ->
+            val viewer = case.create(activity)
+            try {
+                setPagerIdle(viewer, false)
+                case.setChapters(viewer, chapters)
+                activity.requests.clear()
+
+                setPagerIdle(viewer, true)
+
+                assertSingleTypedRequest(activity, next)
+            } catch (failure: AssertionError) {
+                throw AssertionError("${case.name} did not dispatch its single-page idle fast path", failure)
             } finally {
                 case.destroy(viewer)
             }
@@ -130,13 +203,27 @@ class ReaderAdjacentChapterViewerProductionWiringTest {
         name = "Chapter $id",
     )
 
+    private fun setPagerIdle(viewer: Any, idle: Boolean) {
+        val setter = generateSequence(viewer.javaClass as Class<*>?) { it.superclass }
+            .flatMap { type -> type.declaredMethods.asSequence() }
+            .first { method ->
+                method.name == "setIdle" &&
+                    method.parameterTypes.size == 1 &&
+                    method.parameterTypes.single() == Boolean::class.javaPrimitiveType
+            }
+        setter.isAccessible = true
+        setter.invoke(viewer, idle)
+    }
+
     private fun viewerCases(): List<ViewerCase> = listOf(
         ViewerCase(
             name = "PagerViewer",
+            supportsPreloadGate = true,
+            supportsSinglePageIdleFastPath = true,
             create = { activity -> R2LPagerViewer(activity) },
             setChapters = { viewer, chapters -> (viewer as PagerViewer).setChapters(chapters) },
-            selectPage = { viewer, page ->
-                (viewer as PagerViewer).onReaderPageSelected(page, allowPreload = true, forward = true)
+            selectPage = { viewer, page, allowPreload ->
+                (viewer as PagerViewer).onReaderPageSelected(page, allowPreload = allowPreload, forward = true)
             },
             selectTransition = { viewer, transition ->
                 (viewer as PagerViewer).onTransitionSelected(transition)
@@ -145,9 +232,11 @@ class ReaderAdjacentChapterViewerProductionWiringTest {
         ),
         ViewerCase(
             name = "DualPageR2LPagerViewer",
+            supportsPreloadGate = false,
+            supportsSinglePageIdleFastPath = true,
             create = { activity -> DualPageR2LPagerViewer(activity) },
             setChapters = { viewer, chapters -> (viewer as DualPageR2LPagerViewer).setChapters(chapters) },
-            selectPage = { viewer, page ->
+            selectPage = { viewer, page, _ ->
                 (viewer as DualPageR2LPagerViewer).onDisplayPageSelected(DisplayPage.Single(page))
             },
             selectTransition = { viewer, transition ->
@@ -157,10 +246,12 @@ class ReaderAdjacentChapterViewerProductionWiringTest {
         ),
         ViewerCase(
             name = "WebtoonViewer",
+            supportsPreloadGate = true,
+            supportsSinglePageIdleFastPath = false,
             create = { activity -> WebtoonViewer(activity) },
             setChapters = { viewer, chapters -> (viewer as WebtoonViewer).setChapters(chapters) },
-            selectPage = { viewer, page ->
-                (viewer as WebtoonViewer).onPageSelected(page, allowPreload = true)
+            selectPage = { viewer, page, allowPreload ->
+                (viewer as WebtoonViewer).onPageSelected(page, allowPreload = allowPreload)
             },
             selectTransition = { viewer, transition ->
                 (viewer as WebtoonViewer).onTransitionSelected(transition)
@@ -171,9 +262,11 @@ class ReaderAdjacentChapterViewerProductionWiringTest {
 
     private data class ViewerCase(
         val name: String,
+        val supportsPreloadGate: Boolean,
+        val supportsSinglePageIdleFastPath: Boolean,
         val create: (ReaderActivity) -> Any,
         val setChapters: (Any, ViewerChapters) -> Unit,
-        val selectPage: (Any, ReaderPage) -> Unit,
+        val selectPage: (Any, ReaderPage, Boolean) -> Unit,
         val selectTransition: (Any, ChapterTransition) -> Unit,
         val destroy: (Any) -> Unit,
     )

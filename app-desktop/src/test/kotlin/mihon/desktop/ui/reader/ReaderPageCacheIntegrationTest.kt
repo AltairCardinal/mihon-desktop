@@ -231,8 +231,8 @@ class ReaderPageCacheIntegrationTest {
             colorAt = { x, _ -> if (x < 3) RED else BLUE },
         )
 
-        val left = transformCachedPageBitmap(horizontal, splitHalf = PageSplitHalf.LEFT)
-        val right = transformCachedPageBitmap(horizontal, splitHalf = PageSplitHalf.RIGHT)
+        val left = transformCachedPageBitmapWithSourceBounds(horizontal, splitHalf = PageSplitHalf.LEFT).bitmap
+        val right = transformCachedPageBitmapWithSourceBounds(horizontal, splitHalf = PageSplitHalf.RIGHT).bitmap
 
         assertEquals(3, left.width)
         assertEquals(RED, left.asSkiaBitmap().getColor(0, 0))
@@ -251,16 +251,16 @@ class ReaderPageCacheIntegrationTest {
             splitPageBounds(2, 6, PageSplitHalf.RIGHT, PageRotation.CLOCKWISE_90),
         )
 
-        val rotatedLeft = transformCachedPageBitmap(
+        val rotatedLeft = transformCachedPageBitmapWithSourceBounds(
             vertical,
             splitHalf = PageSplitHalf.LEFT,
             sourceBounds = rotatedLeftBounds,
-        )
-        val rotatedRight = transformCachedPageBitmap(
+        ).bitmap
+        val rotatedRight = transformCachedPageBitmapWithSourceBounds(
             vertical,
             splitHalf = PageSplitHalf.RIGHT,
             sourceBounds = rotatedRightBounds,
-        )
+        ).bitmap
 
         assertEquals(3, rotatedLeft.height)
         assertEquals(MAGENTA, rotatedLeft.asSkiaBitmap().getColor(0, 0))
@@ -276,7 +276,7 @@ class ReaderPageCacheIntegrationTest {
             colorAt = { x, y -> if (x in 2..3 && y in 1..4) BLACK else WHITE },
         )
 
-        val cropped = transformCachedPageBitmap(bordered, cropBorders = true)
+        val cropped = transformCachedPageBitmapWithSourceBounds(bordered, cropBorders = true).bitmap
 
         assertEquals(2, cropped.width)
         assertEquals(4, cropped.height)
@@ -293,18 +293,18 @@ class ReaderPageCacheIntegrationTest {
                 if (xWithinHalf in 1..3 && y in 1..4) BLACK else WHITE
             },
         )
-        val ordinarySplit = transformCachedPageBitmap(
+        val ordinarySplit = transformCachedPageBitmapWithSourceBounds(
             bitmap = borderedSpread,
             splitHalf = PageSplitHalf.LEFT,
             cropBorders = true,
-        )
-        val cachedBounds = transformCachedPageBitmap(
+        ).bitmap
+        val cachedBounds = transformCachedPageBitmapWithSourceBounds(
             bitmap = borderedSpread,
             sourceBounds = PixelBounds(x = 5, y = 0, width = 5, height = 6),
             cropBorders = true,
             sourceWidth = borderedSpread.width,
             sourceHeight = borderedSpread.height,
-        )
+        ).bitmap
 
         listOf(ordinarySplit, cachedBounds).forEach { transformed ->
             assertEquals(3, transformed.width)
@@ -333,12 +333,12 @@ class ReaderPageCacheIntegrationTest {
             assertEquals(8, asset.sourceWidth)
             assertEquals(15, asset.sourceHeight)
 
-            fun transform(half: PageSplitHalf, rotation: PageRotation) = transformCachedPageBitmap(
+            fun transform(half: PageSplitHalf, rotation: PageRotation) = transformCachedPageBitmapWithSourceBounds(
                 bitmap = asset.bitmap,
                 sourceBounds = requireNotNull(splitPageBounds(8, 15, half, rotation)),
                 sourceWidth = asset.sourceWidth,
                 sourceHeight = asset.sourceHeight,
-            )
+            ).bitmap
 
             val clockwiseLeft = transform(PageSplitHalf.LEFT, PageRotation.CLOCKWISE_90)
             val clockwiseRight = transform(PageSplitHalf.RIGHT, PageRotation.CLOCKWISE_90)
@@ -370,18 +370,18 @@ class ReaderPageCacheIntegrationTest {
 
         try {
             val asset = cached.lease.asset
-            val left = transformCachedPageBitmap(
+            val left = transformCachedPageBitmapWithSourceBounds(
                 bitmap = asset.bitmap,
                 splitHalf = PageSplitHalf.LEFT,
                 sourceWidth = asset.sourceWidth,
                 sourceHeight = asset.sourceHeight,
-            )
-            val right = transformCachedPageBitmap(
+            ).bitmap
+            val right = transformCachedPageBitmapWithSourceBounds(
                 bitmap = asset.bitmap,
                 splitHalf = PageSplitHalf.RIGHT,
                 sourceWidth = asset.sourceWidth,
                 sourceHeight = asset.sourceHeight,
-            )
+            ).bitmap
 
             assertEquals(3, left.width)
             assertEquals(RED, left.asSkiaBitmap().getColor(0, 0))
@@ -404,12 +404,12 @@ class ReaderPageCacheIntegrationTest {
 
         try {
             val asset = cached.lease.asset
-            val cropped = transformCachedPageBitmap(
+            val cropped = transformCachedPageBitmapWithSourceBounds(
                 bitmap = asset.bitmap,
                 cropBorders = true,
                 sourceWidth = asset.sourceWidth,
                 sourceHeight = asset.sourceHeight,
-            )
+            ).bitmap
 
             assertEquals(4, cropped.width)
             assertEquals(2, cropped.height)
@@ -432,7 +432,7 @@ class ReaderPageCacheIntegrationTest {
         try {
             val asset = cached.lease.asset
             assertThrows(IllegalArgumentException::class.java) {
-                transformCachedPageBitmap(
+                transformCachedPageBitmapWithSourceBounds(
                     bitmap = asset.bitmap,
                     sourceBounds = PixelBounds(0, 0, 8, 16),
                     sourceWidth = asset.sourceWidth,

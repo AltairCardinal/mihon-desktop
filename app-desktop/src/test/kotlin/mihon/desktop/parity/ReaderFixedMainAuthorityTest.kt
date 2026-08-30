@@ -491,7 +491,7 @@ class ReaderFixedMainAuthorityTest {
         val expectedReopenedClaims =
             mapOf(
                 9 to setOf("DESKTOP_SINGLE_DECODE_OWNER"),
-                44 to setOf("DESKTOP_SINGLE_DECODE_OWNER"),
+                44 to setOf("DESKTOP_REGION_DECODE_CONSUMER"),
                 45 to
                     setOf(
                         "DESKTOP_SINGLE_SCHEDULER_OWNER",
@@ -507,7 +507,7 @@ class ReaderFixedMainAuthorityTest {
             val refactor = item.getValue("readerUpstreamAdapterRefactor").jsonObject
             assertEquals("VERIFIED", item.requiredText("status"), "ID $id broad capability remains verified")
             assertEquals("RUA-00", refactor.requiredText("task"), "ID $id corrective owner")
-            assertEquals("IN_PROGRESS", refactor.requiredText("status"), "ID $id corrective slice state")
+            assertEquals("CLOSED", refactor.requiredText("status"), "ID $id corrective slice state")
             assertEquals(
                 expectedClaims,
                 refactor.getValue("reopenedClaims").jsonArray.mapTo(mutableSetOf()) { it.jsonPrimitive.content },
@@ -537,7 +537,7 @@ class ReaderFixedMainAuthorityTest {
         val scope = item.getValue("readerCoreMigrationScope").jsonObject
         assertEquals("RD-02", scope.requiredText("desktopNextChapterPrefetchTask"))
         assertEquals("WIRED", scope.requiredText("desktopNextChapterPrefetch"))
-        assertEquals("FULL_NEXT_CHAPTER", scope.requiredText("desktopNextChapterPrefetchDefault"))
+        assertEquals("OFF", scope.requiredText("desktopNextChapterPrefetchDefault"))
         assertEquals("ORIGINAL_LAST_FIVE_PAGE_LIST_ONLY", scope.requiredText("desktopNextChapterPrefetchOffPolicy"))
         assertEquals("ENCODED_ONLY_BOUNDED", scope.requiredText("desktopNextChapterPrefetchStorage"))
         assertEquals("NO_PROGRESS_EFFECT", scope.requiredText("desktopNextChapterPrefetchProgress"))
@@ -559,6 +559,9 @@ class ReaderFixedMainAuthorityTest {
                     ),
                 "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt" to
                     setOf(
+                        "canonical adjacent metadata uses anchor before first presentation without fetching images",
+                        "opt in decorator waits for current generation first presentation and shared scheduler idle",
+                        "stale generation target and repeated first presentation cannot release old adjacent work",
                         "full next chapter waits for every current page then materializes all encoded pages without progress",
                         "first viewport mode materializes only its bounded next chapter prefix",
                         "off mode keeps last five page-list preload but never fetches adjacent images",
@@ -577,7 +580,11 @@ class ReaderFixedMainAuthorityTest {
                 "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
                     setOf("mounted production screen launches next chapter prefetch wiring"),
                 "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt" to
-                    setOf("next chapter prefetch defaults to full and persists every policy"),
+                    setOf(
+                        "image prefetch defaults to off without persisting an implicit value",
+                        "explicit new image prefetch values win and remain persisted",
+                        "explicit legacy image prefetch values migrate to the new key and remain retained",
+                    ),
                 "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt" to
                     setOf("Reader Library Download and Backup controls expose one labeled action with role and state"),
             )
@@ -590,7 +597,11 @@ class ReaderFixedMainAuthorityTest {
         }
         assertTrue(item.requiredText("desktopImplementation").contains("P4"))
         assertTrue(item.requiredText("desktopImplementation").contains("encoded-only"))
-        assertTrue(item.requiredText("verificationScope").contains("OFF / FIRST_VIEWPORT / FULL_NEXT_CHAPTER"))
+        assertTrue(item.requiredText("desktopImplementation").contains("defaults to OFF"))
+        assertTrue(item.requiredText("verificationScope").contains("OFF"))
+        assertTrue(item.requiredText("verificationScope").contains("FIRST_VIEWPORT / FULL_NEXT_CHAPTER"))
+        assertTrue(item.requiredText("verificationScope").contains("FIRST_PAGE_PRESENTED"))
+        assertTrue(item.requiredText("verificationScope").contains("shared scheduler idle"))
     }
 
     @Test
@@ -931,7 +942,7 @@ class ReaderFixedMainAuthorityTest {
             )
         const val RD02_PRODUCTION_EVIDENCE =
             "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#" +
-                "full next chapter waits for every current page then materializes all encoded pages without progress"
+                "opt in decorator waits for current generation first presentation and shared scheduler idle"
         val DEVIATION_INTRODUCTION_PATHS =
             mapOf(
                 "GENERATION_HARDENING" to

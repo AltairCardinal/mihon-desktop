@@ -1,39 +1,9 @@
 package mihon.desktop.ui.reader
 
-import androidx.compose.ui.Alignment
-import mihon.desktop.reader.SinglePageSide
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 class DualPageLayoutPolicyTest {
-
-    @Test
-    fun `RTL trailing single page uses the inner edge of the physical left slot`() {
-        assertEquals(
-            Alignment.CenterEnd,
-            singlePageImageAlignment(SinglePageSide.TRAILING, isRtl = true),
-        )
-    }
-
-    @Test
-    fun `LTR trailing single page uses the inner edge of the physical right slot`() {
-        assertEquals(
-            Alignment.CenterStart,
-            singlePageImageAlignment(SinglePageSide.TRAILING, isRtl = false),
-        )
-    }
-
-    @Test
-    fun `leading single pages also face the center spine`() {
-        assertEquals(
-            Alignment.CenterStart,
-            singlePageImageAlignment(SinglePageSide.LEADING, isRtl = true),
-        )
-        assertEquals(
-            Alignment.CenterEnd,
-            singlePageImageAlignment(SinglePageSide.LEADING, isRtl = false),
-        )
-    }
 
     @Test
     fun `dual page loading policy centers shared spinner when both pages are loading`() {

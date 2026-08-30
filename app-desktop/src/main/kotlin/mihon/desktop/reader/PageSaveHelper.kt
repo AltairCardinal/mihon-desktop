@@ -1,12 +1,6 @@
 package mihon.desktop.reader
 
-import java.awt.image.BufferedImage
-import java.io.ByteArrayInputStream
 import java.io.File
-import java.net.URI
-import javax.imageio.ImageIO
-import org.jetbrains.skia.EncodedImageFormat
-import org.jetbrains.skia.Image as SkiaImage
 
 /**
  * Utility object for page-save actions in the reader context menu.
@@ -38,26 +32,5 @@ object PageSaveHelper {
     fun defaultSaveDirectory(): File {
         val pictures = System.getProperty("user.home") + File.separator + "Pictures" + File.separator + "Mihon"
         return File(pictures).also { it.mkdirs() }
-    }
-
-    /**
-     * Writes [image] as PNG to [destination].
-     * Overwrites the file if it already exists.
-     */
-    fun saveImageToFile(image: BufferedImage, destination: File) {
-        ImageIO.write(image, "png", destination)
-    }
-
-    /**
-     * Loads a page image from [url] using Skia, matching the reader decoder's format support.
-     * Returns null if loading fails.
-     */
-    fun loadImage(url: String): BufferedImage? = try {
-        val bytes = URI(url).toURL().readBytes()
-        val image = SkiaImage.makeFromEncoded(bytes)
-        val pngBytes = image.encodeToData(EncodedImageFormat.PNG)!!.bytes
-        ImageIO.read(ByteArrayInputStream(pngBytes))
-    } catch (_: Exception) {
-        null
     }
 }

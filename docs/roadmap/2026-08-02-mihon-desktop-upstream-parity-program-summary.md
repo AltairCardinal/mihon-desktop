@@ -486,6 +486,7 @@ Legacy 路径随后由以下提交加固：
 以下内容不得反向解释为原 parity roadmap 未完成，也不得被写回旧 manifest 作为新的 active task：
 
 - [2026-08-02 reader core migration and presentation roadmap](2026-08-02-reader-core-migration-and-presentation-roadmap.md) 是收口后新建的独立 Reader 演进计划。
+- [2026-08-27 Desktop Reader upstream semantics adapter refactor roadmap](2026-08-27-desktop-reader-upstream-semantics-adapter-refactor-roadmap.md) 是后续纠偏计划；它有限 supersede 此后关于 Desktop Reader owner、默认相邻章图片策略与现役 evidence 的维护说明，但不改写本总结记录的历史 parity 结果或 provenance。
 - 2026-08-02 之后针对既有 Global Search 的体验修改、Recent History 等新增工作属于后续产品迭代。
 - 图标、美术、签名、公证、商店发布等不在 repository-local parity closure 内。
 - 若未来升级 fixed-main 基线，应建立新的显式差异审计，而不是改写本次已经完成的历史结论。

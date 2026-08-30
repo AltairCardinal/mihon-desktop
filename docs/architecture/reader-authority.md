@@ -92,10 +92,12 @@ PagerViewer / WebtoonViewer
 
 ### Desktop 完整下一章图片预取是显式增强
 
-RD-02 只在 Desktop canonical session 上增加 `OFF / FIRST_VIEWPORT / FULL_NEXT_CHAPTER` 策略，默认
-`FULL_NEXT_CHAPTER`。当前章任一逻辑页尚未 `Ready(encodedRef)` 时不得发出相邻章图片请求；全部 Ready 后，
-下一章图片通过共享 scheduler 以 P4 进入同一 encoded store。激活下一章会取消该章 P4，并把尚未 Ready 的
-可见页以 P0 重新入队，因此后台工作不能饿死用户正在看的页面。
+RD-02 只在 Desktop canonical session 上增加 `OFF / FIRST_VIEWPORT / FULL_NEXT_CHAPTER` 图片 decorator，默认
+`OFF`。固定原版 canonical metadata 独立消费 shared anchor：进入末五页即可加载下一章 page list，既不等待
+`FIRST_PAGE_PRESENTED`，也不获取相邻图片。显式 `FIRST_VIEWPORT` / `FULL_NEXT_CHAPTER` 则必须等当前
+generation 首帧已呈现、当前章全部页 `Ready(encodedRef)` 且 shared scheduler idle，才通过同一 scheduler 以
+P4 进入 encoded store。激活下一章会取消该章 P4，并把尚未 Ready 的可见页以 P0 重新入队，因此后台工作
+不能饿死用户正在看的页面；stale generation/target 或重复首帧事件不能释放旧目标。
 
 `OFF` 不等于关闭固定原版行为：进入末五页仍可取得下一章 page list，但不得获取相邻章图片。若用户在末五页
 之前从完整/首屏切到 `OFF`，仅由 Desktop 图片策略触发的 page-list 请求也必须取消。退出、跳向其他章节、
@@ -151,7 +153,7 @@ RA-01 开始时复核的 `d7f3ceef5…55be95dd5` 区间也没有 reader 路径�
 | --- | --- | --- |
 | generation 取消、迟到结果拒绝 | `CROSS_PLATFORM_RELIABILITY_ENHANCEMENT` | RC-03 已纳入唯一 `ReaderRequestScheduler`，Android 与 Desktop adapter 均消费该策略 |
 | adjacent portrait pairing | `CROSS_PLATFORM_PRODUCT_ENHANCEMENT` | 作为 presentation 能力保留；固定原版只拆一张宽源图 |
-| Desktop 完整下一章预取 | `DESKTOP_PRODUCT_ENHANCEMENT` | RD-02 已接入默认完整、可选首屏/关闭的 encoded-only P4 policy；OFF 保留固定原版末五页 page-list-only，不改变 Android 默认流量 |
+| Desktop 完整下一章预取 | `DESKTOP_PRODUCT_ENHANCEMENT` | RD-02 保留显式首屏/完整 encoded-only P4 decorator，但默认 OFF；canonical anchor 保留固定原版末五页 page-list-only，不改变 Android 默认流量 |
 | cached Error 的 Retry 不再强制重抓 | `PRODUCT_GAP`（RC-02 已关闭） | RC-02 已恢复显式 Retry 强制重抓；shared executor contract 与 Android production wiring 测试共同保护 |
 | Android 双页只上报 `firstPage` | `PRODUCT_GAP` | RC-05 的 shared policy 已支持 settled 可见逻辑页集合；RP-03 已关闭 Desktop 双页 producer，Android Fork pager 仍是独立 presentation 缺口，不能作为完整集合证据 |
 
@@ -170,7 +172,7 @@ executor，并由 Android `ChapterLoader`/`HttpPageLoader` 生产链消费；核
 当前 generation 有界并发、抢占、Retry、generation 取消与迟到拒收均在 shared core 决定；Android
 `HttpPageLoader` 使用原版串行 current +4 policy，并在 adapter 层保留一个 stale 物理 permit，使连续
 不合作请求的真实 I/O 最多为“当前 policy 并发 + 1”而不会跨 generation 无界增长。Desktop
-`PagePreloader` 也消费同一调度器而只负责协程和解码执行。旧
+`DesktopReaderSession` 直接消费同一调度器并将 encoded ref 交给唯一 `DesktopReaderPageImagePipeline`；旧
 `ReaderPreloadPlanner` 及两端私有优先级解释已删除。`ReaderEncodedPageStore` 同时冻结生命周期、物理
 存在性、配额/淘汰和诊断结果，Android 通过 `AndroidReaderEncodedPageStore` 把它接到 `ChapterCache`；
 物理写入/删除确认先于逻辑提交，并在每次提交前 reconcile `ChapterCache` 自身 LRU 已删除的 tracked ref。
@@ -219,7 +221,8 @@ landscape parity options。renderer 使用完整 reader content viewport，并�
 均占绝对物理左槽且右槽为空；普通 pair 才按阅读方向交换物理顺序。pair/slot identity 不随窗口尺寸或任一页的
 内容状态变化。默认 `FIT_SCREEN` 不裁切、不拉伸；真实 4:3 视口中由漫画自身比例造成的留白仍属诚实显示。
 宽图切片与右键保存都通过统一 `ZoomablePageBox` 的 `splitHalf/sourceBounds`，保存的是实际可见区域。
-edge matcher 只读取 `PagePreloader` 有界 decoded cache，不解析 URL、不发起网络请求，也不持有 fetch job；
+edge matcher 只读取 `DesktopReaderPresentationImageOwner` 从唯一 pipeline 保留的 cached FULL lease，不解析
+URL、不发起网络/materialize/decode 请求，也不持有 fetch job；
 晚到页面可追加新 pair，cache 淘汰后已确认 pair 仍保留到章节或选项生命周期结束。
 
 Single 只有 settled pager unit 才写回完整 `DisplayUnitId`；Webtoon 只有滚动停止后才写回 active/visible
@@ -232,11 +235,12 @@ snapshot；URL slot、`resolvedUrls` 与临时 presentation adapter 已删除。
 parity manifest 9/43/44/45/47/49/51/53/54 的 `canonicalSessionExecutor` 已由 RD-01 收口为 `WIRED`；RG-01
 又为每项记录 `legacyReaderExecutors = REMOVED` 与 `readerArchitectureGuard = ENFORCED`。该声明必须同时由
 production 行为测试和架构守卫支持：完整 Desktop reader production roots 会扫描 legacy executor、Screen
-replace 与兼容状态；`PagePreloader` production 构造必须保持 `store::read`；canonical scheduler/progress/window
-调用 owner、Reader-named decision 声明 family、canonical import/typealias 和已知旧私有 owner 都由范围化清单
-约束。全 Desktop production 只允许 class 声明与 runtime factory 两处 `PagePreloader(`，且 factory 集成测试会
-从同一 runtime encoded store 写入并解码。恢复旧 owner、增加受控 decision family、别名/第二构造 owner 或改变
-decoded-only wiring 都会使门禁失败。
+replace 与兼容状态；canonical scheduler/progress/window 调用 owner、Reader-named decision 声明 family、
+canonical import/typealias 和已知旧私有 owner 都由范围化清单约束。全 Desktop production 只允许 canonical
+session/materialize 链生成 encoded ref、唯一 `DesktopReaderPageImagePipeline` 解码、presentation owner 消费
+cached FULL lease，并由 `DesktopReaderRegionPresentationOwner/Holder` 通过 pipeline 的 `openRegionSession` /
+`acquireRegionTile` 使用有界 region tile；恢复旧 owner、增加第二构造/fetch/decode/cache owner 或绕过统一
+memory budget 都会使门禁失败。
 
 ## 维护规则
 
@@ -248,6 +252,6 @@ decoded-only wiring 都会使门禁失败。
 5. presentation 禁止调用 source/repository；platform adapter 禁止重新决定页序、调度、完成或相邻章。
 6. 只有 RC-01～RC-05、RA-01、RP-01～RP-03 和 RD-01 的 production wiring 全部关闭后，才能把
    canonical session executor 标记为 `WIRED`。
-7. RG-01 关闭后，reader canonical decision 声明/调用 owner 集合、已知 legacy owner 与文件零清单、
-   `store::read` decoded-only `PagePreloader` wiring 和 manifest 关闭字段必须由
+7. RG-01 关闭后，reader canonical decision 声明/调用 owner 集合、已知 legacy owner 与文件零清单、唯一
+   session/pipeline/presentation/region consumer wiring 和 manifest 关闭字段必须由
    `ReaderArchitectureGuardTest` 持续保护。

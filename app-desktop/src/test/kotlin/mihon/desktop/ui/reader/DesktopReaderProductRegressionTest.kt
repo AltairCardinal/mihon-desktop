@@ -16,7 +16,6 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import java.io.File
 
 class DesktopReaderProductRegressionTest {
 
@@ -177,91 +176,12 @@ class DesktopReaderProductRegressionTest {
     }
 
     @Test
-    fun `grayscale and invert remain effective and persistable reader settings`() {
+    fun `grayscale and invert remain effective reader filters`() {
         val filter = ReaderColorFilter(grayscaleEnabled = true, invertEnabled = true)
 
         assertTrue(filter.isEffective)
         assertTrue(filter.grayscaleEnabled)
         assertTrue(filter.invertEnabled)
-        assertTrue(readerSource("ReaderSettingsPanel.kt").contains("pref_grayscale"))
-        assertTrue(readerSource("ReaderSettingsPanel.kt").contains("pref_inverted_colors"))
-    }
-
-    @Test
-    fun `reader product wiring retains entry retry transitions and auto scroll`() {
-        val detail = source("app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt")
-        val reader = readerSource("DesktopReaderScreen.kt")
-        val readerVisuals = readerSource("ReaderVisualComponents.kt")
-        val webtoon = readerSource("WebtoonViewer.kt")
-        val settings = readerSource("ReaderSettingsPanel.kt")
-        val dual = readerSource("DualPagePagerViewer.kt")
-
-        assertTrue(detail.contains("DesktopReaderScreen("), "Manga detail must remain the reader entry point")
-        assertTrue(reader.contains("onRetry"), "Loading errors must expose retry")
-        assertTrue(reader.contains("ChapterTransitionFeedback"), "Chapter boundary and missing chapter feedback must be visible")
-        assertTrue(reader.contains("model.activateChapter("), "Chapter navigation must activate the target in the same session")
-        assertFalse(reader.contains("navigator.replace("), "Chapter navigation must not replace the reader Screen")
-        assertFalse(readerVisuals.contains("showContinue"), "Loaded chapter transitions must not expose Continue")
-        assertTrue(reader.contains("state.session.activeChapter"), "The reader must render the canonical session snapshot")
-        assertTrue(reader.contains("ReadingMode.WEBTOON -> WebtoonPresentationViewer("))
-        assertTrue(readerVisuals.contains(".require(ReaderPresentationMode.WEBTOON)"))
-        assertTrue(readerVisuals.contains(".require(ReaderPresentationMode.DUAL_PAGED)"))
-        assertTrue(dual.contains("key = { pagerIndex -> displayUnits[pagerToUnit(pagerIndex)].id }"))
-        assertTrue(webtoon.contains("key = DisplayUnit::id"), "Webtoon Lazy items must keep stable display identities")
-        assertTrue(settings.contains("if (currentMode == ReadingMode.WEBTOON)"))
-        assertTrue(settings.contains("desktop_ui_split_wide_pages"), "Webtoon must expose its wide-page split option")
-        val autoScrollEffect = bracedBlock(webtoon, "LaunchedEffect(autoScroll, autoScrollSpeed, autoScrollLoopEnabled)")
-        assertTrue(autoScrollEffect.contains("autoScrollGate.action("))
-        assertTrue(autoScrollEffect.contains("enabled = autoScroll"))
-        assertTrue(autoScrollEffect.contains("if (!autoScrollLoopEnabled)"))
-        assertTrue(autoScrollEffect.contains("WebtoonAutoScrollAction.Scroll -> listState.scroll { scrollBy(pixelsPerTick) }"))
-        assertTrue(autoScrollEffect.contains("WebtoonAutoScrollAction.NextChapter -> onNextChapter?.invoke()"))
-        val autoScrollGate = bracedBlock(webtoon, "internal class WebtoonAutoScrollGate")
-        assertTrue(autoScrollGate.contains("webtoonAutoScrollAction("))
-        val autoScrollPause = bracedBlock(webtoon, "internal class WebtoonAutoScrollPauseState")
-        assertTrue(autoScrollPause.contains("isUserDragging"))
-        assertTrue(autoScrollPause.contains("isScrollInProgress"))
-
-    }
-
-    @Test
-    fun `production keyboard and mouse wiring uses shared logical navigation adapters`() {
-        val reader = readerSource("DesktopReaderScreen.kt")
-        val single = readerSource("SinglePagePagerViewer.kt")
-        val dual = readerSource("DualPagePagerViewer.kt")
-        val page = readerSource("ZoomablePageBox.kt")
-
-        val keyboard = bracedBlock(reader, "val action = when (event.key)")
-        assertTrue(keyboard.contains("Key.DirectionLeft, Key.A -> ReaderKeyboardAction.forLeft(isRtl, navCurrent, totalPages)"))
-        assertTrue(keyboard.contains("Key.DirectionRight, Key.D, Key.Spacebar -> ReaderKeyboardAction.forRight(isRtl, navCurrent, totalPages)"))
-
-        assertTrue(single.contains("ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, displayUnits.size)"))
-        assertTrue(single.contains("settledPagerIndex = { pagerState.settledPage }"))
-
-        assertEquals(1, Regex("readerPrimaryTapInput\\(zoomState\\.scale, navigationMode, isRtl\\)").findAll(dual).count())
-        assertTrue(dual.contains("ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, displayUnits.size)"))
-        assertTrue(dual.contains("settledPagerIndex = { pagerState.settledPage }"))
-        assertTrue(dual.contains("pointerInput(zoomScale, navigationMode, isRtl)"))
-        assertTrue(page.contains("Modifier.pointerInput(navigationMode, isRtl, gestureCapabilities.tapNavigationEnabled)"))
-        assertTrue(page.contains("val gestureCapabilities = zoomableGestureCapabilities("))
-        assertTrue(page.contains("if (gestureCapabilities.transformEnabled)"))
-        assertTrue(page.contains("gestureCapabilities.tapNavigationEnabled && isTap && !moved"))
-        assertTrue(page.contains("if (gestureCapabilities.doubleTapResetEnabled)"))
-        assertTrue(page.contains("tapNavRegion(tapX, tapY, tapWidth, tapHeight, navigationMode, isRtl)"))
-        assertTrue(page.contains("TapNavRegion.PREV -> onTapPrevious?.invoke()"))
-        assertTrue(page.contains("TapNavRegion.NEXT -> onTapNext?.invoke()"))
-    }
-
-    @Test
-    fun `platform reader code consumes common reader contracts instead of duplicate algorithms`() {
-        val dualPresentation = readerSource("presentation/DualPagedPresentation.kt")
-        val virtualPages = source("app-desktop/src/main/kotlin/mihon/desktop/reader/VirtualPageList.kt")
-        val tapZone = readerSource("TapZone.kt")
-
-        assertTrue(dualPresentation.contains("ReaderPagePairing.build("))
-        assertFalse(dualPresentation.contains("private fun buildGroups"))
-        assertTrue(virtualPages.contains("mihon.domain.reader.buildVirtualReaderPages"))
-        assertTrue(tapZone.contains("mihon.domain.reader.ReaderNavigation"))
     }
 
     private fun dualGroups(
@@ -284,47 +204,4 @@ class DesktopReaderProductRegressionTest {
             .displayUnits
             .map { unit -> unit.slots.mapNotNull { it.page?.id?.sourcePageIndex }.distinct().sorted() }
     }
-
-    @Test
-    fun `desktop reader settings and production navigator wire all upstream chapter skip modes`() {
-        val screen = readerSource("DesktopReaderScreen.kt")
-        val settings = readerSource("ReaderSettingsPanel.kt")
-        val detail = source("app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt")
-        val chapterRefs = source("app-desktop/src/main/kotlin/mihon/desktop/ui/library/ReaderChapterRefs.kt")
-
-        assertTrue(screen.contains("skipFilteredChapters = state.skipFilteredChapters"))
-        assertTrue(screen.contains("skipDuplicateChapters = state.skipDuplicateChapters"))
-        assertTrue(settings.contains("pref_skip_filtered_chapters"))
-        assertTrue(settings.contains("pref_skip_dupe_chapters"))
-        assertFalse(detail.contains("visibleChapterIds = displayedChapters"))
-        assertTrue(chapterRefs.contains("isReaderChapterFiltered("))
-        assertTrue(chapterRefs.contains("unreadFilterRaw = manga.unreadFilterRaw"))
-    }
-
-    private fun readerSource(name: String): String =
-        source("app-desktop/src/main/kotlin/mihon/desktop/ui/reader/$name")
-
-    private fun source(path: String): String {
-        val cwd = File(System.getProperty("user.dir"))
-        val root = if (File(cwd, "app-desktop").exists()) cwd else cwd.parentFile
-        return File(root, path).readText()
-    }
-
-    private fun bracedBlock(source: String, marker: String): String {
-        val start = source.indexOf(marker)
-        require(start >= 0) { "Missing production block: $marker" }
-        val open = source.indexOf('{', start)
-        var depth = 0
-        for (index in open until source.length) {
-            when (source[index]) {
-                '{' -> depth++
-                '}' -> {
-                    depth--
-                    if (depth == 0) return source.substring(start, index + 1)
-                }
-            }
-        }
-        error("Unclosed production block: $marker")
-    }
-
 }

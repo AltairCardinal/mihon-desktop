@@ -327,10 +327,10 @@ Android Reader UI                 Desktop Reader presentation
     - [x] `RUA-05A2` Desktop adapter 消费 shared effect
   - [x] `RUA-05B` 偏好迁移、默认值与设置 UI wiring
   - [x] `RUA-05C` Desktop opt-in 图片预取 decorator
-- [ ] `RUA-06` 假阳性测试、旧 owner、authority 与文档清理
-  - [ ] `RUA-06A` 旧 owner/DI/第二链删除
-  - [ ] `RUA-06B` production mutation 证据与假阳性测试替换
-  - [ ] `RUA-06C` authority、manifest 与文档收口
+- [x] `RUA-06` 假阳性测试、旧 owner、authority 与文档清理
+  - [x] `RUA-06A` 旧 owner/DI/第二链删除
+  - [x] `RUA-06B` production mutation 证据与假阳性测试替换
+  - [x] `RUA-06C` authority、manifest 与文档收口
 - [ ] `RUA-07` 跨平台全量验证、Test Mode、正式构建与关闭审计
   - [ ] `RUA-07A` 跨平台测试矩阵、Spotless 与 final parity
   - [ ] `RUA-07B` Test Mode、deterministic/Windows 性能与手动行为验收
@@ -714,6 +714,15 @@ Android Reader UI                 Desktop Reader presentation
 **focused 验证**：architecture mutations、authority/deviation tests、manifest JSON parse、文档链接、`git diff --check`。
 
 **预计**：父 RUA 总计约 2～3 工程日；文件和验证预算按 06A～06C 分别计算，原则上无新的产品范围。
+
+**完成证据（2026-08-31）**：
+
+- 06A 删除已无 production caller 的 `DesktopPageCache`、`CropBorderScanner`、`DebugLogger`、`DualPageLayoutPolicy` 及其旧测试，把保存、source fetch、Single/Dual/Webtoon presentation 与 transform 测试迁回现役 runtime/pipeline 语义；`ReaderProgressTracker` 的 DI alias 因仍有 production consumer 而保留，没有为了清单删除现役能力。`DesktopReaderSession` 同时统一 null binding 与已 Ready completion 的 shared-idle 重评估。
+- 06B 新增挂载真实 `DesktopReaderRuntimeFactory` 的 production mutation evidence：Single/Dual/Webtoon directory、Single CBZ/online 均以实际像素证明首帧恰好一次；rejecting decoder 同时杀死 File/URI/painter 绕过。Android Pager/Dual 的 `allowPreload=false`、单页 busy→idle 快速路径揭示并修复重复 adjacent dispatch；legacy 设置迁移显式枚举 `OFF/FIRST_VIEWPORT/FULL_NEXT_CHAPTER`。源码 marker、自洽 owner 数量与复制算法不再作为正向完成证据，architecture guard 只保留禁止 legacy/旁路 I/O 的职责。
+- 06C 将 manifest ID 44 提升为 `VERIFIED` 并登记 bounded-region production consumer，将 ID 45 默认值、canonical metadata 与 opt-in 图片 decorator 三个 claim 关闭，同时保留 ID 9 的既有 broad capability 和 RUA slice 关闭状态；fixed-main fixture、reader authority/shared-core 文档及历史 supersede 链接均与现役行为一致，未改写 fixed-main path/blob inventory。现役 role-evidence locator 已一次性静态核对，固定上游快照定位保持不动。
+- 严格 TDD 证据：`.gradle-coordinator/rua06b-mutation-red.log` 先因 mounted fixture 尚未注入 production decoder 而失败；Android `.gradle-coordinator/rua06b-android-green.log` 先暴露重复 dispatch，`rua06b-android-green2.log` 修复后通过。Desktop production/legacy/architecture focused 矩阵 `rua06ab-desktop-green.log` 通过；authority 逐项清除旧 method、marker 与 locator 后由 `rua06c-authority-green8.log` 通过最终合同类，批次收口日志统一记录最终 authority 与格式门禁。
+- 独立审查发现 ID43 已删除路径与 ID44 region role 两个 P1，均已修正；限定复审结论 `PASS_WITH_P2`，P0/P1 为零。唯一非阻塞 P2 是 bounded-region 尚未加入同一 mounted mutation matrix；现有真实 region decode、attempt/generation、tile lifecycle 与 memory-budget production 测试继续承担该能力证据，最终跨平台矩阵和正式构建仍只在 `RUA-07` 执行。
+- 本批跨越旧 owner 删除、production mutation、Android consumer 修复和机器 authority，文件数超过各子批次单独提示值，但三条并行工作流在接口冻结后无同文件冲突，最终作为一个可独立编译、审查和提交的清理批次收口；没有新增 Reader 产品能力，也没有提前执行发布构建。
 
 ### `RUA-07` 跨平台全量验证、Test Mode、正式构建与关闭审计
 

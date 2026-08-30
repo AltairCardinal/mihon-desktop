@@ -39,9 +39,7 @@ import mihon.desktop.reader.DesktopReaderPresentationImageOwner
 import mihon.desktop.reader.ReaderKeyboardAction
 import mihon.desktop.reader.ReaderPageAction
 import mihon.desktop.reader.ScaleType
-import mihon.desktop.reader.SinglePageSide
 import mihon.desktop.reader.ZoomState
-import mihon.desktop.reader.singlePageBoxOnRight
 import mihon.desktop.ui.reader.presentation.DisplaySlot
 import mihon.desktop.ui.reader.presentation.DisplaySlotId
 import mihon.desktop.ui.reader.presentation.DisplayUnit
@@ -70,9 +68,6 @@ internal fun dualPageLoadingIndicatorPlacement(
     rightLoading -> DualPageLoadingIndicatorPlacement.RightHalfCenter
     else -> DualPageLoadingIndicatorPlacement.None
 }
-
-internal fun singlePageImageAlignment(side: SinglePageSide, isRtl: Boolean): Alignment =
-    if (singlePageBoxOnRight(side, isRtl)) Alignment.CenterStart else Alignment.CenterEnd
 
 internal enum class DualPagePhysicalSlot { LEFT, RIGHT, FULL }
 

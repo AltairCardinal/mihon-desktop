@@ -494,9 +494,6 @@ internal fun webtoonAutoScrollAction(
     return if (atBottom) WebtoonAutoScrollAction.NextChapter else WebtoonAutoScrollAction.Scroll
 }
 
-internal fun webtoonPageContextMenuLabels(): List<String> =
-    pageContextMenuLabels(includeSetAsCover = false)
-
 internal fun shouldShowWebtoonPageContextMenu(
     hasContextMenuScope: Boolean,
     hasReadyImageAsset: Boolean,

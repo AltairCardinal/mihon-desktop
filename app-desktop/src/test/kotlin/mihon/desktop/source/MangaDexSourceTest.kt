@@ -19,9 +19,9 @@ import kotlinx.serialization.json.Json
 import mihon.desktop.extension.SourceCallResult
 import mihon.desktop.extension.safeSourceCall
 import mihon.desktop.reader.SourcePageFetcher
+import mihon.desktop.reader.SourcePageFetchResult
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
@@ -174,9 +174,14 @@ class MangaDexSourceTest {
                 fallbackClient = NetworkHelper(OkHttpClient()).client,
             )
 
-            val fileUri = fetcher.fetchToFile(Page(0, imageUrl = "http://localhost:$port/page.jpg"), tempDir)
+            val destination = tempDir.resolve("page.jpg")
+            val result = fetcher.fetchToDestination(
+                Page(0, imageUrl = "http://localhost:$port/page.jpg"),
+                destination,
+            )
 
-            assertNotNull(fileUri)
+            assertTrue(result is SourcePageFetchResult.Success)
+            assertTrue(destination.isFile)
         } finally {
             server.stop(gracePeriodMillis = 0, timeoutMillis = 500)
         }
@@ -197,9 +202,11 @@ class MangaDexSourceTest {
             source = source,
             fallbackClient = NetworkHelper(OkHttpClient()).client,
         )
-        val fileUri = fetcher.fetchToFile(pages.first(), tempDir)
+        val destination = tempDir.resolve("live-page")
+        val result = fetcher.fetchToDestination(pages.first(), destination)
 
-        assertNotNull(fileUri, "Expected first MangaDex page image to download")
+        assertTrue(result is SourcePageFetchResult.Success, "Expected first MangaDex page image to download")
+        assertTrue(destination.isFile)
     }
 
     @Tag("integration")

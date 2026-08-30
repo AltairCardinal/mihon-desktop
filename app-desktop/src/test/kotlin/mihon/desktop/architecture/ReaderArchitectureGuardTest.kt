@@ -1,12 +1,7 @@
 package mihon.desktop.architecture
 
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.nio.file.Files
 import java.nio.file.Path
@@ -44,26 +39,6 @@ class ReaderArchitectureGuardTest {
 
         assertNoMarkers(platformReaderProductionRoots, legacyDecisionOwnerMarkers)
 
-        val runtimeFactory = executableSource(
-            source("app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt"),
-        )
-        assertTrue(
-            Regex(
-                """\bval\s+pageContentOwner\s*=\s*DesktopReaderPageContentOwner\s*\(""",
-            ).containsMatchIn(runtimeFactory),
-            "Desktop runtime must bind its session store to one page-content owner",
-        )
-        assertEquals(
-            1,
-            Regex("""\bDesktopReaderPageImagePipeline\s*\(""").findAll(runtimeFactory).count(),
-            "Desktop runtime must construct exactly one page-image pipeline",
-        )
-        assertEquals(
-            1,
-            Regex("""\bstore::read\b""").findAll(runtimeFactory).count(),
-            "Desktop runtime must expose exactly one encoded-content open port",
-        )
-
         assertSourceOwners("ReaderRequestScheduler(", schedulerOwners)
         assertSourceOwners("ReaderPageMaterializeRunner(", pageMaterializeRunnerConsumers)
         assertSourceOwners("ReaderProgressPolicy.reduce(", progressPolicyOwners)
@@ -94,20 +69,6 @@ class ReaderArchitectureGuardTest {
             violations,
             "Single, Dual, and Webtoon must not regain a private image fetch, decoder, painter, or preloader owner",
         )
-    }
-
-    @Test
-    fun `parity manifest records RG01 cleanup and enforced reader guard`() {
-        val capabilities = Json.parseToJsonElement(
-            source("app-desktop/src/test/resources/parity/parity-manifest.json"),
-        ).jsonArray.associateBy { item -> item.jsonObject.getValue("id").jsonPrimitive.content.toInt() }
-
-        readerCapabilityIds.forEach { id ->
-            val scope = capabilities.getValue(id).jsonObject.getValue("readerCoreMigrationScope").jsonObject
-            assertEquals("RG-01", scope.getValue("legacyCleanupTask").jsonPrimitive.content, "ID $id cleanup task")
-            assertEquals("REMOVED", scope.getValue("legacyReaderExecutors").jsonPrimitive.content, "ID $id legacy state")
-            assertEquals("ENFORCED", scope.getValue("readerArchitectureGuard").jsonPrimitive.content, "ID $id guard state")
-        }
     }
 
     private fun assertNoMarkers(sourceRoot: String, forbiddenMarkers: Set<String>) {
@@ -270,8 +231,6 @@ class ReaderArchitectureGuardTest {
             LINE_COMMENT,
             BLOCK_COMMENT,
         }
-
-        val readerCapabilityIds = setOf(9, 43, 44, 45, 47, 49, 51, 53, 54)
 
         val legacyReaderFiles = setOf(
             "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderPageLoader.kt",

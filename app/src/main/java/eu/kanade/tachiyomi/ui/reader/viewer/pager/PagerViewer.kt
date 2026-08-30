@@ -74,7 +74,9 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
                 awaitingIdleViewerChapters?.let { viewerChapters ->
                     setChaptersInternal(viewerChapters)
                     awaitingIdleViewerChapters = null
-                    if (viewerChapters.currChapter.pages?.size == 1) {
+                    val currentChapterAlreadySelected =
+                        (currentPage as? ReaderPage)?.chapter == viewerChapters.currChapter
+                    if (viewerChapters.currChapter.pages?.size == 1 && !currentChapterAlreadySelected) {
                         val effect = ReaderAdjacentChapterPolicy.effectForPageAnchor(
                             anchorPageIndex = 0,
                             pageCount = 1,

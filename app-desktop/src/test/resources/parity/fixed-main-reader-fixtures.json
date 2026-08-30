@@ -391,9 +391,9 @@
       "classification": "DESKTOP_PRODUCT_ENHANCEMENT",
       "introductionRefs": ["6ee9473cde839fe5ee932bdb5263c78567c2ff12"],
       "behaviorEvidenceRefs": [
-        "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#full next chapter waits for every current page then materializes all encoded pages without progress"
+        "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#opt in decorator waits for current generation first presentation and shared scheduler idle"
       ],
-      "description": "Desktop can prefetch the complete next chapter through bounded P4 encoded-only work while OFF restores the recorded fixed-original traffic boundary.",
+      "description": "Desktop defaults image prefetch to OFF and preserves the recorded fixed-original last-five-page metadata boundary; FIRST_VIEWPORT and FULL_NEXT_CHAPTER remain explicit opt-in bounded P4 encoded-only decorators gated by current-generation first presentation, all-current Ready and shared-scheduler idle.",
       "resolutionStatus": "ACTIVE"
     },
     {

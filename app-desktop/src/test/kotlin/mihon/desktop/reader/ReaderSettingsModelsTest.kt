@@ -227,7 +227,7 @@ class ReaderSettingsModelsTest {
     fun `explicit legacy image prefetch values migrate to the new key and remain retained`() {
         val root = Preferences.userRoot().node("/mihon/reader-prefetch-legacy-test/${System.nanoTime()}")
         try {
-            listOf(NextChapterPrefetchMode.FIRST_VIEWPORT, NextChapterPrefetchMode.FULL_NEXT_CHAPTER).forEach { mode ->
+            NextChapterPrefetchMode.entries.forEach { mode ->
                 val store = DesktopPreferenceStore(root.node("store-${mode.name}"))
                 val legacy = root.node("legacy-${mode.name}")
                 legacy.put(LEGACY_IMAGE_PREFETCH_KEY, mode.name)

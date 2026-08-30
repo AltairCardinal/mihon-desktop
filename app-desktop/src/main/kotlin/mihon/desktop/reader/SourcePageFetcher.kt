@@ -28,8 +28,7 @@ import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
  *
  * Solution: Access the source's client and headers reflectively (HttpSource may be
  * in a child classloader, making direct casting impossible), build OkHttp requests
- * with the correct headers, and save responses to local temp files. Coil then loads
- * from file:// URIs which never require external headers.
+ * with the correct headers, and write the response to the canonical encoded-store destination.
  */
 class SourcePageFetcher(
     private val source: CatalogueSource,
@@ -67,30 +66,13 @@ class SourcePageFetcher(
             )
     }
 
-    /**
-     * Downloads [page] to [destDir] using the source's client and headers.
-     *
-     * @return a local `file://` URI on success, or the shared source error on failure.
-     */
-    suspend fun fetch(page: Page, destDir: File): SourcePageFetchResult {
-        val imageUrl = try {
-            resolveImageUrl(page)
-        } catch (error: AppErrorException) {
-            return SourcePageFetchResult.Failure(error.error)
-        }
-        val ext = imageUrl.substringAfterLast('.').substringBefore('?').take(4).ifBlank { "jpg" }
-        val destFile = File(destDir, "page_${page.index.toString().padStart(4, '0')}.$ext")
-
-        page.imageUrl = imageUrl
-        return fetchToDestination(page, destFile)
-    }
-
     suspend fun fetchToDestination(page: Page, destFile: File): SourcePageFetchResult {
         val imageUrl = try {
             resolveImageUrl(page)
         } catch (error: AppErrorException) {
             return SourcePageFetchResult.Failure(error.error)
         }
+        page.imageUrl = imageUrl
 
         if (withContext(Dispatchers.IO) { destFile.isDecodableImage() }) {
             return SourcePageFetchResult.Success(destFile.toURI().toString())
@@ -125,10 +107,6 @@ class SourcePageFetcher(
             SourcePageFetchResult.Failure(cause.toSourceAppError())
         }
     }
-
-    /** Backward-compatible nullable API for callers that do not present failures. */
-    suspend fun fetchToFile(page: Page, destDir: File): String? =
-        (fetch(page, destDir) as? SourcePageFetchResult.Success)?.uri
 
     private suspend fun invokeReflectiveImageUrl(page: Page): String? {
         val method = source.javaClass.methods.firstOrNull { candidate ->

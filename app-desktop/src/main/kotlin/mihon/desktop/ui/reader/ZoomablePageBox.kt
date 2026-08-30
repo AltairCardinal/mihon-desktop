@@ -351,22 +351,6 @@ internal data class ReaderPresentationBitmapTransform(
     val renderedSourceBounds: PixelBounds,
 )
 
-internal fun transformCachedPageBitmap(
-    bitmap: ImageBitmap,
-    splitHalf: PageSplitHalf? = null,
-    sourceBounds: PixelBounds? = null,
-    cropBorders: Boolean = false,
-    sourceWidth: Int = bitmap.width,
-    sourceHeight: Int = bitmap.height,
-): ImageBitmap = transformCachedPageBitmapWithSourceBounds(
-    bitmap = bitmap,
-    splitHalf = splitHalf,
-    sourceBounds = sourceBounds,
-    cropBorders = cropBorders,
-    sourceWidth = sourceWidth,
-    sourceHeight = sourceHeight,
-).bitmap
-
 internal fun transformCachedPageBitmapWithSourceBounds(
     bitmap: ImageBitmap,
     splitHalf: PageSplitHalf? = null,
@@ -474,8 +458,8 @@ private fun scaleCoordinate(coordinate: Int, sourceExtent: Int, bitmapExtent: In
     ((coordinate.toLong() * bitmapExtent + sourceExtent / 2L) / sourceExtent).toInt()
 
 /**
- * Scans [src] for white borders using [CropBorderScanner] and returns a cropped
- * [ImageBitmap].  Returns null if no meaningful crop is found.
+ * Scans [src] for white borders in the active Skia presentation transform and returns a cropped
+ * [ImageBitmap]. Returns null if no meaningful crop is found.
  *
  * Border scanning reads pixel colours via [SkiaBitmap.getColor] — no AWT conversion needed.
  */

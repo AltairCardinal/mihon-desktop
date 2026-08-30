@@ -49,6 +49,7 @@ class DesktopProductCapabilityContractTest {
             28 to "VERIFIED",
             32 to "VERIFIED",
             38 to "VERIFIED",
+            44 to "VERIFIED",
             54 to "VERIFIED",
             56 to "VERIFIED",
             66 to "VERIFIED",
@@ -88,7 +89,7 @@ class DesktopProductCapabilityContractTest {
                 ),
         )
     private val task3ProvenanceStatuses =
-        mapOf(24 to "SHARED", 26 to "WIRED", 44 to "SHARED", 45 to "VERIFIED", 47 to "VERIFIED", 49 to "VERIFIED", 51 to "VERIFIED", 53 to "VERIFIED")
+        mapOf(24 to "SHARED", 26 to "WIRED", 44 to "VERIFIED", 45 to "VERIFIED", 47 to "VERIFIED", 49 to "VERIFIED", 51 to "VERIFIED", 53 to "VERIFIED")
     private val task3BehaviorMethods =
         mapOf(
             24 to
@@ -109,6 +110,31 @@ class DesktopProductCapabilityContractTest {
                 mapOf(
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt" to
                         setOf("Skia region adapter decodes only the requested tile"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRegionDecoderTest.kt" to
+                        setOf("ImageIO region adapter applies source region and subsampling to real pixels"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRegionPresentationOwnerTest.kt" to
+                        setOf(
+                            "4001 by 4000 static page enables region tiles only after its full preview is ready",
+                            "preview and viewport tiles share one physical open and same tile key single flights",
+                            "unified image budget keeps region tiles under an 8 entry LRU and draw lease survives eviction",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRegionPresentationLifecycleTest.kt" to
+                        setOf(
+                            "generation advance rejects a non cooperative late region tile and releases its source",
+                            "holder detach rejects a non cooperative late region tile instead of warming stale tile cache",
+                            "owner close rejects a non cooperative late region tile instead of warming stale tile cache",
+                            "pipeline close rejects a non cooperative late region tile and releases its source",
+                            "null thrown and unsupported tile failures retain preview and do not block another tile",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPageAttemptPipelineTest.kt" to
+                        setOf(
+                            "full frame region and both caches use attempt identity while Retry preserves another page",
+                            "Retry rejects non cooperative old full frame and region results and releases every asset",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRegionCacheRevisionTest.kt" to
+                        setOf("region commit hit and eviction do not invalidate ordinary decoded cache observers"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderUnifiedImageMemoryAuthorityTest.kt" to
+                        setOf("FULL and TILE share 192 MiB and cross-purpose LRU eviction preserves ordinary revision semantics"),
                 ),
             45 to
                 mapOf(
@@ -131,7 +157,7 @@ class DesktopProductCapabilityContractTest {
                             "closing releases every retained chapter once",
                         ),
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderChapterWindowProductionWiringTest.kt" to
-                        setOf("ReaderViewModel preloads only an adjacent target and commits the shared window on activation"),
+                        setOf("ReaderViewModel consumes the shared adjacent effect once and commits the window on activation"),
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderWindowEffectIntegrationTest.kt" to
                         setOf(
                             "stale prefetch effect cannot restart a chapter after it leaves the retained window",
@@ -234,6 +260,9 @@ class DesktopProductCapabilityContractTest {
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt" to
                         setOf(
+                            "canonical adjacent metadata uses anchor before first presentation without fetching images",
+                            "opt in decorator waits for current generation first presentation and shared scheduler idle",
+                            "stale generation target and repeated first presentation cannot release old adjacent work",
                             "full next chapter waits for every current page then materializes all encoded pages without progress",
                             "first viewport mode materializes only its bounded next chapter prefix",
                             "off mode keeps last five page-list preload but never fetches adjacent images",
@@ -254,7 +283,11 @@ class DesktopProductCapabilityContractTest {
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
                         setOf("mounted production screen launches next chapter prefetch wiring"),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt" to
-                        setOf("next chapter prefetch defaults to full and persists every policy"),
+                        setOf(
+                            "image prefetch defaults to off without persisting an implicit value",
+                            "explicit new image prefetch values win and remain persisted",
+                            "explicit legacy image prefetch values migrate to the new key and remain retained",
+                        ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt" to
                         setOf("Reader Library Download and Backup controls expose one labeled action with role and state"),
                 ),
@@ -682,7 +715,7 @@ class DesktopProductCapabilityContractTest {
                 ),
         )
     private val task9Statuses =
-        mapOf(39 to "VERIFIED", 40 to "VERIFIED", 43 to "VERIFIED", 44 to "SHARED", 45 to "VERIFIED", 47 to "VERIFIED", 49 to "VERIFIED", 51 to "VERIFIED")
+        mapOf(39 to "VERIFIED", 40 to "VERIFIED", 43 to "VERIFIED", 44 to "VERIFIED", 45 to "VERIFIED", 47 to "VERIFIED", 49 to "VERIFIED", 51 to "VERIFIED")
     private val task9FollowUps =
         mapOf(39 to "Task 14", 40 to "NONE", 43 to "NONE", 44 to "NONE", 45 to "NONE", 47 to "NONE", 49 to "NONE", 51 to "NONE")
     private val task9BehaviorMethods =
@@ -716,6 +749,22 @@ class DesktopProductCapabilityContractTest {
                 mapOf(
                     "app/src/test/java/eu/kanade/tachiyomi/data/coil/AndroidReaderPageDecoderContractTest.kt" to setOf("Android reader cache adapter keeps tiled pages out of Coil decoded caches"),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt" to setOf("Skia region adapter decodes only the requested tile"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRegionDecoderTest.kt" to setOf("ImageIO region adapter applies source region and subsampling to real pixels"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRegionPresentationLifecycleTest.kt" to
+                        setOf(
+                            "generation advance rejects a non cooperative late region tile and releases its source",
+                            "holder detach rejects a non cooperative late region tile instead of warming stale tile cache",
+                            "owner close rejects a non cooperative late region tile instead of warming stale tile cache",
+                            "pipeline close rejects a non cooperative late region tile and releases its source",
+                            "null thrown and unsupported tile failures retain preview and do not block another tile",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPageAttemptPipelineTest.kt" to
+                        setOf(
+                            "full frame region and both caches use attempt identity while Retry preserves another page",
+                            "Retry rejects non cooperative old full frame and region results and releases every asset",
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRegionCacheRevisionTest.kt" to
+                        setOf("region commit hit and eviction do not invalidate ordinary decoded cache observers"),
                 ),
             45 to
                 mapOf(
@@ -1964,8 +2013,12 @@ class DesktopProductCapabilityContractTest {
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt" to
                         mapOf(
-                            "next chapter prefetch defaults to full and persists every policy" to
-                                setOf("NextChapterPrefetchMode.entries", "ReaderPreferences(store, legacy)"),
+                            "image prefetch defaults to off without persisting an implicit value" to
+                                setOf("NextChapterPrefetchMode.OFF", "ReaderPreferences(store, legacy)"),
+                            "explicit new image prefetch values win and remain persisted" to
+                                setOf("NextChapterPrefetchMode.FIRST_VIEWPORT", "ReaderPreferences(store, legacy)"),
+                            "explicit legacy image prefetch values migrate to the new key and remain retained" to
+                                setOf("legacy.get", "ReaderPreferences(store, legacy)"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt" to
                         mapOf(
@@ -1984,8 +2037,8 @@ class DesktopProductCapabilityContractTest {
                         ),
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderChapterWindowProductionWiringTest.kt" to
                         mapOf(
-                            "ReaderViewModel preloads only an adjacent target and commits the shared window on activation" to
-                                setOf("viewModel.preload", "viewModel.loadNextChapter", "chapterWindow"),
+                            "ReaderViewModel consumes the shared adjacent effect once and commits the window on activation" to
+                                setOf("viewModel.consumeAdjacentChapterEffect", "viewModel.loadNextChapter", "chapterWindow"),
                         ),
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderWindowEffectIntegrationTest.kt" to
                         mapOf(
@@ -2141,6 +2194,16 @@ class DesktopProductCapabilityContractTest {
                         setOf("applySharedReaderCachePolicy(PageDecodeCachePolicy.TILED_READER)"),
                     "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt" to
                         setOf("class SkiaRegionPageDecoder", "ceilDiv"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipeline.kt" to
+                        setOf("fun openRegionSession", "fun acquireRegionTile", "tileCache"),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRegionPresentationOwner.kt" to
+                        setOf(
+                            "class DesktopReaderRegionPresentationOwner",
+                            "class DesktopReaderRegionPresentationHolder",
+                            "pageImagePipeline.openRegionSession",
+                        ),
+                    "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderImageMemoryAuthority.kt" to
+                        setOf("enum class DesktopReaderImageMemoryKind", "TILE"),
                 ),
             45 to
                 mapOf(
@@ -2180,7 +2243,7 @@ class DesktopProductCapabilityContractTest {
                             "nextChapterPrefetchPreference.changes()",
                         ),
                     "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderPreferences.kt" to
-                        setOf("enum class NextChapterPrefetchMode", "FULL_NEXT_CHAPTER"),
+                        setOf("enum class NextChapterPrefetchMode", "FULL_NEXT_CHAPTER", "NextChapterPrefetchMode.OFF"),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/ReaderSettingsScreen.kt" to
                         setOf("NextChapterPrefetchMode.entries", "nextChapterPrefetchLabel"),
                 ),
@@ -3348,7 +3411,7 @@ class DesktopProductCapabilityContractTest {
         val expectedStatuses = mapOf(
             9 to "VERIFIED",
             43 to "VERIFIED",
-            44 to "SHARED",
+            44 to "VERIFIED",
             45 to "VERIFIED",
             47 to "VERIFIED",
             49 to "VERIFIED",
@@ -3435,6 +3498,19 @@ class DesktopProductCapabilityContractTest {
                 delegateMarkers.forEach { marker ->
                     assertTrue(marker in source, "ID $id production delegate $path must consume `$marker`")
                 }
+            }
+            if (id == 44) {
+                val sharedRoleEvidence = item.getValue("roleEvidence").jsonObject
+                    .getValue("SHARED_OR_ADAPTER").jsonArray
+                    .map { it.jsonObject }
+                assertTrue(
+                    sharedRoleEvidence.any { evidence ->
+                        evidence.getValue("path").jsonPrimitive.content ==
+                            "domain/src/commonMain/kotlin/mihon/domain/reader/ReaderPageModel.kt" &&
+                            evidence.getValue("symbol").jsonPrimitive.content == "interface RegionDecoder"
+                    },
+                    "ID 44 shared role evidence must bind the RegionDecoder contract",
+                )
             }
         }
     }

@@ -58,7 +58,9 @@ class DualPageR2LPagerViewer(override val activity: ReaderActivity) : Viewer, Vi
                 awaitingIdleViewerChapters?.let { viewerChapters ->
                     setChaptersInternal(viewerChapters)
                     awaitingIdleViewerChapters = null
-                    if (viewerChapters.currChapter.pages?.size == 1) {
+                    val currentChapterAlreadySelected =
+                        (currentPage as? DisplayPage)?.firstPage?.chapter == viewerChapters.currChapter
+                    if (viewerChapters.currChapter.pages?.size == 1 && !currentChapterAlreadySelected) {
                         val effect = ReaderAdjacentChapterPolicy.effectForPageAnchor(
                             anchorPageIndex = 0,
                             pageCount = 1,

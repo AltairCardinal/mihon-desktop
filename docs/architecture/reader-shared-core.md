@@ -7,7 +7,7 @@
 
 - 已共享并由 Android 生产消费：稳定 session/page 状态、page-list 与单页 materialize executor、唯一
   priority/generation scheduler、encoded store contract、current/previous/next 章节窗口、跨章激活及 settled
-  viewport 进度决策；Desktop `PagePreloader` 也消费同一 scheduler；
+  viewport 进度决策；Desktop canonical session 也直接消费同一 scheduler；
 - 另已共享：解码/cache contract、宽图拆分/配对纯算法、输入导航、章节过滤、reader entry resolver 和滤镜参数；
 - RP-01～RP-03 已建立 Desktop `ReaderPresentationStrategy`、稳定 `DisplayUnitId`/`VisiblePageSet` 与 mode
   registry，单页、Webtoon 和 Dual production selector 均已迁移；
@@ -105,12 +105,14 @@ Desktop adapter 使用同一条物理边界：图片与章节 page-list material
 metadata 在 page list 尚无稳定 `PageId` 时不伪装成图片请求，而由相邻目标 sequence 管理；它必须先完成才会产生
 P4 图片请求，激活/换目标会取消旧 sequence。后台请求不能饿死可见页。
 
-RD-02 在 Desktop adapter 中实现 `OFF / FIRST_VIEWPORT / FULL_NEXT_CHAPTER` 三档相邻章图片策略，默认
-`FULL_NEXT_CHAPTER`。只有当前章全部逻辑页均为 `Ready(encodedRef)` 后，才会为下一章发出 P4；
-`FIRST_VIEWPORT` 只覆盖 presentation 提供的首屏页数，`FULL_NEXT_CHAPTER` 覆盖完整 page list。用户激活
-下一章时先取消该章仍在运行或排队的 P4，再由 active viewport 以 P0 请求尚未 Ready 的可见页。切到 `OFF`、
-跳向其他章节或关闭 session 都会取消不再有用的策略请求；若尚未进入末五页，`OFF` 还会取消仅由完整预取
-触发的 page-list 网络请求。
+RD-02 在 Desktop adapter 中实现 `OFF / FIRST_VIEWPORT / FULL_NEXT_CHAPTER` 三档相邻章图片 decorator，默认
+`OFF`。固定原版 canonical metadata 独立读取 shared viewport anchor：进入末五页即可取得下一章 page list，
+不依赖首帧绘制且不获取图片。只有用户显式选择 `FIRST_VIEWPORT` 或 `FULL_NEXT_CHAPTER`，当前 generation 已
+收到 `FIRST_PAGE_PRESENTED`、当前章全部逻辑页均为 `Ready(encodedRef)` 且 shared scheduler idle 后，才会
+为下一章发出 encoded-only P4；`FIRST_VIEWPORT` 只覆盖 presentation 提供的首屏页数，`FULL_NEXT_CHAPTER`
+覆盖完整 page list。用户激活下一章时先取消该章仍在运行或排队的 P4，再由 active viewport 以 P0 请求尚未
+Ready 的可见页。切到 `OFF`、跳向其他章节或关闭 session 都会取消不再有用的 decorator 请求；stale
+generation/target 与重复首帧事件不能释放旧目标工作。
 
 相邻章 Storage 失败的降级副作用还必须同时匹配当前 target sequence 与仍被 scheduler 接受的 request identity；
 旧目标即使在取消后迟到返回，也不能设置新目标的 quota block 或取消新目标 P4。
@@ -123,8 +125,10 @@ Desktop preference。
 不能线性保留整章 decoded bitmap。相邻章写入若因 encoded-store 配额或 storage 失败而拒绝，会停止该章
 剩余后台请求，不改变当前章状态，也不产生 history、`last_page_read` 或 read effect。
 
-RD-01 已删除 Desktop 主 loader 与网络型 `PagePreloader` 的双获取链；canonical session 产出的 encoded ref
-是 presentation decode 的唯一输入。`PagePreloader` 只保留 viewport 附近的有界解码/cache 职责。
+RD-01/RUA-04D5 已删除 Desktop 主 loader 与 `PagePreloader` 第二 owner；canonical session 产出的 encoded ref
+是 `DesktopReaderPageImagePipeline` 的唯一解码输入。`DesktopReaderPresentationImageOwner` 只持有 pipeline
+返回的引用计数 lease，edge matcher 只消费 `retainCachedFullPageAssets()` 返回的 cached FULL 资产，不拥有
+fetch、materialize、decode 或 queue。
 
 ## Presentation SPI
 
@@ -163,8 +167,8 @@ Dual renderer 始终在完整 reader content viewport 中挂载两个各占一�
 保留双槽身份。窗口 resize 只改变布局尺寸，pair/slot identity 与 zoom container 不变；默认 `FIT_SCREEN` 不
 裁切或拉伸，漫画自身比例造成的留白不由 frame 隐藏。宽图切片继续通过统一 `ZoomablePageBox` 的
 `splitHalf/sourceBounds` 渲染，所以右键保存消费与屏幕相同的实际切片。自动 edge matching 只读取
-`PagePreloader` 的有界 decoded cache；matcher
-没有 URL 或网络入口，也不拥有 fetch job。production observer 收集 cache revision：晚到解码会触发重算，
+`DesktopReaderPresentationImageOwner` 从唯一 pipeline 保留的 cached FULL lease；matcher 没有 URL、网络、
+materialize 或 decode 入口，也不拥有 fetch job。production observer 收集 cache revision：晚到解码会触发重算，
 新发现与本章已确认 pair 做并集；缓存淘汰不会让当前章节的排版来回跳变。
 
 side padding、crop、双页组合选项与覆盖 drag/fling、只在滚动 settled 后恢复的 auto-scroll 都是 renderer /
@@ -254,15 +258,15 @@ RA-01 的 online→download route reset 只接受由同一 canonical Wait/Error 
 | RA-01 | Android 不再保留第二套 session/loader 决策 |
 | RP-01～RP-03 | Single/Webtoon/Dual 通过同一 SPI，core 无 presentation 分支 |
 | RD-01 | Desktop production 只创建 canonical session，空 URL/双 loader/Screen replace 已删除 |
-| RD-02 | Desktop 已接入默认完整、可选首屏/关闭的 encoded-only P4 policy；OFF 保留末五页 page-list-only |
+| RD-02 | Desktop 图片 decorator 默认 OFF；显式首屏/完整模式经首帧、all-Ready、shared-idle 门禁进入 encoded-only P4，canonical anchor 仍保留末五页 page-list-only |
 | RG-01 | legacy bridge/executor 删除，架构守卫与文档一致 |
 
 RD-01 已以 Android、Desktop production wiring 与行为测试把 manifest 的 `canonicalSessionExecutor` 收口为
 `WIRED`；RD-02 的 preference、P4/P0、配额降级和原版 OFF 边界证据归属 capability 45。RG-01 已删除剩余
 Continue/Dismiss 兼容面及未接线的私有进度 helper，并固定 canonical decision 声明/调用 owner、已知 legacy
-owner、legacy 文件零清单、core/presentation 依赖边界与 `store::read` decoded-only `PagePreloader` wiring；
+owner、legacy 文件零清单、core/presentation 依赖边界与唯一 session/pipeline/presentation/region owner wiring；
 后续变更若恢复这些兼容面/旧 owner、增加 Reader-named scheduler/progress/window/session/queue/completion
-decision family，或新增第二个/网络型 decode preloader，架构门禁会失败。
+decision family，或新增第二个 fetch/materialize/decode/cache owner，架构门禁会失败。
 
 ## 验证与失败处理
 

@@ -2,7 +2,6 @@ package mihon.desktop.reader
 
 import androidx.compose.ui.graphics.asComposeImageBitmap
 import java.awt.image.BufferedImage
-import java.nio.file.Files
 import java.util.Locale
 import mihon.desktop.ui.reader.loadPageContextMenuImage
 import mihon.desktop.ui.reader.pageContextMenuLabels
@@ -50,19 +49,6 @@ class PageContextMenuActionTest {
         assertTrue('?' !in name, "? should be removed, got: $name")
         assertTrue('*' !in name, "* should be removed, got: $name")
         assertTrue(':' !in name, ": should be removed, got: $name")
-    }
-
-    @Test
-    fun `saveImageToFile writes PNG to the given path`() {
-        val img = BufferedImage(10, 10, BufferedImage.TYPE_INT_ARGB)
-        val tmpFile = Files.createTempFile("page-save-test", ".png").toFile()
-        try {
-            PageSaveHelper.saveImageToFile(img, tmpFile)
-            assertTrue(tmpFile.exists())
-            assertTrue(tmpFile.length() > 0)
-        } finally {
-            tmpFile.delete()
-        }
     }
 
     @Test
