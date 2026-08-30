@@ -86,7 +86,9 @@ class MigrationListScreenModelBatchWiringTest {
         )
 
         screenModel.migrateMangas()
-        withTimeout(5_000) { runnerCalled.await() }
+        withContext(Dispatchers.Default.limitedParallelism(1)) {
+            withTimeout(5_000) { runnerCalled.await() }
+        }
 
         verify(exactly = 1) { runner.run(emptyList(), 0, any()) }
     }
