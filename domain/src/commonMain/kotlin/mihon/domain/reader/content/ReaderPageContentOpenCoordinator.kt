@@ -13,9 +13,17 @@ data class ReaderPageContentOpenRequest(
     val pageId: ReaderPageId,
     val generation: Long,
     val encodedPageRef: EncodedPageRef,
+    val attemptGeneration: Long = 0L,
 ) {
     init {
         require(generation >= 0L) { "generation must be non-negative" }
+        require(attemptGeneration >= 0L) { "attemptGeneration must be non-negative" }
+    }
+
+    /** Returns the next Retry identity while retaining the same logical page, session, and encoded ref. */
+    fun nextAttempt(): ReaderPageContentOpenRequest {
+        check(attemptGeneration < Long.MAX_VALUE) { "Reader page content attempt generation is exhausted" }
+        return copy(attemptGeneration = attemptGeneration + 1L)
     }
 }
 

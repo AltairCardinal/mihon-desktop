@@ -34,9 +34,11 @@ data class ReaderPageFetchRequest(
     val generation: Long,
     val url: String,
     val imageUrl: String?,
+    val attemptGeneration: Long = 0L,
 ) {
     init {
         require(generation >= 0) { "generation must be non-negative" }
+        require(attemptGeneration >= 0) { "attemptGeneration must be non-negative" }
     }
 }
 

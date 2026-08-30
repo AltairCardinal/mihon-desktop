@@ -43,19 +43,40 @@ class PagePreloader internal constructor(
         pageIds: List<ReaderPageId>? = null,
         observer: ReaderPageIoObserver? = null,
         sessionGeneration: Long? = null,
+        attemptGenerations: List<Long>? = null,
     ) {
         require(pageIds == null || pageIds.size == encodedPageRefs.size) { "pageIds must match sources" }
+        require(attemptGenerations == null || attemptGenerations.size == encodedPageRefs.size) {
+            "attemptGenerations must match sources"
+        }
+        require(attemptGenerations?.all { it >= 0L } != false) {
+            "attemptGenerations must be non-negative"
+        }
         checkOpen()
         val generation = sessionGeneration ?: synchronized(lock) { ++legacyGeneration }
         if (!pageImagePipeline.beginGeneration(generation)) return
         val encodedPageRef = encodedPageRefs.getOrNull(currentPage)
+        val pageId = pageIds?.getOrNull(currentPage)
+            ?: currentPage.takeIf(encodedPageRefs.indices::contains)?.let { ReaderPageId(LEGACY_CHAPTER_ID, it) }
+        val attemptGeneration = attemptGenerations?.getOrNull(currentPage) ?: 0L
+        if (
+            pageId != null &&
+            !pageImagePipeline.beginPageAttempt(pageId, generation, attemptGeneration)
+        ) {
+            return
+        }
         if (encodedPageRef == null) {
             releasePinnedLeases()
             return
         }
-        val pageId = pageIds?.get(currentPage) ?: ReaderPageId(LEGACY_CHAPTER_ID, currentPage)
+        checkNotNull(pageId) { "Visible encoded page has no page identity" }
         val key = ReaderPageDecodeKey(
-            contentKey = ReaderPageContentOpenRequest(pageId, generation, encodedPageRef),
+            contentKey = ReaderPageContentOpenRequest(
+                pageId = pageId,
+                generation = generation,
+                encodedPageRef = encodedPageRef,
+                attemptGeneration = attemptGeneration,
+            ),
             purpose = PageDecodePurpose.FULL_PAGE,
             maxWidth = maxDecodedWidth,
             maxHeight = maxDecodedHeight,

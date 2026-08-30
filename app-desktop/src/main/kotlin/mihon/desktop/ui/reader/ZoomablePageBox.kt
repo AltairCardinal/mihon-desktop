@@ -96,6 +96,7 @@ internal fun ZoomablePageBox(
     loadingAlignment: Alignment = Alignment.Center,
     showLoadingIndicator: Boolean = true,
     onLoadingStateChange: ((Boolean) -> Unit)? = null,
+    onRetry: (() -> Unit)? = null,
     onSpreadDetected: (() -> Unit)? = null,
     scaleType: ScaleType = ScaleType.FIT_SCREEN,
     navigationMode: NavigationMode = NavigationMode.RightAndLeft,
@@ -114,7 +115,8 @@ internal fun ZoomablePageBox(
     val identity = presentationImage.holder.identity
     val splitHalf = identity.splitHalf
     val sourceBounds = identity.sourceBounds
-    val readyState = presentationImage.state as? DesktopReaderPresentationImageState.Ready
+    val presentationState = presentationImage.state
+    val readyState = presentationState as? DesktopReaderPresentationImageState.Ready
     val asset = readyState?.asset
     val renderedImage = rememberReaderPresentationRenderedImage(presentationImage, cropBorders)
 
@@ -261,7 +263,10 @@ internal fun ZoomablePageBox(
                 .then(doubleTapModifier),
             contentAlignment = imageAlignment,
         ) {
-            val shouldShowLoading = asset == null || renderedImage == null
+            val fullDecodeFailed = presentationState is DesktopReaderPresentationImageState.Failed
+            val presentationClosed = presentationState is DesktopReaderPresentationImageState.Closed
+            val shouldShowLoading = !fullDecodeFailed && !presentationClosed &&
+                (asset == null || renderedImage == null)
             LaunchedEffect(shouldShowLoading) {
                 onLoadingStateChange?.invoke(shouldShowLoading)
             }
@@ -272,6 +277,12 @@ internal fun ZoomablePageBox(
                 ) {
                     CircularProgressIndicator(color = Color.White)
                 }
+            }
+            if (fullDecodeFailed) {
+                ReaderPageRetryContent(
+                    onRetry = onRetry,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
 
             // Resolve ContentScale from ScaleType.
@@ -298,7 +309,7 @@ internal fun ZoomablePageBox(
                     translationY = zoomState.offsetY,
                 )
                 .observeReaderPageDraw(renderedImage?.acknowledgeDraw)
-            if (renderedImage != null) {
+            if (renderedImage != null && !fullDecodeFailed && !presentationClosed) {
                 Image(
                     bitmap = renderedImage.bitmap,
                     contentDescription = pageLabel,

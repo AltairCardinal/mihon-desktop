@@ -22,6 +22,7 @@ import mihon.domain.reader.content.ReaderPageContentOpenRequest
 import mihon.domain.reader.observability.ReaderIoEventType
 import mihon.domain.reader.observability.ReaderIoPurpose
 import mihon.domain.reader.observability.ReaderIoReporter
+import mihon.domain.reader.session.ReaderPageId
 import org.jetbrains.skia.Bitmap as SkiaBitmap
 import org.jetbrains.skia.Canvas as SkiaCanvas
 import org.jetbrains.skia.Codec as SkiaCodec
@@ -232,6 +233,11 @@ class DesktopReaderPageImagePipeline internal constructor(
     maxBytes: Long = DEFAULT_CACHE_BYTES,
     maxConcurrentDecodes: Int = DEFAULT_CONCURRENT_DECODES,
 ) : AutoCloseable {
+    private data class PageGenerationIdentity(
+        val pageId: ReaderPageId,
+        val generation: Long,
+    )
+
     private class Entry {
         lateinit var deferred: Deferred<DesktopReaderImageAssetLease?>
         var pendingAcquires: Int = 0
@@ -249,6 +255,7 @@ class DesktopReaderPageImagePipeline internal constructor(
     private val decodePermits = Semaphore(maxConcurrentDecodes)
     private val entries = mutableMapOf<ReaderPageDecodeKey, Entry>()
     private val contentSessions = mutableMapOf<ReaderPageContentOpenRequest, ContentSessionEntry>()
+    private val minimumPageAttempts = mutableMapOf<PageGenerationIdentity, Long>()
     private val mutableCacheRevision = MutableStateFlow(0L)
     private var minimumGeneration = 0L
     private var closed = false
@@ -322,7 +329,7 @@ class DesktopReaderPageImagePipeline internal constructor(
         require(key.purpose == PageDecodePurpose.REGION_TILE) {
             "Only accepted region tiles may enter the tile cache"
         }
-        if (closed || key.generation < minimumGeneration) return false
+        if (closed || !isCurrentAttemptLocked(key.contentKey)) return false
         tileCache.commit(key, acceptedLease)
     }
 
@@ -332,7 +339,7 @@ class DesktopReaderPageImagePipeline internal constructor(
     ): DesktopReaderImageAssetLease? {
         val entry = synchronized(lock) {
             check(!closed) { "Desktop reader page image pipeline is closed" }
-            if (key.generation < minimumGeneration) return null
+            if (!isCurrentAttemptLocked(key.contentKey)) return null
             cacheFor(key)?.acquire(key)?.let { return it }
             entries.getOrPut(key) { createEntry(key, loader) }.also {
                 it.pendingAcquires++
@@ -354,7 +361,7 @@ class DesktopReaderPageImagePipeline internal constructor(
         val callerLease = synchronized(lock) {
             entry.pendingAcquires--
             val accepted = !closed &&
-                key.generation >= minimumGeneration &&
+                isCurrentAttemptLocked(key.contentKey) &&
                 entries[key] === entry
             val lease = if (accepted) decoded.retain() else null
             entryLeaseToClose = removeIfUnusedLocked(key, entry)
@@ -369,8 +376,52 @@ class DesktopReaderPageImagePipeline internal constructor(
 
     internal fun acquireCached(key: ReaderPageDecodeKey): DesktopReaderImageAssetLease? = synchronized(lock) {
         check(!closed) { "Desktop reader page image pipeline is closed" }
-        if (key.generation < minimumGeneration) return null
+        if (!isCurrentAttemptLocked(key.contentKey)) return null
         cacheFor(key)?.acquire(key)
+    }
+
+    /** Advances Retry identity for one logical page without disturbing another page or generation. */
+    internal fun beginPageAttempt(
+        pageId: ReaderPageId,
+        generation: Long,
+        attemptGeneration: Long,
+    ): Boolean {
+        require(generation >= 0L) { "generation must be non-negative" }
+        require(attemptGeneration >= 0L) { "attemptGeneration must be non-negative" }
+        val detached = synchronized(lock) {
+            check(!closed) { "Desktop reader page image pipeline is closed" }
+            if (generation < minimumGeneration) return false
+            val identity = PageGenerationIdentity(pageId, generation)
+            val previousAttempt = minimumPageAttempts[identity] ?: 0L
+            if (attemptGeneration < previousAttempt) return false
+            if (attemptGeneration == previousAttempt) return true
+            minimumPageAttempts[identity] = attemptGeneration
+
+            val staleEntries = entries.filterKeys { key ->
+                key.contentKey.isOlderAttempt(pageId, generation, attemptGeneration)
+            }
+            staleEntries.keys.forEach(entries::remove)
+            val staleSessions = contentSessions.filterKeys { contentKey ->
+                contentKey.isOlderAttempt(pageId, generation, attemptGeneration)
+            }
+            staleSessions.keys.forEach(contentSessions::remove)
+            staleEntries.values.toList() to staleSessions.values.map(ContentSessionEntry::content)
+        }
+
+        val staleKey: (ReaderPageDecodeKey) -> Boolean = { key ->
+            key.contentKey.isOlderAttempt(pageId, generation, attemptGeneration)
+        }
+        val removedFullEntries = cache.removeWhere(staleKey)
+        tileCache.removeWhere(staleKey)
+        if (removedFullEntries > 0) {
+            synchronized(lock) {
+                if (!closed) mutableCacheRevision.value++
+            }
+        }
+        detached.first.forEach { entry -> entry.deferred.cancel() }
+        releaseDetachedCompleted(detached.first)
+        detached.second.forEach(DesktopReaderSharedPageContent::close)
+        return true
     }
 
     /** Advances the accepted generation and rejects all older cache and in-flight results. */
@@ -381,6 +432,7 @@ class DesktopReaderPageImagePipeline internal constructor(
             if (generation < minimumGeneration) return false
             if (generation == minimumGeneration) return true
             minimumGeneration = generation
+            minimumPageAttempts.keys.removeAll { identity -> identity.generation < generation }
             val stale = entries.filterKeys { it.generation < generation }
             stale.keys.forEach(entries::remove)
             cache.clear()
@@ -450,7 +502,7 @@ class DesktopReaderPageImagePipeline internal constructor(
                 if (
                     key.purpose == PageDecodePurpose.FULL_PAGE &&
                     decoded != null && decoded.asset.animationMetadata == null && !closed &&
-                    key.generation >= minimumGeneration && entries[key] === entry &&
+                    isCurrentAttemptLocked(key.contentKey) && entries[key] === entry &&
                     cache.commit(key, decoded)
                 ) {
                     mutableCacheRevision.value++
@@ -533,7 +585,7 @@ class DesktopReaderPageImagePipeline internal constructor(
         purpose: String,
     ): ContentSessionEntry {
         check(!closed) { "Desktop reader page image pipeline is closed" }
-        check(contentKey.generation >= minimumGeneration) { "$purpose session generation is stale" }
+        check(isCurrentAttemptLocked(contentKey)) { "$purpose session identity is stale" }
         return contentSessions.getOrPut(contentKey) {
             ContentSessionEntry(
                 DesktopReaderSharedPageContent(
@@ -550,6 +602,22 @@ class DesktopReaderPageImagePipeline internal constructor(
         PageDecodePurpose.REGION_TILE -> tileCache
         PageDecodePurpose.ANIMATION_FRAME -> null
     }
+
+    private fun isCurrentAttemptLocked(contentKey: ReaderPageContentOpenRequest): Boolean {
+        if (contentKey.generation < minimumGeneration) return false
+        val minimumAttempt = minimumPageAttempts[
+            PageGenerationIdentity(contentKey.pageId, contentKey.generation),
+        ] ?: 0L
+        return contentKey.attemptGeneration == minimumAttempt
+    }
+
+    private fun ReaderPageContentOpenRequest.isOlderAttempt(
+        pageId: ReaderPageId,
+        generation: Long,
+        attemptGeneration: Long,
+    ): Boolean = this.pageId == pageId &&
+        this.generation == generation &&
+        this.attemptGeneration < attemptGeneration
 
     internal fun releaseAnimationSession(session: DesktopReaderAnimationContentSession) {
         releaseContentSession(session.contentKey, session.sharedContent)

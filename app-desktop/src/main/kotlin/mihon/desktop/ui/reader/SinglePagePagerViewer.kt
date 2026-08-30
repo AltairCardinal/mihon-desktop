@@ -143,6 +143,7 @@ internal fun SinglePagePagerViewer(
                 mangaTitle = mangaTitle,
                 chapterTitle = chapterTitle,
                 pageIndex = page.id.sourcePageIndex,
+                onRetry = { onRetryPage(readyPage.id) },
                 onSpreadDetected = if (readySlot.splitHalf == null && onSpreadDetected != null) {
                     { onSpreadDetected(page.id.sourcePageIndex) }
                 } else {

@@ -404,14 +404,17 @@ private fun ReaderSideEffects(
     ioObserver: ReaderPageIoObserver?,
 ) {
     LaunchedEffect(state.currentPage) { model.setZoomState(ZoomState()) }
-    LaunchedEffect(state.currentPage, state.session.activeChapter.pages) {
-        if (state.session.activeChapter.pages.isNotEmpty()) {
+    val activePages = state.session.activeChapter.pages
+    val pageAttemptGenerations = activePages.map { it.attemptGeneration }
+    LaunchedEffect(state.currentPage, activePages, pageAttemptGenerations) {
+        if (activePages.isNotEmpty()) {
             preloader.preloadEncoded(
                 state.currentPage,
-                state.session.activeChapter.pages.map { it.encodedPageRef },
-                state.session.activeChapter.pages.map { it.id },
+                activePages.map { it.encodedPageRef },
+                activePages.map { it.id },
                 ioObserver,
                 state.session.generation,
+                attemptGenerations = pageAttemptGenerations,
             )
         }
     }

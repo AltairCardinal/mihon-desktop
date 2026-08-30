@@ -1,5 +1,6 @@
 package mihon.desktop.reader
 
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.graphics.asSkiaBitmap
@@ -36,6 +37,7 @@ import mihon.domain.reader.session.ReaderPageLoadState
 import mihon.domain.reader.session.ReaderPageSession
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertNotSame
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -133,6 +135,45 @@ class DesktopReaderAnimationPresentationWiringTest {
             assertEquals(listOf(PageDecodePurpose.FULL_PAGE), fixture.decodedKeys.map(ReaderPageDecodeKey::purpose))
             assertEquals(1, fixture.events.count { it.type == ReaderIoEventType.OPEN_PAGE })
             assertEquals(1, fixture.events.count { it.type == ReaderIoEventType.DECODE })
+        } finally {
+            scene.close()
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun `same page generation and ref remounts the presentation holder for a newer Retry attempt`() = runTest {
+        val fixture = Fixture(this, pngBytes(Color.GREEN))
+        val page = mutableStateOf(PAGE.copy(attemptGeneration = 1L))
+        var presentation: ReaderPresentationImage? = null
+        val scene = ImageComposeScene(96, 64, coroutineContext = coroutineContext) {}
+        try {
+            fixture.owner.beginGeneration(GENERATION)
+            scene.setContent {
+                presentation = rememberReaderPresentationImage(
+                    owner = fixture.owner,
+                    page = page.value,
+                    generation = GENERATION,
+                )
+            }
+
+            runCurrent()
+            scene.render().toComposeImageBitmap().asSkiaBitmap().close()
+            runCurrent()
+            val first = requireNotNull(presentation)
+            assertEquals(1L, first.holder.identity.attemptGeneration)
+            assertEquals(1L, first.holder.decodeKey.contentKey.attemptGeneration)
+
+            page.value = PAGE.copy(attemptGeneration = 2L)
+            runCurrent()
+            scene.render().toComposeImageBitmap().asSkiaBitmap().close()
+            runCurrent()
+            val second = requireNotNull(presentation)
+
+            assertNotSame(first.holder, second.holder)
+            assertEquals(2L, second.holder.identity.attemptGeneration)
+            assertEquals(2L, second.holder.decodeKey.contentKey.attemptGeneration)
+            assertEquals(listOf(1L, 2L), fixture.decodedKeys.map { it.contentKey.attemptGeneration })
         } finally {
             scene.close()
             fixture.close()

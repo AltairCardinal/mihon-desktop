@@ -65,15 +65,16 @@ internal fun rememberReaderPresentationImage(
     splitHalf: PageSplitHalf? = null,
     sourceBounds: PixelBounds? = null,
 ): ReaderPresentationImage {
-    val identity = remember(page.id, generation, splitHalf, sourceBounds) {
+    val identity = remember(page.id, generation, page.attemptGeneration, splitHalf, sourceBounds) {
         DesktopReaderPresentationImageSlotIdentity(
             pageId = page.id,
             generation = generation,
+            attemptGeneration = page.attemptGeneration,
             splitHalf = splitHalf,
             sourceBounds = sourceBounds,
         )
     }
-    val decodeKey = remember(page.id, page.encodedPageRef, generation) {
+    val decodeKey = remember(page.id, page.encodedPageRef, generation, page.attemptGeneration) {
         ReaderPageDecodeKey(
             contentKey = ReaderPageContentOpenRequest(
                 pageId = page.id,
@@ -81,6 +82,7 @@ internal fun rememberReaderPresentationImage(
                 encodedPageRef = requireNotNull(page.encodedPageRef) {
                     "Ready reader page has no encoded content: ${page.id}"
                 },
+                attemptGeneration = page.attemptGeneration,
             ),
             purpose = PageDecodePurpose.FULL_PAGE,
             maxWidth = PRESENTATION_DECODE_BOUND,

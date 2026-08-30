@@ -44,6 +44,7 @@ class ReaderSessionCoreTest {
             listOf(ReaderPageLoadState.Queued, ReaderPageLoadState.Queued),
             loaded.activeChapter.pages.map(ReaderPageSession::loadState),
         )
+        assertEquals(listOf(0L, 0L), loaded.activeChapter.pages.map(ReaderPageSession::attemptGeneration))
 
         core.settleViewport(
             visiblePageIds = setOf(pageIds.first()),
@@ -96,26 +97,49 @@ class ReaderSessionCoreTest {
     }
 
     @Test
-    fun `retry keeps page identity and creates force-refresh P0 work`() {
+    fun `double retry advances only target attempt clears stale content and keeps force-refresh P0 work`() {
         val chapterId = ReaderChapterId(11)
         val pageId = ReaderPageId(chapterId, 0)
         val core = loadedCore(chapterId, pageCount = 2)
         core.settleViewport(setOf(pageId), pageId, wasRead = false)
-        val failedRequest = requireNotNull(core.pollNextPageRequest())
+        val initialRequest = requireNotNull(core.pollNextPageRequest())
         core.acceptPageMaterialization(
-            failedRequest,
-            ReaderPageMaterializeEvent.Failed(mihon.domain.error.AppError.Network()),
+            initialRequest,
+            ReaderPageMaterializeEvent.Ready(
+                imageUrl = "https://example.test/stale.jpg",
+                encodedPageRef = EncodedPageRef("encoded:stale"),
+            ),
         )
-        core.completePageRequest(failedRequest.jobKey)
+        core.completePageRequest(initialRequest.jobKey)
+        val stableGeneration = core.snapshot.generation
+        val untouchedPage = core.snapshot.activeChapter.pages[1]
 
-        val retry = core.retryPage(pageId)
-        val request = requireNotNull(core.pollNextPageRequest())
+        val firstRetry = core.retryPage(pageId)
+        val firstRequest = requireNotNull(core.pollNextPageRequest())
+        val firstRetriedPage = core.snapshot.activeChapter.pages.first()
 
-        assertEquals(pageId, core.snapshot.activeChapter.pages.first().id)
-        assertEquals(ReaderPageLoadState.Queued, core.snapshot.activeChapter.pages.first().loadState)
-        assertEquals(ReaderRequestKind.EXPLICIT_RETRY, request.kind)
-        assertTrue(request.forceRefresh)
-        assertEquals(request, requireNotNull(retry.schedulePlan).requests.first())
+        assertEquals(pageId, firstRetriedPage.id)
+        assertEquals(stableGeneration, core.snapshot.generation)
+        assertEquals(1L, firstRetriedPage.attemptGeneration)
+        assertEquals(null, firstRetriedPage.imageUrl)
+        assertEquals(null, firstRetriedPage.encodedPageRef)
+        assertEquals(ReaderPageLoadState.Queued, firstRetriedPage.loadState)
+        assertEquals(untouchedPage, core.snapshot.activeChapter.pages[1])
+        assertEquals(ReaderRequestKind.EXPLICIT_RETRY, firstRequest.kind)
+        assertTrue(firstRequest.forceRefresh)
+        assertEquals(firstRequest, requireNotNull(firstRetry.schedulePlan).requests.first())
+
+        val secondRetry = core.retryPage(pageId)
+        val secondRequest = requireNotNull(core.pollNextPageRequest())
+        val secondRetriedPage = core.snapshot.activeChapter.pages.first()
+
+        assertEquals(2L, secondRetriedPage.attemptGeneration)
+        assertEquals(ReaderPageLoadState.Queued, secondRetriedPage.loadState)
+        assertEquals(untouchedPage, core.snapshot.activeChapter.pages[1])
+        assertTrue(firstRequest.jobKey in requireNotNull(secondRetry.schedulePlan).cancelRequests)
+        assertEquals(ReaderRequestKind.EXPLICIT_RETRY, secondRequest.kind)
+        assertTrue(secondRequest.forceRefresh)
+        assertEquals(secondRequest, secondRetry.schedulePlan.requests.first())
     }
 
     @Test

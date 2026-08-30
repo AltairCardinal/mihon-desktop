@@ -109,6 +109,7 @@ internal fun WebtoonViewer(
             mangaTitle = mangaTitle,
             chapterTitle = chapterTitle,
             presentationImageOwner = presentationImageOwner,
+            onRetryPage = onRetryPage,
             onSpreadDetected = onSpreadDetected,
             generation = generation,
         )
@@ -510,6 +511,7 @@ private fun WebtoonPageItem(
     mangaTitle: String,
     chapterTitle: String,
     presentationImageOwner: DesktopReaderPresentationImageOwner,
+    onRetryPage: (ReaderPageId) -> Unit,
     onSpreadDetected: ((Int) -> Unit)?,
     generation: Long,
 ) {
@@ -533,7 +535,12 @@ private fun WebtoonPageItem(
     }
 
     val pageContent: @Composable () -> Unit = {
-        if (renderedImage != null) {
+        if (presentationImage.state is DesktopReaderPresentationImageState.Failed) {
+            ReaderPageRetryContent(
+                onRetry = { onRetryPage(page.id) },
+                modifier = modifier.aspectRatio(2f / 3f),
+            )
+        } else if (renderedImage != null) {
             Box {
                 Image(
                     bitmap = renderedImage.bitmap,
@@ -551,13 +558,15 @@ private fun WebtoonPageItem(
                     modifier = Modifier.matchParentSize(),
                 )
             }
-        } else {
+        } else if (presentationImage.state !is DesktopReaderPresentationImageState.Closed) {
             Box(
                 modifier = modifier.aspectRatio(2f / 3f),
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(color = Color.White)
             }
+        } else {
+            Box(modifier = modifier.aspectRatio(2f / 3f))
         }
     }
 

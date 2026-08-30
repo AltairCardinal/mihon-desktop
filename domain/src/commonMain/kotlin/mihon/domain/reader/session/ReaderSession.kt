@@ -59,7 +59,12 @@ data class ReaderPageSession(
     val imageUrl: String?,
     val encodedPageRef: EncodedPageRef?,
     val loadState: ReaderPageLoadState,
-)
+    val attemptGeneration: Long = 0L,
+) {
+    init {
+        require(attemptGeneration >= 0L) { "attemptGeneration must be non-negative" }
+    }
+}
 
 data class ReaderChapterSession(
     val id: ReaderChapterId,
@@ -126,6 +131,10 @@ sealed interface ReaderSessionIntent {
         val encodedPageRef: EncodedPageRef?,
         val loadState: ReaderPageLoadState,
     ) : ReaderSessionIntent
+    data class RetryPage(
+        val pageId: ReaderPageId,
+        val generation: Long,
+    ) : ReaderSessionIntent
 }
 
 sealed interface ReaderSessionEffect {
@@ -152,6 +161,7 @@ object ReaderSessionReducer {
         is ReaderSessionIntent.PageListFailed -> pageListFailed(snapshot, intent)
         is ReaderSessionIntent.PageStateChanged -> pageStateChanged(snapshot, intent)
         is ReaderSessionIntent.PageContentChanged -> pageContentChanged(snapshot, intent)
+        is ReaderSessionIntent.RetryPage -> retryPage(snapshot, intent)
     }
 
     private fun openChapter(
@@ -190,6 +200,7 @@ object ReaderSessionReducer {
                 imageUrl = descriptor.imageUrl,
                 encodedPageRef = descriptor.encodedPageRef,
                 loadState = descriptor.initialLoadState,
+                attemptGeneration = 0L,
             )
         }
         return ReaderSessionReduction(
@@ -252,6 +263,29 @@ object ReaderSessionReducer {
         if (updatedPage == currentPage) return ReaderSessionReduction(snapshot)
         val pages = snapshot.activeChapter.pages.toMutableList().apply {
             this[pageIndex] = updatedPage
+        }
+        return ReaderSessionReduction(
+            snapshot.copy(activeChapter = snapshot.activeChapter.copy(pages = pages)),
+        )
+    }
+
+    private fun retryPage(
+        snapshot: ReaderSessionSnapshot,
+        intent: ReaderSessionIntent.RetryPage,
+    ): ReaderSessionReduction {
+        if (!snapshot.accepts(intent.pageId.chapterId, intent.generation)) return ReaderSessionReduction(snapshot)
+        val pageIndex = snapshot.activeChapter.pages.indexOfFirst { it.id == intent.pageId }
+        if (pageIndex < 0) return ReaderSessionReduction(snapshot)
+        val currentPage = snapshot.activeChapter.pages[pageIndex]
+        check(currentPage.attemptGeneration < Long.MAX_VALUE) { "Reader page attempt generation is exhausted" }
+        val retriedPage = currentPage.copy(
+            imageUrl = null,
+            encodedPageRef = null,
+            loadState = ReaderPageLoadState.Queued,
+            attemptGeneration = currentPage.attemptGeneration + 1L,
+        )
+        val pages = snapshot.activeChapter.pages.toMutableList().apply {
+            this[pageIndex] = retriedPage
         }
         return ReaderSessionReduction(
             snapshot.copy(activeChapter = snapshot.activeChapter.copy(pages = pages)),

@@ -122,10 +122,9 @@ class ReaderSessionCore(
         require(chapter.pages.any { it.id == pageId }) { "Retry page must belong to the active chapter" }
         snapshot = ReaderSessionReducer.reduce(
             snapshot,
-            ReaderSessionIntent.PageStateChanged(
+            ReaderSessionIntent.RetryPage(
                 pageId = pageId,
                 generation = snapshot.generation,
-                loadState = ReaderPageLoadState.Queued,
             ),
         ).snapshot
         val schedulePlan = requestScheduler.retry(pageId, chapter.pages.size)

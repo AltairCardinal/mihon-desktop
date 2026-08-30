@@ -257,6 +257,26 @@ internal fun WebtoonPresentationViewer(
 }
 
 @Composable
+internal fun ReaderPageRetryContent(
+    onRetry: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(MR.strings.desktop_ui_failed_to_load_pages.localized(), color = Color.White)
+            if (onRetry != null) {
+                Button(
+                    onClick = onRetry,
+                    modifier = Modifier.padding(top = 16.dp),
+                ) {
+                    Text(MR.strings.action_retry.localized())
+                }
+            }
+        }
+    }
+}
+
+@Composable
 internal fun LoadingState() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {

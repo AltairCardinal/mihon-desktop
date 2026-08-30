@@ -215,6 +215,22 @@ internal class DesktopReaderImageCache(
         releasedCacheLeases.forEach(DesktopReaderImageAssetLease::close)
     }
 
+    /** Removes only matching identities while preserving leases acquired by draw callers. */
+    fun removeWhere(predicate: (ReaderPageDecodeKey) -> Boolean): Int {
+        val releasedCacheLeases = synchronized(lock) {
+            if (closed) return 0
+            entries.entries
+                .filter { (key, _) -> predicate(key) }
+                .map { (key, entry) ->
+                    checkNotNull(entries.remove(key))
+                    usedBytes -= entry.lease.asset.estimatedBytes
+                    entry.lease
+                }
+        }
+        releasedCacheLeases.forEach(DesktopReaderImageAssetLease::close)
+        return releasedCacheLeases.size
+    }
+
     fun snapshot(): DesktopReaderImageCacheSnapshot = synchronized(lock) {
         DesktopReaderImageCacheSnapshot(
             keys = entries.keys.toList(),

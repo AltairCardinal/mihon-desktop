@@ -318,7 +318,7 @@ Android Reader UI                 Desktop Reader presentation
   - [ ] `RUA-04D` 动画/超大图/lifecycle 矩阵与 legacy owner 删除
     - [x] `RUA-04D1` 动画 purpose-aware decode owner
     - [x] `RUA-04D2` 超大图与 region tile owner
-    - [ ] `RUA-04D3` Retry/cancel/stale attempt 线性化
+    - [x] `RUA-04D3` Retry/cancel/stale attempt 线性化
     - [ ] `RUA-04D4` detach/recycle/close 与统一内存预算
     - [ ] `RUA-04D5` legacy owner 删除与最终矩阵门禁
 - [ ] `RUA-05` 原版相邻章默认语义与 Desktop opt-in decorator
@@ -618,6 +618,14 @@ Android Reader UI                 Desktop Reader presentation
 - Single、Dual、Webtoon 三种 production presentation 均挂载真实 tile layer；split/crop 使用 transform 后的原始 source bounds 对齐。Webtoon 从 `LazyList` 的真实 item/viewport 交集只保留当前可见条带，离屏 item 请求为空，滚动后旧 tile draw/cache lease 释放。tile 选择、可视交集与 Canvas 绘制复用同一 `roundToInt` 整数几何，消除边界 1 px 分歧；离屏 framebuffer 测试验证三种 viewer 与 split+crop 都实际绘出 tile 像素，而非只检查请求或源码符号。
 - 严格 TDD 先由 `.gradle-coordinator/rua04d2-review-red2.log` 复现 cache revision、late-result、failure isolation、Dual 像素与 Webtoon 整页请求问题；修复后 `.gradle-coordinator/rua04d2-lifecycle-green3.log` 通过四种终止方式与局部失败矩阵，最终 `.gradle-coordinator/rua04d2-close.log` 完成 root `spotlessCheck` 与 15 个 region/pipeline/animation/transform 回归类，`BUILD SUCCESSFUL in 3m 36s`。独立审查发现 3 个 P1 与 1 个 P2，限定复审最终为 `PASS`，P0/P1/P2 均为零。
 - 本批包含 10 个 product 文件、7 个 test 文件和本 roadmap，超过 4～8 文件提示值是因为 bounded native decoder、source/cache/lifecycle owner、三种 mounted presentation 与真实像素/滚动证据必须作为一个可独立验收的 region-tile 能力交付；没有改变 Retry attempt、双页配对或一般手势语义。Desktop 正式构建仍只在 `RUA-07` 执行。
+
+**`RUA-04D3` 完成证据（2026-08-30）**：
+
+- shared reader session 为每个逻辑页增加同 chapter/session generation 内单调递增的 `attemptGeneration`。Retry 原子地只把目标页重置为 Queued、清空旧 image URL 与 encoded ref，并调度新的 P0 `EXPLICIT_RETRY + forceRefresh`；其他页及 chapter/session generation 保持不变。Desktop materialize runtime 同时校验 scheduler job key、fetch/binding attempt 与当前页 attempt，取消不协作的旧 terminal 也不能发布或覆盖新 attempt。
+- full page、animation frame 与 region tile 的 content/decode identity、in-flight、ordinary/tile cache、shared content session 和 presentation holder 均显式包含 attempt。推进 attempt 只取消并驱逐同 page+generation 的旧 attempt，保留其他页；ordinary cache revision 仅在实际移除 ordinary full cache 时推进。Compose remember、preloader 以及 Single/Dual/Webtoon 三种 production presentation 全部透传 attempt；Retry 在 ref 尚未重新生成时也会立即 fence 旧 bitmap/pin。
+- materialize 已 Ready 但 FULL decode 失败时，三种 viewer 不再永久转圈，而是显示现有“加载失败/重试”反馈并把精确 `ReaderPageId` 回传到 `ReaderScreenModel → runtime.session.retryPage`。animation frame 失败仍保留最后成功帧，region tile 失败仍保留 full preview，两类局部失败不会升级成整页 Retry。
+- 严格 TDD 证据包括 `.gradle-coordinator/rua04d3-domain-red.log`、`rua04d3-domain-green.log`、`rua04d3-desktop-red.log`、`rua04d3-wiring-red2.log`、`rua04d3-core-green.log`、`rua04d3-decode-ui-red2.log` 与 `rua04d3-decode-ui-green.log`。首次 `rua04d3-close` 的 92 项中只有既有 Single-page Compose 单次渲染断言发生一次时序抖动；`rua04d3-single-regression-repro` 单独复现全绿，随后 `rua04d3-final-close.log` 完成 root `spotlessCheck` 与 16 个相关 Desktop production-wiring/回归类，92 tests 全绿并 `BUILD SUCCESSFUL in 4m 58s`；领域 focused matrix 也已全绿。
+- 正式独立只读审查结论为 `PASS`，P0/P1/P2/P3 均为零。跨 owner 的 attempt 推进在 generation 并发时保持 fail-closed，不会接受旧身份；锁序未形成反向环，detached deferred、cache lease、shared content 与 holder close 未见双关或泄漏。本批包含 17 个 product 文件、7 个 test 文件和本 roadmap，超过 4～8 文件提示值是因为 shared/session/runtime/full-frame-region/preloader/三 presentation 的 attempt 身份必须原子对齐，拆开会产生可编译但语义失配的中间状态；没有进入 D4 的通用 close/统一预算或 D5 的 legacy owner 删除。Desktop 正式构建仍只在 `RUA-07` 执行。
 
 ### `RUA-05` 原版相邻章默认语义与 Desktop opt-in decorator
 

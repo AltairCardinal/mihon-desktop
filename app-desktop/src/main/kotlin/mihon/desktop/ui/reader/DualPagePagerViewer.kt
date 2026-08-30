@@ -296,6 +296,7 @@ internal fun DualPagePagerViewer(
                     mangaTitle = mangaTitle,
                     chapterTitle = chapterTitle,
                     pageIndex = page.id.sourcePageIndex,
+                    onRetry = { onRetryPage(page.id) },
                     modifier = modifier,
                     imageAlignment = when {
                         unit.slots.size == 1 -> Alignment.Center

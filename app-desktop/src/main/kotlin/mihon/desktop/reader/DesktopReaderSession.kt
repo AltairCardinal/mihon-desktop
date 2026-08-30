@@ -90,9 +90,17 @@ private data class DesktopReaderScheduledPage(
     val context: DesktopReaderChapterContext,
     val descriptor: ReaderPageDescriptor,
     val isAdjacentPrefetch: Boolean,
+    val attemptGeneration: Long,
     val adjacentSequence: Long? = null,
     var acceptedStorageFailure: Boolean = false,
-)
+) {
+    init {
+        require(attemptGeneration >= 0L) { "attemptGeneration must be non-negative" }
+        require(!isAdjacentPrefetch || attemptGeneration == 0L) {
+            "Adjacent prefetch must use the initial content attempt"
+        }
+    }
+}
 
 private data class DesktopReaderChapterLeaseOwner(
     val chapterId: Long,
@@ -496,6 +504,7 @@ class DesktopReaderSession(
                         generation = request.generation,
                         url = scheduledPage.descriptor.url,
                         imageUrl = scheduledPage.descriptor.imageUrl,
+                        attemptGeneration = scheduledPage.attemptGeneration,
                     ),
                     fetchPort = pageFetchPortFactory.create(scheduledPage.context, scheduledPage.descriptor),
                     binding = scheduledPage,
@@ -542,11 +551,15 @@ class DesktopReaderSession(
         private fun acceptsLocked(work: ReaderPageMaterializeWork<DesktopReaderScheduledPage>): Boolean {
             if (closed || !core.acceptsPageRequest(work.request.jobKey)) return false
             val scheduledPage = work.binding
+            if (work.fetchRequest.attemptGeneration != scheduledPage.attemptGeneration) return false
             return if (scheduledPage.isAdjacentPrefetch) {
                 scheduledPage.adjacentSequence == adjacentSequence &&
                     adjacentContext?.chapterId == scheduledPage.context.chapterId
             } else {
-                core.snapshot.activeChapter.pages.any { it.id == work.request.pageId }
+                core.snapshot.activeChapter.pages.any { page ->
+                    page.id == work.request.pageId &&
+                        page.attemptGeneration == scheduledPage.attemptGeneration
+                }
             }
         }
 
@@ -554,7 +567,7 @@ class DesktopReaderSession(
             work: ReaderPageMaterializeWork<DesktopReaderScheduledPage>,
             event: ReaderPageMaterializeEvent,
         ): Boolean = synchronized(lock) {
-            if (closed) {
+            if (!acceptsLocked(work)) {
                 false
             } else if (work.binding.isAdjacentPrefetch) {
                 acceptAdjacentMaterializationLocked(work.binding, work.request, event).also { accepted ->
@@ -615,6 +628,7 @@ class DesktopReaderSession(
                     initialLoadState = activePage.loadState,
                 ),
                 isAdjacentPrefetch = false,
+                attemptGeneration = activePage.attemptGeneration,
             )
         }
         val prefetchContext = adjacentContext?.takeIf { it.chapterId == request.pageId.chapterId.value }
@@ -625,6 +639,7 @@ class DesktopReaderSession(
             context = prefetchContext,
             descriptor = descriptor,
             isAdjacentPrefetch = true,
+            attemptGeneration = 0L,
             adjacentSequence = adjacentSequence,
         )
     }

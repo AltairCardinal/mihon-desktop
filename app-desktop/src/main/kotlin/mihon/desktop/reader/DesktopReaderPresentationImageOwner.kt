@@ -22,11 +22,13 @@ import mihon.domain.reader.session.ReaderPageId
 internal data class DesktopReaderPresentationImageSlotIdentity(
     val pageId: ReaderPageId,
     val generation: Long,
+    val attemptGeneration: Long = 0L,
     val splitHalf: PageSplitHalf? = null,
     val sourceBounds: PixelBounds? = null,
 ) {
     init {
         require(generation >= 0L) { "generation must be non-negative" }
+        require(attemptGeneration >= 0L) { "attemptGeneration must be non-negative" }
         sourceBounds?.let { bounds ->
             require(bounds.x >= 0 && bounds.y >= 0 && bounds.width > 0 && bounds.height > 0) {
                 "source bounds must have a non-negative origin and positive size"
@@ -74,6 +76,7 @@ class DesktopReaderPresentationImageOwner internal constructor(
     private val lock = Any()
     private val holders = mutableSetOf<DesktopReaderPresentationImageHolder>()
     private val animatedHolders = mutableSetOf<DesktopReaderAnimatedPresentationImageHolder>()
+    private val minimumPageAttempts = mutableMapOf<Pair<ReaderPageId, Long>, Long>()
     private val regionOwner = DesktopReaderRegionPresentationOwner(
         scope = scope,
         pageImagePipeline = pageImagePipeline,
@@ -88,6 +91,7 @@ class DesktopReaderPresentationImageOwner internal constructor(
             if (closed || generation < minimumGeneration) return false
             if (generation == minimumGeneration) return true
             minimumGeneration = generation
+            minimumPageAttempts.keys.removeAll { (_, holderGeneration) -> holderGeneration < generation }
             val staleStatic = holders.filter { holder -> holder.identity.generation < generation }
             val staleAnimated = animatedHolders.filter { holder -> holder.identity.generation < generation }
             holders.removeAll(staleStatic.toSet())
@@ -100,6 +104,42 @@ class DesktopReaderPresentationImageOwner internal constructor(
         return pageImagePipeline.beginGeneration(generation)
     }
 
+    internal fun beginPageAttempt(
+        pageId: ReaderPageId,
+        generation: Long,
+        attemptGeneration: Long,
+    ): Boolean {
+        require(generation >= 0L) { "generation must be non-negative" }
+        require(attemptGeneration >= 0L) { "attemptGeneration must be non-negative" }
+        val staleHolders = synchronized(lock) {
+            if (closed || generation < minimumGeneration) return false
+            val identity = pageId to generation
+            val previousAttempt = minimumPageAttempts[identity] ?: 0L
+            if (attemptGeneration < previousAttempt) return false
+            if (attemptGeneration == previousAttempt) return true
+            minimumPageAttempts[identity] = attemptGeneration
+            val staleStatic = holders.filter { holder ->
+                holder.identity.pageId == pageId &&
+                    holder.identity.generation == generation &&
+                    holder.identity.attemptGeneration < attemptGeneration
+            }
+            val staleAnimated = animatedHolders.filter { holder ->
+                holder.identity.pageId == pageId &&
+                    holder.identity.generation == generation &&
+                    holder.identity.attemptGeneration < attemptGeneration
+            }
+            holders.removeAll(staleStatic.toSet())
+            animatedHolders.removeAll(staleAnimated.toSet())
+            staleStatic to staleAnimated
+        }
+        staleHolders.first.forEach(DesktopReaderPresentationImageHolder::closeFromOwner)
+        staleHolders.second.forEach(DesktopReaderAnimatedPresentationImageHolder::closeFromOwner)
+        check(regionOwner.beginPageAttempt(pageId, generation, attemptGeneration)) {
+            "Region owner rejected current page attempt"
+        }
+        return pageImagePipeline.beginPageAttempt(pageId, generation, attemptGeneration)
+    }
+
     internal fun createHolder(
         identity: DesktopReaderPresentationImageSlotIdentity,
         decodeKey: ReaderPageDecodeKey,
@@ -109,6 +149,9 @@ class DesktopReaderPresentationImageOwner internal constructor(
         }
         require(identity.generation == decodeKey.generation) {
             "Presentation and decode generations must match"
+        }
+        require(identity.attemptGeneration == decodeKey.contentKey.attemptGeneration) {
+            "Presentation and decode attempts must match"
         }
         require(decodeKey.purpose == PageDecodePurpose.FULL_PAGE) {
             "Presentation holders must share a full-page decode"
@@ -122,10 +165,19 @@ class DesktopReaderPresentationImageOwner internal constructor(
                 "Presentation holder generation could not become current"
             }
         }
+        val observedAttempt = synchronized(lock) { currentAttemptLocked(identity) }
+        if (identity.attemptGeneration > observedAttempt) {
+            check(beginPageAttempt(identity.pageId, identity.generation, identity.attemptGeneration)) {
+                "Presentation holder attempt could not become current"
+            }
+        }
         return synchronized(lock) {
             check(!closed) { "Desktop reader presentation image owner is closed" }
             check(identity.generation == minimumGeneration) {
                 "Presentation holder generation must be current"
+            }
+            check(identity.attemptGeneration == currentAttemptLocked(identity)) {
+                "Presentation holder attempt must be current"
             }
             DesktopReaderPresentationImageHolder(
                 identity = identity,
@@ -150,6 +202,9 @@ class DesktopReaderPresentationImageOwner internal constructor(
         require(identity.generation == contentKey.generation) {
             "Presentation and animation content generations must match"
         }
+        require(identity.attemptGeneration == contentKey.attemptGeneration) {
+            "Presentation and animation content attempts must match"
+        }
         require(maxWidth > 0 && maxHeight > 0) { "Animation decode bounds must be positive" }
         val observedGeneration = synchronized(lock) {
             check(!closed) { "Desktop reader presentation image owner is closed" }
@@ -160,10 +215,19 @@ class DesktopReaderPresentationImageOwner internal constructor(
                 "Animated presentation holder generation could not become current"
             }
         }
+        val observedAttempt = synchronized(lock) { currentAttemptLocked(identity) }
+        if (identity.attemptGeneration > observedAttempt) {
+            check(beginPageAttempt(identity.pageId, identity.generation, identity.attemptGeneration)) {
+                "Animated presentation holder attempt could not become current"
+            }
+        }
         return synchronized(lock) {
             check(!closed) { "Desktop reader presentation image owner is closed" }
             check(identity.generation == minimumGeneration) {
                 "Animated presentation holder generation must be current"
+            }
+            check(identity.attemptGeneration == currentAttemptLocked(identity)) {
+                "Animated presentation holder attempt must be current"
             }
             DesktopReaderAnimatedPresentationImageHolder(
                 identity = identity,
@@ -195,14 +259,14 @@ class DesktopReaderPresentationImageOwner internal constructor(
     internal fun isCurrent(holder: DesktopReaderPresentationImageHolder): Boolean = synchronized(lock) {
         !closed &&
             holder in holders &&
-            holder.identity.generation == minimumGeneration
+            isCurrentAttemptLocked(holder.identity)
     }
 
     internal fun acknowledgeDraw(
         holder: DesktopReaderPresentationImageHolder,
         candidateIdentity: DesktopReaderPresentationImageSlotIdentity,
     ): Boolean = synchronized(lock) {
-        if (closed || holder !in holders || holder.identity.generation != minimumGeneration) return false
+        if (closed || holder !in holders || !isCurrentAttemptLocked(holder.identity)) return false
         holder.acknowledgeDrawWhileOwnerCurrent(candidateIdentity)
     }
 
@@ -210,7 +274,7 @@ class DesktopReaderPresentationImageOwner internal constructor(
         holder: DesktopReaderPresentationImageHolder,
         candidateIdentity: DesktopReaderPresentationImageSlotIdentity,
     ): DesktopReaderImageAssetLease? = synchronized(lock) {
-        if (closed || holder !in holders || holder.identity.generation != minimumGeneration) return null
+        if (closed || holder !in holders || !isCurrentAttemptLocked(holder.identity)) return null
         holder.retainReadyAssetWhileOwnerCurrent(candidateIdentity)
     }
 
@@ -219,7 +283,7 @@ class DesktopReaderPresentationImageOwner internal constructor(
         runningJob: Job,
         asset: DesktopReaderImageAsset,
     ): Boolean = synchronized(lock) {
-        if (closed || holder !in holders || holder.identity.generation != minimumGeneration) return false
+        if (closed || holder !in holders || !isCurrentAttemptLocked(holder.identity)) return false
         holder.acceptReadyAssetWhileOwnerCurrent(runningJob, asset)
     }
 
@@ -229,7 +293,7 @@ class DesktopReaderPresentationImageOwner internal constructor(
         cause: Throwable? = null,
     ) {
         synchronized(lock) {
-            if (closed || holder !in holders || holder.identity.generation != minimumGeneration) return
+            if (closed || holder !in holders || !isCurrentAttemptLocked(holder.identity)) return
             holder.publishFailureWhileOwnerCurrent(runningJob, cause)
         }
     }
@@ -243,7 +307,7 @@ class DesktopReaderPresentationImageOwner internal constructor(
     internal fun isCurrent(holder: DesktopReaderAnimatedPresentationImageHolder): Boolean = synchronized(lock) {
         !closed &&
             holder in animatedHolders &&
-            holder.identity.generation == minimumGeneration
+            isCurrentAttemptLocked(holder.identity)
     }
 
     internal fun acceptAnimatedFrame(
@@ -252,7 +316,7 @@ class DesktopReaderPresentationImageOwner internal constructor(
         key: ReaderPageDecodeKey,
         lease: DesktopReaderImageAssetLease,
     ): DesktopReaderAnimatedFrameAcceptance = synchronized(lock) {
-        if (closed || holder !in animatedHolders || holder.identity.generation != minimumGeneration) {
+        if (closed || holder !in animatedHolders || !isCurrentAttemptLocked(holder.identity)) {
             return DesktopReaderAnimatedFrameAcceptance.Rejected
         }
         holder.acceptFrameWhileOwnerCurrent(runningJob, key, lease)
@@ -262,7 +326,7 @@ class DesktopReaderPresentationImageOwner internal constructor(
         holder: DesktopReaderAnimatedPresentationImageHolder,
         key: ReaderPageDecodeKey,
     ): DesktopReaderImageAssetLease? = synchronized(lock) {
-        if (closed || holder !in animatedHolders || holder.identity.generation != minimumGeneration) return null
+        if (closed || holder !in animatedHolders || !isCurrentAttemptLocked(holder.identity)) return null
         holder.retainFrameWhileOwnerCurrent(key)
     }
 
@@ -272,7 +336,7 @@ class DesktopReaderPresentationImageOwner internal constructor(
         key: ReaderPageDecodeKey,
     ) {
         synchronized(lock) {
-            if (closed || holder !in animatedHolders || holder.identity.generation != minimumGeneration) return
+            if (closed || holder !in animatedHolders || !isCurrentAttemptLocked(holder.identity)) return
             holder.publishFrameFailureWhileOwnerCurrent(runningJob, key)
         }
     }
@@ -282,6 +346,13 @@ class DesktopReaderPresentationImageOwner internal constructor(
             animatedHolders.remove(holder)
         }
     }
+
+    private fun isCurrentAttemptLocked(identity: DesktopReaderPresentationImageSlotIdentity): Boolean =
+        identity.generation == minimumGeneration &&
+            identity.attemptGeneration == currentAttemptLocked(identity)
+
+    private fun currentAttemptLocked(identity: DesktopReaderPresentationImageSlotIdentity): Long =
+        minimumPageAttempts[identity.pageId to identity.generation] ?: 0L
 }
 
 /** One presentation slot and its independently closeable decoded-image lease. */

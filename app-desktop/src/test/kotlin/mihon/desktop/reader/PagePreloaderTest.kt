@@ -1,5 +1,6 @@
 package mihon.desktop.reader
 
+import androidx.compose.ui.graphics.asComposeImageBitmap
 import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
@@ -16,10 +17,12 @@ import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNotSame
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.jetbrains.skia.Bitmap
 import javax.imageio.ImageIO
 
 class PagePreloaderTest {
@@ -78,6 +81,71 @@ class PagePreloaderTest {
         assertSame(first, second)
         assertEquals(setOf(0), preloader.cacheSnapshot().keys)
         preloader.close()
+    }
+
+    @Test
+    fun `new Retry attempt replaces the same visible page key and releases its old pinned lease`() = runTest {
+        val ref = EncodedPageRef("same-ref-after-retry")
+        val pageId = ReaderPageId(ReaderChapterId(71L), 0)
+        val decodedKeys = mutableListOf<ReaderPageDecodeKey>()
+        val disposedAttempts = mutableListOf<Long>()
+        val clock = AtomicLong()
+        val reporter = ReaderIoReporter(
+            probe = ReaderIoProbe.None,
+            clock = ReaderMonotonicClock(clock::incrementAndGet),
+        )
+        val contentOwner = DesktopReaderPageContentOwner(this, { byteArrayOf(1) }, reporter)
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = this,
+            pageContentOwner = contentOwner,
+            ioReporter = reporter,
+            decoder = DesktopReaderPageImageDecoder { _, key ->
+                decodedKeys += key
+                val bitmap = Bitmap().apply { check(allocN32Pixels(2, 2)) }
+                DesktopReaderImageAsset(
+                    bitmap = bitmap.asComposeImageBitmap(),
+                    sourceWidth = 2,
+                    sourceHeight = 2,
+                    estimatedBytes = 16L,
+                    sampled = false,
+                    disposer = {
+                        bitmap.close()
+                        disposedAttempts += key.contentKey.attemptGeneration
+                    },
+                )
+            },
+            maxEntries = 1,
+        )
+        val preloader = PagePreloader(pipeline, windowSize = 0)
+
+        try {
+            preloader.preloadEncoded(
+                currentPage = 0,
+                encodedPageRefs = listOf(ref),
+                pageIds = listOf(pageId),
+                sessionGeneration = 3L,
+                attemptGenerations = listOf(1L),
+            )
+            val first = requireNotNull(preloader.get(0))
+
+            preloader.preloadEncoded(
+                currentPage = 0,
+                encodedPageRefs = listOf(ref),
+                pageIds = listOf(pageId),
+                sessionGeneration = 3L,
+                attemptGenerations = listOf(2L),
+            )
+            val second = requireNotNull(preloader.get(0))
+
+            assertNotSame(first, second)
+            assertEquals(listOf(1L, 2L), decodedKeys.map { it.contentKey.attemptGeneration })
+            assertEquals(2L, pipeline.snapshot().cache.keys.single().contentKey.attemptGeneration)
+            assertEquals(listOf(1L), disposedAttempts)
+        } finally {
+            preloader.close()
+            pipeline.close()
+            contentOwner.close()
+        }
     }
 
     @Test

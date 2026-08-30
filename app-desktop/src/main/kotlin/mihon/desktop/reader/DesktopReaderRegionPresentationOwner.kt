@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import mihon.domain.reader.PageDecodePurpose
 import mihon.domain.reader.ReaderPageDecodeKey
+import mihon.domain.reader.session.ReaderPageId
 
 internal data class DesktopReaderRegionPresentationOwnerSnapshot(
     val minimumGeneration: Long,
@@ -40,6 +41,7 @@ internal class DesktopReaderRegionPresentationOwner(
 ) : AutoCloseable {
     private val lock = Any()
     private val holders = mutableSetOf<DesktopReaderRegionPresentationHolder>()
+    private val minimumPageAttempts = mutableMapOf<Pair<ReaderPageId, Long>, Long>()
     private var minimumGeneration = 0L
     private var closed = false
 
@@ -50,19 +52,48 @@ internal class DesktopReaderRegionPresentationOwner(
             if (generation < minimumGeneration) return false
             if (generation == minimumGeneration) return true
             minimumGeneration = generation
+            minimumPageAttempts.keys.removeAll { (_, holderGeneration) -> holderGeneration < generation }
             holders.filterTo(mutableListOf()) { it.identity.generation < generation }.also(holders::removeAll)
         }
         stale.forEach(DesktopReaderRegionPresentationHolder::closeFromOwner)
         return !managesPipelineGeneration || pageImagePipeline.beginGeneration(generation)
     }
 
+    fun beginPageAttempt(
+        pageId: ReaderPageId,
+        generation: Long,
+        attemptGeneration: Long,
+    ): Boolean {
+        require(generation >= 0L) { "generation must be non-negative" }
+        require(attemptGeneration >= 0L) { "attemptGeneration must be non-negative" }
+        val stale = synchronized(lock) {
+            check(!closed) { "Desktop reader region presentation owner is closed" }
+            if (generation < minimumGeneration) return false
+            val identity = pageId to generation
+            val previousAttempt = minimumPageAttempts[identity] ?: 0L
+            if (attemptGeneration < previousAttempt) return false
+            if (attemptGeneration == previousAttempt) return true
+            minimumPageAttempts[identity] = attemptGeneration
+            holders.filterTo(mutableListOf()) { holder ->
+                holder.identity.pageId == pageId &&
+                    holder.identity.generation == generation &&
+                    holder.identity.attemptGeneration < attemptGeneration
+            }.also(holders::removeAll)
+        }
+        stale.forEach(DesktopReaderRegionPresentationHolder::closeFromOwner)
+        return !managesPipelineGeneration ||
+            pageImagePipeline.beginPageAttempt(pageId, generation, attemptGeneration)
+    }
+
     fun createHolder(
         identity: DesktopReaderPresentationImageSlotIdentity,
         previewKey: ReaderPageDecodeKey,
-    ): DesktopReaderRegionPresentationHolder = synchronized(lock) {
-        check(!closed) { "Desktop reader region presentation owner is closed" }
+    ): DesktopReaderRegionPresentationHolder {
         require(identity.generation == previewKey.generation) {
             "Preview and presentation generations must match"
+        }
+        require(identity.attemptGeneration == previewKey.contentKey.attemptGeneration) {
+            "Preview and presentation attempts must match"
         }
         require(identity.pageId == previewKey.contentKey.pageId) {
             "Preview and presentation page identities must match"
@@ -70,17 +101,37 @@ internal class DesktopReaderRegionPresentationOwner(
         require(previewKey.purpose == PageDecodePurpose.FULL_PAGE) {
             "Region presentation preview must use a full-page request"
         }
-        require(identity.generation >= minimumGeneration) {
-            "Region presentation generation is stale"
+        val current = synchronized(lock) {
+            check(!closed) { "Desktop reader region presentation owner is closed" }
+            minimumGeneration to currentAttemptLocked(identity)
         }
-        DesktopReaderRegionPresentationHolder(
-            identity = identity,
-            previewKey = previewKey,
-            scope = scope,
-            pageImagePipeline = pageImagePipeline,
-            contentSession = pageImagePipeline.openRegionSession(previewKey.contentKey),
-            owner = this,
-        ).also(holders::add)
+        if (identity.generation > current.first) {
+            check(beginGeneration(identity.generation)) {
+                "Region presentation generation could not become current"
+            }
+        }
+        if (identity.attemptGeneration > current.second) {
+            check(beginPageAttempt(identity.pageId, identity.generation, identity.attemptGeneration)) {
+                "Region presentation attempt could not become current"
+            }
+        }
+        return synchronized(lock) {
+            check(!closed) { "Desktop reader region presentation owner is closed" }
+            check(identity.generation == minimumGeneration) {
+                "Region presentation generation must be current"
+            }
+            check(identity.attemptGeneration == currentAttemptLocked(identity)) {
+                "Region presentation attempt must be current"
+            }
+            DesktopReaderRegionPresentationHolder(
+                identity = identity,
+                previewKey = previewKey,
+                scope = scope,
+                pageImagePipeline = pageImagePipeline,
+                contentSession = pageImagePipeline.openRegionSession(previewKey.contentKey),
+                owner = this,
+            ).also(holders::add)
+        }
     }
 
     fun snapshot(): DesktopReaderRegionPresentationOwnerSnapshot = synchronized(lock) {
@@ -102,7 +153,7 @@ internal class DesktopReaderRegionPresentationOwner(
     }
 
     internal fun isCurrent(holder: DesktopReaderRegionPresentationHolder): Boolean = synchronized(lock) {
-        !closed && holder in holders && holder.identity.generation == minimumGeneration
+        isCurrentLocked(holder)
     }
 
     internal fun acceptPreview(
@@ -157,7 +208,13 @@ internal class DesktopReaderRegionPresentationOwner(
     }
 
     private fun isCurrentLocked(holder: DesktopReaderRegionPresentationHolder): Boolean =
-        !closed && holder in holders && holder.identity.generation == minimumGeneration
+        !closed &&
+            holder in holders &&
+            holder.identity.generation == minimumGeneration &&
+            holder.identity.attemptGeneration == currentAttemptLocked(holder.identity)
+
+    private fun currentAttemptLocked(identity: DesktopReaderPresentationImageSlotIdentity): Long =
+        minimumPageAttempts[identity.pageId to identity.generation] ?: 0L
 }
 
 internal class DesktopReaderRegionPresentationHolder internal constructor(
