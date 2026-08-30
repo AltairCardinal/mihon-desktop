@@ -93,8 +93,12 @@ class PagePreloader internal constructor(
                 previous
             }
         }
-        leasesToClose.forEach(DesktopReaderImageAssetLease::close)
-        reconcileWithPipeline()
+        runResourceActions(
+            buildList {
+                leasesToClose.forEach { retained -> add(retained::close) }
+                add(::reconcileWithPipeline)
+            },
+        )
         @Suppress("UNUSED_VARIABLE")
         val presentationObserver = observer
     }
@@ -125,8 +129,12 @@ class PagePreloader internal constructor(
 
     fun clear() {
         checkOpen()
-        releasePinnedLeases()
-        pageImagePipeline.clear()
+        runResourceActions(
+            listOf(
+                { releasePinnedLeases() },
+                pageImagePipeline::clear,
+            ),
+        )
     }
 
     fun cacheSize(): Int = cacheSnapshot().keys.size
@@ -170,7 +178,7 @@ class PagePreloader internal constructor(
             keysByPageIndex.clear()
             retainedLeases.values.toList().also { retainedLeases.clear() }
         }
-        leases.forEach(DesktopReaderImageAssetLease::close)
+        runResourceActions(leases.map { lease -> lease::close })
     }
 
     private fun checkOpen() = synchronized(lock) {

@@ -482,7 +482,7 @@ class DesktopReaderRuntimeFactoryTest {
     }
 
     @Test
-    fun `production runtime binds and closes the default decoded image cache policy`() = runTest {
+    fun `production runtime binds and closes the default unified image memory policy`() = runTest {
         val factory = DesktopReaderRuntimeFactory(
             prefs = ReaderPreferences(),
             downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads-decoded-budget")),
@@ -510,7 +510,13 @@ class DesktopReaderRuntimeFactoryTest {
         try {
             val openSnapshot = runtime.pageImagePipeline.snapshot()
             assertEquals(DesktopReaderPageImagePipeline.DEFAULT_CACHE_ENTRIES, openSnapshot.cache.maxEntries)
-            assertEquals(DesktopReaderPageImagePipeline.DEFAULT_CACHE_BYTES, openSnapshot.cache.maxBytes)
+            assertEquals(DesktopReaderPageImagePipeline.DEFAULT_TOTAL_IMAGE_BYTES, openSnapshot.cache.maxBytes)
+            assertEquals(DesktopReaderPageImagePipeline.DEFAULT_TILE_CACHE_ENTRIES, openSnapshot.tileCache.maxEntries)
+            assertEquals(DesktopReaderPageImagePipeline.DEFAULT_TOTAL_IMAGE_BYTES, openSnapshot.tileCache.maxBytes)
+            assertEquals(
+                DesktopReaderPageImagePipeline.DEFAULT_TOTAL_IMAGE_BYTES,
+                openSnapshot.memory.maxBytes,
+            )
         } finally {
             runtime.close()
         }

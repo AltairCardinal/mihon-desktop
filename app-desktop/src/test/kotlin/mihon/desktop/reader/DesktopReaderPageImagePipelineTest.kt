@@ -13,11 +13,13 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import mihon.domain.reader.PageDecodePurpose
+import mihon.domain.reader.PixelBounds
 import mihon.domain.reader.ReaderPageDecodeKey
 import mihon.domain.reader.content.ReaderPageContentOpenRequest
 import mihon.domain.reader.observability.ReaderIoEvent
@@ -33,9 +35,11 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotSame
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DesktopReaderPageImagePipelineTest {
 
     @Test
@@ -328,6 +332,12 @@ class DesktopReaderPageImagePipelineTest {
     }
 
     @Test
+    fun `attempt and generation fences recycle full tile inflight and shared content after disposer failures`() =
+        runTest {
+            PipelineFence.entries.forEach { fence -> assertExceptionCompleteFence(fence) }
+        }
+
+    @Test
     fun `close rejects and releases a non cooperative late decoded asset`() = runTest {
         val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val reporter = reporter()
@@ -433,6 +443,120 @@ class DesktopReaderPageImagePipelineTest {
         ioReporter = reporter,
     )
 
+    private suspend fun assertExceptionCompleteFence(fence: PipelineFence) = coroutineScope {
+        val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val reporter = reporter()
+        val frameEntered = CountDownLatch(1)
+        val releaseFrame = CountDownLatch(1)
+        val frameReturned = CountDownLatch(1)
+        val fullDisposals = AtomicInteger()
+        val tileDisposals = AtomicInteger()
+        val frameDisposals = AtomicInteger()
+        val firstFailure = IllegalStateException("$fence-full-disposer")
+        val laterFailure = IllegalArgumentException("$fence-tile-disposer")
+        val contentKey = ReaderPageContentOpenRequest(
+            pageId = ReaderPageId(ReaderChapterId(44L), 0),
+            generation = 1L,
+            encodedPageRef = EncodedPageRef("opaque://exception-complete-$fence"),
+        )
+        val fullKey = ReaderPageDecodeKey(
+            contentKey = contentKey,
+            purpose = PageDecodePurpose.FULL_PAGE,
+            maxWidth = 2_048,
+            maxHeight = 2_048,
+        )
+        val tileKey = ReaderPageDecodeKey(
+            contentKey = contentKey,
+            purpose = PageDecodePurpose.REGION_TILE,
+            maxWidth = 1_000,
+            maxHeight = 1_000,
+            region = PixelBounds(0, 0, 1_000, 1_000),
+        )
+        val frameKey = ReaderPageDecodeKey(
+            contentKey = contentKey,
+            purpose = PageDecodePurpose.ANIMATION_FRAME,
+            maxWidth = 2_048,
+            maxHeight = 2_048,
+            frameIndex = 0,
+        )
+        val contentOwner = contentOwner(ioScope, reporter) { ENCODED_BYTES }
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = ioScope,
+            pageContentOwner = contentOwner,
+            ioReporter = reporter,
+            decoder = DesktopReaderPageImageDecoder { _, key ->
+                when (key.purpose) {
+                    PageDecodePurpose.FULL_PAGE -> asset(
+                        tag = 1,
+                        disposer = {
+                            fullDisposals.incrementAndGet()
+                            throw firstFailure
+                        },
+                    )
+                    PageDecodePurpose.REGION_TILE -> asset(
+                        tag = 2,
+                        disposer = {
+                            tileDisposals.incrementAndGet()
+                            throw laterFailure
+                        },
+                    )
+                    PageDecodePurpose.ANIMATION_FRAME -> {
+                        frameEntered.countDown()
+                        check(releaseFrame.await(5, TimeUnit.SECONDS))
+                        asset(tag = 3, disposer = { frameDisposals.incrementAndGet() })
+                            .also { frameReturned.countDown() }
+                    }
+                }
+            },
+        )
+        pipeline.beginGeneration(1L)
+        val regionSession = pipeline.openRegionSession(contentKey)
+        val animationSession = pipeline.openAnimationSession(contentKey)
+        val acquiringFrame = async {
+            runCatching { animationSession.acquireFrame(frameKey) }.getOrNull()?.close()
+        }
+
+        try {
+            regionSession.pin()
+            requireNotNull(pipeline.acquire(fullKey)).close()
+            val tileLease = requireNotNull(regionSession.acquireTile(tileKey))
+            assertTrue(pipeline.commitRegionTile(tileKey, tileLease))
+            tileLease.close()
+            assertTrue(withContext(Dispatchers.IO) { frameEntered.await(5, TimeUnit.SECONDS) })
+
+            val thrown = assertThrows(IllegalStateException::class.java) {
+                when (fence) {
+                    PipelineFence.ATTEMPT -> pipeline.beginPageAttempt(contentKey.pageId, 1L, 1L)
+                    PipelineFence.GENERATION -> pipeline.beginGeneration(2L)
+                }
+            }
+
+            assertSame(firstFailure, thrown)
+            assertEquals(listOf(laterFailure), thrown.suppressed.toList())
+            assertEquals(1, fullDisposals.get())
+            assertEquals(1, tileDisposals.get())
+            assertTrue(pipeline.snapshot().cache.keys.isEmpty())
+            assertTrue(pipeline.snapshot().tileCache.keys.isEmpty())
+            assertEquals(0, pipeline.snapshot().inFlightCount)
+            assertTrue(contentOwner.snapshot().activeLeaseCounts.isEmpty())
+
+            releaseFrame.countDown()
+            assertTrue(withContext(Dispatchers.IO) { frameReturned.await(5, TimeUnit.SECONDS) })
+            withContext(Dispatchers.Default.limitedParallelism(1)) {
+                withTimeout(5_000) { acquiringFrame.await() }
+            }
+            assertEquals(1, frameDisposals.get())
+        } finally {
+            releaseFrame.countDown()
+            acquiringFrame.cancelAndJoin()
+            runCatching { regionSession.close() }
+            runCatching { animationSession.close() }
+            runCatching { pipeline.close() }
+            contentOwner.close()
+            ioScope.cancel()
+        }
+    }
+
     private fun reporter(events: MutableList<ReaderIoEvent> = CopyOnWriteArrayList()): ReaderIoReporter {
         val now = AtomicLong()
         return ReaderIoReporter(
@@ -479,6 +603,8 @@ class DesktopReaderPageImagePipelineTest {
 
     private fun ReaderIoEvent.matches(type: ReaderIoEventType, key: ReaderPageDecodeKey): Boolean =
         this.type == type && pageId == key.contentKey.pageId && generation == key.generation
+
+    private enum class PipelineFence { ATTEMPT, GENERATION }
 
     private companion object {
         val ENCODED_BYTES = byteArrayOf(1, 2, 3, 4)

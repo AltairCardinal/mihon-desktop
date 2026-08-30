@@ -22,8 +22,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import mihon.desktop.reader.DesktopReaderImageAssetLease
+import mihon.desktop.reader.DesktopReaderImageMemoryAuthority
+import mihon.desktop.reader.DesktopReaderImageMemoryKind
+import mihon.desktop.reader.DesktopReaderImageMemoryRetention
 import mihon.desktop.reader.DesktopReaderPresentationImageState
 import mihon.desktop.reader.DesktopReaderPresentationImageSlotIdentity
+import mihon.desktop.reader.runResourceActions
 import mihon.domain.reader.PixelBounds
 
 internal data class ReaderPresentationTransformKey(
@@ -86,9 +91,13 @@ internal class ReaderPresentationTransformOwner(
             }
             activeJob = replacementJob
         }
-        previousJob?.cancel()
-        previousLease?.close()
-        replacementJob.start()
+        runResourceActions(
+            buildList {
+                previousJob?.let { job -> add(job::cancel) }
+                previousLease?.let { lease -> add(lease::close) }
+                add { replacementJob.start() }
+            },
+        )
     }
 
     fun acknowledgeDraw(key: ReaderPresentationTransformKey): Boolean = synchronized(lock) {
@@ -105,8 +114,7 @@ internal class ReaderPresentationTransformOwner(
             mutableState.value = ReaderPresentationTransformState.Empty
             result
         }
-        resources.first?.cancel()
-        resources.second?.close()
+        closeTransformResources(resources)
     }
 
     override fun close() {
@@ -119,8 +127,7 @@ internal class ReaderPresentationTransformOwner(
             mutableState.value = ReaderPresentationTransformState.Empty
             result
         }
-        resources.first?.cancel()
-        resources.second?.close()
+        closeTransformResources(resources)
     }
 
     private suspend fun produce(
@@ -151,13 +158,31 @@ internal class ReaderPresentationTransformOwner(
                 }
             }
         } finally {
-            producedLease?.close()
-            synchronized(lock) {
-                if (activeJob === runningJob && mutableState.value !is ReaderPresentationTransformState.Ready) {
-                    activeJob = null
-                }
-            }
+            runResourceActions(
+                buildList {
+                    producedLease?.let { lease -> add(lease::close) }
+                    add {
+                        synchronized(lock) {
+                            if (
+                                activeJob === runningJob &&
+                                mutableState.value !is ReaderPresentationTransformState.Ready
+                            ) {
+                                activeJob = null
+                            }
+                        }
+                    }
+                },
+            )
         }
+    }
+
+    private fun closeTransformResources(resources: Pair<Job?, ReaderPresentationBitmapLease?>) {
+        runResourceActions(
+            listOfNotNull(
+                resources.first?.let { job -> fun() { job.cancel() } },
+                resources.second?.let { lease -> fun() { lease.close() } },
+            ),
+        )
     }
 }
 
@@ -179,6 +204,100 @@ internal data class ReaderPresentationRenderedImage(
     val renderedSourceBounds: PixelBounds,
     val acknowledgeDraw: () -> Boolean,
 )
+
+/**
+ * Consumes one retained presentation asset and returns the lease actually drawn by Compose.
+ *
+ * A no-op transform transfers the base lease to the returned wrapper. A derived bitmap is
+ * registered with the runtime-wide image memory authority before the base lease is released.
+ */
+internal suspend fun createReaderPresentationTransformLease(
+    baseLease: DesktopReaderImageAssetLease,
+    identity: DesktopReaderPresentationImageSlotIdentity,
+    cropBorders: Boolean,
+    memoryAuthority: DesktopReaderImageMemoryAuthority,
+    nativeBitmapDisposer: (org.jetbrains.skia.Bitmap) -> Unit = { bitmap -> bitmap.close() },
+): ReaderPresentationBitmapLease {
+    val baseBitmap = baseLease.asset.bitmap
+    val baseSourceBounds = identity.sourceBounds
+        ?: identity.splitHalf?.let { half ->
+            splitBounds(baseLease.asset.sourceWidth, baseLease.asset.sourceHeight, half)
+        }
+        ?: PixelBounds(0, 0, baseLease.asset.sourceWidth, baseLease.asset.sourceHeight)
+    if (identity.splitHalf == null && identity.sourceBounds == null && !cropBorders) {
+        return CloseableReaderPresentationBitmapLease(
+            bitmap = baseBitmap,
+            renderedSourceBounds = baseSourceBounds,
+            disposer = baseLease::close,
+        )
+    }
+    try {
+        val transformed = withContext(Dispatchers.Default + NonCancellable) {
+            transformCachedPageBitmapWithSourceBounds(
+                bitmap = baseBitmap,
+                splitHalf = identity.splitHalf,
+                sourceBounds = identity.sourceBounds,
+                cropBorders = cropBorders,
+                sourceWidth = baseLease.asset.sourceWidth,
+                sourceHeight = baseLease.asset.sourceHeight,
+            )
+        }
+        if (transformed.bitmap === baseBitmap) {
+            return CloseableReaderPresentationBitmapLease(
+                bitmap = baseBitmap,
+                renderedSourceBounds = transformed.renderedSourceBounds,
+                disposer = baseLease::close,
+            )
+        }
+        val transformedBitmap = transformed.bitmap
+        val nativeBitmap = transformedBitmap.asSkiaBitmap()
+        val nativeBitmapDisposed = AtomicBoolean()
+        val disposeNativeBitmap = {
+            if (nativeBitmapDisposed.compareAndSet(false, true)) {
+                nativeBitmapDisposer(nativeBitmap)
+            }
+        }
+        val memoryLease = try {
+            memoryAuthority.register(
+                kind = DesktopReaderImageMemoryKind.DERIVED,
+                estimatedBytes = transformedBitmap.width.toLong() *
+                    transformedBitmap.height *
+                    BYTES_PER_PIXEL,
+                retention = DesktopReaderImageMemoryRetention.ACTIVE,
+                disposer = disposeNativeBitmap,
+            )
+        } catch (error: Throwable) {
+            try {
+                disposeNativeBitmap()
+            } catch (cleanup: Throwable) {
+                error.addSuppressed(cleanup)
+            }
+            throw error
+        }
+        try {
+            baseLease.close()
+        } catch (error: Throwable) {
+            try {
+                memoryLease.close()
+            } catch (cleanup: Throwable) {
+                error.addSuppressed(cleanup)
+            }
+            throw error
+        }
+        return CloseableReaderPresentationBitmapLease(
+            bitmap = transformedBitmap,
+            renderedSourceBounds = transformed.renderedSourceBounds,
+            disposer = memoryLease::close,
+        )
+    } catch (error: Throwable) {
+        try {
+            baseLease.close()
+        } catch (cleanup: Throwable) {
+            error.addSuppressed(cleanup)
+        }
+        throw error
+    }
+}
 
 /** Retains the base asset through transform and owns any derived native bitmap through detach. */
 @Composable
@@ -216,48 +335,12 @@ internal fun rememberReaderPresentationRenderedImage(
                 presentationImage.animatedHolder?.retainReadyFrameForRender(requireNotNull(animationReadyKey))
             }
             requireNotNull(baseLease) { "Ready presentation image lost its render lease: $identity" }
-            val baseBitmap = baseLease.asset.bitmap
-            val baseSourceBounds = identity.sourceBounds
-                ?: identity.splitHalf?.let { half ->
-                    splitBounds(baseLease.asset.sourceWidth, baseLease.asset.sourceHeight, half)
-                }
-                ?: PixelBounds(0, 0, baseLease.asset.sourceWidth, baseLease.asset.sourceHeight)
-            if (identity.splitHalf == null && identity.sourceBounds == null && !cropBorders) {
-                return@submit CloseableReaderPresentationBitmapLease(
-                    bitmap = baseBitmap,
-                    renderedSourceBounds = baseSourceBounds,
-                    disposer = baseLease::close,
-                )
-            }
-            try {
-                val transformed = withContext(Dispatchers.Default + NonCancellable) {
-                    transformCachedPageBitmapWithSourceBounds(
-                        bitmap = baseBitmap,
-                        splitHalf = identity.splitHalf,
-                        sourceBounds = identity.sourceBounds,
-                        cropBorders = cropBorders,
-                        sourceWidth = baseLease.asset.sourceWidth,
-                        sourceHeight = baseLease.asset.sourceHeight,
-                    )
-                }
-                if (transformed.bitmap === baseBitmap) {
-                    CloseableReaderPresentationBitmapLease(
-                        bitmap = baseBitmap,
-                        renderedSourceBounds = transformed.renderedSourceBounds,
-                        disposer = baseLease::close,
-                    )
-                } else {
-                    baseLease.close()
-                    CloseableReaderPresentationBitmapLease(
-                        bitmap = transformed.bitmap,
-                        renderedSourceBounds = transformed.renderedSourceBounds,
-                        disposer = transformed.bitmap.asSkiaBitmap()::close,
-                    )
-                }
-            } catch (error: Throwable) {
-                baseLease.close()
-                throw error
-            }
+            createReaderPresentationTransformLease(
+                baseLease = baseLease,
+                identity = identity,
+                cropBorders = cropBorders,
+                memoryAuthority = presentationImage.memoryAuthority,
+            )
         }
     }
     val transformedState by transformOwner.state.collectAsState()
@@ -272,3 +355,5 @@ internal fun rememberReaderPresentationRenderedImage(
         },
     )
 }
+
+private const val BYTES_PER_PIXEL = 4L

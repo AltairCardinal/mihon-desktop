@@ -165,9 +165,12 @@ class DesktopReaderAnimationPresentationWiringTest {
             assertEquals(1L, first.holder.decodeKey.contentKey.attemptGeneration)
 
             page.value = PAGE.copy(attemptGeneration = 2L)
-            runCurrent()
-            scene.render().toComposeImageBitmap().asSkiaBitmap().close()
-            runCurrent()
+            for (frame in 0 until PUMP_LIMIT) {
+                runCurrent()
+                scene.render().toComposeImageBitmap().asSkiaBitmap().close()
+                runCurrent()
+                if (presentation?.holder?.identity?.attemptGeneration == 2L) break
+            }
             val second = requireNotNull(presentation)
 
             assertNotSame(first.holder, second.holder)

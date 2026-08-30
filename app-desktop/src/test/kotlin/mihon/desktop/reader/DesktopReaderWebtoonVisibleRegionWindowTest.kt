@@ -279,7 +279,7 @@ class DesktopReaderWebtoonVisibleRegionWindowTest {
         const val PREVIEW_HEIGHT = 1_920
         const val TILE_FIXTURE_BITMAP_WIDTH = 64
         const val BYTES_PER_PIXEL = 4L
-        const val TILE_CACHE_PRESSURE_BYTES = 40L * 1024L * 1024L
+        const val TILE_CACHE_PRESSURE_BYTES = 100L * 1024L * 1024L
         const val MAX_VISIBLE_TILE_REQUESTS = 2
         const val SCROLL_DURATION_MS = 5_000L
         const val PUMP_LIMIT = 40

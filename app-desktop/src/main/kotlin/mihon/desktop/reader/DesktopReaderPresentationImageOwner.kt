@@ -85,6 +85,9 @@ class DesktopReaderPresentationImageOwner internal constructor(
     private var minimumGeneration = 0L
     private var closed = false
 
+    internal val memoryAuthority: DesktopReaderImageMemoryAuthority
+        get() = pageImagePipeline.memoryAuthority
+
     internal fun beginGeneration(generation: Long): Boolean {
         require(generation >= 0L) { "generation must be non-negative" }
         val staleHolders = synchronized(lock) {
@@ -98,10 +101,18 @@ class DesktopReaderPresentationImageOwner internal constructor(
             animatedHolders.removeAll(staleAnimated.toSet())
             staleStatic to staleAnimated
         }
-        staleHolders.first.forEach(DesktopReaderPresentationImageHolder::closeFromOwner)
-        staleHolders.second.forEach(DesktopReaderAnimatedPresentationImageHolder::closeFromOwner)
-        check(regionOwner.beginGeneration(generation)) { "Region owner rejected current generation" }
-        return pageImagePipeline.beginGeneration(generation)
+        var pipelineAccepted = false
+        runResourceActions(
+            buildList {
+                staleHolders.first.forEach { holder -> add(holder::closeFromOwner) }
+                staleHolders.second.forEach { holder -> add(holder::closeFromOwner) }
+                add {
+                    check(regionOwner.beginGeneration(generation)) { "Region owner rejected current generation" }
+                }
+                add { pipelineAccepted = pageImagePipeline.beginGeneration(generation) }
+            },
+        )
+        return pipelineAccepted
     }
 
     internal fun beginPageAttempt(
@@ -132,12 +143,22 @@ class DesktopReaderPresentationImageOwner internal constructor(
             animatedHolders.removeAll(staleAnimated.toSet())
             staleStatic to staleAnimated
         }
-        staleHolders.first.forEach(DesktopReaderPresentationImageHolder::closeFromOwner)
-        staleHolders.second.forEach(DesktopReaderAnimatedPresentationImageHolder::closeFromOwner)
-        check(regionOwner.beginPageAttempt(pageId, generation, attemptGeneration)) {
-            "Region owner rejected current page attempt"
-        }
-        return pageImagePipeline.beginPageAttempt(pageId, generation, attemptGeneration)
+        var pipelineAccepted = false
+        runResourceActions(
+            buildList {
+                staleHolders.first.forEach { holder -> add(holder::closeFromOwner) }
+                staleHolders.second.forEach { holder -> add(holder::closeFromOwner) }
+                add {
+                    check(regionOwner.beginPageAttempt(pageId, generation, attemptGeneration)) {
+                        "Region owner rejected current page attempt"
+                    }
+                }
+                add {
+                    pipelineAccepted = pageImagePipeline.beginPageAttempt(pageId, generation, attemptGeneration)
+                }
+            },
+        )
+        return pipelineAccepted
     }
 
     internal fun createHolder(
@@ -251,9 +272,13 @@ class DesktopReaderPresentationImageOwner internal constructor(
             animatedHolders.clear()
             registeredStatic to registeredAnimated
         }
-        registeredHolders.first.forEach(DesktopReaderPresentationImageHolder::closeFromOwner)
-        registeredHolders.second.forEach(DesktopReaderAnimatedPresentationImageHolder::closeFromOwner)
-        regionOwner.close()
+        runResourceActions(
+            buildList {
+                registeredHolders.first.forEach { holder -> add(holder::closeFromOwner) }
+                registeredHolders.second.forEach { holder -> add(holder::closeFromOwner) }
+                add(regionOwner::close)
+            },
+        )
     }
 
     internal fun isCurrent(holder: DesktopReaderPresentationImageHolder): Boolean = synchronized(lock) {
@@ -374,6 +399,9 @@ internal class DesktopReaderPresentationImageHolder internal constructor(
 
     val state: StateFlow<DesktopReaderPresentationImageState> = mutableState.asStateFlow()
 
+    internal val memoryAuthority: DesktopReaderImageMemoryAuthority
+        get() = owner.memoryAuthority
+
     fun acquire() {
         if (!owner.isCurrent(this)) return
         var jobToStart: Job? = null
@@ -485,9 +513,13 @@ internal class DesktopReaderPresentationImageHolder internal constructor(
             drawAcknowledged = false
             mutableState.value = DesktopReaderPresentationImageState.Closed(identity)
         }
-        jobToCancel?.cancel()
-        regionHolder.close()
-        if (unregister) owner.unregister(this)
+        runResourceActions(
+            buildList {
+                jobToCancel?.let { job -> add(job::cancel) }
+                add(regionHolder::close)
+                if (unregister) add { owner.unregister(this@DesktopReaderPresentationImageHolder) }
+            },
+        )
     }
 }
 
@@ -647,14 +679,20 @@ internal class DesktopReaderAnimatedPresentationImageHolder internal constructor
         } catch (error: CancellationException) {
             throw error
         } finally {
-            acquiredLease?.close()
-            previousLease?.close()
-            synchronized(lock) {
-                if (activeJob === runningJob) {
-                    activeJob = null
-                    activeKey = null
-                }
-            }
+            runResourceActions(
+                buildList {
+                    acquiredLease?.let { lease -> add(lease::close) }
+                    previousLease?.let { lease -> add(lease::close) }
+                    add {
+                        synchronized(lock) {
+                            if (activeJob === runningJob) {
+                                activeJob = null
+                                activeKey = null
+                            }
+                        }
+                    }
+                },
+            )
         }
     }
 
@@ -722,11 +760,15 @@ internal class DesktopReaderAnimatedPresentationImageHolder internal constructor
             readyKey = null
             mutableState.value = DesktopReaderAnimatedPresentationImageSnapshot(closed = true)
         }
-        jobToCancel?.cancel()
-        playbackToCancel?.cancel()
-        leaseToClose?.close()
-        contentSession.close()
-        if (unregister) owner.unregister(this)
+        runResourceActions(
+            buildList {
+                jobToCancel?.let { job -> add(job::cancel) }
+                playbackToCancel?.let { job -> add(job::cancel) }
+                leaseToClose?.let { lease -> add(lease::close) }
+                add(contentSession::close)
+                if (unregister) add { owner.unregister(this@DesktopReaderAnimatedPresentationImageHolder) }
+            },
+        )
     }
 
     private companion object {

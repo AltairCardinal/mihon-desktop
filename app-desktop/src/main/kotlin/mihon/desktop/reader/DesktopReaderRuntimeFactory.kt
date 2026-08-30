@@ -26,6 +26,8 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicReference
 
 data class DesktopReaderRuntime(
     val prefs: ReaderPreferences,
@@ -39,20 +41,75 @@ data class DesktopReaderRuntime(
     val pageIoObserver: ReaderPageIoObserver? = null,
     internal val contentAdapter: DesktopReaderContentAdapter = DesktopReaderContentAdapter(),
 ) : AutoCloseable {
+    private class CloseAttempt(
+        val ownerThread: Thread,
+    ) {
+        val completed = CountDownLatch(1)
+
+        @Volatile
+        var failure: Throwable? = null
+
+        fun awaitCompletion() {
+            var interrupted = false
+            while (true) {
+                try {
+                    completed.await()
+                    break
+                } catch (_: InterruptedException) {
+                    interrupted = true
+                }
+            }
+            if (interrupted) Thread.currentThread().interrupt()
+        }
+    }
+
+    private val closeAttempt = AtomicReference<CloseAttempt?>()
+
     override fun close() {
-        prefetchPreferenceJob.cancel()
-        presentationImageOwner.close()
-        preloader.close()
-        pageImagePipeline.close()
-        session.close()
-        pageContentOwner.close()
-        contentAdapter.close()
+        val candidate = CloseAttempt(Thread.currentThread())
+        if (!closeAttempt.compareAndSet(null, candidate)) {
+            val activeAttempt = checkNotNull(closeAttempt.get())
+            if (activeAttempt.ownerThread === Thread.currentThread() && activeAttempt.completed.count != 0L) {
+                return
+            }
+            activeAttempt.awaitCompletion()
+            activeAttempt.failure?.let { throw it }
+            return
+        }
+
+        var failure: Throwable? = null
+        fun closeStage(stage: () -> Unit) {
+            try {
+                stage()
+            } catch (error: Throwable) {
+                val firstFailure = failure
+                if (firstFailure == null) {
+                    failure = error
+                } else if (firstFailure !== error) {
+                    firstFailure.addSuppressed(error)
+                }
+            }
+        }
+
+        try {
+            closeStage { prefetchPreferenceJob.cancel() }
+            closeStage(presentationImageOwner::close)
+            closeStage(preloader::close)
+            closeStage(pageImagePipeline::close)
+            closeStage(session::close)
+            closeStage(pageContentOwner::close)
+            closeStage(contentAdapter::close)
+        } finally {
+            candidate.failure = failure
+            candidate.completed.countDown()
+        }
+        failure?.let { throw it }
     }
 }
 
 internal fun desktopReaderRuntimeFactory(): DesktopReaderRuntimeFactory = Injekt.get()
 
-class DesktopReaderRuntimeFactory(
+class DesktopReaderRuntimeFactory internal constructor(
     private val prefs: ReaderPreferences,
     private val downloadProvider: DesktopDownloadProvider,
     private val sourceManager: SourceManager,
@@ -68,6 +125,7 @@ class DesktopReaderRuntimeFactory(
     private val readerIoGate: ReaderIoGate = ReaderIoGate.None,
     private val readerContentOperationProbe: DesktopReaderContentOperationProbe = DesktopReaderContentOperationProbe.None,
     private val disallowNonAsciiFilenames: () -> Boolean = { false },
+    private val pageImageDecoder: DesktopReaderPageImageDecoder = SkiaDesktopReaderPageImageDecoder(),
 ) {
     internal val configuredReaderIoProbe: ReaderIoProbe get() = readerIoProbe
     private val encodedPageStoreCoordinator = DesktopReaderEncodedPageStoreCoordinator(encodedCacheDirectory)
@@ -84,6 +142,7 @@ class DesktopReaderRuntimeFactory(
             scope = parentScope,
             pageContentOwner = pageContentOwner,
             ioReporter = ioReporter,
+            decoder = pageImageDecoder,
         )
         val contentAdapter = DesktopReaderContentAdapter(
             contentOperationProbe = readerContentOperationProbe,
@@ -100,6 +159,7 @@ class DesktopReaderRuntimeFactory(
             ),
         )
         val tracker = progressTrackerOverride ?: progressTracker
+        var presentationImageOwner: DesktopReaderPresentationImageOwner? = null
         val session = DesktopReaderSession(
             initialContext = initialContext,
             core = core,
@@ -140,16 +200,24 @@ class DesktopReaderRuntimeFactory(
             initialNextChapterPrefetchMode = prefs.nextChapterPrefetchMode,
             ioReporter = ioReporter,
             ioGate = readerIoGate,
+            onGenerationPublished = { generation ->
+                checkNotNull(presentationImageOwner) {
+                    "Reader generation wiring must be bound before the session starts"
+                }.beginGeneration(generation)
+            },
         )
         val prefetchPreferenceJob = parentScope.launch {
             prefs.nextChapterPrefetchPreference.changes().collect(session::setNextChapterPrefetchMode)
         }
-        val pageIoObserver = ReaderPageIoObserver(ioReporter, session::onFirstPagePresented)
-        val presentationImageOwner = DesktopReaderPresentationImageOwner(
+        val pageIoObserver = ReaderPageIoObserver(ioReporter) { pageId, generation ->
+            parentScope.launch { session.onFirstPagePresented(pageId, generation) }
+        }
+        val boundPresentationImageOwner = DesktopReaderPresentationImageOwner(
             scope = parentScope,
             pageImagePipeline = pageImagePipeline,
             pageIoObserver = pageIoObserver,
         )
+        presentationImageOwner = boundPresentationImageOwner
         return DesktopReaderRuntime(
             prefs = prefs,
             preloader = PagePreloader(
@@ -157,7 +225,7 @@ class DesktopReaderRuntimeFactory(
                 windowSize = 3,
             ),
             pageImagePipeline = pageImagePipeline,
-            presentationImageOwner = presentationImageOwner,
+            presentationImageOwner = boundPresentationImageOwner,
             pageContentOwner = pageContentOwner,
             session = session,
             pageIoObserver = pageIoObserver,

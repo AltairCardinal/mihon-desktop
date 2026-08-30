@@ -213,6 +213,7 @@ internal data class DesktopReaderPageImagePipelineSnapshot(
     val minimumGeneration: Long,
     val cache: DesktopReaderImageCacheSnapshot,
     val tileCache: DesktopReaderImageCacheSnapshot,
+    val memory: DesktopReaderImageMemorySnapshot,
     val inFlightCount: Int,
     val closed: Boolean,
 )
@@ -231,6 +232,9 @@ class DesktopReaderPageImagePipeline internal constructor(
     private val decoder: DesktopReaderPageImageDecoder = SkiaDesktopReaderPageImageDecoder(),
     maxEntries: Int = DEFAULT_CACHE_ENTRIES,
     maxBytes: Long = DEFAULT_CACHE_BYTES,
+    internal val memoryAuthority: DesktopReaderImageMemoryAuthority = DesktopReaderImageMemoryAuthority(
+        if (maxBytes == DEFAULT_CACHE_BYTES) DEFAULT_TOTAL_IMAGE_BYTES else maxBytes,
+    ),
     maxConcurrentDecodes: Int = DEFAULT_CONCURRENT_DECODES,
 ) : AutoCloseable {
     private data class PageGenerationIdentity(
@@ -242,6 +246,7 @@ class DesktopReaderPageImagePipeline internal constructor(
         lateinit var deferred: Deferred<DesktopReaderImageAssetLease?>
         var pendingAcquires: Int = 0
         var decodedLease: DesktopReaderImageAssetLease? = null
+        var fullCacheClaimed: Boolean = false
     }
 
     private class ContentSessionEntry(
@@ -250,14 +255,26 @@ class DesktopReaderPageImagePipeline internal constructor(
     )
 
     private val lock = Any()
-    private val cache = DesktopReaderImageCache(maxEntries, maxBytes)
-    private val tileCache = DesktopReaderImageCache(DEFAULT_TILE_CACHE_ENTRIES, DEFAULT_TILE_CACHE_BYTES)
+    private val mutableCacheRevision = MutableStateFlow(0L)
+    private val cache = DesktopReaderImageCache(
+        maxEntries = maxEntries,
+        maxBytes = memoryAuthority.maxBytes,
+        memoryAuthority = memoryAuthority,
+        ownsMemoryAuthority = false,
+        onAuthorityEviction = { mutableCacheRevision.value++ },
+    )
+    private val tileCache = DesktopReaderImageCache(
+        maxEntries = DEFAULT_TILE_CACHE_ENTRIES,
+        maxBytes = memoryAuthority.maxBytes,
+        memoryAuthority = memoryAuthority,
+        ownsMemoryAuthority = false,
+    )
     private val decodePermits = Semaphore(maxConcurrentDecodes)
     private val entries = mutableMapOf<ReaderPageDecodeKey, Entry>()
     private val contentSessions = mutableMapOf<ReaderPageContentOpenRequest, ContentSessionEntry>()
     private val minimumPageAttempts = mutableMapOf<PageGenerationIdentity, Long>()
-    private val mutableCacheRevision = MutableStateFlow(0L)
     private var minimumGeneration = 0L
+    private var clearing = false
     private var closed = false
 
     init {
@@ -325,12 +342,21 @@ class DesktopReaderPageImagePipeline internal constructor(
     internal fun commitRegionTile(
         key: ReaderPageDecodeKey,
         acceptedLease: DesktopReaderImageAssetLease,
-    ): Boolean = synchronized(lock) {
+    ): Boolean {
         require(key.purpose == PageDecodePurpose.REGION_TILE) {
             "Only accepted region tiles may enter the tile cache"
         }
-        if (closed || !isCurrentAttemptLocked(key.contentKey)) return false
-        tileCache.commit(key, acceptedLease)
+        val current = synchronized(lock) {
+            !closed && !clearing && isCurrentAttemptLocked(key.contentKey)
+        }
+        if (!current) return false
+        if (!tileCache.commit(key, acceptedLease)) return false
+        val stillCurrent = synchronized(lock) {
+            !closed && !clearing && isCurrentAttemptLocked(key.contentKey)
+        }
+        if (stillCurrent) return true
+        tileCache.removeWhere { candidate -> candidate == key }
+        return false
     }
 
     private suspend fun acquireWithLoader(
@@ -339,7 +365,7 @@ class DesktopReaderPageImagePipeline internal constructor(
     ): DesktopReaderImageAssetLease? {
         val entry = synchronized(lock) {
             check(!closed) { "Desktop reader page image pipeline is closed" }
-            if (!isCurrentAttemptLocked(key.contentKey)) return null
+            if (clearing || !isCurrentAttemptLocked(key.contentKey)) return null
             cacheFor(key)?.acquire(key)?.let { return it }
             entries.getOrPut(key) { createEntry(key, loader) }.also {
                 it.pendingAcquires++
@@ -358,25 +384,92 @@ class DesktopReaderPageImagePipeline internal constructor(
         }
 
         var entryLeaseToClose: DesktopReaderImageAssetLease? = null
+        var shouldCommitFull = false
+        var callerAcquireFailure: Throwable? = null
         val callerLease = synchronized(lock) {
             entry.pendingAcquires--
             val accepted = !closed &&
+                !clearing &&
                 isCurrentAttemptLocked(key.contentKey) &&
                 entries[key] === entry
-            val lease = if (accepted) decoded.retain() else null
+            val lease = if (accepted) {
+                try {
+                    decoded.retain()
+                } catch (error: Throwable) {
+                    callerAcquireFailure = error
+                    null
+                }
+            } else {
+                null
+            }
+            if (
+                lease != null &&
+                key.purpose == PageDecodePurpose.FULL_PAGE &&
+                decoded.asset.animationMetadata == null &&
+                !entry.fullCacheClaimed
+            ) {
+                entry.fullCacheClaimed = true
+                shouldCommitFull = true
+            }
             entryLeaseToClose = removeIfUnusedLocked(key, entry)
             lease
         }
-        entryLeaseToClose?.close()
+        callerAcquireFailure?.let { error ->
+            try {
+                entryLeaseToClose?.close()
+            } catch (closeError: Throwable) {
+                if (closeError !== error) error.addSuppressed(closeError)
+            }
+            throw error
+        }
         if (callerLease == null) {
+            entryLeaseToClose?.close()
             throw CancellationException("Desktop reader page image request became stale")
         }
+        var failure: Throwable? = null
+        if (shouldCommitFull) {
+            try {
+                if (cache.commit(key, callerLease)) {
+                    val stillCurrent = synchronized(lock) {
+                        !closed && !clearing && isCurrentAttemptLocked(key.contentKey)
+                    }
+                    if (stillCurrent) {
+                        mutableCacheRevision.value++
+                    } else {
+                        cache.removeWhere { candidate -> candidate == key }
+                    }
+                }
+            } catch (error: Throwable) {
+                failure = error
+            }
+        }
+        entryLeaseToClose?.let { lease ->
+            try {
+                lease.close()
+            } catch (closeError: Throwable) {
+                val first = failure
+                if (first == null) {
+                    failure = closeError
+                } else if (closeError !== first) {
+                    first.addSuppressed(closeError)
+                }
+            }
+        }
+        if (failure != null) {
+            try {
+                callerLease.close()
+            } catch (closeError: Throwable) {
+                val first = checkNotNull(failure)
+                if (closeError !== first) first.addSuppressed(closeError)
+            }
+        }
+        failure?.let { throw it }
         return callerLease
     }
 
     internal fun acquireCached(key: ReaderPageDecodeKey): DesktopReaderImageAssetLease? = synchronized(lock) {
         check(!closed) { "Desktop reader page image pipeline is closed" }
-        if (!isCurrentAttemptLocked(key.contentKey)) return null
+        if (clearing || !isCurrentAttemptLocked(key.contentKey)) return null
         cacheFor(key)?.acquire(key)
     }
 
@@ -411,16 +504,23 @@ class DesktopReaderPageImagePipeline internal constructor(
         val staleKey: (ReaderPageDecodeKey) -> Boolean = { key ->
             key.contentKey.isOlderAttempt(pageId, generation, attemptGeneration)
         }
-        val removedFullEntries = cache.removeWhere(staleKey)
-        tileCache.removeWhere(staleKey)
-        if (removedFullEntries > 0) {
-            synchronized(lock) {
-                if (!closed) mutableCacheRevision.value++
-            }
-        }
-        detached.first.forEach { entry -> entry.deferred.cancel() }
-        releaseDetachedCompleted(detached.first)
-        detached.second.forEach(DesktopReaderSharedPageContent::close)
+        val hadFullCacheEntries = cache.snapshot().keys.any(staleKey)
+        runResourceActions(
+            buildList {
+                add { cache.removeWhere(staleKey) }
+                add { tileCache.removeWhere(staleKey) }
+                if (hadFullCacheEntries) {
+                    add {
+                        synchronized(lock) {
+                            if (!closed) mutableCacheRevision.value++
+                        }
+                    }
+                }
+                detached.first.forEach { entry -> add { entry.deferred.cancel() } }
+                add { releaseDetachedCompleted(detached.first) }
+                detached.second.forEach { content -> add(content::close) }
+            },
+        )
         return true
     }
 
@@ -435,31 +535,44 @@ class DesktopReaderPageImagePipeline internal constructor(
             minimumPageAttempts.keys.removeAll { identity -> identity.generation < generation }
             val stale = entries.filterKeys { it.generation < generation }
             stale.keys.forEach(entries::remove)
-            cache.clear()
-            tileCache.clear()
             mutableCacheRevision.value++
             val staleSessions = contentSessions.filterKeys { it.generation < generation }
             staleSessions.keys.forEach(contentSessions::remove)
             stale.values.toList() to staleSessions.values.map(ContentSessionEntry::content)
         }
-        stale.first.forEach { entry -> entry.deferred.cancel() }
-        releaseDetachedCompleted(stale.first)
-        stale.second.forEach(DesktopReaderSharedPageContent::close)
+        runResourceActions(
+            buildList {
+                add { cache.removeWhere { key -> key.generation < generation } }
+                add { tileCache.removeWhere { key -> key.generation < generation } }
+                stale.first.forEach { entry -> add { entry.deferred.cancel() } }
+                add { releaseDetachedCompleted(stale.first) }
+                stale.second.forEach { content -> add(content::close) }
+            },
+        )
         return true
     }
 
     internal fun clear() {
         val detachedEntries = synchronized(lock) {
             check(!closed) { "Desktop reader page image pipeline is closed" }
+            clearing = true
             val detached = entries.values.toList()
             entries.clear()
-            cache.clear()
-            tileCache.clear()
             mutableCacheRevision.value++
             detached
         }
-        detachedEntries.forEach { entry -> entry.deferred.cancel() }
-        releaseDetachedCompleted(detachedEntries)
+        try {
+            runResourceActions(
+                buildList {
+                    detachedEntries.forEach { entry -> add { entry.deferred.cancel() } }
+                    add { releaseDetachedCompleted(detachedEntries) }
+                    add(cache::clear)
+                    add(tileCache::clear)
+                },
+            )
+        } finally {
+            synchronized(lock) { clearing = false }
+        }
     }
 
     internal fun snapshot(): DesktopReaderPageImagePipelineSnapshot = synchronized(lock) {
@@ -467,6 +580,7 @@ class DesktopReaderPageImagePipeline internal constructor(
             minimumGeneration = minimumGeneration,
             cache = cache.snapshot(),
             tileCache = tileCache.snapshot(),
+            memory = memoryAuthority.snapshot(),
             inFlightCount = entries.size,
             closed = closed,
         )
@@ -480,14 +594,19 @@ class DesktopReaderPageImagePipeline internal constructor(
             val detachedSessions = contentSessions.values.map(ContentSessionEntry::content)
             entries.clear()
             contentSessions.clear()
-            cache.close()
-            tileCache.close()
             mutableCacheRevision.value++
             detachedEntries to detachedSessions
         }
-        detached.first.forEach { entry -> entry.deferred.cancel() }
-        releaseDetachedCompleted(detached.first)
-        detached.second.forEach(DesktopReaderSharedPageContent::close)
+        runResourceActions(
+            buildList {
+                detached.first.forEach { entry -> add { entry.deferred.cancel() } }
+                add { releaseDetachedCompleted(detached.first) }
+                detached.second.forEach { content -> add(content::close) }
+                add(cache::close)
+                add(tileCache::close)
+                add(memoryAuthority::close)
+            },
+        )
     }
 
     private fun createEntry(
@@ -497,16 +616,27 @@ class DesktopReaderPageImagePipeline internal constructor(
         val entry = Entry()
         entry.deferred = scope.async(start = CoroutineStart.LAZY) {
             val decoded = loader()
+            try {
+                decoded?.asset?.attachMemoryAuthority(
+                    authority = memoryAuthority,
+                    kind = key.purpose.toImageMemoryKind(),
+                    retention = DesktopReaderImageMemoryRetention.IN_FLIGHT,
+                )
+            } catch (error: Throwable) {
+                try {
+                    decoded?.close()
+                } catch (closeError: Throwable) {
+                    if (closeError !== error) error.addSuppressed(closeError)
+                }
+                if (synchronized(lock) { closed }) {
+                    throw CancellationException("Desktop reader page image pipeline closed").apply {
+                        initCause(error)
+                    }
+                }
+                throw error
+            }
             synchronized(lock) {
                 entry.decodedLease = decoded
-                if (
-                    key.purpose == PageDecodePurpose.FULL_PAGE &&
-                    decoded != null && decoded.asset.animationMetadata == null && !closed &&
-                    isCurrentAttemptLocked(key.contentKey) && entries[key] === entry &&
-                    cache.commit(key, decoded)
-                ) {
-                    mutableCacheRevision.value++
-                }
             }
             decoded
         }
@@ -568,16 +698,16 @@ class DesktopReaderPageImagePipeline internal constructor(
     }
 
     private fun releaseDetachedCompleted(detachedEntries: List<Entry>) {
-        detachedEntries.forEach { entry ->
-            val lease = synchronized(lock) {
+        val leases = detachedEntries.mapNotNull { entry ->
+            synchronized(lock) {
                 if (entry.deferred.isCompleted && entry.pendingAcquires == 0) {
                     entry.decodedLease.also { entry.decodedLease = null }
                 } else {
                     null
                 }
             }
-            lease?.close()
         }
+        runResourceActions(leases.map { lease -> lease::close })
     }
 
     private fun retainContentSessionLocked(
@@ -652,7 +782,14 @@ class DesktopReaderPageImagePipeline internal constructor(
         const val DEFAULT_TILE_CACHE_ENTRIES = 8
         const val DEFAULT_TILE_CACHE_BYTES = 64L * 1024L * 1024L
         const val DEFAULT_CONCURRENT_DECODES = 3
+        const val DEFAULT_TOTAL_IMAGE_BYTES = DesktopReaderImageMemoryAuthority.DEFAULT_MAX_BYTES
     }
+}
+
+private fun PageDecodePurpose.toImageMemoryKind(): DesktopReaderImageMemoryKind = when (this) {
+    PageDecodePurpose.FULL_PAGE -> DesktopReaderImageMemoryKind.FULL
+    PageDecodePurpose.ANIMATION_FRAME -> DesktopReaderImageMemoryKind.FRAME
+    PageDecodePurpose.REGION_TILE -> DesktopReaderImageMemoryKind.TILE
 }
 
 /**

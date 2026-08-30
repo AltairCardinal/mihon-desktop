@@ -55,8 +55,16 @@ internal class DesktopReaderRegionPresentationOwner(
             minimumPageAttempts.keys.removeAll { (_, holderGeneration) -> holderGeneration < generation }
             holders.filterTo(mutableListOf()) { it.identity.generation < generation }.also(holders::removeAll)
         }
-        stale.forEach(DesktopReaderRegionPresentationHolder::closeFromOwner)
-        return !managesPipelineGeneration || pageImagePipeline.beginGeneration(generation)
+        var pipelineAccepted = true
+        runResourceActions(
+            buildList {
+                stale.forEach { holder -> add(holder::closeFromOwner) }
+                if (managesPipelineGeneration) {
+                    add { pipelineAccepted = pageImagePipeline.beginGeneration(generation) }
+                }
+            },
+        )
+        return pipelineAccepted
     }
 
     fun beginPageAttempt(
@@ -80,9 +88,18 @@ internal class DesktopReaderRegionPresentationOwner(
                     holder.identity.attemptGeneration < attemptGeneration
             }.also(holders::removeAll)
         }
-        stale.forEach(DesktopReaderRegionPresentationHolder::closeFromOwner)
-        return !managesPipelineGeneration ||
-            pageImagePipeline.beginPageAttempt(pageId, generation, attemptGeneration)
+        var pipelineAccepted = true
+        runResourceActions(
+            buildList {
+                stale.forEach { holder -> add(holder::closeFromOwner) }
+                if (managesPipelineGeneration) {
+                    add {
+                        pipelineAccepted = pageImagePipeline.beginPageAttempt(pageId, generation, attemptGeneration)
+                    }
+                }
+            },
+        )
+        return pipelineAccepted
     }
 
     fun createHolder(
@@ -149,7 +166,7 @@ internal class DesktopReaderRegionPresentationOwner(
             closed = true
             holders.toList().also { holders.clear() }
         }
-        detached.forEach(DesktopReaderRegionPresentationHolder::closeFromOwner)
+        runResourceActions(detached.map { holder -> holder::closeFromOwner })
     }
 
     internal fun isCurrent(holder: DesktopReaderRegionPresentationHolder): Boolean = synchronized(lock) {
@@ -268,9 +285,13 @@ internal class DesktopReaderRegionPresentationHolder internal constructor(
             }
             publishStateLocked()
         }
-        removedJobs.forEach(Job::cancel)
-        removedLeases.forEach(DesktopReaderImageAssetLease::close)
-        additions.forEach(::startTileAcquire)
+        runResourceActions(
+            buildList {
+                removedJobs.forEach { job -> add(job::cancel) }
+                removedLeases.forEach { lease -> add(lease::close) }
+                additions.forEach { key -> add { startTileAcquire(key) } }
+            },
+        )
     }
 
     fun snapshot(): DesktopReaderRegionPresentationSnapshot = mutableState.value
@@ -373,10 +394,16 @@ internal class DesktopReaderRegionPresentationHolder internal constructor(
         } catch (error: Throwable) {
             owner.publishPreviewFailure(this, runningJob, error)
         } finally {
-            acquiredLease?.close()
-            synchronized(lock) {
-                if (previewJob === runningJob) previewJob = null
-            }
+            runResourceActions(
+                buildList {
+                    acquiredLease?.let { lease -> add(lease::close) }
+                    add {
+                        synchronized(lock) {
+                            if (previewJob === runningJob) previewJob = null
+                        }
+                    }
+                },
+            )
         }
     }
 
@@ -412,11 +439,17 @@ internal class DesktopReaderRegionPresentationHolder internal constructor(
         } catch (_: Throwable) {
             // A region failure is local: keep the preview and allow later tile requests to proceed.
         } finally {
-            acquiredLease?.close()
-            previousLease?.close()
-            synchronized(lock) {
-                if (tileJobs[key] === runningJob) tileJobs.remove(key)
-            }
+            runResourceActions(
+                buildList {
+                    acquiredLease?.let { lease -> add(lease::close) }
+                    previousLease?.let { lease -> add(lease::close) }
+                    add {
+                        synchronized(lock) {
+                            if (tileJobs[key] === runningJob) tileJobs.remove(key)
+                        }
+                    }
+                },
+            )
         }
     }
 
@@ -450,9 +483,13 @@ internal class DesktopReaderRegionPresentationHolder internal constructor(
             regionSourceRetained = false
             mutableState.value = DesktopReaderRegionPresentationSnapshot(closed = true)
         }
-        jobs.forEach(Job::cancel)
-        leases.forEach(DesktopReaderImageAssetLease::close)
-        if (closeSource) contentSession.close()
-        if (unregister) owner.unregister(this)
+        runResourceActions(
+            buildList {
+                jobs.forEach { job -> add(job::cancel) }
+                leases.forEach { lease -> add(lease::close) }
+                if (closeSource) add(contentSession::close)
+                if (unregister) add { owner.unregister(this@DesktopReaderRegionPresentationHolder) }
+            },
+        )
     }
 }

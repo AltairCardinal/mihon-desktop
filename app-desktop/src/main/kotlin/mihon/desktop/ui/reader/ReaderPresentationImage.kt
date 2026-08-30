@@ -13,6 +13,7 @@ import mihon.desktop.reader.DesktopReaderAnimatedPresentationImageHolder
 import mihon.desktop.reader.DesktopReaderAnimatedPresentationImageSnapshot
 import mihon.desktop.reader.DesktopReaderAnimationDrawToken
 import mihon.desktop.reader.DesktopReaderImageAssetLease
+import mihon.desktop.reader.DesktopReaderImageMemoryAuthority
 import mihon.desktop.reader.DesktopReaderRegionPresentationHolder
 import mihon.desktop.reader.DesktopReaderRegionPresentationSnapshot
 import mihon.domain.reader.PageDecodePurpose
@@ -30,6 +31,9 @@ internal data class ReaderPresentationImage(
     val regionHolder: DesktopReaderRegionPresentationHolder? = null,
     val regionState: DesktopReaderRegionPresentationSnapshot = DesktopReaderRegionPresentationSnapshot(),
 ) {
+    val memoryAuthority: DesktopReaderImageMemoryAuthority
+        get() = holder.memoryAuthority
+
     val animationDrawToken: DesktopReaderAnimationDrawToken?
         get() = animatedState?.drawToken
 

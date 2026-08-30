@@ -132,7 +132,7 @@ class DesktopReaderRegionPresentationOwnerTest {
     }
 
     @Test
-    fun `region tiles use an independent 8 entry 64 MiB LRU and draw lease survives eviction`() = runTest {
+    fun `unified image budget keeps region tiles under an 8 entry LRU and draw lease survives eviction`() = runTest {
         val decodedKeys = CopyOnWriteArrayList<ReaderPageDecodeKey>()
         val disposals = mutableMapOf<ReaderPageDecodeKey, AtomicInteger>()
         val fixture = fixture(
@@ -168,7 +168,7 @@ class DesktopReaderRegionPresentationOwnerTest {
 
             val initialCache = fixture.owner.snapshot().tileCache
             assertEquals(8, initialCache.maxEntries)
-            assertEquals(64L * MIB, initialCache.maxBytes)
+            assertEquals(192L * MIB, initialCache.maxBytes)
             assertEquals(8, initialCache.entryCount)
             assertEquals(64L * MIB, initialCache.usedBytes)
             assertTrue(initialCache.keys.all { it.purpose == PageDecodePurpose.REGION_TILE })

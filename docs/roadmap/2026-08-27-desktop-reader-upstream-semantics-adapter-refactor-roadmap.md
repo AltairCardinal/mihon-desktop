@@ -319,7 +319,7 @@ Android Reader UI                 Desktop Reader presentation
     - [x] `RUA-04D1` 动画 purpose-aware decode owner
     - [x] `RUA-04D2` 超大图与 region tile owner
     - [x] `RUA-04D3` Retry/cancel/stale attempt 线性化
-    - [ ] `RUA-04D4` detach/recycle/close 与统一内存预算
+    - [x] `RUA-04D4` detach/recycle/close 与统一内存预算
     - [ ] `RUA-04D5` legacy owner 删除与最终矩阵门禁
 - [ ] `RUA-05` 原版相邻章默认语义与 Desktop opt-in decorator
   - [ ] `RUA-05A` canonical last-five page-list-only 语义
@@ -626,6 +626,14 @@ Android Reader UI                 Desktop Reader presentation
 - materialize 已 Ready 但 FULL decode 失败时，三种 viewer 不再永久转圈，而是显示现有“加载失败/重试”反馈并把精确 `ReaderPageId` 回传到 `ReaderScreenModel → runtime.session.retryPage`。animation frame 失败仍保留最后成功帧，region tile 失败仍保留 full preview，两类局部失败不会升级成整页 Retry。
 - 严格 TDD 证据包括 `.gradle-coordinator/rua04d3-domain-red.log`、`rua04d3-domain-green.log`、`rua04d3-desktop-red.log`、`rua04d3-wiring-red2.log`、`rua04d3-core-green.log`、`rua04d3-decode-ui-red2.log` 与 `rua04d3-decode-ui-green.log`。首次 `rua04d3-close` 的 92 项中只有既有 Single-page Compose 单次渲染断言发生一次时序抖动；`rua04d3-single-regression-repro` 单独复现全绿，随后 `rua04d3-final-close.log` 完成 root `spotlessCheck` 与 16 个相关 Desktop production-wiring/回归类，92 tests 全绿并 `BUILD SUCCESSFUL in 4m 58s`；领域 focused matrix 也已全绿。
 - 正式独立只读审查结论为 `PASS`，P0/P1/P2/P3 均为零。跨 owner 的 attempt 推进在 generation 并发时保持 fail-closed，不会接受旧身份；锁序未形成反向环，detached deferred、cache lease、shared content 与 holder close 未见双关或泄漏。本批包含 17 个 product 文件、7 个 test 文件和本 roadmap，超过 4～8 文件提示值是因为 shared/session/runtime/full-frame-region/preloader/三 presentation 的 attempt 身份必须原子对齐，拆开会产生可编译但语义失配的中间状态；没有进入 D4 的通用 close/统一预算或 D5 的 legacy owner 删除。Desktop 正式构建仍只在 `RUA-07` 执行。
+
+**`RUA-04D4` 完成证据（2026-08-30）**：
+
+- Desktop runtime 现在以唯一 192 MiB soft authority 统计 decoded FULL、region TILE、animation FRAME 与 presentation DERIVED 的实际 allocation；多 lease 不重复计数。ACTIVE/IN_FLIGHT pin 不会被强制回收，超预算时按跨 purpose LRU 驱逐未固定 cache retention。普通 cache 与 tile cache 只发布 authority 已接纳的 allocation identity；provisional replacement 对 snapshot/acquire 不可见，clear/replacement/eviction 也不会留下孤儿 retention。
+- session generation 在 state 发布前同步 fence presentation/region/pipeline；runtime close 对并发 caller 只执行一次全部阶段，等待者取得同一 outcome，同线程重入不会自锁。PagePreloader、pipeline attempt/generation、static/animated/region holder 与 transform owner 均使用 first-plus-suppressed 的 exception-complete 回收；非协作迟到 decode、cache dispose 抛错和 derived registration 失败仍会释放所有后续资源，DERIVED native bitmap 与 FULL base 各恰好关闭一次。
+- 严格 TDD 证据包括 `.gradle-coordinator/rua04d4-red2.log`、`rua04d4-green4.log`、`rua04d4-p1-red.log` 与 `rua04d4-p1-green.log`。首次相关收口暴露 throwing-disposer 的虚拟时钟等待和旧 64 MiB tile 压力 fixture，第二次暴露 Retry remount 的单帧 Compose 时序假设；对应失败类分别经 `rua04d4-close-failures-green` 与 `rua04d4-animation-remount-green` 变为确定性有界测试。最终 `rua04d4-final-close3.log` 完成 root `spotlessCheck` 与 31 个 D1～D4 production-wiring/回归类，179 tests 全绿，`BUILD SUCCESSFUL in 6m 24s`。
+- 两轮独立只读审查先后发现 cache/authority 两阶段竞态、exception-complete 缺口、旧 runtime 预算断言、DERIVED production wiring，以及 provisional snapshot 与 post-registration 双 close 两个残余 P1。所有 finding 均由 allocation identity、完整资源动作矩阵和真实 transform failure RED 关闭；未发现进入 D5 legacy 删除、手势、双页配对或 viewport 语义的范围漂移。
+- 本批包含 10 个 product 文件、11 个 test 文件和本 roadmap，超过 4～8 文件提示值，是因为 runtime/session、FULL/TILE/FRAME/DERIVED 四类 allocation 与 static/animated/region presentation 的 close 顺序必须作为一个生命周期矩阵交付；拆分会产生部分 owner 仍不受统一 authority 或异常中止回收的不可验收状态。Desktop 正式构建仍只在 `RUA-07` 执行。
 
 ### `RUA-05` 原版相邻章默认语义与 Desktop opt-in decorator
 

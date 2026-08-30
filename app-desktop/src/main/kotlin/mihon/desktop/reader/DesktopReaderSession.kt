@@ -124,6 +124,7 @@ class DesktopReaderSession(
         ReaderMonotonicClock { 0L },
     ),
     private val ioGate: ReaderIoGate = ReaderIoGate.None,
+    private val onGenerationPublished: (Long) -> Unit = {},
 ) : AutoCloseable {
     private val lock = Any()
     private val storeMutex = Mutex()
@@ -170,6 +171,7 @@ class DesktopReaderSession(
 
     private val _state = MutableStateFlow(DesktopReaderSessionState(initialContext, core.snapshot))
     val state: StateFlow<DesktopReaderSessionState> = _state.asStateFlow()
+    private var publishedGeneration = core.snapshot.generation
     internal val currentNextChapterPrefetchMode: NextChapterPrefetchMode
         get() = synchronized(lock) { nextChapterPrefetchMode }
     internal fun pageRunnerSnapshot(): ReaderPageMaterializeRunnerSnapshot = pageRunner.snapshot()
@@ -795,7 +797,12 @@ class DesktopReaderSession(
     }
 
     private fun publishStateLocked() {
-        _state.value = DesktopReaderSessionState(context, core.snapshot)
+        val state = DesktopReaderSessionState(context, core.snapshot)
+        if (state.snapshot.generation != publishedGeneration) {
+            onGenerationPublished(state.snapshot.generation)
+            publishedGeneration = state.snapshot.generation
+        }
+        _state.value = state
     }
 
     private companion object {

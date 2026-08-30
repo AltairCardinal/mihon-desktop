@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNotSame
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.jetbrains.skia.Bitmap
@@ -272,6 +273,65 @@ class PagePreloaderTest {
         assertNull(preloader.get(0))
         assertEquals(0, preloader.cacheSize())
         preloader.close()
+    }
+
+    @Test
+    fun `close releases every pinned lease and suppresses later disposer failures`() = runTest {
+        val firstFailure = IllegalStateException("visible-page-disposer")
+        val laterFailure = IllegalArgumentException("retained-page-disposer")
+        val disposals = mutableListOf<Int>()
+        val clock = AtomicLong()
+        val reporter = ReaderIoReporter(
+            probe = ReaderIoProbe.None,
+            clock = ReaderMonotonicClock(clock::incrementAndGet),
+        )
+        val contentOwner = DesktopReaderPageContentOwner(this, { byteArrayOf(1) }, reporter)
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = this,
+            pageContentOwner = contentOwner,
+            ioReporter = reporter,
+            decoder = DesktopReaderPageImageDecoder { _, key ->
+                val pageIndex = key.pageIndex
+                val bitmap = Bitmap().apply { check(allocN32Pixels(2, 2)) }
+                DesktopReaderImageAsset(
+                    bitmap = bitmap.asComposeImageBitmap(),
+                    sourceWidth = 2,
+                    sourceHeight = 2,
+                    estimatedBytes = 16L,
+                    sampled = false,
+                    disposer = {
+                        bitmap.close()
+                        disposals += pageIndex
+                        when (pageIndex) {
+                            1 -> throw firstFailure
+                            0 -> throw laterFailure
+                            else -> Unit
+                        }
+                    },
+                )
+            },
+        )
+        val preloader = PagePreloader(pipeline, windowSize = 0)
+        val refs = listOf(EncodedPageRef("retained-page"), EncodedPageRef("visible-page"))
+        val pageIds = refs.indices.map { index -> ReaderPageId(ReaderChapterId(91L), index) }
+
+        try {
+            preloader.preloadEncoded(0, refs, pageIds, sessionGeneration = 1L)
+            preloader.preloadEncoded(1, refs, pageIds, sessionGeneration = 1L)
+            assertNotNull(preloader.getCachedPage(0))
+            pipeline.clear()
+
+            val thrown = assertThrows(IllegalStateException::class.java, preloader::close)
+
+            assertSame(firstFailure, thrown)
+            assertEquals(listOf(laterFailure), thrown.suppressed.toList())
+            assertEquals(listOf(1, 0), disposals)
+            assertEquals(0L, pipeline.memoryAuthority.snapshot().residentBytes)
+        } finally {
+            runCatching { preloader.close() }
+            runCatching { pipeline.close() }
+            contentOwner.close()
+        }
     }
 
     private fun pngBytes(width: Int, height: Int): ByteArray {

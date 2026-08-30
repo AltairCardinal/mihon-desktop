@@ -64,11 +64,11 @@ class DesktopReaderRegionCacheRevisionTest {
             assertEquals(1, decodedKeys.count { key -> key == firstTile }, "Tile cache hit must not decode again")
             assertEquals(baselineRevision, pipeline.cacheRevision.value, "Tile cache hit must stay revision-neutral")
 
-            (1..4).forEach { index ->
+            (1..8).forEach { index ->
                 session.acquireAndCommit(pipeline, tileKey(index))
             }
             val tileCache = pipeline.snapshot().tileCache
-            assertEquals(4, tileCache.entryCount, "The fifth 16 MiB tile must evict the first from the 64 MiB cache")
+            assertEquals(8, tileCache.entryCount, "The ninth tile must evict the first at the unified cache entry limit")
             assertFalse(firstTile in tileCache.keys)
             assertEquals(baselineRevision, pipeline.cacheRevision.value, "Tile eviction must stay revision-neutral")
 

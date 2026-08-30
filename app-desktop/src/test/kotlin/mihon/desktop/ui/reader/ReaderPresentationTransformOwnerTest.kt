@@ -2,6 +2,7 @@ package mihon.desktop.ui.reader
 
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asComposeImageBitmap
+import androidx.compose.ui.graphics.asSkiaBitmap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
@@ -11,7 +12,17 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import mihon.desktop.reader.DesktopReaderImageAsset
+import mihon.desktop.reader.DesktopReaderImageMemoryAuthority
+import mihon.desktop.reader.DesktopReaderImageMemoryKind
+import mihon.desktop.reader.DesktopReaderImageMemoryRetention
 import mihon.desktop.reader.DesktopReaderPresentationImageSlotIdentity
+import mihon.domain.reader.PageDecodePurpose
+import mihon.domain.reader.PageSplitHalf
+import mihon.domain.reader.PixelBounds
+import mihon.domain.reader.ReaderPageDecodeKey
+import mihon.domain.reader.content.ReaderPageContentOpenRequest
+import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
 import org.jetbrains.skia.Bitmap
@@ -156,6 +167,143 @@ class ReaderPresentationTransformOwnerTest {
         owner.close()
         owner.close()
         assertEquals(1, closeCalls.get(), "Clear and close are idempotent for the released bitmap")
+    }
+
+    @Test
+    fun `production transform lease registers derived memory and releases base before final detach`() = runTest {
+        val authority = DesktopReaderImageMemoryAuthority(maxBytes = 1_024L)
+        val baseDisposeCalls = AtomicInteger()
+        val baseNative = Bitmap().apply { check(allocN32Pixels(4, 2)) }
+        val baseAsset = DesktopReaderImageAsset(
+            bitmap = baseNative.asComposeImageBitmap(),
+            sourceWidth = 4,
+            sourceHeight = 2,
+            estimatedBytes = 32L,
+            sampled = false,
+            disposer = {
+                baseNative.close()
+                baseDisposeCalls.incrementAndGet()
+            },
+        )
+        baseAsset.attachMemoryAuthority(
+            authority = authority,
+            kind = DesktopReaderImageMemoryKind.FULL,
+            retention = DesktopReaderImageMemoryRetention.ACTIVE,
+        )
+        val identity = DesktopReaderPresentationImageSlotIdentity(
+            pageId = ReaderPageId(ReaderChapterId(1L), 0),
+            generation = 1L,
+            splitHalf = PageSplitHalf.LEFT,
+        )
+        var transformedLease: ReaderPresentationBitmapLease? = null
+
+        try {
+            val readyLease = createReaderPresentationTransformLease(
+                baseLease = baseAsset,
+                identity = identity,
+                cropBorders = false,
+                memoryAuthority = authority,
+            )
+            transformedLease = readyLease
+            val derivedNative = readyLease.bitmap.asSkiaBitmap()
+            val readySnapshot = authority.snapshot()
+
+            assertEquals(2, readyLease.bitmap.width)
+            assertEquals(2, readyLease.bitmap.height)
+            assertEquals(PixelBounds(0, 0, 2, 2), readyLease.renderedSourceBounds)
+            assertEquals(1, baseDisposeCalls.get(), "A derived transform must release its FULL base lease")
+            assertTrue(baseNative.isClosed)
+            assertFalse(derivedNative.isClosed)
+            assertEquals(16L, readySnapshot.residentBytes)
+            assertEquals(0L, readySnapshot.byKind.getValue(DesktopReaderImageMemoryKind.FULL))
+            assertEquals(16L, readySnapshot.byKind.getValue(DesktopReaderImageMemoryKind.DERIVED))
+            assertEquals(16L, readySnapshot.pinnedBytes)
+
+            readyLease.close()
+            assertTrue(derivedNative.isClosed)
+            assertEquals(0L, authority.snapshot().residentBytes)
+        } finally {
+            transformedLease?.close()
+            baseAsset.close()
+            authority.close()
+        }
+    }
+
+    @Test
+    fun `production transform registration failure closes derived and base allocations exactly once`() = runTest {
+        val authority = DesktopReaderImageMemoryAuthority(maxBytes = 48L)
+        val evictionFailure = IllegalStateException("cached-eviction-disposer")
+        val evictionCalls = AtomicInteger()
+        val derivedDisposeCalls = AtomicInteger()
+        val baseDisposeCalls = AtomicInteger()
+        val cached = authority.register(
+            kind = DesktopReaderImageMemoryKind.TILE,
+            estimatedBytes = 16L,
+            retention = DesktopReaderImageMemoryRetention.ACTIVE,
+            disposer = {
+                evictionCalls.incrementAndGet()
+                throw evictionFailure
+            },
+        )
+        val cachedKey = ReaderPageDecodeKey(
+            contentKey = ReaderPageContentOpenRequest(
+                pageId = ReaderPageId(ReaderChapterId(2L), 0),
+                generation = 1L,
+                encodedPageRef = EncodedPageRef("opaque://derived-register-failure"),
+            ),
+            purpose = PageDecodePurpose.REGION_TILE,
+            maxWidth = 2,
+            maxHeight = 2,
+            region = PixelBounds(0, 0, 2, 2),
+        )
+        assertTrue(authority.admitCache(cachedKey, cached) {})
+        cached.close()
+
+        val baseNative = Bitmap().apply { check(allocN32Pixels(4, 2)) }
+        val baseAsset = DesktopReaderImageAsset(
+            bitmap = baseNative.asComposeImageBitmap(),
+            sourceWidth = 4,
+            sourceHeight = 2,
+            estimatedBytes = 32L,
+            sampled = false,
+            disposer = {
+                baseNative.close()
+                baseDisposeCalls.incrementAndGet()
+            },
+        )
+        baseAsset.attachMemoryAuthority(
+            authority = authority,
+            kind = DesktopReaderImageMemoryKind.FULL,
+            retention = DesktopReaderImageMemoryRetention.ACTIVE,
+        )
+
+        try {
+            val failure = runCatching {
+                createReaderPresentationTransformLease(
+                    baseLease = baseAsset,
+                    identity = DesktopReaderPresentationImageSlotIdentity(
+                        pageId = ReaderPageId(ReaderChapterId(2L), 1),
+                        generation = 1L,
+                        splitHalf = PageSplitHalf.LEFT,
+                    ),
+                    cropBorders = false,
+                    memoryAuthority = authority,
+                    nativeBitmapDisposer = { bitmap ->
+                        bitmap.close()
+                        derivedDisposeCalls.incrementAndGet()
+                    },
+                )
+            }.exceptionOrNull()
+
+            assertSame(evictionFailure, failure)
+            assertEquals(1, evictionCalls.get())
+            assertEquals(1, derivedDisposeCalls.get(), "The rejected DERIVED native allocation must close once")
+            assertEquals(1, baseDisposeCalls.get(), "The failed transform must release its FULL base once")
+            assertEquals(0L, authority.snapshot().residentBytes)
+        } finally {
+            baseAsset.close()
+            authority.close()
+        }
     }
 
     private fun transformKey(
