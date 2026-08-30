@@ -567,14 +567,6 @@ class DesktopReaderSession(
                         request.generation,
                         ReaderIoPurpose.ADJACENT_PREFETCH,
                     )
-                } else {
-                    ioReporter.report(
-                        ReaderIoEventType.OPEN_PAGE,
-                        request.pageId.chapterId,
-                        request.pageId,
-                        request.generation,
-                        ReaderIoPurpose.CURRENT_PAGE,
-                    )
                 }
                 true
             }

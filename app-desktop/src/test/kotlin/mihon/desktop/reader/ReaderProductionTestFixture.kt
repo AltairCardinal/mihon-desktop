@@ -38,7 +38,14 @@ internal class ReaderProductionTestFixture(
     private val root: File,
     coroutineContext: CoroutineContext,
 ) : AutoCloseable {
+    companion object {
+        const val STANDARD_PAGE_COUNT = 180
+    }
+
     val pageBytes: ByteArray = pngBytes(Color.BLUE)
+    val standardJpegPageBytes: ByteArray by lazy(LazyThreadSafetyMode.NONE) {
+        jpegBytes(Color.WHITE)
+    }
     val downloadedDirectory: File = root.resolve("downloads/Fixture/Chapter 1").also { directory ->
         directory.mkdirs()
         repeat(3) { index ->
@@ -79,6 +86,20 @@ internal class ReaderProductionTestFixture(
         }
         return ByteArrayOutputStream().also { output ->
             check(ImageIO.write(image, "png", output)) { "PNG writer is unavailable" }
+        }.toByteArray()
+    }
+
+    private fun jpegBytes(color: Color): ByteArray {
+        val image = BufferedImage(2400, 3500, BufferedImage.TYPE_INT_RGB)
+        val graphics = image.createGraphics()
+        try {
+            graphics.color = color
+            graphics.fillRect(0, 0, image.width, image.height)
+        } finally {
+            graphics.dispose()
+        }
+        return ByteArrayOutputStream().also { output ->
+            check(ImageIO.write(image, "jpeg", output)) { "JPEG writer is unavailable" }
         }.toByteArray()
     }
 }

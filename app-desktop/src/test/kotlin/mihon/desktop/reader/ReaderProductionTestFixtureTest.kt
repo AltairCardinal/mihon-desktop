@@ -1,7 +1,9 @@
 package mihon.desktop.reader
 
 import androidx.compose.ui.ExperimentalComposeUiApi
+import java.io.ByteArrayInputStream
 import java.io.File
+import javax.imageio.ImageIO
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
@@ -23,6 +25,21 @@ class ReaderProductionTestFixtureTest {
 
     @TempDir
     lateinit var tempDir: File
+
+    @Test
+    fun `standard critical path fixture is one hundred eighty 2400 by 3500 jpeg pages`() = runTest {
+        ReaderProductionTestFixture(tempDir, currentCoroutineContext()).use { fixture ->
+            assertEquals(180, ReaderProductionTestFixture.STANDARD_PAGE_COUNT)
+            assertArrayEquals(
+                byteArrayOf(0xFF.toByte(), 0xD8.toByte()),
+                fixture.standardJpegPageBytes.copyOfRange(0, 2),
+            )
+
+            val image = requireNotNull(ImageIO.read(ByteArrayInputStream(fixture.standardJpegPageBytes)))
+            assertEquals(2400, image.width)
+            assertEquals(3500, image.height)
+        }
+    }
 
     @Test
     fun `fixture supplies real content scene and independently controlled critical path gates`() = runTest {

@@ -32,6 +32,7 @@ import mihon.desktop.test.http.ReaderIoTestEvent
 import mihon.desktop.test.http.ReaderIoTestModeBridge
 import mihon.desktop.test.http.ReaderTestModeController
 import mihon.desktop.ui.reader.DesktopReaderScreen
+import mihon.domain.reader.content.DownloadChapterIdentity
 import mihon.domain.reader.observability.ReaderIoEventType
 import mihon.domain.reader.observability.ReaderMonotonicClock
 import mockwebserver3.MockResponse
@@ -55,9 +56,9 @@ class ReaderCriticalPathProductionTest {
     fun `one and one hundred eighty page directories have the same production first frame cost`() = runTest {
         val traces = listOf(
             captureFirstFrame(Route.DOWNLOADED_DIRECTORY, pageCount = 1),
-            captureFirstFrame(Route.DOWNLOADED_DIRECTORY, pageCount = 180),
+            captureFirstFrame(Route.DOWNLOADED_DIRECTORY, pageCount = ReaderProductionTestFixture.STANDARD_PAGE_COUNT),
             captureFirstFrame(Route.LOCAL_DIRECTORY, pageCount = 1),
-            captureFirstFrame(Route.LOCAL_DIRECTORY, pageCount = 180),
+            captureFirstFrame(Route.LOCAL_DIRECTORY, pageCount = ReaderProductionTestFixture.STANDARD_PAGE_COUNT),
         )
 
         traces.forEach(::assertCriticalPath)
@@ -73,10 +74,11 @@ class ReaderCriticalPathProductionTest {
     }
 
     @Test
-    fun `archive and online production routes present current page before background gates`() = runTest {
+    fun `downloaded cbz local archive and online routes present current page before background gates`() = runTest {
         listOf(
-            captureFirstFrame(Route.LOCAL_CBZ, pageCount = 180),
-            captureFirstFrame(Route.ONLINE, pageCount = 180),
+            captureFirstFrame(Route.DOWNLOADED_CBZ, pageCount = ReaderProductionTestFixture.STANDARD_PAGE_COUNT),
+            captureFirstFrame(Route.LOCAL_CBZ, pageCount = ReaderProductionTestFixture.STANDARD_PAGE_COUNT),
+            captureFirstFrame(Route.ONLINE, pageCount = ReaderProductionTestFixture.STANDARD_PAGE_COUNT),
         ).forEach(::assertCriticalPath)
     }
 
@@ -102,32 +104,49 @@ class ReaderCriticalPathProductionTest {
         val caseRoot = tempDir.resolve("${route.name.lowercase()}-$pageCount")
         val fixture = ReaderProductionTestFixture(caseRoot, currentCoroutineContext())
         val downloadProvider = DesktopDownloadProvider(caseRoot.resolve("downloads"))
+        val downloadIdentity = DownloadChapterIdentity(
+            sourceDisplayName = SOURCE_ID.toString(),
+            mangaTitle = MANGA_TITLE,
+            chapterName = CHAPTER_TITLE,
+            scanlator = null,
+            chapterUrl = "/current",
+            disallowNonAsciiFilenames = false,
+        )
         val localChapterPath = when (route) {
             Route.DOWNLOADED_DIRECTORY -> {
                 writePages(
-                    downloadProvider.chapterDownloadDir(SOURCE_ID, MANGA_TITLE, CHAPTER_TITLE),
+                    downloadProvider.canonicalChapterDownloadDir(downloadIdentity),
                     pageCount,
-                    fixture.pageBytes,
+                    fixture.standardJpegPageBytes,
+                )
+                null
+            }
+            Route.DOWNLOADED_CBZ -> {
+                val directory = downloadProvider.canonicalChapterDownloadDir(downloadIdentity)
+                createCbz(
+                    File(directory.parentFile, "${directory.name}.cbz"),
+                    pageCount,
+                    fixture.standardJpegPageBytes,
                 )
                 null
             }
             Route.LOCAL_DIRECTORY -> writePages(
                 caseRoot.resolve("local/Chapter 1"),
                 pageCount,
-                fixture.pageBytes,
+                fixture.standardJpegPageBytes,
             ).absolutePath
             Route.LOCAL_CBZ -> createCbz(
                 caseRoot.resolve("local/Chapter 1.cbz"),
                 pageCount,
-                fixture.pageBytes,
+                fixture.standardJpegPageBytes,
             ).absolutePath
             Route.ONLINE -> null
         }
         val source = if (route == Route.ONLINE) {
-            fixture.server.enqueue(MockResponse.Builder().body(Buffer().write(fixture.pageBytes)).build())
+            fixture.server.enqueue(MockResponse.Builder().body(Buffer().write(fixture.standardJpegPageBytes)).build())
             CriticalPathSource(
                 pageCount = pageCount,
-                imageUrl = fixture.server.url("/current.png").toString(),
+                imageUrl = fixture.server.url("/current.jpg").toString(),
                 httpClient = OkHttpClient(),
             )
         } else {
@@ -230,9 +249,10 @@ class ReaderCriticalPathProductionTest {
         assertEquals(ReaderIoEventType.OPEN_READER_INTENT.name, types.first())
         assertEquals(ReaderIoEventType.FIRST_PAGE_PRESENTED.name, types.last())
         assertEquals(1, types.count { it == ReaderIoEventType.PAGE_LIST_READY.name })
+        assertEquals(1, trace.currentPageOpenCount)
         assertEquals(1, trace.currentPageDecodeCount)
         assertEquals(1, types.count { it == ReaderIoEventType.DECODE.name })
-        assertTrue(ReaderIoEventType.OPEN_PAGE.name in types)
+        assertEquals(1, types.count { it == ReaderIoEventType.OPEN_PAGE.name })
         assertTrue(ReaderIoEventType.CACHE_RECONCILE.name !in types)
         assertTrue(ReaderIoEventType.ADJACENT_IO.name !in types)
         assertTrue(
@@ -257,7 +277,9 @@ class ReaderCriticalPathProductionTest {
             Route.DOWNLOADED_DIRECTORY,
             Route.LOCAL_DIRECTORY,
             -> assertTrue(trace.contentOperations.isEmpty())
-            Route.LOCAL_CBZ -> assertEquals(
+            Route.DOWNLOADED_CBZ,
+            Route.LOCAL_CBZ,
+            -> assertEquals(
                 listOf(DesktopReaderContentOperationKind.ARCHIVE_PAGE_COPY to 0),
                 trace.contentOperations.map { it.kind to it.pageIndex },
             )
@@ -272,7 +294,7 @@ class ReaderCriticalPathProductionTest {
     ): File = directory.also {
         it.mkdirs()
         repeat(pageCount) { index ->
-            it.resolve("${(index + 1).toString().padStart(3, '0')}.png").writeBytes(bytes)
+            it.resolve("${(index + 1).toString().padStart(3, '0')}.jpg").writeBytes(bytes)
         }
     }
 
@@ -284,7 +306,7 @@ class ReaderCriticalPathProductionTest {
         it.parentFile.mkdirs()
         ZipOutputStream(it.outputStream().buffered()).use { output ->
             repeat(pageCount) { index ->
-                output.putNextEntry(ZipEntry("${(index + 1).toString().padStart(3, '0')}.png"))
+                output.putNextEntry(ZipEntry("${(index + 1).toString().padStart(3, '0')}.jpg"))
                 output.write(bytes)
                 output.closeEntry()
             }
@@ -293,6 +315,7 @@ class ReaderCriticalPathProductionTest {
 
     private enum class Route(val isDirectory: Boolean = false) {
         DOWNLOADED_DIRECTORY(isDirectory = true),
+        DOWNLOADED_CBZ,
         LOCAL_DIRECTORY(isDirectory = true),
         LOCAL_CBZ,
         ONLINE,
@@ -308,6 +331,12 @@ class ReaderCriticalPathProductionTest {
         val enteredGates: Set<ReaderIoGatePoint>,
     ) {
         val eventTypes = events.map(ReaderIoTestEvent::type)
+        val currentPageOpenCount = events.count {
+            it.type == ReaderIoEventType.OPEN_PAGE.name &&
+                it.chapterId == CURRENT_CHAPTER_ID &&
+                it.pageIndex == 0 &&
+                it.generation == 1L
+        }
         val currentPageDecodeCount = events.count {
             it.type == ReaderIoEventType.DECODE.name &&
                 it.chapterId == CURRENT_CHAPTER_ID &&
