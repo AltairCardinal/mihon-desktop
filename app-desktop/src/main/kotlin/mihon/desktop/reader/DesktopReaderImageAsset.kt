@@ -23,9 +23,11 @@ internal class DesktopReaderImageAsset(
     val sourceHeight: Int,
     val estimatedBytes: Long,
     val sampled: Boolean,
+    val animationMetadata: DesktopReaderAnimationMetadata? = null,
     private val disposer: () -> Unit = {},
 ) : DesktopReaderImageAssetLease {
     private val lock = Any()
+    private val finalDisposers = mutableListOf(disposer)
     private var referenceCount = 1
     private var initialLeaseClosed = false
     private var disposed = false
@@ -52,7 +54,13 @@ internal class DesktopReaderImageAsset(
                 releaseLocked()
             }
         }
-        if (shouldDispose) disposer()
+        if (shouldDispose) disposeResources()
+    }
+
+    /** Adds a resource acquired by the pipeline before this asset becomes observable. */
+    internal fun addFinalDisposer(finalDisposer: () -> Unit) = synchronized(lock) {
+        check(!disposed) { "Desktop reader image asset is disposed" }
+        finalDisposers += finalDisposer
     }
 
     private fun retainFromRetainedLease(): DesktopReaderImageAssetLease = synchronized(lock) {
@@ -61,7 +69,7 @@ internal class DesktopReaderImageAsset(
 
     private fun releaseFromRetainedLease() {
         val shouldDispose = synchronized(lock) { releaseLocked() }
-        if (shouldDispose) disposer()
+        if (shouldDispose) disposeResources()
     }
 
     private fun retainLocked(): DesktopReaderImageAssetLease {
@@ -76,6 +84,21 @@ internal class DesktopReaderImageAsset(
         if (referenceCount != 0 || disposed) return false
         disposed = true
         return true
+    }
+
+    private fun disposeResources() {
+        val resources = synchronized(lock) {
+            finalDisposers.toList().also { finalDisposers.clear() }
+        }
+        var failure: Throwable? = null
+        resources.forEach { resource ->
+            try {
+                resource()
+            } catch (error: Throwable) {
+                failure?.addSuppressed(error) ?: run { failure = error }
+            }
+        }
+        failure?.let { throw it }
     }
 
     private class RetainedLease(

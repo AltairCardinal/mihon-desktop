@@ -316,7 +316,7 @@ Android Reader UI                 Desktop Reader presentation
   - [x] `RUA-04B` 唯一 decoder、decoded cache 与 transform consumers
   - [x] `RUA-04C` Single/Dual/Webtoon presentation cutover
   - [ ] `RUA-04D` 动画/超大图/lifecycle 矩阵与 legacy owner 删除
-    - [ ] `RUA-04D1` 动画 purpose-aware decode owner
+    - [x] `RUA-04D1` 动画 purpose-aware decode owner
     - [ ] `RUA-04D2` 超大图与 region tile owner
     - [ ] `RUA-04D3` Retry/cancel/stale attempt 线性化
     - [ ] `RUA-04D4` detach/recycle/close 与统一内存预算
@@ -602,6 +602,14 @@ Android Reader UI                 Desktop Reader presentation
 - production-mounted RED 证明 Webtoon 在 page-list 异步到达且 display identity/恢复 anchor 均为空时会永久 queued，因此按本节微重划增加 one-shot provisional viewport bootstrap；真实 settled viewport 到达后永久接管，恢复 anchor、滚动几何、手势与双页配对语义不变。
 - TDD 证据覆盖 presentation owner、绘制确认竞态、transform stale/close、真实 transform-chain ownership、右键菜单、Webtoon bootstrap，以及三 presentation × 三来源 mounted matrix。`.gradle-coordinator/rua04c-close.log` 完成 root Spotless 与 17 个相关测试类，`BUILD SUCCESSFUL in 5m 10s`；后续限定修复由 `rua04c-bounded-close` 与 `rua04c-transform-chain-green` 通过，最终 `.gradle-coordinator/rua04c-final-close.log` 再次通过 root Spotless 与 8 个关键测试类。首次误用 `./gradlew` 在 Windows 进程创建阶段立即失败，改用 `.\\gradlew.bat`；一次 78 项收口测试暴露并修复 encoded-store close/reconcile 的真实竞态，不作为 flaky 重跑。
 - 独立审查先发现 render lease、stale transform、context-menu production 证据、acknowledgement 竞态与 Webtoon bootstrap 边界问题；修复复审进一步发现 native Skia intermediate 生命周期与 roadmap 微重划遗漏，均以有界 RED/GREEN 收口，最终限定确认结论为 `PASS`、P0/P1/P2 均为零。本批横跨 presentation/runtime/测试的文件数超过原估算，是三种 presentation 原子 cutover、删除假阳性测试和同一 asset 生命周期修复所必需；Desktop 正式构建仍只在 `RUA-07` 执行。
+
+**`RUA-04D1` 完成证据（2026-08-30）**：
+
+- 唯一 `DesktopReaderPageImagePipeline` 现在按 `ANIMATION_FRAME + frameIndex + generation + bounds` 解码真实 Skia 动画帧；FULL decode 在同一次 encoded open 中发现 frame metadata，挂载后的 Single/Dual 共用引用计数 animation content owner，Compose 自动按原始 duration 播放且 transform/draw lease 使用完整 frame key。静态 PNG/JPEG 仍只走一次 `FULL_PAGE`，不会启动 frame loader；动画 frame 明确不进入普通静态 LRU。
+- Skia 编码循环次数按“首轮之后的额外重复次数”保留，有限循环停在末帧、无限循环持续；透明局部帧、`restoreToPrevious`、有界降采样透明清屏与真实颜色均由 production decoder fixture 验证。下一帧返回空时停止动画并保留最后成功帧，不把既有 Ready 页面重新变成 spinner/error。
+- source/frame/transform 资源均以显式 lease 收口：同 key 两个 holder 并发时，首 holder detach 不会取消存活 holder；最后一个 holder、generation 前进或 runtime close 才释放共享 source。stale 非协作 frame、frame replacement、旧 draw pin与 sample allocation/异常路径均保证不提前释放且最终清理。
+- 严格 TDD 证据包括 `rua04d1-red`、`rua04d1-real-red`、`rua04d1-wiring-red2`、`rua04d1-semantic-red`、`rua04d1-shared-session-red`、`rua04d1-frame-failure-red` 及对应 GREEN；`rua04d1-bounded-fix-green2` 通过 ownership、真实 GIF、透明采样与空帧生命周期。独立审查发现 shared-session 竞态、frame cache purpose、sample/native 资源和证据缺口，经限定修复复审最终为 `PASS`，P0/P1/P2/P3 均为零。
+- 本批包含 6 个 product 文件、3 个 test 文件和本 roadmap，超过 4～8 文件提示值是因为 real Skia decoder/controller、mounted production autoplay 与并发 lease 证据必须原子交付；没有改变双页配对、手势、一般 viewport 或 Retry attempt 语义。最终 `.gradle-coordinator/rua04d1-close.log` 完成 root Spotless 与动画/静态回归 focused matrix，`BUILD SUCCESSFUL in 5m 30s`；Desktop 正式构建仍只在 `RUA-07` 执行。
 
 ### `RUA-05` 原版相邻章默认语义与 Desktop opt-in decorator
 

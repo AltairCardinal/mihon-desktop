@@ -9,6 +9,9 @@ import mihon.desktop.reader.DesktopReaderPresentationImageHolder
 import mihon.desktop.reader.DesktopReaderPresentationImageOwner
 import mihon.desktop.reader.DesktopReaderPresentationImageSlotIdentity
 import mihon.desktop.reader.DesktopReaderPresentationImageState
+import mihon.desktop.reader.DesktopReaderAnimatedPresentationImageHolder
+import mihon.desktop.reader.DesktopReaderAnimatedPresentationImageSnapshot
+import mihon.desktop.reader.DesktopReaderAnimationDrawToken
 import mihon.desktop.reader.DesktopReaderImageAssetLease
 import mihon.domain.reader.PageDecodePurpose
 import mihon.domain.reader.PageSplitHalf
@@ -20,7 +23,15 @@ import mihon.domain.reader.session.ReaderPageSession
 internal data class ReaderPresentationImage(
     val holder: DesktopReaderPresentationImageHolder,
     val state: DesktopReaderPresentationImageState,
-)
+    val animatedHolder: DesktopReaderAnimatedPresentationImageHolder? = null,
+    val animatedState: DesktopReaderAnimatedPresentationImageSnapshot? = null,
+) {
+    val animationDrawToken: DesktopReaderAnimationDrawToken?
+        get() = animatedState?.drawToken
+
+    val renderedAnimationFrameIndex: Int?
+        get() = animatedState?.readyKey?.frameIndex
+}
 
 internal data class ReaderPageContextMenuBinding(
     val imageLeaseProvider: () -> DesktopReaderImageAssetLease?,
@@ -80,7 +91,23 @@ internal fun rememberReaderPresentationImage(
         holder.acquire()
         onDispose(holder::close)
     }
-    return ReaderPresentationImage(holder, state)
+    val animationMetadata = (state as? DesktopReaderPresentationImageState.Ready)?.asset?.animationMetadata
+    val animatedHolder = remember(holder, animationMetadata) {
+        animationMetadata?.let { holder.createAnimatedHolder() }
+    }
+    val animatedState = if (animatedHolder == null) {
+        null
+    } else {
+        val current by animatedHolder.state.collectAsState()
+        current
+    }
+    DisposableEffect(animatedHolder, animationMetadata) {
+        if (animatedHolder != null && animationMetadata != null) {
+            animatedHolder.startPlayback(animationMetadata)
+        }
+        onDispose { animatedHolder?.close() }
+    }
+    return ReaderPresentationImage(holder, state, animatedHolder, animatedState)
 }
 
 private const val PRESENTATION_DECODE_BOUND = 2_048

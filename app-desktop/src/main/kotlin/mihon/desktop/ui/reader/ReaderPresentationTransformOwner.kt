@@ -28,6 +28,7 @@ import mihon.desktop.reader.DesktopReaderPresentationImageSlotIdentity
 internal data class ReaderPresentationTransformKey(
     val presentationIdentity: DesktopReaderPresentationImageSlotIdentity,
     val cropBorders: Boolean,
+    val animationFrameIndex: Int? = null,
 )
 
 internal interface ReaderPresentationBitmapLease : AutoCloseable {
@@ -182,25 +183,34 @@ internal fun rememberReaderPresentationRenderedImage(
 ): ReaderPresentationRenderedImage? {
     val identity = presentationImage.holder.identity
     val ready = presentationImage.state as? DesktopReaderPresentationImageState.Ready
-    val key = remember(identity, cropBorders) {
-        ReaderPresentationTransformKey(identity, cropBorders)
+    val animatedReady = presentationImage.animatedState?.takeIf { state ->
+        state.readyKey != null && state.readyAsset != null && !state.closed
+    }
+    val animationReadyKey = animatedReady?.readyKey
+    val animationFrameIndex = animationReadyKey?.frameIndex
+    val sourceAsset = animatedReady?.readyAsset ?: ready?.asset
+    val key = remember(identity, cropBorders, animationFrameIndex) {
+        ReaderPresentationTransformKey(identity, cropBorders, animationFrameIndex)
     }
     val scope = rememberCoroutineScope()
-    val transformOwner = remember(scope, key, ready?.asset) {
+    val transformOwner = remember(scope, key, sourceAsset) {
         ReaderPresentationTransformOwner(scope)
     }
     DisposableEffect(transformOwner) {
         onDispose(transformOwner::close)
     }
-    LaunchedEffect(transformOwner, ready?.asset) {
-        if (ready == null) {
+    LaunchedEffect(transformOwner, sourceAsset) {
+        if (ready == null || sourceAsset == null) {
             transformOwner.clear()
             return@LaunchedEffect
         }
         transformOwner.submit(key) {
-            val baseLease = requireNotNull(
-                presentationImage.holder.retainReadyAssetForRender(identity),
-            ) { "Ready presentation image lost its render lease: $identity" }
+            val baseLease = if (animationFrameIndex == null) {
+                presentationImage.holder.retainReadyAssetForRender(identity)
+            } else {
+                presentationImage.animatedHolder?.retainReadyFrameForRender(requireNotNull(animationReadyKey))
+            }
+            requireNotNull(baseLease) { "Ready presentation image lost its render lease: $identity" }
             val baseBitmap = baseLease.asset.bitmap
             if (identity.splitHalf == null && identity.sourceBounds == null && !cropBorders) {
                 return@submit CloseableReaderPresentationBitmapLease(baseBitmap, baseLease::close)
