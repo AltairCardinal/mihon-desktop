@@ -1,11 +1,13 @@
 package mihon.desktop.tracking
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import mihon.desktop.DesktopRuntimeService
 import mihon.desktop.task.DesktopTaskScheduler
@@ -51,7 +53,9 @@ class DesktopTrackerSyncScheduler(
     private val retryDelayMillis: Long = RETRY_DELAY_MILLIS,
     private val sync: () -> ReadingProgressTrackSync,
 ) : TrackerSyncRetryScheduler, DelayedTrackerSyncPersistence, DesktopRuntimeService {
+    private val workerLock = Any()
     private var worker: Job? = null
+    private val stoppingWorkers = mutableSetOf<Job>()
     private var started = false
 
     override suspend fun schedule(request: TrackerSyncRequest) {
@@ -128,15 +132,36 @@ class DesktopTrackerSyncScheduler(
         }
 
     override fun start() {
-        if (started) return
-        started = true
+        synchronized(workerLock) {
+            if (started) return
+            started = true
+        }
         launchPending()
     }
 
     override fun stop() {
-        started = false
-        worker?.cancel()
-        worker = null
+        val detached = synchronized(workerLock) {
+            started = false
+            worker?.also(::trackStoppingWorker).also { worker = null }
+        }
+        detached?.cancel()
+    }
+
+    override suspend fun awaitStopped() {
+        stopAndJoin()
+    }
+
+    suspend fun stopAndJoin() {
+        stop()
+        val workers = synchronized(workerLock) { stoppingWorkers.toList() }
+        workers.joinAll()
+        synchronized(workerLock) { stoppingWorkers.removeAll(workers.toSet()) }
+    }
+
+    private fun trackStoppingWorker(worker: Job) {
+        if (stoppingWorkers.add(worker)) {
+            worker.invokeOnCompletion { synchronized(workerLock) { stoppingWorkers.remove(worker) } }
+        }
     }
 
     fun close() {
@@ -145,18 +170,27 @@ class DesktopTrackerSyncScheduler(
     }
 
     private fun launchPending(delayMillis: Long = 0) {
-        if (!started || worker?.isActive == true) return
-        worker = scope.launch {
-            try {
-                if (delayMillis > 0) delay(delayMillis)
-                runPending()
-            } finally {
-                worker = null
-                if (started && hasRetryablePending()) {
-                    launchPending(retryDelayMillis)
+        val launched = synchronized(workerLock) {
+            if (!started || worker?.isActive == true) return
+            lateinit var launched: Job
+            launched = scope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    if (delayMillis > 0) delay(delayMillis)
+                    runPending()
+                } finally {
+                    val shouldRetry = synchronized(workerLock) {
+                        if (worker === launched) worker = null
+                        started && worker == null
+                    }
+                    if (shouldRetry && hasRetryablePending()) {
+                        launchPending(retryDelayMillis)
+                    }
                 }
             }
+            worker = launched
+            launched
         }
+        launched.start()
     }
 
     private suspend fun runLegacyRequest(taskId: String, request: TrackerSyncRequest) {

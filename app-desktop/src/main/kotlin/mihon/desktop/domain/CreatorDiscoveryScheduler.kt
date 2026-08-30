@@ -79,6 +79,7 @@ class CreatorDiscoveryScheduler(
     private var schedulerJob: Job? = null
     private var initialRecoveryJob: Job? = null
     private var updateJob: Job? = null
+    private val stoppingJobs = mutableSetOf<Job>()
 
     val isRunning: Boolean get() = schedulerJob?.isActive == true
 
@@ -158,25 +159,28 @@ class CreatorDiscoveryScheduler(
     }
 
     fun stop() {
-        initialRecoveryJob?.cancel()
-        updateJob?.cancel()
-        schedulerJob?.cancel()
-        initialRecoveryJob = null
-        updateJob = null
-        schedulerJob = null
+        val jobs = synchronized(updateLock) { detachJobs() }
+        jobs.forEach(Job::cancel)
     }
 
     suspend fun stopAndJoin() {
         val jobs = synchronized(updateLock) {
-            listOfNotNull(initialRecoveryJob, updateJob, schedulerJob).distinct().also {
-                initialRecoveryJob = null
-                updateJob = null
-                schedulerJob = null
-            }
+            (detachJobs() + stoppingJobs).distinct()
         }
         jobs.forEach { it.cancel() }
         jobs.joinAll()
+        synchronized(updateLock) { stoppingJobs.removeAll(jobs.toSet()) }
     }
+
+    private fun detachJobs(): List<Job> =
+        listOfNotNull(initialRecoveryJob, updateJob, schedulerJob).distinct().also { jobs ->
+            jobs.filter(stoppingJobs::add).forEach { job ->
+                job.invokeOnCompletion { synchronized(updateLock) { stoppingJobs.remove(job) } }
+            }
+            initialRecoveryJob = null
+            updateJob = null
+            schedulerJob = null
+        }
 
     fun taskSnapshot(): StoredTask? = taskScheduler.snapshot(CREATOR_DISCOVERY_TASK.id)
 

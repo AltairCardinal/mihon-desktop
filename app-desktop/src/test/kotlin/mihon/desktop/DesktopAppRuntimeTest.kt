@@ -513,6 +513,59 @@ class DesktopAppRuntimeTest {
     }
 
     @Test
+    fun `close and join awaits service shutdown before returning`() = runTest {
+        val awaitEntered = CompletableDeferred<Unit>()
+        val releaseAwait = CompletableDeferred<Unit>()
+        val service = object : DesktopRuntimeService {
+            override fun start() = Unit
+            override fun stop() = Unit
+            override suspend fun awaitStopped() {
+                awaitEntered.complete(Unit)
+                releaseAwait.await()
+            }
+        }
+        val runtime = DesktopAppRuntime(
+            service,
+            RecordingRuntimeService(),
+            RecordingRuntimeService(),
+            startupCleanup = {},
+        ).also(DesktopAppRuntime::start)
+
+        val closing = async { runtime.closeAndJoin() }
+        awaitEntered.await()
+        assertFalse(closing.isCompleted)
+        releaseAwait.complete(Unit)
+        closing.await()
+    }
+
+    @Test
+    fun `close and join awaits services in reverse order and aggregates await failures`() = runTest {
+        val order = mutableListOf<String>()
+        val libraryFailure = IllegalStateException("library await")
+        val backupFailure = IllegalArgumentException("backup await")
+        fun service(name: String, failure: Throwable? = null) = object : DesktopRuntimeService {
+            override fun start() = Unit
+            override fun stop() = Unit
+            override suspend fun awaitStopped() {
+                order += name
+                failure?.let { throw it }
+            }
+        }
+        val runtime = DesktopAppRuntime(
+            libraryUpdateScheduler = service("library", libraryFailure),
+            localSourceScanService = service("local"),
+            autoBackupScheduler = service("backup", backupFailure),
+            startupCleanup = {},
+        ).also(DesktopAppRuntime::start)
+
+        val thrown = runCatching { runtime.closeAndJoin() }.exceptionOrNull()
+
+        assertSame(backupFailure, thrown)
+        assertEquals(listOf("backup", "local", "library"), order)
+        assertEquals(listOf(libraryFailure), thrown!!.suppressed.toList())
+    }
+
+    @Test
     fun `duplicate close requests wait for the first terminal result`() = runTest {
         val failure = IllegalStateException("first close")
         val closeEntered = CompletableDeferred<Unit>()

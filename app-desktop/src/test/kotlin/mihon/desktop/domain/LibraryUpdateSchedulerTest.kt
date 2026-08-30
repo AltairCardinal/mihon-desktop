@@ -7,11 +7,14 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.newSingleThreadContext
 import kotlinx.coroutines.runBlocking
@@ -182,6 +185,40 @@ class LibraryUpdateSchedulerTest {
     }
 
     @Test
+    fun `stop followed by stopAndJoin still waits for detached update work`() = runTest {
+        val updateStarted = CompletableDeferred<Unit>()
+        val releaseCleanup = CompletableDeferred<Unit>()
+        val cleanupCompleted = CompletableDeferred<Unit>()
+        val scheduler = LibraryUpdateScheduler(
+            appPreferences = prefs,
+            updateChecker = null,
+            getLibraryManga = null,
+            sourceManager = null,
+            scope = backgroundScope,
+            libraryProvider = {
+                updateStarted.complete(Unit)
+                try {
+                    awaitCancellation()
+                } finally {
+                    withContext(NonCancellable) { releaseCleanup.await() }
+                    cleanupCompleted.complete(Unit)
+                }
+            },
+        )
+
+        scheduler.runNow()
+        updateStarted.await()
+        scheduler.stop()
+        val stopped = async { scheduler.stopAndJoin() }
+        runCurrent()
+
+        assertFalse(stopped.isCompleted)
+        releaseCleanup.complete(Unit)
+        stopped.await()
+        assertTrue(cleanupCompleted.isCompleted)
+    }
+
+    @Test
     fun `stop before start does not crash`() = runTest {
         val scheduler = LibraryUpdateScheduler(
             appPreferences = prefs,
@@ -192,6 +229,23 @@ class LibraryUpdateSchedulerTest {
         )
         scheduler.stop()  // must not throw
         assertFalse(scheduler.isRunning)
+    }
+
+    @Test
+    fun `completed detached update work is not retained after stop`() = runTest {
+        val scheduler = LibraryUpdateScheduler(
+            appPreferences = prefs,
+            updateChecker = null,
+            getLibraryManga = null,
+            sourceManager = null,
+            scope = backgroundScope,
+            libraryProvider = { emptyList() },
+        )
+
+        scheduler.runNow().join()
+        scheduler.stop()
+
+        assertTrue(scheduler.stoppingJobCount() == 0)
     }
 
     // ─────────────────────────────────────────────
@@ -214,4 +268,7 @@ class LibraryUpdateSchedulerTest {
         assertTrue(scheduler.isRunning, "Scheduler should still be running after time advance")
         scheduler.stop()
     }
+
+    private fun Any.stoppingJobCount(): Int =
+        (javaClass.getDeclaredField("stoppingJobs").apply { isAccessible = true }.get(this) as Set<*>).size
 }

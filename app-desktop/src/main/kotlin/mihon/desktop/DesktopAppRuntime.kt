@@ -19,6 +19,7 @@ import tachiyomi.domain.creator.service.CreatorLibraryIndexer
 interface DesktopRuntimeService {
     fun start()
     fun stop()
+    suspend fun awaitStopped() = Unit
 }
 
 class DesktopAppRuntime(
@@ -131,6 +132,9 @@ class DesktopAppRuntime(
     suspend fun awaitClosed() {
         val failures = CleanupFailures()
         failures.attemptSuspend(awaitUpdater)
+        services.indices.reversed().forEach { index ->
+            failures.attemptSuspend { services[index].awaitStopped() }
+        }
         failures.attemptSuspend { scope.coroutineContext[Job]?.join() }
         failures.throwIfAny()
     }
@@ -291,6 +295,7 @@ private fun LibraryUpdateScheduler.asRuntimeService(): DesktopRuntimeService =
             this@asRuntimeService.start()
         }
         override fun stop() = this@asRuntimeService.stop()
+        override suspend fun awaitStopped() = this@asRuntimeService.stopAndJoin()
     }
 
 private fun CreatorDiscoveryScheduler.asRuntimeService(): DesktopRuntimeService =
@@ -299,6 +304,7 @@ private fun CreatorDiscoveryScheduler.asRuntimeService(): DesktopRuntimeService 
             this@asRuntimeService.start()
         }
         override fun stop() = this@asRuntimeService.stop()
+        override suspend fun awaitStopped() = this@asRuntimeService.stopAndJoin()
     }
 
 private fun LocalSourceScanService.asRuntimeService(): DesktopRuntimeService =

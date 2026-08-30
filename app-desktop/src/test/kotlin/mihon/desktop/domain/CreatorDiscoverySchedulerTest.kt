@@ -4,13 +4,16 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import mihon.desktop.task.DesktopTaskScheduler
 import mihon.desktop.task.FileTaskCheckpointStore
 import mihon.desktop.tracking.DesktopNetworkConnectivity
@@ -73,6 +76,46 @@ class CreatorDiscoverySchedulerTest {
 
         assertEquals(1, calls)
         scheduler.stop()
+    }
+
+    @Test
+    fun `stop followed by stopAndJoin still waits for detached discovery work`() = runTest {
+        val discoveryStarted = CompletableDeferred<Unit>()
+        val releaseCleanup = CompletableDeferred<Unit>()
+        val cleanupCompleted = CompletableDeferred<Unit>()
+        val scheduler = scheduler(
+            scope = backgroundScope,
+            discoverDue = {
+                discoveryStarted.complete(Unit)
+                try {
+                    awaitCancellation()
+                } finally {
+                    withContext(NonCancellable) { releaseCleanup.await() }
+                    cleanupCompleted.complete(Unit)
+                }
+            },
+        )
+
+        scheduler.runNow()
+        discoveryStarted.await()
+        scheduler.stop()
+        val stopped = async { scheduler.stopAndJoin() }
+        runCurrent()
+
+        assertFalse(stopped.isCompleted)
+        releaseCleanup.complete(Unit)
+        stopped.await()
+        assertTrue(cleanupCompleted.isCompleted)
+    }
+
+    @Test
+    fun `completed detached discovery work is not retained after stop`() = runTest {
+        val scheduler = scheduler(scope = backgroundScope)
+
+        scheduler.runNow().join()
+        scheduler.stop()
+
+        assertTrue(scheduler.stoppingJobCount() == 0)
     }
 
     @Test
@@ -408,4 +451,7 @@ class CreatorDiscoverySchedulerTest {
         truncated = false,
         failure = failure,
     )
+
+    private fun Any.stoppingJobCount(): Int =
+        (javaClass.getDeclaredField("stoppingJobs").apply { isAccessible = true }.get(this) as Set<*>).size
 }

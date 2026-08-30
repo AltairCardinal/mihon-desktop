@@ -755,6 +755,121 @@ class DesktopDiWiringTest {
         }
     }
 
+    @Test
+    fun `full DI runtime awaits production library adapter cancellation before returning`(@TempDir tempDir: File) = runBlocking {
+        val updateStarted = CompletableDeferred<Unit>()
+        val releaseCancellation = CompletableDeferred<Unit>()
+        val cleanupCompleted = CompletableDeferred<Unit>()
+        var databaseOpenDuringCleanup = false
+        lateinit var context: DesktopTestDIContext
+        context = initDesktopDIForTest(
+            tempDir,
+            isolatedDesktopPreferenceStore(),
+            startDownloadWorker = false,
+            libraryProvider = {
+                updateStarted.complete(Unit)
+                try {
+                    awaitCancellation()
+                } finally {
+                    withContext(NonCancellable) {
+                        releaseCancellation.await()
+                        databaseOpenDuringCleanup = runCatching {
+                            context.handler.awaitList { historyQueries.getHistoryByMangaId(-1) }
+                        }.isSuccess
+                        cleanupCompleted.complete(Unit)
+                    }
+                }
+            },
+        )
+        val taskScheduler = Injekt.get<DesktopTaskScheduler>()
+        val runtime = Injekt.get<DesktopAppRuntime>()
+        try {
+            runtime.start()
+            updateStarted.await()
+            assertNotNull(taskScheduler.snapshot(LibraryUpdateScheduler.LIBRARY_UPDATE_TASK.id))
+
+            val closing = async { runtime.closeAndJoin() }
+            delay(10)
+            assertFalse(closing.isCompleted)
+
+            releaseCancellation.complete(Unit)
+            withTimeout(5_000) { closing.await() }
+            assertTrue(cleanupCompleted.isCompleted)
+            assertTrue(databaseOpenDuringCleanup)
+        } finally {
+            releaseCancellation.complete(Unit)
+            context.closeAndJoin()
+        }
+    }
+
+    @Test
+    fun `full DI context persists cancellation cleanup before closing database`(@TempDir tempDir: File) = runBlocking {
+        val updateStarted = CompletableDeferred<Unit>()
+        val releaseCancellation = CompletableDeferred<Unit>()
+        val cleanupCompleted = CompletableDeferred<Unit>()
+        var databaseOpenDuringCleanup = false
+        lateinit var context: DesktopTestDIContext
+        lateinit var taskScheduler: DesktopTaskScheduler
+        context = initDesktopDIForTest(
+            tempDir,
+            isolatedDesktopPreferenceStore(),
+            startDownloadWorker = false,
+            libraryProvider = {
+                updateStarted.complete(Unit)
+                try {
+                    awaitCancellation()
+                } finally {
+                    withContext(NonCancellable) {
+                        releaseCancellation.await()
+                        databaseOpenDuringCleanup = runCatching {
+                            context.handler.awaitList { historyQueries.getHistoryByMangaId(-1) }
+                        }.isSuccess
+                        taskScheduler.register(
+                            mihon.domain.task.BackgroundTask(
+                                id = "runtime-close-checkpoint",
+                                idempotencyKey = "runtime-close-checkpoint",
+                            ),
+                        )
+                        cleanupCompleted.complete(Unit)
+                    }
+                }
+            },
+        )
+        taskScheduler = Injekt.get()
+        var closing: kotlinx.coroutines.Deferred<Unit>? = null
+        try {
+            Injekt.get<DesktopAppRuntime>().start()
+            updateStarted.await()
+
+            val closeJob = async { context.closeAndJoin() }
+            closing = closeJob
+            delay(10)
+            assertFalse(closeJob.isCompleted)
+
+            releaseCancellation.complete(Unit)
+            withTimeout(5_000) { closeJob.await() }
+
+            assertTrue(cleanupCompleted.isCompleted)
+            assertTrue(databaseOpenDuringCleanup)
+            assertTrue(
+                runCatching {
+                    context.handler.awaitList { historyQueries.getHistoryByMangaId(-1) }
+                }.isFailure,
+            )
+            val checkpointFile = File(tempDir, "background-tasks.json")
+            assertTrue(checkpointFile.isFile)
+            val persisted = mihon.desktop.task.FileTaskCheckpointStore(checkpointFile.toPath()).load()
+            assertEquals(
+                mihon.domain.task.TaskStatus.Pending,
+                persisted.single { it.task.id == "runtime-close-checkpoint" }.status,
+            )
+        } finally {
+            releaseCancellation.complete(Unit)
+            closing?.let { withTimeout(5_000) { it.await() } }
+            context.closeAndJoin()
+        }
+    }
+
     private class MutableTestTrackerRegistry : TrackerServiceRegistry {
         val service = MutableTestTrackerService()
         override val services: List<TrackerService> = listOf(service)

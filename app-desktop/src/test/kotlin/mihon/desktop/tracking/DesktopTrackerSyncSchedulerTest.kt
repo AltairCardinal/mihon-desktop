@@ -2,7 +2,9 @@ package mihon.desktop.tracking
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
@@ -115,6 +117,69 @@ class DesktopTrackerSyncSchedulerTest {
 
         assertTrue(processed)
         scheduler.stop()
+    }
+
+    @Test
+    fun `stop followed by stopAndJoin still waits for detached tracker work`() = runTest {
+        val syncStarted = CompletableDeferred<Unit>()
+        val releaseCleanup = CompletableDeferred<Unit>()
+        val cleanupCompleted = CompletableDeferred<Unit>()
+        val scheduler = DesktopTrackerSyncScheduler(
+            scheduler = DesktopTaskScheduler(FileTaskCheckpointStore(directory.resolve("stopped-worker.json"))),
+            scope = backgroundScope,
+            connectivity = DesktopNetworkConnectivity { true },
+        ) {
+            ReadingProgressTrackSync {
+                syncStarted.complete(Unit)
+                try {
+                    awaitCancellation()
+                } finally {
+                    withContext(NonCancellable) { releaseCleanup.await() }
+                    cleanupCompleted.complete(Unit)
+                }
+            }
+        }
+
+        scheduler.start()
+        scheduler.schedule(TrackerSyncRequest("reader-stop", 3, 4.0, trackerId = 9))
+        syncStarted.await()
+        scheduler.stop()
+        val stopped = async { scheduler.stopAndJoin() }
+        runCurrent()
+
+        assertFalse(stopped.isCompleted)
+        releaseCleanup.complete(Unit)
+        stopped.await()
+        assertTrue(cleanupCompleted.isCompleted)
+    }
+
+    @Test
+    fun `completed detached tracker work is not retained after stop`() = runTest {
+        val syncStarted = CompletableDeferred<Unit>()
+        val releaseCleanup = CompletableDeferred<Unit>()
+        val scheduler = DesktopTrackerSyncScheduler(
+            scheduler = DesktopTaskScheduler(FileTaskCheckpointStore(directory.resolve("released-worker.json"))),
+            scope = backgroundScope,
+            connectivity = DesktopNetworkConnectivity { true },
+        ) {
+            ReadingProgressTrackSync {
+                syncStarted.complete(Unit)
+                try {
+                    awaitCancellation()
+                } finally {
+                    withContext(NonCancellable) { releaseCleanup.await() }
+                }
+            }
+        }
+
+        scheduler.start()
+        scheduler.schedule(TrackerSyncRequest("reader-release", 3, 4.0, trackerId = 9))
+        syncStarted.await()
+        scheduler.stop()
+        releaseCleanup.complete(Unit)
+        runCurrent()
+
+        assertTrue(scheduler.stoppingWorkerCount() == 0)
     }
 
     @Test
@@ -310,4 +375,7 @@ class DesktopTrackerSyncSchedulerTest {
                 return DelayedTrackerSyncReport(attempted = 1, succeeded = 1, queued = 0, remaining = 0)
             }
         }
+
+    private fun Any.stoppingWorkerCount(): Int =
+        (javaClass.getDeclaredField("stoppingWorkers").apply { isAccessible = true }.get(this) as Set<*>).size
 }
