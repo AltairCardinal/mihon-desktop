@@ -306,6 +306,13 @@ internal fun ZoomablePageBox(
                     modifier = imageModifier,
                     contentScale = resolvedScale,
                 )
+                ReaderRegionTileLayer(
+                    presentationImage = presentationImage,
+                    renderedImage = renderedImage,
+                    contentScale = resolvedScale,
+                    alignment = imageAlignment,
+                    zoomState = zoomState,
+                )
             }
         }
     }
@@ -329,6 +336,11 @@ internal fun ZoomablePageBox(
     }
 }
 
+internal data class ReaderPresentationBitmapTransform(
+    val bitmap: ImageBitmap,
+    val renderedSourceBounds: PixelBounds,
+)
+
 internal fun transformCachedPageBitmap(
     bitmap: ImageBitmap,
     splitHalf: PageSplitHalf? = null,
@@ -336,8 +348,27 @@ internal fun transformCachedPageBitmap(
     cropBorders: Boolean = false,
     sourceWidth: Int = bitmap.width,
     sourceHeight: Int = bitmap.height,
-): ImageBitmap {
+): ImageBitmap = transformCachedPageBitmapWithSourceBounds(
+    bitmap = bitmap,
+    splitHalf = splitHalf,
+    sourceBounds = sourceBounds,
+    cropBorders = cropBorders,
+    sourceWidth = sourceWidth,
+    sourceHeight = sourceHeight,
+).bitmap
+
+internal fun transformCachedPageBitmapWithSourceBounds(
+    bitmap: ImageBitmap,
+    splitHalf: PageSplitHalf? = null,
+    sourceBounds: PixelBounds? = null,
+    cropBorders: Boolean = false,
+    sourceWidth: Int = bitmap.width,
+    sourceHeight: Int = bitmap.height,
+): ReaderPresentationBitmapTransform {
     val skiaBitmap = bitmap.asSkiaBitmap()
+    val boundedSource = sourceBounds
+        ?: splitHalf?.let { splitBounds(sourceWidth, sourceHeight, it) }
+        ?: PixelBounds(0, 0, sourceWidth, sourceHeight)
     val bounded = when {
         sourceBounds != null -> {
             val mappedBounds = sourceBounds.mapToBitmap(
@@ -353,12 +384,35 @@ internal fun transformCachedPageBitmap(
         splitHalf != null -> splitSkiaBitmap(skiaBitmap, splitHalf) ?: bitmap
         else -> bitmap
     }
-    if (!cropBorders) return bounded
-    return selectPresentationCropResult(
+    if (!cropBorders) return ReaderPresentationBitmapTransform(bounded, boundedSource)
+    val cropped = cropBordersFromSkiaBitmap(bounded.asSkiaBitmap())
+        ?: return ReaderPresentationBitmapTransform(bounded, boundedSource)
+    return ReaderPresentationBitmapTransform(
+        bitmap = selectPresentationCropResult(
         base = bitmap,
         bounded = bounded,
-        cropped = cropBordersFromSkiaBitmap(bounded.asSkiaBitmap()),
+            cropped = cropped.bitmap,
+        ),
+        renderedSourceBounds = cropped.bounds.mapBitmapBoundsToSource(
+            bitmapWidth = bounded.width,
+            bitmapHeight = bounded.height,
+            sourceBounds = boundedSource,
+        ),
     )
+}
+
+private fun PixelBounds.mapBitmapBoundsToSource(
+    bitmapWidth: Int,
+    bitmapHeight: Int,
+    sourceBounds: PixelBounds,
+): PixelBounds {
+    val left = sourceBounds.x + (x.toLong() * sourceBounds.width / bitmapWidth).toInt()
+    val top = sourceBounds.y + (y.toLong() * sourceBounds.height / bitmapHeight).toInt()
+    val right = sourceBounds.x +
+        ((x.toLong() + width) * sourceBounds.width + bitmapWidth - 1L).div(bitmapWidth).toInt()
+    val bottom = sourceBounds.y +
+        ((y.toLong() + height) * sourceBounds.height + bitmapHeight - 1L).div(bitmapHeight).toInt()
+    return PixelBounds(left, top, right - left, bottom - top)
 }
 
 internal fun selectPresentationCropResult(
@@ -429,7 +483,12 @@ private fun scaleCoordinate(coordinate: Int, sourceExtent: Int, bitmapExtent: In
  *
  * Border scanning reads pixel colours via [SkiaBitmap.getColor] — no AWT conversion needed.
  */
-private fun cropBordersFromSkiaBitmap(src: SkiaBitmap): ImageBitmap? {
+private data class CroppedPresentationBitmap(
+    val bitmap: ImageBitmap,
+    val bounds: PixelBounds,
+)
+
+private fun cropBordersFromSkiaBitmap(src: SkiaBitmap): CroppedPresentationBitmap? {
     val w = src.width
     val h = src.height
     val threshold = 240
@@ -466,7 +525,11 @@ private fun cropBordersFromSkiaBitmap(src: SkiaBitmap): ImageBitmap? {
     if (top == 0 && left == 0 && bottom == h && right == w) return null
     if (right <= left || bottom <= top) return null
 
-    return extractSkiaSubBitmap(src, left, top, right - left, bottom - top)
+    val bounds = PixelBounds(left, top, right - left, bottom - top)
+    return CroppedPresentationBitmap(
+        bitmap = extractSkiaSubBitmap(src, bounds.x, bounds.y, bounds.width, bounds.height),
+        bounds = bounds,
+    )
 }
 
 /**

@@ -18,6 +18,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -26,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -42,6 +44,7 @@ import kotlinx.coroutines.flow.first
 import mihon.desktop.reader.DesktopReaderPresentationImageOwner
 import mihon.desktop.reader.DesktopReaderPresentationImageState
 import mihon.desktop.reader.WebtoonSidePadding
+import mihon.desktop.reader.ZoomState
 import mihon.desktop.ui.reader.presentation.DisplaySlot
 import mihon.desktop.ui.reader.presentation.DisplayUnit
 import mihon.desktop.ui.reader.presentation.DisplayUnitId
@@ -62,6 +65,9 @@ internal val WebtoonDisplayUnitCompositionIdentityKey =
 internal val WebtoonDisplayUnitIdKey = SemanticsPropertyKey<DisplayUnitId>("WebtoonDisplayUnitId")
 internal val WebtoonDisplayUnitLoadStateKey =
     SemanticsPropertyKey<ReaderPageLoadState>("WebtoonDisplayUnitLoadState")
+private val LocalWebtoonReaderRegionViewport = staticCompositionLocalOf<ReaderRegionViewport> {
+    ReaderRegionViewport.Hidden
+}
 
 @Composable
 internal fun WebtoonViewer(
@@ -146,6 +152,9 @@ internal fun WebtoonDisplayUnitList(
     }
     val autoScrollPauseState = remember { WebtoonAutoScrollPauseState() }
     val measuredItemSizes = remember { mutableStateMapOf<DisplayUnitId, Int>() }
+    var regionViewports by remember(listState, displayUnitIds) {
+        mutableStateOf<Map<DisplayUnitId, ReaderRegionViewport.Visible>>(emptyMap())
+    }
     var lastRestoredAnchor by remember { mutableStateOf<WebtoonAnchorRestoration?>(null) }
     val isUserDragging by listState.interactionSource.collectIsDraggedAsState()
     val isScrollInProgress = listState.isScrollInProgress
@@ -235,6 +244,30 @@ internal fun WebtoonDisplayUnitList(
         },
     )
 
+    LaunchedEffect(listState, displayUnitIds) {
+        snapshotFlow {
+            val layout = listState.layoutInfo
+            buildMap<DisplayUnitId, ReaderRegionViewport.Visible> {
+                layout.visibleItemsInfo.forEach { item ->
+                    val displayUnitId = displayUnits.getOrNull(item.index)?.id ?: return@forEach
+                    val visibleTop = maxOf(layout.viewportStartOffset, item.offset)
+                    val visibleBottom = minOf(layout.viewportEndOffset, item.offset + item.size)
+                    if (visibleBottom > visibleTop) {
+                        put(
+                            displayUnitId,
+                            ReaderRegionViewport.Visible(
+                                top = visibleTop - item.offset,
+                                bottomExclusive = visibleBottom - item.offset,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+            .distinctUntilChanged()
+            .collect { current -> regionViewports = current }
+    }
+
     LaunchedEffect(autoScroll, autoScrollSpeed, autoScrollLoopEnabled) {
         if (!autoScroll) {
             autoScrollGate.reset()
@@ -273,15 +306,20 @@ internal fun WebtoonDisplayUnitList(
             items = displayUnits,
             key = DisplayUnit::id,
         ) { unit ->
-            WebtoonDisplayUnitContainer(
-                unit = unit,
-                sidePadding = sidePadding,
-                onMeasured = { itemSize ->
-                    if (measuredItemSizes[unit.id] != itemSize) measuredItemSizes[unit.id] = itemSize
-                },
-                onRetry = onRetryPage,
-                readyContent = readyContent,
-            )
+            CompositionLocalProvider(
+                LocalWebtoonReaderRegionViewport provides
+                    (regionViewports[unit.id] ?: ReaderRegionViewport.Hidden),
+            ) {
+                WebtoonDisplayUnitContainer(
+                    unit = unit,
+                    sidePadding = sidePadding,
+                    onMeasured = { itemSize ->
+                        if (measuredItemSizes[unit.id] != itemSize) measuredItemSizes[unit.id] = itemSize
+                    },
+                    onRetry = onRetryPage,
+                    readyContent = readyContent,
+                )
+            }
         }
     }
 }
@@ -477,6 +515,7 @@ private fun WebtoonPageItem(
 ) {
     val page = requireNotNull(slot.page)
     val pageIndex = page.id.sourcePageIndex
+    val regionViewport = LocalWebtoonReaderRegionViewport.current
     val presentationImage = rememberReaderPresentationImage(
         owner = presentationImageOwner,
         page = page,
@@ -495,12 +534,23 @@ private fun WebtoonPageItem(
 
     val pageContent: @Composable () -> Unit = {
         if (renderedImage != null) {
-            Image(
-                bitmap = renderedImage.bitmap,
-                contentDescription = null,
-                modifier = modifier.observeReaderPageDraw(renderedImage.acknowledgeDraw),
-                contentScale = ContentScale.FillWidth,
-            )
+            Box {
+                Image(
+                    bitmap = renderedImage.bitmap,
+                    contentDescription = null,
+                    modifier = modifier.observeReaderPageDraw(renderedImage.acknowledgeDraw),
+                    contentScale = ContentScale.FillWidth,
+                )
+                ReaderRegionTileLayer(
+                    presentationImage = presentationImage,
+                    renderedImage = renderedImage,
+                    contentScale = ContentScale.FillWidth,
+                    alignment = Alignment.Center,
+                    zoomState = ZoomState(),
+                    viewport = regionViewport,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
         } else {
             Box(
                 modifier = modifier.aspectRatio(2f / 3f),

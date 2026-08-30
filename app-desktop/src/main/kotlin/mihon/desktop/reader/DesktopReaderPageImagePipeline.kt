@@ -40,14 +40,13 @@ internal fun interface DesktopReaderPageImageDecoder {
 /** Production Skia adapter for ordinary full pages and purpose-keyed animation frames. */
 internal class SkiaDesktopReaderPageImageDecoder(
     private val decoder: PageDecoder<ByteArray, ImageBitmap> = SkiaPageDecoder(),
+    private val regionDecoder: mihon.domain.reader.RegionDecoder<ByteArray, ImageBitmap> = SkiaRegionPageDecoder(),
 ) : DesktopReaderPageImageDecoder {
     override suspend fun decode(
         encoded: ByteArray,
         key: ReaderPageDecodeKey,
     ): DesktopReaderImageAssetLease? {
-        require(key.purpose != PageDecodePurpose.REGION_TILE) {
-            "The standard Desktop decoder does not accept region requests"
-        }
+        if (key.purpose == PageDecodePurpose.REGION_TILE) return decodeRegion(encoded, key)
         if (key.purpose == PageDecodePurpose.ANIMATION_FRAME) return decodeAnimationFrame(encoded, key)
         val sourceSize = SkiaImageDecoder.peekSize(encoded) ?: return null
         val animationMetadata = inspectAnimationMetadata(encoded)
@@ -70,6 +69,35 @@ internal class SkiaDesktopReaderPageImageDecoder(
                 estimatedBytes = result.estimatedBytes,
                 sampled = result.isSampled,
                 animationMetadata = animationMetadata,
+                disposer = result.value.asSkiaBitmap()::close,
+            )
+        }
+    }
+
+    private suspend fun decodeRegion(
+        encoded: ByteArray,
+        key: ReaderPageDecodeKey,
+    ): DesktopReaderImageAssetLease? {
+        val sourceSize = SkiaImageDecoder.peekSize(encoded) ?: return null
+        return when (
+            val result = regionDecoder.decodeRegion(
+                encoded,
+                PageDecodeRequest(
+                    pageIndex = key.pageIndex,
+                    generation = key.generation,
+                    maxWidth = key.maxWidth,
+                    maxHeight = key.maxHeight,
+                    region = key.region,
+                ),
+            )
+        ) {
+            is PageDecodeResult.Failure -> null
+            is PageDecodeResult.Success -> DesktopReaderImageAsset(
+                bitmap = result.value,
+                sourceWidth = sourceSize.first,
+                sourceHeight = sourceSize.second,
+                estimatedBytes = result.estimatedBytes,
+                sampled = result.isSampled,
                 disposer = result.value.asSkiaBitmap()::close,
             )
         }
@@ -183,6 +211,7 @@ internal class SkiaDesktopReaderPageImageDecoder(
 internal data class DesktopReaderPageImagePipelineSnapshot(
     val minimumGeneration: Long,
     val cache: DesktopReaderImageCacheSnapshot,
+    val tileCache: DesktopReaderImageCacheSnapshot,
     val inFlightCount: Int,
     val closed: Boolean,
 )
@@ -209,16 +238,17 @@ class DesktopReaderPageImagePipeline internal constructor(
         var decodedLease: DesktopReaderImageAssetLease? = null
     }
 
-    private class AnimationSessionEntry(
-        val content: DesktopReaderSharedAnimationContent,
+    private class ContentSessionEntry(
+        val content: DesktopReaderSharedPageContent,
         var references: Int = 0,
     )
 
     private val lock = Any()
     private val cache = DesktopReaderImageCache(maxEntries, maxBytes)
+    private val tileCache = DesktopReaderImageCache(DEFAULT_TILE_CACHE_ENTRIES, DEFAULT_TILE_CACHE_BYTES)
     private val decodePermits = Semaphore(maxConcurrentDecodes)
     private val entries = mutableMapOf<ReaderPageDecodeKey, Entry>()
-    private val animationSessions = mutableMapOf<ReaderPageContentOpenRequest, AnimationSessionEntry>()
+    private val contentSessions = mutableMapOf<ReaderPageContentOpenRequest, ContentSessionEntry>()
     private val mutableCacheRevision = MutableStateFlow(0L)
     private var minimumGeneration = 0L
     private var closed = false
@@ -235,19 +265,19 @@ class DesktopReaderPageImagePipeline internal constructor(
     internal fun openAnimationSession(
         contentKey: ReaderPageContentOpenRequest,
     ): DesktopReaderAnimationContentSession = synchronized(lock) {
-        check(!closed) { "Desktop reader page image pipeline is closed" }
-        check(contentKey.generation >= minimumGeneration) { "Animation session generation is stale" }
-        val entry = animationSessions.getOrPut(contentKey) {
-            AnimationSessionEntry(
-                DesktopReaderSharedAnimationContent(
-                    contentKey = contentKey,
-                    scope = scope,
-                    pageContentOwner = pageContentOwner,
-                ),
-            )
-        }
-        entry.references++
+        val entry = retainContentSessionLocked(contentKey, "Animation")
         DesktopReaderAnimationContentSession(
+            contentKey = contentKey,
+            sharedContent = entry.content,
+            pipeline = this,
+        )
+    }
+
+    internal fun openRegionSession(
+        contentKey: ReaderPageContentOpenRequest,
+    ): DesktopReaderRegionContentSession = synchronized(lock) {
+        val entry = retainContentSessionLocked(contentKey, "Region")
+        DesktopReaderRegionContentSession(
             contentKey = contentKey,
             sharedContent = entry.content,
             pipeline = this,
@@ -269,6 +299,33 @@ class DesktopReaderPageImagePipeline internal constructor(
         }
     }
 
+    internal suspend fun acquireRegionTile(
+        session: DesktopReaderRegionContentSession,
+        key: ReaderPageDecodeKey,
+    ): DesktopReaderImageAssetLease? {
+        require(key.purpose == PageDecodePurpose.REGION_TILE) {
+            "Region sessions only accept region-tile requests"
+        }
+        require(key.contentKey == session.contentKey) {
+            "Region tile and source session identities must match"
+        }
+        return acquireWithLoader(key) {
+            session.withContent { encoded -> decodeContent(key, encoded) }
+        }
+    }
+
+    /** Caches a region only after its mounted presentation has accepted ownership. */
+    internal fun commitRegionTile(
+        key: ReaderPageDecodeKey,
+        acceptedLease: DesktopReaderImageAssetLease,
+    ): Boolean = synchronized(lock) {
+        require(key.purpose == PageDecodePurpose.REGION_TILE) {
+            "Only accepted region tiles may enter the tile cache"
+        }
+        if (closed || key.generation < minimumGeneration) return false
+        tileCache.commit(key, acceptedLease)
+    }
+
     private suspend fun acquireWithLoader(
         key: ReaderPageDecodeKey,
         loader: suspend () -> DesktopReaderImageAssetLease?,
@@ -276,7 +333,7 @@ class DesktopReaderPageImagePipeline internal constructor(
         val entry = synchronized(lock) {
             check(!closed) { "Desktop reader page image pipeline is closed" }
             if (key.generation < minimumGeneration) return null
-            cache.acquire(key)?.let { return it }
+            cacheFor(key)?.acquire(key)?.let { return it }
             entries.getOrPut(key) { createEntry(key, loader) }.also {
                 it.pendingAcquires++
                 it.deferred.start()
@@ -313,7 +370,7 @@ class DesktopReaderPageImagePipeline internal constructor(
     internal fun acquireCached(key: ReaderPageDecodeKey): DesktopReaderImageAssetLease? = synchronized(lock) {
         check(!closed) { "Desktop reader page image pipeline is closed" }
         if (key.generation < minimumGeneration) return null
-        cache.acquire(key)
+        cacheFor(key)?.acquire(key)
     }
 
     /** Advances the accepted generation and rejects all older cache and in-flight results. */
@@ -327,14 +384,15 @@ class DesktopReaderPageImagePipeline internal constructor(
             val stale = entries.filterKeys { it.generation < generation }
             stale.keys.forEach(entries::remove)
             cache.clear()
+            tileCache.clear()
             mutableCacheRevision.value++
-            val staleSessions = animationSessions.filterKeys { it.generation < generation }
-            staleSessions.keys.forEach(animationSessions::remove)
-            stale.values.toList() to staleSessions.values.map(AnimationSessionEntry::content)
+            val staleSessions = contentSessions.filterKeys { it.generation < generation }
+            staleSessions.keys.forEach(contentSessions::remove)
+            stale.values.toList() to staleSessions.values.map(ContentSessionEntry::content)
         }
         stale.first.forEach { entry -> entry.deferred.cancel() }
         releaseDetachedCompleted(stale.first)
-        stale.second.forEach(DesktopReaderSharedAnimationContent::close)
+        stale.second.forEach(DesktopReaderSharedPageContent::close)
         return true
     }
 
@@ -344,6 +402,7 @@ class DesktopReaderPageImagePipeline internal constructor(
             val detached = entries.values.toList()
             entries.clear()
             cache.clear()
+            tileCache.clear()
             mutableCacheRevision.value++
             detached
         }
@@ -355,6 +414,7 @@ class DesktopReaderPageImagePipeline internal constructor(
         DesktopReaderPageImagePipelineSnapshot(
             minimumGeneration = minimumGeneration,
             cache = cache.snapshot(),
+            tileCache = tileCache.snapshot(),
             inFlightCount = entries.size,
             closed = closed,
         )
@@ -365,16 +425,17 @@ class DesktopReaderPageImagePipeline internal constructor(
             if (closed) return
             closed = true
             val detachedEntries = entries.values.toList()
-            val detachedSessions = animationSessions.values.map(AnimationSessionEntry::content)
+            val detachedSessions = contentSessions.values.map(ContentSessionEntry::content)
             entries.clear()
-            animationSessions.clear()
+            contentSessions.clear()
             cache.close()
+            tileCache.close()
             mutableCacheRevision.value++
             detachedEntries to detachedSessions
         }
         detached.first.forEach { entry -> entry.deferred.cancel() }
         releaseDetachedCompleted(detached.first)
-        detached.second.forEach(DesktopReaderSharedAnimationContent::close)
+        detached.second.forEach(DesktopReaderSharedPageContent::close)
     }
 
     private fun createEntry(
@@ -387,12 +448,9 @@ class DesktopReaderPageImagePipeline internal constructor(
             synchronized(lock) {
                 entry.decodedLease = decoded
                 if (
-                    decoded != null &&
                     key.purpose == PageDecodePurpose.FULL_PAGE &&
-                    decoded.asset.animationMetadata == null &&
-                    !closed &&
-                    key.generation >= minimumGeneration &&
-                    entries[key] === entry &&
+                    decoded != null && decoded.asset.animationMetadata == null && !closed &&
+                    key.generation >= minimumGeneration && entries[key] === entry &&
                     cache.commit(key, decoded)
                 ) {
                     mutableCacheRevision.value++
@@ -470,14 +528,48 @@ class DesktopReaderPageImagePipeline internal constructor(
         }
     }
 
+    private fun retainContentSessionLocked(
+        contentKey: ReaderPageContentOpenRequest,
+        purpose: String,
+    ): ContentSessionEntry {
+        check(!closed) { "Desktop reader page image pipeline is closed" }
+        check(contentKey.generation >= minimumGeneration) { "$purpose session generation is stale" }
+        return contentSessions.getOrPut(contentKey) {
+            ContentSessionEntry(
+                DesktopReaderSharedPageContent(
+                    contentKey = contentKey,
+                    scope = scope,
+                    pageContentOwner = pageContentOwner,
+                ),
+            )
+        }.also { it.references++ }
+    }
+
+    private fun cacheFor(key: ReaderPageDecodeKey): DesktopReaderImageCache? = when (key.purpose) {
+        PageDecodePurpose.FULL_PAGE -> cache
+        PageDecodePurpose.REGION_TILE -> tileCache
+        PageDecodePurpose.ANIMATION_FRAME -> null
+    }
+
     internal fun releaseAnimationSession(session: DesktopReaderAnimationContentSession) {
+        releaseContentSession(session.contentKey, session.sharedContent)
+    }
+
+    internal fun releaseRegionSession(session: DesktopReaderRegionContentSession) {
+        releaseContentSession(session.contentKey, session.sharedContent)
+    }
+
+    private fun releaseContentSession(
+        contentKey: ReaderPageContentOpenRequest,
+        sharedContent: DesktopReaderSharedPageContent,
+    ) {
         val contentToClose = synchronized(lock) {
-            val entry = animationSessions[session.contentKey]
-            if (entry == null || entry.content !== session.sharedContent) return
-            check(entry.references > 0) { "Animation session reference count underflow" }
+            val entry = contentSessions[contentKey]
+            if (entry == null || entry.content !== sharedContent) return
+            check(entry.references > 0) { "Content session reference count underflow" }
             entry.references--
             if (entry.references == 0) {
-                animationSessions.remove(session.contentKey)
+                contentSessions.remove(contentKey)
                 entry.content
             } else {
                 null
@@ -489,6 +581,8 @@ class DesktopReaderPageImagePipeline internal constructor(
     companion object {
         const val DEFAULT_CACHE_ENTRIES = 7
         const val DEFAULT_CACHE_BYTES = 128L * 1024L * 1024L
+        const val DEFAULT_TILE_CACHE_ENTRIES = 8
+        const val DEFAULT_TILE_CACHE_BYTES = 64L * 1024L * 1024L
         const val DEFAULT_CONCURRENT_DECODES = 3
     }
 }
@@ -499,7 +593,7 @@ class DesktopReaderPageImagePipeline internal constructor(
  */
 internal class DesktopReaderAnimationContentSession(
     val contentKey: ReaderPageContentOpenRequest,
-    internal val sharedContent: DesktopReaderSharedAnimationContent,
+    internal val sharedContent: DesktopReaderSharedPageContent,
     private val pipeline: DesktopReaderPageImagePipeline,
 ) : AutoCloseable {
     private val lock = Any()
@@ -523,8 +617,44 @@ internal class DesktopReaderAnimationContentSession(
     }
 }
 
+/** One mounted large-static presentation's encoded source shared by its preview and region tiles. */
+internal class DesktopReaderRegionContentSession(
+    val contentKey: ReaderPageContentOpenRequest,
+    internal val sharedContent: DesktopReaderSharedPageContent,
+    private val pipeline: DesktopReaderPageImagePipeline,
+) : AutoCloseable {
+    private val lock = Any()
+    private var closed = false
+
+    suspend fun pin() {
+        withContent { Unit }
+    }
+
+    suspend fun acquireTile(key: ReaderPageDecodeKey): DesktopReaderImageAssetLease? {
+        synchronized(lock) {
+            check(!closed) { "Desktop reader region content session is closed" }
+        }
+        return pipeline.acquireRegionTile(this, key)
+    }
+
+    suspend fun <T> withContent(block: suspend (ByteArray) -> T): T {
+        synchronized(lock) {
+            check(!closed) { "Desktop reader region content session is closed" }
+        }
+        return sharedContent.withContent(block)
+    }
+
+    override fun close() {
+        synchronized(lock) {
+            if (closed) return
+            closed = true
+        }
+        pipeline.releaseRegionSession(this)
+    }
+}
+
 /** Pipeline-owned source lease shared by every mounted presentation of the same animated page. */
-internal class DesktopReaderSharedAnimationContent(
+internal class DesktopReaderSharedPageContent(
     val contentKey: ReaderPageContentOpenRequest,
     scope: CoroutineScope,
     pageContentOwner: DesktopReaderPageContentOwner,
@@ -542,12 +672,12 @@ internal class DesktopReaderSharedAnimationContent(
 
     suspend fun <T> withContent(block: suspend (ByteArray) -> T): T {
         synchronized(lock) {
-            if (closed) throw CancellationException("Desktop reader animation content is closed")
+            if (closed) throw CancellationException("Desktop reader shared content is closed")
             content.start()
         }
-        val lease = content.await() ?: throw CancellationException("Animated page content is unavailable")
+        val lease = content.await() ?: throw CancellationException("Reader page content is unavailable")
         synchronized(lock) {
-            if (closed) throw CancellationException("Desktop reader animation content is closed")
+            if (closed) throw CancellationException("Desktop reader shared content is closed")
         }
         return block(lease.content)
     }

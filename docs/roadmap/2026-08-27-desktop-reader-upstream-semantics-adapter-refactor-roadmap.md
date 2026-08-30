@@ -317,7 +317,7 @@ Android Reader UI                 Desktop Reader presentation
   - [x] `RUA-04C` Single/Dual/Webtoon presentation cutover
   - [ ] `RUA-04D` 动画/超大图/lifecycle 矩阵与 legacy owner 删除
     - [x] `RUA-04D1` 动画 purpose-aware decode owner
-    - [ ] `RUA-04D2` 超大图与 region tile owner
+    - [x] `RUA-04D2` 超大图与 region tile owner
     - [ ] `RUA-04D3` Retry/cancel/stale attempt 线性化
     - [ ] `RUA-04D4` detach/recycle/close 与统一内存预算
     - [ ] `RUA-04D5` legacy owner 删除与最终矩阵门禁
@@ -610,6 +610,14 @@ Android Reader UI                 Desktop Reader presentation
 - source/frame/transform 资源均以显式 lease 收口：同 key 两个 holder 并发时，首 holder detach 不会取消存活 holder；最后一个 holder、generation 前进或 runtime close 才释放共享 source。stale 非协作 frame、frame replacement、旧 draw pin与 sample allocation/异常路径均保证不提前释放且最终清理。
 - 严格 TDD 证据包括 `rua04d1-red`、`rua04d1-real-red`、`rua04d1-wiring-red2`、`rua04d1-semantic-red`、`rua04d1-shared-session-red`、`rua04d1-frame-failure-red` 及对应 GREEN；`rua04d1-bounded-fix-green2` 通过 ownership、真实 GIF、透明采样与空帧生命周期。独立审查发现 shared-session 竞态、frame cache purpose、sample/native 资源和证据缺口，经限定修复复审最终为 `PASS`，P0/P1/P2/P3 均为零。
 - 本批包含 6 个 product 文件、3 个 test 文件和本 roadmap，超过 4～8 文件提示值是因为 real Skia decoder/controller、mounted production autoplay 与并发 lease 证据必须原子交付；没有改变双页配对、手势、一般 viewport 或 Retry attempt 语义。最终 `.gradle-coordinator/rua04d1-close.log` 完成 root Spotless 与动画/静态回归 focused matrix，`BUILD SUCCESSFUL in 5m 30s`；Desktop 正式构建仍只在 `RUA-07` 执行。
+
+**`RUA-04D2` 完成证据（2026-08-30）**：
+
+- 大于 1600 万源像素的静态页现在先显示 shared pipeline 的有界 preview，再由同一 encoded source session 按真实 source bounds 解码可见 region tile；普通静态页与动画页不启动 region owner。ImageIO adapter 使用 source-region 与 subsampling 做有界 raster decode，不支持的格式直接局部降级，不回落到第二次 full-page decode。
+- region tile 使用独立的 8 项/64 MiB LRU，只有 current mounted holder 同时满足 generation、requested key 与 running job admission 后才能写入；tile commit、hit 与 eviction 不推动 ordinary decoded `cacheRevision`。holder/owner/generation/pipeline close 后，即使 decoder 非协作迟到，也不能回写 state/cache，source 与 tile asset 最终精确释放；null、异常与不支持格式只保留 preview，并不阻断后续正常 tile。
+- Single、Dual、Webtoon 三种 production presentation 均挂载真实 tile layer；split/crop 使用 transform 后的原始 source bounds 对齐。Webtoon 从 `LazyList` 的真实 item/viewport 交集只保留当前可见条带，离屏 item 请求为空，滚动后旧 tile draw/cache lease 释放。tile 选择、可视交集与 Canvas 绘制复用同一 `roundToInt` 整数几何，消除边界 1 px 分歧；离屏 framebuffer 测试验证三种 viewer 与 split+crop 都实际绘出 tile 像素，而非只检查请求或源码符号。
+- 严格 TDD 先由 `.gradle-coordinator/rua04d2-review-red2.log` 复现 cache revision、late-result、failure isolation、Dual 像素与 Webtoon 整页请求问题；修复后 `.gradle-coordinator/rua04d2-lifecycle-green3.log` 通过四种终止方式与局部失败矩阵，最终 `.gradle-coordinator/rua04d2-close.log` 完成 root `spotlessCheck` 与 15 个 region/pipeline/animation/transform 回归类，`BUILD SUCCESSFUL in 3m 36s`。独立审查发现 3 个 P1 与 1 个 P2，限定复审最终为 `PASS`，P0/P1/P2 均为零。
+- 本批包含 10 个 product 文件、7 个 test 文件和本 roadmap，超过 4～8 文件提示值是因为 bounded native decoder、source/cache/lifecycle owner、三种 mounted presentation 与真实像素/滚动证据必须作为一个可独立验收的 region-tile 能力交付；没有改变 Retry attempt、双页配对或一般手势语义。Desktop 正式构建仍只在 `RUA-07` 执行。
 
 ### `RUA-05` 原版相邻章默认语义与 Desktop opt-in decorator
 

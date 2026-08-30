@@ -13,6 +13,8 @@ import mihon.desktop.reader.DesktopReaderAnimatedPresentationImageHolder
 import mihon.desktop.reader.DesktopReaderAnimatedPresentationImageSnapshot
 import mihon.desktop.reader.DesktopReaderAnimationDrawToken
 import mihon.desktop.reader.DesktopReaderImageAssetLease
+import mihon.desktop.reader.DesktopReaderRegionPresentationHolder
+import mihon.desktop.reader.DesktopReaderRegionPresentationSnapshot
 import mihon.domain.reader.PageDecodePurpose
 import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.PixelBounds
@@ -25,6 +27,8 @@ internal data class ReaderPresentationImage(
     val state: DesktopReaderPresentationImageState,
     val animatedHolder: DesktopReaderAnimatedPresentationImageHolder? = null,
     val animatedState: DesktopReaderAnimatedPresentationImageSnapshot? = null,
+    val regionHolder: DesktopReaderRegionPresentationHolder? = null,
+    val regionState: DesktopReaderRegionPresentationSnapshot = DesktopReaderRegionPresentationSnapshot(),
 ) {
     val animationDrawToken: DesktopReaderAnimationDrawToken?
         get() = animatedState?.drawToken
@@ -87,6 +91,7 @@ internal fun rememberReaderPresentationImage(
         owner.createHolder(identity, decodeKey)
     }
     val state by holder.state.collectAsState()
+    val regionState by holder.regionHolder.state.collectAsState()
     DisposableEffect(holder) {
         holder.acquire()
         onDispose(holder::close)
@@ -107,7 +112,14 @@ internal fun rememberReaderPresentationImage(
         }
         onDispose { animatedHolder?.close() }
     }
-    return ReaderPresentationImage(holder, state, animatedHolder, animatedState)
+    return ReaderPresentationImage(
+        holder = holder,
+        state = state,
+        animatedHolder = animatedHolder,
+        animatedState = animatedState,
+        regionHolder = holder.regionHolder,
+        regionState = regionState,
+    )
 }
 
 private const val PRESENTATION_DECODE_BOUND = 2_048

@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import mihon.desktop.reader.DesktopReaderPresentationImageState
 import mihon.desktop.reader.DesktopReaderPresentationImageSlotIdentity
+import mihon.domain.reader.PixelBounds
 
 internal data class ReaderPresentationTransformKey(
     val presentationIdentity: DesktopReaderPresentationImageSlotIdentity,
@@ -33,6 +34,8 @@ internal data class ReaderPresentationTransformKey(
 
 internal interface ReaderPresentationBitmapLease : AutoCloseable {
     val bitmap: ImageBitmap
+    val renderedSourceBounds: PixelBounds
+        get() = PixelBounds(0, 0, bitmap.width, bitmap.height)
 }
 
 internal sealed interface ReaderPresentationTransformState {
@@ -160,6 +163,7 @@ internal class ReaderPresentationTransformOwner(
 
 internal class CloseableReaderPresentationBitmapLease(
     override val bitmap: ImageBitmap,
+    override val renderedSourceBounds: PixelBounds = PixelBounds(0, 0, bitmap.width, bitmap.height),
     private val disposer: () -> Unit,
 ) : ReaderPresentationBitmapLease {
     private val closed = AtomicBoolean()
@@ -172,6 +176,7 @@ internal class CloseableReaderPresentationBitmapLease(
 internal data class ReaderPresentationRenderedImage(
     val key: ReaderPresentationTransformKey,
     val bitmap: ImageBitmap,
+    val renderedSourceBounds: PixelBounds,
     val acknowledgeDraw: () -> Boolean,
 )
 
@@ -212,12 +217,21 @@ internal fun rememberReaderPresentationRenderedImage(
             }
             requireNotNull(baseLease) { "Ready presentation image lost its render lease: $identity" }
             val baseBitmap = baseLease.asset.bitmap
+            val baseSourceBounds = identity.sourceBounds
+                ?: identity.splitHalf?.let { half ->
+                    splitBounds(baseLease.asset.sourceWidth, baseLease.asset.sourceHeight, half)
+                }
+                ?: PixelBounds(0, 0, baseLease.asset.sourceWidth, baseLease.asset.sourceHeight)
             if (identity.splitHalf == null && identity.sourceBounds == null && !cropBorders) {
-                return@submit CloseableReaderPresentationBitmapLease(baseBitmap, baseLease::close)
+                return@submit CloseableReaderPresentationBitmapLease(
+                    bitmap = baseBitmap,
+                    renderedSourceBounds = baseSourceBounds,
+                    disposer = baseLease::close,
+                )
             }
             try {
                 val transformed = withContext(Dispatchers.Default + NonCancellable) {
-                    transformCachedPageBitmap(
+                    transformCachedPageBitmapWithSourceBounds(
                         bitmap = baseBitmap,
                         splitHalf = identity.splitHalf,
                         sourceBounds = identity.sourceBounds,
@@ -226,13 +240,18 @@ internal fun rememberReaderPresentationRenderedImage(
                         sourceHeight = baseLease.asset.sourceHeight,
                     )
                 }
-                if (transformed === baseBitmap) {
-                    CloseableReaderPresentationBitmapLease(baseBitmap, baseLease::close)
+                if (transformed.bitmap === baseBitmap) {
+                    CloseableReaderPresentationBitmapLease(
+                        bitmap = baseBitmap,
+                        renderedSourceBounds = transformed.renderedSourceBounds,
+                        disposer = baseLease::close,
+                    )
                 } else {
                     baseLease.close()
                     CloseableReaderPresentationBitmapLease(
-                        bitmap = transformed,
-                        disposer = transformed.asSkiaBitmap()::close,
+                        bitmap = transformed.bitmap,
+                        renderedSourceBounds = transformed.renderedSourceBounds,
+                        disposer = transformed.bitmap.asSkiaBitmap()::close,
                     )
                 }
             } catch (error: Throwable) {
@@ -247,6 +266,7 @@ internal fun rememberReaderPresentationRenderedImage(
     return ReaderPresentationRenderedImage(
         key = key,
         bitmap = transformed.bitmap,
+        renderedSourceBounds = transformed.lease.renderedSourceBounds,
         acknowledgeDraw = {
             transformOwner.acknowledgeDraw(key) && presentationImage.holder.acknowledgeDraw(identity)
         },

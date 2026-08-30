@@ -74,6 +74,11 @@ class DesktopReaderPresentationImageOwner internal constructor(
     private val lock = Any()
     private val holders = mutableSetOf<DesktopReaderPresentationImageHolder>()
     private val animatedHolders = mutableSetOf<DesktopReaderAnimatedPresentationImageHolder>()
+    private val regionOwner = DesktopReaderRegionPresentationOwner(
+        scope = scope,
+        pageImagePipeline = pageImagePipeline,
+        managesPipelineGeneration = false,
+    )
     private var minimumGeneration = 0L
     private var closed = false
 
@@ -91,6 +96,7 @@ class DesktopReaderPresentationImageOwner internal constructor(
         }
         staleHolders.first.forEach(DesktopReaderPresentationImageHolder::closeFromOwner)
         staleHolders.second.forEach(DesktopReaderAnimatedPresentationImageHolder::closeFromOwner)
+        check(regionOwner.beginGeneration(generation)) { "Region owner rejected current generation" }
         return pageImagePipeline.beginGeneration(generation)
     }
 
@@ -125,7 +131,7 @@ class DesktopReaderPresentationImageOwner internal constructor(
                 identity = identity,
                 decodeKey = decodeKey,
                 scope = scope,
-                pageImagePipeline = pageImagePipeline,
+                regionHolder = regionOwner.createHolder(identity, decodeKey),
                 pageIoObserver = pageIoObserver,
                 owner = this,
             ).also(holders::add)
@@ -183,6 +189,7 @@ class DesktopReaderPresentationImageOwner internal constructor(
         }
         registeredHolders.first.forEach(DesktopReaderPresentationImageHolder::closeFromOwner)
         registeredHolders.second.forEach(DesktopReaderAnimatedPresentationImageHolder::closeFromOwner)
+        regionOwner.close()
     }
 
     internal fun isCurrent(holder: DesktopReaderPresentationImageHolder): Boolean = synchronized(lock) {
@@ -207,13 +214,13 @@ class DesktopReaderPresentationImageOwner internal constructor(
         holder.retainReadyAssetWhileOwnerCurrent(candidateIdentity)
     }
 
-    internal fun acceptReadyLease(
+    internal fun acceptReadyAsset(
         holder: DesktopReaderPresentationImageHolder,
         runningJob: Job,
-        lease: DesktopReaderImageAssetLease,
+        asset: DesktopReaderImageAsset,
     ): Boolean = synchronized(lock) {
         if (closed || holder !in holders || holder.identity.generation != minimumGeneration) return false
-        holder.acceptReadyLeaseWhileOwnerCurrent(runningJob, lease)
+        holder.acceptReadyAssetWhileOwnerCurrent(runningJob, asset)
     }
 
     internal fun publishFailure(
@@ -282,7 +289,7 @@ internal class DesktopReaderPresentationImageHolder internal constructor(
     val identity: DesktopReaderPresentationImageSlotIdentity,
     val decodeKey: ReaderPageDecodeKey,
     private val scope: CoroutineScope,
-    private val pageImagePipeline: DesktopReaderPageImagePipeline,
+    internal val regionHolder: DesktopReaderRegionPresentationHolder,
     private val pageIoObserver: ReaderPageIoObserver,
     private val owner: DesktopReaderPresentationImageOwner,
 ) : AutoCloseable {
@@ -291,7 +298,6 @@ internal class DesktopReaderPresentationImageHolder internal constructor(
         DesktopReaderPresentationImageState.Idle(identity),
     )
     private var acquireJob: Job? = null
-    private var presentationLease: DesktopReaderImageAssetLease? = null
     private var drawAcknowledged = false
     private var closed = false
 
@@ -301,7 +307,7 @@ internal class DesktopReaderPresentationImageHolder internal constructor(
         if (!owner.isCurrent(this)) return
         var jobToStart: Job? = null
         synchronized(lock) {
-            if (closed || acquireJob != null || presentationLease != null) return
+            if (closed || acquireJob != null || mutableState.value is DesktopReaderPresentationImageState.Ready) return
             mutableState.value = DesktopReaderPresentationImageState.Loading(identity)
             jobToStart = scope.launch(start = CoroutineStart.LAZY) { acquirePresentationLease() }
             acquireJob = jobToStart
@@ -342,7 +348,7 @@ internal class DesktopReaderPresentationImageHolder internal constructor(
         ) {
             return null
         }
-        presentationLease?.retain()
+        regionHolder.retainReadyPreviewForRender()
     }
 
     internal fun retainReadyAsset(): DesktopReaderImageAssetLease? = owner.retainReadyAsset(this, identity)
@@ -360,35 +366,32 @@ internal class DesktopReaderPresentationImageHolder internal constructor(
 
     private suspend fun acquirePresentationLease() {
         val runningJob = checkNotNull(currentCoroutineContext()[Job])
-        var acquiredLease: DesktopReaderImageAssetLease? = null
         try {
-            acquiredLease = pageImagePipeline.acquire(decodeKey)
-            val lease = acquiredLease
-            if (lease == null) {
-                owner.publishFailure(this, runningJob)
-                return
+            regionHolder.acquire()
+            val regionState = regionHolder.state.first { snapshot ->
+                snapshot.previewAsset != null || snapshot.previewFailed || snapshot.closed
             }
-            val accepted = owner.acceptReadyLease(this, runningJob, lease)
-            if (accepted) acquiredLease = null
+            when {
+                regionState.previewAsset != null -> owner.acceptReadyAsset(this, runningJob, regionState.previewAsset)
+                regionState.previewFailed -> owner.publishFailure(this, runningJob, regionState.previewFailure)
+            }
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
             owner.publishFailure(this, runningJob, error)
         } finally {
-            acquiredLease?.close()
             synchronized(lock) {
                 if (acquireJob === runningJob) acquireJob = null
             }
         }
     }
 
-    internal fun acceptReadyLeaseWhileOwnerCurrent(
+    internal fun acceptReadyAssetWhileOwnerCurrent(
         runningJob: Job,
-        lease: DesktopReaderImageAssetLease,
+        asset: DesktopReaderImageAsset,
     ): Boolean = synchronized(lock) {
         if (closed || acquireJob !== runningJob) return false
-        presentationLease = lease
-        mutableState.value = DesktopReaderPresentationImageState.Ready(identity, lease.asset)
+        mutableState.value = DesktopReaderPresentationImageState.Ready(identity, asset)
         true
     }
 
@@ -403,19 +406,16 @@ internal class DesktopReaderPresentationImageHolder internal constructor(
 
     private fun closeInternal(unregister: Boolean) {
         var jobToCancel: Job? = null
-        var leaseToClose: DesktopReaderImageAssetLease? = null
         synchronized(lock) {
             if (closed) return
             closed = true
             jobToCancel = acquireJob
             acquireJob = null
-            leaseToClose = presentationLease
-            presentationLease = null
             drawAcknowledged = false
             mutableState.value = DesktopReaderPresentationImageState.Closed(identity)
         }
         jobToCancel?.cancel()
-        leaseToClose?.close()
+        regionHolder.close()
         if (unregister) owner.unregister(this)
     }
 }
