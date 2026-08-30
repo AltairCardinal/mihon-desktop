@@ -127,8 +127,37 @@ class DesktopFinalParityRunnerContractTest {
         assertTrue(result.output.contains("Permanent protections: 5/5"))
         assertTrue(result.output.contains("Capabilities: 64/64 unmapped=0"))
         assertTrue(result.output.contains("Family library: PASS"))
+        assertEquals("http://127.0.0.1:8080", Files.readString(fixture.clientBaseUrl).trim())
         assertTrue(Files.readString(fixture.healthCount).trim().toInt() >= 2)
         assertTrue(awaitLog(fixture.processLog, "stopped"), "fake process was not torn down: ${result.output}")
+        assertTrue(awaitLog(fixture.processLog, "shutdown-requested"), "graceful shutdown was not requested")
+        assertTrue(awaitLog(fixture.processLog, "graceful-exit-0"), "fake process did not exit normally")
+        assertFalse(Files.readString(fixture.processLog).contains("forced-termination"))
+    }
+
+    @Test
+    fun `graceful shutdown timeout uses termination only as a fallback`() {
+        val fixture = fixture("shutdown-timeout", gracefulShutdownExits = false)
+
+        val result = runRunner(fixture.environment)
+
+        assertEquals(0, result.exitCode, result.output)
+        assertTrue(awaitLog(fixture.processLog, "shutdown-requested"), "graceful shutdown was not requested")
+        assertTrue(awaitLog(fixture.processLog, "forced-termination"), "fallback termination was not used")
+        assertFalse(Files.readString(fixture.processLog).contains("graceful-exit-0"))
+    }
+
+    @Test
+    fun `graceful shutdown nonzero exit is surfaced without forced termination`() {
+        val fixture = fixture("shutdown-failure", gracefulExitCode = 17)
+
+        val result = runRunner(fixture.environment)
+
+        assertEquals(17, result.exitCode, result.output)
+        assertTrue(result.output.contains("Mihon Desktop exited with status 17 during graceful shutdown"))
+        assertTrue(awaitLog(fixture.processLog, "shutdown-requested"), "graceful shutdown was not requested")
+        assertTrue(awaitLog(fixture.processLog, "graceful-exit-17"), "fake process did not expose its exit status")
+        assertFalse(Files.readString(fixture.processLog).contains("forced-termination"))
     }
 
     @Test
@@ -235,6 +264,8 @@ class DesktopFinalParityRunnerContractTest {
         healthyAfter: Int = 2,
         healthAfterProcessStart: Boolean = false,
         exitImmediately: Boolean = false,
+        gracefulShutdownExits: Boolean = true,
+        gracefulExitCode: Int = 0,
     ): Fixture {
         val root = createTempDirectory("mihon-final-runner-$name")
         val executable = root.resolve("Mihon Desktop.exe")
@@ -243,15 +274,29 @@ class DesktopFinalParityRunnerContractTest {
         val health = root.resolve("health.sh")
         val summaryFixture = root.resolve("summary.json")
         val writeSummary = root.resolve("write-summary.sh")
+        val shutdown = root.resolve("shutdown.sh")
+        val shutdownSignal = root.resolve("shutdown.signal")
+        val client = root.resolve("final-parity-client.py")
+        val clientBaseUrl = root.resolve("client-base-url")
         val inventoryFixture = root.resolve("coverage-inventory.json")
         val provenance = root.resolveSibling("${root.fileName}.task151-provenance.json")
 
         executable.writeText(
             """
             #!/usr/bin/env bash
-            trap 'echo stopped >> "${processLog.bashPath()}"; exit 0' TERM INT EXIT
+            trap 'echo forced-termination >> "${processLog.bashPath()}"; echo stopped >> "${processLog.bashPath()}"; exit 143' TERM INT
+            rm -f "${shutdownSignal.bashPath()}"
             echo started >> "${processLog.bashPath()}"
-            ${if (exitImmediately) "exit 0" else "while true; do sleep 0.1; done"}
+            ${
+                if (exitImmediately) {
+                    "exit 0"
+                } else {
+                    "while [[ ! -f \"${shutdownSignal.bashPath()}\" ]]; do sleep 0.1; done\n" +
+                        "echo graceful-exit-$gracefulExitCode >> \"${processLog.bashPath()}\"\n" +
+                        "echo stopped >> \"${processLog.bashPath()}\"\n" +
+                        "exit $gracefulExitCode"
+                }
+            }
             """.trimIndent() + "\n",
         )
         health.writeText(
@@ -277,14 +322,38 @@ class DesktopFinalParityRunnerContractTest {
             cp "${summaryFixture.bashPath()}" "${'$'}MIHON_FINAL_PARITY_SUMMARY_FILE"
             """.trimIndent() + "\n",
         )
-        listOf(executable, health, writeSummary).forEach { it.toFile().setExecutable(true) }
+        shutdown.writeText(
+            """
+            #!/usr/bin/env bash
+            echo shutdown-requested >> "${processLog.bashPath()}"
+            ${if (gracefulShutdownExits) "touch \"${shutdownSignal.bashPath()}\"" else ":"}
+            """.trimIndent() + "\n",
+        )
+        client.writeText(
+            """
+            import argparse
+            import pathlib
+            import shutil
+
+            parser = argparse.ArgumentParser()
+            parser.add_argument("--inventory", required=True)
+            parser.add_argument("--output", required=True)
+            parser.add_argument("--base-url", required=True)
+            args = parser.parse_args()
+            pathlib.Path(${clientBaseUrl.bashPath().shellQuote()}).write_text(args.base_url, encoding="utf-8")
+            shutil.copyfile(${summaryFixture.bashPath().shellQuote()}, args.output)
+            """.trimIndent() + "\n",
+        )
+        listOf(executable, health, writeSummary, shutdown, client).forEach { it.toFile().setExecutable(true) }
         provenance.writeText("{}\n")
         writeCoveredInventory(inventoryFixture)
+        writeSummary(summaryFixture)
 
         return Fixture(
             executable = executable,
             processLog = processLog,
             healthCount = healthCount,
+            clientBaseUrl = clientBaseUrl,
             summaryFixture = summaryFixture,
             provenance = provenance,
             writeSummaryCommand = "bash \"${writeSummary.bashPath()}\"",
@@ -294,7 +363,10 @@ class DesktopFinalParityRunnerContractTest {
                     "MIHON_FINAL_PARITY_PROVENANCE" to provenance.bashPath(),
                     "MIHON_FINAL_PARITY_PROVENANCE_COMMAND" to "true",
                     "MIHON_FINAL_PARITY_INVENTORY" to inventoryFixture.bashPath(),
+                    "MIHON_FINAL_PARITY_CLIENT" to client.bashPath(),
                     "MIHON_FINAL_PARITY_HEALTH_COMMAND" to "bash \"${health.bashPath()}\"",
+                    "MIHON_FINAL_PARITY_SHUTDOWN_COMMAND" to "bash \"${shutdown.bashPath()}\"",
+                    "MIHON_FINAL_PARITY_SHUTDOWN_TIMEOUT_SECONDS" to "1",
                     "MIHON_FINAL_PARITY_POLL_INTERVAL_SECONDS" to "0.05",
                 ),
         )
@@ -309,6 +381,18 @@ class DesktopFinalParityRunnerContractTest {
                         "scenarios",
                         JsonArray(
                             root.getValue("scenarios").jsonArray.map { element ->
+                                JsonObject(
+                                    element.jsonObject.toMutableMap().apply {
+                                        put("status", JsonPrimitive("covered"))
+                                    },
+                                )
+                            },
+                        ),
+                    )
+                    put(
+                        "permanentProtections",
+                        JsonArray(
+                            root.getValue("permanentProtections").jsonArray.map { element ->
                                 JsonObject(
                                     element.jsonObject.toMutableMap().apply {
                                         put("status", JsonPrimitive("covered"))
@@ -414,6 +498,7 @@ class DesktopFinalParityRunnerContractTest {
         val executable: Path,
         val processLog: Path,
         val healthCount: Path,
+        val clientBaseUrl: Path,
         val summaryFixture: Path,
         val provenance: Path,
         val writeSummaryCommand: String,

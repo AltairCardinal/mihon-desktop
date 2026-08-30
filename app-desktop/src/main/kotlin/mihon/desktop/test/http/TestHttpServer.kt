@@ -5,6 +5,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.call
 import io.ktor.server.request.receiveText
+import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -74,6 +75,35 @@ private fun parseJsonBody(body: String): Map<String, String> {
     } catch (_: Exception) {
         emptyMap()
     }
+}
+
+private fun parseReaderFixtureSpec(params: Map<String, String>): ReaderTestFixtureSpec {
+    fun integerParameter(name: String, default: Int): Int {
+        val raw = params[name] ?: return default
+        return raw.toIntOrNull() ?: throw IllegalArgumentException("$name must be an integer")
+    }
+
+    val sourceValue = params["readerFixture"] ?: ReaderTestFixtureSource.DOWNLOADED_DIRECTORY.wireName
+    val source = ReaderTestFixtureSource.fromWireName(sourceValue)
+        ?: throw IllegalArgumentException("Unknown readerFixture: $sourceValue")
+    val formatValue = params["format"] ?: ReaderTestImageFormat.JPEG.wireName
+    val format = ReaderTestImageFormat.fromWireName(formatValue)
+        ?: throw IllegalArgumentException("Unsupported reader fixture format: $formatValue")
+    return ReaderTestFixtureSpec(
+        source = source,
+        pageCount = integerParameter("pageCount", 3),
+        width = integerParameter("width", 16),
+        height = integerParameter("height", 24),
+        format = format,
+    )
+}
+
+private fun ReaderTestFixtureDescriptor.toJson(): JsonObject = buildJsonObject {
+    put("source", JsonPrimitive(spec.source.wireName))
+    put("pageCount", JsonPrimitive(spec.pageCount))
+    put("width", JsonPrimitive(spec.width))
+    put("height", JsonPrimitive(spec.height))
+    put("format", JsonPrimitive(spec.format.wireName))
 }
 
 internal fun actionHistoryParams(
@@ -255,6 +285,7 @@ private fun actionJson(
 internal fun Application.testHttpServer(
     updateModel: DesktopUpdateScreenModel? = runCatching { Injekt.get<DesktopUpdateScreenModel>() }.getOrNull(),
     platformAcceptanceController: DesktopPlatformAcceptanceController? = null,
+    onShutdownRequested: () -> Unit = {},
 ) {
     routing {
         // Health check
@@ -265,6 +296,38 @@ internal fun Application.testHttpServer(
             ) {
                 """{"status": "ok", "timestamp": "${Instant.now()}"}"""
             }
+        }
+
+        post("/test/shutdown") {
+            call.respondText(
+                text = """{"success":true}""",
+                contentType = ContentType.Application.Json,
+                status = HttpStatusCode.Accepted,
+            )
+            onShutdownRequested()
+        }
+
+        get("/test/reader/fixture-content/{token}/{page}") {
+            val token = call.parameters["token"]
+            val page = call.parameters["page"]
+            val pageIndex = page
+                ?.takeIf { it.endsWith(".jpg", ignoreCase = true) }
+                ?.substringBeforeLast('.')
+                ?.toIntOrNull()
+            val bytes = if (token != null && pageIndex != null) {
+                ReaderIoTestModeBridge.controller?.onlineImage(token, pageIndex)
+            } else {
+                null
+            }
+            if (bytes == null) {
+                call.respondText(
+                    """{"success":false,"error":"READER_FIXTURE_PAGE_NOT_FOUND"}""",
+                    ContentType.Application.Json,
+                    HttpStatusCode.NotFound,
+                )
+                return@get
+            }
+            call.respondBytes(bytes, ContentType.Image.JPEG, HttpStatusCode.OK)
         }
 
         // Get current application state
@@ -613,6 +676,7 @@ internal fun Application.testHttpServer(
                 "read_chapter", "start_reading" -> {
                     val mangaId = params["mangaId"]?.toLongOrNull()
                         ?: params["mangaIndex"]?.toLongOrNull()
+                        ?: params["chapterId"]?.toLongOrNull()
                         ?: 0L
                     if (mangaId > 0) {
                         // Navigate to manga detail first
@@ -621,20 +685,36 @@ internal fun Application.testHttpServer(
                         // Then open reader
                         val chapterId = params["chapterId"]?.toLongOrNull() ?: mangaId
                         val chapterTitle = params["chapterTitle"] ?: "Chapter ${params["chapterIndex"] ?: 0}"
-                        val fixtureKind = when (params["readerFixture"]?.lowercase()) {
-                            "cbz" -> ReaderTestFixtureKind.CBZ
-                            else -> ReaderTestFixtureKind.DOWNLOADED_DIRECTORY
+                        val fixtureController = ReaderIoTestModeBridge.controller
+                        val fixture = if (fixtureController != null) {
+                            val spec = try {
+                                parseReaderFixtureSpec(params)
+                            } catch (error: IllegalArgumentException) {
+                                call.respondText(
+                                    jsonText(actionJson(action, false, "INVALID_READER_FIXTURE: ${error.message}")),
+                                    ContentType.Application.Json,
+                                    HttpStatusCode.BadRequest,
+                                )
+                                return@post
+                            }
+                            fixtureController.prepareFixture(
+                                spec = spec,
+                                mangaId = mangaId,
+                                chapterId = chapterId,
+                                chapterTitle = chapterTitle,
+                            )
+                        } else {
+                            null
                         }
-                        val fixture = ReaderIoTestModeBridge.controller?.createFixture(fixtureKind)
                         TestNavigationController.openReader(
                             mangaId = mangaId,
                             chapterId = chapterId,
-                            chapterTitle = chapterTitle,
-                            mangaTitle = "Manga",
-                            chapterUrl = "",
-                            sourceId = 0L,
+                            chapterTitle = fixture?.chapterTitle ?: chapterTitle,
+                            mangaTitle = fixture?.mangaTitle ?: "Manga",
+                            chapterUrl = fixture?.chapterUrl.orEmpty(),
+                            sourceId = fixture?.sourceId ?: 0L,
                             initialPage = params["chapterIndex"]?.toIntOrNull() ?: 0,
-                            pageCount = fixture?.pageCount ?: 0,
+                            pageCount = fixture?.spec?.pageCount ?: params["pageCount"]?.toIntOrNull() ?: 20,
                             localChapterPath = fixture?.localChapterPath,
                         )
 
@@ -1002,6 +1082,7 @@ internal fun Application.testHttpServer(
                 status = HttpStatusCode.OK,
             ) {
                 val events = ReaderIoTestModeBridge.controller?.snapshot().orEmpty()
+                val fixtureController = ReaderIoTestModeBridge.controller
                 buildJsonObject {
                     put("isOpen", JsonPrimitive(readerState.isOpen))
                     put("currentPage", JsonPrimitive(readerState.currentPage))
@@ -1014,6 +1095,9 @@ internal fun Application.testHttpServer(
                     put("hasPrevChapter", JsonPrimitive(readerState.hasPrevChapter))
                     put("productionEvents", Json.encodeToJsonElement(events))
                     put("firstPagePresented", JsonPrimitive(events.any { it.type == "FIRST_PAGE_PRESENTED" }))
+                    put("readerFixture", fixtureController?.fixtureDescriptor()?.toJson() ?: JsonNull)
+                    put("sourcePageListCalls", JsonPrimitive(fixtureController?.sourcePageListCallCount() ?: 0))
+                    put("onlineImageRequests", JsonPrimitive(fixtureController?.onlineImageRequestCount() ?: 0))
                     put("timestamp", JsonPrimitive(Instant.now().toString()))
                 }.toString()
             }
@@ -1028,6 +1112,7 @@ internal fun Application.testHttpServer(
             updatesState.reset()
             historyState.reset()
             readerState.reset()
+            ReaderIoTestModeBridge.controller?.clearFixtureDescriptor()
             ReaderIoTestModeBridge.beginScenario()
             call.respondText(
                 contentType = ContentType.Application.Json,

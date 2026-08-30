@@ -561,7 +561,11 @@ private fun registerDesktopExtension(
     Injekt.addSingleton(extensionManager)
     Injekt.addSingleton(extensionApi)
     val appPreferences = Injekt.get<DesktopAppPreferences>()
-    val sourceManager = DesktopSourceManager(extensionManager, appPreferences)
+    val sourceManager = DesktopSourceManager(
+        extensionManager = extensionManager,
+        preferences = appPreferences,
+        additionalCatalogueSources = mihon.desktop.test.http.ReaderTestModeSourceBridge::sources,
+    )
     Injekt.addSingleton<SourceManager>(sourceManager)
     Injekt.addSingleton(sourceManager)
     val presentationPort = DesktopExtensionPresentationPort(

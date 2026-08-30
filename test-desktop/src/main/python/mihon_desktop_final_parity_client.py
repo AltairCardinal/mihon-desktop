@@ -10,6 +10,8 @@ import pathlib
 import sys
 from typing import Any
 
+from reader_test_mode import ReaderContractError, ReaderTestModeClient
+
 
 @dataclasses.dataclass(frozen=True)
 class Result:
@@ -79,15 +81,26 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--inventory", type=pathlib.Path, required=True)
     parser.add_argument("--output", type=pathlib.Path, required=True)
+    parser.add_argument("--base-url")
     args = parser.parse_args()
     try:
         inventory = json.loads(args.inventory.read_text(encoding="utf-8"))
         if not isinstance(inventory, dict):
             raise ValueError("inventory root must be an object")
+        if args.base_url:
+            client = ReaderTestModeClient(args.base_url)
+            for index, source in enumerate(
+                ("downloaded_directory", "downloaded_cbz", "local_archive", "online"),
+                start=1,
+            ):
+                try:
+                    client.run_fixture(source, chapter_id=90_000 + index)
+                finally:
+                    client.close_reader()
         build_summary(inventory).write(args.output)
         return 0
-    except (OSError, json.JSONDecodeError, TypeError, ValueError) as error:
-        print(f"Final parity client rejected inventory: {error}", file=sys.stderr)
+    except (OSError, json.JSONDecodeError, TypeError, ValueError, ReaderContractError) as error:
+        print(f"Final parity client rejected input: {error}", file=sys.stderr)
         return 1
 
 

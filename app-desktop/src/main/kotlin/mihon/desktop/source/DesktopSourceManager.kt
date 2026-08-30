@@ -24,6 +24,7 @@ class DesktopSourceManager(
     private val extensionManager: DesktopExtensionManager,
     private val preferences: DesktopAppPreferences? = null,
     private val builtinSources: List<CatalogueSource> = listOf(MangaDexSource()),
+    private val additionalCatalogueSources: () -> List<CatalogueSource> = { emptyList() },
 ) : SourceManager {
 
     private val _isInitialized = MutableStateFlow(true)
@@ -35,6 +36,7 @@ class DesktopSourceManager(
 
     override fun get(sourceKey: Long): Source? {
         return builtinSources.find { it.id == sourceKey }
+            ?: additionalCatalogueSources().find { it.id == sourceKey }
             ?: extensionManager.getSource(sourceKey)
     }
 
@@ -52,7 +54,8 @@ class DesktopSourceManager(
     }
 
     private fun canonicalCatalogueSources(extensions: List<InstalledExtension>): List<CatalogueSource> {
-        return (builtinSources + extensions.flatMap { it.sources }.filterIsInstance<CatalogueSource>())
+        val extensionSources = extensions.flatMap { it.sources }.filterIsInstance<CatalogueSource>()
+        return (builtinSources + additionalCatalogueSources() + extensionSources)
             .distinctBy(CatalogueSource::id)
     }
 

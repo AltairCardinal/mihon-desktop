@@ -8,10 +8,11 @@ FIXED_EXE="${MIHON_FINAL_PARITY_EXE:-$REPO_ROOT/$FIXED_EXE_RELATIVE}"
 UNPACKED_APP="$(dirname "$FIXED_EXE")"
 PROVENANCE="${MIHON_FINAL_PARITY_PROVENANCE:-$UNPACKED_APP.task151-provenance.json}"
 PROVENANCE_TOOL="$REPO_ROOT/scripts/task15-build-provenance.py"
-CLIENT="$REPO_ROOT/test-desktop/src/main/python/mihon_desktop_final_parity_client.py"
+CLIENT="${MIHON_FINAL_PARITY_CLIENT:-$REPO_ROOT/test-desktop/src/main/python/mihon_desktop_final_parity_client.py}"
 INVENTORY="${MIHON_FINAL_PARITY_INVENTORY:-$REPO_ROOT/app-desktop/src/test/resources/parity/test-mode-coverage-inventory.json}"
 PORT="${MIHON_FINAL_PARITY_PORT:-8080}"
 STARTUP_TIMEOUT_SECONDS="${MIHON_FINAL_PARITY_STARTUP_TIMEOUT_SECONDS:-30}"
+SHUTDOWN_TIMEOUT_SECONDS="${MIHON_FINAL_PARITY_SHUTDOWN_TIMEOUT_SECONDS:-5}"
 POLL_INTERVAL_SECONDS="${MIHON_FINAL_PARITY_POLL_INTERVAL_SECONDS:-0.25}"
 PYTHON="${MIHON_PYTHON:-}"
 APP_PID=""
@@ -33,12 +34,40 @@ SUMMARY_FILE="$RUN_DIR/final-parity-summary.json"
 
 cleanup() {
   local exit_code=$?
+  local shutdown_deadline
+  local app_exit_code=0
+  local graceful_shutdown_requested=false
+  local forced_shutdown=false
   trap - EXIT INT TERM
   if [[ -n "$APP_PID" ]]; then
     if kill -0 "$APP_PID" 2>/dev/null; then
-      kill "$APP_PID" 2>/dev/null || true
+      graceful_shutdown_requested=true
+      if [[ -n "${MIHON_FINAL_PARITY_SHUTDOWN_COMMAND:-}" ]]; then
+        eval "$MIHON_FINAL_PARITY_SHUTDOWN_COMMAND" >/dev/null 2>&1 || true
+      else
+        curl --fail --silent --show-error --max-time 1 \
+          --request POST "http://127.0.0.1:$PORT/test/shutdown" >/dev/null 2>&1 || true
+      fi
+
+      shutdown_deadline=$((SECONDS + SHUTDOWN_TIMEOUT_SECONDS))
+      while kill -0 "$APP_PID" 2>/dev/null && (( SECONDS < shutdown_deadline )); do
+        sleep "$POLL_INTERVAL_SECONDS"
+      done
+      if kill -0 "$APP_PID" 2>/dev/null; then
+        forced_shutdown=true
+        kill "$APP_PID" 2>/dev/null || true
+      fi
     fi
-    wait "$APP_PID" 2>/dev/null || true
+    if wait "$APP_PID" 2>/dev/null; then
+      app_exit_code=0
+    else
+      app_exit_code=$?
+    fi
+    if (( exit_code == 0 && app_exit_code != 0 )) &&
+      [[ "$graceful_shutdown_requested" == true && "$forced_shutdown" == false ]]; then
+      echo "Mihon Desktop exited with status $app_exit_code during graceful shutdown" >&2
+      exit_code=$app_exit_code
+    fi
   fi
   rm -rf -- "$RUN_DIR"
   exit "$exit_code"
@@ -136,7 +165,10 @@ if [[ -n "${MIHON_FINAL_PARITY_TEST_COMMAND:-}" ]]; then
     echo "Final parity client command failed: $MIHON_FINAL_PARITY_TEST_COMMAND" >&2
     exit 5
   fi
-elif ! "$PYTHON" "$CLIENT" --inventory "$INVENTORY" --output "$SUMMARY_FILE"; then
+elif ! "$PYTHON" "$CLIENT" \
+  --inventory "$INVENTORY" \
+  --output "$SUMMARY_FILE" \
+  --base-url "http://127.0.0.1:$PORT"; then
   echo "Final parity client command failed: $CLIENT" >&2
   exit 5
 fi

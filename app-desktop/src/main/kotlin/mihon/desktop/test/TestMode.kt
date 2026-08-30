@@ -21,6 +21,7 @@ import mihon.desktop.test.http.HistoryTestModeBridge
 import mihon.desktop.test.http.HistoryTestModeController
 import mihon.desktop.test.http.ReaderIoTestModeBridge
 import mihon.desktop.test.http.ReaderTestModeController
+import mihon.desktop.test.http.ReaderTestModeSourceBridge
 import mihon.desktop.test.http.SettingsTestModeBridge
 import mihon.desktop.test.http.SettingsTestModeController
 import mihon.desktop.test.http.TrackingTestBridge
@@ -87,8 +88,12 @@ object TestMode {
 
         // Initialize test state
         applicationState.testMode = true
-        val reader = ReaderTestModeController()
+        val reader = ReaderTestModeController(
+            configuredDownloadProvider = Injekt.get(),
+            baseUrl = "http://$TEST_MODE_HOST:${args.httpPort}",
+        )
         ReaderIoTestModeBridge.install(reader)
+        ReaderTestModeSourceBridge.install(reader.onlineSource)
         synchronized(lifecycleLock) {
             readerController = reader
         }
@@ -280,7 +285,10 @@ object TestMode {
             try {
                 hydrateTimelineTestModeOwners(updates, history, authors)
                 startedServer = embeddedServer(Netty, host = TEST_MODE_HOST, port = args.httpPort) {
-                    testHttpServer(platformAcceptanceController = platformAcceptance)
+                    testHttpServer(
+                        platformAcceptanceController = platformAcceptance,
+                        onShutdownRequested = run::terminate,
+                    )
                 }.start(wait = false)
 
                 val belongsToActiveRun = synchronized(lifecycleLock) {
@@ -383,6 +391,7 @@ object TestMode {
             },
             {
                 activeReader?.let {
+                    ReaderTestModeSourceBridge.clear(it.onlineSource)
                     ReaderIoTestModeBridge.clear(it)
                     it.close()
                 }
