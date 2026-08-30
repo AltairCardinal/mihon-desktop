@@ -46,15 +46,13 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.reader.DesktopReaderChapterContext
 import mihon.desktop.reader.DesktopReaderPresentationImageOwner
 import mihon.desktop.reader.DesktopReaderRuntimeFactory
 import mihon.desktop.reader.EdgePixelMatcher
-import mihon.desktop.reader.PagePreloader
-import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderColorFilter
@@ -73,6 +71,7 @@ import mihon.desktop.reader.viewerFlagsWithDualPage
 import mihon.desktop.reader.viewerFlagsWithReadingMode
 import mihon.desktop.reader.firstVirtualIndex
 import mihon.desktop.reader.realPageIndex
+import mihon.desktop.reader.runResourceActions
 import mihon.desktop.ui.reader.presentation.DesktopReaderPresentationRegistry
 import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
 import mihon.desktop.ui.reader.presentation.ReaderPresentationSnapshot
@@ -136,8 +135,8 @@ data class DesktopReaderScreen(
             runtime.session.state.collect(model::acceptSessionState)
         }
 
-        // Compute: zoom reset, preload, focus, edge-scan, virtual pages
-        ReaderSideEffects(state, model, runtime.preloader, focusRequester, runtime.pageIoObserver)
+        // Compute: zoom reset, focus, edge-scan, virtual pages
+        ReaderSideEffects(state, model, runtime.presentationImageOwner, focusRequester)
 
         // Chapter navigation lambdas
         val skipRead = state.skipReadChapters
@@ -399,29 +398,14 @@ internal fun adjustedForcedSinglePages(state: ReaderState): Set<Int> {
 private fun ReaderSideEffects(
     state: ReaderState,
     model: ReaderScreenModel,
-    preloader: PagePreloader,
+    presentationImageOwner: DesktopReaderPresentationImageOwner,
     focusRequester: FocusRequester,
-    ioObserver: ReaderPageIoObserver?,
 ) {
     LaunchedEffect(state.currentPage) { model.setZoomState(ZoomState()) }
-    val activePages = state.session.activeChapter.pages
-    val pageAttemptGenerations = activePages.map { it.attemptGeneration }
-    LaunchedEffect(state.currentPage, activePages, pageAttemptGenerations) {
-        if (activePages.isNotEmpty()) {
-            preloader.preloadEncoded(
-                state.currentPage,
-                activePages.map { it.encodedPageRef },
-                activePages.map { it.id },
-                ioObserver,
-                state.session.generation,
-                attemptGenerations = pageAttemptGenerations,
-            )
-        }
-    }
     LaunchedEffect(state.showSettings) { if (!state.showSettings) focusRequester.requestFocus() }
     LaunchedEffect(state.session.activeChapter.pages.size, state.autoSpreadMatching, state.dualPageMode) {
         observeDesktopMatchedPairs(
-            preloader = preloader,
+            presentationImageOwner = presentationImageOwner,
             autoSpreadMatching = state.autoSpreadMatching,
             dualPageMode = state.dualPageMode,
             pageCount = state.session.activeChapter.pages.size,
@@ -440,7 +424,7 @@ private fun ReaderSideEffects(
 }
 
 internal suspend fun observeDesktopMatchedPairs(
-    preloader: PagePreloader,
+    presentationImageOwner: DesktopReaderPresentationImageOwner,
     autoSpreadMatching: Boolean,
     dualPageMode: Boolean,
     pageCount: Int,
@@ -450,18 +434,26 @@ internal suspend fun observeDesktopMatchedPairs(
     onMatchedPairsChanged: (Set<Pair<Int, Int>>) -> Unit,
 ) {
     var retained = retainedMatchedPairs
-    preloader.cacheRevision.collect {
-        retained = if (autoSpreadMatching && dualPageMode) {
-            retained + resolveDesktopMatchedPairs(
-                autoSpreadMatching = true,
-                dualPageMode = true,
-                pageCount = pageCount,
-                pageAt = preloader::get,
-                findMatchedPairs = findMatchedPairs,
-            )
-        } else {
-            emptySet()
-        }
+    presentationImageOwner.cacheRevision.collectLatest { revision ->
+        val cachedAssets = presentationImageOwner.retainCachedFullPageAssets()
+        val nextRetained =
+            try {
+                if (autoSpreadMatching && dualPageMode) {
+                    retained + resolveDesktopMatchedPairs(
+                        autoSpreadMatching = true,
+                        dualPageMode = true,
+                        pageCount = pageCount,
+                        pageAt = { pageIndex -> cachedAssets[pageIndex]?.asset?.bitmap },
+                        findMatchedPairs = findMatchedPairs,
+                    )
+                } else {
+                    emptySet()
+                }
+            } finally {
+                runResourceActions(cachedAssets.values.map { lease -> lease::close })
+            }
+        if (presentationImageOwner.cacheRevision.value != revision) return@collectLatest
+        retained = nextRetained
         onMatchedPairsChanged(retained)
     }
 }

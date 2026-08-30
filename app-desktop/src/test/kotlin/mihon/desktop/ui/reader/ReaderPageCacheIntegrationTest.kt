@@ -1,21 +1,38 @@
 package mihon.desktop.ui.reader
 
 import androidx.compose.ui.graphics.asSkiaBitmap
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
+import javax.imageio.ImageIO
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import mihon.desktop.reader.DesktopReaderImageAssetLease
+import mihon.desktop.reader.DesktopReaderPageContentOwner
+import mihon.desktop.reader.DesktopReaderPageImagePipeline
+import mihon.desktop.reader.DesktopReaderPresentationImageOwner
+import mihon.desktop.reader.DesktopReaderPresentationImageSlotIdentity
+import mihon.desktop.reader.DesktopReaderPresentationImageState
 import mihon.desktop.reader.EdgePixelMatcher
-import mihon.desktop.reader.PreloadedPageBitmap
+import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.SkiaImageDecoder
-import mihon.desktop.reader.createTestPagePreloader
-import mihon.domain.reader.PixelBounds
+import mihon.domain.reader.PageDecodePurpose
 import mihon.domain.reader.PageRotation
 import mihon.domain.reader.PageSplitHalf
+import mihon.domain.reader.PixelBounds
+import mihon.domain.reader.ReaderPageDecodeKey
+import mihon.domain.reader.content.ReaderPageContentOpenRequest
+import mihon.domain.reader.observability.ReaderIoProbe
+import mihon.domain.reader.observability.ReaderIoReporter
+import mihon.domain.reader.observability.ReaderMonotonicClock
 import mihon.domain.reader.splitPageBounds
 import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderChapterId
@@ -24,9 +41,6 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import java.awt.image.BufferedImage
-import java.io.ByteArrayOutputStream
-import javax.imageio.ImageIO
 
 class ReaderPageCacheIntegrationTest {
 
@@ -46,61 +60,167 @@ class ReaderPageCacheIntegrationTest {
             refs[2] to pngBytes(width, height) { x, y -> if (x < 5) seamColor(y) else BLUE },
         )
         val fetchCounts = mutableMapOf<EncodedPageRef, Int>()
-        val preloader = createTestPagePreloader(
+        val reporter = ReaderIoReporter(ReaderIoProbe.None, ReaderMonotonicClock(System::nanoTime))
+        val contentOwner = DesktopReaderPageContentOwner(
+            scope = this,
             encodedPageReader = { ref ->
                 synchronized(fetchCounts) { fetchCounts[ref] = fetchCounts.getOrDefault(ref, 0) + 1 }
                 bytesByRef.getValue(ref)
             },
-            windowSize = 1,
+            ioReporter = reporter,
+        )
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = this,
+            pageContentOwner = contentOwner,
+            ioReporter = reporter,
+        )
+        val presentationOwner = DesktopReaderPresentationImageOwner(
+            scope = this,
+            pageImagePipeline = pipeline,
+            pageIoObserver = ReaderPageIoObserver(reporter),
         )
         val updates = Channel<Pair<Long, Set<Pair<Int, Int>>>>(Channel.UNLIMITED)
 
-        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            observeDesktopMatchedPairs(
-                preloader = preloader,
-                autoSpreadMatching = true,
-                dualPageMode = true,
-                pageCount = refs.size,
-                retainedMatchedPairs = emptySet(),
-                findMatchedPairs = { count, pageAt -> EdgePixelMatcher().findMatchedPairs(count, pageAt) },
-            ) { pairs ->
-                updates.trySend(preloader.cacheRevision.value to pairs)
+        try {
+            presentationOwner.beginGeneration(GENERATION)
+            backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                observeDesktopMatchedPairs(
+                    presentationImageOwner = presentationOwner,
+                    autoSpreadMatching = true,
+                    dualPageMode = true,
+                    pageCount = refs.size,
+                    retainedMatchedPairs = emptySet(),
+                    findMatchedPairs = { count, pageAt -> EdgePixelMatcher().findMatchedPairs(count, pageAt) },
+                ) { pairs ->
+                    updates.trySend(presentationOwner.cacheRevision.value to pairs)
+                }
             }
-        }
 
-        suspend fun awaitUpdate(revision: Long, expected: Set<Pair<Int, Int>>) {
-            withContext(Dispatchers.Default) {
-                withTimeout(5_000) {
-                    while (true) {
-                        val (observedRevision, pairs) = updates.receive()
-                        if (observedRevision >= revision && pairs == expected) return@withTimeout
+            suspend fun awaitUpdate(revision: Long, expected: Set<Pair<Int, Int>>) {
+                withContext(Dispatchers.Default) {
+                    withTimeout(5_000) {
+                        while (true) {
+                            val (observedRevision, pairs) = updates.receive()
+                            if (observedRevision >= revision && pairs == expected) return@withTimeout
+                        }
                     }
                 }
             }
-        }
 
-        awaitUpdate(preloader.cacheRevision.value, emptySet())
-        assertTrue(fetchCounts.isEmpty(), "The matcher must not load an uncached page")
+            awaitUpdate(presentationOwner.cacheRevision.value, emptySet())
+            assertTrue(fetchCounts.isEmpty(), "The matcher must not load an uncached page")
 
-        val pageIds = refs.indices.map { pageIndex ->
-            ReaderPageId(chapterId = ReaderChapterId(1L), sourcePageIndex = pageIndex)
+            refs.indices.forEach { pageIndex ->
+                val pageId = ReaderPageId(ReaderChapterId(1L), pageIndex)
+                val key = fullPageKey(pageId, refs[pageIndex])
+                val holder = presentationOwner.createHolder(
+                    identity = presentationIdentity(pageId),
+                    decodeKey = key,
+                )
+                try {
+                    holder.acquire()
+                    assertTrue(holder.state.first(::isTerminalPresentation) is DesktopReaderPresentationImageState.Ready)
+                } finally {
+                    holder.close()
+                }
+            }
+            awaitUpdate(presentationOwner.cacheRevision.value, setOf(1 to 2))
+            assertEquals(3, synchronized(fetchCounts) { fetchCounts.values.sum() })
+
+            pipeline.clear()
+            presentationOwner.retainCachedFullPageAssets().useAll { cached -> assertTrue(cached.isEmpty()) }
+            awaitUpdate(presentationOwner.cacheRevision.value, setOf(1 to 2))
+            assertEquals(3, synchronized(fetchCounts) { fetchCounts.values.sum() })
+            assertEquals(refs.toSet(), synchronized(fetchCounts) { fetchCounts.keys.toSet() })
+        } finally {
+            presentationOwner.close()
+            pipeline.close()
+            contentOwner.close()
         }
-        refs.indices.forEach { pageIndex ->
-            preloader.preloadEncoded(
-                currentPage = pageIndex,
-                encodedPageRefs = refs,
-                pageIds = pageIds,
-                sessionGeneration = 1L,
+    }
+
+    @Test
+    fun `retry revision suppresses a stale edge match that completes after invalidation`() = runTest {
+        val refs = listOf(EncodedPageRef("left"), EncodedPageRef("right"))
+        val bytesByRef = refs.associateWith { pngBytes(8, 12) { _, _ -> RED } }
+        val reporter = ReaderIoReporter(ReaderIoProbe.None, ReaderMonotonicClock(System::nanoTime))
+        val contentOwner = DesktopReaderPageContentOwner(
+            scope = this,
+            encodedPageReader = bytesByRef::get,
+            ioReporter = reporter,
+        )
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = this,
+            pageContentOwner = contentOwner,
+            ioReporter = reporter,
+        )
+        val presentationOwner = DesktopReaderPresentationImageOwner(
+            scope = this,
+            pageImagePipeline = pipeline,
+            pageIoObserver = ReaderPageIoObserver(reporter),
+        )
+        val matcherEntered = CompletableDeferred<Unit>()
+        val releaseStaleMatcher = CompletableDeferred<Unit>()
+        val updates = Channel<Set<Pair<Int, Int>>>(Channel.UNLIMITED)
+
+        try {
+            presentationOwner.beginGeneration(GENERATION)
+            refs.forEachIndexed { pageIndex, ref ->
+                val pageId = ReaderPageId(ReaderChapterId(1L), pageIndex)
+                val holder = presentationOwner.createHolder(
+                    identity = presentationIdentity(pageId),
+                    decodeKey = fullPageKey(pageId, ref),
+                )
+                try {
+                    holder.acquire()
+                    assertTrue(holder.state.first(::isTerminalPresentation) is DesktopReaderPresentationImageState.Ready)
+                } finally {
+                    holder.close()
+                }
+            }
+
+            backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                var invocation = 0
+                observeDesktopMatchedPairs(
+                    presentationImageOwner = presentationOwner,
+                    autoSpreadMatching = true,
+                    dualPageMode = true,
+                    pageCount = refs.size,
+                    retainedMatchedPairs = emptySet(),
+                    findMatchedPairs = { _, _ ->
+                        if (invocation++ == 0) {
+                            matcherEntered.complete(Unit)
+                            withContext(NonCancellable) { releaseStaleMatcher.await() }
+                            setOf(0 to 1)
+                        } else {
+                            emptySet()
+                        }
+                    },
+                    onMatchedPairsChanged = { pairs -> updates.trySend(pairs) },
+                )
+            }
+
+            matcherEntered.await()
+            assertTrue(
+                pipeline.beginPageAttempt(
+                    pageId = ReaderPageId(ReaderChapterId(1L), 0),
+                    generation = GENERATION,
+                    attemptGeneration = 1L,
+                ),
             )
-        }
-        awaitUpdate(preloader.cacheRevision.value, setOf(1 to 2))
-        assertEquals(3, synchronized(fetchCounts) { fetchCounts.values.sum() })
+            releaseStaleMatcher.complete(Unit)
 
-        preloader.clear()
-        assertEquals(0, preloader.cacheSize())
-        awaitUpdate(preloader.cacheRevision.value, setOf(1 to 2))
-        assertEquals(3, synchronized(fetchCounts) { fetchCounts.values.sum() })
-        assertEquals(refs.toSet(), synchronized(fetchCounts) { fetchCounts.keys.toSet() })
+            assertEquals(emptySet<Pair<Int, Int>>(), withTimeout(5_000) { updates.receive() })
+            val snapshot = pipeline.snapshot()
+            assertEquals(1, snapshot.cache.entryCount)
+            assertEquals(0L, snapshot.memory.pinnedBytes)
+            assertEquals(snapshot.memory.cacheBytes, snapshot.memory.residentBytes)
+        } finally {
+            releaseStaleMatcher.complete(Unit)
+            presentationOwner.close()
+            pipeline.close()
+            contentOwner.close()
+        }
     }
 
     @Test
@@ -173,21 +293,17 @@ class ReaderPageCacheIntegrationTest {
                 if (xWithinHalf in 1..3 && y in 1..4) BLACK else WHITE
             },
         )
-        val cachedPage = PreloadedPageBitmap(
-            bitmap = borderedSpread,
-            sourceWidth = borderedSpread.width,
-            sourceHeight = borderedSpread.height,
-        )
-
         val ordinarySplit = transformCachedPageBitmap(
             bitmap = borderedSpread,
             splitHalf = PageSplitHalf.LEFT,
             cropBorders = true,
         )
         val cachedBounds = transformCachedPageBitmap(
-            cachedPage = cachedPage,
+            bitmap = borderedSpread,
             sourceBounds = PixelBounds(x = 5, y = 0, width = 5, height = 6),
             cropBorders = true,
+            sourceWidth = borderedSpread.width,
+            sourceHeight = borderedSpread.height,
         )
 
         listOf(ordinarySplit, cachedBounds).forEach { transformed ->
@@ -205,57 +321,46 @@ class ReaderPageCacheIntegrationTest {
             height = 15,
             colorAt = { _, y -> if (y < 8) GREEN else MAGENTA },
         )
-        val preloader = createTestPagePreloader(
-            encodedPageReader = { bytes },
-            windowSize = 0,
+        val cached = cacheDecodedAsset(
+            bytes = bytes,
             maxDecodedWidth = 4,
             maxDecodedHeight = 8,
         )
-        preloader.preloadEncoded(0, listOf(EncodedPageRef("rotated-odd")))
-        val cachedPage = requireNotNull(preloader.getCachedPage(0))
-        assertEquals(4, cachedPage.bitmap.width)
-        assertEquals(7, cachedPage.bitmap.height)
-        assertEquals(8, cachedPage.sourceWidth)
-        assertEquals(15, cachedPage.sourceHeight)
+        try {
+            val asset = cached.lease.asset
+            assertEquals(4, asset.bitmap.width)
+            assertEquals(7, asset.bitmap.height)
+            assertEquals(8, asset.sourceWidth)
+            assertEquals(15, asset.sourceHeight)
 
-        val clockwiseLeft = transformCachedPageBitmap(
-            cachedPage = cachedPage,
-            sourceBounds = requireNotNull(
-                splitPageBounds(8, 15, PageSplitHalf.LEFT, PageRotation.CLOCKWISE_90),
-            ),
-        )
-        val clockwiseRight = transformCachedPageBitmap(
-            cachedPage = cachedPage,
-            sourceBounds = requireNotNull(
-                splitPageBounds(8, 15, PageSplitHalf.RIGHT, PageRotation.CLOCKWISE_90),
-            ),
-        )
-        val counterClockwiseLeft = transformCachedPageBitmap(
-            cachedPage = cachedPage,
-            sourceBounds = requireNotNull(
-                splitPageBounds(8, 15, PageSplitHalf.LEFT, PageRotation.COUNTER_CLOCKWISE_90),
-            ),
-        )
-        val counterClockwiseRight = transformCachedPageBitmap(
-            cachedPage = cachedPage,
-            sourceBounds = requireNotNull(
-                splitPageBounds(8, 15, PageSplitHalf.RIGHT, PageRotation.COUNTER_CLOCKWISE_90),
-            ),
-        )
+            fun transform(half: PageSplitHalf, rotation: PageRotation) = transformCachedPageBitmap(
+                bitmap = asset.bitmap,
+                sourceBounds = requireNotNull(splitPageBounds(8, 15, half, rotation)),
+                sourceWidth = asset.sourceWidth,
+                sourceHeight = asset.sourceHeight,
+            )
 
-        assertEquals(3, clockwiseLeft.height)
-        assertEquals(MAGENTA, clockwiseLeft.asSkiaBitmap().getColor(0, clockwiseLeft.height - 1))
-        assertEquals(4, clockwiseRight.height)
-        assertEquals(GREEN, clockwiseRight.asSkiaBitmap().getColor(0, 0))
-        assertEquals(3, counterClockwiseLeft.height)
-        assertEquals(GREEN, counterClockwiseLeft.asSkiaBitmap().getColor(0, 0))
-        assertEquals(4, counterClockwiseRight.height)
-        assertEquals(MAGENTA, counterClockwiseRight.asSkiaBitmap().getColor(0, counterClockwiseRight.height - 1))
+            val clockwiseLeft = transform(PageSplitHalf.LEFT, PageRotation.CLOCKWISE_90)
+            val clockwiseRight = transform(PageSplitHalf.RIGHT, PageRotation.CLOCKWISE_90)
+            val counterClockwiseLeft = transform(PageSplitHalf.LEFT, PageRotation.COUNTER_CLOCKWISE_90)
+            val counterClockwiseRight = transform(PageSplitHalf.RIGHT, PageRotation.COUNTER_CLOCKWISE_90)
+
+            assertEquals(3, clockwiseLeft.height)
+            assertEquals(MAGENTA, clockwiseLeft.asSkiaBitmap().getColor(0, clockwiseLeft.height - 1))
+            assertEquals(4, clockwiseRight.height)
+            assertEquals(GREEN, clockwiseRight.asSkiaBitmap().getColor(0, 0))
+            assertEquals(3, counterClockwiseLeft.height)
+            assertEquals(GREEN, counterClockwiseLeft.asSkiaBitmap().getColor(0, 0))
+            assertEquals(4, counterClockwiseRight.height)
+            assertEquals(MAGENTA, counterClockwiseRight.asSkiaBitmap().getColor(0, counterClockwiseRight.height - 1))
+        } finally {
+            cached.close()
+        }
     }
 
     @Test
     fun `downsampled cache keeps ordinary split pixels and dimensions`() = runTest {
-        val cachedPage = preloadDownsampled(
+        val cached = cacheDecodedAsset(
             width = 14,
             height = 8,
             maxWidth = 7,
@@ -263,18 +368,33 @@ class ReaderPageCacheIntegrationTest {
             colorAt = { x, _ -> if (x < 7) RED else BLUE },
         )
 
-        val left = transformCachedPageBitmap(cachedPage = cachedPage, splitHalf = PageSplitHalf.LEFT)
-        val right = transformCachedPageBitmap(cachedPage = cachedPage, splitHalf = PageSplitHalf.RIGHT)
+        try {
+            val asset = cached.lease.asset
+            val left = transformCachedPageBitmap(
+                bitmap = asset.bitmap,
+                splitHalf = PageSplitHalf.LEFT,
+                sourceWidth = asset.sourceWidth,
+                sourceHeight = asset.sourceHeight,
+            )
+            val right = transformCachedPageBitmap(
+                bitmap = asset.bitmap,
+                splitHalf = PageSplitHalf.RIGHT,
+                sourceWidth = asset.sourceWidth,
+                sourceHeight = asset.sourceHeight,
+            )
 
-        assertEquals(3, left.width)
-        assertEquals(RED, left.asSkiaBitmap().getColor(0, 0))
-        assertEquals(4, right.width)
-        assertEquals(BLUE, right.asSkiaBitmap().getColor(right.width - 1, 0))
+            assertEquals(3, left.width)
+            assertEquals(RED, left.asSkiaBitmap().getColor(0, 0))
+            assertEquals(4, right.width)
+            assertEquals(BLUE, right.asSkiaBitmap().getColor(right.width - 1, 0))
+        } finally {
+            cached.close()
+        }
     }
 
     @Test
     fun `downsampled cache keeps pager border crop`() = runTest {
-        val cachedPage = preloadDownsampled(
+        val cached = cacheDecodedAsset(
             width = 12,
             height = 12,
             maxWidth = 6,
@@ -282,16 +402,26 @@ class ReaderPageCacheIntegrationTest {
             colorAt = { x, y -> if (x in 2..9 && y in 4..7) BLACK else WHITE },
         )
 
-        val cropped = transformCachedPageBitmap(cachedPage = cachedPage, cropBorders = true)
+        try {
+            val asset = cached.lease.asset
+            val cropped = transformCachedPageBitmap(
+                bitmap = asset.bitmap,
+                cropBorders = true,
+                sourceWidth = asset.sourceWidth,
+                sourceHeight = asset.sourceHeight,
+            )
 
-        assertEquals(4, cropped.width)
-        assertEquals(2, cropped.height)
-        assertEquals(BLACK, cropped.asSkiaBitmap().getColor(0, 0))
+            assertEquals(4, cropped.width)
+            assertEquals(2, cropped.height)
+            assertEquals(BLACK, cropped.asSkiaBitmap().getColor(0, 0))
+        } finally {
+            cached.close()
+        }
     }
 
     @Test
     fun `downsampled cache rejects source bounds outside original dimensions`() = runTest {
-        val cachedPage = preloadDownsampled(
+        val cached = cacheDecodedAsset(
             width = 8,
             height = 15,
             maxWidth = 4,
@@ -299,30 +429,123 @@ class ReaderPageCacheIntegrationTest {
             colorAt = { _, _ -> RED },
         )
 
-        assertThrows(IllegalArgumentException::class.java) {
-            transformCachedPageBitmap(
-                cachedPage = cachedPage,
-                sourceBounds = PixelBounds(0, 0, 8, 16),
-            )
+        try {
+            val asset = cached.lease.asset
+            assertThrows(IllegalArgumentException::class.java) {
+                transformCachedPageBitmap(
+                    bitmap = asset.bitmap,
+                    sourceBounds = PixelBounds(0, 0, 8, 16),
+                    sourceWidth = asset.sourceWidth,
+                    sourceHeight = asset.sourceHeight,
+                )
+            }
+        } finally {
+            cached.close()
         }
     }
 
-    private suspend fun CoroutineScope.preloadDownsampled(
+    private suspend fun CoroutineScope.cacheDecodedAsset(
         width: Int,
         height: Int,
         maxWidth: Int,
         maxHeight: Int,
         colorAt: (x: Int, y: Int) -> Int,
-    ): PreloadedPageBitmap {
+    ): CachedAssetFixture {
         val bytes = pngBytes(width, height, colorAt)
-        val preloader = createTestPagePreloader(
+        return cacheDecodedAsset(bytes, maxWidth, maxHeight)
+    }
+
+    private suspend fun CoroutineScope.cacheDecodedAsset(
+        bytes: ByteArray,
+        maxDecodedWidth: Int,
+        maxDecodedHeight: Int,
+    ): CachedAssetFixture {
+        val reporter = ReaderIoReporter(ReaderIoProbe.None, ReaderMonotonicClock(System::nanoTime))
+        val contentOwner = DesktopReaderPageContentOwner(
+            scope = this,
             encodedPageReader = { bytes },
-            windowSize = 0,
-            maxDecodedWidth = maxWidth,
-            maxDecodedHeight = maxHeight,
+            ioReporter = reporter,
         )
-        preloader.preloadEncoded(0, listOf(EncodedPageRef("downsampled")))
-        return requireNotNull(preloader.getCachedPage(0))
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = this,
+            pageContentOwner = contentOwner,
+            ioReporter = reporter,
+        )
+        val presentationOwner = DesktopReaderPresentationImageOwner(
+            scope = this,
+            pageImagePipeline = pipeline,
+            pageIoObserver = ReaderPageIoObserver(reporter),
+        )
+        val pageId = ReaderPageId(ReaderChapterId(1L), 0)
+        val key = fullPageKey(
+            pageId = pageId,
+            encodedPageRef = EncodedPageRef("downsampled"),
+            maxWidth = maxDecodedWidth,
+            maxHeight = maxDecodedHeight,
+        )
+        return try {
+            presentationOwner.beginGeneration(GENERATION)
+            val holder = presentationOwner.createHolder(presentationIdentity(pageId), key)
+            try {
+                holder.acquire()
+                assertTrue(holder.state.first(::isTerminalPresentation) is DesktopReaderPresentationImageState.Ready)
+            } finally {
+                holder.close()
+            }
+            val retained = presentationOwner.retainCachedFullPageAssets()
+            val lease = requireNotNull(retained[pageId.sourcePageIndex])
+            retained.filterKeys { it != pageId.sourcePageIndex }.values.forEach(AutoCloseable::close)
+            CachedAssetFixture(lease, presentationOwner, pipeline, contentOwner)
+        } catch (error: Throwable) {
+            presentationOwner.close()
+            pipeline.close()
+            contentOwner.close()
+            throw error
+        }
+    }
+
+    private fun fullPageKey(
+        pageId: ReaderPageId,
+        encodedPageRef: EncodedPageRef,
+        maxWidth: Int = 2_048,
+        maxHeight: Int = 2_048,
+    ) = ReaderPageDecodeKey(
+        contentKey = ReaderPageContentOpenRequest(pageId, GENERATION, encodedPageRef),
+        purpose = PageDecodePurpose.FULL_PAGE,
+        maxWidth = maxWidth,
+        maxHeight = maxHeight,
+    )
+
+    private fun presentationIdentity(pageId: ReaderPageId) = DesktopReaderPresentationImageSlotIdentity(
+        pageId = pageId,
+        generation = GENERATION,
+    )
+
+    private fun isTerminalPresentation(state: DesktopReaderPresentationImageState): Boolean =
+        state is DesktopReaderPresentationImageState.Ready || state is DesktopReaderPresentationImageState.Failed
+
+    private inline fun Map<Int, DesktopReaderImageAssetLease>.useAll(
+        block: (Map<Int, DesktopReaderImageAssetLease>) -> Unit,
+    ) {
+        try {
+            block(this)
+        } finally {
+            values.forEach(AutoCloseable::close)
+        }
+    }
+
+    private data class CachedAssetFixture(
+        val lease: DesktopReaderImageAssetLease,
+        val presentationOwner: DesktopReaderPresentationImageOwner,
+        val pipeline: DesktopReaderPageImagePipeline,
+        val contentOwner: DesktopReaderPageContentOwner,
+    ) : AutoCloseable {
+        override fun close() {
+            lease.close()
+            presentationOwner.close()
+            pipeline.close()
+            contentOwner.close()
+        }
     }
 
     private fun decodeBitmap(
@@ -345,6 +568,7 @@ class ReaderPageCacheIntegrationTest {
     }
 
     private companion object {
+        const val GENERATION = 1L
         const val RED: Int = 0xFFFF0000.toInt()
         const val BLUE: Int = 0xFF0000FF.toInt()
         const val GREEN: Int = 0xFF00FF00.toInt()

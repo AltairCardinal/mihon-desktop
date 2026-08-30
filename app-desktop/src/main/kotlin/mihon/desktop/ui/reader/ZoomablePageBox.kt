@@ -23,7 +23,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import kotlinx.coroutines.CoroutineScope
 import mihon.desktop.reader.DesktopReaderPresentationImageState
-import mihon.desktop.reader.PreloadedPageBitmap
 import mihon.desktop.reader.ScaleType
 import mihon.desktop.reader.ZoomState
 import mihon.domain.reader.PixelBounds
@@ -440,20 +439,6 @@ private fun splitSkiaBitmap(src: SkiaBitmap, half: PageSplitHalf): ImageBitmap? 
     val bounds = splitBounds(src.width, src.height, half)
     return extractSkiaSubBitmap(src, bounds.x, bounds.y, bounds.width, bounds.height)
 }
-
-internal fun transformCachedPageBitmap(
-    cachedPage: PreloadedPageBitmap,
-    splitHalf: PageSplitHalf? = null,
-    sourceBounds: PixelBounds? = null,
-    cropBorders: Boolean = false,
-): ImageBitmap = transformCachedPageBitmap(
-    bitmap = cachedPage.bitmap,
-    splitHalf = splitHalf,
-    sourceBounds = sourceBounds,
-    cropBorders = cropBorders,
-    sourceWidth = cachedPage.sourceWidth,
-    sourceHeight = cachedPage.sourceHeight,
-)
 
 internal fun PixelBounds.mapToBitmap(
     sourceWidth: Int,

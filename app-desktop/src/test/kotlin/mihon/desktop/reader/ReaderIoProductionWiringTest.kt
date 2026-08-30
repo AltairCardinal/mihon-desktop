@@ -97,7 +97,7 @@ class ReaderIoProductionWiringTest {
             }
             assertFalse(
                 fixture.gate(ReaderIoGatePoint.NON_CURRENT_PAGE).isEntered,
-                "The shared image pipeline must not restore PagePreloader-owned background scheduling",
+                "The shared presentation owner must not restore an independent background image scheduler",
             )
             val firstFrameEvents = controller.snapshot()
             assertTrue(firstFrameEvents.none { it.type == ReaderIoEventType.CACHE_RECONCILE.name })
@@ -109,6 +109,11 @@ class ReaderIoProductionWiringTest {
                 },
             )
             ReaderIoGatePoint.entries.forEach { fixture.gate(it).release() }
+            withTimeout(5_000) {
+                while (controller.snapshot().none { it.type == ReaderIoEventType.CACHE_RECONCILE.name }) {
+                    runCurrent()
+                }
+            }
             advanceUntilIdle()
 
             val events = controller.snapshot()

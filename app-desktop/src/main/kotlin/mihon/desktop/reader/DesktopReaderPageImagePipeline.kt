@@ -473,6 +473,32 @@ class DesktopReaderPageImagePipeline internal constructor(
         cacheFor(key)?.acquire(key)
     }
 
+    /** Retains the most recently used current FULL_PAGE asset for every cached logical page. */
+    internal fun retainCachedFullPageAssets(): Map<Int, DesktopReaderImageAssetLease> {
+        val keys = synchronized(lock) {
+            check(!closed) { "Desktop reader page image pipeline is closed" }
+            if (clearing) return emptyMap()
+            cache.snapshot().keys.filter { key ->
+                key.purpose == PageDecodePurpose.FULL_PAGE && isCurrentAttemptLocked(key.contentKey)
+            }
+        }
+        val retained = linkedMapOf<Int, DesktopReaderImageAssetLease>()
+        try {
+            keys.forEach { key ->
+                val lease = acquireCached(key) ?: return@forEach
+                retained.put(key.pageIndex, lease)?.close()
+            }
+        } catch (error: Throwable) {
+            try {
+                runResourceActions(retained.values.map { lease -> lease::close })
+            } catch (closeError: Throwable) {
+                if (closeError !== error) error.addSuppressed(closeError)
+            }
+            throw error
+        }
+        return retained
+    }
+
     /** Advances Retry identity for one logical page without disturbing another page or generation. */
     internal fun beginPageAttempt(
         pageId: ReaderPageId,

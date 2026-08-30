@@ -7,13 +7,16 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicLong
 import javax.imageio.ImageIO
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.reader.DesktopReaderPageContentOwner
 import mihon.desktop.reader.DesktopReaderPageImagePipeline
+import mihon.desktop.reader.DesktopReaderPresentationImageOwner
+import mihon.desktop.reader.DesktopReaderPresentationImageSlotIdentity
+import mihon.desktop.reader.DesktopReaderPresentationImageState
 import mihon.desktop.reader.EdgePixelMatcher
-import mihon.desktop.reader.PagePreloader
-import mihon.desktop.reader.PreloadedPageBitmap
 import mihon.desktop.reader.ReaderColorFilter
+import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.domain.reader.PageDecodePurpose
 import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.ReaderPageDecodeKey
@@ -53,7 +56,11 @@ class ReaderDecodedAssetConsumerIntegrationTest {
             pageContentOwner = contentOwner,
             ioReporter = reporter,
         )
-        val preloader = PagePreloader(pipeline, windowSize = 0)
+        val presentationOwner = DesktopReaderPresentationImageOwner(
+            scope = this,
+            pageImagePipeline = pipeline,
+            pageIoObserver = ReaderPageIoObserver(reporter),
+        )
         val pageId = ReaderPageId(ReaderChapterId(7L), 1)
         val key = ReaderPageDecodeKey(
             contentKey = ReaderPageContentOpenRequest(pageId, generation = 1L, encodedPageRef),
@@ -63,33 +70,59 @@ class ReaderDecodedAssetConsumerIntegrationTest {
         )
 
         try {
-            preloader.preloadEncoded(
-                currentPage = 1,
-                encodedPageRefs = listOf(null, encodedPageRef),
-                pageIds = listOf(ReaderPageId(pageId.chapterId, 0), pageId),
-                sessionGeneration = 1L,
+            presentationOwner.beginGeneration(1L)
+            val holder = presentationOwner.createHolder(
+                identity = DesktopReaderPresentationImageSlotIdentity(pageId, generation = 1L),
+                decodeKey = key,
             )
-            val cached = requireNotNull(preloader.getCachedPage(1))
-            val visibleLease = requireNotNull(pipeline.acquire(key))
-            val split = transformCachedPageBitmap(cached, splitHalf = PageSplitHalf.LEFT)
-            val cropped = transformCachedPageBitmap(cached, cropBorders = true)
-            try {
-                assertSame(cached.bitmap, visibleLease.asset.bitmap)
-                EdgePixelMatcher().findMatchedPairs(pageCount = 3) { index ->
-                    cached.bitmap.takeIf { index == 1 || index == 2 }
-                }
-                assertNotNull(readerColorMatrix(ReaderColorFilter(grayscaleEnabled = true)))
-                assertEquals(cached.bitmap.width / 2, split.width)
-                assertEquals(cached.bitmap.width - 4, cropped.width)
-                assertEquals(1, events.count { it.type == ReaderIoEventType.OPEN_PAGE })
-                assertEquals(1, events.count { it.type == ReaderIoEventType.DECODE })
+            val ready = try {
+                holder.acquire()
+                holder.state.first { state ->
+                    state is DesktopReaderPresentationImageState.Ready ||
+                        state is DesktopReaderPresentationImageState.Failed
+                } as? DesktopReaderPresentationImageState.Ready
             } finally {
-                split.asSkiaBitmap().close()
-                if (cropped !== cached.bitmap) cropped.asSkiaBitmap().close()
-                visibleLease.close()
+                holder.close()
+            }
+            assertNotNull(ready)
+            val cachedLeases = presentationOwner.retainCachedFullPageAssets()
+            val cachedLease = requireNotNull(cachedLeases[pageId.sourcePageIndex])
+            cachedLeases.filterKeys { it != pageId.sourcePageIndex }.values.forEach(AutoCloseable::close)
+            try {
+                val cached = cachedLease.asset
+                val visibleLease = requireNotNull(pipeline.acquire(key))
+                val split = transformCachedPageBitmap(
+                    bitmap = cached.bitmap,
+                    splitHalf = PageSplitHalf.LEFT,
+                    sourceWidth = cached.sourceWidth,
+                    sourceHeight = cached.sourceHeight,
+                )
+                val cropped = transformCachedPageBitmap(
+                    bitmap = cached.bitmap,
+                    cropBorders = true,
+                    sourceWidth = cached.sourceWidth,
+                    sourceHeight = cached.sourceHeight,
+                )
+                try {
+                    assertSame(cached.bitmap, visibleLease.asset.bitmap)
+                    EdgePixelMatcher().findMatchedPairs(pageCount = 3) { index ->
+                        cached.bitmap.takeIf { index == 1 || index == 2 }
+                    }
+                    assertNotNull(readerColorMatrix(ReaderColorFilter(grayscaleEnabled = true)))
+                    assertEquals(cached.bitmap.width / 2, split.width)
+                    assertEquals(cached.bitmap.width - 4, cropped.width)
+                    assertEquals(1, events.count { it.type == ReaderIoEventType.OPEN_PAGE })
+                    assertEquals(1, events.count { it.type == ReaderIoEventType.DECODE })
+                } finally {
+                    split.asSkiaBitmap().close()
+                    if (cropped !== cached.bitmap) cropped.asSkiaBitmap().close()
+                    visibleLease.close()
+                }
+            } finally {
+                cachedLease.close()
             }
         } finally {
-            preloader.close()
+            presentationOwner.close()
             pipeline.close()
             contentOwner.close()
         }

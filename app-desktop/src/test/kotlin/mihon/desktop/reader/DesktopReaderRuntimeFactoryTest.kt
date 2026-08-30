@@ -83,7 +83,6 @@ class DesktopReaderRuntimeFactoryTest {
             this,
         )
         try {
-            assertNotNull(runtime.pageIoObserver)
             assertEquals(NextChapterPrefetchMode.OFF, runtime.session.currentNextChapterPrefetchMode)
 
             prefs.nextChapterPrefetchMode = NextChapterPrefetchMode.FIRST_VIEWPORT
@@ -329,7 +328,7 @@ class DesktopReaderRuntimeFactoryTest {
     }
 
     @Test
-    fun `production runtime preloader reads its own encoded page store`() = runTest {
+    fun `production runtime image pipeline reads its own encoded page store`() = runTest {
         val factory = DesktopReaderRuntimeFactory(
             prefs = ReaderPreferences(),
             downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads-preloader-wiring")),
@@ -348,34 +347,27 @@ class DesktopReaderRuntimeFactoryTest {
         try {
             advanceUntilIdle()
             val snapshot = runtime.session.state.value.snapshot
-            runtime.pageIoObserver?.pagePresented(snapshot.activeChapter.pages.single().id, snapshot.generation)
-            advanceUntilIdle()
-            val pageId = ReaderPageId(ReaderChapterId(81L), sourcePageIndex = 0)
-            val ref = runtime.encodedPageStore.cacheRef(
-                pageId,
-                discriminator = "factory-store-wiring",
-            )
-            val bytes = pngBytes()
-            runtime.encodedPageStore.store(ref) {
-                runtime.encodedPageStore.destinationFile(ref).writeBytes(bytes)
-                bytes.size.toLong()
-            }
+            val page = snapshot.activeChapter.pages.single()
+            val ref = requireNotNull(page.encodedPageRef)
 
-            runtime.preloader.preloadEncoded(
-                currentPage = 0,
-                encodedPageRefs = listOf(ref),
-                pageIds = listOf(pageId),
-                sessionGeneration = snapshot.generation,
+            val lease = requireNotNull(
+                runtime.pageImagePipeline.acquire(
+                    ReaderPageDecodeKey(
+                        contentKey = ReaderPageContentOpenRequest(page.id, snapshot.generation, ref),
+                        purpose = PageDecodePurpose.FULL_PAGE,
+                        maxWidth = 2_048,
+                        maxHeight = 2_048,
+                    ),
+                ),
             )
-
-            assertNotNull(runtime.preloader.get(0))
+            lease.close()
         } finally {
             runtime.close()
         }
     }
 
     @Test
-    fun `production preloader and visible consumer share one image pipeline open and decode`() = runTest {
+    fun `production visible consumers share one image pipeline open and decode`() = runTest {
         val events = CopyOnWriteArrayList<ReaderIoEvent>()
         val now = AtomicLong()
         val factory = DesktopReaderRuntimeFactory(
@@ -400,15 +392,17 @@ class DesktopReaderRuntimeFactoryTest {
             val snapshot = runtime.session.state.value.snapshot
             val page = snapshot.activeChapter.pages.single()
             val ref = requireNotNull(page.encodedPageRef)
-            runtime.preloader.preloadEncoded(
-                currentPage = 0,
-                encodedPageRefs = listOf(ref),
-                pageIds = listOf(page.id),
-                observer = runtime.pageIoObserver,
-                sessionGeneration = snapshot.generation,
+            val firstVisibleLease = requireNotNull(
+                runtime.pageImagePipeline.acquire(
+                    ReaderPageDecodeKey(
+                        contentKey = ReaderPageContentOpenRequest(page.id, snapshot.generation, ref),
+                        purpose = PageDecodePurpose.FULL_PAGE,
+                        maxWidth = 2_048,
+                        maxHeight = 2_048,
+                    ),
+                ),
             )
-
-            val visibleLease = requireNotNull(
+            val secondVisibleLease = requireNotNull(
                 runtime.pageImagePipeline.acquire(
                     ReaderPageDecodeKey(
                         contentKey = ReaderPageContentOpenRequest(page.id, snapshot.generation, ref),
@@ -419,7 +413,7 @@ class DesktopReaderRuntimeFactoryTest {
                 ),
             )
             try {
-                assertSame(runtime.preloader.get(0), visibleLease.asset.bitmap)
+                assertSame(firstVisibleLease.asset.bitmap, secondVisibleLease.asset.bitmap)
                 assertEquals(
                     1,
                     events.count { event ->
@@ -437,7 +431,8 @@ class DesktopReaderRuntimeFactoryTest {
                     },
                 )
             } finally {
-                visibleLease.close()
+                secondVisibleLease.close()
+                firstVisibleLease.close()
             }
         } finally {
             runtime.close()

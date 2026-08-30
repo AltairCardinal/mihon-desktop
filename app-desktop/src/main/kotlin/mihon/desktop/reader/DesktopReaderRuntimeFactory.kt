@@ -31,14 +31,12 @@ import java.util.concurrent.atomic.AtomicReference
 
 data class DesktopReaderRuntime(
     val prefs: ReaderPreferences,
-    val preloader: PagePreloader,
     val pageImagePipeline: DesktopReaderPageImagePipeline,
     val presentationImageOwner: DesktopReaderPresentationImageOwner,
     val pageContentOwner: DesktopReaderPageContentOwner,
     val session: DesktopReaderSession,
     internal val encodedPageStore: DesktopReaderEncodedPageStore,
     private val prefetchPreferenceJob: Job,
-    val pageIoObserver: ReaderPageIoObserver? = null,
     internal val contentAdapter: DesktopReaderContentAdapter = DesktopReaderContentAdapter(),
 ) : AutoCloseable {
     private class CloseAttempt(
@@ -94,7 +92,6 @@ data class DesktopReaderRuntime(
         try {
             closeStage { prefetchPreferenceJob.cancel() }
             closeStage(presentationImageOwner::close)
-            closeStage(preloader::close)
             closeStage(pageImagePipeline::close)
             closeStage(session::close)
             closeStage(pageContentOwner::close)
@@ -154,7 +151,7 @@ class DesktopReaderRuntimeFactory internal constructor(
                 ReaderSchedulerPolicy(
                     nearbyForward = 4,
                     nearbyBackward = 1,
-                    maxConcurrentRequests = PagePreloader.DEFAULT_CONCURRENT_REQUESTS,
+                    maxConcurrentRequests = DEFAULT_CONCURRENT_REQUESTS,
                 ),
             ),
         )
@@ -220,15 +217,10 @@ class DesktopReaderRuntimeFactory internal constructor(
         presentationImageOwner = boundPresentationImageOwner
         return DesktopReaderRuntime(
             prefs = prefs,
-            preloader = PagePreloader(
-                pageImagePipeline = pageImagePipeline,
-                windowSize = 3,
-            ),
             pageImagePipeline = pageImagePipeline,
             presentationImageOwner = boundPresentationImageOwner,
             pageContentOwner = pageContentOwner,
             session = session,
-            pageIoObserver = pageIoObserver,
             encodedPageStore = store,
             contentAdapter = contentAdapter,
             prefetchPreferenceJob = prefetchPreferenceJob,
@@ -289,5 +281,9 @@ class DesktopReaderRuntimeFactory internal constructor(
             runtimeScope.cancel()
             throw error
         }
+    }
+
+    private companion object {
+        const val DEFAULT_CONCURRENT_REQUESTS = 3
     }
 }

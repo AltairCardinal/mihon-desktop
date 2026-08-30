@@ -248,7 +248,6 @@ class DesktopProductCapabilityContractTest {
                         setOf(
                             "production runtime follows persisted next chapter prefetch changes",
                             "production runtime preference changes drive off first viewport and full request sets",
-                            "production runtime preloader reads its own encoded page store",
                             "production factory creates one shared core and exposes its canonical state to the model",
                             "production factory coordinates encoded cache across concurrent reader runtimes",
                         ),
@@ -1722,10 +1721,10 @@ class DesktopProductCapabilityContractTest {
                             "concurrent acquire single flights one content open and one decode" to
                                 setOf("pipeline.acquire(key)", "ReaderIoEventType.DECODE"),
                         ),
-                    "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt" to
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderUnifiedImageMemoryAuthorityTest.kt" to
                         mapOf(
-                            "decoded dimensions and byte accounting stay within configured bounds" to
-                                setOf("createTestPagePreloader(", "preloader.cacheSnapshot().usedBytes"),
+                            "FULL and TILE share 192 MiB and cross-purpose LRU eviction preserves ordinary revision semantics" to
+                                setOf("DesktopReaderImageMemoryAuthority", "snapshot.memory.residentBytes"),
                         ),
                 ),
             43 to
@@ -1749,8 +1748,6 @@ class DesktopProductCapabilityContractTest {
                         mapOf(
                             "shared pairing keeps cover edge matching adjust and landscape parity enhancements" to
                                 setOf("dualGroups(", "matchedPairs", "forcedSinglePages"),
-                            "reader product wiring retains entry retry transitions auto scroll and context menu" to
-                                setOf("state.session.activeChapter", "model.activateChapter(", "navigator.replace("),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt" to
                         mapOf(
@@ -1760,7 +1757,7 @@ class DesktopProductCapabilityContractTest {
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderPageCacheIntegrationTest.kt" to
                         mapOf(
                             "cache revision observer matches late pages preserves pairs after eviction and never loads" to
-                                setOf("observeDesktopMatchedPairs", "PagePreloader", "EdgePixelMatcher"),
+                                setOf("observeDesktopMatchedPairs", "retainCachedFullPageAssets", "EdgePixelMatcher"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt" to
                         mapOf(
@@ -1959,8 +1956,6 @@ class DesktopProductCapabilityContractTest {
                                 setOf("prefs.nextChapterPrefetchMode", "runtime.session.currentNextChapterPrefetchMode"),
                             "production runtime preference changes drive off first viewport and full request sets" to
                                 setOf("NextChapterPrefetchMode.FIRST_VIEWPORT", "runtime.encodedPageStore.diagnostics().refs.size"),
-                            "production runtime preloader reads its own encoded page store" to
-                                setOf("runtime.encodedPageStore.store(ref)", "runtime.preloader.preloadEncoded"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
                         mapOf(

@@ -733,14 +733,14 @@ class ReaderFixedMainAuthorityTest {
             repositoryRoot.resolve("app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/HttpPageLoader.kt"),
         )
         val desktopAdapter = Files.readString(
-            repositoryRoot.resolve("app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt"),
+            repositoryRoot.resolve("app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt"),
         )
 
         assertTrue(sharedScheduler.contains("class ReaderRequestScheduler"))
         assertFalse(legacyPageModel.contains("ReaderPreloadPlanner"))
         assertTrue(androidAdapter.contains("requestScheduler.pollNext()"))
         assertFalse(androidAdapter.contains("PriorityBlockingQueue"))
-        assertTrue(desktopAdapter.contains("requestScheduler.pollNext()"))
+        assertTrue(desktopAdapter.contains("core.pollNextPageRequest()"))
         assertFalse(desktopAdapter.contains("ReaderPreloadPlanner"))
     }
 

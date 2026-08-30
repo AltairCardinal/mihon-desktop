@@ -23,7 +23,6 @@ import mihon.desktop.reader.DesktopReaderRuntime
 import mihon.desktop.reader.DesktopReaderRuntimeFactory
 import mihon.desktop.reader.DesktopReaderSession
 import mihon.desktop.reader.DesktopReaderSessionState
-import mihon.desktop.reader.PagePreloader
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.reader.ReaderPreferences
@@ -251,7 +250,6 @@ class DesktopReaderChapterTransitionIntegrationTest {
         )
         val runtime = DesktopReaderRuntime(
             prefs = prefs,
-            preloader = PagePreloader(pageImagePipeline),
             pageImagePipeline = pageImagePipeline,
             presentationImageOwner = DesktopReaderPresentationImageOwner(
                 scope = this,

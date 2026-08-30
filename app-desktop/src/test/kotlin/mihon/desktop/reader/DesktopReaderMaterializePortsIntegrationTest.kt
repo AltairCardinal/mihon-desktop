@@ -25,6 +25,9 @@ import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.extension.ExtensionClassLoader
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.domain.error.AppError
+import mihon.domain.reader.PageDecodePurpose
+import mihon.domain.reader.ReaderPageDecodeKey
+import mihon.domain.reader.content.ReaderPageContentOpenRequest
 import mihon.domain.reader.materialize.CanonicalReaderMaterializeExecutor
 import mihon.domain.reader.materialize.ReaderChapterContentRequest
 import mihon.domain.reader.materialize.ReaderChapterMaterializeResult
@@ -34,6 +37,7 @@ import mihon.domain.reader.materialize.ReaderPageMaterializeResult
 import mihon.domain.reader.observability.ReaderIoEvent
 import mihon.domain.reader.observability.ReaderIoEventType
 import mihon.domain.reader.observability.ReaderIoProbe
+import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.observability.ReaderMonotonicClock
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
@@ -533,9 +537,36 @@ class DesktopReaderMaterializePortsIntegrationTest {
             val ready = assertInstanceOf(ReaderPageMaterializeResult.Ready::class.java, result)
             assertEquals(1, sourceRequests)
             assertArrayEquals(bytes, store.read(ready.encodedPageRef))
-            val preloader = createTestPagePreloader(encodedPageReader = store::read, windowSize = 0)
-            preloader.preloadEncoded(0, listOf(ready.encodedPageRef))
-            assertTrue(preloader.get(0) != null)
+            val contentOwner = DesktopReaderPageContentOwner(
+                scope = this,
+                encodedPageReader = store::read,
+                ioReporter = ReaderIoReporter(ReaderIoProbe {}, ReaderMonotonicClock { 0L }),
+            )
+            val pipeline = DesktopReaderPageImagePipeline(
+                scope = this,
+                pageContentOwner = contentOwner,
+                ioReporter = ReaderIoReporter(ReaderIoProbe {}, ReaderMonotonicClock { 0L }),
+            )
+            try {
+                val lease = requireNotNull(
+                    pipeline.acquire(
+                        ReaderPageDecodeKey(
+                            contentKey = ReaderPageContentOpenRequest(
+                                pageId = ReaderPageId(ReaderChapterId(4L), 0),
+                                generation = 1L,
+                                encodedPageRef = ready.encodedPageRef,
+                            ),
+                            purpose = PageDecodePurpose.FULL_PAGE,
+                            maxWidth = 2_048,
+                            maxHeight = 2_048,
+                        ),
+                    ),
+                )
+                lease.close()
+            } finally {
+                pipeline.close()
+                contentOwner.close()
+            }
         }
     }
 

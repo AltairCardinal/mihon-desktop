@@ -182,7 +182,6 @@ class DesktopReaderRuntimeLifecycleLinearizationTest {
         verifyOrder {
             fixture.prefetchPreferenceJob.cancel()
             fixture.presentationImageOwner.close()
-            fixture.preloader.close()
             fixture.pageImagePipeline.close()
             fixture.session.close()
             fixture.pageContentOwner.close()
@@ -362,7 +361,6 @@ class DesktopReaderRuntimeLifecycleLinearizationTest {
     }
 
     private fun closeFixture(): RuntimeCloseFixture {
-        val preloader = mockk<PagePreloader>(relaxed = true)
         val pageImagePipeline = mockk<DesktopReaderPageImagePipeline>(relaxed = true)
         val presentationImageOwner = mockk<DesktopReaderPresentationImageOwner>(relaxed = true)
         val pageContentOwner = mockk<DesktopReaderPageContentOwner>(relaxed = true)
@@ -372,7 +370,6 @@ class DesktopReaderRuntimeLifecycleLinearizationTest {
         val contentAdapter = mockk<DesktopReaderContentAdapter>(relaxed = true)
         val runtime = DesktopReaderRuntime(
             prefs = ReaderPreferences(),
-            preloader = preloader,
             pageImagePipeline = pageImagePipeline,
             presentationImageOwner = presentationImageOwner,
             pageContentOwner = pageContentOwner,
@@ -383,7 +380,6 @@ class DesktopReaderRuntimeLifecycleLinearizationTest {
         )
         return RuntimeCloseFixture(
             runtime = runtime,
-            preloader = preloader,
             pageImagePipeline = pageImagePipeline,
             presentationImageOwner = presentationImageOwner,
             pageContentOwner = pageContentOwner,
@@ -395,7 +391,6 @@ class DesktopReaderRuntimeLifecycleLinearizationTest {
 
     private data class RuntimeCloseFixture(
         val runtime: DesktopReaderRuntime,
-        val preloader: PagePreloader,
         val pageImagePipeline: DesktopReaderPageImagePipeline,
         val presentationImageOwner: DesktopReaderPresentationImageOwner,
         val pageContentOwner: DesktopReaderPageContentOwner,
@@ -405,7 +400,6 @@ class DesktopReaderRuntimeLifecycleLinearizationTest {
     ) {
         val closeStages: List<AutoCloseable> = listOf(
             presentationImageOwner,
-            preloader,
             pageImagePipeline,
             session,
             pageContentOwner,

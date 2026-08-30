@@ -2828,7 +2828,7 @@
       "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopPageDecoders.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderImageAsset.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipeline.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/reader/PagePreloader.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderPresentationImageOwner.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -3052,14 +3052,14 @@
       }
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #9: TachiyomiImageDecoder owns Android image decoding.",
-    "desktopImplementation": "DesktopReaderPageImagePipeline 是 production 唯一 full-page decoder owner；DesktopReaderImageCache 以 entry/byte 双预算和引用计数 lease 管理 Skia ImageBitmap，PagePreloader 仅是共享 pipeline 的兼容适配层。",
+    "desktopImplementation": "DesktopReaderPageImagePipeline 是 production 唯一 full-page decoder owner；DesktopReaderImageCache 与统一 memory authority 以 entry/byte 双预算和引用计数 lease 管理 FULL/TILE/FRAME/DERIVED 资产，presentation owner 是唯一 UI 消费入口。",
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/data/coil/AndroidReaderPageDecoderContractTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderImageAssetTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipelineTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/PagePreloaderTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderUnifiedImageMemoryAuthorityTest.kt"
     ],
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt": [
@@ -3088,7 +3088,7 @@
         "PLATFORM_DECODE_CONTRACT",
         "ANDROID_DECODE_ADAPTER"
       ],
-      "reason": "Desktop production still mounts PagePreloader, Coil and direct local Skia paths; platform decode capability remains verified while the single-owner completion claim requires production I/O/decode evidence."
+      "reason": "RUA-04D5 已删除 legacy PagePreloader owner；single-owner production 行为已有真实 pipeline/presentation 证据，最终 capability 状态转换仍等待 RUA-06C authority 审计。"
     },
     "verificationScope": "VERIFIED for platform-neutral decode request/result contracts and Android/Desktop decoder adapters; the Desktop canonical ReaderSessionCore now supplies the encoded refs consumed by the bounded Skia decode/cache path.",
     "platformExemptionEvidence": "NONE",
@@ -28912,10 +28912,10 @@
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt", "symbol": "object SinglePagedPresentation", "line": 9},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentation.kt", "symbol": "object WebtoonPresentation", "line": 12},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentation.kt", "symbol": "object DualPagedPresentation", "line": 24},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "fun ZoomablePagerViewer(", "line": 93},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt", "symbol": "fun SinglePagePagerViewer(", "line": 54},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt", "symbol": "fun WebtoonViewer(", "line": 76},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt", "symbol": "fun DualPagePagerViewer(", "line": 198}
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "fun ZoomablePagerViewer(", "line": 92},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt", "symbol": "fun SinglePagePagerViewer(", "line": 53},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt", "symbol": "fun WebtoonViewer(", "line": 73},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt", "symbol": "fun DualPagePagerViewer(", "line": 197}
       ],
       "FIXTURE": [
         {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt#fork-added pairing adapter and shared core produce the same enhancement vectors", "productionMarkers": ["PagePairingAlgorithm.buildPairings", "ReaderPagePairing.build"]},
@@ -28935,7 +28935,7 @@
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing", "productionMarkers": ["DualPageDisplayUnitFrame", "ContentScale.Fit"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#production dual selector mounts registry display units", "productionMarkers": ["ZoomablePagerViewer", "DualPageDisplayUnitIdKey"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt#matched pairs consume only caller supplied bounded decoded images", "productionMarkers": ["matcher.findMatchedPairs", "ImageBitmap"]},
-        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderPageCacheIntegrationTest.kt#cache revision observer matches late pages preserves pairs after eviction and never loads", "productionMarkers": ["observeDesktopMatchedPairs", "PagePreloader", "EdgePixelMatcher"]}
+        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderPageCacheIntegrationTest.kt#cache revision observer matches late pages preserves pairs after eviction and never loads", "productionMarkers": ["observeDesktopMatchedPairs", "retainCachedFullPageAssets", "EdgePixelMatcher"]}
       ]
     },
     "deviations": [
@@ -28998,7 +28998,7 @@
         "description": "Adjacent portrait-page pairing and its Android dual-page adapter are Fork additions; fixed original only split a single wide source page."
       }
     ],
-    "desktopImplementation": "ReaderPresentationStrategy/DisplayUnit/VisiblePageSet mode registry 由 SinglePagedPresentation、WebtoonPresentation 与 DualPagedPresentation 三个同级策略驱动 production selector；DesktopReaderPresentationRequest 直接把 canonical ReaderChapterSession 映射为策略输入，不再生成 URL slot 或第二套页面状态。Dual 保留相邻 portrait、cover-single、forced single、spread、edge match 与 landscape parity 的稳定物理双槽；pair settled 上报全部可见 PageId 并以最大 source progress 为 active。EdgePixelMatcher 只读取 PagePreloader 提供的有界 decoded ImageBitmap，右键保存继续接收实际 splitHalf/sourceBounds。",
+    "desktopImplementation": "ReaderPresentationStrategy/DisplayUnit/VisiblePageSet mode registry 由 SinglePagedPresentation、WebtoonPresentation 与 DualPagedPresentation 三个同级策略驱动 production selector；DesktopReaderPresentationRequest 直接把 canonical ReaderChapterSession 映射为策略输入，不再生成 URL slot 或第二套页面状态。Dual 保留相邻 portrait、cover-single、forced single、spread、edge match 与 landscape parity 的稳定物理双槽；pair settled 上报全部可见 PageId 并以最大 source progress 为 active。EdgePixelMatcher 只读取 DesktopReaderPresentationImageOwner 保留的有界 cached FULL_PAGE lease，并以 revision fence 拒绝 Retry/代际清理后的旧结果；右键保存继续接收实际 splitHalf/sourceBounds。",
     "protectionTests": [
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt",
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
@@ -29016,7 +29016,7 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/WebtoonAutoScrollTest.kt"
     ],
     "behaviorMethods": {
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt": ["reader product wiring retains entry retry transitions auto scroll and context menu"],
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt": ["shared pairing keeps cover edge matching adjust and landscape parity enhancements"],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderScreenModelTest.kt": ["state flow exposes the canonical session snapshot", "zero-page loading error and loaded chapters select one canonical viewport body", "same chapter readiness updates preserve mounted display identity", "load-state updates do not resettle identical viewports in any presentation mode", "settled webtoon and dual viewports report canonical page identities"],
       "app-desktop/src/test/kotlin/mihon/desktop/reader/EdgePixelMatcherTest.kt": ["matched pairs consume only caller supplied bounded decoded images"],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/ReaderPageCacheIntegrationTest.kt": ["cache revision observer matches late pages preserves pairs after eviction and never loads"],
@@ -29419,7 +29419,6 @@
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#late storage failure from an old target cannot cancel the new target prefetch", "productionMarkers": ["oldFailurePublished", "newPageAttempts"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production runtime follows persisted next chapter prefetch changes", "productionMarkers": ["prefs.nextChapterPrefetchMode", "runtime.session.currentNextChapterPrefetchMode"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production runtime preference changes drive off first viewport and full request sets", "productionMarkers": ["NextChapterPrefetchMode.FIRST_VIEWPORT", "runtime.encodedPageStore.diagnostics().refs.size"]},
-        {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production runtime preloader reads its own encoded page store", "productionMarkers": ["runtime.encodedPageStore.store(ref)", "runtime.preloader.preloadEncoded"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt#mounted production screen launches next chapter prefetch wiring", "productionMarkers": ["Navigator(screen) { screen.Content() }", "updates += target to firstViewportPageCount"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt#Reader Library Download and Backup controls expose one labeled action with role and state", "productionMarkers": ["ReaderSettingsScreen()", "NextChapterPrefetchMode.FIRST_VIEWPORT"]},
         {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#production factory creates one shared core and exposes its canonical state to the model", "productionMarkers": ["factory.createRuntime", "runtime.session.core"]},
@@ -29461,7 +29460,7 @@
       "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipelineTest.kt": ["generation fence rejects and releases a non cooperative stale decode", "decode concurrency is bounded and a stale queued request never starts"],
       "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt": ["failed encoded write removes partial bytes before retry lookup", "empty encoded write is rejected instead of publishing a ready blank page", "concurrent reader stores share staging quota and active ref leases", "a new store instance reconciles prior cache bytes and enforces one cross-session quota", "replacement bytes stay invisible until one atomic commit", "same ref has one writer and cancelling a stale writer cannot delete the committed file", "download and local directory page lists expose ready encoded refs without copying", "archive page is materialized per page into the shared encoded store", "online page uses source client and headers then decode reads the same encoded ref", "online page executes the source image request method body and per-page headers", "child loaded source executes reflective getImage with its request semantics", "online failures retain shared empty authentication rate limit server and malformed errors", "successful HTTP with a malformed image body fails before the encoded ref becomes ready", "successful HTTP with a truncated pixel stream fails before the encoded ref becomes ready"],
       "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt": ["full next chapter waits for every current page then materializes all encoded pages without progress", "first viewport mode materializes only its bounded next chapter prefix", "off mode keeps last five page-list preload but never fetches adjacent images", "switching off cancels a policy-only next chapter page-list request", "activating a prefetched chapter cancels P4 and retries its visible page as P0", "adjacent storage failure stops the remaining background chapter without changing active state", "non cooperative page cancellation keeps physical image requests within policy plus one stale request", "non cooperative target switches keep physical chapter requests within policy plus one stale request", "late storage failure from an old target cannot cancel the new target prefetch"],
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt": ["production runtime follows persisted next chapter prefetch changes", "production runtime preference changes drive off first viewport and full request sets", "production runtime preloader reads its own encoded page store", "production runtime binds the independent 512 MiB encoded cache policy", "production factory creates one shared core and exposes its canonical state to the model", "production factory coordinates encoded cache across concurrent reader runtimes"],
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt": ["production runtime follows persisted next chapter prefetch changes", "production runtime preference changes drive off first viewport and full request sets", "production runtime binds the independent 512 MiB encoded cache policy", "production factory creates one shared core and exposes its canonical state to the model", "production factory coordinates encoded cache across concurrent reader runtimes"],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt": ["mounted production screen launches next chapter prefetch wiring"],
       "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt": ["next chapter prefetch defaults to full and persists every policy"],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DesktopSettingsContentAccessibilityTest.kt": ["Reader Library Download and Backup controls expose one labeled action with role and state"],
@@ -29516,7 +29515,7 @@
         "ENCODED_STORE_LIFECYCLE_CONTRACT",
         "HTTP_RETRY_FORCE"
       ],
-      "reason": "Desktop has a second PagePreloader scheduler, begins the global encoded-store scan before chapter materialization, and defaults to full-next image prefetch; these Desktop evidence slices are reopened without revoking the shared scheduler/store/Retry contracts."
+      "reason": "RUA-04D5 已删除第二个 PagePreloader scheduler；Desktop 默认相邻章图片预取语义仍等待 RUA-05 对齐，因此相关 evidence slice 保持 reopen，且不撤销 shared scheduler/store/Retry 契约。"
     },
     "verificationScope": "VERIFIED for the single shared priority/generation scheduler, encoded-store lifecycle, Storage classification and explicit Retry forces a fresh fetch across both platform chains. Android retains its integrated fixed-original traffic policy. The Desktop canonical ReaderSessionCore executes online/download/local/archive materialization and RD-02 OFF / FIRST_VIEWPORT / FULL_NEXT_CHAPTER policy through the same scheduler and factory-scoped encoded store: all-current-Ready gates P4, visible P0 preempts, policy-only work cancels on OFF/activation/exit, non-cooperative image and chapter-metadata I/O stays within policy plus one stale request, stale Storage failures are target-sequence/request-identity guarded, runtime preference changes alter the real request set, the mounted production Screen launches the wiring, and adjacent work emits no progress or chapter-sized decoded cache.",
     "platformExemptionEvidence": "NONE",

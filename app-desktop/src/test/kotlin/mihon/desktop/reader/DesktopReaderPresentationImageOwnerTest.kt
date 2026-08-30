@@ -44,6 +44,43 @@ import org.junit.jupiter.api.Test
 class DesktopReaderPresentationImageOwnerTest {
 
     @Test
+    fun `edge matching consumer retains only cached full assets without opening or decoding`() = runTest {
+        val decodeCalls = AtomicInteger()
+        val fixture = fixture(
+            scope = this,
+            decoder = DesktopReaderPageImageDecoder { _, _ ->
+                asset(tag = decodeCalls.incrementAndGet())
+            },
+        )
+
+        try {
+            fixture.owner.beginGeneration(1L)
+            val first = fixture.owner.createHolder(identity(pageIndex = 1), key(pageIndex = 1))
+            val second = fixture.owner.createHolder(identity(pageIndex = 2), key(pageIndex = 2))
+            first.acquire()
+            second.acquire()
+            first.awaitReady()
+            second.awaitReady()
+            first.close()
+            second.close()
+            val opensBeforeMatching = fixture.events.count { it.type == ReaderIoEventType.OPEN_PAGE }
+            val decodesBeforeMatching = fixture.events.count { it.type == ReaderIoEventType.DECODE }
+
+            val retained = fixture.owner.retainCachedFullPageAssets()
+            try {
+                assertEquals(setOf(1, 2), retained.keys)
+                assertEquals(opensBeforeMatching, fixture.events.count { it.type == ReaderIoEventType.OPEN_PAGE })
+                assertEquals(decodesBeforeMatching, fixture.events.count { it.type == ReaderIoEventType.DECODE })
+                assertEquals(2, decodeCalls.get())
+            } finally {
+                retained.values.forEach(AutoCloseable::close)
+            }
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
     fun `one holder acquire is idempotent`() = runTest {
         val decodeCalls = AtomicInteger()
         val fixture = fixture(

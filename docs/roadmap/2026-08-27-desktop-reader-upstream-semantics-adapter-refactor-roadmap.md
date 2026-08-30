@@ -311,16 +311,16 @@ Android Reader UI                 Desktop Reader presentation
   - [x] `RUA-03B` shared runner、优先级、取消与 generation
   - [x] `RUA-03C1` production TTFF、1/180 页、路由适用门与隐性内容 I/O 门禁
   - [x] `RUA-03C2` journal 实体缺失与非协作页表 late-result 门禁
-- [ ] `RUA-04` 唯一内容读取/解码 pipeline 与三种 presentation cutover
+- [x] `RUA-04` 唯一内容读取/解码 pipeline 与三种 presentation cutover
   - [x] `RUA-04A` 唯一 open/materialize owner 与 single-flight
   - [x] `RUA-04B` 唯一 decoder、decoded cache 与 transform consumers
   - [x] `RUA-04C` Single/Dual/Webtoon presentation cutover
-  - [ ] `RUA-04D` 动画/超大图/lifecycle 矩阵与 legacy owner 删除
+  - [x] `RUA-04D` 动画/超大图/lifecycle 矩阵与 legacy owner 删除
     - [x] `RUA-04D1` 动画 purpose-aware decode owner
     - [x] `RUA-04D2` 超大图与 region tile owner
     - [x] `RUA-04D3` Retry/cancel/stale attempt 线性化
     - [x] `RUA-04D4` detach/recycle/close 与统一内存预算
-    - [ ] `RUA-04D5` legacy owner 删除与最终矩阵门禁
+    - [x] `RUA-04D5` legacy owner 删除与最终矩阵门禁
 - [ ] `RUA-05` 原版相邻章默认语义与 Desktop opt-in decorator
   - [ ] `RUA-05A` canonical last-five page-list-only 语义
     - [ ] `RUA-05A1` shared contract 与 Android consumer
@@ -634,6 +634,14 @@ Android Reader UI                 Desktop Reader presentation
 - 严格 TDD 证据包括 `.gradle-coordinator/rua04d4-red2.log`、`rua04d4-green4.log`、`rua04d4-p1-red.log` 与 `rua04d4-p1-green.log`。首次相关收口暴露 throwing-disposer 的虚拟时钟等待和旧 64 MiB tile 压力 fixture，第二次暴露 Retry remount 的单帧 Compose 时序假设；对应失败类分别经 `rua04d4-close-failures-green` 与 `rua04d4-animation-remount-green` 变为确定性有界测试。最终 `rua04d4-final-close3.log` 完成 root `spotlessCheck` 与 31 个 D1～D4 production-wiring/回归类，179 tests 全绿，`BUILD SUCCESSFUL in 6m 24s`。
 - 两轮独立只读审查先后发现 cache/authority 两阶段竞态、exception-complete 缺口、旧 runtime 预算断言、DERIVED production wiring，以及 provisional snapshot 与 post-registration 双 close 两个残余 P1。所有 finding 均由 allocation identity、完整资源动作矩阵和真实 transform failure RED 关闭；未发现进入 D5 legacy 删除、手势、双页配对或 viewport 语义的范围漂移。
 - 本批包含 10 个 product 文件、11 个 test 文件和本 roadmap，超过 4～8 文件提示值，是因为 runtime/session、FULL/TILE/FRAME/DERIVED 四类 allocation 与 static/animated/region presentation 的 close 顺序必须作为一个生命周期矩阵交付；拆分会产生部分 owner 仍不受统一 authority 或异常中止回收的不可验收状态。Desktop 正式构建仍只在 `RUA-07` 执行。
+
+**`RUA-04D5` 完成证据（2026-08-30）**：
+
+- Desktop production 已删除 `PagePreloader`、`PreloadedPageBitmap`、runtime `preloader/pageIoObserver` 暴露、独立 current-page preload effect 与旧 cached-bitmap transform 重载。edge matching 只通过唯一 `DesktopReaderPresentationImageOwner` 保留 ordinary cache 中当前 attempt 的 `FULL_PAGE` lease；整轮 matcher 期间持有、成功/异常/取消时 exception-complete 释放，不会触发新的 open/decode。Gradle task2/task3 的旧测试 include、ID9/ID43 的现役 owner 路径和旧方法证据也同步迁移。
+- 严格 TDD 先以 `.gradle-coordinator/rua04d5-consumer-red.log` 证明 presentation owner 缺少只读 cached lease 契约，再经 `rua04d5-green2.log`～`rua04d5-green4.log` 关闭测试迁移、真实 encoded-store ref 与 mounted I/O 时序问题。独立审查随后用可控 matcher 发现 Retry revision 期间旧配对会永久写入；`.gradle-coordinator/rua04d5-stale-match-red.log` 确认旧实现错误发布 `[(0, 1)]`，`rua04d5-stale-match-green.log` 在 `collectLatest + revision fence` 后验证只发布空结果、只剩一个 cache entry、`pinnedBytes == 0` 且 `residentBytes == cacheBytes`。
+- 独立只读审查最初结论为 2 个 P1、2 个 P2：两个 P1（manifest/contract 残留与 stale edge-match 发布）全部关闭；限定修复复审为 `PASS`，没有 P0/P1。duplicate pageIndex MRU、显式 matcher throw/owner-close 和 revision check 至 callback 的理论窄窗保留为 RUA-06 production-mutation/并发证据强化，不阻塞已验证的唯一 owner 删除。
+- 最终 `.gradle-coordinator/rua04d5-final-close.log` 完成 root `spotlessCheck` 与 19 个 runtime/presentation/IO/architecture 类，103 tests 全绿，`BUILD SUCCESSFUL in 8m 4s`。monolithic `DesktopProductCapabilityContractTest` 在此前 focused 运行中已通过 D5 修改的 behavior evidence，但 exact contract 继续暴露 ID45/RUA-05 默认预取与 RUA-06C authority 的既有陈旧行号；本批没有用提前改写后续状态来制造假绿，该已知门禁保留到 05 完成后的 06C 统一关闭。
+- 本批包含 7 个 production/build 文件、14 个 test/fixture 文件（其中 2 个删除）和本 roadmap，共 22 个文件、约 `606+/945-`；超过 4～8 文件提示值是因为最后一个 runtime owner 的删除必须同时迁移 cache consumer、lifecycle、architecture、Gradle include 与 machine authority 证据，拆开会留下已删除类型仍被编译或治理任务引用的不可验收状态。没有改变相邻章默认语义、偏好 UI 或 opt-in decorator；Desktop 正式构建仍只在 `RUA-07` 执行。
 
 ### `RUA-05` 原版相邻章默认语义与 Desktop opt-in decorator
 

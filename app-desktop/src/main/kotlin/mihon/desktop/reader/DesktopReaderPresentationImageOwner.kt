@@ -88,6 +88,14 @@ class DesktopReaderPresentationImageOwner internal constructor(
     internal val memoryAuthority: DesktopReaderImageMemoryAuthority
         get() = pageImagePipeline.memoryAuthority
 
+    internal val cacheRevision: StateFlow<Long>
+        get() = pageImagePipeline.cacheRevision
+
+    internal fun retainCachedFullPageAssets(): Map<Int, DesktopReaderImageAssetLease> = synchronized(lock) {
+        check(!closed) { "Desktop reader presentation image owner is closed" }
+        pageImagePipeline.retainCachedFullPageAssets()
+    }
+
     internal fun beginGeneration(generation: Long): Boolean {
         require(generation >= 0L) { "generation must be non-negative" }
         val staleHolders = synchronized(lock) {
