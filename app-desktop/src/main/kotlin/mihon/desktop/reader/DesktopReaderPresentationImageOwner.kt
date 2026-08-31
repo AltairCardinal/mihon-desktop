@@ -96,6 +96,13 @@ class DesktopReaderPresentationImageOwner internal constructor(
         pageImagePipeline.retainCachedFullPageAssets()
     }
 
+    internal fun tryRetainCachedFullPageAssets(): Map<Int, DesktopReaderImageAssetLease>? = synchronized(lock) {
+        if (closed) return null
+        pageImagePipeline.retainCachedFullPageAssets()
+    }
+
+    internal fun isClosed(): Boolean = synchronized(lock) { closed }
+
     internal fun beginGeneration(generation: Long): Boolean {
         require(generation >= 0L) { "generation must be non-negative" }
         val staleHolders = synchronized(lock) {

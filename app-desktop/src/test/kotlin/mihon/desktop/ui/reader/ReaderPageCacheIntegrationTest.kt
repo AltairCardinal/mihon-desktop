@@ -8,10 +8,14 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -43,6 +47,60 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class ReaderPageCacheIntegrationTest {
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `cache revision observer ignores pipeline closure after presentation owner closes`() = runTest {
+        val reporter = ReaderIoReporter(ReaderIoProbe.None, ReaderMonotonicClock(System::nanoTime))
+        val contentOwner = DesktopReaderPageContentOwner(
+            scope = this,
+            encodedPageReader = { error("The cache observer must not open page content") },
+            ioReporter = reporter,
+        )
+        val pipeline = DesktopReaderPageImagePipeline(
+            scope = this,
+            pageContentOwner = contentOwner,
+            ioReporter = reporter,
+        )
+        val presentationOwner = DesktopReaderPresentationImageOwner(
+            scope = this,
+            pageImagePipeline = pipeline,
+            pageIoObserver = ReaderPageIoObserver(reporter),
+        )
+        val initialUpdate = CompletableDeferred<Unit>()
+        var callbackCount = 0
+        val observer = async(start = CoroutineStart.UNDISPATCHED) {
+            observeDesktopMatchedPairs(
+                presentationImageOwner = presentationOwner,
+                autoSpreadMatching = true,
+                dualPageMode = true,
+                pageCount = 2,
+                retainedMatchedPairs = emptySet(),
+                findMatchedPairs = { _, _ -> emptySet() },
+                onMatchedPairsChanged = {
+                    callbackCount++
+                    initialUpdate.complete(Unit)
+                },
+            )
+        }
+
+        try {
+            initialUpdate.await()
+            assertEquals(1, callbackCount)
+
+            presentationOwner.close()
+            pipeline.close()
+            runCurrent()
+
+            assertTrue(observer.isActive, "Pipeline closure must not fail the active cache observer")
+            assertEquals(1, callbackCount, "A closed presentation owner must not publish another matched-pair update")
+        } finally {
+            observer.cancelAndJoin()
+            presentationOwner.close()
+            pipeline.close()
+            contentOwner.close()
+        }
+    }
 
     @Test
     fun `cache revision observer matches late pages preserves pairs after eviction and never loads`() = runTest {

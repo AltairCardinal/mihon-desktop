@@ -435,7 +435,7 @@ internal suspend fun observeDesktopMatchedPairs(
 ) {
     var retained = retainedMatchedPairs
     presentationImageOwner.cacheRevision.collectLatest { revision ->
-        val cachedAssets = presentationImageOwner.retainCachedFullPageAssets()
+        val cachedAssets = presentationImageOwner.tryRetainCachedFullPageAssets() ?: return@collectLatest
         val nextRetained =
             try {
                 if (autoSpreadMatching && dualPageMode) {
@@ -452,7 +452,9 @@ internal suspend fun observeDesktopMatchedPairs(
             } finally {
                 runResourceActions(cachedAssets.values.map { lease -> lease::close })
             }
-        if (presentationImageOwner.cacheRevision.value != revision) return@collectLatest
+        if (presentationImageOwner.isClosed() || presentationImageOwner.cacheRevision.value != revision) {
+            return@collectLatest
+        }
         retained = nextRetained
         onMatchedPairsChanged(retained)
     }

@@ -103,6 +103,17 @@ class SkiaImageDecoderTest {
     }
 
     @Test
+    fun `decodeDownsampled materializes a standard large manga page within presentation bounds`() {
+        val bytes = makeJpegBytes(2400, 3500)
+
+        val bitmap = SkiaImageDecoder.decodeDownsampled(bytes, maxWidth = 2048, maxHeight = 2048)
+
+        assertEquals(1200, bitmap.width)
+        assertEquals(1750, bitmap.height)
+        assertTrue(bitmap.asSkiaBitmap().readPixels() != null)
+    }
+
+    @Test
     fun `peekSize matches decode dimensions`() {
         val bytes = makePngBytes(64, 48)
         val (pw, ph) = SkiaImageDecoder.peekSize(bytes)!!

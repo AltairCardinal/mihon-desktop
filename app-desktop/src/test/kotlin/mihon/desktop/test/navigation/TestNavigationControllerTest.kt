@@ -1,5 +1,6 @@
 package mihon.desktop.test.navigation
 
+import kotlinx.coroutines.runBlocking
 import mihon.desktop.ui.reader.DesktopReaderScreen
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -52,6 +53,37 @@ class TestNavigationControllerTest {
 
         assertNull(TestNavigationController.pendingScreenRequest.value)
         assertFalse(TestNavigationController.pendingPop.value)
+    }
+
+    @Test
+    fun `test mode reader isolates synthetic progress from the production repository`() = runBlocking {
+        assertNull(DesktopReaderScreen(chapterTitle = "Production chapter").progressTracker)
+
+        TestNavigationController.openReader(
+            mangaId = 9_001L,
+            chapterId = 9_002L,
+            chapterTitle = "Synthetic chapter",
+            mangaTitle = "Synthetic manga",
+            chapterUrl = "/test-reader/synthetic/9002",
+            sourceId = 9_003L,
+        )
+
+        val readerScreen = assertInstanceOf(
+            DesktopReaderScreen::class.java,
+            TestNavigationController.pendingScreenRequest.value?.screen,
+        )
+        assertNotNull(readerScreen.progressTracker)
+        val testModeProgressTracker = checkNotNull(readerScreen.progressTracker)
+
+        testModeProgressTracker.track(
+            eventId = "test-mode-synthetic-progress",
+            chapterId = readerScreen.chapterId,
+            lastPageRead = 0,
+            totalPages = 1,
+            sourceId = readerScreen.sourceId,
+            mangaId = 9_001L,
+            chapterNumber = 1.0,
+        )
     }
 
     @Test

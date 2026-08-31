@@ -1,6 +1,9 @@
 package mihon.desktop.reader
 
 import androidx.compose.ui.graphics.asComposeImageBitmap
+import java.awt.Color
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -40,8 +43,34 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import javax.imageio.ImageIO
 
 class DesktopReaderPresentationImageOwnerTest {
+
+    @Test
+    fun `standard large JPEG reaches presentation Ready through the production pipeline`() = runTest {
+        val fixture = fixture(
+            scope = this,
+            decoder = SkiaDesktopReaderPageImageDecoder(),
+            encodedBytes = standardJpegBytes(),
+        )
+
+        try {
+            fixture.owner.beginGeneration(1L)
+            val holder = fixture.owner.createHolder(identity(), key())
+
+            holder.acquire()
+
+            val ready = holder.awaitReady()
+            assertEquals(2_400, ready.asset.sourceWidth)
+            assertEquals(3_500, ready.asset.sourceHeight)
+            assertEquals(1_200, ready.asset.bitmap.width)
+            assertEquals(1_750, ready.asset.bitmap.height)
+            holder.close()
+        } finally {
+            fixture.close()
+        }
+    }
 
     @Test
     fun `edge matching consumer retains only cached full assets without opening or decoding`() = runTest {
@@ -472,6 +501,7 @@ class DesktopReaderPresentationImageOwnerTest {
         scope: CoroutineScope,
         decoder: DesktopReaderPageImageDecoder,
         onFirstPagePresented: (ReaderPageId, Long) -> Unit,
+        encodedBytes: ByteArray,
     ) : AutoCloseable {
         val events = CopyOnWriteArrayList<ReaderIoEvent>()
         private val now = AtomicLong()
@@ -481,7 +511,7 @@ class DesktopReaderPresentationImageOwnerTest {
         )
         private val contentOwner = DesktopReaderPageContentOwner(
             scope = scope,
-            encodedPageReader = { ENCODED_BYTES },
+            encodedPageReader = { encodedBytes },
             ioReporter = reporter,
         )
         val pipeline = DesktopReaderPageImagePipeline(
@@ -507,7 +537,20 @@ class DesktopReaderPresentationImageOwnerTest {
         scope: CoroutineScope,
         decoder: DesktopReaderPageImageDecoder = DesktopReaderPageImageDecoder { _, _ -> asset(tag = 1) },
         onFirstPagePresented: (ReaderPageId, Long) -> Unit = { _, _ -> },
-    ): Fixture = Fixture(scope, decoder, onFirstPagePresented)
+        encodedBytes: ByteArray = ENCODED_BYTES,
+    ): Fixture = Fixture(scope, decoder, onFirstPagePresented, encodedBytes)
+
+    private fun standardJpegBytes(): ByteArray {
+        val image = BufferedImage(2_400, 3_500, BufferedImage.TYPE_INT_RGB)
+        image.createGraphics().run {
+            color = Color(244, 244, 244)
+            fillRect(0, 0, image.width, image.height)
+            dispose()
+        }
+        return ByteArrayOutputStream().also { output ->
+            check(ImageIO.write(image, "jpeg", output))
+        }.toByteArray()
+    }
 
     private suspend fun DesktopReaderPresentationImageHolder.awaitReady(): DesktopReaderPresentationImageState.Ready =
         withTimeout(5_000) {

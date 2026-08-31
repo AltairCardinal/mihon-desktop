@@ -10,8 +10,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
-import mihon.desktop.test.state.readerState
+import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.test.http.ReaderIoTestModeBridge
+import mihon.desktop.test.state.readerState
 import mihon.desktop.ui.authors.AuthorsTab
 import mihon.desktop.ui.browse.BrowseTab
 import mihon.desktop.ui.history.HistoryTab
@@ -19,6 +20,9 @@ import mihon.desktop.ui.library.LibraryTab
 import mihon.desktop.ui.more.MoreTab
 import mihon.desktop.ui.settings.GeneralSettingsScreen
 import mihon.desktop.ui.updates.UpdatesTab
+import tachiyomi.domain.reader.interactor.RecordReadingProgress
+import tachiyomi.domain.reader.model.ReadingProgressEvent
+import tachiyomi.domain.reader.repository.ReadingProgressRepository
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -27,6 +31,15 @@ import java.util.concurrent.atomic.AtomicLong
  * HTTP API sets the target navigation, and the UI observes and executes it.
  */
 object TestNavigationController {
+
+    // Test Mode fixture chapters are intentionally absent from the production database.
+    private val syntheticReaderProgressTracker = ReaderProgressTracker(
+        RecordReadingProgress(
+            object : ReadingProgressRepository {
+                override suspend fun record(event: ReadingProgressEvent) = Unit
+            },
+        ),
+    )
 
     private val _pendingTabNavigation = MutableStateFlow<String?>(null)
     val pendingTabNavigation: StateFlow<String?> = _pendingTabNavigation.asStateFlow()
@@ -259,6 +272,7 @@ object TestNavigationController {
             isRtl = false,
             isDualPage = false,
             localChapterPath = localChapterPath,
+            progressTracker = syntheticReaderProgressTracker,
         )
         publishScreenNavigation(readerScreen)
         _pushedScreens.update { it + readerScreen }
