@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,6 +28,9 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import mihon.desktop.di.initDesktopDI
 import mihon.desktop.platform.DesktopExternalActionBroker
@@ -44,6 +48,7 @@ import mihon.desktop.security.DesktopAppLockLifecycle
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.test.TestArguments
 import mihon.desktop.test.TestMode
+import mihon.desktop.test.navigation.BindTestNavigationController
 import mihon.desktop.test.state.TestState
 import mihon.desktop.test.state.applicationState
 import mihon.desktop.tracking.DesktopTrackerOAuthCallbackBroker
@@ -96,7 +101,8 @@ internal suspend fun startProductionDesktopApplication(
     startTestMode: (TestArguments) -> Unit = { testArgs -> if (testArgs.testMode) TestMode.start(testArgs) },
     awaitTestModeTermination: () -> Unit = TestMode::awaitTermination,
     stopTestMode: () -> Unit = TestMode::stop,
-    runWindowEventLoop: suspend (DesktopOwnerStartup, suspend () -> Unit) -> Unit = ::runDesktopComposeWindowEventLoop,
+    runWindowEventLoop: suspend (DesktopOwnerStartup, DesktopApplicationCloseCoordinator) -> Unit =
+        ::runDesktopComposeWindowEventLoop,
 ): DesktopInstanceStartResult {
     val transaction = DesktopOwnerTransaction()
     var owner: DesktopOwnerStartup? = null
@@ -118,7 +124,12 @@ internal suspend fun startProductionDesktopApplication(
                 awaitTestModeTermination = awaitTestModeTermination,
                 stopTestMode = stopTestMode,
                 runApplication = { closeAndJoin ->
-                    runDesktopWindowApplication(closeAndJoin) { requestClose -> runWindowEventLoop(startup, requestClose) }
+                    runDesktopWindowApplication(
+                        closeAndJoin = closeAndJoin,
+                        awaitTestModeTermination = awaitTestModeTermination.takeIf { testArgs.testMode },
+                    ) { requestClose ->
+                        runWindowEventLoop(startup, requestClose)
+                    }
                 },
             )
         }
@@ -154,32 +165,87 @@ private fun reportUriSchemeRegistration(result: DesktopUriSchemeRegistration.Res
 
 internal suspend fun runDesktopWindowApplication(
     closeAndJoin: suspend () -> Unit,
-    runWindowEventLoop: suspend (requestClose: suspend () -> Unit) -> Unit,
+    awaitTestModeTermination: (() -> Unit)? = null,
+    runWindowEventLoop: suspend (requestClose: DesktopApplicationCloseCoordinator) -> Unit,
 ) {
-    val closeRequested = AtomicBoolean()
-    val closeResult = CompletableDeferred<Result<Unit>>()
-    runWindowEventLoop {
-        if (closeRequested.compareAndSet(false, true)) closeResult.complete(runCatching { closeAndJoin() })
-        closeResult.await()
+    val closeCoordinator = DesktopApplicationCloseCoordinator(closeAndJoin, awaitTestModeTermination)
+    runWindowEventLoop(closeCoordinator)
+    closeCoordinator.throwTerminalFailure()
+}
+
+internal class DesktopApplicationCloseCoordinator(
+    private val closeAndJoin: suspend () -> Unit,
+    val awaitTestModeTermination: (() -> Unit)?,
+) {
+    private val closeRequested = AtomicBoolean()
+    private val closeCompleted = CompletableDeferred<Unit>()
+    private val applicationExitMutex = Mutex()
+    private val failureLock = Any()
+    private var terminalFailure: Throwable? = null
+    private var applicationExited = false
+
+    suspend operator fun invoke(applicationExit: () -> Unit = {}) {
+        if (closeRequested.compareAndSet(false, true)) {
+            runCatching { closeAndJoin() }
+                .exceptionOrNull()
+                ?.let(::recordFailure)
+            closeCompleted.complete(Unit)
+        } else {
+            closeCompleted.await()
+        }
+        applicationExitMutex.withLock {
+            if (!applicationExited) {
+                try {
+                    applicationExit()
+                    applicationExited = true
+                } catch (failure: Throwable) {
+                    recordFailure(failure)
+                }
+            }
+        }
     }
-    if (closeRequested.get()) closeResult.await().getOrThrow()
+
+    suspend fun throwTerminalFailure() {
+        if (!closeRequested.get()) return
+        closeCompleted.await()
+        val failure = applicationExitMutex.withLock { synchronized(failureLock) { terminalFailure } }
+        failure?.let { throw it }
+    }
+
+    private fun recordFailure(failure: Throwable) {
+        synchronized(failureLock) {
+            terminalFailure = preserveLifecycleFailure(terminalFailure, failure)
+        }
+    }
+}
+
+internal suspend fun observeDesktopGuiTestModeTermination(
+    awaitTermination: () -> Unit,
+    requestClose: suspend () -> Unit,
+) {
+    runInterruptible(Dispatchers.IO, awaitTermination)
+    requestClose()
 }
 
 private suspend fun runDesktopComposeWindowEventLoop(
     owner: DesktopOwnerStartup,
-    requestClose: suspend () -> Unit,
+    requestClose: DesktopApplicationCloseCoordinator,
 ) {
     installDesktopImageLoader(owner.ingress.uiDependencies)
     application {
         val applicationScope = rememberCoroutineScope()
+        val awaitTestModeTermination = requestClose.awaitTestModeTermination
+        LaunchedEffect(awaitTestModeTermination) {
+            if (awaitTestModeTermination != null) {
+                observeDesktopGuiTestModeTermination(awaitTestModeTermination) {
+                    requestClose { exitApplication() }
+                }
+            }
+        }
         Window(
             onCloseRequest = {
                 applicationScope.launch {
-                    try {
-                        requestClose()
-                    } finally {
-                        exitApplication()
-                    }
+                    requestClose { exitApplication() }
                 }
             },
             title = "Mihon Desktop $APP_VERSION", icon = androidx.compose.runtime.remember {
@@ -599,6 +665,7 @@ internal fun DesktopLocalizedNavigatorContent(
     navigator: Navigator,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
+        BindTestNavigationController(navigator)
         localeAdapter.Provide { SlideTransition(navigator) }
         DesktopLocaleFeedbackHost(
             localeAdapter = localeAdapter,

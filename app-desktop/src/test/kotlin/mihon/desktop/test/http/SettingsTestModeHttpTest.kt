@@ -81,7 +81,7 @@ class SettingsTestModeHttpTest {
                 assertTrue(search.body().contains("\"rows\":[{"), search.body())
 
                 assertEquals(200, post(baseUrl, "/test/action/setting_search_select", """{"index":"0"}""").statusCode())
-                assertTrue(TestNavigationController.pendingScreenNavigation.value != null)
+                assertTrue(TestNavigationController.pendingScreenRequest.value != null)
                 assertEquals(404, post(baseUrl, "/test/action/setting_search_select", """{"index":"99"}""").statusCode())
             }
         } finally {

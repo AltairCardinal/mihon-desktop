@@ -77,7 +77,7 @@ class HistoryTestModeHttpTest {
                 assertEquals(200, post(baseUrl, "/test/action/history_search", """{"query":""}""").statusCode())
                 assertEquals(listOf("Naruto"), model.state.value.items.map { it.title })
                 assertEquals(200, post(baseUrl, "/test/action/history_select", """{"index":0}""").statusCode())
-                assertTrue(TestNavigationController.pendingReaderScreen.value is DesktopReaderScreen)
+                assertTrue(TestNavigationController.pendingScreenRequest.value?.screen is DesktopReaderScreen)
 
                 assertEquals(200, post(baseUrl, "/test/action/history_clear_all", "{}").statusCode())
                 assertTrue(model.state.value.items.isEmpty())

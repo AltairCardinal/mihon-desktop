@@ -9,14 +9,17 @@ import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.DesktopLocalizedNavigatorContent
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.di.isolatedDesktopPreferenceStore
 import mihon.desktop.platform.DesktopExternalActionTarget
+import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.test.state.TestState
 import mihon.desktop.test.state.applicationState
 import mihon.desktop.submitDesktopExternalAction
@@ -24,11 +27,13 @@ import mihon.desktop.ui.home.ExternalActionFeedbackDispatcher
 import mihon.desktop.ui.home.HomeScreen
 import mihon.desktop.ui.library.LibraryNavigationHost
 import mihon.desktop.ui.library.ProvideLibraryNavigationHost
+import mihon.desktop.ui.reader.DesktopReaderScreen
 import mihon.desktop.ui.settings.ExtensionRepoScreen
 import mihon.desktop.ui.theme.DesktopTheme
 import mihon.domain.platform.ExternalActionInput
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -46,6 +51,84 @@ import java.util.Locale
 @Isolated
 @OptIn(ExperimentalComposeUiApi::class)
 class ExternalActionFeedbackWiringTest {
+    @Test
+    fun `production root navigator mounts the exact reader request`(@TempDir tempDir: File) = runBlocking {
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore(), startDownloadWorker = false)
+        val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+        lateinit var navigator: Navigator
+        try {
+            TestNavigationController.reset()
+            val dependencies = DesktopUiDependencies.fromInjekt()
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ProvideLibraryNavigationHost(mockk<LibraryNavigationHost>(relaxed = true)) {
+                        DesktopTheme {
+                            Navigator(HomeScreen()) { rootNavigator ->
+                                navigator = rootNavigator
+                                DesktopLocalizedNavigatorContent(dependencies.localeAdapter, rootNavigator)
+                            }
+                        }
+                    }
+                }
+            }
+            scene.render()
+
+            val reader = openTestReader(chapterId = 101L)
+            awaitReader(scene, navigator, reader)
+
+            assertSame(reader, navigator.lastItem)
+            assertEquals(listOf(HomeScreen::class, DesktopReaderScreen::class), navigator.items.map { it::class })
+        } finally {
+            scene.close()
+            TestNavigationController.reset()
+            applicationState.reset()
+            context.closeAndJoin()
+        }
+    }
+
+    @Test
+    fun `production root navigator replaces an open reader after test mode reset`(@TempDir tempDir: File) = runBlocking {
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore(), startDownloadWorker = false)
+        val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+        lateinit var navigator: Navigator
+        try {
+            TestNavigationController.reset()
+            val dependencies = DesktopUiDependencies.fromInjekt()
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ProvideLibraryNavigationHost(mockk<LibraryNavigationHost>(relaxed = true)) {
+                        DesktopTheme {
+                            Navigator(HomeScreen()) { rootNavigator ->
+                                navigator = rootNavigator
+                                DesktopLocalizedNavigatorContent(dependencies.localeAdapter, rootNavigator)
+                            }
+                        }
+                    }
+                }
+            }
+            scene.render()
+
+            val readerA = openTestReader(chapterId = 101L)
+            awaitReader(scene, navigator, readerA)
+            assertEquals(2, navigator.size)
+
+            TestNavigationController.reset()
+            val readerB = openTestReader(chapterId = 202L)
+            awaitReader(scene, navigator, readerB)
+
+            assertEquals(2, navigator.size)
+            assertTrue(navigator.items.first() is HomeScreen)
+            assertEquals(listOf(202L), navigator.items.filterIsInstance<DesktopReaderScreen>().map { it.chapterId })
+            assertFalse(navigator.items.any { it === readerA })
+            assertSame(readerB, navigator.lastItem)
+        } finally {
+            scene.close()
+            TestNavigationController.reset()
+            applicationState.reset()
+            context.closeAndJoin()
+        }
+    }
+
     @Test
     fun `Home feedback dispatcher bounds pending messages and shows one at a time`() = runTest {
         val dispatcher = ExternalActionFeedbackDispatcher(capacity = 2)
@@ -274,4 +357,26 @@ class ExternalActionFeedbackWiringTest {
 
     private fun semantics(node: SemanticsNode): String =
         node.config.toString() + node.children.joinToString(transform = ::semantics)
+
+    private fun openTestReader(chapterId: Long): DesktopReaderScreen {
+        TestNavigationController.openReader(
+            mangaId = 1L,
+            chapterId = chapterId,
+            chapterTitle = "Chapter $chapterId",
+            mangaTitle = "Mounted reader",
+            chapterUrl = "/chapter/$chapterId",
+            sourceId = 1L,
+            pageCount = 1,
+        )
+        return TestNavigationController.pushedScreens.value.single() as DesktopReaderScreen
+    }
+
+    private suspend fun awaitReader(scene: ImageComposeScene, navigator: Navigator, reader: DesktopReaderScreen) {
+        withTimeout(5_000) {
+            while (navigator.lastItem !== reader) {
+                scene.render()
+                yield()
+            }
+        }
+    }
 }

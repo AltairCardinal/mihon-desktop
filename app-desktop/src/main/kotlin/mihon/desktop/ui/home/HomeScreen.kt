@@ -180,26 +180,6 @@ class HomeScreen : Screen {
                     }
                 }
 
-                // Observe test navigation requests for screens
-                LaunchedEffect(Unit) {
-                    TestNavigationController.pendingScreenNavigation.collect { screen ->
-                        if (screen != null) {
-                            navigator.push(screen)
-                            TestNavigationController.clearPendingScreenNavigation()
-                        }
-                    }
-                }
-
-                // Observe pending pop requests (from close_reader, etc.)
-                LaunchedEffect(Unit) {
-                    TestNavigationController.pendingPop.collect { shouldPop ->
-                        if (shouldPop && navigator.size > 1) {
-                            navigator.pop()
-                            TestNavigationController.clearPendingPop()
-                        }
-                    }
-                }
-
                 Scaffold(
                     snackbarHost = {
                         SnackbarHost(hostState = snackbarHostState) { data ->

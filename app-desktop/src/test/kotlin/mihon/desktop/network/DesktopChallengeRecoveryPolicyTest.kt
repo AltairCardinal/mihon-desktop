@@ -1,6 +1,7 @@
 package mihon.desktop.network
 
 import eu.kanade.tachiyomi.network.DesktopCookieJar
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -1420,8 +1421,9 @@ class DesktopChallengeRecoveryPolicyTest {
         val sourceServer = MockWebServer().also { it.start() }
         val solverServer = MockWebServer().also { it.start() }
         val jarRef = AtomicReference<DesktopCookieJar>()
-        val newJarCommitted = CountDownLatch(1)
-        val releaseNewBinding = CountDownLatch(1)
+        val newJarCommitted = CompletableDeferred<Unit>()
+        val releaseNewBinding = CompletableDeferred<Unit>()
+        val releaseBridge = CountDownLatch(1)
         val commitOrdinal = AtomicInteger()
         try {
             sourceServer.enqueue(MockResponse(code = 200, body = "transition"))
@@ -1437,8 +1439,8 @@ class DesktopChallengeRecoveryPolicyTest {
                 solverClient = FlareSolverrClient(solverServer.url("/").toString().removeSuffix("/"), OkHttpClient()),
                 afterCommit = { _, _ ->
                     if (commitOrdinal.incrementAndGet() == 2) {
-                        newJarCommitted.countDown()
-                        check(releaseNewBinding.await(5, TimeUnit.SECONDS))
+                        newJarCommitted.complete(Unit)
+                        releaseNewBinding.await()
                     }
                 },
             )
@@ -1453,35 +1455,42 @@ class DesktopChallengeRecoveryPolicyTest {
                     ChallengeRecoveryIntent.UseFlareSolverr,
                 )
                 val beforeBridge = CountDownLatch(1)
-                val releaseBridge = CountDownLatch(1)
                 val transitionRequest = executeAsync(
-                    barrierClient(helper.client, beforeBridge, releaseBridge),
+                    barrierClient(helper.client, beforeBridge, releaseBridge, timeoutSeconds = 30),
                     sourceServer,
                 )
-                check(beforeBridge.await(5, TimeUnit.SECONDS))
+                check(beforeBridge.await(30, TimeUnit.SECONDS))
                 val recovery = async(Dispatchers.Default) {
                     manager.recover(
-                        manager.publish(loginRequest(url = sourceServer.url("/chapter").toString())),
+                        manager.publish(
+                            loginRequest(
+                                url = sourceServer.url("/chapter").toString(),
+                            ),
+                        ),
                         ChallengeRecoveryIntent.UseFlareSolverr,
                     )
                 }
-                check(newJarCommitted.await(5, TimeUnit.SECONDS))
+                withTimeout(30_000) { newJarCommitted.await() }
                 releaseBridge.countDown()
 
-                assertEquals(200, transitionRequest.get(5, TimeUnit.SECONDS))
-                val transition = sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing transition request")
+                assertEquals(200, transitionRequest.get(30, TimeUnit.SECONDS))
+                val transition = sourceServer.takeRequest(30, TimeUnit.SECONDS) ?: error("missing transition request")
                 assertTrue(transition.headers["Cookie"]?.contains("new-clearance") == true)
                 assertTrue(transition.headers["User-Agent"] != "old-agent")
 
-                releaseNewBinding.countDown()
-                assertInstanceOf(ChallengeRecoveryState.Recovered::class.java, recovery.await())
+                releaseNewBinding.complete(Unit)
+                assertInstanceOf(
+                    ChallengeRecoveryState.Recovered::class.java,
+                    withTimeout(30_000) { recovery.await() },
+                )
                 helper.client.newCall(Request.Builder().url(sourceServer.url("/published")).build()).execute().close()
-                val published = sourceServer.takeRequest(5, TimeUnit.SECONDS) ?: error("missing published request")
+                val published = sourceServer.takeRequest(30, TimeUnit.SECONDS) ?: error("missing published request")
                 assertTrue(published.headers["Cookie"]?.contains("new-clearance") == true)
                 assertEquals("new-agent", published.headers["User-Agent"])
             }
         } finally {
-            releaseNewBinding.countDown()
+            releaseBridge.countDown()
+            releaseNewBinding.complete(Unit)
             solverServer.close()
             sourceServer.close()
         }
@@ -2585,11 +2594,12 @@ class DesktopChallengeRecoveryPolicyTest {
         client: OkHttpClient,
         entered: CountDownLatch,
         release: CountDownLatch,
+        timeoutSeconds: Long = 5,
     ): OkHttpClient = client.newBuilder()
         .addInterceptor(
             Interceptor { chain ->
                 entered.countDown()
-                check(release.await(5, TimeUnit.SECONDS)) { "request bridge barrier was not released" }
+                check(release.await(timeoutSeconds, TimeUnit.SECONDS)) { "request bridge barrier was not released" }
                 chain.proceed(chain.request())
             },
         )

@@ -93,6 +93,7 @@ class DesktopAppRuntimeTest {
                 },
                 ownerIngressDependencies = { DesktopOwnerIngressDependencies(runtime, uiDependencies) },
                 runWindowEventLoop = { _, requestClose ->
+                    assertEquals(null, requestClose.awaitTestModeTermination)
                     assertEquals("zh-TW", Locale.getDefault().toLanguageTag())
                     assertEquals(
                         MR.strings.pref_app_language.localized(Locale.forLanguageTag("zh-TW")),
@@ -566,11 +567,12 @@ class DesktopAppRuntimeTest {
     }
 
     @Test
-    fun `duplicate close requests wait for the first terminal result`() = runTest {
+    fun `window close and test mode shutdown share one close and application exit`() = runTest {
         val failure = IllegalStateException("first close")
         val closeEntered = CompletableDeferred<Unit>()
         val releaseClose = CompletableDeferred<Unit>()
         var closeCalls = 0
+        var applicationExitCalls = 0
         var callbacksCompleted = 0
         val thrown = runCatching {
             runDesktopWindowApplication(
@@ -582,24 +584,185 @@ class DesktopAppRuntimeTest {
                 },
                 runWindowEventLoop = { requestClose ->
                     kotlinx.coroutines.coroutineScope {
-                        val first = async { requestClose(); callbacksCompleted++ }
+                        val windowClose = async {
+                            requestClose { applicationExitCalls++ }
+                            callbacksCompleted++
+                        }
                         closeEntered.await()
-                        val second = async { requestClose(); callbacksCompleted++ }
+                        val testModeShutdown = async {
+                            requestClose { applicationExitCalls++ }
+                            callbacksCompleted++
+                        }
                         kotlinx.coroutines.yield()
                         try {
-                            assertFalse(second.isCompleted)
+                            assertFalse(testModeShutdown.isCompleted)
                         } finally {
                             releaseClose.complete(Unit)
                         }
-                        first.await()
-                        second.await()
+                        windowClose.await()
+                        testModeShutdown.await()
                     }
                 },
             )
         }.exceptionOrNull()
         assertSame(failure, thrown)
         assertEquals(1, closeCalls)
+        assertEquals(1, applicationExitCalls)
         assertEquals(2, callbacksCompleted)
+    }
+
+    @Test
+    fun `close failure stays primary when the first application exit fails and a second source exits`() = runTest {
+        val closeFailure = IllegalStateException("close")
+        val applicationExitFailure = IllegalArgumentException("application exit")
+        var closeCalls = 0
+        var applicationExitAttempts = 0
+
+        val thrown = runCatching {
+            runDesktopWindowApplication(
+                closeAndJoin = {
+                    closeCalls++
+                    throw closeFailure
+                },
+                runWindowEventLoop = { requestClose ->
+                    runCatching {
+                        requestClose {
+                            applicationExitAttempts++
+                            throw applicationExitFailure
+                        }
+                    }
+                    runCatching {
+                        requestClose { applicationExitAttempts++ }
+                    }
+                },
+            )
+        }.exceptionOrNull()
+
+        assertSame(closeFailure, thrown)
+        assertEquals(listOf(applicationExitFailure), closeFailure.suppressed.toList())
+        assertEquals(1, closeCalls)
+        assertEquals(2, applicationExitAttempts)
+    }
+
+    @Test
+    fun `production GUI termination observer closes after termination returns`() = runBlocking {
+        val awaitStarted = CompletableDeferred<Unit>()
+        val termination = CountDownLatch(1)
+        var closeCalls = 0
+        val observer = async(Dispatchers.Default) {
+            observeDesktopGuiTestModeTermination(
+                awaitTermination = {
+                    awaitStarted.complete(Unit)
+                    termination.await()
+                },
+                requestClose = { closeCalls++ },
+            )
+        }
+
+        withTimeout(10_000) { awaitStarted.await() }
+        assertFalse(observer.isCompleted)
+        termination.countDown()
+        withTimeout(10_000) { observer.await() }
+
+        assertEquals(1, closeCalls)
+    }
+
+    @Test
+    fun `cancelling production GUI termination observer interrupts blocking await without closing`() = runBlocking {
+        val awaitStarted = CompletableDeferred<Unit>()
+        val awaitInterrupted = CompletableDeferred<Unit>()
+        val releaseAwait = CountDownLatch(1)
+        var closeCalls = 0
+        val observer = async(Dispatchers.Default) {
+            observeDesktopGuiTestModeTermination(
+                awaitTermination = {
+                    awaitStarted.complete(Unit)
+                    try {
+                        releaseAwait.await()
+                    } catch (error: InterruptedException) {
+                        awaitInterrupted.complete(Unit)
+                        throw error
+                    }
+                },
+                requestClose = { closeCalls++ },
+            )
+        }
+
+        try {
+            withTimeout(10_000) { awaitStarted.await() }
+            observer.cancel()
+            withTimeout(10_000) {
+                awaitInterrupted.await()
+                observer.join()
+            }
+            assertTrue(observer.isCancelled)
+            assertEquals(0, closeCalls)
+        } finally {
+            releaseAwait.countDown()
+            observer.cancel()
+            withTimeout(10_000) { observer.join() }
+        }
+    }
+
+    @Test
+    fun `GUI test mode termination closes through window coordinator and exits application`(
+        @org.junit.jupiter.api.io.TempDir tempDir: File,
+    ) = runBlocking {
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
+        val broker = DesktopExternalActionBroker(File(tempDir, "gui-test-mode-lifecycle.json"))
+        val uiDependencies = DesktopUiDependencies.fromInjekt()
+        val runtimeCloseCalls = AtomicInteger()
+        val runtime = DesktopAppRuntime(
+            RecordingRuntimeService(),
+            RecordingRuntimeService(),
+            RecordingRuntimeService(),
+            startupCleanup = {},
+            closeUpdater = { runtimeCloseCalls.incrementAndGet() },
+        )
+        val termination = TestModeRun()
+        val terminationAwaitStarted = CompletableDeferred<Unit>()
+        var applicationExitCalls = 0
+        var stopTestModeCalls = 0
+        try {
+            val lifecycle = async(Dispatchers.Default) {
+                startProductionDesktopApplication(
+                    args = arrayOf("--test-mode"),
+                    broker = broker,
+                    registrar = mihon.desktop.platform.DesktopUriSchemeRegistrar {
+                        DesktopUriSchemeRegistration.Result.Unavailable(
+                            DesktopUriSchemeRegistration.UnavailableReason.NON_PACKAGED_RUNTIME,
+                        )
+                    },
+                    ownerIngressDependencies = { DesktopOwnerIngressDependencies(runtime, uiDependencies) },
+                    startTestMode = {},
+                    awaitTestModeTermination = {
+                        terminationAwaitStarted.complete(Unit)
+                        termination.awaitTermination()
+                    },
+                    stopTestMode = { stopTestModeCalls++ },
+                    runWindowEventLoop = { _, requestClose ->
+                        checkNotNull(requestClose.awaitTestModeTermination).invoke()
+                        requestClose { applicationExitCalls++ }
+                    },
+                )
+            }
+
+            withTimeout(10_000) { terminationAwaitStarted.await() }
+            assertTrue(runtime.isRunning)
+            assertFalse(lifecycle.isCompleted)
+            termination.terminate()
+            withTimeout(10_000) { lifecycle.await() }
+
+            assertEquals(1, runtimeCloseCalls.get())
+            assertEquals(1, applicationExitCalls)
+            assertEquals(1, stopTestModeCalls)
+            assertFalse(runtime.isRunning)
+        } finally {
+            termination.terminate()
+            runtime.closeAndJoin()
+            broker.close()
+            context.closeAndJoin()
+        }
     }
 
     @Test

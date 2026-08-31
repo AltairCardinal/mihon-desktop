@@ -1,10 +1,15 @@
 package mihon.desktop.test.navigation
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import cafe.adriel.voyager.core.screen.Screen
+import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.tab.Tab
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
 import mihon.desktop.test.state.readerState
 import mihon.desktop.test.http.ReaderIoTestModeBridge
 import mihon.desktop.ui.authors.AuthorsTab
@@ -14,6 +19,7 @@ import mihon.desktop.ui.library.LibraryTab
 import mihon.desktop.ui.more.MoreTab
 import mihon.desktop.ui.settings.GeneralSettingsScreen
 import mihon.desktop.ui.updates.UpdatesTab
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Global navigation controller for test automation.
@@ -25,8 +31,12 @@ object TestNavigationController {
     private val _pendingTabNavigation = MutableStateFlow<String?>(null)
     val pendingTabNavigation: StateFlow<String?> = _pendingTabNavigation.asStateFlow()
 
-    private val _pendingScreenNavigation = MutableStateFlow<Screen?>(null)
-    val pendingScreenNavigation: StateFlow<Screen?> = _pendingScreenNavigation.asStateFlow()
+    private val nextScreenRequestId = AtomicLong()
+    private val _pendingScreenRequest = MutableStateFlow<ScreenNavigationRequest?>(null)
+    val pendingScreenRequest: StateFlow<ScreenNavigationRequest?> = _pendingScreenRequest.asStateFlow()
+
+    private val _rootResetGeneration = MutableStateFlow(0L)
+    val rootResetGeneration: StateFlow<Long> = _rootResetGeneration.asStateFlow()
 
     private val _navigationHistory = MutableStateFlow<List<NavigationRequest>>(emptyList())
     val navigationHistory: StateFlow<List<NavigationRequest>> = _navigationHistory.asStateFlow()
@@ -34,10 +44,6 @@ object TestNavigationController {
     // Store manga ID for read operations
     private var _pendingMangaId = MutableStateFlow<Long?>(null)
     val pendingMangaId: StateFlow<Long?> = _pendingMangaId.asStateFlow()
-
-    // Store pending reader screen for opening reader
-    private val _pendingReaderScreen = MutableStateFlow<Screen?>(null)
-    val pendingReaderScreen: StateFlow<Screen?> = _pendingReaderScreen.asStateFlow()
 
     // Track pushed screens for test navigation
     private val _pushedScreens = MutableStateFlow<List<Screen>>(emptyList())
@@ -55,7 +61,7 @@ object TestNavigationController {
         val tab = getTab(screenId)
         if (tab != null) {
             _pendingTabNavigation.value = screenId
-            _pendingScreenNavigation.value = null // Clear any pending screen
+            _pendingScreenRequest.value = null // Clear any pending screen
             _navigationHistory.value = _navigationHistory.value + NavigationRequest(
                 screenId = screenId,
                 success = true,
@@ -75,7 +81,7 @@ object TestNavigationController {
      * This requires being on the correct tab first.
      */
     fun navigateToScreen(screen: Screen): Boolean {
-        _pendingScreenNavigation.value = screen
+        publishScreenNavigation(screen)
         _navigationHistory.value = _navigationHistory.value + NavigationRequest(
             screenId = screen::class.java.simpleName,
             success = true,
@@ -95,7 +101,7 @@ object TestNavigationController {
      * Returns to the previous screen in the navigation history.
      */
     fun navigateBack(): Boolean {
-        _pendingScreenNavigation.value = null
+        _pendingScreenRequest.value = null
         _pendingTabNavigation.value = null
         _pendingPop.value = true
         return true
@@ -106,7 +112,7 @@ object TestNavigationController {
      */
     fun clearPendingNavigation() {
         _pendingTabNavigation.value = null
-        _pendingScreenNavigation.value = null
+        _pendingScreenRequest.value = null
     }
 
     /**
@@ -120,14 +126,15 @@ object TestNavigationController {
      * Clear only pending screen navigation after the root navigator consumes it.
      */
     fun clearPendingScreenNavigation() {
-        _pendingScreenNavigation.value = null
+        _pendingScreenRequest.value = null
     }
 
     /**
-     * Clear only pending reader screen navigation after the detail screen consumes it.
+     * Acknowledge only the exact screen instance consumed by the outer navigator.
+     * A newer request published while the old screen is being pushed must remain pending.
      */
-    fun clearPendingReaderScreen() {
-        _pendingReaderScreen.value = null
+    fun acknowledgeScreenNavigation(requestId: Long) {
+        _pendingScreenRequest.update { pending -> if (pending?.id == requestId) null else pending }
     }
 
     /**
@@ -253,8 +260,8 @@ object TestNavigationController {
             isDualPage = false,
             localChapterPath = localChapterPath,
         )
-        _pendingReaderScreen.value = readerScreen
-        _pushedScreens.value = _pushedScreens.value + readerScreen
+        publishScreenNavigation(readerScreen)
+        _pushedScreens.update { it + readerScreen }
 
         // Also update reader state
         readerState.open(
@@ -274,12 +281,54 @@ object TestNavigationController {
      */
     fun reset() {
         _pendingTabNavigation.value = null
-        _pendingScreenNavigation.value = null
+        _pendingScreenRequest.value = null
         _pendingMangaId.value = null
-        _pendingReaderScreen.value = null
         _pushedScreens.value = emptyList()
         _pendingPop.value = false
         _navigationHistory.value = emptyList()
+        _rootResetGeneration.update { it + 1L }
+    }
+
+    private fun publishScreenNavigation(screen: Screen) {
+        _pendingScreenRequest.value = ScreenNavigationRequest(
+            id = nextScreenRequestId.incrementAndGet(),
+            screen = screen,
+        )
+    }
+}
+
+/**
+ * Binds test navigation to the process-lifetime outer navigator.
+ *
+ * This must be mounted outside [mihon.desktop.ui.home.HomeScreen], because a Reader screen replaces
+ * HomeScreen and would otherwise dispose the collectors needed for reset, a subsequent push, or pop.
+ */
+@Composable
+internal fun BindTestNavigationController(navigator: Navigator) {
+    LaunchedEffect(navigator) {
+        var appliedResetGeneration = Long.MIN_VALUE
+        combine(
+            TestNavigationController.rootResetGeneration,
+            TestNavigationController.pendingScreenRequest,
+        ) { resetGeneration, pendingRequest -> resetGeneration to pendingRequest }
+            .collect { (resetGeneration, pendingRequest) ->
+                if (resetGeneration != appliedResetGeneration) {
+                    navigator.popUntilRoot()
+                    appliedResetGeneration = resetGeneration
+                }
+                if (pendingRequest != null) {
+                    navigator.push(pendingRequest.screen)
+                    TestNavigationController.acknowledgeScreenNavigation(pendingRequest.id)
+                }
+            }
+    }
+    LaunchedEffect(navigator) {
+        TestNavigationController.pendingPop.collect { shouldPop ->
+            if (shouldPop) {
+                if (navigator.size > 1) navigator.pop()
+                TestNavigationController.clearPendingPop()
+            }
+        }
     }
 }
 
@@ -291,4 +340,9 @@ data class NavigationRequest(
     val success: Boolean,
     val error: String? = null,
     val timestamp: Long = System.currentTimeMillis(),
+)
+
+data class ScreenNavigationRequest(
+    val id: Long,
+    val screen: Screen,
 )

@@ -85,11 +85,11 @@ class UpdatesTestModeHttpTest {
                 assertEquals(listOf(2L), fixture.enqueued.map { it.chapterId })
 
                 assertEquals(200, post(baseUrl, "/test/action/updates_select", """{"index":0}""").statusCode())
-                assertTrue(TestNavigationController.pendingReaderScreen.value is DesktopReaderScreen)
+                assertTrue(TestNavigationController.pendingScreenRequest.value?.screen is DesktopReaderScreen)
 
                 val upcoming = post(baseUrl, "/test/action/updates_open_upcoming", "{}")
                 assertEquals(200, upcoming.statusCode())
-                assertTrue(TestNavigationController.pendingScreenNavigation.value is UpcomingScreen)
+                assertTrue(TestNavigationController.pendingScreenRequest.value?.screen is UpcomingScreen)
                 assertTrue(upcoming.body().contains("\"upcomingOpened\":true"))
             }
         } finally {

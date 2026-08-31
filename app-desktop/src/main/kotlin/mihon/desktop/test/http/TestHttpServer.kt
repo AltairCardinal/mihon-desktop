@@ -679,10 +679,6 @@ internal fun Application.testHttpServer(
                         ?: params["chapterId"]?.toLongOrNull()
                         ?: 0L
                     if (mangaId > 0) {
-                        // Navigate to manga detail first
-                        TestNavigationController.navigateToMangaDetail(mangaId)
-
-                        // Then open reader
                         val chapterId = params["chapterId"]?.toLongOrNull() ?: mangaId
                         val chapterTitle = params["chapterTitle"] ?: "Chapter ${params["chapterIndex"] ?: 0}"
                         val fixtureController = ReaderIoTestModeBridge.controller

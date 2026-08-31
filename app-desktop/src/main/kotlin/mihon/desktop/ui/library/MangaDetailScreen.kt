@@ -124,16 +124,6 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val navigator = LocalNavigator.currentOrThrow
         val scope = rememberCoroutineScope()
 
-        // Observe test navigation for reader screen
-        LaunchedEffect(Unit) {
-            mihon.desktop.test.navigation.TestNavigationController.pendingReaderScreen.collect { readerScreen ->
-                if (readerScreen != null) {
-                    navigator.push(readerScreen)
-                    mihon.desktop.test.navigation.TestNavigationController.clearPendingReaderScreen()
-                }
-            }
-        }
-
         val screenModelFactory = LocalMangaDetailScreenModelFactory.current
         val model = rememberScreenModel { screenModelFactory(mangaId) }
         val state by model.state.collectAsState()

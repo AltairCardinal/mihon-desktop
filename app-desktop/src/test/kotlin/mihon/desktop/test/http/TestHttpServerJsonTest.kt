@@ -7,13 +7,16 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import mihon.desktop.test.navigation.TestNavigationController
 import mihon.desktop.test.state.applicationState
+import mihon.desktop.ui.reader.DesktopReaderScreen
 import mihon.domain.reader.observability.ReaderIoEvent
 import mihon.domain.reader.observability.ReaderIoEventType
 import mihon.domain.reader.observability.ReaderIoPurpose
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
 import java.net.URI
 import java.net.http.HttpClient
@@ -158,6 +161,19 @@ class TestHttpServerJsonTest {
                 )
                 assertEquals(200, actionResponse.statusCode(), "$source action failed: ${actionResponse.body()}")
 
+                // The test-only screen label is an acknowledgement, not evidence that production Reader UI mounted.
+                assertEquals("ReaderScreen", applicationState.currentScreen.value, source)
+                val readerScreen = assertInstanceOf(
+                    DesktopReaderScreen::class.java,
+                    TestNavigationController.pendingScreenRequest.value?.screen,
+                    "$source must request the real Reader screen through HomeScreen's outer navigator",
+                )
+                assertEquals(
+                    listOf(readerScreen),
+                    TestNavigationController.pushedScreens.value,
+                    "$source must publish exactly one Reader navigation request",
+                )
+
                 val stateResponse = client.send(
                     HttpRequest.newBuilder(URI.create("http://127.0.0.1:$port/test/reader/state")).GET().build(),
                     HttpResponse.BodyHandlers.ofString(),
@@ -174,6 +190,7 @@ class TestHttpServerJsonTest {
             }
         } finally {
             server.stop(0, 0)
+            TestNavigationController.reset()
             ReaderIoTestModeBridge.clear(controller)
             controller.close()
         }
