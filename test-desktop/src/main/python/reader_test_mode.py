@@ -55,6 +55,14 @@ class ReaderTestModeClient:
 
     def close_reader(self) -> None:
         self._request("POST", "/test/reader/close", {})
+        deadline = time.monotonic() + self.timeout_seconds
+        while True:
+            state = self._request("GET", "/test/reader/state")
+            if state.get("productionClosed") is True:
+                return
+            if time.monotonic() >= deadline:
+                raise ReaderContractError("timed out waiting for productionClosed=true")
+            time.sleep(0.02)
 
     def _request(
         self,
@@ -98,17 +106,34 @@ def validate_reader_state(state: dict[str, Any], source: str) -> ReaderMeasureme
                 f"{source}: readerFixture.{field} expected {expected!r}, got {fixture.get(field)!r}"
             )
 
-    expected_route_calls = 1 if source == "online" else 0
-    for field in ("sourcePageListCalls", "onlineImageRequests"):
-        actual = state.get(field)
-        if not isinstance(actual, int) or isinstance(actual, bool):
+    expected_page_list_calls = 1 if source == "online" else 0
+    source_page_list_calls = state.get("sourcePageListCalls")
+    if not isinstance(source_page_list_calls, int) or isinstance(source_page_list_calls, bool):
+        raise ReaderContractError(
+            f"{source}: sourcePageListCalls expected integer {expected_page_list_calls}, "
+            f"got {source_page_list_calls!r}"
+        )
+    if source_page_list_calls != expected_page_list_calls:
+        raise ReaderContractError(
+            f"{source}: sourcePageListCalls expected {expected_page_list_calls}, "
+            f"got {source_page_list_calls}"
+        )
+
+    online_image_requests = state.get("onlineImageRequests")
+    if not isinstance(online_image_requests, int) or isinstance(online_image_requests, bool):
+        raise ReaderContractError(
+            f"{source}: onlineImageRequests expected integer, got {online_image_requests!r}"
+        )
+    if source == "online":
+        if online_image_requests not in range(1, 6):
             raise ReaderContractError(
-                f"{source}: {field} expected integer {expected_route_calls}, got {actual!r}"
+                f"{source}: onlineImageRequests expected 1..5 for the upstream current plus nearby window, "
+                f"got {online_image_requests}"
             )
-        if actual != expected_route_calls:
-            raise ReaderContractError(
-                f"{source}: {field} expected {expected_route_calls}, got {actual}"
-            )
+    elif online_image_requests != 0:
+        raise ReaderContractError(
+            f"{source}: onlineImageRequests expected 0, got {online_image_requests}"
+        )
 
     raw_events = state.get("productionEvents")
     if not isinstance(raw_events, list) or not all(isinstance(event, dict) for event in raw_events):

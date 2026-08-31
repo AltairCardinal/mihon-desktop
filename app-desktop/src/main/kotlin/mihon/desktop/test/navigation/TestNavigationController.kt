@@ -258,6 +258,16 @@ object TestNavigationController {
         localChapterPath: String? = null,
     ) {
         ReaderIoTestModeBridge.beginScenario()
+        val readerGeneration = readerState.open(
+            chapterId = chapterId,
+            page = initialPage,
+            totalPages = pageCount,
+            isWebtoon = false,
+            mangaTitle = mangaTitle,
+            chapterTitle = chapterTitle,
+            hasNext = true,
+            hasPrev = false,
+        )
         val readerScreen = mihon.desktop.ui.reader.DesktopReaderScreen(
             chapterTitle = chapterTitle,
             mangaTitle = mangaTitle,
@@ -273,21 +283,10 @@ object TestNavigationController {
             isDualPage = false,
             localChapterPath = localChapterPath,
             progressTracker = syntheticReaderProgressTracker,
+            onProductionClosed = { readerState.markProductionClosed(readerGeneration) },
         )
         publishScreenNavigation(readerScreen)
         _pushedScreens.update { it + readerScreen }
-
-        // Also update reader state
-        readerState.open(
-            chapterId = chapterId,
-            page = initialPage,
-            totalPages = pageCount,
-            isWebtoon = false,
-            mangaTitle = mangaTitle,
-            chapterTitle = chapterTitle,
-            hasNext = true,
-            hasPrev = false,
-        )
     }
 
     /**

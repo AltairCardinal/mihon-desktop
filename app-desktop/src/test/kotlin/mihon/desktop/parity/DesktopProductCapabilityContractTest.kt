@@ -263,7 +263,7 @@ class DesktopProductCapabilityContractTest {
                             "canonical adjacent metadata uses anchor before first presentation without fetching images",
                             "opt in decorator waits for current generation first presentation and shared scheduler idle",
                             "stale generation target and repeated first presentation cannot release old adjacent work",
-                            "full next chapter waits for every current page then materializes all encoded pages without progress",
+                            "full next chapter waits for bounded current windows before prefetching without progress",
                             "first viewport mode materializes only its bounded next chapter prefix",
                             "off mode keeps last five page-list preload but never fetches adjacent images",
                             "switching off cancels a policy-only next chapter page-list request",
@@ -1980,7 +1980,7 @@ class DesktopProductCapabilityContractTest {
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt" to
                         mapOf(
-                            "full next chapter waits for every current page then materializes all encoded pages without progress" to
+                            "full next chapter waits for bounded current windows before prefetching without progress" to
                                 setOf("session.updateNextChapter", "releaseLastCurrentPage.complete"),
                             "first viewport mode materializes only its bounded next chapter prefix" to
                                 setOf("NextChapterPrefetchMode.FIRST_VIEWPORT", "nextPageFetches"),

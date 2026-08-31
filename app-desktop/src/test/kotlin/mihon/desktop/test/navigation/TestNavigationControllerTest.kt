@@ -1,6 +1,7 @@
 package mihon.desktop.test.navigation
 
 import kotlinx.coroutines.runBlocking
+import mihon.desktop.test.state.readerState
 import mihon.desktop.ui.reader.DesktopReaderScreen
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -20,6 +21,7 @@ class TestNavigationControllerTest {
     @AfterEach
     fun tearDown() {
         TestNavigationController.reset()
+        readerState.reset()
     }
 
     @Test
@@ -53,6 +55,81 @@ class TestNavigationControllerTest {
 
         assertNull(TestNavigationController.pendingScreenRequest.value)
         assertFalse(TestNavigationController.pendingPop.value)
+    }
+
+    @Test
+    fun `test mode close remains pending until the production reader reports disposal`() {
+        TestNavigationController.openReader(
+            mangaId = 1L,
+            chapterId = 10L,
+            chapterTitle = "Chapter 10",
+            mangaTitle = "Manga",
+            chapterUrl = "/chapter/10",
+            sourceId = 99L,
+        )
+        val readerScreen = assertInstanceOf(
+            DesktopReaderScreen::class.java,
+            TestNavigationController.pendingScreenRequest.value?.screen,
+        )
+
+        assertTrue(readerState.isOpen)
+        assertFalse(readerState.closeRequested)
+        assertFalse(readerState.productionClosed)
+
+        readerState.requestClose()
+
+        assertTrue(readerState.isOpen)
+        assertTrue(readerState.closeRequested)
+        assertFalse(readerState.productionClosed)
+
+        readerScreen.onProductionClosed()
+
+        assertFalse(readerState.isOpen)
+        assertTrue(readerState.closeRequested)
+        assertTrue(readerState.productionClosed)
+    }
+
+    @Test
+    fun `late production close from an older reader cannot close the current reader`() {
+        TestNavigationController.openReader(
+            mangaId = 1L,
+            chapterId = 10L,
+            chapterTitle = "Chapter 10",
+            mangaTitle = "Manga A",
+            chapterUrl = "/chapter/10",
+            sourceId = 99L,
+        )
+        val olderScreen = assertInstanceOf(
+            DesktopReaderScreen::class.java,
+            TestNavigationController.pendingScreenRequest.value?.screen,
+        )
+        TestNavigationController.openReader(
+            mangaId = 1L,
+            chapterId = 20L,
+            chapterTitle = "Chapter 20",
+            mangaTitle = "Manga B",
+            chapterUrl = "/chapter/20",
+            sourceId = 99L,
+        )
+        val currentScreen = assertInstanceOf(
+            DesktopReaderScreen::class.java,
+            TestNavigationController.pendingScreenRequest.value?.screen,
+        )
+        readerState.requestClose()
+
+        olderScreen.onProductionClosed()
+
+        assertTrue(readerState.isOpen)
+        assertEquals(20L, readerState.currentChapterId)
+        assertEquals("Manga B", readerState.mangaTitle)
+        assertTrue(readerState.closeRequested)
+        assertFalse(readerState.productionClosed)
+
+        currentScreen.onProductionClosed()
+
+        assertFalse(readerState.isOpen)
+        assertTrue(readerState.closeRequested)
+        assertTrue(readerState.productionClosed)
     }
 
     @Test

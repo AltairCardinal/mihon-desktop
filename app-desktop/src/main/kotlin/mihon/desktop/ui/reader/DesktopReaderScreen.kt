@@ -107,6 +107,7 @@ data class DesktopReaderScreen(
     val isDualPage: Boolean? = null,
     val localChapterPath: String? = null,
     @Transient val progressTracker: ReaderProgressTracker? = null,
+    @Transient val onProductionClosed: () -> Unit = {},
 ) : Screen {
 
     // 章节切换发生在同一 Screen/session 内；key 只标识最初打开的 reader entry。
@@ -125,6 +126,7 @@ data class DesktopReaderScreen(
                 mangaViewerFlags = mangaViewerFlags,
                 dualPageOverride = isDualPage,
                 progressTrackerOverride = progressTracker,
+                onProductionClosed = onProductionClosed,
             )
         }
         val runtime = checkNotNull(model.runtime)

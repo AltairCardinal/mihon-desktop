@@ -8,6 +8,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.exists
 import kotlinx.serialization.json.Json
@@ -145,6 +146,7 @@ class ReaderPerformanceRunnerContractTest {
         private val directoryLeaksOnlineIo: Boolean = false,
     ) : AutoCloseable {
         val requests = CopyOnWriteArrayList<String>()
+        private val productionClosed = AtomicBoolean()
         private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
             createContext("/") { exchange -> handle(exchange) }
             start()
@@ -153,7 +155,10 @@ class ReaderPerformanceRunnerContractTest {
 
         private fun handle(exchange: HttpExchange) {
             when (exchange.requestMethod to exchange.requestURI.path) {
-                "POST" to "/test/reset" -> exchange.respond("""{"success":true}""")
+                "POST" to "/test/reset" -> {
+                    productionClosed.set(false)
+                    exchange.respond("""{"success":true}""")
+                }
                 "POST" to "/test/action/read_chapter" -> {
                     val body = Json.parseToJsonElement(
                         exchange.requestBody.bufferedReader(StandardCharsets.UTF_8).readText(),
@@ -162,7 +167,10 @@ class ReaderPerformanceRunnerContractTest {
                     exchange.respond("""{"success":true,"action":"read_chapter"}""")
                 }
                 "GET" to "/test/reader/state" -> exchange.respond(readerState().toString())
-                "POST" to "/test/reader/close" -> exchange.respond("""{"success":true}""")
+                "POST" to "/test/reader/close" -> {
+                    productionClosed.set(true)
+                    exchange.respond("""{"success":true}""")
+                }
                 else -> exchange.respond("""{"success":false,"error":"NOT_FOUND"}""", status = 404)
             }
         }
@@ -183,6 +191,7 @@ class ReaderPerformanceRunnerContractTest {
             }
             return buildJsonObject {
                 put("isOpen", JsonPrimitive(true))
+                put("productionClosed", JsonPrimitive(productionClosed.get()))
                 put("totalPages", JsonPrimitive(180))
                 put("firstPagePresented", JsonPrimitive(true))
                 put("productionEvents", JsonArray(events))

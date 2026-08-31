@@ -70,6 +70,7 @@ class ReaderScreenModel(
     private val onNextChapterPrefetchChanged: (DesktopReaderChapterContext?, Int) -> Unit = { _, _ -> },
     internal val runtime: DesktopReaderRuntime? = null,
     private val ownedRuntimeScope: CoroutineScope? = null,
+    private val onProductionClosed: () -> Unit = {},
 ) : ScreenModel {
     private val _state = MutableStateFlow(buildInitialState(prefs, initialSessionState))
     val state: StateFlow<ReaderState> = _state.asStateFlow()
@@ -386,6 +387,7 @@ class ReaderScreenModel(
     override fun onDispose() {
         runtime?.close()
         ownedRuntimeScope?.cancel()
+        if (runtime != null) onProductionClosed()
     }
 }
 

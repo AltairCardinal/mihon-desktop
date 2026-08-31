@@ -6,6 +6,7 @@ import cafe.adriel.voyager.navigator.Navigator
 import dev.mihon.injekt.patchInjekt
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -262,6 +263,7 @@ class DesktopReaderChapterTransitionIntegrationTest {
             prefetchPreferenceJob = Job(),
         )
         val updates = mutableListOf<Pair<DesktopReaderChapterContext?, Int>>()
+        var screenProductionClosedCallbacks = 0
         val model = ReaderScreenModel(
             prefs = prefs,
             initialSessionState = session.state.value,
@@ -270,8 +272,11 @@ class DesktopReaderChapterTransitionIntegrationTest {
             },
             runtime = runtime,
         )
+        val productionClosedCallback = slot<() -> Unit>()
         val factory = mockk<DesktopReaderRuntimeFactory> {
-            every { createScreenModel(any(), any(), any(), any(), any()) } returns model
+            every {
+                createScreenModel(any(), any(), any(), any(), any(), capture(productionClosedCallback))
+            } returns model
         }
         val screen = DesktopReaderScreen(
             chapterTitle = "Chapter 1",
@@ -283,6 +288,7 @@ class DesktopReaderChapterTransitionIntegrationTest {
             mangaId = 44L,
             chapters = chapters,
             currentChapterIndex = 1,
+            onProductionClosed = { screenProductionClosedCallbacks += 1 },
         )
         val previousInjekt = Injekt
         val scene = ImageComposeScene(640, 480, coroutineContext = currentCoroutineContext()) {}
@@ -300,6 +306,8 @@ class DesktopReaderChapterTransitionIntegrationTest {
             assertEquals(listOf(1), updates.map { it.second })
             assertEquals(listOf(2L), updates.map { it.first?.chapterId })
             assertEquals(listOf(44L), updates.map { it.first?.mangaId })
+            productionClosedCallback.captured()
+            assertEquals(1, screenProductionClosedCallbacks)
         } finally {
             scene.close()
             runtime.close()

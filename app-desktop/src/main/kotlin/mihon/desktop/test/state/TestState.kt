@@ -152,7 +152,15 @@ val historyState = HistoryState()
  * Reader state for testing.
  */
 class ReaderState {
+    private var openGeneration: Long = 0L
+
     var isOpen: Boolean = false
+        private set
+    @Volatile
+    var closeRequested: Boolean = false
+        private set
+    @Volatile
+    var productionClosed: Boolean = false
         private set
     var currentChapterId: Long = 0L
         private set
@@ -171,8 +179,12 @@ class ReaderState {
     var hasPrevChapter: Boolean = false
         private set
 
-    fun open(chapterId: Long, page: Int, totalPages: Int, isWebtoon: Boolean, mangaTitle: String, chapterTitle: String, hasNext: Boolean, hasPrev: Boolean) {
+    @Synchronized
+    fun open(chapterId: Long, page: Int, totalPages: Int, isWebtoon: Boolean, mangaTitle: String, chapterTitle: String, hasNext: Boolean, hasPrev: Boolean): Long {
+        openGeneration += 1L
         this.isOpen = true
+        this.closeRequested = false
+        this.productionClosed = false
         this.currentChapterId = chapterId
         this.currentPage = page
         this.totalPages = totalPages
@@ -181,23 +193,41 @@ class ReaderState {
         this.chapterTitle = chapterTitle
         this.hasNextChapter = hasNext
         this.hasPrevChapter = hasPrev
+        return openGeneration
     }
 
     fun updatePage(page: Int) {
         this.currentPage = page
     }
 
-    fun close() {
+    fun requestClose() {
+        closeRequested = true
+    }
+
+    @Synchronized
+    fun markProductionClosed(generation: Long) {
+        if (generation != openGeneration) return
         isOpen = false
         currentChapterId = 0L
         currentPage = 0
         totalPages = 0
         mangaTitle = ""
         chapterTitle = ""
+        productionClosed = true
     }
 
+    @Synchronized
     fun reset() {
-        close()
+        openGeneration += 1L
+        isOpen = false
+        closeRequested = false
+        productionClosed = false
+        currentChapterId = 0L
+        currentPage = 0
+        totalPages = 0
+        isWebtoon = false
+        mangaTitle = ""
+        chapterTitle = ""
         hasNextChapter = false
         hasPrevChapter = false
     }

@@ -8,6 +8,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.exists
@@ -94,6 +95,35 @@ class DesktopFinalParityReaderClientContractTest {
     }
 
     @Test
+    fun `external client accepts the upstream online current plus nearby request window`() {
+        FakeReaderTestMode(
+            brokenProductionContent = false,
+            onlineFirstFrameImageRequests = 5,
+        ).use { server ->
+            val output = createTempDirectory("mihon-reader-client-online-window").resolve("summary.json")
+
+            val result = runClient(server.baseUrl, output)
+
+            assertEquals(0, result.exitCode, result.output)
+        }
+    }
+
+    @Test
+    fun `external client rejects online requests beyond the upstream nearby window`() {
+        FakeReaderTestMode(
+            brokenProductionContent = false,
+            onlineFirstFrameImageRequests = 6,
+        ).use { server ->
+            val output = createTempDirectory("mihon-reader-client-online-overflow").resolve("summary.json")
+
+            val result = runClient(server.baseUrl, output)
+
+            assertEquals(1, result.exitCode, result.output)
+            assertTrue(result.output.contains("onlineImageRequests"), result.output)
+        }
+    }
+
+    @Test
     fun `external client rejects non-current decode before the first frame`() {
         FakeReaderTestMode(
             brokenProductionContent = false,
@@ -141,6 +171,38 @@ class DesktopFinalParityReaderClientContractTest {
         }
     }
 
+    @Test
+    fun `external close waits until Test Mode confirms production reader closure`() {
+        FakeReaderTestMode(
+            brokenProductionContent = false,
+            productionCloseConfirmationPolls = 2,
+        ).use { server ->
+            val result = runCloseReaderClient(server.baseUrl, timeoutSeconds = 1.0)
+
+            assertEquals(0, result.exitCode, result.output)
+            assertEquals(1, server.closeCalls.get())
+            assertEquals(3, server.closeStateCalls.get())
+            assertEquals(2, server.unconfirmedCloseStateCalls.get())
+        }
+    }
+
+    @Test
+    fun `external close fails explicitly when production reader closure is never confirmed`() {
+        FakeReaderTestMode(
+            brokenProductionContent = false,
+            neverConfirmProductionClose = true,
+        ).use { server ->
+            val result = runCloseReaderClient(server.baseUrl, timeoutSeconds = 0.1)
+
+            assertEquals(1, result.exitCode, result.output)
+            assertTrue(
+                result.output.contains("timed out waiting for productionClosed"),
+                result.output,
+            )
+            assertTrue(server.closeStateCalls.get() > 1, "client did not poll production close state")
+        }
+    }
+
     private fun runClient(baseUrl: String, output: Path): RunResult {
         val python = System.getenv("MIHON_PYTHON")?.takeIf(String::isNotBlank) ?: "python"
         val process = ProcessBuilder(
@@ -168,15 +230,47 @@ class DesktopFinalParityReaderClientContractTest {
         return RunResult(process.exitValue(), process.inputStream.bufferedReader().readText())
     }
 
+    private fun runCloseReaderClient(baseUrl: String, timeoutSeconds: Double): RunResult {
+        val python = System.getenv("MIHON_PYTHON")?.takeIf(String::isNotBlank) ?: "python"
+        val process = ProcessBuilder(
+            python,
+            "-c",
+            "import sys; from reader_test_mode import ReaderTestModeClient; " +
+                "ReaderTestModeClient(sys.argv[1], float(sys.argv[2])).close_reader()",
+            baseUrl,
+            timeoutSeconds.toString(),
+        )
+            .directory(repositoryRoot.resolve("test-desktop/src/main/python").toFile())
+            .redirectErrorStream(true)
+            .also {
+                it.environment()["PYTHONUTF8"] = "1"
+                it.environment()["PYTHONIOENCODING"] = "utf-8"
+            }
+            .start()
+        if (!process.waitFor(5, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            process.waitFor()
+            return RunResult(-1, "reader close client timed out")
+        }
+        return RunResult(process.exitValue(), process.inputStream.bufferedReader().readText())
+    }
+
     private inner class FakeReaderTestMode(
         private val brokenProductionContent: Boolean,
         private val downloadedDirectoryLeaksOnlineIo: Boolean = false,
         private val invalidDecode: InvalidDecode? = null,
         private val firstPresentedPageIndex: Int = 0,
+        private val onlineFirstFrameImageRequests: Int = 1,
+        private val productionCloseConfirmationPolls: Int = 0,
+        private val neverConfirmProductionClose: Boolean = false,
     ) : AutoCloseable {
         val requests = CopyOnWriteArrayList<ReaderFixtureRequest>()
         val resetCalls = AtomicInteger()
         val stateCalls = AtomicInteger()
+        val closeCalls = AtomicInteger()
+        val closeStateCalls = AtomicInteger()
+        val unconfirmedCloseStateCalls = AtomicInteger()
+        private val closeRequested = AtomicBoolean()
         private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
             createContext("/") { exchange -> handle(exchange) }
             start()
@@ -187,6 +281,8 @@ class DesktopFinalParityReaderClientContractTest {
             when (exchange.requestMethod to exchange.requestURI.path) {
                 "POST" to "/test/reset" -> {
                     resetCalls.incrementAndGet()
+                    closeRequested.set(false)
+                    closeStateCalls.set(0)
                     exchange.respond("""{"success":true}""")
                 }
                 "POST" to "/test/action/read_chapter" -> {
@@ -205,18 +301,40 @@ class DesktopFinalParityReaderClientContractTest {
                 }
                 "GET" to "/test/reader/state" -> {
                     stateCalls.incrementAndGet()
-                    exchange.respond(readerState().toString())
+                    exchange.respond(readerState(productionClosed()).toString())
                 }
-                "POST" to "/test/reader/close" -> exchange.respond("""{"success":true}""")
+                "POST" to "/test/reader/close" -> {
+                    closeCalls.incrementAndGet()
+                    closeStateCalls.set(0)
+                    closeRequested.set(true)
+                    exchange.respond("""{"success":true}""")
+                }
                 else -> exchange.respond("""{"success":false,"error":"NOT_FOUND"}""", status = 404)
             }
         }
 
-        private fun readerState(): JsonObject {
-            val request = requests.lastOrNull() ?: error("reader state requested before read_chapter")
+        private fun productionClosed(): Boolean {
+            if (!closeRequested.get()) return false
+            val poll = closeStateCalls.incrementAndGet()
+            val closed = !neverConfirmProductionClose && poll > productionCloseConfirmationPolls
+            if (!closed) unconfirmedCloseStateCalls.incrementAndGet()
+            return closed
+        }
+
+        private fun readerState(productionClosed: Boolean): JsonObject {
+            val request = requests.lastOrNull()
+            if (request == null) {
+                return buildJsonObject {
+                    put("productionClosed", JsonPrimitive(productionClosed))
+                }
+            }
             val offlineRouteLeak = request.source == "downloaded_directory" && downloadedDirectoryLeaksOnlineIo
             val sourcePageListCalls = if (request.source == "online" || offlineRouteLeak) 1 else 0
-            val onlineImageRequests = if (request.source == "online" || offlineRouteLeak) 1 else 0
+            val onlineImageRequests = when {
+                offlineRouteLeak -> 1
+                request.source == "online" -> onlineFirstFrameImageRequests
+                else -> 0
+            }
             val events = if (brokenProductionContent) {
                 listOf(
                     event("OPEN_READER_INTENT", 100L, null, "READER_OPEN", request.chapterId),
@@ -250,6 +368,7 @@ class DesktopFinalParityReaderClientContractTest {
             }
             return buildJsonObject {
                 put("isOpen", JsonPrimitive(true))
+                put("productionClosed", JsonPrimitive(productionClosed))
                 put("totalPages", JsonPrimitive(request.pageCount))
                 put("firstPagePresented", JsonPrimitive(true))
                 put("productionEvents", JsonArray(events))

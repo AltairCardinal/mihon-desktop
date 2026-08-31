@@ -1061,7 +1061,7 @@ internal fun Application.testHttpServer(
         }
 
         post("/test/reader/close") {
-            readerState.close()
+            readerState.requestClose()
             applicationState.recordAction("reader_close", emptyMap())
             TestNavigationController.navigateBack()
             call.respondText(
@@ -1081,6 +1081,8 @@ internal fun Application.testHttpServer(
                 val fixtureController = ReaderIoTestModeBridge.controller
                 buildJsonObject {
                     put("isOpen", JsonPrimitive(readerState.isOpen))
+                    put("closeRequested", JsonPrimitive(readerState.closeRequested))
+                    put("productionClosed", JsonPrimitive(readerState.productionClosed))
                     put("currentPage", JsonPrimitive(readerState.currentPage))
                     put("totalPages", JsonPrimitive(readerState.totalPages))
                     put("currentChapterId", JsonPrimitive(readerState.currentChapterId))

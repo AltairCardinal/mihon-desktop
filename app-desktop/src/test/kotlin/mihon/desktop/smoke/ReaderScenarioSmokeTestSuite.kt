@@ -129,14 +129,16 @@ class ReaderScenarioSmokeTestSuite {
     }
 
     @Test
-    fun `reader close closes state and records history`() = runBlocking {
+    fun `reader close requests production disposal and records history`() = runBlocking {
         openReader()
 
         val response = client.post("$baseUrl/reader/close")
 
         assertEquals(HttpStatusCode.OK, response.status)
         val state = Json.parseToJsonElement(client.get("$baseUrl/reader/state").bodyAsText()).jsonObject
-        assertEquals(false, state.getValue("isOpen").jsonPrimitive.boolean)
+        assertEquals(true, state.getValue("isOpen").jsonPrimitive.boolean)
+        assertEquals(true, state.getValue("closeRequested").jsonPrimitive.boolean)
+        assertEquals(false, state.getValue("productionClosed").jsonPrimitive.boolean)
         assertTrue(client.get("$baseUrl/history").bodyAsText().contains("reader_close"))
     }
 

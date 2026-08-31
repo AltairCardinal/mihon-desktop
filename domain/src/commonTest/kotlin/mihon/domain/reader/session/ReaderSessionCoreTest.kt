@@ -97,6 +97,37 @@ class ReaderSessionCoreTest {
     }
 
     @Test
+    fun `settled viewport schedules only the upstream visible and nearby window`() {
+        val chapterId = ReaderChapterId(10)
+        val core = ReaderSessionCore(
+            initialChapterId = chapterId,
+            sessionId = "reader-upstream-window-test",
+        )
+        val opening = core.openChapter(chapterId)
+        val generation = opening.effects.filterIsInstance<ReaderSessionEffect.LoadPageList>().single().generation
+        core.acceptChapterMaterialization(
+            chapterId,
+            generation,
+            ReaderChapterMaterializeResult.Loaded(
+                List(180) { index -> ReaderPageDescriptor(index, url = "/page/$index") },
+            ),
+        )
+        val firstPage = ReaderPageId(chapterId, 0)
+
+        core.settleViewport(setOf(firstPage), firstPage, wasRead = false)
+
+        val scheduled = buildList {
+            while (true) {
+                val request = core.pollNextPageRequest() ?: break
+                add(request)
+                core.completePageRequest(request.jobKey)
+            }
+        }
+        assertEquals(listOf(0, 1, 2, 3, 4), scheduled.map { it.pageId.sourcePageIndex })
+        assertTrue(scheduled.all { it.kind != ReaderRequestKind.CURRENT_BACKGROUND })
+    }
+
+    @Test
     fun `double retry advances only target attempt clears stale content and keeps force-refresh P0 work`() {
         val chapterId = ReaderChapterId(11)
         val pageId = ReaderPageId(chapterId, 0)

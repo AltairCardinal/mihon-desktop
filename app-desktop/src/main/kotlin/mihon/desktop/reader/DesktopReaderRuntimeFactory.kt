@@ -233,6 +233,7 @@ class DesktopReaderRuntimeFactory internal constructor(
         mangaViewerFlags: Long,
         dualPageOverride: Boolean?,
         ownedRuntimeScope: CoroutineScope? = null,
+        onProductionClosed: () -> Unit = {},
     ): ReaderScreenModel = ReaderScreenModel(
         isWebtoon = isWebtoon,
         mangaViewerFlags = mangaViewerFlags,
@@ -249,6 +250,7 @@ class DesktopReaderRuntimeFactory internal constructor(
         onNextChapterPrefetchChanged = runtime.session::updateNextChapter,
         runtime = runtime,
         ownedRuntimeScope = ownedRuntimeScope,
+        onProductionClosed = onProductionClosed,
         persistViewerFlags = { targetMangaId, flags ->
             mangaRepository?.update(MangaUpdate(id = targetMangaId, viewerFlags = flags))
         },
@@ -260,6 +262,7 @@ class DesktopReaderRuntimeFactory internal constructor(
         mangaViewerFlags: Long,
         dualPageOverride: Boolean?,
         progressTrackerOverride: ReaderProgressTracker? = null,
+        onProductionClosed: () -> Unit = {},
     ): ReaderScreenModel {
         val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val runtime = try {
@@ -275,6 +278,7 @@ class DesktopReaderRuntimeFactory internal constructor(
                 mangaViewerFlags = mangaViewerFlags,
                 dualPageOverride = dualPageOverride,
                 ownedRuntimeScope = runtimeScope,
+                onProductionClosed = onProductionClosed,
             )
         } catch (error: Throwable) {
             runtime.close()

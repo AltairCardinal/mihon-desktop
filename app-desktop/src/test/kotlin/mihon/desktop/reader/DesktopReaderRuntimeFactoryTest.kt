@@ -250,13 +250,19 @@ class DesktopReaderRuntimeFactoryTest {
             wasRead = false,
         )
 
+        lateinit var runtime: DesktopReaderRuntime
+        var productionClosedCallbacks = 0
         val model = factory.createScreenModel(
             initialContext = context,
             isWebtoon = false,
             mangaViewerFlags = 0L,
             dualPageOverride = null,
+            onProductionClosed = {
+                assertThrows(IllegalStateException::class.java) { runtime.session.activate(context) }
+                productionClosedCallbacks += 1
+            },
         )
-        val runtime = requireNotNull(model.runtime)
+        runtime = requireNotNull(model.runtime)
         assertDoesNotThrow {
             runtime.session.activate(
                 context.copy(chapterId = 42L, chapterUrl = "/chapter/42", chapterTitle = "Chapter 42"),
@@ -266,6 +272,7 @@ class DesktopReaderRuntimeFactoryTest {
         model.onDispose()
 
         assertThrows(IllegalStateException::class.java) { runtime.session.activate(context) }
+        assertEquals(1, productionClosedCallbacks)
     }
 
     @Test

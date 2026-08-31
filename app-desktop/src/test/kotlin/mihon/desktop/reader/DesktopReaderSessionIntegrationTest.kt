@@ -558,8 +558,9 @@ class DesktopReaderSessionIntegrationTest {
     }
 
     @Test
-    fun `full next chapter waits for every current page then materializes all encoded pages without progress`() = runTest {
+    fun `full next chapter waits for bounded current windows before prefetching without progress`() = runTest {
         val releaseLastCurrentPage = CompletableDeferred<Unit>()
+        var lastCurrentPageFetchStarted = false
         val nextPageLists = mutableListOf<Long>()
         val nextPageFetches = mutableListOf<Int>()
         val progress = mutableListOf<ReaderProgressEffect>()
@@ -588,6 +589,7 @@ class DesktopReaderSessionIntegrationTest {
                         request: mihon.domain.reader.materialize.ReaderPageFetchRequest,
                     ): EncodedPageRef {
                         if (chapter.chapterId == 1L && descriptor.sourcePageIndex == 5) {
+                            lastCurrentPageFetchStarted = true
                             releaseLastCurrentPage.await()
                         }
                         if (chapter.chapterId == 2L) nextPageFetches += descriptor.sourcePageIndex
@@ -602,7 +604,8 @@ class DesktopReaderSessionIntegrationTest {
         session.start()
         session.updateNextChapter(context(2L), firstViewportPageCount = 2)
         advanceUntilIdle()
-        val first = session.state.value.snapshot.activeChapter.pages.first().id
+        val currentPages = session.state.value.snapshot.activeChapter.pages
+        val first = currentPages.first().id
 
         session.settleViewport(setOf(first), first)
         advanceUntilIdle()
@@ -613,12 +616,39 @@ class DesktopReaderSessionIntegrationTest {
         assertTrue(nextPageFetches.isEmpty())
         assertEquals(1, progress.size)
 
+        currentPages.subList(1, currentPages.lastIndex - 1).forEachIndexed { index, page ->
+            session.settleViewport(setOf(page.id), page.id)
+            advanceUntilIdle()
+            assertTrue(nextPageFetches.isEmpty())
+            assertEquals(index + 2, progress.size)
+        }
+
+        val penultimate = currentPages[currentPages.lastIndex - 1].id
+        session.settleViewport(setOf(penultimate), penultimate)
+        runCurrent()
+
+        assertEquals(listOf(2L), nextPageLists)
+        assertTrue(nextPageFetches.isEmpty())
+        assertTrue(lastCurrentPageFetchStarted)
+        assertEquals(5, progress.size)
+
         releaseLastCurrentPage.complete(Unit)
         advanceUntilIdle()
 
+        assertTrue(
+            session.state.value.snapshot.activeChapter.pages.all { page ->
+                page.loadState is ReaderPageLoadState.Ready
+            },
+            session.state.value.snapshot.activeChapter.pages.joinToString { page ->
+                "${page.id.sourcePageIndex}:${page.loadState}"
+            },
+        )
+        assertTrue(session.core.schedulerSnapshot().pendingRequests.isEmpty())
+        assertTrue(session.core.schedulerSnapshot().activeRequests.isEmpty())
+        assertTrue(session.pageRunnerSnapshot().activeRequestKeys.isEmpty())
         assertEquals(listOf(2L), nextPageLists)
         assertEquals(listOf(0, 1, 2), nextPageFetches)
-        assertEquals(1, progress.size)
+        assertEquals(5, progress.size)
 
         session.activate(context(2L))
         advanceUntilIdle()
@@ -629,7 +659,7 @@ class DesktopReaderSessionIntegrationTest {
 
         assertEquals(listOf(2L), nextPageLists)
         assertEquals(listOf(0, 1, 2), nextPageFetches)
-        assertEquals(2, progress.size)
+        assertEquals(6, progress.size)
         session.close()
     }
 

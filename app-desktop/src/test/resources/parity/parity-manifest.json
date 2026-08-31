@@ -29458,7 +29458,7 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderSessionCore.kt",
           "symbol": "fun enqueueAdjacentPage",
-          "line": 135
+          "line": 128
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -29561,7 +29561,7 @@
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoaderStorageClassificationTest.kt": ["encoded cache session startup failure is published as chapter storage error"],
       "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipelineTest.kt": ["generation fence rejects and releases a non cooperative stale decode", "decode concurrency is bounded and a stale queued request never starts"],
       "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderMaterializePortsIntegrationTest.kt": ["failed encoded write removes partial bytes before retry lookup", "empty encoded write is rejected instead of publishing a ready blank page", "concurrent reader stores share staging quota and active ref leases", "a new store instance reconciles prior cache bytes and enforces one cross-session quota", "replacement bytes stay invisible until one atomic commit", "same ref has one writer and cancelling a stale writer cannot delete the committed file", "download and local directory page lists expose ready encoded refs without copying", "archive page is materialized per page into the shared encoded store", "online page uses source client and headers then decode reads the same encoded ref", "online page executes the source image request method body and per-page headers", "child loaded source executes reflective getImage with its request semantics", "online failures retain shared empty authentication rate limit server and malformed errors", "successful HTTP with a malformed image body fails before the encoded ref becomes ready", "successful HTTP with a truncated pixel stream fails before the encoded ref becomes ready"],
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt": ["canonical adjacent metadata uses anchor before first presentation without fetching images", "opt in decorator waits for current generation first presentation and shared scheduler idle", "stale generation target and repeated first presentation cannot release old adjacent work", "full next chapter waits for every current page then materializes all encoded pages without progress", "first viewport mode materializes only its bounded next chapter prefix", "off mode keeps last five page-list preload but never fetches adjacent images", "switching off cancels a policy-only next chapter page-list request", "activating a prefetched chapter cancels P4 and retries its visible page as P0", "adjacent storage failure stops the remaining background chapter without changing active state", "non cooperative page cancellation keeps physical image requests within policy plus one stale request", "non cooperative target switches keep physical chapter requests within policy plus one stale request", "late storage failure from an old target cannot cancel the new target prefetch"],
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt": ["canonical adjacent metadata uses anchor before first presentation without fetching images", "opt in decorator waits for current generation first presentation and shared scheduler idle", "stale generation target and repeated first presentation cannot release old adjacent work", "full next chapter waits for bounded current windows before prefetching without progress", "first viewport mode materializes only its bounded next chapter prefix", "off mode keeps last five page-list preload but never fetches adjacent images", "switching off cancels a policy-only next chapter page-list request", "activating a prefetched chapter cancels P4 and retries its visible page as P0", "adjacent storage failure stops the remaining background chapter without changing active state", "non cooperative page cancellation keeps physical image requests within policy plus one stale request", "non cooperative target switches keep physical chapter requests within policy plus one stale request", "late storage failure from an old target cannot cancel the new target prefetch"],
       "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt": ["production runtime follows persisted next chapter prefetch changes", "production runtime preference changes drive off first viewport and full request sets", "production runtime binds the independent 512 MiB encoded cache policy", "production factory creates one shared core and exposes its canonical state to the model", "production factory coordinates encoded cache across concurrent reader runtimes"],
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt": ["mounted production screen launches next chapter prefetch wiring"],
       "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt": ["image prefetch defaults to off without persisting an implicit value", "explicit new image prefetch values win and remain persisted", "explicit legacy image prefetch values migrate to the new key and remain retained"],
@@ -29782,7 +29782,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
           "symbol": "fun acceptSessionState",
-          "line": 109
+          "line": 110
         }
       ],
       "FIXTURE": [
@@ -30180,12 +30180,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "ReaderViewportColorLayer(state.colorFilter)",
-          "line": 521
+          "line": 523
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "internal fun ReaderViewportColorLayer",
-          "line": 635
+          "line": 637
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",

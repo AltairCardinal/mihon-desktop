@@ -95,13 +95,6 @@ class ReaderSessionCore(
             anchorPage = anchorPageId.sourcePageIndex,
             pageCount = chapter.pages.size,
         )
-        val plannedPageIds = schedulePlan.requests.mapTo(mutableSetOf(), ReaderScheduledRequest::pageId)
-        chapter.pages.forEach { page ->
-            if (page.id !in plannedPageIds && page.loadState !is ReaderPageLoadState.Ready) {
-                requestScheduler.enqueue(page.id, ReaderRequestKind.CURRENT_BACKGROUND)
-            }
-        }
-
         settlementSequence++
         val progressEffect = ReaderProgressPolicy.reduce(
             ReaderProgressSignal.ViewportSettled(
