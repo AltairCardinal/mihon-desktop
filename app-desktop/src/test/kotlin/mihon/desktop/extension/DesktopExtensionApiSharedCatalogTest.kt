@@ -50,7 +50,7 @@ class DesktopExtensionApiSharedCatalogTest {
     }
 
     @Test
-    fun `Desktop production API rejects v2 index whose signing key differs from trusted repository`() = runBlocking {
+    fun `Desktop production API rejects v2 index whose signing key differs from trusted repository`(): Unit = runBlocking {
         MockWebServer().also { it.start() }.use { server ->
             val indexUrl = server.url("/index.pb")
             server.enqueue(

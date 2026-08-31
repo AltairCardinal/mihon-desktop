@@ -13,11 +13,13 @@ import io.ktor.server.routing.routing
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.newSingleThreadContext
 import kotlinx.coroutines.test.TestScope
@@ -26,6 +28,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import mihon.desktop.domain.DesktopSystemNotifier
 import okhttp3.Response
 import okhttp3.Protocol
@@ -45,6 +48,7 @@ import java.io.File
 import java.net.ServerSocket
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
 /** RED — DesktopDownloadManager does not exist yet. */
@@ -363,6 +367,7 @@ class DownloadManagerTest {
             assertTrue(provider.canonicalChapterTmpDir(identity).isDirectory)
 
             manager.clearErrors()
+            advanceUntilIdle()
 
             assertTrue(manager.queue.value.isEmpty())
             assertFalse(provider.canonicalChapterTmpDir(identity).exists())
@@ -517,7 +522,111 @@ class DownloadManagerTest {
     }
 
     @Test
-    fun `failure notification is committed before same id cancellation and reenqueue`() = runBlocking {
+    fun `blocked page and chapter finalization do not delay cancellation`(): Unit = runBlocking {
+        BlockingFinalizationStage.entries.forEach { stage ->
+            newSingleThreadContext("blocked-${stage.name.lowercase()}").use { dispatcher ->
+                val workerParent = SupervisorJob()
+                val entered = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                val operationFinished = CompletableDeferred<Unit>()
+                val provider = DesktopDownloadProvider(tempDir.resolve("blocked-${stage.name.lowercase()}"))
+                val preferences = DesktopDownloadPreferences(InMemoryPreferenceStore()).apply {
+                    downloadAsCbz.set(stage == BlockingFinalizationStage.CBZ_PACKAGE)
+                }
+                val manager = DesktopDownloadManager(
+                    provider = provider,
+                    networkHelper = NetworkHelper(OkHttpClient()),
+                    downloadPreferences = preferences,
+                    workerScope = CoroutineScope(workerParent + dispatcher),
+                    chapterPackager = { directory, target ->
+                        if (stage == BlockingFinalizationStage.CBZ_PACKAGE) {
+                            try {
+                                entered.complete(Unit)
+                                runBlocking { release.await() }
+                                CbzCreator.create(directory, target)
+                            } finally {
+                                operationFinished.complete(Unit)
+                            }
+                        } else {
+                            CbzCreator.create(directory, target)
+                        }
+                    },
+                    fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                        override fun execute(client: OkHttpClient, url: String): Response = Response.Builder()
+                            .request(Request.Builder().url(url).build())
+                            .protocol(Protocol.HTTP_1_1)
+                            .code(200)
+                            .message("OK")
+                            .body(jpegBytes().toResponseBody())
+                            .build()
+
+                        override fun renamePage(tmp: File, final: File) {
+                            if (stage == BlockingFinalizationStage.PAGE_RENAME) {
+                                try {
+                                    entered.complete(Unit)
+                                    runBlocking { release.await() }
+                                    tmp.parentFile.mkdirs()
+                                    tmp.writeBytes(jpegBytes())
+                                    DefaultDownloadFileOperations.renamePage(tmp, final)
+                                } finally {
+                                    operationFinished.complete(Unit)
+                                }
+                                return
+                            }
+                            DefaultDownloadFileOperations.renamePage(tmp, final)
+                        }
+
+                        override fun renameChapter(tmpDir: File, finalDir: File): Boolean {
+                            if (stage == BlockingFinalizationStage.CHAPTER_RENAME) {
+                                return try {
+                                    entered.complete(Unit)
+                                    runBlocking { release.await() }
+                                    tmpDir.mkdirs()
+                                    File(tmpDir, "001.jpg").writeBytes(jpegBytes())
+                                    DefaultDownloadFileOperations.renameChapter(tmpDir, finalDir)
+                                } finally {
+                                    operationFinished.complete(Unit)
+                                }
+                            }
+                            return DefaultDownloadFileOperations.renameChapter(tmpDir, finalDir)
+                        }
+                    },
+                )
+                val item = DownloadItem(
+                    sourceId = 42L,
+                    mangaTitle = "Blocked Manga",
+                    chapterName = stage.name,
+                    chapterId = 500L + stage.ordinal,
+                    pageUrls = listOf("https://fixture.invalid/page.jpg"),
+                )
+                manager.enqueue(item)
+                manager.start()
+                try {
+                    withTimeout(3_000) { entered.await() }
+                    val cancellation = async(Dispatchers.Default) { manager.cancel(item.chapterId) }
+                    assertTrue(withTimeout(3_000) { cancellation.await() })
+                    assertTrue(manager.queue.value.isEmpty())
+                    release.complete(Unit)
+                    withTimeout(3_000) { operationFinished.await() }
+                    withTimeout(3_000) {
+                        while (manager.activeJobCount > 1) delay(10)
+                    }
+                } finally {
+                    release.complete(Unit)
+                    withTimeout(3_000) { manager.stopAndJoin() }
+                    withTimeout(3_000) { workerParent.cancelAndJoin() }
+                }
+
+                assertFalse(provider.chapterTmpDir(item.sourceId, item.mangaTitle, item.chapterName).exists())
+                val finalDir = provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
+                assertFalse(finalDir.exists())
+                assertFalse(CbzCreator.defaultOutputFile(finalDir).exists())
+            }
+        }
+    }
+
+    @Test
+    fun `blocked failure notification does not delay same id cancellation and reenqueue`(): Unit = runBlocking {
         newSingleThreadContext("notification-download-worker").use { dispatcher ->
             // This fixture deliberately blocks the notifier, so it must own and bound its worker lifecycle.
             val workerParent = SupervisorJob()
@@ -527,7 +636,7 @@ class DownloadManagerTest {
             val notifier = DesktopSystemNotifier(
                 system = {
                     notificationStarted.countDown()
-                    check(releaseNotification.await(2, TimeUnit.SECONDS))
+                    check(releaseNotification.await(5, TimeUnit.SECONDS))
                     true
                 },
                 fallback = mihon.desktop.domain.DesktopNotificationService(),
@@ -563,11 +672,10 @@ class DownloadManagerTest {
                 }
                 replacement = replacementThread
 
-                assertFalse(replacementQueued.await(150, TimeUnit.MILLISECONDS))
-                releaseNotification.countDown()
                 assertTrue(replacementQueued.await(2, TimeUnit.SECONDS))
                 replacementThread.join(2_000)
                 assertFalse(replacementThread.isAlive)
+                releaseNotification.countDown()
             } finally {
                 releaseNotification.countDown()
                 replacement?.join(2_000)
@@ -579,7 +687,474 @@ class DownloadManagerTest {
     }
 
     @Test
-    fun `stopAndJoin suspends while active child finishes on shared single thread`() = runBlocking {
+    fun `same id replacement waits for asynchronous cancellation cleanup`(): Unit = runBlocking {
+        val provider = DesktopDownloadProvider(tempDir.resolve("retirement-gate"))
+        val item = DownloadItem(
+            sourceId = 42L,
+            mangaTitle = "Retirement Manga",
+            chapterName = "Chapter 6",
+            chapterId = 425L,
+            pageUrls = listOf("https://fixture.invalid/old.jpg"),
+        )
+        val oldTmp = provider.chapterTmpDir(item.sourceId, item.mangaTitle, item.chapterName)
+        val cleanupEntered = CompletableDeferred<Unit>()
+        val releaseCleanup = CompletableDeferred<Unit>()
+        val replacementAwaitEntered = CompletableDeferred<Unit>()
+        val replacementExecuted = CompletableDeferred<Unit>()
+        val workerParent = SupervisorJob()
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            networkHelper = NetworkHelper(OkHttpClient()),
+            workerScope = CoroutineScope(workerParent + Dispatchers.Default),
+            artifactCleaner = { artifact ->
+                if (artifact == oldTmp && cleanupEntered.complete(Unit)) {
+                    runBlocking { releaseCleanup.await() }
+                }
+                artifact.deleteRecursively()
+            },
+            retirementAwaitObserver = { replacementAwaitEntered.complete(Unit) },
+            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun execute(client: OkHttpClient, url: String): Response {
+                    replacementExecuted.complete(Unit)
+                    return Response.Builder()
+                        .request(Request.Builder().url(url).build())
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .body(jpegBytes().toResponseBody())
+                        .build()
+                }
+            },
+        )
+        manager.enqueue(item)
+        oldTmp.mkdirs()
+        File(oldTmp, "old.partial").writeText("old")
+
+        try {
+            assertTrue(withTimeout(2_000) { async(Dispatchers.Default) { manager.cancel(item.chapterId) }.await() })
+            withTimeout(2_000) { cleanupEntered.await() }
+            manager.enqueue(item.copy(pageUrls = listOf("https://fixture.invalid/replacement.jpg")))
+            manager.start()
+            withTimeout(2_000) {
+                manager.queue.first { queued -> queued.singleOrNull()?.status == DownloadStatus.DOWNLOADING }
+            }
+            withTimeout(2_000) { replacementAwaitEntered.await() }
+
+            assertFalse(replacementExecuted.isCompleted)
+            releaseCleanup.complete(Unit)
+            withTimeout(3_000) { replacementExecuted.await() }
+            withTimeout(3_000) { manager.queue.first { it.isEmpty() } }
+            assertArrayEquals(
+                jpegBytes(),
+                File(provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName), "001.jpg").readBytes(),
+            )
+        } finally {
+            releaseCleanup.complete(Unit)
+            withTimeout(3_000) { manager.stopAndJoin() }
+            withTimeout(3_000) { workerParent.cancelAndJoin() }
+        }
+    }
+
+    @Test
+    fun `producer completion gates cleanup after an external error transition`(): Unit = runBlocking {
+        val provider = DesktopDownloadProvider(tempDir.resolve("producer-retirement-gate"))
+        val item = DownloadItem(
+            sourceId = 42L,
+            mangaTitle = "Producer Gate Manga",
+            chapterName = "Chapter 6B",
+            chapterId = 4_251L,
+            pageUrls = listOf("https://fixture.invalid/old.jpg"),
+        )
+        val producerEntered = CompletableDeferred<Unit>()
+        val releaseProducer = CompletableDeferred<Unit>()
+        val cleanupAwaitEntered = CompletableDeferred<Unit>()
+        val cleanupEntered = CompletableDeferred<Unit>()
+        val releaseCleanup = CompletableDeferred<Unit>()
+        val replacementAwaitEntered = CompletableDeferred<Unit>()
+        val replacementExecuted = CompletableDeferred<Unit>()
+        val workerParent = SupervisorJob()
+        val staleFinal = provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            networkHelper = NetworkHelper(OkHttpClient()),
+            workerScope = CoroutineScope(workerParent + Dispatchers.Default),
+            retirementCleanupAwaitObserver = { cleanupAwaitEntered.complete(Unit) },
+            retirementAwaitObserver = { replacementAwaitEntered.complete(Unit) },
+            artifactCleaner = { artifact ->
+                if (artifact == staleFinal && cleanupEntered.complete(Unit)) {
+                    runBlocking { releaseCleanup.await() }
+                }
+                artifact.deleteRecursively()
+            },
+            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun execute(client: OkHttpClient, url: String): Response {
+                    if (url.endsWith("replacement.jpg")) replacementExecuted.complete(Unit)
+                    return Response.Builder()
+                        .request(Request.Builder().url(url).build())
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .body(jpegBytes().toResponseBody())
+                        .build()
+                }
+
+                override fun writePage(tmp: File, bytes: ByteArray) {
+                    if (producerEntered.complete(Unit)) runBlocking { releaseProducer.await() }
+                    tmp.parentFile.mkdirs()
+                    DefaultDownloadFileOperations.writePage(tmp, bytes)
+                }
+            },
+        )
+        manager.start()
+        manager.enqueue(item)
+        try {
+            withTimeout(2_000) { producerEntered.await() }
+            assertTrue(manager.transition(item.chapterId, mihon.domain.download.DownloadQueueStatus.ERROR))
+            staleFinal.mkdirs()
+            File(staleFinal, "stale.jpg").writeBytes(jpegBytes())
+            assertTrue(manager.cancel(item.chapterId))
+            manager.enqueue(item.copy(pageUrls = listOf("https://fixture.invalid/replacement.jpg")))
+            withTimeout(2_000) { cleanupAwaitEntered.await() }
+
+            assertFalse(withTimeoutOrNull(200) { cleanupEntered.await(); true } ?: false)
+            releaseProducer.complete(Unit)
+            withTimeout(2_000) { cleanupEntered.await() }
+            withTimeout(2_000) { replacementAwaitEntered.await() }
+            assertFalse(replacementExecuted.isCompleted)
+
+            releaseCleanup.complete(Unit)
+            withTimeout(3_000) { replacementExecuted.await() }
+            withTimeout(3_000) { manager.queue.first { it.isEmpty() } }
+        } finally {
+            releaseProducer.complete(Unit)
+            releaseCleanup.complete(Unit)
+            withTimeout(3_000) { manager.stopAndJoin() }
+            withTimeout(3_000) { workerParent.cancelAndJoin() }
+        }
+    }
+
+    @Test
+    fun `failed retirement cleanup cannot be adopted as a completed replacement`(): Unit = runBlocking {
+        val provider = DesktopDownloadProvider(tempDir.resolve("retirement-failure"))
+        val item = DownloadItem(
+            sourceId = 42L,
+            mangaTitle = "Retirement Failure Manga",
+            chapterName = "Chapter 7",
+            chapterId = 426L,
+            pageUrls = listOf("https://fixture.invalid/old.jpg"),
+        )
+        val staleFinal = provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
+        var executeCalls = 0
+        var cleanupAllowed = false
+        val workerParent = SupervisorJob()
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            networkHelper = NetworkHelper(OkHttpClient()),
+            workerScope = CoroutineScope(workerParent + Dispatchers.Default),
+            retryDelay = { },
+            artifactCleaner = { artifact ->
+                if (artifact == staleFinal && !cleanupAllowed) false else artifact.deleteRecursively()
+            },
+            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun execute(client: OkHttpClient, url: String): Response {
+                    executeCalls++
+                    return Response.Builder()
+                        .request(Request.Builder().url(url).build())
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .body(jpegBytes().toResponseBody())
+                        .build()
+                }
+            },
+        )
+        manager.enqueue(item)
+        staleFinal.mkdirs()
+        File(staleFinal, "001.jpg").writeBytes(jpegBytes())
+
+        try {
+            assertTrue(manager.cancel(item.chapterId))
+            manager.enqueue(item.copy(pageUrls = listOf("https://fixture.invalid/replacement.jpg")))
+            manager.start()
+            withTimeout(3_000) {
+                manager.queue.first { queued -> queued.singleOrNull()?.status == DownloadStatus.ERROR }
+            }
+
+            assertEquals(0, executeCalls)
+            assertTrue(staleFinal.isDirectory)
+            assertTrue(manager.failures.value[item.chapterId] is mihon.domain.error.AppError.Storage)
+
+            assertTrue(manager.cancel(item.chapterId))
+            manager.enqueue(item.copy(pageUrls = listOf("https://fixture.invalid/replacement.jpg")))
+            withTimeout(3_000) {
+                manager.queue.first { queued -> queued.singleOrNull()?.status == DownloadStatus.ERROR }
+            }
+            assertEquals(0, executeCalls)
+
+            cleanupAllowed = true
+            manager.retryItem(item.chapterId)
+            withTimeout(3_000) { manager.queue.first { it.isEmpty() } }
+            assertEquals(1, executeCalls)
+        } finally {
+            withTimeout(3_000) { manager.stopAndJoin() }
+            withTimeout(3_000) { workerParent.cancelAndJoin() }
+        }
+    }
+
+    @Test
+    fun `thrown retirement cleanup failure remains a retryable storage error`(): Unit = runBlocking {
+        val provider = DesktopDownloadProvider(tempDir.resolve("retirement-throw"))
+        val item = DownloadItem(
+            sourceId = 42L,
+            mangaTitle = "Retirement Throw Manga",
+            chapterName = "Chapter 7B",
+            chapterId = 4_261L,
+            pageUrls = listOf("https://fixture.invalid/replacement.jpg"),
+        )
+        val staleFinal = provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
+        val workerParent = SupervisorJob()
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            networkHelper = NetworkHelper(OkHttpClient()),
+            workerScope = CoroutineScope(workerParent + Dispatchers.Default),
+            artifactCleaner = { artifact ->
+                if (artifact == staleFinal) throw java.io.IOException("cleanup failed")
+                artifact.deleteRecursively()
+            },
+            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun execute(client: OkHttpClient, url: String): Response =
+                    error("replacement must not execute after cleanup throws")
+            },
+        )
+        manager.enqueue(item)
+        staleFinal.mkdirs()
+        File(staleFinal, "001.jpg").writeBytes(jpegBytes())
+        try {
+            assertTrue(manager.cancel(item.chapterId))
+            manager.enqueue(item)
+            manager.start()
+            withTimeout(3_000) {
+                manager.queue.first { queued -> queued.singleOrNull()?.status == DownloadStatus.ERROR }
+            }
+            assertTrue(staleFinal.isDirectory)
+            assertTrue(manager.failures.value[item.chapterId] is mihon.domain.error.AppError.Storage)
+        } finally {
+            withTimeout(3_000) { manager.stopAndJoin() }
+            withTimeout(3_000) { workerParent.cancelAndJoin() }
+        }
+    }
+
+    @Test
+    fun `canonical cleanup failure survives repeated cancellation without adopting stale content`(): Unit = runBlocking {
+        val provider = DesktopDownloadProvider(tempDir.resolve("canonical-retirement-chain"))
+        val identity = DownloadChapterIdentity(
+            sourceDisplayName = "Canonical Retirement Source",
+            mangaTitle = "Canonical Retirement Manga",
+            chapterName = "Chapter 7C",
+            scanlator = null,
+            chapterUrl = "/chapter/7c",
+            disallowNonAsciiFilenames = false,
+        )
+        val item = DownloadItem(
+            sourceId = 42L,
+            mangaTitle = identity.mangaTitle,
+            chapterName = identity.chapterName,
+            chapterId = 4_262L,
+            chapterUrl = identity.chapterUrl,
+            pageUrls = listOf("https://fixture.invalid/old.jpg"),
+        )
+        val canonicalFinal = provider.canonicalChapterDownloadDir(identity)
+        val firstWriteEntered = CompletableDeferred<Unit>()
+        val releaseFirstWrite = CompletableDeferred<Unit>()
+        val secondCleanupFinished = CompletableDeferred<Unit>()
+        val cleanupRuns = AtomicInteger()
+        var cleanupAllowed = false
+        var executeCalls = 0
+        val workerParent = SupervisorJob()
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            networkHelper = NetworkHelper(OkHttpClient()),
+            workerScope = CoroutineScope(workerParent + Dispatchers.Default),
+            downloadIdentityResolver = { identity },
+            retirementCleanupFinishedObserver = { _, _ ->
+                if (cleanupRuns.incrementAndGet() >= 2) secondCleanupFinished.complete(Unit)
+            },
+            artifactCleaner = { artifact ->
+                if (artifact == canonicalFinal && !cleanupAllowed) false else artifact.deleteRecursively()
+            },
+            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun execute(client: OkHttpClient, url: String): Response {
+                    executeCalls++
+                    return Response.Builder()
+                        .request(Request.Builder().url(url).build())
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .body(jpegBytes().toResponseBody())
+                        .build()
+                }
+
+                override fun writePage(tmp: File, bytes: ByteArray) {
+                    if (firstWriteEntered.complete(Unit)) runBlocking { releaseFirstWrite.await() }
+                    tmp.parentFile.mkdirs()
+                    DefaultDownloadFileOperations.writePage(tmp, bytes)
+                }
+            },
+        )
+        manager.start()
+        manager.enqueue(item)
+        try {
+            withTimeout(2_000) { firstWriteEntered.await() }
+            canonicalFinal.mkdirs()
+            File(canonicalFinal, "stale.jpg").writeBytes(jpegBytes())
+            assertTrue(manager.cancel(item.chapterId))
+            manager.enqueue(item.copy(pageUrls = listOf("https://fixture.invalid/replacement-1.jpg")))
+            releaseFirstWrite.complete(Unit)
+            withTimeout(3_000) {
+                manager.queue.first { queued -> queued.singleOrNull()?.status == DownloadStatus.ERROR }
+            }
+
+            assertTrue(manager.cancel(item.chapterId))
+            withTimeout(2_000) { secondCleanupFinished.await() }
+            manager.enqueue(item.copy(pageUrls = listOf("https://fixture.invalid/replacement-2.jpg")))
+            val repeatedResult = withTimeout(3_000) {
+                manager.queue.first { queued ->
+                    queued.isEmpty() || queued.singleOrNull()?.status == DownloadStatus.ERROR
+                }
+            }
+
+            assertEquals(DownloadStatus.ERROR, repeatedResult.single().status)
+            assertTrue(canonicalFinal.isDirectory)
+            assertEquals(1, executeCalls)
+
+            cleanupAllowed = true
+            manager.retryItem(item.chapterId)
+            withTimeout(3_000) { manager.queue.first { it.isEmpty() } }
+            assertEquals(2, executeCalls)
+        } finally {
+            releaseFirstWrite.complete(Unit)
+            withTimeout(3_000) { manager.stopAndJoin() }
+            withTimeout(3_000) { workerParent.cancelAndJoin() }
+        }
+    }
+
+    @Test
+    fun `completion persistence failure keeps the queue generation and published artifact`() = runTest {
+        val provider = DesktopDownloadProvider(tempDir.resolve("completion-persistence"))
+        val item = DownloadItem(
+            sourceId = 42L,
+            mangaTitle = "Persistence Manga",
+            chapterName = "Chapter 8",
+            chapterId = 427L,
+            pageUrls = listOf("https://fixture.invalid/page.jpg"),
+        )
+        var persistenceOutage = false
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            networkHelper = NetworkHelper(OkHttpClient()),
+            workerScope = this,
+            queuePersister = { entries ->
+                if (entries.isEmpty()) persistenceOutage = true
+                if (persistenceOutage) throw java.io.IOException("persistent queue storage outage")
+            },
+            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun execute(client: OkHttpClient, url: String): Response = Response.Builder()
+                    .request(Request.Builder().url(url).build())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(jpegBytes().toResponseBody())
+                    .build()
+            },
+        )
+        val worker = manager.start()
+        try {
+            manager.enqueue(item)
+            advanceUntilIdle()
+
+            assertEquals(DownloadStatus.ERROR, manager.queue.value.single().status)
+            assertTrue(provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName).isDirectory)
+            assertTrue(manager.failures.value[item.chapterId] is mihon.domain.error.AppError.Storage)
+        } finally {
+            worker.cancel()
+        }
+    }
+
+    @Test
+    fun `cancel persistence failure leaves state and files untouched`() {
+        val provider = DesktopDownloadProvider(tempDir.resolve("cancel-persistence"))
+        val item = DownloadItem(
+            sourceId = 42L,
+            mangaTitle = "Cancel Persistence Manga",
+            chapterName = "Chapter 9",
+            chapterId = 428L,
+            pageUrls = listOf("https://fixture.invalid/page.jpg"),
+        )
+        var cleanupCalls = 0
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            queuePersister = { entries ->
+                if (entries.isEmpty()) throw java.io.IOException("persist cancellation failed")
+            },
+            artifactCleaner = { artifact ->
+                cleanupCalls++
+                artifact.deleteRecursively()
+            },
+        )
+        manager.enqueue(item)
+        val tmpDir = provider.chapterTmpDir(item.sourceId, item.mangaTitle, item.chapterName)
+        tmpDir.mkdirs()
+        File(tmpDir, "001.tmp").writeText("partial")
+
+        assertFalse(manager.cancel(item.chapterId))
+        assertEquals(item.chapterId, manager.queue.value.single().chapterId)
+        assertTrue(tmpDir.isDirectory)
+        assertEquals(0, cleanupCalls)
+    }
+
+    @Test
+    fun `stopAndJoin waits for an active retirement cleanup`(): Unit = runBlocking {
+        val provider = DesktopDownloadProvider(tempDir.resolve("retirement-shutdown"))
+        val item = DownloadItem(
+            sourceId = 42L,
+            mangaTitle = "Retirement Shutdown Manga",
+            chapterName = "Chapter 10",
+            chapterId = 429L,
+            pageUrls = listOf("https://fixture.invalid/page.jpg"),
+        )
+        val cleanupEntered = CompletableDeferred<Unit>()
+        val releaseCleanup = CompletableDeferred<Unit>()
+        val workerParent = SupervisorJob()
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            workerScope = CoroutineScope(workerParent + Dispatchers.Default),
+            artifactCleaner = { artifact ->
+                if (cleanupEntered.complete(Unit)) runBlocking { releaseCleanup.await() }
+                artifact.deleteRecursively()
+            },
+        )
+        manager.enqueue(item)
+        provider.chapterTmpDir(item.sourceId, item.mangaTitle, item.chapterName).apply {
+            mkdirs()
+            File(this, "partial.tmp").writeText("partial")
+        }
+        assertTrue(manager.cancel(item.chapterId))
+        withTimeout(2_000) { cleanupEntered.await() }
+
+        val closing = async(Dispatchers.Default) { manager.stopAndJoin() }
+        try {
+            assertFalse(withTimeoutOrNull(200) { closing.await(); true } ?: false)
+            releaseCleanup.complete(Unit)
+            withTimeout(3_000) { closing.await() }
+        } finally {
+            releaseCleanup.complete(Unit)
+            withTimeout(3_000) { manager.stopAndJoin() }
+            withTimeout(3_000) { workerParent.cancelAndJoin() }
+        }
+    }
+
+    @Test
+    fun `stopAndJoin suspends while active child finishes on shared single thread`(): Unit = runBlocking {
         newSingleThreadContext("download-worker").use { dispatcher ->
             val started = CompletableDeferred<Unit>()
             val finallyEntered = CompletableDeferred<Unit>()
@@ -633,5 +1208,11 @@ class DownloadManagerTest {
         advanceUntilIdle()
         assertEquals(0, mgr.activeJobCount)
         assertFalse(mgr.queue.value.single().status == DownloadStatus.ERROR)
+    }
+
+    private enum class BlockingFinalizationStage {
+        PAGE_RENAME,
+        CHAPTER_RENAME,
+        CBZ_PACKAGE,
     }
 }

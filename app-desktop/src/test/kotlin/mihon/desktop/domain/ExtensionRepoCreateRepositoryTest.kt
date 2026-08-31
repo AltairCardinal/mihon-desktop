@@ -83,7 +83,7 @@ class ExtensionRepoCreateRepositoryTest {
     }
 
     @Test
-    fun `duplicate fingerprint still offers replacement after url normalization`() = runBlocking {
+    fun `duplicate fingerprint still offers replacement after url normalization`(): Unit = runBlocking {
         repository.insertRepo(
             baseUrl = "https://old.example/repo",
             name = "Old",

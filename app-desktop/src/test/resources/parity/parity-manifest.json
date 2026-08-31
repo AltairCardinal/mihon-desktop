@@ -32686,17 +32686,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "stateMachine.schedule(",
-          "line": 326
+          "line": 395
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "val wait = stateMachine.retryDelayMillis(retryAttempt++) ?: break",
-          "line": 471
+          "line": 558
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "val wait = stateMachine.retryDelayMillis(renameAttempt++) ?: break",
-          "line": 509
+          "line": 600
         }
       ],
       "FIXTURE": [

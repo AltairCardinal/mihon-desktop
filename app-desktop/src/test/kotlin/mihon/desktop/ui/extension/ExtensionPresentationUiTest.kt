@@ -466,7 +466,7 @@ class ExtensionPresentationUiTest {
 
     @OptIn(ExperimentalComposeUiApi::class)
     @Test
-    fun `stale catalog stays visible with background refresh feedback`() = runBlocking {
+    fun `stale catalog stays visible with background refresh feedback`(): Unit = runBlocking {
         val catalog = ExtensionCatalogResult(emptyList(), emptyList())
         val available = extension("Cached extension", "pkg.cached", listOf(source(9, "en", "Cached source")))
         val backgroundRefreshEntered = CompletableDeferred<Unit>()
@@ -483,6 +483,7 @@ class ExtensionPresentationUiTest {
                 catalog
             }
             every { availableExtensions(catalog) } returns listOf(available)
+            coEvery { loadExtensionIcon(any()) } returns null
         }
         val manager = mockk<DesktopExtensionManager>(relaxed = true)
         val model = ExtensionsScreenModel(
@@ -501,14 +502,13 @@ class ExtensionPresentationUiTest {
             nowMillis += 300_001L
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
-                    ExtensionListContent(model)
+                    ExtensionListContent(model, initialTab = 1)
                 }
             }
             backgroundRefreshEntered.await()
             scene.render()
-            click(scene, extensionListCopy().available)
 
-            awaitText(scene, available.name)
+            awaitText(scene, available.sources.single().name)
             awaitText(scene, extensionListCopy().refreshingCached)
             assertEquals(2, refreshCalls)
 

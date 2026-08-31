@@ -2,6 +2,9 @@ package mihon.desktop.ui
 
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.tab.Tab
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DownloadItem
@@ -29,6 +32,7 @@ import java.nio.file.Path
  *   6. DownloadManager.retryErrors resets ERROR items to QUEUED
  *   7. GetChapter is registered in DI (needed for HistoryTab navigation)
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class UIFixNavigationContractTest {
 
     private fun jpegBytes() = byteArrayOf(
@@ -210,9 +214,9 @@ class UIFixNavigationContractTest {
     }
 
     @Test
-    fun `cancel cleans up _tmp directory`(@TempDir tempDir: Path) {
+    fun `cancel cleans up _tmp directory`(@TempDir tempDir: Path): Unit = runTest {
         val provider = DesktopDownloadProvider(baseDir = tempDir.toFile())
-        val manager = DesktopDownloadManager(provider = provider)
+        val manager = DesktopDownloadManager(provider = provider, workerScope = this)
         manager.enqueue(makeItem(1L))
 
         // Simulate that a _tmp directory was created during download
@@ -220,16 +224,18 @@ class UIFixNavigationContractTest {
         tmpDir.mkdirs()
         File(tmpDir, "001.tmp").writeBytes(ByteArray(10))
 
-        manager.cancel(1L)
+        assertTrue(manager.cancel(1L))
 
         assertEquals(0, manager.queue.value.size)
+        assertTrue(tmpDir.exists(), "cancel should commit queue state before asynchronous disk cleanup")
+        advanceUntilIdle()
         assertFalse(tmpDir.exists(), "cancel should clean up _tmp directory")
     }
 
     @Test
-    fun `cancelAll cleans up all _tmp directories`(@TempDir tempDir: Path) {
+    fun `cancelAll cleans up all _tmp directories`(@TempDir tempDir: Path): Unit = runTest {
         val provider = DesktopDownloadProvider(baseDir = tempDir.toFile())
-        val manager = DesktopDownloadManager(provider = provider)
+        val manager = DesktopDownloadManager(provider = provider, workerScope = this)
         manager.enqueue(makeItem(1L))
         manager.enqueue(makeItem(2L))
 
@@ -244,6 +250,9 @@ class UIFixNavigationContractTest {
         manager.cancelAll()
 
         assertEquals(0, manager.queue.value.size)
+        assertTrue(tmp1.exists(), "cancelAll should commit queue state before asynchronous disk cleanup")
+        assertTrue(tmp2.exists(), "cancelAll should not block on disk cleanup")
+        advanceUntilIdle()
         assertFalse(tmp1.exists(), "cancelAll should clean up _tmp for item 1")
         assertFalse(tmp2.exists(), "cancelAll should clean up _tmp for item 2")
     }

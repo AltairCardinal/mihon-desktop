@@ -16,6 +16,7 @@ import mihon.domain.task.NotificationEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,6 +60,12 @@ class DesktopDownloadManager(
     private val stateMachine: DownloadQueueStateMachine = DownloadQueueStateMachine(),
     private val httpClient: OkHttpClient? = null,
     private val retryDelay: suspend (Long) -> Unit = { delay(it) },
+    private val chapterPackager: (File, File) -> Boolean = CbzCreator::create,
+    private val artifactCleaner: (File) -> Boolean = { artifact -> artifact.deleteRecursively() },
+    private val queuePersister: ((List<DownloadQueueEntry>) -> Unit)? = null,
+    private val retirementAwaitObserver: (Long) -> Unit = {},
+    private val retirementCleanupAwaitObserver: (Long) -> Unit = {},
+    private val retirementCleanupFinishedObserver: (Long, Boolean) -> Unit = { _, _ -> },
     private val fileOperations: DownloadFileOperations = DefaultDownloadFileOperations,
     private val taskNotifier: DesktopSystemNotifier? = null,
     private val sourceResolver: (Long) -> CatalogueSource? = { sourceId ->
@@ -79,6 +86,24 @@ class DesktopDownloadManager(
         val generation: Long,
     )
 
+    private data class ChapterRetirement(
+        val key: DownloadAttemptKey,
+        val item: DownloadItem,
+        val artifacts: List<File>,
+        val producerDone: CompletableDeferred<Unit>,
+        val completion: CompletableDeferred<RetirementCleanupResult> = CompletableDeferred(),
+    )
+
+    private data class RetirementCleanupResult(
+        val success: Boolean,
+        val error: Throwable? = null,
+    )
+
+    private data class CancelResult(
+        val retirement: ChapterRetirement,
+        val startCleanup: Boolean,
+    )
+
     private val lifecycleLock = Any()
     private val queueStateLock = Any()
     private var stopped = false
@@ -88,6 +113,8 @@ class DesktopDownloadManager(
     private val recoveredItems = store?.recover()?.map { it.toItem() } ?: emptyList()
     private val queueGenerations = recoveredItems.associate { it.chapterId to nextGeneration() }.toMutableMap()
     private val resolvedDownloadIdentities = mutableMapOf<DownloadAttemptKey, DownloadChapterIdentity>()
+    private val activeProducers = mutableMapOf<DownloadAttemptKey, CompletableDeferred<Unit>>()
+    private val retirementsByChapter = mutableMapOf<Long, ChapterRetirement>()
     private val _queue = MutableStateFlow(recoveredItems)
     override val queue: StateFlow<List<DownloadItem>> = _queue.asStateFlow()
     private val _failures = MutableStateFlow(recoveredItems.mapNotNull { item -> item.failure?.let { item.chapterId to it } }.toMap())
@@ -104,9 +131,15 @@ class DesktopDownloadManager(
     fun enqueue(item: DownloadItem) = synchronized(queueStateLock) {
         val current = _queue.value
         if (current.any { it.chapterId == item.chapterId }) return@synchronized
-        if (provider.isChapterDownloaded(item.sourceId, item.mangaTitle, item.chapterName)) return@synchronized
-        // Clean up any leftover _tmp directory from a previous attempt
-        provider.cleanupTmpDir(item.sourceId, item.mangaTitle, item.chapterName)
+        val hasRetiringAttempt = retirementsByChapter.containsKey(item.chapterId)
+        if (!hasRetiringAttempt && provider.isChapterDownloaded(item.sourceId, item.mangaTitle, item.chapterName)) {
+            return@synchronized
+        }
+        // A retirement owns the shared paths until its cleanup gate opens. Fresh attempts retain
+        // the historical eager cleanup behavior when no old producer can still touch the paths.
+        if (!hasRetiringAttempt) {
+            provider.cleanupTmpDir(item.sourceId, item.mangaTitle, item.chapterName)
+        }
         queueGenerations[item.chapterId] = nextGeneration()
         _queue.value = current + item
         persistQueue()
@@ -115,23 +148,51 @@ class DesktopDownloadManager(
     override fun enqueue(entry: DownloadQueueEntry) = enqueue(entry.toItem())
 
     /** Remove a queued item by chapter ID and clean up its _tmp directory. */
-    override fun cancel(chapterId: Long): Boolean = synchronized(queueStateLock) {
-        val item = _queue.value.find { it.chapterId == chapterId }
-        val generation = queueGenerations[chapterId]
-        if (
-            item == null ||
-            generation == null ||
-            stateMachine.transition(item.toEntry(0), DownloadQueueStatus.CANCELLED) == null
-        ) {
-            return@synchronized false
-        }
-        _queue.value = _queue.value.filterNot { it.chapterId == chapterId }
-        queueGenerations.remove(chapterId)
-        // Clean up _tmp directory if one exists
-        provider.cleanupTmpDir(item.sourceId, item.mangaTitle, item.chapterName)
-        resolvedDownloadIdentities.remove(DownloadAttemptKey(chapterId, generation))?.let(provider::cleanupTmpDir)
-        persistQueue()
-        true
+    override fun cancel(chapterId: Long): Boolean {
+        val result = synchronized(queueStateLock) {
+            val item = _queue.value.find { it.chapterId == chapterId }
+            val generation = queueGenerations[chapterId]
+            if (
+                item == null ||
+                generation == null ||
+                stateMachine.transition(item.toEntry(0), DownloadQueueStatus.CANCELLED) == null
+            ) {
+                null
+            } else {
+                val nextQueue = _queue.value.filterNot { it.chapterId == chapterId }
+                try {
+                    persistQueue(nextQueue)
+                } catch (_: Exception) {
+                    return@synchronized null
+                }
+                val key = DownloadAttemptKey(chapterId, generation)
+                val identity = resolvedDownloadIdentities.remove(key)
+                val existingRetirement = retirementsByChapter[chapterId]
+                val retirement = if (existingRetirement?.completion?.isCompleted == false) {
+                    existingRetirement
+                } else {
+                    ChapterRetirement(
+                        key = key,
+                        item = item,
+                        artifacts = (existingRetirement?.artifacts.orEmpty() + retirementArtifacts(item, identity))
+                            .distinctBy(File::getAbsolutePath),
+                        producerDone = activeProducers[key] ?: completedProducerSignal(),
+                    ).also { retirementsByChapter[chapterId] = it }
+                }
+                _queue.value = nextQueue
+                queueGenerations.remove(chapterId)
+                _failures.update { it - chapterId }
+                CancelResult(
+                    retirement = retirement,
+                    startCleanup = retirement !== existingRetirement,
+                )
+            }
+        } ?: return false
+
+        // Cancellation commits queue state promptly. Disk cleanup is serialized behind the old
+        // producer and never runs on the caller/UI thread.
+        if (result.startCleanup) launchRetirementCleanup(result.retirement)
+        return true
     }
 
     /** Cancel and clear the entire queue, cleaning up all _tmp directories. */
@@ -166,18 +227,26 @@ class DesktopDownloadManager(
         val currentGeneration = queueGenerations[chapterId] ?: return false
         if (expectedGeneration != null && currentGeneration != expectedGeneration) return false
         var changed = false
-        _queue.value = _queue.value.map { item ->
+        val nextQueue = _queue.value.map { item ->
             if (item.chapterId != chapterId) item else stateMachine.transition(item.toEntry(0), target)?.toItem()
                 ?.let { transitioned -> if (target == DownloadQueueStatus.QUEUED) transitioned.copy(failure = null, retryCount = 0) else transitioned }
                 ?.also { changed = true } ?: item
         }
         if (changed) {
+            try {
+                persistQueue(nextQueue)
+            } catch (error: Exception) {
+                // A persistent storage outage must not leave an already-finished producer stuck
+                // as DOWNLOADING for the rest of the process. ERROR remains retryable and recovery
+                // normalizes any older persisted DOWNLOADING row after restart.
+                if (target != DownloadQueueStatus.ERROR) throw error
+            }
+            _queue.value = nextQueue
             if (target == DownloadQueueStatus.QUEUED) {
                 resolvedDownloadIdentities.remove(DownloadAttemptKey(chapterId, currentGeneration))
                 queueGenerations[chapterId] = nextGeneration()
                 _failures.update { it - chapterId }
             }
-            persistQueue()
         }
         return changed
     }
@@ -341,12 +410,15 @@ class DesktopDownloadManager(
                     }
                 }
                 synchronized(lifecycleLock) {
-                    if (stopped || !setStatus(attempt, DownloadStatus.DOWNLOADING)) {
+                    if (stopped || !startAttempt(attempt)) {
                         job.cancel()
                         null
                     } else {
                         activeJobs += job
-                        job.invokeOnCompletion { synchronized(lifecycleLock) { activeJobs -= job } }
+                        job.invokeOnCompletion {
+                            finishProducer(attempt)
+                            synchronized(lifecycleLock) { activeJobs -= job }
+                        }
                         job.start()
                         job
                     }
@@ -366,6 +438,7 @@ class DesktopDownloadManager(
     private suspend fun downloadChapter(attempt: DownloadAttempt): Boolean {
         val item = attempt.item
         return try {
+            if (!awaitRetirement(attempt)) return false
             val downloadIdentity = downloadIdentityResolver(item)
             if (downloadIdentity != null && !registerIdentity(attempt, downloadIdentity)) return false
             if (!isCurrentAttempt(attempt)) return false
@@ -413,31 +486,36 @@ class DesktopDownloadManager(
             // Use _tmp directory for in-progress download (Android pattern)
             val tmpDir = downloadIdentity?.let(provider::canonicalChapterTmpDir)
                 ?: provider.chapterTmpDir(item.sourceId, item.mangaTitle, item.chapterName)
-            withCurrentAttempt(attempt) {
-                tmpDir.mkdirs()
-                // Clean up any leftover .tmp files from previous partial downloads
-                tmpDir.listFiles()
-                    ?.filter { it.extension == "tmp" }
-                    ?.forEach { it.delete() }
-                Unit
-            } ?: return false
+            if (!isCurrentAttempt(attempt)) return false
+            tmpDir.mkdirs()
+            // Clean up any leftover .tmp files from previous partial downloads.
+            // No replacement worker can start until this attempt has returned.
+            tmpDir.listFiles()
+                ?.filter { it.extension == "tmp" }
+                ?.forEach { it.delete() }
+            if (!isCurrentAttempt(attempt)) {
+                tmpDir.deleteRecursively()
+                return false
+            }
 
             urls.forEachIndexed { index, url ->
                 if (!isCurrentAttempt(attempt)) return false
 
                 val baseName = "%03d".format(index + 1)
-                val tmpFile = File(tmpDir, "$baseName.tmp")
+                val attemptTmpFile = File(tmpDir, "$baseName.${attempt.generation}.tmp")
 
                 // Skip if this page was already fully downloaded in a previous attempt
-                val alreadyDownloaded = withCurrentAttempt(attempt) {
-                    tmpDir.listFiles()
-                        ?.any {
-                            it.nameWithoutExtension == baseName &&
-                                it.extension != "tmp" &&
-                                provider.isValidDownloadedImage(it)
-                        }
-                        ?: false
-                } ?: return false
+                val alreadyDownloaded = tmpDir.listFiles()
+                    ?.any {
+                        it.nameWithoutExtension == baseName &&
+                            it.extension != "tmp" &&
+                            provider.isValidDownloadedImage(it)
+                    }
+                    ?: false
+                if (!isCurrentAttempt(attempt)) {
+                    tmpDir.deleteRecursively()
+                    return false
+                }
 
                 if (!alreadyDownloaded) {
                     // Download to .tmp file first
@@ -452,22 +530,31 @@ class DesktopDownloadManager(
                                 if (!isCurrentAttempt(attempt)) return false
                                 bytes
                             }
-                            withCurrentAttempt(attempt) {
-                                finalFile.delete()
-                                fileOperations.writePage(tmpFile, bytes)
-                                fileOperations.renamePage(tmpFile, finalFile)
-                                provider.isValidDownloadedImage(finalFile)
-                            } ?: return false
+                            fileOperations.writePage(attemptTmpFile, bytes)
+                            if (!isCurrentAttempt(attempt)) {
+                                tmpDir.deleteRecursively()
+                                return false
+                            }
+                            finalFile.delete()
+                            fileOperations.renamePage(attemptTmpFile, finalFile)
+                            val valid = provider.isValidDownloadedImage(finalFile)
+                            if (!isCurrentAttempt(attempt)) {
+                                tmpDir.deleteRecursively()
+                                return false
+                            }
+                            valid
                         } catch (error: Exception) {
                             if (error is CancellationException) throw error
                             lastError = error
                             false
                         }
                         if (!pageDownloaded) {
-                            withCurrentAttempt(attempt) {
-                                tmpFile.delete()
-                                finalFile.delete()
-                            } ?: return false
+                            attemptTmpFile.delete()
+                            finalFile.delete()
+                            if (!isCurrentAttempt(attempt)) {
+                                tmpDir.deleteRecursively()
+                                return false
+                            }
                             val wait = stateMachine.retryDelayMillis(retryAttempt++) ?: break
                             if (!updateRetryCount(attempt, retryAttempt)) return false
                             retryDelay(wait)
@@ -475,10 +562,12 @@ class DesktopDownloadManager(
                     }
                     if (!pageDownloaded) {
                         recordFailure(attempt, lastError.toAppError())
-                        withCurrentAttempt(attempt) {
-                            tmpFile.delete()
-                            finalFile.delete()
-                        } ?: return false
+                        attemptTmpFile.delete()
+                        finalFile.delete()
+                        if (!isCurrentAttempt(attempt)) {
+                            tmpDir.deleteRecursively()
+                            return false
+                        }
                         return false
                     }
                 }
@@ -491,47 +580,50 @@ class DesktopDownloadManager(
             val finalDir = downloadIdentity?.let(provider::canonicalChapterDownloadDir)
                 ?: provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
             val prefs = downloadPreferences ?: runCatching { Injekt.get<DesktopDownloadPreferences>() }.getOrNull()
-            var renamed = false
-            var renameAttempt = 0
-            var renameError: Throwable? = null
-            while (!renamed) {
-                renamed = try {
-                    withCurrentAttempt(attempt) {
+            if (!isCurrentAttempt(attempt)) return false
+            run {
+                var renamed = false
+                var renameAttempt = 0
+                var renameError: Throwable? = null
+                while (!renamed) {
+                    renamed = try {
+                        if (!isCurrentAttempt(attempt)) return false
                         finalDir.deleteRecursively()
+                        if (!isCurrentAttempt(attempt)) return false
                         fileOperations.renameChapter(tmpDir, finalDir)
-                    } ?: return false
-                } catch (error: Exception) {
-                    if (error is CancellationException) throw error
-                    renameError = error
-                    false
+                    } catch (error: Exception) {
+                        if (error is CancellationException) throw error
+                        renameError = error
+                        false
+                    }
+                    if (!renamed) {
+                        val wait = stateMachine.retryDelayMillis(renameAttempt++) ?: break
+                        if (!updateRetryCount(attempt, renameAttempt)) return false
+                        retryDelay(wait)
+                    }
                 }
                 if (!renamed) {
-                    val wait = stateMachine.retryDelayMillis(renameAttempt++) ?: break
-                    if (!updateRetryCount(attempt, renameAttempt)) return false
-                    retryDelay(wait)
+                    recordFailure(attempt, AppError.Storage(renameError))
+                    return false
                 }
-            }
-            if (!renamed) {
-                recordFailure(attempt, AppError.Storage(renameError))
-                return false
-            }
 
-            try {
-                withCurrentAttempt(attempt) {
+                if (!isCurrentAttempt(attempt)) return false
+                try {
                     if (prefs?.downloadAsCbz?.get() == true) {
                         val cbzFile = CbzCreator.defaultOutputFile(finalDir)
-                        val packed = CbzCreator.create(finalDir, cbzFile)
+                        val packed = chapterPackager(finalDir, cbzFile)
                         if (packed) {
                             // Remove individual image files — CBZ replaces them
                             finalDir.deleteRecursively()
                         }
                     }
+                    if (!isCurrentAttempt(attempt)) return false
                     completeAttempt(attempt)
-                } ?: false
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                recordFailure(attempt, error.toAppError())
-                false
+                } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                    recordFailure(attempt, error.toAppError())
+                    false
+                }
             }
         } catch (error: Exception) {
             if (error is CancellationException) throw error
@@ -553,10 +645,104 @@ class DesktopDownloadManager(
         queueGenerations[attempt.item.chapterId] == attempt.generation &&
             _queue.value.any { it.chapterId == attempt.item.chapterId }
 
-    private inline fun <T : Any> withCurrentAttempt(attempt: DownloadAttempt, block: () -> T): T? =
-        synchronized(queueStateLock) {
-            if (isCurrentAttemptLocked(attempt)) block() else null
+    private fun launchRetirementCleanup(retirement: ChapterRetirement) {
+        val job = workerScope.launch(start = CoroutineStart.LAZY) {
+            retirementCleanupAwaitObserver(retirement.item.chapterId)
+            retirement.producerDone.await()
+            settleRetirement(retirement)
         }
+        val shouldStart = synchronized(lifecycleLock) {
+            if (stopped) {
+                false
+            } else {
+                activeJobs += job
+                job.invokeOnCompletion { synchronized(lifecycleLock) { activeJobs -= job } }
+                true
+            }
+        }
+        if (shouldStart) {
+            job.start()
+        } else {
+            job.cancel()
+            retirement.completion.complete(
+                RetirementCleanupResult(
+                    success = false,
+                    error = CancellationException("Download manager is stopped"),
+                ),
+            )
+        }
+    }
+
+    private suspend fun awaitRetirement(attempt: DownloadAttempt): Boolean {
+        val retirement = synchronized(queueStateLock) { retirementsByChapter[attempt.item.chapterId] }
+            ?: return true
+        retirementAwaitObserver(attempt.item.chapterId)
+        val initialResult = retirement.completion.await()
+        if (!isCurrentAttempt(attempt)) return false
+        val result = if (initialResult.success) {
+            initialResult
+        } else {
+            cleanupRetirementArtifacts(retirement)
+        }
+        if (result.success) {
+            synchronized(queueStateLock) {
+                if (retirementsByChapter[attempt.item.chapterId] === retirement) {
+                    retirementsByChapter.remove(attempt.item.chapterId)
+                }
+            }
+            return isCurrentAttempt(attempt)
+        }
+        recordFailure(attempt, AppError.Storage(result.error))
+        return false
+    }
+
+    private fun settleRetirement(retirement: ChapterRetirement) {
+        val result = cleanupRetirementArtifacts(retirement)
+        if (result.success) {
+            synchronized(queueStateLock) {
+                if (retirementsByChapter[retirement.item.chapterId] === retirement) {
+                    retirementsByChapter.remove(retirement.item.chapterId)
+                }
+            }
+        }
+        retirement.completion.complete(result)
+        retirementCleanupFinishedObserver(retirement.item.chapterId, result.success)
+    }
+
+    private fun retirementArtifacts(
+        item: DownloadItem,
+        identity: DownloadChapterIdentity?,
+    ): List<File> {
+        val legacyFinal = provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
+        return buildList {
+            add(provider.chapterTmpDir(item.sourceId, item.mangaTitle, item.chapterName))
+            add(legacyFinal)
+            add(CbzCreator.defaultOutputFile(legacyFinal))
+            identity?.let {
+                val canonicalFinal = provider.canonicalChapterDownloadDir(identity)
+                add(provider.canonicalChapterTmpDir(identity))
+                add(canonicalFinal)
+                add(CbzCreator.defaultOutputFile(canonicalFinal))
+            }
+        }.distinctBy(File::getAbsolutePath)
+    }
+
+    private fun cleanupRetirementArtifacts(retirement: ChapterRetirement): RetirementCleanupResult {
+        var cleanupError: Throwable? = null
+        retirement.artifacts.forEach { artifact ->
+            if (!artifact.exists()) return@forEach
+            val removed = try {
+                artifactCleaner(artifact) && !artifact.exists()
+            } catch (error: Exception) {
+                cleanupError = cleanupError ?: error
+                false
+            }
+            if (!removed && cleanupError == null) {
+                cleanupError = java.io.IOException("Unable to remove retired download artifact: ${artifact.absolutePath}")
+            }
+        }
+        return RetirementCleanupResult(success = cleanupError == null, error = cleanupError)
+    }
 
     private fun registerIdentity(
         attempt: DownloadAttempt,
@@ -576,11 +762,14 @@ class DesktopDownloadManager(
         if (stateMachine.transition(item.toEntry(0), DownloadQueueStatus.COMPLETED) == null) {
             return@synchronized false
         }
+        val nextQueue = _queue.value.filterNot { it.chapterId == attempt.item.chapterId }
+        // Persist first: a storage failure must leave the current generation and its published
+        // artifact available for an explicit retry instead of committing a partial completion.
+        persistQueue(nextQueue)
         resolvedDownloadIdentities.remove(attempt.key)
         queueGenerations.remove(attempt.item.chapterId)
-        _queue.value = _queue.value.filterNot { it.chapterId == attempt.item.chapterId }
+        _queue.value = nextQueue
         _failures.update { it - attempt.item.chapterId }
-        persistQueue()
         true
     }
 
@@ -592,17 +781,42 @@ class DesktopDownloadManager(
         )
     }
 
-    private fun persistQueue() = store?.replaceAll(_queue.value.mapIndexed { index, item -> item.toEntry(index.toLong()) })
+    private fun startAttempt(attempt: DownloadAttempt): Boolean = synchronized(queueStateLock) {
+        if (
+            !transitionLocked(
+                chapterId = attempt.item.chapterId,
+                target = DownloadQueueStatus.DOWNLOADING,
+                expectedGeneration = attempt.generation,
+            )
+        ) {
+            return@synchronized false
+        }
+        activeProducers[attempt.key] = CompletableDeferred()
+        true
+    }
+
+    private fun finishProducer(attempt: DownloadAttempt) {
+        val completion = synchronized(queueStateLock) { activeProducers.remove(attempt.key) }
+        completion?.complete(Unit)
+    }
+
+    private fun completedProducerSignal() = CompletableDeferred<Unit>().apply { complete(Unit) }
+
+    private fun persistQueue(items: List<DownloadItem> = _queue.value) {
+        val entries = items.mapIndexed { index, item -> item.toEntry(index.toLong()) }
+        queuePersister?.invoke(entries) ?: store?.replaceAll(entries)
+    }
 
     private fun updateAttempt(
         attempt: DownloadAttempt,
         transform: (DownloadItem) -> DownloadItem,
     ): Boolean = synchronized(queueStateLock) {
         if (!isCurrentAttemptLocked(attempt)) return@synchronized false
-        _queue.value = _queue.value.map { item ->
+        val nextQueue = _queue.value.map { item ->
             if (item.chapterId == attempt.item.chapterId) transform(item) else item
         }
-        persistQueue()
+        persistQueue(nextQueue)
+        _queue.value = nextQueue
         true
     }
 
@@ -616,10 +830,10 @@ class DesktopDownloadManager(
     private fun recordFailure(attempt: DownloadAttempt, error: AppError) {
         val chapterId = attempt.item.chapterId
         val notifier = taskNotifier ?: runCatching { Injekt.get<DesktopSystemNotifier>() }.getOrNull()
-        synchronized(queueStateLock) {
-            if (!isCurrentAttemptLocked(attempt)) return@synchronized
+        val shouldNotify = synchronized(queueStateLock) {
+            if (!isCurrentAttemptLocked(attempt)) return@synchronized false
             var changed = false
-            _queue.value = _queue.value.map { item ->
+            val nextQueue = _queue.value.map { item ->
                 if (item.chapterId == chapterId && item.status != DownloadStatus.CANCELLED) {
                     changed = true
                     item.copy(failure = error)
@@ -628,13 +842,18 @@ class DesktopDownloadManager(
                 }
             }
             if (changed) {
+                // Reporting the storage error itself must remain visible even when the same
+                // persistence backend is unavailable.
+                runCatching { persistQueue(nextQueue) }
+                _queue.value = nextQueue
                 _failures.update { it + (chapterId to error) }
-                persistQueue()
-                notifier?.notify(
-                    NotificationEvent.Failure("download:$chapterId:${attempt.generation}", "下载失败", error.notificationMessage()),
-                )
             }
-            Unit
+            changed
+        }
+        if (shouldNotify) {
+            notifier?.notify(
+                NotificationEvent.Failure("download:$chapterId:${attempt.generation}", "下载失败", error.notificationMessage()),
+            )
         }
     }
 

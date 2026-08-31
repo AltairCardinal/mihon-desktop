@@ -4,8 +4,10 @@ import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -37,7 +39,7 @@ class DesktopDownloadRetryIntegrationTest {
     @TempDir lateinit var directory: File
 
     @Test
-    fun `page list boundary failures persist structured errors notify and retry clears them`() = runBlocking {
+    fun `page list boundary failures persist structured errors notify and retry clears them`(): Unit = runBlocking {
         val cases = listOf(
             "missing source" to SourceCase(null, AppError.Unknown::class),
             "missing chapter url" to SourceCase(PageSource { emptyList() }, AppError.MalformedData::class, chapterUrl = ""),
@@ -71,7 +73,7 @@ class DesktopDownloadRetryIntegrationTest {
     }
 
     @Test
-    fun `source resolution failure survives restart and retry clears persisted cause`() = runBlocking {
+    fun `source resolution failure survives restart and retry clears persisted cause`(): Unit = runBlocking {
         val dbFile = File(directory, "source-failure.db")
         val store = persistentStore(dbFile)
         val manager = DesktopDownloadManager(
@@ -98,7 +100,7 @@ class DesktopDownloadRetryIntegrationTest {
     }
 
     @Test
-    fun `HTTP failures use 2 4 8 retry policy without sleeping`() = runBlocking {
+    fun `HTTP failures use 2 4 8 retry policy without sleeping`(): Unit = runBlocking {
         listOf(403, 429, 500).forEach { code ->
             val server = MockWebServer().apply {
                 repeat(3) { enqueue(MockResponse(code = code)) }
@@ -119,19 +121,19 @@ class DesktopDownloadRetryIntegrationTest {
     }
 
     @Test
-    fun `connection socket failures use 2 4 8 retry policy`() = runBlocking {
+    fun `connection socket failures use 2 4 8 retry policy`(): Unit = runBlocking {
         verifySocketRetries { MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build() }
     }
 
     @Test
-    fun `response body socket failures use 2 4 8 retry policy`() = runBlocking {
+    fun `response body socket failures use 2 4 8 retry policy`(): Unit = runBlocking {
         verifySocketRetries {
             MockResponse.Builder().body(PNG.repeat(1024)).onResponseBody(SocketEffect.CloseSocket()).build()
         }
     }
 
     @Test
-    fun `exhausted server retries expose the final AppError`() = runBlocking {
+    fun `exhausted server retries expose the final AppError`(): Unit = runBlocking {
         val server = MockWebServer().apply {
             repeat(4) { enqueue(MockResponse(code = 500)) }
             start()
@@ -156,7 +158,7 @@ class DesktopDownloadRetryIntegrationTest {
     }
 
     @Test
-    fun `HTTP 403 429 and 500 retain structured details on the queue item`() = runBlocking {
+    fun `HTTP 403 429 and 500 retain structured details on the queue item`(): Unit = runBlocking {
         listOf(
             Triple(403, null, AppError.Authentication::class),
             Triple(429, "23", AppError.RateLimited::class),
@@ -181,7 +183,7 @@ class DesktopDownloadRetryIntegrationTest {
     }
 
     @Test
-    fun `file permission storage and unknown failures map accurately`() = runBlocking {
+    fun `file permission storage and unknown failures map accurately`(): Unit = runBlocking {
         listOf(
             AccessDeniedException("blocked") to AppError.Permission::class,
             IOException("No space left on device") to AppError.Storage::class,
@@ -203,34 +205,115 @@ class DesktopDownloadRetryIntegrationTest {
     }
 
     @Test
-    fun `cancelled item is not overwritten by a late worker failure`() = runBlocking {
+    fun `cancelled item is not overwritten by a late worker failure`(): Unit = runBlocking {
         val server = MockWebServer().apply { enqueue(MockResponse(body = PNG)); start() }
         val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
         val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val writeFinished = kotlinx.coroutines.CompletableDeferred<Unit>()
         val ops = object : DownloadFileOperations by DefaultDownloadFileOperations {
             override fun writePage(tmp: File, bytes: ByteArray) {
                 entered.complete(Unit)
-                runBlocking { release.await() }
-                throw IOException("late")
+                try {
+                    runBlocking { release.await() }
+                    throw IOException("late")
+                } finally {
+                    writeFinished.complete(Unit)
+                }
             }
         }
+        val manager = manager(server, mutableListOf(), ops)
         try {
-            val manager = manager(server, mutableListOf(), ops)
             val chapter = item(server)
             manager.enqueue(chapter)
-            val job = manager.start()
-            entered.await()
-            manager.cancel(chapter.chapterId)
-            release.complete(Unit)
-            delay(50)
-            job.cancel()
+            manager.start()
+            withTimeout(3_000) { entered.await() }
+            val cancellation = async(Dispatchers.Default) { manager.cancel(chapter.chapterId) }
+            try {
+                withTimeout(3_000) { cancellation.await() } shouldBe true
+            } finally {
+                release.complete(Unit)
+            }
+            withTimeout(3_000) { writeFinished.await() }
+            withTimeout(3_000) {
+                while (manager.activeJobCount > 1) delay(10)
+            }
             manager.queue.value shouldBe emptyList()
             manager.failures.value.containsKey(chapter.chapterId) shouldBe false
-        } finally { server.close() }
+        } finally {
+            release.complete(Unit)
+            withTimeout(3_000) { manager.stopAndJoin() }
+            server.close()
+        }
     }
 
     @Test
-    fun `retry clears persisted failure and a later success clears transient failure`() = runBlocking {
+    fun `late page write cannot overwrite an immediate same id reenqueue`(): Unit = runBlocking {
+        val firstBody = "${PNG}1"
+        val replacementBody = "${PNG}2"
+        val server = MockWebServer().apply {
+            enqueue(MockResponse(body = firstBody))
+            enqueue(MockResponse(body = replacementBody))
+            start()
+        }
+        val provider = DesktopDownloadProvider(File(directory, "same-id-write"))
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val firstWriteFinished = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var writes = 0
+        val ops = object : DownloadFileOperations by DefaultDownloadFileOperations {
+            override fun writePage(tmp: File, bytes: ByteArray) {
+                if (++writes == 1) {
+                    entered.complete(Unit)
+                    try {
+                        runBlocking { release.await() }
+                        tmp.parentFile.mkdirs()
+                        DefaultDownloadFileOperations.writePage(tmp, bytes)
+                    } finally {
+                        firstWriteFinished.complete(Unit)
+                    }
+                    return
+                }
+                DefaultDownloadFileOperations.writePage(tmp, bytes)
+            }
+        }
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            httpClient = OkHttpClient.Builder().retryOnConnectionFailure(false).build(),
+            workerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            retryDelay = {},
+            fileOperations = ops,
+        )
+        val chapter = item(server).copy(pageUrls = listOf(server.url("/page.png").toString()))
+        manager.enqueue(chapter)
+        manager.start()
+        try {
+            withTimeout(3_000) { entered.await() }
+            val cancellation = async(Dispatchers.Default) { manager.cancel(chapter.chapterId) }
+            withTimeout(3_000) { cancellation.await() } shouldBe true
+            manager.enqueue(chapter)
+            manager.queue.value.single().chapterId shouldBe chapter.chapterId
+            release.complete(Unit)
+            withTimeout(3_000) { firstWriteFinished.await() }
+            withTimeout(5_000) {
+                while (manager.queue.value.isNotEmpty()) delay(10)
+            }
+
+            val finalPage = File(
+                provider.chapterDownloadDir(chapter.sourceId, chapter.mangaTitle, chapter.chapterName),
+                "001.png",
+            )
+            finalPage.readBytes().toList() shouldBe replacementBody.encodeToByteArray().toList()
+            provider.chapterTmpDir(chapter.sourceId, chapter.mangaTitle, chapter.chapterName).exists() shouldBe false
+            manager.failures.value.containsKey(chapter.chapterId) shouldBe false
+        } finally {
+            release.complete(Unit)
+            withTimeout(3_000) { manager.stopAndJoin() }
+            server.close()
+        }
+    }
+
+    @Test
+    fun `retry clears persisted failure and a later success clears transient failure`(): Unit = runBlocking {
         val server = MockWebServer().apply {
             repeat(4) { enqueue(MockResponse(code = 500)) }
             enqueue(MockResponse(body = PNG))
@@ -251,7 +334,7 @@ class DesktopDownloadRetryIntegrationTest {
     }
 
     @Test
-    fun `terminal failure emits actionable notification`() = runBlocking {
+    fun `terminal failure emits actionable notification`(): Unit = runBlocking {
         val server = MockWebServer().apply { repeat(4) { enqueue(MockResponse(code = 403)) }; start() }
         val delivered = mutableListOf<mihon.desktop.domain.DesktopNotification>()
         try {
@@ -266,7 +349,7 @@ class DesktopDownloadRetryIntegrationTest {
     }
 
     @Test
-    fun `execute body read page write and final rename failures each use 2 4 8 retry policy`() = runBlocking {
+    fun `execute body read page write and final rename failures each use 2 4 8 retry policy`(): Unit = runBlocking {
         FailurePoint.entries.forEach { point ->
             val server = MockWebServer().apply { repeat(4) { enqueue(MockResponse(body = PNG)) }; start() }
             val delays = mutableListOf<Long>()

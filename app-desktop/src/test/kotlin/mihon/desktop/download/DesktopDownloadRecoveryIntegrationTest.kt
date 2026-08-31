@@ -97,7 +97,7 @@ class DesktopDownloadRecoveryIntegrationTest {
     }
 
     @Test
-    fun `worker resumes valid pages removes stale tmp and downloads only missing pages`() = runBlocking {
+    fun `worker resumes valid pages removes stale tmp and downloads only missing pages`(): Unit = runBlocking {
         val server = MockWebServer().apply { enqueue(MockResponse(body = PNG)); start() }
         try {
             val dbFile = File(directory, "resume.db")
@@ -141,7 +141,7 @@ class DesktopDownloadRecoveryIntegrationTest {
     }
 
     @Test
-    fun `recovered queue resolves canonical identity before resuming its write`() = runBlocking {
+    fun `recovered queue resolves canonical identity before resuming its write`(): Unit = runBlocking {
         val dbFile = File(directory, "canonical-recovery.db")
         val store = persistentStore(dbFile)
         store.replaceAll(listOf(entry(DownloadQueueStatus.QUEUED, 0).copy(

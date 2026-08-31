@@ -445,12 +445,14 @@ class SecuritySettingsWiringTest {
 
     @Test
     fun `production owner lifecycle waits for cleanup before propagating application failure`() = runBlocking {
+        val operationStarted = CompletableDeferred<Unit>()
         val cleanupStarted = CompletableDeferred<Unit>()
         val releaseCleanup = CompletableDeferred<Unit>()
         val parentScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val model = DesktopUpdateScreenModel(
             DesktopUpdateController(
                 {
+                    operationStarted.complete(Unit)
                     try {
                         awaitCancellation()
                     } finally {
@@ -466,6 +468,8 @@ class SecuritySettingsWiringTest {
             ),
             parentScope,
         )
+        assertTrue(model.intent(DesktopUpdateIntent.CHECK))
+        withTimeout(1_000) { operationStarted.await() }
         val appLock = DesktopAppLock(
             preferences(enabled = false, delay = 0),
             DesktopPassphraseVerifier(DesktopCredentialStore(MemoryCredentialBackend("secret".toCharArray()))),
@@ -498,6 +502,7 @@ class SecuritySettingsWiringTest {
             releaseCleanup.complete(Unit)
         }
         closing.await()
+        Unit
     }
 
     @Test

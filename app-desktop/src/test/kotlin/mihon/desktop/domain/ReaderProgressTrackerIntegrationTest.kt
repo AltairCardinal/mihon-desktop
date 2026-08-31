@@ -28,6 +28,7 @@ class ReaderProgressTrackerIntegrationTest {
 
         fixture.database.historyQueries.getHistoryByMangaId(10).executeAsOne().time_read shouldBe 1000
         fixture.database.reading_eventsQueries.countByChapter(1).executeAsOne() shouldBe 2
+        Unit
     }
 
     @Test
