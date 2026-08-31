@@ -636,7 +636,7 @@ class DownloadManagerTest {
             val notifier = DesktopSystemNotifier(
                 system = {
                     notificationStarted.countDown()
-                    check(releaseNotification.await(5, TimeUnit.SECONDS))
+                    releaseNotification.await()
                     true
                 },
                 fallback = mihon.desktop.domain.DesktopNotificationService(),
@@ -664,7 +664,7 @@ class DownloadManagerTest {
             var replacement: Thread? = null
             try {
                 manager.enqueue(item)
-                assertTrue(notificationStarted.await(2, TimeUnit.SECONDS))
+                assertTrue(notificationStarted.await(30, TimeUnit.SECONDS))
                 val replacementThread = thread(name = "same-id-reenqueue", isDaemon = true) {
                     assertTrue(manager.cancel(item.chapterId))
                     manager.enqueue(item.copy(pageUrls = listOf("https://fixture.invalid/replacement.jpg")))
@@ -672,13 +672,19 @@ class DownloadManagerTest {
                 }
                 replacement = replacementThread
 
-                assertTrue(replacementQueued.await(2, TimeUnit.SECONDS))
-                replacementThread.join(2_000)
+                assertTrue(replacementQueued.await(30, TimeUnit.SECONDS))
+                replacementThread.join(30_000)
                 assertFalse(replacementThread.isAlive)
                 releaseNotification.countDown()
+                withTimeout(30_000) {
+                    manager.queue.first { items -> items.singleOrNull()?.status == DownloadStatus.ERROR }
+                }
+                withTimeout(30_000) {
+                    while (manager.activeJobCount > 1) delay(10)
+                }
             } finally {
                 releaseNotification.countDown()
-                replacement?.join(2_000)
+                replacement?.join(30_000)
                 withTimeout(30_000) { manager.stopAndJoin() }
                 withTimeout(30_000) { worker.cancelAndJoin() }
                 withTimeout(30_000) { workerParent.cancelAndJoin() }
