@@ -332,7 +332,7 @@ Android Reader UI                 Desktop Reader presentation
   - [x] `RUA-06B` production mutation 证据与假阳性测试替换
   - [x] `RUA-06C` authority、manifest 与文档收口
 - [ ] `RUA-07` 跨平台全量验证、Test Mode、正式构建与关闭审计
-  - [ ] `RUA-07A` 跨平台测试矩阵、Spotless 与 final parity
+  - [x] `RUA-07A` 跨平台测试矩阵、Spotless 与 final parity
   - [ ] `RUA-07B` Test Mode、deterministic/Windows 性能与手动行为验收
   - [ ] `RUA-07C` Windows/macOS/Android 正式构建验收
   - [ ] `RUA-07D` manifest、路线图与唯一 active plan 关闭审计
@@ -750,6 +750,14 @@ Android Reader UI                 Desktop Reader presentation
 **关闭**：manifest、父路线、本计划、architecture 文档、构建产物和 commit 一致后，才勾选 RUA-07；若要恢复作者归档或非 Reader 计划，按第 2.2 节反向原子切换唯一 active-child-plan。
 
 **预计**：2–4 工程日，主要成本是 Gradle、Windows/macOS 打包、Test Mode 和真实运行等待。
+
+**RUA-07 精确提交检查点（2026-09-01，`4ffd026cc65e3d96c35fd952bc493dc106ef019e`）**：
+
+- `RUA-07A` 已完成。同一精确提交上的 composite 验证覆盖 shared domain、data、Android unit、`test-desktop`、`spotlessCheck` 与 `finalParityAudit`，结果为 `PASS`，且 `FINAL_PARITY_AUDIT_NON_TERMINAL_IDS=` 为空；Windows official build 另行补齐完整 `app-desktop:jvmTest` 并通过。此前两次被取消的 monolithic full matrix 不计为通过证据。
+- `RUA-07B` 未通过。正式 Windows fresh-process 性能中，downloaded directory 的 P95 为 2365 ms、max 为 2742 ms，超过 1000/2000 ms 门限；downloaded CBZ 的 P95 为 1250 ms、max 为 1284 ms，满足 1500/3000 ms 门限。两条路径的当前页 I/O gate 均正确，但不能抵消 wall-clock 性能失败。现有证据没有证明本批 lifecycle lease 引起加载链重叠或真实加载路径回归；在空闲、解锁的相同宿主上完成受控版本对照前，不回滚修复、不放宽门限，也不以重复运行覆盖失败样本。
+- `RUA-07C` 未通过。Windows v`0.11.19.19.4ffd026` official build 与 Android `assembleDebug` 通过；macOS exact build 通过，但 Aqua downloaded CBZ 在 10.499 秒触发默认 10 秒超时，后续 local archive 与 online 未执行，因此四路 production fixture 验收不完整。
+- production GUI final-parity 的 Reader family 与全部 13 个 family 均通过；全局 runner 仍因既有 `authors-entry partial` 永久保护门禁退出 6。Reader family 通过不等于全局 final-parity runner 通过，`authors-entry` 不得据此改为 `covered`。
+- 当前计划保持 `IN_PROGRESS`，父路线唯一 `active-child-plan` 继续指向本文，作者计划保持 `PAUSED`。性能归因和 macOS 四路验收完成前，不得关闭 `RUA-07B`、`RUA-07C`、`RUA-07D` 或顶层 `RUA-07`，也不得切换活动计划。
 
 ## 11. 测试矩阵与不可替代性能门禁
 
