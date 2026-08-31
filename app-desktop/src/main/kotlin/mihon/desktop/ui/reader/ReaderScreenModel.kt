@@ -30,6 +30,7 @@ import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderSessionSnapshot
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** UI preferences and presentation state for one long-lived Desktop reader session. */
 class ReaderScreenModel(
@@ -75,6 +76,10 @@ class ReaderScreenModel(
     private val _state = MutableStateFlow(buildInitialState(prefs, initialSessionState))
     val state: StateFlow<ReaderState> = _state.asStateFlow()
     private var lastSettledViewport: SettledViewportIdentity? = null
+    private val productionRuntimeLifecycleLock = Any()
+    private var retainedCompositionCount = 0
+    private var disposeRequested = false
+    private var productionRuntimeClosed = false
 
     private fun buildInitialState(
         prefs: ReaderPreferences,
@@ -384,10 +389,55 @@ class ReaderScreenModel(
         persistViewerFlags.invoke(mangaId, flags)
     }
 
+    internal fun retainProductionRuntimeForComposition(): AutoCloseable {
+        if (runtime == null) return AutoCloseable {}
+        synchronized(productionRuntimeLifecycleLock) {
+            check(!disposeRequested) { "Reader screen model is already disposed" }
+            retainedCompositionCount += 1
+        }
+        return ProductionRuntimeCompositionLease(::releaseProductionRuntimeComposition)
+    }
+
     override fun onDispose() {
-        runtime?.close()
-        ownedRuntimeScope?.cancel()
+        val closeRuntime = synchronized(productionRuntimeLifecycleLock) {
+            disposeRequested = true
+            markProductionRuntimeClosedIfReady()
+        }
+        if (closeRuntime) closeProductionRuntime()
+    }
+
+    private fun releaseProductionRuntimeComposition() {
+        val closeRuntime = synchronized(productionRuntimeLifecycleLock) {
+            check(retainedCompositionCount > 0) { "Reader composition lease was released without an owner" }
+            retainedCompositionCount -= 1
+            markProductionRuntimeClosedIfReady()
+        }
+        if (closeRuntime) closeProductionRuntime()
+    }
+
+    private fun markProductionRuntimeClosedIfReady(): Boolean {
+        if (productionRuntimeClosed || !disposeRequested || retainedCompositionCount != 0) return false
+        productionRuntimeClosed = true
+        return true
+    }
+
+    private fun closeProductionRuntime() {
+        try {
+            runtime?.close()
+        } finally {
+            ownedRuntimeScope?.cancel()
+        }
         if (runtime != null) onProductionClosed()
+    }
+}
+
+private class ProductionRuntimeCompositionLease(
+    private val release: () -> Unit,
+) : AutoCloseable {
+    private val closed = AtomicBoolean(false)
+
+    override fun close() {
+        if (closed.compareAndSet(false, true)) release()
     }
 }
 

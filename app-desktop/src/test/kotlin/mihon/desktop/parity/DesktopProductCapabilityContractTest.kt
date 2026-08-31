@@ -281,7 +281,7 @@ class DesktopProductCapabilityContractTest {
                             "production factory coordinates encoded cache across concurrent reader runtimes",
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
-                        setOf("mounted production screen launches next chapter prefetch wiring"),
+                        setOf("mounted production screen wires prefetch and retains runtime through outgoing composition"),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt" to
                         setOf(
                             "image prefetch defaults to off without persisting an implicit value",
@@ -2008,7 +2008,7 @@ class DesktopProductCapabilityContractTest {
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
                         mapOf(
-                            "mounted production screen launches next chapter prefetch wiring" to
+                            "mounted production screen wires prefetch and retains runtime through outgoing composition" to
                                 setOf("Navigator(screen) { screen.Content() }", "updates += target to firstViewportPageCount"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt" to

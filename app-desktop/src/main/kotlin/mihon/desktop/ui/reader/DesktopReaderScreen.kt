@@ -132,7 +132,7 @@ data class DesktopReaderScreen(
         val runtime = checkNotNull(model.runtime)
         val state by model.state.collectAsState()
         val focusRequester = remember { FocusRequester() }
-        ReaderLifecycleEffect(runtime)
+        ReaderLifecycleEffect(model)
         LaunchedEffect(runtime.session) {
             runtime.session.state.collect(model::acceptSessionState)
         }

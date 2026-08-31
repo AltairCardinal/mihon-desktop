@@ -578,7 +578,7 @@ class ReaderFixedMainAuthorityTest {
                         "production runtime preference changes drive off first viewport and full request sets",
                     ),
                 "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
-                    setOf("mounted production screen launches next chapter prefetch wiring"),
+                    setOf("mounted production screen wires prefetch and retains runtime through outgoing composition"),
                 "app-desktop/src/test/kotlin/mihon/desktop/reader/ReaderSettingsModelsTest.kt" to
                     setOf(
                         "image prefetch defaults to off without persisting an implicit value",

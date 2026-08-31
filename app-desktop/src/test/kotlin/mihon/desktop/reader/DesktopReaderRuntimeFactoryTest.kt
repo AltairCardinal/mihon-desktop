@@ -4,11 +4,15 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import eu.kanade.tachiyomi.network.NetworkHelper
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.domain.ReaderProgressTracker
@@ -16,6 +20,7 @@ import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.ui.browse.localReaderScreen
 import mihon.desktop.ui.reader.ReaderLifecycleEffect
 import mihon.desktop.ui.reader.ReaderModeState
+import mihon.desktop.ui.reader.ReaderScreenModel
 import mihon.domain.reader.PageDecodePurpose
 import mihon.domain.reader.ReaderPageDecodeKey
 import mihon.domain.reader.content.ReaderPageContentOpenRequest
@@ -30,6 +35,7 @@ import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
@@ -207,9 +213,15 @@ class DesktopReaderRuntimeFactoryTest {
             wasRead = false,
         )
         val runtime = factory.createRuntime(context, this)
+        val model = factory.createModel(
+            runtime = runtime,
+            isWebtoon = false,
+            mangaViewerFlags = 0L,
+            dualPageOverride = null,
+        )
         val scene = ImageComposeScene(320, 240, coroutineContext = currentCoroutineContext()) {}
         try {
-            scene.setContent { ReaderLifecycleEffect(runtime) }
+            scene.setContent { ReaderLifecycleEffect(model) }
             scene.render()
             assertEquals(true, ReaderModeState.isInReaderMode)
 
@@ -223,7 +235,7 @@ class DesktopReaderRuntimeFactoryTest {
             }
         } finally {
             runCatching(scene::close)
-            runtime.close()
+            model.onDispose()
         }
     }
 
@@ -273,6 +285,144 @@ class DesktopReaderRuntimeFactoryTest {
 
         assertThrows(IllegalStateException::class.java) { runtime.session.activate(context) }
         assertEquals(1, productionClosedCallbacks)
+    }
+
+    @Test
+    fun `Voyager disposal waits for the outgoing reader composition before closing production runtime`() {
+        val factory = DesktopReaderRuntimeFactory(
+            prefs = ReaderPreferences(),
+            downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads-outgoing-owner")),
+            sourceManager = mockk<SourceManager>(relaxed = true),
+            networkHelper = NetworkHelper(OkHttpClient()),
+            progressTracker = mockk<ReaderProgressTracker>(relaxed = true),
+            mangaRepository = null,
+            encodedCacheDirectory = tempDir.resolve("encoded-outgoing-owner"),
+        )
+        val context = DesktopReaderChapterContext(
+            chapterId = 51L,
+            sourceId = 42L,
+            chapterUrl = "/chapter/51",
+            mangaTitle = "Manga",
+            chapterTitle = "Chapter 51",
+            chapterNumber = 51.0,
+            chapterIndex = 0,
+            initialPage = 0,
+            wasRead = false,
+        )
+        var productionClosedCallbacks = 0
+        val model = factory.createScreenModel(
+            initialContext = context,
+            isWebtoon = false,
+            mangaViewerFlags = 0L,
+            dualPageOverride = null,
+            onProductionClosed = { productionClosedCallbacks += 1 },
+        )
+        val runtime = requireNotNull(model.runtime)
+        val compositionLease = model.retainProductionRuntimeForComposition()
+
+        model.onDispose()
+
+        assertFalse(runtime.presentationImageOwner.isClosed())
+        assertDoesNotThrow { runtime.session.activate(context.copy(chapterId = 52L)) }
+        assertEquals(0, productionClosedCallbacks)
+
+        compositionLease.close()
+
+        assertTrue(runtime.presentationImageOwner.isClosed())
+        assertThrows(IllegalStateException::class.java) { runtime.session.activate(context) }
+        assertEquals(1, productionClosedCallbacks)
+
+        compositionLease.close()
+        model.onDispose()
+        assertEquals(1, productionClosedCallbacks)
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
+    fun `reader lifecycle effect releases the production runtime after outgoing composition leaves`() = runTest {
+        val factory = DesktopReaderRuntimeFactory(
+            prefs = ReaderPreferences(),
+            downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads-outgoing-effect")),
+            sourceManager = mockk<SourceManager>(relaxed = true),
+            networkHelper = NetworkHelper(OkHttpClient()),
+            progressTracker = mockk<ReaderProgressTracker>(relaxed = true),
+            mangaRepository = null,
+            encodedCacheDirectory = tempDir.resolve("encoded-outgoing-effect"),
+        )
+        val context = DesktopReaderChapterContext(
+            chapterId = 61L,
+            sourceId = 42L,
+            chapterUrl = "/chapter/61",
+            mangaTitle = "Manga",
+            chapterTitle = "Chapter 61",
+            chapterNumber = 61.0,
+            chapterIndex = 0,
+            initialPage = 0,
+            wasRead = false,
+        )
+        var productionClosedCallbacks = 0
+        val model = factory.createScreenModel(
+            initialContext = context,
+            isWebtoon = false,
+            mangaViewerFlags = 0L,
+            dualPageOverride = null,
+            onProductionClosed = { productionClosedCallbacks += 1 },
+        )
+        val runtime = requireNotNull(model.runtime)
+        val scene = ImageComposeScene(320, 240, coroutineContext = currentCoroutineContext()) {}
+        try {
+            scene.setContent { ReaderLifecycleEffect(model) }
+            scene.render()
+
+            model.onDispose()
+
+            assertFalse(runtime.presentationImageOwner.isClosed())
+            assertEquals(0, productionClosedCallbacks)
+
+            scene.close()
+
+            assertTrue(runtime.presentationImageOwner.isClosed())
+            assertEquals(1, productionClosedCallbacks)
+        } finally {
+            runCatching(scene::close)
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `production close failure cancels its scope without reporting production closed`() {
+        val closeFailure = IllegalStateException("runtime-close-failed")
+        val runtime = mockk<DesktopReaderRuntime>()
+        val ownedRuntimeJob = SupervisorJob()
+        var productionClosedCallbacks = 0
+        every { runtime.close() } throws closeFailure
+        val model = ReaderScreenModel(
+            runtime = runtime,
+            ownedRuntimeScope = CoroutineScope(ownedRuntimeJob),
+            onProductionClosed = { productionClosedCallbacks += 1 },
+        )
+
+        val thrown = assertThrows(IllegalStateException::class.java) { model.onDispose() }
+
+        assertSame(closeFailure, thrown)
+        assertFalse(ownedRuntimeJob.isActive)
+        assertEquals(0, productionClosedCallbacks)
+        verify(exactly = 1) { runtime.close() }
+    }
+
+    @Test
+    fun `model without a production runtime still cancels its owned scope on disposal`() {
+        val ownedRuntimeJob = SupervisorJob()
+        var productionClosedCallbacks = 0
+        val model = ReaderScreenModel(
+            ownedRuntimeScope = CoroutineScope(ownedRuntimeJob),
+            onProductionClosed = { productionClosedCallbacks += 1 },
+        )
+
+        model.onDispose()
+
+        assertFalse(ownedRuntimeJob.isActive)
+        assertEquals(0, productionClosedCallbacks)
     }
 
     @Test

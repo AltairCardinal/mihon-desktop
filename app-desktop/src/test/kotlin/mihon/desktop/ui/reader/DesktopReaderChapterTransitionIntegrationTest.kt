@@ -218,7 +218,7 @@ class DesktopReaderChapterTransitionIntegrationTest {
 
     @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
     @Test
-    fun `mounted production screen launches next chapter prefetch wiring`(@TempDir tempDir: File) = runTest {
+    fun `mounted production screen wires prefetch and retains runtime through outgoing composition`(@TempDir tempDir: File) = runTest {
         val chapters = chapters()
         val initialContext = context(chapters[1], chapterIndex = 1, initialPage = 0)
         val core = ReaderSessionCore(ReaderChapterId(1L), sessionId = "mounted-prefetch-wiring-test")
@@ -308,8 +308,14 @@ class DesktopReaderChapterTransitionIntegrationTest {
             assertEquals(listOf(44L), updates.map { it.first?.mangaId })
             productionClosedCallback.captured()
             assertEquals(1, screenProductionClosedCallbacks)
-        } finally {
+
+            model.onDispose()
+
+            assertFalse(runtime.presentationImageOwner.isClosed())
             scene.close()
+            assertTrue(runtime.presentationImageOwner.isClosed())
+        } finally {
+            runCatching(scene::close)
             runtime.close()
             Injekt = previousInjekt
             legacy.removeNode()
