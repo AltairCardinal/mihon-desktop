@@ -21,6 +21,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -30,7 +31,7 @@ class ReaderPerformanceRunnerContractTest {
 
     @Test
     fun `runner measures one warmup and twenty samples for both downloaded routes`() {
-        FakeReaderPerformanceServer().use { server ->
+        FakeReaderPerformanceServer(distinctWarmup = true).use { server ->
             val output = createTempDirectory("mihon-reader-performance").resolve("report.json")
 
             val result = runRunner(server.baseUrl, output)
@@ -46,8 +47,20 @@ class ReaderPerformanceRunnerContractTest {
                 .map { it.jsonObject }
                 .associateBy { it.getValue("source").jsonPrimitive.content }
             assertEquals(setOf(DIRECTORY, CBZ), scenarios.keys)
-            assertScenarioReport(scenarios.getValue(DIRECTORY), expectedP95Millis = 500.0, expectedMaxMillis = 500.0)
-            assertScenarioReport(scenarios.getValue(CBZ), expectedP95Millis = 1_000.0, expectedMaxMillis = 1_000.0)
+            assertScenarioReport(
+                scenarios.getValue(DIRECTORY),
+                expectedP95Millis = 500.0,
+                expectedMaxMillis = 500.0,
+                expectedDecodeToPresentedMillis = 200.0,
+                excludedWarmupMillis = 750.0,
+            )
+            assertScenarioReport(
+                scenarios.getValue(CBZ),
+                expectedP95Millis = 1_000.0,
+                expectedMaxMillis = 1_000.0,
+                expectedDecodeToPresentedMillis = 700.0,
+                excludedWarmupMillis = 1_250.0,
+            )
         }
     }
 
@@ -93,10 +106,24 @@ class ReaderPerformanceRunnerContractTest {
         }
     }
 
+    @Test
+    fun `runner rejects ordered events whose production timestamps move backwards`() {
+        FakeReaderPerformanceServer(nonMonotonicDirectoryTimestamps = true).use { server ->
+            val output = createTempDirectory("mihon-reader-performance-time").resolve("report.json")
+
+            val result = runRunner(server.baseUrl, output)
+
+            assertEquals(1, result.exitCode, result.output)
+            assertTrue(result.output.contains("production event timestamps are not monotonic"), result.output)
+        }
+    }
+
     private fun assertScenarioReport(
         scenario: JsonObject,
         expectedP95Millis: Double,
         expectedMaxMillis: Double,
+        expectedDecodeToPresentedMillis: Double,
+        excludedWarmupMillis: Double,
     ) {
         assertEquals("PASS", scenario.getValue("status").jsonPrimitive.content)
         assertEquals(expectedP95Millis, scenario.getValue("p95Millis").jsonPrimitive.content.toDouble(), 0.001)
@@ -109,6 +136,31 @@ class ReaderPerformanceRunnerContractTest {
         assertEquals(0, gate.getValue("nonCurrentPageDecodes").jsonPrimitive.content.toInt())
         assertEquals(0, gate.getValue("cacheReconciles").jsonPrimitive.content.toInt())
         assertEquals(0, gate.getValue("adjacentIo").jsonPrimitive.content.toInt())
+
+        val samples = scenario.getValue("samples").jsonArray.map { it.jsonObject }
+        assertEquals(20, samples.size, "the report must preserve every measured sample")
+        assertFalse(
+            samples.any { it.getValue("durationMillis").jsonPrimitive.content.toDouble() == excludedWarmupMillis },
+            "the warmup sample must not be retained in the measured sample report",
+        )
+        samples.forEachIndexed { index, sample ->
+            assertEquals(index + 1, sample.getValue("iteration").jsonPrimitive.content.toInt())
+            assertEquals(
+                expectedMaxMillis,
+                sample.getValue("durationMillis").jsonPrimitive.content.toDouble(),
+                0.001,
+            )
+            val phases = sample.getValue("phaseMillis").jsonObject
+            assertEquals(100.0, phases.getValue("intentToPageList").jsonPrimitive.content.toDouble(), 0.001)
+            assertEquals(100.0, phases.getValue("pageListToOpen").jsonPrimitive.content.toDouble(), 0.001)
+            assertEquals(100.0, phases.getValue("openToDecode").jsonPrimitive.content.toDouble(), 0.001)
+            assertEquals(
+                expectedDecodeToPresentedMillis,
+                phases.getValue("decodeToPresented").jsonPrimitive.content.toDouble(),
+                0.001,
+            )
+            assertEquals(gate, sample.getValue("ioGate").jsonObject)
+        }
     }
 
     private fun runRunner(baseUrl: String, output: Path): RunResult {
@@ -144,6 +196,8 @@ class ReaderPerformanceRunnerContractTest {
         private val slowDirectory: Boolean = false,
         private val missingCbzDecode: Boolean = false,
         private val directoryLeaksOnlineIo: Boolean = false,
+        private val distinctWarmup: Boolean = false,
+        private val nonMonotonicDirectoryTimestamps: Boolean = false,
     ) : AutoCloseable {
         val requests = CopyOnWriteArrayList<String>()
         private val productionClosed = AtomicBoolean()
@@ -178,14 +232,25 @@ class ReaderPerformanceRunnerContractTest {
         private fun readerState(): JsonObject {
             val source = requests.lastOrNull() ?: error("reader state requested before read_chapter")
             val offlineRouteLeak = source == DIRECTORY && directoryLeaksOnlineIo
-            val durationMillis = if (source == DIRECTORY && slowDirectory) 2_100L else if (source == CBZ) 1_000L else 500L
+            val routeRequestCount = requests.count { it == source }
+            val durationMillis = when {
+                source == DIRECTORY && slowDirectory -> 2_100L
+                distinctWarmup && routeRequestCount == 1 -> if (source == CBZ) 1_250L else 750L
+                source == CBZ -> 1_000L
+                else -> 500L
+            }
             val chapterId = requests.size.toLong()
             val events = buildList {
                 add(event("OPEN_READER_INTENT", 0L, null, "READER_OPEN", chapterId))
                 add(event("PAGE_LIST_READY", 100_000_000L, null, "PAGE_LIST", chapterId))
                 add(event("OPEN_PAGE", 200_000_000L, 0, "CURRENT_PAGE", chapterId))
                 if (!(source == CBZ && missingCbzDecode)) {
-                    add(event("DECODE", 300_000_000L, 0, "VISIBLE_DECODE", chapterId))
+                    val decodeNanos = if (source == DIRECTORY && nonMonotonicDirectoryTimestamps) {
+                        150_000_000L
+                    } else {
+                        300_000_000L
+                    }
+                    add(event("DECODE", decodeNanos, 0, "VISIBLE_DECODE", chapterId))
                 }
                 add(event("FIRST_PAGE_PRESENTED", durationMillis * 1_000_000L, 0, "FIRST_PRESENTATION", chapterId))
             }

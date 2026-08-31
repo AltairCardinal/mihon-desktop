@@ -46,6 +46,15 @@ def scenario_report(
         "p95Millis": p95,
         "maxMillis": maximum,
         "ioGate": measurements[-1].io_gate,
+        "samples": [
+            {
+                "iteration": index,
+                "durationMillis": measurement.duration_millis,
+                "phaseMillis": measurement.phase_millis,
+                "ioGate": measurement.io_gate,
+            }
+            for index, measurement in enumerate(measurements, start=1)
+        ],
     }
 
 

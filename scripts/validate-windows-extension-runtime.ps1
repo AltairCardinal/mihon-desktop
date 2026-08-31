@@ -52,9 +52,23 @@ function Wait-HttpFixture([string]$Url, [DateTime]$Deadline) {
     throw "Local extension fixture server did not become ready: $Url"
 }
 
+function Get-Sha256Hex([string]$Path) {
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    $stream = $null
+    try {
+        $stream = [IO.File]::OpenRead($Path)
+        return [BitConverter]::ToString($sha256.ComputeHash($stream)).Replace("-", "").ToLowerInvariant()
+    } finally {
+        if ($stream) {
+            $stream.Dispose()
+        }
+        $sha256.Dispose()
+    }
+}
+
 $resolvedExecutable = (Resolve-Path -LiteralPath $Executable).Path
 $resolvedArtifact = (Resolve-Path -LiteralPath $ArtifactPath).Path
-$actualSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedArtifact).Hash.ToLowerInvariant()
+$actualSha256 = Get-Sha256Hex $resolvedArtifact
 $normalizedSha256 = $ArtifactSha256.Replace(":", "").ToLowerInvariant()
 if ($actualSha256 -ne $normalizedSha256) {
     throw "Extension runtime fixture digest mismatch: expected $normalizedSha256, actual $actualSha256"

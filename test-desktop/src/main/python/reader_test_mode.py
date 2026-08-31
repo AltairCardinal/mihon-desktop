@@ -13,6 +13,7 @@ from typing import Any
 @dataclasses.dataclass(frozen=True)
 class ReaderMeasurement:
     duration_millis: float
+    phase_millis: dict[str, float]
     io_gate: dict[str, int]
 
 
@@ -230,12 +231,18 @@ def validate_reader_state(state: dict[str, Any], source: str) -> ReaderMeasureme
     if len(identities) != 1 or next(iter(identities))[0] is None:
         raise ReaderContractError(f"{source}: production events do not share one chapter-generation")
 
-    intent_nanos = _event_nanos(required_events[0], source)
-    presented_nanos = _event_nanos(required_events[-1], source)
-    if presented_nanos < intent_nanos:
-        raise ReaderContractError(f"{source}: FIRST_PAGE_PRESENTED precedes OPEN_READER_INTENT")
+    required_nanos = [_event_nanos(event, source) for event in required_events]
+    if required_nanos != sorted(required_nanos):
+        raise ReaderContractError(f"{source}: production event timestamps are not monotonic")
+    intent_nanos, page_list_nanos, open_nanos, decode_nanos, presented_nanos = required_nanos
     return ReaderMeasurement(
         duration_millis=(presented_nanos - intent_nanos) / 1_000_000.0,
+        phase_millis={
+            "intentToPageList": (page_list_nanos - intent_nanos) / 1_000_000.0,
+            "pageListToOpen": (open_nanos - page_list_nanos) / 1_000_000.0,
+            "openToDecode": (decode_nanos - open_nanos) / 1_000_000.0,
+            "decodeToPresented": (presented_nanos - decode_nanos) / 1_000_000.0,
+        },
         io_gate={
             "pageListReady": len(page_lists),
             "currentPageOpens": len(current_opens),
