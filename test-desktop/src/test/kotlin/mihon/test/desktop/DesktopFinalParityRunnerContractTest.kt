@@ -136,6 +136,19 @@ class DesktopFinalParityRunnerContractTest {
     }
 
     @Test
+    fun `default final parity launch uses production GUI test mode`() {
+        val fixture = fixture("gui-launch")
+
+        val result = runRunner(fixture.environment)
+
+        assertEquals(0, result.exitCode, result.output)
+        val processLog = Files.readString(fixture.processLog)
+        assertTrue(processLog.contains("args:--test-mode --test-http-port=8080"), processLog)
+        assertFalse(processLog.contains("--headless"), processLog)
+        assertTrue(result.output.contains("Starting fixed unpacked Mihon Desktop in GUI Test Mode"), result.output)
+    }
+
+    @Test
     fun `graceful shutdown timeout uses termination only as a fallback`() {
         val fixture = fixture("shutdown-timeout", gracefulShutdownExits = false)
 
@@ -287,6 +300,7 @@ class DesktopFinalParityRunnerContractTest {
             trap 'echo forced-termination >> "${processLog.bashPath()}"; echo stopped >> "${processLog.bashPath()}"; exit 143' TERM INT
             rm -f "${shutdownSignal.bashPath()}"
             echo started >> "${processLog.bashPath()}"
+            echo "args:${'$'}*" >> "${processLog.bashPath()}"
             ${
                 if (exitImmediately) {
                     "exit 0"

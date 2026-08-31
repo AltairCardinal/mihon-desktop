@@ -120,12 +120,11 @@ if health_check; then
   exit 4
 fi
 
-echo "Starting fixed unpacked Mihon Desktop in headless Test Mode"
+echo "Starting fixed unpacked Mihon Desktop in GUI Test Mode"
 echo "EXE: $FIXED_EXE"
 "$FIXED_EXE" \
   --test-mode \
   "--test-http-port=$PORT" \
-  --headless \
   >"$APP_LOG" 2>&1 &
 APP_PID=$!
 

@@ -44,8 +44,10 @@ Desktop 产品零回退，但不冒充 64 项中的普通 capability evidence。
 - Windows：启动固定未打包 EXE。
 - macOS：通过 `MIHON_FINAL_PARITY_EXE` 指向 app bundle 内可执行文件，并以
   `MIHON_FINAL_PARITY_PROVENANCE_COMMAND` 验证整个 bundle provenance。
-- lifecycle：启动前拒绝已有 health owner；启动后同时验证 health 与本次 PID；结束时精确
-  teardown。
+- lifecycle：在 Windows 图形桌面或 macOS Aqua 会话中以 GUI Test Mode 启动；`--headless`
+  只用于不依赖 Compose 生命周期的 HTTP 控制面测试。启动前拒绝已有 health owner；启动后同时
+  验证 health 与本次 PID；Reader 关闭等待 `closeRequested → productionClosed`，结束时精确
+  teardown。场景主体失败时保留原始失败，关闭清理失败不得覆盖它。
 - 汇总：必须精确报告 13/13 families、5/5 permanent protections、64/64 capability IDs、
   `unmapped=0`，任一 FAIL 均使 runner 非零退出。
 

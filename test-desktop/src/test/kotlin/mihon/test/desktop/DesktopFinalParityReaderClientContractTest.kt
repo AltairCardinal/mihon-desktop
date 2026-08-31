@@ -48,6 +48,7 @@ class DesktopFinalParityReaderClientContractTest {
                 assertEquals("JPEG", request.format)
             }
             assertEquals(fixtureSources.size, server.resetCalls.get())
+            assertEquals(fixtureSources.size, server.closeCalls.get())
             assertTrue(server.stateCalls.get() >= fixtureSources.size)
             assertTrue(output.exists(), "client did not publish its final-parity summary")
             val summary = Json.parseToJsonElement(Files.readString(output)).jsonObject
@@ -203,6 +204,51 @@ class DesktopFinalParityReaderClientContractTest {
         }
     }
 
+    @Test
+    fun `final client preserves first frame timeout when required close cleanup also times out`() {
+        val tempDirectory = createTempDirectory("mihon-reader-client-primary-failure")
+        val output = tempDirectory.resolve("summary.json")
+        val closeMarker = tempDirectory.resolve("close-attempted.txt")
+
+        val result = runFixtureAndCleanupFailureClient(
+            output = output,
+            closeMarker = closeMarker,
+            fixtureFails = true,
+        )
+
+        assertEquals(1, result.exitCode, result.output)
+        assertTrue(
+            result.output.contains("downloaded_directory: timed out waiting for FIRST_PAGE_PRESENTED"),
+            "the original fixture failure must remain authoritative: ${result.output}",
+        )
+        assertTrue(
+            !result.output.contains("Final parity client rejected input: timed out waiting for productionClosed=true"),
+            "cleanup failure replaced the original fixture failure: ${result.output}",
+        )
+        assertTrue(closeMarker.exists(), "required close cleanup was not attempted")
+    }
+
+    @Test
+    fun `final client preserves required close failure after a successful fixture`() {
+        val tempDirectory = createTempDirectory("mihon-reader-client-close-failure")
+        val output = tempDirectory.resolve("summary.json")
+        val closeMarker = tempDirectory.resolve("close-attempted.txt")
+
+        val result = runFixtureAndCleanupFailureClient(
+            output = output,
+            closeMarker = closeMarker,
+            fixtureFails = false,
+        )
+
+        assertEquals(1, result.exitCode, result.output)
+        assertTrue(
+            result.output.contains("Final parity client rejected input: timed out waiting for productionClosed=true"),
+            "the required close failure must remain authoritative: ${result.output}",
+        )
+        assertTrue(closeMarker.exists(), "required close was not attempted")
+        assertTrue(!output.exists(), "a failed required close must not publish a success summary")
+    }
+
     private fun runClient(baseUrl: String, output: Path): RunResult {
         val python = System.getenv("MIHON_PYTHON")?.takeIf(String::isNotBlank) ?: "python"
         val process = ProcessBuilder(
@@ -247,10 +293,80 @@ class DesktopFinalParityReaderClientContractTest {
                 it.environment()["PYTHONIOENCODING"] = "utf-8"
             }
             .start()
-        if (!process.waitFor(5, TimeUnit.SECONDS)) {
+        if (!process.waitFor(20, TimeUnit.SECONDS)) {
             process.destroyForcibly()
             process.waitFor()
             return RunResult(-1, "reader close client timed out")
+        }
+        return RunResult(process.exitValue(), process.inputStream.bufferedReader().readText())
+    }
+
+    private fun runFixtureAndCleanupFailureClient(
+        output: Path,
+        closeMarker: Path,
+        fixtureFails: Boolean,
+    ): RunResult {
+        val python = System.getenv("MIHON_PYTHON")?.takeIf(String::isNotBlank) ?: "python"
+        val script =
+            """
+            import pathlib
+            import sys
+            import mihon_desktop_final_parity_client as target
+
+            close_marker = pathlib.Path(sys.argv[1])
+            fixture_fails = sys.argv[4].lower() == "true"
+
+            class FailingReaderClient:
+                def __init__(self, base_url):
+                    pass
+
+                def run_fixture(self, source, chapter_id):
+                    if fixture_fails:
+                        raise target.ReaderContractError(
+                            f"{source}: timed out waiting for FIRST_PAGE_PRESENTED"
+                        )
+
+                def close_reader(self):
+                    close_marker.write_text("attempted", encoding="utf-8")
+                    raise target.ReaderContractError(
+                        "timed out waiting for productionClosed=true"
+                    )
+
+            target.ReaderTestModeClient = FailingReaderClient
+            sys.argv = [
+                "mihon_desktop_final_parity_client.py",
+                "--inventory",
+                sys.argv[2],
+                "--output",
+                sys.argv[3],
+                "--base-url",
+                "http://unused.invalid",
+            ]
+            raise SystemExit(target.main())
+            """.trimIndent()
+        val scriptPath = output.parent.resolve("fixture-and-cleanup-failure-client.py")
+        Files.writeString(scriptPath, script, StandardCharsets.UTF_8)
+        val process = ProcessBuilder(
+            python,
+            scriptPath.toString(),
+            closeMarker.toString(),
+            inventory.toString(),
+            output.toString(),
+            fixtureFails.toString(),
+        )
+            .directory(repositoryRoot.resolve("test-desktop/src/main/python").toFile())
+            .redirectErrorStream(true)
+            .also {
+                it.environment()["PYTHONUTF8"] = "1"
+                it.environment()["PYTHONIOENCODING"] = "utf-8"
+                it.environment()["PYTHONPATH"] =
+                    repositoryRoot.resolve("test-desktop/src/main/python").toString()
+            }
+            .start()
+        if (!process.waitFor(20, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            process.waitFor()
+            return RunResult(-1, "fixture and cleanup failure client timed out")
         }
         return RunResult(process.exitValue(), process.inputStream.bufferedReader().readText())
     }

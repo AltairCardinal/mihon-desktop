@@ -77,6 +77,23 @@ def build_summary(inventory: dict[str, Any]) -> FinalParitySummary:
     )
 
 
+def run_fixture_with_required_close(
+    client: ReaderTestModeClient,
+    source: str,
+    chapter_id: int,
+) -> None:
+    try:
+        client.run_fixture(source, chapter_id=chapter_id)
+    except Exception:
+        try:
+            client.close_reader()
+        except Exception:
+            pass
+        raise
+    else:
+        client.close_reader()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--inventory", type=pathlib.Path, required=True)
@@ -93,10 +110,7 @@ def main() -> int:
                 ("downloaded_directory", "downloaded_cbz", "local_archive", "online"),
                 start=1,
             ):
-                try:
-                    client.run_fixture(source, chapter_id=90_000 + index)
-                finally:
-                    client.close_reader()
+                run_fixture_with_required_close(client, source, chapter_id=90_000 + index)
         build_summary(inventory).write(args.output)
         return 0
     except (OSError, json.JSONDecodeError, TypeError, ValueError, ReaderContractError) as error:
