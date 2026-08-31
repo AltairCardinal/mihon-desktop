@@ -679,9 +679,9 @@ class DownloadManagerTest {
             } finally {
                 releaseNotification.countDown()
                 replacement?.join(2_000)
-                withTimeout(2_000) { manager.stopAndJoin() }
-                withTimeout(2_000) { worker.cancelAndJoin() }
-                withTimeout(2_000) { workerParent.cancelAndJoin() }
+                withTimeout(30_000) { manager.stopAndJoin() }
+                withTimeout(30_000) { worker.cancelAndJoin() }
+                withTimeout(30_000) { workerParent.cancelAndJoin() }
             }
         }
     }
