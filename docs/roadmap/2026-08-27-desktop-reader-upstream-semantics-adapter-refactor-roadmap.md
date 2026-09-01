@@ -1,12 +1,12 @@
 ---
 parent-plan: 2026-06-30-mihon-desktop-refactor-roadmap.md
-status: in_progress
+status: paused
 ---
 
 # Mihon Desktop 阅读器原版语义复用与平台适配层收口 Roadmap
 
 - 制定日期：2026-08-27
-- 状态：`IN_PROGRESS`（2026-08-27 已成为父路线唯一 `active-child-plan`）
+- 状态：`PAUSED`（2026-09-01 在 `RUA-07B / RUA-07C / RUA-07D` 最终验收前记录安全停止点）
 - 上级路线：[`2026-06-30-mihon-desktop-refactor-roadmap.md`](./2026-06-30-mihon-desktop-refactor-roadmap.md)
 - 前一活动计划：[`2026-08-11-author-archive-discovery-corrective-roadmap.md`](./2026-08-11-author-archive-discovery-corrective-roadmap.md)（已在 `AA7-02 / AA7-03` legacy 清理门禁前安全暂停）
 - 历史 Reader 计划：[`2026-08-02-reader-core-migration-and-presentation-roadmap.md`](./2026-08-02-reader-core-migration-and-presentation-roadmap.md)
@@ -15,9 +15,9 @@ status: in_progress
 - 本次上游跟踪点：`upstream/main@deb7b33118616d37536f1e5ef2ef85c8b5db0799`（2026-08-26）
 - 激活基线：`main@b97487d0bb47b310b86a3d44cacf326ddd1eba34`
 - 机器状态权威：[`parity-manifest.json`](../../app-desktop/src/test/resources/parity/parity-manifest.json)；本文不创建第二份 capability 状态源
-- 当前进度：从第 10 节第一个未勾选顶层任务推导，不另设 `active-task`
+- 暂停进度：从第 10 节第一个未勾选顶层任务 `RUA-07` 推导，不另设 `active-task`
 
-本文于 2026-08-27 原子激活：作者归档计划在 `AA7-02 / AA7-03` legacy 观察期与清理门禁前记录安全停止点并改为 `PAUSED`，父路线唯一 `active-child-plan` 切换到本文，本文 frontmatter/正文同步改为 `IN_PROGRESS`。激活前重新 fetch 的 `upstream/main` 仍为 `deb7b33118616d37536f1e5ef2ef85c8b5db0799`，相对本文审计跟踪点没有 Reader 路径漂移。当前工作树中与本文无关的改动不属于实现证据，也不得被回滚或纳入后续功能提交。
+本文于 2026-08-27 原子激活并完成 `RUA-00`～`RUA-06` 与 `RUA-07A`。2026-09-01 用户明确要求执行下载目录与 partial 阅读计划后，本文在工作树无 Reader 未提交改动的检查点安全暂停，父路线唯一 `active-child-plan` 原子切换到该计划。本文保留全部历史证据和未完成 checkbox，不把暂停伪装成关闭；恢复规则见 Build 20 后的安全暂停记录。
 
 ## 1. 执行裁决与最终目标
 
@@ -50,9 +50,9 @@ status: in_progress
 
 ### 2.1 激活前的冲突与当前裁决
 
-激活前父路线唯一 `active-child-plan` 是作者归档纠正计划，且该计划会修改 shared domain/data、Desktop UI/DI、Test Mode 和 manifest。Reader 施工与其并行会产生共享可变状态和完成权威冲突。因此 2026-08-27 已在作者归档计划记录 `AA7-02 / AA7-03` 安全停止点，并原子切换到本文；施工期间不得并行恢复作者归档或非 Reader 计划。
+激活前父路线唯一 `active-child-plan` 是作者归档纠正计划，且该计划会修改 shared domain/data、Desktop UI/DI、Test Mode 和 manifest。Reader 施工与其并行会产生共享可变状态和完成权威冲突。因此 2026-08-27 已在作者归档计划记录 `AA7-02 / AA7-03` 安全停止点，并原子切换到本文；本文处于活动施工期间不得并行恢复作者归档或非 Reader 计划。
 
-- 父路线现在只指向本文；
+- 2026-08-27 激活后父路线只指向本文；2026-09-01 安全暂停后改为指向下载目录与 partial 阅读计划；
 - 作者归档计划与非 Reader 计划保持 `PAUSED`；
 - Reader capability 的既有大范围 `VERIFIED` 状态不被粗暴清空，只精确 reopen RUA-00 已确认失真的单一 decode、decoded-budget 和 scheduler/prefetch evidence slice；
 - 本次激活本身不宣称 Reader production bug 已修复，也不分配新的构建版本。
@@ -70,7 +70,7 @@ status: in_progress
 
 不得仅把本文状态改成 `IN_PROGRESS` 而保留父路线指向其他计划，也不得让两个计划同时宣称 active。
 
-上述流程已于 2026-08-27 执行；后续恢复其他计划时必须先为本文记录安全停止点，再反向原子切换，不得只修改父路线链接。
+上述流程于 2026-08-27 首次执行，并于 2026-09-01 按同一规则为本文记录安全停止点后反向切换到下载目录与 partial 阅读计划；恢复本文时仍须再次原子切换，不得只修改父路线链接。
 
 ### 2.3 对历史完成结论的有限纠正
 
@@ -760,7 +760,7 @@ Android Reader UI                 Desktop Reader presentation
 - `RUA-07C` 未通过。Windows v`0.11.19.19.4ffd026` official build 与 Android `assembleDebug` 通过；macOS exact build 通过，但 Aqua downloaded CBZ 在 10.499 秒触发默认 10 秒超时，后续 local archive 与 online 未执行，因此四路 production fixture 验收不完整。
 - macOS 正式 App 的 exact provenance 已再次通过，但图形会话保持 `CGSSessionScreenIsLocked=Yes`；锁屏期间不启动新的 Aqua fixture，也不把 WindowServer 降速伪装成产品失败。解锁后必须用全新 profile、默认 10 秒门限完成四路各一次，单路失败仍继续收集其余路由。
 - production GUI final-parity 的 Reader family 与全部 13 个 family 均通过；全局 runner 仍因既有 `authors-entry partial` 永久保护门禁退出 6。Reader family 通过不等于全局 final-parity runner 通过，`authors-entry` 不得据此改为 `covered`。
-- 当前计划保持 `IN_PROGRESS`，父路线唯一 `active-child-plan` 继续指向本文，作者计划保持 `PAUSED`。性能归因和 macOS 四路验收完成前，不得关闭 `RUA-07B`、`RUA-07C`、`RUA-07D` 或顶层 `RUA-07`，也不得切换活动计划。
+- 本检查点当时保持 `IN_PROGRESS`；性能归因和 macOS 四路验收完成前不得关闭 `RUA-07B`、`RUA-07C`、`RUA-07D` 或顶层 `RUA-07`。2026-09-01 后续切换属于用户明确要求下的安全暂停，不改变这些未完成结论。
 
 **RUA-07 Build 20 后续检查点（2026-09-01，`86ad5462070cb3b779073ec6cf7bee75c4b1f787`）**：
 
@@ -769,7 +769,16 @@ Android Reader UI                 Desktop Reader presentation
 - 同一提交的 Android `assembleDebug` 由 `rua07-android-86ad54620` 在 1 分 16 秒通过；`app/build/outputs/apk/debug/app-x86_64-debug.apk` 为 60,189,608 字节，SHA-256 `30f237b87f195ce9cbf90d4b81a1728cb259f892363a05069f56c54a31f8b749`。
 - Build 20 正式 Windows 性能门没有启动：90 秒稳定门第 0 秒即发现 Jellyfin `ffmpeg` PID 203760，故本轮按规则标记 `INVALID/BLOCKED`，未产生 summary/raw、未重跑、未停止用户媒体进程；证据为 `C:/Users/feeli/AppData/Local/Temp/mihon-rua07-build20-gate-20260901/stability-gate.txt`。因此 `RUA-07B` 继续保持未勾选。
 - macOS console user 仍为 `altair`，但 `CGSSessionScreenIsLocked=Yes`；Build 20 未传输、未 checkout、未构建、未启动 GUI/Test Mode。由于 `scripts/reader-performance.py` 属于现行 provenance 的 product input，不能把 `4ffd026cc` 的 macOS provenance 冒充为 Build 20 exact evidence；解锁后仍须对 `86ad5462070cb3b779073ec6cf7bee75c4b1f787` 重新完成 build/provenance 与四路 10 秒 Aqua fixture。因此 `RUA-07C` 继续保持未勾选。
-- 当前仍保持 `IN_PROGRESS` 与父路线唯一活动指针，不把 Windows/Android 已通过证据扩大解释为 RUA-07 完成。只有取得无外部负载的 Build 20 性能正式样本并完成解锁后的 exact macOS 四路验收，才能进入 `RUA-07D` 关闭审计。
+- 本检查点当时仍保持 `IN_PROGRESS`，且不把 Windows/Android 已通过证据扩大解释为 RUA-07 完成。只有取得无外部负载的性能正式样本并完成 exact macOS 四路验收，才能进入 `RUA-07D` 关闭审计。
+
+**RUA-07 安全暂停点（2026-09-01，治理 HEAD `de0e1eee9eb5d1f836bd667130bb893567662ce8`）**：
+
+- 最后完成任务为 `RUA-07A`；`RUA-00`～`RUA-06` 均已实现、审查并提交。未完成任务仍为 `RUA-07B`、`RUA-07C`、`RUA-07D` 与顶层 `RUA-07`，所有 checkbox 保持未勾选。
+- product/evidence 基线为 `86ad5462070cb3b779073ec6cf7bee75c4b1f787`；治理 HEAD 只增加本检查点记录。Windows JVM/正式构建与 Android assemble 证据有效，Windows 无外部负载性能样本及 macOS exact 四路验收缺失。
+- 切换时工作树没有 Reader 相关 diff，仅存在无关 `?? testfile/`；没有活动 Gradle coordinator、构建或性能 runner。该未跟踪项不属于本文或后续计划，不得读取、修改或提交。
+- Reader runtime、唯一 materialize/decode pipeline 与 lifecycle 接口已冻结；下载目录与 partial 阅读计划可以在此基线上串行施工，不能并行恢复本文。
+- 后续计划会修改 Reader runtime/materialize/lifecycle，因此恢复本文时必须在**新的集成 HEAD** 重跑 `RUA-07A`～`RUA-07C`，再执行 `RUA-07D`；或者由后续计划 `CLOSE-01` 的同提交证据逐项证明为这些门禁的严格超集后，原子关闭两份治理状态。不得把 `4ffd026cc`/`86ad54620` 的 exact-commit 证据直接冒充新 HEAD 的关闭证据。
+- parity manifest 的 Reader capability 状态在暂停时不变；`authors-entry partial` 仍受原保护门禁约束。
 
 ## 11. 测试矩阵与不可替代性能门禁
 

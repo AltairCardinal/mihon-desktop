@@ -1,11 +1,31 @@
 package mihon.desktop.download
 
+import mihon.desktop.platform.DesktopDownloadDirectoryPolicy
+import mihon.desktop.platform.DesktopDownloadDirectorySelection
+import mihon.desktop.platform.DesktopDownloadDirectoryState
+import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
+import java.io.File
 
 /**
  * Download-related preferences — saved as CBZ, auto-download, delete after read.
  */
 class DesktopDownloadPreferences(private val preferenceStore: PreferenceStore) {
+
+    fun downloadDirectory(
+        defaultDirectory: File,
+        policy: DesktopDownloadDirectoryPolicy = DesktopDownloadDirectoryPolicy(),
+    ): DesktopDownloadDirectoryPreference {
+        val normalizedDefault = defaultDirectory.toPath().toAbsolutePath().normalize().toFile()
+        return DesktopDownloadDirectoryPreference(
+            preference = preferenceStore.getString(
+                Preference.appStateKey(DOWNLOAD_DIRECTORY_KEY),
+                normalizedDefault.path,
+            ),
+            defaultDirectory = normalizedDefault,
+            policy = policy,
+        )
+    }
 
     /** When true, finished chapter downloads are packaged as a .cbz archive. */
     val downloadAsCbz by lazy { preferenceStore.getBoolean("download_as_cbz", false) }
@@ -18,4 +38,36 @@ class DesktopDownloadPreferences(private val preferenceStore: PreferenceStore) {
 
     /** Maximum number of chapters to download in parallel (1–5). */
     val parallelDownloadLimit by lazy { preferenceStore.getInt("parallel_download_limit", 1) }
+
+    private companion object {
+        const val DOWNLOAD_DIRECTORY_KEY = "download_directory"
+    }
+}
+
+class DesktopDownloadDirectoryPreference internal constructor(
+    private val preference: Preference<String>,
+    private val defaultDirectory: File,
+    private val policy: DesktopDownloadDirectoryPolicy,
+) {
+    fun key(): String = preference.key()
+
+    fun isSet(): Boolean = preference.isSet()
+
+    fun state(): DesktopDownloadDirectoryState {
+        val configuredPath = preference.get().takeIf { preference.isSet() }
+        return policy.resolveStartup(defaultDirectory, configuredPath)
+    }
+
+    fun save(rawPath: String): DesktopDownloadDirectorySelection {
+        val result = policy.validateSelection(rawPath)
+        if (result is DesktopDownloadDirectorySelection.ValidCustom) {
+            preference.set(result.directory.path)
+        }
+        return result
+    }
+
+    fun restoreDefault(): DesktopDownloadDirectorySelection.UseDefault {
+        preference.delete()
+        return policy.useDefault(defaultDirectory)
+    }
 }

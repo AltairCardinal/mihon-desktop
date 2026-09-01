@@ -1,5 +1,6 @@
 ---
-status: proposed
+parent-plan: 2026-06-30-mihon-desktop-refactor-roadmap.md
+status: in_progress
 date: 2026-08-30
 ---
 
@@ -7,18 +8,17 @@ date: 2026-08-30
 
 ## 0. 文档状态与执行边界
 
-- 状态：`PROPOSED / NOT_IMPLEMENTED`。
+- 状态：`IN_PROGRESS`（2026-09-01 已成为父路线唯一 `active-child-plan`）。
 - 本文是同一份独立执行方案，统一覆盖“下载目录可配置”与“未完成下载章节复用已落盘页面”两项需求。
-- 本文不修改父路线的唯一 `active-child-plan`，也不把任何 capability 标成已完成。
-- 当前活动计划仍是
-  [`2026-08-27-desktop-reader-upstream-semantics-adapter-refactor-roadmap.md`](./2026-08-27-desktop-reader-upstream-semantics-adapter-refactor-roadmap.md)。
-  部分下载阅读会改动同一组 Reader runtime、materialize port 和生命周期 owner；因此本文只能在当前活动计划完成，
-  或由用户明确要求并先记录安全暂停点后激活。不得与当前 Reader 施工并行写同一工作树。
-- 制定本文时，工作树已有用户的 Reader 图片内存 authority、generation 和 close 生命周期改动。与本结论直接相关的
-  `DesktopDownloadProvider`、`DesktopDownloadManager`、`DesktopReaderMaterializePorts`、
-  `SourcePageFetcher`、`DesktopReaderEncodedPageStore` 和 shared content policy 相对 `HEAD` 未改；现有未提交改动
-  不改变本文对 `_tmp` 路由缺口的判断。
-- 本轮只制定方案，不改产品代码、不运行 Gradle、不分配版本、不构建发布产物。
+- 上一活动计划
+  [`2026-08-27-desktop-reader-upstream-semantics-adapter-refactor-roadmap.md`](./2026-08-27-desktop-reader-upstream-semantics-adapter-refactor-roadmap.md)
+  已在治理 HEAD `de0e1eee9eb5d1f836bd667130bb893567662ce8`、product/evidence baseline
+  `86ad5462070cb3b779073ec6cf7bee75c4b1f787` 安全暂停：`RUA-00`～`RUA-06` 与 `RUA-07A` 完成，`RUA-07B/C/D`
+  保持未完成。后续恢复必须在新集成 HEAD 重跑其最终验证，或由本文 `CLOSE-01` 严格超集证据接管。
+- 激活时工作树没有 Reader 相关 diff，仅有无关 `?? testfile/`；Reader runtime、materialize、image pipeline 和 memory
+  authority 接口已经冻结。该未跟踪项不属于本文，不得读取、修改或提交。
+- 本文激活不修改 parity manifest，不把任何 capability 提前标为完成，也不分配新构建版本；产品变更从 `DDIR-01`
+  开始严格执行 RED → GREEN → 重构。
 
 ## 1. 目标与用户承诺
 
@@ -148,7 +148,9 @@ restartRequired      pendingDirectory != activeDirectory
 
 1. 偏好未设置时，`activeDirectory = defaultDirectory`。
 2. 自定义路径保存为 absolute + normalized 形式；恢复默认调用 `Preference.delete()`，不把默认绝对路径写入偏好。
-3. 选择目录时在 `Dispatchers.IO` 做真实可创建、可读写、临时文件创建/删除探针；失败不保存偏好。
+3. 选择目录时在 `Dispatchers.IO` 做真实可创建、可读写、临时文件创建/删除探针；失败不保存偏好。探针只清理自己
+   创建的临时文件，不删除已经创建的用户目标目录或父目录，避免路径替换竞态误删其他 actor 的目录；因此更深层创建
+   或探针失败时允许保留已经成功创建的空父目录。
 4. 启动时只做有界语法解析并冻结根目录；合法路径初始为 `Unknown`，不做可移动盘/UNC I/O，也不在 UI 线程递归扫描。
 5. 已保存的可移动盘/UNC 路径后来不可用时，不静默把自动下载写到默认目录，避免生成两套用户不知情的下载树；
    Provider 仍指向配置目录，下载返回现有 `Permission/Storage` 错误，设置页显示“目录不可用”。只有路径值本身
@@ -272,6 +274,23 @@ encoded ref 必须携带 `Partial(committedRevision)` provenance。若后续像�
 
 ## 5. 任务依赖与提交颗粒度
 
+### 5.1 唯一执行进度
+
+当前进度从第一个未勾选任务推导，不另设 `active-task`：
+
+- [x] `ACT-00` 激活、基线与工作树冻结
+- [x] `DDIR-01` 机器本地偏好与路径策略
+- [ ] `DDIR-02` 启动期 DI、冻结根目录与重启语义
+- [ ] `DDIR-03 + DDIR-04 close gate` 通用选择器、设置 UI、兼容与文档
+- [ ] `PDR-01` partial snapshot 与 O(1) committed-page 索引
+- [ ] `PDR-02` partial 章节页表路由
+- [ ] `PDR-03` encoded cache → committed page → network 唯一物化链
+- [ ] `PDR-04` rename、CBZ、取消与 stale generation 并发矩阵
+- [ ] `PDR-05` production wiring、反馈、Test Mode 与性能门禁
+- [ ] `CLOSE-01` 组合回归、正式构建与关闭审计
+
+### 5.2 依赖与提交规则
+
 每个**实现批次**是一个可独立 RED、GREEN、审查、验证和提交的行为批次，不按单个文件拆分。`ACT-00` 是激活门禁，
 `DDIR-04` 是并入 `DDIR-03` 同一提交的 close 子门禁，`CLOSE-01` 是最终收口；三者不产生纯状态/纯 checkoff 提交。
 正常实现批次固定执行：
@@ -315,7 +334,8 @@ DDIR-03/04 + PDR-05 ────────────────────
 - 确认 `DesktopReaderRuntimeFactory`、`DesktopReaderSession`、page image pipeline 和 memory authority 的最终接口；
 - 重新核对 partial 缺口仍存在：完整 locator 不读 `_tmp`、Reader 找不到最终 artifact 后仍走 ONLINE；
 - 冻结现有完整下载、online、local、CBZ 的 production 操作计数，作为非回归基线；
-- 确认 Gradle task 和预计 test class 名称实际存在后再启动 RED。
+- 确认 Gradle task 与既有 anchor test 存在；计划新增类必须先写出能因 production 行为失败的测试，再运行 filter，
+  `No tests found` 不算有效 RED。
 
 **交付物**：不写功能代码、不单独创建巨大审计报告。若当前 Reader 计划已完成，则同一提交关闭它、激活本文并更新
 父路线唯一活动指针；若它只是安全暂停，则同一原子文档提交必须把旧计划标成 `PAUSED`、写入精确 commit/未提交 diff/
