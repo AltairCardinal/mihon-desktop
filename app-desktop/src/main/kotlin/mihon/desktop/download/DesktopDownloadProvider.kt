@@ -69,6 +69,17 @@ class DesktopDownloadProvider(
     fun canonicalChapterTmpDir(identity: DownloadChapterIdentity): File =
         File(canonicalMangaDownloadDir(identity), DownloadArtifactNamingPolicy.currentChapterName(identity) + TMP_DIR_SUFFIX)
 
+    /** Finite canonical aliases plus the historical Desktop `_tmp` path; never scans the download tree. */
+    fun partialTmpDirectoryCandidates(sourceId: Long, identity: DownloadChapterIdentity): List<File> =
+        (
+            DownloadArtifactNamingPolicy.chapterCandidates(identity)
+                .asSequence()
+                .filter { it.kind == DownloadArtifactKind.DIRECTORY }
+                .map { candidate -> File(canonicalMangaDownloadDir(identity), candidate.name + TMP_DIR_SUFFIX) }
+                .toList() +
+                chapterTmpDir(sourceId, identity.mangaTitle, identity.chapterName)
+            ).distinctBy(File::getAbsolutePath)
+
     /**
      * A chapter is considered downloaded only when the **final** directory
      * (without `_tmp` suffix) exists and contains at least one image file.

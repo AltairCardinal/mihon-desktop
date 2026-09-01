@@ -1,6 +1,8 @@
 package mihon.domain.download
 
 import mihon.domain.error.AppError
+import mihon.domain.reader.content.DownloadChapterIdentity
+import mihon.domain.reader.partial.PartialPageTable
 
 data class DownloadQueueEntry(
     val chapterId: Long,
@@ -15,6 +17,9 @@ data class DownloadQueueEntry(
     val position: Long,
     val retryCount: Int = 0,
     val failure: AppError? = null,
+    /** Lossless queue authority; [pageUrls] remains a legacy compatibility projection. */
+    val pageTable: PartialPageTable = PartialPageTable.legacy(pageUrls),
+    val downloadIdentity: DownloadChapterIdentity? = null,
 )
 
 enum class DownloadQueueStatus { QUEUED, DOWNLOADING, COMPLETED, ERROR, CANCELLED }

@@ -1,6 +1,7 @@
 package mihon.desktop.download
 
 import mihon.domain.reader.content.DownloadArtifactLocator
+import mihon.domain.reader.content.DownloadArtifactKind
 import mihon.domain.reader.content.DownloadArtifactNamingPolicy
 import mihon.domain.reader.content.DownloadChapterIdentity
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -214,6 +215,35 @@ class DownloadProviderTest {
         }
 
         assertEquals(oldCbz.absolutePath, provider.downloadArtifactLookup(42L).locate(identity)?.opaqueLocation)
+    }
+
+    @Test
+    fun `partial tmp candidates are finite canonical aliases followed by the historical desktop directory`() {
+        val provider = provider()
+        val identity = downloadIdentity()
+        val expected = DownloadArtifactNamingPolicy.chapterCandidates(identity)
+            .filter { it.kind == DownloadArtifactKind.DIRECTORY }
+            .distinct()
+            .map { provider.canonicalMangaDownloadDir(identity).resolve(it.name + DesktopDownloadProvider.TMP_DIR_SUFFIX) } +
+            provider.chapterTmpDir(42L, identity.mangaTitle, identity.chapterName)
+
+        assertEquals(
+            expected.distinctBy(File::getAbsolutePath),
+            provider.partialTmpDirectoryCandidates(42L, identity),
+        )
+        assertFalse(provider.isChapterDownloaded(42L, identity))
+    }
+
+    @Test
+    fun `download page filename policy shares ordinal mapping and excludes staging names`() {
+        assertEquals("001.jpg", DownloadPageFileNamingPolicy.committedFileName(0, "jpg"))
+        assertEquals("100.png", DownloadPageFileNamingPolicy.committedFileName(99, ".PNG"))
+        assertEquals("001.17.tmp", DownloadPageFileNamingPolicy.stagingFileName(0, 17L))
+        assertEquals(0, DownloadPageFileNamingPolicy.readerOrdinal("001.jpg"))
+        assertEquals(99, DownloadPageFileNamingPolicy.readerOrdinal("100.webp"))
+        assertEquals(null, DownloadPageFileNamingPolicy.readerOrdinal("001.17.tmp"))
+        assertEquals(null, DownloadPageFileNamingPolicy.readerOrdinal("000.jpg"))
+        assertEquals(null, DownloadPageFileNamingPolicy.readerOrdinal("cover.jpg"))
     }
 
     // ── hasMangaDownloads ─────────────────────────────────────────────────────

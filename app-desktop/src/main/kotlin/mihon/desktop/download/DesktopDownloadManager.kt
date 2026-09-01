@@ -2,8 +2,10 @@ package mihon.desktop.download
 
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.CatalogueSource
 import mihon.desktop.extension.SourceCallResult
+import mihon.desktop.extension.resolveSourceImageUrl
 import mihon.desktop.extension.safeSourceCall
 import mihon.domain.download.DownloadQueueEntry
 import mihon.domain.download.DownloadQueueStatus
@@ -11,6 +13,13 @@ import mihon.domain.download.DownloadQueueStateMachine
 import mihon.domain.download.DownloadRepository
 import mihon.domain.error.AppError
 import mihon.domain.reader.content.DownloadChapterIdentity
+import mihon.domain.reader.partial.PartialCommittedPage
+import mihon.domain.reader.partial.PartialDownloadSnapshot
+import mihon.domain.reader.partial.PartialDownloadSnapshotLookup
+import mihon.domain.reader.partial.PartialPageTable
+import mihon.domain.reader.partial.PartialPageTableEntry
+import mihon.domain.reader.partial.PartialPageTablePolicy
+import mihon.domain.reader.partial.PartialPageTableValidation
 import mihon.desktop.domain.DesktopSystemNotifier
 import mihon.domain.task.NotificationEvent
 import kotlinx.coroutines.CoroutineScope
@@ -39,6 +48,7 @@ import tachiyomi.data.download.PersistentDownloadStore
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -73,7 +83,10 @@ class DesktopDownloadManager(
     },
     private val sourceCallTimeoutMs: Long = 30_000L,
     private val downloadIdentityResolver: suspend (DownloadItem) -> DownloadChapterIdentity? = { null },
-) : DownloadRepository, DesktopDownloadQueuePort {
+    private val partialIndexFileOperations: PartialDownloadIndexFileOperations = DefaultPartialDownloadIndexFileOperations,
+    private val enqueueFileOperations: DownloadEnqueueFileOperations = DefaultDownloadEnqueueFileOperations,
+    private val ioProbe: DownloadIoProbe = DownloadIoProbe.None,
+) : DownloadRepository, DesktopDownloadQueuePort, PartialDownloadSnapshotLookup {
     private data class DownloadAttempt(
         val item: DownloadItem,
         val generation: Long,
@@ -84,6 +97,35 @@ class DesktopDownloadManager(
     private data class DownloadAttemptKey(
         val chapterId: Long,
         val generation: Long,
+    )
+
+    private data class CommittedPageRecord(
+        val readerOrdinal: Int,
+        val sourcePageIndex: Int,
+        val file: File,
+        val committedRevision: Long,
+    )
+
+    private class CommittedChapterIndex(
+        val key: DownloadAttemptKey,
+        val identity: DownloadChapterIdentity?,
+        val pageTable: PartialPageTable,
+        val directory: File,
+        val pages: MutableCommittedPageIndex<CommittedPageRecord>,
+        val rejectedFilesByOrdinal: ConcurrentHashMap<Int, List<File>> = ConcurrentHashMap(),
+        val rejectedUnmappedFiles: List<File> = emptyList(),
+    )
+
+    private data class PagePublishToken(
+        val key: DownloadAttemptKey,
+        val readerOrdinal: Int,
+        val stagingFile: File,
+        val finalFile: File,
+    )
+
+    private data class ResolvedPageTable(
+        val pageTable: PartialPageTable,
+        val source: CatalogueSource?,
     )
 
     private data class ChapterRetirement(
@@ -110,39 +152,85 @@ class DesktopDownloadManager(
     private var workerJob: Job? = null
     private val activeJobs = mutableSetOf<Job>()
     private val generationSequence = AtomicLong()
+    private val committedRevisionSequence = AtomicLong()
     private val recoveredItems = store?.recover()?.map { it.toItem() } ?: emptyList()
     private val queueGenerations = recoveredItems.associate { it.chapterId to nextGeneration() }.toMutableMap()
+    private val currentGenerations = ConcurrentHashMap(queueGenerations)
+    private val currentStatuses = ConcurrentHashMap(
+        recoveredItems.associate { item ->
+            item.chapterId to DownloadQueueStatus.valueOf(item.status.name.replace("DONE", "COMPLETED"))
+        },
+    )
     private val resolvedDownloadIdentities = mutableMapOf<DownloadAttemptKey, DownloadChapterIdentity>()
+    private val committedIndexes = ConcurrentHashMap<DownloadAttemptKey, CommittedChapterIndex>()
+    private val reconcileCompletions = ConcurrentHashMap<DownloadAttemptKey, CompletableDeferred<Unit>>()
+    private val pagePublishTokens = ConcurrentHashMap<Pair<DownloadAttemptKey, Int>, PagePublishToken>()
     private val activeProducers = mutableMapOf<DownloadAttemptKey, CompletableDeferred<Unit>>()
     private val retirementsByChapter = mutableMapOf<Long, ChapterRetirement>()
+    private val enqueuePreflights = mutableSetOf<Long>()
     private val _queue = MutableStateFlow(recoveredItems)
     override val queue: StateFlow<List<DownloadItem>> = _queue.asStateFlow()
     private val _failures = MutableStateFlow(recoveredItems.mapNotNull { item -> item.failure?.let { item.chapterId to it } }.toMap())
     val failures: StateFlow<Map<Long, AppError>> = _failures.asStateFlow()
+    private val partialIndexRecoveryJob = workerScope.launch(start = CoroutineStart.LAZY) {
+        recoveredItems.forEach { item ->
+            val identity = item.downloadIdentity ?: return@forEach
+            if (item.pageTable.entries.isEmpty()) return@forEach
+            if (
+                PartialPageTablePolicy.validate(item.pageTable) !in setOf(
+                    PartialPageTableValidation.COMPLETE,
+                    PartialPageTableValidation.PARTIAL,
+                    PartialPageTableValidation.LEGACY_UNPROVEN,
+                )
+            ) {
+                return@forEach
+            }
+            val generation = currentGenerations[item.chapterId] ?: return@forEach
+            val attempt = DownloadAttempt(item, generation)
+            val directory = firstExistingPartialDirectory(item.sourceId, identity) ?: return@forEach
+            reconcilePartialIndex(attempt, item.pageTable, identity, directory)
+        }
+    }
     internal val activeJobCount: Int
         get() = workerScope.coroutineContext[Job]?.children?.count() ?: 0
     override val queueEntries = queue.map { items -> items.mapIndexed { index, item -> item.toEntry(index.toLong()) } }
 
     private val _isPaused = MutableStateFlow(false)
+
+    init {
+        partialIndexRecoveryJob.start()
+    }
+
     /** True when downloads are paused by the user. */
     val isPaused: StateFlow<Boolean> = _isPaused.asStateFlow()
 
     /** Add a chapter to the download queue (no-op if already queued or downloaded). */
-    fun enqueue(item: DownloadItem) = synchronized(queueStateLock) {
-        val current = _queue.value
-        if (current.any { it.chapterId == item.chapterId }) return@synchronized
-        val hasRetiringAttempt = retirementsByChapter.containsKey(item.chapterId)
-        if (!hasRetiringAttempt && provider.isChapterDownloaded(item.sourceId, item.mangaTitle, item.chapterName)) {
-            return@synchronized
+    fun enqueue(item: DownloadItem) {
+        val hasRetiringAttempt = synchronized(queueStateLock) {
+            if (_queue.value.any { it.chapterId == item.chapterId } || !enqueuePreflights.add(item.chapterId)) return
+            retirementsByChapter.containsKey(item.chapterId)
         }
-        // A retirement owns the shared paths until its cleanup gate opens. Fresh attempts retain
-        // the historical eager cleanup behavior when no old producer can still touch the paths.
-        if (!hasRetiringAttempt) {
-            provider.cleanupTmpDir(item.sourceId, item.mangaTitle, item.chapterName)
+        try {
+            // Filesystem preflight is deliberately outside queueStateLock. The chapter reservation
+            // prevents two enqueues from cleaning shared paths while either attempt can start.
+            if (!hasRetiringAttempt) {
+                emitIo(DownloadIoOperation.ENQUEUE_DOWNLOADED_PROBE)
+                if (enqueueFileOperations.isChapterDownloaded(provider, item)) return
+                emitIo(DownloadIoOperation.ENQUEUE_TMP_CLEANUP)
+                enqueueFileOperations.cleanupTemporaryDirectory(provider, item)
+            }
+            synchronized(queueStateLock) {
+                if (_queue.value.any { it.chapterId == item.chapterId }) return@synchronized
+                val generation = nextGeneration()
+                queueGenerations[item.chapterId] = generation
+                currentGenerations[item.chapterId] = generation
+                currentStatuses[item.chapterId] = DownloadQueueStatus.valueOf(item.status.name.replace("DONE", "COMPLETED"))
+                _queue.value = _queue.value + item
+                persistQueue()
+            }
+        } finally {
+            synchronized(queueStateLock) { enqueuePreflights.remove(item.chapterId) }
         }
-        queueGenerations[item.chapterId] = nextGeneration()
-        _queue.value = current + item
-        persistQueue()
     }
 
     override fun enqueue(entry: DownloadQueueEntry) = enqueue(entry.toItem())
@@ -166,7 +254,8 @@ class DesktopDownloadManager(
                     return@synchronized null
                 }
                 val key = DownloadAttemptKey(chapterId, generation)
-                val identity = resolvedDownloadIdentities.remove(key)
+                val identity = resolvedDownloadIdentities.remove(key) ?: item.downloadIdentity
+                val indexedDirectory = committedIndexes[key]?.directory
                 val existingRetirement = retirementsByChapter[chapterId]
                 val retirement = if (existingRetirement?.completion?.isCompleted == false) {
                     existingRetirement
@@ -174,13 +263,20 @@ class DesktopDownloadManager(
                     ChapterRetirement(
                         key = key,
                         item = item,
-                        artifacts = (existingRetirement?.artifacts.orEmpty() + retirementArtifacts(item, identity))
+                        artifacts = (
+                            existingRetirement?.artifacts.orEmpty() +
+                                retirementArtifacts(item, identity, indexedDirectory)
+                            )
                             .distinctBy(File::getAbsolutePath),
                         producerDone = activeProducers[key] ?: completedProducerSignal(),
                     ).also { retirementsByChapter[chapterId] = it }
                 }
                 _queue.value = nextQueue
                 queueGenerations.remove(chapterId)
+                currentGenerations.remove(chapterId, generation)
+                currentStatuses.remove(chapterId)
+                committedIndexes.remove(key)
+                reconcileCompletions.remove(key)
                 _failures.update { it - chapterId }
                 CancelResult(
                     retirement = retirement,
@@ -211,7 +307,7 @@ class DesktopDownloadManager(
     }
 
     /** Reset a single ERROR item back to QUEUED. */
-    fun retryItem(chapterId: Long) { retry(chapterId) }
+    fun retryItem(chapterId: Long): Boolean = retry(chapterId)
 
     override fun retry(chapterId: Long): Boolean = transition(chapterId, DownloadQueueStatus.QUEUED)
 
@@ -242,9 +338,15 @@ class DesktopDownloadManager(
                 if (target != DownloadQueueStatus.ERROR) throw error
             }
             _queue.value = nextQueue
+            currentStatuses[chapterId] = target
             if (target == DownloadQueueStatus.QUEUED) {
-                resolvedDownloadIdentities.remove(DownloadAttemptKey(chapterId, currentGeneration))
-                queueGenerations[chapterId] = nextGeneration()
+                val oldKey = DownloadAttemptKey(chapterId, currentGeneration)
+                resolvedDownloadIdentities.remove(oldKey)
+                committedIndexes.remove(oldKey)
+                reconcileCompletions.remove(oldKey)
+                val nextGeneration = nextGeneration()
+                queueGenerations[chapterId] = nextGeneration
+                currentGenerations[chapterId] = nextGeneration
                 _failures.update { it - chapterId }
             }
         }
@@ -366,7 +468,7 @@ class DesktopDownloadManager(
     fun stop() {
         val jobs = synchronized(lifecycleLock) {
             stopped = true
-            (listOfNotNull(workerJob) + activeJobs).distinct()
+            (listOfNotNull(workerJob, partialIndexRecoveryJob) + activeJobs).distinct()
         }
         jobs.forEach { it.cancel() }
     }
@@ -380,7 +482,7 @@ class DesktopDownloadManager(
 
     private fun snapshotJobsForStop(): List<Job> = synchronized(lifecycleLock) {
         stopped = true
-        (listOfNotNull(workerJob) + activeJobs).distinct().also {
+        (listOfNotNull(workerJob, partialIndexRecoveryJob) + activeJobs).distinct().also {
             workerJob = null
             activeJobs.clear()
         }
@@ -439,7 +541,7 @@ class DesktopDownloadManager(
         val item = attempt.item
         return try {
             if (!awaitRetirement(attempt)) return false
-            val downloadIdentity = downloadIdentityResolver(item)
+            val downloadIdentity = item.downloadIdentity ?: downloadIdentityResolver(item)
             if (downloadIdentity != null && !registerIdentity(attempt, downloadIdentity)) return false
             if (!isCurrentAttempt(attempt)) return false
             if (downloadIdentity != null && provider.isChapterDownloaded(item.sourceId, downloadIdentity)) {
@@ -448,139 +550,73 @@ class DesktopDownloadManager(
             val client = httpClient
                 ?: networkHelper?.clientForSource(item.sourceId)
                 ?: Injekt.get<NetworkHelper>().clientForSource(item.sourceId)
-            // Resolve page URLs if not pre-provided
-            val urls = when {
-                item.pageUrls.isNotEmpty() -> item.pageUrls
-                item.chapterUrl.isNotBlank() -> {
-                    val source = sourceResolver(item.sourceId) ?: return fail(
-                        attempt,
-                        AppError.Unknown(IllegalStateException("Source ${item.sourceId} is unavailable")),
-                    )
-                    val sChapter = SChapter.create().apply {
-                        url = item.chapterUrl
-                        name = item.chapterName
-                    }
-                    val pagesResult = safeSourceCall(timeoutMs = sourceCallTimeoutMs) { source.getPageList(sChapter) }
-                    when (pagesResult) {
-                        is SourceCallResult.Success -> pagesResult.value.mapNotNull { it.imageUrl }
-                        is SourceCallResult.Timeout -> return fail(attempt, pagesResult.error)
-                        is SourceCallResult.Error -> return fail(
-                            attempt,
-                            pagesResult.error,
-                        )
-                    }
-                }
-                else -> return fail(
-                    attempt,
-                    AppError.MalformedData(IllegalArgumentException("Chapter URL is missing")),
-                )
-            }
-            if (urls.isEmpty()) return fail(
+            val resolvedPages = resolvePageTable(attempt, item) ?: return false
+            val pageTable = resolvedPages.pageTable
+            if (pageTable.entries.isEmpty()) return fail(
                 attempt,
                 AppError.MalformedData(IllegalStateException("Source returned no downloadable pages")),
             )
-
-            // Update queue item with resolved URL count so progress display is accurate
-            if (!updateAttempt(attempt) { it.copy(pageUrls = urls) }) return false
-
-            // Use _tmp directory for in-progress download (Android pattern)
-            val tmpDir = downloadIdentity?.let(provider::canonicalChapterTmpDir)
-                ?: provider.chapterTmpDir(item.sourceId, item.mangaTitle, item.chapterName)
-            if (!isCurrentAttempt(attempt)) return false
-            tmpDir.mkdirs()
-            // Clean up any leftover .tmp files from previous partial downloads.
-            // No replacement worker can start until this attempt has returned.
-            tmpDir.listFiles()
-                ?.filter { it.extension == "tmp" }
-                ?.forEach { it.delete() }
-            if (!isCurrentAttempt(attempt)) {
-                tmpDir.deleteRecursively()
+            var sourceForMissingImageUrls = resolvedPages.source
+            val compatibilityUrls = pageTable.entries
+                .sortedBy(PartialPageTableEntry::readerOrdinal)
+                .map { entry -> entry.imageUrl?.takeIf(String::isNotBlank) ?: entry.pageUrl }
+            if (
+                !updateAttempt(attempt) {
+                    it.copy(
+                        pageUrls = compatibilityUrls,
+                        pageTable = pageTable,
+                        downloadIdentity = downloadIdentity ?: it.downloadIdentity,
+                    )
+                }
+            ) {
                 return false
             }
 
-            urls.forEachIndexed { index, url ->
-                if (!isCurrentAttempt(attempt)) return false
-
-                val baseName = "%03d".format(index + 1)
-                val attemptTmpFile = File(tmpDir, "$baseName.${attempt.generation}.tmp")
-
-                // Skip if this page was already fully downloaded in a previous attempt
-                val alreadyDownloaded = tmpDir.listFiles()
-                    ?.any {
-                        it.nameWithoutExtension == baseName &&
-                            it.extension != "tmp" &&
-                            provider.isValidDownloadedImage(it)
-                    }
-                    ?: false
-                if (!isCurrentAttempt(attempt)) {
-                    tmpDir.deleteRecursively()
-                    return false
+            // Use _tmp directory for in-progress download (Android pattern)
+            val tmpDir = committedIndexes[attempt.key]?.directory
+                ?: downloadIdentity?.let { identity ->
+                    firstExistingPartialDirectory(item.sourceId, identity)
+                        ?: provider.canonicalChapterTmpDir(identity)
                 }
+                ?: provider.chapterTmpDir(item.sourceId, item.mangaTitle, item.chapterName)
+            if (!isCurrentAttempt(attempt)) return false
+            tmpDir.mkdirs()
+            reconcilePartialIndex(attempt, pageTable, downloadIdentity, tmpDir)
+            if (!isCurrentAttempt(attempt)) return false
 
+            pageTable.entries.sortedBy(PartialPageTableEntry::readerOrdinal).forEach { pageEntry ->
+                if (!isCurrentAttempt(attempt)) return false
+                val alreadyDownloaded = committedIndexes[attempt.key]?.pages?.contains(pageEntry.readerOrdinal) == true
                 if (!alreadyDownloaded) {
-                    // Download to .tmp file first
-                    val finalFile = File(tmpDir, "$baseName.${extensionFromUrl(url)}")
-                    var pageDownloaded = false
-                    var retryAttempt = 0
-                    var lastError: Throwable? = null
-                    while (!pageDownloaded) {
-                        pageDownloaded = try {
-                            val bytes = fileOperations.execute(client, url).use { response ->
-                                val bytes = fileOperations.readBody(response)
-                                if (!isCurrentAttempt(attempt)) return false
-                                bytes
-                            }
-                            fileOperations.writePage(attemptTmpFile, bytes)
-                            if (!isCurrentAttempt(attempt)) {
-                                tmpDir.deleteRecursively()
-                                return false
-                            }
-                            finalFile.delete()
-                            fileOperations.renamePage(attemptTmpFile, finalFile)
-                            val valid = provider.isValidDownloadedImage(finalFile)
-                            if (!isCurrentAttempt(attempt)) {
-                                tmpDir.deleteRecursively()
-                                return false
-                            }
-                            valid
-                        } catch (error: Exception) {
-                            if (error is CancellationException) throw error
-                            lastError = error
-                            false
-                        }
-                        if (!pageDownloaded) {
-                            attemptTmpFile.delete()
-                            finalFile.delete()
-                            if (!isCurrentAttempt(attempt)) {
-                                tmpDir.deleteRecursively()
-                                return false
-                            }
-                            val wait = stateMachine.retryDelayMillis(retryAttempt++) ?: break
-                            if (!updateRetryCount(attempt, retryAttempt)) return false
-                            retryDelay(wait)
-                        }
+                    if (!cleanupRejectedFilesForOrdinal(attempt, pageEntry.readerOrdinal)) return false
+                    val imageUrl = pageEntry.imageUrl?.takeIf(String::isNotBlank) ?: run {
+                        val source = sourceForMissingImageUrls
+                            ?: sourceResolver(item.sourceId)?.also { sourceForMissingImageUrls = it }
+                            ?: return fail(
+                                attempt,
+                                AppError.MalformedData(
+                                    IllegalStateException("Source ${item.sourceId} cannot resolve missing image URLs"),
+                                ),
+                            )
+                        resolveImageUrl(attempt, source, pageEntry) ?: return false
                     }
-                    if (!pageDownloaded) {
-                        recordFailure(attempt, lastError.toAppError())
-                        attemptTmpFile.delete()
-                        finalFile.delete()
-                        if (!isCurrentAttempt(attempt)) {
-                            tmpDir.deleteRecursively()
-                            return false
-                        }
+                    if (!downloadAndPublishPage(attempt, client, tmpDir, pageTable, downloadIdentity, pageEntry, imageUrl)) {
                         return false
                     }
                 }
 
-                if (!updateAttempt(attempt) { it.copy(progress = index + 1, retryCount = 0) }) return false
+                if (!updateAttempt(attempt) { it.copy(progress = pageEntry.readerOrdinal + 1, retryCount = 0) }) return false
                 clearFailure(attempt)
             }
+
+            if (!cleanupAllRejectedFiles(attempt)) return false
 
             // All pages downloaded — rename _tmp to final directory
             val finalDir = downloadIdentity?.let(provider::canonicalChapterDownloadDir)
                 ?: provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
             val prefs = downloadPreferences ?: runCatching { Injekt.get<DesktopDownloadPreferences>() }.getOrNull()
             if (!isCurrentAttempt(attempt)) return false
+            finalDir.parentFile?.mkdirs()
             run {
                 var renamed = false
                 var renameAttempt = 0
@@ -588,6 +624,7 @@ class DesktopDownloadManager(
                 while (!renamed) {
                     renamed = try {
                         if (!isCurrentAttempt(attempt)) return false
+                        emitIo(DownloadIoOperation.CHAPTER_MOVE)
                         finalDir.deleteRecursively()
                         if (!isCurrentAttempt(attempt)) return false
                         fileOperations.renameChapter(tmpDir, finalDir)
@@ -611,6 +648,7 @@ class DesktopDownloadManager(
                 try {
                     if (prefs?.downloadAsCbz?.get() == true) {
                         val cbzFile = CbzCreator.defaultOutputFile(finalDir)
+                        emitIo(DownloadIoOperation.CBZ_PACKAGE)
                         val packed = chapterPackager(finalDir, cbzFile)
                         if (packed) {
                             // Remove individual image files — CBZ replaces them
@@ -633,6 +671,392 @@ class DesktopDownloadManager(
         }
     }
 
+    private suspend fun resolvePageTable(
+        attempt: DownloadAttempt,
+        item: DownloadItem,
+    ): ResolvedPageTable? {
+        val normalizedTable = PartialPageTablePolicy.normalizeLegacyPageUrls(item.pageTable, item.pageUrls)
+        val validation = PartialPageTablePolicy.validate(normalizedTable)
+        if (
+            normalizedTable.entries.isNotEmpty() &&
+            validation in setOf(PartialPageTableValidation.COMPLETE, PartialPageTableValidation.LEGACY_UNPROVEN)
+        ) {
+            return ResolvedPageTable(normalizedTable, null)
+        }
+        if (item.chapterUrl.isBlank()) {
+            fail(attempt, AppError.MalformedData(IllegalArgumentException("Chapter URL is missing")))
+            return null
+        }
+        val source = sourceResolver(item.sourceId)
+        if (source == null) {
+            fail(attempt, AppError.Unknown(IllegalStateException("Source ${item.sourceId} is unavailable")))
+            return null
+        }
+        val chapter = SChapter.create().apply {
+            url = item.chapterUrl
+            name = item.chapterName
+        }
+        emitIo(DownloadIoOperation.SOURCE_PAGE_LIST)
+        return when (val result = safeSourceCall(timeoutMs = sourceCallTimeoutMs) { source.getPageList(chapter) }) {
+            is SourceCallResult.Success -> ResolvedPageTable(
+                pageTable = PartialPageTable.complete(
+                    result.value.mapIndexed { readerOrdinal, page ->
+                        PartialPageTableEntry(
+                            readerOrdinal = readerOrdinal,
+                            sourcePageIndex = page.index,
+                            pageUrl = page.url,
+                            imageUrl = page.imageUrl,
+                        )
+                    },
+                ),
+                source = source,
+            )
+            is SourceCallResult.Timeout -> {
+                fail(attempt, result.error)
+                null
+            }
+            is SourceCallResult.Error -> {
+                fail(attempt, result.error)
+                null
+            }
+        }
+    }
+
+    private suspend fun resolveImageUrl(
+        attempt: DownloadAttempt,
+        source: CatalogueSource,
+        entry: PartialPageTableEntry,
+    ): String? {
+        val page = Page(entry.sourcePageIndex, entry.pageUrl, entry.imageUrl)
+        emitIo(DownloadIoOperation.SOURCE_IMAGE_URL)
+        return when (val result = safeSourceCall(timeoutMs = sourceCallTimeoutMs) { resolveSourceImageUrl(source, page) }) {
+            is SourceCallResult.Success -> result.value?.takeIf(String::isNotBlank) ?: run {
+                fail(
+                    attempt,
+                    AppError.MalformedData(IllegalStateException("Source returned an empty page image URL")),
+                )
+                null
+            }
+            is SourceCallResult.Timeout -> {
+                fail(attempt, result.error)
+                null
+            }
+            is SourceCallResult.Error -> {
+                fail(attempt, result.error)
+                null
+            }
+        }
+    }
+
+    private suspend fun downloadAndPublishPage(
+        attempt: DownloadAttempt,
+        client: OkHttpClient,
+        tmpDir: File,
+        pageTable: PartialPageTable,
+        identity: DownloadChapterIdentity?,
+        entry: PartialPageTableEntry,
+        imageUrl: String,
+    ): Boolean {
+        val stagingFile = File(
+            tmpDir,
+            DownloadPageFileNamingPolicy.stagingFileName(entry.readerOrdinal, attempt.generation),
+        )
+        val finalFile = File(
+            tmpDir,
+            DownloadPageFileNamingPolicy.committedFileName(entry.readerOrdinal, extensionFromUrl(imageUrl)),
+        )
+        var retryAttempt = 0
+        var lastError: Throwable? = null
+        while (true) {
+            var token: PagePublishToken? = null
+            var moved = false
+            try {
+                emitIo(DownloadIoOperation.NETWORK_REQUEST)
+                val bytes = fileOperations.execute(client, imageUrl).use { response ->
+                    emitIo(DownloadIoOperation.BODY_READ)
+                    fileOperations.readBody(response)
+                }
+                if (!isCurrentAttempt(attempt)) {
+                    cleanupStaging(stagingFile)
+                    return false
+                }
+                emitIo(DownloadIoOperation.PAGE_WRITE)
+                fileOperations.writePage(stagingFile, bytes)
+                if (!isCurrentAttempt(attempt)) {
+                    cleanupStaging(stagingFile)
+                    return false
+                }
+                token = reservePagePublishToken(attempt, entry.readerOrdinal, stagingFile, finalFile)
+                if (token == null) {
+                    cleanupStaging(stagingFile)
+                    return false
+                }
+                emitIo(DownloadIoOperation.PAGE_MOVE)
+                fileOperations.renamePage(stagingFile, finalFile)
+                moved = true
+                if (!isCurrentAttempt(attempt)) {
+                    releasePagePublishToken(token, deleteFinal = true)
+                    return false
+                }
+                emitIo(DownloadIoOperation.PAGE_HEADER_PROBE)
+                if (!partialIndexFileOperations.isValidCommittedPage(provider, finalFile)) {
+                    throw java.io.IOException("Downloaded page failed validation")
+                }
+                if (!publishCommittedPage(token, pageTable, identity, entry)) {
+                    releasePagePublishToken(token, deleteFinal = true)
+                    return false
+                }
+                return true
+            } catch (error: Exception) {
+                if (error is CancellationException) {
+                    token?.let { releasePagePublishToken(it, deleteFinal = moved) } ?: cleanupStaging(stagingFile)
+                    throw error
+                }
+                lastError = error
+                token?.let { releasePagePublishToken(it, deleteFinal = moved) } ?: cleanupStaging(stagingFile)
+            }
+            if (!isCurrentAttempt(attempt)) return false
+            val wait = stateMachine.retryDelayMillis(retryAttempt++) ?: break
+            if (!updateRetryCount(attempt, retryAttempt)) return false
+            retryDelay(wait)
+        }
+        recordFailure(attempt, lastError.toAppError())
+        cleanupStaging(stagingFile)
+        return false
+    }
+
+    private fun reservePagePublishToken(
+        attempt: DownloadAttempt,
+        readerOrdinal: Int,
+        stagingFile: File,
+        finalFile: File,
+    ): PagePublishToken? = synchronized(queueStateLock) {
+        if (!isCurrentAttemptLocked(attempt)) return@synchronized null
+        val token = PagePublishToken(attempt.key, readerOrdinal, stagingFile, finalFile)
+        token.takeIf { pagePublishTokens.putIfAbsent(attempt.key to readerOrdinal, token) == null }
+    }
+
+    private fun publishCommittedPage(
+        token: PagePublishToken,
+        pageTable: PartialPageTable,
+        identity: DownloadChapterIdentity?,
+        entry: PartialPageTableEntry,
+    ): Boolean = synchronized(queueStateLock) {
+        val tokenKey = token.key to token.readerOrdinal
+        if (
+            queueGenerations[token.key.chapterId] != token.key.generation ||
+            pagePublishTokens[tokenKey] !== token
+        ) {
+            return@synchronized false
+        }
+        val index = committedIndexes[token.key] ?: CommittedChapterIndex(
+            key = token.key,
+            identity = identity,
+            pageTable = pageTable,
+            directory = token.finalFile.parentFile,
+            pages = MutableCommittedPageIndex(),
+        ).also { committedIndexes[token.key] = it }
+        val record = CommittedPageRecord(
+            readerOrdinal = entry.readerOrdinal,
+            sourcePageIndex = entry.sourcePageIndex,
+            file = token.finalFile,
+            committedRevision = committedRevisionSequence.incrementAndGet(),
+        )
+        index.pages.put(entry.readerOrdinal, record)
+        index.rejectedFilesByOrdinal.remove(entry.readerOrdinal)
+        pagePublishTokens.remove(tokenKey, token)
+        true
+    }
+
+    private fun releasePagePublishToken(token: PagePublishToken, deleteFinal: Boolean) {
+        val stillOwned = pagePublishTokens.remove(token.key to token.readerOrdinal, token)
+        cleanupStaging(token.stagingFile)
+        if (deleteFinal && stillOwned) {
+            emitIo(DownloadIoOperation.STAGING_CLEANUP)
+            token.finalFile.delete()
+        }
+    }
+
+    private fun cleanupStaging(file: File) {
+        emitIo(DownloadIoOperation.STAGING_CLEANUP)
+        file.delete()
+    }
+
+    private suspend fun reconcilePartialIndex(
+        attempt: DownloadAttempt,
+        pageTable: PartialPageTable,
+        identity: DownloadChapterIdentity?,
+        directory: File,
+    ) {
+        val completion = CompletableDeferred<Unit>()
+        val existing = reconcileCompletions.putIfAbsent(attempt.key, completion)
+        if (existing != null) {
+            existing.await()
+            return
+        }
+        try {
+            val validation = PartialPageTablePolicy.validate(pageTable)
+            if (
+                validation !in setOf(
+                    PartialPageTableValidation.COMPLETE,
+                    PartialPageTableValidation.PARTIAL,
+                    PartialPageTableValidation.LEGACY_UNPROVEN,
+                )
+            ) {
+                return
+            }
+            if (!isCurrentAttempt(attempt)) return
+            emitIo(DownloadIoOperation.INDEX_DIRECTORY_LIST)
+            val files = partialIndexFileOperations.listFiles(directory)
+            val tableEntries = pageTable.entries.associateBy(PartialPageTableEntry::readerOrdinal)
+            val rejectedByOrdinal = mutableMapOf<Int, MutableList<File>>()
+            val rejectedUnmapped = mutableListOf<File>()
+            val candidates = mutableMapOf<Int, MutableList<File>>()
+            files.forEach { file ->
+                if (file.extension.equals("tmp", ignoreCase = true)) {
+                    val readerOrdinal = DownloadPageFileNamingPolicy.stagingReaderOrdinal(file.name)
+                    if (readerOrdinal != null && tableEntries.containsKey(readerOrdinal)) {
+                        rejectedByOrdinal.getOrPut(readerOrdinal, ::mutableListOf).add(file)
+                    } else {
+                        rejectedUnmapped += file
+                    }
+                    return@forEach
+                }
+                val readerOrdinal = DownloadPageFileNamingPolicy.readerOrdinal(file.name) ?: return@forEach
+                if (!tableEntries.containsKey(readerOrdinal)) {
+                    rejectedUnmapped += file
+                } else {
+                    candidates.getOrPut(readerOrdinal, ::mutableListOf).add(file)
+                }
+            }
+            val reconciledPages = MutableCommittedPageIndex<CommittedPageRecord>()
+            candidates.entries.sortedBy(Map.Entry<Int, MutableList<File>>::key).forEach { (readerOrdinal, candidateFiles) ->
+                if (candidateFiles.size != 1) {
+                    rejectedByOrdinal.getOrPut(readerOrdinal, ::mutableListOf).addAll(candidateFiles)
+                    return@forEach
+                }
+                val file = candidateFiles.single()
+                emitIo(DownloadIoOperation.PAGE_HEADER_PROBE)
+                if (!partialIndexFileOperations.isValidCommittedPage(provider, file)) {
+                    rejectedByOrdinal.getOrPut(readerOrdinal, ::mutableListOf).add(file)
+                    return@forEach
+                }
+                val entry = tableEntries.getValue(readerOrdinal)
+                reconciledPages.put(
+                    readerOrdinal,
+                    CommittedPageRecord(
+                        readerOrdinal = readerOrdinal,
+                        sourcePageIndex = entry.sourcePageIndex,
+                        file = file,
+                        committedRevision = committedRevisionSequence.incrementAndGet(),
+                    ),
+                )
+            }
+            synchronized(queueStateLock) {
+                if (isCurrentAttemptLocked(attempt)) {
+                    committedIndexes[attempt.key] = CommittedChapterIndex(
+                        key = attempt.key,
+                        identity = identity,
+                        pageTable = pageTable,
+                        directory = directory,
+                        pages = reconciledPages,
+                        rejectedFilesByOrdinal = ConcurrentHashMap(
+                            rejectedByOrdinal.mapValues { (_, rejectedFiles) -> rejectedFiles.distinctBy(File::getAbsolutePath) },
+                        ),
+                        rejectedUnmappedFiles = rejectedUnmapped.distinctBy(File::getAbsolutePath),
+                    )
+                }
+            }
+        } finally {
+            completion.complete(Unit)
+        }
+    }
+
+    private fun cleanupRejectedFilesForOrdinal(attempt: DownloadAttempt, readerOrdinal: Int): Boolean {
+        val index = committedIndexes[attempt.key] ?: return isCurrentAttempt(attempt)
+        val rejectedFiles = index.rejectedFilesByOrdinal[readerOrdinal].orEmpty()
+        if (!cleanupExactRejectedFiles(attempt, rejectedFiles)) return false
+        index.rejectedFilesByOrdinal.remove(readerOrdinal, rejectedFiles)
+        return true
+    }
+
+    private fun cleanupAllRejectedFiles(attempt: DownloadAttempt): Boolean {
+        val index = committedIndexes[attempt.key] ?: return isCurrentAttempt(attempt)
+        val rejectedFiles = (
+            index.rejectedFilesByOrdinal.values.flatten() + index.rejectedUnmappedFiles
+            ).distinctBy(File::getAbsolutePath)
+        if (!cleanupExactRejectedFiles(attempt, rejectedFiles)) return false
+        index.rejectedFilesByOrdinal.clear()
+        return true
+    }
+
+    private fun cleanupExactRejectedFiles(attempt: DownloadAttempt, files: List<File>): Boolean {
+        files.forEach { file ->
+            if (!isCurrentAttempt(attempt)) return false
+            try {
+                emitIo(DownloadIoOperation.STAGING_CLEANUP)
+                if (file.exists() && (!file.delete() || file.exists())) {
+                    throw java.io.IOException("Unable to remove rejected partial page: ${file.absolutePath}")
+                }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                recordFailure(attempt, AppError.Storage(error))
+                return false
+            }
+        }
+        return isCurrentAttempt(attempt)
+    }
+
+    private fun firstExistingPartialDirectory(
+        sourceId: Long,
+        identity: DownloadChapterIdentity,
+    ): File? = provider.partialTmpDirectoryCandidates(sourceId, identity).firstOrNull { directory ->
+        emitIo(DownloadIoOperation.INDEX_DIRECTORY_PROBE)
+        partialIndexFileOperations.isDirectory(directory)
+    }
+
+    internal suspend fun awaitPartialIndexRecovery() {
+        partialIndexRecoveryJob.join()
+    }
+
+    override fun snapshot(chapterId: Long, identity: DownloadChapterIdentity): PartialDownloadSnapshot? {
+        val generation = currentGenerations[chapterId] ?: return null
+        val key = DownloadAttemptKey(chapterId, generation)
+        val index = committedIndexes[key]?.takeIf { it.identity == identity } ?: return null
+        val status = currentStatuses[chapterId] ?: return null
+        if (currentGenerations[chapterId] != generation) return null
+        return PartialDownloadSnapshot(
+            chapterId = chapterId,
+            identity = identity,
+            attemptGeneration = generation,
+            queueStatus = status,
+            pageTable = index.pageTable,
+            committedPages = index.pages.valuesSnapshot()
+                .sortedBy(CommittedPageRecord::readerOrdinal)
+                .map { page ->
+                    PartialCommittedPage(
+                        readerOrdinal = page.readerOrdinal,
+                        sourcePageIndex = page.sourcePageIndex,
+                        opaqueLocation = page.file.absolutePath,
+                        committedRevision = page.committedRevision,
+                    )
+                },
+        )
+    }
+
+    private fun emitIo(operation: DownloadIoOperation) {
+        ioProbe.onIo(
+            DownloadIoEvent(
+                operation = operation,
+                locks = DownloadLockState(
+                    queueStateLocked = Thread.holdsLock(queueStateLock),
+                    indexLocked = false,
+                    lifecycleLocked = Thread.holdsLock(lifecycleLock),
+                ),
+            ),
+        )
+    }
+
     private fun isStopped(): Boolean = synchronized(lifecycleLock) { stopped }
 
     private fun nextGeneration(): Long = generationSequence.incrementAndGet()
@@ -642,8 +1066,7 @@ class DesktopDownloadManager(
     }
 
     private fun isCurrentAttemptLocked(attempt: DownloadAttempt): Boolean =
-        queueGenerations[attempt.item.chapterId] == attempt.generation &&
-            _queue.value.any { it.chapterId == attempt.item.chapterId }
+        queueGenerations[attempt.item.chapterId] == attempt.generation
 
     private fun launchRetirementCleanup(retirement: ChapterRetirement) {
         val job = workerScope.launch(start = CoroutineStart.LAZY) {
@@ -712,15 +1135,17 @@ class DesktopDownloadManager(
     private fun retirementArtifacts(
         item: DownloadItem,
         identity: DownloadChapterIdentity?,
+        indexedDirectory: File? = null,
     ): List<File> {
         val legacyFinal = provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
         return buildList {
+            indexedDirectory?.let(::add)
             add(provider.chapterTmpDir(item.sourceId, item.mangaTitle, item.chapterName))
             add(legacyFinal)
             add(CbzCreator.defaultOutputFile(legacyFinal))
             identity?.let {
                 val canonicalFinal = provider.canonicalChapterDownloadDir(identity)
-                add(provider.canonicalChapterTmpDir(identity))
+                addAll(provider.partialTmpDirectoryCandidates(item.sourceId, identity))
                 add(canonicalFinal)
                 add(CbzCreator.defaultOutputFile(canonicalFinal))
             }
@@ -749,7 +1174,16 @@ class DesktopDownloadManager(
         identity: DownloadChapterIdentity,
     ): Boolean = synchronized(queueStateLock) {
         if (!isCurrentAttemptLocked(attempt)) return@synchronized false
+        if (_queue.value.firstOrNull { it.chapterId == attempt.item.chapterId }?.downloadIdentity == identity) {
+            resolvedDownloadIdentities[attempt.key] = identity
+            return@synchronized true
+        }
+        val nextQueue = _queue.value.map { item ->
+            if (item.chapterId == attempt.item.chapterId) item.copy(downloadIdentity = identity) else item
+        }
+        persistQueue(nextQueue)
         resolvedDownloadIdentities[attempt.key] = identity
+        _queue.value = nextQueue
         true
     }
 
@@ -768,6 +1202,10 @@ class DesktopDownloadManager(
         persistQueue(nextQueue)
         resolvedDownloadIdentities.remove(attempt.key)
         queueGenerations.remove(attempt.item.chapterId)
+        currentGenerations.remove(attempt.item.chapterId, attempt.generation)
+        currentStatuses.remove(attempt.item.chapterId)
+        committedIndexes.remove(attempt.key)
+        reconcileCompletions.remove(attempt.key)
         _queue.value = nextQueue
         _failures.update { it - attempt.item.chapterId }
         true
@@ -891,6 +1329,8 @@ class DesktopDownloadManager(
         position = position,
         retryCount = retryCount,
         failure = failure,
+        pageTable = PartialPageTablePolicy.normalizeLegacyPageUrls(pageTable, pageUrls),
+        downloadIdentity = downloadIdentity,
     )
 
     private fun DownloadQueueEntry.toItem() = DownloadItem(
@@ -905,6 +1345,8 @@ class DesktopDownloadManager(
         progress = progress,
         retryCount = retryCount,
         failure = failure,
+        pageTable = PartialPageTablePolicy.normalizeLegacyPageUrls(pageTable, pageUrls),
+        downloadIdentity = downloadIdentity,
     )
 
     private fun extensionFromUrl(url: String): String {
@@ -937,7 +1379,12 @@ interface DownloadFileOperations {
     fun renameChapter(tmpDir: File, finalDir: File): Boolean
 }
 
-object DefaultDownloadFileOperations : DownloadFileOperations {
+class DefaultDownloadFileOperations internal constructor(
+    private val atomicPageFileMove: AtomicPageFileMove = AtomicPageFileMove(),
+) : DownloadFileOperations {
+
+    companion object : DownloadFileOperations by DefaultDownloadFileOperations()
+
     override fun execute(client: OkHttpClient, url: String): Response = try {
         client.newCall(Request.Builder().url(url).build()).execute().also { response ->
             if (!response.isSuccessful) {
@@ -960,7 +1407,7 @@ object DefaultDownloadFileOperations : DownloadFileOperations {
     }
 
     override fun renamePage(tmp: File, final: File) {
-        if (tmp.length() <= 0L || !tmp.renameTo(final)) throw java.io.IOException("Unable to finalize page")
+        atomicPageFileMove.publish(tmp, final)
     }
 
     override fun renameChapter(tmpDir: File, finalDir: File): Boolean {

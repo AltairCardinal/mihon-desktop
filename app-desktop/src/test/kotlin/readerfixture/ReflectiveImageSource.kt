@@ -24,6 +24,9 @@ class ReflectiveImageSource : CatalogueSource {
     fun getClient(): OkHttpClient = httpClient
 
     @Suppress("unused")
+    suspend fun getImageUrl(page: Page): String = page.url
+
+    @Suppress("unused")
     suspend fun getImage(page: Page): Response = httpClient.newCall(
         Request.Builder()
             .url(requireNotNull(page.imageUrl))
@@ -33,7 +36,8 @@ class ReflectiveImageSource : CatalogueSource {
             .build(),
     ).execute()
 
-    override suspend fun getPageList(chapter: SChapter): List<Page> = emptyList()
+    override suspend fun getPageList(chapter: SChapter): List<Page> =
+        listOf(Page(19, "https://child.invalid/resolved.jpg", null))
     override suspend fun getMangaDetails(manga: SManga): SManga = manga
     override suspend fun getChapterList(manga: SManga): List<SChapter> = emptyList()
     override suspend fun getPopularManga(page: Int): MangasPage = MangasPage(emptyList(), false)

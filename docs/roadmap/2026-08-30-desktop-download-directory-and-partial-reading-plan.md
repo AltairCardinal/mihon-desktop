@@ -282,7 +282,7 @@ encoded ref 必须携带 `Partial(committedRevision)` provenance。若后续像�
 - [x] `DDIR-01` 机器本地偏好与路径策略
 - [x] `DDIR-02` 启动期 DI、冻结根目录与重启语义
 - [x] `DDIR-03 + DDIR-04 close gate` 通用选择器、设置 UI、兼容与文档
-- [ ] `PDR-01` partial snapshot 与 O(1) committed-page 索引
+- [x] `PDR-01` partial snapshot 与 O(1) committed-page 索引
 - [ ] `PDR-02` partial 章节页表路由
 - [ ] `PDR-03` encoded cache → committed page → network 唯一物化链
 - [ ] `PDR-04` rename、CBZ、取消与 stale generation 并发矩阵
@@ -545,6 +545,16 @@ python scripts/gradle-coordinator.py run --key pdr01-red -- ./gradlew :domain:jv
 ```
 
 **完成条件**：Manager production 确实消费新索引；只给 Reader mock 一个 snapshot 而下载热路径仍 O(N²) 不算完成。
+
+**完成记录（2026-09-01）**：本批涉及 18 个 production/test/roadmap 文件，超过建议范围；这是 shared partial 契约、现有
+`page_urls` tagged/versioned 向后兼容 codec、下载 owner 的 generation/revision 索引、有限 `_tmp` 候选恢复、子类加载器
+source URL 桥接及其恢复/并发/性能测试组成的一个内聚批次。拆开会让 metadata、落盘页命名或运行时索引任一侧缺少可重建
+证据。风险集中在恢复代际、共享路径发布和下载热循环；合并 RED 分别记录于
+`.gradle-coordinator/pdr01-review-red-runtime.log` 与 `.gradle-coordinator/pdr01-review-red-structure.log`，最终 101 个相关测试
+加全仓 `spotlessCheck` 通过（`.gradle-coordinator/pdr01-close-final-approved.log`，`BUILD SUCCESSFUL in 5m 46s`）。独立审查
+发现的 O(N) map copy、stale reconcile 删除、alias 遗留、child-classloader cast、非原子页发布、坏候选混入 final 和入队锁内
+I/O 均已修复；一次有界修复复审指出的非 ASCII alias 全集与默认 production 原子入口防假绿缺口也已补齐并由最终 close
+覆盖。Manager 仅暴露可重建的只读 snapshot，Reader production route/DI 仍保持 disabled，未提前启用 `PDR-02`～`PDR-05`。
 
 ---
 

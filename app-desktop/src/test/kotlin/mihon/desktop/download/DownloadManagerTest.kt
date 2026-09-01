@@ -1,6 +1,12 @@
 package mihon.desktop.download
 
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.online.HttpSource
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.mockk
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
@@ -30,6 +36,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import mihon.desktop.domain.DesktopSystemNotifier
+import mihon.desktop.extension.ExtensionClassLoader
+import mihon.domain.download.DownloadQueueEntry
 import okhttp3.Response
 import okhttp3.Protocol
 import okhttp3.Request
@@ -43,12 +51,16 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import mihon.domain.reader.content.DownloadChapterIdentity
+import mihon.domain.reader.partial.PartialPageTableEntry
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import java.io.File
 import java.net.ServerSocket
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.jar.JarEntry
+import java.util.jar.JarOutputStream
 import kotlin.concurrent.thread
 
 /** RED — DesktopDownloadManager does not exist yet. */
@@ -106,6 +118,53 @@ class DownloadManagerTest {
         mgr.enqueue(item)
         mgr.enqueue(item)
         assertEquals(1, mgr.queue.first().size)
+    }
+
+    @Test
+    fun `enqueue filesystem preflight never holds the queue state lock`() = runBlocking {
+        val probeEntered = CountDownLatch(1)
+        val releaseProbe = CountDownLatch(1)
+        val ioEvents = CopyOnWriteArrayList<DownloadIoEvent>()
+        val manager = DesktopDownloadManager(
+            provider = DesktopDownloadProvider(tempDir.resolve("enqueue-preflight")),
+            workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            enqueueFileOperations = object : DownloadEnqueueFileOperations {
+                override fun isChapterDownloaded(provider: DesktopDownloadProvider, item: DownloadItem): Boolean {
+                    probeEntered.countDown()
+                    check(releaseProbe.await(5, TimeUnit.SECONDS))
+                    return false
+                }
+
+                override fun cleanupTemporaryDirectory(provider: DesktopDownloadProvider, item: DownloadItem) = Unit
+            },
+            ioProbe = DownloadIoProbe { event -> ioEvents += event },
+        )
+        val item = DownloadItem(
+            sourceId = 1L,
+            mangaTitle = "Preflight Manga",
+            chapterName = "Preflight Chapter",
+            chapterId = 11L,
+            pageUrls = listOf("https://example.invalid/page.jpg"),
+        )
+        val enqueuing = async(Dispatchers.IO) { manager.enqueue(item) }
+        try {
+            assertTrue(probeEntered.await(5, TimeUnit.SECONDS))
+            val whileBlocked = withTimeout(1_000) { withContext(Dispatchers.Default) { manager.recover() } }
+            assertTrue(whileBlocked.isEmpty())
+            releaseProbe.countDown()
+            enqueuing.await()
+
+            assertEquals(listOf(item.chapterId), manager.queue.value.map(DownloadItem::chapterId))
+            assertEquals(
+                listOf(DownloadIoOperation.ENQUEUE_DOWNLOADED_PROBE, DownloadIoOperation.ENQUEUE_TMP_CLEANUP),
+                ioEvents.map(DownloadIoEvent::operation),
+            )
+            assertTrue(ioEvents.all { !it.locks.queueStateLocked })
+        } finally {
+            releaseProbe.countDown()
+            enqueuing.cancelAndJoin()
+            manager.stopAndJoin()
+        }
     }
 
     @Test
@@ -245,6 +304,198 @@ class DownloadManagerTest {
         } finally {
             worker.cancel()
         }
+    }
+
+    @Test
+    fun `manager preserves source page table lazily resolves only missing image url and publishes indexed pages`() =
+        runBlocking {
+            val provider = DesktopDownloadProvider(tempDir.resolve("versioned-page-table"))
+            val identity = DownloadChapterIdentity(
+                sourceDisplayName = "Versioned Source",
+                mangaTitle = "Versioned Manga",
+                chapterName = "Versioned Chapter",
+                scanlator = "Group",
+                chapterUrl = "/chapter/versioned",
+                disallowNonAsciiFilenames = false,
+            )
+            val source = mockk<HttpSource>()
+            val sourcePages = listOf(
+                Page(4, "/page/first", "https://img.test/first.jpg"),
+                Page(19, "/page/middle", null),
+                Page(41, "/page/last", "https://img.test/last.jpg"),
+            )
+            coEvery { source.getPageList(any()) } returns sourcePages
+            coEvery { source.getImageUrl(match { it.index == 19 }) } returns "https://img.test/middle.png"
+            val executedUrls = CopyOnWriteArrayList<String>()
+            val chapterRenameEntered = CountDownLatch(1)
+            val releaseChapterRename = CountDownLatch(1)
+            val ioEvents = CopyOnWriteArrayList<DownloadIoEvent>()
+            val persistedQueues = CopyOnWriteArrayList<List<DownloadQueueEntry>>()
+            val workerParent = SupervisorJob()
+            val manager = DesktopDownloadManager(
+                provider = provider,
+                networkHelper = NetworkHelper(OkHttpClient()),
+                workerScope = CoroutineScope(workerParent + Dispatchers.IO),
+                sourceResolver = { source },
+                downloadIdentityResolver = { identity },
+                ioProbe = DownloadIoProbe { event -> ioEvents += event },
+                queuePersister = { entries -> persistedQueues += entries },
+                fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                    override fun execute(client: OkHttpClient, url: String): Response {
+                        executedUrls += url
+                        return Response.Builder()
+                            .request(Request.Builder().url(url).build())
+                            .protocol(Protocol.HTTP_1_1)
+                            .code(200)
+                            .message("OK")
+                            .body(jpegBytes().toResponseBody())
+                            .build()
+                    }
+
+                    override fun renameChapter(tmpDir: File, finalDir: File): Boolean {
+                        chapterRenameEntered.countDown()
+                        check(releaseChapterRename.await(5, TimeUnit.SECONDS))
+                        return DefaultDownloadFileOperations.renameChapter(tmpDir, finalDir)
+                    }
+                },
+            )
+            manager.enqueue(
+                DownloadItem(
+                    sourceId = 42L,
+                    mangaTitle = identity.mangaTitle,
+                    chapterName = identity.chapterName,
+                    chapterId = 4_200L,
+                    chapterUrl = identity.chapterUrl,
+                ),
+            )
+            manager.start()
+            try {
+                assertTrue(chapterRenameEntered.await(5, TimeUnit.SECONDS))
+
+                val queued = manager.queue.value.single()
+                val persisted = persistedQueues.last().single()
+                val snapshot = checkNotNull(manager.snapshot(queued.chapterId, identity))
+                assertEquals(listOf(0, 1, 2), queued.pageTable.entries.map(PartialPageTableEntry::readerOrdinal))
+                assertEquals(listOf(4, 19, 41), queued.pageTable.entries.map(PartialPageTableEntry::sourcePageIndex))
+                assertEquals(listOf("/page/first", "/page/middle", "/page/last"), queued.pageTable.entries.map(PartialPageTableEntry::pageUrl))
+                assertEquals(3, snapshot.pageTable.totalPageCount)
+                assertEquals(queued.pageTable, persisted.pageTable)
+                assertEquals(identity, persisted.downloadIdentity)
+                assertEquals(
+                    listOf("https://img.test/first.jpg", null, "https://img.test/last.jpg"),
+                    persisted.pageTable.entries.map(PartialPageTableEntry::imageUrl),
+                )
+                assertEquals(listOf(0, 1, 2), snapshot.committedPages.map { it.readerOrdinal })
+                assertEquals(
+                    snapshot.committedPages.map { it.committedRevision }.sorted(),
+                    snapshot.committedPages.map { it.committedRevision },
+                )
+                assertTrue(snapshot.committedPages.zipWithNext().all { (first, second) -> first.committedRevision < second.committedRevision })
+                assertEquals(
+                    listOf("001.jpg", "002.png", "003.jpg"),
+                    provider.canonicalChapterTmpDir(identity).listFiles().orEmpty().map(File::getName).sorted(),
+                )
+                assertFalse(provider.isChapterDownloaded(42L, identity))
+                assertEquals(
+                    listOf("https://img.test/first.jpg", "https://img.test/middle.png", "https://img.test/last.jpg"),
+                    executedUrls,
+                )
+                coVerify(exactly = 1) { source.getPageList(any()) }
+                coVerify(exactly = 1) { source.getImageUrl(any()) }
+                assertTrue(ioEvents.isNotEmpty())
+                assertEquals(1, ioEvents.count { it.operation == DownloadIoOperation.INDEX_DIRECTORY_LIST })
+                assertEquals(3, ioEvents.count { it.operation == DownloadIoOperation.PAGE_HEADER_PROBE })
+                assertTrue(ioEvents.all { event ->
+                    !event.locks.queueStateLocked && !event.locks.indexLocked && !event.locks.lifecycleLocked
+                })
+                assertTrue(
+                    setOf(
+                        DownloadIoOperation.SOURCE_PAGE_LIST,
+                        DownloadIoOperation.SOURCE_IMAGE_URL,
+                        DownloadIoOperation.NETWORK_REQUEST,
+                        DownloadIoOperation.BODY_READ,
+                        DownloadIoOperation.PAGE_WRITE,
+                        DownloadIoOperation.PAGE_HEADER_PROBE,
+                        DownloadIoOperation.PAGE_MOVE,
+                        DownloadIoOperation.CHAPTER_MOVE,
+                    ).all { expected -> ioEvents.any { it.operation == expected } },
+                )
+            } finally {
+                releaseChapterRename.countDown()
+                withTimeout(5_000) { manager.stopAndJoin() }
+                withTimeout(5_000) { workerParent.cancelAndJoin() }
+            }
+        }
+
+    @Test
+    fun `manager reflectively resolves a missing image url from a child loaded source`() = runBlocking {
+        val fixtureClassName = "readerfixture.ReflectiveImageSource"
+        val classResource = fixtureClassName.replace('.', '/') + ".class"
+        val extensionJar = tempDir.resolve("reflective-download-source.jar")
+        JarOutputStream(extensionJar.outputStream()).use { output ->
+            output.putNextEntry(JarEntry(classResource))
+            requireNotNull(javaClass.classLoader.getResourceAsStream(classResource)).use { it.copyTo(output) }
+            output.closeEntry()
+        }
+
+        ExtensionClassLoader(extensionJar.toURI().toURL(), javaClass.classLoader).use { classLoader ->
+            val source = classLoader.loadClass(fixtureClassName).getDeclaredConstructor().newInstance() as CatalogueSource
+            assertSame(classLoader, source.javaClass.classLoader)
+            assertFalse(source is HttpSource)
+            val executedUrls = CopyOnWriteArrayList<String>()
+            val workerParent = SupervisorJob()
+            val manager = DesktopDownloadManager(
+                provider = DesktopDownloadProvider(tempDir.resolve("child-loader-downloads")),
+                networkHelper = NetworkHelper(OkHttpClient()),
+                workerScope = CoroutineScope(workerParent + Dispatchers.IO),
+                sourceResolver = { source },
+                fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                    override fun execute(client: OkHttpClient, url: String): Response {
+                        executedUrls += url
+                        return Response.Builder()
+                            .request(Request.Builder().url(url).build())
+                            .protocol(Protocol.HTTP_1_1)
+                            .code(200)
+                            .message("OK")
+                            .body(jpegBytes().toResponseBody())
+                            .build()
+                    }
+                },
+            )
+            manager.enqueue(
+                DownloadItem(
+                    sourceId = source.id,
+                    mangaTitle = "Child Loader Manga",
+                    chapterName = "Child Loader Chapter",
+                    chapterId = 9_901L,
+                    chapterUrl = "/child-loader/chapter",
+                ),
+            )
+            val worker = manager.start()
+            try {
+                withTimeout(5_000) {
+                    while (manager.queue.value.singleOrNull()?.status !in setOf(null, DownloadStatus.ERROR)) delay(10)
+                }
+
+                assertTrue(manager.queue.value.isEmpty())
+                assertEquals(listOf("https://child.invalid/resolved.jpg"), executedUrls)
+            } finally {
+                worker.cancelAndJoin()
+                manager.stopAndJoin()
+                workerParent.cancelAndJoin()
+            }
+        }
+    }
+
+    @Test
+    fun `default page publication replaces an existing destination`() {
+        val staging = tempDir.resolve("atomic-page.tmp").apply { writeText("replacement") }
+        val destination = tempDir.resolve("001.jpg").apply { writeText("stale") }
+
+        DefaultDownloadFileOperations.renamePage(staging, destination)
+
+        assertFalse(staging.exists())
+        assertEquals("replacement", destination.readText())
     }
 
     @Test

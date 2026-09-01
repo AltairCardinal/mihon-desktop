@@ -1,6 +1,7 @@
 package mihon.domain.reader.content
 
 import eu.kanade.tachiyomi.util.lang.Hash.md5
+import kotlinx.serialization.Serializable
 
 enum class ReaderChapterRoute {
     DOWNLOAD,
@@ -39,6 +40,7 @@ object ReaderChapterContentResolver : ReaderChapterRouteResolver {
     }
 }
 
+@Serializable
 data class DownloadChapterIdentity(
     val sourceDisplayName: String,
     val mangaTitle: String,

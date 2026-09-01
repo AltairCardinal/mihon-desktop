@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import mihon.desktop.extension.resolveSourceImageUrl
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
 import okhttp3.Headers
@@ -48,10 +49,7 @@ class SourcePageFetcher(
     suspend fun resolveImageUrl(page: Page): String {
         page.imageUrl?.takeIf(String::isNotBlank)?.let { return it }
         val resolved = try {
-            when (source) {
-                is HttpSource -> source.getImageUrl(page)
-                else -> invokeReflectiveImageUrl(page)
-            }
+            resolveSourceImageUrl(source, page)
         } catch (error: CancellationException) {
             throw error
         } catch (error: AppErrorException) {
@@ -105,18 +103,6 @@ class SourcePageFetcher(
             destFile.delete()
             val cause = (error as? InvocationTargetException)?.targetException ?: error
             SourcePageFetchResult.Failure(cause.toSourceAppError())
-        }
-    }
-
-    private suspend fun invokeReflectiveImageUrl(page: Page): String? {
-        val method = source.javaClass.methods.firstOrNull { candidate ->
-            candidate.name == "getImageUrl" &&
-                candidate.parameterCount == 2 &&
-                candidate.parameterTypes.first().isAssignableFrom(page.javaClass)
-        }?.apply { trySetAccessible() } ?: return null
-        return suspendCoroutineUninterceptedOrReturn { continuation ->
-            val result = method.invoke(source, page, continuation)
-            if (result === COROUTINE_SUSPENDED) COROUTINE_SUSPENDED else result as? String
         }
     }
 
