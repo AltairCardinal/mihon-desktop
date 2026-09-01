@@ -7,6 +7,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.reader.model.ReadingProgressEvent
+import mihon.domain.reader.content.DownloadChapterIdentity
 import tachiyomi.domain.manga.model.Manga
 import java.util.Date
 import tachiyomi.domain.track.interactor.ReadingProgressTrackSync
@@ -42,6 +43,7 @@ class ReaderProgressTracker(
         wasRead: Boolean = false,
         readAt: Date = Date(),
         sessionReadDuration: Long = 0L,
+        downloadIdentity: DownloadChapterIdentity? = null,
     ) {
         val isRead = wasRead || (totalPages > 0 && lastPageRead >= totalPages - 1)
 
@@ -71,14 +73,19 @@ class ReaderProgressTracker(
         }
 
         // Auto-delete downloaded chapter when fully read
-        if (isRead && manga != null && chapterName != null) {
+        if (isRead) {
             val shouldDelete = downloadPreferences?.deleteAfterRead?.get() == true
             if (shouldDelete) {
-                downloadManager?.deleteDownload(
-                    sourceId = manga.source,
-                    mangaTitle = manga.title,
-                    chapterName = chapterName,
-                )
+                when {
+                    sourceId != null && downloadIdentity != null ->
+                        downloadManager?.deleteDownload(sourceId, downloadIdentity)
+                    manga != null && chapterName != null ->
+                        downloadManager?.deleteDownload(
+                            sourceId = manga.source,
+                            mangaTitle = manga.title,
+                            chapterName = chapterName,
+                        )
+                }
             }
         }
     }

@@ -12,6 +12,7 @@ import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.ui.reader.ReaderScreenModel
 import mihon.domain.reader.content.DownloadArtifactProbe
+import mihon.domain.reader.content.DownloadChapterIdentity
 import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.observability.ReaderMonotonicClock
@@ -189,6 +190,14 @@ class DesktopReaderRuntimeFactory internal constructor(
                         mangaId = context.mangaId,
                         chapterNumber = context.chapterNumber,
                         wasRead = effect.wasRead,
+                        downloadIdentity = DownloadChapterIdentity(
+                            sourceDisplayName = context.sourceDisplayName,
+                            mangaTitle = context.mangaTitle,
+                            chapterName = context.chapterTitle,
+                            scanlator = context.scanlator,
+                            chapterUrl = context.chapterUrl,
+                            disallowNonAsciiFilenames = context.disallowNonAsciiFilenames,
+                        ),
                     )
                 }
             },

@@ -19,16 +19,20 @@ import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.backup.BackupPreview
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
+import mihon.desktop.download.DesktopDownloadDirectoryController
+import mihon.desktop.download.DesktopDownloadQueuePort
 import mihon.desktop.download.DesktopDownloadPreferences
+import mihon.desktop.download.DownloadItem
 import mihon.desktop.reader.NextChapterPrefetchMode
 import mihon.desktop.reader.ReaderPreferences
-import mihon.desktop.platform.DesktopBackupFilePicker
+import mihon.desktop.platform.DesktopFilePicker
 import mihon.desktop.settings.DesktopAppPreferences
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -40,6 +44,7 @@ import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.i18n.MR
+import java.io.File
 import java.util.Locale
 import java.util.prefs.Preferences
 
@@ -247,14 +252,26 @@ class DesktopSettingsContentAccessibilityTest {
             every { create() } returns model
             coEvery { createBackup(any()) } returns java.io.File("backup.tachibk")
         }
+        val downloadPreferences = DesktopDownloadPreferences(store)
+        val directoryPreference = downloadPreferences.downloadDirectory(
+            File(System.getProperty("java.io.tmpdir"), "mihon-settings-accessibility-downloads"),
+        )
+        val directoryState = directoryPreference.state()
+        val directoryController = DesktopDownloadDirectoryController(directoryPreference, directoryState)
+        val queuePort = object : DesktopDownloadQueuePort {
+            override val queue = MutableStateFlow<List<DownloadItem>>(emptyList())
+        }
         return mockk(relaxed = true) {
             every { appPreferences } returns DesktopAppPreferences(store)
             every { this@mockk.readerPreferences } returns readerPreferences
-            every { downloadPreferences } returns DesktopDownloadPreferences(store)
+            every { this@mockk.downloadPreferences } returns downloadPreferences
+            every { downloadDirectoryState } returns directoryState
+            every { downloadDirectoryController } returns directoryController
+            every { downloadQueuePort } returns queuePort
             every { getCategories } returns categories
             every { creatorDiscoveryScheduler } returns null
             every { backupRestoreScreenModelFactory } returns factory
-            every { backupFilePicker } returns mockk<DesktopBackupFilePicker>(relaxed = true)
+            every { filePicker } returns mockk<DesktopFilePicker>(relaxed = true)
         }
     }
 

@@ -43,8 +43,8 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.launch
 import mihon.desktop.backup.BackupPreview
-import mihon.desktop.platform.DesktopBackupFilePickerRequest
-import mihon.desktop.platform.DesktopBackupFilePickerResult
+import mihon.desktop.platform.DesktopFilePickerRequest
+import mihon.desktop.platform.DesktopFilePickerResult
 import mihon.desktop.platform.DesktopExternalActionTarget
 import mihon.domain.error.AppError
 import tachiyomi.i18n.MR
@@ -74,7 +74,7 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
             .collectAsState(initial = appPrefs.autoBackupLastError.get())
 
         val backupFactory = LocalDesktopUiDependencies.current.backupRestoreScreenModelFactory
-        val backupFilePicker = LocalDesktopUiDependencies.current.backupFilePicker
+        val filePicker = LocalDesktopUiDependencies.current.filePicker
         val createTitle = DesktopSettingsAnchorResources.createBackup.localized()
         val restoreTitle = DesktopSettingsAnchorResources.restoreBackup.localized()
 
@@ -134,15 +134,23 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
                 DesktopSettingsButton(
                     onClick = {
                         scope.launch {
-                            val request = DesktopBackupFilePickerRequest.Directory(
+                            val request = DesktopFilePickerRequest.Directory(
                                 backupPresentationText(BackupPresentationText.DirectoryChooserTitle),
                             )
-                            val dir = when (val result = backupFilePicker.choose(request)) {
-                                DesktopBackupFilePickerResult.Cancelled -> {
+                            val dir = when (val result = filePicker.choose(request)) {
+                                DesktopFilePickerResult.Cancelled -> {
                                     snackbar.showSnackbar(backupPresentationText(BackupPresentationText.CreateCancelled))
                                     return@launch
                                 }
-                                is DesktopBackupFilePickerResult.Selected -> result.file
+                                is DesktopFilePickerResult.Failed -> {
+                                    snackbar.showSnackbar(
+                                        backupPresentationText(
+                                            BackupPresentationText.CreationFailed(result.error.message.orEmpty()),
+                                        ),
+                                    )
+                                    return@launch
+                                }
+                                is DesktopFilePickerResult.Selected -> result.file
                             }
                             isBusy = true
                             try {
@@ -178,17 +186,21 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
                 DesktopSettingsButton(
                     onClick = {
                         scope.launch {
-                            val request = DesktopBackupFilePickerRequest.BackupFile(
+                            val request = DesktopFilePickerRequest.OpenFile(
                                 title = backupPresentationText(BackupPresentationText.FileChooserTitle),
                                 description = backupPresentationText(BackupPresentationText.FileFilter),
                                 extensions = setOf("tachibk"),
                             )
-                            val file = when (val result = backupFilePicker.choose(request)) {
-                                DesktopBackupFilePickerResult.Cancelled -> {
+                            val file = when (val result = filePicker.choose(request)) {
+                                DesktopFilePickerResult.Cancelled -> {
                                     snackbar.showSnackbar(backupPresentationText(BackupPresentationText.RestoreSelectionCancelled))
                                     return@launch
                                 }
-                                is DesktopBackupFilePickerResult.Selected -> result.file
+                                is DesktopFilePickerResult.Failed -> {
+                                    snackbar.showSnackbar(MR.strings.desktop_backup_restore_unknown_error.localized())
+                                    return@launch
+                                }
+                                is DesktopFilePickerResult.Selected -> result.file
                             }
                             restoreModel.select(file)
                         }

@@ -6,12 +6,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import io.mockk.mockk
+import io.mockk.verify
+import mihon.desktop.download.DesktopDownloadManager
+import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.task.DesktopTaskScheduler
 import mihon.desktop.task.FileTaskCheckpointStore
 import mihon.desktop.tracking.DesktopNetworkConnectivity
 import mihon.desktop.tracking.DesktopTrackerSyncScheduler
 import mihon.domain.task.TaskStatus
+import mihon.domain.reader.content.DownloadChapterIdentity
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -52,6 +57,38 @@ import java.util.UUID
 import java.util.prefs.Preferences
 
 class ReaderProgressTrackerTest {
+    @Test
+    fun `delete after read uses the complete download identity for every migrated artifact alias`() = runBlocking {
+        val downloadPreferences = DesktopDownloadPreferences(InMemoryPreferenceStore()).apply {
+            deleteAfterRead.set(true)
+        }
+        val downloadManager = mockk<DesktopDownloadManager>(relaxed = true)
+        val identity = DownloadChapterIdentity(
+            sourceDisplayName = "Source 中文",
+            mangaTitle = "Manga 中文",
+            chapterName = "Chapter 1",
+            scanlator = "Group",
+            chapterUrl = "/chapter/hash-me",
+            disallowNonAsciiFilenames = false,
+        )
+        val tracker = ReaderProgressTracker(
+            recordReadingProgress = RecordReadingProgress(RecordingRepository()),
+            downloadPreferences = downloadPreferences,
+            downloadManager = downloadManager,
+        )
+
+        tracker.track(
+            eventId = "delete-migrated",
+            chapterId = 1L,
+            lastPageRead = 9,
+            totalPages = 10,
+            sourceId = 42L,
+            downloadIdentity = identity,
+        )
+
+        verify(exactly = 1) { downloadManager.deleteDownload(42L, identity) }
+    }
+
     @Test
     fun `reading to last page marks shared event as read`() = runBlocking {
         val repository = RecordingRepository()

@@ -36,6 +36,10 @@ Desktop release artifacts, when published, are available from the [project relea
 
 </div>
 
+## Desktop guides
+
+- [下载目录设置、手动迁移与失败恢复](./docs/desktop-download-directory.md)
+
 ## Contributing
 
 [Code of conduct](./CODE_OF_CONDUCT.md) · [Contributing guide](./CONTRIBUTING.md)

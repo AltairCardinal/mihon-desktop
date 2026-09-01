@@ -15,16 +15,20 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.yield
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.backup.BackupPreview
 import mihon.desktop.backup.BackupRestoreScreenModelFactory
+import mihon.desktop.download.DesktopDownloadDirectoryController
+import mihon.desktop.download.DesktopDownloadQueuePort
 import mihon.desktop.download.DesktopDownloadPreferences
-import mihon.desktop.platform.DesktopBackupFilePicker
-import mihon.desktop.platform.DesktopBackupFilePickerRequest
-import mihon.desktop.platform.DesktopBackupFilePickerResult
-import mihon.desktop.platform.createDesktopBackupFileChooser
+import mihon.desktop.download.DownloadItem
+import mihon.desktop.platform.DesktopFilePicker
+import mihon.desktop.platform.DesktopFilePickerRequest
+import mihon.desktop.platform.DesktopFilePickerResult
+import mihon.desktop.platform.createDesktopFileChooser
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.domain.task.TaskState
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -47,12 +51,12 @@ import kotlin.reflect.KClass
 class BackupSettingsProductionWiringTest {
     @Test
     fun `Swing adapter consumes directory and backup file request configuration`() {
-        val directory = createDesktopBackupFileChooser(DesktopBackupFilePickerRequest.Directory("Choose directory"))
+        val directory = createDesktopFileChooser(DesktopFilePickerRequest.Directory("Choose directory"))
         assertEquals("Choose directory", directory.dialogTitle)
         assertEquals(JFileChooser.DIRECTORIES_ONLY, directory.fileSelectionMode)
 
-        val request = DesktopBackupFilePickerRequest.BackupFile("Choose backup", "Mihon backup", setOf("tachibk"))
-        val backup = createDesktopBackupFileChooser(request)
+        val request = DesktopFilePickerRequest.OpenFile("Choose backup", "Mihon backup", setOf("tachibk"))
+        val backup = createDesktopFileChooser(request)
         val filter = assertInstanceOf(FileNameExtensionFilter::class.java, backup.fileFilter)
         assertEquals("Choose backup", backup.dialogTitle)
         assertEquals(JFileChooser.FILES_ONLY, backup.fileSelectionMode)
@@ -66,12 +70,12 @@ class BackupSettingsProductionWiringTest {
         val backup = File(directory, "library.tachibk")
         val previousLocale = Locale.getDefault()
         val cases = listOf(
-            ButtonCase(true, DesktopBackupFilePickerResult.Cancelled, MR.strings.desktop_backup_create_cancelled),
-            ButtonCase(true, DesktopBackupFilePickerResult.Selected(directory), MR.strings.desktop_backup_saved, backup),
-            ButtonCase(true, DesktopBackupFilePickerResult.Selected(directory), MR.strings.desktop_backup_failed, failure = "disk full"),
-            ButtonCase(true, DesktopBackupFilePickerResult.Selected(directory), MR.strings.creating_backup_error, failure = ""),
-            ButtonCase(false, DesktopBackupFilePickerResult.Cancelled, MR.strings.desktop_backup_restore_selection_cancelled),
-            ButtonCase(false, DesktopBackupFilePickerResult.Selected(backup), null),
+            ButtonCase(true, DesktopFilePickerResult.Cancelled, MR.strings.desktop_backup_create_cancelled),
+            ButtonCase(true, DesktopFilePickerResult.Selected(directory), MR.strings.desktop_backup_saved, backup),
+            ButtonCase(true, DesktopFilePickerResult.Selected(directory), MR.strings.desktop_backup_failed, failure = "disk full"),
+            ButtonCase(true, DesktopFilePickerResult.Selected(directory), MR.strings.creating_backup_error, failure = ""),
+            ButtonCase(false, DesktopFilePickerResult.Cancelled, MR.strings.desktop_backup_restore_selection_cancelled),
+            ButtonCase(false, DesktopFilePickerResult.Selected(backup), null),
         ).flatMap { case -> listOf(Locale.US, Locale.forLanguageTag("zh-CN")).map { it to case } }
         cases.forEach { (locale, case) ->
             Locale.setDefault(locale)
@@ -92,11 +96,11 @@ class BackupSettingsProductionWiringTest {
                 val copy = render(scene)
                 val request = requireNotNull(picker.request)
                 if (case.create) {
-                    assertInstanceOf(DesktopBackupFilePickerRequest.Directory::class.java, request)
+                    assertInstanceOf(DesktopFilePickerRequest.Directory::class.java, request)
                     assertEquals(MR.strings.onboarding_storage_action_select.localized(locale), request.title)
-                    if (case.pickerResult is DesktopBackupFilePickerResult.Selected) coVerify { factory.createBackup(directory) }
+                    if (case.pickerResult is DesktopFilePickerResult.Selected) coVerify { factory.createBackup(directory) }
                 } else {
-                    val fileRequest = assertInstanceOf(DesktopBackupFilePickerRequest.BackupFile::class.java, request)
+                    val fileRequest = assertInstanceOf(DesktopFilePickerRequest.OpenFile::class.java, request)
                     assertEquals(MR.strings.file_select_backup.localized(locale), fileRequest.title)
                     assertEquals(setOf("tachibk"), fileRequest.extensions)
                     assertEquals(MR.strings.desktop_backup_file_filter.localized(locale), fileRequest.description)
@@ -109,7 +113,7 @@ class BackupSettingsProductionWiringTest {
                     }
                     assertTrue(expected in copy, "Missing '$expected': $copy")
                 }
-                if (!case.create && case.pickerResult is DesktopBackupFilePickerResult.Selected) {
+                if (!case.create && case.pickerResult is DesktopFilePickerResult.Selected) {
                     assertTrue(model.state.value is BackupRestoreUiState.Preview)
                     assertEquals(backup, (model.state.value as BackupRestoreUiState.Preview).file)
                 }
@@ -141,7 +145,7 @@ class BackupSettingsProductionWiringTest {
             assertAnchor(fixture.scene, title)
             click(fixture.scene, MR.strings.pref_create_backup.localized())
             val copy = render(fixture.scene)
-            assertInstanceOf(DesktopBackupFilePickerRequest.Directory::class.java, fixture.picker.request)
+            assertInstanceOf(DesktopFilePickerRequest.Directory::class.java, fixture.picker.request)
             assertTrue(MR.strings.desktop_backup_create_cancelled.localized() in copy)
             assertOneShot(fixture, BackupSettingsScreen())
         }
@@ -155,7 +159,7 @@ class BackupSettingsProductionWiringTest {
         val factory = mockk<BackupRestoreScreenModelFactory> { every { create() } returns model(this@runBlocking) }
         val scene = scene(
             factory = factory,
-            picker = RecordingPicker(DesktopBackupFilePickerResult.Cancelled),
+            picker = RecordingPicker(DesktopFilePickerResult.Cancelled),
             preferences = preferences,
         )
         try {
@@ -175,7 +179,7 @@ class BackupSettingsProductionWiringTest {
         val factory = mockk<BackupRestoreScreenModelFactory> { every { create() } returns model(this@runBlocking) }
         val scene = scene(
             factory = factory,
-            picker = RecordingPicker(DesktopBackupFilePickerResult.Cancelled),
+            picker = RecordingPicker(DesktopFilePickerResult.Cancelled),
             preferences = preferences,
         )
         try {
@@ -230,7 +234,7 @@ class BackupSettingsProductionWiringTest {
                     val failure = assertInstanceOf(BackupRestoreUiState.Failure::class.java, model.state.value)
                     assertEquals(case.reason, failure.reason)
                     val factory = mockk<BackupRestoreScreenModelFactory> { every { create() } returns model }
-                    val scene = scene(factory, RecordingPicker(DesktopBackupFilePickerResult.Cancelled))
+                    val scene = scene(factory, RecordingPicker(DesktopFilePickerResult.Cancelled))
                     try {
                         val expected = case.resource.localized(locale)
                         val copy = render(scene)
@@ -271,14 +275,14 @@ class BackupSettingsProductionWiringTest {
 
     private fun scene(
         factory: BackupRestoreScreenModelFactory,
-        picker: DesktopBackupFilePicker,
+        picker: DesktopFilePicker,
         preferences: DesktopAppPreferences = DesktopAppPreferences(InMemoryPreferenceStore()),
     ): ImageComposeScene =
         ImageComposeScene(900, 2_000) {
             val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
                 every { appPreferences } returns preferences
                 every { backupRestoreScreenModelFactory } returns factory
-                every { backupFilePicker } returns picker
+                every { filePicker } returns picker
             }
             CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
                 Navigator(BackupSettingsScreen()) { CurrentScreen() }
@@ -288,13 +292,24 @@ class BackupSettingsProductionWiringTest {
     private suspend fun anchorFixture(scope: kotlinx.coroutines.CoroutineScope, height: Int): AnchorFixture {
         val store = InMemoryPreferenceStore()
         val downloadPreferences = DesktopDownloadPreferences(store)
-        val picker = RecordingPicker(DesktopBackupFilePickerResult.Cancelled)
+        val directoryPreference = downloadPreferences.downloadDirectory(
+            File(System.getProperty("java.io.tmpdir"), "mihon-settings-test-downloads"),
+        )
+        val directoryState = directoryPreference.state()
+        val directoryController = DesktopDownloadDirectoryController(directoryPreference, directoryState)
+        val queuePort = object : DesktopDownloadQueuePort {
+            override val queue = MutableStateFlow<List<DownloadItem>>(emptyList())
+        }
+        val picker = RecordingPicker(DesktopFilePickerResult.Cancelled)
         val factory = mockk<BackupRestoreScreenModelFactory> { every { create() } returns model(scope) }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
             every { appPreferences } returns DesktopAppPreferences(store)
             every { this@mockk.downloadPreferences } returns downloadPreferences
+            every { downloadDirectoryState } returns directoryState
+            every { downloadDirectoryController } returns directoryController
+            every { downloadQueuePort } returns queuePort
             every { backupRestoreScreenModelFactory } returns factory
-            every { backupFilePicker } returns picker
+            every { filePicker } returns picker
         }
         val scene = ImageComposeScene(900, height) {}
         lateinit var navigator: Navigator
@@ -381,9 +396,9 @@ class BackupSettingsProductionWiringTest {
         override fun Content() = Unit
     }
 
-    private class RecordingPicker(private val result: DesktopBackupFilePickerResult) : DesktopBackupFilePicker {
-        var request: DesktopBackupFilePickerRequest? = null
-        override suspend fun choose(request: DesktopBackupFilePickerRequest): DesktopBackupFilePickerResult {
+    private class RecordingPicker(private val result: DesktopFilePickerResult) : DesktopFilePicker {
+        var request: DesktopFilePickerRequest? = null
+        override suspend fun choose(request: DesktopFilePickerRequest): DesktopFilePickerResult {
             assertFalse(this.request != null)
             this.request = request
             return result
@@ -392,7 +407,7 @@ class BackupSettingsProductionWiringTest {
 
     private data class ButtonCase(
         val create: Boolean,
-        val pickerResult: DesktopBackupFilePickerResult,
+        val pickerResult: DesktopFilePickerResult,
         val feedback: StringResource?,
         val createdFile: File? = null,
         val failure: String? = null,

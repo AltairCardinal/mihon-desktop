@@ -49,9 +49,10 @@ import mihon.desktop.extension.FixtureNewSource
 import mihon.desktop.license.DependencyNoticeProvider
 import mihon.desktop.ui.extension.DesktopExtensionPresentationPort
 import mihon.desktop.ui.extension.ExtensionsScreenModel
+import mihon.desktop.ui.settings.DesktopDirectoryOpenPort
 import mihon.desktop.platform.DesktopNetworkHelper
-import mihon.desktop.platform.DesktopBackupFilePicker
-import mihon.desktop.platform.SwingDesktopBackupFilePicker
+import mihon.desktop.platform.DesktopFilePicker
+import mihon.desktop.platform.SwingDesktopFilePicker
 import mihon.desktop.platform.DesktopNativeSharePort
 import mihon.desktop.platform.DesktopShareFailureReason
 import mihon.desktop.platform.DesktopShareResult
@@ -1303,9 +1304,12 @@ class DesktopDiWiringTest {
         )
         assertEquals(emptySet<Long>(), Injekt.get<TrackerSessionProvider>().loggedInTrackerIds().first())
         assertNotNull(Injekt.get<BackupRestoreScreenModelFactory>())
-        val backupFilePicker = Injekt.get<DesktopBackupFilePicker>()
-        assertTrue(backupFilePicker is SwingDesktopBackupFilePicker)
-        assertSame(backupFilePicker, DesktopUiDependencies.fromInjekt().backupFilePicker)
+        val filePicker = Injekt.get<DesktopFilePicker>()
+        assertTrue(filePicker is SwingDesktopFilePicker)
+        val directoryOpener = Injekt.get<DesktopDirectoryOpenPort>()
+        val uiDependencies = DesktopUiDependencies.fromInjekt()
+        assertSame(filePicker, uiDependencies.filePicker)
+        assertSame(directoryOpener, uiDependencies.downloadDirectoryOpener)
         assertNotNull(Injekt.get<CreateCategoryWithName>())
         assertNotNull(Injekt.get<GetCategories>())
         assertNotNull(Injekt.get<RenameCategory>())

@@ -4,6 +4,7 @@ import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
+import io.mockk.coVerify
 import io.mockk.mockk
 import java.awt.image.BufferedImage
 import java.io.File
@@ -131,6 +132,73 @@ class DesktopReaderContentResolverWiringTest {
                 runtime.session.state.value.snapshot.activeChapter.pages.map { it.url },
             )
             assertEquals(0, sourceManager.catalogueSourceCalls)
+        } finally {
+            runtime.close()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `production progress forwards the complete download identity used by migrated artifact deletion`() = runTest {
+        val provider = DesktopDownloadProvider(tempDir.resolve("downloads-progress-identity"))
+        val context = DesktopReaderChapterContext(
+            chapterId = 81L,
+            sourceId = 42L,
+            chapterUrl = "/chapter/hash-me",
+            mangaTitle = "Manga 中文",
+            chapterTitle = "Chapter 1",
+            chapterNumber = 1.0,
+            chapterIndex = 0,
+            initialPage = 0,
+            wasRead = false,
+            scanlator = "Group",
+            sourceDisplayName = "Source 中文",
+        )
+        val identity = DownloadChapterIdentity(
+            sourceDisplayName = context.sourceDisplayName,
+            mangaTitle = context.mangaTitle,
+            chapterName = context.chapterTitle,
+            scanlator = context.scanlator,
+            chapterUrl = context.chapterUrl,
+            disallowNonAsciiFilenames = context.disallowNonAsciiFilenames,
+        )
+        val downloaded = provider.canonicalChapterDownloadDir(identity).also(File::mkdirs)
+        ImageIO.write(BufferedImage(8, 12, BufferedImage.TYPE_INT_RGB), "png", downloaded.resolve("001.png"))
+        val progressTracker = mockk<ReaderProgressTracker>(relaxed = true)
+        val factory = DesktopReaderRuntimeFactory(
+            prefs = ReaderPreferences(),
+            downloadProvider = provider,
+            sourceManager = RecordingSourceManager(),
+            networkHelper = NetworkHelper(OkHttpClient()),
+            progressTracker = progressTracker,
+            mangaRepository = null,
+            encodedCacheDirectory = tempDir.resolve("encoded-progress-identity"),
+        )
+
+        val runtime = factory.createRuntime(context, this)
+        try {
+            advanceUntilIdle()
+            val pageId = runtime.session.state.value.snapshot.activeChapter.pages.single().id
+            runtime.session.settleViewport(setOf(pageId), pageId)
+            advanceUntilIdle()
+
+            coVerify(exactly = 1) {
+                progressTracker.track(
+                    any(),
+                    context.chapterId,
+                    any(),
+                    any(),
+                    context.sourceId,
+                    null,
+                    null,
+                    context.mangaId,
+                    context.chapterNumber,
+                    any(),
+                    any(),
+                    any(),
+                    identity,
+                )
+            }
         } finally {
             runtime.close()
         }

@@ -34,8 +34,8 @@ import mihon.desktop.network.DesktopNetworkRoutingPort
 import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopDeepLinkHandler
-import mihon.desktop.platform.DesktopBackupFilePicker
 import mihon.desktop.platform.DesktopDownloadDirectoryState
+import mihon.desktop.platform.DesktopFilePicker
 import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.privacy.DesktopPrivacyCapabilities
 import mihon.desktop.privacy.DesktopWindowPrivacyController
@@ -50,6 +50,7 @@ import mihon.desktop.ui.extension.ExtensionsScreenModel
 import mihon.desktop.ui.ExternalActionNavigator
 import mihon.desktop.update.DesktopUpdateController
 import mihon.desktop.ui.settings.DesktopUpdateScreenModel
+import mihon.desktop.ui.settings.DesktopDirectoryOpenPort
 import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
 import mihon.domain.extensionrepo.interactor.DeleteExtensionRepo
 import mihon.domain.extensionrepo.interactor.GetExtensionRepo
@@ -91,7 +92,8 @@ data class DesktopUiDependencies(
     val readerPreferences: ReaderPreferences,
     val localeAdapter: DesktopLocaleAdapter = DesktopLocaleAdapter(appPreferences.appLanguage),
     val backupRestoreScreenModelFactory: BackupRestoreScreenModelFactory,
-    val backupFilePicker: DesktopBackupFilePicker,
+    val filePicker: DesktopFilePicker,
+    val downloadDirectoryOpener: DesktopDirectoryOpenPort,
     val getCategories: GetCategories,
     val categoryRepository: CategoryRepository,
     val chapterRepository: ChapterRepository,
@@ -188,7 +190,8 @@ data class DesktopUiDependencies(
                 readerPreferences = Injekt.get(),
                 localeAdapter = localeAdapter,
                 backupRestoreScreenModelFactory = Injekt.get(),
-                backupFilePicker = Injekt.get(),
+                filePicker = Injekt.get(),
+                downloadDirectoryOpener = Injekt.get(),
                 getCategories = Injekt.get(),
                 categoryRepository = Injekt.get(),
                 chapterRepository = Injekt.get(),
@@ -256,6 +259,7 @@ data class DesktopUiDependencies(
             )
         }
     }
+
 }
 
 val LocalDesktopUiDependencies = compositionLocalOf<DesktopUiDependencies> {

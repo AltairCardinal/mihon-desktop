@@ -183,7 +183,23 @@ class DesktopReaderRuntimeFactoryTest {
             runtime.session.settleViewport(setOf(pageId), pageId)
             advanceUntilIdle()
 
-            coVerify(exactly = 0) { progressTracker.track(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+            coVerify(exactly = 0) {
+                progressTracker.track(
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                )
+            }
         } finally {
             runtime.close()
         }

@@ -11,6 +11,7 @@ import mihon.domain.settings.SettingsSearchResult
 import tachiyomi.i18n.MR
 
 internal object DesktopSettingsAnchorResources {
+    val downloadDirectory = MR.strings.desktop_download_directory
     val downloadNew = MR.strings.pref_download_new
     val downloadAsCbz = MR.strings.save_chapter_as_cbz
     val createBackup = MR.strings.pref_create_backup
@@ -42,7 +43,18 @@ object DesktopSettingsCatalog {
             MR.strings.desktop_reader_pager_mode,
             MR.strings.desktop_reader_prefetch_next_chapter,
         ),
-        screen(DownloadSettingsScreen(), MR.strings.pref_category_downloads, DesktopSettingsAnchorResources.downloadNew, DesktopSettingsAnchorResources.downloadAsCbz),
+        SearchableSettingsScreen(
+            route = DownloadSettingsScreen(),
+            title = MR.strings.pref_category_downloads.localized(),
+            preferences = listOf(
+                SearchablePreference.Entry(
+                    title = DesktopSettingsAnchorResources.downloadDirectory.localized(),
+                    summary = MR.strings.pref_storage_location.localized(),
+                ),
+                SearchablePreference.Entry(DesktopSettingsAnchorResources.downloadNew.localized()),
+                SearchablePreference.Entry(DesktopSettingsAnchorResources.downloadAsCbz.localized()),
+            ),
+        ),
         screen(TrackingSettingsScreen(), MR.strings.pref_category_tracking, DesktopSettingsAnchorResources.trackingAutoSync, DesktopSettingsAnchorResources.trackingLogin),
         screen(BackupSettingsScreen(), MR.strings.label_backup, DesktopSettingsAnchorResources.createBackup, DesktopSettingsAnchorResources.restoreBackup),
         screen(SecuritySettingsScreen(), MR.strings.pref_category_security, MR.strings.desktop_security_lock_enabled, DesktopSettingsAnchorResources.securitySecureScreen),

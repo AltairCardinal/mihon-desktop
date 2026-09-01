@@ -1,6 +1,7 @@
 package mihon.desktop.download
 
 import mihon.desktop.platform.DesktopDownloadDirectoryPolicy
+import mihon.desktop.platform.DesktopDownloadDirectoryProbeResult
 import mihon.desktop.platform.DesktopDownloadDirectorySelection
 import mihon.desktop.platform.DesktopDownloadDirectoryState
 import tachiyomi.core.common.preference.Preference
@@ -66,6 +67,8 @@ class DesktopDownloadDirectoryPreference internal constructor(
         return result
     }
 
+    fun inspect(directory: File): DesktopDownloadDirectoryProbeResult = policy.inspect(directory.path)
+
     fun restoreDefault(): DesktopDownloadDirectorySelection.UseDefault {
         preference.delete()
         return policy.useDefault(defaultDirectory)
@@ -80,6 +83,12 @@ class DesktopDownloadDirectoryController internal constructor(
     private val preference: DesktopDownloadDirectoryPreference,
     val startupState: DesktopDownloadDirectoryState,
 ) {
+    fun selectDirectory(directory: File): DesktopDownloadDirectorySelection = preference.save(directory.path)
+
+    fun restoreDefault(): DesktopDownloadDirectorySelection.UseDefault = preference.restoreDefault()
+
+    fun inspectDirectory(directory: File): DesktopDownloadDirectoryProbeResult = preference.inspect(directory)
+
     fun currentState(): DesktopDownloadDirectoryState {
         val resolved = preference.state()
         if (resolved.hasSameSelectionAs(startupState)) return startupState

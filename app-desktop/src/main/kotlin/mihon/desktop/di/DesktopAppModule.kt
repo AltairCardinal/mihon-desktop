@@ -23,8 +23,8 @@ import mihon.desktop.platform.installDesktopHttpAgentCompatibilityProperty
 import mihon.desktop.network.DesktopNetworkMaintenancePort
 import mihon.desktop.platform.DesktopNativeSharePort
 import mihon.desktop.platform.DesktopShareService
-import mihon.desktop.platform.DesktopBackupFilePicker
-import mihon.desktop.platform.SwingDesktopBackupFilePicker
+import mihon.desktop.platform.DesktopFilePicker
+import mihon.desktop.platform.SwingDesktopFilePicker
 import mihon.desktop.platform.defaultDesktopNativeSharePort
 import mihon.desktop.task.DesktopTaskScheduler
 import mihon.desktop.task.FileTaskCheckpointStore
@@ -32,6 +32,7 @@ import mihon.desktop.domain.DesktopSystemNotifier
 import mihon.desktop.platform.DesktopPlatformPaths
 import mihon.desktop.download.DesktopDownloadDirectoryController
 import mihon.desktop.download.DesktopDownloadPreferences
+import mihon.desktop.ui.settings.DesktopDirectoryOpenPort
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.DesktopSourceRepository
 import mihon.desktop.source.LocalSourceScanService
@@ -791,7 +792,8 @@ internal fun initUILayer(
     val categoryRepository = Injekt.get<CategoryRepository>()
     val historyRepository = Injekt.get<HistoryRepository>()
     val appPreferences = Injekt.get<DesktopAppPreferences>()
-    Injekt.addSingleton<DesktopBackupFilePicker>(SwingDesktopBackupFilePicker())
+    Injekt.addSingleton<DesktopFilePicker>(SwingDesktopFilePicker())
+    Injekt.addSingleton<DesktopDirectoryOpenPort>(DesktopDirectoryOpenPort(mihon.desktop.ui.settings.DesktopDirectoryOpener::openResult))
     Injekt.addSingleton(
         BackupRestoreScreenModelFactory(
             mangaRepository = mangaRepository,

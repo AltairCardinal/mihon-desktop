@@ -281,7 +281,7 @@ encoded ref 必须携带 `Partial(committedRevision)` provenance。若后续像�
 - [x] `ACT-00` 激活、基线与工作树冻结
 - [x] `DDIR-01` 机器本地偏好与路径策略
 - [x] `DDIR-02` 启动期 DI、冻结根目录与重启语义
-- [ ] `DDIR-03 + DDIR-04 close gate` 通用选择器、设置 UI、兼容与文档
+- [x] `DDIR-03 + DDIR-04 close gate` 通用选择器、设置 UI、兼容与文档
 - [ ] `PDR-01` partial snapshot 与 O(1) committed-page 索引
 - [ ] `PDR-02` partial 章节页表路由
 - [ ] `PDR-03` encoded cache → committed page → network 唯一物化链
@@ -487,6 +487,13 @@ python scripts/gradle-coordinator.py run --key ddir04-red -- ./gradlew :app-desk
 
 **完成条件**：文档、设置文案与 production 行为一致；用户能明确知道何时生效、如何手动迁移、失败时文件在哪里；与
 `DDIR-03` production/tests 一起审查和提交，不单独产生纯测试/文档/checkoff 提交。
+
+**完成记录（2026-09-01）**：本批涉及 25 个 production/test/user-doc 文件，超过建议范围；这是通用 picker 的 Backup
+机械迁移、下载设置 UI/DI/i18n、完整 identity 删除兼容、手动迁移 Reader 回归和同批用户文档组成的一个不可拆 close
+gate，拆开会留下无法发布或无法独立验收的 wiring。风险集中在跨设置/下载/Reader 的接口面，已由有效 RED、14 个相关
+测试类加 `spotlessCheck`（`.gradle-coordinator/ddir03-04-review-close.log`）以及独立审查与一次修复复审覆盖；活动 provider
+仍按启动期单根冻结，设置页 availability probe 只在进入页面时于 IO dispatcher 对 active/pending 去重后各执行一次，未向
+下载或 Reader 热路径增加偏好读取、扫描、锁或轮询。
 
 ---
 

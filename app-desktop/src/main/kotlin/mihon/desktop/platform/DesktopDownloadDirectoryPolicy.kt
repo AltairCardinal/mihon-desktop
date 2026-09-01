@@ -55,10 +55,11 @@ data class DesktopDownloadDirectoryProbeResult(
 }
 
 /**
- * Pure startup path resolution plus an explicitly invoked bounded storage probe.
+ * Pure startup path resolution plus explicitly invoked bounded storage probes.
  *
- * [resolveStartup] never touches the configured filesystem path. Callers may invoke
- * [validateSelection] from an IO dispatcher when the user explicitly selects a path.
+ * [resolveStartup] never touches the configured filesystem path. Callers invoke [inspect] or
+ * [validateSelection] from an IO dispatcher; neither operation belongs on a download or reader
+ * hot path.
  */
 class DesktopDownloadDirectoryPolicy(
     private val probe: DesktopDownloadDirectoryProbe = NioDesktopDownloadDirectoryProbe(),
@@ -110,14 +111,7 @@ class DesktopDownloadDirectoryPolicy(
             }
         }
 
-        val result = try {
-            probe.inspect(path)
-        } catch (error: Exception) {
-            DesktopDownloadDirectoryProbeResult(
-                availability = DesktopDownloadDirectoryAvailability.NOT_WRITABLE,
-                cause = error,
-            )
-        }
+        val result = inspect(path)
         return if (result.availability == DesktopDownloadDirectoryAvailability.AVAILABLE) {
             DesktopDownloadDirectorySelection.ValidCustom(path.toFile())
         } else {
@@ -125,9 +119,27 @@ class DesktopDownloadDirectoryPolicy(
         }
     }
 
+    /** Runs one bounded, non-persisting availability probe for a settings-page status check. */
+    fun inspect(rawPath: String): DesktopDownloadDirectoryProbeResult = when (val parsed = parseAbsolute(rawPath)) {
+        is ParsedPath.Valid -> inspect(parsed.path)
+        is ParsedPath.Invalid -> DesktopDownloadDirectoryProbeResult(
+            availability = DesktopDownloadDirectoryAvailability.INVALID_SYNTAX,
+            cause = parsed.cause,
+        )
+    }
+
     fun useDefault(defaultDirectory: File): DesktopDownloadDirectorySelection.UseDefault {
         return DesktopDownloadDirectorySelection.UseDefault(
             defaultDirectory.toPath().toAbsolutePath().normalize().toFile(),
+        )
+    }
+
+    private fun inspect(path: Path): DesktopDownloadDirectoryProbeResult = try {
+        probe.inspect(path)
+    } catch (error: Exception) {
+        DesktopDownloadDirectoryProbeResult(
+            availability = DesktopDownloadDirectoryAvailability.NOT_WRITABLE,
+            cause = error,
         )
     }
 
