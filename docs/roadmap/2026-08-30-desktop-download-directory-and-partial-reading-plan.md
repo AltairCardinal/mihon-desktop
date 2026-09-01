@@ -1,6 +1,6 @@
 ---
 parent-plan: 2026-06-30-mihon-desktop-refactor-roadmap.md
-status: in_progress
+status: blocked
 date: 2026-08-30
 ---
 
@@ -8,7 +8,8 @@ date: 2026-08-30
 
 ## 0. 文档状态与执行边界
 
-- 状态：`IN_PROGRESS`（2026-09-01 已成为父路线唯一 `active-child-plan`）。
+- 状态：`BLOCKED`（实现、组合回归、Windows/macOS 正式构建与运行验收已完成；`CLOSE-01` 仅等待无外部
+  媒体负载的 Windows 同机墙钟补充测量，仍是父路线唯一 `active-child-plan`）。
 - 本文是同一份独立执行方案，统一覆盖“下载目录可配置”与“未完成下载章节复用已落盘页面”两项需求。
 - 上一活动计划
   [`2026-08-27-desktop-reader-upstream-semantics-adapter-refactor-roadmap.md`](./2026-08-27-desktop-reader-upstream-semantics-adapter-refactor-roadmap.md)
@@ -828,6 +829,37 @@ python scripts/gradle-coordinator.py run --key download-directory-partial-final 
 - 更新本文状态、父路线、必要 architecture 文档、Test Mode 文档和 parity manifest evidence；不为纯 checkoff
   另建提交。
 
+**执行检查点（2026-09-02）**：产品实现与跨平台运行证据已经完成，但本计划尚未关闭。一次性组合命令实际执行
+`domain:jvmTest`、`data:jvmTest`、Android `testReleaseUnitTest`、Desktop `jvmTest`、`test-desktop:test` 与
+`spotlessCheck`；Desktop 共执行 2,840 项，2,839 通过、1 跳过，唯一失败是本批待更新的 parity manifest
+`initDesktopDI` 行号锚点。修正全部 current-role 陈旧锚点后，focused manifest contract 与独立
+`finalParityAudit` 均 `BUILD SUCCESSFUL`；没有 production 测试失败。Android shared route 契约也在该组合命令中通过，
+Desktop partial decorator 未进入 Android production wiring。
+
+Windows 正式脚本生成并验收版本 `0.11.19.21.fbf75e1`；production 扩展运行时解析
+`eu.kanade.tachiyomi.extension.zh.manhuagui` 成功。构建日志唯一 `Final unpacked EXE:` 对应
+`D:\Shell\Github\mihon\app-desktop\artifacts\windows\Mihon-Desktop-0.11.19.21.fbf75e1-unpacked\Mihon Desktop.exe`，
+ZIP SHA-256 为 `a68fc14f4c178b3b56d9ee2701557093eb63325f096ca5e96f9e1c45a668f6dc`。同一 EXE 的隔离
+GUI Test Mode 已证明：默认根实际产生 185 个 JPEG 与 1 个 CBZ；保存自定义根并重启后 3 个 fixture 页只写入自定义根，
+默认根文件数为 0；partial 本地当前页为 `localHits=1/imageRequests=0`，首个缺失页为
+`networkFallbacks=1/imageRequests=1`，离线缺失页不发布假首帧，恢复网络后加载成功；真实错误页“重试”按钮使同一页
+`imageRequests` 与 `networkFallbacks` 从 1 精确增至 2。所有场景 `downloadIoLockViolations=0`，隔离前原本未设置的
+`download_directory` 偏好已恢复为未设置。
+
+macOS 构建机使用独立浅克隆的精确 product HEAD `fbf75e1adadd56b723842233945e1a66b943e979`，正式
+`build-desktop.sh build-only` 生成并部署 `/Applications/Mihon Desktop.app`，版本 `0.11.19.21.fbf75e1`。直接从 SSH
+启动正确地暴露非 Aqua `HeadlessException`，随后由登录用户的 LaunchServices 启动同一 bundle；五条 production Reader
+route 全部完成，partial 当前页同样为一次本地命中、零图片网络、零锁违规。外部 client 的 13 个场景族均 PASS；当前
+coverage inventory 仍把与本计划无关且已暂停的 `authors-entry` protection 标为未覆盖，未把它伪装成本计划通过。证据已复制到
+`.gradle-coordinator/close01-macos-build.log` 与
+`.gradle-coordinator/close01-macos-final-parity-summary.json`。
+
+唯一关闭阻塞是第 8.2 节 Windows 同机墙钟补充报告：门禁前 10 个 CPU 样本平均 `94.12%`、最大 `98.79%`，Jellyfin
+`ffmpeg` PID `216104` 在 5 秒内累计 `122.06` CPU 秒并占用约 `5.3 GiB`。按照既定规则，没有停止、暂停或调整用户媒体
+进程，也没有启动会产生伪数据的 baseline/candidate benchmark；状态记录在
+`.gradle-coordinator/close01-windows-performance-stability.json`。待该外部负载结束后，只需运行第 8.2 节同机配对测量；若有效
+报告通过，再勾选 `CLOSE-01`、第 10 节性能项并原子关闭本文、被接管 Reader 路线与父路线活动指针。
+
 ## 7. 测试矩阵
 
 ### 7.1 下载目录
@@ -928,21 +960,21 @@ P95 与置信区间：
 
 只有以下全部满足，本文才能改为 `DONE`：
 
-- [ ] `DDIR-01`～`DDIR-03`、`PDR-01`～`PDR-05` 均完成 RED/GREEN/重构、独立审查、close 验证和提交；
+- [x] `DDIR-01`～`DDIR-03`、`PDR-01`～`PDR-05` 均完成 RED/GREEN/重构、独立审查、close 验证和提交；
       `DDIR-04` close gate 已并入 `DDIR-03` 提交，不存在纯状态提交；
-- [ ] 设置页显示当前、默认、pending 目录，选择/打开/恢复默认/错误/重启提示均可访问；
-- [ ] 自定义目录只在重启后生效，旧目录无自动迁移、删除或静默扫描；
-- [ ] 默认目录规则在 Windows/macOS/Linux 测试中保持不变；
-- [ ] 新版 `COMPLETE` indexed metadata 时页表 source call 为 0；legacy 一次 fallback 不错配；有效已提交页图片网络 0，
+- [x] 设置页显示当前、默认、pending 目录，选择/打开/恢复默认/错误/重启提示均可访问；
+- [x] 自定义目录只在重启后生效，旧目录无自动迁移、删除或静默扫描；
+- [x] 默认目录规则在 Windows/macOS/Linux 测试中保持不变；
+- [x] 新版 `COMPLETE` indexed metadata 时页表 source call 为 0；legacy 一次 fallback 不错配；有效已提交页图片网络 0，
       缺失/被拒绝的坏 revision 才联网；
-- [ ] 完整下载保持 direct-file 零复制，普通 online/local/CBZ 行为不变；
-- [ ] legacy/new metadata、rename、existing final、Windows lease、atomic CBZ、损坏 revision、cancel/retry/same-ID
+- [x] 完整下载保持 direct-file 零复制，普通 online/local/CBZ 行为不变；
+- [x] legacy/new metadata、rename、existing final、Windows lease、atomic CBZ、损坏 revision、cancel/retry/same-ID
       generation 和失败矩阵全部通过；
 - [ ] 下载并发、Reader scheduler、操作计数和同机性能报告满足第 8 节；
-- [ ] Android shared route 回归通过，Desktop partial decorator 未渗入 Android production；
-- [ ] Test Mode、全量测试、Spotless、final parity、Windows/macOS 正式构建与运行证据完整；
-- [ ] architecture/Test Mode/用户文档、parity manifest、计划状态、commit 和发布产物一致；
-- [ ] 工作树不存在未说明或未提交的本计划改动。
+- [x] Android shared route 回归通过，Desktop partial decorator 未渗入 Android production；
+- [x] Test Mode、全量测试、Spotless、final parity、Windows/macOS 正式构建与运行证据完整；
+- [x] architecture/Test Mode/用户文档、parity manifest、计划状态、commit 和发布产物一致；
+- [x] 工作树不存在未说明或未提交的本计划改动（无关 `?? testfile/` 保持未读取、未修改、未提交）。
 
 面向用户的手动验收：
 

@@ -1225,7 +1225,7 @@
           "kind": "PLATFORM_ADAPTER",
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "fun initDesktopDI",
-          "line": 198
+          "line": 200
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -3052,7 +3052,7 @@
       }
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #9: TachiyomiImageDecoder owns Android image decoding.",
-    "desktopImplementation": "DesktopReaderPageImagePipeline 是 production 唯一 full-page decoder owner；DesktopReaderImageCache 与统一 memory authority 以 entry/byte 双预算和引用计数 lease 管理 FULL/TILE/FRAME/DERIVED 资产，presentation owner 是唯一 UI 消费入口。",
+    "desktopImplementation": "DesktopReaderPageImagePipeline 是 production 唯一 full-page decoder owner；DesktopReaderImageCache 与统一 memory authority 以 entry/byte 双预算和引用计数 lease 管理 FULL/TILE/FRAME/DERIVED 资产，presentation owner 是唯一 UI 消费入口。Desktop partial decorator 只把 Downloader 已提交页接入同一 encoded materialize/decode 链，缺失或损坏页仍走原 Source/HTTP route。",
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/data/coil/AndroidReaderPageDecoderContractTest.kt",
@@ -3061,7 +3061,13 @@
       "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipelineTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPresentationImageOwnerTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderUnifiedImageMemoryAuthorityTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderUnifiedImageMemoryAuthorityTest.kt",
+      "domain/src/commonTest/kotlin/mihon/domain/reader/partial/PartialReaderPageListPolicyTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPartialMaterializationIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPartialRaceIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopPartialReaderPerformanceContractTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderPartialFeedbackTest.kt",
+      "test-desktop/src/test/kotlin/mihon/test/desktop/ReaderPartialDownloadE2ETest.kt"
     ],
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/reader/SkiaImageDecoderTest.kt": [
@@ -3092,7 +3098,7 @@
       ],
       "reason": "RUA-04D5 已删除 legacy PagePreloader owner；DesktopReaderPageImagePipeline 是唯一 decode pipeline owner，DesktopReaderPresentationImageOwner 只通过带引用计数的 cached FULL lease 消费其结果，现役 production 与 cache/memory 测试已冻结该 slice，且保留原 PLATFORM_DECODE_CONTRACT 与 ANDROID_DECODE_ADAPTER provenance。"
     },
-    "verificationScope": "VERIFIED for platform-neutral decode request/result contracts and Android/Desktop decoder adapters; the Desktop canonical ReaderSessionCore now supplies the encoded refs consumed by the bounded Skia decode/cache path.",
+    "verificationScope": "VERIFIED for platform-neutral decode request/result contracts and Android/Desktop decoder adapters; the Desktop canonical ReaderSessionCore supplies the encoded refs consumed by the bounded Skia decode/cache path, including manager-owned committed partial pages without changing Android production wiring.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -4207,7 +4213,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 981
+          "line": 995
         }
       ],
       "FIXTURE": [
@@ -29162,12 +29168,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipeline.kt",
           "symbol": "internal fun openRegionSession(",
-          "line": 300
+          "line": 302
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipeline.kt",
           "symbol": "internal suspend fun acquireRegionTile(",
-          "line": 326
+          "line": 328
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRegionPresentationOwner.kt",
@@ -29452,20 +29458,20 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/reader/materialize/ReaderMaterializeExecutor.kt",
           "symbol": "object CanonicalReaderMaterializeExecutor",
-          "line": 87
+          "line": 100
         },
         {
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderSessionCore.kt",
           "symbol": "fun enqueueAdjacentPage",
-          "line": 128
+          "line": 132
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipeline.kt",
           "symbol": "private val decodePermits",
-          "line": 272
+          "line": 274
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderEncodedPageStore.kt",
@@ -29475,12 +29481,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderMaterializePorts.kt",
           "symbol": "class DesktopReaderPageFetchPort",
-          "line": 136
+          "line": 181
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt",
           "symbol": "class DesktopReaderRuntimeFactory",
-          "line": 109
+          "line": 115
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/ReaderPreferences.kt",
@@ -29490,7 +29496,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt",
           "symbol": "private fun enqueueAdjacentImagesLocked",
-          "line": 746
+          "line": 794
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/ReaderSettingsScreen.kt",
@@ -29753,7 +29759,7 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/reader/session/ReaderSession.kt",
           "symbol": "object ReaderSessionReducer",
-          "line": 152
+          "line": 172
         },
         {
           "kind": "SHARED",
@@ -29772,17 +29778,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt",
           "symbol": "class DesktopReaderSession",
-          "line": 113
+          "line": 115
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt",
           "symbol": "class DesktopReaderRuntimeFactory",
-          "line": 109
+          "line": 115
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
           "symbol": "fun acceptSessionState",
-          "line": 115
+          "line": 118
         }
       ],
       "FIXTURE": [
@@ -30180,12 +30186,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "ReaderViewportColorLayer(state.colorFilter)",
-          "line": 523
+          "line": 527
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "internal fun ReaderViewportColorLayer",
-          "line": 637
+          "line": 670
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
@@ -30310,8 +30316,8 @@
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "private suspend fun updateChapterProgress", "line": 534}],
       "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "recordReadingProgress.await", "line": 677}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiter.kt", "symbol": "internal class ReaderViewportSettlementArbiter", "line": 7}],
-      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/progress/ReaderProgressPolicy.kt", "symbol": "object ReaderProgressPolicy", "line": 46}, {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/reader/interactor/RecordReadingProgress.kt", "symbol": "class RecordReadingProgress", "line": 6}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt", "symbol": "recordReadingProgress.await", "line": 52}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt", "symbol": "class DesktopReaderSession", "line": 113}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/progress/ReaderProgressPolicy.kt", "symbol": "object ReaderProgressPolicy", "line": 59}, {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/reader/interactor/RecordReadingProgress.kt", "symbol": "class RecordReadingProgress", "line": 6}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt", "symbol": "recordReadingProgress.await", "line": 54}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt", "symbol": "class DesktopReaderSession", "line": 115}],
       "FIXTURE": [{"artifact": "domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt#only a settled viewport in the active chapter produces a progress effect", "productionMarkers": ["ReaderProgressPolicy.reduce"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressProductionWiringTest.kt#Android current settled page records progress through the canonical shared transaction", "productionMarkers": ["viewModel.onPageSelected", "awaitRecordedEvent"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt#newer current settlement rejects older adjacent activation and progress", "productionMarkers": ["viewModel.onPageSelected", "releaseAdjacentLoad.complete"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt#an in-flight write completes before the latest settlement enters the serialized transaction", "productionMarkers": ["ReaderViewportSettlementArbiter", "runIfLatest"]}, {"artifact": "data/src/jvmTest/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepositoryTest.kt#reading a later chapter updates only that row and requires its last page to mark read", "productionMarkers": ["recorder.await"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#dual presentation settles both source pages through screen model and session progress port", "productionMarkers": ["DualPagedPresentation.present", "model.settleDualPage", "progress.single"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#settling the last page then paging backward never makes the chapter unread", "productionMarkers": ["session.settleViewport", "wasRead"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#closing immediately after settlement lets the final progress write finish", "productionMarkers": ["session.close", "allowWrite.complete", "writeCompleted"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#local reader session identity never becomes a durable chapter progress id", "productionMarkers": ["localReaderScreen", "progressTracker.track"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt#settling an already read chapter mid chapter keeps it read", "productionMarkers": ["tracker.track", "wasRead"]}]
     },
     "protectionTests": ["domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressProductionWiringTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderDuplicateCompletionPolicyTest.kt", "data/src/jvmTest/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepositoryTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerIntegrationTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/library/ChapterReadPresentationTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt"],
@@ -32614,7 +32620,7 @@
     },
     "status": "VERIFIED",
     "authoritativeImplementation": "Fixed-main Downloader limits concurrent source work and retries image downloads after 2, 4, and 8 seconds.",
-    "desktopImplementation": "DesktopDownloadManager consumes the fork shared fair source scheduler and the same retry delay sequence.",
+    "desktopImplementation": "DesktopDownloadManager consumes the fork shared fair source scheduler and the same retry delay sequence. Desktop additionally freezes one startup download root selected in Settings, publishes generation-scoped committed-page snapshots, and keeps staging-page I/O outside manager locks.",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
       {
@@ -32673,30 +32679,30 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/download/DownloadQueueStateMachine.kt",
           "symbol": "fun schedule",
-          "line": 42
+          "line": 47
         },
         {
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/download/DownloadQueueStateMachine.kt",
           "symbol": "fun retryDelayMillis",
-          "line": 61
+          "line": 66
         }
       ],
       "DESKTOP_CONSUMER": [
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "stateMachine.schedule(",
-          "line": 395
+          "line": 532
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "val wait = stateMachine.retryDelayMillis(retryAttempt++) ?: break",
-          "line": 558
+          "line": 944
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
-          "symbol": "val wait = stateMachine.retryDelayMillis(renameAttempt++) ?: break",
-          "line": 600
+          "symbol": "val wait = stateMachine.retryDelayMillis(publishAttempt++) ?: break",
+          "line": 703
         }
       ],
       "FIXTURE": [
@@ -32718,7 +32724,13 @@
     "protectionTests": [
       "domain/src/commonTest/kotlin/mihon/domain/download/DownloadQueueStateMachineTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/download/DownloadManagerReactivityTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/download/DesktopDownloadRetryIntegrationTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/download/DesktopDownloadRetryIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/platform/DesktopDownloadDirectoryPolicyTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/download/DesktopDownloadDirectoryPreferenceTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/download/DesktopDownloadDirectoryCompatibilityIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDownloadDirectoryDiWiringTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/settings/DownloadSettingsDirectoryWiringTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/download/PartialDownloadIndexSupportTest.kt"
     ],
     "behaviorMethods": {
       "domain/src/commonTest/kotlin/mihon/domain/download/DownloadQueueStateMachineTest.kt": [
@@ -33108,7 +33120,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "filterChaptersForDownload.await(manga, chapters)",
-          "line": 1023
+          "line": 1037
         }
       ],
       "FIXTURE": [
@@ -41749,7 +41761,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt",
           "symbol": "class ReaderProgressTracker(",
-          "line": 23
+          "line": 24
         }
       ],
       "FIXTURE": [
@@ -42387,7 +42399,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt",
           "symbol": "suspend fun createFromDatabase",
-          "line": 104
+          "line": 105
         }
       ],
       "FIXTURE": [
@@ -44186,12 +44198,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt",
           "symbol": "fun encodeToBytes",
-          "line": 51
+          "line": 52
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupCreator.kt",
           "symbol": "fun decodeFromBytes",
-          "line": 58
+          "line": 59
         }
       ],
       "FIXTURE": [
@@ -54268,12 +54280,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.initialize",
-          "line": 227
+          "line": 229
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.startApp",
-          "line": 229
+          "line": 231
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt",

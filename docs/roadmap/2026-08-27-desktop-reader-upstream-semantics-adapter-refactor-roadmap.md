@@ -780,6 +780,12 @@ Android Reader UI                 Desktop Reader presentation
 - 后续计划会修改 Reader runtime/materialize/lifecycle，因此恢复本文时必须在**新的集成 HEAD** 重跑 `RUA-07A`～`RUA-07C`，再执行 `RUA-07D`；或者由后续计划 `CLOSE-01` 的同提交证据逐项证明为这些门禁的严格超集后，原子关闭两份治理状态。不得把 `4ffd026cc`/`86ad54620` 的 exact-commit 证据直接冒充新 HEAD 的关闭证据。
 - parity manifest 的 Reader capability 状态在暂停时不变；`authors-entry partial` 仍受原保护门禁约束。
 
+**后续接管检查点（2026-09-02）**：下载目录与 partial 阅读计划已在新 product HEAD `fbf75e1ad` 完成实现、组合产品测试、
+Windows/macOS 正式构建及两端 production Reader fixture；Windows 正式错误页 Retry 也由真实 UI 触发并观测到同一页第二次
+网络 attempt。但 Windows 本机仍有 Jellyfin `ffmpeg` 持续占用约 94% CPU，按本文第 11.3 节与既有 Build 20 门禁规则没有
+启动受污染的墙钟样本。因此后续 `CLOSE-01` 尚未成为 `RUA-07B` 的严格超集，本文继续保持 `PAUSED`，`RUA-07B/C/D` 与
+顶层 `RUA-07` 不勾选；待无外部负载的同机报告通过后再与接管计划原子关闭。
+
 ## 11. 测试矩阵与不可替代性能门禁
 
 ### 11.1 行为矩阵

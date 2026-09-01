@@ -1040,6 +1040,9 @@ class DesktopSettingsResourceIdentityTest {
         val prefs = DesktopAppPreferences(InMemoryPreferenceStore())
         val readerPrefs = mihon.desktop.reader.ReaderPreferences(InMemoryPreferenceStore())
         val downloadPrefs = DesktopDownloadPreferences(InMemoryPreferenceStore())
+        val downloads = mockk<DesktopDownloadManager> {
+            every { queue } returns MutableStateFlow(emptyList())
+        }
         val categoryLoader = mockk<GetCategories> {
             coEvery { await() } returns listOf(Category(1, "Favorites", 0, 0))
         }
@@ -1047,6 +1050,8 @@ class DesktopSettingsResourceIdentityTest {
             every { appPreferences } returns prefs
             every { readerPreferences } returns readerPrefs
             every { downloadPreferences } returns downloadPrefs
+            every { downloadManager } returns downloads
+            every { downloadQueuePort } returns downloads
             every { getCategories } returns categoryLoader
             every { creatorDiscoveryScheduler } returns null
         }

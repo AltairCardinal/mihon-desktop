@@ -190,6 +190,28 @@ Android 保留 Context/Source/Download/Local、ChapterCache、Bitmap/Coil、View
 保留 SourceManager/ClassLoader、download/local/archive、Skia/Compose、Voyager 和键鼠。adapter 只能映射，
 不能重新实现页序、优先级、Retry、相邻章或完成规则。
 
+### Desktop partial 下载 overlay
+
+Desktop 下载队列与持久化 store 仍是下载状态权威；`PartialDownloadIndexSupport` 只是按
+`chapter identity + attempt generation` 派生的可重建页索引。Downloader 只有在单页完成写入并以正式扩展名提交后才
+发布 candidate，`*.tmp`、0 字节、旧 generation 和未能一一对应 source page 的 legacy 文件都不能进入 Reader。
+
+Reader 继续只使用一个 page-list/materialize executor。加载顺序固定为：
+
+1. session encoded cache 命中直接复用；
+2. 当前 generation 有已提交 candidate 时，通过 manager-owned read lease 按需复制到 session encoded store；
+3. candidate 缺失、过期、不可读或被同 revision 解码拒绝时，才回到原 Source/HTTP 单页链路。
+
+新版 indexed metadata 可以直接构造稳定页表，不调用 `Source.getPageList()`；legacy metadata 最多调用一次 source page list，
+且只有证明 ordinal/index 一一对应后才 overlay。Reader 不持有 `_tmp` 长寿命 URI，不删除 Downloader 文件；章节目录 rename
+或 CBZ publish 交错时只允许一次有界 re-probe，不轮询。文件名的非 ASCII 策略在 initial、切章和相邻章预取入口统一冻结，
+避免 lookup identity 分叉。
+
+完整下载目录仍保持 direct-file 零复制，完整 CBZ/local/普通 online 路径不挂 partial I/O。默认关闭的 operation probe 在
+构造事件前短路；Test Mode 才启用页级 probe/open/copy 与网络计数。该 decorator 只在 Desktop composition root 接线，
+Android 的 download/source route 与 scheduler 参数不变。打开确有部分已提交页的章节时，Desktop 仅显示一次非阻塞
+“已下载 X/Y 页”提示；无 partial 的普通 Reader 不挂载对应 Snackbar host/effect。
+
 Android 的 `ReaderChapter.State` 是旧 pager/webtoon 观察者使用的只读投影；唯一写入方向是
 `ReaderSessionReducer → ReaderChapter`。当在线章节在运行中变为已下载章节时，adapter 通过 canonical
 `ResetChapter` 失效旧 generation 并回收旧 loader，再由同一 `ChapterLoader` 五路 route factory 选择

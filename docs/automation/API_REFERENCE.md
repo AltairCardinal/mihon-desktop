@@ -110,6 +110,28 @@ curl -X POST http://localhost:8080/test/action/open_manga_detail \
   -d '{"mangaId":42}'
 ```
 
+`read_chapter` 支持通过 production Reader route 创建确定性 fixture：
+
+```json
+{
+  "readerFixture": "partial_download",
+  "mangaId": 42,
+  "chapterId": 4201,
+  "pageCount": 12,
+  "partialPageCount": 5,
+  "offline": false,
+  "width": 1200,
+  "height": 1800,
+  "format": "JPEG"
+}
+```
+
+`readerFixture` 可取 `downloaded_directory`、`downloaded_cbz`、`local_archive`、`online` 或
+`partial_download`。`partialPageCount` 仅用于 partial fixture，必须在 `1 until pageCount`；`offline=true`
+也只用于 partial fixture，并且会在 production 下载器已提交指定页数后才切断 fixture 图片响应，因此不会把准备失败误当作
+Reader 离线行为。partial fixture 使用独占 chapter identity；`/test/reset` 和 Reader 测试控制器关闭时只取消自己创建且
+identity 仍匹配的队列项。
+
 ## Reader
 
 ### `GET /reader/state`
@@ -128,6 +150,18 @@ curl -X POST http://localhost:8080/test/action/open_manga_detail \
   "timestamp": "2026-06-01T12:00:00Z"
 }
 ```
+
+partial fixture 还返回以下页级观测字段：
+
+- `route`、`currentPageIndex`、`snapshotGeneration`；
+- 当前页的 `localHits`、`networkFallbacks`、`partialPageProbes`、`partialPageOpens`、
+  `partialPageCopies`、`imageRequests`；
+- 整个场景的 `scenarioPartialPageCopies`、`scenarioImageRequests`；
+- `downloadIoLockViolations`，必须始终为 `0`。
+
+这些计数按 Reader page identity 归属；附近页预取不会污染当前页的“本地命中/网络回退”断言。已提交页应为一次本地
+probe/open/copy 且图片网络为 0；缺失页才允许一个物理图片请求。`snapshotGeneration` 是正整数，仅用于确认 Reader 与
+当前下载 attempt 对齐，不是跨场景稳定 ID。
 
 ### `POST /reader/next_page`
 

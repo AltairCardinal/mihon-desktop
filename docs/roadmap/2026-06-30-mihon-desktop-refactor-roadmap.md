@@ -290,6 +290,8 @@
 目标：在 macOS/Desktop 主线稳定后补齐长期体验，不阻塞当前核心重构。Reader child plan 已在 `RUA-07B/C/D` 前安全
 暂停；当前唯一活动计划是
 [`下载目录设置与 partial 阅读计划`](./2026-08-30-desktop-download-directory-and-partial-reading-plan.md)，
+其实现、组合回归及 Windows/macOS 正式运行已完成，但 `CLOSE-01` 因 Jellyfin `ffmpeg` 持续占用约 94% CPU 而无法取得
+有效的 Windows 同机 baseline/candidate 墙钟报告，故保持 `BLOCKED` 和活动指针；不得停止用户媒体进程或用受污染样本关闭。
 non-reader upstream core 与作者归档计划继续保持暂停；下表保留其余 Phase R backlog。
 
 | ID | 状态 | 优先级 | 平台 | 任务 | 用户可见变化 | 验收 |
