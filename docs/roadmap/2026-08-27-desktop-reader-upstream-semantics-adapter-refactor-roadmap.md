@@ -762,6 +762,15 @@ Android Reader UI                 Desktop Reader presentation
 - production GUI final-parity 的 Reader family 与全部 13 个 family 均通过；全局 runner 仍因既有 `authors-entry partial` 永久保护门禁退出 6。Reader family 通过不等于全局 final-parity runner 通过，`authors-entry` 不得据此改为 `covered`。
 - 当前计划保持 `IN_PROGRESS`，父路线唯一 `active-child-plan` 继续指向本文，作者计划保持 `PAUSED`。性能归因和 macOS 四路验收完成前，不得关闭 `RUA-07B`、`RUA-07C`、`RUA-07D` 或顶层 `RUA-07`，也不得切换活动计划。
 
+**RUA-07 Build 20 后续检查点（2026-09-01，`86ad5462070cb3b779073ec6cf7bee75c4b1f787`）**：
+
+- Windows evidence 构建此前两次都已完成 JVM 测试/发行目录，随后才因 WSL 启动的 Windows PowerShell 优先加载 Codex runtime 中不兼容的 `Microsoft.PowerShell.Utility`、导致 validator 无法解析 `Get-FileHash` 而失败；这不是 Gradle 卡死。修复以真实 production validator 合同测试执行 RED/GREEN：`rua07-runtime-validator-red` 在移除 `Get-FileHash` 后因原实现提前失败，`rua07-runtime-validator-green` 改用流式 .NET SHA-256 后到达预期摘要拒绝，根级 `rua07-validator-format` 通过；独立审查结论 `PASS`，P0/P1/P2 均为零。
+- 当前精确提交的 Windows `scripts/build-desktop.sh evidence` 由 `rua07-windows-evidence-86ad54620` 完成：完整 `app-desktop:jvmTest` 在 5 分 19 秒通过，规范未打包应用在 1 分 54 秒构建成功，真实 ManHuaGui APK 安装/生产加载验收通过。版本为 `0.11.19.20.86ad546`，product-source digest 为 `c22e83d201fbf61df136f675ec176dd9a9e61adf61ea6083fea2267b556ff8b7`，发行树 373 个文件、257,690,827 字节、SHA-256 `8f16cba78126e1b258966ae9f5ed50757e62a90e756be9a839df6512dd287363`；正式 EXE 位于 `app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.20.86ad546-unpacked/Mihon Desktop.exe`，ZIP SHA-256 为 `12d7a4069c8166c9eb904b2638856f500f302c59e87a3a6ec17fa331cae6f3616`。
+- 同一提交的 Android `assembleDebug` 由 `rua07-android-86ad54620` 在 1 分 16 秒通过；`app/build/outputs/apk/debug/app-x86_64-debug.apk` 为 60,189,608 字节，SHA-256 `30f237b87f195ce9cbf90d4b81a1728cb259f892363a05069f56c54a31f8b749`。
+- Build 20 正式 Windows 性能门没有启动：90 秒稳定门第 0 秒即发现 Jellyfin `ffmpeg` PID 203760，故本轮按规则标记 `INVALID/BLOCKED`，未产生 summary/raw、未重跑、未停止用户媒体进程；证据为 `C:/Users/feeli/AppData/Local/Temp/mihon-rua07-build20-gate-20260901/stability-gate.txt`。因此 `RUA-07B` 继续保持未勾选。
+- macOS console user 仍为 `altair`，但 `CGSSessionScreenIsLocked=Yes`；Build 20 未传输、未 checkout、未构建、未启动 GUI/Test Mode。由于 `scripts/reader-performance.py` 属于现行 provenance 的 product input，不能把 `4ffd026cc` 的 macOS provenance 冒充为 Build 20 exact evidence；解锁后仍须对 `86ad5462070cb3b779073ec6cf7bee75c4b1f787` 重新完成 build/provenance 与四路 10 秒 Aqua fixture。因此 `RUA-07C` 继续保持未勾选。
+- 当前仍保持 `IN_PROGRESS` 与父路线唯一活动指针，不把 Windows/Android 已通过证据扩大解释为 RUA-07 完成。只有取得无外部负载的 Build 20 性能正式样本并完成解锁后的 exact macOS 四路验收，才能进入 `RUA-07D` 关闭审计。
+
 ## 11. 测试矩阵与不可替代性能门禁
 
 ### 11.1 行为矩阵
