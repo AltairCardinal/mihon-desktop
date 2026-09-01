@@ -21,6 +21,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.download.PartialDownloadArtifactLifecycleCoordinator
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.domain.download.DownloadQueueStatus
 import mihon.domain.reader.PageDecodePurpose
@@ -427,6 +428,9 @@ class DesktopReaderPartialMaterializationIntegrationTest {
                 urls = listOf(url),
                 committed = mapOf(0 to CommittedFile(corruptFile, revision = 1L)),
             )
+            val lifecycleCoordinator = PartialDownloadArtifactLifecycleCoordinator().apply {
+                registerCommittedPage(context(source).chapterId, checkNotNull(partialSnapshot.candidateAt(0)))
+            }
             val productionDecoder = SkiaDesktopReaderPageImageDecoder()
             val decoder = DesktopReaderPageImageDecoder { encoded, key ->
                 if (encoded.contentEquals(corruptBytes)) null else productionDecoder.decode(encoded, key)
@@ -441,6 +445,7 @@ class DesktopReaderPartialMaterializationIntegrationTest {
                 encodedCacheDirectory = tempDir.resolve("encoded-shared-runtimes"),
                 pageImageDecoder = decoder,
                 partialDownloadSnapshotLookup = MutableSnapshotLookup(partialSnapshot),
+                partialPageReadLeaseSource = lifecycleCoordinator,
             )
             val runtimes = mutableListOf<DesktopReaderRuntime>()
 

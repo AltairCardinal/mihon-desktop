@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -18,9 +19,11 @@ import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.io.IOException
 import java.nio.file.AccessDeniedException
+import java.nio.file.AtomicMoveNotSupportedException
 import mihon.domain.error.AppError
 import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.domain.DesktopSystemNotifier
+import mihon.domain.reader.content.DownloadChapterIdentity
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -366,6 +369,180 @@ class DesktopDownloadRetryIntegrationTest {
         }
     }
 
+    @Test
+    fun `conflicting existing final is never deleted and returns a typed publish error`(): Unit = runBlocking {
+        val server = MockWebServer().apply {
+            enqueue(MockResponse(body = PNG))
+            start()
+        }
+        val provider = DesktopDownloadProvider(File(directory, "chapter-final-conflict"))
+        val identity = downloadIdentity("conflict")
+        val finalDirectory = provider.canonicalChapterDownloadDir(identity)
+        val conflictingBytes = "GIF89aCONFLICT".toByteArray()
+        val workerParent = SupervisorJob()
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            httpClient = OkHttpClient(),
+            workerScope = CoroutineScope(workerParent + Dispatchers.Default),
+            retryDelay = {},
+            downloadIdentityResolver = { identity },
+            ioProbe = DownloadIoProbe { event ->
+                if (event.operation == DownloadIoOperation.CHAPTER_MOVE && !finalDirectory.exists()) {
+                    finalDirectory.mkdirs()
+                    File(finalDirectory, "001.gif").writeBytes(conflictingBytes)
+                }
+            },
+        )
+        val chapter = DownloadItem(
+            sourceId = 42L,
+            mangaTitle = identity.mangaTitle,
+            chapterName = identity.chapterName,
+            chapterId = 8_101L,
+            chapterUrl = identity.chapterUrl,
+            pageUrls = listOf(server.url("/page.gif").toString()),
+        )
+        manager.enqueue(chapter)
+        manager.start()
+        try {
+            awaitError(manager)
+
+            val failure = manager.failures.value.getValue(chapter.chapterId)
+            (failure is AppError.Storage) shouldBe true
+            (failure.cause is ChapterPublishConflictException) shouldBe true
+            File(finalDirectory, "001.gif").readBytes().contentEquals(conflictingBytes) shouldBe true
+            File(provider.canonicalChapterTmpDir(identity), "001.gif").readBytes().contentEquals(PNG.toByteArray()) shouldBe true
+            server.requestCount shouldBe 1
+        } finally {
+            manager.stopAndJoin()
+            workerParent.cancelAndJoin()
+            server.close()
+        }
+    }
+
+    @Test
+    fun `identical existing final is adopted without replacing it`() = runBlocking {
+        val server = MockWebServer().apply {
+            enqueue(MockResponse(body = PNG))
+            start()
+        }
+        val provider = DesktopDownloadProvider(File(directory, "chapter-final-identical"))
+        val identity = downloadIdentity("identical")
+        val finalDirectory = provider.canonicalChapterDownloadDir(identity)
+        var renameCalls = 0
+        val workerParent = SupervisorJob()
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            httpClient = OkHttpClient(),
+            workerScope = CoroutineScope(workerParent + Dispatchers.Default),
+            downloadIdentityResolver = { identity },
+            ioProbe = DownloadIoProbe { event ->
+                if (event.operation == DownloadIoOperation.CHAPTER_MOVE && !finalDirectory.exists()) {
+                    finalDirectory.mkdirs()
+                    File(finalDirectory, "001.gif").writeBytes(PNG.toByteArray())
+                }
+            },
+            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun renameChapter(tmpDir: File, finalDir: File): Boolean {
+                    renameCalls++
+                    return DefaultDownloadFileOperations.renameChapter(tmpDir, finalDir)
+                }
+            },
+        )
+        manager.enqueue(
+            DownloadItem(
+                sourceId = 42L,
+                mangaTitle = identity.mangaTitle,
+                chapterName = identity.chapterName,
+                chapterId = 8_102L,
+                chapterUrl = identity.chapterUrl,
+                pageUrls = listOf(server.url("/page.gif").toString()),
+            ),
+        )
+        manager.start()
+        try {
+            awaitEmpty(manager)
+
+            renameCalls shouldBe 0
+            File(finalDirectory, "001.gif").readBytes().contentEquals(PNG.toByteArray()) shouldBe true
+            provider.canonicalChapterTmpDir(identity).exists() shouldBe false
+            server.requestCount shouldBe 1
+        } finally {
+            manager.stopAndJoin()
+            workerParent.cancelAndJoin()
+            server.close()
+        }
+    }
+
+    @Test
+    fun `unsupported atomic chapter move keeps private pages and exposes typed storage failure`() = runBlocking {
+        val server = MockWebServer().apply {
+            enqueue(MockResponse(body = PNG))
+            start()
+        }
+        val provider = DesktopDownloadProvider(File(directory, "chapter-atomic-move"))
+        val identity = downloadIdentity("atomic-move")
+        val workerParent = SupervisorJob()
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            httpClient = OkHttpClient(),
+            workerScope = CoroutineScope(workerParent + Dispatchers.Default),
+            retryDelay = {},
+            downloadIdentityResolver = { identity },
+            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun renameChapter(tmpDir: File, finalDir: File): Boolean {
+                    throw AtomicMoveNotSupportedException(tmpDir.path, finalDir.path, "fixture")
+                }
+            },
+        )
+        val chapter = DownloadItem(
+            sourceId = 42L,
+            mangaTitle = identity.mangaTitle,
+            chapterName = identity.chapterName,
+            chapterId = 8_103L,
+            chapterUrl = identity.chapterUrl,
+            pageUrls = listOf(server.url("/page.gif").toString()),
+        )
+        manager.enqueue(chapter)
+        manager.start()
+        try {
+            awaitError(manager)
+
+            val failure = manager.failures.value.getValue(chapter.chapterId)
+            (failure is AppError.Storage) shouldBe true
+            (failure.cause is ChapterAtomicPublishException) shouldBe true
+            (failure.cause?.cause is AtomicMoveNotSupportedException) shouldBe true
+            File(provider.canonicalChapterTmpDir(identity), "001.gif").isFile shouldBe true
+            provider.canonicalChapterDownloadDir(identity).exists() shouldBe false
+        } finally {
+            manager.stopAndJoin()
+            workerParent.cancelAndJoin()
+            server.close()
+        }
+    }
+
+    @Test
+    fun `final appearing after preflight is rechecked and never replaced by atomic directory move`() {
+        val staging = File(directory, "late-final/Chapter_tmp").apply { mkdirs() }
+        val stagingPage = File(staging, "001.gif").apply { writeText(PNG) }
+        val target = File(staging.parentFile, "Chapter")
+        val existingBytes = "GIF89aLATE-FINAL"
+        val publisher = ChapterDirectoryPublisher(
+            object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun renameChapter(tmpDir: File, finalDir: File): Boolean {
+                    finalDir.mkdirs()
+                    File(finalDir, "001.gif").writeText(existingBytes)
+                    return DefaultDownloadFileOperations.renameChapter(tmpDir, finalDir)
+                }
+            },
+        )
+
+        val error = runCatching { publisher.publish(staging, target) }.exceptionOrNull()
+
+        (error is ChapterPublishConflictException) shouldBe true
+        stagingPage.readText() shouldBe PNG
+        File(target, "001.gif").readText() shouldBe existingBytes
+    }
+
     private fun manager(
         server: MockWebServer,
         delays: MutableList<Long>,
@@ -402,6 +579,14 @@ class DesktopDownloadRetryIntegrationTest {
     }
 
     private fun item(server: MockWebServer) = DownloadItem(1, "Manga", "Chapter", server.port.toLong(), pageUrls = listOf(server.url("/page.gif").toString()))
+    private fun downloadIdentity(suffix: String) = DownloadChapterIdentity(
+        sourceDisplayName = "Retry Source $suffix",
+        mangaTitle = "Retry Manga $suffix",
+        chapterName = "Retry Chapter $suffix",
+        scanlator = null,
+        chapterUrl = "/chapter/$suffix",
+        disallowNonAsciiFilenames = false,
+    )
     private fun persistentStore(file: File): PersistentDownloadStore {
         val driver = JdbcSqliteDriver("jdbc:sqlite:${file.absolutePath}")
         runCatching { Database.Schema.create(driver) }

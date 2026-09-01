@@ -87,11 +87,18 @@ enum class DownloadIoOperation {
     PAGE_MOVE,
     CHAPTER_MOVE,
     CBZ_PACKAGE,
+    CBZ_VALIDATE,
+    CBZ_PUBLISH,
+    CHAPTER_CLEANUP,
+    PARTIAL_PAGE_PROBE,
+    PARTIAL_PAGE_OPEN,
+    PARTIAL_PAGE_COPY,
 }
 
 data class DownloadLockState(
     val queueStateLocked: Boolean,
     val indexLocked: Boolean,
+    val coordinatorLocked: Boolean,
     val lifecycleLocked: Boolean,
 )
 

@@ -188,7 +188,7 @@ class DesktopReaderPageFetchPort(
     partialDownloadSnapshotLookup: PartialDownloadSnapshotLookup = DisabledPartialDownloadSnapshotLookup,
     private val partialPageFallbackCoordinator: DesktopReaderPartialPageFallbackCoordinator =
         DesktopReaderPartialPageFallbackCoordinator(),
-    partialPageCopyPort: DesktopReaderPartialPageCopyPort = DesktopReaderPartialPageFileCopyPort,
+    partialPageCopyPort: DesktopReaderPartialPageCopyPort = DesktopReaderPartialPageFileCopyPort(),
 ) : ReaderPageFetchPort {
 
     private val partialPageInput = DesktopReaderPartialPageInput(

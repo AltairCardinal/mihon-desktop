@@ -285,7 +285,7 @@ encoded ref 必须携带 `Partial(committedRevision)` provenance。若后续像�
 - [x] `PDR-01` partial snapshot 与 O(1) committed-page 索引
 - [x] `PDR-02` partial 章节页表路由
 - [x] `PDR-03` encoded cache → committed page → network 唯一物化链
-- [ ] `PDR-04` rename、CBZ、取消与 stale generation 并发矩阵
+- [x] `PDR-04` rename、CBZ、取消与 stale generation 并发矩阵
 - [ ] `PDR-05` production wiring、反馈、Test Mode 与性能门禁
 - [ ] `CLOSE-01` 组合回归、正式构建与关闭审计
 
@@ -717,6 +717,19 @@ python scripts/gradle-coordinator.py run --key pdr04-red -- ./gradlew :app-deskt
 
 **完成条件**：并发测试用 latch/gate 精确制造交错，不靠概率循环；Windows 上 lease 未释放时 finalize/cleanup 不越权，
 释放后可删除；另用 injected delete failure 证明删除仍失败时目录和有效 CBZ 都被保留。
+
+**完成记录（2026-09-02）**：本批涉及 15 个 production/test/roadmap 文件，超过建议范围；非 CBZ no-clobber publish、
+CBZ committed-entry 校验与独占原子发布、Manager generation 状态、Reader file/CBZ entry 输入、跨代 artifact lease 和真实并发
+integration tests 构成同一生命周期协议，拆分会留下完成态 descriptor 失效或 `_tmp` 可被新 generation 提前清理的窗口。初始
+RED/实现 close 后，独立审查发现 ERROR→retry 跨代 lease、late CBZ final 覆盖、完成后尚未 acquire 的 descriptor 退网、
+acquire→首次 probe rename 以及 CBZ expected set 自证五项问题；修复 RED 精确得到 24 项中的 7 项行为失败
+（`.gradle-coordinator/pdr04-review-red-behavior.log`）。最终以物理 `_tmp` 为键协调跨代 drain，directory/CBZ publish 向旧 lease
+提供 bounded handoff，完成态只保留实际 issued descriptor；CBZ 通过同目录 exclusive hard-link no-clobber publish，归档条目、
+大小与 CRC 以 committed page list 为独立权威。修复 close 覆盖 19 个 suite、229 项测试，0 failure/error/skipped，并通过全仓
+`spotlessCheck`（`.gradle-coordinator/pdr04-review-close.log`，`BUILD SUCCESSFUL in 6m 56s`）；唯一一次修复复审批准，无
+P0～P3 阻塞。协调锁内仅进行 map/ref-count/path 状态操作，文件/ZIP probe、open、copy、打包、校验、publish、cleanup 和 await
+均在锁外；未 issued 的普通下载完成页立即裁剪，未增加目录扫描或下载热路径长锁。production composition root 继续绑定
+`DisabledPartialDownloadSnapshotLookup`，待 `PDR-05` 才启用用户链路。
 
 ---
 

@@ -49,8 +49,15 @@ import tachiyomi.data.download.PersistentDownloadStore
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+
+fun interface ChapterPackager {
+    fun packageChapter(sourceDirectory: File, outputFile: File, committedPages: List<File>): Boolean
+}
 
 /**
  * Manages the chapter download queue.
@@ -71,7 +78,13 @@ class DesktopDownloadManager(
     private val stateMachine: DownloadQueueStateMachine = DownloadQueueStateMachine(),
     private val httpClient: OkHttpClient? = null,
     private val retryDelay: suspend (Long) -> Unit = { delay(it) },
-    private val chapterPackager: (File, File) -> Boolean = CbzCreator::create,
+    private val chapterPackager: ChapterPackager = ChapterPackager { source, output, committedPages ->
+        CbzCreator.create(
+            sourceDir = source,
+            outputFile = output,
+            expectedImageFiles = committedPages,
+        )
+    },
     private val artifactCleaner: (File) -> Boolean = { artifact -> artifact.deleteRecursively() },
     private val queuePersister: ((List<DownloadQueueEntry>) -> Unit)? = null,
     private val retirementAwaitObserver: (Long) -> Unit = {},
@@ -87,6 +100,9 @@ class DesktopDownloadManager(
     private val partialIndexFileOperations: PartialDownloadIndexFileOperations = DefaultPartialDownloadIndexFileOperations,
     private val enqueueFileOperations: DownloadEnqueueFileOperations = DefaultDownloadEnqueueFileOperations,
     private val ioProbe: DownloadIoProbe = DownloadIoProbe.None,
+    private val partialArtifactLifecycleCoordinator: PartialDownloadArtifactLifecycleCoordinator =
+        PartialDownloadArtifactLifecycleCoordinator(),
+    private val chapterCleanupDiagnosticObserver: (ChapterCleanupDiagnostic) -> Unit = {},
 ) : DownloadRepository, DesktopDownloadQueuePort, PartialDownloadSnapshotLookup {
     private data class DownloadAttempt(
         val item: DownloadItem,
@@ -168,6 +184,7 @@ class DesktopDownloadManager(
     private val committedIndexes = ConcurrentHashMap<DownloadAttemptKey, CommittedChapterIndex>()
     private val reconcileCompletions = ConcurrentHashMap<DownloadAttemptKey, CompletableDeferred<Unit>>()
     private val pagePublishTokens = ConcurrentHashMap<Pair<DownloadAttemptKey, Int>, PagePublishToken>()
+    private val chapterDirectoryPublisher = ChapterDirectoryPublisher(fileOperations)
     private val activeProducers = mutableMapOf<DownloadAttemptKey, CompletableDeferred<Unit>>()
     private val retirementsByChapter = mutableMapOf<Long, ChapterRetirement>()
     private val enqueuePreflights = mutableSetOf<Long>()
@@ -288,6 +305,10 @@ class DesktopDownloadManager(
             }
         } ?: return false
 
+        partialArtifactLifecycleCoordinator.retireAttempt(
+            result.retirement.key.chapterId,
+            result.retirement.key.generation,
+        )
         // Cancellation commits queue state promptly. Disk cleanup is serialized behind the old
         // producer and never runs on the caller/UI thread.
         if (result.startCleanup) launchRetirementCleanup(result.retirement)
@@ -314,8 +335,19 @@ class DesktopDownloadManager(
 
     override fun retry(chapterId: Long): Boolean = transition(chapterId, DownloadQueueStatus.QUEUED)
 
-    override fun transition(chapterId: Long, target: DownloadQueueStatus): Boolean = synchronized(queueStateLock) {
-        transitionLocked(chapterId, target, expectedGeneration = null)
+    override fun transition(chapterId: Long, target: DownloadQueueStatus): Boolean {
+        var retiredGeneration: Long? = null
+        val changed = synchronized(queueStateLock) {
+            val previousGeneration = queueGenerations[chapterId]
+            transitionLocked(chapterId, target, expectedGeneration = null).also { transitioned ->
+                if (transitioned && target == DownloadQueueStatus.QUEUED) retiredGeneration = previousGeneration
+            }
+        }
+        retiredGeneration?.let { generation ->
+            partialArtifactLifecycleCoordinator.retireAttempt(chapterId, generation)
+            partialArtifactLifecycleCoordinator.removeAttempt(chapterId, generation)
+        }
+        return changed
     }
 
     private fun transitionLocked(
@@ -614,57 +646,16 @@ class DesktopDownloadManager(
 
             if (!cleanupAllRejectedFiles(attempt)) return false
 
-            // All pages downloaded — rename _tmp to final directory
+            // All pages are committed. Directory and CBZ modes publish through separate atomic paths.
             val finalDir = downloadIdentity?.let(provider::canonicalChapterDownloadDir)
                 ?: provider.chapterDownloadDir(item.sourceId, item.mangaTitle, item.chapterName)
             val prefs = downloadPreferences ?: runCatching { Injekt.get<DesktopDownloadPreferences>() }.getOrNull()
             if (!isCurrentAttempt(attempt)) return false
             finalDir.parentFile?.mkdirs()
-            run {
-                var renamed = false
-                var renameAttempt = 0
-                var renameError: Throwable? = null
-                while (!renamed) {
-                    renamed = try {
-                        if (!isCurrentAttempt(attempt)) return false
-                        emitIo(DownloadIoOperation.CHAPTER_MOVE)
-                        finalDir.deleteRecursively()
-                        if (!isCurrentAttempt(attempt)) return false
-                        fileOperations.renameChapter(tmpDir, finalDir)
-                    } catch (error: Exception) {
-                        if (error is CancellationException) throw error
-                        renameError = error
-                        false
-                    }
-                    if (!renamed) {
-                        val wait = stateMachine.retryDelayMillis(renameAttempt++) ?: break
-                        if (!updateRetryCount(attempt, renameAttempt)) return false
-                        retryDelay(wait)
-                    }
-                }
-                if (!renamed) {
-                    recordFailure(attempt, AppError.Storage(renameError))
-                    return false
-                }
-
-                if (!isCurrentAttempt(attempt)) return false
-                try {
-                    if (prefs?.downloadAsCbz?.get() == true) {
-                        val cbzFile = CbzCreator.defaultOutputFile(finalDir)
-                        emitIo(DownloadIoOperation.CBZ_PACKAGE)
-                        val packed = chapterPackager(finalDir, cbzFile)
-                        if (packed) {
-                            // Remove individual image files — CBZ replaces them
-                            finalDir.deleteRecursively()
-                        }
-                    }
-                    if (!isCurrentAttempt(attempt)) return false
-                    completeAttempt(attempt)
-                } catch (error: Exception) {
-                    if (error is CancellationException) throw error
-                    recordFailure(attempt, error.toAppError())
-                    false
-                }
+            if (prefs?.downloadAsCbz?.get() == true) {
+                finalizeCbzChapter(attempt, tmpDir, finalDir)
+            } else {
+                finalizeDirectoryChapter(attempt, tmpDir, finalDir)
             }
         } catch (error: Exception) {
             if (error is CancellationException) throw error
@@ -672,6 +663,137 @@ class DesktopDownloadManager(
             // _tmp directory remains on disk but won't be counted as "downloaded"
             false
         }
+    }
+
+    private suspend fun finalizeDirectoryChapter(
+        attempt: DownloadAttempt,
+        tmpDir: File,
+        finalDir: File,
+    ): Boolean {
+        val publishToken = try {
+            partialArtifactLifecycleCoordinator.prepareDirectoryPublish(
+                chapterId = attempt.key.chapterId,
+                attemptGeneration = attempt.key.generation,
+                stagingDirectory = tmpDir,
+                finalDirectory = finalDir,
+            )
+        } catch (error: Exception) {
+            recordFailure(attempt, AppError.Storage(error))
+            return false
+        }
+        var outcome: ChapterDirectoryPublishOutcome? = null
+        var tokenCommitted = false
+        var publishAttempt = 0
+        var publishError: Throwable? = null
+        try {
+            while (outcome == null) {
+                if (!isCurrentAttempt(attempt)) return false
+                try {
+                    emitIo(DownloadIoOperation.CHAPTER_MOVE)
+                    outcome = chapterDirectoryPublisher.publish(tmpDir, finalDir)
+                } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                    publishError = error
+                    if (
+                        error is ChapterPublishConflictException ||
+                        error is ChapterAtomicPublishException && error.cause is java.nio.file.AtomicMoveNotSupportedException
+                    ) {
+                        break
+                    }
+                    val wait = stateMachine.retryDelayMillis(publishAttempt++) ?: break
+                    if (!updateRetryCount(attempt, publishAttempt)) return false
+                    retryDelay(wait)
+                }
+            }
+            if (outcome == null) {
+                recordFailure(attempt, AppError.Storage(publishError))
+                return false
+            }
+            if (!partialArtifactLifecycleCoordinator.commitDirectoryPublish(publishToken)) {
+                recordFailure(
+                    attempt,
+                    AppError.Storage(ChapterAtomicPublishException(tmpDir, finalDir, IOException("Stale publish token"))),
+                )
+                return false
+            }
+            tokenCommitted = true
+            if (!isCurrentAttempt(attempt)) return false
+            if (outcome == ChapterDirectoryPublishOutcome.ADOPTED_IDENTICAL) {
+                if (!cleanupPrivateDirectoryAfterPublish(attempt, tmpDir)) return false
+            }
+            return isCurrentAttempt(attempt) && completeAttempt(attempt)
+        } finally {
+            if (!tokenCommitted) partialArtifactLifecycleCoordinator.abortDirectoryPublish(publishToken)
+        }
+    }
+
+    private suspend fun finalizeCbzChapter(
+        attempt: DownloadAttempt,
+        tmpDir: File,
+        finalDir: File,
+    ): Boolean {
+        if (finalDir.exists()) {
+            recordFailure(attempt, AppError.Storage(ChapterPublishConflictException(tmpDir, finalDir)))
+            return false
+        }
+        val cbzFile = CbzCreator.defaultOutputFile(finalDir)
+        return try {
+            if (!isCurrentAttempt(attempt)) return false
+            val committedPages = committedIndexes[attempt.key]
+                ?.pages
+                ?.valuesSnapshot()
+                ?.sortedBy(CommittedPageRecord::readerOrdinal)
+                ?.map(CommittedPageRecord::file)
+                .orEmpty()
+            if (committedPages.isEmpty()) {
+                throw CbzPackagingException("Private chapter has no committed pages")
+            }
+            emitIo(DownloadIoOperation.CBZ_PACKAGE)
+            if (!chapterPackager.packageChapter(tmpDir, cbzFile, committedPages)) {
+                throw CbzPackagingException("Private chapter directory contains no packageable pages")
+            }
+            emitIo(DownloadIoOperation.CBZ_VALIDATE)
+            emitIo(DownloadIoOperation.CBZ_PUBLISH)
+            if (!isCurrentAttempt(attempt)) return false
+            if (
+                !partialArtifactLifecycleCoordinator.commitCbzPublish(
+                    chapterId = attempt.key.chapterId,
+                    attemptGeneration = attempt.key.generation,
+                    stagingDirectory = tmpDir,
+                    archive = cbzFile,
+                )
+            ) {
+                throw CbzPackagingException("Published CBZ could not be handed off to the current Reader generation")
+            }
+            if (!cleanupPrivateDirectoryAfterPublish(attempt, tmpDir)) return false
+            completeAttempt(attempt)
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            recordFailure(attempt, error.toAppError())
+            false
+        }
+    }
+
+    private suspend fun cleanupPrivateDirectoryAfterPublish(
+        attempt: DownloadAttempt,
+        tmpDir: File,
+    ): Boolean {
+        partialArtifactLifecycleCoordinator.awaitArtifactDrain(tmpDir).await()
+        if (!isCurrentAttempt(attempt)) return false
+        emitIo(DownloadIoOperation.CHAPTER_CLEANUP)
+        val cleanupError = try {
+            if (!tmpDir.exists() || artifactCleaner(tmpDir) && !tmpDir.exists()) {
+                null
+            } else {
+                IOException("Unable to remove published private chapter directory: ${tmpDir.absolutePath}")
+            }
+        } catch (error: Exception) {
+            error
+        }
+        if (cleanupError != null) {
+            runCatching { chapterCleanupDiagnosticObserver(ChapterCleanupDiagnostic(tmpDir, cleanupError)) }
+        }
+        return true
     }
 
     private suspend fun resolvePageTable(
@@ -844,31 +966,39 @@ class DesktopDownloadManager(
         pageTable: PartialPageTable,
         identity: DownloadChapterIdentity?,
         entry: PartialPageTableEntry,
-    ): Boolean = synchronized(queueStateLock) {
-        val tokenKey = token.key to token.readerOrdinal
-        if (
-            queueGenerations[token.key.chapterId] != token.key.generation ||
-            pagePublishTokens[tokenKey] !== token
-        ) {
-            return@synchronized false
-        }
-        val index = committedIndexes[token.key] ?: CommittedChapterIndex(
-            key = token.key,
-            identity = identity,
-            pageTable = pageTable,
-            directory = token.finalFile.parentFile,
-            pages = MutableCommittedPageIndex(),
-        ).also { committedIndexes[token.key] = it }
+    ): Boolean {
         val record = CommittedPageRecord(
             readerOrdinal = entry.readerOrdinal,
             sourcePageIndex = entry.sourcePageIndex,
             file = token.finalFile,
             committedRevision = committedRevisionSequence.incrementAndGet(),
         )
-        index.pages.put(entry.readerOrdinal, record)
-        index.rejectedFilesByOrdinal.remove(entry.readerOrdinal)
-        pagePublishTokens.remove(tokenKey, token)
-        true
+        val candidate = record.toCandidate(token.key.generation)
+        if (!partialArtifactLifecycleCoordinator.registerCommittedPage(token.key.chapterId, candidate)) return false
+        val published = synchronized(queueStateLock) {
+            val tokenKey = token.key to token.readerOrdinal
+            if (
+                queueGenerations[token.key.chapterId] != token.key.generation ||
+                pagePublishTokens[tokenKey] !== token
+            ) {
+                return@synchronized false
+            }
+            val index = committedIndexes[token.key] ?: CommittedChapterIndex(
+                key = token.key,
+                identity = identity,
+                pageTable = pageTable,
+                directory = token.finalFile.parentFile,
+                pages = MutableCommittedPageIndex(),
+            ).also { committedIndexes[token.key] = it }
+            index.pages.put(entry.readerOrdinal, record)
+            index.rejectedFilesByOrdinal.remove(entry.readerOrdinal)
+            pagePublishTokens.remove(tokenKey, token)
+            true
+        }
+        if (!published) {
+            partialArtifactLifecycleCoordinator.unregisterCommittedPage(token.key.chapterId, candidate)
+        }
+        return published
     }
 
     private fun releasePagePublishToken(token: PagePublishToken, deleteFinal: Boolean) {
@@ -925,7 +1055,11 @@ class DesktopDownloadManager(
                     }
                     return@forEach
                 }
-                val readerOrdinal = DownloadPageFileNamingPolicy.readerOrdinal(file.name) ?: return@forEach
+                val readerOrdinal = DownloadPageFileNamingPolicy.readerOrdinal(file.name)
+                if (readerOrdinal == null) {
+                    rejectedUnmapped += file
+                    return@forEach
+                }
                 if (!tableEntries.containsKey(readerOrdinal)) {
                     rejectedUnmapped += file
                 } else {
@@ -955,7 +1089,18 @@ class DesktopDownloadManager(
                     ),
                 )
             }
-            synchronized(queueStateLock) {
+            val registeredCandidates = mutableListOf<PartialReaderPageCandidate>()
+            for (record in reconciledPages.valuesSnapshot()) {
+                val candidate = record.toCandidate(attempt.generation)
+                if (!partialArtifactLifecycleCoordinator.registerCommittedPage(attempt.item.chapterId, candidate)) {
+                    registeredCandidates.forEach { registered ->
+                        partialArtifactLifecycleCoordinator.unregisterCommittedPage(attempt.item.chapterId, registered)
+                    }
+                    return
+                }
+                registeredCandidates += candidate
+            }
+            val published = synchronized(queueStateLock) {
                 if (isCurrentAttemptLocked(attempt)) {
                     committedIndexes[attempt.key] = CommittedChapterIndex(
                         key = attempt.key,
@@ -968,6 +1113,14 @@ class DesktopDownloadManager(
                         ),
                         rejectedUnmappedFiles = rejectedUnmapped.distinctBy(File::getAbsolutePath),
                     )
+                    true
+                } else {
+                    false
+                }
+            }
+            if (!published) {
+                registeredCandidates.forEach { candidate ->
+                    partialArtifactLifecycleCoordinator.unregisterCommittedPage(attempt.item.chapterId, candidate)
                 }
             }
         } finally {
@@ -1028,15 +1181,22 @@ class DesktopDownloadManager(
         val index = committedIndexes[key]?.takeIf { it.identity == identity } ?: return null
         val status = currentStatuses[chapterId] ?: return null
         if (currentGenerations[chapterId] != generation) return null
+        val committedPages = index.pages.valuesSnapshot()
+            .sortedBy(CommittedPageRecord::readerOrdinal)
+        if (
+            committedPages.any { page ->
+                !partialArtifactLifecycleCoordinator.markDescriptorIssued(chapterId, page.toCandidate(generation))
+            }
+        ) {
+            return null
+        }
         return PartialDownloadSnapshot(
             chapterId = chapterId,
             identity = identity,
             attemptGeneration = generation,
             queueStatus = status,
             pageTable = index.pageTable,
-            committedPages = index.pages.valuesSnapshot()
-                .sortedBy(CommittedPageRecord::readerOrdinal)
-                .map { page ->
+            committedPages = committedPages.map { page ->
                     PartialCommittedPage(
                         readerOrdinal = page.readerOrdinal,
                         sourcePageIndex = page.sourcePageIndex,
@@ -1067,14 +1227,26 @@ class DesktopDownloadManager(
             }
             ?: return null
         if (currentGenerations[chapterId] != generation || currentStatuses[chapterId] == null) return null
-        return PartialReaderPageCandidate(
+        val candidate = PartialReaderPageCandidate(
             attemptGeneration = generation,
             readerOrdinal = readerOrdinal,
             sourcePageIndex = sourcePageIndex,
             opaqueLocation = page.file.absolutePath,
             committedRevision = page.committedRevision,
         )
+        return candidate.takeIf { partialArtifactLifecycleCoordinator.markDescriptorIssued(chapterId, it) }
     }
+
+    private fun CommittedPageRecord.toCandidate(attemptGeneration: Long) = PartialReaderPageCandidate(
+        attemptGeneration = attemptGeneration,
+        readerOrdinal = readerOrdinal,
+        sourcePageIndex = sourcePageIndex,
+        opaqueLocation = file.absolutePath,
+        committedRevision = committedRevision,
+    )
+
+    val partialPageReadLeaseSource: PartialPageReadLeaseSource
+        get() = partialArtifactLifecycleCoordinator
 
     private fun emitIo(operation: DownloadIoOperation) {
         ioProbe.onIo(
@@ -1083,6 +1255,7 @@ class DesktopDownloadManager(
                 locks = DownloadLockState(
                     queueStateLocked = Thread.holdsLock(queueStateLock),
                     indexLocked = false,
+                    coordinatorLocked = partialArtifactLifecycleCoordinator.holdsLockByCurrentThread(),
                     lifecycleLocked = Thread.holdsLock(lifecycleLock),
                 ),
             ),
@@ -1151,7 +1324,7 @@ class DesktopDownloadManager(
         return false
     }
 
-    private fun settleRetirement(retirement: ChapterRetirement) {
+    private suspend fun settleRetirement(retirement: ChapterRetirement) {
         val result = cleanupRetirementArtifacts(retirement)
         if (result.success) {
             synchronized(queueStateLock) {
@@ -1184,11 +1357,16 @@ class DesktopDownloadManager(
         }.distinctBy(File::getAbsolutePath)
     }
 
-    private fun cleanupRetirementArtifacts(retirement: ChapterRetirement): RetirementCleanupResult {
+    private suspend fun cleanupRetirementArtifacts(retirement: ChapterRetirement): RetirementCleanupResult {
+        partialArtifactLifecycleCoordinator.retireAttempt(
+            retirement.key.chapterId,
+            retirement.key.generation,
+        ).await()
         var cleanupError: Throwable? = null
         retirement.artifacts.forEach { artifact ->
             if (!artifact.exists()) return@forEach
             val removed = try {
+                emitIo(DownloadIoOperation.CHAPTER_CLEANUP)
                 artifactCleaner(artifact) && !artifact.exists()
             } catch (error: Exception) {
                 cleanupError = cleanupError ?: error
@@ -1197,6 +1375,12 @@ class DesktopDownloadManager(
             if (!removed && cleanupError == null) {
                 cleanupError = java.io.IOException("Unable to remove retired download artifact: ${artifact.absolutePath}")
             }
+        }
+        if (cleanupError == null) {
+            partialArtifactLifecycleCoordinator.removeAttempt(
+                retirement.key.chapterId,
+                retirement.key.generation,
+            )
         }
         return RetirementCleanupResult(success = cleanupError == null, error = cleanupError)
     }
@@ -1219,28 +1403,34 @@ class DesktopDownloadManager(
         true
     }
 
-    private fun completeAttempt(attempt: DownloadAttempt): Boolean = synchronized(queueStateLock) {
-        if (!isCurrentAttemptLocked(attempt)) {
+    private fun completeAttempt(attempt: DownloadAttempt): Boolean {
+        val completed = synchronized(queueStateLock) {
+            if (!isCurrentAttemptLocked(attempt)) {
+                resolvedDownloadIdentities.remove(attempt.key)
+                return@synchronized false
+            }
+            val item = _queue.value.first { it.chapterId == attempt.item.chapterId }
+            if (stateMachine.transition(item.toEntry(0), DownloadQueueStatus.COMPLETED) == null) {
+                return@synchronized false
+            }
+            val nextQueue = _queue.value.filterNot { it.chapterId == attempt.item.chapterId }
+            // Persist first: a storage failure must leave the current generation and its published
+            // artifact available for an explicit retry instead of committing a partial completion.
+            persistQueue(nextQueue)
             resolvedDownloadIdentities.remove(attempt.key)
-            return@synchronized false
+            queueGenerations.remove(attempt.item.chapterId)
+            currentGenerations.remove(attempt.item.chapterId, attempt.generation)
+            currentStatuses.remove(attempt.item.chapterId)
+            committedIndexes.remove(attempt.key)
+            reconcileCompletions.remove(attempt.key)
+            _queue.value = nextQueue
+            _failures.update { it - attempt.item.chapterId }
+            true
         }
-        val item = _queue.value.first { it.chapterId == attempt.item.chapterId }
-        if (stateMachine.transition(item.toEntry(0), DownloadQueueStatus.COMPLETED) == null) {
-            return@synchronized false
+        if (completed) {
+            partialArtifactLifecycleCoordinator.markAttemptCompleted(attempt.key.chapterId, attempt.key.generation)
         }
-        val nextQueue = _queue.value.filterNot { it.chapterId == attempt.item.chapterId }
-        // Persist first: a storage failure must leave the current generation and its published
-        // artifact available for an explicit retry instead of committing a partial completion.
-        persistQueue(nextQueue)
-        resolvedDownloadIdentities.remove(attempt.key)
-        queueGenerations.remove(attempt.item.chapterId)
-        currentGenerations.remove(attempt.item.chapterId, attempt.generation)
-        currentStatuses.remove(attempt.item.chapterId)
-        committedIndexes.remove(attempt.key)
-        reconcileCompletions.remove(attempt.key)
-        _queue.value = nextQueue
-        _failures.update { it - attempt.item.chapterId }
-        true
+        return completed
     }
 
     private fun setStatus(attempt: DownloadAttempt, status: DownloadStatus): Boolean = synchronized(queueStateLock) {
@@ -1443,7 +1633,7 @@ class DefaultDownloadFileOperations internal constructor(
     }
 
     override fun renameChapter(tmpDir: File, finalDir: File): Boolean {
-        if (!tmpDir.renameTo(finalDir)) throw java.io.IOException("Unable to finalize chapter")
+        Files.move(tmpDir.toPath(), finalDir.toPath(), StandardCopyOption.ATOMIC_MOVE)
         return true
     }
 }

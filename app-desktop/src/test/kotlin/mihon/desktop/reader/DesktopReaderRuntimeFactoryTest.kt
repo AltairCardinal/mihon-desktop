@@ -91,10 +91,9 @@ class DesktopReaderRuntimeFactoryTest {
                 Page(41, url = "/online/last", imageUrl = null),
             )
         }
-        val sourceManager = mockk<SourceManager>(relaxed = true) {
-            every { get(42L) } returns null
-            every { getCatalogueSources() } returns listOf(source)
-        }
+        val sourceManager = mockk<SourceManager>()
+        every { sourceManager.get(42L) } returns null
+        every { sourceManager.getCatalogueSources() } returns listOf(source)
         val snapshot = PartialDownloadSnapshot(
             chapterId = context.chapterId,
             identity = DownloadChapterIdentity(

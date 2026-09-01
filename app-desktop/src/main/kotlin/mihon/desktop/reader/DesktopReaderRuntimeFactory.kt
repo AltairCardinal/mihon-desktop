@@ -18,6 +18,8 @@ import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.observability.ReaderMonotonicClock
 import mihon.domain.reader.partial.DisabledPartialDownloadSnapshotLookup
 import mihon.domain.reader.partial.PartialDownloadSnapshotLookup
+import mihon.desktop.download.DirectPartialPageReadLeaseSource
+import mihon.desktop.download.PartialPageReadLeaseSource
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
 import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
 import mihon.domain.reader.session.ReaderChapterId
@@ -127,6 +129,7 @@ class DesktopReaderRuntimeFactory internal constructor(
     private val disallowNonAsciiFilenames: () -> Boolean = { false },
     private val pageImageDecoder: DesktopReaderPageImageDecoder = SkiaDesktopReaderPageImageDecoder(),
     private val partialDownloadSnapshotLookup: PartialDownloadSnapshotLookup = DisabledPartialDownloadSnapshotLookup,
+    private val partialPageReadLeaseSource: PartialPageReadLeaseSource = DirectPartialPageReadLeaseSource,
 ) {
     internal val configuredReaderIoProbe: ReaderIoProbe get() = readerIoProbe
     internal val configuredPartialDownloadSnapshotLookup: PartialDownloadSnapshotLookup
@@ -195,6 +198,7 @@ class DesktopReaderRuntimeFactory internal constructor(
                     contentAdapter = contentAdapter,
                     partialDownloadSnapshotLookup = partialDownloadSnapshotLookup,
                     partialPageFallbackCoordinator = partialPageFallbackCoordinator,
+                    partialPageCopyPort = DesktopReaderPartialPageFileCopyPort(partialPageReadLeaseSource),
                 )
             },
             progressPort = DesktopReaderProgressPort { context, effect ->

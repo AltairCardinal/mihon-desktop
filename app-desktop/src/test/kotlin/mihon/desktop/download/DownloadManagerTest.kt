@@ -737,7 +737,7 @@ class DownloadManagerTest {
     }
 
     @Test
-    fun `cbz packaging failure after chapter rename preserves completed page files`() = runTest {
+    fun `cbz packaging failure preserves private pages without exposing a transient final directory`() = runTest {
         val provider = DesktopDownloadProvider(tempDir.resolve("cbz-finalize-failure"))
         val identity = DownloadChapterIdentity(
             sourceDisplayName = "CBZ Source",
@@ -787,7 +787,8 @@ class DownloadManagerTest {
             advanceUntilIdle()
 
             assertEquals(DownloadStatus.ERROR, manager.queue.value.single().status)
-            assertArrayEquals(jpegBytes(), File(finalDirectory, "001.jpg").readBytes())
+            assertArrayEquals(jpegBytes(), File(provider.canonicalChapterTmpDir(identity), "001.jpg").readBytes())
+            assertFalse(finalDirectory.exists())
             assertTrue(File(blockedCbzTarget, "do-not-delete.txt").isFile)
         } finally {
             worker.cancel()
@@ -811,7 +812,7 @@ class DownloadManagerTest {
                     networkHelper = NetworkHelper(OkHttpClient()),
                     downloadPreferences = preferences,
                     workerScope = CoroutineScope(workerParent + dispatcher),
-                    chapterPackager = { directory, target ->
+                    chapterPackager = { directory, target, _ ->
                         if (stage == BlockingFinalizationStage.CBZ_PACKAGE) {
                             try {
                                 entered.complete(Unit)
