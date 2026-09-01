@@ -19,6 +19,7 @@ import mihon.domain.reader.observability.ReaderMonotonicClock
 import mihon.domain.reader.partial.DisabledPartialDownloadSnapshotLookup
 import mihon.domain.reader.partial.PartialDownloadSnapshotLookup
 import mihon.desktop.download.DirectPartialPageReadLeaseSource
+import mihon.desktop.download.DownloadIoProbe
 import mihon.desktop.download.PartialPageReadLeaseSource
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
 import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
@@ -130,10 +131,13 @@ class DesktopReaderRuntimeFactory internal constructor(
     private val pageImageDecoder: DesktopReaderPageImageDecoder = SkiaDesktopReaderPageImageDecoder(),
     private val partialDownloadSnapshotLookup: PartialDownloadSnapshotLookup = DisabledPartialDownloadSnapshotLookup,
     private val partialPageReadLeaseSource: PartialPageReadLeaseSource = DirectPartialPageReadLeaseSource,
+    private val partialDownloadIoProbe: DownloadIoProbe = DownloadIoProbe.None,
 ) {
     internal val configuredReaderIoProbe: ReaderIoProbe get() = readerIoProbe
     internal val configuredPartialDownloadSnapshotLookup: PartialDownloadSnapshotLookup
         get() = partialDownloadSnapshotLookup
+    internal val configuredPartialPageReadLeaseSource: PartialPageReadLeaseSource
+        get() = partialPageReadLeaseSource
     private val encodedPageStoreCoordinator = DesktopReaderEncodedPageStoreCoordinator(encodedCacheDirectory)
     private val partialPageFallbackCoordinator = DesktopReaderPartialPageFallbackCoordinator()
 
@@ -142,6 +146,7 @@ class DesktopReaderRuntimeFactory internal constructor(
         parentScope: CoroutineScope,
         progressTrackerOverride: ReaderProgressTracker? = null,
     ): DesktopReaderRuntime {
+        val normalizedInitialContext = normalizeDownloadIdentity(initialContext)
         val ioReporter = ReaderIoReporter(readerIoProbe.bind(), readerMonotonicClock)
         val store = encodedPageStoreCoordinator.openSessionStore()
         val pageContentOwner = DesktopReaderPageContentOwner(parentScope, store::read, ioReporter)
@@ -157,7 +162,7 @@ class DesktopReaderRuntimeFactory internal constructor(
             contentOperationProbe = readerContentOperationProbe,
         )
         val core = ReaderSessionCore(
-            initialChapterId = ReaderChapterId(initialContext.chapterId),
+            initialChapterId = ReaderChapterId(normalizedInitialContext.chapterId),
             sessionId = UUID.randomUUID().toString(),
             requestScheduler = ReaderRequestScheduler(
                 ReaderSchedulerPolicy(
@@ -170,7 +175,7 @@ class DesktopReaderRuntimeFactory internal constructor(
         val tracker = progressTrackerOverride ?: progressTracker
         var presentationImageOwner: DesktopReaderPresentationImageOwner? = null
         session = DesktopReaderSession(
-            initialContext = initialContext,
+            initialContext = normalizedInitialContext,
             core = core,
             encodedPageStore = store,
             chapterContentPortFactory = DesktopReaderChapterContentPortFactory { context, leaseGeneration ->
@@ -183,7 +188,7 @@ class DesktopReaderRuntimeFactory internal constructor(
                         sourceId = context.sourceId,
                         candidateProbe = downloadArtifactProbeFactory(context),
                     ),
-                    disallowNonAsciiFilenames = disallowNonAsciiFilenames(),
+                    disallowNonAsciiFilenames = context.disallowNonAsciiFilenames,
                     leaseGeneration = leaseGeneration,
                     partialDownloadSnapshotLookup = partialDownloadSnapshotLookup,
                 )
@@ -198,7 +203,10 @@ class DesktopReaderRuntimeFactory internal constructor(
                     contentAdapter = contentAdapter,
                     partialDownloadSnapshotLookup = partialDownloadSnapshotLookup,
                     partialPageFallbackCoordinator = partialPageFallbackCoordinator,
-                    partialPageCopyPort = DesktopReaderPartialPageFileCopyPort(partialPageReadLeaseSource),
+                    partialPageCopyPort = DesktopReaderPartialPageFileCopyPort(
+                        leaseSource = partialPageReadLeaseSource,
+                        ioProbe = partialDownloadIoProbe,
+                    ),
                 )
             },
             progressPort = DesktopReaderProgressPort { context, effect ->
@@ -276,10 +284,15 @@ class DesktopReaderRuntimeFactory internal constructor(
         onPageRetry = runtime.session::retryPage,
         onChapterRetry = runtime.session::retryChapter,
         onChapterActivated = { context ->
-            runtime.session.activate(context)
+            runtime.session.activate(normalizeDownloadIdentity(context))
             runtime.session.state.value
         },
-        onNextChapterPrefetchChanged = runtime.session::updateNextChapter,
+        onNextChapterPrefetchChanged = { context, firstViewportPageCount ->
+            runtime.session.updateNextChapter(
+                context?.let(::normalizeDownloadIdentity),
+                firstViewportPageCount,
+            )
+        },
         runtime = runtime,
         ownedRuntimeScope = ownedRuntimeScope,
         onProductionClosed = onProductionClosed,
@@ -322,4 +335,8 @@ class DesktopReaderRuntimeFactory internal constructor(
     private companion object {
         const val DEFAULT_CONCURRENT_REQUESTS = 3
     }
+
+    private fun normalizeDownloadIdentity(context: DesktopReaderChapterContext) = context.copy(
+        disallowNonAsciiFilenames = disallowNonAsciiFilenames(),
+    )
 }

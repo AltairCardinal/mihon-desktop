@@ -940,8 +940,9 @@ internal fun initUILayer(
             disallowNonAsciiFilenames = {
                 Injekt.get<LibraryPreferences>().disallowNonAsciiFilenames().get()
             },
-            partialDownloadSnapshotLookup =
-                mihon.domain.reader.partial.DisabledPartialDownloadSnapshotLookup,
+            partialDownloadSnapshotLookup = downloadManager,
+            partialPageReadLeaseSource = downloadManager.partialPageReadLeaseSource,
+            partialDownloadIoProbe = mihon.desktop.test.http.ReaderIoTestModeBridge,
         ),
     )
 
@@ -1075,6 +1076,7 @@ private fun registerDesktopDownload(
         store = PersistentDownloadStore(database),
         fileOperations = fileOperations,
         downloadIdentityResolver = downloadIdentityResolver::resolve,
+        ioProbe = mihon.desktop.test.http.ReaderIoTestModeBridge,
     )
     if (startWorker) downloadManager.start()
     Injekt.addSingleton(directoryState)

@@ -107,7 +107,7 @@ def main() -> int:
         if args.base_url:
             client = ReaderTestModeClient(args.base_url)
             for index, source in enumerate(
-                ("downloaded_directory", "downloaded_cbz", "local_archive", "online"),
+                ("downloaded_directory", "downloaded_cbz", "local_archive", "online", "partial_download"),
                 start=1,
             ):
                 run_fixture_with_required_close(client, source, chapter_id=90_000 + index)

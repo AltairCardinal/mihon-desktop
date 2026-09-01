@@ -1576,6 +1576,7 @@
     <string name="desktop_ui_random_manga">Random manga</string>
     <string name="desktop_ui_read_manga_from_local_files">Read manga from local files</string>
     <string name="desktop_ui_reader_settings">Reader Settings</string>
+    <string name="desktop_ui_reader_partial_download">%1$d/%2$d pages downloaded; remaining pages will load from the network</string>
     <string name="desktop_ui_reading_mode">Reading Mode</string>
     <string name="desktop_ui_reading_mode_e073e5df">Reading mode:</string>
     <string name="desktop_ui_recent_updates">Recent Updates</string>

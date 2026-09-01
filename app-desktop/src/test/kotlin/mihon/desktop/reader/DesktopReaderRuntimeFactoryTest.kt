@@ -12,10 +12,13 @@ import io.mockk.mockk
 import io.mockk.verify
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.domain.ReaderProgressTracker
@@ -56,6 +59,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.model.StubSource
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -69,6 +73,200 @@ class DesktopReaderRuntimeFactoryTest {
 
     @TempDir
     lateinit var tempDir: File
+
+    @Test
+    fun `runtime applies the filename preference to both initial and live partial identities`() = runTest {
+        val context = DesktopReaderChapterContext(
+            chapterId = 59L,
+            sourceId = 42L,
+            chapterUrl = "/chapter/日本語",
+            mangaTitle = "漫画",
+            chapterTitle = "第一話",
+            chapterNumber = 1.0,
+            chapterIndex = 0,
+            initialPage = 0,
+            wasRead = false,
+            sourceDisplayName = "Source",
+            disallowNonAsciiFilenames = false,
+        )
+        val expectedIdentity = DownloadChapterIdentity(
+            sourceDisplayName = context.sourceDisplayName,
+            mangaTitle = context.mangaTitle,
+            chapterName = context.chapterTitle,
+            scanlator = null,
+            chapterUrl = context.chapterUrl,
+            disallowNonAsciiFilenames = true,
+        )
+        val firstLocalPage = tempDir.resolve("live-partial/001.png").apply {
+            parentFile.mkdirs()
+            writeBytes(pngBytes())
+        }
+        val liveLocalPage = tempDir.resolve("live-partial/002.png").apply { writeBytes(pngBytes()) }
+        val initialSnapshot = PartialDownloadSnapshot(
+            chapterId = context.chapterId,
+            identity = expectedIdentity,
+            attemptGeneration = 3L,
+            queueStatus = DownloadQueueStatus.DOWNLOADING,
+            pageTable = PartialPageTable.complete(
+                listOf(
+                    PartialPageTableEntry(0, 0, "/page/0", "https://fixture.invalid/0.png"),
+                    PartialPageTableEntry(1, 1, "/page/1", "https://fixture.invalid/1.png"),
+                ),
+            ),
+            committedPages = listOf(PartialCommittedPage(0, 0, firstLocalPage.absolutePath, 1L)),
+        )
+        val currentSnapshot = AtomicReference(initialSnapshot)
+        val observedIdentities = CopyOnWriteArrayList<DownloadChapterIdentity>()
+        val lookup = PartialDownloadSnapshotLookup { _, identity ->
+            observedIdentities += identity
+            currentSnapshot.get().takeIf { it.identity == identity }
+        }
+        val source = mockk<CatalogueSource>(relaxed = true) {
+            every { id } returns context.sourceId
+        }
+        val sourceManager = sourceManager(listOf(source))
+        val factory = DesktopReaderRuntimeFactory(
+            prefs = ReaderPreferences(),
+            downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads-live-identity")),
+            sourceManager = sourceManager,
+            networkHelper = NetworkHelper(OkHttpClient()),
+            progressTracker = mockk<ReaderProgressTracker>(relaxed = true),
+            mangaRepository = null,
+            encodedCacheDirectory = tempDir.resolve("encoded-live-identity"),
+            disallowNonAsciiFilenames = { true },
+            partialDownloadSnapshotLookup = lookup,
+        )
+        val runtime = factory.createRuntime(context, this)
+        try {
+            advanceUntilIdle()
+            val targetPage = runtime.session.state.value.snapshot.activeChapter.pages[1]
+            assertEquals(null, targetPage.partialPageCandidate)
+
+            currentSnapshot.set(
+                initialSnapshot.copy(
+                    committedPages = initialSnapshot.committedPages +
+                        PartialCommittedPage(1, 1, liveLocalPage.absolutePath, 2L),
+                ),
+            )
+            runtime.session.settleViewport(setOf(targetPage.id), targetPage.id)
+            advanceUntilIdle()
+
+            val materialized = runtime.session.state.value.snapshot.activeChapter.pages[1]
+            assertInstanceOf(
+                mihon.domain.reader.session.ReaderEncodedPageProvenance.Partial::class.java,
+                materialized.encodedPageProvenance,
+            )
+            assertTrue(runtime.session.state.value.context.disallowNonAsciiFilenames)
+            assertTrue(observedIdentities.size >= 2)
+            assertTrue(observedIdentities.all { it.disallowNonAsciiFilenames })
+        } finally {
+            runtime.close()
+        }
+    }
+
+    @Test
+    fun `next chapter prefetch freezes the same filename identity before reusing its partial page table`() = runTest {
+        val legacy = Preferences.userRoot().node("/mihon/runtime-partial-prefetch-identity/${System.nanoTime()}")
+        val prefs = ReaderPreferences(InMemoryPreferenceStore(), legacy).apply {
+            nextChapterPrefetchMode = NextChapterPrefetchMode.FIRST_VIEWPORT
+        }
+        val currentContext = DesktopReaderChapterContext(
+            chapterId = 59L,
+            sourceId = 42L,
+            chapterUrl = "/chapter/current",
+            mangaTitle = "漫画",
+            chapterTitle = "現在話",
+            chapterNumber = 1.0,
+            chapterIndex = 1,
+            initialPage = 0,
+            wasRead = false,
+            sourceDisplayName = "Source",
+        )
+        val nextContext = currentContext.copy(
+            chapterId = 60L,
+            chapterUrl = "/chapter/next",
+            chapterTitle = "次話",
+            chapterNumber = 2.0,
+            chapterIndex = 0,
+            disallowNonAsciiFilenames = false,
+        )
+        val currentPage = tempDir.resolve("partial-prefetch/current.png").apply {
+            parentFile.mkdirs()
+            writeBytes(pngBytes())
+        }
+        val nextPage = tempDir.resolve("partial-prefetch/next.png").apply { writeBytes(pngBytes()) }
+        fun identity(context: DesktopReaderChapterContext) = DownloadChapterIdentity(
+            sourceDisplayName = context.sourceDisplayName,
+            mangaTitle = context.mangaTitle,
+            chapterName = context.chapterTitle,
+            scanlator = context.scanlator,
+            chapterUrl = context.chapterUrl,
+            disallowNonAsciiFilenames = true,
+        )
+        fun snapshot(
+            context: DesktopReaderChapterContext,
+            page: File,
+        ) = PartialDownloadSnapshot(
+            chapterId = context.chapterId,
+            identity = identity(context),
+            attemptGeneration = context.chapterId,
+            queueStatus = DownloadQueueStatus.DOWNLOADING,
+            pageTable = PartialPageTable.complete(
+                listOf(
+                    PartialPageTableEntry(0, 0, "${context.chapterUrl}/0", "https://fixture.invalid/0.png"),
+                    PartialPageTableEntry(1, 1, "${context.chapterUrl}/1", "https://fixture.invalid/1.png"),
+                ),
+            ),
+            committedPages = listOf(PartialCommittedPage(0, 0, page.absolutePath, 1L)),
+        )
+        val snapshots = mapOf(
+            currentContext.chapterId to snapshot(currentContext, currentPage),
+            nextContext.chapterId to snapshot(nextContext, nextPage),
+        )
+        val observedNextIdentities = CopyOnWriteArrayList<DownloadChapterIdentity>()
+        val lookup = PartialDownloadSnapshotLookup { chapterId, requestedIdentity ->
+            if (chapterId == nextContext.chapterId) observedNextIdentities += requestedIdentity
+            snapshots[chapterId]?.takeIf { it.identity == requestedIdentity }
+        }
+        val source = mockk<CatalogueSource>(relaxed = true) {
+            every { id } returns currentContext.sourceId
+            coEvery { getPageList(any()) } returns listOf(Page(0, url = "/unexpected-online", imageUrl = null))
+        }
+        val factory = DesktopReaderRuntimeFactory(
+            prefs = prefs,
+            downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads-partial-prefetch-identity")),
+            sourceManager = sourceManager(listOf(source)),
+            networkHelper = NetworkHelper(OkHttpClient()),
+            progressTracker = mockk<ReaderProgressTracker>(relaxed = true),
+            mangaRepository = null,
+            encodedCacheDirectory = tempDir.resolve("encoded-partial-prefetch-identity"),
+            disallowNonAsciiFilenames = { true },
+            partialDownloadSnapshotLookup = lookup,
+        )
+        val runtime = factory.createRuntime(currentContext, this)
+        try {
+            advanceUntilIdle()
+            val model = factory.createModel(runtime, isWebtoon = false, mangaViewerFlags = 0L, dualPageOverride = null)
+
+            model.updateNextChapterPrefetch(nextContext, firstViewportPageCount = 1)
+            val currentReaderPage = runtime.session.state.value.snapshot.activeChapter.pages.first()
+            runtime.session.settleViewport(setOf(currentReaderPage.id), currentReaderPage.id)
+            advanceUntilIdle()
+            model.activateChapter(nextContext)
+            advanceUntilIdle()
+
+            val activated = runtime.session.state.value
+            assertEquals(nextContext.chapterId, activated.context.chapterId)
+            assertTrue(activated.context.disallowNonAsciiFilenames)
+            assertNotNull(activated.snapshot.activeChapter.pages.first().partialPageCandidate)
+            assertTrue(observedNextIdentities.isNotEmpty())
+            assertTrue(observedNextIdentities.all { it.disallowNonAsciiFilenames })
+            coVerify(exactly = 0) { source.getPageList(any()) }
+        } finally {
+            runtime.close()
+            legacy.removeNode()
+        }
+    }
 
     @Test
     fun `runtime factory reaches partial page lists only through explicit lookup injection`() = runTest {
@@ -91,9 +289,7 @@ class DesktopReaderRuntimeFactoryTest {
                 Page(41, url = "/online/last", imageUrl = null),
             )
         }
-        val sourceManager = mockk<SourceManager>()
-        every { sourceManager.get(42L) } returns null
-        every { sourceManager.getCatalogueSources() } returns listOf(source)
+        val sourceManager = sourceManager(listOf(source))
         val snapshot = PartialDownloadSnapshot(
             chapterId = context.chapterId,
             identity = DownloadChapterIdentity(
@@ -873,6 +1069,16 @@ class DesktopReaderRuntimeFactoryTest {
             graphics.dispose()
         }
         return ByteArrayOutputStream().also { output -> ImageIO.write(image, "png", output) }.toByteArray()
+    }
+
+    private fun sourceManager(sources: List<CatalogueSource>) = object : SourceManager {
+        override val isInitialized = MutableStateFlow(true)
+        override val catalogueSources = flowOf(sources)
+        override fun get(sourceKey: Long): eu.kanade.tachiyomi.source.Source? = null
+        override fun getOrStub(sourceKey: Long): eu.kanade.tachiyomi.source.Source = StubSource(sourceKey, "", "")
+        override fun getOnlineSources(): List<eu.kanade.tachiyomi.source.online.HttpSource> = emptyList()
+        override fun getCatalogueSources(): List<CatalogueSource> = sources
+        override fun getStubSources(): List<StubSource> = emptyList()
     }
 
     private fun localContext(chapterId: Long, path: File) = DesktopReaderChapterContext(

@@ -17,6 +17,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -82,6 +85,7 @@ import mihon.desktop.ui.source.desktopSourceErrorMessage
 import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.session.ReaderChapterLoadState
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 data class DesktopReaderScreen(
@@ -554,6 +558,13 @@ private fun ReaderViewport(
                     onClose = model::clearChapterTransition,
                 )
             }
+            state.partialDownloadNotice?.let { notice ->
+                PartialDownloadSnackbar(
+                    notice = notice,
+                    onDismiss = model::dismissPartialDownloadNotice,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 72.dp),
+                )
+            }
             if (state.showUI) {
                 TopAppBar(
                     title = { Text(chapterTitle, maxLines = 1, style = MaterialTheme.typography.bodyMedium, color = Color.White) },
@@ -581,6 +592,28 @@ private fun ReaderViewport(
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PartialDownloadSnackbar(
+    notice: ReaderPartialDownloadNotice,
+    onDismiss: (ReaderPartialDownloadNoticeId) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val hostState = remember { SnackbarHostState() }
+    LaunchedEffect(notice.id) {
+        hostState.showSnackbar(
+            message = MR.strings.desktop_ui_reader_partial_download.localized(
+                Locale.getDefault(),
+                notice.downloadedPages,
+                notice.totalPages,
+            ),
+            duration = SnackbarDuration.Short,
+        )
+        onDismiss(notice.id)
+    }
+    SnackbarHost(hostState = hostState, modifier = modifier)
 }
 
 @OptIn(ExperimentalComposeUiApi::class)

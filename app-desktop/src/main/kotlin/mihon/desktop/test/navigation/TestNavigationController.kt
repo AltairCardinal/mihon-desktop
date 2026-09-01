@@ -257,7 +257,7 @@ object TestNavigationController {
         pageCount: Int = 20,
         localChapterPath: String? = null,
     ) {
-        ReaderIoTestModeBridge.beginScenario()
+        ReaderIoTestModeBridge.beginScenario(initialPage)
         val readerGeneration = readerState.open(
             chapterId = chapterId,
             page = initialPage,

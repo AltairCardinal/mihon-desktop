@@ -102,15 +102,26 @@ data class DownloadLockState(
     val lifecycleLocked: Boolean,
 )
 
+data class DownloadIoPageIdentity(
+    val attemptGeneration: Long,
+    val readerOrdinal: Int,
+    val sourcePageIndex: Int,
+    val committedRevision: Long,
+)
+
 data class DownloadIoEvent(
     val operation: DownloadIoOperation,
     val locks: DownloadLockState,
+    val page: DownloadIoPageIdentity? = null,
 )
 
 fun interface DownloadIoProbe {
+    val enabled: Boolean get() = true
+
     fun onIo(event: DownloadIoEvent)
 
     object None : DownloadIoProbe {
+        override val enabled: Boolean = false
         override fun onIo(event: DownloadIoEvent) = Unit
     }
 }

@@ -28,18 +28,21 @@ class ReaderTestModeClient:
 
     def run_fixture(self, source: str, chapter_id: int) -> ReaderMeasurement:
         self._request("POST", "/test/reset", {})
+        payload: dict[str, Any] = {
+            "readerFixture": source,
+            "mangaId": chapter_id,
+            "chapterId": chapter_id,
+            "pageCount": 180,
+            "width": 2400,
+            "height": 3500,
+            "format": "JPEG",
+        }
+        if source == "partial_download":
+            payload["partialPageCount"] = 5
         self._request(
             "POST",
             "/test/action/read_chapter",
-            {
-                "readerFixture": source,
-                "mangaId": chapter_id,
-                "chapterId": chapter_id,
-                "pageCount": 180,
-                "width": 2400,
-                "height": 3500,
-                "format": "JPEG",
-            },
+            payload,
         )
         deadline = time.monotonic() + self.timeout_seconds
         while True:
@@ -101,6 +104,8 @@ def validate_reader_state(state: dict[str, Any], source: str) -> ReaderMeasureme
         "height": 3500,
         "format": "JPEG",
     }
+    if source == "partial_download":
+        expected_fixture["partialPageCount"] = 5
     for field, expected in expected_fixture.items():
         if fixture.get(field) != expected:
             raise ReaderContractError(
@@ -135,6 +140,9 @@ def validate_reader_state(state: dict[str, Any], source: str) -> ReaderMeasureme
         raise ReaderContractError(
             f"{source}: onlineImageRequests expected 0, got {online_image_requests}"
         )
+
+    if source == "partial_download":
+        _validate_partial_route(state, source)
 
     raw_events = state.get("productionEvents")
     if not isinstance(raw_events, list) or not all(isinstance(event, dict) for event in raw_events):
@@ -253,6 +261,51 @@ def validate_reader_state(state: dict[str, Any], source: str) -> ReaderMeasureme
             "adjacentIo": len(adjacent_io),
         },
     )
+
+
+def _validate_partial_route(state: dict[str, Any], source: str) -> None:
+    if state.get("route") != source:
+        raise ReaderContractError(f"{source}: route expected {source!r}, got {state.get('route')!r}")
+    if state.get("currentPageIndex") != 0:
+        raise ReaderContractError(
+            f"{source}: currentPageIndex expected 0 for the fixture entry page, got {state.get('currentPageIndex')!r}"
+        )
+    generation = state.get("snapshotGeneration")
+    if not isinstance(generation, int) or isinstance(generation, bool) or generation <= 0:
+        raise ReaderContractError(f"{source}: snapshotGeneration must be a positive integer")
+
+    fields = {
+        "localHits": state.get("localHits"),
+        "networkFallbacks": state.get("networkFallbacks"),
+        "partialPageProbes": state.get("partialPageProbes"),
+        "partialPageOpens": state.get("partialPageOpens"),
+        "partialPageCopies": state.get("partialPageCopies"),
+        "imageRequests": state.get("imageRequests"),
+        "downloadIoLockViolations": state.get("downloadIoLockViolations"),
+    }
+    if any(not isinstance(value, int) or isinstance(value, bool) for value in fields.values()):
+        raise ReaderContractError(f"{source}: partial route counters must all be integers: {fields}")
+    if fields["localHits"] != 1:
+        raise ReaderContractError(f"{source}: current page expected exactly one local hit, got {fields['localHits']}")
+    if fields["partialPageProbes"] != 1 or fields["partialPageOpens"] != 1 or fields["partialPageCopies"] != 1:
+        raise ReaderContractError(f"{source}: current local page must probe, open, and copy exactly once: {fields}")
+    if fields["networkFallbacks"] != 0 or fields["imageRequests"] != 0:
+        raise ReaderContractError(f"{source}: a valid committed current page must not use image network: {fields}")
+    if fields["downloadIoLockViolations"] != 0:
+        raise ReaderContractError(f"{source}: partial page I/O ran while a download lock was held: {fields}")
+
+    scenario_copies = state.get("scenarioPartialPageCopies")
+    scenario_image_requests = state.get("scenarioImageRequests")
+    if not isinstance(scenario_copies, int) or isinstance(scenario_copies, bool) or not 1 <= scenario_copies <= 5:
+        raise ReaderContractError(
+            f"{source}: scenarioPartialPageCopies must stay within the current plus nearby window, got {scenario_copies!r}"
+        )
+    if scenario_copies < fields["partialPageCopies"]:
+        raise ReaderContractError(f"{source}: scenario copy total cannot be below its current-page count")
+    if scenario_image_requests != 0:
+        raise ReaderContractError(
+            f"{source}: the first five local fixture pages must keep scenarioImageRequests at 0, got {scenario_image_requests!r}"
+        )
 
 
 def _event_nanos(event: dict[str, Any], source: str) -> int:

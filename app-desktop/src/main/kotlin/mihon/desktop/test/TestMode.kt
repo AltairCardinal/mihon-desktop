@@ -90,6 +90,7 @@ object TestMode {
         applicationState.testMode = true
         val reader = ReaderTestModeController(
             configuredDownloadProvider = Injekt.get(),
+            downloadManager = Injekt.get(),
             baseUrl = "http://$TEST_MODE_HOST:${args.httpPort}",
         )
         ReaderIoTestModeBridge.install(reader)

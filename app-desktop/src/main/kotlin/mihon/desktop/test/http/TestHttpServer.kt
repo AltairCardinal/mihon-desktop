@@ -89,12 +89,19 @@ private fun parseReaderFixtureSpec(params: Map<String, String>): ReaderTestFixtu
     val formatValue = params["format"] ?: ReaderTestImageFormat.JPEG.wireName
     val format = ReaderTestImageFormat.fromWireName(formatValue)
         ?: throw IllegalArgumentException("Unsupported reader fixture format: $formatValue")
+    val partialPageCount = params["partialPageCount"]?.toIntOrNull()
+        ?: if (params.containsKey("partialPageCount")) throw IllegalArgumentException("partialPageCount must be an integer") else null
+    val offline = params["offline"]?.let { raw ->
+        raw.toBooleanStrictOrNull() ?: throw IllegalArgumentException("offline must be true or false")
+    } ?: false
     return ReaderTestFixtureSpec(
         source = source,
         pageCount = integerParameter("pageCount", 3),
         width = integerParameter("width", 16),
         height = integerParameter("height", 24),
         format = format,
+        partialPageCount = partialPageCount,
+        offline = offline,
     )
 }
 
@@ -104,6 +111,8 @@ private fun ReaderTestFixtureDescriptor.toJson(): JsonObject = buildJsonObject {
     put("width", JsonPrimitive(spec.width))
     put("height", JsonPrimitive(spec.height))
     put("format", JsonPrimitive(spec.format.wireName))
+    put("partialPageCount", spec.partialPageCount?.let(::JsonPrimitive) ?: JsonNull)
+    put("offline", JsonPrimitive(spec.offline))
 }
 
 internal fun actionHistoryParams(
@@ -693,7 +702,7 @@ internal fun Application.testHttpServer(
                                 )
                                 return@post
                             }
-                            fixtureController.prepareFixture(
+                            fixtureController.prepareFixtureAwait(
                                 spec = spec,
                                 mangaId = mangaId,
                                 chapterId = chapterId,
@@ -1096,6 +1105,27 @@ internal fun Application.testHttpServer(
                     put("readerFixture", fixtureController?.fixtureDescriptor()?.toJson() ?: JsonNull)
                     put("sourcePageListCalls", JsonPrimitive(fixtureController?.sourcePageListCallCount() ?: 0))
                     put("onlineImageRequests", JsonPrimitive(fixtureController?.onlineImageRequestCount() ?: 0))
+                    put("route", fixtureController?.partialRoute()?.let(::JsonPrimitive) ?: JsonNull)
+                    put("currentPageIndex", JsonPrimitive(fixtureController?.currentPageIndex() ?: 0))
+                    put(
+                        "snapshotGeneration",
+                        fixtureController?.partialSnapshotGeneration()?.let(::JsonPrimitive) ?: JsonNull,
+                    )
+                    put("localHits", JsonPrimitive(fixtureController?.partialLocalHitCount() ?: 0))
+                    put("networkFallbacks", JsonPrimitive(fixtureController?.partialNetworkFallbackCount() ?: 0))
+                    put("partialPageProbes", JsonPrimitive(fixtureController?.partialPageProbeCount() ?: 0))
+                    put("partialPageOpens", JsonPrimitive(fixtureController?.partialPageOpenCount() ?: 0))
+                    put("partialPageCopies", JsonPrimitive(fixtureController?.partialPageCopyCount() ?: 0))
+                    put("imageRequests", JsonPrimitive(fixtureController?.rawOnlineImageRequestCount() ?: 0))
+                    put(
+                        "scenarioPartialPageCopies",
+                        JsonPrimitive(fixtureController?.scenarioPartialPageCopyCount() ?: 0),
+                    )
+                    put(
+                        "scenarioImageRequests",
+                        JsonPrimitive(fixtureController?.scenarioOnlineImageRequestCount() ?: 0),
+                    )
+                    put("downloadIoLockViolations", JsonPrimitive(fixtureController?.downloadIoLockViolationCount() ?: 0))
                     put("timestamp", JsonPrimitive(Instant.now().toString()))
                 }.toString()
             }

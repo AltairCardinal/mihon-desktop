@@ -30,7 +30,7 @@ class DesktopFinalParityReaderClientContractTest {
     private val client = repositoryRoot.resolve("test-desktop/src/main/python/mihon_desktop_final_parity_client.py")
     private val inventory = repositoryRoot.resolve("app-desktop/src/test/resources/parity/test-mode-coverage-inventory.json")
     private val fixtureSources =
-        listOf("downloaded_directory", "downloaded_cbz", "local_archive", "online")
+        listOf("downloaded_directory", "downloaded_cbz", "local_archive", "online", "partial_download")
 
     @Test
     fun `external client drives the standard reader fixture matrix through live Test Mode`() {
@@ -193,7 +193,7 @@ class DesktopFinalParityReaderClientContractTest {
             brokenProductionContent = false,
             neverConfirmProductionClose = true,
         ).use { server ->
-            val result = runCloseReaderClient(server.baseUrl, timeoutSeconds = 0.1)
+            val result = runCloseReaderClient(server.baseUrl, timeoutSeconds = 0.5)
 
             assertEquals(1, result.exitCode, result.output)
             assertTrue(
@@ -490,6 +490,24 @@ class DesktopFinalParityReaderClientContractTest {
                 put("productionEvents", JsonArray(events))
                 put("sourcePageListCalls", JsonPrimitive(sourcePageListCalls))
                 put("onlineImageRequests", JsonPrimitive(onlineImageRequests))
+                put("route", JsonPrimitive(request.source))
+                put("currentPageIndex", JsonPrimitive(0))
+                put(
+                    "snapshotGeneration",
+                    if (request.source == "partial_download") JsonPrimitive(9L) else JsonNull,
+                )
+                put("localHits", JsonPrimitive(if (request.source == "partial_download") 1 else 0))
+                put("networkFallbacks", JsonPrimitive(0))
+                put("partialPageProbes", JsonPrimitive(if (request.source == "partial_download") 1 else 0))
+                put("partialPageOpens", JsonPrimitive(if (request.source == "partial_download") 1 else 0))
+                put("partialPageCopies", JsonPrimitive(if (request.source == "partial_download") 1 else 0))
+                put("imageRequests", JsonPrimitive(onlineImageRequests))
+                put(
+                    "scenarioPartialPageCopies",
+                    JsonPrimitive(if (request.source == "partial_download") 5 else 0),
+                )
+                put("scenarioImageRequests", JsonPrimitive(onlineImageRequests))
+                put("downloadIoLockViolations", JsonPrimitive(0))
                 put(
                     "readerFixture",
                     buildJsonObject {
@@ -498,6 +516,11 @@ class DesktopFinalParityReaderClientContractTest {
                         put("width", JsonPrimitive(request.width))
                         put("height", JsonPrimitive(request.height))
                         put("format", JsonPrimitive(request.format))
+                        put(
+                            "partialPageCount",
+                            if (request.source == "partial_download") JsonPrimitive(5) else JsonNull,
+                        )
+                        put("offline", JsonPrimitive(false))
                     },
                 )
             }

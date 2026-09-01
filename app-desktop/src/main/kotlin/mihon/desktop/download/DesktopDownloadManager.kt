@@ -1249,6 +1249,7 @@ class DesktopDownloadManager(
         get() = partialArtifactLifecycleCoordinator
 
     private fun emitIo(operation: DownloadIoOperation) {
+        if (!ioProbe.enabled) return
         ioProbe.onIo(
             DownloadIoEvent(
                 operation = operation,

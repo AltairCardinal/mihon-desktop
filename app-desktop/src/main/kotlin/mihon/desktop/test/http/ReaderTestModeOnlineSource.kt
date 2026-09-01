@@ -29,9 +29,13 @@ class ReaderTestModeOnlineSource internal constructor(
 
     override suspend fun getChapterList(manga: SManga): List<SChapter> = emptyList()
 
-    override suspend fun getPageList(chapter: SChapter): List<Page> = controller.onlinePageUrls(chapter.url).mapIndexed { index, imageUrl ->
-        Page(index = index, url = "${chapter.url}/$index", imageUrl = imageUrl)
-    }
+    override suspend fun getPageList(chapter: SChapter): List<Page> =
+        controller.onlinePageUrls(chapter.url).mapIndexed { index, imageUrl ->
+            Page(index = index, url = "${chapter.url}/$index", imageUrl = imageUrl.takeIf(String::isNotBlank))
+        }
+
+    @Suppress("unused")
+    suspend fun getImageUrl(page: Page): String? = controller.resolveOnlineImageUrl(page.url)
 
     override fun toString(): String = name
 }

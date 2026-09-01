@@ -286,7 +286,7 @@ encoded ref 必须携带 `Partial(committedRevision)` provenance。若后续像�
 - [x] `PDR-02` partial 章节页表路由
 - [x] `PDR-03` encoded cache → committed page → network 唯一物化链
 - [x] `PDR-04` rename、CBZ、取消与 stale generation 并发矩阵
-- [ ] `PDR-05` production wiring、反馈、Test Mode 与性能门禁
+- [x] `PDR-05` production wiring、反馈、Test Mode 与性能门禁
 - [ ] `CLOSE-01` 组合回归、正式构建与关闭审计
 
 ### 5.2 依赖与提交规则
@@ -777,6 +777,26 @@ python scripts/gradle-coordinator.py run --key pdr05-red -- ./gradlew :app-deskt
 ```
 
 **完成条件**：production wiring、可见反馈、离线 partial、确定性性能门禁和 Test Mode 全部成立后才可声明功能完成。
+
+**完成记录（2026-09-02）**：本批把此前显式 disabled 的 partial route 在唯一 Desktop composition root 原子切换为
+Manager-owned snapshot lookup 与 read-lease source，并将 operation probe 保持为默认 `None` 时构造事件前 O(1) 短路。Reader
+在 initial、切章和 adjacent prefetch 三个入口冻结同一非 ASCII 文件名策略；页表、live candidate、进度身份与预取复用不再
+分叉。用户打开已有部分下载的章节时会看到一次非阻塞“已下载 X/Y 页”提示；普通 online、完整下载和无 partial 的 Reader
+不挂载 Snackbar host/effect，不增加常驻 composition/layout 开销。本批同时扩展真实 production Test Mode：由真实 Manager
+准备 partial fixture，离线只在种页完成后生效，fixture 以精确 identity 持有/清理，当前页 I/O 计数与附近预取场景总计按
+page identity 分离。
+
+本批涉及 27 个 production/test/i18n/client/roadmap 文件，超过建议范围；composition-root enable、可见反馈、真实
+Test Mode fixture、页级 operation attribution、Python 外部客户端契约和性能门禁构成同一可验收链，拆开会留下已启用但
+无法证明离线/锁/调用次数的 production route。初始 RED/GREEN 与修复证据记录于 `pdr05-*` coordinator 日志；独立审查
+先发现 filename identity、offline 准备、fixture 所有权、预取计数污染和 Snackbar 防假绿五项问题，修复复审再发现 adjacent
+prefetch 未规范化 identity，均以真实 production 路径 RED 后修复。最终相关 close
+（`.gradle-coordinator/pdr05-review-repair-related.log`）、adjacent identity
+（`.gradle-coordinator/pdr05-review-adjacent-identity-green.log`）以及普通 presentation + partial Snackbar
+（`.gradle-coordinator/pdr05-final-presentation-green.log`）全绿；全量 Desktop 运行 2,840 项时有 2 项资源/时序失败已分别
+focused 复测修复或通过，剩余 1 项是 HEAD 已存在的 parity manifest 行号 198→实际 200 陈旧证据，按 `CLOSE-01` 的
+manifest 更新门禁统一修正。全仓 `spotlessCheck` 在该全量命令中已通过；本批没有新增目录扫描、第二套 Reader loader/cache、
+下载热路径网络请求或持锁文件 I/O。
 
 ---
 

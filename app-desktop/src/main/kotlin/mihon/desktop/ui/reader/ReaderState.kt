@@ -15,6 +15,21 @@ import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderSessionSnapshot
 
+data class ReaderPartialDownloadNoticeId(
+    val chapterId: Long,
+    val readerGeneration: Long,
+    val attemptGeneration: Long,
+)
+
+data class ReaderPartialDownloadNotice(
+    val id: ReaderPartialDownloadNoticeId,
+    val downloadedPages: Int,
+    val totalPages: Int,
+) {
+    val chapterId: Long get() = id.chapterId
+    val attemptGeneration: Long get() = id.attemptGeneration
+}
+
 /**
  * All reader UI and settings state, owned by [ReaderScreenModel].
  *
@@ -70,6 +85,7 @@ data class ReaderState(
     val skipDuplicateChapters: Boolean = false,
 
     // ── UI overlay state ─────────────────────────────────────────────────────
+    val partialDownloadNotice: ReaderPartialDownloadNotice? = null,
     val showSettings: Boolean = false,
     val showUI: Boolean = false,
 )

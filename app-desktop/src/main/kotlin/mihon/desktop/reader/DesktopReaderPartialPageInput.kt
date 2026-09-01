@@ -10,6 +10,7 @@ import mihon.domain.reader.partial.PartialReaderPageCandidate
 import mihon.desktop.download.DirectPartialPageReadLeaseSource
 import mihon.desktop.download.DownloadIoEvent
 import mihon.desktop.download.DownloadIoOperation
+import mihon.desktop.download.DownloadIoPageIdentity
 import mihon.desktop.download.DownloadIoProbe
 import mihon.desktop.download.DownloadLockState
 import mihon.desktop.download.PartialPageReadLocation
@@ -80,15 +81,15 @@ internal class DesktopReaderPartialPageFileCopyPort(
                 if (initial.isReaderStagingEntry()) {
                     throw DesktopReaderPartialPageUnavailableException("Downloader staging files are not reader inputs")
                 }
-                val probed = probeBounded(initial) { lease.reProbeLocation() }
+                val probed = probeBounded(initial, candidate) { lease.reProbeLocation() }
                 hooks.afterInitialProbe(probed.location.displayFile())
                 destination.parentFile?.mkdirs()
                 try {
-                    val opened = openBounded(probed) { lease.reProbeLocation() }
+                    val opened = openBounded(probed, candidate) { lease.reProbeLocation() }
                     opened.use {
                         opened.input.buffered().use { input ->
                             hooks.afterInputOpened(opened.location.displayFile())
-                            emitIo(DownloadIoOperation.PARTIAL_PAGE_COPY, leaseSource)
+                            emitIo(DownloadIoOperation.PARTIAL_PAGE_COPY, leaseSource, candidate)
                             destination.outputStream().buffered().use(input::copyTo)
                         }
                     }
@@ -114,9 +115,10 @@ internal class DesktopReaderPartialPageFileCopyPort(
 
     private fun probeBounded(
         initial: PartialPageReadLocation,
+        candidate: PartialReaderPageCandidate,
         reProbe: () -> PartialPageReadLocation?,
     ): ProbedPartialPage {
-        probe(initial)?.let { expectedBytes ->
+        probe(initial, candidate)?.let { expectedBytes ->
             return ProbedPartialPage(initial, expectedBytes, fallbackUsed = false)
         }
         val alternate = reProbe()?.takeIf { it != initial }
@@ -124,13 +126,13 @@ internal class DesktopReaderPartialPageFileCopyPort(
         if (alternate.isReaderStagingEntry()) {
             throw DesktopReaderPartialPageUnavailableException("Downloader staging files are not reader inputs")
         }
-        val expectedBytes = probe(alternate)
+        val expectedBytes = probe(alternate, candidate)
             ?: throw DesktopReaderPartialPageUnavailableException("Committed partial page is unavailable")
         return ProbedPartialPage(alternate, expectedBytes, fallbackUsed = true)
     }
 
-    private fun probe(location: PartialPageReadLocation): Long? {
-        emitIo(DownloadIoOperation.PARTIAL_PAGE_PROBE, leaseSource)
+    private fun probe(location: PartialPageReadLocation, candidate: PartialReaderPageCandidate): Long? {
+        emitIo(DownloadIoOperation.PARTIAL_PAGE_PROBE, leaseSource, candidate)
         return when (location) {
             is PartialPageReadLocation.FilePage -> location.file.takeIf(File::isFile)?.length()?.takeIf { it > 0L }
             is PartialPageReadLocation.CbzEntry -> runCatching {
@@ -146,17 +148,18 @@ internal class DesktopReaderPartialPageFileCopyPort(
 
     private fun openBounded(
         probed: ProbedPartialPage,
+        candidate: PartialReaderPageCandidate,
         reProbe: () -> PartialPageReadLocation?,
     ): OpenedPartialPage {
         try {
-            emitIo(DownloadIoOperation.PARTIAL_PAGE_OPEN, leaseSource)
+            emitIo(DownloadIoOperation.PARTIAL_PAGE_OPEN, leaseSource, candidate)
             return open(probed.location)
         } catch (initialError: IOException) {
             val alternate = (
                 if (probed.fallbackUsed) null else reProbe()?.takeIf { it != probed.location }
                 ) ?: throw initialError
             if (alternate.isReaderStagingEntry()) throw initialError
-            emitIo(DownloadIoOperation.PARTIAL_PAGE_OPEN, leaseSource)
+            emitIo(DownloadIoOperation.PARTIAL_PAGE_OPEN, leaseSource, candidate)
             return try {
                 open(alternate)
             } catch (alternateError: IOException) {
@@ -189,7 +192,12 @@ internal class DesktopReaderPartialPageFileCopyPort(
         }
     }
 
-    private fun emitIo(operation: DownloadIoOperation, leaseSource: PartialPageReadLeaseSource) {
+    private fun emitIo(
+        operation: DownloadIoOperation,
+        leaseSource: PartialPageReadLeaseSource,
+        candidate: PartialReaderPageCandidate,
+    ) {
+        if (!ioProbe.enabled) return
         ioProbe.onIo(
             DownloadIoEvent(
                 operation = operation,
@@ -199,6 +207,12 @@ internal class DesktopReaderPartialPageFileCopyPort(
                     coordinatorLocked = (leaseSource as? mihon.desktop.download.PartialDownloadArtifactLifecycleCoordinator)
                         ?.holdsLockByCurrentThread() == true,
                     lifecycleLocked = false,
+                ),
+                page = DownloadIoPageIdentity(
+                    attemptGeneration = candidate.attemptGeneration,
+                    readerOrdinal = candidate.readerOrdinal,
+                    sourcePageIndex = candidate.sourcePageIndex,
+                    committedRevision = candidate.committedRevision,
                 ),
             ),
         )

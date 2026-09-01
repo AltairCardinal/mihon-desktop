@@ -94,7 +94,6 @@ import mihon.domain.download.EnqueueDownload
 import mihon.domain.download.IsChapterDownloaded
 import mihon.domain.download.DownloadQueueStatus
 import mihon.domain.reader.content.DownloadChapterIdentity
-import mihon.domain.reader.partial.DisabledPartialDownloadSnapshotLookup
 import mihon.domain.platform.SharePayload
 import mihon.domain.task.NotificationEvent
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -216,13 +215,16 @@ class DesktopDiWiringTest {
     }
 
     @Test
-    fun `desktop production DI keeps partial reader lookup disabled`(@TempDir tempDir: File) = runBlocking {
+    fun `desktop production DI gives reader the manager owned partial lookup and lease source`(@TempDir tempDir: File) = runBlocking {
         val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
         try {
+            val manager = Injekt.get<DesktopDownloadManager>()
+            val factory = Injekt.get<DesktopReaderRuntimeFactory>()
             assertSame(
-                DisabledPartialDownloadSnapshotLookup,
-                Injekt.get<DesktopReaderRuntimeFactory>().configuredPartialDownloadSnapshotLookup,
+                manager,
+                factory.configuredPartialDownloadSnapshotLookup,
             )
+            assertSame(manager.partialPageReadLeaseSource, factory.configuredPartialPageReadLeaseSource)
         } finally {
             context.closeAndJoin()
         }
