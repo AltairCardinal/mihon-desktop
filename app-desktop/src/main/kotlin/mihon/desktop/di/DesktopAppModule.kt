@@ -30,6 +30,7 @@ import mihon.desktop.task.DesktopTaskScheduler
 import mihon.desktop.task.FileTaskCheckpointStore
 import mihon.desktop.domain.DesktopSystemNotifier
 import mihon.desktop.platform.DesktopPlatformPaths
+import mihon.desktop.download.DesktopDownloadDirectoryController
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.DesktopSourceRepository
@@ -809,13 +810,21 @@ internal fun initUILayer(
     val database = (handler as JvmDatabaseHandler).db
     val libraryPreferences = LibraryPreferences(preferenceStore)
     Injekt.addSingleton(libraryPreferences)
-    val (downloadPreferences, downloadManager) = registerDesktopDownload(
-        paths,
-        preferenceStore,
-        database,
-        libraryPreferences,
-        startDownloadWorker,
-        downloadFileOperations,
+    val downloadPreferences = DesktopDownloadPreferences(preferenceStore)
+    val downloadDirectoryPreference = downloadPreferences.downloadDirectory(paths.downloadsDir)
+    val downloadDirectoryState = downloadDirectoryPreference.state()
+    val downloadDirectoryController = DesktopDownloadDirectoryController(
+        preference = downloadDirectoryPreference,
+        startupState = downloadDirectoryState,
+    )
+    val downloadManager = registerDesktopDownload(
+        directoryState = downloadDirectoryState,
+        directoryController = downloadDirectoryController,
+        downloadPreferences = downloadPreferences,
+        database = database,
+        libraryPreferences = libraryPreferences,
+        startWorker = startDownloadWorker,
+        fileOperations = downloadFileOperations,
     )
     val readingProgress = RecordReadingProgress(SqlDelightReadingProgressRepository(database))
     Injekt.addSingleton<mihon.domain.download.DownloadRepository>(downloadManager)
@@ -1042,15 +1051,15 @@ private fun registerDesktopLibrary(
 }
 
 private fun registerDesktopDownload(
-    paths: DesktopPlatformPaths,
-    preferenceStore: PreferenceStore,
+    directoryState: mihon.desktop.platform.DesktopDownloadDirectoryState,
+    directoryController: DesktopDownloadDirectoryController,
+    downloadPreferences: DesktopDownloadPreferences,
     database: tachiyomi.data.Database,
     libraryPreferences: LibraryPreferences,
     startWorker: Boolean = true,
     fileOperations: mihon.desktop.download.DownloadFileOperations = mihon.desktop.download.DefaultDownloadFileOperations,
-): Pair<DesktopDownloadPreferences, mihon.desktop.download.DesktopDownloadManager> {
-    val downloadPreferences = DesktopDownloadPreferences(preferenceStore)
-    val downloadProvider = mihon.desktop.download.DesktopDownloadProvider(paths.downloadsDir)
+): mihon.desktop.download.DesktopDownloadManager {
+    val downloadProvider = mihon.desktop.download.DesktopDownloadProvider(directoryState.activeDirectory)
     val downloadIdentityResolver = mihon.desktop.download.DesktopDownloadIdentityResolver(
         sourceManager = Injekt.get(),
         chapterRepository = Injekt.get(),
@@ -1064,11 +1073,13 @@ private fun registerDesktopDownload(
         downloadIdentityResolver = downloadIdentityResolver::resolve,
     )
     if (startWorker) downloadManager.start()
+    Injekt.addSingleton(directoryState)
+    Injekt.addSingleton(directoryController)
     Injekt.addSingleton(downloadPreferences)
     Injekt.addSingleton(downloadProvider)
     Injekt.addSingleton(downloadIdentityResolver)
     Injekt.addSingleton(downloadManager)
-    return downloadPreferences to downloadManager
+    return downloadManager
 }
 
 private fun registerDesktopBackup(

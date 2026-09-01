@@ -71,3 +71,34 @@ class DesktopDownloadDirectoryPreference internal constructor(
         return policy.useDefault(defaultDirectory)
     }
 }
+
+/**
+ * Keeps the download graph on its startup directory while exposing a newly saved directory as
+ * pending until the next application start.
+ */
+class DesktopDownloadDirectoryController internal constructor(
+    private val preference: DesktopDownloadDirectoryPreference,
+    val startupState: DesktopDownloadDirectoryState,
+) {
+    fun currentState(): DesktopDownloadDirectoryState {
+        val resolved = preference.state()
+        if (resolved.hasSameSelectionAs(startupState)) return startupState
+
+        return resolved.copy(
+            activeDirectory = startupState.activeDirectory,
+            pendingDirectory = resolved.activeDirectory,
+            restartRequired = resolved.activeDirectory != startupState.activeDirectory,
+        )
+    }
+
+    private fun DesktopDownloadDirectoryState.hasSameSelectionAs(
+        other: DesktopDownloadDirectoryState,
+    ): Boolean =
+        defaultDirectory == other.defaultDirectory &&
+            configuredDirectory == other.configuredDirectory &&
+            activeDirectory == other.activeDirectory &&
+            pendingDirectory == other.pendingDirectory &&
+            availability == other.availability &&
+            cause?.javaClass == other.cause?.javaClass &&
+            cause?.message == other.cause?.message
+}

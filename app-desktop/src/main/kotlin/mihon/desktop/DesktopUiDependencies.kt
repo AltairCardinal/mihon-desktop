@@ -13,6 +13,7 @@ import mihon.desktop.domain.GetExcludedScanlators
 import mihon.desktop.domain.SaveSourceMangaForDetails
 import mihon.desktop.domain.SetExcludedScanlators
 import tachiyomi.domain.creator.service.CreatorDiscoverySourcePort
+import mihon.desktop.download.DesktopDownloadDirectoryController
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadQueuePort
 import mihon.desktop.download.DesktopDownloadPreferences
@@ -34,6 +35,7 @@ import mihon.desktop.migration.DesktopBatchMigrationController
 import mihon.desktop.platform.DesktopNetworkHelper
 import mihon.desktop.platform.DesktopDeepLinkHandler
 import mihon.desktop.platform.DesktopBackupFilePicker
+import mihon.desktop.platform.DesktopDownloadDirectoryState
 import mihon.desktop.platform.DesktopShareService
 import mihon.desktop.privacy.DesktopPrivacyCapabilities
 import mihon.desktop.privacy.DesktopWindowPrivacyController
@@ -107,6 +109,8 @@ data class DesktopUiDependencies(
     val downloadManager: DesktopDownloadManager,
     val downloadQueuePort: DesktopDownloadQueuePort = downloadManager,
     val downloadPreferences: DesktopDownloadPreferences,
+    val downloadDirectoryState: DesktopDownloadDirectoryState,
+    val downloadDirectoryController: DesktopDownloadDirectoryController,
     val dependencyNoticeProvider: DependencyNoticeProvider,
     val extensionApi: DesktopExtensionApi,
     val extensionManager: DesktopExtensionManager,
@@ -200,6 +204,8 @@ data class DesktopUiDependencies(
                 deleteExtensionRepo = Injekt.get(),
                 downloadManager = Injekt.get(),
                 downloadPreferences = Injekt.get(),
+                downloadDirectoryState = Injekt.get(),
+                downloadDirectoryController = Injekt.get(),
                 dependencyNoticeProvider = Injekt.get(),
                 extensionApi = Injekt.get(),
                 extensionManager = Injekt.get(),

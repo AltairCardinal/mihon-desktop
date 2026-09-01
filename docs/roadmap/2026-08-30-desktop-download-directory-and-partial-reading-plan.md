@@ -280,7 +280,7 @@ encoded ref 必须携带 `Partial(committedRevision)` provenance。若后续像�
 
 - [x] `ACT-00` 激活、基线与工作树冻结
 - [x] `DDIR-01` 机器本地偏好与路径策略
-- [ ] `DDIR-02` 启动期 DI、冻结根目录与重启语义
+- [x] `DDIR-02` 启动期 DI、冻结根目录与重启语义
 - [ ] `DDIR-03 + DDIR-04 close gate` 通用选择器、设置 UI、兼容与文档
 - [ ] `PDR-01` partial snapshot 与 O(1) committed-page 索引
 - [ ] `PDR-02` partial 章节页表路由
