@@ -283,7 +283,7 @@ encoded ref 必须携带 `Partial(committedRevision)` provenance。若后续像�
 - [x] `DDIR-02` 启动期 DI、冻结根目录与重启语义
 - [x] `DDIR-03 + DDIR-04 close gate` 通用选择器、设置 UI、兼容与文档
 - [x] `PDR-01` partial snapshot 与 O(1) committed-page 索引
-- [ ] `PDR-02` partial 章节页表路由
+- [x] `PDR-02` partial 章节页表路由
 - [ ] `PDR-03` encoded cache → committed page → network 唯一物化链
 - [ ] `PDR-04` rename、CBZ、取消与 stale generation 并发矩阵
 - [ ] `PDR-05` production wiring、反馈、Test Mode 与性能门禁
@@ -595,6 +595,22 @@ python scripts/gradle-coordinator.py run --key pdr02-red -- ./gradlew :domain:jv
 ```
 
 **完成条件**：使用真实 ChapterContentPort 和 source spy 证明调用次数；手工构造最终 UI state 不算证据。
+
+**完成记录（2026-09-01）**：本批涉及 17 个 production/test/roadmap 文件，超过建议范围；原计划中的纯页表 policy、
+ContentPort、RuntimeFactory 与 session candidate 透传落地后，真实 viewport RED 进一步证明非连续原始 `Page.index` 会触发
+旧 scheduler/progress 的连续 ordinal 假设。为满足本批既定的“保留原 source identity、不压缩页号”验收条件，shared
+core 同批增加有序 page-index 输入：调度窗口与持久化进度按 reader ordinal 计算，实际请求、keep/evict 与 settled page
+仍使用原 `ReaderPageId`；旧连续 `0..<count` API 行为不变。拆开提交会留下可生成但无法 settle/调度的稀疏页表，因此这些
+改动属于同一可验收能力。初始 RED 记录于 `.gradle-coordinator/pdr02-red.log`；独立审查发现的同代 committed 增长误判
+stale 与 legacy metadata 重复 source index 分别由 `.gradle-coordinator/pdr02-review-red-growth.log`、
+`.gradle-coordinator/pdr02-review-red.log` 复现，稀疏调度/progress 契约 RED 记录于
+`.gradle-coordinator/pdr02-sparse-red.log`。最终 close 覆盖 105 个 partial、source spy、下载/本地目录/CBZ/EPUB 优先级、
+RuntimeFactory、真实 DI、session、scheduler、progress 与既有 Reader 回归测试，并通过全仓 `spotlessCheck`
+（`.gradle-coordinator/pdr02-review-close.log`，`BUILD SUCCESSFUL in 4m 46s`）。一次独立审查和一次有界修复复审已批准：
+同一 attempt 新增 committed 页继续保持零页表 source call，legacy 只有 source index 与 ordinal 一一对应时才 overlay，
+candidate 经真实 settle/scheduler/page-fetch factory 透传，production composition root 仍显式绑定
+`DisabledPartialDownloadSnapshotLookup`。本批只生成稳定全章 descriptor 和 opaque candidate，尚不读取 partial 文件；
+本地页物化、损坏回退与网络唯一链仍属于 `PDR-03`。
 
 ---
 

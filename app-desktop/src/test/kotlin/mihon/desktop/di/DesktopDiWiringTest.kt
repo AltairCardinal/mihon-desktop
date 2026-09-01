@@ -94,6 +94,7 @@ import mihon.domain.download.EnqueueDownload
 import mihon.domain.download.IsChapterDownloaded
 import mihon.domain.download.DownloadQueueStatus
 import mihon.domain.reader.content.DownloadChapterIdentity
+import mihon.domain.reader.partial.DisabledPartialDownloadSnapshotLookup
 import mihon.domain.platform.SharePayload
 import mihon.domain.task.NotificationEvent
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -209,6 +210,19 @@ class DesktopDiWiringTest {
             assertNotNull(Injekt.get<DesktopExtensionApi>())
             assertNotNull(Injekt.get<DesktopDownloadIdentityResolver>())
             assertNotNull(Injekt.get<DesktopReaderRuntimeFactory>())
+        } finally {
+            context.closeAndJoin()
+        }
+    }
+
+    @Test
+    fun `desktop production DI keeps partial reader lookup disabled`(@TempDir tempDir: File) = runBlocking {
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
+        try {
+            assertSame(
+                DisabledPartialDownloadSnapshotLookup,
+                Injekt.get<DesktopReaderRuntimeFactory>().configuredPartialDownloadSnapshotLookup,
+            )
         } finally {
             context.closeAndJoin()
         }

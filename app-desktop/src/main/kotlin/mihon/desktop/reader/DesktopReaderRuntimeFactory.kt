@@ -16,6 +16,8 @@ import mihon.domain.reader.content.DownloadChapterIdentity
 import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.observability.ReaderMonotonicClock
+import mihon.domain.reader.partial.DisabledPartialDownloadSnapshotLookup
+import mihon.domain.reader.partial.PartialDownloadSnapshotLookup
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
 import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
 import mihon.domain.reader.session.ReaderChapterId
@@ -124,8 +126,11 @@ class DesktopReaderRuntimeFactory internal constructor(
     private val readerContentOperationProbe: DesktopReaderContentOperationProbe = DesktopReaderContentOperationProbe.None,
     private val disallowNonAsciiFilenames: () -> Boolean = { false },
     private val pageImageDecoder: DesktopReaderPageImageDecoder = SkiaDesktopReaderPageImageDecoder(),
+    private val partialDownloadSnapshotLookup: PartialDownloadSnapshotLookup = DisabledPartialDownloadSnapshotLookup,
 ) {
     internal val configuredReaderIoProbe: ReaderIoProbe get() = readerIoProbe
+    internal val configuredPartialDownloadSnapshotLookup: PartialDownloadSnapshotLookup
+        get() = partialDownloadSnapshotLookup
     private val encodedPageStoreCoordinator = DesktopReaderEncodedPageStoreCoordinator(encodedCacheDirectory)
 
     fun createRuntime(
@@ -174,6 +179,7 @@ class DesktopReaderRuntimeFactory internal constructor(
                     ),
                     disallowNonAsciiFilenames = disallowNonAsciiFilenames(),
                     leaseGeneration = leaseGeneration,
+                    partialDownloadSnapshotLookup = partialDownloadSnapshotLookup,
                 )
             },
             pageFetchPortFactory = DesktopReaderPageFetchPortFactory { context, descriptor ->

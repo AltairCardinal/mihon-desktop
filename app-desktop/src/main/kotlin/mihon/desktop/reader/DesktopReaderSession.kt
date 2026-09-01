@@ -650,6 +650,7 @@ class DesktopReaderSession(
                     imageUrl = activePage.imageUrl,
                     encodedPageRef = activePage.encodedPageRef,
                     initialLoadState = activePage.loadState,
+                    partialPageCandidate = activePage.partialPageCandidate,
                 ),
                 isAdjacentPrefetch = false,
                 attemptGeneration = activePage.attemptGeneration,

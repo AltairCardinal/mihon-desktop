@@ -1,6 +1,7 @@
 package mihon.domain.reader.session
 
 import mihon.domain.error.AppError
+import mihon.domain.reader.partial.PartialReaderPageCandidate
 
 data class ReaderChapterId(val value: Long)
 
@@ -47,6 +48,7 @@ data class ReaderPageDescriptor(
     val imageUrl: String? = null,
     val encodedPageRef: EncodedPageRef? = null,
     val initialLoadState: ReaderPageLoadState = ReaderPageLoadState.Queued,
+    val partialPageCandidate: PartialReaderPageCandidate? = null,
 ) {
     init {
         require(sourcePageIndex >= 0) { "sourcePageIndex must be non-negative" }
@@ -60,6 +62,7 @@ data class ReaderPageSession(
     val encodedPageRef: EncodedPageRef?,
     val loadState: ReaderPageLoadState,
     val attemptGeneration: Long = 0L,
+    val partialPageCandidate: PartialReaderPageCandidate? = null,
 ) {
     init {
         require(attemptGeneration >= 0L) { "attemptGeneration must be non-negative" }
@@ -201,6 +204,7 @@ object ReaderSessionReducer {
                 encodedPageRef = descriptor.encodedPageRef,
                 loadState = descriptor.initialLoadState,
                 attemptGeneration = 0L,
+                partialPageCandidate = descriptor.partialPageCandidate,
             )
         }
         return ReaderSessionReduction(

@@ -23,6 +23,13 @@ import mihon.domain.reader.materialize.ReaderChapterContentPort
 import mihon.domain.reader.materialize.ReaderChapterContentRequest
 import mihon.domain.reader.materialize.ReaderPageFetchPort
 import mihon.domain.reader.materialize.ReaderPageFetchRequest
+import mihon.domain.reader.partial.DisabledPartialDownloadSnapshotLookup
+import mihon.domain.reader.partial.PartialDownloadSnapshot
+import mihon.domain.reader.partial.PartialDownloadSnapshotLookup
+import mihon.domain.reader.partial.PartialReaderOnlinePage
+import mihon.domain.reader.partial.PartialReaderPage
+import mihon.domain.reader.partial.PartialReaderPageListEvaluation
+import mihon.domain.reader.partial.PartialReaderPageListPolicy
 import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderPageDescriptor
 import mihon.domain.reader.storage.EncodedPageStoreWriteResult
@@ -38,11 +45,13 @@ class DesktopReaderChapterContentPort(
     private val disallowNonAsciiFilenames: Boolean = context.disallowNonAsciiFilenames,
     private val leaseGeneration: Long = 0L,
     private val routeResolver: ReaderChapterRouteResolver = ReaderChapterContentResolver,
+    private val partialDownloadSnapshotLookup: PartialDownloadSnapshotLookup = DisabledPartialDownloadSnapshotLookup,
 ) : ReaderChapterContentPort {
 
     override suspend fun loadChapterContent(request: ReaderChapterContentRequest): List<ReaderPageDescriptor> {
         require(request.chapterId.value == context.chapterId) { "Chapter context does not match the request" }
-        val downloaded = context.downloadIdentity()
+        val downloadIdentity = context.downloadIdentity()
+        val downloaded = downloadIdentity
             .takeIf { context.mangaTitle.isNotBlank() }
             ?.let(downloadArtifactLocator::locate)
         val localPath = context.localChapterPath?.let(::File)
@@ -62,7 +71,7 @@ class DesktopReaderChapterContentPort(
             ReaderChapterRoute.LOCAL_ARCHIVE,
             ReaderChapterRoute.LOCAL_EPUB,
             -> localDescriptors(checkNotNull(localPath))
-            ReaderChapterRoute.ONLINE -> sourceDescriptors(checkNotNull(source))
+            ReaderChapterRoute.ONLINE -> sourceDescriptors(checkNotNull(source), downloadIdentity)
             ReaderChapterRoute.MISSING_SOURCE -> throw missingSourceError()
             ReaderChapterRoute.UNSUPPORTED -> throw AppErrorException(
                 AppError.MalformedData(IllegalStateException("Unsupported reader source (id=${context.sourceId})")),
@@ -70,7 +79,44 @@ class DesktopReaderChapterContentPort(
         }
     }
 
-    private suspend fun sourceDescriptors(source: CatalogueSource): List<ReaderPageDescriptor> {
+    private suspend fun sourceDescriptors(
+        source: CatalogueSource,
+        identity: DownloadChapterIdentity,
+    ): List<ReaderPageDescriptor> {
+        val snapshot = currentSnapshot(identity)
+        val evaluation = PartialReaderPageListPolicy.evaluate(snapshot)
+        var latestSnapshot: PartialDownloadSnapshot? = null
+        var snapshotRechecked = false
+        if (snapshot != null && evaluation is PartialReaderPageListEvaluation.Ready) {
+            latestSnapshot = currentSnapshot(identity)
+            snapshotRechecked = true
+            if (PartialReaderPageListPolicy.isCurrent(snapshot, latestSnapshot)) {
+                val currentEvaluation = PartialReaderPageListPolicy.evaluate(latestSnapshot)
+                if (currentEvaluation is PartialReaderPageListEvaluation.Ready) {
+                    return currentEvaluation.pageList.pages.map { page -> page.toDescriptor() }
+                }
+            }
+        }
+
+        val pages = loadSourcePages(source)
+        if (snapshot != null && !snapshotRechecked) {
+            latestSnapshot = currentSnapshot(identity)
+        }
+        return PartialReaderPageListPolicy.mergeOnline(
+            originalSnapshot = snapshot,
+            latestSnapshot = latestSnapshot,
+            onlinePages = pages.mapIndexed { readerOrdinal, page ->
+                PartialReaderOnlinePage(
+                    readerOrdinal = readerOrdinal,
+                    sourcePageIndex = page.index,
+                    pageUrl = page.url,
+                    imageUrl = page.imageUrl,
+                )
+            },
+        ).pages.map { page -> page.toDescriptor() }
+    }
+
+    private suspend fun loadSourcePages(source: CatalogueSource): List<Page> {
         val chapter = SChapter.create().apply {
             url = context.chapterUrl
             name = context.chapterTitle
@@ -80,14 +126,19 @@ class DesktopReaderChapterContentPort(
             is SourceCallResult.Timeout -> throw AppErrorException(result.error)
             is SourceCallResult.Error -> throw AppErrorException(result.error)
         }
-        return pages.mapIndexed { index, page ->
-            ReaderPageDescriptor(
-                sourcePageIndex = index,
-                url = page.url,
-                imageUrl = page.imageUrl,
-            )
-        }
+        return pages
     }
+
+    private fun PartialReaderPage.toDescriptor() = ReaderPageDescriptor(
+        sourcePageIndex = sourcePageIndex,
+        url = pageUrl,
+        imageUrl = imageUrl,
+        partialPageCandidate = committedCandidate,
+    )
+
+    private fun currentSnapshot(identity: DownloadChapterIdentity): PartialDownloadSnapshot? =
+        partialDownloadSnapshotLookup.snapshot(context.chapterId, identity)
+            ?.takeIf { snapshot -> snapshot.chapterId == context.chapterId && snapshot.identity == identity }
 
     private fun DesktopReaderChapterContext.downloadIdentity() = DownloadChapterIdentity(
         sourceDisplayName = sourceManager.get(sourceId)?.toString() ?: sourceDisplayName,

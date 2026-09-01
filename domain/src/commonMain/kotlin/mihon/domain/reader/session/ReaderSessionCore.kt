@@ -93,7 +93,7 @@ class ReaderSessionCore(
             chapterId = chapter.id,
             visiblePageIndices = visiblePageIds.map(ReaderPageId::sourcePageIndex),
             anchorPage = anchorPageId.sourcePageIndex,
-            pageCount = chapter.pages.size,
+            pageIndicesInOrder = chapter.pages.map { page -> page.id.sourcePageIndex },
         )
         settlementSequence++
         val progressEffect = ReaderProgressPolicy.reduce(
@@ -105,6 +105,7 @@ class ReaderSessionCore(
                 wasRead = wasRead,
                 sessionId = sessionId,
                 settlementSequence = settlementSequence,
+                pageIdsInOrder = chapter.pages.map { page -> page.id },
             ),
         )
         return ReaderSessionCoreUpdate(snapshot, schedulePlan = schedulePlan, progressEffect = progressEffect)
@@ -120,7 +121,10 @@ class ReaderSessionCore(
                 generation = snapshot.generation,
             ),
         ).snapshot
-        val schedulePlan = requestScheduler.retry(pageId, chapter.pages.size)
+        val schedulePlan = requestScheduler.retry(
+            pageId,
+            pageIndicesInOrder = chapter.pages.map { page -> page.id.sourcePageIndex },
+        )
         return ReaderSessionCoreUpdate(snapshot, schedulePlan = schedulePlan)
     }
 

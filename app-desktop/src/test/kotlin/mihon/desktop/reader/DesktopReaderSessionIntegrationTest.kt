@@ -28,6 +28,7 @@ import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.observability.ReaderMonotonicClock
 import mihon.domain.reader.progress.ReaderProgressEffect
+import mihon.domain.reader.partial.PartialReaderPageCandidate
 import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
 import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
@@ -46,6 +47,7 @@ import mihon.desktop.ui.reader.presentation.resolveDualVisiblePages
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -60,6 +62,55 @@ class DesktopReaderSessionIntegrationTest {
 
     @TempDir
     lateinit var tempDir: File
+
+    @Test
+    fun `active page scheduling preserves the partial candidate from the chapter descriptor`() = runTest {
+        val candidate = PartialReaderPageCandidate(
+            attemptGeneration = 3L,
+            readerOrdinal = 0,
+            sourcePageIndex = 4,
+            opaqueLocation = "opaque://partial/001.jpg",
+            committedRevision = 5L,
+        )
+        var scheduledDescriptor: ReaderPageDescriptor? = null
+        val session = DesktopReaderSession(
+            initialContext = context(1L),
+            core = core(initialChapterId = 1L),
+            encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-partial-candidate-wiring")),
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { _, _ ->
+                ReaderChapterContentPort {
+                    listOf(
+                        ReaderPageDescriptor(
+                            sourcePageIndex = 4,
+                            url = "/page/first",
+                            imageUrl = "https://img/first.jpg",
+                            partialPageCandidate = candidate,
+                        ),
+                    )
+                }
+            },
+            pageFetchPortFactory = DesktopReaderPageFetchPortFactory { _, descriptor ->
+                scheduledDescriptor = descriptor
+                readyPort(descriptor)
+            },
+            progressPort = DesktopReaderProgressPort { _, _ -> },
+            parentScope = this,
+        )
+
+        try {
+            session.start()
+            advanceUntilIdle()
+            assertNull(scheduledDescriptor)
+            val page = session.state.value.snapshot.activeChapter.pages.single().id
+
+            session.settleViewport(setOf(page), page)
+            advanceUntilIdle()
+
+            assertEquals(candidate, scheduledDescriptor?.partialPageCandidate)
+        } finally {
+            session.close()
+        }
+    }
 
     @Test
     fun `dual presentation settles both source pages through screen model and session progress port`() = runTest {

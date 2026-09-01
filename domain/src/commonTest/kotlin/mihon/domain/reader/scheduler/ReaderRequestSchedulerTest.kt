@@ -46,6 +46,32 @@ class ReaderRequestSchedulerTest {
     }
 
     @Test
+    fun `sparse source identities retain page order for visible nearby keep and retry work`() {
+        val scheduler = ReaderRequestScheduler(
+            ReaderSchedulerPolicy(nearbyForward = 2, nearbyBackward = 1, maxConcurrentRequests = 2),
+        )
+
+        val plan = scheduler.moveTo(
+            chapterId = TEST_CHAPTER_ID,
+            visiblePageIndices = listOf(19),
+            anchorPage = 19,
+            pageIndicesInOrder = listOf(4, 19, 41),
+        )
+
+        assertEquals(listOf(19, 41, 4), plan.requests.map { it.pageIndex })
+        assertEquals(setOf(4, 19, 41), plan.keepPageIndices)
+        assertTrue(plan.requests.first().priority == ReaderRequestPriority.P0_INTERACTIVE)
+        assertTrue(plan.requests.drop(1).all { it.priority == ReaderRequestPriority.P1_NEARBY })
+
+        val retry = scheduler.retry(
+            ReaderPageId(TEST_CHAPTER_ID, sourcePageIndex = 19),
+            pageIndicesInOrder = listOf(4, 19, 41),
+        )
+        assertEquals(listOf(19, 41, 4), retry.requests.map { it.pageIndex })
+        assertEquals(ReaderRequestKind.EXPLICIT_RETRY, retry.requests.first().kind)
+    }
+
+    @Test
     fun `P0 is ordered before P1 P2 P3 and P4 regardless of enqueue order`() {
         val scheduler = ReaderRequestScheduler(
             ReaderSchedulerPolicy(nearbyForward = 0, nearbyBackward = 0, maxConcurrentRequests = 1),

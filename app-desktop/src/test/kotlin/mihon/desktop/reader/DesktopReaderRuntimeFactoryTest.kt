@@ -3,6 +3,9 @@ package mihon.desktop.reader
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.model.Page
+import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
@@ -24,6 +27,7 @@ import mihon.desktop.ui.reader.ReaderScreenModel
 import mihon.domain.reader.PageDecodePurpose
 import mihon.domain.reader.ReaderPageDecodeKey
 import mihon.domain.reader.content.ReaderPageContentOpenRequest
+import mihon.domain.download.DownloadQueueStatus
 import mihon.domain.reader.observability.ReaderIoEvent
 import mihon.domain.reader.observability.ReaderIoEventType
 import mihon.domain.reader.observability.ReaderIoProbe
@@ -31,6 +35,13 @@ import mihon.domain.reader.observability.ReaderMonotonicClock
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderPageId
+import mihon.domain.reader.content.DownloadChapterIdentity
+import mihon.domain.reader.partial.DisabledPartialDownloadSnapshotLookup
+import mihon.domain.reader.partial.PartialCommittedPage
+import mihon.domain.reader.partial.PartialDownloadSnapshot
+import mihon.domain.reader.partial.PartialDownloadSnapshotLookup
+import mihon.domain.reader.partial.PartialPageTable
+import mihon.domain.reader.partial.PartialPageTableEntry
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertArrayEquals
@@ -58,6 +69,103 @@ class DesktopReaderRuntimeFactoryTest {
 
     @TempDir
     lateinit var tempDir: File
+
+    @Test
+    fun `runtime factory reaches partial page lists only through explicit lookup injection`() = runTest {
+        val context = DesktopReaderChapterContext(
+            chapterId = 60L,
+            sourceId = 42L,
+            chapterUrl = "/chapter/60",
+            mangaTitle = "Manga",
+            chapterTitle = "Chapter 60",
+            chapterNumber = 60.0,
+            chapterIndex = 0,
+            initialPage = 0,
+            wasRead = false,
+            sourceDisplayName = "Source",
+        )
+        val source = mockk<CatalogueSource>(relaxed = true) {
+            every { id } returns 42L
+            coEvery { getPageList(any()) } returns listOf(
+                Page(4, url = "/online/first", imageUrl = "https://img/online-first.jpg"),
+                Page(41, url = "/online/last", imageUrl = null),
+            )
+        }
+        val sourceManager = mockk<SourceManager>(relaxed = true) {
+            every { get(42L) } returns null
+            every { getCatalogueSources() } returns listOf(source)
+        }
+        val snapshot = PartialDownloadSnapshot(
+            chapterId = context.chapterId,
+            identity = DownloadChapterIdentity(
+                sourceDisplayName = context.sourceDisplayName,
+                mangaTitle = context.mangaTitle,
+                chapterName = context.chapterTitle,
+                scanlator = null,
+                chapterUrl = context.chapterUrl,
+                disallowNonAsciiFilenames = false,
+            ),
+            attemptGeneration = 2L,
+            queueStatus = DownloadQueueStatus.DOWNLOADING,
+            pageTable = PartialPageTable.complete(
+                listOf(
+                    PartialPageTableEntry(0, 4, "/page/first", "https://img/first.jpg"),
+                    PartialPageTableEntry(1, 19, "/page/middle", null),
+                    PartialPageTableEntry(2, 41, "/page/last", "https://img/last.jpg"),
+                ),
+            ),
+            committedPages = listOf(PartialCommittedPage(0, 4, "opaque://partial/001.jpg", 5L)),
+        )
+        val lookup = PartialDownloadSnapshotLookup { _, _ -> snapshot }
+        val explicitFactory = DesktopReaderRuntimeFactory(
+            prefs = ReaderPreferences(),
+            downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads-explicit-partial")),
+            sourceManager = sourceManager,
+            networkHelper = NetworkHelper(OkHttpClient()),
+            progressTracker = mockk<ReaderProgressTracker>(relaxed = true),
+            mangaRepository = null,
+            encodedCacheDirectory = tempDir.resolve("encoded-explicit-partial"),
+            partialDownloadSnapshotLookup = lookup,
+        )
+        assertSame(lookup, explicitFactory.configuredPartialDownloadSnapshotLookup)
+
+        val explicitRuntime = explicitFactory.createRuntime(context, this)
+        try {
+            advanceUntilIdle()
+
+            val pages = explicitRuntime.session.state.value.snapshot.activeChapter.pages
+            assertEquals(listOf(4, 19, 41), pages.map { it.id.sourcePageIndex })
+            assertEquals(5L, pages[0].partialPageCandidate?.committedRevision)
+            assertTrue(pages.drop(1).all { it.partialPageCandidate == null })
+            coVerify(exactly = 0) { source.getPageList(any()) }
+        } finally {
+            explicitRuntime.close()
+        }
+
+        val defaultFactory = DesktopReaderRuntimeFactory(
+            prefs = ReaderPreferences(),
+            downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads-disabled-partial")),
+            sourceManager = sourceManager,
+            networkHelper = NetworkHelper(OkHttpClient()),
+            progressTracker = mockk<ReaderProgressTracker>(relaxed = true),
+            mangaRepository = null,
+            encodedCacheDirectory = tempDir.resolve("encoded-disabled-partial"),
+        )
+        assertSame(DisabledPartialDownloadSnapshotLookup, defaultFactory.configuredPartialDownloadSnapshotLookup)
+
+        val defaultRuntime = defaultFactory.createRuntime(context, this)
+        try {
+            advanceUntilIdle()
+
+            val pages = defaultRuntime.session.state.value.snapshot.activeChapter.pages
+            assertEquals(listOf(0, 1), pages.map { it.id.sourcePageIndex })
+            assertEquals(listOf("/online/first", "/online/last"), pages.map { it.url })
+            assertTrue(pages.all { it.partialPageCandidate == null })
+            coVerify(exactly = 1) { source.getPageList(any()) }
+        } finally {
+            defaultRuntime.close()
+        }
+    }
 
     @Test
     fun `production runtime follows persisted next chapter prefetch changes`() = runTest {

@@ -125,6 +125,7 @@ class ReaderRequestScheduler(
     private var lastVisiblePages: List<Int> = emptyList()
     private var lastAnchorPage = 0
     private var lastPageCount = 0
+    private var lastPageIndicesInOrder: List<Int> = emptyList()
 
     fun moveTo(
         chapterId: ReaderChapterId,
@@ -142,25 +143,58 @@ class ReaderRequestScheduler(
         visiblePageIndices: List<Int>,
         anchorPage: Int,
         pageCount: Int,
+    ): ReaderSchedulePlan {
+        if (pageCount <= 0) {
+            return replaceWindow(chapterId, emptyList(), 0, emptyList(), retryPageId = null)
+        }
+        val anchor = anchorPage.coerceIn(0, pageCount - 1)
+        val visible = visiblePageIndices.map { pageIndex -> pageIndex.coerceIn(0, pageCount - 1) }
+        return replaceWindow(
+            chapterId = chapterId,
+            visiblePageIndices = visible,
+            anchorPage = anchor,
+            pageIndicesInOrder = (0 until pageCount).toList(),
+            retryPageId = null,
+        )
+    }
+
+    fun moveTo(
+        chapterId: ReaderChapterId,
+        visiblePageIndices: List<Int>,
+        anchorPage: Int,
+        pageIndicesInOrder: List<Int>,
     ): ReaderSchedulePlan = replaceWindow(
         chapterId = chapterId,
         visiblePageIndices = visiblePageIndices,
         anchorPage = anchorPage,
-        pageCount = pageCount,
+        pageIndicesInOrder = pageIndicesInOrder,
         retryPageId = null,
     )
 
     fun retry(pageId: ReaderPageId, pageCount: Int = lastPageCount): ReaderSchedulePlan {
         val pageIndex = pageId.sourcePageIndex
         val effectivePageCount = maxOf(pageCount, pageIndex + 1)
-        val isCurrentChapter = pageId.chapterId == lastChapterId && lastPageCount > 0
-        val visiblePages = lastVisiblePages.takeIf { isCurrentChapter && it.isNotEmpty() } ?: listOf(pageIndex)
-        val anchorPage = lastAnchorPage.takeIf { isCurrentChapter } ?: pageIndex
+        val pageIndicesInOrder = lastPageIndicesInOrder.takeIf {
+            pageId.chapterId == lastChapterId && pageIndex in it
+        } ?: (0 until effectivePageCount).toList()
+        return retry(pageId, pageIndicesInOrder)
+    }
+
+    fun retry(pageId: ReaderPageId, pageIndicesInOrder: List<Int>): ReaderSchedulePlan {
+        require(pageId.sourcePageIndex in pageIndicesInOrder) {
+            "Retry page must belong to the ordered chapter page list"
+        }
+        val isCurrentChapter = pageId.chapterId == lastChapterId && lastPageIndicesInOrder.isNotEmpty()
+        val visiblePages = lastVisiblePages
+            .takeIf { isCurrentChapter && it.isNotEmpty() && it.all(pageIndicesInOrder::contains) }
+            ?: listOf(pageId.sourcePageIndex)
+        val anchorPage = lastAnchorPage.takeIf { isCurrentChapter && it in pageIndicesInOrder }
+            ?: pageId.sourcePageIndex
         return replaceWindow(
             chapterId = pageId.chapterId,
             visiblePageIndices = visiblePages,
             anchorPage = anchorPage,
-            pageCount = effectivePageCount,
+            pageIndicesInOrder = pageIndicesInOrder,
             retryPageId = pageId,
         )
     }
@@ -266,9 +300,13 @@ class ReaderRequestScheduler(
         chapterId: ReaderChapterId,
         visiblePageIndices: List<Int>,
         anchorPage: Int,
-        pageCount: Int,
+        pageIndicesInOrder: List<Int>,
         retryPageId: ReaderPageId?,
     ): ReaderSchedulePlan {
+        require(pageIndicesInOrder.all { it >= 0 }) { "Page source indices must be non-negative" }
+        require(pageIndicesInOrder.distinct().size == pageIndicesInOrder.size) {
+            "Ordered page source indices must be unique"
+        }
         val cancelRequests = active.keys.toSet()
         val discardRequests = pending.keys.toSet()
         val evictPageIndices = previousKeep
@@ -277,12 +315,13 @@ class ReaderRequestScheduler(
         currentRequestByPage.clear()
         generation++
 
-        if (pageCount <= 0) {
+        if (pageIndicesInOrder.isEmpty()) {
             previousKeep = emptySet()
             lastChapterId = chapterId
             lastVisiblePages = emptyList()
             lastAnchorPage = 0
             lastPageCount = 0
+            lastPageIndicesInOrder = emptyList()
             return ReaderSchedulePlan(
                 generation,
                 emptyList(),
@@ -293,18 +332,25 @@ class ReaderRequestScheduler(
             )
         }
 
-        val anchor = anchorPage.coerceIn(0, pageCount - 1)
-        val visible = visiblePageIndices.map { it.coerceIn(0, pageCount - 1) }.distinct()
+        val pageIndexSet = pageIndicesInOrder.toSet()
+        val pageCount = pageIndicesInOrder.size
+        val anchor = anchorPage.takeIf(pageIndexSet::contains) ?: pageIndicesInOrder.first()
+        val visible = visiblePageIndices.filter(pageIndexSet::contains).distinct()
             .ifEmpty { listOf(anchor) }
-        val start = (anchor - policy.nearbyBackward).coerceAtLeast(0)
-        val end = (anchor + policy.nearbyForward).coerceAtMost(pageCount - 1)
-        val keep = ((start..end).toSet() + visible + listOfNotNull(retryPageId?.sourcePageIndex))
-            .filter { it in 0 until pageCount }
+        val anchorOrdinal = pageIndicesInOrder.indexOf(anchor)
+        val start = (anchorOrdinal - policy.nearbyBackward).coerceAtLeast(0)
+        val end = (anchorOrdinal + policy.nearbyForward).coerceAtMost(pageCount - 1)
+        val keep = (
+            pageIndicesInOrder.subList(start, end + 1) +
+                visible +
+                listOfNotNull(retryPageId?.sourcePageIndex)
+            )
+            .filter(pageIndexSet::contains)
             .mapTo(mutableSetOf()) { ReaderPageId(chapterId, it) }
         val requestedPages = mutableSetOf<ReaderPageId>()
         val requests = buildList {
             retryPageId?.takeIf {
-                it.chapterId == chapterId && it.sourcePageIndex in 0 until pageCount
+                it.chapterId == chapterId && it.sourcePageIndex in pageIndexSet
             }?.let { retry ->
                 add(addPending(retry, ReaderRequestKind.EXPLICIT_RETRY, forceRefresh = true))
                 requestedPages += retry
@@ -315,13 +361,15 @@ class ReaderRequestScheduler(
                     add(addPending(pageId, ReaderRequestKind.INTERACTIVE_VISIBLE, forceRefresh = false))
                 }
             }
-            for (pageIndex in (anchor + 1)..end) {
+            for (ordinal in (anchorOrdinal + 1)..end) {
+                val pageIndex = pageIndicesInOrder[ordinal]
                 val pageId = ReaderPageId(chapterId, pageIndex)
                 if (requestedPages.add(pageId)) {
                     add(addPending(pageId, ReaderRequestKind.NEARBY, forceRefresh = false))
                 }
             }
-            for (pageIndex in (anchor - 1) downTo start) {
+            for (ordinal in (anchorOrdinal - 1) downTo start) {
+                val pageIndex = pageIndicesInOrder[ordinal]
                 val pageId = ReaderPageId(chapterId, pageIndex)
                 if (requestedPages.add(pageId)) {
                     add(addPending(pageId, ReaderRequestKind.NEARBY, forceRefresh = false))
@@ -333,6 +381,7 @@ class ReaderRequestScheduler(
         lastVisiblePages = visible
         lastAnchorPage = anchor
         lastPageCount = pageCount
+        lastPageIndicesInOrder = pageIndicesInOrder.toList()
         return ReaderSchedulePlan(
             generation,
             requests,

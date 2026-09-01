@@ -66,6 +66,28 @@ class ReaderProgressPolicyTest {
     }
 
     @Test
+    fun `sparse source identities persist their logical ordinal and complete on the ordered last page`() {
+        val chapterId = chapterId(8)
+
+        val effect = requireNotNull(
+            ReaderProgressPolicy.reduce(
+                settled(
+                    activeChapterId = chapterId,
+                    chapterId = chapterId,
+                    visiblePageIndices = setOf(19, 41),
+                    totalPages = 3,
+                    pageIndicesInOrder = listOf(4, 19, 41),
+                ),
+            ),
+        )
+
+        assertEquals(41, effect.settledPageId.sourcePageIndex)
+        assertEquals(2, effect.lastPageRead)
+        assertTrue(effect.reachedLastPage)
+        assertTrue(effect.isRead)
+    }
+
+    @Test
     fun `a partial settled page never clears an existing read state`() {
         val chapterId = chapterId(4)
 
@@ -141,6 +163,7 @@ class ReaderProgressPolicyTest {
         totalPages: Int,
         wasRead: Boolean = false,
         settlementSequence: Long = 1,
+        pageIndicesInOrder: List<Int> = (0 until totalPages).toList(),
     ) = ReaderProgressSignal.ViewportSettled(
         activeChapterId = activeChapterId,
         chapterId = chapterId,
@@ -149,6 +172,7 @@ class ReaderProgressPolicyTest {
         wasRead = wasRead,
         sessionId = "reader-session",
         settlementSequence = settlementSequence,
+        pageIdsInOrder = pageIndicesInOrder.map { pageId(chapterId, it) },
     )
 
     private fun chapterId(value: Long) = ReaderChapterId(value)

@@ -940,6 +940,8 @@ internal fun initUILayer(
             disallowNonAsciiFilenames = {
                 Injekt.get<LibraryPreferences>().disallowNonAsciiFilenames().get()
             },
+            partialDownloadSnapshotLookup =
+                mihon.domain.reader.partial.DisabledPartialDownloadSnapshotLookup,
         ),
     )
 
