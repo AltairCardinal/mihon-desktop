@@ -43,11 +43,13 @@ import mihon.domain.reader.scheduler.ReaderSchedulePlan
 import mihon.domain.reader.scheduler.ReaderScheduledRequest
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderChapterLoadState
+import mihon.domain.reader.session.ReaderEncodedPageProvenance
 import mihon.domain.reader.session.ReaderPageDescriptor
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
 import mihon.domain.reader.session.ReaderSessionCore
 import mihon.domain.reader.session.ReaderSessionSnapshot
+import mihon.domain.reader.content.ReaderPageContentOpenRequest
 
 fun interface DesktopReaderChapterContentPortFactory {
     fun create(
@@ -127,6 +129,9 @@ class DesktopReaderSession(
     ),
     private val ioGate: ReaderIoGate = ReaderIoGate.None,
     private val onGenerationPublished: (Long) -> Unit = {},
+    private val partialPageFallbackCoordinator: DesktopReaderPartialPageFallbackCoordinator =
+        DesktopReaderPartialPageFallbackCoordinator(),
+    private val partialDecodeFailureCommitGate: suspend (ReaderPageContentOpenRequest) -> Unit = {},
 ) : AutoCloseable {
     private val lock = Any()
     private val storeMutex = Mutex()
@@ -390,6 +395,45 @@ class DesktopReaderSession(
         pumpPageRequests()
     }
 
+    internal suspend fun handlePartialPageDecodeFailure(request: ReaderPageContentOpenRequest): Boolean {
+        val provenance = request.encodedPageProvenance as? ReaderEncodedPageProvenance.Partial ?: return false
+        val isCurrent = synchronized(lock) {
+            if (closed || request.generation != core.snapshot.generation) return@synchronized false
+            core.snapshot.activeChapter.pages.any { page ->
+                page.id == request.pageId &&
+                    page.attemptGeneration == request.attemptGeneration &&
+                    page.encodedPageRef == request.encodedPageRef &&
+                    page.encodedPageProvenance == provenance &&
+                    page.loadState is ReaderPageLoadState.Ready
+            }
+        }
+        if (!isCurrent) return false
+        partialDecodeFailureCommitGate(request)
+
+        val enqueued = synchronized(lock) {
+            if (closed) return@synchronized false
+            val result = core.recoverPageAfterPartialDecodeFailure(
+                pageId = request.pageId,
+                generation = request.generation,
+                attemptGeneration = request.attemptGeneration,
+                encodedPageRef = request.encodedPageRef,
+                encodedPageProvenance = provenance,
+            ) ?: return@synchronized false
+            partialPageFallbackCoordinator.reject(
+                chapterId = request.pageId.chapterId.value,
+                candidate = provenance.candidate,
+                readerAttemptGeneration = request.attemptGeneration,
+            )
+            applyEnqueueResultLocked(result)
+            publishStateLocked()
+            true
+        }
+        if (!enqueued) return false
+        encodedPageStore.evict(request.encodedPageRef)
+        pumpPageRequests()
+        return true
+    }
+
     fun retryChapter() {
         val retryContext = synchronized(lock) { context }
         activate(retryContext)
@@ -651,6 +695,8 @@ class DesktopReaderSession(
                     encodedPageRef = activePage.encodedPageRef,
                     initialLoadState = activePage.loadState,
                     partialPageCandidate = activePage.partialPageCandidate,
+                    partialPageOrdinal = activePage.partialPageOrdinal,
+                    encodedPageProvenance = activePage.encodedPageProvenance,
                 ),
                 isAdjacentPrefetch = false,
                 attemptGeneration = activePage.attemptGeneration,
@@ -686,6 +732,7 @@ class DesktopReaderSession(
                     imageUrl = event.imageUrl,
                     encodedPageRef = event.encodedPageRef,
                     initialLoadState = ReaderPageLoadState.Ready,
+                    encodedPageProvenance = event.encodedPageProvenance,
                 )
                 adjacentFailedPageIds.remove(request.pageId)
             }

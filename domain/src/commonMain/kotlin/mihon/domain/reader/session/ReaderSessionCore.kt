@@ -159,6 +159,7 @@ class ReaderSessionCore(
                 imageUrl = event.imageUrl,
                 encodedPageRef = null,
                 loadState = ReaderPageLoadState.Downloading(),
+                encodedPageProvenance = null,
             )
             is ReaderPageMaterializeEvent.Ready -> ReaderSessionIntent.PageContentChanged(
                 pageId = request.pageId,
@@ -166,6 +167,7 @@ class ReaderSessionCore(
                 imageUrl = event.imageUrl,
                 encodedPageRef = event.encodedPageRef,
                 loadState = ReaderPageLoadState.Ready,
+                encodedPageProvenance = event.encodedPageProvenance,
             )
             is ReaderPageMaterializeEvent.Failed -> ReaderSessionIntent.PageStateChanged(
                 request.pageId,
@@ -175,6 +177,41 @@ class ReaderSessionCore(
         }
         snapshot = ReaderSessionReducer.reduce(snapshot, intent).snapshot
         return true
+    }
+
+    fun recoverPageAfterPartialDecodeFailure(
+        pageId: ReaderPageId,
+        generation: Long,
+        attemptGeneration: Long,
+        encodedPageRef: EncodedPageRef,
+        encodedPageProvenance: ReaderEncodedPageProvenance.Partial,
+    ): ReaderEnqueueResult? {
+        if (generation != snapshot.generation) return null
+        val page = snapshot.activeChapter.pages.firstOrNull { it.id == pageId } ?: return null
+        if (
+            page.attemptGeneration != attemptGeneration ||
+            page.encodedPageRef != encodedPageRef ||
+            page.encodedPageProvenance != encodedPageProvenance ||
+            page.loadState !is ReaderPageLoadState.Ready
+        ) {
+            return null
+        }
+        snapshot = ReaderSessionReducer.reduce(
+            snapshot,
+            ReaderSessionIntent.PageContentChanged(
+                pageId = pageId,
+                generation = generation,
+                imageUrl = page.imageUrl,
+                encodedPageRef = null,
+                loadState = ReaderPageLoadState.Queued,
+                encodedPageProvenance = null,
+            ),
+        ).snapshot
+        return requestScheduler.enqueue(
+            pageId = pageId,
+            kind = ReaderRequestKind.INTERACTIVE_VISIBLE,
+            forceRefresh = true,
+        )
     }
 
     fun pollNextPageRequest(): ReaderScheduledRequest? = requestScheduler.pollNext()

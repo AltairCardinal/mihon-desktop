@@ -87,6 +87,7 @@ internal fun rememberReaderPresentationImage(
                     "Ready reader page has no encoded content: ${page.id}"
                 },
                 attemptGeneration = page.attemptGeneration,
+                encodedPageProvenance = page.encodedPageProvenance,
             ),
             purpose = PageDecodePurpose.FULL_PAGE,
             maxWidth = PRESENTATION_DECODE_BOUND,

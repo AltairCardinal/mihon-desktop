@@ -35,6 +35,7 @@ import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
 import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderChapterLoadState
+import mihon.domain.reader.session.ReaderEncodedPageProvenance
 import mihon.domain.reader.session.ReaderPageDescriptor
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
@@ -109,6 +110,80 @@ class DesktopReaderSessionIntegrationTest {
             assertEquals(candidate, scheduledDescriptor?.partialPageCandidate)
         } finally {
             session.close()
+        }
+    }
+
+    @Test
+    fun `activating an adjacent prefetched partial page preserves its decode fallback provenance`() = runTest {
+        val candidate = PartialReaderPageCandidate(
+            attemptGeneration = 7L,
+            readerOrdinal = 0,
+            sourcePageIndex = 4,
+            opaqueLocation = "opaque://partial/adjacent-001.jpg",
+            committedRevision = 11L,
+        )
+        val provenance = ReaderEncodedPageProvenance.Partial(candidate)
+        val prefetchedRef = EncodedPageRef("encoded:partial:adjacent")
+        val session = DesktopReaderSession(
+            initialContext = context(1L),
+            core = core(initialChapterId = 1L),
+            encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-adjacent-partial-provenance")),
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter, _ ->
+                ReaderChapterContentPort {
+                    if (chapter.chapterId == 1L) {
+                        listOf(readyDescriptor(1L, 0))
+                    } else {
+                        listOf(
+                            ReaderPageDescriptor(
+                                sourcePageIndex = 4,
+                                url = "/2/4",
+                                imageUrl = "https://img/2/4.jpg",
+                                partialPageCandidate = candidate,
+                                partialPageOrdinal = 0,
+                            ),
+                        )
+                    }
+                }
+            },
+            pageFetchPortFactory = DesktopReaderPageFetchPortFactory { chapter, _ ->
+                object : ReaderPageFetchPort {
+                    override suspend fun resolveImageUrl(request: ReaderPageFetchRequest): String =
+                        requireNotNull(request.imageUrl)
+
+                    override suspend fun findEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef? = null
+
+                    override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef = prefetchedRef
+
+                    override fun encodedPageProvenance(
+                        request: ReaderPageFetchRequest,
+                        ref: EncodedPageRef,
+                    ): ReaderEncodedPageProvenance? = provenance.takeIf { chapter.chapterId == 2L }
+                }
+            },
+            progressPort = DesktopReaderProgressPort { _, _ -> },
+            parentScope = this,
+            initialNextChapterPrefetchMode = NextChapterPrefetchMode.FULL_NEXT_CHAPTER,
+        )
+
+        try {
+            session.start()
+            advanceUntilIdle()
+            val opening = session.state.value.snapshot
+            val currentPage = opening.activeChapter.pages.single().id
+            session.updateNextChapter(context(2L), firstViewportPageCount = 1)
+            session.onFirstPagePresented(currentPage, opening.generation)
+            advanceUntilIdle()
+
+            session.activate(context(2L))
+            advanceUntilIdle()
+
+            val activated = session.state.value.snapshot.activeChapter.pages.single()
+            assertEquals(ReaderPageLoadState.Ready, activated.loadState)
+            assertEquals(prefetchedRef, activated.encodedPageRef)
+            assertEquals(provenance, activated.encodedPageProvenance)
+        } finally {
+            session.close()
+            advanceUntilIdle()
         }
     }
 

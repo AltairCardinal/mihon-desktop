@@ -148,6 +148,35 @@ data class PartialDownloadSnapshot(
 
 fun interface PartialDownloadSnapshotLookup {
     fun snapshot(chapterId: Long, identity: DownloadChapterIdentity): PartialDownloadSnapshot?
+
+    /** O(1) in production; the default keeps lightweight fakes source-compatible. */
+    fun committedPageCandidate(
+        chapterId: Long,
+        identity: DownloadChapterIdentity,
+        readerOrdinal: Int,
+        sourcePageIndex: Int,
+    ): PartialReaderPageCandidate? {
+        val snapshot = snapshot(chapterId, identity)
+            ?.takeIf { it.chapterId == chapterId && it.identity == identity }
+            ?: return null
+        val entry = snapshot.pageTable.entries.singleOrNull { it.readerOrdinal == readerOrdinal }
+            ?.takeIf { it.sourcePageIndex == sourcePageIndex }
+            ?: return null
+        val committed = snapshot.committedPages.singleOrNull { it.readerOrdinal == readerOrdinal }
+            ?.takeIf {
+                it.sourcePageIndex == entry.sourcePageIndex &&
+                    it.opaqueLocation.isNotBlank() &&
+                    it.committedRevision > 0L
+            }
+            ?: return null
+        return PartialReaderPageCandidate(
+            attemptGeneration = snapshot.attemptGeneration,
+            readerOrdinal = readerOrdinal,
+            sourcePageIndex = sourcePageIndex,
+            opaqueLocation = committed.opaqueLocation,
+            committedRevision = committed.committedRevision,
+        )
+    }
 }
 
 object DisabledPartialDownloadSnapshotLookup : PartialDownloadSnapshotLookup {

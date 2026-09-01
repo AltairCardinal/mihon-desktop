@@ -21,6 +21,12 @@ value class EncodedPageRef(val value: String) {
     }
 }
 
+sealed interface ReaderEncodedPageProvenance {
+    data class Partial(
+        val candidate: PartialReaderPageCandidate,
+    ) : ReaderEncodedPageProvenance
+}
+
 sealed interface ReaderChapterLoadState {
     data object Wait : ReaderChapterLoadState
     data object LoadingPageList : ReaderChapterLoadState
@@ -49,9 +55,14 @@ data class ReaderPageDescriptor(
     val encodedPageRef: EncodedPageRef? = null,
     val initialLoadState: ReaderPageLoadState = ReaderPageLoadState.Queued,
     val partialPageCandidate: PartialReaderPageCandidate? = null,
+    val partialPageOrdinal: Int? = partialPageCandidate?.readerOrdinal,
+    val encodedPageProvenance: ReaderEncodedPageProvenance? = null,
 ) {
     init {
         require(sourcePageIndex >= 0) { "sourcePageIndex must be non-negative" }
+        require(partialPageOrdinal == null || partialPageOrdinal >= 0) {
+            "partialPageOrdinal must be null or non-negative"
+        }
     }
 }
 
@@ -63,9 +74,14 @@ data class ReaderPageSession(
     val loadState: ReaderPageLoadState,
     val attemptGeneration: Long = 0L,
     val partialPageCandidate: PartialReaderPageCandidate? = null,
+    val partialPageOrdinal: Int? = partialPageCandidate?.readerOrdinal,
+    val encodedPageProvenance: ReaderEncodedPageProvenance? = null,
 ) {
     init {
         require(attemptGeneration >= 0L) { "attemptGeneration must be non-negative" }
+        require(partialPageOrdinal == null || partialPageOrdinal >= 0) {
+            "partialPageOrdinal must be null or non-negative"
+        }
     }
 }
 
@@ -133,6 +149,7 @@ sealed interface ReaderSessionIntent {
         val imageUrl: String?,
         val encodedPageRef: EncodedPageRef?,
         val loadState: ReaderPageLoadState,
+        val encodedPageProvenance: ReaderEncodedPageProvenance? = null,
     ) : ReaderSessionIntent
     data class RetryPage(
         val pageId: ReaderPageId,
@@ -205,6 +222,8 @@ object ReaderSessionReducer {
                 loadState = descriptor.initialLoadState,
                 attemptGeneration = 0L,
                 partialPageCandidate = descriptor.partialPageCandidate,
+                partialPageOrdinal = descriptor.partialPageOrdinal,
+                encodedPageProvenance = descriptor.encodedPageProvenance,
             )
         }
         return ReaderSessionReduction(
@@ -263,6 +282,7 @@ object ReaderSessionReducer {
             imageUrl = intent.imageUrl,
             encodedPageRef = intent.encodedPageRef,
             loadState = intent.loadState,
+            encodedPageProvenance = intent.encodedPageProvenance,
         )
         if (updatedPage == currentPage) return ReaderSessionReduction(snapshot)
         val pages = snapshot.activeChapter.pages.toMutableList().apply {
@@ -287,6 +307,7 @@ object ReaderSessionReducer {
             encodedPageRef = null,
             loadState = ReaderPageLoadState.Queued,
             attemptGeneration = currentPage.attemptGeneration + 1L,
+            encodedPageProvenance = null,
         )
         val pages = snapshot.activeChapter.pages.toMutableList().apply {
             this[pageIndex] = retriedPage

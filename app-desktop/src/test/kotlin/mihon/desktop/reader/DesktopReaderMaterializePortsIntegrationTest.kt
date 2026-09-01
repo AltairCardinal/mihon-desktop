@@ -55,6 +55,7 @@ import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -536,6 +537,7 @@ class DesktopReaderMaterializePortsIntegrationTest {
 
             val ready = assertInstanceOf(ReaderPageMaterializeResult.Ready::class.java, result)
             assertEquals(1, sourceRequests)
+            assertNull(ready.encodedPageProvenance)
             assertArrayEquals(bytes, store.read(ready.encodedPageRef))
             val contentOwner = DesktopReaderPageContentOwner(
                 scope = this,

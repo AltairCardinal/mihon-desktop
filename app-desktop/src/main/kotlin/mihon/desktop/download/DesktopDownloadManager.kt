@@ -20,6 +20,7 @@ import mihon.domain.reader.partial.PartialPageTable
 import mihon.domain.reader.partial.PartialPageTableEntry
 import mihon.domain.reader.partial.PartialPageTablePolicy
 import mihon.domain.reader.partial.PartialPageTableValidation
+import mihon.domain.reader.partial.PartialReaderPageCandidate
 import mihon.desktop.domain.DesktopSystemNotifier
 import mihon.domain.task.NotificationEvent
 import kotlinx.coroutines.CoroutineScope
@@ -114,7 +115,9 @@ class DesktopDownloadManager(
         val pages: MutableCommittedPageIndex<CommittedPageRecord>,
         val rejectedFilesByOrdinal: ConcurrentHashMap<Int, List<File>> = ConcurrentHashMap(),
         val rejectedUnmappedFiles: List<File> = emptyList(),
-    )
+    ) {
+        val pageEntriesByOrdinal = pageTable.entries.associateBy(PartialPageTableEntry::readerOrdinal)
+    }
 
     private data class PagePublishToken(
         val key: DownloadAttemptKey,
@@ -1041,6 +1044,35 @@ class DesktopDownloadManager(
                         committedRevision = page.committedRevision,
                     )
                 },
+        )
+    }
+
+    override fun committedPageCandidate(
+        chapterId: Long,
+        identity: DownloadChapterIdentity,
+        readerOrdinal: Int,
+        sourcePageIndex: Int,
+    ): PartialReaderPageCandidate? {
+        val generation = currentGenerations[chapterId] ?: return null
+        val index = committedIndexes[DownloadAttemptKey(chapterId, generation)]
+            ?.takeIf { it.identity == identity }
+            ?: return null
+        val entry = index.pageEntriesByOrdinal[readerOrdinal]
+            ?.takeIf { it.sourcePageIndex == sourcePageIndex }
+            ?: return null
+        val page = index.pages.get(readerOrdinal)
+            ?.takeIf {
+                it.sourcePageIndex == entry.sourcePageIndex &&
+                    it.committedRevision > 0L
+            }
+            ?: return null
+        if (currentGenerations[chapterId] != generation || currentStatuses[chapterId] == null) return null
+        return PartialReaderPageCandidate(
+            attemptGeneration = generation,
+            readerOrdinal = readerOrdinal,
+            sourcePageIndex = sourcePageIndex,
+            opaqueLocation = page.file.absolutePath,
+            committedRevision = page.committedRevision,
         )
     }
 

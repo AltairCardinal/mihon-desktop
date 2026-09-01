@@ -46,6 +46,7 @@ import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
@@ -386,6 +387,27 @@ class DownloadManagerTest {
                     persisted.pageTable.entries.map(PartialPageTableEntry::imageUrl),
                 )
                 assertEquals(listOf(0, 1, 2), snapshot.committedPages.map { it.readerOrdinal })
+                val middleCandidate = checkNotNull(
+                    manager.committedPageCandidate(
+                        chapterId = queued.chapterId,
+                        identity = identity,
+                        readerOrdinal = 1,
+                        sourcePageIndex = 19,
+                    ),
+                )
+                assertEquals(snapshot.attemptGeneration, middleCandidate.attemptGeneration)
+                assertEquals(1, middleCandidate.readerOrdinal)
+                assertEquals(19, middleCandidate.sourcePageIndex)
+                assertEquals(snapshot.committedPages[1].opaqueLocation, middleCandidate.opaqueLocation)
+                assertEquals(snapshot.committedPages[1].committedRevision, middleCandidate.committedRevision)
+                assertNull(
+                    manager.committedPageCandidate(
+                        chapterId = queued.chapterId,
+                        identity = identity,
+                        readerOrdinal = 1,
+                        sourcePageIndex = 41,
+                    ),
+                )
                 assertEquals(
                     snapshot.committedPages.map { it.committedRevision }.sorted(),
                     snapshot.committedPages.map { it.committedRevision },

@@ -132,6 +132,7 @@ class DesktopReaderRuntimeFactory internal constructor(
     internal val configuredPartialDownloadSnapshotLookup: PartialDownloadSnapshotLookup
         get() = partialDownloadSnapshotLookup
     private val encodedPageStoreCoordinator = DesktopReaderEncodedPageStoreCoordinator(encodedCacheDirectory)
+    private val partialPageFallbackCoordinator = DesktopReaderPartialPageFallbackCoordinator()
 
     fun createRuntime(
         initialContext: DesktopReaderChapterContext,
@@ -141,11 +142,13 @@ class DesktopReaderRuntimeFactory internal constructor(
         val ioReporter = ReaderIoReporter(readerIoProbe.bind(), readerMonotonicClock)
         val store = encodedPageStoreCoordinator.openSessionStore()
         val pageContentOwner = DesktopReaderPageContentOwner(parentScope, store::read, ioReporter)
+        lateinit var session: DesktopReaderSession
         val pageImagePipeline = DesktopReaderPageImagePipeline(
             scope = parentScope,
             pageContentOwner = pageContentOwner,
             ioReporter = ioReporter,
             decoder = pageImageDecoder,
+            partialDecodeFailureHandler = { request -> session.handlePartialPageDecodeFailure(request) },
         )
         val contentAdapter = DesktopReaderContentAdapter(
             contentOperationProbe = readerContentOperationProbe,
@@ -163,7 +166,7 @@ class DesktopReaderRuntimeFactory internal constructor(
         )
         val tracker = progressTrackerOverride ?: progressTracker
         var presentationImageOwner: DesktopReaderPresentationImageOwner? = null
-        val session = DesktopReaderSession(
+        session = DesktopReaderSession(
             initialContext = initialContext,
             core = core,
             encodedPageStore = store,
@@ -183,7 +186,16 @@ class DesktopReaderRuntimeFactory internal constructor(
                 )
             },
             pageFetchPortFactory = DesktopReaderPageFetchPortFactory { context, descriptor ->
-                DesktopReaderPageFetchPort(context, descriptor, sourceManager, networkHelper, store, contentAdapter)
+                DesktopReaderPageFetchPort(
+                    context = context,
+                    descriptor = descriptor,
+                    sourceManager = sourceManager,
+                    networkHelper = networkHelper,
+                    encodedPageStore = store,
+                    contentAdapter = contentAdapter,
+                    partialDownloadSnapshotLookup = partialDownloadSnapshotLookup,
+                    partialPageFallbackCoordinator = partialPageFallbackCoordinator,
+                )
             },
             progressPort = DesktopReaderProgressPort { context, effect ->
                 if (context.localChapterPath == null) {
@@ -217,6 +229,7 @@ class DesktopReaderRuntimeFactory internal constructor(
                     "Reader generation wiring must be bound before the session starts"
                 }.beginGeneration(generation)
             },
+            partialPageFallbackCoordinator = partialPageFallbackCoordinator,
         )
         val prefetchPreferenceJob = parentScope.launch {
             prefs.nextChapterPrefetchPreference.changes().collect(session::setNextChapterPrefetchMode)

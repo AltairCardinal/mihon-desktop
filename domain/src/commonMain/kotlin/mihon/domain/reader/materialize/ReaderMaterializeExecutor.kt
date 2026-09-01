@@ -5,6 +5,7 @@ import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
 import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderEncodedPageProvenance
 import mihon.domain.reader.session.ReaderPageDescriptor
 import mihon.domain.reader.session.ReaderPageId
 
@@ -35,6 +36,7 @@ data class ReaderPageFetchRequest(
     val url: String,
     val imageUrl: String?,
     val attemptGeneration: Long = 0L,
+    val forceRefresh: Boolean = false,
 ) {
     init {
         require(generation >= 0) { "generation must be non-negative" }
@@ -45,7 +47,16 @@ data class ReaderPageFetchRequest(
 interface ReaderPageFetchPort {
     suspend fun resolveImageUrl(request: ReaderPageFetchRequest): String
     suspend fun findEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef?
+    suspend fun findEncodedPageForRefresh(request: ReaderPageFetchRequest): EncodedPageRef? = null
     suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef
+
+    fun materializedImageUrl(request: ReaderPageFetchRequest, ref: EncodedPageRef): String =
+        requireNotNull(request.imageUrl?.takeIf(String::isNotBlank)) { "Materialized page has no image URL" }
+
+    fun encodedPageProvenance(
+        request: ReaderPageFetchRequest,
+        ref: EncodedPageRef,
+    ): ReaderEncodedPageProvenance? = null
 }
 
 sealed interface ReaderPageMaterializeEvent {
@@ -54,6 +65,7 @@ sealed interface ReaderPageMaterializeEvent {
     data class Ready(
         val imageUrl: String,
         val encodedPageRef: EncodedPageRef,
+        val encodedPageProvenance: ReaderEncodedPageProvenance? = null,
     ) : ReaderPageMaterializeEvent
     data class Failed(
         val error: AppError,
@@ -65,6 +77,7 @@ sealed interface ReaderPageMaterializeResult {
     data class Ready(
         val imageUrl: String,
         val encodedPageRef: EncodedPageRef,
+        val encodedPageProvenance: ReaderEncodedPageProvenance? = null,
     ) : ReaderPageMaterializeResult
     data class Failed(val error: AppError) : ReaderPageMaterializeResult
     data object Rejected : ReaderPageMaterializeResult
@@ -113,9 +126,9 @@ object CanonicalReaderMaterializeExecutor : ReaderMaterializeExecutor {
                 ?.takeIf(String::isNotBlank)
                 ?: resolveImageUrl(request, port, publish)
                 ?: return ReaderPageMaterializeResult.Rejected
-            val resolvedRequest = request.copy(imageUrl = imageUrl)
+            val resolvedRequest = request.copy(imageUrl = imageUrl, forceRefresh = forceRefresh)
             val encodedPageRef = if (forceRefresh) {
-                null
+                port.findEncodedPageForRefresh(resolvedRequest)
             } else {
                 port.findEncodedPage(resolvedRequest)
             } ?: run {
@@ -124,11 +137,17 @@ object CanonicalReaderMaterializeExecutor : ReaderMaterializeExecutor {
                 }
                 port.fetchEncodedPage(resolvedRequest)
             }
-            val ready = ReaderPageMaterializeEvent.Ready(imageUrl, encodedPageRef)
+            val materializedImageUrl = port.materializedImageUrl(resolvedRequest, encodedPageRef)
+                .takeIf(String::isNotBlank)
+                ?: throw AppErrorException(
+                    AppError.MalformedData(IllegalArgumentException("Materialized image URL must not be blank")),
+                )
+            val provenance = port.encodedPageProvenance(resolvedRequest, encodedPageRef)
+            val ready = ReaderPageMaterializeEvent.Ready(materializedImageUrl, encodedPageRef, provenance)
             if (!publish(ready)) {
                 ReaderPageMaterializeResult.Rejected
             } else {
-                ReaderPageMaterializeResult.Ready(imageUrl, encodedPageRef)
+                ReaderPageMaterializeResult.Ready(materializedImageUrl, encodedPageRef, provenance)
             }
         } catch (error: CancellationException) {
             throw error

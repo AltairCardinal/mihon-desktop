@@ -284,7 +284,7 @@ encoded ref 必须携带 `Partial(committedRevision)` provenance。若后续像�
 - [x] `DDIR-03 + DDIR-04 close gate` 通用选择器、设置 UI、兼容与文档
 - [x] `PDR-01` partial snapshot 与 O(1) committed-page 索引
 - [x] `PDR-02` partial 章节页表路由
-- [ ] `PDR-03` encoded cache → committed page → network 唯一物化链
+- [x] `PDR-03` encoded cache → committed page → network 唯一物化链
 - [ ] `PDR-04` rename、CBZ、取消与 stale generation 并发矩阵
 - [ ] `PDR-05` production wiring、反馈、Test Mode 与性能门禁
 - [ ] `CLOSE-01` 组合回归、正式构建与关闭审计
@@ -654,6 +654,17 @@ python scripts/gradle-coordinator.py run --key pdr03-red -- ./gradlew :domain:jv
 
 **完成条件**：MockWebServer 真实计数、本地真实图片和 production store 同时参与；返回预设 byte array 的 fake 不足以
 证明网络被绕过。
+
+**完成记录（2026-09-01）**：本批涉及 20 个 production/test/roadmap 文件，超过建议范围；这是 partial candidate/provenance
+从 shared materialize executor、session、content request 到 Desktop store、fetch port、decode pipeline、runtime/session fallback 的
+唯一链路，并包含真实 PNG、MockWebServer、production store 与多 runtime 集成测试。拆开会留下 candidate 已生成但无法安全读取，
+或 decode 失败后无法按同一 attempt 唯一回退的半链。初始 close 通过 166 项相关测试；独立审查发现 adjacent prefetch 丢失
+provenance、decode failure 检查与拒绝/驱逐间的 TOCTOU、同 factory runtime 未共享拒绝状态，以及已知 source URL 被 synthetic
+identity 覆盖四项问题，均以确定性交错/真实 Factory/强制 resolver 失败 RED 修复。最终 Domain 31、Desktop 130、Android 8，
+合计 169 项测试与全仓 `spotlessCheck` 通过（`.gradle-coordinator/pdr03-review-close.log`，`BUILD SUCCESSFUL in 5m 57s`），
+一次修复复审批准。下载 Manager 仍以 O(1) generation/revision map 查找 candidate；本地页仅在物化时惰性复制且 encoded store
+单飞，未增加目录扫描、第二套 scope/cache 或下载热路径锁；production composition root 继续绑定
+`DisabledPartialDownloadSnapshotLookup`，只通过显式 test DI 可达，待 `PDR-05` 才启用。
 
 ---
 

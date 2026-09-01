@@ -22,6 +22,7 @@ import mihon.domain.reader.content.ReaderPageContentOpenRequest
 import mihon.domain.reader.observability.ReaderIoEventType
 import mihon.domain.reader.observability.ReaderIoPurpose
 import mihon.domain.reader.observability.ReaderIoReporter
+import mihon.domain.reader.session.ReaderEncodedPageProvenance
 import mihon.domain.reader.session.ReaderPageId
 import org.jetbrains.skia.Bitmap as SkiaBitmap
 import org.jetbrains.skia.Canvas as SkiaCanvas
@@ -236,6 +237,7 @@ class DesktopReaderPageImagePipeline internal constructor(
         if (maxBytes == DEFAULT_CACHE_BYTES) DEFAULT_TOTAL_IMAGE_BYTES else maxBytes,
     ),
     maxConcurrentDecodes: Int = DEFAULT_CONCURRENT_DECODES,
+    private val partialDecodeFailureHandler: suspend (ReaderPageContentOpenRequest) -> Boolean = { false },
 ) : AutoCloseable {
     private data class PageGenerationIdentity(
         val pageId: ReaderPageId,
@@ -677,7 +679,10 @@ class DesktopReaderPageImagePipeline internal constructor(
     }
 
     private suspend fun load(key: ReaderPageDecodeKey): DesktopReaderImageAssetLease? {
-        val contentLease = pageContentOwner.acquire(key.contentKey) ?: return null
+        val contentLease = pageContentOwner.acquire(key.contentKey) ?: run {
+            handlePartialDecodeFailure(key)
+            return null
+        }
         var contentOwnershipTransferred = false
         return try {
             decodeContent(key, contentLease.content)?.also { decoded ->
@@ -702,8 +707,22 @@ class DesktopReaderPageImagePipeline internal constructor(
             generation = key.generation,
             purpose = ReaderIoPurpose.VISIBLE_DECODE,
         )
-        decoder.decode(encoded, key)
+        try {
+            decoder.decode(encoded, key).also { decoded ->
+                if (decoded == null) handlePartialDecodeFailure(key)
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            if (!handlePartialDecodeFailure(key)) throw error
+            null
+        }
     }
+
+    private suspend fun handlePartialDecodeFailure(key: ReaderPageDecodeKey): Boolean =
+        key.purpose == PageDecodePurpose.FULL_PAGE &&
+            key.contentKey.encodedPageProvenance is ReaderEncodedPageProvenance.Partial &&
+            partialDecodeFailureHandler(key.contentKey)
 
     private fun releasePending(key: ReaderPageDecodeKey, entry: Entry) {
         var leaseToClose: DesktopReaderImageAssetLease? = null

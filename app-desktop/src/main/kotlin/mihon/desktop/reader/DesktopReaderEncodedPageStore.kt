@@ -134,12 +134,26 @@ class DesktopReaderEncodedPageStore internal constructor(
     override suspend fun store(
         ref: EncodedPageRef,
         writer: suspend () -> Long,
+    ): EncodedPageStoreWriteResult = storeWithPolicy(ref, replaceExisting = true, writer)
+
+    internal suspend fun storeIfAbsent(
+        ref: EncodedPageRef,
+        writer: suspend () -> Long,
+    ): EncodedPageStoreWriteResult = storeWithPolicy(ref, replaceExisting = false, writer)
+
+    private suspend fun storeWithPolicy(
+        ref: EncodedPageRef,
+        replaceExisting: Boolean,
+        writer: suspend () -> Long,
     ): EncodedPageStoreWriteResult {
         require(ref.fileOrNull()?.isOwnedCacheFile() == true) { "Desktop encoded writes must target the reader cache" }
         synchronized(sharedState.lock) { activeLeaseLocked() }
         val gate = acquireWriteGate(ref)
         try {
-            return gate.mutex.withLock { storeAtomically(ref, writer) }
+            return gate.mutex.withLock {
+                if (!replaceExisting) existingEntry(ref)?.let { return@withLock it }
+                storeAtomically(ref, writer)
+            }
         } finally {
             releaseWriteGate(ref, gate)
         }
@@ -279,6 +293,15 @@ class DesktopReaderEncodedPageStore internal constructor(
             partial.delete()
         }
     }
+
+    private fun existingEntry(ref: EncodedPageRef): EncodedPageStoreWriteResult.Stored? =
+        synchronized(sharedState.lock) {
+            val file = ref.fileOrNull()?.takeIf { it.hasEncodedBytes() } ?: return@synchronized null
+            val entry = EncodedPageStoreEntry(ref, file.length())
+            sharedState.index.recordLookup(ref, exists = true, byteCount = entry.byteCount, pinned = true)
+            activeLeaseLocked().add(ref)
+            EncodedPageStoreWriteResult.Stored(entry, evictedRefs = emptySet())
+        }
 
     private fun activeLeaseLocked(): MutableSet<EncodedPageRef> =
         checkNotNull(sharedState.leases[leaseId].takeIf { leaseActive }) { "Encoded page store session is not active" }

@@ -161,6 +161,7 @@ class DesktopReaderRuntimeFactoryTest {
             assertEquals(listOf(0, 1), pages.map { it.id.sourcePageIndex })
             assertEquals(listOf("/online/first", "/online/last"), pages.map { it.url })
             assertTrue(pages.all { it.partialPageCandidate == null })
+            assertTrue(pages.all { it.encodedPageProvenance == null })
             coVerify(exactly = 1) { source.getPageList(any()) }
         } finally {
             defaultRuntime.close()

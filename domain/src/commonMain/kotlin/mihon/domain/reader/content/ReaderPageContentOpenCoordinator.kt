@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import mihon.domain.reader.session.EncodedPageRef
+import mihon.domain.reader.session.ReaderEncodedPageProvenance
 import mihon.domain.reader.session.ReaderPageId
 
 /** Stable content identity used across platform open, decode, cache, and presentation adapters. */
@@ -14,6 +15,7 @@ data class ReaderPageContentOpenRequest(
     val generation: Long,
     val encodedPageRef: EncodedPageRef,
     val attemptGeneration: Long = 0L,
+    val encodedPageProvenance: ReaderEncodedPageProvenance? = null,
 ) {
     init {
         require(generation >= 0L) { "generation must be non-negative" }

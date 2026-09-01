@@ -3,8 +3,10 @@ package mihon.domain.reader.materialize
 import kotlinx.coroutines.test.runTest
 import mihon.domain.error.AppError
 import mihon.domain.network.AppErrorException
+import mihon.domain.reader.partial.PartialReaderPageCandidate
 import mihon.domain.reader.session.EncodedPageRef
 import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderEncodedPageProvenance
 import mihon.domain.reader.session.ReaderPageDescriptor
 import mihon.domain.reader.session.ReaderPageId
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -120,6 +122,46 @@ class ReaderMaterializeExecutorTest {
     }
 
     @Test
+    fun `retry may reuse an unrejected committed revision while preserving provenance`() = runTest {
+        val candidate = PartialReaderPageCandidate(
+            attemptGeneration = 9L,
+            readerOrdinal = 0,
+            sourcePageIndex = 0,
+            opaqueLocation = "opaque-local-page",
+            committedRevision = 4L,
+        )
+        val partialRef = EncodedPageRef("partial-4")
+        val provenance = ReaderEncodedPageProvenance.Partial(candidate)
+        val port = RecordingPageFetchPort(
+            refreshCached = partialRef,
+            provenance = provenance,
+            materializedImageUrl = "partial:4",
+        )
+        val events = mutableListOf<ReaderPageMaterializeEvent>()
+
+        val result = CanonicalReaderMaterializeExecutor.materializePage(
+            request = pageRequest(),
+            port = port,
+            forceRefresh = true,
+            publish = { event ->
+                events += event
+                true
+            },
+        )
+
+        assertEquals(1, port.refreshLookupCalls)
+        assertEquals(0, port.fetchCalls)
+        assertEquals(
+            ReaderPageMaterializeEvent.Ready("partial:4", partialRef, provenance),
+            events.single(),
+        )
+        assertEquals(
+            ReaderPageMaterializeResult.Ready("partial:4", partialRef, provenance),
+            result,
+        )
+    }
+
+    @Test
     fun `a stale request rejected at its first event leaves current ready state untouched`() = runTest {
         val port = RecordingPageFetchPort(failure = AppErrorException(AppError.Network()))
         val currentReadyState = ReaderPageMaterializeEvent.Ready(
@@ -157,10 +199,14 @@ class ReaderMaterializeExecutorTest {
     private class RecordingPageFetchPort(
         private val resolvedImageUrl: String = "https://example.test/image",
         private val cached: EncodedPageRef? = null,
+        private val refreshCached: EncodedPageRef? = null,
+        private val provenance: ReaderEncodedPageProvenance? = null,
+        private val materializedImageUrl: String? = null,
         private val failure: Throwable? = null,
     ) : ReaderPageFetchPort {
         var resolveCalls = 0
         var fetchCalls = 0
+        var refreshLookupCalls = 0
 
         override suspend fun resolveImageUrl(request: ReaderPageFetchRequest): String {
             resolveCalls++
@@ -169,10 +215,23 @@ class ReaderMaterializeExecutorTest {
 
         override suspend fun findEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef? = cached
 
+        override suspend fun findEncodedPageForRefresh(request: ReaderPageFetchRequest): EncodedPageRef? {
+            refreshLookupCalls++
+            return refreshCached
+        }
+
         override suspend fun fetchEncodedPage(request: ReaderPageFetchRequest): EncodedPageRef {
             fetchCalls++
             failure?.let { throw it }
             return EncodedPageRef("encoded-$fetchCalls")
         }
+
+        override fun materializedImageUrl(request: ReaderPageFetchRequest, ref: EncodedPageRef): String =
+            materializedImageUrl ?: requireNotNull(request.imageUrl)
+
+        override fun encodedPageProvenance(
+            request: ReaderPageFetchRequest,
+            ref: EncodedPageRef,
+        ): ReaderEncodedPageProvenance? = provenance
     }
 }
