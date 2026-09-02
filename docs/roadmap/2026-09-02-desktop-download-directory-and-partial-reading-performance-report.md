@@ -120,4 +120,3 @@ snapshot 已知缺页后 `partialPageProbes/Opens/Copies=0`、锁违规 0；loca
 
 综上，`CLOSE-01` 可关闭。此结论不承诺锁屏时的 Direct3D 首帧速度；发布预算定义的是已登录、可呈现的正常图形会话。
 若未来要把锁屏/远程断连作为支持场景，应单独制定 renderer/lifecycle 预算，不能反向改写本次发布门禁。
-
