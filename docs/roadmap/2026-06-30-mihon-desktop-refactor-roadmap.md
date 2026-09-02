@@ -4,7 +4,7 @@
 
 正式版日期：2026-06-30
 
-- active-child-plan: [`2026-08-30-desktop-download-directory-and-partial-reading-plan.md`](./2026-08-30-desktop-download-directory-and-partial-reading-plan.md)
+- active-child-plan: `none`（Reader 上游语义与下载目录/partial 阅读两份 child plan 已于 2026-09-02 完成）
 
 ## 0. 产品路线
 
@@ -287,12 +287,13 @@
 
 ## 12. Phase R：功能 parity 与体验补齐
 
-目标：在 macOS/Desktop 主线稳定后补齐长期体验，不阻塞当前核心重构。Reader child plan 已在 `RUA-07B/C/D` 前安全
-暂停；当前唯一活动计划是
-[`下载目录设置与 partial 阅读计划`](./2026-08-30-desktop-download-directory-and-partial-reading-plan.md)，
-其实现、组合回归及 Windows/macOS 正式运行已完成，但 `CLOSE-01` 因 Jellyfin `ffmpeg` 持续占用约 94% CPU 而无法取得
-有效的 Windows 同机 baseline/candidate 墙钟报告，故保持 `BLOCKED` 和活动指针；不得停止用户媒体进程或用受污染样本关闭。
-non-reader upstream core 与作者归档计划继续保持暂停；下表保留其余 Phase R backlog。
+目标：在 macOS/Desktop 主线稳定后补齐长期体验，不阻塞当前核心重构。
+[`Reader 上游语义计划`](./2026-08-27-desktop-reader-upstream-semantics-adapter-refactor-roadmap.md)与
+[`下载目录设置及 partial 阅读计划`](./2026-08-30-desktop-download-directory-and-partial-reading-plan.md)已由后者的
+`CLOSE-01` 严格超集证据在 2026-09-02 一并关闭；当前没有 active child plan。Windows 同机报告在保留原始失败状态和
+锁屏归因的前提下通过最终组合裁决，详情见
+[`性能报告`](./2026-09-02-desktop-download-directory-and-partial-reading-performance-report.md)。non-reader upstream core 与
+作者归档计划继续保持暂停；下表保留其余 Phase R backlog。
 
 | ID | 状态 | 优先级 | 平台 | 任务 | 用户可见变化 | 验收 |
 | --- | --- | --- | --- | --- | --- | --- |

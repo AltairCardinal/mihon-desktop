@@ -1,6 +1,6 @@
 ---
 parent-plan: 2026-06-30-mihon-desktop-refactor-roadmap.md
-status: blocked
+status: done
 date: 2026-08-30
 ---
 
@@ -8,14 +8,14 @@ date: 2026-08-30
 
 ## 0. 文档状态与执行边界
 
-- 状态：`BLOCKED`（实现、组合回归、Windows/macOS 正式构建与运行验收已完成；`CLOSE-01` 仅等待无外部
-  媒体负载的 Windows 同机墙钟补充测量，仍是父路线唯一 `active-child-plan`）。
+- 状态：`DONE`（实现、组合回归、Windows/macOS/Android 正式构建与运行验收、同机性能报告和关闭审计均完成；
+  父路线当前无 `active-child-plan`）。
 - 本文是同一份独立执行方案，统一覆盖“下载目录可配置”与“未完成下载章节复用已落盘页面”两项需求。
 - 上一活动计划
   [`2026-08-27-desktop-reader-upstream-semantics-adapter-refactor-roadmap.md`](./2026-08-27-desktop-reader-upstream-semantics-adapter-refactor-roadmap.md)
-  已在治理 HEAD `de0e1eee9eb5d1f836bd667130bb893567662ce8`、product/evidence baseline
-  `86ad5462070cb3b779073ec6cf7bee75c4b1f787` 安全暂停：`RUA-00`～`RUA-06` 与 `RUA-07A` 完成，`RUA-07B/C/D`
-  保持未完成。后续恢复必须在新集成 HEAD 重跑其最终验证，或由本文 `CLOSE-01` 严格超集证据接管。
+  曾在治理 HEAD `de0e1eee9eb5d1f836bd667130bb893567662ce8`、product/evidence baseline
+  `86ad5462070cb3b779073ec6cf7bee75c4b1f787` 安全暂停。本文 `CLOSE-01` 已在新 product HEAD `fbf75e1ad` 上以
+  严格超集的测试、性能、Windows/macOS/Android 构建和 production 运行证据接管并关闭其 `RUA-07B/C/D`。
 - 激活时工作树没有 Reader 相关 diff，仅有无关 `?? testfile/`；Reader runtime、materialize、image pipeline 和 memory
   authority 接口已经冻结。该未跟踪项不属于本文，不得读取、修改或提交。
 - 本文激活不修改 parity manifest，不把任何 capability 提前标为完成，也不分配新构建版本；产品变更从 `DDIR-01`
@@ -55,7 +55,7 @@ date: 2026-08-30
 | Provider 根目录 | [`DesktopDownloadProvider.kt`](../../app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadProvider.kt) 的构造参数是不可变 `private val baseDir: File` | 直接换成动态 getter 会使一次下载跨根目录 |
 | DI wiring | `registerDesktopDownload()` 用 `paths.downloadsDir` 构造 provider，再把 provider、manager 注册为单例 | Manager 与 Reader 当前共享同一 provider，必须继续保持 |
 | 现有设置入口 | [`DownloadSettingsScreen.kt`](../../app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DownloadSettingsScreen.kt) 已提供 CBZ、自动下载、读后删除与并行数 | 新入口追加到既有页面，不另建设置页 |
-| 可复用目录选择器 | [`DesktopBackupFilePicker.kt`](../../app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopBackupFilePicker.kt) 已在 Swing EDT 异步打开 `JFileChooser`，并支持 `DIRECTORIES_ONLY` | 提升为通用 picker，禁止再复制阻塞式 chooser |
+| 可复用目录选择器 | [`DesktopFilePicker.kt`](../../app-desktop/src/main/kotlin/mihon/desktop/platform/DesktopFilePicker.kt) 已把原 Backup picker 提升为共享 adapter，在 Swing EDT 异步打开 `JFileChooser` 并支持 `DIRECTORIES_ONLY` | Backup 与 Download 复用通用 picker，禁止再复制阻塞式 chooser |
 | 可复用目录打开器 | [`DesktopDirectoryOpener.kt`](../../app-desktop/src/main/kotlin/mihon/desktop/ui/settings/DesktopDirectoryOpener.kt) 已封装系统文件管理器与外部动作策略 | “打开目录”直接复用 |
 | 共享存储偏好 | [`StoragePreferences.kt`](../../domain/src/commonMain/kotlin/tachiyomi/domain/storage/service/StoragePreferences.kt) 表示 Android 的“备份、下载、本地图源共同 storage root” | 本需求只改下载目录，不能直接复用该语义并意外迁移另外两类数据 |
 
@@ -288,7 +288,7 @@ encoded ref 必须携带 `Partial(committedRevision)` provenance。若后续像�
 - [x] `PDR-03` encoded cache → committed page → network 唯一物化链
 - [x] `PDR-04` rename、CBZ、取消与 stale generation 并发矩阵
 - [x] `PDR-05` production wiring、反馈、Test Mode 与性能门禁
-- [ ] `CLOSE-01` 组合回归、正式构建与关闭审计
+- [x] `CLOSE-01` 组合回归、正式构建与关闭审计
 
 ### 5.2 依赖与提交规则
 
@@ -854,11 +854,20 @@ coverage inventory 仍把与本计划无关且已暂停的 `authors-entry` prote
 `.gradle-coordinator/close01-macos-build.log` 与
 `.gradle-coordinator/close01-macos-final-parity-summary.json`。
 
-唯一关闭阻塞是第 8.2 节 Windows 同机墙钟补充报告：门禁前 10 个 CPU 样本平均 `94.12%`、最大 `98.79%`，Jellyfin
-`ffmpeg` PID `216104` 在 5 秒内累计 `122.06` CPU 秒并占用约 `5.3 GiB`。按照既定规则，没有停止、暂停或调整用户媒体
-进程，也没有启动会产生伪数据的 baseline/candidate benchmark；状态记录在
-`.gradle-coordinator/close01-windows-performance-stability.json`。待该外部负载结束后，只需运行第 8.2 节同机配对测量；若有效
-报告通过，再勾选 `CLOSE-01`、第 10 节性能项并原子关闭本文、被接管 Reader 路线与父路线活动指针。
+Jellyfin `ffmpeg` 外部负载结束后完成了两轮冻结产物的 5 次预热 + 30 组交替 AB/BA。完整方法、raw 状态保留、
+锁屏归因和组合裁决见
+[`2026-09-02-desktop-download-directory-and-partial-reading-performance-report.md`](./2026-09-02-desktop-download-directory-and-partial-reading-performance-report.md)。
+锁屏前默认 Direct3D 样本中，候选 downloaded directory P95/max 为 `561.440/683.507 ms`，downloaded CBZ 为
+`256.968/317.164 ms`，满足 inherited Reader 的 `1000/2000` 与 `1500/3000 ms` 预算。修正版真实
+MockWebServer 运行补齐 1/180 页结构门禁和 100 页下载：baseline/candidate 吞吐 median 为
+`18.228/18.409 MiB/s`，配对回归 median `-0.053%`、95% CI `[-7.824%, 5.636%]`；60 个样本均精确为
+100 请求、28,526,600 bytes、峰值并发 1、100 页 commit、1 章 commit，锁违规 0。所有完整下载/online/吞吐的
+配对中位数 CI 下界均未超过 5%，第 8 节通过。
+
+同一 product HEAD 的 `assembleDebug` 由 coordinator key `close01-android-assemble-win` 通过；
+`app-x86_64-debug.apk` 为 60,258,748 bytes，SHA-256
+`0E16924C1A0BAC7994FB8F249DF534583A06597FE1EB31C846042B551D55C77C`。至此 `CLOSE-01`、被接管 Reader
+路线与父路线活动指针可以原子关闭。
 
 ## 7. 测试矩阵
 
@@ -970,7 +979,7 @@ P95 与置信区间：
 - [x] 完整下载保持 direct-file 零复制，普通 online/local/CBZ 行为不变；
 - [x] legacy/new metadata、rename、existing final、Windows lease、atomic CBZ、损坏 revision、cancel/retry/same-ID
       generation 和失败矩阵全部通过；
-- [ ] 下载并发、Reader scheduler、操作计数和同机性能报告满足第 8 节；
+- [x] 下载并发、Reader scheduler、操作计数和同机性能报告满足第 8 节；
 - [x] Android shared route 回归通过，Desktop partial decorator 未渗入 Android production；
 - [x] Test Mode、全量测试、Spotless、final parity、Windows/macOS 正式构建与运行证据完整；
 - [x] architecture/Test Mode/用户文档、parity manifest、计划状态、commit 和发布产物一致；

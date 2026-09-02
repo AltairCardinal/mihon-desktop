@@ -1,12 +1,12 @@
 ---
 parent-plan: 2026-06-30-mihon-desktop-refactor-roadmap.md
-status: paused
+status: done
 ---
 
 # Mihon Desktop 阅读器原版语义复用与平台适配层收口 Roadmap
 
 - 制定日期：2026-08-27
-- 状态：`PAUSED`（2026-09-01 在 `RUA-07B / RUA-07C / RUA-07D` 最终验收前记录安全停止点）
+- 状态：`DONE`（2026-09-02 由下载目录与 partial 阅读计划的 `CLOSE-01` 严格超集证据完成最终验收）
 - 上级路线：[`2026-06-30-mihon-desktop-refactor-roadmap.md`](./2026-06-30-mihon-desktop-refactor-roadmap.md)
 - 前一活动计划：[`2026-08-11-author-archive-discovery-corrective-roadmap.md`](./2026-08-11-author-archive-discovery-corrective-roadmap.md)（已在 `AA7-02 / AA7-03` legacy 清理门禁前安全暂停）
 - 历史 Reader 计划：[`2026-08-02-reader-core-migration-and-presentation-roadmap.md`](./2026-08-02-reader-core-migration-and-presentation-roadmap.md)
@@ -15,9 +15,9 @@ status: paused
 - 本次上游跟踪点：`upstream/main@deb7b33118616d37536f1e5ef2ef85c8b5db0799`（2026-08-26）
 - 激活基线：`main@b97487d0bb47b310b86a3d44cacf326ddd1eba34`
 - 机器状态权威：[`parity-manifest.json`](../../app-desktop/src/test/resources/parity/parity-manifest.json)；本文不创建第二份 capability 状态源
-- 暂停进度：从第 10 节第一个未勾选顶层任务 `RUA-07` 推导，不另设 `active-task`
+- 完成进度：第 10 节 `RUA-00`～`RUA-07` 及全部子批次均已关闭，不存在 `active-task`
 
-本文于 2026-08-27 原子激活并完成 `RUA-00`～`RUA-06` 与 `RUA-07A`。2026-09-01 用户明确要求执行下载目录与 partial 阅读计划后，本文在工作树无 Reader 未提交改动的检查点安全暂停，父路线唯一 `active-child-plan` 原子切换到该计划。本文保留全部历史证据和未完成 checkbox，不把暂停伪装成关闭；恢复规则见 Build 20 后的安全暂停记录。
+本文于 2026-08-27 原子激活并完成 `RUA-00`～`RUA-06` 与 `RUA-07A`。2026-09-01 用户明确要求执行下载目录与 partial 阅读计划后，本文在工作树无 Reader 未提交改动的检查点安全暂停，父路线唯一 `active-child-plan` 原子切换到该计划。2026-09-02，后续计划在新 product HEAD 上完成严格超集的跨平台测试、Test Mode、Windows 性能、Windows/macOS/Android 构建与 production 运行验收，因而原子关闭本文剩余 `RUA-07B/C/D`。
 
 ## 1. 执行裁决与最终目标
 
@@ -331,11 +331,11 @@ Android Reader UI                 Desktop Reader presentation
   - [x] `RUA-06A` 旧 owner/DI/第二链删除
   - [x] `RUA-06B` production mutation 证据与假阳性测试替换
   - [x] `RUA-06C` authority、manifest 与文档收口
-- [ ] `RUA-07` 跨平台全量验证、Test Mode、正式构建与关闭审计
+- [x] `RUA-07` 跨平台全量验证、Test Mode、正式构建与关闭审计
   - [x] `RUA-07A` 跨平台测试矩阵、Spotless 与 final parity
-  - [ ] `RUA-07B` Test Mode、deterministic/Windows 性能与手动行为验收
-  - [ ] `RUA-07C` Windows/macOS/Android 正式构建验收
-  - [ ] `RUA-07D` manifest、路线图与唯一 active plan 关闭审计
+  - [x] `RUA-07B` Test Mode、deterministic/Windows 性能与手动行为验收
+  - [x] `RUA-07C` Windows/macOS/Android 正式构建验收
+  - [x] `RUA-07D` manifest、路线图与唯一 active plan 关闭审计
 
 ### `RUA-00` 激活、authority 冻结与可观测性基础
 
@@ -765,7 +765,7 @@ Android Reader UI                 Desktop Reader presentation
 **RUA-07 Build 20 后续检查点（2026-09-01，`86ad5462070cb3b779073ec6cf7bee75c4b1f787`）**：
 
 - Windows evidence 构建此前两次都已完成 JVM 测试/发行目录，随后才因 WSL 启动的 Windows PowerShell 优先加载 Codex runtime 中不兼容的 `Microsoft.PowerShell.Utility`、导致 validator 无法解析 `Get-FileHash` 而失败；这不是 Gradle 卡死。修复以真实 production validator 合同测试执行 RED/GREEN：`rua07-runtime-validator-red` 在移除 `Get-FileHash` 后因原实现提前失败，`rua07-runtime-validator-green` 改用流式 .NET SHA-256 后到达预期摘要拒绝，根级 `rua07-validator-format` 通过；独立审查结论 `PASS`，P0/P1/P2 均为零。
-- 当前精确提交的 Windows `scripts/build-desktop.sh evidence` 由 `rua07-windows-evidence-86ad54620` 完成：完整 `app-desktop:jvmTest` 在 5 分 19 秒通过，规范未打包应用在 1 分 54 秒构建成功，真实 ManHuaGui APK 安装/生产加载验收通过。版本为 `0.11.19.20.86ad546`，product-source digest 为 `c22e83d201fbf61df136f675ec176dd9a9e61adf61ea6083fea2267b556ff8b7`，发行树 373 个文件、257,690,827 字节、SHA-256 `8f16cba78126e1b258966ae9f5ed50757e62a90e756be9a839df6512dd287363`；正式 EXE 位于 `app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.20.86ad546-unpacked/Mihon Desktop.exe`，ZIP SHA-256 为 `12d7a4069c8166c9eb904b2638856f500f302c59e87a3a6ec17fa331cae6f3616`。
+- 当前精确提交的 Windows `scripts/build-desktop.sh evidence` 由 `rua07-windows-evidence-86ad54620` 完成：完整 `app-desktop:jvmTest` 在 5 分 19 秒通过，规范未打包应用在 1 分 54 秒构建成功，真实 ManHuaGui APK 安装/生产加载验收通过。版本为 `0.11.19.20.86ad546`，product-source digest 为 `c22e83d201fbf61df136f675ec176dd9a9e61adf61ea6083fea2267b556ff8b7`，发行树 373 个文件、257,690,827 字节、SHA-256 `8f16cba78126e1b258966ae9f5ed50757e62a90e756be9a839df6512dd287363`；正式 EXE 位于 `app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.20.86ad546-unpacked/Mihon Desktop.exe`，ZIP SHA-256 为 `2d7a4069c8166c9eb904b2638856f500f302c59e87a3a6ec17fa331cae6f3616`。
 - 同一提交的 Android `assembleDebug` 由 `rua07-android-86ad54620` 在 1 分 16 秒通过；`app/build/outputs/apk/debug/app-x86_64-debug.apk` 为 60,189,608 字节，SHA-256 `30f237b87f195ce9cbf90d4b81a1728cb259f892363a05069f56c54a31f8b749`。
 - Build 20 正式 Windows 性能门没有启动：90 秒稳定门第 0 秒即发现 Jellyfin `ffmpeg` PID 203760，故本轮按规则标记 `INVALID/BLOCKED`，未产生 summary/raw、未重跑、未停止用户媒体进程；证据为 `C:/Users/feeli/AppData/Local/Temp/mihon-rua07-build20-gate-20260901/stability-gate.txt`。因此 `RUA-07B` 继续保持未勾选。
 - macOS console user 仍为 `altair`，但 `CGSSessionScreenIsLocked=Yes`；Build 20 未传输、未 checkout、未构建、未启动 GUI/Test Mode。由于 `scripts/reader-performance.py` 属于现行 provenance 的 product input，不能把 `4ffd026cc` 的 macOS provenance 冒充为 Build 20 exact evidence；解锁后仍须对 `86ad5462070cb3b779073ec6cf7bee75c4b1f787` 重新完成 build/provenance 与四路 10 秒 Aqua fixture。因此 `RUA-07C` 继续保持未勾选。
@@ -780,11 +780,21 @@ Android Reader UI                 Desktop Reader presentation
 - 后续计划会修改 Reader runtime/materialize/lifecycle，因此恢复本文时必须在**新的集成 HEAD** 重跑 `RUA-07A`～`RUA-07C`，再执行 `RUA-07D`；或者由后续计划 `CLOSE-01` 的同提交证据逐项证明为这些门禁的严格超集后，原子关闭两份治理状态。不得把 `4ffd026cc`/`86ad54620` 的 exact-commit 证据直接冒充新 HEAD 的关闭证据。
 - parity manifest 的 Reader capability 状态在暂停时不变；`authors-entry partial` 仍受原保护门禁约束。
 
-**后续接管检查点（2026-09-02）**：下载目录与 partial 阅读计划已在新 product HEAD `fbf75e1ad` 完成实现、组合产品测试、
-Windows/macOS 正式构建及两端 production Reader fixture；Windows 正式错误页 Retry 也由真实 UI 触发并观测到同一页第二次
-网络 attempt。但 Windows 本机仍有 Jellyfin `ffmpeg` 持续占用约 94% CPU，按本文第 11.3 节与既有 Build 20 门禁规则没有
-启动受污染的墙钟样本。因此后续 `CLOSE-01` 尚未成为 `RUA-07B` 的严格超集，本文继续保持 `PAUSED`，`RUA-07B/C/D` 与
-顶层 `RUA-07` 不勾选；待无外部负载的同机报告通过后再与接管计划原子关闭。
+**后续接管关闭检查点（2026-09-02）**：下载目录与 partial 阅读计划在新 product HEAD `fbf75e1ad` 完成实现、组合
+domain/data/Android/Desktop/Test Mode 测试、Spotless、final parity、Windows/macOS 正式构建与两端 production Reader
+fixture；Windows 正式错误页 Retry 由真实 UI 触发并观测到同一页第二次网络 attempt。Windows 版本
+`0.11.19.21.fbf75e1` 与 macOS exact bundle 均完成 production 验收，Android `assembleDebug` 也在同一产品代码上通过。
+
+无外部 `ffmpeg` 负载后，后续 `CLOSE-01` 完成冻结 baseline/candidate 的 5 次预热 + 30 组 AB/BA。完整裁决见
+[`2026-09-02-desktop-download-directory-and-partial-reading-performance-report.md`](./2026-09-02-desktop-download-directory-and-partial-reading-performance-report.md)：
+锁屏前默认 Direct3D 候选 downloaded directory P95/max 为 `561.440/683.507 ms`，downloaded CBZ 为
+`256.968/317.164 ms`，满足本文 `1000/2000` 与 `1500/3000 ms` 预算；1/180 页首帧操作向量一致，完整下载、online
+与 100 页吞吐均没有配对中位数 CI 下界超过 5% 的稳定回退。真实 MockWebServer 的 60 个下载样本全部保持 100 请求、
+28,526,600 bytes、峰值并发 1、100 页 commit、1 章 commit 与零锁违规。
+
+这些证据在新集成 HEAD 上覆盖 `RUA-07A`～`RUA-07C`，并由本次路线/manifest/父指针一致性审计完成 `RUA-07D`，
+因此构成暂停规则要求的严格超集，`RUA-07B/C/D` 与顶层 `RUA-07` 均关闭。与本计划无关的 `authors-entry partial`
+保护门禁保持原状，没有借本次关闭改写。
 
 ## 11. 测试矩阵与不可替代性能门禁
 
@@ -951,18 +961,18 @@ RUA-00 的 `.gradle-coordinator/rua00-*.json/.log` 共记录 **14 次 Gradle 启
 
 本计划只有满足以下全部条件才能改为 `DONE`：
 
-- [ ] 第 10 节 RUA-00～RUA-07 及其全部子批次完成，并各有与自身 scope 对应的提交/evidence；
-- [ ] 原版 route、artifact、页列表、current+4、Retry、last-five 与生命周期由共享核心唯一拥有；
-- [ ] Android/Desktop production 都消费这些共享语义，平台只保留列明的 adapter/presentation/decorator；
-- [ ] Desktop 下载目录与下载 CBZ 离线打开，legacy/current/canonical artifact 无损兼容；
-- [ ] 首帧前无 global cache scan、逐页内容验签、next chapter I/O；
-- [ ] 标准静态页同 page/generation 的内容打开和 full decode 各最多一次；动画/region page 只有一个 owner，所有额外 frame/region 操作有明确 purpose 且不存在并行第二条 full-decode 链；
-- [ ] Single/Dual/Webtoon、动画、超大图、裁边、滤镜、edge matching 没有功能回归；
-- [ ] 默认仅末五页 page-list-only；图片预取显式 opt-in 且首帧后低优先运行；
-- [ ] Test Mode 真实 production content 与第 11 节 deterministic/Windows 性能预算通过；
-- [ ] Android、Desktop、Test Mode、Spotless、final parity、Windows/macOS 正式构建证据完整；
-- [ ] 静态字符串/marker 不再作为 single acquisition、TTFF 或 production wiring 的完成证据；
-- [ ] parity manifest、fixed-main fixture、两份 Reader architecture 文档、历史有限 supersede 与父路线状态一致；
-- [ ] 不存在长期双 loader/双 renderer fallback、未说明的跳过项或未提交改动。
+- [x] 第 10 节 RUA-00～RUA-07 及其全部子批次完成，并各有与自身 scope 对应的提交/evidence；
+- [x] 原版 route、artifact、页列表、current+4、Retry、last-five 与生命周期由共享核心唯一拥有；
+- [x] Android/Desktop production 都消费这些共享语义，平台只保留列明的 adapter/presentation/decorator；
+- [x] Desktop 下载目录与下载 CBZ 离线打开，legacy/current/canonical artifact 无损兼容；
+- [x] 首帧前无 global cache scan、逐页内容验签、next chapter I/O；
+- [x] 标准静态页同 page/generation 的内容打开和 full decode 各最多一次；动画/region page 只有一个 owner，所有额外 frame/region 操作有明确 purpose 且不存在并行第二条 full-decode 链；
+- [x] Single/Dual/Webtoon、动画、超大图、裁边、滤镜、edge matching 没有功能回归；
+- [x] 默认仅末五页 page-list-only；图片预取显式 opt-in 且首帧后低优先运行；
+- [x] Test Mode 真实 production content 与第 11 节 deterministic/Windows 性能预算通过；
+- [x] Android、Desktop、Test Mode、Spotless、final parity、Windows/macOS 正式构建证据完整；
+- [x] 静态字符串/marker 不再作为 single acquisition、TTFF 或 production wiring 的完成证据；
+- [x] parity manifest、fixed-main fixture、两份 Reader architecture 文档、历史有限 supersede 与父路线状态一致；
+- [x] 不存在长期双 loader/双 renderer fallback、未说明的跳过项或未提交改动。
 
 完成时的用户验收报告必须列出实际操作路径、功能边界、自动化命令、性能结果、commit hash，并引用构建日志 `Final unpacked EXE:` 对应的可点击绝对产物路径。
