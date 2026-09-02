@@ -77,6 +77,7 @@ class MangaDetailScreenModel(
     private val isDownloaded: ((manga: Manga, chapter: Chapter) -> Boolean)? = null,
     private val deleteDownload: ((manga: Manga, chapter: Chapter) -> Unit)? = null,
     private val cancelDownload: ((chapterId: Long) -> Unit)? = null,
+    private val retryDownload: ((chapterId: Long) -> Unit)? = null,
     private val batchUpdateChapters: BatchUpdateChapters = BatchUpdateChapters(),
     private val updateLibraryMembership: UpdateLibraryMembership? = null,
     private val coverAdapter: MangaCoverAdapter? = null,
@@ -412,6 +413,10 @@ class MangaDetailScreenModel(
 
     fun cancelChapterDownload(chapterId: Long) {
         requireNotNull(cancelDownload) { "Cancel download callback is required" }(chapterId)
+    }
+
+    fun retryChapterDownload(chapterId: Long) {
+        requireNotNull(retryDownload) { "Retry download callback is required" }(chapterId)
     }
 
     fun isChapterDownloaded(manga: Manga, chapter: Chapter): Boolean {

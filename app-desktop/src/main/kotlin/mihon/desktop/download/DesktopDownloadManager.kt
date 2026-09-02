@@ -17,6 +17,7 @@ import mihon.domain.reader.partial.PartialCommittedPage
 import mihon.domain.reader.partial.PartialDownloadSnapshot
 import mihon.domain.reader.partial.PartialDownloadSnapshotLookup
 import mihon.domain.reader.partial.PartialPageTable
+import mihon.domain.reader.partial.PartialPageTableCompleteness
 import mihon.domain.reader.partial.PartialPageTableEntry
 import mihon.domain.reader.partial.PartialPageTablePolicy
 import mihon.domain.reader.partial.PartialPageTableValidation
@@ -103,6 +104,7 @@ class DesktopDownloadManager(
     private val partialArtifactLifecycleCoordinator: PartialDownloadArtifactLifecycleCoordinator =
         PartialDownloadArtifactLifecycleCoordinator(),
     private val chapterCleanupDiagnosticObserver: (ChapterCleanupDiagnostic) -> Unit = {},
+    private val queueEntryPersister: ((DownloadQueueEntry) -> Unit)? = null,
 ) : DownloadRepository, DesktopDownloadQueuePort, PartialDownloadSnapshotLookup {
     private data class DownloadAttempt(
         val item: DownloadItem,
@@ -194,21 +196,26 @@ class DesktopDownloadManager(
     val failures: StateFlow<Map<Long, AppError>> = _failures.asStateFlow()
     private val partialIndexRecoveryJob = workerScope.launch(start = CoroutineStart.LAZY) {
         recoveredItems.forEach { item ->
-            val identity = item.downloadIdentity ?: return@forEach
-            if (item.pageTable.entries.isEmpty()) return@forEach
-            if (
-                PartialPageTablePolicy.validate(item.pageTable) !in setOf(
-                    PartialPageTableValidation.COMPLETE,
-                    PartialPageTableValidation.PARTIAL,
-                    PartialPageTableValidation.LEGACY_UNPROVEN,
-                )
-            ) {
-                return@forEach
+            try {
+                if (item.pageTable.entries.isEmpty()) return@forEach
+                if (
+                    PartialPageTablePolicy.validate(item.pageTable) !in setOf(
+                        PartialPageTableValidation.COMPLETE,
+                        PartialPageTableValidation.PARTIAL,
+                        PartialPageTableValidation.LEGACY_UNPROVEN,
+                    )
+                ) {
+                    return@forEach
+                }
+                val generation = currentGenerations[item.chapterId] ?: return@forEach
+                val attempt = DownloadAttempt(item, generation)
+                val identity = item.downloadIdentity ?: downloadIdentityResolver(item) ?: return@forEach
+                if (item.downloadIdentity == null && !registerIdentity(attempt, identity)) return@forEach
+                val directory = firstExistingPartialDirectory(item, identity) ?: return@forEach
+                reconcilePartialIndex(attempt, item.pageTable, identity, directory)
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
             }
-            val generation = currentGenerations[item.chapterId] ?: return@forEach
-            val attempt = DownloadAttempt(item, generation)
-            val directory = firstExistingPartialDirectory(item.sourceId, identity) ?: return@forEach
-            reconcilePartialIndex(attempt, item.pageTable, identity, directory)
         }
     }
     internal val activeJobCount: Int
@@ -570,7 +577,7 @@ class DesktopDownloadManager(
      * 1. Create/reuse _tmp directory
      * 2. Download each page as {page}.tmp, then rename to {page}.{ext}
      * 3. On success, rename _tmp dir to final dir
-     * 4. On failure, _tmp dir remains (will be cleaned on cancel/retry)
+     * 4. On failure, _tmp remains for retry/restart reconciliation; explicit cancellation cleans it
      */
     private suspend fun downloadChapter(attempt: DownloadAttempt): Boolean {
         val item = attempt.item
@@ -610,7 +617,7 @@ class DesktopDownloadManager(
             // Use _tmp directory for in-progress download (Android pattern)
             val tmpDir = committedIndexes[attempt.key]?.directory
                 ?: downloadIdentity?.let { identity ->
-                    firstExistingPartialDirectory(item.sourceId, identity)
+                    firstExistingPartialDirectory(item, identity)
                         ?: provider.canonicalChapterTmpDir(identity)
                 }
                 ?: provider.chapterTmpDir(item.sourceId, item.mangaTitle, item.chapterName)
@@ -1025,7 +1032,8 @@ class DesktopDownloadManager(
         val existing = reconcileCompletions.putIfAbsent(attempt.key, completion)
         if (existing != null) {
             existing.await()
-            return
+            if (reconcileCompletions[attempt.key] === existing) return
+            return reconcilePartialIndex(attempt, pageTable, identity, directory)
         }
         try {
             val validation = PartialPageTablePolicy.validate(pageTable)
@@ -1089,8 +1097,9 @@ class DesktopDownloadManager(
                     ),
                 )
             }
+            val reconciledRecords = reconciledPages.valuesSnapshot()
             val registeredCandidates = mutableListOf<PartialReaderPageCandidate>()
-            for (record in reconciledPages.valuesSnapshot()) {
+            for (record in reconciledRecords) {
                 val candidate = record.toCandidate(attempt.generation)
                 if (!partialArtifactLifecycleCoordinator.registerCommittedPage(attempt.item.chapterId, candidate)) {
                     registeredCandidates.forEach { registered ->
@@ -1123,6 +1132,9 @@ class DesktopDownloadManager(
                     partialArtifactLifecycleCoordinator.unregisterCommittedPage(attempt.item.chapterId, candidate)
                 }
             }
+        } catch (error: Exception) {
+            reconcileCompletions.remove(attempt.key, completion)
+            throw error
         } finally {
             completion.complete(Unit)
         }
@@ -1164,12 +1176,17 @@ class DesktopDownloadManager(
     }
 
     private fun firstExistingPartialDirectory(
-        sourceId: Long,
+        item: DownloadItem,
         identity: DownloadChapterIdentity,
-    ): File? = provider.partialTmpDirectoryCandidates(sourceId, identity).firstOrNull { directory ->
-        emitIo(DownloadIoOperation.INDEX_DIRECTORY_PROBE)
-        partialIndexFileOperations.isDirectory(directory)
-    }
+    ): File? = (
+        provider.partialTmpDirectoryCandidates(item.sourceId, identity) +
+            provider.chapterTmpDir(item.sourceId, item.mangaTitle, item.chapterName)
+        )
+        .distinctBy { directory -> directory.absoluteFile.normalize().path }
+        .firstOrNull { directory ->
+            emitIo(DownloadIoOperation.INDEX_DIRECTORY_PROBE)
+            partialIndexFileOperations.isDirectory(directory)
+        }
 
     internal suspend fun awaitPartialIndexRecovery() {
         partialIndexRecoveryJob.join()
@@ -1217,6 +1234,7 @@ class DesktopDownloadManager(
         val index = committedIndexes[DownloadAttemptKey(chapterId, generation)]
             ?.takeIf { it.identity == identity }
             ?: return null
+        if (index.pageTable.completeness != PartialPageTableCompleteness.COMPLETE) return null
         val entry = index.pageEntriesByOrdinal[readerOrdinal]
             ?.takeIf { it.sourcePageIndex == sourcePageIndex }
             ?: return null
@@ -1391,14 +1409,17 @@ class DesktopDownloadManager(
         identity: DownloadChapterIdentity,
     ): Boolean = synchronized(queueStateLock) {
         if (!isCurrentAttemptLocked(attempt)) return@synchronized false
-        if (_queue.value.firstOrNull { it.chapterId == attempt.item.chapterId }?.downloadIdentity == identity) {
+        val currentQueue = _queue.value
+        val itemIndex = currentQueue.indexOfFirst { item -> item.chapterId == attempt.item.chapterId }
+        if (itemIndex < 0) return@synchronized false
+        if (currentQueue[itemIndex].downloadIdentity == identity) {
             resolvedDownloadIdentities[attempt.key] = identity
             return@synchronized true
         }
-        val nextQueue = _queue.value.map { item ->
-            if (item.chapterId == attempt.item.chapterId) item.copy(downloadIdentity = identity) else item
+        val nextQueue = currentQueue.toMutableList().apply {
+            this[itemIndex] = currentQueue[itemIndex].copy(downloadIdentity = identity)
         }
-        persistQueue(nextQueue)
+        persistIdentityEntry(nextQueue, itemIndex)
         resolvedDownloadIdentities[attempt.key] = identity
         _queue.value = nextQueue
         true
@@ -1466,6 +1487,15 @@ class DesktopDownloadManager(
     private fun persistQueue(items: List<DownloadItem> = _queue.value) {
         val entries = items.mapIndexed { index, item -> item.toEntry(index.toLong()) }
         queuePersister?.invoke(entries) ?: store?.replaceAll(entries)
+    }
+
+    private fun persistIdentityEntry(items: List<DownloadItem>, itemIndex: Int) {
+        val entry = items[itemIndex].toEntry(itemIndex.toLong())
+        when {
+            queueEntryPersister != null -> queueEntryPersister.invoke(entry)
+            queuePersister != null -> persistQueue(items)
+            else -> store?.upsert(entry)
+        }
     }
 
     private fun updateAttempt(

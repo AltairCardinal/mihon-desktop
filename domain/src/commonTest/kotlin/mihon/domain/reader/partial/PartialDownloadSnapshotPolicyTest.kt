@@ -108,6 +108,29 @@ class PartialDownloadSnapshotPolicyTest {
         assertNull(DisabledPartialDownloadSnapshotLookup.snapshot(7L, identity))
     }
 
+    @Test
+    fun `live lookup never exposes an unverified legacy artifact`() {
+        val identity = identity()
+        val legacy = PartialDownloadSnapshot(
+            chapterId = 8L,
+            identity = identity,
+            attemptGeneration = 12L,
+            queueStatus = DownloadQueueStatus.ERROR,
+            pageTable = PartialPageTable.legacy(listOf("https://img/legacy.jpg")),
+            committedPages = listOf(
+                PartialCommittedPage(
+                    readerOrdinal = 0,
+                    sourcePageIndex = 0,
+                    opaqueLocation = "opaque://partial/001.jpg",
+                    committedRevision = 6L,
+                ),
+            ),
+        )
+        val lookup = PartialDownloadSnapshotLookup { _, _ -> legacy }
+
+        assertNull(lookup.committedPageCandidate(8L, identity, readerOrdinal = 0, sourcePageIndex = 0))
+    }
+
     private fun identity() = DownloadChapterIdentity(
         sourceDisplayName = "Source",
         mangaTitle = "Manga",

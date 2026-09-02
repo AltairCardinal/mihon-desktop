@@ -26,6 +26,8 @@ import mihon.desktop.download.DownloadStatus
 import mihon.desktop.download.PartialDownloadArtifactLifecycleCoordinator
 import mihon.desktop.download.PartialPageReadLeaseSource
 import mihon.domain.reader.content.DownloadChapterIdentity
+import mihon.domain.reader.partial.PartialPageTable
+import mihon.domain.reader.partial.PartialPageTableEntry
 import mihon.domain.reader.partial.PartialReaderPageCandidate
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -774,14 +776,27 @@ class DesktopReaderPartialRaceIntegrationTest {
         disallowNonAsciiFilenames = false,
     )
 
-    private fun item(identity: DownloadChapterIdentity, chapterId: Long) = DownloadItem(
-        sourceId = 42L,
-        mangaTitle = identity.mangaTitle,
-        chapterName = identity.chapterName,
-        chapterId = chapterId,
-        chapterUrl = identity.chapterUrl,
-        pageUrls = listOf("https://fixture.invalid/001.jpg"),
-    )
+    private fun item(identity: DownloadChapterIdentity, chapterId: Long): DownloadItem {
+        val pageUrl = "https://fixture.invalid/001.jpg"
+        return DownloadItem(
+            sourceId = 42L,
+            mangaTitle = identity.mangaTitle,
+            chapterName = identity.chapterName,
+            chapterId = chapterId,
+            chapterUrl = identity.chapterUrl,
+            pageUrls = listOf(pageUrl),
+            pageTable = PartialPageTable.complete(
+                listOf(
+                    PartialPageTableEntry(
+                        readerOrdinal = 0,
+                        sourcePageIndex = 0,
+                        pageUrl = pageUrl,
+                        imageUrl = pageUrl,
+                    ),
+                ),
+            ),
+        )
+    }
 
     private fun candidate(file: File, generation: Long, revision: Long) = PartialReaderPageCandidate(
         attemptGeneration = generation,

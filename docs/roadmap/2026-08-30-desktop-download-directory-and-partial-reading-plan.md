@@ -996,3 +996,69 @@ P95 与置信区间：
 - [ ] 恢复网络 → 缺失页加载；已完成页不产生图片网络请求；
 - [ ] 下载在阅读期间完成并打包 CBZ → 后续页面继续从本地读取，不白屏、不重复整章联网；
 - [ ] 打开一个完整下载章节、一个普通在线章节和一个本地章节 → 首帧、翻页、Retry、退出行为无回归。
+
+## 11. 2026-09-03 实机 legacy ERROR 回归增补
+
+### 11.1 现场结论
+
+本机复现条目不是仍在正常下载，而是数据库中的 `ERROR`：进度 `90/92`、重试次数 3、旧版 `page_urls` 数组仍有
+92 项，但没有 `downloadIdentity`。对应 `_tmp` 目录已有 90 张通过图片头校验的正式编号文件，没有新版 metadata；同日
+Reader encoded cache 又出现了该章网络页，证明用户看到的等待不是纯 UI 错觉，而是 Reader 没有获得这 90 张本地页。
+
+代码审计确认四个直接原因：
+
+1. 启动恢复对 `downloadIdentity == null` 直接跳过，旧版 ERROR 条目无法建立 committed-page index；
+2. Reader 打开时若第一次 snapshot 为 `null`，在网络页表返回后不会复查，因此即使恢复并发完成，本次会话仍全部联网；
+3. legacy metadata 的磁盘页号是 ordinal，而 Source 返回的 `Page.index` 可以不连续；若二者共用一个字段，精确合并后
+   lifecycle lease 无法匹配，最终静默退回图片网络；
+4. 漫画详情把除 `DOWNLOADING` 外的队列条目统一显示为等待态，导致 ERROR 仍呈现为下载进度圈且没有直接重试入口。
+
+### 11.2 修复边界与性能约束
+
+- 启动恢复通过现有 domain authorities 重建缺失 identity，并同时探测“新 identity 的有限别名”和“队列原始名称对应的
+  历史 `_tmp`”；不扫描下载树，不猜测相邻目录。
+- legacy 表始终保持 `LEGACY_UNPROVEN`。Reader 仍只允许一次 `getPageList()`，且必须逐项满足总数、ordinal、URL 与
+  source index 唯一性后才叠加本地页；不能因为磁盘上有一张有效图片就升级为 `COMPLETE`。
+- `PartialReaderPageCandidate` 分离 Reader 使用的真实 `sourcePageIndex` 与 lifecycle 使用的
+  `artifactSourcePageIndex`。页 ID、进度、缓存键及网络 fallback 继续使用真实源页号；磁盘 lease 只用 artifact 页号。
+- Source 页表返回后固定做一次 O(1) snapshot lookup，覆盖“打开时恢复尚未发布”的竞态；不等待恢复、不增加第二次
+  source call，也不在每页热路径扫描目录或遍历页表。
+- reconcile 的异常不会留下成功 completion；同 generation 的 worker 可接管并重新扫描。单个恢复条目失败不会饿死
+  后续条目，取消仍立即终止整个恢复协程。
+- identity 采用单行 `upsert` 的 persist-first 顺序，成功落盘后才更新内存/index；N 个旧条目不再触发 N 次整队
+  `replaceAll`。下载并发、网络请求数、Reader scheduler 和图片解码链均不改变。
+- ERROR 行显示错误色 Retry 图标；点击只执行同章 retry，保留已提交 `_tmp` 页。显式 Cancel 仍负责清理 `_tmp`。
+
+### 11.3 按测试颗粒度拆分的回归任务
+
+| ID | 先行失败或门禁 | 最小实现 | 完成证据 |
+| --- | --- | --- | --- |
+| `FIELD-01A` | 读取真实 DB、队列行、默认下载根、90 个文件签名及 Reader cache；不得修改用户数据 | 固化上述事实与安全边界 | 实机证据已确认 |
+| `FIELD-01B` | null identity 的 legacy ERROR 恢复前 snapshot 必须为 null；章节改名、首条恢复失败、reconcile owner 失败/worker 等待分别建 deterministic RED | 重建 identity、有限旧路径 fallback、逐项异常隔离、失败 completion 释放 | `DesktopDownloadRecoveryIntegrationTest` |
+| `FIELD-01C` | 初始 snapshot null→source call 中恢复、legacy 非连续 `Page.index` 的真实本地 materialize、legacy live lookup 三条 RED | post-source O(1) recheck、双索引 candidate、仅 COMPLETE live lookup | `PartialDownloadSnapshotPolicyTest`、`PartialReaderPageListPolicyTest`、`DesktopReaderPartialPageListIntegrationTest` |
+| `FIELD-01D` | ERROR 映射、Retry semantics、真实 Screen 透传 chapterId、Factory→Manager 各自必须能在 wiring 损坏时失败 | 独立 ERROR 状态与 Retry callback | `MangaDetailChapterListItemsTest`、`MangaDetailLibraryEntryWiringTest`、`MangaDetailScreenModelTest`、`DesktopDiWiringTest` |
+| `FIELD-01E` | 多个 null identity 禁止调用整队 persister；首条单行 upsert 失败不得阻断后条；取消首个 resolver 后不得访问 sibling | production 使用现有 `PersistentDownloadStore.upsert`，保留测试 seam | `DesktopDownloadRecoveryIntegrationTest` |
+| `FIELD-01F` | focused、完整 Desktop、Spotless、正式构建和 production runtime 任一失败均不得交付 | 只修本增补链路，独立修复复审后提交 | focused 175 项及修复 focused 47 项已通过；完整收口见下方记录 |
+
+有效 RED 日志包括 `partial-ui-error-red`、`partial-review-red-behavior`、`partial-legacy-index-red`、
+`partial-review-safety-red`、`partial-review-desktop-red`、`partial-reconcile-worker-red` 与
+`partial-recovery-upsert-red`。第一轮集中 GREEN 为 11 个测试类、175 项测试、0 failure/error；P2/P3 修复后的恢复与
+Manager GREEN 为 47 项、0 failure/error。独立审查首先发现 identity 恢复逐项 `replaceAll` 的 O(N²) 持久化风险及取消
+覆盖缺口；改为现有 store 的单行 `upsert` 并补齐 mutation-sensitive 取消测试后，修复复审结论为 P0～P3 均无遗留。
+
+最终 Desktop 收口第一次执行 2,850 项测试，暴露 7 个生命周期竞态测试仍使用 `LEGACY_UNPROVEN` 夹具，以及 1 个
+parity 行号锚点被本次新增代码推移；其余测试与 production 行为均通过。竞态夹具改为显式 `COMPLETE` 页表后整类
+14/14 通过；一次性扫描并修正本次改动涉及的 current-role 行号后，parity 契约整类 34/34 通过。两项修正只涉及测试
+夹具和 manifest，production diff 未再变化，因此与首次完整运行合并构成等价完整 Desktop 证据。根级
+`spotlessCheck` 通过。
+
+正式 `build-desktop.sh build-only` 构建及 production extension runtime 验收通过，版本为
+`0.11.19.22.a6ea0dc`；脚本验证 `eu.kanade.tachiyomi.extension.zh.manhuagui` 可解析，并发布
+`D:\Shell\Github\mihon\app-desktop\artifacts\windows\Mihon-Desktop-0.11.19.22.a6ea0dc-unpacked\Mihon Desktop.exe`。
+交付 ZIP 为 `Mihon-Desktop-0.11.19.22.a6ea0dc-windows.zip`，SHA-256
+`5817fe866865971e0f457d06d4491a45d2a3aae9c7810f9c7713d22f83009e63`。提交 hash 在本节提交后由交付报告记录。
+
+本增补共涉及 21 个文件、增加 806 行并删除 64 行：10 个 production 行为文件组成“旧队列恢复 → 页表证明 →
+Reader materialize → ERROR 重试”的单一端到端链路，8 个测试文件覆盖对应契约，另有版本文件、parity manifest 与本文。
+虽然超过 scope 提示阈值，但若按文件拆分会产生无法独立编译或没有真实 wiring 的中间批次；主要风险集中在 legacy 页号
+错配、generation 竞态和恢复持久化复杂度，已分别由非连续 source index、确定性交错及禁止整队 persister 的测试门禁覆盖。

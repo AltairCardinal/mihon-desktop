@@ -33,6 +33,7 @@ internal fun LazyListScope.mangaDetailChapterListItems(
     onDownloadChapter: (Chapter) -> Unit,
     onDeleteDownload: (Chapter) -> Unit,
     onCancelDownload: (Long) -> Unit,
+    onRetryDownload: (Long) -> Unit,
     onToggleBookmark: (Chapter) -> Unit,
     onReadChapter: (Chapter) -> Unit,
 ) {
@@ -65,14 +66,10 @@ internal fun LazyListScope.mangaDetailChapterListItems(
             is MangaDetailChapterListRow.ChapterRow -> {
                 val chapter = row.chapter
                 val queuedItem = downloadQueue.find { it.chapterId == chapter.id }
-                val downloadStatus = when {
-                    queuedItem != null -> when (queuedItem.status) {
-                        DownloadStatus.DOWNLOADING -> ChapterDownloadStatus.DOWNLOADING
-                        else -> ChapterDownloadStatus.QUEUED
-                    }
-                    manga != null && isChapterDownloaded(manga, chapter) -> ChapterDownloadStatus.DOWNLOADED
-                    else -> ChapterDownloadStatus.NOT_DOWNLOADED
-                }
+                val downloadStatus = chapterDownloadStatus(
+                    queuedItem = queuedItem,
+                    isDownloaded = manga != null && isChapterDownloaded(manga, chapter),
+                )
                 val downloadProgress = downloadProgressFraction(
                     progress = queuedItem?.progress ?: 0,
                     totalPages = queuedItem?.pageUrls?.size ?: 0,
@@ -87,12 +84,26 @@ internal fun LazyListScope.mangaDetailChapterListItems(
                     onDownload = { onDownloadChapter(chapter) },
                     onDeleteDownload = { onDeleteDownload(chapter) },
                     onCancelDownload = { onCancelDownload(chapter.id) },
+                    onRetryDownload = { onRetryDownload(chapter.id) },
                     onToggleBookmark = { onToggleBookmark(chapter) },
                     onRead = { onReadChapter(chapter) },
                 )
             }
         }
     }
+}
+
+internal fun chapterDownloadStatus(
+    queuedItem: DownloadItem?,
+    isDownloaded: Boolean,
+): ChapterDownloadStatus = when (queuedItem?.status) {
+    DownloadStatus.QUEUED -> ChapterDownloadStatus.QUEUED
+    DownloadStatus.DOWNLOADING -> ChapterDownloadStatus.DOWNLOADING
+    DownloadStatus.ERROR -> ChapterDownloadStatus.ERROR
+    DownloadStatus.DONE -> ChapterDownloadStatus.DOWNLOADED
+    DownloadStatus.CANCELLED,
+    null,
+    -> if (isDownloaded) ChapterDownloadStatus.DOWNLOADED else ChapterDownloadStatus.NOT_DOWNLOADED
 }
 
 @Composable

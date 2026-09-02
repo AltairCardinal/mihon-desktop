@@ -159,6 +159,7 @@ fun interface PartialDownloadSnapshotLookup {
         val snapshot = snapshot(chapterId, identity)
             ?.takeIf { it.chapterId == chapterId && it.identity == identity }
             ?: return null
+        if (!PartialPageTablePolicy.canBuildReaderPageList(snapshot.pageTable)) return null
         val entry = snapshot.pageTable.entries.singleOrNull { it.readerOrdinal == readerOrdinal }
             ?.takeIf { it.sourcePageIndex == sourcePageIndex }
             ?: return null

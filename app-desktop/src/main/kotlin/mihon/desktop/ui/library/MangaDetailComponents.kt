@@ -549,7 +549,7 @@ internal fun MangaDetailActionRow(
     }
 }
 
-internal enum class ChapterDownloadStatus { NOT_DOWNLOADED, QUEUED, DOWNLOADING, DOWNLOADED }
+internal enum class ChapterDownloadStatus { NOT_DOWNLOADED, QUEUED, DOWNLOADING, ERROR, DOWNLOADED }
 
 @Composable
 internal fun ChapterRow(
@@ -562,6 +562,7 @@ internal fun ChapterRow(
     onDownload: () -> Unit,
     onDeleteDownload: () -> Unit,
     onCancelDownload: () -> Unit,
+    onRetryDownload: () -> Unit,
     onToggleBookmark: () -> Unit,
     onRead: () -> Unit,
 ) {
@@ -624,6 +625,14 @@ internal fun ChapterRow(
                             downloadProgress = downloadProgress,
                             onCancel = onCancelDownload,
                         )
+                    ChapterDownloadStatus.ERROR ->
+                        IconButton(onClick = onRetryDownload) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = MR.strings.desktop_ui_download_retry_error.localized(),
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     ChapterDownloadStatus.NOT_DOWNLOADED ->
                         IconButton(onClick = onDownload) {
                             Icon(Icons.Default.CloudDownload, contentDescription = MR.strings.action_download.localized())

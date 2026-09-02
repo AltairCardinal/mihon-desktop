@@ -771,6 +771,19 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
+    fun `retryChapterDownload delegates the failed chapter id`() {
+        var retriedChapterId: Long? = null
+        val model = MangaDetailScreenModel(
+            mangaId = 1L,
+            retryDownload = { chapterId -> retriedChapterId = chapterId },
+        )
+
+        model.retryChapterDownload(91L)
+
+        assertEquals(91L, retriedChapterId)
+    }
+
+    @Test
     fun `readerRequest uses source order and last page`() {
         val model = MangaDetailScreenModel(mangaId = 1L)
         val manga = createFakeManga(id = 1L, title = "M").copy(source = 9L, viewerFlags = 7L)

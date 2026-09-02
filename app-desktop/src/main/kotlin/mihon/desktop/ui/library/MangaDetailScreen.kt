@@ -1034,6 +1034,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         },
                         onDeleteDownload = model::setDeleteConfirmChapter,
                         onCancelDownload = model::cancelChapterDownload,
+                        onRetryDownload = model::retryChapterDownload,
                         onToggleBookmark = { chapter ->
                             scope.launch {
                                 model.toggleChapterBookmark(chapter)

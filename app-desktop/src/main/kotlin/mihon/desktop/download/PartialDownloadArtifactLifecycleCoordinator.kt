@@ -71,7 +71,7 @@ class PartialDownloadArtifactLifecycleCoordinator : PartialPageReadLeaseSource {
     private data class CandidateKey(
         val attemptGeneration: Long,
         val readerOrdinal: Int,
-        val sourcePageIndex: Int,
+        val artifactSourcePageIndex: Int,
         val committedRevision: Long,
         val originalLocation: String,
     )
@@ -117,6 +117,7 @@ class PartialDownloadArtifactLifecycleCoordinator : PartialPageReadLeaseSource {
         chapterId: Long,
         candidate: PartialReaderPageCandidate,
     ): Boolean = synchronized(lock) {
+        if (candidate.artifactSourcePageIndex < 0) return@synchronized false
         val attemptKey = AttemptKey(chapterId, candidate.attemptGeneration)
         val attempt = attempts.getOrPut(attemptKey) { AttemptState(attemptKey) }
         if (attempt.status != AttemptStatus.ACTIVE) return@synchronized false
@@ -365,7 +366,7 @@ class PartialDownloadArtifactLifecycleCoordinator : PartialPageReadLeaseSource {
     private fun PartialReaderPageCandidate.key() = CandidateKey(
         attemptGeneration = attemptGeneration,
         readerOrdinal = readerOrdinal,
-        sourcePageIndex = sourcePageIndex,
+        artifactSourcePageIndex = artifactSourcePageIndex,
         committedRevision = committedRevision,
         originalLocation = File(opaqueLocation).absolutePath,
     )

@@ -6,6 +6,7 @@ data class PartialReaderPageCandidate(
     val sourcePageIndex: Int,
     val opaqueLocation: String,
     val committedRevision: Long,
+    val artifactSourcePageIndex: Int = sourcePageIndex,
 )
 
 data class PartialReaderOnlinePage(
@@ -222,7 +223,11 @@ object PartialReaderPageListPolicy {
                 val entry = entryByOrdinal[committed.readerOrdinal] ?: return@mapNotNull null
                 val online = onlineByOrdinal[committed.readerOrdinal] ?: return@mapNotNull null
                 committed.takeIf { it.sourcePageIndex == entry.sourcePageIndex }
-                    ?.toCandidate(snapshot.attemptGeneration, online.sourcePageIndex)
+                    ?.toCandidate(
+                        attemptGeneration = snapshot.attemptGeneration,
+                        provenSourcePageIndex = online.sourcePageIndex,
+                        artifactSourcePageIndex = entry.sourcePageIndex,
+                    )
             }
             .associateBy(PartialReaderPageCandidate::readerOrdinal)
     }
@@ -242,12 +247,14 @@ object PartialReaderPageListPolicy {
     private fun PartialCommittedPage.toCandidate(
         attemptGeneration: Long,
         provenSourcePageIndex: Int,
+        artifactSourcePageIndex: Int = provenSourcePageIndex,
     ) = PartialReaderPageCandidate(
         attemptGeneration = attemptGeneration,
         readerOrdinal = readerOrdinal,
         sourcePageIndex = provenSourcePageIndex,
         opaqueLocation = opaqueLocation,
         committedRevision = committedRevision,
+        artifactSourcePageIndex = artifactSourcePageIndex,
     )
 
     private fun fallbackPages(onlinePages: List<PartialReaderOnlinePage>) = PartialReaderPageList(

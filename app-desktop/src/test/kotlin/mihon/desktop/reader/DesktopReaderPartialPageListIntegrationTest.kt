@@ -1,5 +1,6 @@
 package mihon.desktop.reader
 
+import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -15,18 +16,31 @@ import java.util.zip.ZipOutputStream
 import javax.imageio.ImageIO
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.download.PartialDownloadArtifactLifecycleCoordinator
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.domain.download.DownloadQueueStatus
 import mihon.domain.reader.content.DownloadChapterIdentity
+import mihon.domain.reader.materialize.CanonicalReaderMaterializeExecutor
 import mihon.domain.reader.materialize.ReaderChapterContentRequest
+import mihon.domain.reader.materialize.ReaderPageFetchRequest
+import mihon.domain.reader.materialize.ReaderPageMaterializeResult
 import mihon.domain.reader.partial.DisabledPartialDownloadSnapshotLookup
 import mihon.domain.reader.partial.PartialCommittedPage
 import mihon.domain.reader.partial.PartialDownloadSnapshot
 import mihon.domain.reader.partial.PartialDownloadSnapshotLookup
 import mihon.domain.reader.partial.PartialPageTable
 import mihon.domain.reader.partial.PartialPageTableEntry
+import mihon.domain.reader.partial.PartialReaderPageCandidate
 import mihon.domain.reader.session.ReaderChapterId
+import mihon.domain.reader.session.ReaderEncodedPageProvenance
+import mihon.domain.reader.session.ReaderPageId
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
+import okhttp3.OkHttpClient
+import okio.Buffer
+import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -116,6 +130,97 @@ class DesktopReaderPartialPageListIntegrationTest {
         assertEquals(1, mismatchSource.pageListCalls)
         assertEquals(listOf(0, 1, 2), mismatchPages.map { it.sourcePageIndex })
         assertTrue(mismatchPages.all { it.partialPageCandidate == null })
+    }
+
+    @Test
+    fun `verified legacy non sequential source index materializes the committed file without an image request`() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse.Builder().body(Buffer().write(pngBytes(Color.BLUE))).build())
+            val localBytes = pngBytes(Color.RED)
+            val localFile = tempDir.resolve("legacy-non-sequential/001.png").also { file ->
+                file.parentFile.mkdirs()
+                file.writeBytes(localBytes)
+            }
+            val chapterId = 18L
+            val imageUrl = server.url("/must-not-load.png").toString()
+            val snapshot = PartialDownloadSnapshot(
+                chapterId = chapterId,
+                identity = identity(chapterId),
+                attemptGeneration = 3L,
+                queueStatus = DownloadQueueStatus.ERROR,
+                pageTable = PartialPageTable.legacy(listOf(imageUrl)),
+                committedPages = listOf(PartialCommittedPage(0, 0, localFile.absolutePath, 5L)),
+            )
+            val lifecycle = PartialDownloadArtifactLifecycleCoordinator().apply {
+                assertTrue(
+                    registerCommittedPage(
+                        chapterId,
+                        PartialReaderPageCandidate(3L, 0, 0, localFile.absolutePath, 5L),
+                    ),
+                )
+            }
+            val lookup = RecordingSnapshotLookup(listOf(snapshot, snapshot, snapshot))
+            val source = RecordingPageSource(listOf(Page(41, url = imageUrl, imageUrl = imageUrl)))
+            val sourceManager = FakeDesktopSourceManager(listOf(source))
+            val descriptor = contentPort(context(chapterId), source, lookup)
+                .loadChapterContent(ReaderChapterContentRequest(ReaderChapterId(chapterId), generation = 1L))
+                .single()
+            val store = DesktopReaderEncodedPageStore(tempDir.resolve("legacy-non-sequential-cache"), maxBytes = 1_000_000L)
+            store.beginSession(emptySet())
+
+            val result = CanonicalReaderMaterializeExecutor.materializePage(
+                request = ReaderPageFetchRequest(
+                    pageId = ReaderPageId(ReaderChapterId(chapterId), descriptor.sourcePageIndex),
+                    generation = 1L,
+                    url = descriptor.url,
+                    imageUrl = descriptor.imageUrl,
+                ),
+                port = DesktopReaderPageFetchPort(
+                    context = context(chapterId),
+                    descriptor = descriptor,
+                    sourceManager = sourceManager,
+                    networkHelper = NetworkHelper(OkHttpClient()),
+                    encodedPageStore = store,
+                    partialDownloadSnapshotLookup = lookup,
+                    partialPageCopyPort = DesktopReaderPartialPageFileCopyPort(lifecycle),
+                ),
+                publish = { true },
+            )
+
+            val ready = assertInstanceOf(ReaderPageMaterializeResult.Ready::class.java, result)
+            assertInstanceOf(ReaderEncodedPageProvenance.Partial::class.java, ready.encodedPageProvenance)
+            assertEquals(41, descriptor.sourcePageIndex)
+            assertArrayEquals(localBytes, store.read(ready.encodedPageRef))
+            assertEquals(1, source.pageListCalls)
+            assertEquals(0, server.requestCount)
+        }
+    }
+
+    @Test
+    fun `legacy recovery that appears during the source call is merged before descriptors return`() = runTest {
+        val chapterId = 19L
+        val imageUrl = "https://img/recovered-during-page-list.jpg"
+        val recovered = PartialDownloadSnapshot(
+            chapterId = chapterId,
+            identity = identity(chapterId),
+            attemptGeneration = 4L,
+            queueStatus = DownloadQueueStatus.ERROR,
+            pageTable = PartialPageTable.legacy(listOf(imageUrl)),
+            committedPages = listOf(PartialCommittedPage(0, 0, "opaque://partial/001.jpg", 7L)),
+        )
+        val lookup = RecordingSnapshotLookup(listOf(null, recovered))
+        val source = RecordingPageSource(listOf(Page(37, url = imageUrl, imageUrl = imageUrl)))
+
+        val descriptor = contentPort(context(chapterId), source, lookup)
+            .loadChapterContent(ReaderChapterContentRequest(ReaderChapterId(chapterId), generation = 1L))
+            .single()
+
+        assertEquals(2, lookup.calls)
+        assertEquals(1, source.pageListCalls)
+        assertEquals(37, descriptor.sourcePageIndex)
+        assertEquals(37, descriptor.partialPageCandidate?.sourcePageIndex)
+        assertEquals(0, descriptor.partialPageCandidate?.readerOrdinal)
     }
 
     @Test

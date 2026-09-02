@@ -69,6 +69,9 @@ object MangaDetailScreenModelFactory {
             cancelDownload = downloadManager?.let { manager ->
                 { chapterId -> manager.cancel(chapterId) }
             },
+            retryDownload = downloadManager?.let { manager ->
+                { chapterId -> manager.retryItem(chapterId) }
+            },
             updateLibraryMembership = Injekt.get<UpdateLibraryMembership>(),
             coverAdapter = MangaCoverAdapter(DesktopCoverFilePicker(), coverUpdater::invoke),
             deleteCover = coverUpdater::delete,

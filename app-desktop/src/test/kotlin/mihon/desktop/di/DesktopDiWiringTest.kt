@@ -225,6 +225,21 @@ class DesktopDiWiringTest {
                 factory.configuredPartialDownloadSnapshotLookup,
             )
             assertSame(manager.partialPageReadLeaseSource, factory.configuredPartialPageReadLeaseSource)
+
+            manager.enqueue(
+                DownloadItem(
+                    sourceId = 42L,
+                    mangaTitle = "Retry Manga",
+                    chapterName = "Retry Chapter",
+                    chapterId = 9_001L,
+                    status = DownloadStatus.ERROR,
+                ),
+            )
+            assertEquals(DownloadStatus.ERROR, manager.queue.value.single { it.chapterId == 9_001L }.status)
+
+            MangaDetailScreenModelFactory.create(1L).retryChapterDownload(9_001L)
+
+            assertEquals(DownloadStatus.QUEUED, manager.queue.value.single { it.chapterId == 9_001L }.status)
         } finally {
             context.closeAndJoin()
         }

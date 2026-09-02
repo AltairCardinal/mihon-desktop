@@ -11374,7 +11374,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
           "symbol": "suspend fun toggleLibrary",
-          "line": 275
+          "line": 276
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
@@ -11583,7 +11583,7 @@
                       "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
                       "symbol": "MangaDetailScreenModel.toggleLibrary",
                       "locator": "favorite = !manga.favorite,",
-                      "line": 275,
+                      "line": 276,
                       "contextHash": "b0b301535e66353ac947cbae61791a9a93b92f482155415c5c05ff085d2d7ffd",
                       "reason": "Manual review selected this concrete Desktop production line for manga.add-library roles EFFECT, PERSISTENCE."
                     },
@@ -12298,7 +12298,7 @@
                       "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
                       "symbol": "MangaDetailScreenModel.toggleLibrary",
                       "locator": "favorite = !manga.favorite,",
-                      "line": 275,
+                      "line": 276,
                       "contextHash": "b0b301535e66353ac947cbae61791a9a93b92f482155415c5c05ff085d2d7ffd",
                       "reason": "Manual review selected this concrete Desktop production line for manga.remove-library roles EFFECT, PERSISTENCE."
                     },
@@ -20376,7 +20376,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
           "symbol": "suspend fun markSelectedBookmark",
-          "line": 254
+          "line": 255
         }
       ],
       "FIXTURE": [
@@ -29481,7 +29481,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderMaterializePorts.kt",
           "symbol": "class DesktopReaderPageFetchPort",
-          "line": 181
+          "line": 176
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt",
@@ -32692,17 +32692,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "stateMachine.schedule(",
-          "line": 532
+          "line": 539
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "val wait = stateMachine.retryDelayMillis(retryAttempt++) ?: break",
-          "line": 944
+          "line": 951
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "val wait = stateMachine.retryDelayMillis(publishAttempt++) ?: break",
-          "line": 703
+          "line": 710
         }
       ],
       "FIXTURE": [

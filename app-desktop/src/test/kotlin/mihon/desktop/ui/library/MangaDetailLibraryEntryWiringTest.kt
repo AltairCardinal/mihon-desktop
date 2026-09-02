@@ -27,6 +27,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.download.DownloadItem
+import mihon.desktop.download.DownloadStatus
 import mihon.desktop.domain.GetAvailableScanlators
 import mihon.desktop.domain.GetExcludedScanlators
 import mihon.desktop.domain.SaveSourceMangaForDetails
@@ -43,6 +45,7 @@ import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.creator.model.CreatorIdentityOption
 import tachiyomi.domain.creator.model.CreatorPortableKey
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
@@ -57,6 +60,87 @@ import tachiyomi.i18n.MR
 
 @OptIn(ExperimentalComposeUiApi::class)
 class MangaDetailLibraryEntryWiringTest {
+
+    @Test
+    fun `real MangaDetailScreen retry action forwards the failed chapter id`() = runBlocking {
+        val mangaRepository = FakeMangaRepository()
+        val manga = Manga.create().copy(
+            id = 47L,
+            source = 42L,
+            url = "/retry-manga",
+            title = "Retry screen fixture",
+            initialized = true,
+        )
+        mangaRepository.seed(manga)
+        val chapterRepository = FakeChapterRepository()
+        val chapter = Chapter.create().copy(
+            id = 4_701L,
+            mangaId = manga.id,
+            url = "/retry-manga/chapter-1",
+            name = "Retryable chapter",
+        )
+        chapterRepository.seed(chapter)
+        var retriedChapterId: Long? = null
+        val model = MangaDetailScreenModel(
+            mangaId = manga.id,
+            getMangaWithChapters = GetMangaWithChapters(mangaRepository, chapterRepository),
+            sourceManager = EmptySourceManager,
+            getAvailableScanlators = GetAvailableScanlators(chapterRepository),
+            getExcludedScanlators = mockk {
+                every { subscribe(manga.id) } returns flowOf(emptySet())
+            },
+            getCategories = GetCategories(FakeCategoryRepository()),
+            downloadQueue = MutableStateFlow(
+                listOf(
+                    DownloadItem(
+                        sourceId = manga.source,
+                        mangaTitle = manga.title,
+                        chapterName = chapter.name,
+                        chapterId = chapter.id,
+                        status = DownloadStatus.ERROR,
+                        progress = 90,
+                        pageUrls = List(92) { index -> "https://fixture.invalid/$index.jpg" },
+                    ),
+                ),
+            ),
+            retryDownload = { chapterId -> retriedChapterId = chapterId },
+        )
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { appPreferences } returns DesktopAppPreferences(DesktopPreferenceStore())
+            every { saveSourceMangaForDetails } returns SaveSourceMangaForDetails(
+                NetworkToLocalManga(mangaRepository),
+                mangaRepository,
+                chapterRepository,
+            )
+        }
+        val scene = ImageComposeScene(1_200, 1_200, coroutineContext = coroutineContext) {}
+
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ProvideMangaDetailScreenModelFactory(factory = { model }) {
+                        MaterialTheme {
+                            Navigator(MangaDetailScreen(manga.id)) { CurrentScreen() }
+                        }
+                    }
+                }
+            }
+            val retryDescription = MR.strings.desktop_ui_download_retry_error.localized()
+            renderUntil(scene) {
+                nodes(scene).any { node ->
+                    node.config.contains(SemanticsActions.OnClick) && node.hasContentDescription(retryDescription)
+                }
+            }
+
+            val retryNode = nodes(scene).single { node ->
+                node.config.contains(SemanticsActions.OnClick) && node.hasContentDescription(retryDescription)
+            }
+            assertTrue(requireNotNull(retryNode.config[SemanticsActions.OnClick].action).invoke())
+            assertEquals(chapter.id, retriedChapterId)
+        } finally {
+            scene.close()
+        }
+    }
 
     @Test
     fun `real MangaDetailScreen automatically refreshes an initially empty chapter list`() = runBlocking {
@@ -397,6 +481,10 @@ class MangaDetailLibraryEntryWiringTest {
         }
         return values.any { it.text == text }
     }
+
+    private fun SemanticsNode.hasContentDescription(description: String): Boolean =
+        config.contains(SemanticsProperties.ContentDescription) &&
+            description in config[SemanticsProperties.ContentDescription]
 
     private fun nodes(scene: ImageComposeScene) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
 

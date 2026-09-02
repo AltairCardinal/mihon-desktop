@@ -11,12 +11,19 @@ import mihon.domain.reader.content.DownloadChapterIdentity
 import mihon.domain.reader.partial.PartialPageTable
 import mihon.domain.reader.partial.PartialPageTableCompleteness
 import mihon.domain.reader.partial.PartialPageTableEntry
+import mihon.domain.reader.partial.PartialReaderOnlinePage
+import mihon.domain.reader.partial.PartialReaderPageListEvaluation
+import mihon.domain.reader.partial.PartialReaderPageListFallbackReason
+import mihon.domain.reader.partial.PartialReaderPageListOrigin
+import mihon.domain.reader.partial.PartialReaderPageListPolicy
 import okhttp3.OkHttpClient
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
@@ -27,6 +34,7 @@ import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import tachiyomi.data.Database
@@ -35,6 +43,7 @@ import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.data.download.PersistentDownloadStore
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
@@ -179,6 +188,277 @@ class DesktopDownloadRecoveryIntegrationTest {
 
         (manager.queue.value.single().failure is AppError.Storage) shouldBe true
         (manager.failures.value[1] is AppError.Storage) shouldBe true
+    }
+
+    @Test
+    fun `legacy error recovery and retry reuse the stored path after chapter identity changes`(): Unit = runBlocking {
+        val dbFile = File(directory, "legacy-error-partial.db")
+        val store = persistentStore(dbFile)
+        val legacyUrls = listOf("https://fixture.invalid/001.jpg", "https://fixture.invalid/002.jpg")
+        store.replaceAll(
+            listOf(
+                entry(DownloadQueueStatus.ERROR, 1).copy(
+                    pageUrls = legacyUrls,
+                    pageTable = PartialPageTable.legacy(legacyUrls),
+                    downloadIdentity = null,
+                ),
+            ),
+        )
+        updateRawPageUrls(dbFile, 1L, """["https://fixture.invalid/001.jpg","https://fixture.invalid/002.jpg"]""")
+        val identity = identity().copy(chapterName = "Renamed Chapter", chapterUrl = "/renamed-chapter")
+        val provider = DesktopDownloadProvider(File(directory, "legacy-error-partial-downloads"))
+        provider.chapterTmpDir(3L, "Manga", "Chapter").apply {
+            mkdirs()
+            resolve("001.gif").writeText(GIF)
+        }
+        val identityResolverCalls = AtomicInteger()
+        val executedUrls = CopyOnWriteArrayList<String>()
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            store = store,
+            httpClient = OkHttpClient(),
+            workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            retryDelay = {},
+            downloadIdentityResolver = {
+                identityResolverCalls.incrementAndGet()
+                identity
+            },
+            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun execute(client: OkHttpClient, url: String): Response {
+                    executedUrls += url
+                    return Response.Builder()
+                        .request(Request.Builder().url(url).build())
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .body(GIF.encodeToByteArray().toResponseBody())
+                        .build()
+                }
+            },
+        )
+        try {
+            manager.awaitPartialIndexRecovery()
+
+            assertEquals(1, identityResolverCalls.get())
+            val snapshot = checkNotNull(manager.snapshot(1L, identity))
+            assertEquals(listOf(0), snapshot.committedPages.map { it.readerOrdinal })
+            assertEquals(DownloadQueueStatus.ERROR, snapshot.queueStatus)
+            assertEquals(PartialPageTableCompleteness.LEGACY_UNPROVEN, snapshot.pageTable.completeness)
+            assertNull(
+                manager.committedPageCandidate(1L, identity, readerOrdinal = 0, sourcePageIndex = 0),
+                "Unverified legacy metadata must never publish a live candidate",
+            )
+            val requiresOnline = assertInstanceOf(
+                PartialReaderPageListEvaluation.RequiresOnline::class.java,
+                PartialReaderPageListPolicy.evaluate(snapshot),
+            )
+            assertEquals(PartialReaderPageListFallbackReason.LEGACY_REQUIRES_ONLINE, requiresOnline.reason)
+            val verified = PartialReaderPageListPolicy.mergeOnline(
+                originalSnapshot = snapshot,
+                latestSnapshot = snapshot,
+                onlinePages = legacyUrls.mapIndexed { ordinal, url ->
+                    PartialReaderOnlinePage(
+                        readerOrdinal = ordinal,
+                        sourcePageIndex = ordinal * 13 + 4,
+                        pageUrl = url,
+                        imageUrl = url,
+                    )
+                },
+            )
+            assertEquals(PartialReaderPageListOrigin.VERIFIED_LEGACY, verified.origin)
+            assertEquals(2, verified.pages.size)
+            assertEquals(listOf(true, false), verified.pages.map { it.committedCandidate != null })
+            assertEquals(4, verified.pages.first().committedCandidate?.sourcePageIndex)
+            assertEquals(identity, store.entries().single().downloadIdentity)
+            assertEquals(PartialPageTableCompleteness.LEGACY_UNPROVEN, store.entries().single().pageTable.completeness)
+
+            assertTrue(manager.retryItem(1L))
+            val worker = manager.start()
+            try {
+                withTimeout(5_000) {
+                    while (manager.queue.value.isNotEmpty()) delay(10)
+                }
+            } finally {
+                worker.cancelAndJoin()
+            }
+            assertEquals(listOf(legacyUrls[1]), executedUrls)
+            assertEquals(2, provider.canonicalChapterDownloadDir(identity).listFiles().orEmpty().size)
+        } finally {
+            manager.stopAndJoin()
+        }
+    }
+
+    @Test
+    fun `recovery upsert failure for one item does not starve a later sibling or rewrite the queue`(): Unit = runBlocking {
+        val dbFile = File(directory, "recovery-persistence-isolation.db")
+        val store = persistentStore(dbFile)
+        val table = versionedTable()
+        val first = entry(DownloadQueueStatus.ERROR, 1, chapterId = 1L).copy(
+            chapterName = "First",
+            chapterUrl = "/first",
+            pageTable = table,
+            downloadIdentity = null,
+        )
+        val second = entry(DownloadQueueStatus.ERROR, 1, chapterId = 2L).copy(
+            chapterName = "Second",
+            chapterUrl = "/second",
+            pageTable = table,
+            downloadIdentity = null,
+        )
+        store.replaceAll(listOf(first, second))
+        val provider = DesktopDownloadProvider(File(directory, "recovery-persistence-isolation-downloads"))
+        provider.chapterTmpDir(3L, "Manga", "First").apply {
+            mkdirs()
+            resolve("001.gif").writeText(GIF)
+        }
+        provider.chapterTmpDir(3L, "Manga", "Second").apply {
+            mkdirs()
+            resolve("001.gif").writeText(GIF)
+        }
+        val firstIdentity = identity().copy(chapterName = "First", chapterUrl = "/first")
+        val secondIdentity = identity().copy(chapterName = "Second", chapterUrl = "/second")
+        val entryPersistenceCalls = AtomicInteger()
+        val bulkPersistenceCalls = AtomicInteger()
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            store = store,
+            workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            downloadIdentityResolver = { item -> if (item.chapterId == 1L) firstIdentity else secondIdentity },
+            queuePersister = { entries ->
+                store.replaceAll(entries)
+                bulkPersistenceCalls.incrementAndGet()
+            },
+            queueEntryPersister = { entry ->
+                if (entryPersistenceCalls.incrementAndGet() == 1) throw IOException("injected first-row persistence failure")
+                store.upsert(entry)
+            },
+        )
+        try {
+            manager.awaitPartialIndexRecovery()
+
+            assertNull(manager.snapshot(1L, firstIdentity))
+            assertEquals(listOf(0), checkNotNull(manager.snapshot(2L, secondIdentity)).committedPages.map { it.readerOrdinal })
+            assertEquals(secondIdentity, store.entries().single { it.chapterId == 2L }.downloadIdentity)
+            assertEquals(2, entryPersistenceCalls.get())
+            assertEquals(0, bulkPersistenceCalls.get())
+        } finally {
+            manager.stopAndJoin()
+        }
+    }
+
+    @Test
+    fun `cancelling recovery does not continue to later legacy rows`(): Unit = runBlocking {
+        val store = persistentStore(File(directory, "recovery-cancellation.db"))
+        val table = versionedTable()
+        store.replaceAll(
+            listOf(
+                entry(DownloadQueueStatus.ERROR, 1, chapterId = 1L).copy(pageTable = table, downloadIdentity = null),
+                entry(DownloadQueueStatus.ERROR, 1, chapterId = 2L).copy(pageTable = table, downloadIdentity = null),
+            ),
+        )
+        val resolverStarted = CompletableDeferred<Unit>()
+        val resolverCalls = AtomicInteger()
+        val manager = DesktopDownloadManager(
+            provider = DesktopDownloadProvider(File(directory, "recovery-cancellation-downloads")),
+            store = store,
+            workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            downloadIdentityResolver = { item ->
+                if (resolverCalls.incrementAndGet() == 1) {
+                    resolverStarted.complete(Unit)
+                    awaitCancellation()
+                }
+                identity().copy(chapterName = item.chapterName, chapterUrl = item.chapterUrl)
+            },
+        )
+        try {
+            withTimeout(5_000) { resolverStarted.await() }
+
+            manager.stopAndJoin()
+
+            assertEquals(1, resolverCalls.get())
+        } finally {
+            manager.stopAndJoin()
+        }
+    }
+
+    @Test
+    fun `worker retries a failed recovery reconcile and reuses the committed page without network`(): Unit = runBlocking {
+        val dbFile = File(directory, "recovery-reconcile-retry.db")
+        val store = persistentStore(dbFile)
+        val identity = identity()
+        val table = PartialPageTable.complete(
+            listOf(PartialPageTableEntry(0, 23, "/page/one", "https://fixture.invalid/one.jpg")),
+        )
+        store.replaceAll(
+            listOf(
+                entry(DownloadQueueStatus.DOWNLOADING, 1).copy(
+                    pageTable = table,
+                    downloadIdentity = identity,
+                ),
+            ),
+        )
+        val provider = DesktopDownloadProvider(File(directory, "recovery-reconcile-retry-downloads"))
+        provider.canonicalChapterTmpDir(identity).apply {
+            mkdirs()
+            resolve("001.gif").writeText(GIF)
+        }
+        val firstListEntered = CountDownLatch(1)
+        val releaseFirstList = CountDownLatch(1)
+        val listCalls = AtomicInteger()
+        val imageRequests = AtomicInteger()
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            store = store,
+            httpClient = OkHttpClient(),
+            workerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            retryDelay = {},
+            partialIndexFileOperations = object : PartialDownloadIndexFileOperations {
+                override fun isDirectory(directory: File): Boolean = directory.isDirectory
+
+                override fun listFiles(directory: File): List<File> {
+                    if (listCalls.incrementAndGet() == 1) {
+                        firstListEntered.countDown()
+                        check(releaseFirstList.await(5, TimeUnit.SECONDS))
+                        throw IOException("injected recovery list failure")
+                    }
+                    return directory.listFiles().orEmpty().toList()
+                }
+
+                override fun isValidCommittedPage(provider: DesktopDownloadProvider, file: File): Boolean =
+                    provider.isValidDownloadedImage(file)
+            },
+            fileOperations = object : DownloadFileOperations by DefaultDownloadFileOperations {
+                override fun execute(client: OkHttpClient, url: String): Response {
+                    imageRequests.incrementAndGet()
+                    return Response.Builder()
+                        .request(Request.Builder().url(url).build())
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .body(GIF.encodeToByteArray().toResponseBody())
+                        .build()
+                }
+            },
+        )
+        assertTrue(firstListEntered.await(5, TimeUnit.SECONDS))
+        val worker = manager.start()
+        try {
+            withTimeout(5_000) {
+                while (manager.queue.value.single().status != DownloadStatus.DOWNLOADING) delay(10)
+            }
+            releaseFirstList.countDown()
+            withTimeout(5_000) {
+                while (manager.queue.value.isNotEmpty()) delay(10)
+            }
+
+            assertEquals(2, listCalls.get())
+            assertEquals(0, imageRequests.get())
+            assertEquals(listOf("001.gif"), provider.canonicalChapterDownloadDir(identity).listFiles().orEmpty().map(File::getName))
+        } finally {
+            releaseFirstList.countDown()
+            worker.cancelAndJoin()
+            manager.stopAndJoin()
+        }
     }
 
     @Test

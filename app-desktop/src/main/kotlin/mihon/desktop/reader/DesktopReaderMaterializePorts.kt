@@ -87,11 +87,8 @@ class DesktopReaderChapterContentPort(
     ): List<ReaderPageDescriptor> {
         val snapshot = currentSnapshot(identity)
         val evaluation = PartialReaderPageListPolicy.evaluate(snapshot)
-        var latestSnapshot: PartialDownloadSnapshot? = null
-        var snapshotRechecked = false
         if (snapshot != null && evaluation is PartialReaderPageListEvaluation.Ready) {
-            latestSnapshot = currentSnapshot(identity)
-            snapshotRechecked = true
+            val latestSnapshot = currentSnapshot(identity)
             if (PartialReaderPageListPolicy.isCurrent(snapshot, latestSnapshot)) {
                 val currentEvaluation = PartialReaderPageListPolicy.evaluate(latestSnapshot)
                 if (currentEvaluation is PartialReaderPageListEvaluation.Ready) {
@@ -101,11 +98,9 @@ class DesktopReaderChapterContentPort(
         }
 
         val pages = loadSourcePages(source)
-        if (snapshot != null && !snapshotRechecked) {
-            latestSnapshot = currentSnapshot(identity)
-        }
+        val latestSnapshot = currentSnapshot(identity)
         return PartialReaderPageListPolicy.mergeOnline(
-            originalSnapshot = snapshot,
+            originalSnapshot = snapshot ?: latestSnapshot,
             latestSnapshot = latestSnapshot,
             onlinePages = pages.mapIndexed { readerOrdinal, page ->
                 PartialReaderOnlinePage(
