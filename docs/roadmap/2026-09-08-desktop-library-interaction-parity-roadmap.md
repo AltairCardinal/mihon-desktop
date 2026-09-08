@@ -1,0 +1,310 @@
+---
+parent-plan: 2026-06-30-mihon-desktop-refactor-roadmap.md
+status: planned
+date: 2026-09-08
+---
+
+# Mihon Desktop 书架页交互对齐 Roadmap
+
+## 1. 目标、状态与权威
+
+本计划将 Desktop 书架页的入口、选择状态、查询结果、设置生效范围、批量操作和反馈对齐原版 Mihon。
+**作者页是本范围内唯一获准保留的独有产品逻辑。** 宽屏布局、鼠标、键盘、窗口生命周期属于平台适配，
+不能据此另定搜索、分类、章节选择或删除规则。已有 Desktop 行为不能仅因已经存在就被认定为合法差异。
+
+本次交付仅为代码对比和计划，未实施修复、未运行产品测试。状态为 `PLANNED`，全部实施项保持未勾选；
+不激活父路线、不恢复暂停计划、不更改 manifest 的 capability 状态、不分配版本或构建产物。
+执行进度从第 5 节第一个未勾选批次推导，本文不声明活动任务字段。
+
+| 依据 | 固定值及用途 |
+| --- | --- |
+| 原版权威 | `6fbf6dfca203d99d6dd32137f2df97ced40c81b8`，使用本地 Git 对象读取原版动作和默认值 |
+| 本次 Fork 基线 | `e75cb88388d30ac267ef9bffd88689ee0023c303`，以下 Desktop 路径与行号均指此提交 |
+| 当前 Android | 同一 Fork 的 `app/`；核对其原版谱系后用于共享代码和双端 wiring，不单凭当前 Fork 自证原版 |
+| 历史跟踪点 | `d7f3ceef5c75294306d0d9495e9ebc5ffca96302`，仅作历史索引；其 ViewModel/搜索变化不自动纳入 |
+| 状态权威 | [parity-manifest.json](../../app-desktop/src/test/resources/parity/parity-manifest.json)，本文是动作级缺口与实施次序，不建立第二份机器状态源 |
+
+已用本地 Git 比较固定原版与当前 Android：`LibraryTab`、`LibraryItem`、`LibrarySettingsScreenModel` 及主要
+书架组件在所查范围保留原版语义；`LibraryScreenModel` 的主要相关变化是将筛选/排序交给共享 `EvaluateLibrary`。
+因此下面的分类、搜索、选择、对话框和批量操作结论均有原版代码依据，不是以 Desktop 测试的预期倒推产品规格。
+
+与既有计划的关系：
+
+- [父路线](./2026-06-30-mihon-desktop-refactor-roadmap.md) 当前指针为 `none`。用户要求执行本文后，才按既有治理规则激活。
+- [非 Reader 计划](./2026-08-02-mihon-desktop-non-reader-upstream-core-roadmap.md) 的 `LB-01` 是本范围的历史总项；本文只细化其中书架交互，不继承整个 `NR0-01`、`MD-03`、`LU-01` 的施工依赖。
+- 激活时在原计划注明本文接管的动作边界；非 Reader 计划其余部分及作者归档计划继续暂停，不能并行执行两个重叠书架任务。
+- 历史 `16/17/19 VERIFIED` 证明的是当时登记的证据，不等于本次交互无缺口。执行时仅给受影响既有 action 补准确证据与状态裁决；不批量重建 inventory，不借机推进全仓语义映射。
+- 旧 `LB-01` 所写“作者/Upcoming 入口保留”不能成为新增书架入口的依据。当前作者入口在主导航及漫画详情作者字段，按真实链路保护。
+
+## 2. 范围锁定
+
+### 2.1 本计划必须完成
+
+1. 书架首页及其筛选/排序/显示设置、分类管理和批量对话框。
+2. 从书架发起的详情、全局搜索、继续阅读、迁移请求，验收到现有目标流程正确接收输入。
+3. 书架批量分类、已读/未读、下载、移除与下载删除的资格、目标集合、确认、持久化及必要副作用。
+4. 当前分类/全库手动刷新入口、重复请求反馈及与现有更新服务的接线。
+5. 以上行为直接需要的共享规则、Android 消费接线、Desktop adapter 和真实页面集成测试。
+
+### 2.2 不纳入本计划
+
+- 作者身份、归档、发现、索引升级或新入口；仅回归保护现有作者页及其数据关系。
+- 漫画详情、阅读器、迁移、全局搜索、下载队列或设置中心的全面对齐；不改变它们的内部状态机。
+- 后台更新 executor、调度约束、源解析、代理、网络客户端、下载存储协议、partial 阅读和恢复机制重构。
+- 新增推荐、统计、筛选条件、快捷键业务能力、自动分类或额外书架聚合页；不做视觉重设计和逐像素复刻。
+- 默认入库分类、重复新章已读策略、章节滑动手势和缺章显示等相邻设置的全面实现：它们属于入库/章节同步/详情链路，不能因为位于“书架设置”就混入本计划。
+- 全仓架构清理、泛化动作总线、通用状态框架、新测试平台、基准测试项目或测试报告生成器。
+
+允许的外部改动必须同时满足：有本计划中的具体失败场景；现有入口无法以现有端口实现；修改局限于相应
+端口/adapter 及其测试。比如刷新服务增加可选分类参数可以在本批次内完成；重做全部更新 executor 不可以。
+Reader 内部的 partial/local-first 能力保持现有输入契约，作者功能保持当前链路；两者不是新的书架业务例外。
+
+## 3. 已确认差异与代码证据
+
+下列短路径以仓库根为起点；行号为上述 Fork 基线定位辅助，执行时同时按 symbol 核对。
+`A` = `app/src/main/java/`，`D` = `app-desktop/src/main/kotlin/mihon/desktop/`。
+
+| 交互面 | 原版契约与证据 | Desktop 当前行为与证据 | 批次 |
+| --- | --- | --- | --- |
+| 分类页与恢复 | `A/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt:213` 的分类投影；系统默认分类只在未过滤收藏中有默认归属时出现，普通空分类保留；活动 index 持久化并钳制 | `D/ui/library/LibraryTab.kt:197` 固定 `listOf(null) + categories`，额外增加“全部”；model `:304` 只写内存 index，未实现相同恢复规则 | LI-01 |
+| 搜索及空态 | Android `LibraryItem.kt:28` 支持 `id:`、`src:`/`src:local`，搜标题、作者、画师、简介，另含来源/题材、逗号组合及负向匹配；`LibraryTab.kt:171` 区分加载、真空库与结果为空，`:211` 接全局搜索 | `D/domain/LibrarySearchFilter.kt:13` 只做 trim 后标题子串；`LibraryTab.kt:402` 只分空库/无匹配，没有相同搜索展开状态和全局搜索入口 | LI-01 |
+| 随机与详情 | Android `LibraryTab.kt:131` 从当前分类结果随机打开详情，无条目有 Snackbar；普通点击进入详情 | Desktop `LibraryTab.kt:361` 已从可见结果随机，但空集合静默；详情已有嵌套 Navigator，继续复用 | LI-01 |
+| 筛选与持久化 | Android `LibrarySettingsDialog.kt:80` 三态、全局仅下载时锁定该项、tracker 登录依赖、custom interval 的发布/约束门禁；`LibrarySettingsScreenModel.kt:40` 写共享偏好 | Desktop model `:227–270` 在 State 内改 filter；toolbar 暴露全局仅下载/发布期开关，未遵循相同持久化与可用性。共享 evaluator 存在不代表 UI 参数正确 | LI-02 |
+| 排序/显示作用域 | Android `LibrarySettingsDialog.kt:165` 包含完整排序集合及随机重排；`SetSortModeForCategory` 根据 categorized setting 决定分类 flags/全局；`SetDisplayMode` 只写全局显示模式 | Desktop `LibrarySearchFilter.kt:9` 只有四种 SortMode；model `:298` 传空 trackerMeans；`LibraryCategoryPrefs.kt:10` 独立 `lib_cat_*` 同时按分类保存排序和显示，语义不同 | LI-02 |
+| 显示控制 | Android `LibrarySettingsDialog.kt:243` 四种布局、列数、下载/未读/本地/语言角标、继续按钮、分类 tabs/数量 | Desktop `LibraryDisplayMode`/toolbar 只有三种布局；`LibraryComponents.kt:389` 起使用固定宽度和局部角标/按钮规则，缺完整偏好消费 | LI-02 |
+| 选择与返回 | Android model `:518–585` 维护分类感知范围选择、当前页全选/反选及跨分类选择；`LibraryTab.kt:258` 返回先退出选择，再关闭搜索 | Desktop `LibrarySelectionState.kt:15–86` 是独立 anchor 状态；`LibraryTab` 未接同等返回优先级，顶部普通操作在选择时仍可用。不能只验证 Ctrl/Shift helper | LI-03 |
+| 动作资格/迁移 | Android `LibraryTab.kt:150–161` 仅全非本地选择允许下载，迁移传 selection 进入配置流程 | Desktop selection bar 未按同等条件约束下载；`LibraryTab.kt:119` 先过滤 local 再直接 submit 批迁移队列，入口阶段及目标集合不等价 | LI-03 |
+| 分类编辑与批量归属 | Android model `:596–617` 三态初值；`:481–491` 对每本书做 add/remove，混合态未改则保留；原版分类删除有确认 | Desktop `LibraryComponents.kt:735–742` 只加载首本分类；model `:542` 使用同一分类集合覆盖所有书；`CategoryManagementDialog` 行删除直接调用 | LI-04 |
+| 标记已读/未读 | Android model `:430` 调 `SetReadStatus`；`A/eu/kanade/domain/chapter/interactor/SetReadStatus.kt:29–58` 包含已读后按偏好删除下载等副作用 | Desktop model `:408–415` 只调用共享 `SetChapterReadStatus` 修改章节数据；不能把 DB 读状态正确视作整条动作已对齐 | LI-05 |
+| 删除确认与双选项 | Android `DeleteLibraryMangaDialog.kt:24–49` 默认都不选、至少一项才确认、含 local 隐藏删下载；model `:451–473` 分别移出书架/清封面及删除下载 | Desktop `LibraryTab.kt:268,328` 单本右键和批量均直接移除；model `:417` 只改 favorite，没有同等确认、独立删下载和副作用路径 | LI-06 |
+| 下载目标 | Android model `:389–400` 先排除已下载/队列再取 N；动作菜单来自既有 DownloadAction | Desktop model `:464–480` 先 `take(N)` 后排除，首章已下载时“接下来 1 章”不会补选下一章；单本右键另走独立 helper | LI-07 |
+| 继续阅读 | Android `LibraryTab.kt:196–205` 下一可读章或明确无下一章反馈，三个布局使用同一入口资格 | Desktop model `:512` 已有 Reader 请求基础，但 `LibraryTab.kt:438,468` null 直接返回，列表分支未传继续阅读回调；不应重写 Reader | LI-07 |
+| 手动刷新 | Android `LibraryTab.kt:97–110,129–130` 分当前分类/全库，已在更新时提示 already running | Desktop `LibraryTab.kt:368` 传 allItems，factory `:73` 接无参数 `runNow`；model `:344` 运行中再次调用会尝试 cancel，但 toolbar 正在运行时只呈现进度。真实入口/状态与原版不一致 | LI-08 |
+
+两处不能根据名称推断的细节：
+
+1. 原版 `categorizedDisplaySettings` **并不意味着显示布局按分类保存**。固定版本的 `SetDisplayMode` 为全局；
+   分类 flags 的分支用于排序。不能沿用旧 manifest 的笼统说明实现另一套规则。
+2. 固定原版 item renderer 用受未读角标偏好影响的 `unreadCount > 0` 判断继续按钮。LI-02/07 应先用同一
+   characterization fixture 锁定该耦合，本计划默认保留；若要修正原版本身，必须单独提出产品变更，不能暗中修改双端。
+3. 原版搜索前缀判断忽略大小写，但 `substringAfter("id:")`/`substringAfter("src:")` 用小写字面量。
+   对大写前缀的特殊结果也按固定版本建立 fixture，不借提取搜索之机修正规则或引入新查询 DSL。
+
+### 3.1 现有测试能证明什么
+
+| 现有资产 | 可复用的证据 | 不能作为本计划完成证据的部分 |
+| --- | --- | --- |
+| `domain/src/commonTest/.../library/interactor/EvaluateLibraryTest.kt` | 三态、组合筛选、排序方向与 tie-break 等真实共享算法 | 未证明 UI 提供全部选项、真实 tracker 分数、偏好重启恢复 |
+| `app/src/test/.../ui/library/LibrarySharedEvaluationWiringTest.kt` | 反射调用 Android production 的 filter/sort 消费方法 | 绕过构造器的实例不能证明完整生命周期、DI 或页面交互 |
+| `app-desktop/src/test/.../ui/library/LibraryScreenModelTest.kt`、`LibraryCategoryBehaviorTest.kt` | 部分 model、CRUD、下载、继续阅读行为 | 部分预期本身固化 Desktop 简化规则，先改正确红测，不盲目维护旧预期 |
+| 同目录 `LibraryParityIntegrationTest.kt` | 离屏组合 selection bar、实际按钮回调与部分批量结果 | 单独组件不等于 `LibraryRootScreen` 把正确 selection、model 和 Navigator 接入 |
+| 同目录 `LibraryPageCompositionTest.kt` | 真实页面 projection/context | `LibraryTab.kt:220–222` 的 probe 提前 return，跳过所有交互 UI；必须移除这种捷径后再验收交互 |
+| `test-desktop/.../robot/LibraryRobot.kt:112–122` | 可沿用客户端接口 | `getMangaCount()` 返回 screen 数量，`assertMangaVisible()` 无断言，均不能证明书目显示 |
+| `D/test/http/LibraryMangaTestModeController.kt:345` | 现成 model/controller 接入点 | `categories[index]` 与 UI 的虚拟 All 偏移不同；UI 与 Test Mode 必须消费同一个分类投影 |
+
+这些发现是本轮代码审阅结论，并非已运行失败测试的记录。不要为它们单独建立“大测试设施修复阶段”：
+LI-01 随真实页面红测补最小挂载能力和分类投影；后续各批次随行为补断言，最终仅补实际使用的 Robot 查询。
+
+## 4. 实现原则与测试拆分依据
+
+### 4.1 复用裁决
+
+| 能力 | 选择与边界 |
+| --- | --- |
+| 筛选/排序 | 直接复用 `EvaluateLibrary`、`LibrarySort`、`LibraryPreferences`、`SetSortModeForCategory`、`SetDisplayMode`；补全真实输入，删除被替换的 Desktop enum/偏好决策 |
+| 搜索、分类投影、选择 | 原版还在 Android model/item 中的纯决策按当前批次提取到 shared，并让 Android/Desktop 都消费；不整搬 Android UI，也不先创建通用 reducer 框架 |
+| 分类修改/章节读状态 | 复用 `GetCategories`、`SetMangaCategories`、CRUD interactors、`SetChapterReadStatus` 等；确需新增三态增量/副作用编排时供两端共用，保留底层原子写入及真实错误 |
+| 收藏移除/下载删除 | 先比较 `UpdateLibraryMembership`、`UpdateManga`、下载/封面端口的语义；只复用兼容路径，不能强行使用会改变日期、归属或作者关系的操作 |
+| 阅读/下载目标 | 复用 `GetNextChapters`、现有章节过滤排序与 Reader entry resolver；纯目标选择可共享，Reader 构造、文件及队列操作留平台 adapter |
+| 刷新/导航/键鼠 | 使用现有 scheduler、Voyager 嵌套 Navigator、Root factory/DI；仅适配参数、状态、输入和反馈，不另写业务客户端 |
+
+平台独立保留的原因限于 Android Context/Activity/WorkManager 与 Desktop Voyager/窗口/文件服务不同。
+产品体验上需要鼠标/键盘可操作以及宽屏展示，但同一动作的资格、目标集合、结果和持久化必须一致。
+不因新增可测试 seam 而让测试与真实 UI 各走一条路径。
+
+### 4.2 固定测试层级
+
+每个功能批次都是“一个用户行为族 + 一个可证伪的测试边界 + production 接线 + 必要文档”的完整提交，
+不按文件、测试类或红/绿阶段拆任务。不要求每个断言运行一次 Gradle；同一失败原因的一组场景合并运行。
+
+- **红**：共享契约/fixture 固定原版输入输出，Desktop 真实 consumer 或 UI 操作按正确行为失败；不把编译失败当语义红测。
+- **绿**：最小实现复用既有链路；**重构**：只清理本批次替换的重复决策，并复跑 focused tests。
+- **双端证明**：共享测试验证纯规则，Android production consumer 测试证明实际调用；Desktop 必须从真实 factory/页面/动作到实际 use case。只跑 shared JVM 不等于双端 wiring 完成。
+- **UI 证明**：复用 `ImageComposeScene` 等离屏能力挂载真实 `LibraryRootScreen`、对话框和嵌套导航。替换外部 I/O 边界可以，替换受测 handler、parser 或复制业务实现不可以。
+- **副作用证明**：分类/章节/favorite 使用真实 repository 与隔离临时数据库；下载清理用临时目录与 production 下载服务；外部源可用 fixture。新增 HTTP 解析才要求对应 MockWebServer 成功、空/缺失、403/429/500、畸形响应矩阵。
+- **接线敏感性**：审查确认若移除实际按钮回调、换错分类/章节 ID 或断开 factory 依赖，对应测试会失败；必要时作一次局部反证，不引入全仓 mutation 工程。
+- **运行时证明**：最终在正式发布应用验证组合路径，Test Mode 与离屏 UI 互补；不得将辅助客户端或独立系统 JDK 的通过当作应用运行证据。
+
+## 5. 实施批次与完成门禁
+
+以下 8 个功能批次加 1 个收口批次构成唯一实施清单。依赖顺序明确，不将预计文件数用作强制拆分标准。
+预估合计约 13–22 个工程日，取决于现有测试挂载与平台发布环境；不是工时承诺。代码行数增加本身不触发扩容。
+
+- [ ] **LI-01 分类、搜索、空态与详情入口**（2–3 日）
+- [ ] **LI-02 筛选、排序和显示偏好闭环**（3–4 日）
+- [ ] **LI-03 选择模式、返回优先级与迁移入口**（1–2 日）
+- [ ] **LI-04 分类管理与批量三态归属**（1–2 日）
+- [ ] **LI-05 已读/未读及其副作用**（1–2 日）
+- [ ] **LI-06 移出书架与删除下载的确认事务**（1–2 日）
+- [ ] **LI-07 继续阅读与下载目标选择**（2–3 日）
+- [ ] **LI-08 当前分类/全库手动刷新**（1–2 日）
+- [ ] **LI-09 组合回归、发布与证据收口**（1–2 日）
+
+### LI-01 分类、搜索、空态与详情入口
+
+- 前置：激活本文并确认基线未变；不依赖旧 NR 全仓审计。
+- RED：无分类、有系统默认、空自定义分类、删除/重排后活动页钳制及重启恢复；搜索关闭/null 与展开/空串；`id:`、`src:`/`src:local`、标题/作者/画师/简介、来源/题材、逗号及排除语法；真空库、加载和分类内搜索/筛选无匹配分别反馈。加入 UI 与 Test Mode 同一分类 ID/可见 ID 的契约测试。
+- 实现与入口：原版搜索/分类投影提取共享，两端接入；Desktop 去掉额外 All 业务分支；搜索进入现有全局搜索并携带原 query，当前可见集合点击/随机进入详情，随机空集合提示。空库保留原版入门引导的可操作等价入口。
+- 验证：shared 查询契约 + Android model consumer + 真实 Desktop page/nav/factory；关闭详情回到书架，query/分类状态一致。仅补本批次需要的离屏挂载 seam，不提前开发整个 Robot。
+- 关闭：不靠 probe 提前 return 仍能操作真实页面；分类 ID、条目、标题/计数反馈同步正确。限于查询/导航，不改变收藏、阅读器或全局搜索内部行为。
+
+### LI-02 筛选、排序和显示偏好闭环
+
+- 前置：LI-01 的分类身份/查询投影稳定；固定原版偏好 key/default/scope。复用现有 evaluator，不新增查询引擎。
+- RED：全部原版三态项及组合、重启恢复、全局仅下载锁定、tracker 登录/退出/分数与 UI 显隐（已登录但没有 Track 也可选）、发布构建 custom interval 门禁；全部排序/方向/tie-break/随机 seed，切换排序字段保留方向；全局布局与条件分类排序作用域；四布局、自动/指定列数、角标、继续按钮和分类 tabs/计数。
+- 实现与入口：使用已有共享偏好/interactors，把选项→保存→响应式订阅→可见结果串起来。保持 settings 的原版作用域；隐藏 tabs 后仍能切分类，非空搜索时显示分类 tabs/计数。Desktop 将窗口尺寸映射到既有列数语义，手机旋转不模拟为新的业务状态。重选书架打开设置的等价入口在此接通。
+- 旧偏好过渡：仅按下表处理 `lib_cat_*` 被替代 key，不建立 schema/备份格式迁移项目。RED 包含各冲突/非法值与重复启动场景，不能只测空偏好。
+- 验证：共享偏好/排序契约、Android settings consumer、Desktop 真实设置交互→重建 model/偏好 store→显示结果；用真实 tracker aggregation 和下载数量输入，不以布尔下载值代替计数角标。
+- 关闭：设置可操作且重启仍有效；临时禁用项不清掉已保存用户选择；继续按钮/未读角标的固定原版耦合有显式测试。此批次可能跨较多组件，按同一偏好传播链审查，不机械拆文件。
+
+| 过渡情况 | 本计划固定裁决 |
+| --- | --- |
+| 共享键已设置 | 以 store 中实际存在 key 且可合法反序列化为准，不能用“读取值等于默认值”判断未设置；有效共享值始终优先 |
+| 无有效共享全局布局/排序 | 分别只从旧 All 的 `lib_cat_-1_display`、`lib_cat_-1_sort`/`lib_cat_-1_sort_asc` 导入；三布局同名映射到共享类型，TITLE/UNREAD_COUNT/DATE_ADDED/LAST_READ 对应 Alphabetical/UnreadCount/DateAdded/LastRead，方向映射 Ascending/Descending；缺失或非法字段用固定原版默认，不任取某个分类的值 |
+| 分类排序 | 只有共享 `categorized_display` 已明确为 true、该分类缺少已持久化 flags 记录且旧分类排序值有效时才导入；既有分类 flags（含合法零值）优先。其余旧分类值仅保留，不自动开启 categorized setting 或覆盖 DB |
+| 多个分类布局相互冲突 | 原版只有全局布局，不能全部继续生效；按前述共享值/旧 All/原版默认的优先级决定。旧分类布局保留在旧键但停止消费，不能暗选最近活动分类或继续双轨 |
+| 幂等与失败 | 用现有偏好迁移入口登记单一版本标记，完成所有所需写入后才记完成；中途失败不写完成标记，再试时有效目标值优先。旧键不删除，不产生逐任务快照；未知格式/不可表达的新增数据按第 7 节停在对应项 |
+
+### LI-03 选择模式、返回优先级与迁移入口
+
+- 前置：LI-01/02，排序后的当前分类可见集合稳定。
+- RED：长按/键鼠等价动作进入或扩展选择、选择时单击不进详情、分类感知范围选择（同分类最后选择为锚，跨分类第一次仅加入当前项，全选/反选重置范围分类锚）、跨分类选择保留、当前页全选 union/反选、取消选择与数量；返回先处理当前对话框，再按原版清选择/关闭搜索，普通工具栏和继续阅读不能绕开选择规则。
+- 实现与入口：共享原版选择决策；键鼠事件只是 adapter，保留可操作的范围选择，不赋予 Ctrl/Shift 新的目标规则；动作显隐跟随原版资格。Desktop 尚无接收整个 selection 的迁移配置页：本批允许新增一个薄入口，接收原选择集、呈现固定原版所需配置，确认后才调用现有迁移执行端口；取消不得 submit，不静默过滤 local，也不因点击菜单直接开始执行。
+- 验证：相同选择序列喂双端 consumer + 真正页面鼠标/键盘事件 + action bar + Navigator；断开 selection 或目标传递会失败。实例化受影响 Screen/Tab，验证普通 Screen 进入嵌套 Navigator。
+- 关闭：三种已存在布局及新增 cover-only 布局使用同一选择语义；迁移配置的入口、参数和确认经过测试。目标搜索、引擎与队列状态机不变；若现有端口不能承载固定原版配置，明确记录缺失字段/能力与阻塞，不能仅以“已导航”关闭，也不得自动扩成完整迁移对齐。
+
+### LI-04 分类管理与批量三态归属
+
+- 前置：LI-03。该批次以 category repository/事务为共同测试边界，CRUD 和批量对话框一并验证。
+- RED：共同分类为勾选、混合为中间态、未触碰混合不变、显式加入/移除、默认分类 0 排除；确认后每本保留自己的未改分类；取消不写；无自定义分类引导编辑；创建/重命名合法性、重排、删除确认与归属更新。
+- 实现与入口：复用分类 CRUD、`GetCategories`、`SetMangaCategories`，共享三态 delta 编排；用户从选择菜单进入分类弹窗，管理入口复用已有分类 UI。删除分类的结果沿原版规则回流 LI-01 投影。
+- 验证：原版三态 fixture + 双端 consumer + 真实弹窗点击到隔离 SQLDelight DB；一书失败时不把未成功书显示为成功，沿现有结果反馈恢复，取消无写入。
+- 关闭：不再用第一本分类覆盖整组；不新增分类模型、批量任务引擎或默认入库策略。失败反馈需真实，不能凭空增加原版没有的自动重试或跨书回滚规则。
+
+### LI-05 已读/未读及其副作用
+
+- 前置：LI-03；复用现有章节和下载服务，与 LI-06 共用端口但不并行改同一文件。
+- RED：选中多本、部分阅读进度、重复触发、未读清进度、已读只更新必要章节、已读后删下载偏好开/关、无变化章节不触发删除、执行失败与选择退出时机。原版发起操作后即清选择，任务不因离开页面而取消；以 `SetReadStatus` 为谱系确认副作用，不能自行加追踪上传。
+- 实现与入口：单本右键和批量菜单均调用同一共享编排；`SetChapterReadStatus` 继续负责基础状态修改，平台 adapter 执行已存在的下载清理能力。Android 接入时保持非取消处理语义。
+- 验证：shared chapter 契约 + Android/Desktop consumer + 真实 UI→DB/临时下载目录的效果；没有下载服务接线时测试必须失败。验证未读计数与筛选结果随更新变化。
+- 关闭：读状态、进度、下载副作用及可见结果一致；不扩展 Reader 自动进度、追踪策略或下载存储结构。
+
+### LI-06 移出书架与删除下载的确认事务
+
+- 前置：LI-03；采用 LI-05 已明确的下载端口。两个选项属于同一个原版删除对话框，不能拆成彼此不验证的按钮补丁。
+- RED：初始两项皆未选时禁用确认；取消/Escape 不变；仅移出、仅删下载、两者都选的效果矩阵；任何 local 混选隐藏下载选项；选中对象在弹窗期间变化时不误删其他书；封面清理、favorite 与实际文件结果。
+- 实现与入口：单本右键/批量移除统一进入同一确认流程；确认使用该弹窗原目标快照，按原版关闭弹窗、清选择，非取消操作不因离开页面停止。复用现有 membership/update/cover/download adapter，不添加跨 DB/文件系统的“全局事务”承诺。
+- 验证：共享决定/eligibility 契约 + 真对话框→production use case→临时 DB/目录；失败通过仍可见的既有反馈渠道报告，不显示全成功，不要求保留/重新打开确认弹窗，不自动重试。回归作者索引/关系不受非预期破坏。
+- 关闭：危险动作无法绕过确认；仅移出不删除下载，仅删下载保留收藏；不增加磁盘整理、回收站或文件格式迁移。
+
+### LI-07 继续阅读与下载目标选择
+
+- 前置：LI-02/03；输入来自既有 manga/chapter flags、下载状态与 selection。
+- RED：章节排序/过滤、已读和部分进度、本地/下载状态；下载 next N 必须先排除已下载/排队再取足 N，书签/未读动作沿原版目标语义；相同名称但不同 chapter ID、已有 queue 状态、空结果及失败反馈。继续阅读无下一章要反馈，不静默；列表和各网格都按偏好接同一入口。
+- 实现与入口：复用章节选择和 Reader entry resolver，提取原版剩余纯下载选择策略供两端消费；单本右键也经过同一动作策略。真实下载身份用已存在 resolver/manager，不重造存储查找。Reader 请求包含正确 manga/chapter/initialPage，交给既有 Reader。
+- 验证：共享章节 fixture + Android consumer + UI 点击到真实 factory/queue port/Reader route；已有 local/partial 请求保持兼容，以 request 和既有 Reader 边界测试证明，不把 Reader 全部回归放入红绿循环。
+- 关闭：首章已下载时“接下来 1 章”下载下一合格章；继续按钮、空反馈和入队反馈可见。继续阅读与下载各保留独立场景，禁止因同批次而误用一个目标函数替代两者不同的原版条件。
+
+### LI-08 当前分类/全库手动刷新
+
+- 前置：LI-01/03；现有 `LibraryUpdateScheduler` 和 runtime 为唯一执行链。
+- RED：当前分类与全库的准确目标、空分类、不受当前文本搜索结果误裁剪、运行中重复请求只反馈、不隐式取消；开始/运行/结束/失败状态从 production 服务获取，离开再返回页面不显示虚假空闲。
+- 实现与入口：书架当前分类刷新和全库刷新分别传明确 scope。必要时在现有 scheduler 请求/目标选择端口增加范围，复用已有执行器与并发控制；Android 平台继续用 `LibraryUpdateJob.startNow`。已有显式取消能力只在明确取消入口调用，不把“再次刷新”解释成取消。
+- 验证：共享手动请求/范围规则 + 双端启动 consumer + Desktop 真实 toolbar→factory→scheduler/隔离 repository，覆盖 already-running 与失败反馈；不以未使用的 fallback 更新循环作生产证据。
+- 关闭：页面显示的状态与 runtime 一致。自动更新约束、章节同步、作者发现调度和系统通知重构保持范围外；若没有重写 executor 就无法满足某项，记录具体阻塞，不执行旧 `LU-01` 整包。
+
+### LI-09 组合回归、发布与证据收口
+
+- 前置：LI-01～08 各自完成实现、独立审查、批次验证和提交；不把本批次当作补做全部 UI 测试的兜底。
+- 组合场景：分类切换→搜索/筛选→排序→选择→混合分类赋值→已读→继续/下载→取消删除/确认删除→刷新→返回/重启恢复；作者主入口及详情作者链接仍可达。
+- Test Mode 只扩展实际验收需用的分类、query、可见 ID/count 和操作结果，复用 production 状态；修正所调用的 Robot 占位断言，不修全套客户端或新增截图 API。
+- 完成第 6 节最终验证矩阵。真实网络不可用时使用正式应用的可控 fixture/既有 Test Mode，不能替换为独立客户端；无法取得的平台发布证据明确留缺口，不能勾选收口。
+- 关闭时更新受影响 manifest action 的准确证据、本文 checkoff 与父指针，和当前功能/发布提交一起落地；不为“advance/close/record”单独提交。报告 Windows 构建日志 `Final unpacked EXE:` 的实际路径并确认文件存在。
+
+## 6. 验证预算与可执行入口
+
+### 6.1 每批次固定预算
+
+- focused：同一行为族 RED 1 次、GREEN 1 次、重构后 1 次；正常合计 3 次。若确无重构可并用最后一次 green 作为最终证据，并注明未修改。
+- 批次收尾：相关 unit/integration/wiring 与 `spotlessCheck` 合并 1 次；独立审查 1 轮，发现阻塞只修复并复审 1 轮。
+- 不在每个批次运行全量 Android/Desktop、`finalParityAudit` 或发布构建。若用户要求中途发布一个完整迭代，再按仓库要求单独说明预算并使用构建脚本。
+- Gradle 由主代理通过 `scripts/gradle-coordinator.py` 串行协调；超时先查原进程，不启动第二份重型验证。
+
+以下是**未来执行入口，不是本轮已通过的命令**。测试类通配为现有书架集合；每批次选择自己新增/受影响的类，
+不要将示例 wildcard 当成固定全跑要求。KMP Android 测试 task 以实际注册的 variant 为准。Desktop 默认
+排除 `integration` 标签，命中该标签的 focused 必须加 `-PincludeIntegrationTests=true`，不能接受零用例通过。
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$env:PYTHONDONTWRITEBYTECODE = '1'
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
+$env:ANDROID_HOME = 'D:\Android\Sdk'
+$env:ANDROID_SDK_ROOT = 'D:\Android\Sdk'
+$env:HTTP_PROXY = 'http://127.0.0.1:10808'
+$env:HTTPS_PROXY = 'http://127.0.0.1:10808'
+$env:NO_PROXY = 'localhost,127.0.0.1,::1'
+
+python scripts/gradle-coordinator.py run --key li01-shared-red -- .\gradlew.bat :domain:jvmTest --tests 'tachiyomi.domain.library.*'
+python scripts/gradle-coordinator.py run --key li01-desktop-red -- .\gradlew.bat :app-desktop:jvmTest -PincludeIntegrationTests=true --tests 'mihon.desktop.ui.library.Library*'
+python scripts/gradle-coordinator.py run --key li01-android -- .\gradlew.bat :app:testReleaseUnitTest --tests 'eu.kanade.tachiyomi.ui.library.*'
+```
+
+每批次记录实际命令/结果/失败原因/提交于该批次段落下即可，不额外生成每任务报告。不得把本示例键名用于
+尚在运行的 coordinator；执行其他批次时用对应唯一 key。网络失败依仓库代理规则最多重试一次。
+
+### 6.2 最终矩阵只运行一次
+
+| 验证 | 频次与条件 |
+| --- | --- |
+| 共享受影响模块完整测试 | LI-09 阶段收口 1 次；包含 Android/JVM 对应目标及 DB 集成，不逐批次全跑 |
+| 全量 Android/Desktop 测试与格式 | 批次修复全部结束后最终 1 次：根 `testReleaseUnitTest`、`:app-desktop:jvmTest -PincludeIntegrationTests=true`、`:test-desktop:test`、`spotlessCheck`；live-network/network-survey 等可选标签按既有门禁单列范围，不把默认排除项称为已通过 |
+| 受影响 manifest/action 审计 | 最终 1 次；如既有门禁要求 `finalParityAudit`，在此统一运行，不触发全仓人工 inventory 修订 |
+| Windows 发布与运行验收 | 使用 `scripts/build-desktop.sh`；同一未提交 diff 已有等价完整 Desktop JVM 证据时才用 `build-only` 避免重复全量测试；确认正式 artifacts 中 EXE，不以 tmp/build 地址交付 |
+| macOS 发布与运行验收 | 通过既有 macOS 构建脚本/宿主完成 1 次；机器/连接不可用则明确阻塞及缺失证据，不复制 Windows 结论 |
+| Test Mode + 离屏组合验收 | 各 1 组固定书架路径；只读状态需能反映真实条目/选择结果，不采集桌面像素 |
+
+最终测试失败后，先用 focused 定位。若仅属环境问题且受测 diff 未变，可重跑失败范围并合并同一 diff 的完整
+证据；若修改了受测行为，原全量证据对新 diff 不再等价，须说明失效范围并按第 7 节申请必要的额外完整验证/
+构建预算。不得用局部通过调用 `build-only`，也不得默认重跑构建脚本从而静默突破全量测试上限。
+
+Android 在本文主要保护共享核心及 consumer；原版 Android 页面交互不重新设计。最终按仓库收口要求运行全量
+Android 测试；不将新功能 APK、真机覆盖所有页面或 Android 产品升级隐含加入本文范围。
+
+## 7. 防止执行扩张的硬约束
+
+1. **批次冻结**：每批次开始前只列“本批次差异 ID、允许触及的生产入口、RED 场景、结束条件和流程预算”；不另写层层子计划。新增工作必须能指向该批次某个已列场景。
+2. **只有语义依赖才重规划**：发现新用户能力、未知数据/格式迁移、安全边界或当前架构无法承载时，暂停受影响部分，说明最小新增范围、时间与替代方案，等待用户决定；其他独立部分可以继续。不因文件多、格式化或测试类长而扩张。
+3. **相邻问题只登记**：在本文对应批次补一行范围外发现及影响；不自动新增任务、接管旧计划、开新追踪系统。范围外问题阻止本目标时，将该验收项标为阻塞而非降低标准。
+4. **限制提取范围**：只提取本批次真实消费者需要的纯规则；两端接入和旧分支退出在同一批次完成。既有独立能力不随手移除；没有原版依据的 Desktop 书架分支不得包装成永久增强。
+5. **共享状态串行**：默认主代理实现，最多 2 个子代理；确有不共享文件/接口前置已满足的流才并行。书架 Tab/model、factory、偏好与 manifest 不允许多个实现代理并写；测试和相应实现不拆给互相等待的代理。
+6. **审查与验证有限**：每批次独立审查 1 轮、阻塞修复复审最多 1 轮；持续失败只调查直接原因，不重跑整套发布矩阵。新增流程或超出默认次数先说明预算，不静默扩容。
+7. **一次功能提交**：一个批次含 production、测试和必要记录；审查修复最多再 1 个提交。提交前检查工作树，只 stage 本批次文件。`testfile/` 是已有用户内容，不读取、修改或提交。
+8. **完成含义不变**：checkbox 仅在实现、独立审查、验证、提交全部具备后勾选；不以命令启动、测试名称、源码字符串扫描或 helper 返回值代替行为证据。没有交互入口或失败反馈不得关闭。
+9. **版本不漂移**：实施期间不 fetch 新上游并吸收行为、不主动升级依赖。若用户切换原版目标版本，先局部比较本文动作，再改契约；不重启全项目对齐。
+
+## 8. 最终用户验收路径
+
+这些是后续产品交付的验收项，本次制定 roadmap 不勾选。自动化证据和发布产物由 LI-09 填入。
+
+- [ ] 打开书架→只出现原版规则下的分类；切分类/重启→页、标题及条目对应，空分类不变成“全部”。
+- [ ] 搜索作者/题材组合→结果与原版 fixture 一致；无结果→有明确反馈；转全局搜索→保留 query；返回→恢复书架状态。
+- [ ] 筛选/排序/显示设置→选项、显隐和作用范围正确；重启→偏好保存；列表及三种网格都遵循角标/继续按钮配置。
+- [ ] 选书、范围选择、换分类、全选/反选→数量与目标正确；返回→先退出选择，再关闭搜索；迁移→进入配置并带原选择集。
+- [ ] 选中分类分别为 A、A+B 的两本书→不修改混合 B，加入 C→结果为 A+C、A+B+C；取消→原样保留。
+- [ ] 批量标记已读/未读→读状态、进度、未读数及按偏好的下载清理一致；失败→显示实际结果。
+- [ ] 移除对话框→未选任何选项不能确认；仅移出/仅删下载/两者均选→各自效果正确；取消→书架与文件均不变。
+- [ ] 第一章已下载→“接下来 1 章”入队下一合格章；继续阅读→进入正确章节/进度；无下一章→显示反馈。
+- [ ] 当前分类刷新/全库刷新→准确提交对应范围；再次刷新→已运行提示；完成/失败→与后台实际状态一致。
+- [ ] 书架→漫画详情→作者字段，以及主导航作者页→原有入口、数据与返回链路可用，未新增作者业务。
+- [ ] LI-09 自动化矩阵及 Windows/macOS 正式应用路径验收完成→记录真实命令、日志、提交和可点击产物；缺失的平台不标为通过。
