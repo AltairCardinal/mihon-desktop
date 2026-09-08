@@ -103,7 +103,9 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.BuildInfo
 import mihon.desktop.migration.BatchMigrationRequest
@@ -119,6 +121,9 @@ import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.projectLibraryToolbar
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.core.common.util.lang.launchNonCancellable
+import mihon.desktop.domain.DesktopNotification
+import mihon.desktop.domain.DesktopNotificationService
 
 internal fun libraryBatchMigrationDestination(
     selectedManga: List<Manga>,
@@ -175,6 +180,17 @@ internal fun clearSelectionBeforeRemoval(
     val snapshot = items.map { it.id }.distinct()
     clear()
     launch { operation(snapshot) }
+}
+
+internal fun CoroutineScope.launchAcceptedLibraryOperation(
+    notificationService: DesktopNotificationService,
+    feedback: () -> String?,
+    operation: suspend () -> Unit,
+) = launchNonCancellable {
+    operation()
+    if (!this@launchAcceptedLibraryOperation.isActive) {
+        feedback()?.let { notificationService.post(DesktopNotification(title = "", message = it)) }
+    }
 }
 
 object LibraryTab : Tab {
@@ -307,7 +323,14 @@ class LibraryRootScreen : Screen {
         val selectionActions = librarySelectionActions(
             selected = { allItems.filter { it.id in selectionState.selectedIds } },
             queue = { desktopDependencies.downloadQueuePort.queue.value },
-            launch = { task -> scope.launch { task() } },
+            launch = { task ->
+                model.clearOperationResults()
+                scope.launchAcceptedLibraryOperation(
+                    desktopDependencies.notificationService,
+                    feedback = { model.state.value.batchCategoryResultMessage },
+                    operation = task,
+                )
+            },
             enqueue = { items, action, queue -> model.enqueueDownloads(items, action, queue) },
             navigate = navigator::push,
             clear = selectionState::clear,
@@ -335,7 +358,14 @@ class LibraryRootScreen : Screen {
                     clearSelectionBeforeRemoval(
                         items = items,
                         clear = selectionState::clear,
-                        launch = { task -> scope.launch { task() } },
+                        launch = { task ->
+                            model.clearOperationResults()
+                            scope.launchAcceptedLibraryOperation(
+                                desktopDependencies.notificationService,
+                                feedback = { model.state.value.operationFeedback },
+                                operation = task,
+                            )
+                        },
                     ) { ids ->
                         model.removeFromLibrary(
                             mangaIds = ids,
@@ -355,13 +385,21 @@ class LibraryRootScreen : Screen {
                 onDismiss = { model.setContextMenuManga(null) },
                 onMarkAllRead = {
                     model.setContextMenuManga(null)
-                    scope.launch {
+                    model.clearOperationResults()
+                    scope.launchAcceptedLibraryOperation(
+                        desktopDependencies.notificationService,
+                        feedback = { model.state.value.operationFeedback },
+                    ) {
                         model.markMangaRead(ctxManga.manga.id, read = true)
                     }
                 },
                 onMarkAllUnread = {
                     model.setContextMenuManga(null)
-                    scope.launch {
+                    model.clearOperationResults()
+                    scope.launchAcceptedLibraryOperation(
+                        desktopDependencies.notificationService,
+                        feedback = { model.state.value.operationFeedback },
+                    ) {
                         model.markMangaRead(ctxManga.manga.id, read = false)
                     }
                 },
@@ -371,8 +409,13 @@ class LibraryRootScreen : Screen {
                 },
                 onDownload = {
                     model.setContextMenuManga(null)
-                    scope.launch { model.enqueueNextUnreadDownload(ctxManga) }
+                    model.clearOperationResults()
+                    scope.launchAcceptedLibraryOperation(
+                        desktopDependencies.notificationService,
+                        feedback = { model.state.value.operationFeedback },
+                    ) { model.enqueueNextUnreadDownload(ctxManga) }
                 },
+                canDownload = ctxManga.manga.source != 0L,
             )
         }
 
@@ -387,7 +430,11 @@ class LibraryRootScreen : Screen {
                     model.setShowBatchCategoryDialog(false)
                     batchCategoryTarget = null
                     selectionState.clear()
-                    scope.launch {
+                    model.clearOperationResults()
+                    scope.launchAcceptedLibraryOperation(
+                        desktopDependencies.notificationService,
+                        feedback = { model.state.value.batchCategoryResultMessage },
+                    ) {
                         model.updateCategoriesForManga(
                             mangaIds = targetIds,
                             addCategoryIds = delta.addCategoryIds,
@@ -409,7 +456,7 @@ class LibraryRootScreen : Screen {
         Scaffold(
             contentWindowInsets = WindowInsets(0),
             // ── Selection action bar ───────────────────────────────────────
-                    bottomBar = {
+            bottomBar = {
                 if (selectionState.isInSelectionMode) {
                     val selectedItems = allItems.filter { it.id in selectionState.selectedIds }
                     val remoteSelection = selectedItems.isNotEmpty() && selectedItems.all { it.manga.source != 0L }
@@ -425,14 +472,28 @@ class LibraryRootScreen : Screen {
                             clearSelectionBeforeAsync(
                                 selectedIds = selectionState.selectedIds,
                                 clear = selectionState::clear,
-                                launch = { task -> scope.launch { task() } },
+                                launch = { task ->
+                                    model.clearOperationResults()
+                                    scope.launchAcceptedLibraryOperation(
+                                        desktopDependencies.notificationService,
+                                        feedback = { model.state.value.operationFeedback },
+                                        operation = task,
+                                    )
+                                },
                             ) { ids -> model.markMangaRead(ids, read = true) }
                         },
                         onMarkUnread = {
                             clearSelectionBeforeAsync(
                                 selectedIds = selectionState.selectedIds,
                                 clear = selectionState::clear,
-                                launch = { task -> scope.launch { task() } },
+                                launch = { task ->
+                                    model.clearOperationResults()
+                                    scope.launchAcceptedLibraryOperation(
+                                        desktopDependencies.notificationService,
+                                        feedback = { model.state.value.operationFeedback },
+                                        operation = task,
+                                    )
+                                },
                             ) { ids -> model.markMangaRead(ids, read = false) }
                         },
                         onRemoveFromLibrary = {

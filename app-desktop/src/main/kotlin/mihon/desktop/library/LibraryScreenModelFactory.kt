@@ -11,7 +11,6 @@ import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DesktopDownloadIdentityResolver
-import mihon.desktop.download.DownloadStatus
 import mihon.desktop.settings.LibraryCategoryPrefs
 import mihon.desktop.domain.DesktopCustomCoverStore
 import mihon.desktop.ui.library.LibraryScreenModel
@@ -31,12 +30,16 @@ import tachiyomi.domain.track.interactor.GetTracksPerManga
 import tachiyomi.domain.track.service.TrackerSessionProvider
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 
 object LibraryScreenModelFactory {
     fun create(): LibraryScreenModel {
         val downloadManager = runCatching { Injekt.get<DesktopDownloadManager>() }.getOrNull()
         val downloadProvider = runCatching { Injekt.get<DesktopDownloadProvider>() }.getOrNull()
         val downloadIdentityResolver = runCatching { Injekt.get<DesktopDownloadIdentityResolver>() }.getOrNull()
+        val getChaptersByMangaId = Injekt.get<GetChaptersByMangaId>()
         val updateScheduler = Injekt.get<LibraryUpdateScheduler>()
         return LibraryScreenModel(
             getLibraryManga = Injekt.get<GetLibraryManga>(),
@@ -47,7 +50,7 @@ object LibraryScreenModelFactory {
             reorderCategory = Injekt.get<ReorderCategory>(),
             updateChecker = Injekt.get<LibraryUpdateChecker>(),
             sourceManager = Injekt.get<SourceManager>(),
-            getChaptersByMangaId = Injekt.get<GetChaptersByMangaId>(),
+            getChaptersByMangaId = getChaptersByMangaId,
             getBookmarkedChaptersByMangaId = Injekt.get<GetBookmarkedChaptersByMangaId>(),
             getNextChapters = Injekt.get<GetNextChapters>(),
             setChapterReadStatus = Injekt.get<SetChapterReadStatus>(),
@@ -88,11 +91,20 @@ object LibraryScreenModelFactory {
             },
             deleteMangaDownloads = if (downloadProvider != null && downloadIdentityResolver != null) {
                 { item ->
-                    downloadProvider.deleteMangaDownloads(
+                    if (downloadManager != null) {
+                        val chapterIds = getChaptersByMangaId.awaitOrThrow(item.id).mapTo(mutableSetOf()) { it.id }
+                        val queuedTargetIds = chapterIds + downloadManager.queue.value.mapNotNull { queued ->
+                            queued.chapterId.takeIf { queued.mangaId == item.id }
+                        }
+                        check(downloadManager.cancelAndAwaitRetirements(queuedTargetIds)) {
+                            "Unable to retire downloads for manga ${item.id}"
+                        }
+                    }
+                    check(downloadProvider.deleteMangaDownloads(
                         item.manga.source,
                         item.manga.title,
                         downloadIdentityResolver.resolve(item.manga),
-                    )
+                    )) { "Unable to delete downloads for manga ${item.id}" }
                 }
             } else {
                 null
@@ -103,10 +115,15 @@ object LibraryScreenModelFactory {
             sharedDownloadPreferences = runCatching { Injekt.get<DownloadPreferences>() }.getOrNull(),
             deleteChapterDownload = if (downloadProvider != null && downloadIdentityResolver != null) {
                 { item, chapter ->
-                    downloadProvider.deleteChapterDownload(
+                    if (downloadManager != null) {
+                        check(downloadManager.cancelAndAwaitRetirement(chapter.id)) {
+                            "Unable to retire download ${chapter.id}"
+                        }
+                    }
+                    check(downloadProvider.deleteChapterDownload(
                         item.manga.source,
                         downloadIdentityResolver.resolve(item.manga, chapter),
-                    )
+                    )) { "Unable to delete download ${chapter.id}" }
                 }
             } else {
                 null
@@ -123,12 +140,14 @@ object LibraryScreenModelFactory {
             },
             isChapterQueued = downloadManager?.let { manager ->
                 { chapter ->
-                    manager.queue.value.any { item ->
-                        item.chapterId == chapter.id &&
-                            item.status in setOf(DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING)
-                    }
+                    manager.queue.value.any { item -> item.chapterId == chapter.id }
                 }
             },
+            downloadQueueChanges = downloadManager?.queue
+                ?.map { queue -> queue.map { it.chapterId to it.status } }
+                ?.distinctUntilChanged()
+                ?.map { Unit }
+                ?: flowOf(Unit),
         )
     }
 }

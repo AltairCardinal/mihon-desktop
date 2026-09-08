@@ -5,6 +5,10 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerButton
+import androidx.compose.ui.input.pointer.PointerButtons
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.text.AnnotatedString
@@ -14,6 +18,9 @@ import java.util.Locale
 import java.util.UUID
 import java.util.prefs.Preferences
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -21,6 +28,9 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withContext
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.core.screen.Screen
@@ -30,6 +40,7 @@ import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.domain.fakes.FakeChapterRepository
+import mihon.desktop.domain.fakes.FakeHistoryRepository
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.source.FakeSource
@@ -43,12 +54,17 @@ import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
+import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
+import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.model.ChapterUpdate
+import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.library.interactor.LibraryFilter
 import tachiyomi.domain.library.model.LibraryDisplayMode as SharedLibraryDisplayMode
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetLibraryManga
+import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.track.interactor.GetTracksPerManga
 import tachiyomi.domain.track.model.Track
@@ -56,10 +72,80 @@ import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackerSessionProvider
 import tachiyomi.i18n.MR
 import java.nio.file.Path
+import mihon.desktop.domain.DesktopNotification
+import mihon.desktop.domain.DesktopNotificationService
 
 class LibraryPageCompositionTest {
     @TempDir
     lateinit var tempDir: Path
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `accepted root success survives leaving without replaying stale feedback`() = runTest {
+        val manga = sampleManga(90L, "Lifecycle manga", 7L)
+        val mangaRepository = FakeMangaRepository().apply {
+            libraryManga = listOf(sampleLibraryManga(manga).copy(totalChapters = 1L))
+        }
+        val backing = FakeChapterRepository().apply {
+            seed(Chapter.create().copy(id = 901L, mangaId = manga.id, read = false))
+        }
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val finished = CompletableDeferred<Unit>()
+        val chapters = object : ChapterRepository by backing {
+            override suspend fun updateAll(chapterUpdates: List<ChapterUpdate>) {
+                entered.complete(Unit)
+                release.await()
+                backing.updateAll(chapterUpdates)
+                finished.complete(Unit)
+            }
+        }
+        val getChapters = GetChaptersByMangaId(chapters)
+        val model = LibraryScreenModel(
+            getLibraryManga = GetLibraryManga(mangaRepository),
+            getCategories = GetCategories(FakeCategoryRepository()),
+            getChaptersByMangaId = getChapters,
+            setChapterReadStatus = SetChapterReadStatus(getChapters, UpdateChapter(chapters)),
+        )
+        model.setOperationFeedback("stale feedback")
+        val notifications = DesktopNotificationService()
+        val received = mutableListOf<DesktopNotification>()
+        val notificationJob = backgroundScope.launch { notifications.notifications.collect(received::add) }
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            io.mockk.every { notificationService } returns notifications
+        }
+        val scene = ImageComposeScene(1_200, 900, coroutineContext = coroutineContext) {}
+        scene.setContent {
+            CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                ProvideLibraryScreenModelFactory(factory = { model }) {
+                    Navigator(LibraryRootScreen()) { CurrentScreen() }
+                }
+            }
+        }
+        try {
+            render(scene)
+            val item = nodes(scene).first {
+                it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnLongClick) &&
+                    semanticLabels(it).contains(manga.title)
+            }
+            assertTrue(requireNotNull(item.config[androidx.compose.ui.semantics.SemanticsActions.OnLongClick].action).invoke())
+            render(scene)
+            click(scene, MR.strings.desktop_ui_mark_read.localized())
+            entered.await()
+
+            scene.close()
+            release.complete(Unit)
+            assertTrue(withTimeoutOrNull(1_000) { finished.await(); true } == true)
+            repeat(3) { yield() }
+
+            assertTrue(backing.getChapterById(901L)?.read == true)
+            assertTrue(received.isEmpty())
+        } finally {
+            release.complete(Unit)
+            notificationJob.cancel()
+            runCatching { scene.close() }
+        }
+    }
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
@@ -71,6 +157,87 @@ class LibraryPageCompositionTest {
 
             assertTrue(nodes(scene).none { it.config.contains(androidx.compose.ui.semantics.SemanticsActions.SetText) })
             assertTrue(!semanticLabels(scene).contains(MR.strings.action_global_search.localized()))
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `local manga context menu hides the unsupported single download action`() = runTest {
+        val manga = sampleManga(91L, "Local context", 0L)
+        val model = rootModel(listOf(sampleLibraryManga(manga)))
+        val scene = rootScene(model)
+        try {
+            render(scene)
+            val item = nodes(scene).first {
+                it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnLongClick) &&
+                    semanticLabels(it).contains(manga.title)
+            }
+            secondaryPress(scene, item)
+            render(scene)
+
+            assertTrue(!semanticLabels(scene).contains(MR.strings.desktop_ui_download_next_unread.localized()))
+            assertTrue(semanticLabels(scene).contains(MR.strings.remove_from_library.localized()))
+            secondaryRelease(scene, item)
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `remote manga context actions use the production mark and download model ports`() = runTest {
+        val manga = sampleManga(92L, "Remote context", 7L)
+        val mangaRepository = FakeMangaRepository().apply {
+            seed(manga)
+            libraryManga = listOf(sampleLibraryManga(manga).copy(totalChapters = 1L))
+        }
+        val chapters = FakeChapterRepository().apply {
+            seed(Chapter.create().copy(id = 921L, mangaId = manga.id, name = "Chapter", url = "/chapter", read = false))
+        }
+        val getChapters = GetChaptersByMangaId(chapters)
+        val enqueued = mutableListOf<mihon.desktop.download.DownloadItem>()
+        val model = LibraryScreenModel(
+            getLibraryManga = GetLibraryManga(mangaRepository),
+            getCategories = GetCategories(FakeCategoryRepository()),
+            getChaptersByMangaId = getChapters,
+            getNextChapters = tachiyomi.domain.history.interactor.GetNextChapters(
+                getChapters,
+                GetManga(mangaRepository),
+                FakeHistoryRepository(),
+            ),
+            setChapterReadStatus = SetChapterReadStatus(getChapters, UpdateChapter(chapters)),
+            enqueueDownload = enqueued::add,
+        )
+        val scene = rootScene(model)
+        try {
+            render(scene)
+            var item = nodes(scene).first {
+                it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnLongClick) &&
+                    semanticLabels(it).contains(manga.title)
+            }
+            secondaryPress(scene, item)
+            render(scene)
+            click(scene, MR.strings.desktop_ui_download_next_unread.localized())
+            secondaryRelease(scene, item)
+            withContext(kotlinx.coroutines.Dispatchers.Default.limitedParallelism(1)) {
+                withTimeout(2_000) { while (enqueued.isEmpty()) delay(10) }
+            }
+            assertEquals(listOf(manga.id), enqueued.map { it.mangaId })
+
+            render(scene)
+            item = nodes(scene).first {
+                it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnLongClick) &&
+                    semanticLabels(it).contains(manga.title)
+            }
+            secondaryPress(scene, item)
+            render(scene)
+            click(scene, MR.strings.desktop_ui_mark_all_read.localized())
+            withContext(kotlinx.coroutines.Dispatchers.Default.limitedParallelism(1)) {
+                withTimeout(2_000) { while (chapters.getChapterById(921L)?.read != true) delay(10) }
+            }
+            assertTrue(chapters.getChapterById(921L)?.read == true)
         } finally {
             scene.close()
         }
@@ -754,6 +921,23 @@ class LibraryPageCompositionTest {
             emptyList()
         }
         return text + descriptions
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private fun secondaryPress(scene: ImageComposeScene, node: androidx.compose.ui.semantics.SemanticsNode) {
+        val center = node.boundsInRoot.center
+        scene.sendPointerEvent(
+            PointerEventType.Press,
+            Offset(center.x, center.y),
+            button = PointerButton.Secondary,
+            buttons = PointerButtons(isSecondaryPressed = true),
+        )
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private fun secondaryRelease(scene: ImageComposeScene, node: androidx.compose.ui.semantics.SemanticsNode) {
+        val center = node.boundsInRoot.center
+        scene.sendPointerEvent(PointerEventType.Release, Offset(center.x, center.y), button = PointerButton.Secondary)
     }
 
     private suspend fun render(scene: ImageComposeScene) {

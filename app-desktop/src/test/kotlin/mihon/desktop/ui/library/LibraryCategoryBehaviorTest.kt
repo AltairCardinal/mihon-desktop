@@ -6,8 +6,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.pointer.PointerButton
+import androidx.compose.ui.input.pointer.PointerButtons
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -18,7 +22,9 @@ import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.every
 import io.mockk.mockk
 import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileInputStream
 import java.util.Locale
 import java.util.UUID
 import java.util.prefs.Preferences
@@ -40,14 +46,20 @@ import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.domain.SortMode
+import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.download.DownloadItem
 import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.library.LibraryScreenModelFactory
 import mihon.desktop.test.http.LibraryMangaTestModeController
 import mihon.desktop.ui.migration.LibraryBatchMigrationConfigScreen
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
+import okio.Buffer
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
@@ -58,8 +70,10 @@ import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.library.model.LibrarySort
+import tachiyomi.domain.library.interactor.LibraryFilter
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetLibraryManga
@@ -72,6 +86,244 @@ import uy.kohesive.injekt.api.get
 
 @Isolated
 class LibraryCategoryBehaviorTest {
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
+    fun `factory queue identity changes refresh visible download counts`(@TempDir tempDir: File) = runBlocking {
+        val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
+        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(preferencesNode), startDownloadWorker = false)
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        val server = MockWebServer().apply { start() }
+        var scene: ImageComposeScene? = null
+        var model: LibraryScreenModel? = null
+        try {
+            val repository = Injekt.get<MangaRepository>()
+            val manga = repository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 7L, url = "/queue-refresh", title = "Queue refresh")),
+            ).single()
+            repository.updateMembershipsAtomically(
+                listOf(LibraryMembershipUpdate(manga.id, true, 1L, emptyList())),
+            )
+            Injekt.get<LibraryPreferences>().apply {
+                downloadBadge().set(true)
+                unreadBadge().set(false)
+            }
+            val chapter = Injekt.get<ChapterRepository>().addAll(
+                listOf(Chapter.create().copy(mangaId = manga.id, url = "/queue-refresh/1", name = "Chapter")),
+            ).single()
+            val rootModel = LibraryScreenModelFactory.create().also { model = it }
+            scene = ImageComposeScene(1_400, 900, coroutineContext = coroutineContext) {}
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides DesktopUiDependencies.fromInjekt()) {
+                    ProvideLibraryScreenModelFactory(factory = { rootModel }) {
+                        Navigator(LibraryRootScreen()) { CurrentScreen() }
+                    }
+                }
+            }
+            withTimeout(5_000) {
+                while (rootModel.state.value.allItems.none { it.id == manga.id }) {
+                    render(scene)
+                    delay(10)
+                }
+            }
+            click(scene, MR.strings.action_filter.localized())
+            render(scene)
+            click(
+                scene,
+                MR.strings.desktop_ui_filter_value.localized(
+                    Locale.getDefault(),
+                    MR.strings.label_downloaded.localized(),
+                    tachiyomi.core.common.preference.TriState.DISABLED.label(),
+                ),
+            )
+            render(scene)
+            assertFalse(nodes(scene).flatMap { it.semanticLabels() }.contains(manga.title))
+
+            val provider = Injekt.get<DesktopDownloadProvider>()
+            val manager = Injekt.get<DesktopDownloadManager>()
+            val png = ByteArrayOutputStream().use { output ->
+                ImageIO.write(BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB), "png", output)
+                output.toByteArray()
+            }
+            server.enqueue(
+                MockResponse.Builder()
+                    .setHeader("Content-Type", "image/png")
+                    .body(Buffer().write(png))
+                    .build(),
+            )
+            manager.enqueue(
+                DownloadItem(
+                    manga.source,
+                    manga.title,
+                    chapter.name,
+                    chapter.id,
+                    mangaId = manga.id,
+                    chapterUrl = chapter.url,
+                    pageUrls = listOf(server.url("/page.png").toString()),
+                ),
+            )
+            manager.start()
+            withTimeout(5_000) {
+                while (manager.queue.value.isNotEmpty() || provider.downloadedChapterCount(manga.source, manga.title) != 1) {
+                    render(scene)
+                    delay(10)
+                }
+            }
+            withTimeout(5_000) {
+                while (!nodes(scene).flatMap { it.semanticLabels() }.contains(manga.title)) {
+                    render(scene)
+                    delay(10)
+                }
+            }
+            val visibleLabels = nodes(scene).flatMap { it.semanticLabels() }
+            assertTrue(visibleLabels.contains(manga.title))
+            assertTrue(visibleLabels.contains("1"))
+            assertTrue(visibleLabels.contains(MR.strings.label_downloaded.localized()))
+
+            longClick(scene, manga.title)
+            render(scene)
+            click(scene, MR.strings.action_remove.localized())
+            render(scene)
+            clickToggle(scene, ToggleableState.Off, index = 1)
+            click(scene, MR.strings.action_ok.localized())
+            withTimeout(5_000) {
+                while (
+                    provider.hasMangaDownloads(manga.source, manga.title) ||
+                    nodes(scene).flatMap { it.semanticLabels() }.contains(manga.title)
+                ) {
+                    render(scene)
+                    delay(10)
+                }
+            }
+            assertFalse(nodes(scene).flatMap { it.semanticLabels() }.contains(manga.title))
+            assertTrue(repository.getMangaById(manga.id).favorite)
+        } finally {
+            scene?.close()
+            model?.onDispose()
+            server.close()
+            Dispatchers.resetMain()
+            context.closeAndJoin()
+            preferencesNode.removeNode()
+        }
+    }
+
+    @Test
+    fun `factory reports provider deletion failure instead of claiming success`(@TempDir tempDir: File) = runBlocking {
+        assumeTrue(System.getProperty("os.name").startsWith("Windows", ignoreCase = true))
+        val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
+        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(preferencesNode), startDownloadWorker = false)
+        var lockedFile: FileInputStream? = null
+        try {
+            val repository = Injekt.get<MangaRepository>()
+            val manga = repository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 7L, url = "/locked-delete", title = "Locked delete")),
+            ).single()
+            repository.updateMembershipsAtomically(
+                listOf(LibraryMembershipUpdate(manga.id, true, 1L, emptyList())),
+            )
+            val provider = Injekt.get<DesktopDownloadProvider>()
+            val page = provider.chapterDownloadDir(manga.source, manga.title, "Chapter").apply { mkdirs() }
+                .resolve("page.png")
+            ImageIO.write(BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB), "png", page)
+            lockedFile = FileInputStream(page)
+            val model = LibraryScreenModelFactory.create().apply { setAllItems(listOf(libraryItem(manga))) }
+
+            model.removeFromLibrary(listOf(manga.id), deleteDownloads = true, removeFromLibrary = false)
+
+            assertTrue(page.exists())
+            assertEquals(
+                MR.strings.desktop_ui_items_updated_failed.localized(Locale.getDefault(), 0, 1),
+                model.state.value.operationFeedback,
+            )
+        } finally {
+            lockedFile?.close()
+            context.closeAndJoin()
+            preferencesNode.removeNode()
+        }
+    }
+
+    @Test
+    fun `factory download deletion retires only matching legacy and identified queue items`(@TempDir tempDir: File) = runBlocking {
+        val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
+        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(preferencesNode), startDownloadWorker = false)
+        try {
+            val mangaRepository = Injekt.get<MangaRepository>()
+            val target = mangaRepository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 7L, url = "/target-delete", title = "Shared title")),
+            ).single()
+            val unrelated = mangaRepository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 8L, url = "/unrelated-delete", title = "Shared title")),
+            ).single()
+            mangaRepository.updateMembershipsAtomically(
+                listOf(
+                    LibraryMembershipUpdate(target.id, true, 1L, emptyList()),
+                    LibraryMembershipUpdate(unrelated.id, true, 2L, emptyList()),
+                ),
+            )
+            val targetChapterInput = Chapter.create().copy(
+                id = 701L,
+                mangaId = target.id,
+                url = "/target-chapter",
+                name = "Target chapter",
+            )
+            val unrelatedChapterInput = Chapter.create().copy(
+                id = 801L,
+                mangaId = unrelated.id,
+                url = "/unrelated-chapter",
+                name = "Unrelated chapter",
+            )
+            val insertedChapters = Injekt.get<ChapterRepository>().addAll(listOf(targetChapterInput, unrelatedChapterInput))
+            val targetChapter = insertedChapters.single { it.mangaId == target.id }
+            val unrelatedChapter = insertedChapters.single { it.mangaId == unrelated.id }
+            val manager = Injekt.get<DesktopDownloadManager>()
+            manager.enqueue(
+                DownloadItem(
+                    sourceId = target.source,
+                    mangaTitle = target.title,
+                    chapterName = targetChapter.name,
+                    chapterId = targetChapter.id,
+                    mangaId = 0L,
+                    chapterUrl = targetChapter.url,
+                ),
+            )
+            manager.enqueue(
+                DownloadItem(
+                    sourceId = unrelated.source,
+                    mangaTitle = unrelated.title,
+                    chapterName = unrelatedChapter.name,
+                    chapterId = unrelatedChapter.id,
+                    mangaId = unrelated.id,
+                    chapterUrl = unrelatedChapter.url,
+                ),
+            )
+            val provider = Injekt.get<DesktopDownloadProvider>()
+            listOf(target to targetChapter, unrelated to unrelatedChapter).forEach { (manga, chapter) ->
+                provider.chapterDownloadDir(manga.source, manga.title, chapter.name).apply {
+                    mkdirs()
+                    ImageIO.write(BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB), "png", resolve("page.png"))
+                }
+            }
+            val model = LibraryScreenModelFactory.create().apply {
+                setAllItems(listOf(libraryItem(target), libraryItem(unrelated)))
+            }
+            assertEquals(1L, model.state.value.downloadCountsByManga[target.id])
+            assertEquals(
+                listOf(targetChapter.id),
+                Injekt.get<GetChaptersByMangaId>().awaitOrThrow(target.id).map { it.id },
+            )
+
+            model.removeFromLibrary(listOf(target.id), deleteDownloads = true, removeFromLibrary = false)
+
+            assertEquals(listOf(unrelatedChapter.id), manager.queue.value.map { it.chapterId })
+            assertFalse(provider.hasMangaDownloads(target.source, target.title))
+            assertTrue(provider.hasMangaDownloads(unrelated.source, unrelated.title))
+            assertEquals(0L, model.state.value.downloadCountsByManga[target.id])
+            assertEquals(1L, model.state.value.downloadCountsByManga[unrelated.id])
+        } finally {
+            context.closeAndJoin()
+            preferencesNode.removeNode()
+        }
+    }
+
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
     fun `removal dialog hides download deletion for mixed local selection`() = runBlocking {
@@ -249,7 +501,24 @@ class LibraryCategoryBehaviorTest {
                 render(scene)
             }
 
-            openRemoval(mangas[0].title)
+            suspend fun openContextRemoval(title: String) {
+                render(scene)
+                val item = nodes(scene).first {
+                    it.config.contains(SemanticsActions.OnLongClick) && it.semanticLabels().contains(title)
+                }
+                val center = item.boundsInRoot.center
+                scene.sendPointerEvent(
+                    PointerEventType.Press,
+                    Offset(center.x, center.y),
+                    button = PointerButton.Secondary,
+                    buttons = PointerButtons(isSecondaryPressed = true),
+                )
+                render(scene)
+                click(scene, MR.strings.remove_from_library.localized())
+                render(scene)
+            }
+
+            openContextRemoval(mangas[0].title)
             assertEquals(2, toggleNodes(scene).size)
             val disabledOk = nodes(scene).first { MR.strings.action_ok.localized() in it.semanticLabels() }
             assertTrue(disabledOk.config.contains(SemanticsProperties.Disabled))
@@ -258,8 +527,7 @@ class LibraryCategoryBehaviorTest {
             assertTrue(repository.getMangaById(mangas[0].id).favorite)
             assertTrue(provider.hasMangaDownloads(mangas[0].source, mangas[0].title))
 
-            click(scene, MR.strings.action_remove.localized())
-            render(scene)
+            openContextRemoval(mangas[0].title)
             val late = repository.insertNetworkManga(
                 listOf(Manga.create().copy(source = 7L, url = "/late-removal", title = "Late removal bystander")),
             ).single()
@@ -290,6 +558,12 @@ class LibraryCategoryBehaviorTest {
                 while (provider.hasMangaDownloads(mangas[1].source, mangas[1].title)) delay(10)
             }
             assertTrue(repository.getMangaById(mangas[1].id).favorite)
+            assertEquals(0L, rootModel.state.value.downloadCountsByManga[mangas[1].id])
+            rootModel.setFilter(LibraryFilter(downloaded = tachiyomi.core.common.preference.TriState.ENABLED_IS))
+            render(scene)
+            assertFalse(nodes(scene).flatMap { it.semanticLabels() }.contains(mangas[1].title))
+            assertTrue(nodes(scene).flatMap { it.semanticLabels() }.contains(mangas[2].title))
+            rootModel.setFilter(LibraryFilter())
 
             openRemoval(mangas[2].title)
             clickToggle(scene, ToggleableState.Off, index = 0)

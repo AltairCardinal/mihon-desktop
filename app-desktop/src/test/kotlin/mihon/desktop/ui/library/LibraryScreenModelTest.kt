@@ -748,6 +748,37 @@ class LibraryScreenModelTest {
     }
 
     @Test
+    fun `mark read freezes manga before the library flow removes it`() = runTest {
+        val backing = FakeChapterRepository()
+        backing.addAll(listOf(Chapter.create().copy(id = 1L, mangaId = 10L, read = false)))
+        lateinit var model: LibraryScreenModel
+        val repository = object : ChapterRepository by backing {
+            override suspend fun updateAll(chapterUpdates: List<tachiyomi.domain.chapter.model.ChapterUpdate>) {
+                backing.updateAll(chapterUpdates)
+                model.setAllItems(emptyList())
+            }
+        }
+        val store = InMemoryPreferenceStore(
+            sequenceOf(
+                InMemoryPreferenceStore.InMemoryPreference("pref_remove_after_marked_as_read_key", true, false),
+            ),
+        )
+        val deleted = mutableListOf<Long>()
+        val item = sampleLibraryManga(sampleManga(id = 10L, source = 7L, title = "Manga"))
+        val getChapters = GetChaptersByMangaId(repository)
+        model = LibraryScreenModel(
+            getChaptersByMangaId = getChapters,
+            setChapterReadStatus = SetChapterReadStatus(getChapters, UpdateChapter(repository)),
+            sharedDownloadPreferences = DownloadPreferences(store),
+            deleteChapterDownload = { _, chapter -> deleted += chapter.id },
+        ).apply { setAllItems(listOf(item)) }
+
+        model.markMangaRead(mangaId = 10L, read = true)
+
+        assertEquals(listOf(1L), deleted)
+    }
+
+    @Test
     fun `mark read failure is reported without rethrowing`() = runTest {
         val chapterRepository = FakeChapterRepository().apply {
             addAll(listOf(Chapter.create().copy(id = 1L, mangaId = 10L, read = false)))
@@ -797,6 +828,27 @@ class LibraryScreenModelTest {
 
         assertEquals(listOf(1L, 2L), mangaRepository.updates.map { it.id })
         assertTrue(mangaRepository.updates.all { it.favorite == false })
+    }
+
+    @Test
+    fun `removeFromLibrary counts a partial item failure only once`() = runTest {
+        val mangaRepository = FakeMangaRepository()
+        val manga = sampleManga(id = 3L).copy(favorite = true)
+        mangaRepository.seed(manga)
+        var downloadsDeleted = false
+        val model = LibraryScreenModel(
+            updateManga = UpdateManga(mangaRepository),
+            deleteCustomCover = { false },
+            deleteMangaDownloads = { downloadsDeleted = true },
+        ).apply { setAllItems(listOf(sampleLibraryManga(manga))) }
+
+        model.removeFromLibrary(listOf(manga.id), deleteDownloads = true)
+
+        assertTrue(downloadsDeleted)
+        assertEquals(
+            MR.strings.desktop_ui_items_updated_failed.localized(java.util.Locale.getDefault(), 0, 1),
+            model.state.value.operationFeedback,
+        )
     }
 
     @Test
@@ -886,6 +938,7 @@ class LibraryScreenModelTest {
                 mangaTitle = "Manga",
                 chapterName = "Two",
                 chapterId = 3L,
+                mangaId = 10L,
                 chapterUrl = "/3",
             ),
             enqueued.single(),
@@ -1061,6 +1114,7 @@ class LibraryScreenModelTest {
         val queue = listOf(
             DownloadItem(7L, "Manga", "Chapter 1", 1L, status = DownloadStatus.QUEUED),
             DownloadItem(7L, "Manga", "Chapter 2", 2L, status = DownloadStatus.DOWNLOADING),
+            DownloadItem(7L, "Manga", "Chapter 4", 4L, status = DownloadStatus.ERROR),
         )
 
         val result = model.enqueueDownloads(
@@ -1069,9 +1123,9 @@ class LibraryScreenModelTest {
             queue,
         )
 
-        assertEquals(LibraryBatchDownloadResult(queued = 2, skipped = 3, failures = 2), result)
+        assertEquals(LibraryBatchDownloadResult(queued = 2, skipped = 4, failures = 1), result)
         assertEquals(listOf(5L, 6L), enqueued)
-        assertEquals("2 queued, 3 skipped, 2 failed", model.state.value.batchCategoryResultMessage)
+        assertEquals("2 queued, 4 skipped, 1 failed", model.state.value.batchCategoryResultMessage)
         assertEquals(LibraryBatchDownloadResult(), model.enqueueDownloads(emptyList(), MangaDetailDownloadAction.UNREAD_CHAPTERS))
         assertEquals("No manga selected", model.state.value.batchCategoryResultMessage)
     }

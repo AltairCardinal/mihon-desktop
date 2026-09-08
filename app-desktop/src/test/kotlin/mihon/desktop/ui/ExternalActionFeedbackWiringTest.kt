@@ -43,9 +43,11 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
@@ -56,6 +58,94 @@ import java.util.Locale
 @Isolated
 @OptIn(ExperimentalComposeUiApi::class)
 class ExternalActionFeedbackWiringTest {
+    @Test
+    fun `accepted library success and failure survive tab switches with Home feedback`(@TempDir tempDir: File) = runBlocking {
+        var entered = CompletableDeferred<Unit>()
+        var release = CompletableDeferred<Unit>()
+        var failUpdate = false
+        val context = initDesktopDIForTest(
+            tempDir,
+            isolatedDesktopPreferenceStore(),
+            startDownloadWorker = false,
+            chapterRepositoryOverride = { actualChapters ->
+                object : ChapterRepository by actualChapters {
+                    override suspend fun updateAll(chapterUpdates: List<ChapterUpdate>) {
+                        entered.complete(Unit)
+                        release.await()
+                        if (failUpdate) error("late SQL mutation failed")
+                        actualChapters.updateAll(chapterUpdates)
+                    }
+                }
+            },
+        )
+        val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+        try {
+            val mangaRepository = Injekt.get<MangaRepository>()
+            val manga = mangaRepository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 7L, url = "/lifecycle", title = "Lifecycle SQL manga")),
+            ).single()
+            assertTrue(mangaRepository.update(MangaUpdate(id = manga.id, favorite = true)))
+            val actualChapters = Injekt.get<ChapterRepository>()
+            val chapter = actualChapters.addAll(
+                listOf(Chapter.create().copy(mangaId = manga.id, url = "/lifecycle/1", name = "Chapter 1")),
+            ).single()
+            val dependencies = DesktopUiDependencies.fromInjekt()
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ProvideLibraryNavigationHost(VoyagerLibraryNavigationHost()) {
+                        DesktopTheme { Navigator(HomeScreen()) }
+                    }
+                }
+            }
+            withTimeout(5_000) {
+                while (!hasText(scene, manga.title)) {
+                    scene.render()
+                    yield()
+                }
+            }
+            longClickText(scene, manga.title)
+            scene.render()
+            clickText(scene, MR.strings.desktop_ui_mark_read.localized())
+            withTimeout(2_000) { entered.await() }
+
+            clickText(scene, MR.strings.browse.localized())
+            scene.render()
+            release.complete(Unit)
+            withTimeout(5_000) {
+                while (actualChapters.getChapterById(chapter.id)?.read != true) yield()
+            }
+
+            entered = CompletableDeferred()
+            release = CompletableDeferred()
+            failUpdate = true
+            clickText(scene, MR.strings.label_library.localized())
+            withTimeout(5_000) {
+                while (!hasText(scene, manga.title)) {
+                    scene.render()
+                    yield()
+                }
+            }
+            longClickText(scene, manga.title)
+            scene.render()
+            clickText(scene, MR.strings.desktop_ui_mark_unread.localized())
+            withTimeout(2_000) { entered.await() }
+            clickText(scene, MR.strings.browse.localized())
+            scene.render()
+            release.complete(Unit)
+            val failure = MR.strings.desktop_ui_items_updated_failed.localized(Locale.getDefault(), 0, 1)
+            withTimeout(5_000) {
+                while (!hasText(scene, failure)) {
+                    scene.render()
+                    yield()
+                }
+            }
+        } finally {
+            release.complete(Unit)
+            scene.close()
+            context.closeAndJoin()
+        }
+    }
+
     @Test
     fun `Home library tab reselect opens library filters while returning from another tab only switches tabs`(
         @TempDir tempDir: File,
@@ -411,6 +501,15 @@ class ExternalActionFeedbackWiringTest {
                 candidate.config.contains(SemanticsActions.OnClick) && semanticLabels(candidate).contains(label)
             }
         check(node.config[SemanticsActions.OnClick].action?.invoke() == true)
+    }
+
+    private fun longClickText(scene: ImageComposeScene, label: String) {
+        val node = scene.semanticsOwners
+            .flatMap { it.rootSemanticsNode.flatten() }
+            .first { candidate ->
+                candidate.config.contains(SemanticsActions.OnLongClick) && semanticLabels(candidate).contains(label)
+            }
+        check(node.config[SemanticsActions.OnLongClick].action?.invoke() == true)
     }
 
     private fun hasText(scene: ImageComposeScene, label: String): Boolean = scene.semanticsOwners

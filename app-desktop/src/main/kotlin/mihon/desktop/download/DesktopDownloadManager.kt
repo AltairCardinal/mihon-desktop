@@ -263,7 +263,30 @@ class DesktopDownloadManager(
     override fun enqueue(entry: DownloadQueueEntry) = enqueue(entry.toItem())
 
     /** Remove a queued item by chapter ID and clean up its _tmp directory. */
-    override fun cancel(chapterId: Long): Boolean {
+    override fun cancel(chapterId: Long): Boolean = cancelForRetirement(chapterId) != null
+
+    /** Removes a queued item and waits until its producer and artifact leases are retired. */
+    suspend fun cancelAndAwaitRetirement(chapterId: Long): Boolean =
+        cancelAndAwaitRetirements(listOf(chapterId))
+
+    /** Starts every requested retirement before waiting, so later targets cannot escape while an earlier one drains. */
+    suspend fun cancelAndAwaitRetirements(chapterIds: Collection<Long>): Boolean {
+        var startedSuccessfully = true
+        val retirements = chapterIds.distinct().mapNotNull { chapterId ->
+            val queued = synchronized(queueStateLock) { _queue.value.any { it.chapterId == chapterId } }
+            if (!queued) {
+                return@mapNotNull synchronized(queueStateLock) { retirementsByChapter[chapterId] }
+            }
+            cancelForRetirement(chapterId) ?: synchronized(queueStateLock) {
+                if (_queue.value.any { it.chapterId == chapterId }) startedSuccessfully = false
+                retirementsByChapter[chapterId]
+            }
+        }.distinct()
+        val cleanupSucceeded = retirements.map { it.completion.await().success }.all { it }
+        return startedSuccessfully && cleanupSucceeded
+    }
+
+    private fun cancelForRetirement(chapterId: Long): ChapterRetirement? {
         val result = synchronized(queueStateLock) {
             val item = _queue.value.find { it.chapterId == chapterId }
             val generation = queueGenerations[chapterId]
@@ -310,7 +333,7 @@ class DesktopDownloadManager(
                     startCleanup = retirement !== existingRetirement,
                 )
             }
-        } ?: return false
+        } ?: return null
 
         partialArtifactLifecycleCoordinator.retireAttempt(
             result.retirement.key.chapterId,
@@ -319,7 +342,7 @@ class DesktopDownloadManager(
         // Cancellation commits queue state promptly. Disk cleanup is serialized behind the old
         // producer and never runs on the caller/UI thread.
         if (result.startCleanup) launchRetirementCleanup(result.retirement)
-        return true
+        return result.retirement
     }
 
     /** Cancel and clear the entire queue, cleaning up all _tmp directories. */

@@ -229,34 +229,40 @@ class DesktopDownloadProvider(
         }
 
     /** Deletes the finite canonical and historical directories for one manga only. */
-    fun deleteMangaDownloads(sourceId: Long, mangaTitle: String) {
-        File(baseDir, "${sanitize(sourceId.toString())}/${sanitize(mangaTitle)}").deleteRecursively()
-    }
+    fun deleteMangaDownloads(sourceId: Long, mangaTitle: String): Boolean =
+        deleteArtifact(File(baseDir, "${sanitize(sourceId.toString())}/${sanitize(mangaTitle)}"))
 
     /** Deletes the canonical and historical directories for one resolved manga identity only. */
-    fun deleteMangaDownloads(sourceId: Long, mangaTitle: String, identity: DownloadChapterIdentity) {
-        deleteMangaDownloads(sourceId, mangaTitle)
-        canonicalMangaDownloadDir(identity).deleteRecursively()
-    }
+    fun deleteMangaDownloads(sourceId: Long, mangaTitle: String, identity: DownloadChapterIdentity): Boolean =
+        listOf(
+            File(baseDir, "${sanitize(sourceId.toString())}/${sanitize(mangaTitle)}"),
+            canonicalMangaDownloadDir(identity),
+        ).distinctBy(File::getAbsolutePath).map(::deleteArtifact).all { it }
 
     /** Returns true when a downloaded image has a supported extension and a matching file signature. */
     fun isValidDownloadedImage(file: File): Boolean = file.isReadableImageFile()
 
     /** Deletes the chapter download directory and all its contents. */
-    fun deleteChapterDownload(sourceId: Long, mangaTitle: String, chapterName: String) {
+    fun deleteChapterDownload(sourceId: Long, mangaTitle: String, chapterName: String): Boolean {
         val dir = chapterDownloadDir(sourceId, mangaTitle, chapterName)
-        dir.deleteRecursively()
+        return deleteArtifact(dir)
     }
 
     /** Deletes only the finite aliases belonging to this identity; no download-tree scan or migration is performed. */
-    fun deleteChapterDownload(sourceId: Long, identity: DownloadChapterIdentity) {
-        DownloadArtifactNamingPolicy.chapterCandidates(identity).distinct().forEach { candidate ->
-            File(canonicalMangaDownloadDir(identity), candidate.name).deleteRecursively()
-        }
-        val currentDesktop = chapterDownloadDir(sourceId, identity.mangaTitle, identity.chapterName)
-        currentDesktop.deleteRecursively()
-        File(currentDesktop.parentFile, "${currentDesktop.name}.cbz").delete()
+    fun deleteChapterDownload(sourceId: Long, identity: DownloadChapterIdentity): Boolean {
+        val artifacts = buildList {
+            DownloadArtifactNamingPolicy.chapterCandidates(identity).distinct().forEach { candidate ->
+                add(File(canonicalMangaDownloadDir(identity), candidate.name))
+            }
+            val currentDesktop = chapterDownloadDir(sourceId, identity.mangaTitle, identity.chapterName)
+            add(currentDesktop)
+            add(File(currentDesktop.parentFile, "${currentDesktop.name}.cbz"))
+        }.distinctBy(File::getAbsolutePath)
+        return artifacts.map(::deleteArtifact).all { it }
     }
+
+    private fun deleteArtifact(artifact: File): Boolean =
+        !artifact.exists() || (artifact.deleteRecursively() && !artifact.exists())
 
     private fun countDownloadedArtifacts(directory: File, readerImagesOnly: Boolean): Int {
         if (!directory.isDirectory) return 0

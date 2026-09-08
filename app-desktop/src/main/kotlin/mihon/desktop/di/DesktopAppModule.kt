@@ -251,6 +251,7 @@ internal suspend fun initDesktopDIForTest(
     trackerServiceRegistry: TrackerServiceRegistry? = null,
     trackerConnectivity: mihon.desktop.tracking.DesktopNetworkConnectivity =
         mihon.desktop.tracking.JvmDesktopNetworkConnectivity,
+    chapterRepositoryOverride: ((ChapterRepository) -> ChapterRepository)? = null,
 ): DesktopTestDIContext {
     activeDesktopTestDIContext?.closeAndJoin()
     patchInjekt()
@@ -259,7 +260,7 @@ internal suspend fun initDesktopDIForTest(
     prepareDesktopProfile(paths, preferenceStore)
     initDesktopConfigurationForTest(appDir, preferenceStore)
     val networkHelper = initNetworkLayer(paths, preferenceStore, browserOpener)
-    val handler = initDataLayer(paths)
+    val handler = initDataLayer(paths, chapterRepositoryOverride)
     initExtensionLayer(paths, networkHelper, handler, artifactAuthenticator, trackerServiceRegistry)
     initDomainLayer(handler)
     initUILayer(
@@ -470,9 +471,14 @@ private fun registerDesktopNetwork(
 // SQLite database + all repository implementations.
 // No dependency on network or extensions.
 
-internal fun initDataLayer(paths: DesktopPlatformPaths): DatabaseHandler {
+internal fun initDataLayer(
+    paths: DesktopPlatformPaths,
+    chapterRepositoryOverride: ((ChapterRepository) -> ChapterRepository)? = null,
+): DatabaseHandler {
     val handler = initDatabase(paths.databaseFile)
-    val chapterRepository: ChapterRepository = ChapterRepositoryImpl(handler)
+    val chapterRepository: ChapterRepository = ChapterRepositoryImpl(handler).let { repository ->
+        chapterRepositoryOverride?.invoke(repository) ?: repository
+    }
     val categoryRepository: CategoryRepository = CategoryRepositoryImpl(handler)
     val historyRepository: HistoryRepository = HistoryRepositoryImpl(handler)
     val updatesRepository: UpdatesRepository = UpdatesRepositoryImpl(handler)

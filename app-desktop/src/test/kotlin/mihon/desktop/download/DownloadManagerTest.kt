@@ -19,6 +19,7 @@ import io.ktor.server.routing.routing
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -896,6 +897,133 @@ class DownloadManagerTest {
                 assertFalse(finalDir.exists())
                 assertFalse(CbzCreator.defaultOutputFile(finalDir).exists())
             }
+        }
+    }
+
+    @Test
+    fun `batch retirement starts every target before waiting for blocked cleanup`(): Unit = runBlocking {
+        val firstCleanupEntered = CompletableDeferred<Unit>()
+        val releaseFirstCleanup = CompletableDeferred<Unit>()
+        val workerParent = SupervisorJob()
+        val manager = DesktopDownloadManager(
+            provider = DesktopDownloadProvider(tempDir.resolve("batch-retirement")),
+            networkHelper = NetworkHelper(OkHttpClient()),
+            workerScope = CoroutineScope(workerParent + Dispatchers.Default),
+            retirementCleanupAwaitObserver = { chapterId ->
+                if (chapterId == 601L && firstCleanupEntered.complete(Unit)) {
+                    runBlocking { releaseFirstCleanup.await() }
+                }
+            },
+        )
+        val first = DownloadItem(42L, "Batch", "First", 601L)
+        val second = DownloadItem(42L, "Batch", "Second", 602L)
+        manager.enqueue(first)
+        manager.enqueue(second)
+
+        try {
+            val retirement = async(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
+                manager.cancelAndAwaitRetirements(listOf(first.chapterId, second.chapterId))
+            }
+            withTimeout(2_000) { firstCleanupEntered.await() }
+
+            assertTrue(manager.queue.value.isEmpty())
+            assertFalse(retirement.isCompleted)
+
+            releaseFirstCleanup.complete(Unit)
+            assertTrue(withTimeout(3_000) { retirement.await() })
+        } finally {
+            releaseFirstCleanup.complete(Unit)
+            withTimeout(3_000) { manager.stopAndJoin() }
+            withTimeout(3_000) { workerParent.cancelAndJoin() }
+        }
+    }
+
+    @Test
+    fun `batch retirement cancels current generation while an older generation is still retiring`(): Unit = runBlocking {
+        val provider = DesktopDownloadProvider(tempDir.resolve("batch-retirement-generation"))
+        val staleArtifact = provider.chapterTmpDir(42L, "Batch generation", "Chapter")
+        val cleanupEntered = CompletableDeferred<Unit>()
+        val releaseCleanup = CompletableDeferred<Unit>()
+        val workerParent = SupervisorJob()
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            networkHelper = NetworkHelper(OkHttpClient()),
+            workerScope = CoroutineScope(workerParent + Dispatchers.Default),
+            artifactCleaner = { artifact ->
+                if (artifact == staleArtifact && cleanupEntered.complete(Unit)) {
+                    runBlocking { releaseCleanup.await() }
+                }
+                artifact.deleteRecursively()
+            },
+        )
+        val item = DownloadItem(42L, "Batch generation", "Chapter", 603L)
+        manager.enqueue(item)
+        staleArtifact.mkdirs()
+        File(staleArtifact, "old.partial").writeText("old")
+
+        try {
+            assertTrue(manager.cancel(item.chapterId))
+            withTimeout(2_000) { cleanupEntered.await() }
+            manager.enqueue(item.copy(chapterUrl = "/replacement"))
+
+            val retirement = async(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
+                manager.cancelAndAwaitRetirements(listOf(item.chapterId))
+            }
+            assertTrue(manager.queue.value.isEmpty())
+
+            releaseCleanup.complete(Unit)
+            assertTrue(withTimeout(3_000) { retirement.await() })
+        } finally {
+            releaseCleanup.complete(Unit)
+            withTimeout(3_000) { manager.stopAndJoin() }
+            withTimeout(3_000) { workerParent.cancelAndJoin() }
+        }
+    }
+
+    @Test
+    fun `older retirement cannot hide current generation cancellation persistence failure`(): Unit = runBlocking {
+        val provider = DesktopDownloadProvider(tempDir.resolve("batch-retirement-persist-failure"))
+        val staleArtifact = provider.chapterTmpDir(42L, "Persist failure", "Chapter")
+        val cleanupEntered = CompletableDeferred<Unit>()
+        val releaseCleanup = CompletableDeferred<Unit>()
+        val workerParent = SupervisorJob()
+        var failEmptyQueuePersistence = false
+        val manager = DesktopDownloadManager(
+            provider = provider,
+            networkHelper = NetworkHelper(OkHttpClient()),
+            workerScope = CoroutineScope(workerParent + Dispatchers.Default),
+            queuePersister = { entries ->
+                if (failEmptyQueuePersistence && entries.isEmpty()) throw java.io.IOException("blocked persistence")
+            },
+            artifactCleaner = { artifact ->
+                if (artifact == staleArtifact && cleanupEntered.complete(Unit)) {
+                    runBlocking { releaseCleanup.await() }
+                }
+                artifact.deleteRecursively()
+            },
+        )
+        val item = DownloadItem(42L, "Persist failure", "Chapter", 604L)
+        manager.enqueue(item)
+        staleArtifact.mkdirs()
+        File(staleArtifact, "old.partial").writeText("old")
+
+        try {
+            assertTrue(manager.cancel(item.chapterId))
+            withTimeout(2_000) { cleanupEntered.await() }
+            manager.enqueue(item.copy(chapterUrl = "/replacement"))
+            failEmptyQueuePersistence = true
+
+            val retirement = async(Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
+                manager.cancelAndAwaitRetirements(listOf(item.chapterId))
+            }
+            assertEquals(listOf(item.chapterId), manager.queue.value.map { it.chapterId })
+
+            releaseCleanup.complete(Unit)
+            assertFalse(withTimeout(3_000) { retirement.await() })
+        } finally {
+            releaseCleanup.complete(Unit)
+            withTimeout(3_000) { manager.stopAndJoin() }
+            withTimeout(3_000) { workerParent.cancelAndJoin() }
         }
     }
 

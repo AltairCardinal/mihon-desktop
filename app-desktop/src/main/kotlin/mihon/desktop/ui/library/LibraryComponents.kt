@@ -995,6 +995,7 @@ internal fun MangaContextMenu(
     onMarkAllUnread: () -> Unit,
     onRemoveFromLibrary: () -> Unit,
     onDownload: () -> Unit,
+    canDownload: Boolean = true,
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DropdownMenuItem(
@@ -1005,10 +1006,12 @@ internal fun MangaContextMenu(
             text = { Text(MR.strings.desktop_ui_mark_all_unread.localized()) },
             onClick = onMarkAllUnread,
         )
-        DropdownMenuItem(
-            text = { Text(MR.strings.desktop_ui_download_next_unread.localized()) },
-            onClick = onDownload,
-        )
+        if (canDownload) {
+            DropdownMenuItem(
+                text = { Text(MR.strings.desktop_ui_download_next_unread.localized()) },
+                onClick = onDownload,
+            )
+        }
         DropdownMenuItem(
             text = { Text(MR.strings.remove_from_library.localized(), color = MaterialTheme.colorScheme.error) },
             onClick = onRemoveFromLibrary,

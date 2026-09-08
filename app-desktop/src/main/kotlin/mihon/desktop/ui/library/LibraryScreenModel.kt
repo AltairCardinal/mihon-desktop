@@ -20,7 +20,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.download.DownloadItem
-import mihon.desktop.download.DownloadStatus
 import mihon.desktop.domain.SortMode
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DesktopDownloadProvider
@@ -117,13 +116,14 @@ class LibraryScreenModel(
     private val setDisplayModeInteractor: SetDisplayMode? = null,
     private val setSortModeForCategory: SetSortModeForCategory? = null,
     private val downloadedChapterCount: ((LibraryManga) -> Long)? = null,
-    private val deleteMangaDownloads: ((LibraryManga) -> Unit)? = null,
+    private val deleteMangaDownloads: (suspend (LibraryManga) -> Unit)? = null,
     private val deleteCustomCover: ((Long) -> Boolean)? = null,
     private val getCategoryIdsForManga: (suspend (Long) -> Set<Long>)? = null,
     private val sharedDownloadPreferences: DownloadPreferences? = null,
-    private val deleteChapterDownload: ((LibraryManga, Chapter) -> Unit)? = null,
+    private val deleteChapterDownload: (suspend (LibraryManga, Chapter) -> Unit)? = null,
     private val isChapterDownloaded: ((LibraryManga, Chapter) -> Boolean)? = null,
     private val isChapterQueued: ((Chapter) -> Boolean)? = null,
+    private val downloadQueueChanges: Flow<Unit> = flowOf(Unit),
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(LibraryState())
@@ -141,7 +141,8 @@ class LibraryScreenModel(
         requireNotNull(getLibraryManga) { "GetLibraryManga is required" }.subscribe(),
         getTracksPerManga?.subscribe() ?: flowOf(emptyMap()),
         trackerSessionProvider?.loggedInTrackerIds() ?: flowOf(emptySet()),
-    ) { items, tracksByManga, loggedInTrackerIds ->
+        downloadQueueChanges,
+    ) { items, tracksByManga, loggedInTrackerIds, _ ->
         updateLibrarySnapshot(items, tracksByManga, loggedInTrackerIds)
         items
     }.catch { error ->
@@ -173,9 +174,9 @@ class LibraryScreenModel(
         val trackerMeansByManga = activeTracksByManga.mapValues { (_, mangaTracks) ->
             mangaTracks.map { it.score }.average()
         }
-        val downloadedIds = downloadedMangaIds(items)
         val pendingCategoryIndex = pendingInitialCategoryIndex
         _state.update {
+            val downloadedIds = downloadedMangaIds(items)
             val projectedCategories = libraryCategoryTabs(it.allCategories, items)
             it.copy(
                 allItems = items,
@@ -270,8 +271,8 @@ class LibraryScreenModel(
     }
 
     fun setAllItems(items: List<LibraryManga>) {
-        val downloadedIds = downloadedMangaIds(items)
         _state.update {
+            val downloadedIds = downloadedMangaIds(items)
             val projectedCategories = libraryCategoryTabs(it.allCategories, items)
             it.copy(
                 allItems = items,
@@ -609,6 +610,10 @@ class LibraryScreenModel(
         _state.update { it.copy(operationFeedback = feedback) }
     }
 
+    fun clearOperationResults() {
+        _state.update { it.copy(operationFeedback = null, batchCategoryResultMessage = null) }
+    }
+
     fun setShowBatchCategoryDialog(show: Boolean) {
         _state.update { it.copy(showBatchCategoryDialog = show) }
     }
@@ -623,6 +628,20 @@ class LibraryScreenModel(
             }
             .map { it.id }
             .toSet()
+    }
+
+    private fun refreshDownloadState() {
+        val items = state.value.allItems
+        _state.update {
+            val downloadedIds = downloadedMangaIds(items)
+            it.copy(
+                downloadedMangaIds = downloadedIds,
+                downloadCountsByManga = items.associate { item ->
+                    item.id to (downloadedChapterCount?.invoke(item)
+                        ?: if (item.id in downloadedIds) 1L else 0L)
+                },
+            )
+        }
     }
 
     suspend fun refreshLibrary(items: List<LibraryManga>, categoryId: Long? = null) {
@@ -734,12 +753,16 @@ class LibraryScreenModel(
         }
 
         val changedChapters = statusUpdater.filterToUpdate(chapters, read)
+        val item = state.value.allItems.firstOrNull { it.id == mangaId }
         statusUpdater.awaitOrThrow(chapters, read)
         if (read && sharedDownloadPreferences?.removeAfterMarkedAsRead()?.get() == true) {
-            val item = state.value.allItems.firstOrNull { it.id == mangaId }
             if (item != null) {
                 val delete = requireNotNull(deleteChapterDownload) { "Delete chapter download is required" }
-                changedChapters.forEach { chapter -> delete(item, chapter) }
+                try {
+                    changedChapters.forEach { chapter -> delete(item, chapter) }
+                } finally {
+                    refreshDownloadState()
+                }
             }
         }
     }
@@ -777,29 +800,37 @@ class LibraryScreenModel(
         var updated = 0
         var failures = 0
         targets.forEach { mangaId ->
+            var itemFailed = false
+            var membershipUpdated = true
             try {
                 if (removeFromLibrary) {
                     if (!requireNotNull(updater).await(MangaUpdate(id = mangaId, favorite = false))) {
-                        failures++
-                        return@forEach
-                    }
-                    deleteCustomCover?.invoke(mangaId)?.let { deleted ->
-                        if (!deleted) failures++
+                        itemFailed = true
+                        membershipUpdated = false
+                    } else {
+                        deleteCustomCover?.invoke(mangaId)?.let { deleted ->
+                            if (!deleted) itemFailed = true
+                        }
                     }
                 }
-                val item = itemsById[mangaId]
-                if (deleteDownloads && item != null && item.manga.source != LOCAL_SOURCE_ID) {
-                    requireNotNull(deleteMangaDownloads) { "Delete manga downloads is required" }.invoke(item)
-                } else if (deleteDownloads && item == null) {
-                    failures++
-                    return@forEach
+                if (membershipUpdated) {
+                    val item = itemsById[mangaId]
+                    if (deleteDownloads && item != null && item.manga.source != LOCAL_SOURCE_ID) {
+                        try {
+                            requireNotNull(deleteMangaDownloads) { "Delete manga downloads is required" }.invoke(item)
+                        } finally {
+                            refreshDownloadState()
+                        }
+                    } else if (deleteDownloads && item == null) {
+                        itemFailed = true
+                    }
                 }
-                updated++
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
-                failures++
+                itemFailed = true
             }
+            if (itemFailed) failures++ else updated++
         }
         _state.update {
             it.copy(
@@ -833,6 +864,7 @@ class LibraryScreenModel(
                 mangaTitle = item.manga.title,
                 chapterName = firstUnread.name,
                 chapterId = firstUnread.id,
+                mangaId = item.id,
                 chapterUrl = firstUnread.url,
             ),
         )
@@ -853,18 +885,18 @@ class LibraryScreenModel(
         }
         val nextChaptersByManga = requireNotNull(getNextChapters) { "GetNextChapters is required" }
         val enqueue = requireNotNull(enqueueDownload) { "Download enqueue callback is required" }
-        val activeIds = queue
-            .filter { it.status == DownloadStatus.QUEUED || it.status == DownloadStatus.DOWNLOADING }
-            .mapTo(mutableSetOf()) { it.chapterId }
+        val activeIds = queue.mapTo(mutableSetOf()) { it.chapterId }
         var result = LibraryBatchDownloadResult()
         items.forEach { item ->
-            val candidates = runCatching {
+            val candidates = try {
                 if (action == MangaDetailDownloadAction.BOOKMARKED_CHAPTERS) {
                     bookmarkedByManga.awaitOrThrow(item.id)
                 } else {
                     nextChaptersByManga.awaitOrThrow(item.id)
                 }
-            }.getOrElse {
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
                 result = result.copy(failures = result.failures + 1)
                 return@forEach
             }
@@ -884,20 +916,22 @@ class LibraryScreenModel(
                 -> available
             }
             chapters.forEach { chapter ->
-                result = when {
-                    runCatching {
-                        enqueue(
-                            DownloadItem(
-                                sourceId = item.manga.source,
-                                mangaTitle = item.manga.title,
-                                chapterName = chapter.name,
-                                chapterId = chapter.id,
-                                mangaId = item.id,
-                                chapterUrl = chapter.url,
-                            ),
-                        )
-                    }.isSuccess -> result.copy(queued = result.queued + 1)
-                    else -> result.copy(failures = result.failures + 1)
+                result = try {
+                    enqueue(
+                        DownloadItem(
+                            sourceId = item.manga.source,
+                            mangaTitle = item.manga.title,
+                            chapterName = chapter.name,
+                            chapterId = chapter.id,
+                            mangaId = item.id,
+                            chapterUrl = chapter.url,
+                        ),
+                    )
+                    result.copy(queued = result.queued + 1)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    result.copy(failures = result.failures + 1)
                 }
             }
         }
