@@ -38,13 +38,12 @@ class LibraryParityIntegrationTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
-    fun `selection action bar exposes invert download and migrate entries`() = runBlocking {
-        var inverted = false
+    fun `selection action bar exposes download and migrate entries`() = runBlocking {
         var downloaded: MangaDetailDownloadAction? = null
         var destination: Screen? = null
         val selected = listOf(
             libraryManga(Manga.create().copy(id = 1L, source = 7L, title = "Remote")),
-            libraryManga(Manga.create().copy(id = 2L, source = 0L, title = "Local")),
+            libraryManga(Manga.create().copy(id = 2L, source = 8L, title = "Remote two")),
         )
         val actions = librarySelectionActions(
             selected = { selected },
@@ -57,10 +56,6 @@ class LibraryParityIntegrationTest {
         val scene = ImageComposeScene(1_400, 240, coroutineContext = coroutineContext) {}
         scene.setContent {
             SelectionActionBar(
-                selectedCount = 2,
-                onClose = {},
-                onSelectAll = {},
-                onInvertSelection = { inverted = true },
                 actions = actions,
                 onSetCategories = {},
                 onMarkRead = {},
@@ -70,11 +65,9 @@ class LibraryParityIntegrationTest {
         }
         scene.render()
 
-        click(scene, "Invert selection")
         click(scene, "Download")
         scene.render()
 
-        assertTrue(inverted)
         listOf("Next 1 chapter", "Next 5 chapters", "Next 10 chapters", "Next 25 chapters", "All unread chapters", "Bookmarked chapters")
             .forEach { label -> assertTrue(nodes(scene).any { it.config.toString().contains(label) }, label) }
         click(scene, "Next 1 chapter")
@@ -265,8 +258,6 @@ class LibraryParityIntegrationTest {
                 availableTrackerIds = emptySet(),
                 onToggleFilter = {},
                 onToggleTracking = {},
-                onToggleGlobalDownloadedOnly = {},
-                onToggleSkipOutsideReleasePeriod = {},
                 isUpdating = false,
                 displayMode = LibraryDisplayMode.COMPACT_GRID,
                 onDisplayModeChange = {},
@@ -310,8 +301,6 @@ class LibraryParityIntegrationTest {
                 availableTrackerIds = emptySet(),
                 onToggleFilter = {},
                 onToggleTracking = {},
-                onToggleGlobalDownloadedOnly = {},
-                onToggleSkipOutsideReleasePeriod = {},
                 isUpdating = true,
                 displayMode = LibraryDisplayMode.COMPACT_GRID,
                 onDisplayModeChange = {},

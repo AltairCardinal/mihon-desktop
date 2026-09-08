@@ -20,12 +20,17 @@ internal interface LibraryScreenStack {
 internal interface LibraryNavigationHost {
     @Composable
     fun Content(root: Screen)
+
+    fun onReselect() = Unit
+
+    fun registerReselectHandler(handler: () -> Unit): () -> Unit = { }
 }
 
 internal class VoyagerLibraryNavigationHost(
     private val onStackAttached: (LibraryScreenStack) -> Unit = {},
     private val onStackDetached: (LibraryScreenStack) -> Unit = {},
 ) : LibraryNavigationHost {
+    private var reselectHandler: (() -> Unit)? = null
 
     @Composable
     override fun Content(root: Screen) {
@@ -33,9 +38,22 @@ internal class VoyagerLibraryNavigationHost(
             val stack = remember(navigator) { VoyagerLibraryScreenStack(navigator) }
             DisposableEffect(stack) {
                 onStackAttached(stack)
-                onDispose { onStackDetached(stack) }
+                onDispose {
+                    onStackDetached(stack)
+                }
             }
             CurrentScreen()
+        }
+    }
+
+    override fun onReselect() {
+        reselectHandler?.invoke()
+    }
+
+    override fun registerReselectHandler(handler: () -> Unit): () -> Unit {
+        reselectHandler = handler
+        return {
+            if (reselectHandler === handler) reselectHandler = null
         }
     }
 }

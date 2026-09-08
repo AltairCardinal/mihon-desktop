@@ -13,4 +13,11 @@ class LibraryFilterUiTest {
         assertFalse(isFilterFieldEnabled(filter, LibraryFilterField.DOWNLOADED))
         assertTrue(isFilterFieldEnabled(filter, LibraryFilterField.UNREAD))
     }
+
+    @Test
+    fun `custom interval filter requires a non release build and the update restriction`() {
+        assertFalse(showIntervalCustomFilter(isNonReleaseBuild = false, restrictionEnabled = true))
+        assertFalse(showIntervalCustomFilter(isNonReleaseBuild = true, restrictionEnabled = false))
+        assertTrue(showIntervalCustomFilter(isNonReleaseBuild = true, restrictionEnabled = true))
+    }
 }

@@ -141,7 +141,7 @@ class LibraryScreenModelTest {
         val s = model.state.value
         assertTrue(s.allItems.isEmpty())
         assertTrue(s.categories.isEmpty())
-        assertEquals("", s.searchQuery)
+        assertEquals(null, s.searchQuery)
         assertEquals(SortMode.TITLE, s.sortMode)
         assertTrue(s.sortAscending)
         assertFalse(s.filterUnread)
@@ -280,11 +280,11 @@ class LibraryScreenModelTest {
     @Test
     fun `setSearchQuery updates searchQuery`() {
         val model = LibraryScreenModel()
-        assertEquals("", model.state.value.searchQuery)
+        assertEquals(null, model.state.value.searchQuery)
         model.setSearchQuery("naruto")
         assertEquals("naruto", model.state.value.searchQuery)
-        model.setSearchQuery("")
-        assertEquals("", model.state.value.searchQuery)
+        model.setSearchQuery(null)
+        assertEquals(null, model.state.value.searchQuery)
     }
 
     // ── Sort ──────────────────────────────────────────────────────────────────

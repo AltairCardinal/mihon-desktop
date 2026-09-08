@@ -3,7 +3,9 @@ package mihon.desktop.ui
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
 import cafe.adriel.voyager.navigator.Navigator
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
@@ -27,6 +29,8 @@ import mihon.desktop.ui.home.ExternalActionFeedbackDispatcher
 import mihon.desktop.ui.home.HomeScreen
 import mihon.desktop.ui.library.LibraryNavigationHost
 import mihon.desktop.ui.library.ProvideLibraryNavigationHost
+import mihon.desktop.ui.library.VoyagerLibraryNavigationHost
+import mihon.desktop.ui.library.label
 import mihon.desktop.ui.reader.DesktopReaderScreen
 import mihon.desktop.ui.settings.ExtensionRepoScreen
 import mihon.desktop.ui.theme.DesktopTheme
@@ -40,6 +44,7 @@ import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.i18n.MR
@@ -51,6 +56,47 @@ import java.util.Locale
 @Isolated
 @OptIn(ExperimentalComposeUiApi::class)
 class ExternalActionFeedbackWiringTest {
+    @Test
+    fun `Home library tab reselect opens library filters while returning from another tab only switches tabs`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore(), startDownloadWorker = false)
+        val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+        val host = VoyagerLibraryNavigationHost()
+        try {
+            val dependencies = DesktopUiDependencies.fromInjekt()
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ProvideLibraryNavigationHost(host) {
+                        DesktopTheme { Navigator(HomeScreen()) }
+                    }
+                }
+            }
+            scene.render()
+
+            clickText(scene, MR.strings.label_library.localized())
+            scene.render()
+            val downloadedFilter = MR.strings.desktop_ui_filter_value.localized(
+                Locale.getDefault(),
+                MR.strings.label_downloaded.localized(),
+                TriState.DISABLED.label(),
+            )
+            assertTrue(hasText(scene, downloadedFilter))
+
+            clickText(scene, MR.strings.browse.localized())
+            scene.render()
+            clickText(scene, MR.strings.label_library.localized())
+            scene.render()
+            assertFalse(hasText(scene, downloadedFilter))
+            clickText(scene, MR.strings.label_library.localized())
+            scene.render()
+            assertTrue(hasText(scene, downloadedFilter))
+        } finally {
+            scene.close()
+            context.closeAndJoin()
+        }
+    }
+
     @Test
     fun `production root navigator mounts the exact reader request`(@TempDir tempDir: File) = runBlocking {
         val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore(), startDownloadWorker = false)
@@ -357,6 +403,35 @@ class ExternalActionFeedbackWiringTest {
 
     private fun semantics(node: SemanticsNode): String =
         node.config.toString() + node.children.joinToString(transform = ::semantics)
+
+    private fun clickText(scene: ImageComposeScene, label: String) {
+        val node = scene.semanticsOwners
+            .flatMap { it.rootSemanticsNode.flatten() }
+            .first { candidate ->
+                candidate.config.contains(SemanticsActions.OnClick) && semanticLabels(candidate).contains(label)
+            }
+        check(node.config[SemanticsActions.OnClick].action?.invoke() == true)
+    }
+
+    private fun hasText(scene: ImageComposeScene, label: String): Boolean = scene.semanticsOwners
+        .flatMap { it.rootSemanticsNode.flatten() }
+        .any { node -> semanticLabels(node).contains(label) }
+
+    private fun semanticLabels(node: SemanticsNode): List<String> {
+        val text = if (node.config.contains(SemanticsProperties.Text)) {
+            node.config[SemanticsProperties.Text].map { it.text }
+        } else {
+            emptyList()
+        }
+        val descriptions = if (node.config.contains(SemanticsProperties.ContentDescription)) {
+            node.config[SemanticsProperties.ContentDescription]
+        } else {
+            emptyList()
+        }
+        return text + descriptions
+    }
+
+    private fun SemanticsNode.flatten(): List<SemanticsNode> = listOf(this) + children.flatMap { it.flatten() }
 
     private fun openTestReader(chapterId: Long): DesktopReaderScreen {
         TestNavigationController.openReader(

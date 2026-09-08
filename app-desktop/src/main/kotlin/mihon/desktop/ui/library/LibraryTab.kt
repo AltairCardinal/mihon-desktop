@@ -65,6 +65,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -74,6 +75,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusable
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -86,6 +90,7 @@ import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -100,6 +105,7 @@ import cafe.adriel.voyager.navigator.tab.TabOptions
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.BuildInfo
 import mihon.desktop.migration.BatchMigrationRequest
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.library.interactor.LibraryFilter
@@ -111,6 +117,7 @@ import mihon.desktop.ui.settings.LibrarySettingsScreen
 import mihon.desktop.ui.migration.LibraryBatchMigrationConfigScreen
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.library.projectLibraryToolbar
 import tachiyomi.domain.manga.model.Manga
 
 internal fun libraryBatchMigrationDestination(
@@ -197,8 +204,15 @@ class LibraryRootScreen : Screen {
     @Composable
     override fun Content() {
         val scope = rememberCoroutineScope()
+        val rootFocusRequester = remember { FocusRequester() }
         val navigator = LocalNavigator.currentOrThrow
         val desktopDependencies = LocalDesktopUiDependencies.current
+        val libraryNavigationHost = LocalLibraryNavigationHost.current
+        var showFilterMenu by remember { mutableStateOf(false) }
+        DisposableEffect(libraryNavigationHost) {
+            val unregister = libraryNavigationHost.registerReselectHandler { showFilterMenu = true }
+            onDispose(unregister)
+        }
 
         val screenModelFactory = LocalLibraryScreenModelFactory.current
         val model = rememberScreenModel { screenModelFactory() }
@@ -220,6 +234,9 @@ class LibraryRootScreen : Screen {
         val displayMode = state.displayMode
         val contextMenuManga = state.contextMenuManga
         val showBatchCategoryDialog = state.showBatchCategoryDialog
+        LaunchedEffect(selectionState.isInSelectionMode) {
+            if (selectionState.isInSelectionMode) rootFocusRequester.requestFocus()
+        }
         val batchCategoryResultMessage = state.batchCategoryResultMessage
         val operationFeedback = state.operationFeedback
         var removalTarget by remember { mutableStateOf<List<LibraryManga>?>(null) }
@@ -231,7 +248,7 @@ class LibraryRootScreen : Screen {
         }
 
         val categoryTabs = remember(categories) { categories }
-
+        val selectedCategory = categoryTabs.getOrNull(selectedCategoryIndex)
         // Load per-category sort/display settings when the selected tab changes.
         LaunchedEffect(selectedCategoryIndex, categoryTabs) {
             model.applyCategoryPreferences(categoryTabs.getOrNull(selectedCategoryIndex)?.id)
@@ -249,6 +266,17 @@ class LibraryRootScreen : Screen {
             val selectedCategory = categoryTabs.getOrNull(selectedCategoryIndex)
             libraryPageItems(model, selectedCategory?.id)
         }
+        val toolbarProjection = projectLibraryToolbar(
+            libraryTitle = MR.strings.label_library.localized(),
+            defaultCategoryTitle = MR.strings.label_default.localized(),
+            categoryName = selectedCategory?.name,
+            isSystemCategory = selectedCategory?.isSystemCategory == true,
+            showCategoryTabs = state.showCategoryTabs,
+            showMangaCount = state.showCategoryItemCounts,
+            categoryCount = displayedItems.size,
+            libraryCount = allItems.size,
+        )
+        val toolbarTitle = toolbarProjection.count?.let { "${toolbarProjection.title} ($it)" } ?: toolbarProjection.title
         val pageSnapshot = LibraryPageSnapshot(
             availableTrackerIds = state.availableTrackerIds,
             visibleItemIds = displayedItems.map { it.manga.id },
@@ -376,10 +404,6 @@ class LibraryRootScreen : Screen {
                     val selectedItems = allItems.filter { it.id in selectionState.selectedIds }
                     val remoteSelection = selectedItems.isNotEmpty() && selectedItems.all { it.manga.source != 0L }
                     SelectionActionBar(
-                        selectedCount = selectedItems.size,
-                        onClose = { selectionState.clear() },
-                        onSelectAll = { selectionState.selectAll(displayedItems.map { it.manga.id }, selectedCategoryId) },
-                        onInvertSelection = { selectionState.invertVisible(displayedItems.map { it.manga.id }, selectedCategoryId) },
                         actions = selectionActions,
                         canDownload = remoteSelection,
                         canMigrate = selectedItems.isNotEmpty(),
@@ -409,6 +433,8 @@ class LibraryRootScreen : Screen {
                 Modifier
                     .fillMaxSize()
                     .padding(scaffoldPadding)
+                    .focusRequester(rootFocusRequester)
+                    .focusable()
                     .onPreviewKeyEvent { event ->
                         if (event.type != KeyEventType.KeyDown || event.key != Key.Escape) return@onPreviewKeyEvent false
                         when {
@@ -420,15 +446,34 @@ class LibraryRootScreen : Screen {
                                 selectionState.clear()
                                 true
                             }
-                            searchQuery.isNotEmpty() -> {
-                                model.setSearchQuery("")
+                            searchQuery != null -> {
+                                model.setSearchQuery(null)
                                 true
                             }
                             else -> false
                         }
                     },
             ) {
-                LibraryToolbar(
+                if (selectionState.isInSelectionMode) {
+                    LibrarySelectionTopBar(
+                        selectedCount = selectionState.selectedIds.size,
+                        onClose = selectionState::clear,
+                        onSelectAll = { selectionState.selectAll(displayedItems.map { it.manga.id }, selectedCategoryId) },
+                        onInvertSelection = { selectionState.invertVisible(displayedItems.map { it.manga.id }, selectedCategoryId) },
+                    )
+                    LibraryFilterDropdown(
+                        expanded = showFilterMenu,
+                        onDismissRequest = { showFilterMenu = false },
+                        filter = filter,
+                        availableTrackerIds = pageSnapshot.availableTrackerIds,
+                        showIntervalCustomFilter = showIntervalCustomFilter(
+                            BuildInfo.IS_NON_RELEASE_BUILD,
+                            state.filter.skipOutsideReleasePeriod,
+                        ),
+                        onToggleFilter = model::toggleFilter,
+                        onToggleTracking = model::toggleTrackingFilter,
+                    )
+                } else LibraryToolbar(
                     searchQuery = searchQuery,
                     onSearchChange = { model.setSearchQuery(it) },
                     sortMode = sortMode,
@@ -441,8 +486,6 @@ class LibraryRootScreen : Screen {
                     availableTrackerIds = pageSnapshot.availableTrackerIds,
                     onToggleFilter = model::toggleFilter,
                     onToggleTracking = model::toggleTrackingFilter,
-                    onToggleGlobalDownloadedOnly = model::toggleGlobalDownloadedOnly,
-                    onToggleSkipOutsideReleasePeriod = model::toggleSkipOutsideReleasePeriod,
                     isUpdating = isUpdating,
                     displayMode = displayMode,
                     onDisplayModeChange = {
@@ -450,14 +493,20 @@ class LibraryRootScreen : Screen {
                         model.setDisplayModeForCategory(cat?.id, it)
                     },
                     onManageCategories = { model.setShowCategoryDialog(true) },
-                    onOpenGlobalSearch = { navigator.push(GlobalSearchScreen(searchQuery)) },
+                    onOpenGlobalSearch = { navigator.push(GlobalSearchScreen(requireNotNull(searchQuery))) },
                     onOpenSettings = { navigator.push(LibrarySettingsScreen()) },
                     categories = categoryTabs,
                     selectedCategoryIndex = selectedCategoryIndex,
                     showCategoryTabs = state.showCategoryTabs,
                     showCategoryItemCounts = state.showCategoryItemCounts,
                     onCategoryChange = model::setSelectedCategoryIndex,
-                    intervalFilterEnabled = state.filter.skipOutsideReleasePeriod,
+                    showIntervalCustomFilter = showIntervalCustomFilter(
+                        BuildInfo.IS_NON_RELEASE_BUILD,
+                        state.filter.skipOutsideReleasePeriod,
+                    ),
+                    showFilterMenu = showFilterMenu,
+                    onShowFilterMenuChange = { showFilterMenu = it },
+                    toolbarTitle = toolbarTitle,
                     onRandomManga = {
                         val randomId = pickRandomMangaId(displayedItems.map { it.manga.id })
                         if (randomId != null) {
@@ -478,7 +527,7 @@ class LibraryRootScreen : Screen {
                     },
                 )
 
-                if (categoryTabs.isNotEmpty() && (state.showCategoryTabs || searchQuery.isNotBlank())) {
+                if (categoryTabs.size > 1 && (state.showCategoryTabs || !searchQuery.isNullOrEmpty())) {
                     ScrollableTabRow(
                         selectedTabIndex = selectedCategoryIndex,
                         modifier = Modifier.fillMaxWidth(),
@@ -490,8 +539,8 @@ class LibraryRootScreen : Screen {
                                 onClick = { model.setSelectedCategoryIndex(index) },
                                 text = {
                                     Text(
-                                        if (state.showCategoryItemCounts || searchQuery.isNotBlank()) {
-                                            "${cat.name} (${allItems.count { cat.id in it.categories }})"
+                                        if (state.showCategoryItemCounts || !searchQuery.isNullOrEmpty()) {
+                                            "${cat.name} (${model.visibleItems(cat.id).size})"
                                         } else {
                                             cat.name
                                         },
@@ -541,12 +590,17 @@ class LibraryRootScreen : Screen {
                             color = MaterialTheme.colorScheme.error,
                         )
                     }
-                } else if (allItems.isEmpty()) {
-                    EmptyLibrary(onSearch = { navigator.push(GlobalSearchScreen(searchQuery)) })
+                } else if (allItems.isEmpty() && searchQuery.isNullOrEmpty() && !state.hasActiveFilters) {
+                    val uriHandler = LocalUriHandler.current
+                    EmptyLibrary(onGettingStarted = { uriHandler.openUri(GETTING_STARTED_URL) })
                 } else if (displayedItems.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
-                            MR.strings.desktop_ui_no_manga_match_your_filters.localized(),
+                            when {
+                                !searchQuery.isNullOrEmpty() -> MR.strings.no_results_found.localized()
+                                state.hasActiveFilters -> MR.strings.error_no_match.localized()
+                                else -> MR.strings.information_no_manga_category.localized()
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -561,6 +615,7 @@ class LibraryRootScreen : Screen {
                                 landscapeColumns = state.landscapeColumns,
                                 selectionState = selectionState,
                                 downloadedMangaIds = downloadedMangaIds,
+                                downloadCountsByManga = state.downloadCountsByManga,
                                 sourceLanguagesByManga = state.sourceLanguagesByManga,
                                 showDownloadBadge = state.showDownloadBadge,
                                 showUnreadBadge = state.showUnreadBadge,
@@ -582,6 +637,7 @@ class LibraryRootScreen : Screen {
                                 landscapeColumns = state.landscapeColumns,
                                 selectionState = selectionState,
                                 downloadedMangaIds = downloadedMangaIds,
+                                downloadCountsByManga = state.downloadCountsByManga,
                                 sourceLanguagesByManga = state.sourceLanguagesByManga,
                                 showDownloadBadge = state.showDownloadBadge,
                                 showUnreadBadge = state.showUnreadBadge,
@@ -599,6 +655,7 @@ class LibraryRootScreen : Screen {
                                 items = displayedItems,
                                 selectionState = selectionState,
                                 downloadedMangaIds = downloadedMangaIds,
+                                downloadCountsByManga = state.downloadCountsByManga,
                                 sourceLanguagesByManga = state.sourceLanguagesByManga,
                                 showDownloadBadge = state.showDownloadBadge,
                                 showUnreadBadge = state.showUnreadBadge,
@@ -620,6 +677,7 @@ class LibraryRootScreen : Screen {
                                 landscapeColumns = state.landscapeColumns,
                                 selectionState = selectionState,
                                 downloadedMangaIds = downloadedMangaIds,
+                                downloadCountsByManga = state.downloadCountsByManga,
                                 sourceLanguagesByManga = state.sourceLanguagesByManga,
                                 showDownloadBadge = state.showDownloadBadge,
                                 showUnreadBadge = state.showUnreadBadge,
@@ -638,6 +696,8 @@ class LibraryRootScreen : Screen {
         }
     }
 }
+
+private const val GETTING_STARTED_URL = "https://mihon.app/docs/guides/getting-started"
 
 /** Page-level projection keeps production UI on the ScreenModel's complete evaluation context. */
 internal fun libraryPageItems(model: LibraryScreenModel, categoryId: Long?): List<LibraryManga> =

@@ -170,7 +170,9 @@ class NavigationContractTest {
             firstStack.items,
             "The host contract must consume the Navigator supplied through LocalNavigator",
         )
-        assertEquals(listOf(root, MangaDetailScreen(11L), AuthorDetailScreen(12L)), root.localNavigator.items)
+        assertEquals(root, root.localNavigator.items[0])
+        assertEquals(MangaDetailScreen(11L), root.localNavigator.items[1])
+        assertEquals(AuthorDetailScreen(12L), root.localNavigator.items[2])
 
         composition.dispose()
         assertNull(observedStack, "Disposed compositions must not expose their Navigator stack")

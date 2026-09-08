@@ -129,6 +129,7 @@ class LibraryScreenModel(
     private val _state = MutableStateFlow(LibraryState())
     val state: StateFlow<LibraryState> = _state.asStateFlow()
     private var categoryProjectionInitialized = false
+    private var pendingInitialCategoryIndex: Int? = null
 
     init {
         applySharedPreferences(categoryId = null)
@@ -173,7 +174,9 @@ class LibraryScreenModel(
             mangaTracks.map { it.score }.average()
         }
         val downloadedIds = downloadedMangaIds(items)
+        val pendingCategoryIndex = pendingInitialCategoryIndex
         _state.update {
+            val projectedCategories = libraryCategoryTabs(it.allCategories, items)
             it.copy(
                 allItems = items,
                 downloadedMangaIds = downloadedIds,
@@ -186,10 +189,10 @@ class LibraryScreenModel(
                 trackerIdsByManga = trackerIdsByManga,
                 trackerMeansByManga = trackerMeansByManga,
                 availableTrackerIds = loggedInTrackerIds,
-                categories = libraryCategoryTabs(it.allCategories, items),
-                selectedCategoryIndex = it.selectedCategoryIndex.coerceIn(
+                categories = projectedCategories,
+                selectedCategoryIndex = (pendingCategoryIndex ?: it.selectedCategoryIndex).coerceIn(
                     0,
-                    (libraryCategoryTabs(it.allCategories, items).size - 1).coerceAtLeast(0),
+                    (projectedCategories.size - 1).coerceAtLeast(0),
                 ),
                 filter = it.filter.copy(
                     tracking = loggedInTrackerIds.associateWith { trackerId ->
@@ -202,6 +205,7 @@ class LibraryScreenModel(
                 loadError = null,
             )
         }
+        pendingInitialCategoryIndex = null
     }
 
     suspend fun refreshCategories() {
@@ -296,23 +300,20 @@ class LibraryScreenModel(
         }.toMap()
 
     fun setCategories(categories: List<Category>) {
-        val restoredIndex = if (!categoryProjectionInitialized) {
+        if (!categoryProjectionInitialized) {
             categoryProjectionInitialized = true
-            libraryPreferences?.lastUsedCategory()?.get()
-        } else {
-            null
+            pendingInitialCategoryIndex = libraryPreferences?.lastUsedCategory()?.get()
         }
         _state.update {
             val projected = libraryCategoryTabs(categories, it.allItems)
+            val selectedIndex = pendingInitialCategoryIndex ?: it.selectedCategoryIndex
             it.copy(
                 allCategories = categories,
                 categories = projected,
-                selectedCategoryIndex = (restoredIndex ?: it.selectedCategoryIndex).coerceIn(
-                    0,
-                    (projected.size - 1).coerceAtLeast(0),
-                ),
+                selectedCategoryIndex = selectedIndex.coerceIn(0, (projected.size - 1).coerceAtLeast(0)),
             )
         }
+        if (!state.value.isLoading) pendingInitialCategoryIndex = null
     }
 
     // ── Update status ─────────────────────────────────────────────────────────
@@ -327,7 +328,7 @@ class LibraryScreenModel(
 
     // ── Search ────────────────────────────────────────────────────────────────
 
-    fun setSearchQuery(query: String) {
+    fun setSearchQuery(query: String?) {
         _state.update { it.copy(searchQuery = query) }
     }
 
@@ -568,6 +569,7 @@ class LibraryScreenModel(
     // ── Category selection ────────────────────────────────────────────────────
 
     fun setSelectedCategoryIndex(index: Int) {
+        pendingInitialCategoryIndex = null
         _state.update {
             it.copy(
                 selectedCategoryIndex = if (it.categories.isEmpty()) {

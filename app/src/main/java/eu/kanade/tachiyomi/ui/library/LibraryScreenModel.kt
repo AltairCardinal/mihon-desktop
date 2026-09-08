@@ -57,7 +57,9 @@ import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.model.LibrarySort
 import tachiyomi.domain.library.model.sort
+import tachiyomi.domain.library.projectLibraryBadges
 import tachiyomi.domain.library.projectLibraryCategories
+import tachiyomi.domain.library.projectLibraryToolbar
 import tachiyomi.domain.library.selectAllLibraryItems
 import tachiyomi.domain.library.selectLibraryDownloadChapters
 import tachiyomi.domain.library.selectLibraryRange
@@ -306,28 +308,22 @@ class LibraryScreenModel(
             downloadCache.changes,
         ) { libraryManga, preferences, _ ->
             libraryManga.map { manga ->
+                val badges = projectLibraryBadges(
+                    downloadCount = { downloadManager.getDownloadCount(manga.manga).toLong() },
+                    unreadCount = { manga.unreadCount },
+                    isLocal = { manga.manga.isLocal() },
+                    sourceLanguage = { sourceManager.getOrStub(manga.manga.source).lang },
+                    showDownloadBadge = preferences.downloadBadge,
+                    showUnreadBadge = preferences.unreadBadge,
+                    showLocalBadge = preferences.localBadge,
+                    showLanguageBadge = preferences.languageBadge,
+                )
                 LibraryItem(
                     libraryManga = manga,
-                    downloadCount = if (preferences.downloadBadge) {
-                        downloadManager.getDownloadCount(manga.manga).toLong()
-                    } else {
-                        0
-                    },
-                    unreadCount = if (preferences.unreadBadge) {
-                        manga.unreadCount
-                    } else {
-                        0
-                    },
-                    isLocal = if (preferences.localBadge) {
-                        manga.manga.isLocal()
-                    } else {
-                        false
-                    },
-                    sourceLanguage = if (preferences.languageBadge) {
-                        sourceManager.getOrStub(manga.manga.source).lang
-                    } else {
-                        ""
-                    },
+                    downloadCount = badges.downloadCount,
+                    unreadCount = badges.unreadCount,
+                    isLocal = badges.isLocal,
+                    sourceLanguage = badges.sourceLanguage,
                 )
             }
         }
@@ -736,17 +732,17 @@ class LibraryScreenModel(
             page: Int,
         ): LibraryToolbarTitle {
             val category = displayedCategories.getOrNull(page) ?: return LibraryToolbarTitle(defaultTitle)
-            val categoryName = category.let {
-                if (it.isSystemCategory) defaultCategoryTitle else it.name
-            }
-            val title = if (showCategoryTabs) defaultTitle else categoryName
-            val count = when {
-                !showMangaCount -> null
-                !showCategoryTabs -> getItemCountForCategory(category)
-                // Whole library count
-                else -> libraryData.favorites.size
-            }
-            return LibraryToolbarTitle(title, count)
+            val projected = projectLibraryToolbar(
+                defaultTitle,
+                defaultCategoryTitle,
+                category.name,
+                category.isSystemCategory,
+                showCategoryTabs,
+                showMangaCount,
+                getItemCountForCategory(category) ?: 0,
+                libraryData.favorites.size,
+            )
+            return LibraryToolbarTitle(projected.title, projected.count)
         }
     }
 }

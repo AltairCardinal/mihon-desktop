@@ -38,6 +38,7 @@ val desktopNativePackageVersion: String by lazy {
 
 val installerWindowsPublisher = providers.gradleProperty("mihonInstallerWindowsPublisher").getOrElse("")
 val installerMacTeamId = providers.gradleProperty("mihonInstallerMacTeamId").getOrElse("")
+val nonReleaseBuild = providers.gradleProperty("mihonNonReleaseBuild").map(String::toBoolean).getOrElse(false)
 require(installerMacTeamId.isEmpty() || Regex("[A-Z0-9]{10}").matches(installerMacTeamId)) {
     "mihonInstallerMacTeamId must be empty or exactly 10 uppercase ASCII letters or digits"
 }
@@ -70,6 +71,7 @@ val generateBuildInfo = tasks.register("generateBuildInfo") {
     val outputDir = layout.buildDirectory.dir("generated/src/main/kotlin")
     inputs.property("installerWindowsPublisher", installerWindowsPublisher)
     inputs.property("installerMacTeamId", installerMacTeamId)
+    inputs.property("nonReleaseBuild", nonReleaseBuild)
     outputs.dir(outputDir)
     // Always re-run so the hash stays fresh
     outputs.upToDateWhen { false }
@@ -84,6 +86,7 @@ val generateBuildInfo = tasks.register("generateBuildInfo") {
             |    const val GIT_HASH = ${gitHash.asKotlinStringLiteral()}
             |    const val INSTALLER_WINDOWS_PUBLISHER = ${installerWindowsPublisher.asKotlinStringLiteral()}
             |    const val INSTALLER_MAC_TEAM_ID = ${installerMacTeamId.asKotlinStringLiteral()}
+            |    const val IS_NON_RELEASE_BUILD = $nonReleaseBuild
             |}
             """.trimMargin(),
         )

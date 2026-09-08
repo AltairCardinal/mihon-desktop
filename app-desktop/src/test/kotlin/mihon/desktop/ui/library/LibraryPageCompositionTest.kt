@@ -3,8 +3,14 @@ package mihon.desktop.ui.library
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
+import androidx.compose.ui.text.AnnotatedString
 import io.mockk.mockk
 import java.nio.file.Files
+import java.util.Locale
 import java.util.UUID
 import java.util.prefs.Preferences
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -19,18 +25,23 @@ import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.core.screen.Screen
 import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.BuildInfo
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.source.FakeDesktopSourceManager
+import mihon.desktop.source.FakeSource
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.domain.category.interactor.GetCategories
+import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.library.interactor.LibraryFilter
@@ -52,6 +63,378 @@ class LibraryPageCompositionTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
+    fun `root starts with search closed and does not expose global search for an empty query`() = runTest {
+        val model = rootModel(listOf(sampleLibraryManga(sampleManga(1L, "Visible", 1L))))
+        val scene = rootScene(model)
+        try {
+            render(scene)
+
+            assertTrue(nodes(scene).none { it.config.contains(androidx.compose.ui.semantics.SemanticsActions.SetText) })
+            assertTrue(!semanticLabels(scene).contains(MR.strings.action_global_search.localized()))
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `root search click keeps empty search expanded and forwards the nonempty query globally`() = runTest {
+        val model = rootModel(listOf(sampleLibraryManga(sampleManga(4L, "Visible", 1L))))
+        var destination: Screen? = null
+        val scene = rootScene(model, onDestination = { destination = it })
+        try {
+            render(scene)
+            click(scene, MR.strings.action_search.localized())
+            render(scene)
+            val field = nodes(scene).single { it.config.contains(androidx.compose.ui.semantics.SemanticsActions.SetText) }
+            assertTrue(field.config[androidx.compose.ui.semantics.SemanticsProperties.Focused])
+            assertTrue(requireNotNull(field.config[androidx.compose.ui.semantics.SemanticsActions.SetText].action).invoke(AnnotatedString("Visible")))
+            render(scene)
+            click(scene, MR.strings.action_reset.localized())
+            render(scene)
+            assertTrue(nodes(scene).any { it.config.contains(androidx.compose.ui.semantics.SemanticsActions.SetText) })
+            assertTrue(!semanticLabels(scene).contains(MR.strings.action_global_search.localized()))
+            val clearedField = nodes(scene).single { it.config.contains(androidx.compose.ui.semantics.SemanticsActions.SetText) }
+            assertTrue(requireNotNull(clearedField.config[androidx.compose.ui.semantics.SemanticsActions.SetText].action).invoke(AnnotatedString("Visible")))
+            render(scene)
+            click(scene, MR.strings.action_global_search.localized())
+            render(scene)
+
+            val global = destination as mihon.desktop.ui.browse.GlobalSearchScreen
+            assertEquals("Visible", global.initialQuery)
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `whitespace search keeps category tabs and forwards the exact global query`() = runTest {
+        val categories = FakeCategoryRepository().apply {
+            insert(Category(1L, "A", 0L, 0L))
+            insert(Category(2L, "B", 1L, 0L))
+        }
+        val model = rootModel(emptyList(), categories).apply { setSearchQuery(" ") }
+        var destination: Screen? = null
+        val scene = rootScene(model, onDestination = { destination = it })
+        try {
+            render(scene)
+
+            val labels = semanticLabels(scene)
+            assertTrue(labels.contains("A (0)"))
+            assertTrue(labels.contains("B (0)"))
+            click(scene, MR.strings.action_global_search.localized())
+            render(scene)
+            assertEquals(" ", (destination as mihon.desktop.ui.browse.GlobalSearchScreen).initialQuery)
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `escape clears selection before it closes an expanded search`() = runTest {
+        val title = "Escape target"
+        val model = rootModel(listOf(sampleLibraryManga(sampleManga(5L, title, 1L))))
+        val scene = rootScene(model)
+        try {
+            render(scene)
+            click(scene, MR.strings.action_search.localized())
+            render(scene)
+            val field = nodes(scene).single { it.config.contains(androidx.compose.ui.semantics.SemanticsActions.SetText) }
+            assertTrue(requireNotNull(field.config[androidx.compose.ui.semantics.SemanticsActions.SetText].action).invoke(AnnotatedString("Escape")))
+            val item = nodes(scene).first {
+                it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnLongClick) && semanticLabels(it).contains(title)
+            }
+            assertTrue(requireNotNull(item.config[androidx.compose.ui.semantics.SemanticsActions.OnLongClick].action).invoke())
+            render(scene)
+
+            scene.sendKeyEvent(composeKeyEvent(Key.Escape, KeyEventType.KeyDown))
+            render(scene)
+            assertTrue(nodes(scene).any { it.config.contains(androidx.compose.ui.semantics.SemanticsActions.SetText) })
+            assertTrue(semanticLabels(scene).contains(MR.strings.action_sort.localized()))
+
+            scene.sendKeyEvent(composeKeyEvent(Key.Escape, KeyEventType.KeyDown))
+            render(scene)
+            assertTrue(nodes(scene).none { it.config.contains(androidx.compose.ui.semantics.SemanticsActions.SetText) })
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `root selection hides ordinary toolbar actions`() = runTest {
+        val title = "Selectable"
+        val model = rootModel(listOf(sampleLibraryManga(sampleManga(2L, title, 1L))))
+        val scene = rootScene(model)
+        try {
+            render(scene)
+            val item = nodes(scene).first {
+                it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnLongClick) &&
+                    semanticLabels(it).contains(title)
+            }
+            assertTrue(requireNotNull(item.config[androidx.compose.ui.semantics.SemanticsActions.OnLongClick].action).invoke())
+            render(scene)
+
+            assertTrue(semanticLabels(scene).contains(MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), 1)))
+            assertTrue(!semanticLabels(scene).contains(MR.strings.action_sort.localized()))
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `selection controls live only in the top bar while batch actions remain at the bottom`() = runTest {
+        val title = "One selection surface"
+        val model = rootModel(listOf(sampleLibraryManga(sampleManga(3L, title, 1L))))
+        val scene = rootScene(model)
+        try {
+            render(scene)
+            val item = nodes(scene).first {
+                it.config.contains(androidx.compose.ui.semantics.SemanticsActions.OnLongClick) && semanticLabels(it).contains(title)
+            }
+            assertTrue(requireNotNull(item.config[androidx.compose.ui.semantics.SemanticsActions.OnLongClick].action).invoke())
+            render(scene)
+
+            val labels = semanticLabels(scene)
+            assertEquals(1, labels.count { it == MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), 1) })
+            assertEquals(1, labels.count { it == MR.strings.action_select_all.localized() })
+            assertEquals(1, labels.count { it == MR.strings.desktop_ui_invert_selection.localized() })
+            assertTrue(labels.contains(MR.strings.action_download.localized()))
+            assertTrue(labels.contains(MR.strings.action_remove.localized()))
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `empty library opens the upstream getting started guide`() = runTest {
+        var openedUri: String? = null
+        val scene = rootScene(
+            model = rootModel(emptyList()),
+            uriHandler = object : UriHandler {
+                override fun openUri(uri: String) {
+                    openedUri = uri
+                }
+            },
+        )
+        try {
+            render(scene)
+
+            val labels = semanticLabels(scene)
+            assertTrue(labels.contains(MR.strings.getting_started_guide.localized()))
+            assertTrue(!labels.contains(MR.strings.action_global_search.localized()))
+            click(scene, MR.strings.getting_started_guide.localized())
+            assertEquals("https://mihon.app/docs/guides/getting-started", openedUri)
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `empty library with real default preferences still shows getting started`() = runTest {
+        val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
+        val preferences = LibraryPreferences(DesktopPreferenceStore(preferencesNode))
+        val model = LibraryScreenModel(
+            getLibraryManga = GetLibraryManga(FakeMangaRepository()),
+            getCategories = GetCategories(FakeCategoryRepository()),
+            libraryPreferences = preferences,
+        )
+        val scene = rootScene(model)
+        try {
+            render(scene)
+
+            assertTrue(semanticLabels(scene).contains(MR.strings.getting_started_guide.localized()))
+        } finally {
+            scene.close()
+            preferencesNode.removeNode()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `global downloaded only does not become a local active filter or overwrite its value`() = runTest {
+        val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
+        val preferences = LibraryPreferences(DesktopPreferenceStore(preferencesNode)).apply {
+            downloadedOnly().set(true)
+        }
+        val model = preferenceRootModel(emptyList(), FakeCategoryRepository(), preferences)
+        val scene = rootScene(model)
+        try {
+            render(scene)
+            assertEquals(TriState.DISABLED, model.state.value.filter.downloaded)
+            assertTrue(semanticLabels(scene).contains(MR.strings.getting_started_guide.localized()))
+
+            preferences.filterDownloaded().set(TriState.ENABLED_NOT)
+            render(scene)
+            assertEquals(TriState.ENABLED_NOT, model.state.value.filter.downloaded)
+            preferences.downloadedOnly().set(false)
+            render(scene)
+            assertEquals(TriState.ENABLED_NOT, model.state.value.filter.downloaded)
+        } finally {
+            scene.close()
+            preferencesNode.removeNode()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `root distinguishes search filter and empty category feedback`() = runTest {
+        val item = sampleLibraryManga(sampleManga(31L, "Present", 1L)).copy(categories = listOf(2L))
+        val searchModel = rootModel(listOf(item)).apply { setSearchQuery("Missing") }
+        val searchScene = rootScene(searchModel)
+        try {
+            render(searchScene)
+            assertTrue(semanticLabels(searchScene).contains(MR.strings.no_results_found.localized()))
+        } finally {
+            searchScene.close()
+        }
+
+        val filterModel = rootModel(listOf(item)).apply {
+            setFilter(state.value.filter.copy(unread = TriState.ENABLED_IS))
+        }
+        val filterScene = rootScene(filterModel)
+        try {
+            render(filterScene)
+            assertTrue(semanticLabels(filterScene).contains(MR.strings.error_no_match.localized()))
+        } finally {
+            filterScene.close()
+        }
+
+        val categories = FakeCategoryRepository().apply {
+            insert(Category(1L, "Empty", 0L, 0L))
+            insert(Category(2L, "Populated", 1L, 0L))
+        }
+        val categoryScene = rootScene(rootModel(listOf(item), categories))
+        try {
+            render(categoryScene)
+            assertTrue(semanticLabels(categoryScene).contains(MR.strings.information_no_manga_category.localized()))
+        } finally {
+            categoryScene.close()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `search category counts use each category filtered result`() = runTest {
+        val categories = FakeCategoryRepository().apply {
+            insert(Category(1L, "A", 0L, 0L))
+            insert(Category(2L, "B", 1L, 0L))
+        }
+        val items = listOf(
+            sampleLibraryManga(sampleManga(11L, "Match", 1L)).copy(categories = listOf(1L)),
+            sampleLibraryManga(sampleManga(12L, "Other", 1L)).copy(categories = listOf(1L)),
+            sampleLibraryManga(sampleManga(13L, "Third", 1L)).copy(categories = listOf(2L)),
+        )
+        val model = rootModel(items, categories).apply { setSearchQuery("Match") }
+        val scene = rootScene(model)
+        try {
+            render(scene)
+
+            val labels = semanticLabels(scene)
+            assertTrue(labels.contains("A (1)"))
+            assertTrue(labels.contains("B (0)"))
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `closed search toolbar title follows category tab and count preferences`() = runTest {
+        val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
+        val preferences = LibraryPreferences(DesktopPreferenceStore(preferencesNode)).apply {
+            categoryTabs().set(false)
+            categoryNumberOfItems().set(true)
+        }
+        val categories = FakeCategoryRepository().apply {
+            insert(Category(1L, "A", 0L, 0L))
+            insert(Category(2L, "B", 1L, 0L))
+        }
+        val items = listOf(
+            sampleLibraryManga(sampleManga(51L, "First", 1L)).copy(categories = listOf(1L)),
+            sampleLibraryManga(sampleManga(52L, "Second", 1L)).copy(categories = listOf(2L)),
+        )
+        val model = preferenceRootModel(items, categories, preferences)
+        val scene = rootScene(model)
+        try {
+            render(scene)
+            assertTrue(semanticLabels(scene).contains("A (1)"))
+
+            preferences.categoryTabs().set(true)
+            render(scene)
+            assertTrue(semanticLabels(scene).contains("${MR.strings.label_library.localized()} (2)"))
+        } finally {
+            scene.close()
+            preferencesNode.removeNode()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `real global preferences gate local filter menu and tracker sort`() = runTest {
+        val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
+        val preferences = LibraryPreferences(DesktopPreferenceStore(preferencesNode)).apply {
+            downloadedOnly().set(true)
+            autoUpdateMangaRestrictions().set(emptySet())
+        }
+        val model = preferenceRootModel(
+            listOf(sampleLibraryManga(sampleManga(61L, "Gated", 1L))),
+            FakeCategoryRepository(),
+            preferences,
+        )
+        val scene = rootScene(model)
+        try {
+            render(scene)
+            click(scene, MR.strings.action_filter.localized())
+            render(scene)
+
+            val labels = semanticLabels(scene)
+            val downloaded = MR.strings.desktop_ui_filter_value.localized(
+                Locale.getDefault(),
+                MR.strings.label_downloaded.localized(),
+                MR.strings.desktop_ui_filter_include.localized(),
+            )
+            val downloadedNode = nodes(scene).first { semanticLabels(it).contains(downloaded) }
+            assertTrue(downloadedNode.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled))
+            assertTrue(labels.none { it.startsWith(MR.strings.desktop_ui_global_downloaded_only.localized(Locale.getDefault(), "")) })
+            assertTrue(labels.none { it.contains(MR.strings.desktop_ui_custom_interval.localized()) })
+
+            click(scene, MR.strings.action_sort.localized())
+            render(scene)
+            assertTrue(!semanticLabels(scene).any { it.startsWith(MR.strings.action_sort_tracker_score.localized()) })
+        } finally {
+            scene.close()
+            preferencesNode.removeNode()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `explicit non release build exposes custom interval when restriction is enabled`() = runTest {
+        assumeTrue(BuildInfo.IS_NON_RELEASE_BUILD)
+        val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
+        val preferences = LibraryPreferences(DesktopPreferenceStore(preferencesNode)).apply {
+            autoUpdateMangaRestrictions().set(setOf(LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD))
+        }
+        val scene = rootScene(preferenceRootModel(emptyList(), FakeCategoryRepository(), preferences))
+        try {
+            render(scene)
+            click(scene, MR.strings.action_filter.localized())
+            render(scene)
+            assertTrue(semanticLabels(scene).any { it.contains(MR.strings.desktop_ui_custom_interval.localized()) })
+        } finally {
+            scene.close()
+            preferencesNode.removeNode()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
     fun `all root layouts consume live badge and continue preferences including cover only`() = runTest {
         val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
         val store = DesktopPreferenceStore(preferencesNode)
@@ -63,9 +446,14 @@ class LibraryPageCompositionTest {
             showContinueReadingButton().set(true)
         }
         val manga = sampleManga(41L, "Layout badges", 0L)
+        val remoteManga = sampleManga(42L, "Remote language", 42L)
         val mangaRepository = FakeMangaRepository().apply {
             seed(manga)
-            libraryManga = listOf(sampleLibraryManga(manga).copy(totalChapters = 3L))
+            seed(remoteManga)
+            libraryManga = listOf(
+                sampleLibraryManga(manga).copy(totalChapters = 3L),
+                sampleLibraryManga(remoteManga),
+            )
         }
         val chapterRepository = FakeChapterRepository().apply {
             seed(
@@ -83,6 +471,8 @@ class LibraryPageCompositionTest {
             getCategories = GetCategories(FakeCategoryRepository()),
             getChaptersByMangaId = GetChaptersByMangaId(chapterRepository),
             isMangaDownloaded = { true },
+            downloadedChapterCount = { if (it.id == manga.id) 7L else 0L },
+            sourceManager = FakeDesktopSourceManager(listOf(FakeSource(id = 42L, lang = "fr", name = "French source"))),
             libraryPreferences = preferences,
         )
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true)
@@ -106,6 +496,8 @@ class LibraryPageCompositionTest {
                 val labels = semanticLabels(scene)
                 assertTrue(labels.contains(MR.strings.label_downloaded.localized()), mode.toString())
                 assertTrue(labels.contains(MR.strings.action_display_local_badge.localized()), mode.toString())
+                assertTrue(labels.contains("7"), mode.toString())
+                assertTrue(labels.contains("FR"), mode.toString())
                 assertTrue(labels.contains("3"), mode.toString())
                 assertTrue(labels.contains(MR.strings.desktop_ui_continue_reading.localized()), mode.toString())
             }
@@ -115,10 +507,18 @@ class LibraryPageCompositionTest {
             assertIndicators(SharedLibraryDisplayMode.List)
             assertIndicators(SharedLibraryDisplayMode.CoverOnlyGrid)
 
+            preferences.localBadge().set(false)
+            render(scene)
+            assertTrue(!model.state.value.showLocalBadge)
+            assertTrue(!semanticLabels(scene).contains(MR.strings.action_display_local_badge.localized()))
+            assertTrue(semanticLabels(scene).contains("FR"))
+
+            preferences.localBadge().set(true)
             preferences.languageBadge().set(false)
             render(scene)
             assertTrue(!model.state.value.showLanguageBadge)
             assertTrue(semanticLabels(scene).contains(MR.strings.action_display_local_badge.localized()))
+            assertTrue(!semanticLabels(scene).contains("FR"))
 
             preferences.unreadBadge().set(false)
             render(scene)
@@ -264,6 +664,53 @@ class LibraryPageCompositionTest {
         override suspend fun insertAll(tracks: List<Track>) = Unit
     }
 
+    private fun rootModel(
+        items: List<LibraryManga>,
+        categories: FakeCategoryRepository = FakeCategoryRepository(),
+    ): LibraryScreenModel {
+        val mangaRepository = FakeMangaRepository().apply { libraryManga = items }
+        return LibraryScreenModel(
+            getLibraryManga = GetLibraryManga(mangaRepository),
+            getCategories = GetCategories(categories),
+        )
+    }
+
+    private fun preferenceRootModel(
+        items: List<LibraryManga>,
+        categories: FakeCategoryRepository,
+        preferences: LibraryPreferences,
+    ): LibraryScreenModel {
+        val mangaRepository = FakeMangaRepository().apply { libraryManga = items }
+        return LibraryScreenModel(
+            getLibraryManga = GetLibraryManga(mangaRepository),
+            getCategories = GetCategories(categories),
+            libraryPreferences = preferences,
+        )
+    }
+
+    private fun rootScene(
+        model: LibraryScreenModel,
+        onDestination: (Screen) -> Unit = {},
+        uriHandler: UriHandler = object : UriHandler {
+            override fun openUri(uri: String) = Unit
+        },
+    ): ImageComposeScene =
+        ImageComposeScene(1_200, 900, coroutineContext = kotlinx.coroutines.Dispatchers.Unconfined) {}.also { scene ->
+            scene.setContent {
+                CompositionLocalProvider(
+                    LocalDesktopUiDependencies provides mockk<DesktopUiDependencies>(relaxed = true),
+                    LocalUriHandler provides uriHandler,
+                ) {
+                    ProvideLibraryScreenModelFactory(factory = { model }) {
+                        Navigator(LibraryRootScreen()) { navigator ->
+                            onDestination(navigator.lastItem)
+                            if (navigator.lastItem is LibraryRootScreen) CurrentScreen()
+                        }
+                    }
+                }
+            }
+        }
+
     @OptIn(ExperimentalComposeUiApi::class)
     private fun semanticLabels(scene: ImageComposeScene): List<String> = nodes(scene).flatMap { node ->
         val text = if (node.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Text)) {
@@ -314,6 +761,16 @@ class LibraryPageCompositionTest {
             scene.render()
             yield()
         }
+    }
+
+    private fun composeKeyEvent(key: Key, type: KeyEventType): androidx.compose.ui.input.key.KeyEvent {
+        val events = Class.forName("androidx.compose.ui.input.key.KeyEvent_desktopKt")
+        val eventType = Class.forName("androidx.compose.ui.input.key.KeyEventType")
+            .getMethod(if (type == KeyEventType.KeyDown) "access\$getKeyDown\$cp" else "access\$getKeyUp\$cp")
+            .invoke(null)
+        val factory = events.declaredMethods.single { it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default") }
+        val native = factory.invoke(null, key.keyCode, eventType, 0, false, false, false, false, null)
+        return androidx.compose.ui.input.key.KeyEvent(native)
     }
 
 }

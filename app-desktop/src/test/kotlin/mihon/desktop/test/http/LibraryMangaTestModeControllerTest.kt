@@ -10,6 +10,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -65,6 +66,7 @@ class LibraryMangaTestModeControllerTest {
         }
         val getCategories = mockk<GetCategories> {
             coEvery { await() } returns emptyList()
+            every { subscribe() } returns flow { awaitCancellation() }
         }
         val library = LibraryScreenModel(getLibraryManga = getLibraryManga, getCategories = getCategories)
         val controller = LibraryMangaTestModeController(library) { detail }
@@ -146,6 +148,42 @@ class LibraryMangaTestModeControllerTest {
         assertEquals(OwnerLoadState.FAILED, result.snapshot.loadState)
         assertEquals("repository disconnected", result.snapshot.loadError)
         controller.closeAndJoin()
+    }
+
+    @Test
+    fun `category observer failure rejects actions and close waits for the observer`() = runBlocking {
+        val categoryObserverClosed = CompletableDeferred<Unit>()
+        val getCategories = mockk<GetCategories> {
+            coEvery { await() } returns emptyList()
+            every { subscribe() } returns flow {
+                try {
+                    error("category repository disconnected")
+                } finally {
+                    categoryObserverClosed.complete(Unit)
+                }
+            }
+        }
+        val libraryEmissions = MutableSharedFlow<List<LibraryManga>>(replay = 1).apply {
+            tryEmit(listOf(libraryManga(favorite = true)))
+        }
+        val getLibraryManga = mockk<GetLibraryManga> { every { subscribe() } returns libraryEmissions }
+        val controller = LibraryMangaTestModeController(
+            LibraryScreenModel(getLibraryManga = getLibraryManga, getCategories = getCategories),
+        ) { error("unused") }
+
+        val result = controller.execute("search", mapOf("query" to "ignored"))
+
+        assertFalse(result.success)
+        assertEquals(LibraryMangaActionFailureCode.LIBRARY_UNAVAILABLE, result.failureCode)
+        assertEquals(OwnerLoadState.FAILED, result.snapshot.loadState)
+        assertEquals("category repository disconnected", result.snapshot.loadError)
+        libraryEmissions.emit(listOf(libraryManga(favorite = true)))
+        yield()
+        val afterAnotherLibraryEmission = controller.execute("search", mapOf("query" to "still ignored"))
+        assertEquals(LibraryMangaActionFailureCode.LIBRARY_UNAVAILABLE, afterAnotherLibraryEmission.failureCode)
+        assertEquals(OwnerLoadState.FAILED, afterAnotherLibraryEmission.snapshot.loadState)
+        controller.closeAndJoin()
+        assertTrue(categoryObserverClosed.isCompleted)
     }
 
     @Test
@@ -334,7 +372,10 @@ class LibraryMangaTestModeControllerTest {
 
     private fun libraryModel(items: Flow<List<LibraryManga>>): LibraryScreenModel {
         val getLibraryManga = mockk<GetLibraryManga> { every { subscribe() } returns items }
-        val getCategories = mockk<GetCategories> { coEvery { await() } returns emptyList() }
+        val getCategories = mockk<GetCategories> {
+            coEvery { await() } returns emptyList()
+            every { subscribe() } returns flow { awaitCancellation() }
+        }
         return LibraryScreenModel(getLibraryManga = getLibraryManga, getCategories = getCategories)
     }
 }

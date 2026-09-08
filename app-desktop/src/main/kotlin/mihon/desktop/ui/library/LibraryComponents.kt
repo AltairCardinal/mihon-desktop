@@ -78,6 +78,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -112,12 +114,13 @@ import mihon.desktop.ui.browse.GlobalSearchScreen
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.interactor.LibraryFilter
+import tachiyomi.domain.library.projectLibraryBadges
 import tachiyomi.core.common.preference.TriState
 
 @Composable
 internal fun LibraryToolbar(
-    searchQuery: String,
-    onSearchChange: (String) -> Unit,
+    searchQuery: String?,
+    onSearchChange: (String?) -> Unit,
     sortMode: SortMode,
     sortAscending: Boolean,
     onSortChange: (SortMode, Boolean) -> Unit,
@@ -125,8 +128,6 @@ internal fun LibraryToolbar(
     availableTrackerIds: Set<Long>,
     onToggleFilter: (LibraryFilterField) -> Unit,
     onToggleTracking: (Long) -> Unit,
-    onToggleGlobalDownloadedOnly: () -> Unit,
-    onToggleSkipOutsideReleasePeriod: () -> Unit,
     isUpdating: Boolean,
     displayMode: LibraryDisplayMode,
     onDisplayModeChange: (LibraryDisplayMode) -> Unit,
@@ -138,31 +139,60 @@ internal fun LibraryToolbar(
     showCategoryTabs: Boolean = true,
     showCategoryItemCounts: Boolean = false,
     onCategoryChange: (Int) -> Unit = {},
-    intervalFilterEnabled: Boolean = true,
+    showIntervalCustomFilter: Boolean = false,
+    showFilterMenu: Boolean = false,
+    onShowFilterMenuChange: (Boolean) -> Unit = {},
+    toolbarTitle: String = MR.strings.label_library.localized(),
     onRandomManga: () -> Unit,
     onRefresh: () -> Unit,
     onRefreshAll: () -> Unit,
 ) {
+    val searchFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(searchQuery != null) {
+        if (searchQuery != null) searchFocusRequester.requestFocus()
+    }
     var showSortMenu by remember { mutableStateOf(false) }
-    var showFilterMenu by remember { mutableStateOf(false) }
     var showDisplayMenu by remember { mutableStateOf(false) }
     var showCategoryMenu by remember { mutableStateOf(false) }
     var showRefreshMenu by remember { mutableStateOf(false) }
-
+    val displayedFilter = if (filter.globalDownloadedOnly) {
+        filter.copy(downloaded = TriState.ENABLED_IS)
+    } else {
+        filter
+    }
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = onSearchChange,
-                placeholder = { Text(MR.strings.desktop_ui_search_library.localized()) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = MR.strings.action_search.localized()) },
-                singleLine = true,
-                modifier = Modifier.weight(1f),
-            )
+            if (searchQuery == null) {
+                Text(toolbarTitle, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                IconButton(onClick = { onSearchChange("") }) {
+                    Icon(Icons.Default.Search, contentDescription = MR.strings.action_search.localized())
+                }
+            } else {
+                IconButton(onClick = { onSearchChange(null) }) {
+                    Icon(Icons.Default.Close, contentDescription = MR.strings.action_cancel.localized())
+                }
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchChange,
+                    placeholder = { Text(MR.strings.desktop_ui_search_library.localized()) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = MR.strings.action_search.localized()) },
+                    trailingIcon = if (searchQuery.isNotEmpty()) {
+                        {
+                            IconButton(onClick = { onSearchChange("") }) {
+                                Icon(Icons.Default.Close, contentDescription = MR.strings.action_reset.localized())
+                            }
+                        }
+                    } else {
+                        null
+                    },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f).focusRequester(searchFocusRequester),
+                )
+            }
 
             // Display mode
             Box {
@@ -224,7 +254,7 @@ internal fun LibraryToolbar(
                     Icon(Icons.Default.SortByAlpha, contentDescription = MR.strings.action_sort.localized())
                 }
                 DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
-                    SortMode.entries.forEach { mode ->
+                    SortMode.entries.filter { it != SortMode.TRACKER_MEAN || availableTrackerIds.isNotEmpty() }.forEach { mode ->
                         DropdownMenuItem(
                             text = {
                                 val label = when (mode) {
@@ -253,63 +283,18 @@ internal fun LibraryToolbar(
 
             // Filter
             Box {
-                IconButton(onClick = { showFilterMenu = true }) {
+                IconButton(onClick = { onShowFilterMenuChange(true) }) {
                     Icon(Icons.Default.FilterList, contentDescription = MR.strings.action_filter.localized())
                 }
-                DropdownMenu(expanded = showFilterMenu, onDismissRequest = { showFilterMenu = false }) {
-                    filterRows(filter).forEach { (label, value) ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    MR.strings.desktop_ui_filter_value.localized(
-                                        Locale.getDefault(),
-                                        label,
-                                        value.second.label(),
-                                    ),
-                                )
-                            },
-                            onClick = { onToggleFilter(value.first) },
-                            enabled = isFilterFieldEnabled(filter, value.first) &&
-                                (value.first != LibraryFilterField.INTERVAL_CUSTOM || intervalFilterEnabled),
-                        )
-                    }
-                    availableTrackerIds.forEach { trackerId ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    MR.strings.desktop_ui_tracker_filter.localized(
-                                        Locale.getDefault(),
-                                        trackerId,
-                                        filter.tracking[trackerId].orDisabledForUi().label(),
-                                    ),
-                                )
-                            },
-                            onClick = { onToggleTracking(trackerId) },
-                        )
-                    }
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                MR.strings.desktop_ui_global_downloaded_only.localized(
-                                    Locale.getDefault(),
-                                    filter.globalDownloadedOnly.onOff(),
-                                ),
-                            )
-                        },
-                        onClick = onToggleGlobalDownloadedOnly,
-                    )
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                MR.strings.desktop_ui_custom_interval_filter.localized(
-                                    Locale.getDefault(),
-                                    filter.skipOutsideReleasePeriod.onOff(),
-                                ),
-                            )
-                        },
-                        onClick = onToggleSkipOutsideReleasePeriod,
-                    )
-                }
+                LibraryFilterDropdown(
+                    expanded = showFilterMenu,
+                    onDismissRequest = { onShowFilterMenuChange(false) },
+                    filter = filter,
+                    availableTrackerIds = availableTrackerIds,
+                    showIntervalCustomFilter = showIntervalCustomFilter,
+                    onToggleFilter = onToggleFilter,
+                    onToggleTracking = onToggleTracking,
+                )
             }
 
             IconButton(onClick = onRandomManga) {
@@ -320,7 +305,7 @@ internal fun LibraryToolbar(
                 Icon(Icons.Default.CreateNewFolder, contentDescription = MR.strings.desktop_ui_manage_categories_eceede45.localized())
             }
 
-            if (!showCategoryTabs && categories.isNotEmpty()) {
+            if (!showCategoryTabs && categories.size > 1) {
                 Box {
                     IconButton(onClick = { showCategoryMenu = true }) {
                         Icon(Icons.Default.CollectionsBookmark, contentDescription = MR.strings.categories.localized())
@@ -342,8 +327,10 @@ internal fun LibraryToolbar(
                 }
             }
 
-            IconButton(onClick = onOpenGlobalSearch) {
-                Icon(Icons.Default.Search, contentDescription = MR.strings.action_global_search.localized())
+            if (!searchQuery.isNullOrEmpty()) {
+                IconButton(onClick = onOpenGlobalSearch) {
+                    Icon(Icons.Default.Search, contentDescription = MR.strings.action_global_search.localized())
+                }
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, contentDescription = MR.strings.action_settings.localized())
@@ -388,10 +375,10 @@ internal fun LibraryToolbar(
             }
         }
 
-        val activeFilters = filterRows(filter).filter {
+        val activeFilters = filterRows(displayedFilter).filter {
             it.second.second != TriState.DISABLED &&
                 isFilterFieldEnabled(filter, it.second.first) &&
-                (it.second.first != LibraryFilterField.INTERVAL_CUSTOM || intervalFilterEnabled)
+                (it.second.first != LibraryFilterField.INTERVAL_CUSTOM || showIntervalCustomFilter)
         }
         if (activeFilters.isNotEmpty()) {
             Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -417,14 +404,60 @@ internal fun LibraryToolbar(
     }
 }
 
+@Composable
+internal fun LibraryFilterDropdown(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    filter: LibraryFilter,
+    availableTrackerIds: Set<Long>,
+    showIntervalCustomFilter: Boolean,
+    onToggleFilter: (LibraryFilterField) -> Unit,
+    onToggleTracking: (Long) -> Unit,
+) {
+    val displayedFilter = if (filter.globalDownloadedOnly) {
+        filter.copy(downloaded = TriState.ENABLED_IS)
+    } else {
+        filter
+    }
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismissRequest) {
+        filterRows(displayedFilter)
+            .filter { it.second.first != LibraryFilterField.INTERVAL_CUSTOM || showIntervalCustomFilter }
+            .forEach { (label, value) ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            MR.strings.desktop_ui_filter_value.localized(
+                                Locale.getDefault(),
+                                label,
+                                value.second.label(),
+                            ),
+                        )
+                    },
+                    onClick = { onToggleFilter(value.first) },
+                    enabled = isFilterFieldEnabled(filter, value.first),
+                )
+            }
+        availableTrackerIds.forEach { trackerId ->
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        MR.strings.desktop_ui_tracker_filter.localized(
+                            Locale.getDefault(),
+                            trackerId,
+                            filter.tracking[trackerId].orDisabledForUi().label(),
+                        ),
+                    )
+                },
+                onClick = { onToggleTracking(trackerId) },
+            )
+        }
+    }
+}
+
 // ── Selection action bar ──────────────────────────────────────────────────────
 
 @Composable
 internal fun SelectionActionBar(
-    selectedCount: Int,
-    onClose: () -> Unit,
-    onSelectAll: () -> Unit,
-    onInvertSelection: () -> Unit,
     actions: LibrarySelectionActions,
     canDownload: Boolean = true,
     canMigrate: Boolean = true,
@@ -437,20 +470,7 @@ internal fun SelectionActionBar(
     BottomAppBar(
         containerColor = MaterialTheme.colorScheme.secondaryContainer,
     ) {
-        IconButton(onClick = onClose) {
-            Icon(Icons.Default.Close, contentDescription = MR.strings.desktop_ui_clear_selection.localized())
-        }
-        Text(
-            text = MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), selectedCount),
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.weight(1f),
-        )
-        IconButton(onClick = onSelectAll) {
-            Icon(Icons.Default.SelectAll, contentDescription = MR.strings.action_select_all.localized())
-        }
-        IconButton(onClick = onInvertSelection) {
-            Icon(Icons.Default.SelectAll, contentDescription = MR.strings.desktop_ui_invert_selection.localized())
-        }
+        Spacer(Modifier.weight(1f))
         Box {
             TextButton(
                 onClick = { downloadExpanded = true },
@@ -489,6 +509,32 @@ internal fun SelectionActionBar(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun LibrarySelectionTopBar(
+    selectedCount: Int,
+    onClose: () -> Unit,
+    onSelectAll: () -> Unit,
+    onInvertSelection: () -> Unit,
+) {
+    TopAppBar(
+        title = { Text(MR.strings.desktop_ui_selected_count.localized(Locale.getDefault(), selectedCount)) },
+        navigationIcon = {
+            IconButton(onClick = onClose) {
+                Icon(Icons.Default.Close, contentDescription = MR.strings.desktop_ui_clear_selection.localized())
+            }
+        },
+        actions = {
+            IconButton(onClick = onSelectAll) {
+                Icon(Icons.Default.SelectAll, contentDescription = MR.strings.action_select_all.localized())
+            }
+            IconButton(onClick = onInvertSelection) {
+                Icon(Icons.Default.SelectAll, contentDescription = MR.strings.desktop_ui_invert_selection.localized())
+            }
+        },
+    )
+}
+
 // ── Grid view ─────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -502,6 +548,7 @@ internal fun LibraryGrid(
     landscapeColumns: Int = 0,
     selectionState: LibrarySelectionState,
     downloadedMangaIds: Set<Long> = emptySet(),
+    downloadCountsByManga: Map<Long, Long> = emptyMap(),
     localMangaIds: Set<Long> = emptySet(),
     sourceLanguagesByManga: Map<Long, String> = emptyMap(),
     showDownloadBadge: Boolean = true,
@@ -531,6 +578,7 @@ internal fun LibraryGrid(
                     coverOnly = coverOnly,
                     isSelected = selectionState.isSelected(item.manga.id),
                     isDownloaded = item.id in downloadedMangaIds,
+                    downloadCount = downloadCountsByManga[item.id] ?: if (item.id in downloadedMangaIds) 1L else 0L,
                     isLocal = item.id in localMangaIds,
                     sourceLanguage = sourceLanguagesByManga[item.id].orEmpty(),
                     showDownloadBadge = showDownloadBadge,
@@ -556,6 +604,7 @@ internal fun LibraryList(
     items: List<LibraryManga>,
     selectionState: LibrarySelectionState,
     downloadedMangaIds: Set<Long> = emptySet(),
+    downloadCountsByManga: Map<Long, Long> = emptyMap(),
     localMangaIds: Set<Long> = emptySet(),
     sourceLanguagesByManga: Map<Long, String> = emptyMap(),
     showDownloadBadge: Boolean = true,
@@ -571,14 +620,17 @@ internal fun LibraryList(
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(items, key = { it.id }) { item ->
             val isSelected = selectionState.isSelected(item.manga.id)
-            val showLanguageIndicator = showLanguageBadge &&
-                (item.id in localMangaIds || sourceLanguagesByManga[item.id].orEmpty().isNotBlank())
+            val downloadCount = downloadCountsByManga[item.id] ?: if (item.id in downloadedMangaIds) 1L else 0L
+            val badges = projectLibraryBadges(
+                { downloadCount }, { item.unreadCount }, { item.id in localMangaIds },
+                { sourceLanguagesByManga[item.id].orEmpty() }, showDownloadBadge, showUnreadBadge,
+                showLocalBadge, showLanguageBadge,
+            )
+            val showLanguageIndicator = badges.sourceLanguage.isNotBlank()
             val showTrailingIndicators =
-                (showUnreadBadge && item.unreadCount > 0L) ||
-                    (showDownloadBadge && item.id in downloadedMangaIds) ||
-                    (showLocalBadge && item.id in localMangaIds) ||
+                    badges.unreadCount > 0L || badges.downloadCount > 0L || badges.isLocal ||
                     showLanguageIndicator
-            val showContinueReading = showContinueReadingButton && showUnreadBadge && item.unreadCount > 0L
+            val showContinueReading = showContinueReadingButton && badges.unreadCount > 0L
             ListItem(
                 headlineContent = {
                     Text(
@@ -614,12 +666,12 @@ internal fun LibraryList(
                         }
                     }
                 },
-                supportingContent = if (showUnreadBadge && item.unreadCount > 0L) {
+                supportingContent = if (badges.unreadCount > 0L) {
                     {
                         Text(
                             MR.strings.desktop_ui_unread_count.localized(
                                 Locale.getDefault(),
-                                item.unreadCount,
+                                badges.unreadCount,
                             ),
                         )
                     }
@@ -629,25 +681,20 @@ internal fun LibraryList(
                 trailingContent = if (showContinueReading || showTrailingIndicators) {
                     {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (showUnreadBadge && item.unreadCount > 0L) {
-                                Badge { Text(item.unreadCount.toString()) }
+                            if (badges.unreadCount > 0L) {
+                                Badge { Text(badges.unreadCount.toString()) }
                             }
-                            if (showDownloadBadge && item.id in downloadedMangaIds) {
-                                Icon(
-                                    Icons.Default.Download,
-                                    contentDescription = MR.strings.label_downloaded.localized(),
-                                    modifier = Modifier.padding(horizontal = 6.dp).size(16.dp),
-                                )
+                            if (badges.downloadCount > 0L) {
+                                Badge(
+                                    modifier = Modifier.semantics {
+                                        contentDescription = MR.strings.label_downloaded.localized()
+                                    },
+                                ) { Text(badges.downloadCount.toString()) }
                             }
-                            if (showLanguageIndicator) {
+                            if (badges.isLocal || showLanguageIndicator) {
                                 LibraryLanguageBadge(
-                                    isLocal = item.id in localMangaIds,
-                                    sourceLanguage = sourceLanguagesByManga[item.id].orEmpty(),
-                                )
-                            } else if (showLocalBadge && item.id in localMangaIds) {
-                                Text(
-                                    MR.strings.action_display_local_badge.localized(),
-                                    style = MaterialTheme.typography.labelSmall,
+                                    isLocal = badges.isLocal,
+                                    sourceLanguage = badges.sourceLanguage,
                                 )
                             }
                             if (showContinueReading) {
@@ -700,6 +747,7 @@ internal fun MangaCoverCard(
     coverOnly: Boolean = false,
     isSelected: Boolean,
     isDownloaded: Boolean = false,
+    downloadCount: Long = if (isDownloaded) 1L else 0L,
     isLocal: Boolean = false,
     sourceLanguage: String = "",
     showDownloadBadge: Boolean = true,
@@ -712,6 +760,10 @@ internal fun MangaCoverCard(
     onContinueReading: () -> Unit,
     onContextMenu: () -> Unit,
 ) {
+    val badges = projectLibraryBadges(
+        { downloadCount }, { item.unreadCount }, { isLocal }, { sourceLanguage },
+        showDownloadBadge, showUnreadBadge, showLocalBadge, showLanguageBadge,
+    )
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -776,7 +828,7 @@ internal fun MangaCoverCard(
                 }
 
                 // Unread badge
-                if (showUnreadBadge && item.unreadCount > 0L) {
+                if (badges.unreadCount > 0L) {
                     Badge(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -784,31 +836,32 @@ internal fun MangaCoverCard(
                         containerColor = MaterialTheme.colorScheme.primary,
                     ) {
                         Text(
-                            text = item.unreadCount.toString(),
+                            text = badges.unreadCount.toString(),
                             style = MaterialTheme.typography.labelSmall,
                         )
                     }
                 }
 
                 // Downloaded badge
-                if (showDownloadBadge && isDownloaded) {
+                if (badges.downloadCount > 0L) {
                     Badge(
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .padding(4.dp),
                         containerColor = MaterialTheme.colorScheme.tertiary,
                     ) {
-                        Icon(
-                            Icons.Default.Download,
-                            contentDescription = MR.strings.label_downloaded.localized(),
-                            tint = MaterialTheme.colorScheme.onTertiary,
-                            modifier = Modifier.size(10.dp),
+                        Text(
+                            badges.downloadCount.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.semantics {
+                                contentDescription = MR.strings.label_downloaded.localized()
+                            },
                         )
                     }
                 }
 
                 // Continue reading FAB overlay (bottom-start, visible on hover via always-visible small icon)
-                if (showContinueReadingButton && showUnreadBadge && item.unreadCount > 0L) {
+                if (showContinueReadingButton && badges.unreadCount > 0L) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
@@ -829,10 +882,10 @@ internal fun MangaCoverCard(
                     }
                 }
 
-                if (showLanguageBadge) {
+                if (badges.isLocal || badges.sourceLanguage.isNotBlank()) {
                     LibraryLanguageBadge(
-                        isLocal = isLocal,
-                        sourceLanguage = sourceLanguage,
+                        isLocal = badges.isLocal,
+                        sourceLanguage = badges.sourceLanguage,
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .padding(4.dp),
@@ -906,7 +959,7 @@ private fun LibraryLanguageBadge(
 }
 
 @Composable
-internal fun EmptyLibrary(onSearch: () -> Unit = {}) {
+internal fun EmptyLibrary(onGettingStarted: () -> Unit = {}) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
@@ -923,8 +976,8 @@ internal fun EmptyLibrary(onSearch: () -> Unit = {}) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
             )
-            TextButton(onClick = onSearch) {
-                Text(MR.strings.action_global_search.localized())
+            TextButton(onClick = onGettingStarted) {
+                Text(MR.strings.getting_started_guide.localized())
             }
         }
     }

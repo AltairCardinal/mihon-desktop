@@ -61,6 +61,13 @@ date: 2026-09-08
 - 默认入库分类、重复新章已读策略、章节滑动手势和缺章显示等相邻设置的全面实现：它们属于入库/章节同步/详情链路，不能因为位于“书架设置”就混入本计划。
 - 全仓架构清理、泛化动作总线、通用状态框架、新测试平台、基准测试项目或测试报告生成器。
 
+2026-09-08 用户明确选择“保持书架范围，迁移端口缺口单列”。因此 LI-03 的本轮验收边界为原选择集
+进入现有迁移确认页、已有选项正确传递、确认才提交、取消无提交。固定原版的来源选择/顺序、额外搜索词、
+自定义封面和删除下载标志，以及隐藏未匹配/无更新结果、深度搜索、按章节数优先等迁移搜索配置，
+现有 `BatchMigrationOptions` 和目标搜索链未完整承载；登记为范围外迁移端口缺口，不扩展迁移引擎或搜索链。
+现有入口只能配置章节读状态、分类和笔记复制，替换行为沿用执行端口默认值。
+本轮完成不得表述为“迁移配置已完整对齐原版”，manifest 中该缺口也不得被书架验收覆盖。
+
 允许的外部改动必须同时满足：有本计划中的具体失败场景；现有入口无法以现有端口实现；修改局限于相应
 端口/adapter 及其测试。比如刷新服务增加可选分类参数可以在本批次内完成；重做全部更新 executor 不可以。
 Reader 内部的 partial/local-first 能力保持现有输入契约，作者功能保持当前链路；两者不是新的书架业务例外。
@@ -194,13 +201,45 @@ LI-01 随真实页面红测补最小挂载能力和分类投影；后续各批�
 > `sol-li-pref-spotless` 的根 `spotlessCheck` 通过，提交前 `git diff --check` 通过。
 > 本记录只覆盖上述修复，其他筛选显隐、角标偏好和 Test Mode consumer 缺口仍须补齐，LI-02/07 不据此整项勾选。
 
+2026-09-08 第二批补修与审查：搜索关闭/展开/清空、空格 query 原样转发、空态与入门入口、选择工具栏及
+Escape 优先级、过滤后的分类计数、标题/角标门禁已接入真实 Root。重选书架复用当前筛选菜单；固定原版
+打开的是 `LibrarySettingsDialog`，不能以自动更新等全局 `LibrarySettingsScreen` 替代。Test Mode 订阅实际
+分类和偏好，排序写回分类 flags，分类 A→B→A 及重建后恢复；依赖订阅失败保持失败并在关闭时等待订阅退出。
+另修复初始分类先于收藏到达时过早钳制保存页码的问题，待恢复值在内部保存，页面当前索引始终合法。
+
+- 有效 RED 包括 `sol-li-ui-search-details-red2`、`sol-li-ui-search-focus-default-red`、
+  `sol-li-ui-gates-badges-red`、`sol-li-ui-global-download-state-red`、`sol-li-ui-testmode-category-red`、
+  `sol-li-ui-home-reselect-sheet-red2` 和 `sol-li-ui-initial-category-order-red`；编译、DI 夹具失败不计产品 RED。
+- 最终正式参数验证 `sol-li-ui-desktop-final-focused3`：`:app-desktop:jvmTest -PincludeIntegrationTests=true`，
+  分别以 `--tests` 指定 `LibraryPageCompositionTest`、`LibraryCategoryBehaviorTest`、`LibraryFilterUiTest`、
+  `LibraryParityIntegrationTest`、`LibraryScreenModelTest`（均位于 `mihon.desktop.ui.library`），以及
+  `mihon.desktop.ui.NavigationContractTest`、`mihon.desktop.ui.ExternalActionFeedbackWiringTest`、
+  `mihon.desktop.test.http.LibraryMangaTestModeControllerTest`、`mihon.desktop.ui.ScreenInstantiationSmokeTest`：
+  165 项，164 通过、1 项非发布构建专用场景跳过。该正例另以 `-PmihonNonReleaseBuild=true` 在
+  `sol-li-ui-nonrelease-final` 通过，随后恢复正式参数并执行上述最终验证。
+- Android `:app:testReleaseUnitTest --tests eu.kanade.tachiyomi.ui.library.LibrarySharedEvaluationWiringTest`
+  在 `sol-li-ui-android-after-format` 4 项通过；其中新增实际 favorites、query/grouping/toolbar/selection
+  consumer，既有字段检查不能单独作为行为证据。共享 `:domain:jvmTest --tests
+  tachiyomi.domain.library.LibraryPresentationProjectionTest` 在 `sol-li-ui-domain-after-format` 3 项通过。
+- App/Domain 的已配置 Spotless 检查通过；Desktop 未配置该 task，不能把根检查称为 Desktop 格式覆盖。
+  本批 Desktop 新增代码人工整理，提交前 `git diff --check` 通过。主代理已核对 production 调用、真实
+  Root/数据库测试及最终 XML；分类排序测试的异步保存等待与调度器清理问题在整组回归中修正后通过。
+- 本批超过 8 文件/400 行：共享展示规则需两端消费，Root、Home 和 Test Mode 共用状态但入口不同，
+  较多改动来自实际页面矩阵与异步恢复测试；保持同一交互批次有利于验证状态联动。风险集中于初始加载、
+  偏好作用域和导航生命周期，已用对应 consumer/集成测试覆盖。分类弹窗事务、批量生命周期、下载清理及
+  刷新服务仍待后续批次，不能据此勾选整个 LI-01～08。
+
+执行偏差记录：`sol-li-ui-shared-nonrelease-green2` 的多 task 命令将 `--tests` 放在最后一个 task 后，
+意外提前执行 2917 项 Desktop 测试，2 项失败、2 项跳过，额外约 3 分钟；已向用户说明，不作为收口证据。
+后续 focused 改为单 test task，最终全量矩阵仍留在所有修复完成后执行。
+
 ### LI-03 选择模式、返回优先级与迁移入口
 
 - 前置：LI-01/02，排序后的当前分类可见集合稳定。
 - RED：长按/键鼠等价动作进入或扩展选择、选择时单击不进详情、分类感知范围选择（同分类最后选择为锚，跨分类第一次仅加入当前项，全选/反选重置范围分类锚）、跨分类选择保留、当前页全选 union/反选、取消选择与数量；返回先处理当前对话框，再按原版清选择/关闭搜索，普通工具栏和继续阅读不能绕开选择规则。
-- 实现与入口：共享原版选择决策；键鼠事件只是 adapter，保留可操作的范围选择，不赋予 Ctrl/Shift 新的目标规则；动作显隐跟随原版资格。Desktop 尚无接收整个 selection 的迁移配置页：本批允许新增一个薄入口，接收原选择集、呈现固定原版所需配置，确认后才调用现有迁移执行端口；取消不得 submit，不静默过滤 local，也不因点击菜单直接开始执行。
+- 实现与入口：共享原版选择决策；键鼠事件只是 adapter，保留可操作的范围选择，不赋予 Ctrl/Shift 新的目标规则；动作显隐跟随原版资格。迁移薄入口接收原选择集，呈现现有端口支持的配置，确认后才调用迁移执行端口；取消不得 submit，不静默过滤 local，也不因点击菜单直接开始执行。原版完整配置按 2.2 节用户裁决单列缺口。
 - 验证：相同选择序列喂双端 consumer + 真正页面鼠标/键盘事件 + action bar + Navigator；断开 selection 或目标传递会失败。实例化受影响 Screen/Tab，验证普通 Screen 进入嵌套 Navigator。
-- 关闭：三种已存在布局及新增 cover-only 布局使用同一选择语义；迁移配置的入口、参数和确认经过测试。目标搜索、引擎与队列状态机不变；若现有端口不能承载固定原版配置，明确记录缺失字段/能力与阻塞，不能仅以“已导航”关闭，也不得自动扩成完整迁移对齐。
+- 关闭：三种已存在布局及新增 cover-only 布局使用同一选择语义；迁移入口的选择集、受支持参数、确认及取消经过测试。目标搜索、引擎与队列状态机不变；原版配置缺口明确保留，不能仅以“已导航”关闭，也不得自动扩成完整迁移对齐。
 
 > 历史完成声明（2026-09-08，复审已撤回，以下保留追溯，不作为本轮完成证据）：`TODO -> DONE`。RED 覆盖范围锚点、跨分类选择、全选/反选、返回优先级、动作资格和迁移确认；GREEN/重构将选择策略提取到 shared，并让 Desktop selection bar、迁移配置入口和 Android consumer 使用同一规则。验证覆盖 `LibrarySelectionPolicyTest`、`LibrarySelectionState`、`LibraryParityIntegrationTest`、迁移配置页实例化/导航测试；独立审查后补齐“清空最后选择同时清 anchor”的边界并复审通过。
 
@@ -276,6 +315,12 @@ LI-01 随真实页面红测补最小挂载能力和分类投影；后续各批�
 以下是后续复验入口；本次已执行命令与结果记录在 6.3。测试类通配为现有书架集合；每批次选择自己新增/受影响的类，
 不要将示例 wildcard 当成固定全跑要求。KMP Android 测试 task 以实际注册的 variant 为准。Desktop 默认
 排除 `integration` 标签，命中该标签的 focused 必须加 `-PincludeIntegrationTests=true`，不能接受零用例通过。
+
+Desktop 正式构建默认 `BuildInfo.IS_NON_RELEASE_BUILD=false`。仅开发验证可显式传
+`-PmihonNonReleaseBuild=true`，与原版“非发布构建且启用发布期限制”共同控制自定义间隔筛选入口；
+不从 Test Mode 或版本阶段号推断构建类型。收口前必须恢复默认参数并验证正式构建隐藏该入口。
+跨模块 focused 命令每次只指定一个 test task，并为该 task 显式传 `--tests`，避免末尾筛选参数只作用于
+最后一个 task、让前面的模块意外执行全量。
 
 ```powershell
 $ErrorActionPreference = 'Stop'

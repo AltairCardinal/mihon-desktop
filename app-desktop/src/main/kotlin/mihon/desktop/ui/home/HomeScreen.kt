@@ -59,6 +59,7 @@ import mihon.desktop.ui.cloudflare.DesktopChallengeLoginController
 import mihon.desktop.ui.extension.ExtensionListScreen
 import mihon.desktop.ui.history.HistoryTab
 import mihon.desktop.ui.library.LibraryTab
+import mihon.desktop.ui.library.LocalLibraryNavigationHost
 import mihon.desktop.ui.migration.MigrationSearchScreen
 import mihon.desktop.ui.more.MoreTab
 import mihon.desktop.ui.reader.ReaderModeState
@@ -74,6 +75,7 @@ class HomeScreen : Screen {
     override fun Content() {
         var activeChallenge by remember { mutableStateOf<CloudflareChallenge?>(null) }
         val dependencies = LocalDesktopUiDependencies.current
+        val libraryNavigationHost = LocalLibraryNavigationHost.current
         val navigator = LocalNavigator.currentOrThrow
         val challengePort = dependencies.challengeUiPort
         val notificationService = dependencies.notificationService
@@ -190,7 +192,7 @@ class HomeScreen : Screen {
                         // Hide bottom navigation bar when in reader mode
                         if (!ReaderModeState.isInReaderMode) {
                             NavigationBar {
-                                TabNavigationItem(LibraryTab)
+                                TabNavigationItem(LibraryTab, onReselect = libraryNavigationHost::onReselect)
                                 TabNavigationItem(UpdatesTab, badgeCount = authorDiscoveries.size)
                                 TabNavigationItem(HistoryTab)
                                 TabNavigationItem(BrowseTab)
@@ -245,11 +247,13 @@ internal class ExternalActionFeedbackDispatcher(
 }
 
 @Composable
-private fun RowScope.TabNavigationItem(tab: Tab, badgeCount: Int = 0) {
+private fun RowScope.TabNavigationItem(tab: Tab, badgeCount: Int = 0, onReselect: () -> Unit = {}) {
     val tabNavigator = LocalTabNavigator.current
     NavigationBarItem(
         selected = tabNavigator.current == tab,
-        onClick = { tabNavigator.current = tab },
+        onClick = {
+            if (tabNavigator.current == tab) onReselect() else tabNavigator.current = tab
+        },
         icon = {
             tab.options.icon?.let { painter ->
                 if (badgeCount > 0) {

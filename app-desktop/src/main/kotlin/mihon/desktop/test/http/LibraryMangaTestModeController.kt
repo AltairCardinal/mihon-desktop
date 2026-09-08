@@ -114,14 +114,28 @@ class LibraryMangaTestModeController(
     private var lastFailedChapterIds = emptyList<Long>()
     private val closed = AtomicBoolean(false)
     private val libraryReady = CompletableDeferred<LibraryMangaActionFailureCode?>()
+    @Volatile
+    private var libraryDependencyFailure: String? = null
     private var detailJob: Job? = null
+    private val categoriesJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+        observeLibraryDependency("Category observation failed") { libraryModel.observeCategories() }
+    }
+    private val preferencesJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+        observeLibraryDependency("Library preference observation failed") { libraryModel.observeLibraryPreferences() }
+    }
     private val libraryJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
         try {
             libraryModel.libraryMangaFlow(propagateErrors = true).collect {
                 libraryModel.refreshCategories()
-                libraryLoadError = null
-                libraryLoadState = OwnerLoadState.READY
-                if (!libraryReady.isCompleted) libraryReady.complete(null)
+                val dependencyFailure = libraryDependencyFailure
+                if (dependencyFailure == null) {
+                    libraryLoadError = null
+                    libraryLoadState = OwnerLoadState.READY
+                    if (!libraryReady.isCompleted) libraryReady.complete(null)
+                } else {
+                    libraryLoadError = dependencyFailure
+                    libraryLoadState = OwnerLoadState.FAILED
+                }
             }
             if (!closed.get()) {
                 libraryLoadError = "Library observation completed"
@@ -144,7 +158,7 @@ class LibraryMangaTestModeController(
     fun snapshot(): LibraryTestSnapshot = LibraryTestSnapshot(
         loadState = libraryLoadState,
         loadError = libraryLoadError,
-        searchQuery = libraryModel.state.value.searchQuery,
+        searchQuery = libraryModel.state.value.searchQuery.orEmpty(),
         sortMode = libraryModel.state.value.sortMode.name,
         sortAscending = libraryModel.state.value.sortAscending,
         selectedCategoryIndex = libraryModel.state.value.selectedCategoryIndex,
@@ -212,7 +226,28 @@ class LibraryMangaTestModeController(
     suspend fun closeAndJoin() {
         close()
         libraryJob.join()
+        categoriesJob.join()
+        preferencesJob.join()
         detailJob?.join()
+    }
+
+    private suspend fun observeLibraryDependency(
+        fallbackMessage: String,
+        observe: suspend () -> Unit,
+    ) {
+        try {
+            observe()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            val message = failure.message ?: failure::class.simpleName ?: fallbackMessage
+            libraryDependencyFailure = message
+            libraryLoadError = message
+            libraryLoadState = OwnerLoadState.FAILED
+            if (!libraryReady.isCompleted) {
+                libraryReady.complete(LibraryMangaActionFailureCode.LIBRARY_UNAVAILABLE)
+            }
+        }
     }
 
     private fun filter(params: Map<String, String>): LibraryMangaActionFailureCode? {
@@ -239,7 +274,10 @@ class LibraryMangaTestModeController(
             else -> return LibraryMangaActionFailureCode.INVALID_PARAMETER
         }
         val ascending = params["ascending"]?.toBooleanStrictOrNull() ?: libraryModel.state.value.sortAscending
-        libraryModel.setSortModeAndDirection(mode, ascending)
+        val categoryId = libraryModel.state.value.categories
+            .getOrNull(libraryModel.state.value.selectedCategoryIndex)
+            ?.id
+        libraryModel.setSortModeAndDirectionForCategory(categoryId, mode, ascending)
         return null
     }
 
@@ -249,6 +287,7 @@ class LibraryMangaTestModeController(
             "category" -> {
                 if (index !in libraryModel.state.value.categories.indices) return LibraryMangaActionFailureCode.ROW_NOT_FOUND
                 libraryModel.setSelectedCategoryIndex(index)
+                libraryModel.applyCategoryPreferences(libraryModel.state.value.categories[index].id)
                 return null
             }
             "chapter" -> return selectChapter(index)
