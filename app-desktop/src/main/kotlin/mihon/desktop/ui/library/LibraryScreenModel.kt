@@ -208,6 +208,12 @@ class LibraryScreenModel(
         setCategories(requireNotNull(getCategories) { "GetCategories is required" }.await())
     }
 
+    suspend fun observeCategories() {
+        requireNotNull(getCategories) { "GetCategories is required" }
+            .subscribe()
+            .collect(::setCategories)
+    }
+
     suspend fun createCategory(name: String) {
         when (val result = requireNotNull(createCategory) { "CreateCategoryWithName is required" }.await(name.trim())) {
             CreateCategoryWithName.Result.Success -> {

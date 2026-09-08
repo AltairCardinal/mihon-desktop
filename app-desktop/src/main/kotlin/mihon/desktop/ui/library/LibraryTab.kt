@@ -226,7 +226,7 @@ class LibraryRootScreen : Screen {
 
         LaunchedEffect(Unit) {
             launch { model.libraryMangaFlow().collect {} }
-            launch { model.refreshCategories() }
+            launch { model.observeCategories() }
             launch { model.observeLibraryPreferences() }
         }
 

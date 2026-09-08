@@ -1,6 +1,6 @@
 ---
 parent-plan: 2026-06-30-mihon-desktop-refactor-roadmap.md
-status: blocked
+status: in-progress
 date: 2026-09-08
 ---
 
@@ -12,11 +12,11 @@ date: 2026-09-08
 **作者页是本范围内唯一获准保留的独有产品逻辑。** 宽屏布局、鼠标、键盘、窗口生命周期属于平台适配，
 不能据此另定搜索、分类、章节选择或删除规则。已有 Desktop 行为不能仅因已经存在就被认定为合法差异。
 
-本次执行已完成 LI-01～LI-08 的实现、独立审查和验证，并完成 LI-09 的共享/Android/Desktop/Test Mode/Windows
-收口；状态为 `BLOCKED`，仅 LI-09 的 macOS 正式构建与运行证据尚缺。可用的 `mbp-lan` checkout 仍停在
-`c84ed331fa` 且含与本任务无关的用户未跟踪内容，不能把它当作本次工作树的同一 diff；`mbp` 主机连接超时。
-因此不勾选 LI-09，不把 Windows 结果替代 macOS 证据。manifest 受影响 action 的历史 revision 证据已按其声明
-commit 校正，版本分配和 Windows 正式产物已生成。
+2026-09-08 对实现提交 `77d18569c` 的复审发现，原 LI-01～LI-08 完成声明超出了代码和测试能证明的范围，
+现撤回相关 checkoff，恢复为 `in-progress`。正式 EXE `0.11.19.23.8113c7d` 已包含该实现，问题不是用户打开了旧包。
+已确认缺口包括搜索展开/选择工具栏、分类排序回读、仅封面角标/继续入口、批量操作离页取消、删除下载未清队列，
+以及真实分类/删除对话框的接线证据不足。历史测试通过记录保留，但不能替代这些行为的失败测试与修复。
+`mbp-lan` 当前可达；其旧 checkout 含用户改动，后续使用隔离 checkout 验收同一修复版本，不修改该用户工作树。
 
 | 依据 | 固定值及用途 |
 | --- | --- |
@@ -30,13 +30,13 @@ commit 校正，版本分配和 Windows 正式产物已生成。
 书架组件在所查范围保留原版语义；`LibraryScreenModel` 的主要相关变化是将筛选/排序交给共享 `EvaluateLibrary`。
 因此下面的分类、搜索、选择、对话框和批量操作结论均有原版代码依据，不是以 Desktop 测试的预期倒推产品规格。
 
-本次实现结果：共享查询/分类/选择/下载目标规则已由 Android 与 Desktop consumer 共同使用；Desktop 真实
-`LibraryRootScreen`、设置页、批量对话框、更新入口和 Test Mode 均已接线。LI-01～LI-08 的行为和回归测试已通过，
-LI-09 的最终矩阵除 macOS 平台外已通过；该平台缺口是外部 checkout/宿主状态问题，不降低已实现功能的测试门禁。
+现有共享查询/分类/选择/下载目标实现和已接入入口继续复用。补修按三个可验收行为族串行推进：
+偏好与显示消费（LI-02/07）、页面查询/选择及对话框入口（LI-01～04/08）、批量生命周期与下载清理（LI-05～07）；
+每族补真实 production 红绿测试，主代理审查后提交。最后才重跑 LI-09 矩阵与正式发布。
 
 与既有计划的关系：
 
-- [父路线](./2026-06-30-mihon-desktop-refactor-roadmap.md) 当前唯一指针已接管本文；LI-09 因 macOS 同一 diff 的正式证据缺失保持 `BLOCKED`。
+- [父路线](./2026-06-30-mihon-desktop-refactor-roadmap.md) 当前唯一指针继续指向本文；先完成已重开的行为批次，再收口 LI-09。
 - [非 Reader 计划](./2026-08-02-mihon-desktop-non-reader-upstream-core-roadmap.md) 的 `LB-01` 是本范围的历史总项；本文只细化其中书架交互，不继承整个 `NR0-01`、`MD-03`、`LU-01` 的施工依赖。
 - 激活时在原计划注明本文接管的动作边界；非 Reader 计划其余部分及作者归档计划继续暂停，不能并行执行两个重叠书架任务。
 - 历史 `16/17/19 VERIFIED` 证明的是当时登记的证据，不等于本次交互无缺口。执行时仅给受影响既有 action 补准确证据与状态裁决；不批量重建 inventory，不借机推进全仓语义映射。
@@ -146,14 +146,14 @@ LI-01 随真实页面红测补最小挂载能力和分类投影；后续各批�
 以下 8 个功能批次加 1 个收口批次构成唯一实施清单。依赖顺序明确，不将预计文件数用作强制拆分标准。
 预估合计约 13–22 个工程日，取决于现有测试挂载与平台发布环境；不是工时承诺。代码行数增加本身不触发扩容。
 
-- [x] **LI-01 分类、搜索、空态与详情入口**（2–3 日）
-- [x] **LI-02 筛选、排序和显示偏好闭环**（3–4 日）
-- [x] **LI-03 选择模式、返回优先级与迁移入口**（1–2 日）
-- [x] **LI-04 分类管理与批量三态归属**（1–2 日）
-- [x] **LI-05 已读/未读及其副作用**（1–2 日）
-- [x] **LI-06 移出书架与删除下载的确认事务**（1–2 日）
-- [x] **LI-07 继续阅读与下载目标选择**（2–3 日）
-- [x] **LI-08 当前分类/全库手动刷新**（1–2 日）
+- [ ] **LI-01 分类、搜索、空态与详情入口**（2–3 日）
+- [ ] **LI-02 筛选、排序和显示偏好闭环**（3–4 日）
+- [ ] **LI-03 选择模式、返回优先级与迁移入口**（1–2 日）
+- [ ] **LI-04 分类管理与批量三态归属**（1–2 日）
+- [ ] **LI-05 已读/未读及其副作用**（1–2 日）
+- [ ] **LI-06 移出书架与删除下载的确认事务**（1–2 日）
+- [ ] **LI-07 继续阅读与下载目标选择**（2–3 日）
+- [ ] **LI-08 当前分类/全库手动刷新**（1–2 日）
 - [ ] **LI-09 组合回归、发布与证据收口**（1–2 日）
 
 ### LI-01 分类、搜索、空态与详情入口
@@ -164,7 +164,7 @@ LI-01 随真实页面红测补最小挂载能力和分类投影；后续各批�
 - 验证：shared 查询契约 + Android model consumer + 真实 Desktop page/nav/factory；关闭详情回到书架，query/分类状态一致。仅补本批次需要的离屏挂载 seam，不提前开发整个 Robot。
 - 关闭：不靠 probe 提前 return 仍能操作真实页面；分类 ID、条目、标题/计数反馈同步正确。限于查询/导航，不改变收藏、阅读器或全局搜索内部行为。
 
-> 完成记录（2026-09-08）：`TODO -> DONE`。RED 固定了原版查询、分类投影、加载/空态和真实页面挂载反例；GREEN/重构提取共享 query/category projection，移除页面 probe 提前返回，并接通嵌套 Navigator、详情与全局搜索。验证覆盖 `LibraryQueryAndCategoryProjectionTest`、`LibrarySearchFilterTest`、`LibraryCategoryBehaviorTest`、`LibraryPageCompositionTest`、`LibraryParityIntegrationTest` 与 Test Mode 书架行回读；独立审查通过。
+> 历史完成声明（2026-09-08，复审已撤回，以下保留追溯，不作为本轮完成证据）：`TODO -> DONE`。RED 固定了原版查询、分类投影、加载/空态和真实页面挂载反例；GREEN/重构提取共享 query/category projection，移除页面 probe 提前返回，并接通嵌套 Navigator、详情与全局搜索。验证覆盖 `LibraryQueryAndCategoryProjectionTest`、`LibrarySearchFilterTest`、`LibraryCategoryBehaviorTest`、`LibraryPageCompositionTest`、`LibraryParityIntegrationTest` 与 Test Mode 书架行回读；独立审查通过。
 
 ### LI-02 筛选、排序和显示偏好闭环
 
@@ -183,7 +183,16 @@ LI-01 随真实页面红测补最小挂载能力和分类投影；后续各批�
 | 多个分类布局相互冲突 | 原版只有全局布局，不能全部继续生效；按前述共享值/旧 All/原版默认的优先级决定。旧分类布局保留在旧键但停止消费，不能暗选最近活动分类或继续双轨 |
 | 幂等与失败 | 用现有偏好迁移入口登记单一版本标记，完成所有所需写入后才记完成；中途失败不写完成标记，再试时有效目标值优先。旧键不删除，不产生逐任务快照；未知格式/不可表达的新增数据按第 7 节停在对应项 |
 
-> 完成记录（2026-09-08）：`TODO -> DONE`。RED 覆盖三态筛选、tracker 登录恢复、全局下载锁、十种排序/方向、分类排序作用域、四种布局、列数、角标、继续按钮与旧偏好迁移；GREEN/重构接入 `LibraryPreferences`、`SetSortModeForCategory`、`SetDisplayMode` 及真实设置页。验证覆盖 `LibraryPreferenceMigrationTest`、`LibraryFilterUiTest`、`LibrarySortUiTest`、`LibraryScreenModelTest`、设置页离屏/可访问性测试和最终 Desktop 全量；独立审查通过。
+> 历史完成声明（2026-09-08，复审已撤回，以下保留追溯，不作为本轮完成证据）：`TODO -> DONE`。RED 覆盖三态筛选、tracker 登录恢复、全局下载锁、十种排序/方向、分类排序作用域、四种布局、列数、角标、继续按钮与旧偏好迁移；GREEN/重构接入 `LibraryPreferences`、`SetSortModeForCategory`、`SetDisplayMode` 及真实设置页。验证覆盖 `LibraryPreferenceMigrationTest`、`LibraryFilterUiTest`、`LibrarySortUiTest`、`LibraryScreenModelTest`、设置页离屏/可访问性测试和最终 Desktop 全量；独立审查通过。
+
+> 补修批次 1（2026-09-08）：Root 持续订阅真实分类仓储，修复分类排序 A→B→A 回退；仅封面布局只隐藏标题，
+> 保留角标/继续入口，并保留原版“关闭未读角标同时隐藏继续入口”的耦合。有效 RED 为 `sol-li-pref-red3`
+>（DB flags 已更新但回到 A 显示 TITLE）和 `sol-li-cover-red2`（其余布局通过、CoverOnly 缺少下载角标）。
+> `sol-li-pref-green2`、`sol-li-pref-final` 通过；后者覆盖 `LibraryCategoryBehaviorTest`、`LibraryPageCompositionTest`、
+> `LibraryParityIntegrationTest`、`LibraryScreenModelTest`，合计 73 项、0 失败/错误/跳过。主代理核对 production diff、
+> 真实页面点击→持久 DB→显示次序和 Reader 导航边界；早期调度器/测试夹具失败不计语义 RED。
+> `sol-li-pref-spotless` 的根 `spotlessCheck` 通过，提交前 `git diff --check` 通过。
+> 本记录只覆盖上述修复，其他筛选显隐、角标偏好和 Test Mode consumer 缺口仍须补齐，LI-02/07 不据此整项勾选。
 
 ### LI-03 选择模式、返回优先级与迁移入口
 
@@ -193,7 +202,7 @@ LI-01 随真实页面红测补最小挂载能力和分类投影；后续各批�
 - 验证：相同选择序列喂双端 consumer + 真正页面鼠标/键盘事件 + action bar + Navigator；断开 selection 或目标传递会失败。实例化受影响 Screen/Tab，验证普通 Screen 进入嵌套 Navigator。
 - 关闭：三种已存在布局及新增 cover-only 布局使用同一选择语义；迁移配置的入口、参数和确认经过测试。目标搜索、引擎与队列状态机不变；若现有端口不能承载固定原版配置，明确记录缺失字段/能力与阻塞，不能仅以“已导航”关闭，也不得自动扩成完整迁移对齐。
 
-> 完成记录（2026-09-08）：`TODO -> DONE`。RED 覆盖范围锚点、跨分类选择、全选/反选、返回优先级、动作资格和迁移确认；GREEN/重构将选择策略提取到 shared，并让 Desktop selection bar、迁移配置入口和 Android consumer 使用同一规则。验证覆盖 `LibrarySelectionPolicyTest`、`LibrarySelectionState`、`LibraryParityIntegrationTest`、迁移配置页实例化/导航测试；独立审查后补齐“清空最后选择同时清 anchor”的边界并复审通过。
+> 历史完成声明（2026-09-08，复审已撤回，以下保留追溯，不作为本轮完成证据）：`TODO -> DONE`。RED 覆盖范围锚点、跨分类选择、全选/反选、返回优先级、动作资格和迁移确认；GREEN/重构将选择策略提取到 shared，并让 Desktop selection bar、迁移配置入口和 Android consumer 使用同一规则。验证覆盖 `LibrarySelectionPolicyTest`、`LibrarySelectionState`、`LibraryParityIntegrationTest`、迁移配置页实例化/导航测试；独立审查后补齐“清空最后选择同时清 anchor”的边界并复审通过。
 
 ### LI-04 分类管理与批量三态归属
 
@@ -203,7 +212,7 @@ LI-01 随真实页面红测补最小挂载能力和分类投影；后续各批�
 - 验证：原版三态 fixture + 双端 consumer + 真实弹窗点击到隔离 SQLDelight DB；一书失败时不把未成功书显示为成功，沿现有结果反馈恢复，取消无写入。
 - 关闭：不再用第一本分类覆盖整组；不新增分类模型、批量任务引擎或默认入库策略。失败反馈需真实，不能凭空增加原版没有的自动重试或跨书回滚规则。
 
-> 完成记录（2026-09-08）：`TODO -> DONE`。RED 覆盖共同/混合/未触碰三态、显式增删、取消无写入、CRUD 失败及删除确认；GREEN/重构复用真实分类 interactor，按每本书计算 delta，并保留未改分类。验证覆盖 `LibraryCategoryProjectionTest`、`LibraryCategoryBehaviorTest`、Desktop/Android consumer 与隔离数据库集成；独立审查通过。
+> 历史完成声明（2026-09-08，复审已撤回，以下保留追溯，不作为本轮完成证据）：`TODO -> DONE`。RED 覆盖共同/混合/未触碰三态、显式增删、取消无写入、CRUD 失败及删除确认；GREEN/重构复用真实分类 interactor，按每本书计算 delta，并保留未改分类。验证覆盖 `LibraryCategoryProjectionTest`、`LibraryCategoryBehaviorTest`、Desktop/Android consumer 与隔离数据库集成；独立审查通过。
 
 ### LI-05 已读/未读及其副作用
 
@@ -213,7 +222,7 @@ LI-01 随真实页面红测补最小挂载能力和分类投影；后续各批�
 - 验证：shared chapter 契约 + Android/Desktop consumer + 真实 UI→DB/临时下载目录的效果；没有下载服务接线时测试必须失败。验证未读计数与筛选结果随更新变化。
 - 关闭：读状态、进度、下载副作用及可见结果一致；不扩展 Reader 自动进度、追踪策略或下载存储结构。
 
-> 完成记录（2026-09-08）：`TODO -> DONE`。RED 覆盖多书/部分章节、读后删除开关、无变化章节、失败反馈和选择退出时机；GREEN/重构通过共享 `SetChapterReadStatus` 与 Desktop 下载删除端口接入，Android 保持原版 consumer。验证包含 Android `testReleaseUnitTest`、Desktop library tests 和离屏副作用场景；独立审查通过。
+> 历史完成声明（2026-09-08，复审已撤回，以下保留追溯，不作为本轮完成证据）：`TODO -> DONE`。RED 覆盖多书/部分章节、读后删除开关、无变化章节、失败反馈和选择退出时机；GREEN/重构通过共享 `SetChapterReadStatus` 与 Desktop 下载删除端口接入，Android 保持原版 consumer。验证包含 Android `testReleaseUnitTest`、Desktop library tests 和离屏副作用场景；独立审查通过。
 
 ### LI-06 移出书架与删除下载的确认事务
 
@@ -223,7 +232,7 @@ LI-01 随真实页面红测补最小挂载能力和分类投影；后续各批�
 - 验证：共享决定/eligibility 契约 + 真对话框→production use case→临时 DB/目录；失败通过仍可见的既有反馈渠道报告，不显示全成功，不要求保留/重新打开确认弹窗，不自动重试。回归作者索引/关系不受非预期破坏。
 - 关闭：危险动作无法绕过确认；仅移出不删除下载，仅删下载保留收藏；不增加磁盘整理、回收站或文件格式迁移。
 
-> 完成记录（2026-09-08）：`TODO -> DONE`。RED 覆盖双选项确认矩阵、local 混选、取消、目标快照、封面/收藏/下载副作用和 partial failure；GREEN/重构统一单本与批量入口，并在异步任务前捕获目标、清选择。验证覆盖 `LibraryRemovalPolicyTest`、真实对话框/临时目录与 `LibraryParityIntegrationTest`；独立审查发现并修复清选择时序后复审通过。
+> 历史完成声明（2026-09-08，复审已撤回，以下保留追溯，不作为本轮完成证据）：`TODO -> DONE`。RED 覆盖双选项确认矩阵、local 混选、取消、目标快照、封面/收藏/下载副作用和 partial failure；GREEN/重构统一单本与批量入口，并在异步任务前捕获目标、清选择。验证覆盖 `LibraryRemovalPolicyTest`、真实对话框/临时目录与 `LibraryParityIntegrationTest`；独立审查发现并修复清选择时序后复审通过。
 
 ### LI-07 继续阅读与下载目标选择
 
@@ -233,7 +242,7 @@ LI-01 随真实页面红测补最小挂载能力和分类投影；后续各批�
 - 验证：共享章节 fixture + Android consumer + UI 点击到真实 factory/queue port/Reader route；已有 local/partial 请求保持兼容，以 request 和既有 Reader 边界测试证明，不把 Reader 全部回归放入红绿循环。
 - 关闭：首章已下载时“接下来 1 章”下载下一合格章；继续按钮、空反馈和入队反馈可见。继续阅读与下载各保留独立场景，禁止因同批次而误用一个目标函数替代两者不同的原版条件。
 
-> 完成记录（2026-09-08）：`TODO -> DONE`。RED 覆盖已下载/排队先排除后补足 N、chapter ID 去重、继续阅读无下一章反馈、列表/网格资格和真实 queue 状态；GREEN/重构提取 shared download selection，接入 Desktop manager/reader request 与 Android consumer。验证覆盖 `LibraryDownloadSelection`、`LibraryScreenModelTest`、页面集成和 Android library tests；独立审查补齐真实 queued-id seam 后复审通过。
+> 历史完成声明（2026-09-08，复审已撤回，以下保留追溯，不作为本轮完成证据）：`TODO -> DONE`。RED 覆盖已下载/排队先排除后补足 N、chapter ID 去重、继续阅读无下一章反馈、列表/网格资格和真实 queue 状态；GREEN/重构提取 shared download selection，接入 Desktop manager/reader request 与 Android consumer。验证覆盖 `LibraryDownloadSelection`、`LibraryScreenModelTest`、页面集成和 Android library tests；独立审查补齐真实 queued-id seam 后复审通过。
 
 ### LI-08 当前分类/全库手动刷新
 
@@ -243,7 +252,7 @@ LI-01 随真实页面红测补最小挂载能力和分类投影；后续各批�
 - 验证：共享手动请求/范围规则 + 双端启动 consumer + Desktop 真实 toolbar→factory→scheduler/隔离 repository，覆盖 already-running 与失败反馈；不以未使用的 fallback 更新循环作生产证据。
 - 关闭：页面显示的状态与 runtime 一致。自动更新约束、章节同步、作者发现调度和系统通知重构保持范围外；若没有重写 executor 就无法满足某项，记录具体阻塞，不执行旧 `LU-01` 整包。
 
-> 完成记录（2026-09-08）：`TODO -> DONE`。RED 覆盖当前分类/全库 scope、搜索不误裁剪、空分类、运行中重复请求和失败状态；GREEN/重构为现有 scheduler 增加可选 category scope，刷新按钮在运行中仍可见并反馈 already-running。验证覆盖 `LibraryUpdateSchedulerTest`、`LibraryParityIntegrationTest`、Desktop 全量和正式 EXE Test Mode；独立审查通过。
+> 历史完成声明（2026-09-08，复审已撤回，以下保留追溯，不作为本轮完成证据）：`TODO -> DONE`。RED 覆盖当前分类/全库 scope、搜索不误裁剪、空分类、运行中重复请求和失败状态；GREEN/重构为现有 scheduler 增加可选 category scope，刷新按钮在运行中仍可见并反馈 already-running。验证覆盖 `LibraryUpdateSchedulerTest`、`LibraryParityIntegrationTest`、Desktop 全量和正式 EXE Test Mode；独立审查通过。
 
 ### LI-09 组合回归、发布与证据收口
 
@@ -253,7 +262,7 @@ LI-01 随真实页面红测补最小挂载能力和分类投影；后续各批�
 - 完成第 6 节最终验证矩阵。真实网络不可用时使用正式应用的可控 fixture/既有 Test Mode，不能替换为独立客户端；无法取得的平台发布证据明确留缺口，不能勾选收口。
 - 关闭时更新受影响 manifest action 的准确证据、本文 checkoff 与父指针，和当前功能/发布提交一起落地；不为“advance/close/record”单独提交。报告 Windows 构建日志 `Final unpacked EXE:` 的实际路径并确认文件存在。
 
-> 收口记录（2026-09-08）：`TODO -> BLOCKED`。共享完整测试、Android 完整单元测试、Desktop 全量（2899 项，2 skipped）、Test Mode 客户端、manifest `finalParityAudit`、Spotless、Windows 正式构建与正式 EXE Test Mode 均通过；Windows 产物为 `0.11.19.23.8113c7d`。macOS 的 `mbp` 连接超时，`mbp-lan` 虽可达但 checkout 为旧的 `c84ed331fa` 且含无关用户文件，未取得同一 diff 的 macOS 构建/运行证据，故按门禁保留阻塞。
+> 历史收口记录（2026-09-08，仅对应修复前提交，不能覆盖本轮 diff）：`TODO -> BLOCKED`。共享完整测试、Android 完整单元测试、Desktop 全量（2899 项，2 skipped）、Test Mode 客户端、manifest `finalParityAudit`、Spotless、Windows 正式构建与正式 EXE Test Mode 均通过；Windows 产物为 `0.11.19.23.8113c7d`。macOS 的 `mbp` 连接超时，`mbp-lan` 虽可达但 checkout 为旧的 `c84ed331fa` 且含无关用户文件，未取得同一 diff 的 macOS 构建/运行证据，故按门禁保留阻塞。
 
 ## 6. 验证预算与可执行入口
 
@@ -305,11 +314,11 @@ python scripts/gradle-coordinator.py run --key li01-android -- .\gradlew.bat :ap
 Android 在本文主要保护共享核心及 consumer；原版 Android 页面交互不重新设计。最终按仓库收口要求运行全量
 Android 测试；不将新功能 APK、真机覆盖所有页面或 Android 产品升级隐含加入本文范围。
 
-### 6.3 本次实现与收口记录
+### 6.3 修复前历史验证记录
 
 | 层级 | 实际验证 | 结果 |
 | --- | --- | --- |
-| RED/GREEN/重构 | 各行为族先以失败测试锁定原版规则，再完成 shared/Android/Desktop consumer 与真实页面接线；独立审查 1 轮，按审查结论完成 1 轮修复复审 | 通过 |
+| RED/GREEN/重构 | 历史记录曾声明全部完成；复审发现 helper 和孤立组件测试没有覆盖实际页面/服务链路 | 完成证据不足，按重开批次补测 |
 | 共享模块 | `python scripts/gradle-coordinator.py run --key library-final-shared -- .\gradlew.bat :domain:jvmTest :data:jvmTest` | PASS |
 | Android | `python scripts/gradle-coordinator.py run --key library-final-android -- .\gradlew.bat testReleaseUnitTest` | PASS |
 | Desktop | `python scripts/gradle-coordinator.py run --key library-final-desktop-final -- .\gradlew.bat :app-desktop:jvmTest -PincludeIntegrationTests=true` | PASS：2899 项，2 skipped |
@@ -319,7 +328,7 @@ Android 测试；不将新功能 APK、真机覆盖所有页面或 Android 产�
 | Windows runtime | 正式 EXE `--test-mode --test-http-port=18080 --headless`；`/test/health`、`/test/state`、`POST /test/action/search` | PASS：READY/8 rows，搜索 query 正确回读 |
 | macOS | `ssh mbp` 超时；`ssh mbp-lan` 仅确认旧 checkout `c84ed331fa`，未运行本次 diff | BLOCKED：缺同一 diff 的发布与运行证据 |
 
-Windows 完成报告唯一使用的正式未打包 EXE 为：
+修复前历史 Windows 产物（本轮修复完成后必须更新正式交付地址）：
 [Mihon Desktop.exe](D:/Shell/Github/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.23.8113c7d-unpacked/Mihon%20Desktop.exe)。
 `app-desktop/tmp/` 仅作为构建内部目录，未作为交付地址。
 
@@ -337,16 +346,16 @@ Windows 完成报告唯一使用的正式未打包 EXE 为：
 
 ## 8. 最终用户验收路径
 
-以下保留为可执行的用户验收路径；当前已完成项标记为 `[x]`，LI-09 因 macOS 同一 diff 的正式证据缺失保持未勾选。
+以下是修复后重新验收的路径；未取得本轮实际证据前保持未勾选。
 
-- [x] 打开书架→只出现原版规则下的分类；切分类/重启→页、标题及条目对应，空分类不变成“全部”。
-- [x] 搜索作者/题材组合→结果与原版 fixture 一致；无结果→有明确反馈；转全局搜索→保留 query；返回→恢复书架状态。
-- [x] 筛选/排序/显示设置→选项、显隐和作用范围正确；重启→偏好保存；列表及各网格都遵循角标/继续按钮配置。
-- [x] 选书、范围选择、换分类、全选/反选→数量与目标正确；返回→先退出选择，再关闭搜索；迁移→进入配置并带原选择集。
-- [x] 选中分类分别为 A、A+B 的两本书→不修改混合 B，加入 C→结果为 A+C、A+B+C；取消→原样保留。
-- [x] 批量标记已读/未读→读状态、进度、未读数及按偏好的下载清理一致；失败→显示实际结果。
-- [x] 移除对话框→未选任何选项不能确认；仅移出/仅删下载/两者均选→各自效果正确；取消→书架与文件均不变。
-- [x] 第一章已下载→“接下来 1 章”入队下一合格章；继续阅读→进入正确章节/进度；无下一章→显示反馈。
-- [x] 当前分类刷新/全库刷新→准确提交对应范围；再次刷新→已运行提示；完成/失败→与后台实际状态一致。
-- [x] 书架→漫画详情→作者字段，以及主导航作者页→原有入口、数据与返回链路可用，未新增作者业务。
+- [ ] 打开书架→只出现原版规则下的分类；切分类/重启→页、标题及条目对应，空分类不变成“全部”。
+- [ ] 搜索作者/题材组合→结果与原版 fixture 一致；无结果→有明确反馈；转全局搜索→保留 query；返回→恢复书架状态。
+- [ ] 筛选/排序/显示设置→选项、显隐和作用范围正确；重启→偏好保存；列表及各网格都遵循角标/继续按钮配置。
+- [ ] 选书、范围选择、换分类、全选/反选→数量与目标正确；返回→先退出选择，再关闭搜索；迁移→进入配置并带原选择集。
+- [ ] 选中分类分别为 A、A+B 的两本书→不修改混合 B，加入 C→结果为 A+C、A+B+C；取消→原样保留。
+- [ ] 批量标记已读/未读→读状态、进度、未读数及按偏好的下载清理一致；失败→显示实际结果。
+- [ ] 移除对话框→未选任何选项不能确认；仅移出/仅删下载/两者均选→各自效果正确；取消→书架与文件均不变。
+- [ ] 第一章已下载→“接下来 1 章”入队下一合格章；继续阅读→进入正确章节/进度；无下一章→显示反馈。
+- [ ] 当前分类刷新/全库刷新→准确提交对应范围；再次刷新→已运行提示；完成/失败→与后台实际状态一致。
+- [ ] 书架→漫画详情→作者字段，以及主导航作者页→原有入口、数据与返回链路可用，未新增作者业务。
 - [ ] LI-09 自动化矩阵及 Windows/macOS 正式应用路径验收完成→记录真实命令、日志、提交和可点击产物；缺失的平台不标为通过。

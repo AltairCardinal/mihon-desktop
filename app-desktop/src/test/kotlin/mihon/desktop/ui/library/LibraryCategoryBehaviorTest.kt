@@ -1,10 +1,29 @@
 package mihon.desktop.ui.library
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import cafe.adriel.voyager.navigator.CurrentScreen
+import cafe.adriel.voyager.navigator.Navigator
 import java.io.File
 import java.util.UUID
 import java.util.prefs.Preferences
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.di.initDesktopDIForTest
+import mihon.desktop.domain.SortMode
 import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.library.LibraryScreenModelFactory
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -19,11 +38,119 @@ import tachiyomi.domain.category.interactor.CreateCategoryWithName
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.category.repository.CategoryRepository
+import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.library.model.LibrarySort
 import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.repository.LibraryMembershipUpdate
+import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.i18n.MR
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 @Isolated
 class LibraryCategoryBehaviorTest {
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
+    fun `root sort click survives category round trip and model recreation without changing global sort`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
+        val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
+        val context = initDesktopDIForTest(
+            tempDir,
+            DesktopPreferenceStore(preferencesNode),
+            startDownloadWorker = false,
+        )
+        val mainDispatcher = UnconfinedTestDispatcher()
+        Dispatchers.setMain(mainDispatcher)
+        var scene: ImageComposeScene? = null
+        try {
+            val preferences = Injekt.get<LibraryPreferences>()
+            preferences.categorizedDisplaySettings().set(true)
+            preferences.sortingMode().set(LibrarySort(LibrarySort.Type.Alphabetical, LibrarySort.Direction.Ascending))
+            val model = LibraryScreenModelFactory.create()
+            model.createCategory("A")
+            model.createCategory("B")
+            val repository = Injekt.get<CategoryRepository>()
+            val categoryA = repository.getAll().single { it.name == "A" }
+            val categoryB = repository.getAll().single { it.name == "B" }
+            val mangaRepository = Injekt.get<MangaRepository>()
+            val chapterRepository = Injekt.get<ChapterRepository>()
+            val alpha = mangaRepository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 1L, url = "/alpha", title = "Alpha high unread")),
+            ).single()
+            val zulu = mangaRepository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 1L, url = "/zulu", title = "Zulu low unread")),
+            ).single()
+            mangaRepository.updateMembershipsAtomically(
+                listOf(
+                    LibraryMembershipUpdate(alpha.id, true, 1L, listOf(categoryA.id, categoryB.id)),
+                    LibraryMembershipUpdate(zulu.id, true, 2L, listOf(categoryA.id, categoryB.id)),
+                ),
+            )
+            chapterRepository.addAll(
+                listOf(
+                    Chapter.create().copy(mangaId = alpha.id, url = "/alpha/1", name = "A1"),
+                    Chapter.create().copy(mangaId = alpha.id, url = "/alpha/2", name = "A2"),
+                    Chapter.create().copy(mangaId = alpha.id, url = "/alpha/3", name = "A3"),
+                    Chapter.create().copy(mangaId = zulu.id, url = "/zulu/1", name = "Z1"),
+                ),
+            )
+
+            scene = ImageComposeScene(1_400, 900, coroutineContext = coroutineContext) {}
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides DesktopUiDependencies.fromInjekt()) {
+                    ProvideLibraryScreenModelFactory(factory = { model }) {
+                        Navigator(LibraryRootScreen()) { CurrentScreen() }
+                    }
+                }
+            }
+
+            render(scene)
+            val titles = setOf(alpha.title, zulu.title)
+            assertEquals(listOf(alpha.title, zulu.title), renderedTitleOrder(scene, titles))
+            click(scene, MR.strings.action_sort.localized())
+            render(scene)
+            click(scene, MR.strings.action_sort_unread_count.localized())
+            withTimeout(5_000) {
+                while (LibrarySort.valueOf(repository.get(categoryA.id)!!.flags).type != LibrarySort.Type.UnreadCount) {
+                    render(scene)
+                    delay(10)
+                }
+            }
+            render(scene)
+            assertEquals(listOf(zulu.title, alpha.title), renderedTitleOrder(scene, titles))
+
+            click(scene, "B")
+            render(scene)
+            click(scene, "A")
+            render(scene)
+
+            assertEquals(SortMode.UNREAD_COUNT, model.state.value.sortMode)
+            assertEquals(listOf(zulu.title, alpha.title), renderedTitleOrder(scene, titles))
+            assertEquals(LibrarySort.Type.Alphabetical, preferences.sortingMode().get().type)
+
+            val recreated = LibraryScreenModelFactory.create()
+            recreated.refreshCategories()
+            recreated.applyCategoryPreferences(categoryA.id)
+            assertEquals(SortMode.UNREAD_COUNT, recreated.state.value.sortMode)
+            assertEquals(LibrarySort.Type.Alphabetical, preferences.sortingMode().get().type)
+
+            preferences.categorizedDisplaySettings().set(false)
+            recreated.setSortModeAndDirectionForCategory(categoryB.id, SortMode.DATE_ADDED, ascending = false)
+            recreated.refreshCategories()
+            recreated.applyCategoryPreferences(categoryA.id)
+            assertEquals(SortMode.DATE_ADDED, recreated.state.value.sortMode)
+            assertEquals(LibrarySort.Type.DateAdded, preferences.sortingMode().get().type)
+        } finally {
+            scene?.close()
+            Dispatchers.resetMain()
+            context.closeAndJoin()
+            preferencesNode.removeNode()
+        }
+    }
+
     @Test
     fun `category dialog intents perform create rename reorder and delete through production DI`(
         @TempDir tempDir: File,
@@ -88,4 +215,40 @@ class LibraryCategoryBehaviorTest {
     }
 
     private fun LibraryScreenModel.userCategories() = state.value.categories.filter { it.name.isNotBlank() }
+
+    private suspend fun render(scene: ImageComposeScene) {
+        repeat(3) {
+            scene.render()
+            yield()
+        }
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private fun click(scene: ImageComposeScene, label: String) {
+        val node = nodes(scene).first {
+            it.config.contains(SemanticsActions.OnClick) && it.semanticLabels().contains(label)
+        }
+        assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
+    }
+
+    @OptIn(ExperimentalComposeUiApi::class)
+    private fun nodes(scene: ImageComposeScene): List<SemanticsNode> =
+        scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }
+
+    private fun flatten(node: SemanticsNode): List<SemanticsNode> =
+        listOf(node) + node.children.flatMap(::flatten)
+
+    private fun renderedTitleOrder(scene: ImageComposeScene, titles: Set<String>): List<String> =
+        nodes(scene).flatMap { it.semanticLabels() }.filter { it in titles }.distinct()
+
+    private fun SemanticsNode.semanticLabels(): List<String> =
+        (if (config.contains(SemanticsProperties.Text)) {
+            config[SemanticsProperties.Text].map { it.text }
+        } else {
+            emptyList()
+        }) + if (config.contains(SemanticsProperties.ContentDescription)) {
+            config[SemanticsProperties.ContentDescription]
+        } else {
+            emptyList()
+        }
 }

@@ -578,7 +578,7 @@ internal fun LibraryList(
                     (showDownloadBadge && item.id in downloadedMangaIds) ||
                     (showLocalBadge && item.id in localMangaIds) ||
                     showLanguageIndicator
-            val showContinueReading = showContinueReadingButton && item.unreadCount > 0L
+            val showContinueReading = showContinueReadingButton && showUnreadBadge && item.unreadCount > 0L
             ListItem(
                 headlineContent = {
                     Text(
@@ -776,7 +776,7 @@ internal fun MangaCoverCard(
                 }
 
                 // Unread badge
-                if (!coverOnly && showUnreadBadge && item.unreadCount > 0L) {
+                if (showUnreadBadge && item.unreadCount > 0L) {
                     Badge(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -791,7 +791,7 @@ internal fun MangaCoverCard(
                 }
 
                 // Downloaded badge
-                if (!coverOnly && showDownloadBadge && isDownloaded) {
+                if (showDownloadBadge && isDownloaded) {
                     Badge(
                         modifier = Modifier
                             .align(Alignment.TopStart)
@@ -808,7 +808,7 @@ internal fun MangaCoverCard(
                 }
 
                 // Continue reading FAB overlay (bottom-start, visible on hover via always-visible small icon)
-                if (!coverOnly && showContinueReadingButton && item.unreadCount > 0L) {
+                if (showContinueReadingButton && showUnreadBadge && item.unreadCount > 0L) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
@@ -829,7 +829,7 @@ internal fun MangaCoverCard(
                     }
                 }
 
-                if (!coverOnly && showLanguageBadge) {
+                if (showLanguageBadge) {
                     LibraryLanguageBadge(
                         isLocal = isLocal,
                         sourceLanguage = sourceLanguage,
@@ -837,7 +837,7 @@ internal fun MangaCoverCard(
                             .align(Alignment.BottomStart)
                             .padding(4.dp),
                     )
-                } else if (!coverOnly && showLocalBadge && isLocal) {
+                } else if (showLocalBadge && isLocal) {
                     Badge(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
