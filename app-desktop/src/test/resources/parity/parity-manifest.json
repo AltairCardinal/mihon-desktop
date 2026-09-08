@@ -1225,7 +1225,7 @@
           "kind": "PLATFORM_ADAPTER",
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "fun initDesktopDI",
-          "line": 200
+          "line": 203
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -4213,7 +4213,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 995
+          "line": 999
         }
       ],
       "FIXTURE": [
@@ -5365,7 +5365,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "private val createCategory",
-          "line": 78
+          "line": 93
         }
       ],
       "FIXTURE": [
@@ -6251,12 +6251,12 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt",
           "symbol": "return evaluateLibrary.filter(",
-          "line": 196
+          "line": 204
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt",
           "symbol": "evaluateLibrary.sortForAndroid(",
-          "line": 246
+          "line": 258
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -6271,7 +6271,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/LibrarySearchFilter.kt",
           "symbol": "private val evaluator = EvaluateLibrary()",
-          "line": 12
+          "line": 24
         }
       ],
       "FIXTURE": [
@@ -9817,7 +9817,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt",
           "symbol": "fun setMangaCategories",
-          "line": 481
+          "line": 497
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -9832,17 +9832,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryTab.kt",
           "symbol": "internal fun librarySelectionActions(",
-          "line": 123
+          "line": 128
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "internal suspend fun enqueueDownloads(",
-          "line": 441
+          "line": 834
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 542
+          "line": 937
         }
       ],
       "FIXTURE": [
@@ -11348,7 +11348,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt",
           "symbol": "fun removeMangas",
-          "line": 450
+          "line": 466
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -11384,7 +11384,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 542
+          "line": 937
         }
       ],
       "FIXTURE": [
@@ -11583,7 +11583,7 @@
                       "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
                       "symbol": "MangaDetailScreenModel.toggleLibrary",
                       "locator": "favorite = !manga.favorite,",
-                      "line": 276,
+                      "line": 275,
                       "contextHash": "b0b301535e66353ac947cbae61791a9a93b92f482155415c5c05ff085d2d7ffd",
                       "reason": "Manual review selected this concrete Desktop production line for manga.add-library roles EFFECT, PERSISTENCE."
                     },
@@ -12298,7 +12298,7 @@
                       "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
                       "symbol": "MangaDetailScreenModel.toggleLibrary",
                       "locator": "favorite = !manga.favorite,",
-                      "line": 276,
+                      "line": 275,
                       "contextHash": "b0b301535e66353ac947cbae61791a9a93b92f482155415c5c05ff085d2d7ffd",
                       "reason": "Manual review selected this concrete Desktop production line for manga.remove-library roles EFFECT, PERSISTENCE."
                     },
@@ -33120,7 +33120,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "filterChaptersForDownload.await(manga, chapters)",
-          "line": 1037
+          "line": 1043
         }
       ],
       "FIXTURE": [
@@ -39098,7 +39098,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/migration/DesktopBatchMigrationController.kt",
           "symbol": "class DesktopBatchMigrationController(",
-          "line": 75
+          "line": 76
         }
       ],
       "FIXTURE": [
@@ -54280,12 +54280,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.initialize",
-          "line": 229
+          "line": 232
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.startApp",
-          "line": 231
+          "line": 234
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt",

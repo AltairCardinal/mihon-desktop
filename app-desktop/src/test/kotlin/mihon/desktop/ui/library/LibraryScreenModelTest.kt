@@ -8,9 +8,15 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
 import mihon.desktop.domain.SortMode
+import mihon.desktop.di.isolatedDesktopPreferenceStore
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
@@ -19,6 +25,8 @@ import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DownloadStatus
 import mihon.desktop.reader.ReaderNavigator
+import mihon.desktop.source.FakeDesktopSourceManager
+import mihon.desktop.source.FakeSource
 import mihon.domain.reader.content.DownloadChapterIdentity
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -29,6 +37,8 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
+import tachiyomi.domain.category.interactor.SetDisplayMode
+import tachiyomi.domain.category.interactor.SetSortModeForCategory
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
@@ -37,8 +47,12 @@ import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.library.model.LibrarySort
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.core.common.preference.TriState
+import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.library.interactor.LibraryFilter
 import tachiyomi.domain.history.interactor.GetNextChapters
 import tachiyomi.domain.manga.interactor.GetLibraryManga
@@ -50,6 +64,7 @@ import tachiyomi.domain.track.interactor.GetTracksPerManga
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackerSessionProvider
 import mihon.domain.task.TaskStatus
+import tachiyomi.i18n.MR
 import java.nio.file.Files
 import java.nio.file.Path
 import java.awt.image.BufferedImage
@@ -94,6 +109,20 @@ class LibraryScreenModelTest {
             model.refreshLibrary(emptyList())
             assertEquals(text, model.state.value.updateStatusText)
         }
+    }
+
+    @Test
+    fun `refresh while an update is running does not cancel the existing update`() = runTest {
+        var cancelled = 0
+        val model = LibraryScreenModel(
+            cancelBackgroundUpdate = { cancelled++; true },
+        )
+        model.setIsUpdating(true)
+
+        model.refreshLibrary(emptyList())
+
+        assertEquals(0, cancelled)
+        assertEquals("Library update already running", model.state.value.updateStatusText)
     }
 
     // ── Construction ─────────────────────────────────────────────────────────
@@ -141,6 +170,78 @@ class LibraryScreenModelTest {
         model.setCategories(cats)
         assertEquals(2, model.state.value.categories.size)
         assertEquals("Action", model.state.value.categories[0].name)
+    }
+
+    @Test
+    fun `library snapshot exposes source language for language badges`() {
+        val model = LibraryScreenModel(
+            sourceManager = FakeDesktopSourceManager(
+                listOf(FakeSource(id = 42L, lang = "zh", name = "Test source")),
+            ),
+        )
+
+        model.setAllItems(listOf(sampleLibraryManga(sampleManga(id = 1L, source = 42L))))
+
+        assertEquals("zh", model.state.value.sourceLanguagesByManga[1L])
+    }
+
+    @Test
+    fun `loading library items reprojects system category tabs`() {
+        val model = LibraryScreenModel()
+        model.setCategories(
+            listOf(
+                Category(id = Category.UNCATEGORIZED_ID, name = "Uncategorized", order = 0L, flags = 0L),
+                Category(id = 1L, name = "Action", order = 1L, flags = 0L),
+            ),
+        )
+
+        model.setAllItems(
+            listOf(
+                sampleLibraryManga(sampleManga(id = 10L)).copy(categories = listOf(Category.UNCATEGORIZED_ID)),
+            ),
+        )
+
+        assertEquals(
+            listOf(Category.UNCATEGORIZED_ID, 1L),
+            model.state.value.categories.map { it.id },
+        )
+    }
+
+    @Test
+    fun `selected category index is clamped when categories change`() {
+        val model = LibraryScreenModel()
+        model.setCategories(
+            listOf(Category(id = 1L, name = "Action", order = 0L, flags = 0L)),
+        )
+
+        model.setSelectedCategoryIndex(99)
+
+        assertEquals(0, model.state.value.selectedCategoryIndex)
+    }
+
+    @Test
+    fun `category list restores the persisted active index after projection`() {
+        val preferences = LibraryPreferences(
+            InMemoryPreferenceStore(
+                sequenceOf(
+                    InMemoryPreferenceStore.InMemoryPreference(
+                        tachiyomi.core.common.preference.Preference.appStateKey("last_used_category"),
+                        1,
+                        0,
+                    ),
+                ),
+            ),
+        )
+        val model = LibraryScreenModel(libraryPreferences = preferences)
+
+        model.setCategories(
+            listOf(
+                Category(id = 1L, name = "Action", order = 0L, flags = 0L),
+                Category(id = 2L, name = "Romance", order = 1L, flags = 0L),
+            ),
+        )
+
+        assertEquals(1, model.state.value.selectedCategoryIndex)
     }
 
     @Test
@@ -212,6 +313,106 @@ class LibraryScreenModelTest {
         assertFalse(model.state.value.sortAscending)
     }
 
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `category sorting uses shared interactor without overwriting global sorting`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val preferences = LibraryPreferences(InMemoryPreferenceStore())
+            val repository = FakeCategoryRepository().apply {
+                insert(Category(id = 7L, name = "Action", order = 0L, flags = 0L))
+            }
+            val model = LibraryScreenModel(
+                libraryPreferences = preferences,
+                setSortModeForCategory = SetSortModeForCategory(preferences, repository),
+            )
+            model.setCategories(listOf(Category(id = 7L, name = "Action", order = 0L, flags = 0L)))
+
+            model.setSortModeAndDirectionForCategory(7L, SortMode.UNREAD_COUNT, ascending = false)
+            advanceUntilIdle()
+
+            assertEquals(LibrarySort.default, preferences.sortingMode().get())
+            assertEquals(
+                LibrarySort(LibrarySort.Type.UnreadCount, LibrarySort.Direction.Descending),
+                LibrarySort.valueOf(repository.get(7L)!!.flags),
+            )
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `library preferences restore filters display and sort on model creation`() {
+        val preferences = LibraryPreferences(
+            InMemoryPreferenceStore(
+                sequenceOf(
+                    InMemoryPreferenceStore.InMemoryPreference(
+                        "pref_filter_library_unread_v2",
+                        TriState.ENABLED_IS,
+                        TriState.DISABLED,
+                    ),
+                    InMemoryPreferenceStore.InMemoryPreference(
+                        "pref_filter_library_downloaded_v2",
+                        TriState.ENABLED_NOT,
+                        TriState.DISABLED,
+                    ),
+                    InMemoryPreferenceStore.InMemoryPreference(
+                        "pref_display_mode_library",
+                        tachiyomi.domain.library.model.LibraryDisplayMode.CoverOnlyGrid,
+                        tachiyomi.domain.library.model.LibraryDisplayMode.default,
+                    ),
+                    InMemoryPreferenceStore.InMemoryPreference(
+                        "library_sorting_mode",
+                        LibrarySort(LibrarySort.Type.TotalChapters, LibrarySort.Direction.Descending),
+                        LibrarySort.default,
+                    ),
+                    InMemoryPreferenceStore.InMemoryPreference(
+                        tachiyomi.core.common.preference.Preference.appStateKey("pref_downloaded_only"),
+                        true,
+                        false,
+                    ),
+                    InMemoryPreferenceStore.InMemoryPreference(
+                        "pref_library_columns_portrait_key",
+                        3,
+                        0,
+                    ),
+                    InMemoryPreferenceStore.InMemoryPreference(
+                        "pref_library_columns_landscape_key",
+                        6,
+                        0,
+                    ),
+                ),
+            ),
+        )
+
+        val state = LibraryScreenModel(libraryPreferences = preferences).state.value
+
+        assertEquals(TriState.ENABLED_IS, state.filter.unread)
+        assertEquals(TriState.ENABLED_NOT, state.filter.downloaded)
+        assertTrue(state.filter.globalDownloadedOnly)
+        assertEquals(LibraryDisplayMode.COVER_ONLY_GRID, state.displayMode)
+        assertEquals(SortMode.TOTAL_CHAPTERS, state.sortMode)
+        assertFalse(state.sortAscending)
+        assertEquals(3, state.portraitColumns)
+        assertEquals(6, state.landscapeColumns)
+    }
+
+    @Test
+    fun `tracker mean is passed to shared evaluator`() {
+        val first = sampleLibraryManga(sampleManga(id = 1L, title = "First"))
+        val second = sampleLibraryManga(sampleManga(id = 2L, title = "Second"))
+        val model = LibraryScreenModel().apply {
+            setAllItems(listOf(first, second))
+            setEvaluationContext(
+                downloadedMangaIds = emptySet(),
+                trackerMeansByManga = mapOf(1L to 9.0, 2L to 3.0),
+            )
+            setSortModeAndDirection(SortMode.TRACKER_MEAN, ascending = false)
+        }
+
+        assertEquals(listOf(1L, 2L), model.visibleItems().map { it.id })
+    }
+
     // ── Filters ───────────────────────────────────────────────────────────────
 
     @Test
@@ -271,6 +472,22 @@ class LibraryScreenModelTest {
         assertEquals(LibraryDisplayMode.DEFAULT, model.state.value.displayMode)
         model.setDisplayMode(LibraryDisplayMode.LIST)
         assertEquals(LibraryDisplayMode.LIST, model.state.value.displayMode)
+    }
+
+    @Test
+    fun `setDisplayMode uses the shared display interactor`() {
+        val preferences = LibraryPreferences(isolatedDesktopPreferenceStore())
+        val model = LibraryScreenModel(
+            libraryPreferences = preferences,
+            setDisplayModeInteractor = SetDisplayMode(preferences),
+        )
+
+        model.setDisplayMode(LibraryDisplayMode.COVER_ONLY_GRID)
+
+        assertEquals(
+            tachiyomi.domain.library.model.LibraryDisplayMode.CoverOnlyGrid,
+            preferences.displayMode().get(),
+        )
     }
 
     // ── Dialog / menu visibility ──────────────────────────────────────────────
@@ -425,6 +642,35 @@ class LibraryScreenModelTest {
     }
 
     @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `production library stream restores saved tracker filters when a tracker logs in`() = runTest {
+        val repository = FakeMangaRepository().apply {
+            libraryManga = listOf(sampleLibraryManga(sampleManga(1).copy(source = 10L)))
+        }
+        val sessions = MutableStateFlow(emptySet<Long>())
+        val store = isolatedDesktopPreferenceStore().also {
+            it.getObjectFromString(
+                "pref_filter_library_tracked_7_v2",
+                TriState.DISABLED,
+                { value -> value.name },
+                { value -> TriState.entries.first { state -> state.name == value } },
+            ).set(TriState.ENABLED_IS)
+        }
+        val model = LibraryScreenModel(
+            getLibraryManga = GetLibraryManga(repository),
+            libraryPreferences = LibraryPreferences(store),
+            trackerSessionProvider = TrackerSessionProvider { sessions },
+        )
+
+        model.libraryMangaFlow().launchIn(backgroundScope)
+        runCurrent()
+        sessions.value = setOf(7L)
+        runCurrent()
+
+        assertEquals(TriState.ENABLED_IS, model.state.value.filter.tracking[7L])
+    }
+
+    @Test
     fun `production library page projection uses ScreenModel context for tracker menu and visible items`() {
         val model = LibraryScreenModel()
         model.setAllItems(
@@ -468,6 +714,61 @@ class LibraryScreenModelTest {
     }
 
     @Test
+    fun `marking unread chapters as read removes their downloads when preference is enabled`() = runTest {
+        val chapterRepository = FakeChapterRepository()
+        chapterRepository.addAll(
+            listOf(
+                Chapter.create().copy(id = 1L, mangaId = 10L, name = "Unread", read = false),
+                Chapter.create().copy(id = 2L, mangaId = 10L, name = "Already read", read = true),
+                Chapter.create().copy(id = 3L, mangaId = 10L, name = "Started", read = false, lastPageRead = 2L),
+            ),
+        )
+        val store = InMemoryPreferenceStore(
+            sequenceOf(
+                InMemoryPreferenceStore.InMemoryPreference(
+                    "pref_remove_after_marked_as_read_key",
+                    true,
+                    false,
+                ),
+            ),
+        )
+        val deleted = mutableListOf<Long>()
+        val item = sampleLibraryManga(sampleManga(id = 10L, source = 7L, title = "Manga"))
+        val getChapters = GetChaptersByMangaId(chapterRepository)
+        val model = LibraryScreenModel(
+            getChaptersByMangaId = getChapters,
+            setChapterReadStatus = SetChapterReadStatus(getChapters, UpdateChapter(chapterRepository)),
+            sharedDownloadPreferences = DownloadPreferences(store),
+            deleteChapterDownload = { _, chapter -> deleted += chapter.id },
+        ).apply { setAllItems(listOf(item)) }
+
+        model.markMangaRead(mangaId = 10L, read = true)
+
+        assertEquals(listOf(1L, 3L), deleted)
+    }
+
+    @Test
+    fun `mark read failure is reported without rethrowing`() = runTest {
+        val chapterRepository = FakeChapterRepository().apply {
+            addAll(listOf(Chapter.create().copy(id = 1L, mangaId = 10L, read = false)))
+            failUpdates = true
+        }
+        val getChapters = GetChaptersByMangaId(chapterRepository)
+        val model = LibraryScreenModel(
+            getChaptersByMangaId = getChapters,
+            setChapterReadStatus = SetChapterReadStatus(getChapters, UpdateChapter(chapterRepository)),
+        )
+
+        val result = runCatching { model.markMangaRead(mangaId = 10L, read = true) }
+
+        assertTrue(result.isSuccess)
+        assertEquals(
+            MR.strings.desktop_ui_items_updated_failed.localized(java.util.Locale.getDefault(), 0, 1),
+            model.state.value.operationFeedback,
+        )
+    }
+
+    @Test
     fun `mark manga unread resets progress and skips chapters already unread at start`() = runTest {
         val chapterRepository = FakeChapterRepository()
         chapterRepository.addAll(
@@ -496,6 +797,56 @@ class LibraryScreenModelTest {
 
         assertEquals(listOf(1L, 2L), mangaRepository.updates.map { it.id })
         assertTrue(mangaRepository.updates.all { it.favorite == false })
+    }
+
+    @Test
+    fun `removeFromLibrary deletes only the selected manga artifacts when requested`() = runTest {
+        val mangaRepository = FakeMangaRepository()
+        val manga = sampleManga(id = 1L, source = 7L, title = "Selected")
+        mangaRepository.seed(manga)
+        val provider = DesktopDownloadProvider(tempDir.toFile())
+        val chapterDirectory = provider.chapterDownloadDir(7L, "Selected", "Chapter 1")
+        chapterDirectory.mkdirs()
+        ImageIO.write(BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB), "png", chapterDirectory.resolve("page.png"))
+        var deletedCoverId: Long? = null
+        val model = LibraryScreenModel(
+            updateManga = UpdateManga(mangaRepository),
+            deleteMangaDownloads = { item ->
+                provider.deleteMangaDownloads(item.manga.source, item.manga.title)
+            },
+            deleteCustomCover = { id -> deletedCoverId = id; true },
+        ).apply { setAllItems(listOf(sampleLibraryManga(manga))) }
+
+        model.removeFromLibrary(listOf(manga.id), deleteDownloads = true)
+
+        assertFalse(provider.hasMangaDownloads(7L, "Selected"))
+        assertEquals(1L, deletedCoverId)
+        assertEquals(false, mangaRepository.get(1L)?.favorite)
+    }
+
+    @Test
+    fun `removeFromLibrary can delete downloads without changing library membership`() = runTest {
+        val mangaRepository = FakeMangaRepository()
+        val manga = sampleManga(id = 2L, source = 7L, title = "Kept").copy(favorite = true)
+        mangaRepository.seed(manga)
+        val provider = DesktopDownloadProvider(tempDir.toFile())
+        val chapterDirectory = provider.chapterDownloadDir(7L, "Kept", "Chapter 1")
+        chapterDirectory.mkdirs()
+        ImageIO.write(BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB), "png", chapterDirectory.resolve("page.png"))
+        val model = LibraryScreenModel(
+            updateManga = UpdateManga(mangaRepository),
+            deleteMangaDownloads = { item -> provider.deleteMangaDownloads(item.manga.source, item.manga.title) },
+        ).apply { setAllItems(listOf(sampleLibraryManga(manga))) }
+
+        model.removeFromLibrary(
+            mangaIds = listOf(manga.id),
+            deleteDownloads = true,
+            removeFromLibrary = false,
+        )
+
+        assertTrue(mangaRepository.get(2L)?.favorite == true)
+        assertTrue(mangaRepository.updates.isEmpty())
+        assertFalse(provider.hasMangaDownloads(7L, "Kept"))
     }
 
     @Test
@@ -539,6 +890,76 @@ class LibraryScreenModelTest {
             ),
             enqueued.single(),
         )
+    }
+
+    @Test
+    fun `enqueueNextUnreadDownload skips a chapter already downloaded on disk`() = runTest {
+        val repository = FakeChapterRepository().apply {
+            addAll(
+                listOf(
+                    Chapter.create().copy(id = 1L, mangaId = 10L, name = "First", url = "/1", sourceOrder = 1L),
+                    Chapter.create().copy(id = 2L, mangaId = 10L, name = "Second", url = "/2", sourceOrder = 2L),
+                ),
+            )
+        }
+        val downloaded = tempDir.resolve("7/Manga/First")
+        Files.createDirectories(downloaded)
+        ImageIO.write(BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB), "png", downloaded.resolve("page.png").toFile())
+        val enqueued = mutableListOf<Long>()
+        val manga = sampleManga(id = 10L, source = 7L, title = "Manga")
+
+        modelWithChapterUseCases(
+            repository,
+            enqueueDownload = { enqueued += it.chapterId },
+            downloadProvider = DesktopDownloadProvider(tempDir.toFile()),
+            mangaProvider = { manga },
+        ).enqueueNextUnreadDownload(sampleLibraryManga(manga))
+
+        assertEquals(listOf(2L), enqueued)
+    }
+
+    @Test
+    fun `next unread download can use the resolved chapter identity`() = runTest {
+        val repository = FakeChapterRepository().apply {
+            addAll(
+                listOf(
+                    Chapter.create().copy(id = 1L, mangaId = 10L, name = "First", url = "/first", sourceOrder = 1L),
+                    Chapter.create().copy(id = 2L, mangaId = 10L, name = "Second", url = "/second", sourceOrder = 2L),
+                ),
+            )
+        }
+        val enqueued = mutableListOf<Long>()
+        val model = modelWithChapterUseCases(
+            chapterRepository = repository,
+            enqueueDownload = { enqueued += it.chapterId },
+            isChapterDownloaded = { _, chapter -> chapter.id == 1L },
+        )
+
+        model.enqueueNextUnreadDownload(sampleLibraryManga(sampleManga(id = 10L, source = 7L)))
+
+        assertEquals(listOf(2L), enqueued)
+    }
+
+    @Test
+    fun `single next unread download skips chapters already in the queue`() = runTest {
+        val repository = FakeChapterRepository().apply {
+            addAll(
+                listOf(
+                    Chapter.create().copy(id = 1L, mangaId = 10L, name = "First", url = "/first", sourceOrder = 1L),
+                    Chapter.create().copy(id = 2L, mangaId = 10L, name = "Second", url = "/second", sourceOrder = 2L),
+                ),
+            )
+        }
+        val enqueued = mutableListOf<Long>()
+        val model = modelWithChapterUseCases(
+            chapterRepository = repository,
+            enqueueDownload = { enqueued += it.chapterId },
+            isChapterQueued = { chapter -> chapter.id == 2L },
+        )
+
+        model.enqueueNextUnreadDownload(sampleLibraryManga(sampleManga(id = 10L, source = 7L)))
+
+        assertEquals(listOf(1L), enqueued)
     }
 
     @Test
@@ -721,6 +1142,7 @@ class LibraryScreenModelTest {
         val request = model.continueReadingRequest(sampleLibraryManga(sampleManga(id = 10L, source = 7L)))
 
         assertNull(request)
+        assertEquals("Next chapter not found", model.state.value.operationFeedback)
     }
 
     @Test
@@ -831,6 +1253,8 @@ class LibraryScreenModelTest {
         chapterRepository: ChapterRepository,
         enqueueDownload: ((DownloadItem) -> Unit)? = null,
         downloadProvider: DesktopDownloadProvider? = null,
+        isChapterDownloaded: ((LibraryManga, Chapter) -> Boolean)? = null,
+        isChapterQueued: ((Chapter) -> Boolean)? = null,
         mangaProvider: (Long) -> Manga = { sampleManga(it) },
     ): LibraryScreenModel {
         val getChapters = GetChaptersByMangaId(chapterRepository)
@@ -845,6 +1269,8 @@ class LibraryScreenModelTest {
             setChapterReadStatus = SetChapterReadStatus(getChapters, UpdateChapter(chapterRepository)),
             enqueueDownload = enqueueDownload,
             downloadProvider = downloadProvider,
+            isChapterDownloaded = isChapterDownloaded,
+            isChapterQueued = isChapterQueued,
         )
     }
 

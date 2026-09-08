@@ -37,6 +37,7 @@ import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.source.DesktopSourceRepository
 import mihon.desktop.source.LocalSourceScanService
 import mihon.desktop.settings.LibraryCategoryPrefs
+import mihon.desktop.settings.LibraryPreferenceMigration
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.storage.DesktopStorageFolderProvider
@@ -130,6 +131,8 @@ import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.RenameCategory
 import tachiyomi.domain.category.interactor.ReorderCategory
 import tachiyomi.domain.category.interactor.SetMangaCategories
+import tachiyomi.domain.category.interactor.SetDisplayMode
+import tachiyomi.domain.category.interactor.SetSortModeForCategory
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.interactor.GetChapter
 import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
@@ -812,6 +815,7 @@ internal fun initUILayer(
     val database = (handler as JvmDatabaseHandler).db
     val libraryPreferences = LibraryPreferences(preferenceStore)
     Injekt.addSingleton(libraryPreferences)
+    LibraryPreferenceMigration(preferenceStore, libraryPreferences).migrate()
     val downloadPreferences = DesktopDownloadPreferences(preferenceStore)
     val downloadDirectoryPreference = downloadPreferences.downloadDirectory(paths.downloadsDir)
     val downloadDirectoryState = downloadDirectoryPreference.state()
@@ -1017,6 +1021,8 @@ private fun registerDesktopLibrary(
     )
     Injekt.addSingleton(creatorDiscoveryOutboxService)
     val libraryPreferences = Injekt.get<LibraryPreferences>()
+    Injekt.addSingleton(SetDisplayMode(libraryPreferences))
+    Injekt.addSingleton(SetSortModeForCategory(libraryPreferences, categoryRepository))
     Injekt.addSingleton(CreateCategoryWithName(categoryRepository, libraryPreferences))
     Injekt.addSingleton(RenameCategory(categoryRepository))
     Injekt.addSingleton(DeleteCategory(categoryRepository, libraryPreferences, Injekt.get()))

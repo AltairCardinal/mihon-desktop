@@ -58,6 +58,7 @@ import mihon.domain.extensionrepo.interactor.ReplaceExtensionRepo
 import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
 import mihon.domain.upcoming.interactor.GetUpcomingManga
 import tachiyomi.domain.category.repository.CategoryRepository
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.repository.ChapterRepository
@@ -164,6 +165,7 @@ data class DesktopUiDependencies(
     val creatorDiscoverySourcePort: CreatorDiscoverySourcePort? = null,
     val updateController: DesktopUpdateController? = null,
     val updateScreenModel: DesktopUpdateScreenModel? = null,
+    val libraryPreferences: LibraryPreferences? = null,
 ) {
     suspend fun getMangaTitle(mangaId: Long): String {
         return mangaRepository.getMangaById(mangaId).title
@@ -256,6 +258,7 @@ data class DesktopUiDependencies(
                 creatorDiscoverySourcePort = Injekt.get(),
                 updateController = Injekt.get(),
                 updateScreenModel = Injekt.get(),
+                libraryPreferences = Injekt.get(),
             )
         }
     }

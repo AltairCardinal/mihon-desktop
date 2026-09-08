@@ -1,5 +1,6 @@
 package mihon.desktop.ui.library
 
+import mihon.desktop.domain.SortMode
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.library.interactor.LibraryFilter
 import tachiyomi.i18n.MR
@@ -12,6 +13,12 @@ internal fun filterRows(filter: LibraryFilter) = listOf(
     MR.strings.completed.localized() to (LibraryFilterField.COMPLETED to filter.completed),
     MR.strings.desktop_ui_custom_interval.localized() to (LibraryFilterField.INTERVAL_CUSTOM to filter.intervalCustom),
 )
+
+internal fun isFilterFieldEnabled(filter: LibraryFilter, field: LibraryFilterField): Boolean =
+    field != LibraryFilterField.DOWNLOADED || !filter.globalDownloadedOnly
+
+internal fun nextSortAscending(mode: SortMode, selectedMode: SortMode, ascending: Boolean): Boolean =
+    if (mode == selectedMode) !ascending else ascending
 
 internal fun TriState.label() = when (this) {
     TriState.DISABLED -> MR.strings.desktop_ui_filter_any.localized()

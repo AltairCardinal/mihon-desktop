@@ -67,6 +67,7 @@ data class BatchMigrationQueue(
     val checkpoint: Int = 0,
     val paused: Boolean = false,
     val cancelled: Boolean = false,
+    val defaultOptions: BatchMigrationOptions = BatchMigrationOptions(),
 ) {
     val completedCount: Int get() = items.count { it.status in terminalItemStatuses }
     val progress: Float get() = if (items.isEmpty()) 1f else completedCount.toFloat() / items.size
@@ -91,10 +92,17 @@ class DesktopBatchMigrationController(
     val queues: StateFlow<Map<String, BatchMigrationQueue>> = mutableQueues.asStateFlow()
     private val jobs = mutableMapOf<String, Job>()
 
-    fun submit(requests: List<BatchMigrationRequest>): String {
+    fun submit(
+        requests: List<BatchMigrationRequest>,
+        defaultOptions: BatchMigrationOptions = BatchMigrationOptions(),
+    ): String {
         require(requests.isNotEmpty()) { "A batch migration queue cannot be empty" }
         val id = "$TASK_PREFIX${UUID.randomUUID()}"
-        val queue = BatchMigrationQueue(id, requests.map { BatchMigrationItemState(it.mangaId, it.title) })
+        val queue = BatchMigrationQueue(
+            id = id,
+            items = requests.map { BatchMigrationItemState(it.mangaId, it.title) },
+            defaultOptions = defaultOptions,
+        )
         scheduler.register(BackgroundTask(id, id, checkpoint = checkpoint(queue)))
         publish(queue)
         launch(queue.id)
@@ -222,7 +230,7 @@ class DesktopBatchMigrationController(
                         updateItem(id, item.mangaId) { it.copy(status = BatchMigrationItemStatus.WAITING_FOR_USER) }
                         throw BatchMigrationWaitingForUserException()
                     }
-                    val options = item.options ?: BatchMigrationOptions()
+                    val options = item.options ?: current.defaultOptions
                     updateItem(id, item.mangaId) { it.copy(status = BatchMigrationItemStatus.RUNNING, error = null) }
                     executeMigration(item.mangaId, target, options)
                 }

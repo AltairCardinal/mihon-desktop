@@ -277,6 +277,33 @@ class DownloadProviderTest {
     }
 
     @Test
+    fun `downloaded chapter count excludes staging and invalid artifacts`() {
+        val provider = provider()
+        val first = provider.chapterDownloadDir(1L, "My Manga", "Ch 1").also(File::mkdirs)
+        File(first, "001.jpg").writeBytes(jpegBytes())
+        val second = provider.chapterDownloadDir(1L, "My Manga", "Ch 2").also(File::mkdirs)
+        File(second, "001.jpg").writeBytes(jpegBytes())
+        provider.chapterTmpDir(1L, "My Manga", "Ch 3").also(File::mkdirs)
+        File(provider.chapterDownloadDir(1L, "My Manga", "Ch 4").also(File::mkdirs), "001.jpg").writeText("not an image")
+
+        assertEquals(2, provider.downloadedChapterCount(1L, "My Manga"))
+    }
+
+    @Test
+    fun `delete manga downloads removes canonical and legacy artifacts for only the requested manga`() {
+        val provider = provider()
+        provider.chapterDownloadDir(1L, "Delete me", "Ch 1").also(File::mkdirs)
+        provider.canonicalMangaDownloadDir(downloadIdentity().copy(mangaTitle = "Delete me")).also(File::mkdirs)
+        provider.chapterDownloadDir(1L, "Keep me", "Ch 1").also(File::mkdirs)
+
+        provider.deleteMangaDownloads(1L, "Delete me", downloadIdentity().copy(mangaTitle = "Delete me"))
+
+        assertFalse(File(tempDir, "1/Delete me").exists())
+        assertFalse(provider.canonicalMangaDownloadDir(downloadIdentity().copy(mangaTitle = "Delete me")).exists())
+        assertTrue(File(tempDir, "1/Keep me/Ch 1").exists())
+    }
+
+    @Test
     fun `sanitize removes illegal filename chars`() {
         val dir = provider().chapterDownloadDir(1L, "Manga: The?Series*", "Ch 1/Part 2")
         // Should not throw and path components should have illegal chars removed

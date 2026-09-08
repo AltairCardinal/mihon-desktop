@@ -1,6 +1,7 @@
 package mihon.desktop.ui.library
 
 import tachiyomi.i18n.MR
+import java.util.Locale
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -48,12 +49,13 @@ fun CategoryManagementDialog(
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    var visibleCategories by remember { mutableStateOf(categories) }
+    var visibleCategories by remember { mutableStateOf(categories.filterNot(Category::isSystemCategory)) }
     var newName by remember { mutableStateOf("") }
     var editingId by remember { mutableStateOf<Long?>(null) }
     var editingName by remember { mutableStateOf("") }
+    var pendingDelete by remember { mutableStateOf<Category?>(null) }
 
-    LaunchedEffect(categories) { visibleCategories = categories }
+    LaunchedEffect(categories) { visibleCategories = categories.filterNot(Category::isSystemCategory) }
 
     val lazyListState = rememberLazyListState()
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
@@ -145,11 +147,7 @@ fun CategoryManagementDialog(
                                     }) {
                                         Icon(Icons.Default.Edit, contentDescription = MR.strings.desktop_ui_rename.localized())
                                     }
-                                    IconButton(onClick = {
-                                        scope.launch {
-                                            onDelete(cat.id)
-                                        }
-                                    }) {
+                                    IconButton(onClick = { pendingDelete = cat }) {
                                         Icon(Icons.Default.Delete, contentDescription = MR.strings.action_delete.localized())
                                     }
                                 }
@@ -163,4 +161,34 @@ fun CategoryManagementDialog(
             TextButton(onClick = onDismiss) { Text(MR.strings.desktop_ui_done.localized()) }
         },
     )
+
+    pendingDelete?.let { category ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text(MR.strings.delete_category.localized()) },
+            text = {
+                Text(
+                    MR.strings.delete_category_confirmation.localized(
+                        Locale.getDefault(),
+                        category.name,
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDelete = null
+                        scope.launch { onDelete(category.id) }
+                    },
+                ) {
+                    Text(MR.strings.action_delete.localized(), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) {
+                    Text(MR.strings.action_cancel.localized())
+                }
+            },
+        )
+    }
 }

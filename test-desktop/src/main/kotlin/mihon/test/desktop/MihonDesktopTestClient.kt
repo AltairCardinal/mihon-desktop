@@ -225,6 +225,24 @@ data class AppState(
     val migrationQueueCount: Int? = null,
     val extension: SourceExtensionTestSnapshot? = null,
     val source: SourceBrowseTestSnapshot? = null,
+    val library: LibraryTestSnapshot? = null,
+)
+
+@Serializable
+data class LibraryTestRow(
+    val mangaId: Long,
+    val title: String,
+)
+
+@Serializable
+data class LibraryTestSnapshot(
+    val loadState: String = "LOADING",
+    val loadError: String? = null,
+    val searchQuery: String = "",
+    val sortMode: String = "TITLE",
+    val sortAscending: Boolean = true,
+    val selectedCategoryIndex: Int = 0,
+    val rows: List<LibraryTestRow> = emptyList(),
 )
 
 @Serializable
@@ -249,6 +267,7 @@ data class ActionResult(
     val timestamp: String = Instant.now().toString(),
     val extension: SourceExtensionTestSnapshot? = null,
     val source: SourceBrowseTestSnapshot? = null,
+    val library: LibraryTestSnapshot? = null,
 )
 
 @Serializable

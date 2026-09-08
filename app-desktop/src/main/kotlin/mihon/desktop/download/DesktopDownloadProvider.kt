@@ -212,6 +212,33 @@ class DesktopDownloadProvider(
                 ?.hasChapterArtifact() == true
     }
 
+    /** Returns the number of completed chapter artifacts for the legacy Desktop layout. */
+    fun downloadedChapterCount(sourceId: Long, mangaTitle: String): Int =
+        countDownloadedArtifacts(
+            File(baseDir, "${sanitize(sourceId.toString())}/${sanitize(mangaTitle)}"),
+            readerImagesOnly = true,
+        )
+
+    /** Returns the number of completed chapter artifacts across canonical and legacy layouts. */
+    fun downloadedChapterCount(sourceId: Long, identity: DownloadChapterIdentity): Int =
+        listOf(
+            canonicalMangaDownloadDir(identity),
+            File(baseDir, "${sanitize(sourceId.toString())}/${sanitize(identity.mangaTitle)}"),
+        ).distinctBy(File::getAbsolutePath).sumOf { directory ->
+            countDownloadedArtifacts(directory, readerImagesOnly = false)
+        }
+
+    /** Deletes the finite canonical and historical directories for one manga only. */
+    fun deleteMangaDownloads(sourceId: Long, mangaTitle: String) {
+        File(baseDir, "${sanitize(sourceId.toString())}/${sanitize(mangaTitle)}").deleteRecursively()
+    }
+
+    /** Deletes the canonical and historical directories for one resolved manga identity only. */
+    fun deleteMangaDownloads(sourceId: Long, mangaTitle: String, identity: DownloadChapterIdentity) {
+        deleteMangaDownloads(sourceId, mangaTitle)
+        canonicalMangaDownloadDir(identity).deleteRecursively()
+    }
+
     /** Returns true when a downloaded image has a supported extension and a matching file signature. */
     fun isValidDownloadedImage(file: File): Boolean = file.isReadableImageFile()
 
@@ -229,6 +256,21 @@ class DesktopDownloadProvider(
         val currentDesktop = chapterDownloadDir(sourceId, identity.mangaTitle, identity.chapterName)
         currentDesktop.deleteRecursively()
         File(currentDesktop.parentFile, "${currentDesktop.name}.cbz").delete()
+    }
+
+    private fun countDownloadedArtifacts(directory: File, readerImagesOnly: Boolean): Int {
+        if (!directory.isDirectory) return 0
+        return directory.listFiles().orEmpty().count { artifact ->
+            when {
+                artifact.name.endsWith(TMP_DIR_SUFFIX) -> false
+                artifact.isDirectory -> artifact.listFiles().orEmpty().any {
+                    if (readerImagesOnly) it.isReadableImageFile() else it.isReaderImageCandidate()
+                }
+                !readerImagesOnly && artifact.isFile &&
+                    artifact.extension.equals("cbz", ignoreCase = true) -> artifact.length() > 0L
+                else -> false
+            }
+        }
     }
 
     /** Deletes the temporary download directory for a chapter. */

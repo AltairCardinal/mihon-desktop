@@ -14,11 +14,13 @@ class LibraryPhase3Test {
     // ── Display mode ──────────────────────────────────────────────────────────
 
     @Test
-    fun `LibraryDisplayMode has three values`() {
+    fun `LibraryDisplayMode has four values including cover only`() {
         val modes = LibraryDisplayMode.entries
+        assertEquals(4, modes.size)
         assertTrue(modes.any { it == LibraryDisplayMode.COMPACT_GRID })
         assertTrue(modes.any { it == LibraryDisplayMode.COMFORTABLE_GRID })
         assertTrue(modes.any { it == LibraryDisplayMode.LIST })
+        assertTrue(modes.any { it == LibraryDisplayMode.COVER_ONLY_GRID })
     }
 
     // ── Batch selection ───────────────────────────────────────────────────────

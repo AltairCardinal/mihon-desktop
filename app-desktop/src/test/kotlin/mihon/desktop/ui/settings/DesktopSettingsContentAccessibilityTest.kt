@@ -43,6 +43,7 @@ import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.i18n.MR
 import java.io.File
 import java.util.Locale
@@ -272,6 +273,7 @@ class DesktopSettingsContentAccessibilityTest {
             every { creatorDiscoveryScheduler } returns null
             every { backupRestoreScreenModelFactory } returns factory
             every { filePicker } returns mockk<DesktopFilePicker>(relaxed = true)
+            every { libraryPreferences } returns LibraryPreferences(InMemoryPreferenceStore())
         }
     }
 

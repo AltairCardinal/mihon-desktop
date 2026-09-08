@@ -117,7 +117,7 @@ class LibraryMangaTestModeController(
     private var detailJob: Job? = null
     private val libraryJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
         try {
-            libraryModel.libraryMangaFlow().collect {
+            libraryModel.libraryMangaFlow(propagateErrors = true).collect {
                 libraryModel.refreshCategories()
                 libraryLoadError = null
                 libraryLoadState = OwnerLoadState.READY

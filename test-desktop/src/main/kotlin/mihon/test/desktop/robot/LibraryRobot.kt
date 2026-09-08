@@ -1,12 +1,17 @@
 package mihon.test.desktop.robot
 
 import mihon.test.desktop.DesktopTestClient
+import mihon.test.desktop.AppState
 import mihon.test.desktop.SourceBrowseTestSnapshot
+import mihon.test.desktop.LibraryTestSnapshot
 
 /**
  * Robot for Library screen interactions.
  */
-class LibraryRobot(private val client: DesktopTestClient) {
+class LibraryRobot(
+    private val client: DesktopTestClient,
+    private val stateProvider: () -> AppState = client::getState,
+) {
 
     private val baseUrl = client.baseUrl
 
@@ -110,15 +115,16 @@ class LibraryRobot(private val client: DesktopTestClient) {
      * Get current manga count.
      */
     fun getMangaCount(): Int {
-        val state = client.getState()
-        return state.screens.size // Placeholder - actual implementation would query state
+        return librarySnapshot().rows.size
     }
 
     /**
      * Check if manga is visible in the list.
      */
     fun assertMangaVisible(title: String): LibraryRobot {
-        // Implementation would verify manga appears in state
+        if (librarySnapshot().rows.none { it.title == title }) {
+            throw AssertionError("Manga '$title' is not visible in the library")
+        }
         return this
     }
 
@@ -129,6 +135,9 @@ class LibraryRobot(private val client: DesktopTestClient) {
         client.executeAction("select", mapOf("type" to "category", "index" to index))
         return this
     }
+
+    private fun librarySnapshot(): LibraryTestSnapshot =
+        requireNotNull(stateProvider().library) { "Library snapshot is unavailable" }
 }
 
 /**

@@ -9,6 +9,9 @@ enum class LibraryDisplayMode {
 
     /** Horizontal list rows with cover + metadata. */
     LIST,
+
+    /** Cover-only grid used when titles and badges are intentionally hidden. */
+    COVER_ONLY_GRID,
     ;
 
     companion object {

@@ -27,6 +27,7 @@ import mihon.desktop.settings.LibraryUpdateInterval
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTimeoutPreemptively
 import org.junit.jupiter.api.Test
 import java.time.Duration
@@ -81,6 +82,34 @@ class LibraryUpdateSchedulerTest {
         scheduler.runNow().join()
 
         forwarded shouldBe (manga to listOf(chapter))
+    }
+
+    @Test
+    fun `manual update can be scoped to the active library category`() = runTest {
+        val first = Manga.create().copy(id = 10L, title = "First", favorite = true)
+        val second = Manga.create().copy(id = 20L, title = "Second", favorite = true)
+        val updated = mutableListOf<Long>()
+        val scheduler = LibraryUpdateScheduler(
+            appPreferences = prefs,
+            updateChecker = null,
+            getLibraryManga = null,
+            sourceManager = null,
+            scope = this,
+            libraryProvider = {
+                listOf(
+                    LibraryManga(first, listOf(1L), 0, 0, 0, 0, 0, 0),
+                    LibraryManga(second, listOf(2L), 0, 0, 0, 0, 0, 0),
+                )
+            },
+            updateManga = { manga ->
+                updated += manga.id
+                LibraryUpdateChecker.UpdateResult(0)
+            },
+        )
+
+        scheduler.runNow(categoryId = 1L).join()
+
+        assertEquals(listOf(10L), updated)
     }
 
     @Test

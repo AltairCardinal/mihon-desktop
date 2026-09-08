@@ -12,6 +12,7 @@ import mihon.test.desktop.robot.UpdatesRobot
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -31,6 +32,40 @@ class RobotSmokeTestSuite {
         val robot = LibraryRobot(client)
 
         assertNotNull(robot)
+    }
+
+    @Test
+    fun `library robot reads manga count and visibility from the library snapshot`() {
+        val robot = LibraryRobot(createMockClient()) {
+            AppState(
+                library = LibraryTestSnapshot(
+                    loadState = "READY",
+                    rows = listOf(
+                        LibraryTestRow(mangaId = 1L, title = "One Piece"),
+                        LibraryTestRow(mangaId = 2L, title = "Nana"),
+                    ),
+                ),
+            )
+        }
+
+        assertEquals(2, robot.getMangaCount())
+        assertNotNull(robot.assertMangaVisible("Nana"))
+    }
+
+    @Test
+    fun `library robot visibility assertion fails when title is absent`() {
+        val robot = LibraryRobot(createMockClient()) {
+            AppState(
+                library = LibraryTestSnapshot(
+                    loadState = "READY",
+                    rows = listOf(LibraryTestRow(mangaId = 1L, title = "One Piece")),
+                ),
+            )
+        }
+
+        assertThrows(AssertionError::class.java) {
+            robot.assertMangaVisible("Nana")
+        }
     }
 
     @Test

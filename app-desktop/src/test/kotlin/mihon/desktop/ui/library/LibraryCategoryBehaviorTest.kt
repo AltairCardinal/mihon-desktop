@@ -5,6 +5,7 @@ import java.util.UUID
 import java.util.prefs.Preferences
 import kotlinx.coroutines.runBlocking
 import mihon.desktop.di.initDesktopDIForTest
+import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.library.LibraryScreenModelFactory
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -13,6 +14,13 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.Isolated
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.domain.category.interactor.CreateCategoryWithName
+import tachiyomi.domain.category.interactor.GetCategories
+import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.category.repository.CategoryRepository
+import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.i18n.MR
 
 @Isolated
 class LibraryCategoryBehaviorTest {
@@ -55,6 +63,28 @@ class LibraryCategoryBehaviorTest {
             context.closeAndJoin()
             preferencesNode.removeNode()
         }
+    }
+
+    @Test
+    fun `category create failure stays visible as operation feedback`() = runBlocking {
+        val backing = FakeCategoryRepository()
+        val failing = object : CategoryRepository by backing {
+            override suspend fun insert(category: Category) {
+                error("insert failed")
+            }
+        }
+        val model = LibraryScreenModel(
+            createCategory = CreateCategoryWithName(
+                categoryRepository = failing,
+                preferences = LibraryPreferences(InMemoryPreferenceStore()),
+            ),
+            getCategories = GetCategories(failing),
+        )
+
+        model.createCategory("Broken")
+
+        assertEquals(MR.strings.internal_error.localized(), model.state.value.operationFeedback)
+        assertTrue(model.state.value.categories.isEmpty())
     }
 
     private fun LibraryScreenModel.userCategories() = state.value.categories.filter { it.name.isNotBlank() }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -77,9 +78,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -100,19 +106,18 @@ import tachiyomi.domain.library.interactor.LibraryFilter
 import mihon.desktop.ui.library.pickRandomMangaId
 import mihon.desktop.domain.SortMode
 import mihon.desktop.ui.reader.DesktopReaderScreen
-import mihon.desktop.ui.migration.MigrationBatchQueueScreen
+import mihon.desktop.ui.browse.GlobalSearchScreen
+import mihon.desktop.ui.settings.LibrarySettingsScreen
+import mihon.desktop.ui.migration.LibraryBatchMigrationConfigScreen
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.model.Manga
 
 internal fun libraryBatchMigrationDestination(
     selectedManga: List<Manga>,
-    submit: (List<BatchMigrationRequest>) -> String,
-): MigrationBatchQueueScreen? {
-    val requests = selectedManga
-        .filter { it.source != 0L }
-        .map { BatchMigrationRequest(it.id, it.title) }
-    return requests.takeIf { it.isNotEmpty() }?.let { MigrationBatchQueueScreen(submit(it)) }
+): LibraryBatchMigrationConfigScreen? {
+    val requests = selectedManga.map { BatchMigrationRequest(it.id, it.title) }
+    return requests.takeIf { it.isNotEmpty() }?.let { LibraryBatchMigrationConfigScreen(it) }
 }
 
 internal data class LibrarySelectionActions(
@@ -125,18 +130,45 @@ internal fun librarySelectionActions(
     queue: () -> List<mihon.desktop.download.DownloadItem>,
     launch: (suspend () -> Unit) -> Unit,
     enqueue: suspend (List<LibraryManga>, MangaDetailDownloadAction, List<mihon.desktop.download.DownloadItem>) -> Unit,
-    submit: (List<BatchMigrationRequest>) -> String,
     navigate: (Screen) -> Unit,
     clear: () -> Unit,
 ) = LibrarySelectionActions(
-    download = { action -> launch { enqueue(selected(), action, queue()); clear() } },
+    download = { action ->
+        val selectedItems = selected()
+        val activeQueue = queue()
+        clear()
+        launch { enqueue(selectedItems, action, activeQueue) }
+    },
     migrate = {
-        libraryBatchMigrationDestination(selected().map { it.manga }, submit)?.let {
+        libraryBatchMigrationDestination(selected().map { it.manga })?.let {
             clear()
             navigate(it)
         }
     },
 )
+
+/** Captures a selection before launching work so leaving selection mode cannot change its target. */
+internal fun clearSelectionBeforeAsync(
+    selectedIds: Set<Long>,
+    clear: () -> Unit,
+    launch: ((suspend () -> Unit) -> Unit),
+    operation: suspend (Set<Long>) -> Unit,
+) {
+    val snapshot = selectedIds.toSet()
+    clear()
+    launch { operation(snapshot) }
+}
+
+internal fun clearSelectionBeforeRemoval(
+    items: List<LibraryManga>,
+    clear: () -> Unit,
+    launch: ((suspend () -> Unit) -> Unit),
+    operation: suspend (List<Long>) -> Unit,
+) {
+    val snapshot = items.map { it.id }.distinct()
+    clear()
+    launch { operation(snapshot) }
+}
 
 object LibraryTab : Tab {
 
@@ -181,6 +213,7 @@ class LibraryRootScreen : Screen {
         val sortAscending = state.sortAscending
         val filter = state.filter
         val selectedCategoryIndex = state.selectedCategoryIndex
+        val selectedCategoryId = categories.getOrNull(selectedCategoryIndex)?.id
         val isUpdating = state.isUpdating
         val updateStatusText = state.updateStatusText
         val showCategoryDialog = state.showCategoryDialog
@@ -188,18 +221,20 @@ class LibraryRootScreen : Screen {
         val contextMenuManga = state.contextMenuManga
         val showBatchCategoryDialog = state.showBatchCategoryDialog
         val batchCategoryResultMessage = state.batchCategoryResultMessage
+        val operationFeedback = state.operationFeedback
+        var removalTarget by remember { mutableStateOf<List<LibraryManga>?>(null) }
 
         LaunchedEffect(Unit) {
             launch { model.libraryMangaFlow().collect {} }
             launch { model.refreshCategories() }
+            launch { model.observeLibraryPreferences() }
         }
 
-        val categoryTabs = remember(categories) { listOf(null) + categories }
+        val categoryTabs = remember(categories) { categories }
 
         // Load per-category sort/display settings when the selected tab changes.
         LaunchedEffect(selectedCategoryIndex, categoryTabs) {
-            val cat = categoryTabs.getOrNull(selectedCategoryIndex)
-            model.applyCategoryPreferences(cat?.id)
+            model.applyCategoryPreferences(categoryTabs.getOrNull(selectedCategoryIndex)?.id)
         }
 
         val downloadedMangaIds = state.downloadedMangaIds
@@ -207,7 +242,8 @@ class LibraryRootScreen : Screen {
         val displayedItems = remember(
             allItems, searchQuery, sortMode, sortAscending,
             filter, state.downloadedMangaIds, state.localMangaIds,
-            state.trackerIdsByManga,
+            state.downloadCountsByManga, state.trackerIdsByManga, state.trackerMeansByManga,
+            state.sourceLanguagesByManga,
             selectedCategoryIndex, categoryTabs,
         ) {
             val selectedCategory = categoryTabs.getOrNull(selectedCategoryIndex)
@@ -219,10 +255,24 @@ class LibraryRootScreen : Screen {
         )
         val pageProbe = LocalLibraryPageProbe.current
         pageProbe?.invoke(pageSnapshot)
-        if (pageProbe != null) return
         val onItemPrimaryClick: (LibraryManga, Boolean) -> Unit = { item, shiftPressed ->
-            selectionState.handlePrimaryClick(displayedItems.map { it.manga.id }, item.manga.id, shiftPressed) {
+            selectionState.handlePrimaryClick(
+                visibleIds = displayedItems.map { it.manga.id },
+                targetId = item.manga.id,
+                shiftPressed = shiftPressed,
+                categoryId = selectedCategoryId,
+            ) {
                 navigator.push(MangaDetailScreen(it))
+            }
+        }
+        val onContinueReading: (LibraryManga) -> Unit = { item ->
+            if (selectionState.isInSelectionMode) {
+                selectionState.toggle(item.manga.id, selectedCategoryId)
+            } else {
+                scope.launch {
+                    val request = model.continueReadingRequest(item)
+                    if (request != null) navigator.push(request.toDesktopReaderScreen())
+                }
             }
         }
         val selectionActions = librarySelectionActions(
@@ -230,7 +280,6 @@ class LibraryRootScreen : Screen {
             queue = { desktopDependencies.downloadQueuePort.queue.value },
             launch = { task -> scope.launch { task() } },
             enqueue = { items, action, queue -> model.enqueueDownloads(items, action, queue) },
-            submit = desktopDependencies.batchMigrationController::submit,
             navigate = navigator::push,
             clear = selectionState::clear,
         )
@@ -244,6 +293,27 @@ class LibraryRootScreen : Screen {
                 onReorder = model::reorderCategory,
                 onDismiss = {
                     model.setShowCategoryDialog(false)
+                },
+            )
+        }
+
+        removalTarget?.let { items ->
+            LibraryRemovalDialog(
+                items = items,
+                onDismiss = { removalTarget = null },
+                onConfirm = { removeFromLibrary, deleteDownloads ->
+                    removalTarget = null
+                    clearSelectionBeforeRemoval(
+                        items = items,
+                        clear = selectionState::clear,
+                        launch = { task -> scope.launch { task() } },
+                    ) { ids ->
+                        model.removeFromLibrary(
+                            mangaIds = ids,
+                            deleteDownloads = deleteDownloads,
+                            removeFromLibrary = removeFromLibrary,
+                        )
+                    }
                 },
             )
         }
@@ -268,9 +338,7 @@ class LibraryRootScreen : Screen {
                 },
                 onRemoveFromLibrary = {
                     model.setContextMenuManga(null)
-                    scope.launch {
-                        model.removeFromLibrary(listOf(ctxManga.manga.id))
-                    }
+                    removalTarget = listOf(ctxManga)
                 },
                 onDownload = {
                     model.setContextMenuManga(null)
@@ -285,9 +353,13 @@ class LibraryRootScreen : Screen {
                 categories = categories,
                 selectedMangaIds = selectionState.selectedIds.toList(),
                 loadCategoryIds = model::categoryIdsForManga,
-                onConfirm = { selectedCategoryIds ->
+                onConfirm = { delta ->
                     scope.launch {
-                        model.setCategoriesForManga(selectionState.selectedIds.toList(), selectedCategoryIds)
+                        model.updateCategoriesForManga(
+                            mangaIds = selectionState.selectedIds.toList(),
+                            addCategoryIds = delta.addCategoryIds,
+                            removeCategoryIds = delta.removeCategoryIds,
+                        )
                         model.setShowBatchCategoryDialog(false)
                         selectionState.clear()
                     }
@@ -297,40 +369,65 @@ class LibraryRootScreen : Screen {
         }
 
         Scaffold(
+            contentWindowInsets = WindowInsets(0),
             // ── Selection action bar ───────────────────────────────────────
-            bottomBar = {
+                    bottomBar = {
                 if (selectionState.isInSelectionMode) {
+                    val selectedItems = allItems.filter { it.id in selectionState.selectedIds }
+                    val remoteSelection = selectedItems.isNotEmpty() && selectedItems.all { it.manga.source != 0L }
                     SelectionActionBar(
-                        selectedCount = selectionState.selectedIds.size,
+                        selectedCount = selectedItems.size,
                         onClose = { selectionState.clear() },
-                        onSelectAll = { selectionState.selectAll(displayedItems.map { it.manga.id }) },
-                        onInvertSelection = { selectionState.invertVisible(displayedItems.map { it.manga.id }) },
+                        onSelectAll = { selectionState.selectAll(displayedItems.map { it.manga.id }, selectedCategoryId) },
+                        onInvertSelection = { selectionState.invertVisible(displayedItems.map { it.manga.id }, selectedCategoryId) },
                         actions = selectionActions,
-                        canMigrate = allItems.any { it.id in selectionState.selectedIds && it.manga.source != 0L },
+                        canDownload = remoteSelection,
+                        canMigrate = selectedItems.isNotEmpty(),
                         onSetCategories = { model.setShowBatchCategoryDialog(true) },
                         onMarkRead = {
-                            scope.launch {
-                                model.markMangaRead(selectionState.selectedIds, read = true)
-                                selectionState.clear()
-                            }
+                            clearSelectionBeforeAsync(
+                                selectedIds = selectionState.selectedIds,
+                                clear = selectionState::clear,
+                                launch = { task -> scope.launch { task() } },
+                            ) { ids -> model.markMangaRead(ids, read = true) }
                         },
                         onMarkUnread = {
-                            scope.launch {
-                                model.markMangaRead(selectionState.selectedIds, read = false)
-                                selectionState.clear()
-                            }
+                            clearSelectionBeforeAsync(
+                                selectedIds = selectionState.selectedIds,
+                                clear = selectionState::clear,
+                                launch = { task -> scope.launch { task() } },
+                            ) { ids -> model.markMangaRead(ids, read = false) }
                         },
                         onRemoveFromLibrary = {
-                            scope.launch {
-                                model.removeFromLibrary(selectionState.selectedIds)
-                                selectionState.clear()
-                            }
+                            removalTarget = selectedItems.toList()
                         },
                     )
                 }
             },
         ) { scaffoldPadding ->
-            Column(Modifier.fillMaxSize().padding(scaffoldPadding)) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .padding(scaffoldPadding)
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown || event.key != Key.Escape) return@onPreviewKeyEvent false
+                        when {
+                            removalTarget != null -> {
+                                removalTarget = null
+                                true
+                            }
+                            selectionState.isInSelectionMode -> {
+                                selectionState.clear()
+                                true
+                            }
+                            searchQuery.isNotEmpty() -> {
+                                model.setSearchQuery("")
+                                true
+                            }
+                            else -> false
+                        }
+                    },
+            ) {
                 LibraryToolbar(
                     searchQuery = searchQuery,
                     onSearchChange = { model.setSearchQuery(it) },
@@ -353,18 +450,35 @@ class LibraryRootScreen : Screen {
                         model.setDisplayModeForCategory(cat?.id, it)
                     },
                     onManageCategories = { model.setShowCategoryDialog(true) },
+                    onOpenGlobalSearch = { navigator.push(GlobalSearchScreen(searchQuery)) },
+                    onOpenSettings = { navigator.push(LibrarySettingsScreen()) },
+                    categories = categoryTabs,
+                    selectedCategoryIndex = selectedCategoryIndex,
+                    showCategoryTabs = state.showCategoryTabs,
+                    showCategoryItemCounts = state.showCategoryItemCounts,
+                    onCategoryChange = model::setSelectedCategoryIndex,
+                    intervalFilterEnabled = state.filter.skipOutsideReleasePeriod,
                     onRandomManga = {
                         val randomId = pickRandomMangaId(displayedItems.map { it.manga.id })
-                        if (randomId != null) navigator.push(MangaDetailScreen(randomId))
+                        if (randomId != null) {
+                            navigator.push(MangaDetailScreen(randomId))
+                        } else {
+                            model.setOperationFeedback(MR.strings.desktop_ui_no_manga_match_your_filters.localized())
+                        }
                     },
                     onRefresh = {
+                        scope.launch {
+                            model.refreshLibrary(allItems, categoryTabs.getOrNull(selectedCategoryIndex)?.id)
+                        }
+                    },
+                    onRefreshAll = {
                         scope.launch {
                             model.refreshLibrary(allItems)
                         }
                     },
                 )
 
-                if (categories.isNotEmpty()) {
+                if (categoryTabs.isNotEmpty() && (state.showCategoryTabs || searchQuery.isNotBlank())) {
                     ScrollableTabRow(
                         selectedTabIndex = selectedCategoryIndex,
                         modifier = Modifier.fillMaxWidth(),
@@ -374,7 +488,15 @@ class LibraryRootScreen : Screen {
                             Tab(
                                 selected = index == selectedCategoryIndex,
                                 onClick = { model.setSelectedCategoryIndex(index) },
-                                text = { Text(cat?.name ?: MR.strings.all.localized()) },
+                                text = {
+                                    Text(
+                                        if (state.showCategoryItemCounts || searchQuery.isNotBlank()) {
+                                            "${cat.name} (${allItems.count { cat.id in it.categories }})"
+                                        } else {
+                                            cat.name
+                                        },
+                                    )
+                                },
                             )
                         }
                     }
@@ -398,8 +520,29 @@ class LibraryRootScreen : Screen {
                     )
                 }
 
-                if (allItems.isEmpty()) {
-                    EmptyLibrary()
+                if (operationFeedback != null) {
+                    Text(
+                        text = operationFeedback,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
+
+                if (state.isLoading) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                } else if (state.loadError != null) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            state.loadError!!,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                } else if (allItems.isEmpty()) {
+                    EmptyLibrary(onSearch = { navigator.push(GlobalSearchScreen(searchQuery)) })
                 } else if (displayedItems.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
@@ -414,70 +557,80 @@ class LibraryRootScreen : Screen {
                             LibraryGrid(
                                 items = displayedItems,
                                 minCardWidth = 120.dp,
+                                portraitColumns = state.portraitColumns,
+                                landscapeColumns = state.landscapeColumns,
                                 selectionState = selectionState,
                                 downloadedMangaIds = downloadedMangaIds,
+                                sourceLanguagesByManga = state.sourceLanguagesByManga,
+                                showDownloadBadge = state.showDownloadBadge,
+                                showUnreadBadge = state.showUnreadBadge,
+                                showLocalBadge = state.showLocalBadge,
+                                showLanguageBadge = state.showLanguageBadge,
+                                showContinueReadingButton = state.showContinueReadingButton,
+                                localMangaIds = state.localMangaIds,
                                 onContextMenu = { item -> model.setContextMenuManga(item) },
                                 onItemClick = onItemPrimaryClick,
-                                onItemLongClick = { item -> selectionState.toggle(item.manga.id) },
-                                onContinueReading = { item ->
-                                    scope.launch {
-                                        val request = model.continueReadingRequest(item) ?: return@launch
-                                        navigator.push(
-                                            DesktopReaderScreen(
-                                                chapterTitle = request.chapterTitle,
-                                                mangaTitle = request.mangaTitle,
-                                                isWebtoon = false,
-                                                sourceId = request.sourceId,
-                                                chapterUrl = request.chapterUrl,
-                                                chapterId = request.chapterId,
-                                                mangaId = request.mangaId,
-                                                mangaViewerFlags = request.mangaViewerFlags,
-                                                chapters = request.chapters,
-                                                currentChapterIndex = request.currentChapterIndex,
-                                                initialPage = request.initialPage,
-                                            ),
-                                        )
-                                    }
-                                },
+                                onItemLongClick = { item -> selectionState.toggle(item.manga.id, selectedCategoryId) },
+                                onContinueReading = onContinueReading,
                             )
                         LibraryDisplayMode.COMFORTABLE_GRID ->
                             LibraryGrid(
                                 items = displayedItems,
                                 minCardWidth = 160.dp,
                                 comfortable = true,
+                                portraitColumns = state.portraitColumns,
+                                landscapeColumns = state.landscapeColumns,
                                 selectionState = selectionState,
                                 downloadedMangaIds = downloadedMangaIds,
+                                sourceLanguagesByManga = state.sourceLanguagesByManga,
+                                showDownloadBadge = state.showDownloadBadge,
+                                showUnreadBadge = state.showUnreadBadge,
+                                showLocalBadge = state.showLocalBadge,
+                                showLanguageBadge = state.showLanguageBadge,
+                                showContinueReadingButton = state.showContinueReadingButton,
+                                localMangaIds = state.localMangaIds,
                                 onContextMenu = { item -> model.setContextMenuManga(item) },
                                 onItemClick = onItemPrimaryClick,
-                                onItemLongClick = { item -> selectionState.toggle(item.manga.id) },
-                                onContinueReading = { item ->
-                                    scope.launch {
-                                        val request = model.continueReadingRequest(item) ?: return@launch
-                                        navigator.push(
-                                            DesktopReaderScreen(
-                                                chapterTitle = request.chapterTitle,
-                                                mangaTitle = request.mangaTitle,
-                                                isWebtoon = false,
-                                                sourceId = request.sourceId,
-                                                chapterUrl = request.chapterUrl,
-                                                chapterId = request.chapterId,
-                                                mangaId = request.mangaId,
-                                                mangaViewerFlags = request.mangaViewerFlags,
-                                                chapters = request.chapters,
-                                                currentChapterIndex = request.currentChapterIndex,
-                                                initialPage = request.initialPage,
-                                            ),
-                                        )
-                                    }
-                                },
+                                onItemLongClick = { item -> selectionState.toggle(item.manga.id, selectedCategoryId) },
+                                onContinueReading = onContinueReading,
                             )
                         LibraryDisplayMode.LIST ->
                             LibraryList(
                                 items = displayedItems,
                                 selectionState = selectionState,
+                                downloadedMangaIds = downloadedMangaIds,
+                                sourceLanguagesByManga = state.sourceLanguagesByManga,
+                                showDownloadBadge = state.showDownloadBadge,
+                                showUnreadBadge = state.showUnreadBadge,
+                                showLocalBadge = state.showLocalBadge,
+                                showLanguageBadge = state.showLanguageBadge,
+                                showContinueReadingButton = state.showContinueReadingButton,
+                                localMangaIds = state.localMangaIds,
                                 onContextMenu = { item -> model.setContextMenuManga(item) },
                                 onItemClick = onItemPrimaryClick,
-                                onItemLongClick = { item -> selectionState.toggle(item.manga.id) },
+                                onItemLongClick = { item -> selectionState.toggle(item.manga.id, selectedCategoryId) },
+                                onContinueReading = onContinueReading,
+                            )
+                        LibraryDisplayMode.COVER_ONLY_GRID ->
+                            LibraryGrid(
+                                items = displayedItems,
+                                minCardWidth = 120.dp,
+                                coverOnly = true,
+                                portraitColumns = state.portraitColumns,
+                                landscapeColumns = state.landscapeColumns,
+                                selectionState = selectionState,
+                                downloadedMangaIds = downloadedMangaIds,
+                                sourceLanguagesByManga = state.sourceLanguagesByManga,
+                                showDownloadBadge = state.showDownloadBadge,
+                                showUnreadBadge = state.showUnreadBadge,
+                                showLocalBadge = state.showLocalBadge,
+                                showLanguageBadge = state.showLanguageBadge,
+                                showContinueReadingButton = state.showContinueReadingButton,
+                                localMangaIds = state.localMangaIds,
+                                onContextMenu = { item -> model.setContextMenuManga(item) },
+                                onItemClick = onItemPrimaryClick,
+                                onItemLongClick = { item -> selectionState.toggle(item.manga.id, selectedCategoryId) },
+                                onContinueReading = onContinueReading,
                             )
                     }
                 }
@@ -489,5 +642,19 @@ class LibraryRootScreen : Screen {
 /** Page-level projection keeps production UI on the ScreenModel's complete evaluation context. */
 internal fun libraryPageItems(model: LibraryScreenModel, categoryId: Long?): List<LibraryManga> =
     model.visibleItems(categoryId)
+
+private fun LibraryReaderRequest.toDesktopReaderScreen() = DesktopReaderScreen(
+    chapterTitle = chapterTitle,
+    mangaTitle = mangaTitle,
+    isWebtoon = false,
+    sourceId = sourceId,
+    chapterUrl = chapterUrl,
+    chapterId = chapterId,
+    mangaId = mangaId,
+    mangaViewerFlags = mangaViewerFlags,
+    chapters = chapters,
+    currentChapterIndex = currentChapterIndex,
+    initialPage = initialPage,
+)
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────

@@ -1,22 +1,19 @@
 package mihon.desktop.ui.library
 
-import androidx.compose.runtime.AbstractApplier
-import androidx.compose.runtime.BroadcastFrameClock
-import androidx.compose.runtime.Composition
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.Recomposer
+import androidx.compose.ui.ImageComposeScene
 import io.mockk.mockk
 import java.nio.file.Files
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
+import cafe.adriel.voyager.navigator.CurrentScreen
+import cafe.adriel.voyager.navigator.Navigator
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.fakes.FakeCategoryRepository
@@ -75,32 +72,29 @@ class LibraryPageCompositionTest {
             ),
         )
         var snapshot: LibraryPageSnapshot? = null
-        val frameClock = BroadcastFrameClock()
-        val recomposer = Recomposer(coroutineContext + frameClock)
-        var composition: Composition? = null
-        val recomposerJob = launch(frameClock, start = CoroutineStart.UNDISPATCHED) {
-            recomposer.runRecomposeAndApplyChanges()
-        }
         model.libraryMangaFlow().launchIn(backgroundScope)
         runCurrent()
 
-        fun render(frame: Long) {
-            composition?.dispose()
-            val nextComposition = Composition(UnitTestApplier(), recomposer)
-            composition = nextComposition
-            nextComposition.setContent {
-                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
-                    ProvideLibraryScreenModelFactory(factory = { model }) {
-                        ProvideLibraryPageProbe(probe = { snapshot = it }) {
-                            LibraryTab.Content()
-                        }
+        val scene = ImageComposeScene(1_200, 900, coroutineContext = coroutineContext)
+        scene.setContent {
+            CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                ProvideLibraryScreenModelFactory(factory = { model }) {
+                    ProvideLibraryPageProbe(probe = { snapshot = it }) {
+                        Navigator(LibraryRootScreen()) { CurrentScreen() }
                     }
                 }
             }
-            frameClock.sendFrame(frame)
         }
-        render(0L)
-        runCurrent()
+
+        suspend fun render() {
+            repeat(3) {
+                scene.render()
+                yield()
+                runCurrent()
+            }
+        }
+
+        render()
 
         assertEquals(emptySet<Long>(), snapshot?.availableTrackerIds)
         assertEquals(listOf(1L, 2L, 3L), model.state.value.allItems.map { it.id })
@@ -109,26 +103,20 @@ class LibraryPageCompositionTest {
         sessions.value = setOf(7L)
         runCurrent()
         model.toggleTrackingFilter(7L)
-        render(1L)
-        runCurrent()
+        render()
         assertEquals(setOf(7L), snapshot?.availableTrackerIds)
         assertEquals(listOf(3L), snapshot?.visibleItemIds)
 
         sessions.value = emptySet()
-        runCurrent()
-        render(2L)
-        runCurrent()
+        render()
         assertEquals(emptySet<Long>(), snapshot?.availableTrackerIds)
         assertEquals(listOf(3L), snapshot?.visibleItemIds)
 
         model.setFilter(LibraryFilter(downloaded = TriState.ENABLED_IS))
-        render(3L)
-        runCurrent()
+        render()
         assertEquals(listOf(1L, 2L), snapshot?.visibleItemIds)
 
-        composition?.dispose()
-        recomposer.close()
-        recomposerJob.cancelAndJoin()
+        scene.close()
     }
 
     private fun sampleManga(id: Long, title: String, source: Long) = Manga.create().copy(
@@ -177,11 +165,4 @@ class LibraryPageCompositionTest {
         override suspend fun insertAll(tracks: List<Track>) = Unit
     }
 
-    private class UnitTestApplier : AbstractApplier<Unit>(Unit) {
-        override fun insertBottomUp(index: Int, instance: Unit) = Unit
-        override fun insertTopDown(index: Int, instance: Unit) = Unit
-        override fun move(from: Int, to: Int, count: Int) = Unit
-        override fun onClear() = Unit
-        override fun remove(index: Int, count: Int) = Unit
-    }
 }

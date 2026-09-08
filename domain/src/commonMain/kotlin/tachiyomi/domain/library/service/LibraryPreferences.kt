@@ -94,6 +94,17 @@ class LibraryPreferences(
         TriState.DISABLED,
     )
 
+    /**
+     * Restricts every library view to manga with downloaded chapters.
+     *
+     * This is application state rather than a backup preference, matching the
+     * Android BasePreferences key used by the library evaluator.
+     */
+    fun downloadedOnly() = preferenceStore.getBoolean(
+        Preference.appStateKey("pref_downloaded_only"),
+        false,
+    )
+
     // endregion
 
     // region Badges

@@ -12,6 +12,7 @@ class FakeChapterRepository : ChapterRepository {
     private var nextId = 1L
     val addedChapters = mutableListOf<Chapter>()
     val updates = mutableListOf<ChapterUpdate>()
+    var failUpdates = false
 
     fun seed(chapter: Chapter) {
         store[chapter.id] = chapter
@@ -29,6 +30,7 @@ class FakeChapterRepository : ChapterRepository {
     }
 
     override suspend fun update(chapterUpdate: ChapterUpdate) {
+        if (failUpdates) error("chapter update failed")
         updates += chapterUpdate
         val existing = store[chapterUpdate.id] ?: return
         store[chapterUpdate.id] = existing.copy(

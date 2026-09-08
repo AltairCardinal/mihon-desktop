@@ -78,7 +78,7 @@ class LibraryUpdateScheduler(
         requireNotNull(initialRecoveryJob)
     }
 
-    fun runNow(): Job = synchronized(updateLock) {
+    fun runNow(categoryId: Long? = null): Job = synchronized(updateLock) {
         updateJob?.takeIf { it.isActive }?.let { return@synchronized it }
         val existing = taskSnapshot()
         val task = if (existing?.status in setOf(TaskStatus.Completed, TaskStatus.Failed, TaskStatus.Cancelled)) {
@@ -88,7 +88,7 @@ class LibraryUpdateScheduler(
         }
         taskScheduler?.register(task)
         taskScheduler?.start(LIBRARY_UPDATE_TASK.id)
-        scope.launch(start = CoroutineStart.LAZY) { runLibraryUpdate() }.also {
+        scope.launch(start = CoroutineStart.LAZY) { runLibraryUpdate(categoryId) }.also {
             updateJob = it
             it.start()
         }
@@ -131,10 +131,11 @@ class LibraryUpdateScheduler(
 
     private fun parseCategoryIds(raw: String) = raw.split(',').mapNotNull { it.trim().toLongOrNull() }.toSet()
 
-    private suspend fun runLibraryUpdate() {
+    private suspend fun runLibraryUpdate(categoryId: Long?) {
         try {
             val allManga = libraryProvider?.invoke() ?: requireNotNull(getLibraryManga).await()
-            val filtered = filterLibrary(allManga)
+            val scoped = categoryId?.let { id -> allManga.filter { id in it.categories } } ?: allManga
+            val filtered = filterLibrary(scoped)
             taskScheduler?.setWorkset(LIBRARY_UPDATE_TASK.id, filtered.map { it.manga.id })
             val snapshot = taskSnapshot()
             val completedIds = snapshot?.completedUnitIds.orEmpty()

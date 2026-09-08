@@ -112,6 +112,7 @@ import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.release.interactor.GetApplicationRelease
 import tachiyomi.domain.release.model.Release
 import tachiyomi.domain.track.model.Track
@@ -1054,6 +1055,7 @@ class DesktopSettingsResourceIdentityTest {
             every { downloadQueuePort } returns downloads
             every { getCategories } returns categoryLoader
             every { creatorDiscoveryScheduler } returns null
+            every { libraryPreferences } returns LibraryPreferences(InMemoryPreferenceStore())
         }
         val previousLocale = Locale.getDefault()
         try {

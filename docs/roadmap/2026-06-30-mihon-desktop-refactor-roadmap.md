@@ -4,7 +4,7 @@
 
 正式版日期：2026-06-30
 
-- active-child-plan: `none`（Reader 上游语义与下载目录/partial 阅读两份 child plan 已于 2026-09-02 完成）
+- active-child-plan: [`2026-09-08-desktop-library-interaction-parity-roadmap.md`](./2026-09-08-desktop-library-interaction-parity-roadmap.md)（LI-01～LI-08 已完成；LI-09 等待 macOS 同一 diff 的正式构建/运行证据）
 
 ## 0. 产品路线
 
@@ -290,10 +290,13 @@
 目标：在 macOS/Desktop 主线稳定后补齐长期体验，不阻塞当前核心重构。
 [`Reader 上游语义计划`](./2026-08-27-desktop-reader-upstream-semantics-adapter-refactor-roadmap.md)与
 [`下载目录设置及 partial 阅读计划`](./2026-08-30-desktop-download-directory-and-partial-reading-plan.md)已由后者的
-`CLOSE-01` 严格超集证据在 2026-09-02 一并关闭；当前没有 active child plan。Windows 同机报告在保留原始失败状态和
+`CLOSE-01` 严格超集证据在 2026-09-02 一并关闭；Reader/下载目录 child plan 当前没有 active child plan。Windows 同机报告在保留原始失败状态和
 锁屏归因的前提下通过最终组合裁决，详情见
 [`性能报告`](./2026-09-02-desktop-download-directory-and-partial-reading-performance-report.md)。non-reader upstream core 与
 作者归档计划继续保持暂停；下表保留其余 Phase R backlog。
+
+书架交互对齐 child plan 已在 2026-09-08 接管当前执行指针；LI-01～LI-08 已完成，LI-09 因 macOS 宿主未提供
+本次同一 diff 的正式发布/运行证据保持阻塞，不能用 Windows 结果替代。
 
 | ID | 状态 | 优先级 | 平台 | 任务 | 用户可见变化 | 验收 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -393,9 +396,9 @@
 | --- | --- |
 | 产品路线 | 已确认：当前以 macOS `app-desktop` 为主线；Android 原版 Mihon 和 Windows 发布化进入延期队列 |
 | 正式 roadmap | 已建立 |
-| 进度追踪表 | 已建立，W1-01/W1-02/W1-03/W1-04a/W1-04b/W2-01/W2-02/W2-03/W3-01/W3-02/W3-04/W3-05/W3-06、XW-01、XW-03 已关闭并记录验证证据 |
+| 进度追踪表 | 已建立；W1-01/W1-02/W1-03/W1-04a/W1-04b/W2-01/W2-02/W2-03/W3-01/W3-02/W3-04/W3-05/W3-06、XW-01、XW-03 已关闭；书架 child plan 的 LI-01～LI-08 已关闭，LI-09 因 macOS 同一 diff 证据缺失保持 BLOCKED |
 | 技术债台账 | TD-01 至 TD-09 已偿还到 `PAID`；TD-10 Android 合并边界已由 Phase X 延期队列继续约束 |
-| 下一步建议 | Windows 已可构建 MSI；下一步按 XW-02 处理安装、升级、卸载和用户数据保留验收，Android 构建发布继续按 Phase X 独立处理 |
+| 下一步建议 | 先在与本次工作树一致的 macOS checkout 完成 LI-09 构建/运行补验；随后按 XW-02 处理安装、升级、卸载和用户数据保留验收，Android 构建发布继续按 Phase X 独立处理 |
 
 ## 17. 不建议事项
 

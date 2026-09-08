@@ -15,6 +15,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -49,6 +50,7 @@ class LibrarySettingsScreen : Screen {
         val navigator = LocalNavigator.currentOrThrow
         val prefs = LocalDesktopUiDependencies.current.appPreferences
         val getCategories = LocalDesktopUiDependencies.current.getCategories
+        val libraryPreferences = LocalDesktopUiDependencies.current.libraryPreferences
         val updateInterval by prefs.libraryUpdateInterval.changes().collectAsState(
             initial = prefs.libraryUpdateInterval.get(),
         )
@@ -62,11 +64,29 @@ class LibrarySettingsScreen : Screen {
                     .split(",").mapNotNull { it.trim().toLongOrNull() }.toSet(),
             )
         }
+        var showDownloadBadge by remember { mutableStateOf(libraryPreferences?.downloadBadge()?.get() ?: false) }
+        var showUnreadBadge by remember { mutableStateOf(libraryPreferences?.unreadBadge()?.get() ?: true) }
+        var showLocalBadge by remember { mutableStateOf(libraryPreferences?.localBadge()?.get() ?: true) }
+        var showLanguageBadge by remember { mutableStateOf(libraryPreferences?.languageBadge()?.get() ?: false) }
+        var showContinueReading by remember {
+            mutableStateOf(libraryPreferences?.showContinueReadingButton()?.get() ?: false)
+        }
+        var showCategoryTabs by remember { mutableStateOf(libraryPreferences?.categoryTabs()?.get() ?: true) }
+        var showCategoryCounts by remember {
+            mutableStateOf(libraryPreferences?.categoryNumberOfItems()?.get() ?: false)
+        }
+        var categorizedDisplaySettings by remember {
+            mutableStateOf(libraryPreferences?.categorizedDisplaySettings()?.get() ?: false)
+        }
+        var portraitColumns by remember { mutableStateOf(libraryPreferences?.portraitColumns()?.get()?.coerceIn(0, 10) ?: 0) }
+        var landscapeColumns by remember {
+            mutableStateOf(libraryPreferences?.landscapeColumns()?.get()?.coerceIn(0, 10) ?: 0)
+        }
         val updateTitle = MR.strings.pref_category_library_update.localized()
         val displayTitle = MR.strings.pref_category_display.localized()
 
         LaunchedEffect(Unit) {
-            categories = getCategories.await()
+            categories = getCategories.await().filterNot(Category::isSystemCategory)
         }
 
         Scaffold(
@@ -146,6 +166,97 @@ class LibrarySettingsScreen : Screen {
                     title = missingChapterIndicatorItem.title,
                     checked = missingChapterIndicatorItem.checked,
                     onCheckedChange = missingChapterIndicatorItem.onCheckedChange,
+                )
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                Text(
+                    text = MR.strings.action_display_mode.localized(),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                Text(
+                    text = "${MR.strings.pref_library_columns.localized()} (portrait): " +
+                        (portraitColumns.takeIf { it > 0 }?.toString() ?: MR.strings.label_auto.localized()),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+                Slider(
+                    value = portraitColumns.toFloat(),
+                    onValueChange = { value ->
+                        portraitColumns = value.toInt()
+                        libraryPreferences?.portraitColumns()?.set(portraitColumns)
+                    },
+                    valueRange = 0f..10f,
+                    steps = 9,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+                Text(
+                    text = "${MR.strings.pref_library_columns.localized()} (landscape): " +
+                        (landscapeColumns.takeIf { it > 0 }?.toString() ?: MR.strings.label_auto.localized()),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+                Slider(
+                    value = landscapeColumns.toFloat(),
+                    onValueChange = { value ->
+                        landscapeColumns = value.toInt()
+                        libraryPreferences?.landscapeColumns()?.set(landscapeColumns)
+                    },
+                    valueRange = 0f..10f,
+                    steps = 9,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+                listOf(
+                    Triple(MR.strings.action_display_download_badge.localized(), showDownloadBadge) { checked: Boolean ->
+                        showDownloadBadge = checked
+                        libraryPreferences?.downloadBadge()?.set(checked)
+                        Unit
+                    },
+                    Triple(MR.strings.action_display_unread_badge.localized(), showUnreadBadge) { checked: Boolean ->
+                        showUnreadBadge = checked
+                        libraryPreferences?.unreadBadge()?.set(checked)
+                        Unit
+                    },
+                    Triple(MR.strings.action_display_local_badge.localized(), showLocalBadge) { checked: Boolean ->
+                        showLocalBadge = checked
+                        libraryPreferences?.localBadge()?.set(checked)
+                        Unit
+                    },
+                    Triple(MR.strings.action_display_language_badge.localized(), showLanguageBadge) { checked: Boolean ->
+                        showLanguageBadge = checked
+                        libraryPreferences?.languageBadge()?.set(checked)
+                        Unit
+                    },
+                    Triple(MR.strings.action_display_show_continue_reading_button.localized(), showContinueReading) { checked: Boolean ->
+                        showContinueReading = checked
+                        libraryPreferences?.showContinueReadingButton()?.set(checked)
+                        Unit
+                    },
+                ).forEach { (title, checked, onCheckedChange) ->
+                    CheckboxSettingsRow(title, checked, onCheckedChange)
+                }
+                CheckboxSettingsRow(
+                    title = MR.strings.action_display_show_tabs.localized(),
+                    checked = showCategoryTabs,
+                    onCheckedChange = { checked ->
+                        showCategoryTabs = checked
+                        libraryPreferences?.categoryTabs()?.set(checked)
+                    },
+                )
+                CheckboxSettingsRow(
+                    title = MR.strings.action_display_show_number_of_items.localized(),
+                    checked = showCategoryCounts,
+                    onCheckedChange = { checked ->
+                        showCategoryCounts = checked
+                        libraryPreferences?.categoryNumberOfItems()?.set(checked)
+                    },
+                )
+                CheckboxSettingsRow(
+                    title = MR.strings.categorized_display_settings.localized(),
+                    checked = categorizedDisplaySettings,
+                    onCheckedChange = { checked ->
+                        categorizedDisplaySettings = checked
+                        libraryPreferences?.categorizedDisplaySettings()?.set(checked)
+                    },
                 )
 
                 if (categories.isNotEmpty()) {

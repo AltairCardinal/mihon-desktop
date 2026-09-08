@@ -61,6 +61,7 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.i18n.MR
 import java.util.Locale
 import kotlin.coroutines.CoroutineContext
@@ -539,6 +540,7 @@ class DesktopSettingsSearchWiringTest {
             every { networkHelper } returns network
             every { networkRoutingPort } returns network
             every { creatorDiscoveryScheduler } returns null
+            every { libraryPreferences } returns LibraryPreferences(InMemoryPreferenceStore())
         }
         CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies, content = content)
     }

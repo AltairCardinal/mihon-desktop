@@ -11,13 +11,18 @@ import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DesktopDownloadIdentityResolver
+import mihon.desktop.download.DownloadStatus
 import mihon.desktop.settings.LibraryCategoryPrefs
+import mihon.desktop.domain.DesktopCustomCoverStore
 import mihon.desktop.ui.library.LibraryScreenModel
 import tachiyomi.domain.category.interactor.SetMangaCategories
+import tachiyomi.domain.category.interactor.SetDisplayMode
+import tachiyomi.domain.category.interactor.SetSortModeForCategory
 import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
 import tachiyomi.domain.chapter.interactor.UpdateChapter
+import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.history.interactor.GetNextChapters
 import tachiyomi.domain.manga.interactor.UpdateManga
@@ -65,8 +70,65 @@ object LibraryScreenModelFactory {
             getTracksPerManga = Injekt.get<GetTracksPerManga>(),
             trackerSessionProvider = Injekt.get<TrackerSessionProvider>(),
             startBackgroundUpdate = updateScheduler::runNow,
+            startScopedBackgroundUpdate = updateScheduler::runNow,
             cancelBackgroundUpdate = updateScheduler::cancelUpdate,
             backgroundUpdateStatus = { updateScheduler.taskSnapshot()?.status },
+            libraryPreferences = runCatching { Injekt.get<tachiyomi.domain.library.service.LibraryPreferences>() }.getOrNull(),
+            setDisplayModeInteractor = runCatching { Injekt.get<SetDisplayMode>() }.getOrNull(),
+            setSortModeForCategory = runCatching { Injekt.get<SetSortModeForCategory>() }.getOrNull(),
+            downloadedChapterCount = if (downloadProvider != null && downloadIdentityResolver != null) {
+                { item ->
+                    downloadProvider.downloadedChapterCount(
+                        item.manga.source,
+                        downloadIdentityResolver.resolve(item.manga),
+                    ).toLong()
+                }
+            } else {
+                null
+            },
+            deleteMangaDownloads = if (downloadProvider != null && downloadIdentityResolver != null) {
+                { item ->
+                    downloadProvider.deleteMangaDownloads(
+                        item.manga.source,
+                        item.manga.title,
+                        downloadIdentityResolver.resolve(item.manga),
+                    )
+                }
+            } else {
+                null
+            },
+            deleteCustomCover = runCatching { Injekt.get<DesktopCustomCoverStore>() }
+                .getOrNull()
+                ?.let { store -> store::deleteCustomCover },
+            sharedDownloadPreferences = runCatching { Injekt.get<DownloadPreferences>() }.getOrNull(),
+            deleteChapterDownload = if (downloadProvider != null && downloadIdentityResolver != null) {
+                { item, chapter ->
+                    downloadProvider.deleteChapterDownload(
+                        item.manga.source,
+                        downloadIdentityResolver.resolve(item.manga, chapter),
+                    )
+                }
+            } else {
+                null
+            },
+            isChapterDownloaded = if (downloadProvider != null && downloadIdentityResolver != null) {
+                { item, chapter ->
+                    downloadProvider.isChapterDownloaded(
+                        item.manga.source,
+                        downloadIdentityResolver.resolve(item.manga, chapter),
+                    )
+                }
+            } else {
+                null
+            },
+            isChapterQueued = downloadManager?.let { manager ->
+                { chapter ->
+                    manager.queue.value.any { item ->
+                        item.chapterId == chapter.id &&
+                            item.status in setOf(DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING)
+                    }
+                }
+            },
         )
     }
 }
