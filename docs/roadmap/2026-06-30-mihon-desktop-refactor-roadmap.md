@@ -4,7 +4,7 @@
 
 正式版日期：2026-06-30
 
-- active-child-plan: [`2026-09-08-desktop-library-interaction-parity-roadmap.md`](./2026-09-08-desktop-library-interaction-parity-roadmap.md)（复审重开书架交互缺口；补齐行为验收后执行 LI-09）
+- active-child-plan: [`2026-09-08-desktop-library-interaction-parity-roadmap.md`](./2026-09-08-desktop-library-interaction-parity-roadmap.md)（书架补修 5 批已提交 3 批，接下来修复批量生命周期与下载清理；全部补修后执行 LI-09 双平台发布收口，详见子计划顶部进度区）
 
 ## 0. 产品路线
 

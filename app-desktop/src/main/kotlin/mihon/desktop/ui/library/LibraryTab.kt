@@ -240,6 +240,7 @@ class LibraryRootScreen : Screen {
         val batchCategoryResultMessage = state.batchCategoryResultMessage
         val operationFeedback = state.operationFeedback
         var removalTarget by remember { mutableStateOf<List<LibraryManga>?>(null) }
+        var batchCategoryTarget by remember { mutableStateOf<List<Long>?>(null) }
 
         LaunchedEffect(Unit) {
             launch { model.libraryMangaFlow().collect {} }
@@ -377,22 +378,31 @@ class LibraryRootScreen : Screen {
 
         // Batch category assignment dialog
         if (showBatchCategoryDialog) {
+            val targetIds = batchCategoryTarget.orEmpty()
             BatchCategoryDialog(
                 categories = categories,
-                selectedMangaIds = selectionState.selectedIds.toList(),
+                selectedMangaIds = targetIds,
                 loadCategoryIds = model::categoryIdsForManga,
                 onConfirm = { delta ->
+                    model.setShowBatchCategoryDialog(false)
+                    batchCategoryTarget = null
+                    selectionState.clear()
                     scope.launch {
                         model.updateCategoriesForManga(
-                            mangaIds = selectionState.selectedIds.toList(),
+                            mangaIds = targetIds,
                             addCategoryIds = delta.addCategoryIds,
                             removeCategoryIds = delta.removeCategoryIds,
                         )
-                        model.setShowBatchCategoryDialog(false)
-                        selectionState.clear()
                     }
                 },
-                onDismiss = { model.setShowBatchCategoryDialog(false) },
+                onDismiss = {
+                    model.setShowBatchCategoryDialog(false)
+                    batchCategoryTarget = null
+                },
+                onEditCategories = {
+                    selectionState.clear()
+                    model.setShowCategoryDialog(true)
+                },
             )
         }
 
@@ -407,7 +417,10 @@ class LibraryRootScreen : Screen {
                         actions = selectionActions,
                         canDownload = remoteSelection,
                         canMigrate = selectedItems.isNotEmpty(),
-                        onSetCategories = { model.setShowBatchCategoryDialog(true) },
+                        onSetCategories = {
+                            batchCategoryTarget = selectionState.selectedIds.toList()
+                            model.setShowBatchCategoryDialog(true)
+                        },
                         onMarkRead = {
                             clearSelectionBeforeAsync(
                                 selectedIds = selectionState.selectedIds,

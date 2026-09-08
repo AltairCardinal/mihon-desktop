@@ -962,17 +962,26 @@ class LibraryScreenModel(
         val succeeded = mutableListOf<Long>()
         val failures = mutableListOf<SetMangaCategories.BatchFailure>()
         mangaIds.forEach { mangaId ->
-            val current = getCategories?.invoke(mangaId)
-                ?: requireNotNull(this.getCategories) { "GetCategories is required" }.await(mangaId).map { it.id }.toSet()
-            val target = applyLibraryCategoryDelta(
-                currentCategoryIds = current,
-                addCategoryIds = addCategoryIds,
-                removeCategoryIds = removeCategoryIds,
-            )
-            when (val result = setter.awaitResult(mangaId, target)) {
-                SetMangaCategories.Result.Success -> succeeded += mangaId
-                is SetMangaCategories.Result.InternalError -> failures +=
-                    SetMangaCategories.BatchFailure(mangaId, result.error)
+            try {
+                val current = getCategories?.invoke(mangaId)
+                    ?: requireNotNull(this.getCategories) { "GetCategories is required" }
+                        .await(mangaId)
+                        .map { it.id }
+                        .toSet()
+                val target = applyLibraryCategoryDelta(
+                    currentCategoryIds = current,
+                    addCategoryIds = addCategoryIds,
+                    removeCategoryIds = removeCategoryIds,
+                )
+                when (val result = setter.awaitResult(mangaId, target)) {
+                    SetMangaCategories.Result.Success -> succeeded += mangaId
+                    is SetMangaCategories.Result.InternalError -> failures +=
+                        SetMangaCategories.BatchFailure(mangaId, result.error)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                failures += SetMangaCategories.BatchFailure(mangaId, error)
             }
         }
         publishCategoryBatchResult(SetMangaCategories.BatchResult(succeeded, failures))

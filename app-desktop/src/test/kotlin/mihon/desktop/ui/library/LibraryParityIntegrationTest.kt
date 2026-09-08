@@ -242,6 +242,30 @@ class LibraryParityIntegrationTest {
     }
 
     @Test
+    fun `library model reports category read failure and continues the frozen target set`() = runTest {
+        val repository = FakeMangaRepository()
+        val current = mapOf(1L to setOf(1L), 2L to setOf(1L), 3L to setOf(2L))
+        val model = LibraryScreenModel(
+            setMangaCategories = SetMangaCategories(repository),
+            getCategoryIdsForManga = { mangaId ->
+                if (mangaId == 2L) error("category read failed")
+                current.getValue(mangaId)
+            },
+        )
+
+        model.updateCategoriesForManga(
+            mangaIds = listOf(1L, 2L, 3L),
+            addCategoryIds = setOf(3L),
+            removeCategoryIds = emptySet(),
+        )
+
+        assertEquals(listOf(1L, 3L), repository.getMangaCategoryIds(1L).sorted())
+        assertTrue(repository.getMangaCategoryIds(2L).isEmpty())
+        assertEquals(listOf(2L, 3L), repository.getMangaCategoryIds(3L).sorted())
+        assertEquals("2 updated, 1 failed", model.state.value.batchCategoryResultMessage)
+    }
+
+    @Test
     @OptIn(ExperimentalComposeUiApi::class)
     fun `refresh menu separates current category and full library actions`() {
         var currentRefreshes = 0

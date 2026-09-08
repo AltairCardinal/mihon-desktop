@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.migration.BatchMigrationOptions
@@ -58,6 +59,8 @@ data class LibraryBatchMigrationConfigScreen(
         var copyChapters by remember { mutableStateOf(true) }
         var copyCategories by remember { mutableStateOf(true) }
         var copyNotes by remember { mutableStateOf(true) }
+        var submissionStarted by remember { mutableStateOf(false) }
+        var submissionError by remember { mutableStateOf(false) }
 
         Scaffold(
             contentWindowInsets = WindowInsets(0),
@@ -99,6 +102,7 @@ data class LibraryBatchMigrationConfigScreen(
                     checked = copyNotes,
                     onCheckedChange = { copyNotes = it },
                 )
+                if (submissionError) Text(MR.strings.internal_error.localized())
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
@@ -107,18 +111,30 @@ data class LibraryBatchMigrationConfigScreen(
                         Text(MR.strings.action_cancel.localized())
                     }
                     Button(
-                        enabled = selectedManga.isNotEmpty(),
+                        enabled = selectedManga.isNotEmpty() && !submissionStarted,
                         onClick = {
+                            if (submissionStarted) return@Button
+                            submissionStarted = true
+                            submissionError = false
+                            val requests = selectedManga.toList()
+                            val options = BatchMigrationOptions(
+                                copyChapters = copyChapters,
+                                copyCategories = copyCategories,
+                                copyNotes = copyNotes,
+                            )
                             scope.launch {
-                                val queueId = controller.submit(
-                                    requests = selectedManga,
-                                    defaultOptions = BatchMigrationOptions(
-                                        copyChapters = copyChapters,
-                                        copyCategories = copyCategories,
-                                        copyNotes = copyNotes,
-                                    ),
-                                )
-                                navigator.replace(MigrationBatchQueueScreen(queueId))
+                                try {
+                                    val queueId = controller.submit(
+                                        requests = requests,
+                                        defaultOptions = options,
+                                    )
+                                    navigator.replace(MigrationBatchQueueScreen(queueId))
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (error: Exception) {
+                                    submissionStarted = false
+                                    submissionError = true
+                                }
                             }
                         },
                     ) {

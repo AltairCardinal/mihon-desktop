@@ -104,6 +104,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.LibrarySearchFilter
 import mihon.desktop.ui.library.pickRandomMangaId
@@ -115,6 +116,7 @@ import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.interactor.LibraryFilter
 import tachiyomi.domain.library.projectLibraryBadges
+import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.TriState
 
 @Composable
@@ -1074,32 +1076,45 @@ internal fun BatchCategoryDialog(
     loadCategoryIds: suspend (Long) -> Set<Long>,
     onConfirm: (LibraryCategoryDelta) -> Unit,
     onDismiss: () -> Unit,
+    onEditCategories: () -> Unit = {},
 ) {
-    val selectableCategories = categories.filterNot(Category::isSystemCategory)
-    var currentCategoryIdsByManga by remember { mutableStateOf<Map<Long, Set<Long>>>(emptyMap()) }
-    var desiredStates by remember { mutableStateOf<Map<Long, LibraryCategorySelection>>(emptyMap()) }
-    var loaded by remember { mutableStateOf(false) }
+    val selectableCategories = remember { categories.filterNot(Category::isSystemCategory) }
+    val targetMangaIds = remember { selectedMangaIds.toList() }
+    var currentCategoryIdsByManga by remember { mutableStateOf<Map<Long, Set<Long>>?>(null) }
+    var desiredStates by remember { mutableStateOf<List<CheckboxState<Category>>>(emptyList()) }
+    var loadFailed by remember { mutableStateOf(false) }
 
-    LaunchedEffect(selectedMangaIds, selectableCategories) {
-        loaded = false
-        val current = selectedMangaIds.associateWith { loadCategoryIds(it) }
-        currentCategoryIdsByManga = current
-        desiredStates = initialLibraryCategorySelections(selectableCategories, current)
-        loaded = true
+    LaunchedEffect(Unit) {
+        try {
+            val current = targetMangaIds.associateWith { loadCategoryIds(it) }
+            currentCategoryIdsByManga = current
+            val initial = initialLibraryCategorySelections(selectableCategories, current)
+            desiredStates = selectableCategories.map { category ->
+                when (initial.getValue(category.id)) {
+                    LibraryCategorySelection.NONE -> CheckboxState.State.None(category)
+                    LibraryCategorySelection.ALL -> CheckboxState.State.Checked(category)
+                    LibraryCategorySelection.MIXED -> CheckboxState.TriState.Exclude(category)
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            loadFailed = true
+        }
     }
-
-    if (!loaded) return
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(MR.strings.action_move_category.localized()) },
         text = {
-            if (selectableCategories.isEmpty()) {
-                Text(MR.strings.desktop_ui_no_categories_create_categories_first.localized())
-            } else {
-                Column {
-                    selectableCategories.forEach { cat ->
-                        val state = desiredStates[cat.id] ?: LibraryCategorySelection.NONE
+            when {
+                loadFailed -> Text(MR.strings.internal_error.localized())
+                currentCategoryIdsByManga == null -> CircularProgressIndicator()
+                selectableCategories.isEmpty() -> {
+                    Text(MR.strings.desktop_ui_no_categories_create_categories_first.localized())
+                }
+                else -> Column {
+                    desiredStates.forEach { checkbox ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1107,21 +1122,22 @@ internal fun BatchCategoryDialog(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             TriStateCheckbox(
-                                state = when (state) {
-                                    LibraryCategorySelection.NONE -> ToggleableState.Off
-                                    LibraryCategorySelection.ALL -> ToggleableState.On
-                                    LibraryCategorySelection.MIXED -> ToggleableState.Indeterminate
+                                state = when (checkbox) {
+                                    is CheckboxState.State.Checked,
+                                    is CheckboxState.TriState.Include,
+                                    -> ToggleableState.On
+                                    is CheckboxState.State.None,
+                                    is CheckboxState.TriState.None,
+                                    -> ToggleableState.Off
+                                    is CheckboxState.TriState.Exclude -> ToggleableState.Indeterminate
                                 },
                                 onClick = {
-                                    desiredStates = desiredStates + (cat.id to when (state) {
-                                        LibraryCategorySelection.NONE,
-                                        LibraryCategorySelection.MIXED,
-                                        -> LibraryCategorySelection.ALL
-                                        LibraryCategorySelection.ALL -> LibraryCategorySelection.NONE
-                                    })
+                                    desiredStates = desiredStates.map { current ->
+                                        if (current.value.id == checkbox.value.id) current.next() else current
+                                    }
                                 },
                             )
-                            Text(cat.name, modifier = Modifier.padding(start = 8.dp))
+                            Text(checkbox.value.name, modifier = Modifier.padding(start = 8.dp))
                         }
                     }
                 }
@@ -1129,13 +1145,26 @@ internal fun BatchCategoryDialog(
         },
         confirmButton = {
             TextButton(
+                enabled = currentCategoryIdsByManga != null && !loadFailed && selectableCategories.isNotEmpty(),
                 onClick = {
-                    onConfirm(libraryCategoryDelta(currentCategoryIdsByManga, desiredStates))
+                    val add = desiredStates.filter {
+                        it is CheckboxState.State.Checked || it is CheckboxState.TriState.Include
+                    }.mapTo(mutableSetOf()) { it.value.id }
+                    val remove = desiredStates.filter {
+                        it is CheckboxState.State.None || it is CheckboxState.TriState.None
+                    }.mapTo(mutableSetOf()) { it.value.id }
+                    onConfirm(LibraryCategoryDelta(add, remove))
                 },
             ) { Text(MR.strings.action_ok.localized()) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
+            Row {
+                TextButton(onClick = {
+                    onDismiss()
+                    onEditCategories()
+                }) { Text(MR.strings.action_edit_categories.localized()) }
+                TextButton(onClick = onDismiss) { Text(MR.strings.action_cancel.localized()) }
+            }
         },
     )
 }
