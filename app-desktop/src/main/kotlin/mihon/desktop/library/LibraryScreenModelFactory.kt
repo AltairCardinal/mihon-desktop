@@ -76,6 +76,7 @@ object LibraryScreenModelFactory {
             startScopedBackgroundUpdate = updateScheduler::runNow,
             cancelBackgroundUpdate = updateScheduler::cancelUpdate,
             backgroundUpdateStatus = { updateScheduler.taskSnapshot()?.status },
+            backgroundUpdateJob = updateScheduler::currentUpdateJob,
             libraryPreferences = runCatching { Injekt.get<tachiyomi.domain.library.service.LibraryPreferences>() }.getOrNull(),
             setDisplayModeInteractor = runCatching { Injekt.get<SetDisplayMode>() }.getOrNull(),
             setSortModeForCategory = runCatching { Injekt.get<SetSortModeForCategory>() }.getOrNull(),

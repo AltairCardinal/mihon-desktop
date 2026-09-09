@@ -86,6 +86,8 @@ class LibraryUpdateSchedulerTest {
 
     @Test
     fun `manual update can be scoped to the active library category`() = runTest {
+        prefs.updateCategoryIncludes.set("2")
+        prefs.updateCategoryExcludes.set("1")
         val first = Manga.create().copy(id = 10L, title = "First", favorite = true)
         val second = Manga.create().copy(id = 20L, title = "Second", favorite = true)
         val updated = mutableListOf<Long>()
@@ -110,6 +112,34 @@ class LibraryUpdateSchedulerTest {
         scheduler.runNow(categoryId = 1L).join()
 
         assertEquals(listOf(10L), updated)
+    }
+
+    @Test
+    fun `actual update job is exposed only while the occurrence is active`() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val scheduler = LibraryUpdateScheduler(
+            appPreferences = prefs,
+            updateChecker = null,
+            getLibraryManga = null,
+            sourceManager = null,
+            scope = backgroundScope,
+            libraryProvider = { listOf(LibraryManga(Manga.create().copy(id = 1), listOf(0), 0, 0, 0, 0, 0, 0)) },
+            updateManga = {
+                entered.complete(Unit)
+                release.await()
+                LibraryUpdateChecker.UpdateResult(0)
+            },
+        )
+
+        val first = scheduler.runNow()
+        entered.await()
+        assertSame(first, scheduler.currentUpdateJob())
+        assertSame(first, scheduler.runNow())
+        release.complete(Unit)
+        first.join()
+        assertEquals(null, scheduler.currentUpdateJob())
+        assertTrue(scheduler.runNow() !== first)
     }
 
     @Test

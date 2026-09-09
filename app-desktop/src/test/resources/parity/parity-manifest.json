@@ -3134,7 +3134,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
           "symbol": "class LibraryUpdateJob",
-          "line": 87
+          "line": 88
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -4144,7 +4144,9 @@
       "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/migration/DesktopBatchMigrationControllerTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/di/DesktopDiWiringTest.kt",
+      "domain/src/commonTest/kotlin/tachiyomi/domain/library/service/LibraryUpdateScopeTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt"
     ],
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/task/DesktopTaskSchedulerIntegrationTest.kt": [
@@ -4153,7 +4155,8 @@
     },
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
-    "targetVersion": "TBD"
+    "targetVersion": "TBD",
+    "verificationScope": "The Library interaction repair shares selectLibraryMangaForUpdate between the real Android LibraryUpdateJob and Desktop LibraryUpdateScheduler: explicit categories bypass whole-library include/exclude, while whole-library exclusion wins (including default category 0). Real Root -> factory -> scheduler fixtures cover search-independent scope, duplicate requests, detail navigation/return and actual job completion; persisted stale Running is not treated as an active occurrence. The existing executor, automatic device restrictions, scheduling and migration gaps remain under LU-01 and are not promoted by this manual-entry repair. Final repair release acceptance remains pending."
   },
   {
     "id": 11,
@@ -4213,7 +4216,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 999
+          "line": 1005
         }
       ],
       "FIXTURE": [
@@ -5365,7 +5368,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "private val createCategory",
-          "line": 93
+          "line": 92
         }
       ],
       "FIXTURE": [
@@ -5993,13 +5996,13 @@
                 "FEEDBACK"
               ],
               "migrationTag": "SHARE-DIRECT",
-              "implementationStatus": "PARTIAL",
+              "implementationStatus": "PRESENT",
               "risk": "DESTRUCTIVE",
               "confirmation": {
                 "policy": "REQUIRED",
                 "reason": "This destructive action must be confirmed before user data is changed."
               },
-              "followUpTask": "LB-01",
+              "followUpTask": "NONE",
               "provenance": {
                 "fixedOriginal": {
                   "status": "PRESENT",
@@ -6164,8 +6167,7 @@
               "sourceGraph": {
                 "status": "PENDING_NR0-01.G",
                 "sourceEntryIds": []
-              },
-              "missingBehavior": "Desktop must add a confirmation dialog before category deletion."
+              }
             }
           ]
         }
@@ -6216,7 +6218,7 @@
     },
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "additionalBehaviorVerificationTask": ":app:testReleaseUnitTest --tests \"eu.kanade.tachiyomi.ui.category.CategoryScreenModelBehaviorTest\"",
-    "verificationScope": "VERIFIED: current Android executes the real CategoryScreenModel and production CRUD interactors for ordering, preference cleanup and all mutation failure events; Desktop retains its production DI CRUD fixture.",
+    "verificationScope": "VERIFIED for the documented category behavior: current Android executes real CategoryScreenModel CRUD interactors; Desktop Root/dialog -> production DI -> SQLDelight now covers create, rename, reorder, delete confirmation/cancellation and mixed batch membership transactions (be44ddd6e). Action provenance remains the immutable 95b82fc inventory baseline; current implementation status is supported by the Library interaction roadmap. Final repair release acceptance is still pending.",
     "platformExemptionEvidence": "NONE",
     "targetVersion": "TBD"
   },
@@ -6251,12 +6253,12 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt",
           "symbol": "return evaluateLibrary.filter(",
-          "line": 204
+          "line": 206
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt",
           "symbol": "evaluateLibrary.sortForAndroid(",
-          "line": 258
+          "line": 260
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -7719,13 +7721,13 @@
                 "FEEDBACK"
               ],
               "migrationTag": "SHARE-DIRECT",
-              "implementationStatus": "GAP",
+              "implementationStatus": "PRESENT",
               "risk": "NORMAL",
               "confirmation": {
                 "policy": "NONE",
                 "reason": "This action is reversible or does not destroy user data."
               },
-              "followUpTask": "BR-01",
+              "followUpTask": "NONE",
               "provenance": {
                 "fixedOriginal": {
                   "status": "PRESENT",
@@ -7801,8 +7803,7 @@
               "sourceGraph": {
                 "status": "PENDING_NR0-01.G",
                 "sourceEntryIds": []
-              },
-              "missingBehavior": "Desktop Library needs a real Global Search entry that forwards the active query."
+              }
             },
             {
               "id": "library.select-one",
@@ -8969,13 +8970,13 @@
                 "FEEDBACK"
               ],
               "migrationTag": "SHARE-DIRECT",
-              "implementationStatus": "GAP",
+              "implementationStatus": "PRESENT",
               "risk": "NORMAL",
               "confirmation": {
                 "policy": "NONE",
                 "reason": "This action is reversible or does not destroy user data."
               },
-              "followUpTask": "LB-01",
+              "followUpTask": "NONE",
               "provenance": {
                 "fixedOriginal": {
                   "status": "PRESENT",
@@ -9079,8 +9080,7 @@
               "sourceGraph": {
                 "status": "PENDING_NR0-01.G",
                 "sourceEntryIds": []
-              },
-              "missingBehavior": "Desktop needs the categorized-display policy and branching persistence behavior."
+              }
             },
             {
               "id": "library-settings.swipe-start",
@@ -9736,7 +9736,7 @@
       }
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #17: LibraryScreenModel evaluates library filters and sorting.",
-    "desktopImplementation": "Current Android and Desktop library consumers delegate filtering to shared EvaluateLibrary.",
+    "desktopImplementation": "Android and Desktop consume shared library query, category, selection, evaluation and presentation rules. Desktop Root now wires nullable search, selection toolbar/Escape priority, filtered category counts, live persisted filter/sort/display preferences, category sort restoration, numeric/local/language/unread badges and the existing Global Search destination.",
     "protectionTests": [
       "app/src/test/java/eu/kanade/tachiyomi/ui/library/LibrarySharedEvaluationWiringTest.kt",
       "domain/src/commonTest/kotlin/tachiyomi/domain/library/interactor/EvaluateLibraryTest.kt",
@@ -9757,7 +9757,8 @@
     },
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
-    "targetVersion": "TBD"
+    "targetVersion": "TBD",
+    "verificationScope": "Current Library repairs 7aaea9f2e and 0337e7a40 are covered by real Root/Home, production DI/SQLDelight, shared contracts and current Android consumer tests documented in docs/roadmap/2026-09-08-desktop-library-interaction-parity-roadmap.md. Categorized settings branch sorting persistence; display mode remains global as in the fixed original. Default add-to-library category and duplicate-read chapter-sync policy remain out of scope. Action provenance remains the immutable 95b82fc inventory baseline. Download/delete visible-state integration is reviewed in 6b204c085: the real worker completes a PNG download, Root shows the numeric badge and downloaded filter result, and confirmed download-only deletion removes that result while keeping the favorite. Real Root random-detail-back navigation also preserves query/category while the production update job remains active; final repair release acceptance is pending."
   },
   {
     "id": 19,
@@ -9817,7 +9818,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt",
           "symbol": "fun setMangaCategories",
-          "line": 497
+          "line": 493
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -9832,17 +9833,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryTab.kt",
           "symbol": "internal fun librarySelectionActions(",
-          "line": 128
+          "line": 140
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "internal suspend fun enqueueDownloads(",
-          "line": 834
+          "line": 897
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 937
+          "line": 1002
         }
       ],
       "FIXTURE": [
@@ -10650,13 +10651,13 @@
                 "FEEDBACK"
               ],
               "migrationTag": "PLATFORM-PORT",
-              "implementationStatus": "GAP",
+              "implementationStatus": "PRESENT",
               "risk": "DESTRUCTIVE",
               "confirmation": {
                 "policy": "REQUIRED",
                 "reason": "This destructive action must be confirmed before user data is changed."
               },
-              "followUpTask": "DL-02",
+              "followUpTask": "NONE",
               "provenance": {
                 "fixedOriginal": {
                   "status": "PRESENT",
@@ -10815,8 +10816,7 @@
               "sourceGraph": {
                 "status": "PENDING_NR0-01.G",
                 "sourceEntryIds": []
-              },
-              "missingBehavior": "Desktop Library selection needs a confirmed delete-downloads action."
+              }
             },
             {
               "id": "library.batch-remove",
@@ -10835,13 +10835,13 @@
                 "FEEDBACK"
               ],
               "migrationTag": "SHARE-DIRECT",
-              "implementationStatus": "PARTIAL",
+              "implementationStatus": "PRESENT",
               "risk": "DESTRUCTIVE",
               "confirmation": {
                 "policy": "REQUIRED",
                 "reason": "This destructive action must be confirmed before user data is changed."
               },
-              "followUpTask": "LB-01",
+              "followUpTask": "NONE",
               "provenance": {
                 "fixedOriginal": {
                   "status": "PRESENT",
@@ -11032,8 +11032,7 @@
               "sourceGraph": {
                 "status": "PENDING_NR0-01.G",
                 "sourceEntryIds": []
-              },
-              "missingBehavior": "Desktop must confirm before removing selected manga from the library."
+              }
             },
             {
               "id": "library.batch-migrate",
@@ -11041,22 +11040,22 @@
               "scope": "NON_READER",
               "surfaceId": "library-selection",
               "entryType": "UI",
-              "intent": "Start migration for selected non-local manga.",
-              "expectedBehavior": "Submit eligible manga and navigate to migration configuration or queue.",
-              "observableResult": "The migration workflow opens with the selected eligible manga.",
+              "intent": "Open migration configuration for selected manga.",
+              "expectedBehavior": "Freeze the selected manga, open the existing configuration page, submit supported options only after confirmation, and leave the queue unchanged on cancellation.",
+              "observableResult": "The configuration page receives the selected manga; confirmation opens the submitted batch queue and submission failures remain visible.",
               "requiredEvidenceRoles": [
                 "ENTRY",
                 "EFFECT",
                 "FEEDBACK"
               ],
               "migrationTag": "PLATFORM-PORT",
-              "implementationStatus": "PRESENT",
+              "implementationStatus": "PARTIAL",
               "risk": "NORMAL",
               "confirmation": {
                 "policy": "NONE",
                 "reason": "This action is reversible or does not destroy user data."
               },
-              "followUpTask": "NONE",
+              "followUpTask": "MG-01",
               "provenance": {
                 "fixedOriginal": {
                   "status": "PRESENT",
@@ -11215,7 +11214,8 @@
               "sourceGraph": {
                 "status": "PENDING_NR0-01.G",
                 "sourceEntryIds": []
-              }
+              },
+              "missingBehavior": "The existing migration port does not carry all fixed-original source selection/order, extra search query, cover/download flags or search-result/deep-search/chapter-priority settings. The user explicitly excluded migration search/execution expansion from the Library repair on 2026-09-08; retain this gap in MG-01."
             }
           ]
         }
@@ -11246,7 +11246,7 @@
       }
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #19: LibraryBottomActionMenu routes the batch category action through LibraryTab to LibraryScreenModel.setMangaCategories; the same menu also exposes read, unread, download, delete, and migrate actions.",
-    "desktopImplementation": "Desktop Library selection preserves category/read/unread/remove actions and now exposes visible-item inversion, all six fixed-main download choices with active/downloaded deduplication and partial-failure feedback, plus the existing batch migration controller → queue → item-search navigation chain.",
+    "desktopImplementation": "Desktop Root selection supports category-aware inversion and all six existing download choices. Category and removal actions now open confirmation dialogs; mixed category transactions preserve untouched membership, freeze targets, and expose failures. Migration opens the existing configuration page with the selected snapshot, submits supported options once after confirmation, and reports errors before queue navigation. Accepted mutations survive leaving Library and forward failures through the existing Home notification path. Confirmed download deletion retires only the selected manga/chapter queue identities, waits for existing producers and artifact leases, then checks file deletion results; partial failures remain visible and download filters/counts refresh. All queue statuses participate in download eligibility.",
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryParityIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt",
@@ -11270,7 +11270,8 @@
     },
     "behaviorVerificationTask": ":app-desktop:task2ParityVerification",
     "platformExemptionEvidence": "NONE",
-    "targetVersion": "TBD"
+    "targetVersion": "TBD",
+    "verificationScope": "Confirmation transactions are reviewed and tested in be44ddd6e through real Root -> dialogs -> production DI/SQLDelight and the existing persistent migration controller. The migration entry is verified only through supported options and confirm/cancel; the full configuration/search port remains PARTIAL under MG-01 by explicit user scope decision. Action provenance remains the immutable 95b82fc inventory baseline. Download retirement and navigation lifetime are reviewed in 6b204c085 with real Root/Home -> factory -> SQLDelight, existing producer/lease regressions, persistence failure and actual file fixtures. A production worker/MockWebServer PNG test also verifies the visible downloaded-filter and numeric-badge result before and after confirmed download-only deletion. The final Root mark-read fixture executes the production per-chapter download deletion port and preserves already-read and unrelated chapter files. Final repair release acceptance remains pending."
   },
   {
     "id": 22,
@@ -11348,7 +11349,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt",
           "symbol": "fun removeMangas",
-          "line": 466
+          "line": 462
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -11384,7 +11385,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 937
+          "line": 1002
         }
       ],
       "FIXTURE": [
@@ -32692,17 +32693,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "stateMachine.schedule(",
-          "line": 539
+          "line": 562
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "val wait = stateMachine.retryDelayMillis(retryAttempt++) ?: break",
-          "line": 951
+          "line": 974
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "val wait = stateMachine.retryDelayMillis(publishAttempt++) ?: break",
-          "line": 710
+          "line": 733
         }
       ],
       "FIXTURE": [
@@ -33105,7 +33106,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
           "symbol": "filterChaptersForDownload.await(manga, newChapters)",
-          "line": 292
+          "line": 293
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -33120,7 +33121,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "filterChaptersForDownload.await(manga, chapters)",
-          "line": 1043
+          "line": 1048
         }
       ],
       "FIXTURE": [
@@ -34369,7 +34370,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt",
           "symbol": "override suspend fun doWork",
-          "line": 105
+          "line": 106
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -34384,7 +34385,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt",
           "symbol": "fun runNow",
-          "line": 81
+          "line": 80
         }
       ],
       "FIXTURE": [
@@ -34399,7 +34400,10 @@
     "protectionTests": [
       "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateSchedulerTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt",
-      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt"
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryScreenModelTest.kt",
+      "domain/src/commonTest/kotlin/tachiyomi/domain/library/service/LibraryUpdateScopeTest.kt",
+      "app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/library/LibraryCategoryBehaviorTest.kt"
     ],
     "behaviorMethods": {
       "app-desktop/src/test/kotlin/mihon/desktop/domain/LibraryUpdateRecoveryIntegrationTest.kt": [
@@ -34419,7 +34423,8 @@
     },
     "behaviorVerificationTask": ":app-desktop:task4ParityVerification",
     "platformExemptionEvidence": "NONE",
-    "targetVersion": "TBD"
+    "targetVersion": "TBD",
+    "verificationScope": "The Library interaction repair shares selectLibraryMangaForUpdate between the real Android LibraryUpdateJob and Desktop LibraryUpdateScheduler: explicit categories bypass whole-library include/exclude, while whole-library exclusion wins (including default category 0). Real Root -> factory -> scheduler fixtures cover search-independent scope, duplicate requests, detail navigation/return and actual job completion; persisted stale Running is not treated as an active occurrence. The existing executor, automatic device restrictions, scheduling and migration gaps remain under LU-01 and are not promoted by this manual-entry repair. Final repair release acceptance remains pending."
   },
   {
     "id": 62,
@@ -53646,7 +53651,7 @@
         {
           "path": "app-desktop/build.gradle.kts",
           "symbol": "implementation(projects.domain)",
-          "line": 136
+          "line": 139
         }
       ],
       "FIXTURE": [

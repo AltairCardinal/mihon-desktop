@@ -259,6 +259,7 @@ class LibraryRootScreen : Screen {
         var batchCategoryTarget by remember { mutableStateOf<List<Long>?>(null) }
 
         LaunchedEffect(Unit) {
+            model.syncBackgroundUpdate()
             launch { model.libraryMangaFlow().collect {} }
             launch { model.observeCategories() }
             launch { model.observeLibraryPreferences() }

@@ -20,11 +20,11 @@ import mihon.domain.task.NotificationEvent
 import mihon.domain.task.TaskCheckpoint
 import mihon.domain.task.TaskConstraint
 import mihon.domain.task.TaskStatus
-import tachiyomi.domain.category.repository.CategoryRepository
+import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.library.service.selectLibraryMangaForUpdate
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.model.Manga
-import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.source.service.SourceManager
 
 class LibraryUpdateScheduler(
@@ -32,7 +32,6 @@ class LibraryUpdateScheduler(
     private val updateChecker: LibraryUpdateChecker?,
     private val getLibraryManga: GetLibraryManga?,
     private val sourceManager: SourceManager?,
-    private val categoryRepository: CategoryRepository? = null,
     private val creatorDiscoveryScheduler: CreatorDiscoveryScheduler? = null,
     private val taskScheduler: DesktopTaskScheduler? = null,
     private val taskNotifier: DesktopSystemNotifier? = null,
@@ -129,13 +128,19 @@ class LibraryUpdateScheduler(
 
     fun taskSnapshot(): StoredTask? = taskScheduler?.snapshot(LIBRARY_UPDATE_TASK.id)
 
+    fun currentUpdateJob(): Job? = synchronized(updateLock) { updateJob?.takeIf(Job::isActive) }
+
     private fun parseCategoryIds(raw: String) = raw.split(',').mapNotNull { it.trim().toLongOrNull() }.toSet()
 
     private suspend fun runLibraryUpdate(categoryId: Long?) {
         try {
             val allManga = libraryProvider?.invoke() ?: requireNotNull(getLibraryManga).await()
-            val scoped = categoryId?.let { id -> allManga.filter { id in it.categories } } ?: allManga
-            val filtered = filterLibrary(scoped)
+            val filtered = selectLibraryMangaForUpdate(
+                library = allManga,
+                categoryId = categoryId,
+                includeCategories = parseCategoryIds(appPreferences.updateCategoryIncludes.get()),
+                excludeCategories = parseCategoryIds(appPreferences.updateCategoryExcludes.get()),
+            )
             taskScheduler?.setWorkset(LIBRARY_UPDATE_TASK.id, filtered.map { it.manga.id })
             val snapshot = taskSnapshot()
             val completedIds = snapshot?.completedUnitIds.orEmpty()
@@ -219,16 +224,6 @@ class LibraryUpdateScheduler(
                 )
             }
         }
-    }
-
-    private suspend fun filterLibrary(allManga: List<LibraryManga>): List<LibraryManga> {
-        val includes = parseCategoryIds(appPreferences.updateCategoryIncludes.get())
-        val excludes = parseCategoryIds(appPreferences.updateCategoryExcludes.get())
-        if (includes.isEmpty() && excludes.isEmpty()) return allManga
-        val ids = allManga.map { it.manga.id }
-        val lookup = ids.associateWith { id -> categoryRepository?.getCategoriesByMangaId(id)?.map { it.id }.orEmpty() }
-        val allowed = filterMangaForUpdate(ids, { lookup[it].orEmpty() }, includes, excludes).toSet()
-        return allManga.filter { it.manga.id in allowed }
     }
 
     private suspend fun update(manga: Manga): LibraryUpdateChecker.UpdateResult {

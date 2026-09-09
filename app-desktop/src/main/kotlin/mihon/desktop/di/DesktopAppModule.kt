@@ -1039,7 +1039,6 @@ private fun registerDesktopLibrary(
             updateChecker = Injekt.get<LibraryUpdateChecker>(),
             getLibraryManga = Injekt.get<GetLibraryManga>(),
             sourceManager = Injekt.get<SourceManager>(),
-            categoryRepository = categoryRepository,
             creatorDiscoveryScheduler = creatorDiscoveryScheduler,
             taskScheduler = taskScheduler,
             taskNotifier = taskNotifier,

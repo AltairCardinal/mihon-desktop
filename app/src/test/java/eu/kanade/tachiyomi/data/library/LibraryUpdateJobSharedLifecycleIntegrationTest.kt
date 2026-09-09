@@ -17,6 +17,7 @@ import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
 import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.testing.WorkManagerTestInitHelper
+import androidx.work.workDataOf
 import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
@@ -56,6 +57,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
+import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.DEVICE_CHARGING
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.DEVICE_NETWORK_NOT_METERED
@@ -63,10 +65,13 @@ import tachiyomi.domain.library.service.LibraryPreferences.Companion.DEVICE_ONLY
 import tachiyomi.domain.manga.interactor.FetchInterval
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
+import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.InjektScope
 import uy.kohesive.injekt.api.addSingleton
+import uy.kohesive.injekt.registry.default.DefaultRegistrar
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -76,14 +81,23 @@ import java.util.concurrent.TimeUnit
 @Config(sdk = [35], manifest = Config.NONE)
 class LibraryUpdateJobSharedLifecycleIntegrationTest {
     private lateinit var context: Application
+    private lateinit var previousInjekt: InjektScope
     private lateinit var workerExecutor: ExecutorService
     private lateinit var workManager: WorkManager
+    private var updateIncludes = emptySet<String>()
+    private var updateExcludes = emptySet<String>()
+    private var workerLibrary = emptyList<LibraryManga>()
 
     @Before
     fun setUp() {
+        previousInjekt = Injekt
+        Injekt = InjektScope(DefaultRegistrar())
         context = RuntimeEnvironment.getApplication()
         workerExecutor = Executors.newFixedThreadPool(2)
         BlockingWorkerGate.reset()
+        updateIncludes = emptySet()
+        updateExcludes = emptySet()
+        workerLibrary = emptyList()
         WorkManagerTestInitHelper.initializeTestWorkManager(
             context,
             Configuration.Builder()
@@ -103,6 +117,7 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
         workerExecutor.shutdownNow()
         unmockkObject(BackgroundTaskLifecycle)
         unmockkStatic("eu.kanade.tachiyomi.util.system.WorkManagerExtensionsKt")
+        Injekt = previousInjekt
     }
 
     @Test
@@ -217,6 +232,58 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
 
         assertEquals(ListenableWorker.Result.failure()::class, result::class)
         assertNotEquals(ListenableWorker.Result.success()::class, result::class)
+    }
+
+    @Test
+    fun `real worker scopes a category without reading whole library filters`() = runBlocking {
+        updateIncludes = setOf("invalid")
+        updateExcludes = setOf("also-invalid")
+        val target = libraryItem(1, 7)
+        val other = libraryItem(2, 8)
+        workerLibrary = listOf(target, other)
+        registerWorkerDependencies()
+        mockkStatic("eu.kanade.tachiyomi.util.system.WorkManagerExtensionsKt")
+        coEvery { any<CoroutineWorker>().setForegroundSafely() } returns Unit
+        val worker = TestListenableWorkerBuilder<LibraryUpdateJob>(context)
+            .setInputData(workDataOf("category" to 7L))
+            .build()
+
+        worker.doWork()
+
+        val selected = worker.javaClass.getDeclaredField("mangaToUpdate")
+            .apply { isAccessible = true }
+            .get(worker) as List<*>
+        assertEquals(listOf(target), selected)
+    }
+
+    @Test
+    fun `real worker applies whole library include and exclude with exclude precedence`() = runBlocking {
+        updateIncludes = setOf("10")
+        updateExcludes = setOf("20")
+        val included = libraryItem(1, 10)
+        val excluded = LibraryManga(
+            manga = Manga.create().copy(id = 2, source = 2, favorite = true),
+            categories = listOf(10L, 20L),
+            totalChapters = 0,
+            readCount = 0,
+            bookmarkCount = 0,
+            latestUpload = 0,
+            chapterFetchedAt = 0,
+            lastRead = 0,
+        )
+        val outside = libraryItem(3, 30)
+        workerLibrary = listOf(included, excluded, outside)
+        registerWorkerDependencies()
+        mockkStatic("eu.kanade.tachiyomi.util.system.WorkManagerExtensionsKt")
+        coEvery { any<CoroutineWorker>().setForegroundSafely() } returns Unit
+        val worker = TestListenableWorkerBuilder<LibraryUpdateJob>(context).build()
+
+        worker.doWork()
+
+        val selected = worker.javaClass.getDeclaredField("mangaToUpdate")
+            .apply { isAccessible = true }
+            .get(worker) as List<*>
+        assertEquals(listOf(included), selected)
     }
 
     @Test
@@ -354,8 +421,8 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
             every { autoUpdateInterval() } returns interval
             every { autoUpdateDeviceRestrictions() } returns restrictions
             every { lastUpdatedTimestamp() } returns mockk(relaxed = true)
-            every { updateCategories() } returns stringSetPreference()
-            every { updateCategoriesExclude() } returns stringSetPreference()
+            every { updateCategories() } returns stringSetPreference { updateIncludes }
+            every { updateCategoriesExclude() } returns stringSetPreference { updateExcludes }
             every { autoUpdateMangaRestrictions() } returns stringSetPreference()
         }
     }
@@ -367,7 +434,7 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
         Injekt.addSingleton(mockk<CoverCache>(relaxed = true))
         Injekt.addSingleton(
             mockk<GetLibraryManga> {
-                coEvery { await() } returns emptyList()
+                coEvery { await() } answers { workerLibrary }
             },
         )
         Injekt.addSingleton(mockk<GetManga>(relaxed = true))
@@ -386,9 +453,20 @@ class LibraryUpdateJobSharedLifecycleIntegrationTest {
         )
     }
 
-    private fun stringSetPreference(): Preference<Set<String>> = mockk {
-        every { get() } returns emptySet()
+    private fun stringSetPreference(value: () -> Set<String> = { emptySet() }): Preference<Set<String>> = mockk {
+        every { get() } answers { value() }
     }
+
+    private fun libraryItem(id: Long, category: Long) = LibraryManga(
+        manga = Manga.create().copy(id = id, source = id, favorite = true),
+        categories = listOf(category),
+        totalChapters = 0,
+        readCount = 0,
+        bookmarkCount = 0,
+        latestUpload = 0,
+        chapterFetchedAt = 0,
+        lastRead = 0,
+    )
 
     private companion object {
         const val TAG = "LibraryUpdate"

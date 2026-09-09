@@ -64,6 +64,7 @@ import tachiyomi.domain.library.service.LibraryPreferences.Companion.MANGA_HAS_U
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.MANGA_NON_COMPLETED
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.MANGA_NON_READ
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.MANGA_OUTSIDE_RELEASE_PERIOD
+import tachiyomi.domain.library.service.selectLibraryMangaForUpdate
 import tachiyomi.domain.manga.interactor.FetchInterval
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
@@ -182,16 +183,16 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
         val libraryManga = getLibraryManga.await()
 
         val listToUpdate = if (categoryId != -1L) {
-            libraryManga.filter { categoryId in it.categories }
+            selectLibraryMangaForUpdate(libraryManga, categoryId, emptySet(), emptySet())
         } else {
-            val includedCategories = libraryPreferences.updateCategories().get().map { it.toLong() }
-            val excludedCategories = libraryPreferences.updateCategoriesExclude().get().map { it.toLong() }
-
-            libraryManga.filter {
-                val included = includedCategories.isEmpty() || it.categories.intersect(includedCategories).isNotEmpty()
-                val excluded = it.categories.intersect(excludedCategories).isNotEmpty()
-                included && !excluded
-            }
+            selectLibraryMangaForUpdate(
+                library = libraryManga,
+                categoryId = null,
+                includeCategories = libraryPreferences.updateCategories().get().mapTo(mutableSetOf()) { it.toLong() },
+                excludeCategories = libraryPreferences.updateCategoriesExclude().get().mapTo(mutableSetOf()) {
+                    it.toLong()
+                },
+            )
         }
 
         val restrictions = libraryPreferences.autoUpdateMangaRestrictions().get()

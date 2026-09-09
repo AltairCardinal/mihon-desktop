@@ -122,7 +122,79 @@ class LibraryScreenModelTest {
         model.refreshLibrary(emptyList())
 
         assertEquals(0, cancelled)
-        assertEquals("Library update already running", model.state.value.updateStatusText)
+        assertEquals(MR.strings.update_already_running.localized(), model.state.value.updateStatusText)
+    }
+
+    @Test
+    fun `recreated model reflects persisted running update and rejects a duplicate start`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        var starts = 0
+        val running = kotlinx.coroutines.Job()
+        val model = LibraryScreenModel(
+            startBackgroundUpdate = { starts++; kotlinx.coroutines.Job().also { it.complete() } },
+            backgroundUpdateStatus = { TaskStatus.Running },
+            backgroundUpdateJob = { running.takeIf { it.isActive } },
+        )
+
+        try {
+            assertTrue(model.state.value.isUpdating)
+            model.refreshLibrary(emptyList())
+
+            assertEquals(0, starts)
+            assertEquals(MR.strings.update_already_running.localized(), model.state.value.updateStatusText)
+            running.complete()
+            runCurrent()
+            assertFalse(model.state.value.isUpdating)
+            model.refreshLibrary(emptyList())
+            assertEquals(1, starts)
+        } finally {
+            model.onDispose()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `model attaches to an update that starts after construction and permits another after completion`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        var starts = 0
+        var running: kotlinx.coroutines.Job? = null
+        val model = LibraryScreenModel(
+            startBackgroundUpdate = { starts++; kotlinx.coroutines.Job().also { it.complete() } },
+            backgroundUpdateJob = { running?.takeIf { it.isActive } },
+        )
+
+        try {
+            assertFalse(model.state.value.isUpdating)
+            running = kotlinx.coroutines.Job()
+            model.refreshLibrary(emptyList())
+
+            assertEquals(0, starts)
+            assertTrue(model.state.value.isUpdating)
+            assertEquals(MR.strings.update_already_running.localized(), model.state.value.updateStatusText)
+            running.complete()
+            runCurrent()
+            assertFalse(model.state.value.isUpdating)
+
+            model.refreshLibrary(emptyList())
+            assertEquals(1, starts)
+        } finally {
+            model.onDispose()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `stale persisted running status does not block a new refresh`() = runTest {
+        var starts = 0
+        val model = LibraryScreenModel(
+            startBackgroundUpdate = { starts++; kotlinx.coroutines.Job().also { it.complete() } },
+            backgroundUpdateStatus = { TaskStatus.Running },
+            backgroundUpdateJob = { null },
+        )
+
+        model.refreshLibrary(emptyList())
+
+        assertEquals(1, starts)
     }
 
     // ── Construction ─────────────────────────────────────────────────────────

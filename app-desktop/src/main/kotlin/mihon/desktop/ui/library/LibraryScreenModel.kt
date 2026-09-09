@@ -112,6 +112,7 @@ class LibraryScreenModel(
     private val startScopedBackgroundUpdate: ((Long?) -> Job)? = null,
     private val cancelBackgroundUpdate: (() -> Boolean)? = null,
     private val backgroundUpdateStatus: (() -> TaskStatus?)? = null,
+    private val backgroundUpdateJob: (() -> Job?)? = null,
     private val libraryPreferences: LibraryPreferences? = null,
     private val setDisplayModeInteractor: SetDisplayMode? = null,
     private val setSortModeForCategory: SetSortModeForCategory? = null,
@@ -130,9 +131,27 @@ class LibraryScreenModel(
     val state: StateFlow<LibraryState> = _state.asStateFlow()
     private var categoryProjectionInitialized = false
     private var pendingInitialCategoryIndex: Int? = null
+    private var observedBackgroundUpdate: Job? = null
 
     init {
         applySharedPreferences(categoryId = null)
+        syncBackgroundUpdate()
+    }
+
+    fun syncBackgroundUpdate() {
+        val runningJob = backgroundUpdateJob?.invoke()?.takeIf(Job::isActive) ?: return
+        setIsUpdating(true)
+        setUpdateStatusText(MR.strings.desktop_ui_checking_for_updates.localized())
+        if (observedBackgroundUpdate === runningJob) return
+        observedBackgroundUpdate = runningJob
+        screenModelScope.launch {
+            runningJob.join()
+            if (observedBackgroundUpdate === runningJob) {
+                observedBackgroundUpdate = null
+                setIsUpdating(false)
+                setUpdateStatusText(backgroundUpdateResultText())
+            }
+        }
     }
 
     // ── Data loading ──────────────────────────────────────────────────────────
@@ -645,8 +664,12 @@ class LibraryScreenModel(
     }
 
     suspend fun refreshLibrary(items: List<LibraryManga>, categoryId: Long? = null) {
-        if (_state.value.isUpdating) {
-            setUpdateStatusText("Library update already running")
+        if (
+            _state.value.isUpdating ||
+            backgroundUpdateJob?.invoke()?.isActive == true
+        ) {
+            syncBackgroundUpdate()
+            setUpdateStatusText(MR.strings.update_already_running.localized())
             return
         }
         val startUpdate = startScopedBackgroundUpdate?.let { scoped ->
@@ -659,13 +682,7 @@ class LibraryScreenModel(
             setUpdateStatusText(MR.strings.desktop_ui_checking_for_updates.localized())
             try {
                 start().join()
-                setUpdateStatusText(
-                    when (backgroundUpdateStatus?.invoke()) {
-                        TaskStatus.Failed -> MR.strings.desktop_ui_library_update_failed.localized()
-                        TaskStatus.Cancelled -> MR.strings.desktop_ui_library_update_cancelled.localized()
-                        else -> MR.strings.desktop_ui_library_update_finished.localized()
-                    },
-                )
+                setUpdateStatusText(backgroundUpdateResultText())
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
@@ -718,6 +735,12 @@ class LibraryScreenModel(
         } finally {
             setIsUpdating(false)
         }
+    }
+
+    private fun backgroundUpdateResultText(): String = when (backgroundUpdateStatus?.invoke()) {
+        TaskStatus.Failed -> MR.strings.desktop_ui_library_update_failed.localized()
+        TaskStatus.Cancelled -> MR.strings.desktop_ui_library_update_cancelled.localized()
+        else -> MR.strings.desktop_ui_library_update_finished.localized()
     }
 
     fun cancelLibraryUpdate(): Boolean = cancelBackgroundUpdate?.invoke() == true

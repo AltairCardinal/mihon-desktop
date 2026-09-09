@@ -30,6 +30,7 @@ import java.util.UUID
 import java.util.prefs.Preferences
 import javax.imageio.ImageIO
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
@@ -51,6 +52,7 @@ import mihon.desktop.download.DesktopDownloadProvider
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.library.LibraryScreenModelFactory
+import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.test.http.LibraryMangaTestModeController
 import mihon.desktop.ui.migration.LibraryBatchMigrationConfigScreen
 import mockwebserver3.MockResponse
@@ -72,6 +74,7 @@ import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.library.model.LibrarySort
 import tachiyomi.domain.library.interactor.LibraryFilter
 import tachiyomi.domain.library.model.LibraryManga
@@ -86,6 +89,230 @@ import uy.kohesive.injekt.api.get
 
 @Isolated
 class LibraryCategoryBehaviorTest {
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
+    fun `root mark read deletes only newly read chapter downloads through production factory`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
+        val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
+        val context = initDesktopDIForTest(tempDir, DesktopPreferenceStore(preferencesNode), startDownloadWorker = false)
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        var scene: ImageComposeScene? = null
+        var model: LibraryScreenModel? = null
+        try {
+            val repository = Injekt.get<MangaRepository>()
+            val target = repository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 7, url = "/mark-target", title = "Mark target")),
+            ).single()
+            val unrelated = repository.insertNetworkManga(
+                listOf(Manga.create().copy(source = 7, url = "/mark-other", title = "Mark other")),
+            ).single()
+            repository.updateMembershipsAtomically(
+                listOf(
+                    LibraryMembershipUpdate(target.id, true, 1, emptyList()),
+                    LibraryMembershipUpdate(unrelated.id, true, 2, emptyList()),
+                ),
+            )
+            val chapters = Injekt.get<ChapterRepository>().addAll(
+                listOf(
+                    Chapter.create().copy(mangaId = target.id, url = "/target-unread", name = "Target unread"),
+                    Chapter.create().copy(mangaId = target.id, url = "/target-read", name = "Target read", read = true),
+                    Chapter.create().copy(mangaId = unrelated.id, url = "/other-unread", name = "Other unread"),
+                ),
+            )
+            val targetUnread = chapters.single { it.name == "Target unread" }
+            val targetRead = chapters.single { it.name == "Target read" }
+            val otherUnread = chapters.single { it.name == "Other unread" }
+            Injekt.get<DownloadPreferences>().removeAfterMarkedAsRead().set(true)
+            val manager = Injekt.get<DesktopDownloadManager>()
+            manager.enqueue(
+                DownloadItem(target.source, target.title, targetUnread.name, targetUnread.id, mangaId = target.id),
+            )
+            assertTrue(manager.transition(targetUnread.id, mihon.domain.download.DownloadQueueStatus.DOWNLOADING))
+            assertTrue(manager.transition(targetUnread.id, mihon.domain.download.DownloadQueueStatus.ERROR))
+            val provider = Injekt.get<DesktopDownloadProvider>()
+            listOf(targetUnread to target, targetRead to target, otherUnread to unrelated).forEach { (chapter, manga) ->
+                provider.chapterDownloadDir(manga.source, manga.title, chapter.name).apply {
+                    mkdirs()
+                    ImageIO.write(BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB), "png", resolve("page.png"))
+                }
+            }
+            val rootModel = LibraryScreenModelFactory.create().also { model = it }
+            scene = ImageComposeScene(1_400, 900, coroutineContext = coroutineContext) {}
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides DesktopUiDependencies.fromInjekt()) {
+                    ProvideLibraryScreenModelFactory(factory = { rootModel }) {
+                        Navigator(LibraryRootScreen()) { CurrentScreen() }
+                    }
+                }
+            }
+            withTimeout(5_000) {
+                while (rootModel.state.value.allItems.size != 2) {
+                    render(scene)
+                    delay(10)
+                }
+            }
+            longClick(scene, target.title)
+            render(scene)
+            click(scene, MR.strings.desktop_ui_mark_read.localized())
+            withTimeout(5_000) {
+                while (
+                    !Injekt.get<ChapterRepository>().getChapterById(targetUnread.id)!!.read ||
+                    manager.queue.value.any { it.chapterId == targetUnread.id }
+                ) {
+                    render(scene)
+                    delay(10)
+                }
+            }
+            assertFalse(provider.isChapterDownloaded(target.source, target.title, targetUnread.name))
+            assertTrue(provider.isChapterDownloaded(target.source, target.title, targetRead.name))
+            assertTrue(provider.isChapterDownloaded(unrelated.source, unrelated.title, otherUnread.name))
+        } finally {
+            scene?.close()
+            model?.onDispose()
+            Dispatchers.resetMain()
+            context.closeAndJoin()
+            preferencesNode.removeNode()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
+    fun `root refresh scopes independently of search and survives navigation while preventing duplicates`(
+        @TempDir tempDir: File,
+    ) = runBlocking {
+        val preferencesNode = Preferences.userRoot().node("/mihon-test/${UUID.randomUUID()}")
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val updated = java.util.Collections.synchronizedList(mutableListOf<Long>())
+        val context = initDesktopDIForTest(
+            tempDir,
+            DesktopPreferenceStore(preferencesNode),
+            startDownloadWorker = false,
+            updateManga = { manga ->
+                updated += manga.id
+                if (entered.complete(Unit)) release.await()
+                mihon.desktop.domain.LibraryUpdateChecker.UpdateResult(0)
+            },
+        )
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        var scene: ImageComposeScene? = null
+        var model: LibraryScreenModel? = null
+        var destination: Screen? = null
+        try {
+            val categories = Injekt.get<CategoryRepository>()
+            categories.insert(Category(1, "Refresh A", 0, 0))
+            categories.insert(Category(2, "Refresh B", 1, 0))
+            categories.insert(Category(3, "Refresh empty", 2, 0))
+            val repository = Injekt.get<MangaRepository>()
+            val mangas = repository.insertNetworkManga(
+                listOf(
+                    Manga.create().copy(source = 0, url = "/target-a", title = "Target A", initialized = true),
+                    Manga.create().copy(source = 0, url = "/hidden-a", title = "Hidden A", initialized = true),
+                    Manga.create().copy(source = 0, url = "/target-b", title = "Target B", initialized = true),
+                    Manga.create().copy(source = 0, url = "/default", title = "Default target", initialized = true),
+                ),
+            )
+            repository.updateMembershipsAtomically(
+                listOf(
+                    LibraryMembershipUpdate(mangas[0].id, true, 1, listOf(1)),
+                    LibraryMembershipUpdate(mangas[1].id, true, 2, listOf(1)),
+                    LibraryMembershipUpdate(mangas[2].id, true, 3, listOf(2)),
+                    LibraryMembershipUpdate(mangas[3].id, true, 4, emptyList()),
+                ),
+            )
+            Injekt.get<DesktopAppPreferences>().apply {
+                updateCategoryIncludes.set("2")
+                updateCategoryExcludes.set("1")
+            }
+            scene = ImageComposeScene(1_400, 900, coroutineContext = coroutineContext) {}
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides DesktopUiDependencies.fromInjekt()) {
+                    ProvideLibraryScreenModelFactory(
+                        factory = { LibraryScreenModelFactory.create().also { model = it } },
+                    ) {
+                        Navigator(LibraryRootScreen()) { navigator ->
+                            destination = navigator.lastItem
+                            CurrentScreen()
+                        }
+                    }
+                }
+            }
+            withTimeout(5_000) {
+                while (
+                    model?.state?.value?.allItems?.size != 4 ||
+                    model?.state?.value?.categories?.map { it.id }?.containsAll(listOf(1L, 2L, 3L)) != true
+                ) {
+                    render(scene)
+                    delay(10)
+                }
+            }
+            val rootModel = requireNotNull(model)
+            rootModel.setSelectedCategoryIndex(rootModel.state.value.categories.indexOfFirst { it.id == 1L })
+            rootModel.setSearchQuery("Target")
+            render(scene)
+            click(scene, MR.strings.check_for_updates.localized())
+            render(scene)
+            click(scene, MR.strings.action_update_library.localized())
+            withTimeout(5_000) { entered.await() }
+            click(scene, MR.strings.check_for_updates.localized())
+            assertEquals(1, updated.size)
+            click(scene, MR.strings.desktop_ui_random_manga.localized())
+            render(scene)
+            assertEquals(mangas[0].id, (destination as MangaDetailScreen).mangaId)
+            click(scene, MR.strings.action_bar_up_description.localized())
+            render(scene)
+            assertTrue(destination is LibraryRootScreen)
+            val returnedModel = requireNotNull(model)
+            assertEquals("Target", returnedModel.state.value.searchQuery)
+            assertEquals(1L, returnedModel.state.value.categories[returnedModel.state.value.selectedCategoryIndex].id)
+            assertTrue(returnedModel.state.value.isUpdating)
+            release.complete(Unit)
+            withTimeout(5_000) {
+                while (returnedModel.state.value.isUpdating) {
+                    render(scene)
+                    delay(10)
+                }
+            }
+            render(scene)
+            assertEquals(setOf(mangas[0].id, mangas[1].id), updated.toSet())
+
+            Injekt.get<DesktopAppPreferences>().apply {
+                updateCategoryIncludes.set("0")
+                updateCategoryExcludes.set("2")
+            }
+            val beforeAll = updated.size
+            click(scene, MR.strings.check_for_updates.localized())
+            render(scene)
+            click(scene, MR.strings.ext_update_all.localized())
+            withTimeout(5_000) {
+                while (updated.size == beforeAll || returnedModel.state.value.isUpdating) {
+                    render(scene)
+                    delay(10)
+                }
+            }
+            assertEquals(listOf(mangas[3].id), updated.drop(beforeAll))
+
+            returnedModel.setSelectedCategoryIndex(returnedModel.state.value.categories.indexOfFirst { it.id == 3L })
+            returnedModel.setSearchQuery(null)
+            render(scene)
+            click(scene, MR.strings.desktop_ui_random_manga.localized())
+            render(scene)
+            assertTrue(destination is LibraryRootScreen)
+            assertEquals(
+                MR.strings.desktop_ui_no_manga_match_your_filters.localized(),
+                returnedModel.state.value.operationFeedback,
+            )
+        } finally {
+            release.complete(Unit)
+            scene?.close()
+            model?.onDispose()
+            Dispatchers.resetMain()
+            context.closeAndJoin()
+            preferencesNode.removeNode()
+        }
+    }
+
     @Test
     @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
     fun `factory queue identity changes refresh visible download counts`(@TempDir tempDir: File) = runBlocking {
