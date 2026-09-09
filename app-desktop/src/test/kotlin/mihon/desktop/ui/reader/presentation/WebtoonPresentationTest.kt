@@ -3,6 +3,7 @@ package mihon.desktop.ui.reader.presentation
 import mihon.domain.error.AppError
 import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.ReaderDirection
+import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderChapterSession
@@ -109,6 +110,30 @@ class WebtoonPresentationTest {
     }
 
     @Test
+    fun `missing webtoon boundaries are independent list items`() {
+        val snapshot = WebtoonPresentation.present(
+            request(
+                page(0, ReaderPageLoadState.Ready),
+                page(1, ReaderPageLoadState.Ready),
+                hasPreviousChapter = false,
+                hasNextChapter = false,
+            ),
+        )
+
+        assertEquals(
+            listOf(ReaderTransitionDirection.PREVIOUS, null, null, ReaderTransitionDirection.NEXT),
+            snapshot.displayUnits.map(DisplayUnit::transitionDirection),
+        )
+        assertEquals(1, snapshot.firstDisplayUnitIndex(pageId(0)))
+        val boundaryViewport = snapshot.resolveWebtoonViewport(
+            visibleItems = listOf(WebtoonVisibleItem(index = 0, offset = 0, size = 320)),
+            viewportStartOffset = 0,
+            viewportEndOffset = 320,
+        )
+        assertEquals(ReaderTransitionDirection.PREVIOUS, boundaryViewport?.visiblePages?.transitionDirection)
+    }
+
+    @Test
     fun `anchor restores exact split item and falls back to its logical page`() {
         val wide = page(0, ReaderPageLoadState.Ready)
         val split = WebtoonPresentation.present(
@@ -138,6 +163,8 @@ class WebtoonPresentationTest {
     private fun request(
         vararg pages: ReaderPageSession,
         direction: ReaderDirection = ReaderDirection.RTL,
+        hasPreviousChapter: Boolean = true,
+        hasNextChapter: Boolean = true,
         splitPageIds: Set<ReaderPageId> = emptySet(),
     ) = ReaderPresentationRequest(
         chapter = ReaderChapterSession(
@@ -147,6 +174,8 @@ class WebtoonPresentationTest {
             pages = pages.toList(),
         ),
         direction = direction,
+        hasPreviousChapter = hasPreviousChapter,
+        hasNextChapter = hasNextChapter,
         splitPageIds = splitPageIds,
     )
 

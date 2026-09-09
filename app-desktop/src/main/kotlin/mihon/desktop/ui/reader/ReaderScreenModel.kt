@@ -20,6 +20,7 @@ import mihon.desktop.reader.ZoomState
 import mihon.desktop.reader.dualPageFromViewerFlags
 import mihon.desktop.reader.readingModeFromViewerFlags
 import mihon.desktop.ui.reader.presentation.VisiblePageSet
+import mihon.desktop.ui.reader.presentation.DisplayUnitId
 import mihon.desktop.ui.reader.presentation.WebtoonViewportUpdate
 import mihon.domain.reader.ReaderChapterModel
 import mihon.domain.reader.ReaderChapterState
@@ -162,6 +163,16 @@ class ReaderScreenModel(
         }
     }
 
+    internal fun selectDisplayUnit(displayUnitId: DisplayUnitId) {
+        _state.update { state ->
+            state.copy(
+                currentDisplayUnitId = displayUnitId,
+                visiblePageIds = emptySet(),
+                webtoonScrollAnchor = null,
+            )
+        }
+    }
+
     internal fun settleSinglePage(visiblePages: VisiblePageSet) {
         settleVisiblePages(visiblePages, webtoonScrollAnchor = null)
     }
@@ -178,6 +189,16 @@ class ReaderScreenModel(
         visiblePages: VisiblePageSet,
         webtoonScrollAnchor: mihon.desktop.ui.reader.presentation.WebtoonScrollAnchor?,
     ) {
+        if (visiblePages.transitionDirection != null) {
+            _state.update { state ->
+                state.copy(
+                    currentDisplayUnitId = visiblePages.displayUnitId,
+                    visiblePageIds = emptySet(),
+                    webtoonScrollAnchor = webtoonScrollAnchor,
+                )
+            }
+            return
+        }
         val activePageId = visiblePages.activePageId ?: visiblePages.pageIds.maxByOrNull(ReaderPageId::sourcePageIndex)
             ?: return
         val current = _state.value

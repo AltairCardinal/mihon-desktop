@@ -4,6 +4,7 @@ import mihon.domain.reader.PageRotation
 import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.PixelBounds
 import mihon.domain.reader.ReaderDirection
+import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.ReaderPageSize
 import mihon.domain.reader.session.ReaderChapterSession
 import mihon.domain.reader.session.ReaderPageId
@@ -18,7 +19,19 @@ enum class ReaderPresentationMode {
 data class DisplaySlotId(
     val pageId: ReaderPageId?,
     val splitHalf: PageSplitHalf? = null,
-)
+    val transitionDirection: ReaderTransitionDirection? = null,
+) {
+    init {
+        require(transitionDirection == null || (pageId == null && splitHalf == null)) {
+            "A chapter transition slot cannot identify a page or split half"
+        }
+    }
+}
+
+internal enum class DisplayUnitContent {
+    PAGE,
+    CHAPTER_TRANSITION,
+}
 
 data class DisplayUnitId(
     val mode: ReaderPresentationMode,
@@ -40,10 +53,21 @@ internal data class DisplaySlot(
 internal data class DisplayUnit(
     val id: DisplayUnitId,
     val slots: List<DisplaySlot>,
+    val content: DisplayUnitContent = DisplayUnitContent.PAGE,
+    val transitionDirection: ReaderTransitionDirection? = null,
 ) {
     init {
         require(slots.isNotEmpty()) { "A display unit must contain at least one slot" }
         require(id.slots == slots.map(DisplaySlot::id)) { "Display unit identity must match its slots" }
+        require((content == DisplayUnitContent.CHAPTER_TRANSITION) == (transitionDirection != null)) {
+            "Display unit content must agree with its transition direction"
+        }
+        require(transitionDirection == null || slots.all { it.page == null }) {
+            "A chapter transition must not contain page slots"
+        }
+        require(slots.mapNotNull { it.id.transitionDirection }.distinct().singleOrNull() == transitionDirection) {
+            "Display unit transition identity must match its content"
+        }
     }
 }
 
@@ -51,6 +75,7 @@ internal data class VisiblePageSet(
     val displayUnitId: DisplayUnitId,
     val pageIds: Set<ReaderPageId>,
     val activePageId: ReaderPageId? = pageIds.singleOrNull(),
+    val transitionDirection: ReaderTransitionDirection? = null,
 ) {
     init {
         require(activePageId == null || activePageId in pageIds) {
@@ -62,6 +87,8 @@ internal data class VisiblePageSet(
 internal data class ReaderPresentationRequest(
     val chapter: ReaderChapterSession,
     val direction: ReaderDirection,
+    val hasPreviousChapter: Boolean = true,
+    val hasNextChapter: Boolean = true,
     val splitPageIds: Set<ReaderPageId> = emptySet(),
     val pageSizes: Map<ReaderPageId, ReaderPageSize> = emptyMap(),
     val pageRotations: Map<ReaderPageId, PageRotation> = emptyMap(),
@@ -112,9 +139,28 @@ internal data class ReaderPresentationSnapshot(
         return VisiblePageSet(
             displayUnitId = displayUnitId,
             pageIds = unit.slots.mapNotNullTo(linkedSetOf()) { it.page?.id },
+            transitionDirection = unit.transitionDirection,
         )
     }
 }
+
+internal fun chapterTransitionDisplayUnit(
+    mode: ReaderPresentationMode,
+    direction: ReaderTransitionDirection,
+): DisplayUnit = DisplayUnit(
+    id = DisplayUnitId(
+        mode = mode,
+        slots = listOf(DisplaySlotId(pageId = null, transitionDirection = direction)),
+    ),
+    slots = listOf(
+        DisplaySlot(
+            id = DisplaySlotId(pageId = null, transitionDirection = direction),
+            page = null,
+        ),
+    ),
+    content = DisplayUnitContent.CHAPTER_TRANSITION,
+    transitionDirection = direction,
+)
 
 internal interface ReaderPresentationStrategy {
     val mode: ReaderPresentationMode

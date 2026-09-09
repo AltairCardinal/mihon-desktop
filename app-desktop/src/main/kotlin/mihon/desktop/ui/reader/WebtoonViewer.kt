@@ -371,6 +371,28 @@ internal fun WebtoonDisplayUnitContainer(
     onRetry: (ReaderPageId) -> Unit,
     readyContent: @Composable (DisplaySlot, Modifier) -> Unit,
 ) {
+    if (unit.transitionDirection != null) {
+        val compositionIdentity = remember(unit.id) { WebtoonDisplayUnitCompositionIdentity() }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .onSizeChanged { size -> if (size.height > 0) onMeasured(size.height) }
+                .semantics {
+                    this[WebtoonDisplayUnitCompositionIdentityKey] = compositionIdentity
+                    this[WebtoonDisplayUnitIdKey] = unit.id
+                    this[ReaderDisplayUnitTransitionDirectionKey] = unit.transitionDirection
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            ReaderChapterTransitionItem(
+                direction = unit.transitionDirection,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 32.dp, vertical = 128.dp),
+            )
+        }
+        return
+    }
     val slot = unit.slots.single()
     val page = requireNotNull(slot.page)
     val paddingFraction = sidePadding.ratio

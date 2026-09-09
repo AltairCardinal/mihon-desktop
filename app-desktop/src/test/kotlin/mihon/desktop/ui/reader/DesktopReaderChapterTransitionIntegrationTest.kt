@@ -29,7 +29,6 @@ import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.ReadingMode
-import mihon.domain.reader.ReaderNavigationCommand
 import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.materialize.ReaderChapterContentPort
 import mihon.domain.reader.materialize.ReaderChapterMaterializeResult
@@ -143,7 +142,7 @@ class DesktopReaderChapterTransitionIntegrationTest {
     }
 
     @Test
-    fun `chapter boundaries do not activate and keep explicit feedback`() {
+    fun `chapter boundaries do not activate and do not keep viewport feedback`() {
         val only = listOf(ReaderChapterRef(id = 1L, url = "/1", name = "Chapter 1", chapterNumber = 1.0))
         val context = context(only.single(), chapterIndex = 0, initialPage = 0)
         var activations = 0
@@ -166,18 +165,39 @@ class DesktopReaderChapterTransitionIntegrationTest {
 
         val previous = screen.requestAdjacentChapterTransition(ReaderTransitionDirection.PREVIOUS, model, navigator)
         assertFalse(previous)
-        assertEquals(
-            ReaderNavigationCommand.ChapterBoundary(ReaderTransitionDirection.PREVIOUS),
-            model.chapterTransitionCommand(),
-        )
+        assertNull(model.chapterTransitionCommand())
 
         val next = screen.requestAdjacentChapterTransition(ReaderTransitionDirection.NEXT, model, navigator)
         assertFalse(next)
-        assertEquals(
-            ReaderNavigationCommand.ChapterBoundary(ReaderTransitionDirection.NEXT),
-            model.chapterTransitionCommand(),
-        )
+        assertNull(model.chapterTransitionCommand())
         assertEquals(0, activations)
+    }
+
+    @Test
+    fun `chapter boundary request does not mount a persistent viewport feedback overlay`() {
+        val only = listOf(ReaderChapterRef(id = 1L, url = "/1", name = "Chapter 1", chapterNumber = 1.0))
+        val context = context(only.single(), chapterIndex = 0, initialPage = 0)
+        val model = ReaderScreenModel(
+            initialSessionState = DesktopReaderSessionState(
+                context,
+                ReaderSessionCore(ReaderChapterId(1L), sessionId = "boundary-no-overlay-test").snapshot,
+            ),
+        )
+        val screen = DesktopReaderScreen(
+            chapterTitle = "Chapter 1",
+            chapterId = 1L,
+            chapterUrl = "/1",
+            chapters = only,
+            currentChapterIndex = 0,
+        )
+
+        screen.requestAdjacentChapterTransition(
+            ReaderTransitionDirection.NEXT,
+            model,
+            ReaderNavigator(only, currentIndex = 0),
+        )
+
+        assertNull(model.state.value.chapterTransition)
     }
 
     @Test

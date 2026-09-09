@@ -2,6 +2,7 @@ package mihon.desktop.ui.reader.presentation
 
 import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.ReaderDirection
+import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderChapterSession
@@ -63,6 +64,27 @@ class DualPagedPresentationTest {
         val visible = rtl.resolveDualVisiblePages(rtl.displayUnits[1].id)
         assertEquals(setOf(pageId(1), pageId(2)), visible.pageIds)
         assertEquals(pageId(2), visible.activePageId)
+    }
+
+    @Test
+    fun `missing pager boundaries remain independent items in both directions`() {
+        listOf(ReaderDirection.LTR, ReaderDirection.RTL).forEach { direction ->
+            val snapshot = present(
+                pageCount = 3,
+                direction = direction,
+                hasPreviousChapter = false,
+                hasNextChapter = false,
+            )
+
+            assertEquals(ReaderTransitionDirection.PREVIOUS, snapshot.displayUnits.first().transitionDirection)
+            assertEquals(ReaderTransitionDirection.NEXT, snapshot.displayUnits.last().transitionDirection)
+            assertEquals(
+                listOf(0, 1, 2),
+                snapshot.displayUnits.drop(1).dropLast(1).flatMap { unit ->
+                    unit.slots.mapNotNull { it.page?.id?.sourcePageIndex }.distinct()
+                }.sorted(),
+            )
+        }
     }
 
     @Test
@@ -153,17 +175,21 @@ class DualPagedPresentationTest {
     private fun present(
         pageCount: Int,
         direction: ReaderDirection,
+        hasPreviousChapter: Boolean = true,
+        hasNextChapter: Boolean = true,
         splitPageIds: Set<ReaderPageId> = emptySet(),
         options: DualPagedPresentationOptions = DualPagedPresentationOptions(),
         stateAt: (Int) -> ReaderPageLoadState = { ReaderPageLoadState.Queued },
         imageAt: (Int) -> String? = { null },
     ): ReaderPresentationSnapshot = DualPagedPresentation.present(
-        request(pageCount, direction, splitPageIds, options, stateAt, imageAt),
+        request(pageCount, direction, hasPreviousChapter, hasNextChapter, splitPageIds, options, stateAt, imageAt),
     )
 
     private fun request(
         pageCount: Int,
         direction: ReaderDirection,
+        hasPreviousChapter: Boolean = true,
+        hasNextChapter: Boolean = true,
         splitPageIds: Set<ReaderPageId> = emptySet(),
         options: DualPagedPresentationOptions = DualPagedPresentationOptions(),
         stateAt: (Int) -> ReaderPageLoadState = { ReaderPageLoadState.Queued },
@@ -185,6 +211,8 @@ class DualPagedPresentationTest {
                 },
             ),
             direction = direction,
+            hasPreviousChapter = hasPreviousChapter,
+            hasNextChapter = hasNextChapter,
             splitPageIds = splitPageIds,
             dualPagedOptions = options,
         )

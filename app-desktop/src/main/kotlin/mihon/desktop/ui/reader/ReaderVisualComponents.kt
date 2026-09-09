@@ -5,13 +5,21 @@ import tachiyomi.i18n.MR
 import java.util.Locale
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -116,6 +124,8 @@ internal fun ZoomablePagerViewer(
     onTapCenter: (() -> Unit)? = null,
     onPrevChapter: (() -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
+    hasPreviousChapter: Boolean = true,
+    hasNextChapter: Boolean = true,
     pageTurnAnimation: Boolean = true,
     allowAdjacentViewport: Boolean = true,
 ) {
@@ -125,6 +135,8 @@ internal fun ZoomablePagerViewer(
         val request = remember(
             chapter,
             direction,
+            hasPreviousChapter,
+            hasNextChapter,
             splitPageIndices,
             forcedSinglePages,
             matchedPairs,
@@ -133,6 +145,8 @@ internal fun ZoomablePagerViewer(
             desktopReaderPresentationRequest(
                 chapter = chapter,
                 direction = direction,
+                hasPreviousChapter = hasPreviousChapter,
+                hasNextChapter = hasNextChapter,
                 spreadPageIndices = splitPageIndices,
                 forcedSinglePageIndices = forcedSinglePages,
                 matchedPagePairs = matchedPairs,
@@ -168,10 +182,19 @@ internal fun ZoomablePagerViewer(
             generation = chapter.generation,
         )
     } else {
-        val request = remember(chapter, direction, autoSplitPages, splitPageIndices) {
+        val request = remember(
+            chapter,
+            direction,
+            hasPreviousChapter,
+            hasNextChapter,
+            autoSplitPages,
+            splitPageIndices,
+        ) {
             desktopReaderPresentationRequest(
                 chapter = chapter,
                 direction = direction,
+                hasPreviousChapter = hasPreviousChapter,
+                hasNextChapter = hasNextChapter,
                 splitPageIndices = if (autoSplitPages) splitPageIndices else emptySet(),
             )
         }
@@ -225,13 +248,17 @@ internal fun WebtoonPresentationViewer(
     onViewportChanged: (WebtoonViewportUpdate) -> Unit,
     onRetryPage: ((ReaderPageId) -> Unit)? = null,
     onSpreadDetected: ((Int) -> Unit)? = null,
+    hasPreviousChapter: Boolean = true,
+    hasNextChapter: Boolean = true,
     onNextChapter: (() -> Unit)? = null,
 ) {
     if (chapter.pages.isEmpty()) return
-    val request = remember(chapter, autoSplitPages, splitPageIndices) {
+    val request = remember(chapter, hasPreviousChapter, hasNextChapter, autoSplitPages, splitPageIndices) {
         desktopReaderPresentationRequest(
             chapter = chapter,
             direction = ReaderDirection.RTL,
+            hasPreviousChapter = hasPreviousChapter,
+            hasNextChapter = hasNextChapter,
             splitPageIndices = if (autoSplitPages) splitPageIndices else emptySet(),
         )
     }
@@ -305,23 +332,38 @@ internal fun ErrorState(message: String, onRetry: () -> Unit, onBack: () -> Unit
 }
 
 @Composable
-internal fun ChapterTransitionFeedback(
-    transition: ReaderChapterTransitionModel,
-    onRetry: (() -> Unit)?,
-    onClose: () -> Unit,
+internal fun ReaderChapterTransitionItem(
+    direction: ReaderTransitionDirection,
+    modifier: Modifier = Modifier,
 ) {
-    val presentation = chapterTransitionPresentation(transition)
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.72f)), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(presentation.message, color = Color.White, style = MaterialTheme.typography.titleMedium)
-            if (presentation.showLoading) {
-                CircularProgressIndicator(color = Color.White, modifier = Modifier.padding(top = 12.dp))
-            }
-            if (presentation.showRetry && onRetry != null) {
-                Button(onClick = onRetry, modifier = Modifier.padding(top = 12.dp)) { Text(MR.strings.action_retry.localized()) }
-            }
-            if (presentation.showClose) {
-                Button(onClick = onClose, modifier = Modifier.padding(top = 12.dp)) { Text(MR.strings.action_close.localized()) }
+    val message = when (direction) {
+        ReaderTransitionDirection.PREVIOUS -> MR.strings.transition_no_previous.localized()
+        ReaderTransitionDirection.NEXT -> MR.strings.transition_no_next.localized()
+    }
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center,
+    ) {
+        OutlinedCard(
+            modifier = Modifier
+                .widthIn(max = 460.dp)
+                .fillMaxWidth(),
+            colors = CardDefaults.outlinedCardColors(
+                containerColor = Color.Transparent,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+            ),
+        ) {
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Info,
+                    tint = MaterialTheme.colorScheme.primary,
+                    contentDescription = null,
+                )
+                Text(message, style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
@@ -339,16 +381,15 @@ internal data class ChapterTransitionPresentation(
 internal fun chapterTransitionPresentation(
     transition: ReaderChapterTransitionModel,
 ): ChapterTransitionPresentation {
-    val direction = if (transition.direction == ReaderTransitionDirection.NEXT) {
-        MR.strings.desktop_ui_next.localized()
-    } else {
-        MR.strings.desktop_ui_previous.localized()
-    }
     val target = transition.to?.name
     val isBoundary = target == null
     val state = transition.state
     val message = when {
-        isBoundary -> MR.strings.desktop_ui_no_direction_chapter.localized(Locale.getDefault(), direction)
+        isBoundary -> if (transition.direction == ReaderTransitionDirection.NEXT) {
+            MR.strings.transition_no_next.localized()
+        } else {
+            MR.strings.transition_no_previous.localized()
+        }
         state is ReaderChapterState.Error -> {
             val error = state.error
             MR.strings.desktop_ui_failed_to_load_target.localized(

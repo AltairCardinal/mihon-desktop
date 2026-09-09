@@ -3,6 +3,7 @@ package mihon.desktop.ui.reader.presentation
 import mihon.domain.reader.PageRotation
 import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.ReaderDirection
+import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.session.ReaderPageSession
 import mihon.domain.reader.splitPageBounds
 
@@ -12,7 +13,15 @@ internal object SinglePagedPresentation : ReaderPresentationStrategy {
     override fun present(request: ReaderPresentationRequest): ReaderPresentationSnapshot =
         ReaderPresentationSnapshot(
             mode = mode,
-            displayUnits = request.chapter.pages.flatMap { page -> request.unitsFor(page) },
+            displayUnits = buildList {
+                if (!request.hasPreviousChapter) {
+                    add(chapterTransitionDisplayUnit(mode, ReaderTransitionDirection.PREVIOUS))
+                }
+                addAll(request.chapter.pages.flatMap { page -> request.unitsFor(page) })
+                if (!request.hasNextChapter) {
+                    add(chapterTransitionDisplayUnit(mode, ReaderTransitionDirection.NEXT))
+                }
+            },
         )
 
     private fun ReaderPresentationRequest.unitsFor(page: ReaderPageSession): List<DisplayUnit> {

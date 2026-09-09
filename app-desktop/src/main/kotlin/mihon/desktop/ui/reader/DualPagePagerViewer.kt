@@ -101,9 +101,19 @@ internal fun DualPageDisplayUnitFrame(
             .semantics {
                 this[DualPageDisplayUnitCompositionIdentityKey] = identity
                 this[DualPageDisplayUnitIdKey] = unit.id
+                unit.transitionDirection?.let { this[ReaderDisplayUnitTransitionDirectionKey] = it }
             },
         contentAlignment = Alignment.Center,
     ) {
+        if (unit.transitionDirection != null) {
+            ReaderChapterTransitionItem(
+                direction = unit.transitionDirection,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 64.dp),
+            )
+            return
+        }
         if (unit.slots.size == 1) {
             DualPageSlotContainer(
                 slot = unit.slots.single(),

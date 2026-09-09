@@ -43,6 +43,7 @@ import mihon.desktop.ui.reader.presentation.DisplayUnitId
 import mihon.desktop.ui.reader.presentation.ReaderPresentationSnapshot
 import mihon.desktop.ui.reader.presentation.VisiblePageSet
 import mihon.domain.reader.ReaderNavigationCommand
+import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
 
@@ -52,6 +53,8 @@ internal val ReaderDisplayUnitCompositionIdentityKey =
     SemanticsPropertyKey<ReaderDisplayUnitCompositionIdentity>("ReaderDisplayUnitCompositionIdentity")
 internal val ReaderDisplayUnitIdKey = SemanticsPropertyKey<DisplayUnitId>("ReaderDisplayUnitId")
 internal val ReaderDisplayUnitLoadStateKey = SemanticsPropertyKey<ReaderPageLoadState>("ReaderDisplayUnitLoadState")
+internal val ReaderDisplayUnitTransitionDirectionKey =
+    SemanticsPropertyKey<ReaderTransitionDirection>("ReaderDisplayUnitTransitionDirection")
 
 @Composable
 internal fun SinglePagePagerViewer(
@@ -152,8 +155,6 @@ internal fun SinglePagePagerViewer(
         key = { pagerIndex -> displayUnits[pagerToPage(pagerIndex)].id },
     ) { pagerIndex ->
         val unit = displayUnits[pagerToPage(pagerIndex)]
-        val slot = unit.slots.single()
-        val page = requireNotNull(slot.page)
         SinglePageDisplayUnitContainer(
             unit = unit,
             onRetry = onRetryPage,
@@ -168,17 +169,17 @@ internal fun SinglePagePagerViewer(
             )
             ZoomablePageBox(
                 presentationImage = presentationImage,
-                pageLabel = MR.strings.desktop_ui_page_number.localized(Locale.getDefault(), page.id.sourcePageIndex + 1),
+                pageLabel = MR.strings.desktop_ui_page_number.localized(Locale.getDefault(), readyPage.id.sourcePageIndex + 1),
                 zoomState = zoomState,
                 onZoomChange = onZoomChange,
                 cropBorders = cropBorders,
                 contextMenuScope = contextMenuScope,
                 mangaTitle = mangaTitle,
                 chapterTitle = chapterTitle,
-                pageIndex = page.id.sourcePageIndex,
+                pageIndex = readyPage.id.sourcePageIndex,
                 onRetry = { onRetryPage(readyPage.id) },
                 onSpreadDetected = if (readySlot.splitHalf == null && onSpreadDetected != null) {
-                    { onSpreadDetected(page.id.sourcePageIndex) }
+                    { onSpreadDetected(readyPage.id.sourcePageIndex) }
                 } else {
                     null
                 },
@@ -237,6 +238,21 @@ internal fun SinglePageDisplayUnitContainer(
     onRetry: (ReaderPageId) -> Unit,
     readyContent: @Composable (DisplaySlot) -> Unit,
 ) {
+    if (unit.transitionDirection != null) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .semantics { this[ReaderDisplayUnitTransitionDirectionKey] = unit.transitionDirection },
+        ) {
+            ReaderChapterTransitionItem(
+                direction = unit.transitionDirection,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 64.dp),
+            )
+        }
+        return
+    }
     val slot = unit.slots.single()
     val page = requireNotNull(slot.page)
     val compositionIdentity = remember(unit.id) { ReaderDisplayUnitCompositionIdentity() }

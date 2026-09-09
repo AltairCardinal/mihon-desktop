@@ -28917,13 +28917,13 @@
       "DESKTOP_CONSUMER": [
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/VirtualPageList.kt", "symbol": "fun buildVirtualPageList(", "line": 8},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/DesktopReaderPresentationRequest.kt", "symbol": "fun desktopReaderPresentationRequest(", "line": 6},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt", "symbol": "object SinglePagedPresentation", "line": 9},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentation.kt", "symbol": "object WebtoonPresentation", "line": 12},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentation.kt", "symbol": "object DualPagedPresentation", "line": 24},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "fun ZoomablePagerViewer(", "line": 92},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt", "symbol": "fun SinglePagePagerViewer(", "line": 57},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt", "symbol": "object SinglePagedPresentation", "line": 10},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentation.kt", "symbol": "object WebtoonPresentation", "line": 13},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentation.kt", "symbol": "object DualPagedPresentation", "line": 25},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt", "symbol": "fun ZoomablePagerViewer(", "line": 100},
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt", "symbol": "fun SinglePagePagerViewer(", "line": 60},
         {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt", "symbol": "fun WebtoonViewer(", "line": 73},
-        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt", "symbol": "fun DualPagePagerViewer(", "line": 195}
+        {"path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt", "symbol": "fun DualPagePagerViewer(", "line": 205}
       ],
       "FIXTURE": [
         {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderSharedParityWiringTest.kt#fork-added pairing adapter and shared core produce the same enhancement vectors", "productionMarkers": ["PagePairingAlgorithm.buildPairings", "ReaderPagePairing.build"]},
@@ -29663,12 +29663,21 @@
         ],
         "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt": [
           "next chapter activates inside the same core at zero pages without a replacement screen",
-          "chapter boundaries do not activate and keep explicit feedback"
+          "chapter boundaries do not activate and do not keep viewport feedback"
+        ],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt": [
+          "missing adjacent chapters become independent boundary items"
+        ],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt": [
+          "missing pager boundaries remain independent items in both directions"
+        ],
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt": [
+          "missing webtoon boundaries are independent list items"
         ]
       }
     },
     "authoritativeImplementation": "Fixed-main original Mihon capability #47: ReaderChapter exposes Wait/Loading/Loaded/Error and pager/webtoon transition holders show Loading or Error with Retry; Wait/Loaded add no Continue or Cancel controls and loaded adjacent pages replace the transition seamlessly.",
-    "desktopImplementation": "DesktopReaderRuntimeFactory 为一个 Voyager Screen 创建一个 ReaderSessionCore；DesktopReaderSession 驱动稳定页身份与逐页状态，ReaderScreenModel 只接收 canonical snapshot。跨章在同一 core 内立即进入目标章 0 页 Loading，不替换 Screen；目标章错误提供 Retry/返回，边界保留明确反馈。",
+    "desktopImplementation": "DesktopReaderRuntimeFactory 为一个 Voyager Screen 创建一个 ReaderSessionCore；DesktopReaderSession 驱动稳定页身份与逐页状态，ReaderScreenModel 只接收 canonical snapshot。跨章在同一 core 内立即进入目标章 0 页 Loading，不替换 Screen；目标章错误提供 Retry/返回。没有相邻章节时，single/dual/webtoon presentation 按固定原版把边界建模为独立 transition item，使用共享 transition_no_previous/transition_no_next 文案与透明描边 Info 卡；离开该 item 即不再显示，不覆盖漫画页。",
     "upstreamRef": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
     "upstreamSymbols": [
       {
@@ -29700,7 +29709,14 @@
       "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
       "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
-      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt"
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/SinglePagePagerViewer.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DualPagePagerViewer.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/WebtoonViewer.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentation.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentation.kt",
+      "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentation.kt"
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [
@@ -29789,7 +29805,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
           "symbol": "fun acceptSessionState",
-          "line": 115
+          "line": 116
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt",
+          "symbol": "fun chapterTransitionDisplayUnit",
+          "line": 147
+        },
+        {
+          "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
+          "symbol": "fun ReaderChapterTransitionItem",
+          "line": 335
         }
       ],
       "FIXTURE": [
@@ -29871,6 +29897,9 @@
       "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt",
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt",
+      "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt",
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt"
     ],
     "behaviorMethods": {
@@ -30187,22 +30216,22 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "ReaderViewportColorLayer(state.colorFilter)",
-          "line": 524
+          "line": 546
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "internal fun ReaderViewportColorLayer",
-          "line": 638
+          "line": 653
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
           "symbol": "internal fun Modifier.readerColorTransform",
-          "line": 64
+          "line": 72
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
           "symbol": "internal fun readerColorMatrix",
-          "line": 74
+          "line": 82
         }
       ],
       "FIXTURE": [

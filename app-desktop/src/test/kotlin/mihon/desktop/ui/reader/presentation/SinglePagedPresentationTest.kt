@@ -3,6 +3,7 @@ package mihon.desktop.ui.reader.presentation
 import mihon.domain.error.AppError
 import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.ReaderDirection
+import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.ReaderPageSize
 import mihon.domain.reader.session.ReaderChapterId
 import mihon.domain.reader.session.ReaderChapterLoadState
@@ -96,6 +97,25 @@ class SinglePagedPresentationTest {
     }
 
     @Test
+    fun `missing adjacent chapters become independent boundary items`() {
+        val snapshot = SinglePagedPresentation.present(
+            request(
+                page(loadState = ReaderPageLoadState.Ready),
+                direction = ReaderDirection.LTR,
+                hasPreviousChapter = false,
+                hasNextChapter = false,
+            ),
+        )
+
+        assertEquals(
+            listOf(ReaderTransitionDirection.PREVIOUS, null, ReaderTransitionDirection.NEXT),
+            snapshot.displayUnits.map(DisplayUnit::transitionDirection),
+        )
+        assertEquals(1, snapshot.firstDisplayUnitIndex(ReaderPageId(chapterId, 0)))
+        assertEquals(emptySet<ReaderPageId>(), snapshot.visiblePages(snapshot.displayUnits.first().id).pageIds)
+    }
+
+    @Test
     fun `registry selects the single strategy and rejects duplicate mode ownership`() {
         val registry = ReaderPresentationRegistry(listOf(SinglePagedPresentation))
 
@@ -108,6 +128,8 @@ class SinglePagedPresentationTest {
     private fun request(
         vararg pages: ReaderPageSession,
         direction: ReaderDirection = ReaderDirection.LTR,
+        hasPreviousChapter: Boolean = true,
+        hasNextChapter: Boolean = true,
         splitPageIds: Set<ReaderPageId> = emptySet(),
         pageSizes: Map<ReaderPageId, ReaderPageSize> = emptyMap(),
     ): ReaderPresentationRequest = ReaderPresentationRequest(
@@ -118,6 +140,8 @@ class SinglePagedPresentationTest {
             pages = pages.toList(),
         ),
         direction = direction,
+        hasPreviousChapter = hasPreviousChapter,
+        hasNextChapter = hasNextChapter,
         splitPageIds = splitPageIds,
         pageSizes = pageSizes,
     )

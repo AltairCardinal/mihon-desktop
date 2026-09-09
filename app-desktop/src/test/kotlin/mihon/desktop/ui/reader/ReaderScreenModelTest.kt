@@ -40,6 +40,7 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.i18n.MR
 import java.util.prefs.Preferences
 
 class ReaderScreenModelTest {
@@ -357,6 +358,19 @@ class ReaderScreenModelTest {
         assertTrue(chapterTransitionPresentation(error).showClose)
         assertTrue(chapterTransitionPresentation(boundary).isBoundary)
         assertTrue(chapterTransitionPresentation(boundary).showClose)
+    }
+
+    @Test
+    fun `chapter boundary uses the shared no next transition copy`() {
+        val from = ReaderChapterModel(1L, "/1", "Chapter 1", 1.0)
+        val boundary = ReaderChapterTransitionModel(
+            direction = ReaderTransitionDirection.NEXT,
+            from = from,
+            to = null,
+            state = ReaderChapterState.Wait,
+        )
+
+        assertEquals(MR.strings.transition_no_next.localized(), chapterTransitionPresentation(boundary).message)
     }
 
     @Test

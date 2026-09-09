@@ -6,6 +6,8 @@ import mihon.domain.reader.session.ReaderChapterSession
 internal fun desktopReaderPresentationRequest(
     chapter: ReaderChapterSession,
     direction: ReaderDirection,
+    hasPreviousChapter: Boolean = true,
+    hasNextChapter: Boolean = true,
     splitPageIndices: Set<Int> = emptySet(),
     spreadPageIndices: Set<Int> = emptySet(),
     forcedSinglePageIndices: Set<Int> = emptySet(),
@@ -16,6 +18,8 @@ internal fun desktopReaderPresentationRequest(
     return ReaderPresentationRequest(
         chapter = chapter,
         direction = direction,
+        hasPreviousChapter = hasPreviousChapter,
+        hasNextChapter = hasNextChapter,
         splitPageIds = splitPageIndices.mapNotNullTo(linkedSetOf()) { pagesByIndex[it]?.id },
         dualPagedOptions = DualPagedPresentationOptions(
             spreadPageIds = spreadPageIndices.mapNotNullTo(linkedSetOf()) { pagesByIndex[it]?.id },

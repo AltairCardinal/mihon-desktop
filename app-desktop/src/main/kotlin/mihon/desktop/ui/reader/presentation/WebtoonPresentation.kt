@@ -4,6 +4,7 @@ import mihon.domain.reader.PageRotation
 import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.PixelBounds
 import mihon.domain.reader.ReaderDirection
+import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageSession
 import mihon.domain.reader.splitPageBounds
@@ -15,7 +16,15 @@ internal object WebtoonPresentation : ReaderPresentationStrategy {
     override fun present(request: ReaderPresentationRequest): ReaderPresentationSnapshot =
         ReaderPresentationSnapshot(
             mode = mode,
-            displayUnits = request.chapter.pages.flatMap { page -> request.unitsFor(page) },
+            displayUnits = buildList {
+                if (!request.hasPreviousChapter) {
+                    add(chapterTransitionDisplayUnit(mode, ReaderTransitionDirection.PREVIOUS))
+                }
+                addAll(request.chapter.pages.flatMap { page -> request.unitsFor(page) })
+                if (!request.hasNextChapter) {
+                    add(chapterTransitionDisplayUnit(mode, ReaderTransitionDirection.NEXT))
+                }
+            },
         )
 
     private fun ReaderPresentationRequest.unitsFor(page: ReaderPageSession): List<DisplayUnit> {
@@ -130,17 +139,19 @@ internal fun ReaderPresentationSnapshot.resolveWebtoonViewport(
         item.endOffset <= viewportEndOffset || item.offset < viewportStartOffset
     } ?: return null
     val activeUnit = displayUnits[activeItem.index]
-    val activePageId = activeUnit.slots.firstNotNullOfOrNull { it.page?.id } ?: return null
     val visiblePageIds = intersecting.flatMapTo(linkedSetOf()) { item ->
         displayUnits[item.index].slots.mapNotNull { it.page?.id }
     }
     val anchorItem = intersecting.first()
+    val activePageId = activeUnit.slots.firstNotNullOfOrNull { it.page?.id }
+    if (activePageId == null && activeUnit.transitionDirection == null) return null
 
     return WebtoonViewportUpdate(
         visiblePages = VisiblePageSet(
             displayUnitId = activeUnit.id,
             pageIds = visiblePageIds,
             activePageId = activePageId,
+            transitionDirection = activeUnit.transitionDirection,
         ),
         anchor = WebtoonScrollAnchor(
             displayUnitId = displayUnits[anchorItem.index].id,
@@ -152,6 +163,9 @@ internal fun ReaderPresentationSnapshot.resolveWebtoonViewport(
 
 internal fun ReaderPresentationSnapshot.restoreWebtoonAnchorIndex(anchor: WebtoonScrollAnchor): Int {
     require(mode == ReaderPresentationMode.WEBTOON) { "Only a webtoon snapshot can restore a webtoon anchor" }
+    displayUnits.indexOfFirst { it.id == anchor.displayUnitId }
+        .takeIf { it >= 0 && displayUnits[it].transitionDirection != null }
+        ?.let { return it }
     val pageId = anchor.displayUnitId.slots.firstNotNullOfOrNull { it.pageId } ?: return -1
     return restoreDisplayUnitIndex(pageId, anchor.displayUnitId)
 }

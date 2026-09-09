@@ -70,8 +70,6 @@ import mihon.desktop.reader.buildVirtualPageList
 import mihon.desktop.reader.desktopReaderRuntimeFactory
 import mihon.desktop.reader.viewerFlagsWithDualPage
 import mihon.desktop.reader.viewerFlagsWithReadingMode
-import mihon.desktop.reader.firstVirtualIndex
-import mihon.desktop.reader.realPageIndex
 import mihon.desktop.reader.runResourceActions
 import mihon.desktop.ui.reader.presentation.DesktopReaderPresentationRegistry
 import mihon.desktop.ui.reader.presentation.ReaderPresentationMode
@@ -266,14 +264,9 @@ data class DesktopReaderScreen(
             ReaderTransitionDirection.NEXT -> readerNavigator?.nextToRead
         }
         if (target == null) {
-            val current = model.state.value.context
-            model.showChapterBoundary(
-                direction,
-                current.chapterId,
-                current.chapterUrl,
-                current.chapterTitle,
-                current.chapterNumber,
-            )
+            // The boundary is an item in the pager/webtoon reading stream. Keep this
+            // callback side-effect free when the user attempts to move past it.
+            model.clearChapterTransition()
             return false
         }
         model.clearChapterTransition()
@@ -362,17 +355,38 @@ internal fun initialPageForChapterNavigation(direction: ReaderChapterNavigationD
 internal fun ReaderState.effectiveMatchedPairs(): Set<Pair<Int, Int>> =
     if (forcedSinglePages.isEmpty()) matchedPairs else emptySet()
 
-internal fun ReaderState.dualPresentationSnapshot(): ReaderPresentationSnapshot {
+internal fun ReaderState.dualPresentationSnapshot(
+    hasPreviousChapter: Boolean = true,
+    hasNextChapter: Boolean = true,
+): ReaderPresentationSnapshot {
     val direction = if (readingMode == ReadingMode.RTL) ReaderDirection.RTL else ReaderDirection.LTR
     val request = desktopReaderPresentationRequest(
         chapter = session.activeChapter,
         direction = direction,
+        hasPreviousChapter = hasPreviousChapter,
+        hasNextChapter = hasNextChapter,
         spreadPageIndices = spreadPages,
         forcedSinglePageIndices = forcedSinglePages,
         matchedPagePairs = effectiveMatchedPairs(),
         splitWidePages = autoSplitPages,
     )
     return DesktopReaderPresentationRegistry.require(ReaderPresentationMode.DUAL_PAGED).present(request)
+}
+
+internal fun ReaderState.singlePresentationSnapshot(
+    hasPreviousChapter: Boolean = true,
+    hasNextChapter: Boolean = true,
+): ReaderPresentationSnapshot {
+    val direction = if (readingMode == ReadingMode.RTL) ReaderDirection.RTL else ReaderDirection.LTR
+    val request = desktopReaderPresentationRequest(
+        chapter = session.activeChapter,
+        direction = direction,
+        hasPreviousChapter = hasPreviousChapter,
+        hasNextChapter = hasNextChapter,
+        splitPageIndices = spreadPages,
+        splitWidePages = autoSplitPages,
+    )
+    return DesktopReaderPresentationRegistry.require(ReaderPresentationMode.SINGLE_PAGED).present(request)
 }
 
 internal fun adjustedForcedSinglePages(state: ReaderState): Set<Int> {
@@ -507,7 +521,15 @@ private fun ReaderViewport(
                 }
                 .onPointerEvent(PointerEventType.Scroll) { event ->
                     val native = event.nativeEvent as? java.awt.event.MouseWheelEvent ?: return@onPointerEvent
-                    handleReaderWheelEvent(native, state, model, onPrevChapter, onNextChapter)
+                    handleReaderWheelEvent(
+                        native,
+                        state,
+                        model,
+                        onPrevChapter,
+                        onNextChapter,
+                        hasPreviousChapter = readerNav?.previousRead != null,
+                        hasNextChapter = readerNav?.nextToRead != null,
+                    )
                 },
         ) {
             when (readerViewportBody(state)) {
@@ -547,13 +569,6 @@ private fun ReaderViewport(
                         )
                     }
                 }
-            }
-            state.chapterTransition?.let { transition ->
-                ChapterTransitionFeedback(
-                    transition = transition,
-                    onRetry = null,
-                    onClose = model::clearChapterTransition,
-                )
             }
             if (state.showUI) {
                 TopAppBar(
@@ -648,6 +663,8 @@ internal fun handleReaderWheelEvent(
     model: ReaderScreenModel,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
+    hasPreviousChapter: Boolean = true,
+    hasNextChapter: Boolean = true,
 ): Boolean {
     val intent = readerWheelIntent(event.preciseWheelRotation, event.isControlDown, state.readingMode)
     return when (intent) {
@@ -663,13 +680,25 @@ internal fun handleReaderWheelEvent(
         ReaderWheelIntent.PREVIOUS_PAGE,
         ReaderWheelIntent.NEXT_PAGE,
         -> {
-            val navPosition = readerKeyboardNavigationPosition(state)
+            val navPosition = readerKeyboardNavigationPosition(
+                state = state,
+                hasPreviousChapter = hasPreviousChapter,
+                hasNextChapter = hasNextChapter,
+            )
             val action = when (intent) {
                 ReaderWheelIntent.NEXT_PAGE -> ReaderKeyboardAction.forNext(navPosition.current, navPosition.total)
                 ReaderWheelIntent.PREVIOUS_PAGE -> ReaderKeyboardAction.forPrevious(navPosition.current)
                 else -> error("Unexpected non-page wheel intent: $intent")
             }
-            applyReaderPageAction(action, state, model, onPrevChapter, onNextChapter)
+            applyReaderPageAction(
+                action,
+                state,
+                model,
+                onPrevChapter,
+                onNextChapter,
+                hasPreviousChapter,
+                hasNextChapter,
+            )
         }
     }
 }
@@ -684,7 +713,11 @@ internal fun handleReaderKeyEvent(
     onNextChapter: () -> Unit,
 ): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
-    val navPosition = readerKeyboardNavigationPosition(state)
+    val navPosition = readerKeyboardNavigationPosition(
+        state = state,
+        hasPreviousChapter = readerNav?.previousRead != null,
+        hasNextChapter = readerNav?.nextToRead != null,
+    )
     val totalPages = navPosition.total
     val navCurrent = navPosition.current
     if (event.isCtrlPressed) {
@@ -716,7 +749,15 @@ internal fun handleReaderKeyEvent(
         Key.Escape -> { navigator.pop(); return true }
         else -> null
     } ?: return false
-    return applyReaderPageAction(action, state, model, onPrevChapter, onNextChapter)
+    return applyReaderPageAction(
+        action,
+        state,
+        model,
+        onPrevChapter,
+        onNextChapter,
+        readerNav?.previousRead != null,
+        readerNav?.nextToRead != null,
+    )
 }
 
 private fun applyReaderPageAction(
@@ -725,15 +766,28 @@ private fun applyReaderPageAction(
     model: ReaderScreenModel,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
+    hasPreviousChapter: Boolean,
+    hasNextChapter: Boolean,
 ): Boolean = when (action) {
     is ReaderPageAction.GoToPage -> {
-        val target = if (state.dualPageMode && state.session.activeChapter.pages.isNotEmpty()) {
-            val presentation = state.dualPresentationSnapshot()
-            presentation.firstDualPageIndex(action.page.coerceIn(presentation.displayUnits.indices))
-        } else if (state.virtualPages != null) {
-            state.virtualPages.realPageIndex(action.page.coerceIn(0, state.virtualPages.size - 1))
-        } else action.page
-        model.goToPage(target); true
+        val presentation = if (state.dualPageMode) {
+            state.dualPresentationSnapshot(hasPreviousChapter, hasNextChapter)
+        } else {
+            state.singlePresentationSnapshot(hasPreviousChapter, hasNextChapter)
+        }
+        if (presentation.displayUnits.isEmpty()) return false
+        val targetUnit = presentation.displayUnits[action.page.coerceIn(presentation.displayUnits.indices)]
+        if (targetUnit.transitionDirection != null) {
+            model.selectDisplayUnit(targetUnit.id)
+        } else {
+            val target = if (state.dualPageMode) {
+                presentation.firstDualPageIndex(action.page.coerceIn(presentation.displayUnits.indices))
+            } else {
+                targetUnit.slots.firstNotNullOfOrNull { it.page?.id?.sourcePageIndex } ?: return false
+            }
+            model.goToPage(target)
+        }
+        true
     }
     is ReaderPageAction.NoPrevPage -> { onPrevChapter(); true }
     is ReaderPageAction.NoNextPage -> { onNextChapter(); true }
@@ -744,22 +798,33 @@ internal data class ReaderKeyboardNavigationPosition(
     val total: Int,
 )
 
-internal fun readerKeyboardNavigationPosition(state: ReaderState): ReaderKeyboardNavigationPosition {
+internal fun readerKeyboardNavigationPosition(
+    state: ReaderState,
+    hasPreviousChapter: Boolean = true,
+    hasNextChapter: Boolean = true,
+): ReaderKeyboardNavigationPosition {
     val pageCount = state.session.activeChapter.pages.size
     if (state.dualPageMode && pageCount > 1) {
-        val presentation = state.dualPresentationSnapshot()
+        val presentation = state.dualPresentationSnapshot(hasPreviousChapter, hasNextChapter)
         val safePage = state.currentPage.coerceIn(0, pageCount - 1)
+        val currentUnitIndex = state.currentDisplayUnitId
+            ?.let { displayUnitId -> presentation.displayUnits.indexOfFirst { it.id == displayUnitId } }
+            ?.takeIf { it >= 0 }
+            ?: presentation.dualDisplayUnitIndexForSourcePage(safePage)
         return ReaderKeyboardNavigationPosition(
-            current = presentation.dualDisplayUnitIndexForSourcePage(safePage).coerceAtLeast(0),
+            current = currentUnitIndex.coerceAtLeast(0),
             total = presentation.displayUnits.size,
         )
     }
 
-    val vPages = state.virtualPages
-    val totalPages = vPages?.size ?: pageCount
     val safeCurrent = state.currentPage.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
-    val navCurrent = vPages?.firstVirtualIndex(safeCurrent) ?: state.currentPage
-    return ReaderKeyboardNavigationPosition(current = navCurrent, total = totalPages)
+    if (pageCount == 0) return ReaderKeyboardNavigationPosition(current = 0, total = 0)
+    val presentation = state.singlePresentationSnapshot(hasPreviousChapter, hasNextChapter)
+    val navCurrent = state.currentDisplayUnitId
+        ?.let { displayUnitId -> presentation.displayUnits.indexOfFirst { it.id == displayUnitId } }
+        ?.takeIf { it >= 0 }
+        ?: presentation.firstDisplayUnitIndex(state.session.activeChapter.pages[safeCurrent].id)
+    return ReaderKeyboardNavigationPosition(current = navCurrent, total = presentation.displayUnits.size)
 }
 
 @Composable
@@ -787,6 +852,8 @@ internal fun ReaderContent(
             onViewportChanged = model::settleWebtoon,
             onRetryPage = model::retryPage,
             onSpreadDetected = { realIdx -> if (realIdx !in state.spreadPages) model.setSpreadPages(state.spreadPages + realIdx) },
+            hasPreviousChapter = readerNav?.previousRead != null,
+            hasNextChapter = readerNav?.nextToRead != null,
             onNextChapter = if (readerNav?.nextToRead != null) onNextChapter else null,
         )
         ReadingMode.LTR, ReadingMode.RTL -> {
@@ -816,6 +883,8 @@ internal fun ReaderContent(
                 onTapCenter = { model.toggleUI() },
                 onPrevChapter = onPrevChapter,
                 onNextChapter = onNextChapter,
+                hasPreviousChapter = readerNav?.previousRead != null,
+                hasNextChapter = readerNav?.nextToRead != null,
             )
         }
     }

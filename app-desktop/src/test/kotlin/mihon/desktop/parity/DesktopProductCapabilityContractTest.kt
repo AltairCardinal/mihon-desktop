@@ -744,6 +744,12 @@ class DesktopProductCapabilityContractTest {
                     "domain/src/commonTest/kotlin/mihon/domain/reader/ReaderParityContractTest.kt" to setOf("fork-added shared portrait pairing enhancement groups adjacent pages"),
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/VirtualPageListTest.kt" to setOf("LTR single spread produces LEFT then RIGHT"),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderProductRegressionTest.kt" to setOf("shared pairing keeps cover edge matching adjust and landscape parity enhancements"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt" to
+                        setOf("missing adjacent chapters become independent boundary items"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt" to
+                        setOf("missing pager boundaries remain independent items in both directions"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt" to
+                        setOf("missing webtoon boundaries are independent list items"),
                 ),
             44 to
                 mapOf(
@@ -807,8 +813,15 @@ class DesktopProductCapabilityContractTest {
                     ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to setOf(
                         "next chapter activates inside the same core at zero pages without a replacement screen",
-                        "chapter boundaries do not activate and keep explicit feedback",
+                        "chapter boundaries do not activate and do not keep viewport feedback",
+                        "chapter boundary request does not mount a persistent viewport feedback overlay",
                     ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt" to
+                        setOf("missing adjacent chapters become independent boundary items"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt" to
+                        setOf("missing pager boundaries remain independent items in both directions"),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt" to
+                        setOf("missing webtoon boundaries are independent list items"),
                 ),
             49 to
                 mapOf(
@@ -1827,6 +1840,8 @@ class DesktopProductCapabilityContractTest {
                                 setOf("SinglePagedPresentation.present", "DisplayUnit::id"),
                             "LTR and RTL split a wide page in reading order without changing source identity" to
                                 setOf("SinglePagedPresentation.present", "PageSplitHalf.RIGHT"),
+                            "missing adjacent chapters become independent boundary items" to
+                                setOf("SinglePagedPresentation.present", "ReaderTransitionDirection.PREVIOUS", "ReaderTransitionDirection.NEXT"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagePresentationIdentityTest.kt" to
                         mapOf(
@@ -1851,6 +1866,8 @@ class DesktopProductCapabilityContractTest {
                                 setOf("restoreWebtoonAnchorIndex", "WebtoonScrollAnchor"),
                             "registry exposes webtoon beside single-page presentation" to
                                 setOf("DesktopReaderPresentationRegistry", "ReaderPresentationMode.WEBTOON"),
+                            "missing webtoon boundaries are independent list items" to
+                                setOf("WebtoonPresentation.present", "ReaderTransitionDirection.PREVIOUS", "ReaderTransitionDirection.NEXT"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationIdentityTest.kt" to
                         mapOf(
@@ -1881,6 +1898,8 @@ class DesktopProductCapabilityContractTest {
                                 setOf("PageSplitHalf.RIGHT", "resolveDualVisiblePages"),
                             "registry exposes dual beside single and webtoon" to
                                 setOf("DesktopReaderPresentationRegistry", "ReaderPresentationMode.DUAL_PAGED"),
+                            "missing pager boundaries remain independent items in both directions" to
+                                setOf("ReaderTransitionDirection.PREVIOUS", "ReaderTransitionDirection.NEXT", "snapshot.displayUnits.first()"),
                         ),
                     "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt" to
                         mapOf(
@@ -1901,6 +1920,33 @@ class DesktopProductCapabilityContractTest {
                         mapOf(
                             "auto scroll pauses through user drag and fling then resumes after settlement" to
                                 setOf("WebtoonAutoScrollPauseState", "isScrollInProgress"),
+                        ),
+                ),
+            47 to
+                mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt" to
+                        mapOf(
+                            "next chapter activates inside the same core at zero pages without a replacement screen" to
+                                setOf("requestAdjacentChapterTransition", "core.openChapter", "pages.isEmpty()"),
+                            "chapter boundaries do not activate and do not keep viewport feedback" to
+                                setOf("requestAdjacentChapterTransition", "assertEquals(0, activations)", "assertNull(model.chapterTransitionCommand())"),
+                            "chapter boundary request does not mount a persistent viewport feedback overlay" to
+                                setOf("requestAdjacentChapterTransition", "assertNull(model.state.value.chapterTransition)"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt" to
+                        mapOf(
+                            "missing adjacent chapters become independent boundary items" to
+                                setOf("SinglePagedPresentation.present", "ReaderTransitionDirection.PREVIOUS", "ReaderTransitionDirection.NEXT"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt" to
+                        mapOf(
+                            "missing pager boundaries remain independent items in both directions" to
+                                setOf("ReaderTransitionDirection.PREVIOUS", "ReaderTransitionDirection.NEXT", "snapshot.displayUnits.first()"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt" to
+                        mapOf(
+                            "missing webtoon boundaries are independent list items" to
+                                setOf("WebtoonPresentation.present", "ReaderTransitionDirection.PREVIOUS", "ReaderTransitionDirection.NEXT"),
                         ),
                 ),
             44 to
@@ -2067,8 +2113,25 @@ class DesktopProductCapabilityContractTest {
                         mapOf(
                             "next chapter activates inside the same core at zero pages without a replacement screen" to
                                 setOf("requestAdjacentChapterTransition", "core.openChapter", "pages.isEmpty()"),
-                            "chapter boundaries do not activate and keep explicit feedback" to
-                                setOf("requestAdjacentChapterTransition", "ReaderNavigationCommand.ChapterBoundary", "activations"),
+                            "chapter boundaries do not activate and do not keep viewport feedback" to
+                                setOf("requestAdjacentChapterTransition", "assertEquals(0, activations)", "assertNull(model.chapterTransitionCommand())"),
+                            "chapter boundary request does not mount a persistent viewport feedback overlay" to
+                                setOf("requestAdjacentChapterTransition", "assertNull(model.state.value.chapterTransition)"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/SinglePagedPresentationTest.kt" to
+                        mapOf(
+                            "missing adjacent chapters become independent boundary items" to
+                                setOf("SinglePagedPresentation.present", "ReaderTransitionDirection.PREVIOUS", "ReaderTransitionDirection.NEXT"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt" to
+                        mapOf(
+                            "missing pager boundaries remain independent items in both directions" to
+                                setOf("ReaderTransitionDirection.PREVIOUS", "ReaderTransitionDirection.NEXT", "snapshot.displayUnits.first()"),
+                        ),
+                    "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/WebtoonPresentationTest.kt" to
+                        mapOf(
+                            "missing webtoon boundaries are independent list items" to
+                                setOf("WebtoonPresentation.present", "ReaderTransitionDirection.PREVIOUS", "ReaderTransitionDirection.NEXT"),
                         ),
                 ),
             49 to
@@ -2279,10 +2342,18 @@ class DesktopProductCapabilityContractTest {
                             "state.session.activeChapter",
                             "model.activateChapter(",
                             "requestAdjacentChapterTransition",
-                            "ChapterTransitionFeedback(",
+                            "hasPreviousChapter = readerNav?.previousRead != null",
+                            "hasNextChapter = readerNav?.nextToRead != null",
                         ),
                     "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt" to
-                        setOf("chapterTransitionPresentation", "showRetry = state is ReaderChapterState.Error", "showClose = isBoundary"),
+                        setOf(
+                            "ReaderChapterTransitionItem(",
+                            "MR.strings.transition_no_previous.localized()",
+                            "MR.strings.transition_no_next.localized()",
+                            "OutlinedCard(",
+                        ),
+                    "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt" to
+                        setOf("chapterTransitionDisplayUnit(", "DisplayUnitContent.CHAPTER_TRANSITION"),
                 ),
             49 to
                 mapOf(
