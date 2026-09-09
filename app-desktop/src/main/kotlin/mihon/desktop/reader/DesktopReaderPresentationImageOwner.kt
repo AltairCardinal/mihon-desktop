@@ -82,6 +82,8 @@ class DesktopReaderPresentationImageOwner internal constructor(
         pageImagePipeline = pageImagePipeline,
         managesPipelineGeneration = false,
     )
+    private val _firstPresentedGeneration = MutableStateFlow<Long?>(null)
+    internal val firstPresentedGeneration: StateFlow<Long?> = _firstPresentedGeneration.asStateFlow()
     private var minimumGeneration = 0L
     private var closed = false
 
@@ -109,6 +111,7 @@ class DesktopReaderPresentationImageOwner internal constructor(
             if (closed || generation < minimumGeneration) return false
             if (generation == minimumGeneration) return true
             minimumGeneration = generation
+            _firstPresentedGeneration.value = null
             minimumPageAttempts.keys.removeAll { (_, holderGeneration) -> holderGeneration < generation }
             val staleStatic = holders.filter { holder -> holder.identity.generation < generation }
             val staleAnimated = animatedHolders.filter { holder -> holder.identity.generation < generation }
@@ -310,6 +313,14 @@ class DesktopReaderPresentationImageOwner internal constructor(
         holder.acknowledgeDrawWhileOwnerCurrent(candidateIdentity)
     }
 
+    internal fun recordFirstPresentedGeneration(generation: Long) {
+        synchronized(lock) {
+            if (!closed && generation == minimumGeneration) {
+                _firstPresentedGeneration.value = generation
+            }
+        }
+    }
+
     internal fun retainReadyAsset(
         holder: DesktopReaderPresentationImageHolder,
         candidateIdentity: DesktopReaderPresentationImageSlotIdentity,
@@ -445,6 +456,7 @@ internal class DesktopReaderPresentationImageHolder internal constructor(
         }
         drawAcknowledged = true
         pageIoObserver.pagePresented(identity.pageId, identity.generation)
+        owner.recordFirstPresentedGeneration(identity.generation)
         true
     }
 

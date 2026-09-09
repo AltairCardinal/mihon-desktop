@@ -174,6 +174,23 @@ class DesktopSettingsContentAccessibilityTest {
     }
 
     @Test
+    fun `reader animation switch writes the existing preference and reflects changes`() = runBlocking {
+        val dependencies = dependencies(InMemoryPreferenceStore(), this)
+        dependencies.appPreferences.pageTurnAnimation.set(true)
+        withScene(ReaderSettingsScreen(), dependencies) { scene ->
+            val title = MR.strings.pref_page_transitions.localized()
+            assertToggle(scene, title, Role.Switch, toggled = ToggleableState.On)
+            requireNotNull(semanticBranch(scene, title, Role.Switch).config[SemanticsActions.OnClick].action).invoke()
+            render(scene)
+            assertFalse(dependencies.appPreferences.pageTurnAnimation.get())
+            assertToggle(scene, title, Role.Switch, toggled = ToggleableState.Off)
+            dependencies.appPreferences.pageTurnAnimation.set(true)
+            render(scene)
+            assertToggle(scene, title, Role.Switch, toggled = ToggleableState.On)
+        }
+    }
+
+    @Test
     fun `Reader image prefetch copy explains retained metadata and production selection persists`() = runBlocking {
         val root = Preferences.userRoot().node("/mihon/reader-prefetch-settings-test/${System.nanoTime()}")
         val previousLocale = Locale.getDefault()

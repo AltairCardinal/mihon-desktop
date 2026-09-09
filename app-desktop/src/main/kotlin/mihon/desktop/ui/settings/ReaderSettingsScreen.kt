@@ -39,6 +39,7 @@ class ReaderSettingsScreen : Screen {
         val dependencies = LocalDesktopUiDependencies.current
         val prefs = dependencies.appPreferences
         val readerPreferences = dependencies.readerPreferences
+        val pageTurnAnimation by prefs.pageTurnAnimation.changes().collectAsState(initial = prefs.pageTurnAnimation.get())
         var readerMode by remember { mutableStateOf(prefs.defaultReaderMode.get()) }
         var isRtl by remember { mutableStateOf(prefs.defaultRtl.get()) }
         val nextChapterPrefetchMode by readerPreferences.nextChapterPrefetchPreference.changes().collectAsState(
@@ -89,6 +90,13 @@ class ReaderSettingsScreen : Screen {
                 }
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
+                SwitchSettingsItem(
+                    title = MR.strings.pref_page_transitions.localized(),
+                    subtitle = MR.strings.desktop_general_page_transition_summary.localized(),
+                    checked = pageTurnAnimation,
+                    onCheckedChange = { prefs.pageTurnAnimation.set(it) },
+                    modifier = Modifier.desktopSettingsAnchor(MR.strings.pref_page_transitions.localized()),
+                )
                 SwitchSettingsItem(
                     title = MR.strings.desktop_reader_rtl.localized(),
                     subtitle = MR.strings.desktop_reader_rtl_summary.localized(),

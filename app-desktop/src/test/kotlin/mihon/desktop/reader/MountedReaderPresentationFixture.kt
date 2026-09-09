@@ -12,6 +12,7 @@ import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import io.mockk.every
 import io.mockk.mockk
 import java.io.File
 import java.util.zip.ZipEntry
@@ -25,10 +26,12 @@ import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.test.http.ReaderIoTestModeBridge
 import mihon.desktop.test.http.ReaderTestModeController
 import mihon.desktop.ui.reader.DesktopReaderScreen
+import mihon.desktop.settings.DesktopAppPreferences
 import mihon.domain.reader.observability.ReaderMonotonicClock
 import mockwebserver3.MockResponse
 import okhttp3.OkHttpClient
 import okio.Buffer
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 
@@ -113,16 +116,23 @@ internal class MountedReaderPresentationFixture(
         isDualPage = case.mode.isDualPage,
         localChapterPath = localChapterPath,
     )
+    private val testAppPreferences = DesktopAppPreferences(InMemoryPreferenceStore())
 
     val scene = productionFixture.scene
     val allPageIndices: Set<Int> = (0 until pageCount).toSet()
     val visiblePageIndices: Set<Int> = case.mode.visiblePageIndices
+    val mountedPageIndices: Set<Int> = when (case.mode) {
+        MountedReaderPresentationMode.SINGLE -> (visiblePageIndices + 1).intersect(allPageIndices)
+        // The four-page fixture is cover 0, visible spread 1/2, and adjacent spread 3.
+        MountedReaderPresentationMode.DUAL -> setOf(0, 1, 2, 3).intersect(allPageIndices)
+        MountedReaderPresentationMode.WEBTOON -> visiblePageIndices
+    }
 
     init {
         ReaderIoTestModeBridge.install(controller)
         var now = 0L
         val runtimeFactory = DesktopReaderRuntimeFactory(
-            prefs = ReaderPreferences(),
+            prefs = productionFixture.readerPreferences,
             downloadProvider = DesktopDownloadProvider(root.resolve("downloads")),
             sourceManager = FakeDesktopSourceManager(listOfNotNull(source)),
             networkHelper = NetworkHelper(OkHttpClient()),
@@ -138,7 +148,9 @@ internal class MountedReaderPresentationFixture(
         Injekt.addSingleton(runtimeFactory)
         scene.setContent {
             CompositionLocalProvider(
-                LocalDesktopUiDependencies provides mockk<DesktopUiDependencies>(relaxed = true),
+                LocalDesktopUiDependencies provides mockk<DesktopUiDependencies>(relaxed = true) {
+                    every { appPreferences } returns testAppPreferences
+                },
             ) {
                 MaterialTheme { Navigator(screen) { screen.Content() } }
             }

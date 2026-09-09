@@ -4,6 +4,7 @@ package mihon.desktop.ui.reader
 
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import cafe.adriel.voyager.navigator.Navigator
@@ -15,6 +16,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.reader.DesktopReaderChapterContext
 import mihon.desktop.reader.DesktopReaderChapterContentPortFactory
 import mihon.desktop.reader.DesktopReaderEncodedPageStore
@@ -29,6 +32,7 @@ import mihon.desktop.reader.DesktopReaderSession
 import mihon.desktop.reader.DesktopReaderSessionState
 import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.ReaderPreferences
+import mihon.desktop.settings.DesktopAppPreferences
 import mihon.domain.reader.materialize.ReaderChapterContentPort
 import mihon.domain.reader.materialize.ReaderChapterMaterializeResult
 import mihon.domain.reader.observability.ReaderIoReporter
@@ -138,10 +142,17 @@ class DesktopReaderPartialFeedbackTest {
         )
         val previousInjekt = Injekt
         val scene = ImageComposeScene(640, 480, coroutineContext = currentCoroutineContext()) {}
+        val uiDependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { appPreferences } returns DesktopAppPreferences(InMemoryPreferenceStore())
+        }
         try {
             patchInjekt()
             Injekt.addSingleton(factory)
-            scene.setContent { Navigator(screen) { screen.Content() } }
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides uiDependencies) {
+                    Navigator(screen) { screen.Content() }
+                }
+            }
 
             render(scene)
             assertEquals(2, model.state.value.session.activeChapter.pages.count { it.partialPageCandidate != null })

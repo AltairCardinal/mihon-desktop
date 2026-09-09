@@ -13,6 +13,7 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import io.mockk.mockk
+import io.mockk.every
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.zip.ZipEntry
@@ -20,9 +21,9 @@ import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.ReaderProgressTracker
@@ -158,7 +159,7 @@ class ReaderCriticalPathProductionTest {
         ReaderIoTestModeBridge.install(controller)
         var now = 0L
         val factory = DesktopReaderRuntimeFactory(
-            prefs = ReaderPreferences(),
+            prefs = fixture.readerPreferences,
             downloadProvider = downloadProvider,
             sourceManager = sourceManager,
             networkHelper = NetworkHelper(OkHttpClient()),
@@ -199,24 +200,34 @@ class ReaderCriticalPathProductionTest {
             Injekt.addSingleton(factory)
             fixture.scene.setContent {
                 CompositionLocalProvider(
-                    LocalDesktopUiDependencies provides mockk<DesktopUiDependencies>(relaxed = true),
+                    LocalDesktopUiDependencies provides mockk<DesktopUiDependencies>(relaxed = true) {
+                        every { appPreferences } returns fixture.appPreferences
+                    },
                 ) {
                     MaterialTheme { Navigator(screen) { screen.Content() } }
                 }
             }
             runCurrent()
-            withTimeout(5_000) {
-                while (controller.snapshot().none { it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED.name }) {
-                    fixture.scene.render()
-                    runCurrent()
+            var firstPagePresented = false
+            repeat(MAX_FRAME_PUMPS) {
+                if (firstPagePresented) return@repeat
+                advanceTimeBy(FRAME_TIME_MILLIS)
+                fixture.scene.render(testScheduler.currentTime * NANOS_PER_MILLISECOND).close()
+                runCurrent()
+                Thread.sleep(FRAME_SLEEP_MILLIS)
+                firstPagePresented = controller.snapshot().any {
+                    it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED.name
                 }
             }
+            assertTrue(firstPagePresented, "$route did not present a first page within the bounded frame pump")
             val firstFrameEvents = controller.snapshot()
             val requiredGates = setOf(ReaderIoGatePoint.CACHE_SCAN)
             var gatePumpAttempts = 0
             while (requiredGates.any { !fixture.gate(it).isEntered } && gatePumpAttempts < 100) {
-                fixture.scene.render()
+                advanceTimeBy(FRAME_TIME_MILLIS)
+                fixture.scene.render(testScheduler.currentTime * NANOS_PER_MILLISECOND).close()
                 runCurrent()
+                Thread.sleep(FRAME_SLEEP_MILLIS)
                 gatePumpAttempts += 1
             }
             val enteredGates = requiredGates.filterTo(mutableSetOf()) { fixture.gate(it).isEntered }
@@ -377,6 +388,10 @@ class ReaderCriticalPathProductionTest {
     }
 
     private companion object {
+        const val FRAME_SLEEP_MILLIS = 10L
+        const val FRAME_TIME_MILLIS = 16L
+        const val MAX_FRAME_PUMPS = 300
+        const val NANOS_PER_MILLISECOND = 1_000_000L
         const val SOURCE_ID = 42L
         const val CURRENT_CHAPTER_ID = 7L
         const val NEXT_CHAPTER_ID = 8L

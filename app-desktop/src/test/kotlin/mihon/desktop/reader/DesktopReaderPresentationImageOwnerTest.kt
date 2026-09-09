@@ -360,6 +360,10 @@ class DesktopReaderPresentationImageOwnerTest {
             assertTrue(withContext(Dispatchers.IO) { decodeEntered.await(5, TimeUnit.SECONDS) })
 
             assertTrue(fixture.owner.beginGeneration(2L))
+            assertNull(
+                fixture.owner.firstPresentedGeneration.value,
+                "An old generation draw must not mark the new generation as presented",
+            )
             releaseDecode.countDown()
             assertTrue(withContext(Dispatchers.IO) { decodeReturned.await(5, TimeUnit.SECONDS) })
             awaitCondition { fixture.pipeline.snapshot().inFlightCount == 0 && disposeCalls.get() == 1 }
@@ -370,6 +374,7 @@ class DesktopReaderPresentationImageOwnerTest {
             )
             assertEquals(1, disposeCalls.get())
             assertFalse(staleHolder.acknowledgeDraw(staleIdentity))
+            assertNull(fixture.owner.firstPresentedGeneration.value)
             staleHolder.close()
         } finally {
             releaseDecode.countDown()
@@ -401,11 +406,26 @@ class DesktopReaderPresentationImageOwnerTest {
             assertFalse(holder.acknowledgeDraw(currentIdentity), "Loading is not a drawn image")
             holder.acquire()
             holder.awaitReady()
+            assertNull(
+                fixture.owner.firstPresentedGeneration.value,
+                "A ready lease is not presented until the real draw acknowledgement arrives",
+            )
 
             assertFalse(holder.acknowledgeDraw(otherSlotIdentity), "A stale slot cannot acknowledge this holder")
             assertTrue(holder.acknowledgeDraw(currentIdentity))
             assertFalse(holder.acknowledgeDraw(currentIdentity), "The same drawn asset is acknowledged once")
             assertEquals(listOf(currentIdentity.pageId to currentIdentity.generation), presentations)
+            assertEquals(currentIdentity.generation, fixture.owner.firstPresentedGeneration.value)
+
+            assertTrue(fixture.owner.beginGeneration(currentIdentity.generation + 1L))
+            assertNull(
+                fixture.owner.firstPresentedGeneration.value,
+                "Starting a new chapter generation must wait for its own first ready draw",
+            )
+            assertFalse(
+                holder.acknowledgeDraw(currentIdentity),
+                "A delayed draw from the previous generation must not reopen the adjacent viewport",
+            )
             holder.close()
         } finally {
             fixture.close()

@@ -116,6 +116,8 @@ internal fun ZoomablePagerViewer(
     onTapCenter: (() -> Unit)? = null,
     onPrevChapter: (() -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
+    pageTurnAnimation: Boolean = true,
+    allowAdjacentViewport: Boolean = true,
 ) {
     if (chapter.pages.isEmpty()) return
     val direction = if (isRtl) ReaderDirection.RTL else ReaderDirection.LTR
@@ -144,6 +146,8 @@ internal fun ZoomablePagerViewer(
         }
         val currentPageId = request.chapter.pages[currentPage.coerceIn(chapter.pages.indices)].id
         DualPagePagerViewer(
+            pageTurnAnimation = pageTurnAnimation,
+            allowAdjacentViewport = allowAdjacentViewport,
             presentation = presentation, currentPageId = currentPageId,
             currentDisplayUnitId = currentDisplayUnitId, isRtl = isRtl,
             cropBorders = cropBorders, contextMenuScope = contextMenuScope,
@@ -179,6 +183,8 @@ internal fun ZoomablePagerViewer(
         val currentPageId = request.chapter.pages[currentPage.coerceIn(chapter.pages.indices)]
             .id
         SinglePagePagerViewer(
+            pageTurnAnimation = pageTurnAnimation,
+            allowAdjacentViewport = allowAdjacentViewport,
             presentation = presentation, currentPageId = currentPageId,
             currentDisplayUnitId = currentDisplayUnitId, isRtl = isRtl,
             cropBorders = cropBorders, contextMenuScope = contextMenuScope,

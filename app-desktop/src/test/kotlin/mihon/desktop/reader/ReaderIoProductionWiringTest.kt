@@ -7,12 +7,14 @@ import androidx.compose.ui.ImageComposeScene
 import cafe.adriel.voyager.navigator.Navigator
 import dev.mihon.injekt.patchInjekt
 import eu.kanade.tachiyomi.network.NetworkHelper
+import io.mockk.every
 import io.mockk.mockk
 import java.io.File
 import kotlinx.coroutines.async
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
@@ -49,7 +51,7 @@ class ReaderIoProductionWiringTest {
         ReaderIoTestModeBridge.install(controller)
         var now = 0L
         val factory = DesktopReaderRuntimeFactory(
-            prefs = ReaderPreferences(),
+            prefs = fixture.readerPreferences,
             downloadProvider = DesktopDownloadProvider(tempDir.resolve("downloads")),
             sourceManager = mockk<SourceManager>(relaxed = true),
             networkHelper = NetworkHelper(OkHttpClient()),
@@ -73,7 +75,9 @@ class ReaderIoProductionWiringTest {
             currentChapterIndex = 1,
         )
         val previousInjekt = Injekt
-        val uiDependencies = mockk<DesktopUiDependencies>(relaxed = true)
+        val uiDependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { appPreferences } returns fixture.appPreferences
+        }
         val scene = fixture.scene
         try {
             patchInjekt()
@@ -86,12 +90,18 @@ class ReaderIoProductionWiringTest {
             runCurrent()
             assertTrue(controller.snapshot().none { it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED.name })
 
-            withTimeout(5_000) {
-                while (controller.snapshot().none { it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED.name }) {
-                    scene.render()
-                    runCurrent()
+            var firstPagePresented = false
+            repeat(MAX_FRAME_PUMPS) {
+                if (firstPagePresented) return@repeat
+                advanceTimeBy(FRAME_TIME_MILLIS)
+                scene.render(testScheduler.currentTime * NANOS_PER_MILLISECOND).close()
+                runCurrent()
+                Thread.sleep(FRAME_SLEEP_MILLIS)
+                firstPagePresented = controller.snapshot().any {
+                    it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED.name
                 }
             }
+            assertTrue(firstPagePresented, "The local reader did not present a first page within the bounded frame pump")
             listOf(ReaderIoGatePoint.CACHE_SCAN, ReaderIoGatePoint.ADJACENT_IO).forEach { point ->
                 withTimeout(5_000) { fixture.gate(point).awaitEntered() }
             }
@@ -109,11 +119,18 @@ class ReaderIoProductionWiringTest {
                 },
             )
             ReaderIoGatePoint.entries.forEach { fixture.gate(it).release() }
-            withTimeout(5_000) {
-                while (controller.snapshot().none { it.type == ReaderIoEventType.CACHE_RECONCILE.name }) {
-                    runCurrent()
+            var cacheReconciled = false
+            repeat(MAX_FRAME_PUMPS) {
+                if (cacheReconciled) return@repeat
+                advanceTimeBy(FRAME_TIME_MILLIS)
+                scene.render(testScheduler.currentTime * NANOS_PER_MILLISECOND).close()
+                runCurrent()
+                Thread.sleep(FRAME_SLEEP_MILLIS)
+                cacheReconciled = controller.snapshot().any {
+                    it.type == ReaderIoEventType.CACHE_RECONCILE.name
                 }
             }
+            assertTrue(cacheReconciled, "The local reader did not reconcile its cache within the bounded frame pump")
             advanceUntilIdle()
 
             val events = controller.snapshot()
@@ -130,11 +147,29 @@ class ReaderIoProductionWiringTest {
                         it.purpose == "ADJACENT_PREFETCH"
                 },
             )
+            val firstPresentedIndex = events.indexOfFirst {
+                it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED.name
+            }
+            assertTrue(firstPresentedIndex >= 0)
+            val eventsBeforeFirstPresented = events.take(firstPresentedIndex + 1)
             assertTrue(
-                events.none {
+                eventsBeforeFirstPresented.none {
                     it.chapterId == 7L && it.pageIndex != null && it.pageIndex != 0 &&
                         it.type in setOf(ReaderIoEventType.OPEN_PAGE.name, ReaderIoEventType.DECODE.name)
                 },
+            )
+            val eventsAfterFirstPresented = events.drop(firstPresentedIndex + 1)
+            val sameChapterViewportEvents = eventsAfterFirstPresented.filter {
+                it.chapterId == 7L &&
+                    it.type in setOf(ReaderIoEventType.OPEN_PAGE.name, ReaderIoEventType.DECODE.name)
+            }
+            assertTrue(
+                sameChapterViewportEvents.any { it.pageIndex == 1 },
+                "Expected the adjacent current-chapter page after first presentation, events=$events",
+            )
+            assertTrue(
+                sameChapterViewportEvents.all { it.pageIndex == 1 },
+                "Expected only the mounted adjacent page after first presentation, events=$events",
             )
             assertTrue(
                 types.indexOf(ReaderIoEventType.DECODE.name) <
@@ -149,5 +184,12 @@ class ReaderIoProductionWiringTest {
             controller.close()
             Injekt = previousInjekt
         }
+    }
+
+    private companion object {
+        const val FRAME_SLEEP_MILLIS = 10L
+        const val FRAME_TIME_MILLIS = 16L
+        const val MAX_FRAME_PUMPS = 300
+        const val NANOS_PER_MILLISECOND = 1_000_000L
     }
 }

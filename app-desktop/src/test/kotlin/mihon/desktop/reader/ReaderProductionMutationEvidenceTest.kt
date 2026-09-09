@@ -45,13 +45,13 @@ class ReaderProductionMutationEvidenceTest {
             fixture.releaseBackgroundGates()
             pumpUntil(fixture) {
                 fixture.events().any { it.type == ReaderIoEventType.FIRST_PAGE_PRESENTED.name } &&
-                    decodeKeys.map(ReaderPageDecodeKey::pageIndex).containsAll(fixture.visiblePageIndices)
+                    decodeKeys.map(ReaderPageDecodeKey::pageIndex).containsAll(fixture.mountedPageIndices)
             }
 
             assertEquals(
-                fixture.visiblePageIndices,
+                fixture.mountedPageIndices,
                 decodeKeys.map(ReaderPageDecodeKey::pageIndex).toSet(),
-                "$case must decode only visible slots through the injected production decoder",
+                "$case must decode only mounted visible or adjacent slots through the injected production decoder",
             )
             fixture.visiblePageIndices.forEach { pageIndex ->
                 assertEquals(

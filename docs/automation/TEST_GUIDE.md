@@ -2,6 +2,36 @@
 
 ## 快速开始
 
+### 阅读器翻页动画回归
+
+在「设置 → 阅读器 → 翻页动画」中切换开关。单页、双页和左右阅读方向下，
+鼠标点击、键盘、滚轮与页码跳转共用此设置；常规设置里的既有开关使用相同偏好值。
+条漫保留连续滚动方式。
+
+分页视图保留前后各一个视口的图片持有，使已就绪相邻页在关闭动画时直接切换，
+避免重新挂载图片期间露出背景。相邻视口预热必须等到当前章节可见页实际绘制后才开始，
+避免额外解码抢占首帧；章节代际切换后重新等待绘制确认。此窗口复用现有解码与释放链路，不保证尚未下载、
+未解码或加载失败的页面瞬间显示；这些页面继续提供加载或重试反馈。
+快速连续请求必须以最后一次请求为准，鼠标操作中断动画后不得残留页码反馈屏蔽。
+
+`ReaderPageTurnPresentationTest` 挂载真实 ReaderContent 与图片 owner，以离屏帧检查
+动画、无黑帧、设置实时生效与快速请求；mounted production 测试同时约束相邻窗口
+之外不得提前解码、可见页不得重复解码。
+
+`ReaderCriticalPathProductionTest` 与 `ReaderIoProductionWiringTest` 保护首帧前仅当前页
+打开和解码的约束。离屏夹具应注入真实偏好、有界推进渲染与后台 I/O，并释放每帧图片；
+不能依赖不推进虚拟时间的循环触发 `withTimeout`，也不能通过放宽首帧计数接纳预热回归。
+
+定向验证示例：
+
+```powershell
+$env:PYTHONUTF8 = '1'
+$env:PYTHONIOENCODING = 'utf-8'
+python scripts/gradle-coordinator.py run --key reader-page-turn -- .\gradlew.bat :app-desktop:jvmTest --tests mihon.desktop.ui.reader.ReaderPageTurnPresentationTest
+```
+
+### 构建与测试
+
 运行桌面 JVM 测试和 Robot 客户端测试：
 
 ```bash

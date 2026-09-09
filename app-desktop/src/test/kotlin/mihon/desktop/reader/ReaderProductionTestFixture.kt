@@ -6,12 +6,15 @@ import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.prefs.Preferences
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import javax.imageio.ImageIO
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CompletableDeferred
+import mihon.desktop.settings.DesktopAppPreferences
 import mockwebserver3.MockWebServer
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 
 internal class ControllableReaderIoGate(
     private val point: ReaderIoGatePoint,
@@ -43,6 +46,15 @@ internal class ReaderProductionTestFixture(
     }
 
     val pageBytes: ByteArray = pngBytes(Color.BLUE)
+    val appPreferences = DesktopAppPreferences(InMemoryPreferenceStore())
+    private val readerLegacy = Preferences.userRoot().node("/mihon/reader-production-test/${System.nanoTime()}")
+    val readerPreferences = ReaderPreferences(
+        store = InMemoryPreferenceStore(),
+        legacy = readerLegacy,
+    ).apply {
+        isDualPage = false
+        readingMode = ReadingMode.LTR
+    }
     val standardJpegPageBytes: ByteArray by lazy(LazyThreadSafetyMode.NONE) {
         jpegBytes(Color.WHITE)
     }
@@ -75,6 +87,7 @@ internal class ReaderProductionTestFixture(
     override fun close() {
         scene.close()
         server.close()
+        readerLegacy.removeNode()
     }
 
     private fun pngBytes(color: Color): ByteArray {

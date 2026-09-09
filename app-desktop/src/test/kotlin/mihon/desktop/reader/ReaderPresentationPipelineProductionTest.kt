@@ -22,7 +22,7 @@ class ReaderPresentationPipelineProductionTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("presentationCases")
-    fun `mounted production presentation opens and decodes exactly the visible slots once`(
+    fun `mounted production presentation keeps visible and adjacent pager slots within one decode window`(
         case: MountedReaderPresentationCase,
     ) = runTest {
         val fixture = MountedReaderPresentationFixture(
@@ -68,16 +68,27 @@ class ReaderPresentationPipelineProductionTest {
                 )
             }
 
-            (fixture.allPageIndices - fixture.visiblePageIndices).forEach { pageIndex ->
+            (fixture.allPageIndices - fixture.mountedPageIndices).forEach { pageIndex ->
                 assertEquals(
                     0,
                     events.countPageEvent(ReaderIoEventType.OPEN_PAGE, pageIndex, presentationGeneration),
-                    "$case must not OPEN non-visible page $pageIndex",
+                    "$case must not OPEN an unrelated page $pageIndex",
                 )
                 assertEquals(
                     0,
                     events.countPageEvent(ReaderIoEventType.DECODE, pageIndex, presentationGeneration),
-                    "$case must not DECODE non-visible page $pageIndex",
+                    "$case must not DECODE an unrelated page $pageIndex",
+                )
+            }
+
+            (fixture.mountedPageIndices - fixture.visiblePageIndices).forEach { pageIndex ->
+                assertTrue(
+                    events.countPageEvent(ReaderIoEventType.OPEN_PAGE, pageIndex, presentationGeneration) <= 1,
+                    "$case must not OPEN adjacent page $pageIndex more than once",
+                )
+                assertTrue(
+                    events.countPageEvent(ReaderIoEventType.DECODE, pageIndex, presentationGeneration) <= 1,
+                    "$case must not DECODE adjacent page $pageIndex more than once",
                 )
             }
 

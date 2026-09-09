@@ -41,6 +41,7 @@ object DesktopSettingsCatalog {
             MR.strings.pref_category_reader,
             MR.strings.pref_viewer_type,
             MR.strings.desktop_reader_pager_mode,
+            MR.strings.pref_page_transitions,
             MR.strings.desktop_reader_prefetch_next_chapter,
         ),
         SearchableSettingsScreen(

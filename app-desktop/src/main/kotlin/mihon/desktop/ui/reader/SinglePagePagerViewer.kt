@@ -3,11 +3,13 @@ package mihon.desktop.ui.reader
 import tachiyomi.i18n.MR
 import java.util.Locale
 
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -15,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -26,6 +29,7 @@ import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import mihon.desktop.reader.DesktopReaderPresentationImageOwner
@@ -71,6 +75,8 @@ internal fun SinglePagePagerViewer(
     onPrevChapter: (() -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
     generation: Long = 0L,
+    pageTurnAnimation: Boolean = true,
+    allowAdjacentViewport: Boolean = true,
 ) {
     val displayUnits = presentation.displayUnits
     if (displayUnits.isEmpty()) return
@@ -88,33 +94,60 @@ internal fun SinglePagePagerViewer(
         pageCount = { displayUnits.size },
     )
     val scope = rememberCoroutineScope()
+    val animateTurns by rememberUpdatedState(pageTurnAnimation)
+    val programmaticTarget = remember { mutableStateOf<Int?>(null) }
 
-    LaunchedEffect(currentPageId, currentDisplayUnitId, displayUnits.map(DisplayUnit::id), isRtl) {
+    LaunchedEffect(pagerState.interactionSource) {
+        pagerState.interactionSource.interactions.collect { interaction ->
+            if (interaction is DragInteraction.Start) programmaticTarget.value = null
+        }
+    }
+
+    LaunchedEffect(currentPageId, currentDisplayUnitId, displayUnits.map(DisplayUnit::id), isRtl, pageTurnAnimation) {
         val targetPage = presentation
             .restoreDisplayUnitIndex(currentPageId, currentDisplayUnitId)
             .coerceAtLeast(0)
             .coerceIn(0, maxPageIndex)
         val targetPagerIndex = pageToPager(targetPage)
-        if (pagerState.currentPage != targetPagerIndex) pagerState.scrollToPage(targetPagerIndex)
+        programmaticTarget.value = targetPagerIndex
+        pagerState.turnToPage(targetPagerIndex, animateTurns)
+        programmaticTarget.value = null
     }
 
     SinglePageSettledVisiblePageReporter(
         presentation = presentation,
         isRtl = isRtl,
         settledPagerIndex = { pagerState.settledPage },
+        shouldReportSettledPage = { pagerIndex ->
+            programmaticTarget.value?.let { it == pagerIndex } ?: true
+        },
         onVisiblePagesChanged = onVisiblePagesChanged,
     )
 
     fun executeTapCommand(command: ReaderNavigationCommand) {
         when (val action = ReaderKeyboardAction.forPagerCommand(command, isRtl, pagerState.currentPage, displayUnits.size)) {
-            is ReaderPageAction.GoToPage -> scope.launch { pagerState.animateScrollToPage(action.page) }
-            ReaderPageAction.NoPrevPage -> onPrevChapter?.invoke()
-            ReaderPageAction.NoNextPage -> onNextChapter?.invoke()
+            is ReaderPageAction.GoToPage -> {
+                programmaticTarget.value = action.page
+                scope.launch {
+                    pagerState.turnToPage(action.page, animateTurns)
+                    if (programmaticTarget.value == action.page) programmaticTarget.value = null
+                }
+            }
+            ReaderPageAction.NoPrevPage -> {
+                programmaticTarget.value = null
+                onPrevChapter?.invoke()
+            }
+            ReaderPageAction.NoNextPage -> {
+                programmaticTarget.value = null
+                onNextChapter?.invoke()
+            }
         }
     }
 
     HorizontalPager(
         state = pagerState,
+        // Keep the neighboring viewports' image leases mounted so instant turns do not expose a decode gap.
+        beyondViewportPageCount = if (allowAdjacentViewport) 1 else 0,
         modifier = Modifier.fillMaxSize(),
         key = { pagerIndex -> displayUnits[pagerToPage(pagerIndex)].id },
     ) { pagerIndex ->
@@ -160,22 +193,38 @@ internal fun SinglePagePagerViewer(
     }
 }
 
+/** Every discrete pager input uses the same animation policy. Initial placement never scrolls. */
+internal suspend fun PagerState.turnToPage(page: Int, animated: Boolean) {
+    if (currentPage == page && currentPageOffsetFraction == 0f) return
+    if (animated) animateScrollToPage(page) else scrollToPage(page)
+}
+
 @Composable
 internal fun SinglePageSettledVisiblePageReporter(
     presentation: ReaderPresentationSnapshot,
     isRtl: Boolean,
     settledPagerIndex: () -> Int,
+    shouldReportSettledPage: (Int) -> Boolean = { true },
     onVisiblePagesChanged: (VisiblePageSet) -> Unit,
 ) {
     val currentCallback by rememberUpdatedState(onVisiblePagesChanged)
+    val currentShouldReport by rememberUpdatedState(shouldReportSettledPage)
     val displayUnitIds = presentation.displayUnits.map(DisplayUnit::id)
     LaunchedEffect(displayUnitIds, isRtl) {
-        snapshotFlow { settledPagerIndex() }
+        snapshotFlow {
+            val displayUnits = presentation.displayUnits
+            if (displayUnits.isEmpty()) {
+                null
+            } else {
+                val safePagerIndex = settledPagerIndex().coerceIn(displayUnits.indices)
+                safePagerIndex to currentShouldReport(safePagerIndex)
+            }
+        }
             .distinctUntilChanged()
-            .collect { pagerIndex ->
+            .collect { settled ->
                 val displayUnits = presentation.displayUnits
-                if (displayUnits.isEmpty()) return@collect
-                val safePagerIndex = pagerIndex.coerceIn(displayUnits.indices)
+                val (safePagerIndex, shouldReport) = settled ?: return@collect
+                if (!shouldReport) return@collect
                 val displayUnitIndex = if (isRtl) displayUnits.lastIndex - safePagerIndex else safePagerIndex
                 currentCallback(presentation.visiblePages(displayUnits[displayUnitIndex].id))
             }

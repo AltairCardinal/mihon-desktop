@@ -1,5 +1,6 @@
 package mihon.desktop.ui.reader
 
+import mihon.desktop.LocalDesktopUiDependencies
 import tachiyomi.i18n.MR
 
 import androidx.compose.foundation.background
@@ -641,7 +642,7 @@ internal fun ReaderViewportColorLayer(
     Box(Modifier.fillMaxSize().readerColorTransform(colorFilter), content = { content() })
 }
 
-private fun handleReaderWheelEvent(
+internal fun handleReaderWheelEvent(
     event: java.awt.event.MouseWheelEvent,
     state: ReaderState,
     model: ReaderScreenModel,
@@ -673,7 +674,7 @@ private fun handleReaderWheelEvent(
     }
 }
 
-private fun handleReaderKeyEvent(
+internal fun handleReaderKeyEvent(
     event: androidx.compose.ui.input.key.KeyEvent,
     state: ReaderState,
     model: ReaderScreenModel,
@@ -762,7 +763,7 @@ internal fun readerKeyboardNavigationPosition(state: ReaderState): ReaderKeyboar
 }
 
 @Composable
-private fun ReaderContent(
+internal fun ReaderContent(
     state: ReaderState,
     model: ReaderScreenModel,
     contextMenuScope: kotlinx.coroutines.CoroutineScope,
@@ -790,7 +791,12 @@ private fun ReaderContent(
         )
         ReadingMode.LTR, ReadingMode.RTL -> {
             val rtl = state.readingMode == ReadingMode.RTL
+            val animationPreference = LocalDesktopUiDependencies.current.appPreferences.pageTurnAnimation
+            val pageTurnAnimation by animationPreference.changes().collectAsState(initial = animationPreference.get())
+            val firstPresentedGeneration by presentationImageOwner.firstPresentedGeneration.collectAsState()
             ZoomablePagerViewer(
+                pageTurnAnimation = pageTurnAnimation,
+                allowAdjacentViewport = firstPresentedGeneration == state.session.generation,
                 chapter = state.session.activeChapter, currentPage = state.currentPage,
                 currentDisplayUnitId = state.currentDisplayUnitId, isRtl = rtl,
                 isDualPage = state.dualPageMode, autoSplitPages = state.autoSplitPages,
