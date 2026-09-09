@@ -5,11 +5,16 @@ import io.ktor.server.engine.embeddedServer
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
@@ -19,11 +24,13 @@ import mihon.desktop.domain.SortMode
 import mihon.desktop.di.initDesktopDIForTest
 import mihon.desktop.ui.library.LibraryScreenModel
 import mihon.desktop.ui.library.MangaDetailScreenModel
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import tachiyomi.core.common.preference.DesktopPreferenceStore
@@ -47,8 +54,19 @@ import java.net.http.HttpResponse
 import java.util.UUID
 import java.util.prefs.Preferences
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class LibraryMangaTestModeHttpTest {
     private val client = HttpClient.newHttpClient()
+
+    @BeforeEach
+    fun setUpMainDispatcher() {
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+    }
+
+    @AfterEach
+    fun resetMainDispatcher() {
+        Dispatchers.resetMain()
+    }
 
     @Test
     fun `library search action mutates the DI owned production screen model`(@TempDir tempDir: File) = runBlocking {
@@ -214,7 +232,10 @@ class LibraryMangaTestModeHttpTest {
                 awaitCancellation()
             }
         }
-        val getCategories = mockk<GetCategories> { coEvery { await() } returns emptyList() }
+        val getCategories = mockk<GetCategories> {
+            coEvery { await() } returns emptyList()
+            every { subscribe() } returns flow { awaitCancellation() }
+        }
         val library = LibraryScreenModel(getLibraryManga = getLibraryManga, getCategories = getCategories)
         val controller = LibraryMangaTestModeController(library) { detail }
         LibraryMangaTestModeBridge.install(controller)

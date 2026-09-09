@@ -36,9 +36,11 @@ class LibraryParityIntegrationTest {
         assertEquals(setOf(2L, 99L), selection.selectedIds)
     }
 
+    // The real Root top-bar invert control is protected by
+    // `selection controls live only in the top bar while batch actions remain at the bottom`.
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
-    fun `selection action bar exposes download and migrate entries`() = runBlocking {
+    fun `selection action bar exposes invert download and migrate entries`() = runBlocking {
         var downloaded: MangaDetailDownloadAction? = null
         var destination: Screen? = null
         val selected = listOf(
