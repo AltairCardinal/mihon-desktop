@@ -4,9 +4,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.state.ToggleableState
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import eu.kanade.tachiyomi.source.CatalogueSource
@@ -38,6 +41,7 @@ import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.desktop.ui.authors.AuthorDetailScreen
+import mihon.desktop.ui.reader.DesktopReaderScreen
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -60,6 +64,202 @@ import tachiyomi.i18n.MR
 
 @OptIn(ExperimentalComposeUiApi::class)
 class MangaDetailLibraryEntryWiringTest {
+
+    @Test
+    fun `real MangaDetailScreen chapter pointer opens the requested reader entry`() = runBlocking {
+        val mangaRepository = FakeMangaRepository()
+        val manga = Manga.create().copy(
+            id = 48L,
+            source = 42L,
+            url = "/reader-manga",
+            title = "Reader screen fixture",
+            initialized = true,
+        )
+        mangaRepository.seed(manga)
+        val chapterRepository = FakeChapterRepository()
+        val chapter = Chapter.create().copy(
+            id = 4_801L,
+            mangaId = manga.id,
+            url = "/reader-manga/chapter-1",
+            name = "Pointer chapter",
+            lastPageRead = 4L,
+            sourceOrder = 1L,
+        )
+        chapterRepository.seed(chapter)
+        val model = MangaDetailScreenModel(
+            mangaId = manga.id,
+            getMangaWithChapters = GetMangaWithChapters(mangaRepository, chapterRepository),
+            sourceManager = EmptySourceManager,
+            getAvailableScanlators = GetAvailableScanlators(chapterRepository),
+            getExcludedScanlators = mockk {
+                every { subscribe(manga.id) } returns flowOf(emptySet())
+            },
+            getCategories = GetCategories(FakeCategoryRepository()),
+            downloadQueue = MutableStateFlow(emptyList()),
+        )
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { appPreferences } returns DesktopAppPreferences(DesktopPreferenceStore())
+            every { saveSourceMangaForDetails } returns SaveSourceMangaForDetails(
+                NetworkToLocalManga(mangaRepository),
+                mangaRepository,
+                chapterRepository,
+            )
+        }
+        lateinit var navigator: Navigator
+        val scene = ImageComposeScene(1_200, 1_200, coroutineContext = coroutineContext) {}
+
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ProvideMangaDetailScreenModelFactory(factory = { model }) {
+                        MaterialTheme {
+                            Navigator(MangaDetailScreen(manga.id)) { currentNavigator ->
+                                navigator = currentNavigator
+                                if (currentNavigator.lastItem is MangaDetailScreen) CurrentScreen()
+                            }
+                        }
+                    }
+                }
+            }
+
+            renderUntil(scene) { nodes(scene).any { it.hasText(chapter.name) } }
+            val chapterTitle = nodes(scene).first { it.hasText(chapter.name) }
+            tap(scene, chapterTitle.boundsInRoot.center)
+            withTimeout(5_000) {
+                while (navigator.lastItem !is DesktopReaderScreen) {
+                    scene.render()
+                    delay(10)
+                }
+            }
+
+            val reader = navigator.lastItem as DesktopReaderScreen
+            assertEquals(chapter.id, reader.chapterId)
+            assertEquals(chapter.lastPageRead.toInt(), reader.initialPage)
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    fun `real MangaDetailScreen selection mode consumes unselected row clicks before navigation`() = runBlocking {
+        val mangaRepository = FakeMangaRepository()
+        val manga = Manga.create().copy(
+            id = 49L,
+            source = 42L,
+            url = "/selection-manga",
+            title = "Selection screen fixture",
+            initialized = true,
+        )
+        mangaRepository.seed(manga)
+        val chapterRepository = FakeChapterRepository()
+        val firstChapter = Chapter.create().copy(
+            id = 4_901L,
+            mangaId = manga.id,
+            url = "/selection-manga/chapter-1",
+            name = "First selection chapter",
+            sourceOrder = 1L,
+        )
+        val secondChapter = Chapter.create().copy(
+            id = 4_902L,
+            mangaId = manga.id,
+            url = "/selection-manga/chapter-2",
+            name = "Second selection chapter",
+            lastPageRead = 2L,
+            sourceOrder = 2L,
+        )
+        chapterRepository.seed(firstChapter)
+        chapterRepository.seed(secondChapter)
+        val model = MangaDetailScreenModel(
+            mangaId = manga.id,
+            getMangaWithChapters = GetMangaWithChapters(mangaRepository, chapterRepository),
+            sourceManager = EmptySourceManager,
+            getAvailableScanlators = GetAvailableScanlators(chapterRepository),
+            getExcludedScanlators = mockk {
+                every { subscribe(manga.id) } returns flowOf(emptySet())
+            },
+            getCategories = GetCategories(FakeCategoryRepository()),
+            downloadQueue = MutableStateFlow(emptyList()),
+        )
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { appPreferences } returns DesktopAppPreferences(DesktopPreferenceStore())
+            every { saveSourceMangaForDetails } returns SaveSourceMangaForDetails(
+                NetworkToLocalManga(mangaRepository),
+                mangaRepository,
+                chapterRepository,
+            )
+        }
+        lateinit var navigator: Navigator
+        val scene = ImageComposeScene(1_200, 1_200, coroutineContext = coroutineContext) {}
+
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    ProvideMangaDetailScreenModelFactory(factory = { model }) {
+                        MaterialTheme {
+                            Navigator(MangaDetailScreen(manga.id)) { currentNavigator ->
+                                navigator = currentNavigator
+                                if (currentNavigator.lastItem is MangaDetailScreen) CurrentScreen()
+                            }
+                        }
+                    }
+                }
+            }
+
+            renderUntil(scene) {
+                nodes(scene).any { it.hasText(firstChapter.name) } &&
+                    nodes(scene).any { it.hasText(secondChapter.name) }
+            }
+            invokeLongClick(scene, firstChapter.name)
+            renderUntil(scene) {
+                checkboxStateNear(scene, firstChapter.name) == ToggleableState.On &&
+                    checkboxStateNear(scene, secondChapter.name) == ToggleableState.Off
+            }
+
+            val secondTitle = nodes(scene).first { it.hasText(secondChapter.name) }
+            tap(scene, secondTitle.boundsInRoot.center)
+            renderUntil(scene) {
+                checkboxStateNear(scene, firstChapter.name) == ToggleableState.On &&
+                    checkboxStateNear(scene, secondChapter.name) == ToggleableState.On
+            }
+            assertTrue(navigator.lastItem is MangaDetailScreen)
+            assertTrue(
+                nodes(scene).none { node ->
+                    node.hasContentDescription(MR.strings.desktop_ui_continue_reading.localized())
+                },
+            )
+
+            tap(scene, requireNotNull(checkboxNear(scene, firstChapter.name)).boundsInRoot.center)
+            renderUntil(scene) {
+                checkboxStateNear(scene, firstChapter.name) == ToggleableState.Off &&
+                    checkboxStateNear(scene, secondChapter.name) == ToggleableState.On
+            }
+            assertTrue(navigator.lastItem is MangaDetailScreen)
+            tap(scene, requireNotNull(checkboxNear(scene, firstChapter.name)).boundsInRoot.center)
+            renderUntil(scene) {
+                checkboxStateNear(scene, firstChapter.name) == ToggleableState.On &&
+                    checkboxStateNear(scene, secondChapter.name) == ToggleableState.On
+            }
+
+            invokeDescriptionClick(scene, MR.strings.desktop_ui_clear_selection.localized())
+            renderUntil(scene) {
+                nodes(scene).none { node -> node.config.contains(SemanticsProperties.ToggleableState) }
+            }
+
+            val secondTitleAfterClear = nodes(scene).first { it.hasText(secondChapter.name) }
+            tap(scene, secondTitleAfterClear.boundsInRoot.center)
+            withTimeout(5_000) {
+                while (navigator.lastItem !is DesktopReaderScreen) {
+                    scene.render()
+                    delay(10)
+                }
+            }
+            val reader = navigator.lastItem as DesktopReaderScreen
+            assertEquals(secondChapter.id, reader.chapterId)
+            assertEquals(secondChapter.lastPageRead.toInt(), reader.initialPage)
+        } finally {
+            scene.close()
+        }
+    }
 
     @Test
     fun `real MangaDetailScreen retry action forwards the failed chapter id`() = runBlocking {
@@ -465,10 +665,41 @@ class MangaDetailLibraryEntryWiringTest {
         scene.render()
     }
 
+    private fun tap(scene: ImageComposeScene, position: Offset) {
+        scene.sendPointerEvent(PointerEventType.Press, position)
+        scene.sendPointerEvent(PointerEventType.Release, position)
+        scene.render()
+    }
+
+    private fun invokeLongClick(scene: ImageComposeScene, label: String) {
+        val node = nodes(scene).first { candidate ->
+            candidate.config.contains(SemanticsActions.OnLongClick) &&
+                flatten(candidate).any { it.hasText(label) }
+        }
+        assertTrue(requireNotNull(node.config[SemanticsActions.OnLongClick].action).invoke())
+    }
+
+    private fun checkboxNear(scene: ImageComposeScene, label: String): SemanticsNode? {
+        val title = nodes(scene).firstOrNull { it.hasText(label) } ?: return null
+        return nodes(scene)
+            .filter { it.config.contains(SemanticsProperties.ToggleableState) }
+            .minByOrNull { kotlin.math.abs(it.boundsInRoot.center.y - title.boundsInRoot.center.y) }
+    }
+
+    private fun checkboxStateNear(scene: ImageComposeScene, label: String): ToggleableState? =
+        checkboxNear(scene, label)?.config?.get(SemanticsProperties.ToggleableState)
+
     private fun invokeClick(scene: ImageComposeScene, label: String) {
         val node = nodes(scene).first { candidate ->
             candidate.config.contains(SemanticsActions.OnClick) &&
                 flatten(candidate).any { it.hasText(label) }
+        }
+        assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
+    }
+
+    private fun invokeDescriptionClick(scene: ImageComposeScene, description: String) {
+        val node = nodes(scene).first { candidate ->
+            candidate.config.contains(SemanticsActions.OnClick) && candidate.hasContentDescription(description)
         }
         assertTrue(requireNotNull(node.config[SemanticsActions.OnClick].action).invoke())
     }

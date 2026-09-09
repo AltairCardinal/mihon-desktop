@@ -10,8 +10,10 @@ import mihon.desktop.platform.DesktopShareResult
 import mihon.desktop.platform.DesktopUrlOpener
 import mihon.desktop.platform.toDesktopNotification
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -107,6 +109,8 @@ import mihon.desktop.ui.browse.GlobalSearchScreen
 import mihon.desktop.ui.authors.AuthorDetailScreen
 import mihon.desktop.ui.reader.DesktopReaderScreen
 import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.chapter.ChapterItemClickAction
+import tachiyomi.domain.chapter.chapterItemClickAction
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.CreatorMention
@@ -551,6 +555,7 @@ internal fun MangaDetailActionRow(
 
 internal enum class ChapterDownloadStatus { NOT_DOWNLOADED, QUEUED, DOWNLOADING, ERROR, DOWNLOADED }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ChapterRow(
     chapter: Chapter,
@@ -558,6 +563,7 @@ internal fun ChapterRow(
     downloadStatus: ChapterDownloadStatus,
     downloadProgress: Float?,
     isSelected: Boolean = false,
+    isSelectionMode: Boolean = isSelected,
     onSelect: () -> Unit = {},
     onDownload: () -> Unit,
     onDeleteDownload: () -> Unit,
@@ -575,12 +581,31 @@ internal fun ChapterRow(
         chapter.scanlator?.takeIf { it.isNotBlank() },
     ).joinToString(" · ")
     ListItem(
-        modifier = if (isSelected) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier,
-        leadingContent = {
-            Checkbox(
-                checked = isSelected,
-                onCheckedChange = { onSelect() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (isSelected) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier,
             )
+            .combinedClickable(
+                onClick = {
+                    when (chapterItemClickAction(isSelected, isSelectionMode)) {
+                        ChapterItemClickAction.READ -> onRead()
+                        ChapterItemClickAction.SELECT,
+                        ChapterItemClickAction.DESELECT,
+                        -> onSelect()
+                    }
+                },
+                onLongClick = onSelect,
+            ),
+        leadingContent = if (isSelectionMode) {
+            {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onSelect() },
+                )
+            }
+        } else {
+            null
         },
         headlineContent = {
             Text(
@@ -638,21 +663,17 @@ internal fun ChapterRow(
                             Icon(Icons.Default.CloudDownload, contentDescription = MR.strings.action_download.localized())
                         }
                 }
-                if (!isSelected) {
+                if (!isSelectionMode) {
                     IconButton(onClick = onRead) {
-                        val actionDescription = if (chapter.read) {
-                            MR.strings.action_mark_as_unread.localized()
-                        } else {
-                            MR.strings.action_mark_as_read.localized()
-                        }
                         Icon(
                             imageVector = when (readPresentation.indicator) {
                                 ChapterReadIndicator.UNREAD_DOT -> Icons.Default.Circle
                                 ChapterReadIndicator.PROGRESS_RING -> Icons.Default.RadioButtonUnchecked
                                 ChapterReadIndicator.READ_CHECK -> Icons.Default.CheckCircle
                             },
-                            contentDescription = readProgress?.let { "$it，$actionDescription" }
-                                ?: actionDescription,
+                            contentDescription = readProgress?.let {
+                                "$it，${MR.strings.desktop_ui_continue_reading.localized()}"
+                            } ?: MR.strings.desktop_ui_continue_reading.localized(),
                             modifier = Modifier.layoutSize(
                                 if (readPresentation.indicator == ChapterReadIndicator.UNREAD_DOT) 10.dp else 24.dp,
                             ),

@@ -62,6 +62,8 @@ import eu.kanade.tachiyomi.source.getNameForMangaInfo
 import eu.kanade.tachiyomi.ui.manga.ChapterList
 import eu.kanade.tachiyomi.ui.manga.MangaScreenModel
 import eu.kanade.tachiyomi.util.system.copyToClipboard
+import tachiyomi.domain.chapter.ChapterItemClickAction
+import tachiyomi.domain.chapter.chapterItemClickAction
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.service.missingChaptersCount
 import tachiyomi.domain.creator.model.CreatorMention
@@ -827,15 +829,15 @@ private fun LazyListScope.sharedChapterItems(
     }
 }
 
-private fun onChapterItemClick(
+internal fun onChapterItemClick(
     chapterItem: ChapterList.Item,
     isAnyChapterSelected: Boolean,
     onToggleSelection: (Boolean) -> Unit,
     onChapterClicked: (Chapter) -> Unit,
 ) {
-    when {
-        chapterItem.selected -> onToggleSelection(false)
-        isAnyChapterSelected -> onToggleSelection(true)
-        else -> onChapterClicked(chapterItem.chapter)
+    when (chapterItemClickAction(chapterItem.selected, isAnyChapterSelected)) {
+        ChapterItemClickAction.DESELECT -> onToggleSelection(false)
+        ChapterItemClickAction.SELECT -> onToggleSelection(true)
+        ChapterItemClickAction.READ -> onChapterClicked(chapterItem.chapter)
     }
 }

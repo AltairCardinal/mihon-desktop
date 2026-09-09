@@ -1028,6 +1028,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         manga = manga,
                         isChapterDownloaded = model::isChapterDownloaded,
                         isChapterSelected = { chapterId -> chapterId in selectionState.selectedIds },
+                        isSelectionMode = selectionState.isActive,
                         onSelectChapter = selectionState::toggle,
                         onDownloadChapter = { chapter ->
                             manga?.let { model.enqueueDownloads(it, listOf(chapter)) }
