@@ -268,8 +268,7 @@ encoded ref 必须携带 `Partial(committedRevision)` provenance。若后续像�
 
 - 下载目录：`设置 → 下载 → 下载目录`。页面显示当前值、默认值和下次启动值；合法选择后显示“已保存，重启后
   生效；现有文件不会自动移动”，非法选择显示具体错误且偏好不变。
-- partial 阅读：复用现有“打开章节”入口，不增加开关。章节进入 hybrid route 时显示一次非阻塞状态提示：
-  “已下载 X/Y 页；缺失页将联网加载”。该计数来自 snapshot，不扫描文件系统。
+- partial 阅读：复用现有“打开章节”入口，不增加开关，也不显示“已下载 X/Y 页；缺失页将联网加载”等状态飘字。
 - 本地页成功显示就是主要结果反馈；网络不可用时，已提交页继续可读，只有缺失/损坏页显示现有页面级 Error/Retry。
 - 不增加整章阻塞对话框，不因 partial 状态阻止进度记录、翻页或退出。
 
@@ -287,7 +286,7 @@ encoded ref 必须携带 `Partial(committedRevision)` provenance。若后续像�
 - [x] `PDR-02` partial 章节页表路由
 - [x] `PDR-03` encoded cache → committed page → network 唯一物化链
 - [x] `PDR-04` rename、CBZ、取消与 stale generation 并发矩阵
-- [x] `PDR-05` production wiring、反馈、Test Mode 与性能门禁
+- [x] `PDR-05` production wiring、Test Mode 与性能门禁
 - [x] `CLOSE-01` 组合回归、正式构建与关闭审计
 
 ### 5.2 依赖与提交规则
@@ -320,7 +319,8 @@ DDIR-03/04 + PDR-05 ────────────────────
 
 `PDR-02`～`PDR-04` 的内部 port、merge/materialize 和 race 代码必须通过显式 test DI 才可达；production 一直绑定
 `DisabledPartialDownloadSnapshotLookup`（恒定 miss），并有非回归测试证明章节仍按原 ONLINE route 工作。只有
-`PDR-05` 在全部竞态和性能门禁通过后，才能把 composition root 原子切换为 manager-owned lookup 并显示用户反馈。
+`PDR-05` 在全部竞态和性能门禁通过后，才能把 composition root 原子切换为 manager-owned lookup；用户反馈复用现有
+页面级 Error/Retry，不增加 partial 状态飘字。
 这样每个中间提交都可发布，不会暴露“有 partial descriptor、但尚无安全物化/生命周期协议”的半成品 capability。
 
 ## 6. 按测试颗粒度拆分的执行任务
@@ -734,7 +734,7 @@ P0～P3 阻塞。协调锁内仅进行 map/ref-count/path 状态操作，文件/
 
 ---
 
-### `PDR-05` production wiring、用户反馈、Test Mode 与性能门禁
+### `PDR-05` production wiring、Test Mode 与性能门禁
 
 **依赖**：`PDR-04`。
 
@@ -782,8 +782,8 @@ python scripts/gradle-coordinator.py run --key pdr05-red -- ./gradlew :app-deskt
 **完成记录（2026-09-02）**：本批把此前显式 disabled 的 partial route 在唯一 Desktop composition root 原子切换为
 Manager-owned snapshot lookup 与 read-lease source，并将 operation probe 保持为默认 `None` 时构造事件前 O(1) 短路。Reader
 在 initial、切章和 adjacent prefetch 三个入口冻结同一非 ASCII 文件名策略；页表、live candidate、进度身份与预取复用不再
-分叉。用户打开已有部分下载的章节时会看到一次非阻塞“已下载 X/Y 页”提示；普通 online、完整下载和无 partial 的 Reader
-不挂载 Snackbar host/effect，不增加常驻 composition/layout 开销。本批同时扩展真实 production Test Mode：由真实 Manager
+分叉。本批交付时曾为已有部分下载的章节显示一次非阻塞“已下载 X/Y 页”提示；该提示已于 2026-09-09 按产品决定移除，
+当前所有 Reader route 都不挂载该 Snackbar host/effect，不增加常驻 composition/layout 开销。本批同时扩展真实 production Test Mode：由真实 Manager
 准备 partial fixture，离线只在种页完成后生效，fixture 以精确 identity 持有/清理，当前页 I/O 计数与附近预取场景总计按
 page identity 分离。
 
@@ -1062,3 +1062,20 @@ parity 行号锚点被本次新增代码推移；其余测试与 production 行�
 Reader materialize → ERROR 重试”的单一端到端链路，8 个测试文件覆盖对应契约，另有版本文件、parity manifest 与本文。
 虽然超过 scope 提示阈值，但若按文件拆分会产生无法独立编译或没有真实 wiring 的中间批次；主要风险集中在 legacy 页号
 错配、generation 竞态和恢复持久化复杂度，已分别由非连续 source index、确定性交错及禁止整队 persister 的测试门禁覆盖。
+
+## 12. 2026-09-09 partial 状态飘字移除
+
+根据产品反馈，Reader 不再显示“已下载 X/Y 页；其余页面将联网加载”的 Snackbar。该信息不承担错误处理或路由选择，
+移除范围包括提示专用的 UI state、generation 去重集合、dismiss 回调、Compose Snackbar 以及 base/简中/繁中文案。
+partial 页候选、已下载页本地物化、缺失页网络 fallback 和页面级 Error/Retry 均未修改；用户打开章节后直接进入阅读。
+
+TDD 先将 production 挂载测试改为“partial 章节不得挂载可关闭 Snackbar”，当前实现按预期出现 1 个失败；删除提示链路后，
+同一测试证明 2 个 partial 候选仍保留且 Snackbar 不存在。页表、物化、Reader 产品回归与 parity 契约的相关组合通过；最终
+`spotlessCheck` 与完整 Desktop JVM 共执行 2,940 项，0 failure、0 error、2 skipped。正式
+`build-desktop.sh build-only` 构建及 production extension runtime 验收通过，版本为 `0.11.19.27.375bb37`，发布
+`D:\Shell\Github\mihon\app-desktop\artifacts\windows\Mihon-Desktop-0.11.19.27.375bb37-unpacked\Mihon Desktop.exe`；
+ZIP SHA-256 为 `225cae79958a7ba6a18eca852f3cc5af8dc0a1e9b2133064eaf1332aace32695`。
+
+本批共涉及 10 个文件：3 个提示专用 production 文件、1 个挂载级测试、3 个语言资源、parity manifest、版本文件与本文。
+这些修改共同删除同一 UI capability；拆开会造成死状态、失效资源或证据行号不一致。风险仅是误删 Reader 其他反馈，已通过
+仅匹配 partial Snackbar 的挂载测试、完整 Desktop 测试和 production runtime 验收限制；章节切换与页面错误反馈仍保留。

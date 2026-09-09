@@ -1337,7 +1337,6 @@
     <string name="desktop_ui_random_manga">隨機漫畫</string>
     <string name="desktop_ui_read_manga_from_local_files">讀取本地檔案中的漫畫</string>
     <string name="desktop_ui_reader_settings">閱讀器設定</string>
-    <string name="desktop_ui_reader_partial_download">已下載 %1$d/%2$d 頁，其餘頁面將連線載入</string>
     <string name="desktop_ui_reading_mode">閱讀模式</string>
     <string name="desktop_ui_reading_mode_e073e5df">閱讀模式：</string>
     <string name="desktop_ui_recent_updates">最近更新</string>

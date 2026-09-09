@@ -73,8 +73,6 @@ class ReaderScreenModel(
     private val ownedRuntimeScope: CoroutineScope? = null,
     private val onProductionClosed: () -> Unit = {},
 ) : ScreenModel {
-    private val evaluatedPartialDownloadSessions = mutableSetOf<Pair<Long, Long>>()
-    private val displayedPartialDownloadNotices = mutableSetOf<ReaderPartialDownloadNoticeId>()
     private val _state = MutableStateFlow(buildInitialState(prefs, initialSessionState))
     val state: StateFlow<ReaderState> = _state.asStateFlow()
     private var lastSettledViewport: SettledViewportIdentity? = null
@@ -111,12 +109,10 @@ class ReaderScreenModel(
             skipReadChapters = prefs.skipReadChapters,
             skipFilteredChapters = prefs.skipFilteredChapters,
             skipDuplicateChapters = prefs.skipDuplicateChapters,
-            partialDownloadNotice = partialDownloadNotice(reader),
         )
     }
 
     fun acceptSessionState(reader: DesktopReaderSessionState) {
-        val incomingPartialNotice = partialDownloadNotice(reader)
         _state.update { current ->
             val chapterChanged = current.context.chapterId != reader.context.chapterId
             val firstStablePageList = current.session.activeChapter.pages.isEmpty() &&
@@ -139,40 +135,7 @@ class ReaderScreenModel(
                 spreadPages = if (chapterChanged) emptySet() else current.spreadPages,
                 matchedPairs = if (chapterChanged) emptySet() else current.matchedPairs,
                 virtualPages = if (chapterChanged) null else current.virtualPages,
-                partialDownloadNotice = when {
-                    incomingPartialNotice != null -> incomingPartialNotice
-                    chapterChanged -> null
-                    else -> current.partialDownloadNotice
-                },
             )
-        }
-    }
-
-    private fun partialDownloadNotice(reader: DesktopReaderSessionState): ReaderPartialDownloadNotice? {
-        val pages = reader.snapshot.activeChapter.pages
-        if (pages.isEmpty()) return null
-        val evaluationId = reader.context.chapterId to reader.snapshot.generation
-        if (!evaluatedPartialDownloadSessions.add(evaluationId)) return null
-        val candidatesByGeneration = pages.mapNotNull { it.partialPageCandidate }.groupBy { it.attemptGeneration }
-        val attemptGeneration = candidatesByGeneration.keys.maxOrNull() ?: return null
-        val downloadedPages = candidatesByGeneration.getValue(attemptGeneration).size
-        if (downloadedPages !in 1 until pages.size) return null
-        val id = ReaderPartialDownloadNoticeId(
-            chapterId = reader.context.chapterId,
-            readerGeneration = reader.snapshot.generation,
-            attemptGeneration = attemptGeneration,
-        )
-        if (!displayedPartialDownloadNotices.add(id)) return null
-        return ReaderPartialDownloadNotice(
-            id = id,
-            downloadedPages = downloadedPages,
-            totalPages = pages.size,
-        )
-    }
-
-    fun dismissPartialDownloadNotice(id: ReaderPartialDownloadNoticeId) {
-        _state.update { current ->
-            if (current.partialDownloadNotice?.id == id) current.copy(partialDownloadNotice = null) else current
         }
     }
 
