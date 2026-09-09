@@ -1,6 +1,6 @@
 ---
 parent-plan: 2026-06-30-mihon-desktop-refactor-roadmap.md
-status: in-progress
+status: completed
 date: 2026-09-08
 ---
 
@@ -13,15 +13,16 @@ date: 2026-09-08
 不能据此另定搜索、分类、章节选择或删除规则。已有 Desktop 行为不能仅因已经存在就被认定为合法差异。
 
 2026-09-08 对实现提交 `77d18569c` 的复审发现，原 LI-01～LI-08 完成声明超出了代码和测试能证明的范围，
-现撤回相关 checkoff，恢复为 `in-progress`。正式 EXE `0.11.19.23.8113c7d` 已包含该实现，问题不是用户打开了旧包。
+当时撤回相关 checkoff，恢复为 `in-progress`。正式 EXE `0.11.19.23.8113c7d` 已包含该实现，问题不是用户打开了旧包。
 已确认缺口包括搜索展开/选择工具栏、分类排序回读、仅封面角标/继续入口、批量操作离页取消、删除下载未清队列，
 以及真实分类/删除对话框的接线证据不足。历史测试通过记录保留，但不能替代这些行为的失败测试与修复。
 `mbp-lan` 当前可达；其旧 checkout 含用户改动，后续使用隔离 checkout 验收同一修复版本，不修改该用户工作树。
 
 ### 本轮补修进度（随提交更新）
 
-当前 **5 个补修行为批次均已提交，第 5 批为 `7a4a25bb5`**；正在执行一次发布收口。
-这是按可验收批次数计数，不是工时百分比，也不表示其余原实现均已通过复审。
+截至 2026-09-09，**5/5 个补修行为批次及 LI-09 发布收口均已完成**。第 5 批为 `7a4a25bb5`，
+测试夹具及证据修正为 `ea61d6188`；双平台正式版本为 **`0.11.19.25.ea61d61`**。
+这是按已审查、验证和提交的可验收批次数计数，不是工时百分比；迁移端口的范围外缺口仍单列。
 以下是本轮提交和验证的阅读索引；capability 机器状态仍以 manifest 为准。旧 LI 项跨越多个补修批次，
 其总复选框只在该项全部关闭条件满足时勾选，已提交的部分不应因此被隐藏。
 
@@ -42,19 +43,19 @@ date: 2026-09-08
 - [x] **补修 5：当前分类/全库刷新接线**——提交 `7a4a25bb5`。显式分类绕过全库设置、全库排除优先并识别
   默认分类 0；重复启动使用原版提示，离页返回/完成后的状态跟随实际 job。Desktop 88 项、Android 11 项、
   共享范围 2 项无失败；真实 Root 组合路径已通过，完成独立审查及修复复审，不重做后台执行器。
-- [ ] **发布收口（进行中）**——manifest 当前证据已更新，最终完整测试矩阵已启动；Mac 隔离目录已同步
-  同一提交并运行官方构建脚本。待矩阵通过后生成 Windows 正式包，再完成双平台运行验收。
+- [x] **发布收口**——完整矩阵及失败范围复验、manifest 审计、格式检查、双平台官方构建和正式应用
+  Test Mode 书架验收完成。测试夹具修正未改变产品实现；保留首次失败和平台跳过记录，详见 6.4。
 
-| 原 LI 项 | 已提交部分 | 尚待关闭的主要门槛 |
+| 原 LI 项 | 已提交并验收的行为 | 关闭状态及边界 |
 | --- | --- | --- |
-| LI-01 | 分类恢复、查询展开/关闭、空态、过滤后计数及 Test Mode 消费；随机→真实详情→返回恢复 | 最终全量与发布证据 |
-| LI-02 | 分类排序回读、偏好作用域、角标/仅封面、重选设置、实际下载/删除后的计数与筛选刷新 | 最终组合回归与发布证据 |
-| LI-03 | 选择工具栏、返回优先级、跨分类全选/反选；迁移真实确认/取消和现有参数传递 | 批量操作资格的最终组合回归；范围外迁移端口差异单列 |
-| LI-04 | 三态、加载失败、目标快照、取消、编辑及真实 CRUD 接线 | 最终组合回归和状态证据收口 |
-| LI-05/06 | 确认默认值、三种选择、本地混选、Escape、离页生命周期/失败反馈、队列与实际文件清理；按已读偏好仅删新标记章节 | 最终全量与发布证据 |
-| LI-07 | 仅封面继续入口、未读角标耦合、下载资格/去重、运行中删除及可见结果刷新 | 原实现其余条目与最终组合回归 |
-| LI-08 | 分类/全库范围、搜索不误裁剪、重复请求、实际 job 生命周期及离页返回 | 最终全量与发布证据 |
-| LI-09 | 尚未执行本轮最终收口 | 全量矩阵、双平台正式包与运行验收 |
+| LI-01 | 分类恢复、查询展开/关闭、空态、过滤后计数及 Test Mode 消费；随机→真实详情→返回恢复 | 已关闭，见批次证据及 6.4 |
+| LI-02 | 分类排序回读、偏好作用域、角标/仅封面、重选设置、实际下载/删除后的计数与筛选刷新 | 已关闭，见批次证据及 6.4 |
+| LI-03 | 选择工具栏、返回优先级、跨分类全选/反选；迁移真实确认/取消和现有参数传递 | 书架入口已关闭；完整迁移端口保留 MG-01 PARTIAL |
+| LI-04 | 三态、加载失败、目标快照、取消、编辑及真实 CRUD 接线 | 已关闭，见批次证据及 6.4 |
+| LI-05/06 | 确认默认值、三种选择、本地混选、Escape、离页生命周期/失败反馈、队列与实际文件清理；按已读偏好仅删新标记章节 | 已关闭，见批次证据及 6.4 |
+| LI-07 | 仅封面继续入口、未读角标耦合、下载资格/去重、运行中删除及可见结果刷新 | 已关闭，Reader 内部状态机保持范围外 |
+| LI-08 | 分类/全库范围、搜索不误裁剪、重复请求、实际 job 生命周期及离页返回 | 已关闭，自动调度与更新执行器差异仍属 LU-01 |
+| LI-09 | 全量矩阵及局部复验、双平台正式构建、实际产物书架运行验收 | 已关闭，产物与验证限制见 6.4 |
 
 | 依据 | 固定值及用途 |
 | --- | --- |
@@ -70,11 +71,11 @@ date: 2026-09-08
 
 现有共享查询/分类/选择/下载目标实现和已接入入口继续复用。补修按上面的五个可验收行为批次串行推进：
 确认事务与异步副作用分别以真实对话框/数据库和后台服务生命周期为测试边界；刷新以现有 scheduler 为边界。
-每批补真实 production 红绿测试，主代理审查后提交。最后才重跑 LI-09 矩阵与正式发布。
+每批补真实 production 红绿测试，主代理审查后提交；本轮已完成 LI-09 矩阵与正式发布。
 
 与既有计划的关系：
 
-- [父路线](./2026-06-30-mihon-desktop-refactor-roadmap.md) 当前唯一指针继续指向本文；先完成已重开的行为批次，再收口 LI-09。
+- [父路线](./2026-06-30-mihon-desktop-refactor-roadmap.md) 的唯一执行指针在本轮完成后清为 `none`，不自动激活相邻计划。
 - [非 Reader 计划](./2026-08-02-mihon-desktop-non-reader-upstream-core-roadmap.md) 的 `LB-01` 是本范围的历史总项；本文只细化其中书架交互，不继承整个 `NR0-01`、`MD-03`、`LU-01` 的施工依赖。
 - 激活时在原计划注明本文接管的动作边界；非 Reader 计划其余部分及作者归档计划继续暂停，不能并行执行两个重叠书架任务。
 - 历史 `16/17/19 VERIFIED` 证明的是当时登记的证据，不等于本次交互无缺口。执行时仅给受影响既有 action 补准确证据与状态裁决；不批量重建 inventory，不借机推进全仓语义映射。
@@ -191,15 +192,15 @@ LI-01 随真实页面红测补最小挂载能力和分类投影；后续各批�
 以下 8 个功能批次加 1 个收口批次构成唯一实施清单。依赖顺序明确，不将预计文件数用作强制拆分标准。
 预估合计约 13–22 个工程日，取决于现有测试挂载与平台发布环境；不是工时承诺。代码行数增加本身不触发扩容。
 
-- [ ] **LI-01 分类、搜索、空态与详情入口**（2–3 日）
-- [ ] **LI-02 筛选、排序和显示偏好闭环**（3–4 日）
-- [ ] **LI-03 选择模式、返回优先级与迁移入口**（1–2 日）
-- [ ] **LI-04 分类管理与批量三态归属**（1–2 日）
-- [ ] **LI-05 已读/未读及其副作用**（1–2 日）
-- [ ] **LI-06 移出书架与删除下载的确认事务**（1–2 日）
-- [ ] **LI-07 继续阅读与下载目标选择**（2–3 日）
-- [ ] **LI-08 当前分类/全库手动刷新**（1–2 日）
-- [ ] **LI-09 组合回归、发布与证据收口**（1–2 日）
+- [x] **LI-01 分类、搜索、空态与详情入口**（原估 2–3 日）
+- [x] **LI-02 筛选、排序和显示偏好闭环**（原估 3–4 日）
+- [x] **LI-03 选择模式、返回优先级与迁移入口**（原估 1–2 日；仅本轮约定的迁移端口边界）
+- [x] **LI-04 分类管理与批量三态归属**（原估 1–2 日）
+- [x] **LI-05 已读/未读及其副作用**（原估 1–2 日）
+- [x] **LI-06 移出书架与删除下载的确认事务**（原估 1–2 日）
+- [x] **LI-07 继续阅读与下载目标选择**（原估 2–3 日）
+- [x] **LI-08 当前分类/全库手动刷新**（原估 1–2 日）
+- [x] **LI-09 组合回归、发布与证据收口**（原估 1–2 日）
 
 ### LI-01 分类、搜索、空态与详情入口
 
@@ -439,7 +440,8 @@ Escape 优先级、过滤后的分类计数、标题/角标门禁已接入真实
 
 > 历史收口记录（2026-09-08，仅对应修复前提交，不能覆盖本轮 diff）：`TODO -> BLOCKED`。共享完整测试、Android 完整单元测试、Desktop 全量（2899 项，2 skipped）、Test Mode 客户端、manifest `finalParityAudit`、Spotless、Windows 正式构建与正式 EXE Test Mode 均通过；Windows 产物为 `0.11.19.23.8113c7d`。macOS 的 `mbp` 连接超时，`mbp-lan` 虽可达但 checkout 为旧的 `c84ed331fa` 且含无关用户文件，未取得同一 diff 的 macOS 构建/运行证据，故按门禁保留阻塞。
 
-本轮收口状态（2026-09-09）：五个补修行为批次已完成。最初带环境重置的 coordinator `start` 命令被
+本轮收口状态（2026-09-09）：五个补修行为批次及发布验收已完成，最终证据见 6.4。
+最初带环境重置的 coordinator `start` 命令被
 工具拒绝，未产生进程；当时仅收到 `blocked by policy`，不能据此推断用户设置了限制。核查本地规则与
 实际 SDK/JVM 环境后，保留现有正确环境，改用项目协调器前台 `run`，同一完整矩阵于 18:32 正常启动
 （`library-repair-final-matrix`）。未修改权限配置，也未绕过测试。Mac 隔离目录在同一提交
@@ -454,7 +456,7 @@ Escape 优先级、过滤后的分类计数、标题/角标门禁已接入真实
 - 不在每个批次运行全量 Android/Desktop、`finalParityAudit` 或发布构建。若用户要求中途发布一个完整迭代，再按仓库要求单独说明预算并使用构建脚本。
 - Gradle 由主代理通过 `scripts/gradle-coordinator.py` 串行协调；超时先查原进程，不启动第二份重型验证。
 
-以下是后续复验入口；本次已执行命令与结果记录在 6.3。测试类通配为现有书架集合；每批次选择自己新增/受影响的类，
+以下是后续复验入口；修复前历史记录在 6.3，本轮最终命令与结果在 6.4。测试类通配为现有书架集合；每批次选择自己新增/受影响的类，
 不要将示例 wildcard 当成固定全跑要求。KMP Android 测试 task 以实际注册的 variant 为准。Desktop 默认
 排除 `integration` 标签，命中该标签的 focused 必须加 `-PincludeIntegrationTests=true`，不能接受零用例通过。
 
@@ -515,23 +517,24 @@ Android 测试；不将新功能 APK、真机覆盖所有页面或 Android 产�
 | Windows runtime | 正式 EXE `--test-mode --test-http-port=18080 --headless`；`/test/health`、`/test/state`、`POST /test/action/search` | PASS：READY/8 rows，搜索 query 正确回读 |
 | macOS | `ssh mbp` 超时；`ssh mbp-lan` 仅确认旧 checkout `c84ed331fa`，未运行本次 diff | BLOCKED：缺同一 diff 的发布与运行证据 |
 
-修复前历史 Windows 产物（本轮修复完成后必须更新正式交付地址）：
+修复前历史 Windows 产物（仅保留溯源；本轮交付使用 6.4 的新地址）：
 [Mihon Desktop.exe](D:/Shell/Github/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.23.8113c7d-unpacked/Mihon%20Desktop.exe)。
 `app-desktop/tmp/` 仅作为构建内部目录，未作为交付地址。
 
-### 6.4 本轮收口验证（进行中）
+### 6.4 本轮收口验证（已完成，2026-09-09）
 
 - `library-repair-final-matrix` 在 Windows 执行第 6.2 节完整矩阵，耗时 5 分 38 秒。
   Domain JVM 397、Data JVM 127、各模块 Android release 单元测试合计 693、Test Mode 客户端 52 项通过；
   配置的 Spotless 检查通过。Desktop 2942 项中 2936 通过、3 失败、3 跳过，未将该命令记为全绿。
 - Mac 隔离目录以同一提交 `7a4a25bb5` 执行 `scripts/build-desktop.sh`，包含 integration 标签，
-  Desktop 2942 项中 2930 通过、同样 3 失败、9 跳过；脚本在测试阶段停止，尚未产生本轮正式应用。
+  Desktop 2942 项中 2930 通过、同样 3 失败、9 跳过；首次脚本在测试阶段停止，未生成正式应用。
 - 两端同样的三项失败均不涉及产品修补：历史 manifest/Task7 索引仍引用选择栏测试旧名称；HTTP 测试未
   配置主线程调度器导致排序返回 500；仅验证详情部分下载失败的夹具未提供新增分类订阅，导致入口返回 503。
   保留原历史测试 ID 并注明顶部反选的真实 Root 保护用例，补齐两个 HTTP 夹具的环境/订阅，未降低断言。
 - `sol-li-evidence-http-red` 原样复现 HTTP 失败；`sol-li-evidence-focused-green` 修正后运行 HTTP 整类
   5 项与书架交互整类 16 项，21 项全部通过。产品实现不变，因此保持完整行为测试证据，仅补失败范围与
-  manifest 审计；不重新运行全部 Desktop 测试。后续两端采用官方 `build-only` 完成构建与运行验收。
+  manifest 审计；不重新运行全部 Desktop 测试。夹具/证据修正提交 `ea61d6188`；随后两端采用官方
+  `build-only` 完成构建与运行验收，未用局部测试替代发生产品变化后的完整矩阵。
 - `sol-li-evidence-roadmap-contract-green` 精确复验失败的 manifest 契约，1 项通过；
   `sol-li-evidence-final-parity-audit` 执行独立最终审计，1 项通过。期间两次误选普通 JVM task 排除的
   governance 标签方法返回 `No tests found`，未作为验证证据，随后以正确的 task/filter 完成。
@@ -539,6 +542,50 @@ Android 测试；不将新功能 APK、真机覆盖所有页面或 Android 产�
   Windows 原生隐私窗口测试依赖相应桌面环境；Mac 额外跳过 Windows 专属打包/签名/占用文件测试和
   Keychain 环境用例。跨平台的真实 Root→数据库、下载成功/清理及刷新组合正常执行；Windows 文件占用
   失败场景在 Windows 执行，不能把它的 Mac 跳过记录表述为跨平台通过。
+- Mac 在同一提交 `ea61d6188` 上完成 `library-repair-macos-focused`：HTTP 5 项、书架交互 16 项、
+  manifest 契约 1 项，共 22 项全部通过；`library-repair-macos-audit` 的 `finalParityAudit` 1 项通过。
+  主代理逐项核对两端 XML。将首次完整矩阵与修正后的失败范围合并，Windows 为 2939 通过/3 跳过，
+  Mac 为 2933 通过/9 跳过；这是同一产品实现的合并证据，不声称首次完整命令零失败。
+- Windows 官方构建 `library-repair-windows-build` 通过，约 2 分 34 秒；真实打包 JRE、扩展 APK
+  安装和 source 解析运行验收通过，日志明确输出 `Validated Mihon Desktop 0.11.19.25.ea61d61`。
+  Mac 官方构建 `library-repair-macos-release` 通过，部署到 `/Applications/Mihon Desktop.app`，
+  输出同一完整版本；Mac 使用隔离 checkout `/Users/altair/github/mihon-library-review-20260908`。
+- 两端直接启动正式应用，使用 `--test-mode --test-http-port=<空闲回环端口> --headless`：
+  `/test/health` 为 200、`/test/state` 的书架为 READY（Windows 8 条/Mac 2 条），
+  `POST /test/action/search` 保留原始前后空格，随后恢复初始 query 并核对。没有修改筛选、排序、
+  分类、收藏、章节或下载数据。实际 Root/对话框/导航交互由本轮离屏 production fixtures 验证，
+  Test Mode 无窗口验收不冒充人工视觉检查。
+- `/test/shutdown` 两端均返回 202，Mac 直接以 0 退出。Windows 首次 20 秒等待超时后终止了本次
+  测试进程；有界复验确认 HTTP 已关闭，实际打包 JVM 已进入 `DestroyJavaVM`，仍有空闲的
+  非 daemon `OkHttp Dispatcher` 线程，延长等待后自然以 0 退出。该退出等待现象没有被记为首次通过，
+  未据此扩展网络客户端生命周期改造；最终确认本次测试进程全部退出。
+
+实际命令（均由项目协调器持有单 worktree Gradle 锁；Mac 的两次局部复验串行完成后才构建）：
+
+```powershell
+python scripts/gradle-coordinator.py run --key library-repair-final-matrix -- .\gradlew.bat --offline :domain:jvmTest :data:jvmTest testReleaseUnitTest :app-desktop:jvmTest -PincludeIntegrationTests=true :test-desktop:test :app-desktop:finalParityAudit spotlessCheck
+python scripts/gradle-coordinator.py run --key library-repair-windows-build -- 'C:/Program Files/Git/bin/bash.exe' scripts/build-desktop.sh build-only
+```
+
+```bash
+# mbp-lan，隔离 checkout
+python3 scripts/gradle-coordinator.py run --key library-repair-macos-focused -- ./gradlew --offline :app-desktop:jvmTest -PincludeIntegrationTests=true --tests mihon.desktop.test.http.LibraryMangaTestModeHttpTest --tests mihon.desktop.ui.library.LibraryParityIntegrationTest --tests 'mihon.desktop.parity.DesktopProductCapabilityContractTest.parity manifest defines the exact roadmap contract'
+python3 scripts/gradle-coordinator.py run --key library-repair-macos-audit -- ./gradlew --offline :app-desktop:finalParityAudit
+python3 scripts/gradle-coordinator.py run --key library-repair-macos-release -- bash scripts/build-desktop.sh build-only
+```
+
+对应构建/验证日志位于各 checkout 的 `.gradle-coordinator/<key>.log`；正式应用启动日志为
+`library-repair-windows-runtime.log`、`library-repair-windows-runtime-recheck.log` 和
+`library-repair-macos-runtime.log`，HTTP 结果和退出码由本次工具回执及上文记录。
+Desktop 本身未配置 Spotless；本轮执行项目已配置的格式检查，并检查 Desktop 改动格式及 `git diff --check`。
+
+本轮 Windows 交付（已核对构建日志 `Final unpacked EXE:` 原样路径及文件存在）：
+[Mihon Desktop.exe](D:/Shell/Github/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.25.ea61d61-unpacked/Mihon%20Desktop.exe)。
+配套 [Windows ZIP](D:/Shell/Github/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.25.ea61d61-windows.zip)
+的 SHA-256 为 `997212a8acc9bd1db4151edca5a03e9c59dc187fb3bc7440783008ce7982c420`。
+Mac 正式应用为该 Mac 上的 [Mihon Desktop.app](/Applications/Mihon%20Desktop.app)。
+产物源提交是 `ea61d6188`；最终发布提交仅包含官方脚本分配的 BUILD 25 和必要的文档/manifest 证据收口，
+不再修改受测产品实现，也不触发重复完整测试。
 
 ## 7. 防止执行扩张的硬约束
 
@@ -554,16 +601,17 @@ Android 测试；不将新功能 APK、真机覆盖所有页面或 Android 产�
 
 ## 8. 最终用户验收路径
 
-以下是修复后重新验收的路径；未取得本轮实际证据前保持未勾选。
+以下路径已由各批次的共享契约、真实 consumer、Root/SQL/文件/导航集成及 6.4 正式应用验收共同覆盖。
+勾选表示已具备本轮自动化证据并随发布提交落地，不表示用户已逐项手动点击；仍可按这些路径手动复核。
 
-- [ ] 打开书架→只出现原版规则下的分类；切分类/重启→页、标题及条目对应，空分类不变成“全部”。
-- [ ] 搜索作者/题材组合→结果与原版 fixture 一致；无结果→有明确反馈；转全局搜索→保留 query；返回→恢复书架状态。
-- [ ] 筛选/排序/显示设置→选项、显隐和作用范围正确；重启→偏好保存；列表及各网格都遵循角标/继续按钮配置。
-- [ ] 选书、范围选择、换分类、全选/反选→数量与目标正确；返回→先退出选择，再关闭搜索；迁移→进入配置并带原选择集。
-- [ ] 选中分类分别为 A、A+B 的两本书→不修改混合 B，加入 C→结果为 A+C、A+B+C；取消→原样保留。
-- [ ] 批量标记已读/未读→读状态、进度、未读数及按偏好的下载清理一致；失败→显示实际结果。
-- [ ] 移除对话框→未选任何选项不能确认；仅移出/仅删下载/两者均选→各自效果正确；取消→书架与文件均不变。
-- [ ] 第一章已下载→“接下来 1 章”入队下一合格章；继续阅读→进入正确章节/进度；无下一章→显示反馈。
-- [ ] 当前分类刷新/全库刷新→准确提交对应范围；再次刷新→已运行提示；完成/失败→与后台实际状态一致。
-- [ ] 书架→漫画详情→作者字段，以及主导航作者页→原有入口、数据与返回链路可用，未新增作者业务。
-- [ ] LI-09 自动化矩阵及 Windows/macOS 正式应用路径验收完成→记录真实命令、日志、提交和可点击产物；缺失的平台不标为通过。
+- [x] 打开书架→只出现原版规则下的分类；切分类/重启→页、标题及条目对应，空分类不变成“全部”。
+- [x] 搜索作者/题材组合→结果与原版 fixture 一致；无结果→有明确反馈；转全局搜索→保留 query；返回→恢复书架状态。
+- [x] 筛选/排序/显示设置→选项、显隐和作用范围正确；重启→偏好保存；列表及各网格都遵循角标/继续按钮配置。
+- [x] 选书、范围选择、换分类、全选/反选→数量与目标正确；返回→先退出选择，再关闭搜索；迁移→进入配置并带原选择集。
+- [x] 选中分类分别为 A、A+B 的两本书→不修改混合 B，加入 C→结果为 A+C、A+B+C；取消→原样保留。
+- [x] 批量标记已读/未读→读状态、进度、未读数及按偏好的下载清理一致；失败→显示实际结果。
+- [x] 移除对话框→未选任何选项不能确认；仅移出/仅删下载/两者均选→各自效果正确；取消→书架与文件均不变。
+- [x] 第一章已下载→“接下来 1 章”入队下一合格章；继续阅读→进入正确章节/进度；无下一章→显示反馈。
+- [x] 当前分类刷新/全库刷新→准确提交对应范围；再次刷新→已运行提示；完成/失败→与后台实际状态一致。
+- [x] 书架→漫画详情→作者字段，以及主导航作者页→原有入口、数据与返回链路可用，未新增作者业务。
+- [x] LI-09 自动化矩阵及 Windows/macOS 正式应用路径验收完成→记录真实命令、日志、提交和可点击产物；缺失的平台不标为通过。

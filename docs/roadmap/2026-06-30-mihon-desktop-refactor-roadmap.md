@@ -4,7 +4,7 @@
 
 正式版日期：2026-06-30
 
-- active-child-plan: [`2026-09-08-desktop-library-interaction-parity-roadmap.md`](./2026-09-08-desktop-library-interaction-parity-roadmap.md)（书架 5 个补修行为批次已提交，最新 `7a4a25bb5`；当前执行 LI-09 全量验证及双平台发布验收，详见子计划顶部进度区）
+- active-child-plan: none（[书架交互对齐计划](./2026-09-08-desktop-library-interaction-parity-roadmap.md)的 5 个补修行为批次及 LI-01～LI-09 已于 2026-09-09 完成；双平台正式版本 `0.11.19.25.ea61d61`，详细测试与发布证据见子计划 6.4；不自动激活相邻计划）
 
 ## 0. 产品路线
 
@@ -295,8 +295,9 @@
 [`性能报告`](./2026-09-02-desktop-download-directory-and-partial-reading-performance-report.md)。non-reader upstream core 与
 作者归档计划继续保持暂停；下表保留其余 Phase R backlog。
 
-书架交互对齐 child plan 已在 2026-09-08 接管当前执行指针。复审撤回 LI-01～LI-08 的完成声明，
-先补齐实际页面/服务链路的行为缺口和证据，再执行 LI-09；macOS 验收使用同一版本的隔离 checkout。
+书架交互对齐 child plan 在 2026-09-08 复审后重开，已于 2026-09-09 完成 5 个补修行为批次和
+LI-09 双平台发布验收；macOS 使用同版本隔离 checkout。完整迁移配置/搜索端口仍归 MG-01，
+自动更新执行器/调度差异仍归 LU-01，均未因书架入口完成而关闭。
 
 | ID | 状态 | 优先级 | 平台 | 任务 | 用户可见变化 | 验收 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -396,9 +397,9 @@
 | --- | --- |
 | 产品路线 | 已确认：当前以 macOS `app-desktop` 为主线；Android 原版 Mihon 和 Windows 发布化进入延期队列 |
 | 正式 roadmap | 已建立 |
-| 进度追踪表 | 已建立；W1-01/W1-02/W1-03/W1-04a/W1-04b/W2-01/W2-02/W2-03/W3-01/W3-02/W3-04/W3-05/W3-06、XW-01、XW-03 已关闭；书架 child plan 的 LI-01～LI-08 经复审重开，补齐行为与证据后再收口 LI-09 |
+| 进度追踪表 | 已建立；W1-01/W1-02/W1-03/W1-04a/W1-04b/W2-01/W2-02/W2-03/W3-01/W3-02/W3-04/W3-05/W3-06、XW-01、XW-03 已关闭；书架 child plan 的 LI-01～LI-09 已完成补修和双平台发布，迁移/自动更新范围外缺口仍保留 |
 | 技术债台账 | TD-01 至 TD-09 已偿还到 `PAID`；TD-10 Android 合并边界已由 Phase X 延期队列继续约束 |
-| 下一步建议 | 先完成书架 child plan 已重开的行为批次及 LI-09 双平台验收；随后按 XW-02 处理安装、升级、卸载和用户数据保留验收，Android 构建发布继续按 Phase X 独立处理 |
+| 下一步建议 | 当前没有 active child plan；XW-02 安装、升级、卸载和用户数据保留验收，以及 Phase X Android 构建发布仍是独立 backlog，不由书架收口自动启动 |
 
 ## 17. 不建议事项
 
