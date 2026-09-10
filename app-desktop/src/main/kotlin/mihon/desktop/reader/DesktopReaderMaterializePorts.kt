@@ -48,7 +48,10 @@ class DesktopReaderChapterContentPort(
     private val leaseGeneration: Long = 0L,
     private val routeResolver: ReaderChapterRouteResolver = ReaderChapterContentResolver,
     private val partialDownloadSnapshotLookup: PartialDownloadSnapshotLookup = DisabledPartialDownloadSnapshotLookup,
-) : ReaderChapterContentPort {
+) : ReaderChapterContentPort, DesktopReaderChapterDownloadState {
+
+    override var chapterDownloaded: Boolean? = null
+        private set
 
     override suspend fun loadChapterContent(request: ReaderChapterContentRequest): List<ReaderPageDescriptor> {
         require(request.chapterId.value == context.chapterId) { "Chapter context does not match the request" }
@@ -67,7 +70,12 @@ class DesktopReaderChapterContentPort(
             else -> ReaderSourceContentKind.MISSING_SOURCE
         }
 
-        return when (routeResolver.resolve(downloaded != null, sourceKind)) {
+        val route = routeResolver.resolve(downloaded != null, sourceKind)
+        chapterDownloaded = route == ReaderChapterRoute.DOWNLOAD ||
+            route == ReaderChapterRoute.LOCAL_DIRECTORY ||
+            route == ReaderChapterRoute.LOCAL_ARCHIVE ||
+            route == ReaderChapterRoute.LOCAL_EPUB
+        return when (route) {
             ReaderChapterRoute.DOWNLOAD -> downloadDescriptors(checkNotNull(downloaded))
             ReaderChapterRoute.LOCAL_DIRECTORY,
             ReaderChapterRoute.LOCAL_ARCHIVE,

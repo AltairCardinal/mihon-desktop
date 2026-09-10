@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -312,6 +313,7 @@ data class DesktopReaderScreen(
         wasRead = target.isRead,
         mangaId = mangaId,
         scanlator = target.scanlator,
+        isDownloaded = target.isDownloaded,
     )
 
     internal fun initialContext() = DesktopReaderChapterContext(
@@ -327,6 +329,7 @@ data class DesktopReaderScreen(
         localChapterPath = localChapterPath,
         mangaId = mangaId,
         scanlator = chapters.getOrNull(currentChapterIndex)?.scanlator,
+        isDownloaded = chapters.getOrNull(currentChapterIndex)?.isDownloaded ?: false,
     )
 
     private companion object {
@@ -839,53 +842,66 @@ internal fun ReaderContent(
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
 ) {
-    when (state.readingMode) {
-        ReadingMode.WEBTOON -> WebtoonPresentationViewer(
-            chapter = state.session.activeChapter, currentPage = state.currentPage,
-            currentDisplayUnitId = state.currentDisplayUnitId,
-            initialAnchor = state.webtoonScrollAnchor,
-            autoSplitPages = state.autoSplitPages, splitPageIndices = state.spreadPages,
-            cropBorders = state.cropBordersWebtoon, sidePadding = state.webtoonSidePadding,
-            autoScroll = state.webtoonAutoScroll, autoScrollSpeed = state.webtoonAutoScrollSpeed,
-            contextMenuScope = contextMenuScope, mangaTitle = mangaTitle, chapterTitle = chapterTitle,
-            presentationImageOwner = presentationImageOwner,
-            onViewportChanged = model::settleWebtoon,
-            onRetryPage = model::retryPage,
-            onSpreadDetected = { realIdx -> if (realIdx !in state.spreadPages) model.setSpreadPages(state.spreadPages + realIdx) },
-            hasPreviousChapter = readerNav?.previousRead != null,
-            hasNextChapter = readerNav?.nextToRead != null,
-            onNextChapter = if (readerNav?.nextToRead != null) onNextChapter else null,
-        )
-        ReadingMode.LTR, ReadingMode.RTL -> {
-            val rtl = state.readingMode == ReadingMode.RTL
-            val animationPreference = LocalDesktopUiDependencies.current.appPreferences.pageTurnAnimation
-            val pageTurnAnimation by animationPreference.changes().collectAsState(initial = animationPreference.get())
-            val firstPresentedGeneration by presentationImageOwner.firstPresentedGeneration.collectAsState()
-            ZoomablePagerViewer(
-                pageTurnAnimation = pageTurnAnimation,
-                allowAdjacentViewport = firstPresentedGeneration == state.session.generation,
+    CompositionLocalProvider(
+        LocalReaderChapterTransitionContext provides state.context,
+        LocalReaderChapterTransitionContentColor provides readerChapterTransitionContentColor(state.backgroundTheme),
+    ) {
+        when (state.readingMode) {
+            ReadingMode.WEBTOON -> WebtoonPresentationViewer(
                 chapter = state.session.activeChapter, currentPage = state.currentPage,
-                currentDisplayUnitId = state.currentDisplayUnitId, isRtl = rtl,
-                isDualPage = state.dualPageMode, autoSplitPages = state.autoSplitPages,
-                cropBorders = state.cropBordersPager, contextMenuScope = contextMenuScope,
-                mangaTitle = mangaTitle, chapterTitle = chapterTitle, zoomState = state.zoomState,
-                forcedSinglePages = state.forcedSinglePages, matchedPairs = state.effectiveMatchedPairs(),
-                splitPageIndices = state.spreadPages,
+                currentDisplayUnitId = state.currentDisplayUnitId,
+                initialAnchor = state.webtoonScrollAnchor,
+                autoSplitPages = state.autoSplitPages, splitPageIndices = state.spreadPages,
+                cropBorders = state.cropBordersWebtoon, sidePadding = state.webtoonSidePadding,
+                autoScroll = state.webtoonAutoScroll, autoScrollSpeed = state.webtoonAutoScrollSpeed,
+                contextMenuScope = contextMenuScope, mangaTitle = mangaTitle, chapterTitle = chapterTitle,
                 presentationImageOwner = presentationImageOwner,
-                scaleType = state.scaleType,
-                navigationMode = state.navigationMode,
-                onPageChange = model::goToPage,
-                onZoomChange = { model.setZoomState(it) },
+                onViewportChanged = model::settleWebtoon,
                 onRetryPage = model::retryPage,
-                onSingleVisiblePagesChanged = model::settleSinglePage,
-                onDualVisiblePagesChanged = model::settleDualPage,
                 onSpreadDetected = { realIdx -> if (realIdx !in state.spreadPages) model.setSpreadPages(state.spreadPages + realIdx) },
-                onTapCenter = { model.toggleUI() },
-                onPrevChapter = onPrevChapter,
-                onNextChapter = onNextChapter,
                 hasPreviousChapter = readerNav?.previousRead != null,
                 hasNextChapter = readerNav?.nextToRead != null,
+                onNextChapter = if (readerNav?.nextToRead != null) onNextChapter else null,
             )
+            ReadingMode.LTR, ReadingMode.RTL -> {
+                val rtl = state.readingMode == ReadingMode.RTL
+                val animationPreference = LocalDesktopUiDependencies.current.appPreferences.pageTurnAnimation
+                val pageTurnAnimation by animationPreference.changes().collectAsState(initial = animationPreference.get())
+                val firstPresentedGeneration by presentationImageOwner.firstPresentedGeneration.collectAsState()
+                ZoomablePagerViewer(
+                    pageTurnAnimation = pageTurnAnimation,
+                    allowAdjacentViewport = firstPresentedGeneration == state.session.generation,
+                    chapter = state.session.activeChapter, currentPage = state.currentPage,
+                    currentDisplayUnitId = state.currentDisplayUnitId, isRtl = rtl,
+                    isDualPage = state.dualPageMode, autoSplitPages = state.autoSplitPages,
+                    cropBorders = state.cropBordersPager, contextMenuScope = contextMenuScope,
+                    mangaTitle = mangaTitle, chapterTitle = chapterTitle, zoomState = state.zoomState,
+                    forcedSinglePages = state.forcedSinglePages, matchedPairs = state.effectiveMatchedPairs(),
+                    splitPageIndices = state.spreadPages,
+                    presentationImageOwner = presentationImageOwner,
+                    scaleType = state.scaleType,
+                    navigationMode = state.navigationMode,
+                    onPageChange = model::goToPage,
+                    onZoomChange = { model.setZoomState(it) },
+                    onRetryPage = model::retryPage,
+                    onSingleVisiblePagesChanged = model::settleSinglePage,
+                    onDualVisiblePagesChanged = model::settleDualPage,
+                    onSpreadDetected = { realIdx -> if (realIdx !in state.spreadPages) model.setSpreadPages(state.spreadPages + realIdx) },
+                    onTapCenter = { model.toggleUI() },
+                    onPrevChapter = onPrevChapter,
+                    onNextChapter = onNextChapter,
+                    hasPreviousChapter = readerNav?.previousRead != null,
+                    hasNextChapter = readerNav?.nextToRead != null,
+                )
+            }
         }
     }
+}
+
+internal fun readerChapterTransitionContentColor(backgroundTheme: ReaderBackgroundTheme): Color = when (backgroundTheme) {
+    ReaderBackgroundTheme.WHITE -> Color.Black
+    ReaderBackgroundTheme.BLACK,
+    ReaderBackgroundTheme.GRAY,
+    ReaderBackgroundTheme.AUTOMATIC,
+    -> Color.White
 }

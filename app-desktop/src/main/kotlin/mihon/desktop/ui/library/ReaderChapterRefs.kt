@@ -18,6 +18,7 @@ internal fun List<Chapter>.toReaderChapterRefs(
         isRead = chapter.read,
         chapterNumber = chapter.chapterNumber,
         scanlator = chapter.scanlator,
+        isDownloaded = isChapterDownloaded(chapter),
         isFiltered = isReaderChapterFiltered(
             unreadFilterRaw = manga.unreadFilterRaw,
             downloadedFilterRaw = manga.downloadedFilterRaw,

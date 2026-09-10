@@ -386,7 +386,7 @@ internal fun DualPageSettledVisiblePageReporter(
     }
 }
 
-private fun Modifier.readerPrimaryTapInput(
+internal fun Modifier.readerPrimaryTapInput(
     zoomScale: Float,
     navigationMode: NavigationMode,
     isRtl: Boolean,

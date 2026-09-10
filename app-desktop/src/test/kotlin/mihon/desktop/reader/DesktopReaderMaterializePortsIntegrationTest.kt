@@ -327,21 +327,29 @@ class DesktopReaderMaterializePortsIntegrationTest {
             .also { file -> file.parentFile.mkdirs(); file.writeBytes(pngBytes(Color.BLUE)) }
         val sourceManager = FakeDesktopSourceManager(emptyList())
 
-        val downloadedPages = DesktopReaderChapterContentPort(
+        val downloadedPort = DesktopReaderChapterContentPort(
             context = context(chapterId = 1L),
             downloadProvider = downloadProvider,
             sourceManager = sourceManager,
-        ).loadChapterContent(ReaderChapterContentRequest(ReaderChapterId(1L), generation = 1L))
-        val localPages = DesktopReaderChapterContentPort(
+        )
+        val downloadedPages = downloadedPort.loadChapterContent(
+            ReaderChapterContentRequest(ReaderChapterId(1L), generation = 1L),
+        )
+        val localPort = DesktopReaderChapterContentPort(
             context = context(chapterId = 2L, localChapterPath = local.parentFile.absolutePath),
             downloadProvider = downloadProvider,
             sourceManager = sourceManager,
-        ).loadChapterContent(ReaderChapterContentRequest(ReaderChapterId(2L), generation = 1L))
+        )
+        val localPages = localPort.loadChapterContent(
+            ReaderChapterContentRequest(ReaderChapterId(2L), generation = 1L),
+        )
 
         assertEquals(ReaderPageLoadState.Ready, downloadedPages.single().initialLoadState)
         assertEquals(downloaded.toURI().toString(), downloadedPages.single().encodedPageRef?.value)
+        assertTrue(downloadedPort.chapterDownloaded == true)
         assertEquals(ReaderPageLoadState.Ready, localPages.single().initialLoadState)
         assertEquals(local.toURI().toString(), localPages.single().encodedPageRef?.value)
+        assertTrue(localPort.chapterDownloaded == true)
     }
 
     @Test
@@ -521,11 +529,15 @@ class DesktopReaderMaterializePortsIntegrationTest {
             val networkHelper = NetworkHelper(fallback) { fallback }
             val sourceManager = FakeDesktopSourceManager(listOf(source))
             val context = context(chapterId = 4L)
-            val descriptor = DesktopReaderChapterContentPort(
+            val onlinePort = DesktopReaderChapterContentPort(
                 context,
                 DesktopDownloadProvider(tempDir.resolve("downloads")),
                 sourceManager,
-            ).loadChapterContent(ReaderChapterContentRequest(ReaderChapterId(4L), 1L)).single()
+            )
+            val descriptor = onlinePort.loadChapterContent(
+                ReaderChapterContentRequest(ReaderChapterId(4L), 1L),
+            ).single()
+            assertFalse(onlinePort.chapterDownloaded == true)
             val store = DesktopReaderEncodedPageStore(tempDir.resolve("encoded"), maxBytes = 1_000_000L)
             store.beginSession(emptySet())
 

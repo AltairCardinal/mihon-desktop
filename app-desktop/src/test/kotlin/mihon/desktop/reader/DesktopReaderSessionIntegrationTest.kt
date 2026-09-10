@@ -188,6 +188,53 @@ class DesktopReaderSessionIntegrationTest {
     }
 
     @Test
+    fun `activating an adjacent prefetched chapter retains resolved metadata`() = runTest {
+        val session = DesktopReaderSession(
+            initialContext = context(1L),
+            core = core(initialChapterId = 1L),
+            encodedPageStore = DesktopReaderEncodedPageStore(tempDir.resolve("encoded-adjacent-metadata")),
+            chapterContentPortFactory = DesktopReaderChapterContentPortFactory { chapter, _ ->
+                object : ReaderChapterContentPort, DesktopReaderChapterDownloadState {
+                    override val chapterDownloaded = chapter.chapterId == 2L
+
+                    override suspend fun loadChapterContent(request: ReaderChapterContentRequest) =
+                        listOf(readyDescriptor(chapter.chapterId, 0))
+                }
+            },
+            pageFetchPortFactory = DesktopReaderPageFetchPortFactory { _, descriptor -> readyPort(descriptor) },
+            progressPort = DesktopReaderProgressPort { _, _ -> },
+            parentScope = this,
+            initialNextChapterPrefetchMode = NextChapterPrefetchMode.FULL_NEXT_CHAPTER,
+        )
+        val target = context(2L).copy(
+            chapterTitle = "预取章节标题",
+            scanlator = "预取汉化组",
+            isDownloaded = false,
+        )
+
+        try {
+            session.start()
+            advanceUntilIdle()
+            val opening = session.state.value.snapshot
+            val currentPage = opening.activeChapter.pages.single().id
+            session.updateNextChapter(target, firstViewportPageCount = 1)
+            session.onFirstPagePresented(currentPage, opening.generation)
+            advanceUntilIdle()
+
+            session.activate(target)
+            advanceUntilIdle()
+
+            assertEquals(target.chapterId, session.state.value.context.chapterId)
+            assertEquals(target.chapterTitle, session.state.value.context.chapterTitle)
+            assertEquals(target.scanlator, session.state.value.context.scanlator)
+            assertTrue(session.state.value.context.isDownloaded)
+        } finally {
+            session.close()
+            advanceUntilIdle()
+        }
+    }
+
+    @Test
     fun `dual presentation settles both source pages through screen model and session progress port`() = runTest {
         val progress = mutableListOf<ReaderProgressEffect>()
         val session = DesktopReaderSession(

@@ -8,11 +8,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
@@ -23,16 +28,24 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CoroutineScope
+import mihon.desktop.reader.DesktopReaderChapterContext
 import mihon.desktop.reader.DesktopReaderPresentationImageOwner
 import mihon.desktop.reader.ReaderColorFilter
 import mihon.desktop.reader.ScaleType
@@ -51,6 +64,9 @@ import mihon.domain.reader.ReaderDirection
 import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.session.ReaderChapterSession
 import mihon.domain.reader.session.ReaderPageId
+
+internal val LocalReaderChapterTransitionContext = staticCompositionLocalOf<DesktopReaderChapterContext?> { null }
+internal val LocalReaderChapterTransitionContentColor = staticCompositionLocalOf { Color.Unspecified }
 
 @Composable
 internal fun ColorFilterOverlay(colorFilter: ReaderColorFilter) {
@@ -336,6 +352,10 @@ internal fun ReaderChapterTransitionItem(
     direction: ReaderTransitionDirection,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalReaderChapterTransitionContext.current
+    val contentColor = LocalReaderChapterTransitionContentColor.current
+        .takeUnless { it == Color.Unspecified }
+        ?: MaterialTheme.colorScheme.onSurface
     val message = when (direction) {
         ReaderTransitionDirection.PREVIOUS -> MR.strings.transition_no_previous.localized()
         ReaderTransitionDirection.NEXT -> MR.strings.transition_no_next.localized()
@@ -344,30 +364,142 @@ internal fun ReaderChapterTransitionItem(
         modifier = modifier,
         contentAlignment = Alignment.Center,
     ) {
-        OutlinedCard(
+        Column(
             modifier = Modifier
                 .widthIn(max = 460.dp)
                 .fillMaxWidth(),
-            colors = CardDefaults.outlinedCardColors(
-                containerColor = Color.Transparent,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            ),
         ) {
-            androidx.compose.foundation.layout.Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Info,
-                    tint = MaterialTheme.colorScheme.primary,
-                    contentDescription = null,
-                )
-                Text(message, style = MaterialTheme.typography.bodyMedium)
+            when (direction) {
+                ReaderTransitionDirection.PREVIOUS -> {
+                    NoChapterNotification(
+                        text = message,
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                        contentColor = contentColor,
+                    )
+                    context?.let {
+                        Spacer(Modifier.height(24.dp))
+                        ChapterText(
+                            header = MR.strings.transition_current.localized(),
+                            name = it.chapterTitle,
+                            scanlator = it.scanlator,
+                            downloaded = it.isDownloaded,
+                            contentColor = contentColor,
+                        )
+                    }
+                }
+
+                ReaderTransitionDirection.NEXT -> {
+                    context?.let {
+                        ChapterText(
+                            header = MR.strings.transition_finished.localized(),
+                            name = it.chapterTitle,
+                            scanlator = it.scanlator,
+                            downloaded = it.isDownloaded,
+                            contentColor = contentColor,
+                        )
+                        Spacer(Modifier.height(24.dp))
+                    }
+                    NoChapterNotification(
+                        text = message,
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                        contentColor = contentColor,
+                    )
+                }
             }
         }
     }
 }
+
+@Composable
+private fun NoChapterNotification(
+    text: String,
+    modifier: Modifier = Modifier,
+    contentColor: Color,
+) {
+    OutlinedCard(
+        modifier = modifier,
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = Color.Transparent,
+            contentColor = contentColor,
+        ),
+    ) {
+        androidx.compose.foundation.layout.Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Info,
+                tint = MaterialTheme.colorScheme.primary,
+                contentDescription = null,
+            )
+            Text(text, color = contentColor, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+@Composable
+private fun ChapterText(
+    header: String,
+    name: String,
+    scanlator: String?,
+    downloaded: Boolean,
+    contentColor: Color,
+) {
+    Column {
+        Text(
+            text = header,
+            modifier = Modifier.padding(bottom = 4.dp),
+            color = contentColor,
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            text = buildAnnotatedString {
+                if (downloaded) {
+                    appendInlineContent(DOWNLOADED_ICON_ID)
+                    append(' ')
+                }
+                append(name)
+            },
+            color = contentColor,
+            fontSize = 20.sp,
+            maxLines = 5,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.titleLarge,
+            inlineContent = mapOf(
+                DOWNLOADED_ICON_ID to InlineTextContent(
+                    Placeholder(
+                        width = 22.sp,
+                        height = 22.sp,
+                        placeholderVerticalAlign = PlaceholderVerticalAlign.Center,
+                    ),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        tint = contentColor,
+                        contentDescription = MR.strings.label_downloaded.localized(),
+                    )
+                },
+            ),
+        )
+        scanlator?.takeIf(String::isNotBlank)?.let {
+            Text(
+                text = it,
+                modifier = Modifier
+                    .alpha(READER_SECONDARY_ALPHA)
+                    .padding(top = 2.dp),
+                color = contentColor,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+private const val DOWNLOADED_ICON_ID = "downloaded"
+// Keep this in lockstep with presentation-core's SECONDARY_ALPHA.
+private const val READER_SECONDARY_ALPHA = 0.78f
 
 internal data class ChapterTransitionPresentation(
     val message: String,

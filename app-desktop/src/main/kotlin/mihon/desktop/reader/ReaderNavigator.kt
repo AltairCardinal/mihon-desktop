@@ -18,6 +18,7 @@ data class ReaderChapterRef(
     val isRead: Boolean = false,
     val chapterNumber: Double = 0.0,
     val scanlator: String? = null,
+    val isDownloaded: Boolean = false,
     val isFiltered: Boolean = false,
     val isDuplicate: Boolean = false,
 )

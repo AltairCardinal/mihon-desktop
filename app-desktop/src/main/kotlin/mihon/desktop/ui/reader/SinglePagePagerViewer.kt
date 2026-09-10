@@ -155,41 +155,52 @@ internal fun SinglePagePagerViewer(
         key = { pagerIndex -> displayUnits[pagerToPage(pagerIndex)].id },
     ) { pagerIndex ->
         val unit = displayUnits[pagerToPage(pagerIndex)]
-        SinglePageDisplayUnitContainer(
-            unit = unit,
-            onRetry = onRetryPage,
-        ) { readySlot ->
-            val readyPage = requireNotNull(readySlot.page)
-            val presentationImage = rememberReaderPresentationImage(
-                owner = presentationImageOwner,
-                page = readyPage,
-                generation = generation,
-                splitHalf = readySlot.splitHalf,
-                sourceBounds = readySlot.sourceBounds,
-            )
-            ZoomablePageBox(
-                presentationImage = presentationImage,
-                pageLabel = MR.strings.desktop_ui_page_number.localized(Locale.getDefault(), readyPage.id.sourcePageIndex + 1),
-                zoomState = zoomState,
-                onZoomChange = onZoomChange,
-                cropBorders = cropBorders,
-                contextMenuScope = contextMenuScope,
-                mangaTitle = mangaTitle,
-                chapterTitle = chapterTitle,
-                pageIndex = readyPage.id.sourcePageIndex,
-                onRetry = { onRetryPage(readyPage.id) },
-                onSpreadDetected = if (readySlot.splitHalf == null && onSpreadDetected != null) {
-                    { onSpreadDetected(readyPage.id.sourcePageIndex) }
-                } else {
-                    null
-                },
-                scaleType = scaleType,
-                navigationMode = navigationMode,
-                isRtl = isRtl,
-                onTapPrevious = { executeTapCommand(ReaderNavigationCommand.Previous) },
-                onTapNext = { executeTapCommand(ReaderNavigationCommand.Next) },
-                onTapCenter = onTapCenter,
-            )
+        Box(
+            modifier = Modifier.fillMaxSize().readerPrimaryTapInput(zoomState.scale, navigationMode, isRtl) {
+                when (it) {
+                    TapNavRegion.PREV -> executeTapCommand(ReaderNavigationCommand.Previous)
+                    TapNavRegion.NEXT -> executeTapCommand(ReaderNavigationCommand.Next)
+                    TapNavRegion.MENU -> onTapCenter?.invoke()
+                }
+            },
+        ) {
+            SinglePageDisplayUnitContainer(
+                unit = unit,
+                onRetry = onRetryPage,
+            ) { readySlot ->
+                val readyPage = requireNotNull(readySlot.page)
+                val presentationImage = rememberReaderPresentationImage(
+                    owner = presentationImageOwner,
+                    page = readyPage,
+                    generation = generation,
+                    splitHalf = readySlot.splitHalf,
+                    sourceBounds = readySlot.sourceBounds,
+                )
+                ZoomablePageBox(
+                    presentationImage = presentationImage,
+                    pageLabel = MR.strings.desktop_ui_page_number.localized(Locale.getDefault(), readyPage.id.sourcePageIndex + 1),
+                    zoomState = zoomState,
+                    onZoomChange = onZoomChange,
+                    cropBorders = cropBorders,
+                    contextMenuScope = contextMenuScope,
+                    mangaTitle = mangaTitle,
+                    chapterTitle = chapterTitle,
+                    pageIndex = readyPage.id.sourcePageIndex,
+                    onRetry = { onRetryPage(readyPage.id) },
+                    onSpreadDetected = if (readySlot.splitHalf == null && onSpreadDetected != null) {
+                        { onSpreadDetected(readyPage.id.sourcePageIndex) }
+                    } else {
+                        null
+                    },
+                    scaleType = scaleType,
+                    navigationMode = navigationMode,
+                    isRtl = isRtl,
+                    handlesTapNavigation = false,
+                    onTapPrevious = { executeTapCommand(ReaderNavigationCommand.Previous) },
+                    onTapNext = { executeTapCommand(ReaderNavigationCommand.Next) },
+                    onTapCenter = onTapCenter,
+                )
+            }
         }
     }
 }

@@ -157,6 +157,7 @@ class DesktopReaderSession(
     private var adjacentContext: DesktopReaderChapterContext? = null
     private var adjacentContentLeaseGeneration: Long? = null
     private var adjacentPages: MutableList<ReaderPageDescriptor>? = null
+    private var adjacentChapterDownloaded: Boolean? = null
     private val adjacentFailedPageIds = mutableSetOf<ReaderPageId>()
     private var adjacentPageListFailed = false
     private var adjacentQuotaBlocked = false
@@ -195,6 +196,7 @@ class DesktopReaderSession(
     fun activate(target: DesktopReaderChapterContext) {
         val sequence: Long
         val cachedAdjacentPages: List<ReaderPageDescriptor>?
+        val cachedAdjacentDownloaded: Boolean?
         val materializationContext: DesktopReaderChapterContext
         val materializationLeaseGeneration: Long
         val leaseOwnersToRelease: Set<DesktopReaderChapterLeaseOwner>
@@ -206,7 +208,11 @@ class DesktopReaderSession(
             cachedAdjacentPages = adjacentPages
                 ?.takeIf { cachedAdjacentContext != null }
                 ?.toList()
-            materializationContext = target
+            cachedAdjacentDownloaded = adjacentChapterDownloaded
+                ?.takeIf { cachedAdjacentContext != null }
+            materializationContext = target.copy(
+                isDownloaded = cachedAdjacentDownloaded ?: target.isDownloaded,
+            )
             materializationLeaseGeneration = adjacentContentLeaseGeneration
                 ?.takeIf { cachedAdjacentContext != null }
                 ?: nextContentLeaseGenerationLocked()
@@ -257,14 +263,17 @@ class DesktopReaderSession(
                 chapterId = ReaderChapterId(materializationContext.chapterId),
                 generation = opening.generation,
             )
+            val contentPort = if (cachedAdjacentPages == null) {
+                chapterContentPortFactory.create(materializationContext, materializationLeaseGeneration)
+            } else {
+                null
+            }
             val result = cachedAdjacentPages
                 ?.let(ReaderChapterMaterializeResult::Loaded)
                 ?: chapterContentPermits.withPermit {
-                    materializeExecutor.materializeChapter(
-                        request,
-                        chapterContentPortFactory.create(materializationContext, materializationLeaseGeneration),
-                    )
+                    materializeExecutor.materializeChapter(request, requireNotNull(contentPort))
                 }
+            val chapterDownloaded = (contentPort as? DesktopReaderChapterDownloadState)?.chapterDownloaded
             val adjacentPageListJob = synchronized(lock) {
                 if (closed || activationSequence != sequence) return@launch
                 val update = core.acceptChapterMaterialization(request.chapterId, request.generation, result)
@@ -274,6 +283,9 @@ class DesktopReaderSession(
                         update.snapshot.generation == request.generation &&
                         update.snapshot.activeChapter.loadState is ReaderChapterLoadState.Loaded
                 if (acceptedLoadedPageList) {
+                    chapterDownloaded?.let { downloaded ->
+                        context = context.copy(isDownloaded = downloaded)
+                    }
                     ioReporter.report(
                         ReaderIoEventType.PAGE_LIST_READY,
                         request.chapterId,
@@ -763,12 +775,14 @@ class DesktopReaderSession(
                 generation = generation,
                 purpose = ReaderIoPurpose.ADJACENT_PREFETCH,
             )
+            val contentPort = chapterContentPortFactory.create(target, leaseGeneration)
             val result = chapterContentPermits.withPermit {
                 materializeExecutor.materializeChapter(
                     ReaderChapterContentRequest(ReaderChapterId(target.chapterId), generation),
-                    chapterContentPortFactory.create(target, leaseGeneration),
+                    contentPort,
                 )
             }
+            val chapterDownloaded = (contentPort as? DesktopReaderChapterDownloadState)?.chapterDownloaded
             val accepted = synchronized(lock) {
                 if (
                     closed || adjacentSequence != sequence ||
@@ -778,7 +792,10 @@ class DesktopReaderSession(
                 } else {
                     adjacentChapterJob = null
                     when (result) {
-                        is ReaderChapterMaterializeResult.Loaded -> adjacentPages = result.pages.toMutableList()
+                        is ReaderChapterMaterializeResult.Loaded -> {
+                            adjacentPages = result.pages.toMutableList()
+                            adjacentChapterDownloaded = chapterDownloaded
+                        }
                         is ReaderChapterMaterializeResult.Failed -> adjacentPageListFailed = true
                     }
                     enqueueAdjacentImagesLocked()
@@ -852,6 +869,7 @@ class DesktopReaderSession(
         adjacentContext = null
         adjacentContentLeaseGeneration = null
         adjacentPages = null
+        adjacentChapterDownloaded = null
         adjacentFailedPageIds.clear()
         adjacentPageListFailed = false
         adjacentQuotaBlocked = false
