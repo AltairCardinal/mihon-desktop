@@ -2,188 +2,301 @@
   'use strict';
 
   const model = window.MihonSyncModel;
+  const view = window.MihonSyncView;
   const root = document.getElementById('app');
   const state = model.createDemoState();
   state.selectedDevice = 'desktop-b';
-  state.ui = { busy: false, timerId: null, busyDeviceId: null, notice: '这是可离线打开的模拟演示。', configured: true };
+  state.ui = {
+    platform: 'windows', theme: 'light', route: 'updates', updatesTab: 'sync', browseTab: 'sources',
+    detail: null, reader: false, busy: false, timerId: null, busyDeviceId: null,
+    notice: 'Windows Desktop 原生界面预览；同步仍是离线演示。', tone: 'info', filter: false, calendar: false, allRead: false,
+  };
 
   const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-  const device = () => model.getDevice(state, state.selectedDevice);
-  const title = (id) => (model.CATALOG[id] || {}).title || id;
-  const author = (id) => (model.AUTHORS[id] || {}).name || id;
-  const statusLabel = (item) => item === 'attention' ? '待处理' : item === 'offline' ? '离线' : item === 'syncing' ? '同步中' : '空闲';
-  const countAll = (key) => Object.values(state.devices).reduce((sum, item) => sum + item[key].length, 0);
+  const spec = () => view.platformSpec(state.ui.platform);
+  const currentDevice = () => model.getDevice(state, state.selectedDevice);
+  const book = (id) => model.CATALOG[id] || { title: id, source: '本地演示源', author: '未知作者' };
+  const creator = (id) => model.AUTHORS[id] || { name: id, detail: '作者识别信息仅用于演示' };
+  const isWindows = () => state.ui.platform === 'windows';
+  const button = (label, attrs, className) => `<button class="m-button ${className || ''}" ${attrs || ''}>${label}</button>`;
+  const iconButton = (name, label, attrs, className) => `<button class="m-icon-button ${className || ''}" aria-label="${esc(label)}" title="${esc(label)}" ${attrs || ''}>${view.icon(name)}</button>`;
+  const iconLabel = (name, label, attrs, className) => `<button class="m-icon-label ${className || ''}" ${attrs || ''}>${view.icon(name, label)}</button>`;
 
-  function setNotice(message, tone) {
+  function notice(message, tone) {
     state.ui.notice = message;
     state.ui.tone = tone || 'info';
   }
 
-  function activeStatus(item) {
-    if (state.ui.busy && item.id === state.ui.busyDeviceId) return 'syncing';
+  function activeStatus(device) {
+    if (state.ui.busy && device.id === state.ui.busyDeviceId) return 'syncing';
     if (!state.online) return 'offline';
-    if (item.confirmations.length || item.conflicts.length) return 'attention';
-    if (item.pendingOutgoing.length) return 'attention';
-    return item.status;
+    if (device.confirmations.length || device.conflicts.length) return 'attention';
+    if (device.pendingOutgoing.length) return 'pending';
+    return 'idle';
   }
 
-  function button(label, attrs, className) {
-    return `<button class="button ${className || ''}" ${attrs || ''}>${label}</button>`;
+  function statusText(device) {
+    const status = activeStatus(device);
+    return status === 'syncing' ? '同步中' : status === 'offline' ? '离线，操作会保留' : status === 'attention' ? '有待处理' : status === 'pending' ? '有待发送' : '已准备好';
   }
 
-  function renderDeviceLab() {
-    const current = device();
-    const devices = Object.values(state.devices).map((item) => {
-      const active = item.id === state.selectedDevice;
-      return `<button class="device-card ${active ? 'is-selected' : ''}" data-device="${item.id}" data-testid="device-${item.id}" aria-pressed="${active}">
-        <span class="device-icon ${item.kind === 'Desktop' ? 'icon-desktop' : 'icon-phone'}" aria-hidden="true"></span>
-        <span class="device-copy"><strong>${esc(item.name)}</strong><small>${esc(item.kind)} · ${statusLabel(activeStatus(item))}</small></span>
-        <span class="status-dot ${activeStatus(item)}" aria-hidden="true"></span>
-      </button>`;
-    }).join('');
-    return `<aside class="lab-panel" aria-label="设备实验台">
-      <div class="lab-heading"><div><span class="eyebrow">演示辅助</span><h2>设备实验台</h2></div><span class="simulation-mark">模拟</span></div>
-      <p class="lab-intro">先在一台设备操作并点「立即同步」，再切另一台设备点「立即同步」查看结果。</p>
-      <div class="device-list">${devices}</div>
-      <div class="lab-divider"></div>
-      <div class="lab-section-title"><span>当前设备操作</span><span class="tiny-label">${esc(current.name)}</span></div>
-      <div class="lab-actions">
-        ${button(current.favorites.includes('manga-star') ? '取消收藏《星海骑士》' : '收藏《星海骑士》', 'data-action="favorite" data-testid="toggle-favorite"', 'button-soft')}
-        ${button(current.following.includes('author-river') ? '取消关注白河' : '关注作者白河', 'data-action="follow" data-testid="toggle-follow"', 'button-soft')}
-        ${button('记录阅读到第 42 页', 'data-action="read" data-testid="record-reading"', 'button-soft')}
-        ${button(current.readingActive ? '结束阅读中状态' : '模拟正在阅读', 'data-action="reader" data-testid="toggle-reader"', 'button-soft')}
-      </div>
-      <label class="mode-control">本设备阅读模式（不会同步）<select data-action="mode" data-testid="reading-mode"><option ${current.modes.manga['manga-star'] === '单页' ? 'selected' : ''}>单页</option><option ${current.modes.manga['manga-star'] === '双页' ? 'selected' : ''}>双页</option><option ${current.modes.manga['manga-star'] === '条漫' ? 'selected' : ''}>条漫</option></select></label>
-      <p class="local-note"><span class="note-icon" aria-hidden="true">⌁</span>收藏、阅读、关注先写入本地；离线时也不会丢失。</p>
-    </aside>`;
+  function topBar(title, actions, options) {
+    const opts = options || {};
+    return `<header class="native-appbar ${opts.compact ? 'compact' : ''} ${opts.back ? 'has-back' : ''}">${opts.back ? iconButton('back', '返回', 'data-action="back" data-testid="app-back"') : ''}<h1>${esc(title)}</h1><div class="appbar-actions">${actions || ''}</div></header>`;
   }
 
-  function renderUpdates() {
-    const current = device();
-    const cards = ['manga-star', 'manga-dawn', 'manga-night'].map((id, index) => {
-      const book = model.CATALOG[id];
-      const favorite = current.favorites.includes(id);
-      const position = current.readPositions[id];
-      return `<article class="update-row">
-        <div class="cover cover-${index + 1}" aria-hidden="true"><span>${esc(book.title.slice(0, 2))}</span></div>
-        <div class="update-copy"><div class="row-overline">${esc(book.source)} · 今日 ${index + 1} 章</div><h3>${esc(book.title)}</h3><p>${esc(book.author)} · ${position ? `读到 ${esc(position.chapterId)} 第 ${position.page} 页` : '尚未记录阅读位置'}</p></div>
-        <div class="row-actions">${button(favorite ? '已收藏' : '收藏', `data-action="${favorite ? 'unfavorite' : 'favorite-book'}" data-object="${id}"`, favorite ? 'button-quiet is-on' : 'button-quiet')}</div>
-      </article>`;
-    }).join('');
-    return `<section class="panel-content updates-panel" data-testid="updates-panel">
-      <div class="content-heading"><div><span class="eyebrow">更新</span><h2>今天有新的章节</h2><p>原有更新内容保留在这里，同步是旁边的平级页签。</p></div><span class="count-pill">3 个更新</span></div>
-      <div class="update-list">${cards}</div>
-      <div class="info-strip"><span class="info-glyph" aria-hidden="true">i</span><span>阅读漫画不会自动收藏。取消收藏也不会删除阅读历史、下载或本地阅读模式。</span></div>
-    </section>`;
+  function renderPreviewTools() {
+    const windows = state.ui.platform === 'windows';
+    return `<details class="preview-tools" data-testid="preview-tools"><summary><span class="tool-summary-icon">${view.icon('settings')}</span><strong>演示预览</strong><span class="tool-summary-muted">应用外控制 · ${windows ? 'Windows Desktop' : 'Android 手机'} · ${state.ui.theme === 'light' ? '浅色' : '深色'}</span></summary><div class="preview-tool-panel"><div class="tool-group"><span>平台</span><div class="tool-choice">${button('Windows Desktop', 'data-platform="windows" data-testid="platform-windows"', windows ? 'is-selected' : '')}${button('Android 手机', 'data-platform="android" data-testid="platform-android"', windows ? '' : 'is-selected')}</div></div><div class="tool-group"><span>主题</span><div class="tool-choice">${button('浅色', 'data-theme="light" data-testid="theme-light"', state.ui.theme === 'light' ? 'is-selected' : '')}${button('深色', 'data-theme="dark" data-testid="theme-dark"', state.ui.theme === 'dark' ? 'is-selected' : '')}</div></div><div class="tool-group"><span>同步触发</span><div class="tool-choice">${button('模拟启动同步', 'data-action="sync-startup" data-testid="startup-sync"', 'm-button-tonal')}${button('模拟定期到期', 'data-action="sync-periodic" data-testid="periodic-sync"', 'm-button-tonal')}</div></div><div class="tool-group tool-actions"><span>模拟条件</span>${iconLabel(state.online ? 'cloud' : 'close', state.online ? '切换离线' : '恢复在线', 'data-action="toggle-online" data-testid="network-toggle"')}${button('重置演示', 'data-action="reset" data-testid="reset-demo"', 'tool-reset')}</div><small class="preview-boundary">本地离线演示，不连接 Git 或系统后台任务。</small></div></details>`;
   }
 
-  function renderCounts(current) {
-    const failures = current.lastResult && current.lastResult.ok === false ? 1 : 0;
-    return `<div class="metric-grid">
-      <div class="metric-card"><span class="metric-icon purple" aria-hidden="true">↑</span><div><strong>${current.pendingOutgoing.length}</strong><span>待发送</span></div></div>
-      <div class="metric-card"><span class="metric-icon amber" aria-hidden="true">!</span><div><strong>${current.confirmations.length}</strong><span>待确认</span></div></div>
-      <div class="metric-card"><span class="metric-icon blue" aria-hidden="true">◇</span><div><strong>${current.conflicts.length}</strong><span>冲突</span></div></div>
-      <div class="metric-card"><span class="metric-icon coral" aria-hidden="true">↻</span><div><strong>${failures}</strong><span>失败</span></div></div>
-    </div>`;
+  function renderWindowShell(content) {
+    const platform = state.ui.platform;
+    const shell = platform === 'android' ? 'android-shell' : 'windows-shell';
+    const frame = platform === 'android' ? `<div class="android-statusbar"><span>9:41</span><span class="status-icons">${view.icon('wifi')}${view.icon('signal')}${view.icon('battery')}</span></div>` : `<div class="desktop-windowbar"><span class="desktop-title"><img src="./mihon-desktop.png" alt="Mihon Desktop 图标"><span>Mihon Desktop 0.11.19.33 · 本地原型</span></span><span class="window-controls" aria-hidden="true"><i></i><i></i><i class="window-close"></i></span></div>`;
+    const nav = state.ui.reader || (state.ui.detail && platform === 'android') ? '' : view.renderNav(spec(), state.ui.route);
+    return `<section class="app-window ${shell}" data-platform="${platform}" data-testid="app-window">${frame}<div class="app-body">${content}</div>${nav}${platform === 'android' ? '<div class="gesture-area" aria-hidden="true"></div>' : ''}</section>`;
+  }
+
+  function renderUpdateTabs() {
+    return `<div class="update-tabs" role="tablist" aria-label="更新页内容"><button class="update-tab ${state.ui.updatesTab === 'updates' ? 'is-active' : ''}" role="tab" aria-selected="${state.ui.updatesTab === 'updates'}" data-updates-tab="updates" data-testid="updates-tab">更新</button><button class="update-tab ${state.ui.updatesTab === 'sync' ? 'is-active' : ''}" role="tab" aria-selected="${state.ui.updatesTab === 'sync'}" data-updates-tab="sync" data-testid="sync-tab">同步${currentDevice().confirmations.length ? `<span class="small-badge">${currentDevice().confirmations.length}</span>` : ''}</button></div>`;
+  }
+
+  function renderUpdatesActions() {
+    const actions = [iconButton('filter', '筛选', 'data-action="filter" data-testid="updates-filter"'), iconButton('calendar', '查看即将更新', 'data-action="calendar" data-testid="updates-calendar"')];
+    if (isWindows() && !state.ui.allRead) actions.push(iconButton('check', '全部标为已读', 'data-action="mark-all" data-testid="updates-mark-all"'));
+    actions.push(iconButton('refresh', '刷新更新', 'data-action="refresh" data-testid="updates-refresh"'));
+    return actions.join('');
+  }
+
+  function renderUpdateList() {
+    const current = currentDevice();
+    const items = ['manga-star', 'manga-dawn', 'manga-night'];
+    const unread = !state.ui.allRead;
+    if (isWindows()) {
+      return `<div class="updates-list desktop-updates-list"><div class="date-heading">今天</div>${items.map((id, index) => renderWindowsUpdate(id, index, current, unread)).join('')}<div class="date-heading yesterday">昨天</div>${renderWindowsUpdate('manga-night', 3, current, false)}</div>`;
+    }
+    return `<div class="updates-list android-updates-list"><div class="previous-updates">上次更新</div><div class="date-heading">今天</div>${items.map((id, index) => renderAndroidUpdate(id, index, current, unread)).join('')}<div class="date-heading yesterday">昨天</div>${renderAndroidUpdate('manga-night', 3, current, false)}</div>`;
+  }
+
+  function renderWindowsUpdate(id, index, current, unread) {
+    const item = book(id); const position = current.readPositions[id];
+    return `<article class="desktop-update-card" data-action="open-manga" data-object="${id}" tabindex="0" data-testid="desktop-update-${id}"><div class="cover windows-cover cover-${(index % 3) + 1}">${esc(item.title.slice(0, 2))}</div><div class="update-main"><strong>${esc(item.title)}</strong><span class="chapter ${unread && index < 2 ? 'unread' : ''}">${unread && index < 2 ? '第 ' + (12 - index) + ' 话 · 未读' : '第 ' + (12 - index) + ' 话'}</span><small>${esc(item.author)} · ${position ? `读到第 ${position.page} 页` : '尚未阅读'}</small></div><time>${index === 0 ? '刚刚' : `${index + 1} 小时前`}</time><div class="update-actions">${iconButton('download', '下载章节', 'data-action="download" data-object="' + id + '"')}${unread && index < 2 ? iconButton('check', '标为已读', 'data-action="mark-read" data-object="' + id + '"') : ''}</div></article>`;
+  }
+
+  function renderAndroidUpdate(id, index, current, unread) {
+    const item = book(id); const position = current.readPositions[id];
+    return `<article class="android-update-row" data-action="open-manga" data-object="${id}" tabindex="0" data-testid="android-update-${id}"><div class="cover android-cover cover-${(index % 3) + 1}">${esc(item.title.slice(0, 2))}</div><div class="update-main"><strong>${esc(item.title)}</strong><span class="chapter ${unread && index < 2 ? 'unread' : ''}">${unread && index < 2 ? '第 ' + (12 - index) + ' 话 · 未读' : '第 ' + (12 - index) + ' 话'}</span></div><span class="unread-dot ${unread && index < 2 ? 'is-unread' : ''}"></span>${iconButton('download', '下载章节', 'data-action="download" data-object="' + id + '"', 'row-icon')}</article>`;
+  }
+
+  function renderUpdatesPage() {
+    const title = state.ui.updatesTab === 'updates' ? (isWindows() ? '最近更新' : '更新') : '同步';
+    const content = state.ui.updatesTab === 'updates' ? `<div class="updates-content">${state.ui.filter ? '<div class="filter-row"><span>未读</span><span>已下载</span><span>已开始</span></div>' : ''}${state.ui.calendar ? '<div class="inline-message">即将更新：演示源暂未安排新的章节。</div>' : ''}${renderUpdateList()}</div>` : renderSyncPage();
+    return `<div class="route-view updates-route">${topBar(title, state.ui.updatesTab === 'updates' ? renderUpdatesActions() : iconButton('settings', '同步设置', 'data-action="sync-settings" data-testid="sync-settings"'))}<div class="route-scroll">${renderUpdateTabs()}${content}</div></div>`;
+  }
+
+  function renderSyncPage() {
+    const current = currentDevice(); const pending = current.confirmations.length + current.conflicts.length;
+    const result = current.lastResult;
+    return `<section class="sync-content" data-testid="sync-panel"><div class="native-sync-status"><div class="sync-symbol">${view.icon('sync')}</div><div class="sync-status-copy"><span class="section-kicker">当前设备 · ${esc(current.name)}</span><strong>${esc(statusText(current))}</strong><small>${state.online ? (state.shared.lastExchange ? `最近交换：${esc(state.shared.lastExchange)}` : '尚未交换') : '恢复在线后可以重试待发送操作'}</small></div><span class="sync-state-dot ${activeStatus(current)}"></span></div><div class="sync-action-row">${button('立即同步', 'data-action="sync-manual" data-testid="manual-sync"', 'm-button-primary')}</div>${result ? `<div class="snackbar-inline ${result.ok ? 'success' : 'failure'}" data-testid="sync-result">${view.icon(result.ok ? 'check' : 'info')}<span>${esc(result.message)}</span></div>` : ''}<div class="sync-list"><div class="list-section-label">同步状态</div>${renderSyncRow('cloud', '待发送操作', `${current.pendingOutgoing.length} 项`, current.pendingOutgoing.length ? '等待交换' : '没有本地操作', 'pending')}${renderSyncRow('bookmark', '收藏与关注', `${current.favorites.length} 个收藏 · ${current.following.length} 位作者`, '从书架、漫画详情或作者详情产生', 'normal')}${renderSyncRow('reader', '阅读位置', `${current.readHistory.length} 条阅读记录`, current.remoteSuggestions.length ? '有远端位置提示' : '阅读模式保持本设备独立', current.remoteSuggestions.length ? 'attention' : 'normal')}</div>${current.remoteSuggestions.length ? renderRemoteSuggestion(current) : ''}${pending ? `<div class="sync-list pending-list"><div class="list-section-label">需要你的决定 · ${pending}</div>${current.confirmations.map(renderConfirmation).join('')}${current.conflicts.map(renderConflict).join('')}</div>` : '<div class="sync-empty">当前设备没有待确认项目</div>'}<div class="sync-list sync-settings"><div class="list-section-label">本设备设置</div>${renderSetting('startup-setting', '启动时自动同步', current.settings.startupSync, '应用启动后异步交换')}${renderSetting('periodic-setting', '后台定期同步', current.settings.periodicSync, `演示周期 ${current.settings.periodMinutes} 分钟`)}</div></section>`;
+  }
+
+  function renderRemoteSuggestion(current) {
+    const item = current.remoteSuggestions[0];
+    return `<div class="remote-suggestion" data-testid="remote-reading-suggestion"><div class="row-leading attention">${view.icon('reader')}</div><div class="row-copy"><strong>远端阅读位置：第 ${esc(item.position.page)} 页</strong><small>当前正在阅读时不会自动跳页，可在这里显式采用。</small></div>${button('采用此位置', 'data-action="adopt-remote" data-testid="adopt-remote"', 'm-button-tonal')}</div>`;
+  }
+
+  function renderSyncRow(iconName, title, value, detail, stateName) {
+    return `<div class="native-list-row"><span class="row-leading ${stateName}">${view.icon(iconName)}</span><div class="row-copy"><strong>${title}</strong><small>${detail}</small></div><span class="row-value">${value}</span></div>`;
+  }
+
+  function renderSetting(action, title, checked, detail) {
+    return `<div class="native-list-row setting-row"><div class="row-copy"><strong>${title}</strong><small>${detail}</small></div><button class="native-switch ${checked ? 'is-on' : ''}" role="switch" aria-label="${title}" aria-checked="${checked}" data-action="${action}" data-testid="${action}"><span></span></button></div>`;
   }
 
   function renderConfirmation(item) {
     const isAuthor = item.kind === 'author-remove';
-    return `<article class="todo-card" data-testid="confirmation-${item.id}">
-      <div class="todo-icon amber-icon">${isAuthor ? '人' : '书'}</div><div class="todo-main"><div class="todo-label">接收端确认 · ${esc(item.sourceName)}</div><h3>${isAuthor ? `取消关注「${esc(author(item.objectId))}」` : `取消收藏《${esc(title(item.objectId))}》`}</h3><p>${esc(item.message)}</p></div>
-      <div class="todo-actions">${button('确认取消', `data-confirm="${esc(item.id)}" data-testid="confirm-${esc(item.id)}"`, 'button-danger')}${button('忽略本次', `data-ignore="${esc(item.id)}" data-testid="ignore-${esc(item.id)}"`, 'button-quiet')}</div>
-    </article>`;
+    return `<article class="native-confirmation" data-testid="confirmation-${esc(item.id)}"><span class="confirmation-icon">${view.icon(isAuthor ? 'authors' : 'bookmark')}</span><div class="row-copy"><strong>${isAuthor ? `取消关注「${esc(creator(item.objectId).name)}」` : `取消收藏《${esc(book(item.objectId).title)}》`}</strong><small>来自 ${esc(item.sourceName)} · 确认前保留本设备状态</small></div><div class="confirmation-actions">${button('确认', `data-confirm="${esc(item.id)}" data-testid="confirm-${esc(item.id)}"`, 'm-button-danger')}${button('忽略', `data-ignore="${esc(item.id)}" data-testid="ignore-${esc(item.id)}"`, 'm-button-text')}</div></article>`;
   }
 
   function renderConflict(item) {
-    return `<article class="todo-card conflict-card" data-testid="conflict-${esc(item.id)}">
-      <div class="todo-icon blue-icon">≋</div><div class="todo-main"><div class="todo-label">需要选择 · ${esc(item.remoteDevice)}</div><h3>${esc(item.summary)}</h3><p>时间只用于解释；选择会生成新的本地决定，旧操作不会偷偷覆盖后续动作。</p></div>
-      <div class="todo-actions">${button('保留本地', `data-conflict="${esc(item.id)}" data-choice="local"`, 'button-quiet')}${button('采用远端', `data-conflict="${esc(item.id)}" data-choice="remote"`, 'button-primary')}</div>
-    </article>`;
+    return `<article class="native-confirmation conflict-item" data-testid="conflict-${esc(item.id)}"><span class="confirmation-icon conflict">${view.icon('sync')}</span><div class="row-copy"><strong>${esc(item.summary)}</strong><small>请保留本地决定，或采用 ${esc(item.remoteDevice)} 的决定</small></div><div class="confirmation-actions">${button('保留本地', `data-conflict="${esc(item.id)}" data-choice="local"`, 'm-button-text')}${button('采用远端', `data-conflict="${esc(item.id)}" data-choice="remote"`, 'm-button-tonal')}</div></article>`;
   }
 
-  function renderReading(current) {
-    const position = current.readPositions['manga-star'];
-    const currentPosition = current.currentReadingPositions['manga-star'] || position;
-    const pendingPosition = current.pendingRemotePositions['manga-star'];
-    const suggestion = current.remoteSuggestions[0];
-    const text = (item) => item ? `第 ${esc(item.chapterId.replace('chapter-', ''))} 章 · 第 ${item.page} 页` : '暂无续读位置';
-    return `<div class="subsection reading-card" data-testid="reading-status"><div class="subsection-heading"><div><span class="eyebrow">阅读同步</span><h3>续读位置与阅读模式分开</h3></div><span class="local-badge">设备本地模式</span></div><div class="reading-line"><div class="book-mark cover-1">星海</div><div>${current.readingActive ? `<strong>当前画面：${text(currentPosition)}</strong><p>远端位置到达时不会自动翻页。</p><div class="next-position">下次续读：${text(pendingPosition || position)}</div>` : `<strong>下次续读：${text(position)}</strong><p>进入详情时可以使用已同步的位置。</p>`}</div></div>${suggestion ? `<div class="suggestion"><span><b>远端位置提示</b><small>不会改变当前画面</small></span><span>${text(suggestion.position)}</span><button data-action="adopt-remote" class="text-button text-button-primary">采用此位置</button><button data-action="dismiss-suggestion" class="text-button">知道了</button></div>` : ''}</div>`;
+  function renderLibrary() {
+    const current = currentDevice();
+    const ids = ['manga-star', 'manga-dawn', 'manga-night'].filter((id) => current.favorites.includes(id));
+    const content = ids.length ? `<div class="library-grid ${isWindows() ? 'desktop-library-grid' : 'android-library-grid'}">${ids.map((id, index) => renderMangaCard(id, index, current)).join('')}</div>` : '<div class="library-empty"><strong>书架为空</strong><span>从更新或浏览页面加入漫画。</span></div>';
+    return `<div class="route-view library-route">${topBar('书架', iconButton('search', '搜索书架', 'data-action="search"') + iconButton('filter', '筛选书架', 'data-action="library-filter"'))}<div class="route-scroll library-scroll"><div class="library-header"><strong>全部</strong><span>${current.favorites.length} 本漫画</span>${state.ui.notice.includes('搜索') ? '<input class="inline-search" aria-label="搜索书架" placeholder="搜索标题" autofocus>' : ''}</div>${content}</div></div>`;
   }
 
-  function renderSync() {
-    const current = device();
-    const status = activeStatus(current);
-    const result = current.lastResult;
-    const pending = current.confirmations.length + current.conflicts.length;
-    const setupText = state.ui.configured ? `同步空间 · Mihon 演示空间 · ${esc(current.name)}` : '还没有配置同步空间';
-    return `<section class="panel-content sync-panel" data-testid="sync-panel">
-      <div class="sync-heading"><div><span class="eyebrow">同步中心</span><h2>让每台设备都知道你的决定</h2><p>本轮按“接收端分别确认”规则演示。每台设备可以独立保留差异。</p></div><div class="heading-status ${status}"><span class="status-dot ${status}"></span><span data-testid="sync-status">${esc(!state.online ? '离线，操作会保留' : status === 'syncing' ? '同步中…' : pending ? `有 ${pending} 项待处理` : current.pendingOutgoing.length ? '有操作待发送' : '已准备好')}</span></div></div>
-      <div class="config-row"><div class="config-mark" aria-hidden="true">⌘</div><div><strong>${setupText}</strong><span>Git 只是候选方案；本演示没有连接任何服务。</span></div>${button(state.ui.configured ? '查看设置' : '配置同步', 'data-action="configure" data-testid="configure-sync"', 'button-quiet')}</div>
-      ${renderCounts(current)}
-      <div class="sync-toolbar"><div><span class="eyebrow">交换操作</span><h3>选择一个方式，把本地决定送到其他设备</h3></div><div class="trigger-buttons">${button('立即同步', 'data-trigger="manual" data-testid="manual-sync"', 'button-primary')}${button('模拟启动同步', 'data-trigger="startup" data-testid="startup-sync"', 'button-quiet')}${button('模拟定期到期', 'data-trigger="periodic" data-testid="periodic-sync"', 'button-quiet')}</div></div>
-      ${result ? `<div class="result-banner ${result.ok ? 'success' : 'failure'}" data-testid="sync-result"><span class="result-icon">${result.ok ? '✓' : '!'}</span><div><strong>${esc(result.message)}</strong><span>${result.ok ? '确认与冲突仍需在本设备单独处理。' : '本地操作没有删除，联网后可重试。'}</span></div></div>` : ''}
-      ${pending ? `<div class="subsection todo-section"><div class="subsection-heading"><div><span class="eyebrow">待处理</span><h3>需要你的决定</h3></div><span class="count-pill amber-count">${pending} 项</span></div>${current.confirmations.map(renderConfirmation).join('')}${current.conflicts.map(renderConflict).join('')}</div>` : `<div class="empty-state"><span class="empty-check">✓</span><div><strong>当前设备没有待确认项目</strong><p>其他设备的同步仍会在这里显示，后台操作不会打断当前页面。</p></div></div>`}
-      ${renderReading(current)}
-      <div class="subsection settings-card" data-testid="settings-card"><div class="subsection-heading"><div><span class="eyebrow">本设备设置</span><h3>自动触发保持独立</h3></div><span class="tiny-label">${esc(current.name)}</span></div><div class="setting-row"><div><strong>启动时自动同步</strong><span>模拟启动按钮会读取这个开关</span></div><button class="switch ${current.settings.startupSync ? 'is-on' : ''}" data-action="startup-setting" role="switch" aria-label="启动时自动同步" aria-checked="${current.settings.startupSync}" data-testid="startup-setting"><span></span></button></div><div class="setting-row"><div><strong>后台定期同步</strong><span>周期 ${current.settings.periodMinutes} 分钟；演示可立即触发</span></div><button class="switch ${current.settings.periodicSync ? 'is-on' : ''}" data-action="periodic-setting" role="switch" aria-label="后台定期同步" aria-checked="${current.settings.periodicSync}" data-testid="periodic-setting"><span></span></button></div></div>
-      <div class="boundary-note"><span class="note-icon">◇</span><div><strong>演示边界</strong><p>${esc(state.demo.boundary)} 失败恢复、系统后台精度、跨源匹配和真实凭据不在本轮范围。</p></div></div>
-    </section>`;
+  function renderMangaCard(id, index, current) {
+    const item = book(id); const favorite = current.favorites.includes(id); const position = current.readPositions[id];
+    return `<article class="manga-card" data-action="open-manga" data-object="${id}" tabindex="0" data-testid="manga-card-${id}"><div class="manga-cover cover-${(index % 3) + 1}"><span>${esc(item.title.slice(0, 2))}</span>${position ? '<span class="cover-progress"></span>' : ''}</div><div class="manga-card-body"><strong>${esc(item.title)}</strong><small>${esc(item.author)}</small><span>${position ? `续读第 ${position.page} 页` : '未开始阅读'}</span></div><button class="card-bookmark ${favorite ? 'is-on' : ''}" aria-label="${favorite ? '取消收藏' : '收藏'}${esc(item.title)}" data-action="card-favorite" data-object="${id}">${view.icon('bookmark')}</button></article>`;
+  }
+
+  function renderMangaDetail() {
+    const id = state.ui.detail; const item = book(id); const current = currentDevice(); const favorite = current.favorites.includes(id); const position = current.readPositions[id];
+    const description = { 'manga-star': '星海边缘的守夜人，为寻找失落航线踏上远行。', 'manga-dawn': '一间穿行于城市清晨的邮局，收集没有地址的信。', 'manga-night': '记录夜行者见闻的短篇故事集。' }[id];
+    const authorId = id === 'manga-dawn' ? 'author-river' : 'author-lin';
+    const action = (iconName, label, attrs, className) => button(`${view.icon(iconName)}${label}`, attrs, className);
+    return `<div class="route-view detail-route">${topBar(item.title, iconButton(favorite ? 'bookmark' : 'plus', favorite ? '取消收藏' : '收藏', 'data-action="detail-favorite" data-testid="detail-favorite"'), { back: true })}<div class="route-scroll detail-scroll"><section class="detail-header"><div class="detail-cover cover-1">${esc(item.title.slice(0, 2))}</div><div class="detail-copy"><h2>${esc(item.title)}</h2><button class="author-chip" data-action="open-author" data-object="${authorId}">${view.icon('authors')}<span>${esc(item.author)}</span></button><p>${esc(item.source)} · ${favorite ? '已收藏' : '未收藏'}</p><span class="detail-state">${position ? `最近读到第 ${position.page} 页` : '尚未阅读'}</span><div class="detail-description"><strong>简介</strong><p>${description}</p><div class="detail-tags"><span>冒险</span><span>连载</span><span>离线样本</span></div></div></div></section><div class="detail-action-bar">${action(favorite ? 'bookmark' : 'plus', favorite ? '取消收藏' : '加入书架', 'data-action="detail-favorite" data-testid="detail-favorite-text"', 'm-button-tonal')}${action('category', '分类', 'data-action="detail-category"', 'm-button-text')}${action('refresh', '更新', 'data-action="detail-refresh"', 'm-button-text')}${action('authors', '追踪', 'data-action="detail-track"', 'm-button-text')}${action('external', '浏览器', 'data-action="detail-browser"', 'm-button-text')}</div><div class="detail-section"><div class="detail-section-title"><strong>章节</strong><span>12 章</span></div>${[12, 11, 10, 9].map((chapter) => `<div class="chapter-row"><span class="chapter-status ${chapter === 12 ? 'unread' : ''}"></span><div><strong>第 ${chapter} 话</strong><small>${chapter === 12 ? '今天更新' : '已读 · 7 天前'}</small></div>${iconButton('download', '下载第 ' + chapter + ' 话', 'data-action="download"')}</div>`).join('')}</div>${button(view.icon('play') + '继续阅读', 'data-action="read-detail" data-testid="continue-reading-fab"', 'continue-fab')}</div></div>`;
+  }
+
+  function renderReader() {
+    const id = state.ui.detail || 'manga-star'; const item = book(id); const current = currentDevice(); const position = current.readPositions[id] || { chapterId: 'chapter-1', page: 1 };
+    return `<div class="route-view reader-route">${topBar(item.title, iconButton('settings', '阅读设置', 'data-action="reader-settings"'), { back: true })}<div class="reader-content"><div class="reader-page"><span class="reader-page-label">${esc(item.title)} · ${position.page}</span><div class="reader-illustration">${view.icon('reader')}<strong>正在阅读</strong><small>第 ${position.page} 页</small></div></div><div class="reader-controls"><span>第 ${position.page} 页</span>${button('记录当前位置', 'data-action="record-reading" data-testid="record-reading"', 'm-button-primary')}${button('模拟下一页', 'data-action="reader-next" data-testid="reader-next"', 'm-button-tonal')}<label>模式<select data-action="reader-mode" aria-label="阅读模式"><option ${current.modes.manga[id] === '单页' ? 'selected' : ''}>单页</option><option ${current.modes.manga[id] === '双页' ? 'selected' : ''}>双页</option><option ${current.modes.manga[id] === '条漫' ? 'selected' : ''}>条漫</option></select></label></div></div></div>`;
+  }
+
+  function renderHistory() {
+    const current = currentDevice();
+    return `<div class="route-view history-route">${topBar('历史', iconButton('search', '搜索历史', 'data-action="search-history"'))}<div class="route-scroll simple-scroll"><div class="simple-list-heading">最近阅读</div>${(current.readHistory.length ? current.readHistory : ['manga-star', 'manga-night']).map((id) => `<button class="history-row" data-action="open-manga" data-object="${id}"><span class="row-leading">${view.icon('history')}</span><span class="row-copy"><strong>${esc(book(id).title)}</strong><small>${current.readPositions[id] ? `第 ${current.readPositions[id].page} 页 · 可继续阅读` : '阅读历史示例'}</small></span>${view.icon('chevron')}</button>`).join('')}</div></div>`;
+  }
+
+  function renderBrowse() {
+    const active = state.ui.browseTab;
+    const labels = { sources: '图源', authors: '作者', extensions: '插件', migration: '迁移' };
+    const tabRoutes = isWindows() ? ['sources', 'extensions'] : ['sources', 'authors', 'extensions', 'migration'];
+    const content = active === 'authors' ? renderAuthorList(true) : active === 'extensions' ? renderExtensionList() : active === 'migration' ? renderMigrationList() : renderSourceList();
+    return `<div class="route-view browse-route">${topBar('浏览', iconButton('search', '搜索浏览内容', 'data-action="search-browse"'))}<div class="route-scroll browse-scroll"><div class="browse-tabs" role="tablist">${tabRoutes.map((route, i) => `<button class="browse-tab ${active === route ? 'is-active' : ''}" data-browse-tab="${route}" role="tab" aria-selected="${active === route}">${labels[route]}</button>`).join('')}</div>${content}</div></div>`;
+  }
+
+  function renderSourceList() {
+    return `<div class="source-list"><div class="simple-list-heading">已安装图源</div>${['Mihon 演示源', '本地演示源'].map((name, i) => `<div class="source-row"><span class="source-logo">${i ? '本' : 'M'}</span><span class="row-copy"><strong>${name}</strong><small>${i ? '可离线查看样本' : '最近检查：今天'}</small></span><span class="source-state">${i ? '离线' : '可用'}</span></div>`).join('')}</div>`;
+  }
+
+  function renderAuthorList(fromBrowse) {
+    const current = currentDevice(); const ids = ['author-river', 'author-lin'];
+    return `<div class="author-list"><div class="simple-list-heading">${fromBrowse ? '作者' : '全部作者'}</div>${current.following.length ? `<div class="author-group-label">已关注</div>${current.following.map((id) => renderAuthorRow(id, current, true)).join('')}` : ''}<div class="author-group-label">其他作者</div>${ids.map((id) => renderAuthorRow(id, current, false)).join('')}</div>`;
+  }
+
+  function renderAuthorRow(id, current, followed) {
+    const item = creator(id); return `<button class="author-row" data-action="open-author" data-object="${id}" data-testid="author-row-${id}"><span class="author-avatar">${esc(item.name.slice(0, 1))}</span><span class="row-copy"><strong>${esc(item.name)}</strong><small>${followed || current.following.includes(id) ? '已关注 · 可查看作者详情' : item.detail}</small></span>${view.icon('chevron')}</button>`;
+  }
+
+  function renderExtensionList() { return `<div class="simple-list"><div class="simple-list-heading">插件</div><div class="empty-inline">当前没有可安装插件。</div></div>`; }
+  function renderMigrationList() { return `<div class="simple-list"><div class="simple-list-heading">迁移</div><div class="empty-inline">选择来源图源后开始迁移。</div>${button('查看迁移帮助', 'data-action="more-item" data-message="迁移帮助已打开。"', 'm-button-tonal')}</div>`; }
+
+  function renderAuthors() {
+    return `<div class="route-view authors-route">${topBar('作者', iconButton('search', '搜索作者', 'data-action="search-authors"'))}<div class="route-scroll simple-scroll">${renderAuthorList(false)}</div></div>`;
+  }
+
+  function renderAuthorDetail() {
+    const id = state.ui.detail; const item = creator(id); const current = currentDevice(); const followed = current.following.includes(id);
+    return `<div class="route-view author-detail-route">${topBar(item.name, iconButton('refresh', '检查作者新作品', 'data-action="author-refresh"'), { back: true })}<div class="route-scroll detail-scroll"><div class="author-detail-header"><span class="author-avatar large">${esc(item.name.slice(0, 1))}</span><div><h2>${esc(item.name)}</h2><p>${esc(item.detail)}</p><span>${followed ? '本设备已关注' : '本设备未关注'}</span></div>${button(followed ? '取消关注' : '关注', 'data-action="toggle-follow" data-testid="author-follow"', followed ? 'm-button-tonal' : 'm-button-primary')}</div><div class="detail-section"><div class="detail-section-title"><strong>作者作品</strong><span>共 2 部</span></div>${['manga-star', 'manga-dawn'].map((bookId) => `<button class="author-work-row" data-action="open-manga" data-object="${bookId}"><span class="cover mini-cover cover-1">${esc(book(bookId).title.slice(0, 2))}</span><span class="row-copy"><strong>${esc(book(bookId).title)}</strong><small>${esc(book(bookId).source)} · 查看漫画详情</small></span>${view.icon('chevron')}</button>`).join('')}</div></div></div>`;
+  }
+
+  function renderMore() {
+    const desktopRows = [['visibilityOff', '无痕模式', '浏览时隐藏阅读记录'], ['download', '下载队列', '管理待下载章节'], ['swap', '迁移', '在图源之间迁移漫画'], ['chart', '统计', '查看书架与阅读数据'], ['settings', '设置', '主题与阅读偏好'], ['info', '关于', '版本与开源信息']];
+    const androidRows = [['download', '已下载', '查看已下载章节'], ['visibilityOff', '无痕模式', '浏览时隐藏阅读记录'], ['download', '下载队列', '管理待下载章节'], ['category', '分类', '管理书架分类'], ['chart', '统计', '查看书架与阅读数据'], ['storage', '数据与存储', '管理本地数据'], ['settings', '设置', '主题与阅读偏好'], ['info', '关于', '版本与开源信息'], ['help', '帮助', '查看帮助内容'], ['donate', '捐赠', '支持 Mihon 项目']];
+    const rows = isWindows() ? desktopRows : androidRows;
+    const logo = isWindows() ? '' : `<div class="more-logo-header"><span class="more-logo-mark">M</span><div><strong>Mihon</strong><small>漫画阅读器</small></div></div>`;
+    return `<div class="route-view more-route">${topBar('更多', '')}<div class="route-scroll simple-scroll">${logo}<div class="more-list">${rows.map(([iconName, title, detail]) => `<button class="more-row" data-action="more-item" data-message="${detail}"><span class="row-leading">${view.icon(iconName)}</span><span class="row-copy"><strong>${title}</strong><small>${detail}</small></span>${view.icon('chevron')}</button>`).join('')}</div></div></div>`;
+  }
+
+  function renderRoute() {
+    if (state.ui.reader) return renderReader();
+    if (state.ui.detail) return state.ui.detail.startsWith('author-') ? renderAuthorDetail() : renderMangaDetail();
+    if (state.ui.route === 'library') return renderLibrary();
+    if (state.ui.route === 'updates') return renderUpdatesPage();
+    if (state.ui.route === 'history') return renderHistory();
+    if (state.ui.route === 'browse') return renderBrowse();
+    if (state.ui.route === 'authors') return renderAuthors();
+    return renderMore();
   }
 
   function render() {
-    const current = device();
-    root.innerHTML = `<header class="topbar"><div class="brand"><span class="brand-glyph">m</span><span>Mihon</span><span class="brand-divider"></span><span class="brand-context">同步演示</span></div><div class="top-actions"><span class="offline-badge"><span class="status-dot ${state.online ? 'online' : 'offline'}"></span>${state.online ? '模拟在线' : '模拟离线'}</span><button class="icon-button" data-action="toggle-online" data-testid="network-toggle" aria-label="${state.online ? '切换为离线' : '恢复模拟在线'}">${state.online ? '↯' : '⌁'}</button><button class="reset-button" data-action="reset" data-testid="reset-demo">重置演示</button></div></header><main class="workspace">${renderDeviceLab()}<section class="product-panel"><div class="product-top"><div class="breadcrumb"><span>更新</span><span class="breadcrumb-arrow">/</span><strong>${state.activePanel === 'updates' ? '章节更新' : '同步'}</strong></div><div class="product-caption">${esc(current.name)} <span>·</span> ${statusLabel(activeStatus(current))}</div></div><nav class="page-tabs" aria-label="更新页内导航"><button class="page-tab ${state.activePanel === 'updates' ? 'is-active' : ''}" data-panel="updates" data-testid="updates-tab">更新<span class="tab-underline"></span></button><button class="page-tab ${state.activePanel === 'sync' ? 'is-active' : ''}" data-panel="sync" data-testid="sync-tab">同步${countAll('confirmations') ? `<span class="tab-count">${countAll('confirmations')}</span>` : ''}<span class="tab-underline"></span></button></nav><div class="notice-line ${state.ui.tone || 'info'}"><span class="notice-dot"></span><span data-testid="notice">${esc(state.ui.notice)}</span></div>${state.activePanel === 'updates' ? renderUpdates() : renderSync()}</section></main><footer class="bottom-nav"><button class="bottom-item" data-action="bookshelf" data-testid="bookshelf-nav"><span class="bottom-icon">▦</span><span>书架</span></button><button class="bottom-item is-current" data-panel="updates" data-testid="updates-bottom-nav"><span class="bottom-icon">◷</span><span>更新</span></button><button class="bottom-item" data-action="more" data-testid="more-nav"><span class="bottom-icon">⋯</span><span>更多</span></button></footer>`;
+    root.innerHTML = `<div class="prototype-root platform-${state.ui.platform} theme-${state.ui.theme}">${renderPreviewTools()}${renderWindowShell(renderRoute())}<div class="prototype-notice ${state.ui.tone}">${view.icon(state.ui.tone === 'failure' ? 'info' : 'cloud')}<span data-testid="notice">${esc(state.ui.notice)}</span></div></div>`;
   }
 
   function scheduleSync(trigger) {
-    if (state.ui.busy) { setNotice('同步正在进行，可以继续切换设备或记录阅读；请稍候查看本轮结果。', 'info'); render(); return; }
-    const runDeviceId = state.selectedDevice;
-    state.ui.busy = true; state.ui.busyDeviceId = runDeviceId; setNotice(`${model.TRIGGER_LABELS[trigger]}已开始；操作不会被阻塞。`, 'info'); render();
-    const timerId = window.setTimeout(() => {
-      if (state.ui.timerId !== timerId) return;
-      const result = model.triggerSync(state, runDeviceId, trigger);
-      state.ui.timerId = null; state.ui.busy = false; state.ui.busyDeviceId = null;
-      setNotice(result.message, result.ok ? 'success' : 'failure'); render();
+    if (state.ui.busy) { notice('同步正在进行，可以继续切换页面；请稍候查看本轮结果。'); render(); return; }
+    const deviceId = state.selectedDevice; state.ui.busy = true; state.ui.busyDeviceId = deviceId; notice(`${model.TRIGGER_LABELS[trigger]}已开始；页面仍可继续操作。`); render();
+    const timer = window.setTimeout(() => {
+      if (state.ui.timerId !== timer) return;
+      const result = model.triggerSync(state, deviceId, trigger);
+      state.ui.timerId = null; state.ui.busy = false; state.ui.busyDeviceId = null; notice(result.message, result.ok ? 'success' : 'failure'); render();
     }, 420);
-    state.ui.timerId = timerId;
+    state.ui.timerId = timer;
+  }
+
+  function switchPlatform(platform) {
+    if (state.ui.reader) model.setReadingActive(state, state.selectedDevice, false);
+    state.ui.platform = platform; state.selectedDevice = platform === 'windows' ? 'desktop-b' : 'phone-a'; state.ui.detail = null; state.ui.reader = false; state.ui.route = 'updates'; state.ui.updatesTab = 'sync'; state.ui.browseTab = 'sources';
+    notice(platform === 'windows' ? '已切换到 Windows Desktop 原生外壳。' : '已切换到 Android 手机预览；作者入口在浏览页签内。');
+  }
+
+  function leaveCurrentRoute() {
+    if (!state.ui.detail && !state.ui.reader) return;
+    if (state.ui.reader) model.setReadingActive(state, state.selectedDevice, false);
+    state.ui.reader = false; state.ui.detail = null; render();
   }
 
   function handleAction(action, target) {
-    const current = device();
-    if (action === 'toggle-online') { model.setOnline(state, !state.online); setNotice(state.online ? '模拟网络已恢复，可以重试待发送操作。' : '模拟网络已断开；继续收藏、阅读和关注不会丢失。', state.online ? 'success' : 'failure'); }
-    else if (action === 'reset') { if (state.ui.timerId) window.clearTimeout(state.ui.timerId); model.resetDemo(state); state.selectedDevice = 'desktop-b'; state.ui = { busy: false, timerId: null, busyDeviceId: null, notice: '演示已重置：已恢复一个有待确认示例的初始状态。', tone: 'success', configured: true }; }
-    else if (action === 'configure') { state.ui.configured = true; state.ui.focusSettings = true; setNotice('已定位到当前设备设置；真实服务连接留待需求确认。', 'success'); }
-    else if (action === 'bookshelf') { setNotice('书架入口在此演示中仅展示导航反馈；同步仍从更新页内进入。'); }
-    else if (action === 'more') { setNotice('更多入口在此演示中保留为导航占位；当前范围聚焦更新与同步。'); }
-    else if (action === 'favorite') { current.favorites.includes('manga-star') ? model.localUnfavorite(state, current.id, 'manga-star') : model.localFavorite(state, current.id, 'manga-star'); setNotice('本地收藏已更新，等待下一次交换。'); }
-    else if (action === 'favorite-book') { model.localFavorite(state, current.id, target.dataset.object); setNotice(`已收藏《${title(target.dataset.object)}》，不会因另一端缺失而取消。`, 'success'); }
-    else if (action === 'unfavorite') { model.localUnfavorite(state, current.id, target.dataset.object); setNotice(`已取消收藏《${title(target.dataset.object)}》，接收端仍需确认。`); }
-    else if (action === 'follow') { current.following.includes('author-river') ? model.localUnfollow(state, current.id, 'author-river') : model.localFollow(state, current.id, 'author-river'); setNotice('本地作者关注已更新，等待下一次交换。'); }
-    else if (action === 'read') { model.localRead(state, current.id, 'manga-star', 'chapter-3', 42); setNotice('阅读位置已保存在本设备；下一次同步会发送。', 'success'); }
-    else if (action === 'reader') { model.setReadingActive(state, current.id, !current.readingActive); setNotice(current.readingActive ? '已标记为正在阅读；远端位置只显示提示。' : '已结束正在阅读状态。'); }
-    else if (action === 'adopt-remote') { model.adoptRemotePosition(state, current.id, 'manga-star'); setNotice('已采用远端位置，当前阅读画面与下次续读位置都已更新。', 'success'); }
-    else if (action === 'dismiss-suggestion') { current.remoteSuggestions.shift(); setNotice('已收起远端位置提示；不会自动跳页。'); }
-    else if (action === 'startup-setting') { current.settings.startupSync = !current.settings.startupSync; setNotice(`启动自动同步已${current.settings.startupSync ? '开启' : '关闭'}。`); }
-    else if (action === 'periodic-setting') { current.settings.periodicSync = !current.settings.periodicSync; setNotice(`后台定期同步已${current.settings.periodicSync ? '开启' : '关闭'}。`); }
+    const current = currentDevice();
+    if (action === 'toggle-online') { model.setOnline(state, !state.online); notice(state.online ? '模拟网络已恢复，可以重试待发送操作。' : '模拟网络已断开；本地操作仍可继续。', state.online ? 'success' : 'failure'); }
+    else if (action === 'reset') { const platform = state.ui.platform; const theme = state.ui.theme; if (state.ui.timerId) window.clearTimeout(state.ui.timerId); model.resetDemo(state); state.selectedDevice = platform === 'windows' ? 'desktop-b' : 'phone-a'; state.ui = { platform, theme, route: 'updates', updatesTab: 'sync', browseTab: 'sources', detail: null, reader: false, busy: false, timerId: null, busyDeviceId: null, notice: '演示已重置；已恢复初始待确认示例。', tone: 'success', filter: false, calendar: false, allRead: false }; }
+    else if (action === 'back') { if (state.ui.reader) { state.ui.reader = false; model.setReadingActive(state, current.id, false); } else { state.ui.detail = null; } }
+    else if (action === 'open-manga') { state.ui.detail = target.dataset.object; state.ui.reader = false; }
+    else if (action === 'open-author') { state.ui.detail = target.dataset.object; state.ui.reader = false; }
+    else if (action === 'card-favorite' || action === 'detail-favorite') { const id = target.dataset.object || state.ui.detail; current.favorites.includes(id) ? model.localUnfavorite(state, current.id, id) : model.localFavorite(state, current.id, id); notice(current.favorites.includes(id) ? `已收藏《${book(id).title}》，等待同步。` : `已取消收藏《${book(id).title}》，接收端会请求确认。`, 'success'); }
+    else if (action === 'read-detail') { state.ui.reader = true; model.setReadingActive(state, current.id, true); }
+    else if (action === 'record-reading') { const id = state.ui.detail || 'manga-star'; const old = current.readPositions[id]; model.localRead(state, current.id, id, old ? old.chapterId : 'chapter-1', old ? old.page : 1); notice('当前位置已保存到本设备，下一次同步会发送。', 'success'); }
+    else if (action === 'adopt-remote') { const suggestion = current.remoteSuggestions[0]; if (suggestion) model.adoptRemotePosition(state, current.id, suggestion.objectId); notice('已采用远端阅读位置，当前阅读画面已更新。', 'success'); }
+    else if (action === 'reader-next') { const id = state.ui.detail || 'manga-star'; const old = current.readPositions[id] || { chapterId: 'chapter-1', page: 1 }; model.localRead(state, current.id, id, old.chapterId, old.page + 1); notice('已翻到下一页；阅读模式仍由本设备保留。', 'success'); }
+    else if (action === 'toggle-follow') { const id = state.ui.detail; current.following.includes(id) ? model.localUnfollow(state, current.id, id) : model.localFollow(state, current.id, id); notice(current.following.includes(id) ? `已关注作者「${creator(id).name}」，等待同步。` : `已取消关注作者「${creator(id).name}」，接收端会请求确认。`, 'success'); }
+    else if (action === 'sync-manual') scheduleSync('manual');
+    else if (action === 'sync-startup') scheduleSync('startup');
+    else if (action === 'sync-periodic') scheduleSync('periodic');
+    else if (action === 'startup-setting') { current.settings.startupSync = !current.settings.startupSync; notice(`启动自动同步已${current.settings.startupSync ? '开启' : '关闭'}。`); }
+    else if (action === 'periodic-setting') { current.settings.periodicSync = !current.settings.periodicSync; notice(`后台定期同步已${current.settings.periodicSync ? '开启' : '关闭'}。`); }
+    else if (action === 'filter') { state.ui.filter = !state.ui.filter; notice(state.ui.filter ? '筛选已展开：可查看未读、已下载和已开始。' : '筛选已收起。'); }
+    else if (action === 'calendar') { state.ui.calendar = !state.ui.calendar; notice(state.ui.calendar ? '已打开即将更新提示。' : '已收起即将更新提示。'); }
+    else if (action === 'mark-all') { state.ui.allRead = true; notice('更新列表已标为已读。', 'success'); }
+    else if (action === 'refresh') notice('已刷新离线样本列表；真实源请求不在本原型范围。', 'success');
+    else if (action === 'download') notice('下载入口可用；本地原型不会写入漫画文件。');
+    else if (action === 'mark-read') { state.ui.allRead = true; notice('章节已标为已读。', 'success'); }
+    else if (action === 'search' || action === 'search-history' || action === 'search-browse' || action === 'search-authors') notice('搜索入口已打开；示例数据可通过页面列表查看。');
+    else if (action === 'library-filter') notice('书架筛选入口已打开；当前展示全部离线样本。');
+    else if (action === 'author-refresh') notice('已刷新作者离线样本；真实发现请求不在本原型范围。');
+    else if (action === 'detail-category') notice('分类入口已打开；当前原型保留页面路径。');
+    else if (action === 'detail-refresh') notice('已刷新章节列表；真实源请求不在本原型范围。', 'success');
+    else if (action === 'detail-track') notice('追踪入口已打开；本地原型保留作者追踪路径。');
+    else if (action === 'detail-browser') notice('浏览器入口已保留；本地原型不会打开外部网页。');
+    else if (action === 'reader-settings') notice('阅读设置保留为设备本地；不会随同步覆盖。');
+    else if (action === 'sync-settings') notice('同步设置已在当前页面下方显示；启动和定期开关按设备独立保存。');
+    else if (action === 'more-item') notice(target.dataset.message || '该页面提供离线样本结构。');
+    else if (action === 'dismiss-suggestion') { current.remoteSuggestions.shift(); notice('已收起远端位置提示；不会自动翻页。'); }
   }
 
   root.addEventListener('click', (event) => {
-    const target = event.target.closest('button'); if (!target) return;
-    if (target.dataset.device) { state.selectedDevice = target.dataset.device; setNotice(`已切换到${device().name}；操作和设置按设备分别保留。`); }
-    else if (target.dataset.panel) { state.activePanel = target.dataset.panel; setNotice(state.activePanel === 'sync' ? '同步页显示实际模拟状态、待确认和冲突。' : '更新页保留原有章节列表和收藏操作。'); }
-    else if (target.dataset.trigger) scheduleSync(target.dataset.trigger);
-    else if (target.dataset.confirm) { model.confirmCancellation(state, state.selectedDevice, target.dataset.confirm); setNotice('已确认取消，仅改变当前接收设备；其他设备不会被代替确认。', 'success'); }
-    else if (target.dataset.ignore) { model.ignoreCancellation(state, state.selectedDevice, target.dataset.ignore); setNotice('已忽略本次取消；当前设备保留状态，也不会反向恢复来源设备。'); }
-    else if (target.dataset.conflict) { model.resolveConflict(state, state.selectedDevice, target.dataset.conflict, target.dataset.choice); setNotice('冲突已处理，新决定已进入待发送队列。', 'success'); }
+    const target = event.target.closest('[data-action], [data-route], [data-updates-tab], [data-browse-tab], [data-platform], [data-theme], [data-confirm], [data-ignore], [data-conflict]'); if (!target) return;
+    if (target.dataset.platform) switchPlatform(target.dataset.platform);
+    else if (target.dataset.theme) { state.ui.theme = target.dataset.theme; notice(`已切换${state.ui.theme === 'light' ? '浅色' : '深色'}主题。`); }
+    else if (target.dataset.route) { state.ui.route = target.dataset.route; state.ui.detail = null; state.ui.reader = false; }
+    else if (target.dataset.updatesTab) state.ui.updatesTab = target.dataset.updatesTab;
+    else if (target.dataset.browseTab) state.ui.browseTab = target.dataset.browseTab;
+    else if (target.dataset.confirm) { model.confirmCancellation(state, state.selectedDevice, target.dataset.confirm); notice('已确认取消，仅改变当前接收设备。', 'success'); }
+    else if (target.dataset.ignore) { model.ignoreCancellation(state, state.selectedDevice, target.dataset.ignore); notice('已忽略本次取消；不反向恢复来源设备。'); }
+    else if (target.dataset.conflict) { model.resolveConflict(state, state.selectedDevice, target.dataset.conflict, target.dataset.choice); notice('冲突已处理，新决定已进入待发送队列。', 'success'); }
     else if (target.dataset.action) handleAction(target.dataset.action, target);
     render();
-    if (state.ui.focusSettings) { state.ui.focusSettings = false; window.requestAnimationFrame(() => document.querySelector('[data-testid="settings-card"]')?.scrollIntoView({ behavior: 'smooth', block: 'center' })); }
+  });
+
+  root.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && event.target.matches('[data-action="open-manga"], [data-action="open-author"]')) { event.target.click(); }
+    if (event.key === 'Escape' && (state.ui.detail || state.ui.reader) && !event.defaultPrevented) { event.preventDefault(); leaveCurrentRoute(); }
+  });
+
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && (state.ui.detail || state.ui.reader) && !event.defaultPrevented) { event.preventDefault(); leaveCurrentRoute(); }
   });
 
   root.addEventListener('change', (event) => {
-    const target = event.target; if (target.dataset.action === 'mode') { model.setReadingMode(state, state.selectedDevice, 'manga-star', target.value); setNotice(`本设备的《星海骑士》阅读模式已设为${target.value}；不会发送到其他设备。`, 'success'); render(); }
+    const target = event.target;
+    if (target.dataset.action === 'reader-mode') { model.setReadingMode(state, state.selectedDevice, state.ui.detail || 'manga-star', target.value); notice(`阅读模式已设为${target.value}，仅保存在本设备。`, 'success'); render(); }
   });
 
-  window.__mihonSyncDemo = { state, model, render, scheduleSync };
+  window.__mihonSyncDemo = { state, model, view, render, scheduleSync };
   render();
 })();
