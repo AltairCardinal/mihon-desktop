@@ -851,6 +851,8 @@ F2 开始前机械计数得到 95 个旧 provisional actions，触发单 cluster
 
 ### `EX-01` 收口扩展 catalog/update/install 与平台 adapters
 
+2026-09-12 规划衔接：[Android 新版扩展系统完整兼容专项](./2026-09-12-android-extension-v2-compatibility-roadmap.md)拟先交付 Android v2/1.6 必需的共享协议、安装管理及 Source 调用切片，并保留 Desktop 平台能力。该专项尚未实施，不代表 EX-01/BR-01 完成，不恢复本路线图的 PAUSED 状态。后续 EX-01 必须复用该专项验收后的共享实现与 fixture，继续完成本条其余范围；不得另建一套 catalog/版本/信任规则。
+
 > 状态卡：`TODO` · 权威/范围 `[ ]` · RED/基线 `[ ]` · Shared `[ ]` · Android `[ ]` · Desktop/UI `[ ]` · Legacy `[ ]` · Review `[ ]` · Verify `[ ]` · Evidence `[ ]` · Commit `[ ]`
 >
 > 记录：阻塞 `—` · 审查 `—` · 验证 `—` · 产物 `—` · Commit `—`

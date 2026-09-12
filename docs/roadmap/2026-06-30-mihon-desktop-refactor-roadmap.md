@@ -6,6 +6,8 @@
 
 - active-child-plan: none（[书架交互对齐计划](./2026-09-08-desktop-library-interaction-parity-roadmap.md)的 5 个补修行为批次及 LI-01～LI-09 已于 2026-09-09 完成；双平台正式版本 `0.11.19.25.ea61d61`，详细测试与发布证据见子计划 6.4；不自动激活相邻计划）
 
+- 待执行专项：[Android 新版扩展系统完整兼容 Roadmap](./2026-09-12-android-extension-v2-compatibility-roadmap.md)（2026-09-12，PLANNED）。本次仅规划，不激活该子计划；获准实施后，Android release 与设备验收是该专项的必要关闭条件，不适用下文早期 Android 发布延期方针。与暂停中的非 Reader `EX-01` 的切片交接和 Desktop 回归范围见子计划。
+
 ## 0. 产品路线
 
 本 roadmap 固定以下产品路线，后续重构不得偏离：
