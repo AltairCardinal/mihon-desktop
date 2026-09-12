@@ -29,3 +29,18 @@ test('双端主题使用冻结的 Tachiyomi 默认颜色，并提供原生尺寸
     assert.match(view.icon(name), new RegExp(`data-icon="${name}"`));
   }
 });
+
+test('更新导航投影独立渲染内容数字和同步状态角标', () => {
+  const html = view.renderNav(view.platformSpec('windows'), 'updates', {
+    unreadCount: 120,
+    sync: { kind: 'attention', label: '有2项同步操作待确认' },
+  });
+  assert.match(html, /data-testid="nav-updates-content-badge"[^>]*>99\+</);
+  assert.match(html, /data-testid="nav-updates-sync-badge"/);
+  assert.match(html, /data-icon="checklist"/);
+  assert.match(html, /aria-label="更新；120 条未读内容；有2项同步操作待确认"/);
+
+  const empty = view.renderNav(view.platformSpec('android'), 'updates', { unreadCount: 0, sync: null });
+  assert.doesNotMatch(empty, /nav-updates-content-badge/);
+  assert.doesNotMatch(empty, /nav-updates-sync-badge/);
+});

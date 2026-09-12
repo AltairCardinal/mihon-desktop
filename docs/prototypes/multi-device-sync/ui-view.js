@@ -16,6 +16,8 @@
     authors: 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z',
     more: 'M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z',
     back: 'M19 12H5m6-6-6 6 6 6',
+    checklist: 'M4 4h16v16H4zM8 8h.01M11 8h5M8 12h.01M11 12h5M8 16h.01M11 16h5',
+    upload: 'M12 15V3m0 0-4 4m4-4 4 4M4 17v3h16v-3',
     filter: 'M4 6h16M7 12h10M10 18h4',
     calendar: 'M5 4v3m14-3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13H4V6a1 1 0 0 1 1-1M8 13h2m2 0h2m2 0h2m-8 3h2m2 0h2m2 0h2',
     refresh: 'M20 11a8 8 0 0 0-14.9-3L3 11m0-5v5h5M4 13a8 8 0 0 0 14.9 3L21 13m0 5v-5h-5',
@@ -73,8 +75,21 @@
     const path = paths[name] || paths.info;
     return `<svg class="MihonIcon ${className || ''}" data-icon="${name}" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${path}"></path></svg>${label ? `<span class="icon-label">${label}</span>` : ''}`;
   }
-  function renderNav(spec, active) {
-    return `<nav class="native-navigation" aria-label="${spec.id === 'windows' ? 'Desktop 主导航' : '手机主导航'}">${spec.nav.map((item) => `<button class="native-nav-item ${item.route === active ? 'is-selected' : ''}" data-route="${item.route}" data-testid="nav-${item.route}" aria-current="${item.route === active ? 'page' : 'false'}"><span class="nav-icon-wrap">${icon(item.icon)}</span><span>${item.label}</span></button>`).join('')}</nav>`;
+  function renderNav(spec, active, indicators) {
+    const navState = indicators || {};
+    const unreadCount = Math.max(0, Number(navState.unreadCount) || 0);
+    const contentText = unreadCount > 99 ? '99+' : String(unreadCount);
+    const sync = navState.sync || null;
+    const syncIcon = sync && (sync.icon || ({ failure: 'close', attention: 'checklist', syncing: 'sync', pending: 'upload' }[sync.kind] || 'info'));
+    const label = (item) => {
+      if (item.route !== 'updates') return item.label;
+      const parts = [item.label];
+      if (unreadCount > 0) parts.push(`${unreadCount} 条未读内容`);
+      if (sync && sync.label) parts.push(sync.label);
+      return parts.join('；');
+    };
+    const badge = (item) => item.route !== 'updates' ? '' : `${unreadCount > 0 ? `<span class="nav-badge nav-badge-content" data-testid="nav-updates-content-badge" title="${unreadCount} 条未读内容" aria-hidden="true">${contentText}</span>` : ''}${sync ? `<span class="nav-badge nav-badge-sync ${sync.kind === 'syncing' ? 'is-spinning' : ''}" data-testid="nav-updates-sync-badge" data-badge-status="${sync.kind}" title="${sync.label}" aria-hidden="true">${icon(syncIcon)}</span>` : ''}`;
+    return `<nav class="native-navigation" aria-label="${spec.id === 'windows' ? 'Desktop 主导航' : '手机主导航'}">${spec.nav.map((item) => `<button class="native-nav-item ${item.route === active ? 'is-selected' : ''}" data-route="${item.route}" data-testid="nav-${item.route}" aria-current="${item.route === active ? 'page' : 'false'}" aria-label="${label(item)}" title="${label(item)}"><span class="nav-icon-anchor"><span class="nav-icon-wrap">${icon(item.icon)}</span>${badge(item)}</span><span>${item.label}</span></button>`).join('')}</nav>`;
   }
 
   return { platformSpec, renderNav, icon, themeTokens, paths };

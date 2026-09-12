@@ -13,6 +13,34 @@ const playwright = playwrightPath ? require(playwrightPath) : null;
 
 const fileUrl = `file://${path.resolve(__dirname, 'index.html').replace(/\\/g, '/')}`;
 
+async function assertBadgesInsideIcon(nav) {
+  const iconBox = await nav.locator('.nav-icon-anchor').boundingBox();
+  const glyphBox = await nav.locator('.nav-icon-wrap .MihonIcon').boundingBox();
+  const labelBox = await nav.locator(':scope > span').nth(1).boundingBox();
+  const badges = [
+    await nav.getByTestId('nav-updates-content-badge').boundingBox(),
+    await nav.getByTestId('nav-updates-sync-badge').boundingBox(),
+  ];
+  for (const badge of badges) {
+    assert.ok(badge.x >= iconBox.x && badge.x + badge.width <= iconBox.x + iconBox.width);
+    assert.ok(badge.y >= iconBox.y && badge.y + badge.height <= iconBox.y + iconBox.height);
+    assert.ok(badge.x + badge.width <= labelBox.x || labelBox.x + labelBox.width <= badge.x || badge.y + badge.height <= labelBox.y || labelBox.y + labelBox.height <= badge.y);
+  }
+  assert.ok(badges[0].x + badges[0].width <= badges[1].x || badges[1].x + badges[1].width <= badges[0].x || badges[0].y + badges[0].height <= badges[1].y || badges[1].y + badges[1].height <= badges[0].y);
+  assert.ok(Math.abs((glyphBox.x + glyphBox.width / 2) - (labelBox.x + labelBox.width / 2)) <= 1);
+}
+
+async function injectUpdateNav(page, platform, active) {
+  await page.evaluate(({ platform, active }) => {
+    const demo = window.__mihonSyncDemo;
+    const nav = document.querySelector('.native-navigation');
+    nav.outerHTML = demo.view.renderNav(demo.view.platformSpec(platform), active, {
+      unreadCount: 120,
+      sync: { kind: 'attention', icon: 'checklist', label: '有2项同步操作待确认' },
+    });
+  }, { platform, active });
+}
+
 test('浏览器加载真实双端 DOM、几何和漫画详情入口', { skip: !playwright && '缓存 Playwright 未找到' }, async () => {
   const browser = await playwright.chromium.launch({ headless: true, channel: 'chrome' });
   try {
@@ -181,6 +209,7 @@ test('退出阅读：失焦 Escape、双端切换与远端位置同步', { skip:
 
     await switchPlatform('platform-android');
     await page.getByTestId('manual-sync').click();
+    assert.equal(await page.getByTestId('nav-updates').getByTestId('nav-updates-sync-badge').getAttribute('data-badge-status'), 'syncing');
     await page.waitForTimeout(550);
     await switchPlatform('platform-windows');
     await page.getByTestId('manual-sync').click();
@@ -190,6 +219,230 @@ test('退出阅读：失焦 Escape、双端切换与远端位置同步', { skip:
     assert.equal(synced.desktop.readingActive, false);
     assert.equal(synced.phone.readingActive, false);
     assert.notEqual(synced.desktop.mode, synced.phone.mode);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('更新导航双角标、同源已读状态和同步优先级', { skip: !playwright && '缓存 Playwright 未找到' }, async () => {
+  const browser = await playwright.chromium.launch({ headless: true, channel: 'chrome' });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    await page.goto(fileUrl);
+    const nav = page.getByTestId('nav-updates');
+    assert.equal(await page.getByTestId('nav-updates-content-badge').textContent(), '2');
+    assert.equal(await nav.getByTestId('nav-updates-sync-badge').getAttribute('data-badge-status'), 'attention');
+    assert.equal(await nav.locator('[data-icon="checklist"]').count(), 1);
+    await assertBadgesInsideIcon(nav);
+    assert.match(await nav.getAttribute('aria-label'), /2 条未读内容/);
+    assert.match(await nav.getAttribute('aria-label'), /有1项同步操作待确认/);
+    assert.equal(await page.getByTestId('sync-tab-badge').textContent(), '1');
+    await page.getByTestId('preview-tools').locator('summary').click();
+    await page.getByTestId('network-toggle').click();
+    await page.getByTestId('manual-sync').click();
+    await page.waitForTimeout(550);
+    assert.equal(await page.getByTestId('nav-updates').getByTestId('nav-updates-sync-badge').getAttribute('data-badge-status'), 'failure');
+    assert.match(await page.getByTestId('nav-updates').getAttribute('aria-label'), /最近一次同步失败；有1项同步操作待确认/);
+    await page.getByTestId('preview-tools').locator('summary').click();
+    await page.getByTestId('network-toggle').click();
+    await page.getByTestId('manual-sync').click();
+    await page.waitForTimeout(550);
+    assert.equal(await page.getByTestId('nav-updates').getByTestId('nav-updates-sync-badge').getAttribute('data-badge-status'), 'attention');
+    await page.getByTestId('preview-tools').locator('summary').click();
+    await page.getByTestId('theme-dark').click();
+    assert.equal(await page.getByTestId('nav-updates-content-badge').textContent(), '2');
+    await page.getByTestId('preview-tools').locator('summary').click();
+
+    await page.getByTestId('nav-more').click();
+    await assertBadgesInsideIcon(page.getByTestId('nav-updates'));
+    await page.getByTestId('nav-updates').click();
+    assert.equal(await page.getByTestId('sync-tab').getAttribute('aria-selected'), 'true');
+    await page.locator('[data-confirm]').first().click();
+    await page.getByTestId('updates-tab').click();
+    await page.getByTestId('mark-read-manga-star').click();
+    assert.equal(await page.getByTestId('nav-updates-content-badge').textContent(), '1');
+    assert.equal(await page.getByTestId('desktop-update-manga-star').locator('[data-action="mark-read"]').count(), 0);
+    await page.getByTestId('nav-more').click();
+    await page.getByTestId('nav-updates').click();
+    assert.equal(await page.getByTestId('updates-tab').getAttribute('aria-selected'), 'true');
+
+    await page.getByTestId('updates-mark-all').click();
+    assert.equal(await page.getByTestId('nav-updates-content-badge').count(), 0);
+    await page.getByTestId('sync-tab').click();
+    await page.getByTestId('manual-sync').click();
+    await page.waitForTimeout(550);
+    await page.getByTestId('nav-more').click();
+    await page.getByTestId('nav-updates').click();
+    assert.equal(await page.getByTestId('sync-tab').getAttribute('aria-selected'), 'true');
+
+    await page.getByTestId('updates-tab').click();
+    await page.getByTestId('desktop-update-manga-dawn').click();
+    await page.getByTestId('detail-favorite-text').click();
+    assert.equal(await page.getByTestId('nav-updates').getByTestId('nav-updates-sync-badge').getAttribute('data-badge-status'), 'pending');
+    assert.equal(await page.getByTestId('nav-updates').locator('[data-icon="upload"]').count(), 1);
+
+    await page.getByTestId('nav-updates').click();
+    await page.getByTestId('sync-tab').click();
+    await page.getByTestId('preview-tools').locator('summary').click();
+    await page.getByTestId('network-toggle').click();
+    assert.notEqual(await page.getByTestId('nav-updates').getByTestId('nav-updates-sync-badge').getAttribute('data-badge-status'), 'failure');
+    await page.getByTestId('manual-sync').click();
+    await page.waitForTimeout(550);
+    assert.equal(await page.getByTestId('nav-updates').getByTestId('nav-updates-sync-badge').getAttribute('data-badge-status'), 'failure');
+    assert.equal(await page.getByTestId('nav-updates').locator('[data-icon="close"]').count(), 1);
+    await page.getByTestId('preview-tools').locator('summary').click();
+    await page.getByTestId('network-toggle').click();
+    await page.getByTestId('manual-sync').click();
+    await page.waitForTimeout(550);
+    assert.equal(await page.getByTestId('nav-updates').getByTestId('nav-updates-sync-badge').count(), 0);
+
+    const narrow = await browser.newPage({ viewport: { width: 320, height: 844 } });
+    await narrow.goto(fileUrl);
+    await narrow.getByTestId('preview-tools').locator('summary').click();
+    await narrow.getByTestId('platform-android').click();
+    await narrow.getByTestId('nav-more').click();
+    await narrow.getByTestId('nav-updates').click();
+    await narrow.getByTestId('updates-tab').click();
+    assert.ok(await narrow.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    await narrow.getByTestId('android-update-manga-dawn').click();
+    await narrow.getByTestId('detail-favorite-text').click();
+    await narrow.getByTestId('app-back').click();
+    const narrowNav = narrow.getByTestId('nav-updates');
+    await assertBadgesInsideIcon(narrowNav);
+    const narrowNavBox = await narrowNav.boundingBox();
+    const narrowContent = await narrowNav.getByTestId('nav-updates-content-badge').boundingBox();
+    const narrowSync = await narrowNav.getByTestId('nav-updates-sync-badge').boundingBox();
+    assert.ok(narrowNavBox.y + narrowNavBox.height <= 844);
+    assert.ok(narrowContent.x >= narrowNavBox.x && narrowContent.x + narrowContent.width <= narrowNavBox.x + narrowNavBox.width);
+    assert.ok(narrowSync.x >= narrowNavBox.x && narrowSync.x + narrowSync.width <= narrowNavBox.x + narrowNavBox.width);
+    assert.ok(narrowContent.y >= narrowNavBox.y && narrowContent.y + narrowContent.height <= narrowNavBox.y + narrowNavBox.height);
+    assert.ok(narrowSync.y >= narrowNavBox.y && narrowSync.y + narrowSync.height <= narrowNavBox.y + narrowNavBox.height);
+    assert.ok(narrowContent.x + narrowContent.width <= narrowSync.x || narrowSync.x + narrowSync.width <= narrowContent.x || narrowContent.y + narrowContent.height <= narrowSync.y || narrowSync.y + narrowSync.height <= narrowContent.y);
+    await narrow.getByTestId('nav-more').click();
+    await assertBadgesInsideIcon(narrow.getByTestId('nav-updates'));
+    await narrow.close();
+  } finally {
+    await browser.close();
+  }
+});
+
+test('更新双角标在Android窄屏与设备状态隔离', { skip: !playwright && '缓存 Playwright 未找到' }, async () => {
+  const browser = await playwright.chromium.launch({ headless: true, channel: 'chrome' });
+  try {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.goto(fileUrl);
+    await page.getByTestId('preview-tools').locator('summary').click();
+    await page.getByTestId('platform-android').click();
+    const nav = page.getByTestId('nav-updates');
+    assert.equal(await nav.getByTestId('nav-updates-content-badge').textContent(), '2');
+    const navBox = await nav.boundingBox();
+    const contentBox = await nav.getByTestId('nav-updates-content-badge').boundingBox();
+    assert.ok(contentBox.x >= navBox.x && contentBox.x + contentBox.width <= navBox.x + navBox.width);
+    assert.ok(contentBox.y >= navBox.y && contentBox.y + contentBox.height <= navBox.y + navBox.height);
+    assert.ok(navBox.y + navBox.height <= 844);
+
+    await page.getByTestId('nav-more').click();
+    await page.getByTestId('nav-updates').click();
+    await page.getByTestId('updates-tab').click();
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    assert.equal(await page.getByTestId('updates-mark-all').count(), 0);
+    await page.getByTestId('android-update-manga-star').click();
+    await page.getByTestId('continue-reading-fab').click();
+    await page.getByTestId('app-back').click();
+    await page.getByTestId('app-back').click();
+    assert.equal(await page.getByTestId('nav-updates-content-badge').textContent(), '1');
+    await page.getByTestId('android-update-manga-dawn').click();
+    await page.getByTestId('detail-favorite-text').click();
+    await page.getByTestId('app-back').click();
+    assert.equal(await page.getByTestId('nav-updates').getByTestId('nav-updates-sync-badge').getAttribute('data-badge-status'), 'pending');
+    await assertBadgesInsideIcon(page.getByTestId('nav-updates'));
+    await page.getByTestId('nav-more').click();
+    await assertBadgesInsideIcon(page.getByTestId('nav-updates'));
+    await page.getByTestId('preview-tools').locator('summary').click();
+    await page.getByTestId('platform-windows').click();
+    assert.equal(await page.getByTestId('nav-updates-content-badge').textContent(), '2');
+    assert.notEqual(await page.getByTestId('nav-updates').getByTestId('nav-updates-sync-badge').getAttribute('data-badge-status'), 'pending');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('120条未读双角标在双端主题和选中状态下保持几何稳定', { skip: !playwright && '缓存 Playwright 未找到' }, async () => {
+  const browser = await playwright.chromium.launch({ headless: true, channel: 'chrome' });
+  try {
+    for (const scenario of [
+      { platform: 'windows', width: 1024, theme: 'light' },
+      { platform: 'windows', width: 1024, theme: 'dark' },
+      { platform: 'android', width: 320, theme: 'light' },
+      { platform: 'android', width: 320, theme: 'dark' },
+      { platform: 'android', width: 390, theme: 'light' },
+      { platform: 'android', width: 390, theme: 'dark' },
+    ]) {
+      const page = await browser.newPage({ viewport: { width: scenario.width, height: 844 } });
+      await page.goto(fileUrl);
+      if (scenario.theme === 'dark') {
+        await page.getByTestId('preview-tools').locator('summary').click();
+        await page.getByTestId('theme-dark').click();
+      }
+      if (scenario.platform === 'android') {
+        await page.getByTestId('preview-tools').locator('summary').click();
+        await page.getByTestId('platform-android').click();
+      }
+      await injectUpdateNav(page, scenario.platform, 'updates');
+      await assertBadgesInsideIcon(page.getByTestId('nav-updates'));
+      await injectUpdateNav(page, scenario.platform, 'more');
+      await assertBadgesInsideIcon(page.getByTestId('nav-updates'));
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
+test('从其他模块进入更新按当前同步提示和记忆页签落地', { skip: !playwright && '缓存 Playwright 未找到' }, async () => {
+  const browser = await playwright.chromium.launch({ headless: true, channel: 'chrome' });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    await page.goto(fileUrl);
+    await page.locator('[data-ignore]').first().click();
+    await page.getByTestId('manual-sync').click();
+    await page.waitForTimeout(550);
+    await page.getByTestId('updates-tab').click();
+    await page.getByTestId('updates-mark-all').click();
+
+    await page.getByTestId('nav-library').click();
+    await page.getByTestId('manga-card-manga-star').locator('.card-bookmark').click();
+    await page.getByTestId('nav-updates').click();
+    assert.equal(await page.getByTestId('sync-tab').getAttribute('aria-selected'), 'true');
+
+    await page.getByTestId('manual-sync').click();
+    await page.waitForTimeout(550);
+    await page.getByTestId('updates-tab').click();
+    await page.getByTestId('nav-library').click();
+    await page.getByTestId('nav-updates').click();
+    assert.equal(await page.getByTestId('updates-tab').getAttribute('aria-selected'), 'true');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('更新落页在普通待发或同步中且有未读时仍优先更新', { skip: !playwright && '缓存 Playwright 未找到' }, async () => {
+  const browser = await playwright.chromium.launch({ headless: true, channel: 'chrome' });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1024, height: 768 } });
+    await page.goto(fileUrl);
+    await page.locator('[data-ignore]').first().click();
+    await page.getByTestId('nav-library').click();
+    await page.getByTestId('manga-card-manga-dawn').locator('.card-bookmark').click();
+    assert.equal(await page.getByTestId('nav-updates').getByTestId('nav-updates-sync-badge').getAttribute('data-badge-status'), 'pending');
+    await page.getByTestId('nav-updates').click();
+    assert.equal(await page.getByTestId('updates-tab').getAttribute('aria-selected'), 'true');
+
+    await page.getByTestId('nav-library').click();
+    await page.getByTestId('preview-tools').locator('summary').click();
+    await page.getByTestId('startup-sync').click();
+    await page.getByTestId('nav-updates').click();
+    assert.equal(await page.getByTestId('updates-tab').getAttribute('aria-selected'), 'true');
   } finally {
     await browser.close();
   }
