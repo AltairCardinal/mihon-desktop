@@ -12,7 +12,13 @@ import java.io.IOException
 class ProgressResponseBody(
     private val responseBody: ResponseBody,
     private val progressListener: ProgressListener,
+    private val existingSize: Long = 0L,
 ) : ResponseBody() {
+
+    constructor(
+        responseBody: ResponseBody,
+        progressListener: ProgressListener,
+    ) : this(responseBody, progressListener, 0L)
 
     private val bufferedSource: BufferedSource by lazy {
         source(responseBody.source()).buffer()
@@ -32,7 +38,7 @@ class ProgressResponseBody(
 
     private fun source(source: Source): Source {
         return object : ForwardingSource(source) {
-            var totalBytesRead = 0L
+            var totalBytesRead = existingSize
 
             @Throws(IOException::class)
             override fun read(sink: Buffer, byteCount: Long): Long {
@@ -41,7 +47,7 @@ class ProgressResponseBody(
                 totalBytesRead += if (bytesRead != -1L) bytesRead else 0
                 progressListener.update(
                     totalBytesRead,
-                    responseBody.contentLength(),
+                    responseBody.contentLength().takeIf { it >= 0L }?.plus(existingSize) ?: -1L,
                     bytesRead == -1L,
                 )
                 return bytesRead

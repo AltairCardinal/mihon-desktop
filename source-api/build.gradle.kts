@@ -20,6 +20,8 @@ kotlin {
                 api(libs.injekt)
                 api(libs.rxjava)
                 api(libs.jsoup)
+                implementation(project.dependencies.platform(kotlinx.coroutines.bom))
+                implementation(kotlinx.coroutines.core)
 
                 // compose.runtime removed - @Stable annotation not needed for cross-platform
             }
@@ -51,6 +53,7 @@ kotlin {
             dependencies {
                 implementation(libs.bundles.test)
                 implementation(kotlinx.coroutines.test)
+                implementation(libs.okhttp.mockwebserver)
                 runtimeOnly(libs.junit.platform.launcher)
             }
         }
@@ -58,6 +61,7 @@ kotlin {
             dependencies {
                 implementation(libs.bundles.test)
                 implementation(kotlinx.coroutines.test)
+                implementation(libs.okhttp.mockwebserver)
                 runtimeOnly(libs.junit.platform.launcher)
             }
         }

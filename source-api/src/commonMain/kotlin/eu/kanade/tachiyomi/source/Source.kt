@@ -1,9 +1,14 @@
 package eu.kanade.tachiyomi.source
 
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import eu.kanade.tachiyomi.util.awaitSingle
+import kotlinx.coroutines.async
+import kotlinx.coroutines.supervisorScope
 import rx.Observable
 
 /**
@@ -23,6 +28,50 @@ interface Source {
 
     val lang: String
         get() = ""
+
+    /**
+     * Whether this source provides a latest-updates listing.
+     *
+     * Sources that predate the combined Source API do not provide catalogue operations and must
+     * explicitly opt in by implementing this property (normally through [CatalogueSource]).
+     * @since tachiyomix 1.6
+     */
+    val supportsLatest: Boolean
+        get() = false
+
+    /**
+     * Returns the list of filters for the source.
+     * @since tachiyomix 1.6
+     */
+    fun getFilterList(): FilterList = FilterList()
+
+    /**
+     * Returns a page of popular manga. A source without catalogue support must not manufacture an
+     * empty successful page, so the default fails explicitly.
+     * @since tachiyomix 1.6
+     */
+    suspend fun getPopularManga(page: Int): MangasPage =
+        throw UnsupportedOperationException("Source does not support popular manga")
+
+    /**
+     * Returns a page of latest manga updates. A source without catalogue support must not
+     * manufacture an empty successful page, so the default fails explicitly.
+     * @since tachiyomix 1.6
+     */
+    suspend fun getLatestUpdates(page: Int): MangasPage =
+        throw UnsupportedOperationException("Source does not support latest updates")
+
+    /**
+     * Returns a page of search results. A source without catalogue support must not manufacture an
+     * empty successful page, so the default fails explicitly.
+     * @since tachiyomix 1.6
+     */
+    suspend fun getSearchManga(
+        page: Int,
+        query: String,
+        filters: FilterList,
+    ): MangasPage =
+        throw UnsupportedOperationException("Source does not support manga search")
 
     /**
      * Get the updated details for a manga.
@@ -46,6 +95,27 @@ interface Source {
     @Suppress("DEPRECATION")
     suspend fun getChapterList(manga: SManga): List<SChapter> {
         return fetchChapterList(manga).awaitSingle()
+    }
+
+    /**
+     * Fetches the requested details and/or chapter updates through the legacy suspend bridge.
+     *
+     * The flags are intentionally handled in one compatibility adapter. Unrequested values are
+     * preserved by identity, while cancellation and source exceptions are allowed to propagate.
+     * @since tachiyomix 1.6
+     */
+    suspend fun getMangaUpdate(
+        manga: SManga,
+        chapters: List<SChapter>,
+        fetchDetails: Boolean,
+        fetchChapters: Boolean,
+    ): SMangaUpdate = supervisorScope {
+        val mangaUpdate = if (fetchDetails) async { getMangaDetails(manga) } else null
+        val chapterUpdate = if (fetchChapters) async { getChapterList(manga) } else null
+        SMangaUpdate(
+            manga = mangaUpdate?.await() ?: manga,
+            chapters = chapterUpdate?.await() ?: chapters,
+        )
     }
 
     /**

@@ -121,12 +121,28 @@ suspend fun Call.awaitSuccess(): Response {
 }
 
 fun OkHttpClient.newCachelessCallWithProgress(request: Request, listener: ProgressListener): Call {
+    return newCachelessCallWithProgress(request, listener, 0L)
+}
+
+fun OkHttpClient.newCachelessCallWithProgress(
+    request: Request,
+    listener: ProgressListener,
+    existingSize: Long = 0L,
+): Call {
     val progressClient = newBuilder()
         .cache(null)
         .addNetworkInterceptor { chain ->
-            val originalResponse = chain.proceed(chain.request())
+            val requestWithRange = if (existingSize > 0L && chain.request().header("Range") == null) {
+                chain.request().newBuilder()
+                    .header("Range", "bytes=$existingSize-")
+                    .build()
+            } else {
+                chain.request()
+            }
+            val originalResponse = chain.proceed(requestWithRange)
+            val responseExistingSize = existingSize.takeIf { originalResponse.code == 206 } ?: 0L
             originalResponse.newBuilder()
-                .body(ProgressResponseBody(originalResponse.body, listener))
+                .body(ProgressResponseBody(originalResponse.body, listener, responseExistingSize))
                 .build()
         }
         .build()

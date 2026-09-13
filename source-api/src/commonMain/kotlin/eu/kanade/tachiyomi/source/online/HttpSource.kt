@@ -39,6 +39,13 @@ abstract class HttpSource : CatalogueSource {
     abstract val baseUrl: String
 
     /**
+     * Returns the source home page URL.
+     *
+     * @since extensions-lib 1.6
+     */
+    open fun getHomeUrl(): String = baseUrl
+
+    /**
      * Version id used to generate the source id. If the site completely changes and urls are
      * incompatible, you may increase this value and it'll be considered as a new source.
      */
@@ -122,14 +129,16 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param page the page number to retrieve.
      */
-    protected abstract fun popularMangaRequest(page: Int): Request
+    protected open fun popularMangaRequest(page: Int): Request =
+        throw UnsupportedOperationException("Popular manga requests are not implemented")
 
     /**
      * Parses the response from the site and returns a [MangasPage] object.
      *
      * @param response the response from the site.
      */
-    protected abstract fun popularMangaParse(response: Response): MangasPage
+    protected open fun popularMangaParse(response: Response): MangasPage =
+        throw UnsupportedOperationException("Popular manga parsing is not implemented")
 
     /**
      * Returns an observable containing a page with a list of manga. Normally it's not needed to
@@ -166,18 +175,19 @@ abstract class HttpSource : CatalogueSource {
      * @param query the search query.
      * @param filters the list of filters to apply.
      */
-    protected abstract fun searchMangaRequest(
+    protected open fun searchMangaRequest(
         page: Int,
         query: String,
         filters: FilterList,
-    ): Request
+    ): Request = throw UnsupportedOperationException("Search manga requests are not implemented")
 
     /**
      * Parses the response from the site and returns a [MangasPage] object.
      *
      * @param response the response from the site.
      */
-    protected abstract fun searchMangaParse(response: Response): MangasPage
+    protected open fun searchMangaParse(response: Response): MangasPage =
+        throw UnsupportedOperationException("Search manga parsing is not implemented")
 
     /**
      * Returns an observable containing a page with a list of latest manga updates.
@@ -198,14 +208,16 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param page the page number to retrieve.
      */
-    protected abstract fun latestUpdatesRequest(page: Int): Request
+    protected open fun latestUpdatesRequest(page: Int): Request =
+        throw UnsupportedOperationException("Latest update requests are not implemented")
 
     /**
      * Parses the response from the site and returns a [MangasPage] object.
      *
      * @param response the response from the site.
      */
-    protected abstract fun latestUpdatesParse(response: Response): MangasPage
+    protected open fun latestUpdatesParse(response: Response): MangasPage =
+        throw UnsupportedOperationException("Latest update parsing is not implemented")
 
     /**
      * Get the updated details for a manga.
@@ -243,7 +255,8 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param response the response from the site.
      */
-    protected abstract fun mangaDetailsParse(response: Response): SManga
+    protected open fun mangaDetailsParse(response: Response): SManga =
+        throw UnsupportedOperationException("Manga details parsing is not implemented")
 
     /**
      * Get all the available chapters for a manga.
@@ -281,7 +294,8 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param response the response from the site.
      */
-    protected abstract fun chapterListParse(response: Response): List<SChapter>
+    protected open fun chapterListParse(response: Response): List<SChapter> =
+        throw UnsupportedOperationException("Chapter list parsing is not implemented")
 
     /**
      * Parses the response from the site and returns a SChapter Object.
@@ -326,7 +340,8 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param response the response from the site.
      */
-    protected abstract fun pageListParse(response: Response): List<Page>
+    protected open fun pageListParse(response: Response): List<Page> =
+        throw UnsupportedOperationException("Page list parsing is not implemented")
 
     /**
      * Returns an observable with the page containing the source url of the image. If there's any
@@ -362,7 +377,8 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param response the response from the site.
      */
-    protected abstract fun imageUrlParse(response: Response): String
+    protected open fun imageUrlParse(response: Response): String =
+        throw UnsupportedOperationException("Image URL parsing is not implemented")
 
     /**
      * Returns the response of the source image.
@@ -372,7 +388,26 @@ abstract class HttpSource : CatalogueSource {
      * @param page the page whose source image has to be downloaded.
      */
     open suspend fun getImage(page: Page): Response {
-        return client.newCachelessCallWithProgress(imageRequest(page), page)
+        return getImageResponse(page, 0L)
+    }
+
+    /**
+     * Returns the response of the source image, resuming from [existingSize] when the server
+     * honours the requested range.
+     *
+     * @since extensions-lib 1.6
+     */
+    open suspend fun getImage(page: Page, existingSize: Long = 0L): Response {
+        if (existingSize == 0L) {
+            // Dispatch through the legacy overload so extensions compiled against 1.5 that
+            // override getImage(Page) keep their implementation when called by the new API.
+            return getImage(page)
+        }
+        return getImageResponse(page, existingSize)
+    }
+
+    private suspend fun getImageResponse(page: Page, existingSize: Long): Response {
+        return client.newCachelessCallWithProgress(imageRequest(page), page, existingSize)
             .awaitSuccess()
     }
 

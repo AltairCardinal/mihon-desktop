@@ -2,6 +2,7 @@ import mihon.buildlogic.Config
 import mihon.buildlogic.getBuildTime
 import mihon.buildlogic.getCommitCount
 import mihon.buildlogic.getGitSha
+import org.gradle.api.tasks.Sync
 
 plugins {
     id("mihon.android.application")
@@ -10,6 +11,17 @@ plugins {
     kotlin("plugin.serialization")
     alias(libs.plugins.aboutLibraries)
     alias(libs.plugins.test.retry)
+}
+
+val aex01AndroidTestAssets = layout.buildDirectory.dir("generated/aex01AndroidTestAssets")
+val syncAex01AndroidTestAssets = tasks.register<Sync>("syncAex01AndroidTestAssets") {
+    from(rootProject.file("app-desktop/src/test/resources/extensions/real")) {
+        include("aex00-external-v16-controlled-sample.apk")
+        include("aex00-external-v15-controlled-sample.apk")
+        include("keiyoushi-comicfury-1.4.8.apk")
+        include("keiyoushi-mangadex-1.6.0.apk")
+    }
+    into(aex01AndroidTestAssets)
 }
 
 if (Config.includeTelemetry) {
@@ -96,6 +108,7 @@ android {
     sourceSets {
         getByName("preview").res.srcDirs("src/debug/res")
         getByName("benchmark").res.srcDirs("src/debug/res")
+        getByName("androidTest").assets.srcDir(aex01AndroidTestAssets)
     }
 
     splits {
@@ -154,6 +167,10 @@ android {
         abortOnError = false
         checkReleaseBuilds = false
     }
+}
+
+tasks.matching { it.name == "mergeDebugAndroidTestAssets" }.configureEach {
+    dependsOn(syncAex01AndroidTestAssets)
 }
 
 kotlin {
