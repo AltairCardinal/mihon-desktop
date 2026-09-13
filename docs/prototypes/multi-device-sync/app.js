@@ -190,8 +190,7 @@
 
   function renderSyncSheet() {
     const settings = state.ui.syncSettingsOpen;
-    const count = syncWorkCount(currentDevice());
-    return `<div class="sheet-layer"><button class="sheet-scrim" tabindex="-1" aria-label="关闭同步" data-action="close-sync" data-testid="sync-scrim"></button><section class="sync-settings-sheet sync-panel-sheet" data-settings="${Boolean(settings)}" role="dialog" aria-modal="true" aria-labelledby="sync-sheet-title" tabindex="-1"><div class="sheet-drag-handle" data-sheet-drag data-testid="sync-drag" aria-hidden="true"><span></span></div>${renderSyncHeader(settings)}${!settings && count ? `<div class="sync-pending-summary" data-testid="sync-pending-summary"><div><strong>待处理 ${count} 项</strong><span>批量仅适用于取消收藏与关注</span></div></div>` : ''}${settings ? renderSyncSettingsPage() : `<div class="sync-panel-scroll">${renderSyncPage()}</div>`}${isWindows() ? '' : '<div class="gesture-area" aria-hidden="true"></div>'}${renderBatchReview()}</section></div>`;
+    return `<div class="sheet-layer"><button class="sheet-scrim" tabindex="-1" aria-label="关闭同步" data-action="close-sync" data-testid="sync-scrim"></button><section class="sync-settings-sheet sync-panel-sheet" data-settings="${Boolean(settings)}" role="dialog" aria-modal="true" aria-labelledby="sync-sheet-title" tabindex="-1"><div class="sheet-drag-handle" data-sheet-drag data-testid="sync-drag" aria-hidden="true"><span></span></div>${renderSyncHeader(settings)}${settings ? renderSyncSettingsPage() : `<div class="sync-panel-scroll">${renderSyncPage()}</div>`}${isWindows() ? '' : '<div class="gesture-area" aria-hidden="true"></div>'}${renderBatchReview()}</section></div>`;
   }
 
   function closeSyncLayer() {

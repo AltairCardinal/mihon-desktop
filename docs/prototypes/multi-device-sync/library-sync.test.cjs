@@ -102,7 +102,8 @@ test('120项待处理：长列表处理、设置同面板返回与滚动位置�
       assert.equal(await page.locator('[role="dialog"]').count(), 1);
       assert.equal(await page.locator('.native-confirmation').count(), 120);
       assert.equal(await page.getByTestId('library-sync-count').textContent(), '99+');
-      assert.match(await page.getByTestId('sync-pending-summary').textContent(), /120/);
+      assert.equal(await page.getByTestId('sync-pending-summary').count(), 0, '双端不再显示独立待处理摘要栏');
+      assert.match(await page.locator('.pending-toolbar-heading').textContent(), /120/);
       const frame = await page.getByRole('dialog').boundingBox();
       const scroll = page.locator('.sync-panel-scroll');
       await scroll.evaluate(el => { el.scrollTop = el.scrollHeight / 2; });
@@ -123,7 +124,7 @@ test('120项待处理：长列表处理、设置同面板返回与滚动位置�
       assert.equal(await page.evaluate(id => window.__mihonSyncDemo.state.devices[window.__mihonSyncDemo.state.selectedDevice].favorites.includes(id), objectId), false);
       await page.locator('[data-ignore]').last().click();
       assert.equal(await page.locator('.native-confirmation').count(), 118);
-      assert.match(await page.getByTestId('sync-pending-summary').textContent(), /118/);
+      assert.match(await page.locator('.pending-toolbar-heading').textContent(), /118/);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       await page.getByTestId('sync-close').click();
       await page.close();
