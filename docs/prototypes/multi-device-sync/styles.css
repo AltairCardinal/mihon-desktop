@@ -164,3 +164,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .batch-review h2 { font-size: 20px; font-weight: 500; margin: 0 0 16px; }
 .batch-review p { font-size: 13px; line-height: 1.6; }
 .batch-review-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+.pending-toolbar { position: sticky; top: 0; z-index: 4; background: #ECE6F0; }
+.theme-dark .pending-toolbar { background: #2B2930; }
+.pending-toolbar-heading { min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pending-toolbar-heading > strong { font-size: 12px; }
+.pending-toolbar .selection-header { min-height: 52px; padding: 4px 8px; border-radius: 8px 8px 0 0; }
+.pending-toolbar .selection-header h2 { font-size: 15px; }
+.pending-toolbar .batch-action-bar { padding: 8px; justify-content: flex-end; border-radius: 0 0 8px 8px; }
+.pending-toolbar .batch-action-bar .m-button { min-height: 34px; padding: 6px 10px; font-size: 12px; }
+.pending-list .native-confirmation { scroll-margin-top: 120px; }

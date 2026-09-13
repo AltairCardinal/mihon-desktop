@@ -16,7 +16,16 @@ test('章节式多选：勾选、全选、反选、取消及批量确认/忽略'
    const p = await browser.newPage({viewport:{width,height:900}});
    await seed(p,width===320);
    assert.equal(await p.getByTestId('batch-select').count(),1);
+   assert.equal(await p.locator('.pending-list > .pending-toolbar').count(),1, '多选条属于条目列表');
+   const toolbar = p.locator('.pending-toolbar');
+   let toolsBox = await toolbar.boundingBox();
+   let firstBox = await p.locator('.native-confirmation').first().boundingBox();
+   assert.ok(Math.abs(toolsBox.y + toolsBox.height - firstBox.y) < 2, '工具条紧接首条上方');
    await p.getByTestId('batch-select').click();
+   assert.equal(await toolbar.getByTestId('selection-count').count(),1);
+   assert.equal(await toolbar.getByTestId('batch-confirm').count(),1);
+   assert.equal(await p.locator('.sync-panel-sheet > .batch-action-bar').count(),0);
+   assert.equal(await p.locator('.sync-panel-sheet > .sheet-header h2').textContent(),'同步');
    await p.locator('[data-select-id]').nth(0).click();
    await p.locator('[data-select-id]').nth(1).click();
    assert.equal(await p.getByTestId('selection-count').textContent(),'已选 2 项');
