@@ -64,7 +64,7 @@
         ['青木 · 保留各来源的作者记录', '同名作者不自动合并，也无需在同步时选择。'],
         ['夜行纪事 · 已保留第 8 话位置', '页码无法验证，下次打开时从本章开头继续。'],
       ] : [['数据已交换', '收藏、作者关注和阅读记录通过同一个同步按钮交换。'], ['取消确认独立处理', '待确认的取消不阻止其他变动同步。保留在本设备不会反向改变其他设备。']];
-      return note('这里显示同步结果，无需逐项确认。') + entries.map(([title, detail]) => `<article class="ix-activity-entry"><span class="row-leading">${view.icon('check')}</span><div><strong>${title}</strong><p>${detail}</p></div></article>`).join('');
+      return entries.map(([title, detail]) => `<article class="ix-activity-entry"><span class="row-leading">${view.icon('check')}</span><div><strong>${title}</strong><p>${detail}</p></div></article>`).join('');
     }
     function status({ total, membership, reading, pending, busy, online }) {
       const d = data();
