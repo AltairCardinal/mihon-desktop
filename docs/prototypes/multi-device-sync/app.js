@@ -220,7 +220,7 @@
       ${interactions.status({ total: current.pendingOutgoing.length, membership, reading, pending, busy, online: state.online })}
       ${result ? `<div class="snackbar-inline ${result.ok ? 'success' : 'failure'}" data-testid="sync-result">${view.icon(result.ok ? 'check' : 'info')}<span>${esc(result.message)}</span></div>` : ''}
       ${interactions.summary()}${interactions.importStatus()}
-      ${pending ? `<div class="sync-list pending-list">${renderPendingToolbar(pending)}${current.confirmations.map(renderConfirmation).join('')}</div>` : '<div class="sync-empty">当前没有待确认的取消操作</div>'}
+      ${pending ? `<div class="sync-list pending-list">${renderPendingToolbar(pending)}${current.confirmations.map(renderConfirmation).join('')}</div>` : '<div class="sync-empty">当前没有待确认的操作</div>'}
       <div class="sync-record-link">${button('查看同步记录', 'data-action="ix-activity" data-testid="ix-activity"', 'm-button-text')}</div>
     </section>`;
   }
