@@ -9,8 +9,21 @@
     const cancellationExample = Object.values(state.devices).flatMap(device => device.confirmations)[0];
     function data() {
       if (!state.ui.interactions) state.ui.interactions = { connected: true, stack: [], fields: { repo: 'reader/mihon-sync', key: '', device: currentDevice().name }, automatic: false, message: '', issue: null, mode: 'join', importKind: 'merge', lastSync: '14:32', authStatus: 'idle' };
+      if (state.ui.interactions.nextSyncAt == null) state.ui.interactions.nextSyncAt = Date.now() + currentDevice().settings.periodMinutes * 60000;
       return state.ui.interactions;
     }
+    function resetCountdown() { data().nextSyncAt = Date.now() + currentDevice().settings.periodMinutes * 60000; }
+    function countdownTitle() {
+      const minutes = Math.max(0, Math.ceil((data().nextSyncAt - Date.now()) / 60000));
+      if (!minutes) return '即将同步';
+      return [[Math.floor(minutes / 1440), '天'], [Math.floor(minutes % 1440 / 60), '小时'], [minutes % 60, '分']]
+        .filter(([value]) => value > 0).map(([value, unit]) => `${value}${unit}`).join('') + '后同步';
+    }
+    // Update only the visible label so countdown ticks preserve list scroll and selection.
+    window.setInterval(() => {
+      const label = document.querySelector('[data-sync-countdown]');
+      if (label) label.textContent = countdownTitle();
+    }, 1000);
     const screen = () => data().stack.at(-1);
     function go(name) { data().stack.push(name); data().message = ''; }
     function back() { data().stack.pop(); data().message = ''; }
@@ -58,11 +71,13 @@
       if (d.changes) { membership = d.changes.membership; reading = d.changes.reading; total = membership + reading; }
       let title = total ? `有 ${total} 项变动等待同步` : pending ? '数据交换已完成' : '已同步';
       let detail = total ? `收藏与关注 ${membership} 项 · 阅读记录 ${reading} 项` : pending ? `${pending} 项取消操作待确认，其他数据已同步` : `上次同步 ${d.lastSync}`;
+      const showCountdown = currentDevice().settings.periodicSync && !busy && online && !d.issue;
+      if (showCountdown) title = countdownTitle();
       if (busy) { title = '正在同步'; detail = total ? `收藏与关注 ${membership} 项 · 阅读记录 ${reading} 项` : '正在接收其他设备的变动'; }
       else if (!online || d.issue) { title = d.issue === 'unknown' ? '正在核对同步结果' : '同步尚未完成'; detail = total ? `已保留 ${total} 项变动，稍后继续同步` : '已保存现有数据，可以稍后重试'; }
-      return `<div class="native-sync-status sync-status-single" data-testid="sync-status-row"><div class="sync-symbol">${view.icon('sync')}</div><div class="sync-status-copy"><strong>${title}</strong><small>${detail}</small></div></div>`;
+      return `<div class="native-sync-status sync-status-single" data-testid="sync-status-row"><div class="sync-symbol">${view.icon('sync')}</div><div class="sync-status-copy"><strong${showCountdown ? ' data-sync-countdown' : ''}>${title}</strong><small>${detail}</small></div></div>`;
     }
-    function didSync(ok) { if (ok) { data().changes = null; data().lastSync = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }); } }
+    function didSync(ok) { if (ok) { data().changes = null; data().lastSync = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }); resetCountdown(); } }
     function importPage() {
       const d = data(); const device = currentDevice(); const empty = d.importKind === 'empty';
       return `<h3>${empty ? '接收已有数据' : '合并此设备的数据'}</h3>` + note('两端数据将合并。本设备没有的收藏或关注，不代表取消其他设备的收藏或关注。') + `<div class="ix-comparison">${pair('本机收藏', empty ? '0 本' : `${device.favorites.length} 本`)}${pair('本机关注', empty ? '0 位' : `${device.following.length} 位`)}${pair('本机阅读记录', empty ? '0 条' : `${Object.keys(device.readPositions).length} 条`)}</div>` + note(empty ? '空书架不会上传取消操作。完成接收后即可继续阅读。' : '若旧备份中的收藏与其他设备当前的取消状态不同，将放入待手动处理列表。') + actions(action(empty ? '开始接收' : '开始合并', 'import-start', true));
@@ -209,7 +224,7 @@
       else if (actionName === 'import-done') { d.automatic = true; d.importReady = false; d.importProgress = null; home(); }
       else if (actionName === 'import-view') go(d.importReady ? 'imported' : 'importing');
       else if (actionName === 'reveal-key') d.showKey = !d.showKey;
-      else if (actionName === 'period') { currentDevice().settings.periodMinutes = Number(target.dataset.minutes); back(); }
+      else if (actionName === 'period') { currentDevice().settings.periodMinutes = Number(target.dataset.minutes); resetCountdown(); back(); }
       else if (actionName === 'device-save') { if (!d.fields.device.trim()) d.fields.device = currentDevice().name; currentDevice().name = d.fields.device; back(); }
       else if (actionName === 'disconnect-confirm') { const switching = screen() === 'switch'; d.connected = false; d.fields.key = ''; home(); if (switching) startAuth(); }
       else if (actionName === 'initialize') { d.mode = 'create'; d.issue = null; go('key'); }
@@ -225,7 +240,7 @@
       if (target.dataset.ixField === 'saved') data().saved = target.checked;
       else data().fields[target.dataset.ixField] = target.value;
     }
-    return { screen, title: () => titles[screen()], back, close, settings, settingsFooter, renderScreen, unconfigured, connected: () => data().connected, status, didSync, summary, handle, input, showScenario, startBatch, batchActive: () => data().batch && data().batch.done < data().batch.total,
+    return { screen, title: () => titles[screen()], back, close, settings, settingsFooter, renderScreen, unconfigured, connected: () => data().connected, status, didSync, resetCountdown, summary, handle, input, showScenario, startBatch, batchActive: () => data().batch && data().batch.done < data().batch.total,
       importStatus: () => data().importProgress != null ? row(data().importReady ? '合并已完成' : data().importPaused ? '合并尚未完成' : '正在合并数据', '查看进度与继续操作', 'import-view') : '',
       busy: () => data().issue === 'unknown' || (data().importProgress != null && !data().importPaused && !data().importReady),
     };

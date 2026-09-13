@@ -76,12 +76,12 @@ for (const platform of ['windows', 'android']) {
       const pending = await frame.locator('[data-confirm]').count();
       assert.ok(pending > 0);
       assert.equal(await frame.getByTestId('sync-status-row').count(), 1);
-      assert.match(await frame.getByTestId('sync-status-row').innerText(), /5 项变动/);
+      assert.match(await frame.getByTestId('sync-status-row').innerText(), /1小时后同步/);
       assert.match(await frame.getByTestId('sync-status-row').innerText(), /收藏与关注 3 项.*阅读记录 2 项/s);
       await frame.getByTestId('manual-sync').click();
       await frame.getByTestId('sync-result').waitFor();
       assert.equal(await frame.locator('[data-confirm]').count(), pending, '无需先确认取消就能同步');
-      assert.match(await frame.getByTestId('sync-status-row').innerText(), /数据交换已完成/);
+      assert.match(await frame.getByTestId('sync-status-row').innerText(), /取消操作待确认/);
       await fits();
       await frame.locator('[data-ignore]').first().click();
       assert.equal(await frame.locator('[data-ignore]').count(), pending - 1);
@@ -124,3 +124,52 @@ for (const platform of ['windows', 'android']) {
     } finally { await browser.close(); }
   });
 }
+
+test('定时同步倒计时：双端格式、时间推进、开关与周期变更', async () => {
+  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1180 } });
+    await page.addInitScript(() => {
+      window.demoNow = Date.now();
+      Date.now = () => window.demoNow;
+    });
+    await page.goto('file://' + path.resolve(__dirname, 'index.html').replace(/\\/g, '/'));
+    for (const platform of ['windows', 'android']) {
+      const frame = page.frameLocator('#preview-' + platform);
+      await frame.getByTestId('library-sync').click();
+      const title = frame.getByTestId('sync-status-row').locator('strong');
+      assert.equal(await title.innerText(), '1小时后同步');
+      for (const [minutes, expected] of [[1505, '1天1小时5分后同步'], [1440, '1天后同步'], [65, '1小时5分后同步'], [5, '5分后同步'], [0, '即将同步']]) {
+        await frame.locator('body').evaluate((_, remaining) => {
+          const app = window.__mihonSyncDemo;
+          app.state.ui.interactions.nextSyncAt = Date.now() + remaining * 60000;
+          app.render();
+        }, minutes);
+        assert.equal(await title.innerText(), expected);
+      }
+      await frame.locator('body').evaluate(() => {
+        window.__mihonSyncDemo.state.ui.interactions.nextSyncAt = Date.now() + 2 * 60000;
+        window.__mihonSyncDemo.render();
+        window.demoNow += 60000;
+      });
+      await frame.locator('[data-sync-countdown]').filter({ hasText: '1分后同步' }).waitFor();
+      await frame.getByTestId('sync-settings').click();
+      await frame.getByTestId('periodic-setting').click();
+      await frame.getByTestId('sync-settings-back').click();
+      assert.doesNotMatch(await title.innerText(), /后同步|即将同步/);
+      await frame.getByTestId('sync-settings').click();
+      await frame.getByTestId('periodic-setting').click();
+      await frame.getByTestId('ix-frequency').click();
+      await frame.locator('[data-minutes="1440"]').click();
+      await frame.getByTestId('sync-settings-back').click();
+      assert.equal(await title.innerText(), '1天后同步');
+      await frame.getByTestId('manual-sync').click();
+      assert.equal(await title.innerText(), '正在同步');
+      await frame.getByTestId('sync-result').waitFor();
+      assert.equal(await title.innerText(), '1天后同步');
+      await frame.getByTestId('sync-close').click();
+      await frame.getByTestId('library-sync').click();
+      assert.equal(await title.innerText(), '1天后同步');
+    }
+  } finally { await browser.close(); }
+});

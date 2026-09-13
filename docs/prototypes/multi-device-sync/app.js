@@ -436,7 +436,7 @@
     else if (action === 'sync-startup') scheduleSync('startup');
     else if (action === 'sync-periodic') scheduleSync('periodic');
     else if (action === 'startup-setting') { current.settings.startupSync = !current.settings.startupSync; notice(`启动自动同步已${current.settings.startupSync ? '开启' : '关闭'}。`); }
-    else if (action === 'periodic-setting') { current.settings.periodicSync = !current.settings.periodicSync; notice(`后台定期同步已${current.settings.periodicSync ? '开启' : '关闭'}。`); }
+    else if (action === 'periodic-setting') { current.settings.periodicSync = !current.settings.periodicSync; if (current.settings.periodicSync) interactions.resetCountdown(); notice(`后台定期同步已${current.settings.periodicSync ? '开启' : '关闭'}。`); }
     else if (action === 'filter') { state.ui.filter = !state.ui.filter; notice(state.ui.filter ? '筛选已展开：可查看未读、已下载和已开始。' : '筛选已收起。'); }
     else if (action === 'calendar') { state.ui.calendar = !state.ui.calendar; notice(state.ui.calendar ? '已打开即将更新提示。' : '已收起即将更新提示。'); }
     else if (action === 'mark-all') { markAllUpdatesRead(current.id); notice('本设备更新列表已全部标为已读。', 'success'); }
