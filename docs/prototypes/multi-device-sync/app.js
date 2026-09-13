@@ -38,9 +38,9 @@
   function markAllUpdatesRead(deviceId) {
     state.ui.readUpdates[deviceId] = UPDATE_IDS.slice();
   }
-  function pendingDecisionCount(device) { return device.confirmations.length + device.conflicts.length; }
+  function pendingDecisionCount(device) { return device.confirmations.length; }
   function syncWorkCount(device) {
-    return interactions.connected() ? pendingDecisionCount(device) + device.remoteSuggestions.length + interactions.count() : 0;
+    return interactions.connected() ? pendingDecisionCount(device) : 0;
   }
   function navIndicators() { return { unreadCount: unreadUpdateCount(currentDevice().id) }; }
   function navigateRoute(route) {
@@ -168,7 +168,7 @@
     const items = currentDevice().confirmations.filter(item => ids.has(item.id));
     const authors = items.filter(item => item.kind === 'author-remove').length;
     const manga = items.length - authors;
-    return `<div class="batch-review-overlay"><section class="batch-review" role="alertdialog" aria-modal="true" aria-labelledby="batch-review-title" aria-describedby="batch-review-detail" tabindex="-1"><h2 id="batch-review-title">${review.choice === 'confirm' ? '确认取消' : '忽略取消'} ${items.length} 项？</h2><p id="batch-review-detail">${manga} 本漫画的收藏，${authors} 位作者的关注。</p><p>${review.choice === 'confirm' ? '仅移除本设备的收藏与关注，阅读历史和阅读模式保留。' : '本设备保留收藏与关注，不会反向更改来源设备。'}</p><p class="sheet-footnote">仅处理本次选择；新到达的条目不会包含在内。冲突与阅读位置仍需逐项处理。</p><div class="batch-review-actions">${button('返回', 'data-action="batch-cancel" data-testid="batch-cancel"', 'm-button-text')}${button(review.choice === 'confirm' ? '确认取消' : '忽略这些操作', 'data-action="batch-run" data-testid="batch-run"', 'm-button-tonal')}</div></section></div>`;
+    return `<div class="batch-review-overlay"><section class="batch-review" role="alertdialog" aria-modal="true" aria-labelledby="batch-review-title" aria-describedby="batch-review-detail" tabindex="-1"><h2 id="batch-review-title">${review.choice === 'confirm' ? '在此设备取消' : '保留在此设备'} ${items.length} 项？</h2><p id="batch-review-detail">${manga} 本漫画的收藏，${authors} 位作者的关注。</p><p>${review.choice === 'confirm' ? '仅移除本设备的收藏与关注，阅读历史和阅读模式保留。' : '本设备保留收藏与关注，不会反向更改来源设备。'}</p><p class="sheet-footnote">仅处理本次选择；新到达的条目不会包含在内。其他变动照常同步。</p><div class="batch-review-actions">${button('返回', 'data-action="batch-cancel" data-testid="batch-cancel"', 'm-button-text')}${button(review.choice === 'confirm' ? '在此设备取消' : '保留在此设备', 'data-action="batch-run" data-testid="batch-run"', 'm-button-tonal')}</div></section></div>`;
   }
   function renderSyncHeader(settings) {
     const subpage = interactions.screen();
@@ -184,12 +184,12 @@
 
   function renderBatchTools() {
     if (!currentDevice().confirmations.length || state.ui.selecting || interactions.batchActive()) return '';
-    return `<div class="batch-tools">${button('多选', 'data-action="batch-select" data-testid="batch-select"', 'm-button-text')}<div class="batch-menu">${iconButton('more', '全部处理', 'data-action="batch-menu" data-testid="batch-menu" aria-expanded="' + Boolean(state.ui.batchMenu) + '"')}${state.ui.batchMenu ? `<div class="batch-menu-items">${button('全部确认取消', 'data-action="batch-all-confirm" data-testid="batch-all-confirm"', 'm-button-text')}${button('全部忽略取消', 'data-action="batch-all-ignore" data-testid="batch-all-ignore"', 'm-button-text')}</div>` : ''}</div></div>`;
+    return `<div class="batch-tools">${button('多选', 'data-action="batch-select" data-testid="batch-select"', 'm-button-text')}<div class="batch-menu">${iconButton('more', '全部处理', 'data-action="batch-menu" data-testid="batch-menu" aria-expanded="' + Boolean(state.ui.batchMenu) + '"')}${state.ui.batchMenu ? `<div class="batch-menu-items">${button('全部在此设备取消', 'data-action="batch-all-confirm" data-testid="batch-all-confirm"', 'm-button-text')}${button('全部保留在此设备', 'data-action="batch-all-ignore" data-testid="batch-all-ignore"', 'm-button-text')}</div>` : ''}</div></div>`;
   }
   function renderBatchBar() {
     if (!state.ui.selecting || state.ui.syncSettingsOpen) return '';
     const disabled = (state.ui.selectedIds || []).length ? '' : ' disabled';
-    return `<div class="batch-action-bar">${button('忽略所选', 'data-action="batch-ignore" data-testid="batch-ignore"' + disabled, 'm-button-text')}${button('确认所选取消', 'data-action="batch-confirm" data-testid="batch-confirm"' + disabled, 'm-button-tonal')}</div>`;
+    return `<div class="batch-action-bar">${button('保留所选', 'data-action="batch-ignore" data-testid="batch-ignore"' + disabled, 'm-button-text')}${button('在此设备取消所选', 'data-action="batch-confirm" data-testid="batch-confirm"' + disabled, 'm-button-tonal')}</div>`;
   }
 
   function renderSyncSheet() {
@@ -208,23 +208,22 @@
 
   function renderSyncPage() {
     if (!interactions.connected()) return interactions.unconfigured();
-    const current = currentDevice(); const pending = current.confirmations.length + current.conflicts.length + interactions.count();
+    const current = currentDevice();
+    const pending = current.confirmations.length;
     const pendingIds = new Set(current.pendingOutgoing);
     const uploads = state.shared.operations.filter(op => op.sourceDevice === current.id && pendingIds.has(op.id));
-    const favorites = uploads.filter(op => op.kind.startsWith('favorite-')).length;
-    const authors = uploads.filter(op => op.kind.startsWith('author-')).length;
-    const readings = uploads.filter(op => op.kind === 'read-position').length;
+    const membership = uploads.filter(op => op.kind.startsWith('favorite-') || op.kind.startsWith('author-')).length;
+    const reading = uploads.filter(op => op.kind === 'read-position').length;
     const result = state.ui.syncResult;
-    return `<section class="sync-content" data-testid="sync-panel">${state.ui.batchResult ? `<div class="snackbar-inline success" role="status" data-testid="batch-result">${esc(state.ui.batchResult)}</div>` : ''}<div class="native-sync-status"><div class="sync-symbol">${view.icon('sync')}</div><div class="sync-status-copy"><span class="section-kicker">当前设备 · ${esc(current.name)}</span><strong>${esc(statusText(current))}</strong><small>${state.online ? (state.shared.lastExchange ? `最近交换：${esc(state.shared.lastExchange)}` : '尚未交换') : '恢复在线后可以重试待上传操作'}</small></div><span class="sync-state-dot ${activeStatus(current)}"></span></div><div class="sync-action-row">${button('立即同步', 'data-action="sync-manual" data-testid="manual-sync"', 'm-button-primary')}</div>${result ? `<div class="snackbar-inline ${result.ok ? 'success' : 'failure'}" data-testid="sync-result">${view.icon(result.ok ? 'check' : 'info')}<span>${esc(result.message)}</span></div>` : ''}${interactions.summary()}${interactions.importStatus()}${pending ? `<div class="sync-list pending-list">${renderPendingToolbar(pending)}${current.confirmations.map(renderConfirmation).join('')}${current.conflicts.map(renderConflict).join('')}${interactions.items()}</div>` : '<div class="sync-empty">当前没有待手动处理的同步</div>'}<div class="sync-list"><div class="list-section-label">同步状态</div>${renderSyncRow('cloud', '待上传操作', `${current.pendingOutgoing.length} 项`, 'pending')}${renderSyncRow('bookmark', '收藏与关注', `${favorites} 条收藏 · ${authors} 条关注`, 'normal')}${renderSyncRow('reader', '阅读记录', `${readings} 条阅读记录`, current.remoteSuggestions.length ? 'attention' : 'normal')}</div>${current.remoteSuggestions.length ? renderRemoteSuggestion(current) : ''}</section>`;
-  }
-
-  function renderRemoteSuggestion(current) {
-    const item = current.remoteSuggestions[0];
-    return `<div class="remote-suggestion" data-testid="remote-reading-suggestion"><div class="row-leading attention">${view.icon('reader')}</div><div class="row-copy"><strong>远端阅读位置：第 ${esc(item.position.page)} 页</strong><small>当前正在阅读时不会自动跳页，可在这里显式采用。</small></div>${button('采用此位置', 'data-action="adopt-remote" data-testid="adopt-remote"', 'm-button-tonal')}</div>`;
-  }
-
-  function renderSyncRow(iconName, title, value, stateName) {
-    return `<div class="native-list-row"><span class="row-leading ${stateName}">${view.icon(iconName)}</span><div class="row-copy"><strong>${title}</strong></div><span class="row-value">${value}</span></div>`;
+    const busy = state.ui.busy && state.ui.busyDeviceId === current.id;
+    return `<section class="sync-content" data-testid="sync-panel">
+      ${interactions.status({ total: current.pendingOutgoing.length, membership, reading, pending, busy, online: state.online })}
+      <div class="sync-action-row">${button('立即同步', 'data-action="sync-manual" data-testid="manual-sync"', 'm-button-primary')}</div>
+      ${result ? `<div class="snackbar-inline ${result.ok ? 'success' : 'failure'}" data-testid="sync-result">${view.icon(result.ok ? 'check' : 'info')}<span>${esc(result.message)}</span></div>` : ''}
+      ${interactions.summary()}${interactions.importStatus()}
+      ${pending ? `<div class="sync-list pending-list">${renderPendingToolbar(pending)}${current.confirmations.map(renderConfirmation).join('')}</div>` : '<div class="sync-empty">当前没有待确认的取消操作</div>'}
+      <div class="sync-record-link">${button('查看同步记录', 'data-action="ix-activity" data-testid="ix-activity"', 'm-button-text')}</div>
+    </section>`;
   }
 
   function renderSetting(action, title, checked, detail) {
@@ -272,11 +271,7 @@
     const isAuthor = item.kind === 'author-remove';
     const selected = (state.ui.selectedIds || []).includes(item.id);
     const title = isAuthor ? `取消关注「${creator(item.objectId).name}」` : `取消收藏《${book(item.objectId).title}》`;
-    return `<article class="native-confirmation ${selected ? 'is-selected' : ''}" data-pending-id="${esc(item.id)}" data-testid="confirmation-${esc(item.id)}"><button class="confirmation-icon selection-toggle" role="checkbox" aria-label="选择${esc(title)}" aria-checked="${selected}" data-select-id="${esc(item.id)}" data-testid="select-${esc(item.id)}">${view.icon(selected ? 'check' : isAuthor ? 'authors' : 'bookmark')}</button><div class="row-copy"><strong>${esc(title)}</strong><small>来自 ${esc(item.sourceName)} · 确认前保留本设备状态</small></div>${state.ui.selecting ? '' : `<div class="confirmation-actions">${button('确认', `data-confirm="${esc(item.id)}" data-testid="confirm-${esc(item.id)}"`, 'm-button-danger')}${button('忽略', `data-ignore="${esc(item.id)}" data-testid="ignore-${esc(item.id)}"`, 'm-button-text')}</div>`}</article>`;
-  }
-
-  function renderConflict(item) {
-    return `<article class="native-confirmation conflict-item" data-testid="conflict-${esc(item.id)}"><span class="confirmation-icon conflict">${view.icon('sync')}</span><div class="row-copy"><strong>${esc(item.summary)}</strong><small>请保留本地决定，或采用 ${esc(item.remoteDevice)} 的决定</small></div><div class="confirmation-actions">${button('保留本地', `data-conflict="${esc(item.id)}" data-choice="local"`, 'm-button-text')}${button('采用远端', `data-conflict="${esc(item.id)}" data-choice="remote"`, 'm-button-tonal')}</div></article>`;
+    return `<article class="native-confirmation ${selected ? 'is-selected' : ''}" data-pending-id="${esc(item.id)}" data-testid="confirmation-${esc(item.id)}"><button class="confirmation-icon selection-toggle" role="checkbox" aria-label="选择${esc(title)}" aria-checked="${selected}" data-select-id="${esc(item.id)}" data-testid="select-${esc(item.id)}">${view.icon(selected ? 'check' : isAuthor ? 'authors' : 'bookmark')}</button><div class="row-copy"><strong>${esc(title)}</strong><small>来自 ${esc(item.sourceName)} · 确认前保留本设备状态</small></div>${state.ui.selecting ? '' : `<div class="confirmation-actions">${button('在此设备取消', `data-confirm="${esc(item.id)}" data-testid="confirm-${esc(item.id)}"`, 'm-button-danger')}${button('保留在此设备', `data-ignore="${esc(item.id)}" data-testid="ignore-${esc(item.id)}"`, 'm-button-text')}</div>`}</article>`;
   }
 
   function renderLibrary() {
@@ -398,6 +393,11 @@
     const timer = window.setTimeout(() => {
       if (state.ui.timerId !== timer) return;
       const result = model.triggerSync(state, deviceId, trigger);
+      interactions.didSync(result.ok);
+      if (result.ok) {
+        const count = model.getDevice(state, deviceId).confirmations.length;
+        result.message = '同步完成，本设备的变动已同步。' + (count ? `还有 ${count} 项取消操作待确认。` : '');
+      }
       if (state.ui.syncOpen && state.selectedDevice === deviceId) state.ui.syncResult = result;
       state.ui.timerId = null; state.ui.busy = false; state.ui.busyDeviceId = null; notice(result.message, result.ok ? 'success' : 'failure'); render();
     }, 420);

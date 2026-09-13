@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GitHub 设备授权 · 本地演示</title>
+  <style>
+    :root { color-scheme: dark; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; background: #0d1117; color: #f0f6fc; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; }
+    .boundary { padding: 12px; border: 1px solid #3d444d; border-radius: 8px; color: #a6b4c4; font-size: 12px; line-height: 1.6; }
+    main { max-width: 388px; margin: 40px auto; }
+    .brand { text-align: center; font-size: 26px; font-weight: 600; }
+    h1 { margin: 24px 0; font-size: 23px; font-weight: 400; text-align: center; }
+    h2 { font-size: 16px; }
+    form, .card { padding: 24px; border: 1px solid #3d444d; border-radius: 8px; background: #151b23; }
+    label { display: grid; gap: 12px; font-size: 14px; }
+    input, select { width: 100%; min-height: 44px; border: 1px solid #59636e; border-radius: 6px; padding: 10px; background: #0d1117; color: inherit; font: inherit; }
+    input { letter-spacing: 3px; font-size: 21px; text-align: center; text-transform: uppercase; }
+    button { width: 100%; min-height: 44px; margin-top: 18px; border: 1px solid #3d444d; border-radius: 6px; color: #fff; background: #238636; font: inherit; font-size: 14px; cursor: pointer; }
+    button.secondary { background: transparent; }
+    p { font-size: 13px; line-height: 1.7; color: #a6b4c4; }
+    #message { color: #e3b341; font-size: 13px; }
+    .permission { margin: 20px 0; padding: 14px 0; border-block: 1px solid #3d444d; }
+    .permission strong { font-size: 14px; }
+    .permission p { margin-bottom: 0; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #58a6ff; outline-offset: 3px; }
+  </style>
+</head>
+<body>
+  <aside class="boundary">GitHub 授权流程演示 · 这是本地模拟页面，不是 GitHub 网站。无需真实账号，不收集密码或凭据。</aside>
+  <main>
+    <div class="brand">GitHub</div>
+    <section id="code-step">
+      <h1>连接你的设备</h1>
+      <form id="code-form">
+        <label>设备验证码<input id="device-code" maxlength="9" placeholder="XXXX-XXXX" autocomplete="off" required autofocus></label>
+        <p>输入 Mihon 中显示的验证码。演示码：DEMO-CODE</p>
+        <div id="message" role="status"></div>
+        <button type="submit">继续</button>
+      </form>
+    </section>
+    <section id="grant-step" hidden>
+      <h1>授权 Mihon</h1>
+      <div class="card">
+        <h2>已登录为 reader</h2>
+        <label>同步使用的私有仓库<select id="space"><option value="existing">reader/mihon-sync · 已有同步空间</option><option value="empty">reader/mihon-sync-new · 新建私有仓库示例</option></select></label>
+        <div class="permission"><strong>读取和写入这个仓库中的同步数据</strong><p>仅允许访问所选的同步仓库。</p></div>
+        <p>此处用示例仓库演示选择及授权；正式首次设置需要在 GitHub 完成专用私有仓库的创建或选择。</p>
+        <button id="allow">授权 Mihon</button>
+        <button id="deny" class="secondary">取消授权</button>
+      </div>
+    </section>
+    <section id="done-step" class="card" hidden>
+      <h1 id="done-title">设备已连接</h1>
+      <p>Mihon 中的页面已自动更新，可以返回继续操作。</p>
+      <button id="return">返回 Mihon</button>
+    </section>
+  </main>
+  <script>
+    'use strict';
+    const params = new URLSearchParams(location.search);
+    if (params.has('reconnect')) document.getElementById('space').disabled = true;
+    document.getElementById('code-form').addEventListener('submit', event => {
+      event.preventDefault();
+      if (document.getElementById('device-code').value.trim().toUpperCase() !== 'DEMO-CODE') {
+        document.getElementById('message').textContent = '请使用 Mihon 中显示的演示验证码。'; return;
+      }
+      document.getElementById('code-step').hidden = true;
+      document.getElementById('grant-step').hidden = false;
+      document.getElementById('space').focus();
+    });
+    function finish(allowed) {
+      window.opener?.postMessage({ type: 'mihon-demo-authorization', request: params.get('request'), allowed, space: document.getElementById('space').value }, location.protocol === 'file:' ? '*' : location.origin);
+      document.getElementById('grant-step').hidden = true;
+      document.getElementById('done-step').hidden = false;
+      document.getElementById('done-title').textContent = allowed ? '设备已连接' : '本次授权已取消';
+    }
+    document.getElementById('allow').addEventListener('click', () => finish(true));
+    document.getElementById('deny').addEventListener('click', () => finish(false));
+    document.getElementById('return').addEventListener('click', () => window.close());
+  </script>
+</body>
+</html>

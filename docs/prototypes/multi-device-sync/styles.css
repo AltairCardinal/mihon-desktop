@@ -237,6 +237,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .ix-pending .m-button { min-height: 44px; flex-shrink: 0; }
 .ix-pending .row-copy small { white-space: normal; line-height: 1.5; }
 .ix-pending .row-leading { flex-shrink: 0; }
+.ix-device-code { padding: 22px 12px; margin: 24px 0; border: 1px solid var(--outline-variant); border-radius: 12px; background: var(--surface); text-align: center; font-size: 28px; font-weight: 600; letter-spacing: 4px; user-select: all; }
+.sync-status-single { min-height: 92px; }
+.sync-status-single .sync-status-copy { flex: 1; min-width: 0; }
+.sync-status-single .sync-status-copy strong { font-size: 17px; }
+.sync-status-single .sync-status-copy small { white-space: normal; font-size: 12px; line-height: 1.6; }
+.sync-record-link { margin-top: 20px; border-top: 1px solid var(--outline-variant); padding-top: 12px; }
+.sync-record-link .m-button { color: var(--primary); font-size: 12px; }
+.ix-activity-entry { display: flex; align-items: flex-start; gap: 12px; padding: 20px 0; border-bottom: 1px solid var(--outline-variant); }
+.ix-activity-entry .row-leading { flex-shrink: 0; }
+.ix-activity-entry strong { font-size: 14px; font-weight: 500; }
+.ix-activity-entry p { margin: 6px 0 0; font-size: 12px; line-height: 1.7; color: var(--outline); }
+.sync-panel-sheet .confirmation-actions { flex-wrap: wrap; justify-content: flex-end; }
+.sync-panel-sheet .confirmation-actions .m-button { font-size: 12px; min-height: 38px; padding-inline: 10px; }
 @media (max-width: 700px) {
   .parallel-preview { padding: 12px; }
   .parallel-preview .preview-tool-panel { align-items: flex-start; }
