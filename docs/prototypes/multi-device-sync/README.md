@@ -65,3 +65,4 @@ node --test docs/prototypes/multi-device-sync/ui-browser.test.cjs docs/prototype
 界面还原依据仓库中的 `app-desktop/src/main/kotlin/mihon/desktop/ui/home/HomeScreen.kt`、`app-desktop/src/main/kotlin/mihon/desktop/ui/updates/UpdatesTab.kt`、`app-desktop/src/main/kotlin/mihon/desktop/ui/authors/AuthorsTab.kt`、`app/src/main/java/eu/kanade/tachiyomi/ui/home/HomeScreen.kt`、`app/src/main/java/eu/kanade/tachiyomi/ui/browse/BrowseTab.kt`、`app/src/main/java/eu/kanade/presentation/updates/UpdatesScreen.kt` 和 `presentation-theme/src/commonMain/kotlin/eu/kanade/presentation/theme/colorscheme/TachiyomiColorScheme.kt`。颜色使用 Tachiyomi 默认浅色/深色主题；图标为本地 SVG Material 路径。
 
 收藏、确认、去重、冲突、阅读位置和离线待发送由 `sync-model.js` 内存模型驱动。刷新页面会重新建立示例状态；没有持久化、真实远端、系统后台调度、真实凭据、跨源匹配、完整历史迁移、真实下载或漫画图片。Android 手机预览是本地视口原型，不能代替真实 Android 构建；Windows 窗口标题和控件是原应用外观示意。
+- 同步结果和批量处理结果属于本次打开面板的临时通知。收起后清除，重开不回放；关闭期间完成的后台同步也不补播通知。进入设置再返回仍保留本次通知。业务层最近同步结果、待处理条目和待发送操作不因关闭面板而删除。

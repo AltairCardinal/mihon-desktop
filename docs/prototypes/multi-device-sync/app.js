@@ -202,7 +202,7 @@
 
   function renderSyncPage() {
     const current = currentDevice(); const pending = current.confirmations.length + current.conflicts.length;
-    const result = current.lastResult;
+    const result = state.ui.syncResult;
     return `<section class="sync-content" data-testid="sync-panel">${state.ui.batchResult ? `<div class="snackbar-inline success" role="status" data-testid="batch-result">${esc(state.ui.batchResult)}</div>` : ''}<div class="native-sync-status"><div class="sync-symbol">${view.icon('sync')}</div><div class="sync-status-copy"><span class="section-kicker">当前设备 · ${esc(current.name)}</span><strong>${esc(statusText(current))}</strong><small>${state.online ? (state.shared.lastExchange ? `最近交换：${esc(state.shared.lastExchange)}` : '尚未交换') : '恢复在线后可以重试待发送操作'}</small></div><span class="sync-state-dot ${activeStatus(current)}"></span></div><div class="sync-action-row">${button('立即同步', 'data-action="sync-manual" data-testid="manual-sync"', 'm-button-primary')}</div>${result ? `<div class="snackbar-inline ${result.ok ? 'success' : 'failure'}" data-testid="sync-result">${view.icon(result.ok ? 'check' : 'info')}<span>${esc(result.message)}</span></div>` : ''}${pending ? `<div class="sync-list pending-list">${renderPendingToolbar(pending)}${current.confirmations.map(renderConfirmation).join('')}${current.conflicts.map(renderConflict).join('')}</div>` : '<div class="sync-empty">当前设备没有待确认项目</div>'}<div class="sync-list"><div class="list-section-label">同步状态</div>${renderSyncRow('cloud', '待发送操作', `${current.pendingOutgoing.length} 项`, current.pendingOutgoing.length ? '等待交换' : '没有本地操作', 'pending')}${renderSyncRow('bookmark', '收藏与关注', `${current.favorites.length} 个收藏 · ${current.following.length} 位作者`, '从书架、漫画详情或作者详情产生', 'normal')}${renderSyncRow('reader', '阅读位置', `${current.readHistory.length} 条阅读记录`, current.remoteSuggestions.length ? '有远端位置提示' : '阅读模式保持本设备独立', current.remoteSuggestions.length ? 'attention' : 'normal')}</div>${current.remoteSuggestions.length ? renderRemoteSuggestion(current) : ''}</section>`;
   }
 
@@ -231,7 +231,7 @@
     model.resetDemo(state);
     state.ui = { ...ui, busy: false, timerId: null, busyDeviceId: null, route: 'library', detail: null, reader: false, syncOpen: true, syncSettingsOpen: false, syncScroll: 0 };
     state.selectedDevice = deviceId;
-    clearBatchSelection(); state.ui.batchResult = null;
+    clearBatchSelection(); state.ui.batchResult = null; state.ui.syncResult = null;
     const sourceId = deviceId === 'desktop-b' ? 'phone-a' : 'desktop-b';
     const target = currentDevice();
     target.confirmations.slice().forEach(item => model.ignoreCancellation(state, deviceId, item.id));
@@ -350,6 +350,7 @@
   }
 
   function render() {
+    if (!state.ui.syncOpen) { state.ui.syncResult = null; state.ui.batchResult = null; }
     const liveIds = new Set(currentDevice().confirmations.map(item => item.id));
     const previousSelected = state.ui.selectedIds || [];
     state.ui.selectedIds = previousSelected.filter(id => liveIds.has(id));
@@ -379,13 +380,14 @@
     const timer = window.setTimeout(() => {
       if (state.ui.timerId !== timer) return;
       const result = model.triggerSync(state, deviceId, trigger);
+      if (state.ui.syncOpen && state.selectedDevice === deviceId) state.ui.syncResult = result;
       state.ui.timerId = null; state.ui.busy = false; state.ui.busyDeviceId = null; notice(result.message, result.ok ? 'success' : 'failure'); render();
     }, 420);
     state.ui.timerId = timer;
   }
 
   function switchPlatform(platform) {
-    clearBatchSelection(); state.ui.batchResult = null;
+    clearBatchSelection(); state.ui.batchResult = null; state.ui.syncResult = null;
     state.ui.syncOpen = false; state.ui.syncSettingsOpen = false;
     if (state.ui.reader) model.setReadingActive(state, state.selectedDevice, false);
     state.ui.platform = platform; state.selectedDevice = platform === 'windows' ? 'desktop-b' : 'phone-a'; state.ui.detail = null; state.ui.reader = false; state.ui.route = 'library'; state.ui.browseTab = 'sources';
@@ -440,7 +442,7 @@
     else if (action === 'batch-cancel') state.ui.batchReview = null;
     else if (action === 'batch-run') runBatch();
     else if (action === 'many-pending') loadManyPending();
-    else if (action === 'open-sync') { clearBatchSelection(); state.ui.syncOpen = true; state.ui.syncSettingsOpen = false; state.ui.syncScroll = 0; }
+    else if (action === 'open-sync') { clearBatchSelection(); state.ui.syncResult = null; state.ui.batchResult = null; state.ui.syncOpen = true; state.ui.syncSettingsOpen = false; state.ui.syncScroll = 0; }
     else if (action === 'close-sync') { clearBatchSelection(); state.ui.syncOpen = false; state.ui.syncSettingsOpen = false; }
     else if (action === 'sync-settings') state.ui.syncSettingsOpen = true;
     else if (action === 'close-sync-settings') state.ui.syncSettingsOpen = false;

@@ -131,3 +131,44 @@ test('120项待处理：长列表处理、设置同面板返回与滚动位置�
     }
   } finally { await browser.close(); }
 });
+
+
+test('临时通知仅限本次面板：重开清空、设置返回保留、后台结果不回放', async () => {
+  const browser = await chromium.launch({channel:'chrome',headless:true});
+  try {
+    for (const width of [1024,320]) {
+      const page = await browser.newPage({viewport:{width,height:900}});
+      await page.goto(url);
+      if (width === 320) {
+        await page.getByTestId('preview-tools').locator('summary').click();
+        await page.getByTestId('platform-android').click();
+      }
+      await page.getByTestId('library-sync').click();
+      await page.getByTestId('manual-sync').click();
+      await page.waitForFunction(() => !window.__mihonSyncDemo.state.ui.busy);
+      assert.equal(await page.getByTestId('sync-result').count(),1);
+      await page.getByTestId('sync-settings').click();
+      await page.getByTestId('sync-settings-back').click();
+      assert.equal(await page.getByTestId('sync-result').count(),1);
+      await page.getByTestId('sync-close').click();
+      await page.getByTestId('library-sync').click();
+      assert.equal(await page.getByTestId('sync-result').count(),0,'重新打开不显示旧同步通知');
+      assert.equal(await page.evaluate(()=>Boolean(window.__mihonSyncDemo.state.devices[window.__mihonSyncDemo.state.selectedDevice].lastResult)),true);
+      await page.getByTestId('manual-sync').click();
+      await page.getByTestId('sync-scrim').click({position:{x:5,y:5}});
+      await page.waitForFunction(() => !window.__mihonSyncDemo.state.ui.busy);
+      await page.getByTestId('library-sync').click();
+      assert.equal(await page.getByTestId('sync-result').count(),0,'关闭期间完成的结果不回放');
+      await page.getByTestId('preview-tools').locator('summary').click();
+      await page.getByTestId('many-pending').click();
+      await page.getByTestId('batch-menu').click();
+      await page.getByTestId('batch-all-ignore').click();
+      await page.getByTestId('batch-run').click();
+      assert.equal(await page.getByTestId('batch-result').count(),1);
+      await page.keyboard.press('Escape');
+      await page.getByTestId('library-sync').click();
+      assert.equal(await page.getByTestId('batch-result').count(),0,'批量处理通知也不回放');
+      await page.close();
+    }
+  } finally {await browser.close();}
+});
