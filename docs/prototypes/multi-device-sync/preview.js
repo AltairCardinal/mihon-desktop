@@ -29,7 +29,8 @@
       <div class="tool-group"><span>双端主题</span><div class="tool-choice"><button class="m-button" data-theme="light" data-testid="theme-light">浅色</button><button class="m-button is-selected" data-theme="dark" data-testid="theme-dark">深色</button></div></div>
       <div class="tool-group"><label for="trigger-device">触发设备</label><select id="trigger-device" aria-label="触发设备"><option value="windows">电脑 B</option><option value="android">手机 A</option></select><button class="m-button" data-trigger="startup" data-testid="startup-sync">模拟启动同步</button><button class="m-button" data-trigger="periodic" data-testid="periodic-sync">模拟定期到期</button></div>
       <div class="tool-group tool-actions"><button class="m-button" data-command="network" data-testid="network-toggle">切换离线</button><button class="m-button" data-command="many" data-testid="many-pending">120 项待处理</button><button class="m-button tool-reset" data-command="reset" data-testid="reset-demo">重置演示</button></div>
-      <small class="preview-boundary">两端可独立操作。同步时，先在来源端上传，再在另一端同步接收。大量待处理示例显示在所选设备。</small>
+      <div class="tool-group"><label for="interaction-scene">交互场景</label><select id="interaction-scene" aria-label="交互场景"><option value="mixed">多种待手动处理事项</option><option value="setup">首次设置同步</option><option value="import">已有数据首次合并</option><option value="empty-device">空设备加入</option><option value="interrupted">合并中断与继续</option><option value="network">连接暂时中断</option><option value="access">令牌失效或权限不足</option><option value="key">恢复密钥不匹配</option><option value="empty">空仓库待初始化</option><option value="unknown">上传结果待核对</option><option value="batch">批量部分完成</option></select><button class="m-button" data-command="scene" data-testid="show-interaction-scene">显示场景</button></div>
+      <small class="preview-boundary">场景显示在所选设备。新增流程使用模拟结果，仅供交互审阅；凭据可填写任意示例文字，请勿输入真实令牌或密钥。</small>
     </div>
   </details><div class="parallel-scroll"><div class="device-pair"></div></div>`;
 
@@ -50,7 +51,7 @@
       frame.id = 'preview-' + platform;
       frame.dataset.platform = platform;
       frame.title = label.textContent;
-      frame.srcdoc = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="./styles.css"></head><body><div id="app" class="app-shell"></div><script src="./ui-view.js"></script><script src="./app.js"></script></body></html>';
+      frame.srcdoc = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="./styles.css"></head><body><div id="app" class="app-shell"></div><script src="./ui-view.js"></script><script src="./sync-interactions.js"></script><script src="./app.js"></script></body></html>';
       frame.addEventListener('load', () => { if (afterLoad) afterLoad(frame); }, { once: true });
       column.append(label, frame);
       pair.append(column);
@@ -67,6 +68,8 @@
       apps().forEach(app => { app.state.ui.theme = button.dataset.theme; app.render(false); });
     } else if (button.dataset.trigger && target) {
       target.scheduleSync(button.dataset.trigger);
+    } else if (button.dataset.command === 'scene' && target) {
+      target.showInteractionScenario(root.querySelector('#interaction-scene').value);
     } else if (button.dataset.command === 'network') {
       model.setOnline(sharedState, !sharedState.online);
       button.textContent = sharedState.online ? '切换离线' : '恢复在线';

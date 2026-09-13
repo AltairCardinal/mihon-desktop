@@ -44,13 +44,15 @@ test('章节式多选：勾选、全选、反选、取消及批量确认/忽略'
    assert.equal(await p.getByTestId('selection-count').textContent(),'已选 2 项');
    await p.getByTestId('batch-confirm').click();
    await p.getByTestId('batch-run').click();
+   await p.getByTestId('ix-batch-dismiss').waitFor();
    assert.equal(await p.locator('.native-confirmation').count(),118);
-   assert.match(await p.getByTestId('batch-result').textContent(),/2 项/);
+   assert.match(await p.getByTestId('ix-batch-progress').textContent(),/2 项/);
    await p.getByTestId('batch-menu').click();
    await p.getByTestId('batch-all-ignore').click();
    assert.match(await p.getByRole('alertdialog').textContent(),/78 本漫画/);
    assert.match(await p.getByRole('alertdialog').textContent(),/40 位作者/);
    await p.getByTestId('batch-run').click();
+   await p.getByTestId('ix-batch-dismiss').waitFor();
    assert.equal(await p.locator('.native-confirmation').count(),0);
    assert.equal(await p.getByTestId('library-sync-count').count(),0);
    const device=await p.evaluate(()=>window.__mihonSyncDemo.state.devices[window.__mihonSyncDemo.state.selectedDevice]);
@@ -90,6 +92,7 @@ test('长按范围选择及全部确认的快照不吞入新事项', async()=>{
   d.model.syncDevice(d.state,'phone-a','manual');d.model.syncDevice(d.state,id,'manual');d.render();
  });
  await p.getByTestId('batch-run').click();
+ await p.getByTestId('ix-batch-dismiss').waitFor();
  assert.equal(await p.locator('.native-confirmation').count(),1);
  assert.equal(await p.getByTestId('library-sync-count').textContent(),'1');
  const remaining=await p.evaluate(()=>window.__mihonSyncDemo.state.devices['desktop-b'].confirmations[0].objectId);
@@ -105,8 +108,9 @@ test('长按范围选择及全部确认的快照不吞入新事项', async()=>{
   d.model.syncDevice(d.state,'desktop-b','manual');d.render();
  });
  await p.getByTestId('batch-run').click();
+ await p.getByTestId('ix-batch-dismiss').waitFor();
  assert.equal(await p.locator('.native-confirmation').count(),0);
- assert.match(await p.getByTestId('batch-result').textContent(),/已失效/);
+ assert.match(await p.getByTestId('ix-batch-progress').textContent(),/跳过 1 项/);
  assert.equal(await p.evaluate(()=>window.__mihonSyncDemo.state.devices['desktop-b'].favorites.includes('manga-new')),true);
  await p.close();
  }finally{await b.close();}
