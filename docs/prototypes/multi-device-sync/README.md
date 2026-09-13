@@ -32,6 +32,7 @@ node --test docs/prototypes/multi-device-sync/ui-browser.test.cjs
 - 从书架漫画卡片、更新条目或作者详情进入漫画详情；在详情中收藏、取消收藏和开始阅读。作者可从 Windows 作者页或 Android 浏览 → 作者列表进入详情并关注。
 - 更新页面保留平台差异：Windows 使用 48×68 封面、卡片行和筛选/日历/全部已读/刷新动作；Android 使用 56dp 紧凑行、44×44 封面和筛选/日历/刷新动作。
 - 更新与同步是同一更新入口内的平级页签。同步页面沿用各端 TopAppBar、列表行、按钮、Snackbar 和开关语言；手动同步在产品页触发，启动/定期同步从应用外预览工具触发，并保留接收端取消确认、忽略、冲突和离线重试。
+- 同步页右上角使用 Material Settings 齿轮，点击打开底部设置面板。启动/定期开关仅影响当前设备，修改立即生效；支持关闭按钮、点击遮罩、Escape 和下滑抓手关闭，关闭后焦点回到齿轮。后台同步完成不会关闭面板。
 - 更新底栏的右上角显示当前设备未读更新数（超过 99 显示 99+），左下角独立显示同步失败、待确认、执行中或待发送状态；待确认使用柔和主题色清单图标。角标只作状态提示，更新页签内的单条/全部已读、确认/忽略和成功重试分别清除对应状态，后台状态变化不会强制切页。
 
 ## 建议演示顺序
@@ -44,6 +45,8 @@ node --test docs/prototypes/multi-device-sync/ui-browser.test.cjs
 6. 在应用外工具条切换离线，继续收藏或阅读；恢复在线后先同步来源端，再同步接收端。待发送操作会保留到重试成功。
 
 ## 源码对照与边界
+
+同步设置面板参考 Android 书架筛选使用的 `LibrarySettingsDialog.kt`、`TabbedDialog.kt` 和 `presentation-core/src/main/java/tachiyomi/presentation/core/components/AdaptiveSheet.kt`：采用顶部圆角、surfaceContainerHigh 表面、24px 内容边距和最大 460px 宽度。按本次设计要求，Windows 与 Android 原型均从应用窗口底部弹出；这不表示 Windows 原有书架筛选已经采用底部面板。齿轮使用对应 `Icons.Default.Settings` 的 Material Filled SVG 路径。
 
 界面还原依据仓库中的 `app-desktop/src/main/kotlin/mihon/desktop/ui/home/HomeScreen.kt`、`app-desktop/src/main/kotlin/mihon/desktop/ui/updates/UpdatesTab.kt`、`app-desktop/src/main/kotlin/mihon/desktop/ui/authors/AuthorsTab.kt`、`app/src/main/java/eu/kanade/tachiyomi/ui/home/HomeScreen.kt`、`app/src/main/java/eu/kanade/tachiyomi/ui/browse/BrowseTab.kt`、`app/src/main/java/eu/kanade/presentation/updates/UpdatesScreen.kt` 和 `presentation-theme/src/commonMain/kotlin/eu/kanade/presentation/theme/colorscheme/TachiyomiColorScheme.kt`。颜色使用 Tachiyomi 默认浅色/深色主题；图标为本地 SVG Material 路径。
 

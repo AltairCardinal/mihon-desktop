@@ -4,6 +4,7 @@
   const model = window.MihonSyncModel;
   const view = window.MihonSyncView;
   const root = document.getElementById('app');
+  let sheetDrag = null;
   const state = model.createDemoState();
   state.selectedDevice = 'desktop-b';
   const UPDATE_IDS = ['manga-star', 'manga-dawn', 'manga-night'];
@@ -100,7 +101,7 @@
     const shell = platform === 'android' ? 'android-shell' : 'windows-shell';
     const frame = platform === 'android' ? `<div class="android-statusbar"><span>9:41</span><span class="status-icons">${view.icon('wifi')}${view.icon('signal')}${view.icon('battery')}</span></div>` : `<div class="desktop-windowbar"><span class="desktop-title"><img src="./mihon-desktop.png" alt="Mihon Desktop 图标"><span>Mihon Desktop 0.11.19.33 · 本地原型</span></span><span class="window-controls" aria-hidden="true"><i></i><i></i><i class="window-close"></i></span></div>`;
     const nav = state.ui.reader || (state.ui.detail && platform === 'android') ? '' : view.renderNav(spec(), state.ui.route, navIndicators());
-    return `<section class="app-window ${shell}" data-platform="${platform}" data-testid="app-window">${frame}<div class="app-body">${content}</div>${nav}${platform === 'android' ? '<div class="gesture-area" aria-hidden="true"></div>' : ''}</section>`;
+    return `<section class="app-window ${shell}" data-platform="${platform}" data-testid="app-window">${frame}<div class="app-body">${content}</div>${nav}${platform === 'android' ? '<div class="gesture-area" aria-hidden="true"></div>' : ''}${state.ui.syncSettingsOpen ? renderSyncSettingsSheet() : ''}</section>`;
   }
 
   function renderUpdateTabs() {
@@ -145,7 +146,7 @@
   function renderSyncPage() {
     const current = currentDevice(); const pending = current.confirmations.length + current.conflicts.length;
     const result = current.lastResult;
-    return `<section class="sync-content" data-testid="sync-panel"><div class="native-sync-status"><div class="sync-symbol">${view.icon('sync')}</div><div class="sync-status-copy"><span class="section-kicker">当前设备 · ${esc(current.name)}</span><strong>${esc(statusText(current))}</strong><small>${state.online ? (state.shared.lastExchange ? `最近交换：${esc(state.shared.lastExchange)}` : '尚未交换') : '恢复在线后可以重试待发送操作'}</small></div><span class="sync-state-dot ${activeStatus(current)}"></span></div><div class="sync-action-row">${button('立即同步', 'data-action="sync-manual" data-testid="manual-sync"', 'm-button-primary')}</div>${result ? `<div class="snackbar-inline ${result.ok ? 'success' : 'failure'}" data-testid="sync-result">${view.icon(result.ok ? 'check' : 'info')}<span>${esc(result.message)}</span></div>` : ''}<div class="sync-list"><div class="list-section-label">同步状态</div>${renderSyncRow('cloud', '待发送操作', `${current.pendingOutgoing.length} 项`, current.pendingOutgoing.length ? '等待交换' : '没有本地操作', 'pending')}${renderSyncRow('bookmark', '收藏与关注', `${current.favorites.length} 个收藏 · ${current.following.length} 位作者`, '从书架、漫画详情或作者详情产生', 'normal')}${renderSyncRow('reader', '阅读位置', `${current.readHistory.length} 条阅读记录`, current.remoteSuggestions.length ? '有远端位置提示' : '阅读模式保持本设备独立', current.remoteSuggestions.length ? 'attention' : 'normal')}</div>${current.remoteSuggestions.length ? renderRemoteSuggestion(current) : ''}${pending ? `<div class="sync-list pending-list"><div class="list-section-label">需要你的决定 · ${pending}</div>${current.confirmations.map(renderConfirmation).join('')}${current.conflicts.map(renderConflict).join('')}</div>` : '<div class="sync-empty">当前设备没有待确认项目</div>'}<div class="sync-list sync-settings"><div class="list-section-label">本设备设置</div>${renderSetting('startup-setting', '启动时自动同步', current.settings.startupSync, '应用启动后异步交换')}${renderSetting('periodic-setting', '后台定期同步', current.settings.periodicSync, `演示周期 ${current.settings.periodMinutes} 分钟`)}</div></section>`;
+    return `<section class="sync-content" data-testid="sync-panel"><div class="native-sync-status"><div class="sync-symbol">${view.icon('sync')}</div><div class="sync-status-copy"><span class="section-kicker">当前设备 · ${esc(current.name)}</span><strong>${esc(statusText(current))}</strong><small>${state.online ? (state.shared.lastExchange ? `最近交换：${esc(state.shared.lastExchange)}` : '尚未交换') : '恢复在线后可以重试待发送操作'}</small></div><span class="sync-state-dot ${activeStatus(current)}"></span></div><div class="sync-action-row">${button('立即同步', 'data-action="sync-manual" data-testid="manual-sync"', 'm-button-primary')}</div>${result ? `<div class="snackbar-inline ${result.ok ? 'success' : 'failure'}" data-testid="sync-result">${view.icon(result.ok ? 'check' : 'info')}<span>${esc(result.message)}</span></div>` : ''}<div class="sync-list"><div class="list-section-label">同步状态</div>${renderSyncRow('cloud', '待发送操作', `${current.pendingOutgoing.length} 项`, current.pendingOutgoing.length ? '等待交换' : '没有本地操作', 'pending')}${renderSyncRow('bookmark', '收藏与关注', `${current.favorites.length} 个收藏 · ${current.following.length} 位作者`, '从书架、漫画详情或作者详情产生', 'normal')}${renderSyncRow('reader', '阅读位置', `${current.readHistory.length} 条阅读记录`, current.remoteSuggestions.length ? '有远端位置提示' : '阅读模式保持本设备独立', current.remoteSuggestions.length ? 'attention' : 'normal')}</div>${current.remoteSuggestions.length ? renderRemoteSuggestion(current) : ''}${pending ? `<div class="sync-list pending-list"><div class="list-section-label">需要你的决定 · ${pending}</div>${current.confirmations.map(renderConfirmation).join('')}${current.conflicts.map(renderConflict).join('')}</div>` : '<div class="sync-empty">当前设备没有待确认项目</div>'}</section>`;
   }
 
   function renderRemoteSuggestion(current) {
@@ -159,6 +160,12 @@
 
   function renderSetting(action, title, checked, detail) {
     return `<div class="native-list-row setting-row"><div class="row-copy"><strong>${title}</strong><small>${detail}</small></div><button class="native-switch ${checked ? 'is-on' : ''}" role="switch" aria-label="${title}" aria-checked="${checked}" data-action="${action}" data-testid="${action}"><span></span></button></div>`;
+  }
+
+  function renderSyncSettingsSheet() {
+    const current = currentDevice();
+    const entering = !root.querySelector('.sync-settings-sheet');
+    return `<div class="sheet-layer"><button class="sheet-scrim" tabindex="-1" aria-label="关闭同步设置" data-action="close-sync-settings" data-testid="sync-settings-scrim"></button><section class="sync-settings-sheet ${entering ? 'is-entering' : ''}" role="dialog" aria-modal="true" aria-labelledby="sync-settings-title" tabindex="-1"><div class="sheet-drag-handle" data-sheet-drag data-testid="sync-settings-drag" aria-hidden="true"><span></span></div><header class="sheet-header"><div><h2 id="sync-settings-title">同步设置</h2><p>当前设备 · ${esc(current.name)}</p></div>${iconButton('close', '关闭同步设置', 'data-action="close-sync-settings" data-testid="sync-settings-close"')}</header><div class="sheet-settings-content">${renderSetting('startup-setting', '启动时自动同步', current.settings.startupSync, '应用启动后异步同步')}${renderSetting('periodic-setting', '后台定期同步', current.settings.periodicSync, `每 ${current.settings.periodMinutes} 分钟同步一次`)}<p class="sheet-footnote">设置仅应用于当前设备，修改后立即生效。</p></div>${isWindows() ? '' : '<div class="gesture-area" aria-hidden="true"></div>'}</section></div>`;
   }
 
   function renderConfirmation(item) {
@@ -253,7 +260,15 @@
   }
 
   function render() {
+    const sheetWasOpen = Boolean(root.querySelector('.sync-settings-sheet'));
+    const focusId = document.activeElement?.dataset.testid;
     root.innerHTML = `<div class="prototype-root platform-${state.ui.platform} theme-${state.ui.theme}">${renderPreviewTools()}${renderWindowShell(renderRoute())}<div class="prototype-notice ${state.ui.tone}">${view.icon(state.ui.tone === 'failure' ? 'info' : 'cloud')}<span data-testid="notice">${esc(state.ui.notice)}</span></div></div>`;
+    if (state.ui.syncSettingsOpen) {
+      root.querySelectorAll('.app-window > .app-body, .app-window > .native-navigation, .app-window > .gesture-area').forEach(el => { el.inert = true; });
+      const controls = [...root.querySelectorAll('.sync-settings-sheet [data-testid]')];
+      const focus = controls.find(el => sheetWasOpen && el.dataset.testid === focusId) || root.querySelector('[data-testid="sync-settings-close"]');
+      focus.focus({ preventScroll: true });
+    } else if (sheetWasOpen) root.querySelector('[data-testid="sync-settings"]')?.focus({ preventScroll: true });
   }
 
   function scheduleSync(trigger) {
@@ -268,6 +283,7 @@
   }
 
   function switchPlatform(platform) {
+    state.ui.syncSettingsOpen = false;
     if (state.ui.reader) model.setReadingActive(state, state.selectedDevice, false);
     state.ui.platform = platform; state.selectedDevice = platform === 'windows' ? 'desktop-b' : 'phone-a'; state.ui.detail = null; state.ui.reader = false; state.ui.route = 'updates'; state.ui.updatesTab = 'sync'; state.ui.browseTab = 'sources';
     notice(platform === 'windows' ? '已切换到 Windows Desktop 原生外壳。' : '已切换到 Android 手机预览；作者入口在浏览页签内。');
@@ -311,7 +327,8 @@
     else if (action === 'detail-track') notice('追踪入口已打开；本地原型保留作者追踪路径。');
     else if (action === 'detail-browser') notice('浏览器入口已保留；本地原型不会打开外部网页。');
     else if (action === 'reader-settings') notice('阅读设置保留为设备本地；不会随同步覆盖。');
-    else if (action === 'sync-settings') notice('同步设置已在当前页面下方显示；启动和定期开关按设备独立保存。');
+    else if (action === 'sync-settings') state.ui.syncSettingsOpen = true;
+    else if (action === 'close-sync-settings') state.ui.syncSettingsOpen = false;
     else if (action === 'more-item') notice(target.dataset.message || '该页面提供离线样本结构。');
     else if (action === 'dismiss-suggestion') { current.remoteSuggestions.shift(); notice('已收起远端位置提示；不会自动翻页。'); }
   }
@@ -336,7 +353,40 @@
   });
 
   window.addEventListener('keydown', (event) => {
+    if (state.ui.syncSettingsOpen) {
+      if (event.key === 'Escape') { event.preventDefault(); state.ui.syncSettingsOpen = false; render(); }
+      if (event.key === 'Tab') {
+        const controls = [...root.querySelectorAll('.sync-settings-sheet button')];
+        const index = controls.indexOf(document.activeElement);
+        event.preventDefault();
+        controls[(index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length].focus();
+      }
+      return;
+    }
     if (event.key === 'Escape' && (state.ui.detail || state.ui.reader) && !event.defaultPrevented) { event.preventDefault(); leaveCurrentRoute(); }
+  });
+
+  root.addEventListener('pointerdown', (event) => {
+    const handle = event.target.closest('[data-sheet-drag]');
+    if (!handle || event.button !== 0) return;
+    sheetDrag = { pointerId: event.pointerId, y: event.clientY, distance: 0 };
+    handle.setPointerCapture(event.pointerId);
+  });
+  root.addEventListener('pointermove', (event) => {
+    if (!sheetDrag || sheetDrag.pointerId !== event.pointerId) return;
+    sheetDrag.distance = Math.max(0, event.clientY - sheetDrag.y);
+    const sheet = root.querySelector('.sync-settings-sheet');
+    if (sheet) sheet.style.transform = `translateY(${sheetDrag.distance}px)`;
+  });
+  root.addEventListener('pointerup', (event) => {
+    if (!sheetDrag || sheetDrag.pointerId !== event.pointerId) return;
+    if (sheetDrag.distance >= 56) { state.ui.syncSettingsOpen = false; render(); }
+    else root.querySelector('.sync-settings-sheet')?.style.removeProperty('transform');
+    sheetDrag = null;
+  });
+  root.addEventListener('pointercancel', () => {
+    sheetDrag = null;
+    root.querySelector('.sync-settings-sheet')?.style.removeProperty('transform');
   });
 
   root.addEventListener('change', (event) => {

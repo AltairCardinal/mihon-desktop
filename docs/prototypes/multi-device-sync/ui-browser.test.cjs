@@ -13,6 +13,64 @@ const playwright = playwrightPath ? require(playwrightPath) : null;
 
 const fileUrl = `file://${path.resolve(__dirname, 'index.html').replace(/\\/g, '/')}`;
 
+test('同步设置底部面板：双端开关、关闭、焦点与异步重绘', { skip: !playwright && '缓存 Playwright 未找到' }, async () => {
+  const browser = await playwright.chromium.launch({ headless: true, channel: 'chrome' });
+  try {
+    for (const platform of ['windows', 'android']) {
+      const page = await browser.newPage({ viewport: { width: platform === 'windows' ? 1440 : 320, height: 900 } });
+      await page.goto(fileUrl);
+      if (platform === 'android') {
+        await page.getByTestId('preview-tools').locator('summary').click();
+        await page.getByTestId('platform-android').click();
+      }
+      assert.equal(await page.getByTestId('startup-setting').count(), 0, '设置不再平铺在同步页面');
+      await page.getByTestId('sync-settings').click();
+      const sheet = page.getByRole('dialog', { name: '同步设置', exact: true });
+      await sheet.waitFor({ state: 'visible' });
+      await sheet.evaluate(el => Promise.all(el.getAnimations().map(animation => animation.finished)));
+      const box = await sheet.boundingBox();
+      const app = await page.getByTestId('app-window').boundingBox();
+      assert.ok(Math.abs(box.y + box.height - (app.y + app.height - (platform === 'windows' ? 1 : 0))) < 2);
+      assert.ok(box.width <= 460 && box.x >= app.x && box.x + box.width <= app.x + app.width);
+      assert.equal(await page.locator('.app-body').evaluate(el => el.inert), true);
+      await page.getByTestId('startup-setting').click();
+      assert.equal(await page.getByTestId('startup-setting').getAttribute('aria-checked'), 'false');
+      assert.equal(await page.evaluate(() => document.activeElement.dataset.testid), 'startup-setting');
+      await page.getByTestId('periodic-setting').click();
+      assert.equal(await page.getByTestId('periodic-setting').getAttribute('aria-checked'), 'false');
+      await page.keyboard.press('Tab');
+      assert.equal(await page.evaluate(() => document.activeElement.dataset.testid), 'sync-settings-close');
+      await page.keyboard.press('Escape');
+      assert.equal(await sheet.count(), 0);
+      assert.equal(await page.evaluate(() => document.activeElement.dataset.testid), 'sync-settings');
+      await page.getByTestId('sync-settings').click();
+      assert.equal(await page.getByTestId('startup-setting').getAttribute('aria-checked'), 'false');
+      await page.getByTestId('sync-settings-scrim').click({ position: { x: 10, y: 10 } });
+      assert.equal(await sheet.count(), 0);
+      // A running sync must not dismiss the sheet or revert its device-local switches.
+      await page.getByTestId('manual-sync').click();
+      await page.getByTestId('sync-settings').click();
+      await page.waitForFunction(() => !window.__mihonSyncDemo.state.ui.busy);
+      assert.equal(await sheet.count(), 1);
+      assert.equal(await page.getByTestId('startup-setting').getAttribute('aria-checked'), 'false');
+      const grip = await page.getByTestId('sync-settings-drag').boundingBox();
+      await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2 + 85, { steps: 8 });
+      await page.mouse.up();
+      assert.equal(await sheet.count(), 0);
+      await page.getByTestId('preview-tools').locator('summary').click();
+      await page.getByTestId(platform === 'windows' ? 'platform-android' : 'platform-windows').click();
+      await page.getByTestId('sync-settings').click();
+      assert.equal(await page.getByTestId('startup-setting').getAttribute('aria-checked'), 'true');
+      assert.equal(await page.getByTestId('periodic-setting').getAttribute('aria-checked'), 'true');
+      await page.getByTestId('sync-settings-close').click();
+      assert.equal(await sheet.count(), 0);
+      await page.close();
+    }
+  } finally { await browser.close(); }
+});
+
 async function assertBadgesInsideIcon(nav) {
   const iconBox = await nav.locator('.nav-icon-anchor').boundingBox();
   const glyphBox = await nav.locator('.nav-icon-wrap .MihonIcon').boundingBox();
