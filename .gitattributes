@@ -8,6 +8,9 @@
 *.jar binary
 *.apk binary -eol
 
+# Fixed protobuf extension indexes must retain their upstream bytes.
+/app-desktop/src/test/resources/extensions/index/*.pb binary -eol
+
 # Images
 *.webp binary
 *.png binary

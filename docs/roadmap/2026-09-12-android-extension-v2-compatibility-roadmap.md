@@ -407,6 +407,10 @@ MockWebServer 必须覆盖成功、空/缺失、403/429/500、畸形、取消和
 - 流程证据未通过：Luna 的目标回执 hash 与下达值不一致；补充原文经主模型计算为 2132 个 UTF-8 字节，与其自报 2287 字节不符，且原文混入上一轮“不得修改协调器”的旧约束；再次要求直接转交工具数据后，回执 Base64 不能通过标准解码。主模型不能据此确认持久子 goal 与本轮下达目标完全一致，也不采信其 complete 作为验收依据。以上是目标交接/回执缺口，不是上述代码测试失败。本次独立复验结束时曾据此暂停。随后用户明确批准：仅本批次豁免该回执校验，以主模型独立验收结果提交并继续 AEX-01。因此保留流程偏差记录，关闭本批次，不增加修复复审、不重复已通过测试。
 - 工作树：复验期间其他任务新增提交仅影响 `docs/prototypes/multi-device-sync/`，未修改本批次受测生产输入；不将它们或用户 `testfile/` 混入提交。设备状态在本轮结束前复查已出现 `emulator-5580`，不沿用本轮开始时无设备的状态判断后续 ART 可用性。
 
+### AEX-00 提交完整性
+
+主提交为 `3fb5507461d68157d369491c6f8ef3a2396d405f`。提交输出暴露 `.gitattributes` 的全局 `text eol=lf` 将固定 gzip/protobuf 索引从 104412 字节归一化为 104411 字节；工作树原始样本及已执行测试输入没有变化，但该 Git blob 不可作为有效 fixture。随本节的补修提交为该目录的 `*.pb` 明确设置 `binary -eol` 并重新加入原始字节。验收为 `git rev-parse HEAD:app-desktop/src/test/resources/extensions/index/keiyoushi-index.pb` 与 `git hash-object --no-filters app-desktop/src/test/resources/extensions/index/keiyoushi-index.pb` 相同，且大小 104412、SHA-256 为 manifest 中的 `5135fef342c60f83c60b9abb865bc69630f0cc4ebc47a1cb75bc9fbebb2814ba`。这是提交表示层的机械配置修正，不重复运行应用测试，不改动协议或测试断言。
+
 关键风险及停止边界：
 
 1. **二进制兼容范围大于表面接口差异**：外部 APK/JAR 实测出现依赖或桥接缺失时，先定位到冻结 API/依赖符号；必要的兼容修复留在本专项。若需要平台/依赖体系重构，先报告估算与范围变化。
