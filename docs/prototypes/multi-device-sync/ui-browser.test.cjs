@@ -13,7 +13,7 @@ const playwright = playwrightPath ? require(playwrightPath) : null;
 
 const fileUrl = `file://${path.resolve(__dirname, 'index.html').replace(/\\/g, '/')}`;
 
-test('同步设置底部面板：双端开关、关闭、焦点与异步重绘', { skip: !playwright && '缓存 Playwright 未找到' }, async () => {
+test('同步设置子页面：双端开关、返回、焦点与异步重绘', { skip: !playwright && '缓存 Playwright 未找到' }, async () => {
   const browser = await playwright.chromium.launch({ headless: true, channel: 'chrome' });
   try {
     for (const platform of ['windows', 'android']) {
@@ -32,7 +32,7 @@ test('同步设置底部面板：双端开关、关闭、焦点与异步重绘',
       const box = await sheet.boundingBox();
       const app = await page.getByTestId('app-window').boundingBox();
       assert.ok(Math.abs(box.y + box.height - (app.y + app.height - (platform === 'windows' ? 1 : 0))) < 2);
-      assert.ok(box.width <= 460 && box.x >= app.x && box.x + box.width <= app.x + app.width);
+      assert.ok(box.width <= 560 && box.x >= app.x && box.x + box.width <= app.x + app.width);
       assert.equal(await page.locator('.app-body').evaluate(el => el.inert), true);
       await page.getByTestId('startup-setting').click();
       assert.equal(await page.getByTestId('startup-setting').getAttribute('aria-checked'), 'false');
@@ -40,21 +40,22 @@ test('同步设置底部面板：双端开关、关闭、焦点与异步重绘',
       await page.getByTestId('periodic-setting').click();
       assert.equal(await page.getByTestId('periodic-setting').getAttribute('aria-checked'), 'false');
       await page.keyboard.press('Tab');
-      assert.equal(await page.evaluate(() => document.activeElement.dataset.testid), 'sync-settings-close');
+      assert.equal(await page.evaluate(() => document.activeElement.dataset.testid), 'sync-settings-back');
       await page.keyboard.press('Escape');
       assert.equal(await sheet.count(), 0);
       assert.equal(await page.evaluate(() => document.activeElement.dataset.testid), 'sync-settings');
       await page.getByTestId('sync-settings').click();
       assert.equal(await page.getByTestId('startup-setting').getAttribute('aria-checked'), 'false');
-      await page.getByTestId('sync-settings-scrim').click({ position: { x: 10, y: 10 } });
+      await page.getByTestId('sync-scrim').click({ position: { x: 10, y: 10 } });
       assert.equal(await sheet.count(), 0);
+      await page.getByTestId('library-sync').click();
       // A running sync must not dismiss the sheet or revert its device-local switches.
       await page.getByTestId('manual-sync').click();
       await page.getByTestId('sync-settings').click();
       await page.waitForFunction(() => !window.__mihonSyncDemo.state.ui.busy);
       assert.equal(await sheet.count(), 1);
       assert.equal(await page.getByTestId('startup-setting').getAttribute('aria-checked'), 'false');
-      const grip = await page.getByTestId('sync-settings-drag').boundingBox();
+      const grip = await page.getByTestId('sync-drag').boundingBox();
       await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
       await page.mouse.down();
       await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2 + 85, { steps: 8 });
@@ -66,7 +67,7 @@ test('同步设置底部面板：双端开关、关闭、焦点与异步重绘',
       await page.getByTestId('sync-settings').click();
       assert.equal(await page.getByTestId('startup-setting').getAttribute('aria-checked'), 'true');
       assert.equal(await page.getByTestId('periodic-setting').getAttribute('aria-checked'), 'true');
-      await page.getByTestId('sync-settings-close').click();
+      await page.getByTestId('sync-settings-back').click();
       assert.equal(await sheet.count(), 0);
       await page.close();
     }

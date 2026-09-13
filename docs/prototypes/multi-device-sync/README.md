@@ -32,8 +32,14 @@ node --test docs/prototypes/multi-device-sync/ui-browser.test.cjs docs/prototype
 - 从书架漫画卡片、更新条目或作者详情进入漫画详情；在详情中收藏、取消收藏和开始阅读。作者可从 Windows 作者页或 Android 浏览 → 作者列表进入详情并关注。
 - 更新页面保留平台差异：Windows 使用 48×68 封面、卡片行和筛选/日历/全部已读/刷新动作；Android 使用 56dp 紧凑行、44×44 封面和筛选/日历/刷新动作。
 - 书架顶栏的同步按钮打开高位底部面板，同步是书架的子功能。面板最多 560px 宽、720px 高，窄屏自动适配，列表内部滚动；可用关闭按钮、遮罩、Escape 或下滑抓手关闭。关闭后回到书架，不取消后台同步，完成时也不会抢占当前页面。
-- 同步页右上角使用 Material Settings 齿轮，点击打开底部设置面板。启动/定期开关仅影响当前设备，修改立即生效；支持关闭按钮、点击遮罩、Escape 和下滑抓手关闭，关闭设置返回同步面板，焦点回到齿轮；关闭同步面板返回书架顶栏入口。后台同步完成不会关闭面板。
+- 同步面板右上角齿轮进入同一面板内的设置子页面，宽高不变；左上返回或 Escape 回到同步列表并恢复滚动位置。启动/定期开关仅影响当前设备，修改立即生效。关闭按钮、遮罩或下滑会关闭整个同步面板；后台同步完成不会改变当前子页面。
 - 同步按钮只有三种表达：后台异步更新时旋转；有需手动处理事项时显示数量（取消收藏/关注确认、冲突、远端阅读位置选择合计，超过 99 显示 99+）；都没有时只保留普通同步图标。旋转与计数可同时出现。未发送队列、离线与上次失败在面板内说明，不增加顶栏状态。更新底栏仅显示漫画未读更新数，与同步数量独立。
+
+## 大量待处理场景
+
+打开应用外「演示预览」→「120 项待处理」，会替换当前示例数据并自动打开当前设备的同步面板。80 项取消收藏与 40 项取消关注均通过现有模型的收藏/关注、交换、取消与接收流程生成；不是静态占位行。条目标题、来源及确认/忽略操作完整可用，处理后数量立即减少。再次点击会重新建立 120 项场景，重置演示恢复普通数据。
+
+标题、设置入口与待处理总数固定，列表内部滚动，优先展示待处理内容；书架顶栏超过 99 显示 99+，面板内显示精确总数。设置返回保留滚动位置。本原型直接渲染 120 行，不代表已实现面向无限数据的分页或虚拟列表。
 
 ## 建议演示顺序
 
@@ -46,7 +52,7 @@ node --test docs/prototypes/multi-device-sync/ui-browser.test.cjs docs/prototype
 
 ## 源码对照与边界
 
-同步设置面板参考 Android 书架筛选使用的 `LibrarySettingsDialog.kt`、`TabbedDialog.kt` 和 `presentation-core/src/main/java/tachiyomi/presentation/core/components/AdaptiveSheet.kt`：采用顶部圆角、surfaceContainerHigh 表面、24px 内容边距和最大 460px 设置面板宽度；同步主面板扩展至最大 560px，以容纳待处理列表。按本次设计要求，Windows 与 Android 原型均从应用窗口底部弹出；这不表示 Windows 原有书架筛选已经采用底部面板。齿轮使用对应 `Icons.Default.Settings` 的 Material Filled SVG 路径。
+同步设置面板参考 Android 书架筛选使用的 `LibrarySettingsDialog.kt`、`TabbedDialog.kt` 和 `presentation-core/src/main/java/tachiyomi/presentation/core/components/AdaptiveSheet.kt`：采用顶部圆角、surfaceContainerHigh 表面、24px 内容边距；同步与设置子页面共用最大 560px 的面板，以容纳待处理列表并避免切换时尺寸跳变。按本次设计要求，Windows 与 Android 原型均从应用窗口底部弹出；这不表示 Windows 原有书架筛选已经采用底部面板。齿轮使用对应 `Icons.Default.Settings` 的 Material Filled SVG 路径。
 
 界面还原依据仓库中的 `app-desktop/src/main/kotlin/mihon/desktop/ui/home/HomeScreen.kt`、`app-desktop/src/main/kotlin/mihon/desktop/ui/updates/UpdatesTab.kt`、`app-desktop/src/main/kotlin/mihon/desktop/ui/authors/AuthorsTab.kt`、`app/src/main/java/eu/kanade/tachiyomi/ui/home/HomeScreen.kt`、`app/src/main/java/eu/kanade/tachiyomi/ui/browse/BrowseTab.kt`、`app/src/main/java/eu/kanade/presentation/updates/UpdatesScreen.kt` 和 `presentation-theme/src/commonMain/kotlin/eu/kanade/presentation/theme/colorscheme/TachiyomiColorScheme.kt`。颜色使用 Tachiyomi 默认浅色/深色主题；图标为本地 SVG Material 路径。
 

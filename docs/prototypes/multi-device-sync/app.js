@@ -80,7 +80,7 @@
 
   function renderPreviewTools() {
     const windows = state.ui.platform === 'windows';
-    return `<details class="preview-tools" data-testid="preview-tools"><summary><span class="tool-summary-icon">${view.icon('settings')}</span><strong>演示预览</strong><span class="tool-summary-muted">应用外控制 · ${windows ? 'Windows Desktop' : 'Android 手机'} · ${state.ui.theme === 'light' ? '浅色' : '深色'}</span></summary><div class="preview-tool-panel"><div class="tool-group"><span>平台</span><div class="tool-choice">${button('Windows Desktop', 'data-platform="windows" data-testid="platform-windows"', windows ? 'is-selected' : '')}${button('Android 手机', 'data-platform="android" data-testid="platform-android"', windows ? '' : 'is-selected')}</div></div><div class="tool-group"><span>主题</span><div class="tool-choice">${button('浅色', 'data-theme="light" data-testid="theme-light"', state.ui.theme === 'light' ? 'is-selected' : '')}${button('深色', 'data-theme="dark" data-testid="theme-dark"', state.ui.theme === 'dark' ? 'is-selected' : '')}</div></div><div class="tool-group"><span>同步触发</span><div class="tool-choice">${button('模拟启动同步', 'data-action="sync-startup" data-testid="startup-sync"', 'm-button-tonal')}${button('模拟定期到期', 'data-action="sync-periodic" data-testid="periodic-sync"', 'm-button-tonal')}</div></div><div class="tool-group tool-actions"><span>模拟条件</span>${iconLabel(state.online ? 'cloud' : 'close', state.online ? '切换离线' : '恢复在线', 'data-action="toggle-online" data-testid="network-toggle"')}${button('重置演示', 'data-action="reset" data-testid="reset-demo"', 'tool-reset')}</div><small class="preview-boundary">本地离线演示，不连接 Git 或系统后台任务。</small></div></details>`;
+    return `<details class="preview-tools" data-testid="preview-tools"><summary><span class="tool-summary-icon">${view.icon('settings')}</span><strong>演示预览</strong><span class="tool-summary-muted">应用外控制 · ${windows ? 'Windows Desktop' : 'Android 手机'} · ${state.ui.theme === 'light' ? '浅色' : '深色'}</span></summary><div class="preview-tool-panel"><div class="tool-group"><span>平台</span><div class="tool-choice">${button('Windows Desktop', 'data-platform="windows" data-testid="platform-windows"', windows ? 'is-selected' : '')}${button('Android 手机', 'data-platform="android" data-testid="platform-android"', windows ? '' : 'is-selected')}</div></div><div class="tool-group"><span>主题</span><div class="tool-choice">${button('浅色', 'data-theme="light" data-testid="theme-light"', state.ui.theme === 'light' ? 'is-selected' : '')}${button('深色', 'data-theme="dark" data-testid="theme-dark"', state.ui.theme === 'dark' ? 'is-selected' : '')}</div></div><div class="tool-group"><span>同步触发</span><div class="tool-choice">${button('模拟启动同步', 'data-action="sync-startup" data-testid="startup-sync"', 'm-button-tonal')}${button('模拟定期到期', 'data-action="sync-periodic" data-testid="periodic-sync"', 'm-button-tonal')}</div></div><div class="tool-group tool-actions"><span>模拟条件</span>${iconLabel(state.online ? 'cloud' : 'close', state.online ? '切换离线' : '恢复在线', 'data-action="toggle-online" data-testid="network-toggle"')}${button('120 项待处理', 'data-action="many-pending" data-testid="many-pending"', 'm-button-tonal')}${button('重置演示', 'data-action="reset" data-testid="reset-demo"', 'tool-reset')}</div><small class="preview-boundary">本地离线演示，不连接 Git 或系统后台任务。</small></div></details>`;
   }
 
   function renderWindowShell(content) {
@@ -88,7 +88,7 @@
     const shell = platform === 'android' ? 'android-shell' : 'windows-shell';
     const frame = platform === 'android' ? `<div class="android-statusbar"><span>9:41</span><span class="status-icons">${view.icon('wifi')}${view.icon('signal')}${view.icon('battery')}</span></div>` : `<div class="desktop-windowbar"><span class="desktop-title"><img src="./mihon-desktop.png" alt="Mihon Desktop 图标"><span>Mihon Desktop 0.11.19.33 · 本地原型</span></span><span class="window-controls" aria-hidden="true"><i></i><i></i><i class="window-close"></i></span></div>`;
     const nav = state.ui.reader || (state.ui.detail && platform === 'android') ? '' : view.renderNav(spec(), state.ui.route, navIndicators());
-    return `<section class="app-window ${shell}" data-platform="${platform}" data-testid="app-window">${frame}<div class="app-body">${content}</div>${nav}${platform === 'android' ? '<div class="gesture-area" aria-hidden="true"></div>' : ''}${state.ui.syncOpen ? (state.ui.syncSettingsOpen ? renderSyncSettingsSheet() : renderSyncSheet()) : ''}</section>`;
+    return `<section class="app-window ${shell}" data-platform="${platform}" data-testid="app-window">${frame}<div class="app-body">${content}</div>${nav}${platform === 'android' ? '<div class="gesture-area" aria-hidden="true"></div>' : ''}${state.ui.syncOpen ? renderSyncSheet() : ''}</section>`;
   }
 
   function renderUpdatesActions() {
@@ -124,7 +124,10 @@
   }
 
   function renderSyncSheet() {
-    return `<div class="sheet-layer"><button class="sheet-scrim" tabindex="-1" aria-label="关闭同步" data-action="close-sync" data-testid="sync-scrim"></button><section class="sync-settings-sheet sync-panel-sheet" role="dialog" aria-modal="true" aria-labelledby="sync-sheet-title" tabindex="-1"><div class="sheet-drag-handle" data-sheet-drag aria-hidden="true"><span></span></div><header class="sheet-header"><div><h2 id="sync-sheet-title">同步</h2><p>书架 · ${esc(currentDevice().name)}</p></div><div class="appbar-actions">${iconButton('settings', '同步设置', 'data-action="sync-settings" data-testid="sync-settings"')}${iconButton('close', '关闭同步', 'data-action="close-sync" data-testid="sync-close"')}</div></header><div class="sync-panel-scroll">${renderSyncPage()}</div>${isWindows() ? '' : '<div class="gesture-area" aria-hidden="true"></div>'}</section></div>`;
+    const settings = state.ui.syncSettingsOpen;
+    const count = syncWorkCount(currentDevice());
+    const heading = settings ? '同步设置' : '同步';
+    return `<div class="sheet-layer"><button class="sheet-scrim" tabindex="-1" aria-label="关闭同步" data-action="close-sync" data-testid="sync-scrim"></button><section class="sync-settings-sheet sync-panel-sheet" data-settings="${Boolean(settings)}" role="dialog" aria-modal="true" aria-labelledby="sync-sheet-title" tabindex="-1"><div class="sheet-drag-handle" data-sheet-drag data-testid="sync-drag" aria-hidden="true"><span></span></div><header class="sheet-header">${settings ? iconButton('back', '返回同步', 'data-action="close-sync-settings" data-testid="sync-settings-back"') : ''}<div class="sheet-title"><h2 id="sync-sheet-title">${heading}</h2><p>${esc(currentDevice().name)} · ${settings ? '仅此设备' : '书架'}</p></div><div class="appbar-actions">${settings ? '' : iconButton('settings', '同步设置', 'data-action="sync-settings" data-testid="sync-settings"')}${iconButton('close', '关闭同步', 'data-action="close-sync" data-testid="sync-close"')}</div></header>${!settings && count ? `<div class="sync-pending-summary" data-testid="sync-pending-summary"><strong>待处理 ${count} 项</strong><span>逐项确认，处理前保留本设备状态</span></div>` : ''}${settings ? renderSyncSettingsPage() : `<div class="sync-panel-scroll">${renderSyncPage()}</div>`}${isWindows() ? '' : '<div class="gesture-area" aria-hidden="true"></div>'}</section></div>`;
   }
 
   function closeSyncLayer() {
@@ -135,7 +138,7 @@
   function renderSyncPage() {
     const current = currentDevice(); const pending = current.confirmations.length + current.conflicts.length;
     const result = current.lastResult;
-    return `<section class="sync-content" data-testid="sync-panel"><div class="native-sync-status"><div class="sync-symbol">${view.icon('sync')}</div><div class="sync-status-copy"><span class="section-kicker">当前设备 · ${esc(current.name)}</span><strong>${esc(statusText(current))}</strong><small>${state.online ? (state.shared.lastExchange ? `最近交换：${esc(state.shared.lastExchange)}` : '尚未交换') : '恢复在线后可以重试待发送操作'}</small></div><span class="sync-state-dot ${activeStatus(current)}"></span></div><div class="sync-action-row">${button('立即同步', 'data-action="sync-manual" data-testid="manual-sync"', 'm-button-primary')}</div>${result ? `<div class="snackbar-inline ${result.ok ? 'success' : 'failure'}" data-testid="sync-result">${view.icon(result.ok ? 'check' : 'info')}<span>${esc(result.message)}</span></div>` : ''}<div class="sync-list"><div class="list-section-label">同步状态</div>${renderSyncRow('cloud', '待发送操作', `${current.pendingOutgoing.length} 项`, current.pendingOutgoing.length ? '等待交换' : '没有本地操作', 'pending')}${renderSyncRow('bookmark', '收藏与关注', `${current.favorites.length} 个收藏 · ${current.following.length} 位作者`, '从书架、漫画详情或作者详情产生', 'normal')}${renderSyncRow('reader', '阅读位置', `${current.readHistory.length} 条阅读记录`, current.remoteSuggestions.length ? '有远端位置提示' : '阅读模式保持本设备独立', current.remoteSuggestions.length ? 'attention' : 'normal')}</div>${current.remoteSuggestions.length ? renderRemoteSuggestion(current) : ''}${pending ? `<div class="sync-list pending-list"><div class="list-section-label">需要你的决定 · ${pending}</div>${current.confirmations.map(renderConfirmation).join('')}${current.conflicts.map(renderConflict).join('')}</div>` : '<div class="sync-empty">当前设备没有待确认项目</div>'}</section>`;
+    return `<section class="sync-content" data-testid="sync-panel"><div class="native-sync-status"><div class="sync-symbol">${view.icon('sync')}</div><div class="sync-status-copy"><span class="section-kicker">当前设备 · ${esc(current.name)}</span><strong>${esc(statusText(current))}</strong><small>${state.online ? (state.shared.lastExchange ? `最近交换：${esc(state.shared.lastExchange)}` : '尚未交换') : '恢复在线后可以重试待发送操作'}</small></div><span class="sync-state-dot ${activeStatus(current)}"></span></div><div class="sync-action-row">${button('立即同步', 'data-action="sync-manual" data-testid="manual-sync"', 'm-button-primary')}</div>${result ? `<div class="snackbar-inline ${result.ok ? 'success' : 'failure'}" data-testid="sync-result">${view.icon(result.ok ? 'check' : 'info')}<span>${esc(result.message)}</span></div>` : ''}${pending ? `<div class="sync-list pending-list"><div class="list-section-label">需要你的决定 · ${pending}</div>${current.confirmations.map(renderConfirmation).join('')}${current.conflicts.map(renderConflict).join('')}</div>` : '<div class="sync-empty">当前设备没有待确认项目</div>'}<div class="sync-list"><div class="list-section-label">同步状态</div>${renderSyncRow('cloud', '待发送操作', `${current.pendingOutgoing.length} 项`, current.pendingOutgoing.length ? '等待交换' : '没有本地操作', 'pending')}${renderSyncRow('bookmark', '收藏与关注', `${current.favorites.length} 个收藏 · ${current.following.length} 位作者`, '从书架、漫画详情或作者详情产生', 'normal')}${renderSyncRow('reader', '阅读位置', `${current.readHistory.length} 条阅读记录`, current.remoteSuggestions.length ? '有远端位置提示' : '阅读模式保持本设备独立', current.remoteSuggestions.length ? 'attention' : 'normal')}</div>${current.remoteSuggestions.length ? renderRemoteSuggestion(current) : ''}</section>`;
   }
 
   function renderRemoteSuggestion(current) {
@@ -151,10 +154,40 @@
     return `<div class="native-list-row setting-row"><div class="row-copy"><strong>${title}</strong><small>${detail}</small></div><button class="native-switch ${checked ? 'is-on' : ''}" role="switch" aria-label="${title}" aria-checked="${checked}" data-action="${action}" data-testid="${action}"><span></span></button></div>`;
   }
 
-  function renderSyncSettingsSheet() {
+  function renderSyncSettingsPage() {
     const current = currentDevice();
-    const entering = !root.querySelector('.sync-settings-sheet');
-    return `<div class="sheet-layer"><button class="sheet-scrim" tabindex="-1" aria-label="关闭同步设置" data-action="close-sync-settings" data-testid="sync-settings-scrim"></button><section class="sync-settings-sheet ${entering ? 'is-entering' : ''}" role="dialog" aria-modal="true" aria-labelledby="sync-settings-title" tabindex="-1"><div class="sheet-drag-handle" data-sheet-drag data-testid="sync-settings-drag" aria-hidden="true"><span></span></div><header class="sheet-header"><div><h2 id="sync-settings-title">同步设置</h2><p>当前设备 · ${esc(current.name)}</p></div>${iconButton('close', '关闭同步设置', 'data-action="close-sync-settings" data-testid="sync-settings-close"')}</header><div class="sheet-settings-content">${renderSetting('startup-setting', '启动时自动同步', current.settings.startupSync, '应用启动后异步同步')}${renderSetting('periodic-setting', '后台定期同步', current.settings.periodicSync, `每 ${current.settings.periodMinutes} 分钟同步一次`)}<p class="sheet-footnote">设置仅应用于当前设备，修改后立即生效。</p></div>${isWindows() ? '' : '<div class="gesture-area" aria-hidden="true"></div>'}</section></div>`;
+    return `<div class="sheet-settings-content sync-settings-page"><p class="settings-section-label">自动同步</p>${renderSetting('startup-setting', '启动时自动同步', current.settings.startupSync, '应用启动后在后台同步，不影响当前操作')}${renderSetting('periodic-setting', '后台定期同步', current.settings.periodicSync, `每 ${current.settings.periodMinutes} 分钟同步一次`)}<p class="sheet-footnote">修改立即生效，无需保存。其他设备的设置不受影响。</p></div>`;
+  }
+
+  function loadManyPending() {
+    const ui = state.ui;
+    if (ui.timerId) window.clearTimeout(ui.timerId);
+    const deviceId = state.selectedDevice;
+    model.resetDemo(state);
+    state.ui = { ...ui, busy: false, timerId: null, busyDeviceId: null, route: 'library', detail: null, reader: false, syncOpen: true, syncSettingsOpen: false, syncScroll: 0 };
+    state.selectedDevice = deviceId;
+    const sourceId = deviceId === 'desktop-b' ? 'phone-a' : 'desktop-b';
+    const target = currentDevice();
+    target.confirmations.slice().forEach(item => model.ignoreCancellation(state, deviceId, item.id));
+    const titles = ['远山来信', '雨后的图书馆', '沿海列车', '星光放映室', '风中旅人', '夏日回声', '森林里的钟表店', '月下航线'];
+    for (let i = 0; i < 120; i += 1) {
+      const id = 'demo-many-' + i;
+      if (i < 80) {
+        model.CATALOG[id] = { title: titles[i % titles.length] + ' · 第 ' + (Math.floor(i / titles.length) + 1) + ' 卷', author: '演示作者', source: 'Mihon 演示源' };
+        model.localFavorite(state, sourceId, id);
+      } else {
+        model.AUTHORS[id] = { name: ['青木', '白川', '秋原', '北野'][i % 4] + '工作室 ' + (i - 79), detail: '演示作者' };
+        model.localFollow(state, sourceId, id);
+      }
+    }
+    model.syncDevice(state, sourceId, 'manual'); model.syncDevice(state, deviceId, 'manual');
+    for (let i = 0; i < 120; i += 1) {
+      const id = 'demo-many-' + i;
+      if (i < 80) model.localUnfavorite(state, sourceId, id);
+      else model.localUnfollow(state, sourceId, id);
+    }
+    model.syncDevice(state, sourceId, 'manual'); model.syncDevice(state, deviceId, 'manual');
+    notice('已切换到 120 项待处理示例：80 项取消收藏、40 项取消关注。重置演示可恢复普通场景。');
   }
 
   function renderConfirmation(item) {
@@ -168,7 +201,7 @@
 
   function renderLibrary() {
     const current = currentDevice();
-    const ids = ['manga-star', 'manga-dawn', 'manga-night'].filter((id) => current.favorites.includes(id));
+    const ids = current.favorites.filter((id) => model.CATALOG[id]);
     const content = ids.length ? `<div class="library-grid ${isWindows() ? 'desktop-library-grid' : 'android-library-grid'}">${ids.map((id, index) => renderMangaCard(id, index, current)).join('')}</div>` : '<div class="library-empty"><strong>书架为空</strong><span>从更新或浏览页面加入漫画。</span></div>';
     return `<div class="route-view library-route">${topBar('书架', renderLibrarySyncButton() + iconButton('search', '搜索书架', 'data-action="search"') + iconButton('filter', '筛选书架', 'data-action="library-filter"'))}<div class="route-scroll library-scroll"><div class="library-header"><strong>全部</strong><span>${current.favorites.length} 本漫画</span>${state.ui.notice.includes('搜索') ? '<input class="inline-search" aria-label="搜索书架" placeholder="搜索标题" autofocus>' : ''}</div>${content}</div></div>`;
   }
@@ -250,7 +283,7 @@
 
   function render() {
     const previousSheet = root.querySelector('[role="dialog"]');
-    const wasSettings = previousSheet && !previousSheet.classList.contains('sync-panel-sheet');
+    const wasSettings = previousSheet?.dataset.settings === 'true';
     const focusId = document.activeElement?.dataset.testid;
     const scroll = root.querySelector('.sync-panel-scroll');
     if (scroll) state.ui.syncScroll = scroll.scrollTop;
@@ -258,7 +291,7 @@
     if (state.ui.syncOpen) {
       root.querySelectorAll('.app-window > .app-body, .app-window > .native-navigation, .app-window > .gesture-area').forEach(el => { el.inert = true; });
       const controls = [...root.querySelectorAll('[role="dialog"] button[data-testid]')];
-      const fallback = state.ui.syncSettingsOpen ? 'sync-settings-close' : wasSettings ? 'sync-settings' : 'sync-close';
+      const fallback = state.ui.syncSettingsOpen ? 'sync-settings-back' : wasSettings ? 'sync-settings' : 'sync-close';
       (controls.find(el => el.dataset.testid === focusId) || root.querySelector('[data-testid="' + fallback + '"]')).focus({ preventScroll: true });
       const panel = root.querySelector('.sync-panel-scroll');
       if (panel) panel.scrollTop = state.ui.syncScroll || 0;
@@ -321,8 +354,9 @@
     else if (action === 'detail-track') notice('追踪入口已打开；本地原型保留作者追踪路径。');
     else if (action === 'detail-browser') notice('浏览器入口已保留；本地原型不会打开外部网页。');
     else if (action === 'reader-settings') notice('阅读设置保留为设备本地；不会随同步覆盖。');
-    else if (action === 'open-sync') { state.ui.syncOpen = true; state.ui.syncScroll = 0; }
-    else if (action === 'close-sync') state.ui.syncOpen = false;
+    else if (action === 'many-pending') loadManyPending();
+    else if (action === 'open-sync') { state.ui.syncOpen = true; state.ui.syncSettingsOpen = false; state.ui.syncScroll = 0; }
+    else if (action === 'close-sync') { state.ui.syncOpen = false; state.ui.syncSettingsOpen = false; }
     else if (action === 'sync-settings') state.ui.syncSettingsOpen = true;
     else if (action === 'close-sync-settings') state.ui.syncSettingsOpen = false;
     else if (action === 'more-item') notice(target.dataset.message || '该页面提供离线样本结构。');
@@ -375,7 +409,7 @@
   });
   root.addEventListener('pointerup', (event) => {
     if (!sheetDrag || sheetDrag.pointerId !== event.pointerId) return;
-    if (sheetDrag.distance >= 56) { closeSyncLayer(); render(); }
+    if (sheetDrag.distance >= 56) { state.ui.syncOpen = false; state.ui.syncSettingsOpen = false; render(); }
     else root.querySelector('.sync-settings-sheet')?.style.removeProperty('transform');
     sheetDrag = null;
   });

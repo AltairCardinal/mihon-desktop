@@ -84,3 +84,49 @@ test('书架同步子面板：三态、后台更新、待处理计数及更新�
     }
   } finally { await browser.close(); }
 });
+
+
+test('120项待处理：长列表处理、设置同面板返回与滚动位置保留', async () => {
+  const browser = await chromium.launch({ headless: true, channel: 'chrome' });
+  try {
+    for (const width of [1024, 320]) {
+      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      await page.goto(url);
+      if (width === 320) {
+        await page.getByTestId('preview-tools').locator('summary').click();
+        await page.getByTestId('platform-android').click();
+      }
+      await page.getByTestId('preview-tools').locator('summary').click();
+      assert.equal(await page.getByTestId('many-pending').count(), 1, '提供大量待处理演示入口');
+      await page.getByTestId('many-pending').click();
+      assert.equal(await page.locator('[role="dialog"]').count(), 1);
+      assert.equal(await page.locator('.native-confirmation').count(), 120);
+      assert.equal(await page.getByTestId('library-sync-count').textContent(), '99+');
+      assert.match(await page.getByTestId('sync-pending-summary').textContent(), /120/);
+      const frame = await page.getByRole('dialog').boundingBox();
+      const scroll = page.locator('.sync-panel-scroll');
+      await scroll.evaluate(el => { el.scrollTop = el.scrollHeight / 2; });
+      const position = await scroll.evaluate(el => el.scrollTop);
+      await page.getByTestId('sync-settings').click();
+      assert.equal(await page.locator('[role="dialog"]').count(), 1);
+      assert.deepEqual(await page.getByRole('dialog').boundingBox(), frame, '设置沿用原面板尺寸');
+      assert.equal(await page.getByTestId('sync-settings-back').count(), 1);
+      await page.getByTestId('startup-setting').click();
+      await page.getByTestId('sync-settings-back').click();
+      assert.ok(Math.abs(await scroll.evaluate(el => el.scrollTop) - position) < 2);
+      const target = page.locator('[data-confirm]').nth(65);
+      await target.scrollIntoViewIfNeeded();
+      const operation = await target.getAttribute('data-confirm');
+      const objectId = await page.evaluate(id => window.__mihonSyncDemo.state.devices[window.__mihonSyncDemo.state.selectedDevice].confirmations.find(x => x.id === id).objectId, operation);
+      await target.click();
+      assert.equal(await page.locator('.native-confirmation').count(), 119);
+      assert.equal(await page.evaluate(id => window.__mihonSyncDemo.state.devices[window.__mihonSyncDemo.state.selectedDevice].favorites.includes(id), objectId), false);
+      await page.locator('[data-ignore]').last().click();
+      assert.equal(await page.locator('.native-confirmation').count(), 118);
+      assert.match(await page.getByTestId('sync-pending-summary').textContent(), /118/);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await page.getByTestId('sync-close').click();
+      await page.close();
+    }
+  } finally { await browser.close(); }
+});

@@ -136,3 +136,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .sync-panel-sheet .gesture-area { flex-shrink: 0; }
 .native-nav-item { padding-top: 0; }
 .nav-badge-content { position: absolute; top: 0; right: 0; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 10px; color: var(--on-primary); background: var(--primary); box-shadow: 0 0 0 2px var(--surface-container); }
+.sheet-title { flex: 1; min-width: 0; }
+.sync-panel-sheet .sheet-header { gap: 8px; }
+.sync-pending-summary { flex: 0 0 auto; display: grid; gap: 4px; padding: 12px 24px; border-bottom: 1px solid var(--outline-variant); }
+.sync-pending-summary strong { font-size: 14px; font-weight: 600; }
+.sync-pending-summary span { font-size: 11px; color: var(--outline); }
+.sync-settings-page { flex: 1; min-height: 0; }
+.settings-section-label { margin: 16px 0 8px; color: var(--primary); font-size: 12px; }
+.sync-panel-sheet .native-confirmation .row-copy strong { white-space: normal; overflow-wrap: anywhere; }
