@@ -202,7 +202,7 @@
     const device = getDevice(state, deviceId); const triggerName = trigger || 'manual';
     if (!state.online) {
       device.status = 'offline'; device.lastTrigger = triggerName;
-      device.lastResult = { ok: false, trigger: triggerName, sent: 0, received: 0, applied: 0, message: '当前处于离线模拟，待发送操作已保留。' };
+      device.lastResult = { ok: false, trigger: triggerName, sent: 0, received: 0, applied: 0, message: '当前处于离线模拟，待上传操作已保留。' };
       addLog(device, `${TRIGGER_LABELS[triggerName]}失败：离线；可继续操作，联网后重试。`); return device.lastResult;
     }
     const sendCount = device.pendingOutgoing.length;
@@ -213,7 +213,7 @@
     let applied = 0; let confirmations = 0; let conflicts = 0;
     received.forEach((op) => { const result = applyIncoming(state, device, op); if (result.applied) applied += 1; if (result.confirmation) confirmations += 1; if (result.conflict) conflicts += 1; });
     state.shared.lastExchange = now(state); device.status = device.confirmations.length || device.conflicts.length ? 'attention' : 'idle'; device.lastTrigger = triggerName;
-    device.lastResult = { ok: true, trigger: triggerName, sent: sendCount, received: received.length, applied, confirmations, conflicts, message: `${TRIGGER_LABELS[triggerName]}完成：发送 ${sendCount} 条，接收 ${received.length} 条。` };
+    device.lastResult = { ok: true, trigger: triggerName, sent: sendCount, received: received.length, applied, confirmations, conflicts, message: `${TRIGGER_LABELS[triggerName]}完成：上传 ${sendCount} 条，接收 ${received.length} 条。` };
     addLog(device, device.lastResult.message); return device.lastResult;
   }
 

@@ -73,7 +73,7 @@
 
   function statusText(device) {
     const status = activeStatus(device);
-    return status === 'syncing' ? '更新中' : status === 'offline' ? '离线，操作会保留' : status === 'attention' ? '有待处理' : status === 'pending' ? '有待发送' : '已准备好';
+    return status === 'syncing' ? '更新中' : status === 'offline' ? '离线，操作会保留' : status === 'attention' ? '有待处理' : status === 'pending' ? '有待上传' : '已准备好';
   }
 
   function topBar(title, actions, options) {
@@ -175,7 +175,7 @@
       const selectionHeader = `<div class="sheet-header selection-header">${iconButton('close', '退出选择', 'data-action="selection-cancel" data-testid="selection-cancel"')}<div class="sheet-title"><h2 id="selection-title" data-testid="selection-count">已选 ${(state.ui.selectedIds || []).length} 项</h2></div><div class="appbar-actions">${iconButton('selectAll', '全选', 'data-action="selection-all" data-testid="selection-all"')}${iconButton('flipToBack', '反选', 'data-action="selection-invert" data-testid="selection-invert"')}</div></div>`;
       return `<div class="pending-toolbar">${selectionHeader}${renderBatchBar()}</div>`;
     }
-    return `<div class="pending-toolbar"><div class="pending-toolbar-heading"><strong>需要你的决定 · ${pending}</strong>${renderBatchTools()}</div></div>`;
+    return `<div class="pending-toolbar"><div class="pending-toolbar-heading"><strong>待手动处理的同步 · ${pending}</strong>${renderBatchTools()}</div></div>`;
   }
 
   function renderBatchTools() {
@@ -202,8 +202,13 @@
 
   function renderSyncPage() {
     const current = currentDevice(); const pending = current.confirmations.length + current.conflicts.length;
+    const pendingIds = new Set(current.pendingOutgoing);
+    const uploads = state.shared.operations.filter(op => op.sourceDevice === current.id && pendingIds.has(op.id));
+    const favorites = uploads.filter(op => op.kind.startsWith('favorite-')).length;
+    const authors = uploads.filter(op => op.kind.startsWith('author-')).length;
+    const readings = uploads.filter(op => op.kind === 'read-position').length;
     const result = state.ui.syncResult;
-    return `<section class="sync-content" data-testid="sync-panel">${state.ui.batchResult ? `<div class="snackbar-inline success" role="status" data-testid="batch-result">${esc(state.ui.batchResult)}</div>` : ''}<div class="native-sync-status"><div class="sync-symbol">${view.icon('sync')}</div><div class="sync-status-copy"><span class="section-kicker">当前设备 · ${esc(current.name)}</span><strong>${esc(statusText(current))}</strong><small>${state.online ? (state.shared.lastExchange ? `最近交换：${esc(state.shared.lastExchange)}` : '尚未交换') : '恢复在线后可以重试待发送操作'}</small></div><span class="sync-state-dot ${activeStatus(current)}"></span></div><div class="sync-action-row">${button('立即同步', 'data-action="sync-manual" data-testid="manual-sync"', 'm-button-primary')}</div>${result ? `<div class="snackbar-inline ${result.ok ? 'success' : 'failure'}" data-testid="sync-result">${view.icon(result.ok ? 'check' : 'info')}<span>${esc(result.message)}</span></div>` : ''}${pending ? `<div class="sync-list pending-list">${renderPendingToolbar(pending)}${current.confirmations.map(renderConfirmation).join('')}${current.conflicts.map(renderConflict).join('')}</div>` : '<div class="sync-empty">当前设备没有待确认项目</div>'}<div class="sync-list"><div class="list-section-label">同步状态</div>${renderSyncRow('cloud', '待发送操作', `${current.pendingOutgoing.length} 项`, 'pending')}${renderSyncRow('bookmark', '收藏与关注', `${current.favorites.length} 个收藏 · ${current.following.length} 位作者`, 'normal')}${renderSyncRow('reader', '阅读位置', `${current.readHistory.length} 条阅读记录`, current.remoteSuggestions.length ? 'attention' : 'normal')}</div>${current.remoteSuggestions.length ? renderRemoteSuggestion(current) : ''}</section>`;
+    return `<section class="sync-content" data-testid="sync-panel">${state.ui.batchResult ? `<div class="snackbar-inline success" role="status" data-testid="batch-result">${esc(state.ui.batchResult)}</div>` : ''}<div class="native-sync-status"><div class="sync-symbol">${view.icon('sync')}</div><div class="sync-status-copy"><span class="section-kicker">当前设备 · ${esc(current.name)}</span><strong>${esc(statusText(current))}</strong><small>${state.online ? (state.shared.lastExchange ? `最近交换：${esc(state.shared.lastExchange)}` : '尚未交换') : '恢复在线后可以重试待上传操作'}</small></div><span class="sync-state-dot ${activeStatus(current)}"></span></div><div class="sync-action-row">${button('立即同步', 'data-action="sync-manual" data-testid="manual-sync"', 'm-button-primary')}</div>${result ? `<div class="snackbar-inline ${result.ok ? 'success' : 'failure'}" data-testid="sync-result">${view.icon(result.ok ? 'check' : 'info')}<span>${esc(result.message)}</span></div>` : ''}${pending ? `<div class="sync-list pending-list">${renderPendingToolbar(pending)}${current.confirmations.map(renderConfirmation).join('')}${current.conflicts.map(renderConflict).join('')}</div>` : '<div class="sync-empty">当前设备没有待确认项目</div>'}<div class="sync-list"><div class="list-section-label">同步状态</div>${renderSyncRow('cloud', '待上传操作', `${current.pendingOutgoing.length} 项`, 'pending')}${renderSyncRow('bookmark', '收藏与关注', `${favorites} 条收藏 · ${authors} 条关注`, 'normal')}${renderSyncRow('reader', '阅读位置', `${readings} 条阅读记录`, current.remoteSuggestions.length ? 'attention' : 'normal')}</div>${current.remoteSuggestions.length ? renderRemoteSuggestion(current) : ''}</section>`;
   }
 
   function renderRemoteSuggestion(current) {
@@ -402,14 +407,14 @@
 
   function handleAction(action, target) {
     const current = currentDevice();
-    if (action === 'toggle-online') { model.setOnline(state, !state.online); notice(state.online ? '模拟网络已恢复，可以重试待发送操作。' : '模拟网络已断开；本地操作仍可继续。', state.online ? 'success' : 'failure'); }
+    if (action === 'toggle-online') { model.setOnline(state, !state.online); notice(state.online ? '模拟网络已恢复，可以重试待上传操作。' : '模拟网络已断开；本地操作仍可继续。', state.online ? 'success' : 'failure'); }
     else if (action === 'reset') { const platform = state.ui.platform; const theme = state.ui.theme; if (state.ui.timerId) window.clearTimeout(state.ui.timerId); model.resetDemo(state); state.selectedDevice = platform === 'windows' ? 'desktop-b' : 'phone-a'; state.ui = { platform, theme, route: 'library', browseTab: 'sources', detail: null, reader: false, busy: false, timerId: null, busyDeviceId: null, notice: '演示已重置；已恢复初始待确认示例。', tone: 'success', filter: false, calendar: false, readUpdates: { 'desktop-b': ['manga-night'], 'phone-a': ['manga-night'] } }; }
     else if (action === 'back') { if (state.ui.reader) { state.ui.reader = false; model.setReadingActive(state, current.id, false); } else { state.ui.detail = null; } }
     else if (action === 'open-manga') { state.ui.detail = target.dataset.object; state.ui.reader = false; }
     else if (action === 'open-author') { state.ui.detail = target.dataset.object; state.ui.reader = false; }
     else if (action === 'card-favorite' || action === 'detail-favorite') { const id = target.dataset.object || state.ui.detail; current.favorites.includes(id) ? model.localUnfavorite(state, current.id, id) : model.localFavorite(state, current.id, id); notice(current.favorites.includes(id) ? `已收藏《${book(id).title}》，等待同步。` : `已取消收藏《${book(id).title}》，接收端会请求确认。`, 'success'); }
     else if (action === 'read-detail') { const id = state.ui.detail || 'manga-star'; markUpdateRead(current.id, id); state.ui.reader = true; model.setReadingActive(state, current.id, true); }
-    else if (action === 'record-reading') { const id = state.ui.detail || 'manga-star'; markUpdateRead(current.id, id); const old = current.readPositions[id]; model.localRead(state, current.id, id, old ? old.chapterId : 'chapter-1', old ? old.page : 1); notice('当前位置已保存到本设备，下一次同步会发送。', 'success'); }
+    else if (action === 'record-reading') { const id = state.ui.detail || 'manga-star'; markUpdateRead(current.id, id); const old = current.readPositions[id]; model.localRead(state, current.id, id, old ? old.chapterId : 'chapter-1', old ? old.page : 1); notice('当前位置已保存到本设备，下一次同步会上传。', 'success'); }
     else if (action === 'adopt-remote') { const suggestion = current.remoteSuggestions[0]; if (suggestion) model.adoptRemotePosition(state, current.id, suggestion.objectId); notice('已采用远端阅读位置，当前阅读画面已更新。', 'success'); }
     else if (action === 'reader-next') { const id = state.ui.detail || 'manga-star'; markUpdateRead(current.id, id); const old = current.readPositions[id] || { chapterId: 'chapter-1', page: 1 }; model.localRead(state, current.id, id, old.chapterId, old.page + 1); notice('已翻到下一页；阅读模式仍由本设备保留。', 'success'); }
     else if (action === 'toggle-follow') { const id = state.ui.detail; current.following.includes(id) ? model.localUnfollow(state, current.id, id) : model.localFollow(state, current.id, id); notice(current.following.includes(id) ? `已关注作者「${creator(id).name}」，等待同步。` : `已取消关注作者「${creator(id).name}」，接收端会请求确认。`, 'success'); }
@@ -464,7 +469,7 @@
     else if (target.dataset.browseTab) state.ui.browseTab = target.dataset.browseTab;
     else if (target.dataset.confirm) { model.confirmCancellation(state, state.selectedDevice, target.dataset.confirm); notice('已确认取消，仅改变当前接收设备。', 'success'); }
     else if (target.dataset.ignore) { model.ignoreCancellation(state, state.selectedDevice, target.dataset.ignore); notice('已忽略本次取消；不反向恢复来源设备。'); }
-    else if (target.dataset.conflict) { model.resolveConflict(state, state.selectedDevice, target.dataset.conflict, target.dataset.choice); notice('冲突已处理，新决定已进入待发送队列。', 'success'); }
+    else if (target.dataset.conflict) { model.resolveConflict(state, state.selectedDevice, target.dataset.conflict, target.dataset.choice); notice('冲突已处理，新决定已进入待上传队列。', 'success'); }
     else if (target.dataset.action) handleAction(target.dataset.action, target);
     render();
   });

@@ -172,3 +172,67 @@ test('临时通知仅限本次面板：重开清空、设置返回保留、后�
     }
   } finally {await browser.close();}
 });
+
+test('双端同步状态统一统计待上传队列，离线保留且上传后清零', async () => {
+  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  try {
+    for (const width of [1024, 320]) {
+      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      await page.goto(url);
+      if (width === 320) {
+        await page.getByTestId('preview-tools').locator('summary').click();
+        await page.getByTestId('platform-android').click();
+      }
+      await page.getByTestId('library-sync').click();
+      const rows = page.locator('.sync-content .native-list-row');
+      const values = () => rows.locator('.row-value').allTextContents();
+      assert.equal(await rows.first().locator('strong').textContent(), '待上传操作');
+      assert.deepEqual(await values(), ['0 项', '0 条收藏 · 0 条关注', '0 条阅读记录']);
+      if (width === 1024) {
+        assert.equal(await page.locator('.pending-toolbar-heading strong').textContent(), '待手动处理的同步 · 1');
+      }
+      await page.evaluate(() => {
+        const d = window.__mihonSyncDemo;
+        const id = d.state.selectedDevice;
+        d.model.localFavorite(d.state, id, 'queue-demo');
+        d.model.localUnfavorite(d.state, id, 'queue-demo');
+        d.model.localFollow(d.state, id, 'queue-author');
+        d.model.localUnfollow(d.state, id, 'queue-author');
+        d.model.localRead(d.state, id, 'manga-star', 'queue-chapter', 2);
+        d.model.localRead(d.state, id, 'manga-star', 'queue-chapter', 3);
+        d.model.setReadingMode(d.state, id, 'manga-star', 'vertical');
+        d.render();
+      });
+      assert.deepEqual(await values(), ['6 项', '2 条收藏 · 2 条关注', '2 条阅读记录']);
+      assert.equal(await rows.locator('small').count(), 0, '不恢复三行的说明小字');
+      assert.ok(await rows.evaluateAll(items => items.every(el => el.scrollWidth <= el.clientWidth)), '窄屏数量不溢出');
+      await page.evaluate(() => {
+        const d = window.__mihonSyncDemo;
+        const original = d.state.selectedDevice;
+        d.state.selectedDevice = Object.keys(d.state.devices).find(id => id !== original);
+        d.render();
+        window.queueOriginalDevice = original;
+      });
+      assert.deepEqual(await values(), ['0 项', '0 条收藏 · 0 条关注', '0 条阅读记录'], '其他设备不计入本地队列');
+      await page.evaluate(() => {
+        const d = window.__mihonSyncDemo;
+        d.state.selectedDevice = window.queueOriginalDevice;
+        d.model.setOnline(d.state, false);
+        d.render();
+      });
+      await page.getByTestId('manual-sync').click();
+      await page.waitForFunction(() => !window.__mihonSyncDemo.state.ui.busy);
+      assert.deepEqual(await values(), ['6 项', '2 条收藏 · 2 条关注', '2 条阅读记录']);
+      assert.match(await page.getByTestId('sync-result').textContent(), /待上传操作已保留/);
+      await page.evaluate(() => {
+        const d = window.__mihonSyncDemo; d.model.setOnline(d.state, true); d.render();
+      });
+      await page.getByTestId('manual-sync').click();
+      await page.waitForFunction(() => !window.__mihonSyncDemo.state.ui.busy);
+      assert.deepEqual(await values(), ['0 项', '0 条收藏 · 0 条关注', '0 条阅读记录']);
+      assert.match(await page.getByTestId('sync-result').textContent(), /上传 6 条/);
+      assert.doesNotMatch(await page.getByTestId('sync-panel').textContent(), /发送|需要你的决定/);
+      await page.close();
+    }
+  } finally { await browser.close(); }
+});
