@@ -72,22 +72,20 @@ test('同步设置底部面板：双端开关、关闭、焦点与异步重绘',
 });
 
 async function assertNavIndicatorsLayout(nav) {
-  const iconBox = await nav.locator('.nav-icon-anchor').boundingBox();
+  assert.equal(await nav.locator('.nav-badge-capsule').count(), 1, '两种提示共享一个右上胶囊');
+  const capsule = await nav.locator('.nav-badge-capsule').boundingBox();
   const content = await nav.getByTestId('nav-updates-content-badge').boundingBox();
-  const sync = nav.getByTestId('nav-updates-sync-badge');
-  const syncBox = await sync.boundingBox();
-  const textBox = await nav.locator('.nav-label-text').boundingBox();
-  const labelBox = await nav.locator('.nav-label').boundingBox();
+  const sync = await nav.getByTestId('nav-updates-sync-badge').boundingBox();
   const navBox = await nav.boundingBox();
-  assert.ok(content.x >= iconBox.x && content.x + content.width <= iconBox.x + iconBox.width);
-  assert.ok(content.y >= iconBox.y && content.y + content.height <= iconBox.y + iconBox.height);
-  assert.ok(syncBox.y >= iconBox.y + iconBox.height, '同步提示位于文字行，不再叠加主图标');
-  assert.ok(syncBox.x >= textBox.x + textBox.width + 2, '同步提示位于更新文字右侧');
-  assert.ok(Math.abs(syncBox.y + syncBox.height / 2 - (textBox.y + textBox.height / 2)) < 2);
-  assert.ok(labelBox.x >= navBox.x && labelBox.x + labelBox.width <= navBox.x + navBox.width);
-  assert.ok(Math.abs(labelBox.x + labelBox.width / 2 - (iconBox.x + iconBox.width / 2)) < 1);
-  assert.equal(await sync.evaluate(el => getComputedStyle(el).backgroundColor), 'rgba(0, 0, 0, 0)');
-  assert.equal(await sync.evaluate(el => getComputedStyle(el).borderTopWidth), '0px');
+  const icon = await nav.locator('.nav-icon-wrap .MihonIcon').boundingBox();
+  const label = await nav.locator('.nav-label').boundingBox();
+  assert.ok(capsule.x >= navBox.x && capsule.x + capsule.width <= navBox.x + navBox.width);
+  assert.ok(capsule.y >= navBox.y && capsule.y + capsule.height <= icon.y + 4);
+  assert.ok(content.x >= capsule.x && sync.x + sync.width <= capsule.x + capsule.width);
+  assert.ok(content.x + content.width < sync.x, '数量与同步提示横向排列');
+  assert.ok(Math.abs(content.y + content.height / 2 - (sync.y + sync.height / 2)) < 2);
+  assert.ok(Math.abs(label.x + label.width / 2 - (icon.x + icon.width / 2)) < 1);
+  assert.equal(await nav.locator('.nav-label [data-testid="nav-updates-sync-badge"]').count(), 0);
 }
 
 async function injectUpdateNav(page, platform, active) {
