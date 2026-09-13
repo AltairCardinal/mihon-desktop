@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_CORE_PATH);
-const url = 'file://' + path.resolve(__dirname, 'index.html').replace(/\\/g, '/');
+const url = 'file://' + path.resolve(__dirname, 'device.html').replace(/\\/g, '/');
 async function seed(page, android) {
   await page.goto(url);
   if (android) { await page.getByTestId('preview-tools').locator('summary').click(); await page.getByTestId('platform-android').click(); }

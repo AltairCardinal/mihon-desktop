@@ -11,7 +11,7 @@ const playwrightCandidates = [
 const playwrightPath = playwrightCandidates.find((candidate) => fs.existsSync(candidate));
 const playwright = playwrightPath ? require(playwrightPath) : null;
 
-const fileUrl = `file://${path.resolve(__dirname, 'index.html').replace(/\\/g, '/')}`;
+const fileUrl = `file://${path.resolve(__dirname, 'device.html').replace(/\\/g, '/')}`;
 
 test('同步设置子页面：双端开关、返回、焦点与异步重绘', { skip: !playwright && '缓存 Playwright 未找到' }, async () => {
   const browser = await playwright.chromium.launch({ headless: true, channel: 'chrome' });

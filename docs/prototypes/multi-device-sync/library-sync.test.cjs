@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_CORE_PATH);
-const url = 'file://' + path.resolve(__dirname, 'index.html').replace(/\\/g, '/');
+const url = 'file://' + path.resolve(__dirname, 'device.html').replace(/\\/g, '/');
 
 test('书架同步子面板：三态、后台更新、待处理计数及更新入口隔离', async () => {
   const browser = await chromium.launch({ headless: true, channel: 'chrome' });

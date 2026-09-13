@@ -1,17 +1,18 @@
 (function () {
   'use strict';
 
-  const model = window.MihonSyncModel;
+  const preview = window.frameElement?.dataset.platform ? window.parent.MihonPreview : null;
+  const model = preview ? window.parent.MihonSyncModel : window.MihonSyncModel;
   const view = window.MihonSyncView;
   const root = document.getElementById('app');
   let sheetDrag = null;
   let selectionPress = null;
   let suppressSelectionClickUntil = 0;
-  const state = model.createDemoState();
+  const state = preview ? preview.connect() : model.createDemoState();
   state.selectedDevice = 'desktop-b';
   const UPDATE_IDS = ['manga-star', 'manga-dawn', 'manga-night'];
   state.ui = {
-    platform: 'windows', theme: 'light', route: 'library', browseTab: 'sources',
+    platform: 'windows', theme: 'dark', route: 'library', browseTab: 'sources',
     detail: null, reader: false, busy: false, timerId: null, busyDeviceId: null,
     notice: 'Windows Desktop 原生界面预览；同步仍是离线演示。', tone: 'info', filter: false, calendar: false,
     readUpdates: { 'desktop-b': ['manga-night'], 'phone-a': ['manga-night'] },
@@ -354,7 +355,7 @@
     return renderMore();
   }
 
-  function render() {
+  function render(publish = true) {
     if (!state.ui.syncOpen) { state.ui.syncResult = null; state.ui.batchResult = null; }
     const liveIds = new Set(currentDevice().confirmations.map(item => item.id));
     const previousSelected = state.ui.selectedIds || [];
@@ -373,10 +374,11 @@
       const controls = [...(review || root.querySelector('[role="dialog"]')).querySelectorAll('button[data-testid]')].filter(el => !el.closest('[inert]'));
       const batchFallback = review ? 'batch-cancel' : state.ui.selecting ? 'selection-cancel' : null;
       const fallback = batchFallback || (state.ui.syncSettingsOpen ? 'sync-settings-back' : wasSettings ? 'sync-settings' : 'sync-close');
-      (controls.find(el => el.dataset.testid === focusId) || root.querySelector('[data-testid="' + fallback + '"]')).focus({ preventScroll: true });
+      if (!preview || document.hasFocus()) (controls.find(el => el.dataset.testid === focusId) || root.querySelector('[data-testid="' + fallback + '"]')).focus({ preventScroll: true });
       const panel = root.querySelector('.sync-panel-scroll');
       if (panel) panel.scrollTop = state.ui.syncScroll || 0;
-    } else if (previousSheet) root.querySelector('[data-testid="library-sync"]')?.focus({ preventScroll: true });
+    } else if (previousSheet && (!preview || document.hasFocus())) root.querySelector('[data-testid="library-sync"]')?.focus({ preventScroll: true });
+    if (preview && publish) preview.refreshOthers(window);
   }
 
   function scheduleSync(trigger) {
@@ -534,5 +536,10 @@
   });
 
   window.__mihonSyncDemo = { state, model, view, render, scheduleSync };
+  if (preview) {
+    switchPlatform(window.frameElement.dataset.platform);
+    state.ui.theme = preview.theme;
+    document.body.classList.add('embedded-preview');
+  }
   render();
 })();

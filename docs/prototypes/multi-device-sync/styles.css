@@ -13,15 +13,16 @@
   --danger: #BA1A1A;
   --success: #006E1B;
   --radius: 12px;
+  color-scheme: dark;
   font-family: "Segoe UI", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
   color: var(--on-surface);
-  background: #ebe8ee;
+  background: #111216;
   font-synthesis: none;
 }
 
 .theme-dark { --primary: #B0C6FF; --on-primary: #002D6E; --surface: #1B1B1F; --on-surface: #E3E2E6; --surface-variant: #211F26; --secondary-container: #00429B; --on-secondary-container: #D9E2FF; --outline: #8F9099; --outline-variant: #44464F; --surface-container: #211F26; --surface-low: #1E1C22; --danger: #FFB4AB; --success: #7ADC77; }
 * { box-sizing: border-box; }
-html, body { min-width: 320px; min-height: 100%; margin: 0; background: #ebe8ee; color: var(--on-surface); }
+html, body { min-width: 320px; min-height: 100%; margin: 0; background: #111216; color: var(--on-surface); }
 body { padding: 0 18px 18px; }
 button, input, select { font: inherit; }
 button { color: inherit; cursor: pointer; }
@@ -168,3 +169,30 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .pending-toolbar .batch-action-bar { padding: 8px; justify-content: flex-end; border-radius: 0 0 8px 8px; }
 .pending-toolbar .batch-action-bar .m-button { min-height: 34px; padding: 6px 10px; font-size: 12px; }
 .pending-list .native-confirmation { scroll-margin-top: 120px; }
+
+/* One shared preview toolbar, two independent native viewports. */
+.parallel-preview { max-width: 1480px; margin: 0 auto; padding: 16px 0; }
+.parallel-preview .preview-tools { max-width: none; margin: 0 0 18px; color: #e3e2e6; }
+.parallel-preview .preview-tools summary, .parallel-preview .preview-tool-panel { border-color: #383a43; background: #1c1e24; }
+.parallel-preview .tool-summary-icon, .parallel-preview .tool-summary-muted, .parallel-preview .tool-group > span, .parallel-preview .preview-boundary { color: #a7aab6; }
+.parallel-preview .preview-tool-panel { gap: 14px 20px; }
+.parallel-preview .preview-tool-panel .m-button { color: #dce0ec; border-color: #484b56; font-size: 12px; }
+.parallel-preview .preview-tool-panel .m-button.is-selected { background: #303f62; color: #d9e2ff; border-color: #7186b5; }
+.parallel-preview .tool-group { flex-wrap: wrap; font-size: 12px; }
+.parallel-preview select { background: #282b33; color: #e3e2e6; border: 1px solid #484b56; border-radius: 6px; padding: 5px; }
+.parallel-scroll { overflow-x: auto; padding-bottom: 12px; }
+.device-pair { display: grid; grid-template-columns: minmax(660px, 1fr) 390px; gap: 24px; min-width: 1074px; align-items: start; }
+.device-label { height: 34px; color: #b9bdca; font-size: 13px; font-weight: 600; }
+.device-column iframe { display: block; width: 100%; height: 844px; border: 0; color-scheme: dark; }
+.embedded-preview { padding: 0; }
+.embedded-preview .prototype-root { min-height: 0; padding: 0; }
+.embedded-preview .preview-tools, .embedded-preview .prototype-notice { display: none; }
+.embedded-preview .windows-shell { width: 100%; height: 844px; max-width: none; border-radius: 8px; border: 1px solid #454750; }
+.embedded-preview .android-shell { width: 390px; height: 844px; border: 7px solid #373941; border-radius: 27px; }
+.theme-light { color-scheme: light; }
+.theme-dark .desktop-windowbar { color: #c3c4ce; }
+@media (max-width: 700px) {
+  .parallel-preview { padding: 12px; }
+  .parallel-preview .preview-tool-panel { align-items: flex-start; }
+  .parallel-preview .tool-group { width: auto; justify-content: flex-start; }
+}

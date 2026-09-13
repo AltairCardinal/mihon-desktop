@@ -21,12 +21,13 @@ node --test docs/prototypes/multi-device-sync/ui-view.test.cjs
 真实 file URL 浏览器验收（使用本机缓存的 Playwright/Chrome）：
 
 ```text
-node --test docs/prototypes/multi-device-sync/ui-browser.test.cjs docs/prototypes/multi-device-sync/library-sync.test.cjs docs/prototypes/multi-device-sync/batch-sync.test.cjs
+node --test docs/prototypes/multi-device-sync/ui-browser.test.cjs docs/prototypes/multi-device-sync/library-sync.test.cjs docs/prototypes/multi-device-sync/batch-sync.test.cjs docs/prototypes/multi-device-sync/parallel-preview.test.cjs
 ```
 
 ## 原型路径
 
-- 应用外「演示预览」工具条可切换 Windows Desktop / Android 手机、浅色 / 深色、离线、启动/定期同步和重置。收起工具条后，产品内容不显示设备实验台或模拟控制。
+- 默认左侧 Windows Desktop、右侧 Android 手机并列显示，网页背景及两端默认主题均为深色。窄窗口保持并列，通过预览区域横向滚动查看，避免把设备缩小到难以操作。
+- 应用外「演示预览」工具条默认展开，可切换双端浅色/深色、全局离线状态和重置；选择“触发设备”后，模拟启动/定期同步及 120 项待处理作用于所选端。手动同步仍从各自书架顶栏进入。收起工具条后，操作两端不会重新展开它。
 - Windows 使用 Mihon Desktop 外壳和六项底栏：书架、更新、历史、浏览、作者、更多；浏览页签按源码保留图源/插件，作者从独立底栏进入，迁移从更多进入。默认打开书架，同步从书架顶栏进入；更新底栏只打开漫画更新列表。
 - Android 使用手机状态栏、Material TopAppBar、五项底栏：书架、更新、历史、浏览、更多。作者入口在浏览内的「图源 / 作者 / 插件 / 迁移」页签，不加入 Android 底栏。
 - 从书架漫画卡片、更新条目或作者详情进入漫画详情；在详情中收藏、取消收藏和开始阅读。作者可从 Windows 作者页或 Android 浏览 → 作者列表进入详情并关注。
@@ -52,13 +53,15 @@ node --test docs/prototypes/multi-device-sync/ui-browser.test.cjs docs/prototype
 ## 建议演示顺序
 
 1. 初始打开 Windows 书架 → 顶栏同步，电脑 B 会看到手机 A 发来的取消收藏待确认项；可确认或忽略本次取消。
-2. 打开底栏更新，在一台设备（来源端）从更新条目或漫画详情操作收藏、阅读或关注，并点击书架 → 顶栏同步 →「立即同步」；再切换另一台设备（接收端）点击「立即同步」查看结果。
-3. 在应用外工具条切换 Android，进入浏览 → 作者 → 作者详情关注；来源端先立即同步，再切换 Windows 或另一台设备作为接收端立即同步。Android 不会出现 Desktop 的独立作者底栏。
+2. 打开底栏更新，在一台设备（来源端）从更新条目或漫画详情操作收藏、阅读或关注，并点击书架 → 顶栏同步 →「立即同步」；直接在旁边另一台设备（接收端）点击「立即同步」查看结果。
+3. 在右侧 Android 进入浏览 → 作者 → 作者详情关注；来源端先立即同步，再在左侧 Windows 作为接收端立即同步。Android 不会出现 Desktop 的独立作者底栏。
 4. 在两台设备分别制造相反收藏决定；每次先在产生决定的来源端立即同步，再在另一台接收端立即同步，进入同步页冲突条目选择保留本地或采用远端。
-5. 从漫画详情进入阅读器，来源端记录当前位置并立即同步，再切到接收端立即同步。接收端正在阅读时不自动翻页，可在同步页显式采用远端位置；阅读模式始终按设备独立保存。
+5. 从漫画详情进入阅读器，来源端记录当前位置并立即同步，再在旁边接收端立即同步。接收端正在阅读时不自动翻页，可在同步页显式采用远端位置；阅读模式始终按设备独立保存。
 6. 在应用外工具条切换离线，继续收藏或阅读；恢复在线后先同步来源端，再同步接收端。待上传操作会保留到重试成功。
 
 ## 源码对照与边界
+
+`preview.js` 提供并列容器及公共工具条，用同源 srcdoc iframe 隔离两端的视口、焦点与键盘事件，继续加载原有 `app.js`。双端复用同一个 `sync-model.js` 模型和内存操作日志；代理状态只把导航、选择、面板通知和定时器留在各自视图，收藏、阅读、待上传队列仍按设备 ID 隔离。重绘另一端不抢焦点、不接收尚未同步的操作。重置及大量待处理场景会终止两端现有定时器、重建视图，避免旧后台任务修改新场景。页面刷新丢失演示状态；这不是跨浏览器通信。单端隔离验收保留 `device.html`，并列入口的共享状态、工具条和双端交换由 `parallel-preview.test.cjs` 覆盖。
 
 同步设置面板参考 Android 书架筛选使用的 `LibrarySettingsDialog.kt`、`TabbedDialog.kt` 和 `presentation-core/src/main/java/tachiyomi/presentation/core/components/AdaptiveSheet.kt`：采用顶部圆角、surfaceContainerHigh 表面、24px 内容边距；同步与设置子页面共用最大 560px 的面板，以容纳待处理列表并避免切换时尺寸跳变。按本次设计要求，Windows 与 Android 原型均从应用窗口底部弹出；这不表示 Windows 原有书架筛选已经采用底部面板。齿轮使用对应 `Icons.Default.Settings` 的 Material Filled SVG 路径。
 
