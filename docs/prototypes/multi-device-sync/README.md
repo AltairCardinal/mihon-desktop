@@ -1,6 +1,6 @@
 # Mihon 双端原生界面同步演示
 
-这是需求草案阶段的本地 HTML 原型。它把同步操作放进 Windows Desktop 与 Android 手机的 Mihon 页面路径中，不连接 Git 服务，也不代表同步需求已经获用户确认。
+这是本地 HTML 交互原型。它把同步操作放进 Windows Desktop 与 Android 手机的 Mihon 页面路径中，不连接 Git 服务。[技术方案](../../2026-09-13-multi-device-sync-technical-proposal.md)已于2026-09-13通过用户审核；当前原型与方案仍有[交互调整项](../2026-09-13-sync-demo-interaction-audit.md)，不代表生产同步已实现。
 
 ## 打开与测试
 
