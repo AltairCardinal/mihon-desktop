@@ -53,6 +53,36 @@ class DesktopExtensionArtifactAuthenticityTest {
     }
 
     @Test
+    fun `AEX-00 real 1_6 JAR passes production payload authentication`() {
+        val jar = repositoryRoot().resolve(MANGADEX_1_6_JAR).toFile()
+
+        assertEquals(MANGADEX_1_6_JAR_SHA256, jar.sha256())
+        assertDoesNotThrow {
+            DefaultDesktopArtifactAuthenticator.authenticate(jar, MANGADEX_SIGNER_SHA256, isApk = false)
+        }
+    }
+
+    @Test
+    fun `AEX-00 signed controlled v1_5 JAR passes production payload authentication`() {
+        val jar = repositoryRoot().resolve(EXTERNAL_V15_JAR).toFile()
+
+        assertEquals(EXTERNAL_V15_JAR_SHA256, jar.sha256())
+        assertDoesNotThrow {
+            DefaultDesktopArtifactAuthenticator.authenticate(jar, EXTERNAL_V15_SIGNER_SHA256, isApk = false)
+        }
+    }
+
+    @Test
+    fun `AEX-00 signed controlled v1_6 SourceFactory JAR passes production payload authentication`() {
+        val jar = repositoryRoot().resolve(EXTERNAL_V16_JAR).toFile()
+
+        assertEquals(EXTERNAL_V16_JAR_SHA256, jar.sha256())
+        assertDoesNotThrow {
+            DefaultDesktopArtifactAuthenticator.authenticate(jar, EXTERNAL_V16_SIGNER_SHA256, isApk = false)
+        }
+    }
+
+    @Test
     fun `unsigned native JAR fails closed with typed authentication error`(@TempDir directory: Path) {
         val jar = directory.resolve("unsigned.jar").toFile().also {
             it.writeBytes(nativeJarBytes())
@@ -177,7 +207,23 @@ class DesktopExtensionArtifactAuthenticityTest {
     private companion object {
         const val MANGADEX_APK =
             "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.4.211.apk"
+        const val MANGADEX_1_6_JAR =
+            "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.6.0.jar"
         const val MANGADEX_SHA256 = "eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236"
+        const val MANGADEX_1_6_JAR_SHA256 =
+            "2781d8593d68f2e79ad54f20949399c44afb703d5679299f84f7356df697008e"
+        const val EXTERNAL_V15_JAR =
+            "app-desktop/src/test/resources/extensions/real/aex00-external-v15-suspend-only.jar"
+        const val EXTERNAL_V15_JAR_SHA256 =
+            "ffcaad5974329a319e20b3cabd8565117f23668315bddac5ab72eae819e74fcf"
+        const val EXTERNAL_V15_SIGNER_SHA256 =
+            "9be8a18439915033e8362f25426323e8b7b94f223eadca4962ce5f91a23d6021"
+        const val EXTERNAL_V16_JAR =
+            "app-desktop/src/test/resources/extensions/real/aex00-external-v16-controlled-sample.jar"
+        const val EXTERNAL_V16_JAR_SHA256 =
+            "e623be999c1c6b7c9a5383253645f6dc3d496de44d44a4fa1cd1a4fe020c33c4"
+        const val EXTERNAL_V16_SIGNER_SHA256 =
+            "9be8a18439915033e8362f25426323e8b7b94f223eadca4962ce5f91a23d6021"
         const val MANGADEX_SIGNER_SHA256 = "9add655a78e96c4ec7a53ef89dccb557cb5d767489fac5e785d671a5a75d4da2"
         const val ATTACKER_FINGERPRINT = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         const val MANGADEX_PACKAGE = "eu.kanade.tachiyomi.extension.all.mangadex"

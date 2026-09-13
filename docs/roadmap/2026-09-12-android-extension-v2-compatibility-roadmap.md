@@ -1,14 +1,14 @@
 # Android 新版扩展系统完整兼容 Roadmap
 
 - 日期：2026-09-12
-- 状态：**PLANNED，仅完成规划，尚未授权实施**
+- 状态：**IN_PROGRESS，AEX-00 已验收；下一批 AEX-01**
 - 父计划：[Android / macOS / Windows 正式 Roadmap](./2026-06-30-mihon-desktop-refactor-roadmap.md)
 - 专项代码基线：`6d6263dcfeffdfbd5f810a54fa7a3d24c0a6ba50`
 - 协议对齐基线：Mihon `v0.20.4`，实际 commit `df6507256acce8e7f3660783a3db6dbd1a31b6b5`
 
-2026-09-12 审阅调整：解除早期组件测试对 AEX-04 安装/版本放行的反向依赖；AEX-03 拆为查询与更新数据闭环两个行为批次；AEX-00 增加可执行测试矩阵的强制关闭门槛。仍仅规划，未开始实现。
+2026-09-12 首次审阅调整（历史记录）：解除早期组件测试对 AEX-04 安装/版本放行的反向依赖；AEX-03 拆为查询与更新数据闭环两个行为批次；AEX-00 增加可执行测试矩阵的强制关闭门槛。当时仅规划；后续已按用户授权开始 AEX-00，当前进度以下文实施证据为准。
 
-本文件是本专项唯一计划与进度记录。实施进度仅从第 5 节第一个未勾选的批次推导；不增加 `active-task`。本次不激活父计划、不恢复其他暂停计划、不修改产品代码，也不把规划当成兼容性完成证据。
+本文件是本专项唯一计划与进度记录。实施进度仅从第 5 节第一个未勾选的批次推导；不增加 `active-task`。用户在审阅调整后明确授权实施全部内容，现激活本子计划，不恢复其他暂停计划。规划、开始执行和子代理自测均不等于兼容性完成证据。
 
 ## 1. 目标与完成定义
 
@@ -98,6 +98,7 @@
 
 - 优先使用显式 `extensionLib` 和 `tachiyomix.extensionLib`；旧 metadata 缺失时才按旧规范回退。versionCode、versionName、协议版本是不同概念，不可互相替代。
 - 上游冻结版显式支持集合是 1.4、1.6，不是任意 `1.4..1.6` 连续版本。该 fork 当前接受旧 1.5，须单独记录为历史兼容分支并用真实 fixture 保留；如发现实际不兼容，先报告影响并取得变更决定，不静默删除既有支持。
+- AEX-00 的有界调查未找到可核验的第三方历史 1.5 发布 APK；用户在 2026-09-12 明确批准以官方 Mihon `v0.19.4` 固定旧 Source API 独立编译的受控扩展替代该输入。受控样本可以使用正常签名的固定 JAR/APK，作为 1.5 API/加载兼容证据；它不冒称为第三方 1.5 发布物，历史发布 provenance 仍单独记为未找到。
 - 覆盖 `tachiyomix.name`、协议版本和内容分级；新旧字段冲突按冻结规范处理。未知未来协议版本显示不兼容，不伪装成已废弃。
 - v2 目录枚举中 MIXED=2、NSFW=3 均按上游进入受限内容判断；APK metadata 的编码/阈值单独验证，不能把两者强行共用同一个数字比较。
 - Source ABI 审计覆盖冻结 source-api 的公开成员、默认实现、Rx/协程桥接、模型、HttpSource、依赖类签名与压缩保留规则。不能只让本仓库重新编译通过，必须加载用外部冻结 API 编译的二进制。
@@ -116,7 +117,7 @@
 - [非 Reader 上游核心路线图](./2026-08-02-mihon-desktop-non-reader-upstream-core-roadmap.md) 保持 PAUSED；本专项只承接 `EX-01` 中 Android v2/1.6 所必需的共享协议、安装状态与真实调用切片，不代表 `EX-01`、`BR-01` 或整条非 Reader 主线完成。
 - 不等待完整 BR-01 大重构才修复兼容性：AEX-00/AEX-03A 在现有查询边界中冻结本专项必需的 Source 接口与 adapter，AEX-03B 接通更新及数据链；后续 BR-01/EX-01 必须复用这些实现和 fixture，不能再维护另一套规则。
 - [Reader adapter 重构计划](./2026-08-27-desktop-reader-upstream-semantics-adapter-refactor-roadmap.md) 不重新打开；仅回归其真实 source 输入和 reader/downloader 链路。发现无关 Reader 缺陷另行记录，不扩大本专项。
-- 父计划本次继续 `active-child-plan: none`。用户授权实施时，才在首个工作批次中激活本子计划；本专项的 Android 实际发布和设备验收属于必要门槛，不适用父计划早期“Android 发布延期不阻塞”的方针。
+- 父计划已在本专项首批工作中将 `active-child-plan` 指向本计划；本专项的 Android 实际发布和设备验收属于必要门槛，不适用父计划早期“Android 发布延期不阻塞”的方针。
 - `app-desktop/src/test/resources/parity/parity-manifest.json` 仍是 capability 机器权威。实施时仅针对实际受影响条目补充可复现证据；未验收项不得标为 VERIFIED，不批量改写历史状态。
 
 ## 5. 有序交付批次
@@ -127,7 +128,7 @@
 
 | 进度 | 批次 | 可独立验证的结果 | 前置 | 估算 |
 | --- | --- | --- | --- | --- |
-| [ ] | AEX-00 协议与验收基线 | 固定 fixture、可执行测试矩阵和已验证的 runner | 本计划获准实施 | 0.5–1 日 |
+| [x] | AEX-00 协议与验收基线 | 固定 fixture、可执行测试矩阵和已验证的 runner | 本计划获准实施 | 0.5–1 日 |
 | [ ] | AEX-01 Source ABI 与旧版桥接 | 外部二进制执行真实 API/加载基础组件契约；不含 APK 版本准入整链 | AEX-00 | 2–4 日 |
 | [ ] | AEX-02 共享仓库协议与迁移 | Android/Desktop 使用同一正确 v2 catalog，旧地址和仓库数据可迁移 | AEX-00、AEX-01 | 2–3 日 |
 | [ ] | AEX-03A Source 查询与导航 | Source-only 的源发现、浏览、搜索及 UI wiring 可用 | AEX-01、AEX-02 | 0.5–1.5 日 |
@@ -148,8 +149,8 @@
 
 - 输入：本节固定 commit、现有权威基线、仓库/Source/安装生产调用点。
 - 交付：将第 6 节测试归属表具体化为本文件内的可执行矩阵；逐项填写“行为 → 生产入口 → 现有/拟新增测试类与 source set → 所属批次 → 首个预期失败原因 → Gradle task/filter 或设备 runner → 通过标准”。确认支持集合、metadata 冲突规则、索引形式、Source API 差异和所需依赖 ABI，不只抄 release notes。
-- fixture：取得固定 commit 对应的 Keiyoushi 索引样本、可合法保留的真实 1.4/历史 1.5/1.6 APK 与 Desktop 对应 JAR；记录来源、版本、包名、哈希、签名和许可。不能把可变 live URL 作为 CI 唯一输入，也不将 APK blob 无限制塞进仓库。
-- 另备基于冻结外部 API 独立构建的受控扩展：Source-only、SourceFactory、多语言、分级、memo、getMangaUpdate flags、错误路径；包含对应 APK/JAR。记录组件调用方式与完整 APK 安装方式，后者在 AEX-04 执行生产 loader。本批次只要求 fixture 来源/构建可核验、测试入口可运行，不要求当前尚不支持的 1.6 APK 已加载成功；不在 host 测试内重新定义接口来掩盖 ABI 差异。
+- fixture：取得固定 commit 对应的 Keiyoushi 索引样本、可合法保留的真实 1.4/1.6 APK 与 Desktop 对应 JAR；历史第三方 1.5 若无固定发布物必须保留缺失事实，同时使用用户批准的固定旧 API 受控扩展作为替代输入。记录来源、版本、包名、哈希、签名和许可。不能把可变 live URL 作为 CI 唯一输入，也不将 APK blob 无限制塞进仓库。
+- 另备基于冻结外部 API 独立构建的受控扩展：Source-only、SourceFactory、多语言、分级、memo、getMangaUpdate flags、错误路径；包含对应 APK/JAR。AEX-00 已固定并正常签名 `v0.19.4` 外部 Source-only suspend-only JAR（仅作为 1.5 API/生产 loader 组件样本，未声称覆盖其余受控扩展类型），以及基于 `v0.20.4` 独立源码构建并正常签名的 v1.6 SourceFactory/multilingual/memo/flags/error JAR 与 metadata APK；后者另导出 `V16SourceAbiProbe`，通过静态 `Source` 接口调用新方法，供 AEX-01 产生真实 ABI RED。两组来源、编译 classpath、签名警告和再现边界分别见 `app-desktop/src/test/resources/extensions/real/aex00-external-v15-suspend-only.provenance.json` 与 `app-desktop/src/test/resources/extensions/real/aex00-external-v16-controlled-sample.provenance.json`。v1.6 受控 APK 的 `tachiyomix.contentWarning` 只作为 metadata 证据，样本 source 的 memo 字段不替代它。完整 APK 安装方式仍在 AEX-04/AEX-05 执行生产 loader。本批次只要求 fixture 来源/构建可核验、测试入口可运行，不要求当前尚不支持的 1.6 APK 已加载成功；不在 host 测试内重新定义接口来掩盖 ABI 差异。
 - 确认 Android 最低/当前支持系统、代表性 ABI、现有 androidTest runner、SDK、可用设备/模拟器、release variant/R8/signing 配置和已有 app ID/versionCode。核对测试设备身份，不卸载或覆盖用户主实例。
 - 输出基线只记录已测事实；当前手机版本未知不阻塞制定 fixture，但真实“从用户版本原地升级”须取得其版本及安装身份后验证。
 - 验证：各必需测试层先运行一个与当前基线兼容的最小 production 用例，确认 runner、fixture 资源和报告真实工作；尚无测试配置的 source-api target 在此明确最小接入方式并验证运行，不只列出一个可能存在的 task。新增产品行为在所属实现批次进入 RED，本批次不通过修改产品行为使其提前变绿。
@@ -261,19 +262,39 @@
 
 | 行为 / 所属批次 | 被测生产入口与边界 | 测试落点及复用 / 拟新增套件 | 首个预期 RED 与通过标准 |
 | --- | --- | --- | --- |
-| Source ABI / AEX-01 | source-api、旧版桥接、production 加载基础组件；不含 APK 准入整链 | 拟新增 SourceApiBinaryContractTest：共享契约在 Android/JVM 两个 target 执行；app/src/androidTest 的 ART 组件入口在 AEX-00 确认 | 外部二进制调用真实方法出现 ABI/行为差异；GREEN 时新旧调用结果正确且两平台实际执行，不能以版本拒绝作为 ABI 失败 |
-| 目录协议 / AEX-02 | 两端 ExtensionApi → 共享 decoder/catalog → 领域对象 | 扩充 Android/Desktop ExtensionApiSharedCatalogTest；新增共享 v2 协议契约，绑定对应平台网络入口 | 显式 lib、分级、语言、列表或错误映射不符；真实 HTTP 成功/失败矩阵通过且失败保留成功快照 |
-| 仓库生命周期 / AEX-02 | deeplink/仓库 ScreenModel → Create/Replace/Delete → HTTP → 真实数据库与备份恢复 | 保留 ExtensionRepoServiceContractTest 的动作映射；拟新增 ExtensionRepoPersistenceIntegrationTest，复用数据迁移测试及两端仓库 UI 测试入口 | 新索引地址不能创建、身份/信任或迁移后定位丢失；旧/新输入、重复、冲突、删除、重启及恢复通过，不能 mock 创建用例或数据库后声称整链通过 |
-| 目录兼容状态 / AEX-02 | 平台能力与共享状态 → 列表呈现及安装入口禁用 | 扩充 ExtensionPresentationWiringTest / Desktop 对应呈现测试，绑定真实 catalog 与平台能力 adapter | 1.6 条目被错误过滤或 Android 尚未放行却显示可安装；GREEN 时条目可解释、不可错误操作，Desktop 既有可用状态不退化 |
-| Source 查询 / AEX-03A | 真实 SourceManager → 查询服务/ScreenModel → 导航；外部 Source 为受控输入 | 扩充 AndroidSourceManagerInitializationTest、BrowseSourceScreenModelBehaviorTest；拟新增 SourceOnlyQueryContractTest 与全局搜索/导航集成，Android/Desktop 共用场景 | Source-only 被过滤、没有调用源或参数/导航错误；源可见，分页/筛选/可用时最新/取消和失败反馈正确；DI 可解析只是附加检查 |
-| 更新与 memo / AEX-03B | 详情/后台作业 → 统一更新/同步 → 数据库 → 备份/恢复 → 再调用及页图/下载消费 | 拟新增 SourceUpdateMemoContractTest 与平台调用方集成；复用 LibraryUpdateJobSharedLifecycleIntegrationTest、数据迁移、BackupCreator/RestorerBehaviorTest 及 Desktop 备份/Reader 测试 | flags/次数错误或任一数据环节丢失 memo/进度；真实存储重开和生产备份恢复后重新调用正确，旧数据不损坏；codec 自身 round-trip 不足以关闭 |
-| APK 准入、安装与整链 / AEX-04 | 真实 PackageManager/installer → ExtensionLoader/ART → SourceManager → 查询/更新/阅读/下载 | 扩充 Android 安全/生命周期测试；拟新增 ExtensionV16LifecycleInstrumentationTest，复用现有 SystemExtensionRollbackInstrumentationTest 的设备基础设施 | 真实 1.6 APK 被版本/metadata 拒绝或源注册/业务调用失败；同一签名 APK 经正常产品入口完成全部步骤；无 Source 注入、metadata 改写或信任后门 |
-| 历史升级与恢复 / AEX-05 | 旧版本数据/备份进入已完成的产品整链 | 拟新增 ExtensionUpgradeWorkflowTest；复用 AEX-04 场景加入升级 fixture、故障与恢复 | 新发现行为缺陷归属到相应组件先补 RED；随后升级/中断恢复全流程通过，独立记录旧数据版本及结果 |
-| 发布产物 / AEX-06 | 最终 R8 APK 与正式 Windows/macOS runtime | Android release 设备 runner/人工操作证据；Desktop 既有 Test Mode 和正式构建脚本 | 本批次是发布集成门槛，不虚构必须先失败；若产物失败，定位后对相关行为补 RED 并修复；最终产物与受测 hash/版本一致、必要场景不跳过 |
+| Source ABI / AEX-01 | `source-api`、旧版桥接、production 加载基础组件；Android 组件测试直接使用 `ChildFirstPathClassLoader`，不经过版本/信任准入；不含 APK 准入整链 | 待新增 `source-api/src/commonTest/kotlin/eu/kanade/tachiyomi/source/SourceApiBinaryContractTest.kt`（`jvmTest`、`testReleaseUnitTest`）、`app/src/androidTest/java/eu/kanade/tachiyomi/extension/ExtensionV16SourceAbiInstrumentationTest.kt`（ART）与 `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionV16AbiIntegrationTest.kt`（Desktop `DesktopExtensionLoader.loadFromSingleJar`/`ExtensionClassLoader`）；现有 `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionLoaderTest.kt` 已实际执行同一 production loader 的受控 v1.5 路径，v1.6 本批次仅由 `DesktopExtensionArtifactAuthenticityTest` 验证签名；`:source-api:jvmTest --tests "eu.kanade.tachiyomi.source.SourceApiBinaryContractTest"`、`:source-api:testReleaseUnitTest --tests "eu.kanade.tachiyomi.source.SourceApiBinaryContractTest"`、`:app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=eu.kanade.tachiyomi.extension.ExtensionV16SourceAbiInstrumentationTest'`、`:app-desktop:jvmTest --tests "mihon.desktop.extension.DesktopExtensionV16AbiIntegrationTest"` | 外部二进制调用真实方法出现 ABI/行为差异；GREEN 时新旧调用结果正确且 Android ART、JVM 与 Desktop 实际执行，不能以版本拒绝作为 ABI 失败 |
+| 目录协议 / AEX-02 | Android `ExtensionApi`、Desktop `DesktopExtensionApi` → 共享 decoder/catalog → 领域对象；MockWebServer 仅提供真实响应形状 | 已存在 `app/src/test/java/eu/kanade/tachiyomi/extension/api/ExtensionApiSharedCatalogTest.kt`、`domain/src/jvmTest/kotlin/mihon/domain/extension/ExtensionCatalogServiceTest.kt` 与 `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionApiSharedCatalogTest.kt`；待新增共享契约 `domain/src/commonTest/kotlin/mihon/domain/extension/ExtensionCatalogServiceContractTest.kt`；`:app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.extension.api.ExtensionApiSharedCatalogTest"`、`:domain:jvmTest --tests "mihon.domain.extension.ExtensionCatalogServiceContractTest"`、`:domain:testReleaseUnitTest --tests "mihon.domain.extension.ExtensionCatalogServiceContractTest"`、`:app-desktop:jvmTest --tests "mihon.desktop.extension.DesktopExtensionApiSharedCatalogTest"` | 显式 lib、分级、语言、列表或错误映射不符；真实 HTTP 成功/空目录/403/429/500/畸形响应矩阵通过且失败保留成功快照 |
+| 仓库生命周期 / AEX-02 | deeplink/仓库 ScreenModel → Create/Replace/Delete → HTTP → 真实数据库与备份恢复 | 已存在 `domain/src/commonTest/kotlin/mihon/domain/extensionrepo/service/ExtensionRepoServiceContractTest.kt`；待新增 `domain/src/commonTest/kotlin/tachiyomi/domain/extension/ExtensionRepoIdentityContractTest.kt`、`data/src/commonTest/kotlin/tachiyomi/data/extension/ExtensionRepoPersistenceIntegrationTest.kt`、`app/src/androidTest/java/eu/kanade/tachiyomi/extension/ExtensionRepoPersistenceInstrumentationTest.kt`；`:domain:jvmTest --tests "tachiyomi.domain.extension.ExtensionRepoIdentityContractTest"`、`:domain:testReleaseUnitTest --tests "tachiyomi.domain.extension.ExtensionRepoIdentityContractTest"`、`:data:jvmTest --tests "tachiyomi.data.extension.ExtensionRepoPersistenceIntegrationTest"`、`:data:testReleaseUnitTest --tests "tachiyomi.data.extension.ExtensionRepoPersistenceIntegrationTest"`、`:app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=eu.kanade.tachiyomi.extension.ExtensionRepoPersistenceInstrumentationTest'` | 新索引地址不能创建、身份/信任或迁移后定位丢失；旧/新输入、重复、冲突、删除、重启及恢复通过，不能 mock 创建用例或数据库后声称整链通过 |
+| 目录兼容状态 / AEX-02 | 平台能力与共享状态 → 列表呈现及安装入口禁用 | 已存在 `app/src/test/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionPresentationWiringTest.kt`、`app-desktop/src/test/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationProjectionTest.kt`；扩充两者以消费真实 catalog 与平台能力 adapter；`:app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.ui.browse.extension.ExtensionPresentationWiringTest"`、`:app-desktop:jvmTest --tests "mihon.desktop.ui.extension.DesktopExtensionPresentationProjectionTest"` | 1.6 条目被错误过滤或 Android 尚未放行却显示可安装；GREEN 时条目可解释、不可错误操作，Desktop 既有可用状态不退化 |
+| Source 查询 / AEX-03A | 真实 `SourceManager` → 查询服务/ScreenModel → Voyager nested navigator；外部 Source 为受控输入 | 已存在 `app/src/test/java/eu/kanade/tachiyomi/source/AndroidSourceManagerInitializationTest.kt`、`app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModelBehaviorTest.kt`、`app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/SourceSharedQueryWiringTest.kt`；待新增 `app/src/test/java/eu/kanade/tachiyomi/source/SourceOnlyQueryContractTest.kt` 与 `app-desktop/src/test/kotlin/mihon/desktop/extension/SourceOnlyQueryContractTest.kt`；`:app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.source.SourceOnlyQueryContractTest"`、`:app-desktop:jvmTest --tests "mihon.desktop.extension.SourceOnlyQueryContractTest"` | Source-only 被过滤、没有调用源或参数/导航错误；源可见，分页/筛选/可用时最新/取消和失败反馈正确；DI 可解析只是附加检查 |
+| 更新与 memo / AEX-03B | 详情/后台作业 → 统一更新/同步 → 数据库 → 备份/恢复 → 再调用及页图/下载消费 | 待新增 `domain/src/commonTest/kotlin/tachiyomi/domain/extension/SourceUpdateMemoContractTest.kt`、`data/src/commonTest/kotlin/tachiyomi/data/extension/SourceUpdateMemoPersistenceIntegrationTest.kt`；复用 `app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt`、`app/src/test/java/eu/kanade/tachiyomi/data/backup/create/BackupCreatorBehaviorTest.kt`、`app/src/test/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorerBehaviorTest.kt`；`:domain:jvmTest --tests "tachiyomi.domain.extension.SourceUpdateMemoContractTest"`、`:domain:testReleaseUnitTest --tests "tachiyomi.domain.extension.SourceUpdateMemoContractTest"`、`:data:jvmTest --tests "tachiyomi.data.extension.SourceUpdateMemoPersistenceIntegrationTest"`、`:data:testReleaseUnitTest --tests "tachiyomi.data.extension.SourceUpdateMemoPersistenceIntegrationTest"`、`:app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.data.library.LibraryUpdateJobSharedLifecycleIntegrationTest"` | flags/次数错误或任一数据环节丢失 memo/进度；真实存储重开和生产备份恢复后重新调用正确，旧数据不损坏；codec 自身 round-trip 不足以关闭 |
+| APK 准入、安装与整链 / AEX-04 | 真实 `PackageManager`/installer → `ExtensionLoader`/ART → `SourceManager` → 查询/更新/阅读/下载 | 待新增 `app/src/androidTest/java/eu/kanade/tachiyomi/extension/ExtensionV16LifecycleInstrumentationTest.kt`；复用 `app/src/androidTest/java/eu/kanade/tachiyomi/extension/SystemExtensionRollbackInstrumentationTest.kt` 的设备基础设施；`:app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=eu.kanade.tachiyomi.extension.ExtensionV16LifecycleInstrumentationTest'` | 真实 1.6 APK 被版本/metadata 拒绝或源注册/业务调用失败；同一签名 APK 经正常产品入口完成全部步骤；无 Source 注入、metadata 改写或信任后门 |
+| 历史升级与恢复 / AEX-05 | 旧版本数据/备份进入已完成的产品整链 | 待新增 `app/src/androidTest/java/eu/kanade/tachiyomi/extension/ExtensionUpgradeWorkflowTest.kt`；复用 AEX-04 的 `ExtensionV16LifecycleInstrumentationTest`，并在同一 ART runner 使用固定旧数据/受控 v1.5 APK；`:app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=eu.kanade.tachiyomi.extension.ExtensionUpgradeWorkflowTest'` | 受控 v1.5 替代样本的 metadata、签名、安装或升级中断恢复行为无法验证；历史第三方 1.5 provenance 缺失仅作为来源限制，不作为受控样本的 RED；随后升级/中断恢复全流程通过，独立记录旧数据版本及结果 |
+| 发布产物 / AEX-06 | 最终 R8 APK 与正式 Windows/macOS runtime | 待新增 `app/src/androidTest/java/eu/kanade/tachiyomi/extension/ExtensionReleaseParityInstrumentationTest.kt`；默认 telemetry/updater 关闭：`python scripts/gradle-coordinator.py run --key aex06-android-release -- .\gradlew.bat :app:assembleRelease`；当前未配置 `testBuildType=release`，`connectedReleaseAndroidTest` 不是现成 task，待实现 `app/build.gradle.kts` 的 `mihon.testBuildType=release` 选择并校验 release test APK 的 R8/签名/hash（属性、wiring、校验和 runner 均待实现，现有 debug ART 不替代）后执行 `python scripts/gradle-coordinator.py run --key aex06-android-release-device -- .\gradlew.bat :app:connectedAndroidTest '-Pmihon.testBuildType=release' '-Pandroid.testInstrumentationRunnerArguments.class=eu.kanade.tachiyomi.extension.ExtensionReleaseParityInstrumentationTest'`；Desktop：`scripts/build-desktop.sh` 后 `scripts/desktop-smoke-test.sh`；均记录正式产物 hash、报告及 runner 设备 | 本批次是发布集成门槛，不虚构必须先失败；若产物失败，定位后对相关行为补 RED 并修复；最终产物与受测 hash/版本一致、必要场景不跳过 |
+
+### AEX-00 已具体化的行为—入口—runner 矩阵
+
+下表把上表的责任落实到本批次可以执行的生产入口、唯一归属、准确 source set 和断言。`已存在` 表示当前工作树已有测试；`待新增` 只冻结后续测试位置，不表示本批次已经实现或执行。矩阵中的 AEX-00 探针只证明当前兼容 production 基线，不能替代归属批次的首次 RED。
+
+| 行为与唯一批次 | 真实 production 入口/边界 | 准确测试 source set 与 runner | 首次 RED 原因 | GREEN 通过断言 |
+| --- | --- | --- | --- | --- |
+| 当前 Source/CatalogueSource bridge 基线 / AEX-00 探针（为 AEX-01 提供前置） | `source-api` 的 `Source`、`CatalogueSource` suspend 默认实现、旧 Rx bridge、`SManga`/`SChapter`/`Page` 工厂；不加载外部 APK | 已存在 `source-api/src/commonTest/kotlin/eu/kanade/tachiyomi/source/SourceApiCurrentBaselineTest.kt`；`:source-api:jvmTest --tests "eu.kanade.tachiyomi.source.SourceApiCurrentBaselineTest"` 与 `:source-api:testReleaseUnitTest --tests "eu.kanade.tachiyomi.source.SourceApiCurrentBaselineTest"` | 基线测试首次错误地给 `FilterList` 传空列表，实际 size=0 而断言 1（测试输入修正，非产品 RED）；未来 ABI RED 归 AEX-01 | 真实 production bridge 返回详情、章节、页面；分页、hasNextPage 和过滤器传递正确，两 source set 均实际执行且无跳过 |
+| 固定外部 1.5 Source-only suspend-only fixture / AEX-00 探针（替代历史第三方样本，不提前实现 AEX-01） | `scripts/aex00-generate-external-v15-fixture.ps1` 下载官方 Mihon `v0.19.4` 固定源码快照，独立工程编译未改写的旧 `Source`/模型与 `LegacySuspendOnlySource`；Desktop `DesktopExtensionLoader` 与 `DefaultDesktopArtifactAuthenticator` 消费签名 JAR；不引用宿主 `source-api` classpath | 外部 fixture `LegacySuspendOnlySourceTest`：`python scripts/gradle-coordinator.py run --key aex00-external-v15-test -- .\gradlew.bat -p app-desktop/tmp/aex00-external-v15 test --tests "aex00.external.v15.LegacySuspendOnlySourceTest" --no-daemon --offline`；导出 `aex00ExportSampleJar`；宿主 `python scripts/gradle-coordinator.py run --key aex00-desktop-final-focused -- .\gradlew.bat :app-desktop:jvmTest --tests "mihon.desktop.extension.DesktopExtensionLoaderTest" --tests "mihon.desktop.extension.DesktopExtensionArtifactAuthenticityTest" --no-daemon --offline` | 固定旧 Source/API、模型或真实依赖缺失时，旧 suspend-only override 编译/调用应失败；独立工程 plugin marker 未缓存曾是配置故障，已改为同版本实际 plugin module 映射 | fixture XML 1/0/0/0；固定 JAR 仅含样本类，正常 JAR-v1 签名，生产 loader/authenticator 实际加载/验证；不把该受控样本写成历史第三方发布物 |
+| 外部 Source ABI 与 factory / AEX-01 | 受控 `app-desktop/src/test/resources/extensions/real/aex00-external-v16-controlled-sample.jar` 与对应 `app-desktop/src/test/resources/extensions/real/aex00-external-v16-controlled-sample.apk` → Android 直接调用生产 `app/src/main/java/eu/kanade/tachiyomi/util/system/ChildFirstPathClassLoader` 组件加载只读 fixture DEX，再调用 `SourceFactory`/`Source`；Desktop 使用 `DesktopExtensionLoader` 的组件边界；不把版本拒绝当 ABI 通过 | 待新增 `source-api/src/commonTest/kotlin/eu/kanade/tachiyomi/source/SourceApiBinaryContractTest.kt`；Android ART 待新增 `app/src/androidTest/java/eu/kanade/tachiyomi/extension/ExtensionV16SourceAbiInstrumentationTest.kt`；Desktop 实际 loader 入口为 `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionLoaderTest.kt` 的 `loadFromSingleJar`（AEX-00 已执行同一路径的受控 v1.5 加载），另执行 authenticator；v1.6 loader/ABI 真实调用待新增 `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionV16AbiIntegrationTest.kt`；`:source-api:jvmTest --tests "eu.kanade.tachiyomi.source.SourceApiBinaryContractTest"`、`:source-api:testReleaseUnitTest --tests "eu.kanade.tachiyomi.source.SourceApiBinaryContractTest"`、`:app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=eu.kanade.tachiyomi.extension.ExtensionV16SourceAbiInstrumentationTest'`、`:app-desktop:jvmTest --tests "mihon.desktop.extension.DesktopExtensionV16AbiIntegrationTest"`、`:app-desktop:jvmTest --tests "mihon.desktop.extension.DesktopExtensionArtifactAuthenticityTest"`；完整 `ExtensionLoader` 的版本/信任/安装准入首次仍归 AEX-04 | 外部编译调用的真实方法/模型/桥接缺失或返回差异 | 同一受控二进制在 JVM、Android unit 与 ART 生产 classloader 中完成 factory/source 调用，结果与冻结契约一致；失败原因不得只是 1.6 loader 拒绝；AEX-00 仅记录 Desktop 旧 host 的边界观察与签名通过 |
+| 目录协议与错误保全 / AEX-00 探针，v2 首次行为归 AEX-02 | `app` 的 `ExtensionApi` → 真实 decoder/catalog → `ExtensionArtifact`；MockWebServer 只提供 HTTP 响应形状，不 mock parser | 已存在 `app/src/test/java/eu/kanade/tachiyomi/extension/api/ExtensionApiSharedCatalogTest.kt`（`app/src/test`）；`:app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.extension.api.ExtensionApiSharedCatalogTest"` | v2 字段、签名或成功/空/403/429/500/畸形响应映射不一致；既有基线首次 RED 归测试输入/实现定位，不冒充 v2 RED | 真实 app production API 保留成功 catalog；空目录与失败区分，HTTP 403/429/500/畸形 JSON 映射准确且成功仓库不被另一仓库失败清空 |
+| v2 catalog 与签名 JAR / AEX-00 探针，v2 业务归 AEX-02 | Desktop `ExtensionCatalogService` → v2 gzip protobuf decoder；`DefaultDesktopArtifactAuthenticator` 用 `JarFile(true)` 校验每个 payload | 已存在 `app-desktop/src/test/kotlin/mihon/desktop/extension/DesktopExtensionApiSharedCatalogTest.kt` 与扩充的 `DesktopExtensionArtifactAuthenticityTest`（`app-desktop/src/test`）；`:app-desktop:jvmTest --tests "mihon.desktop.extension.DesktopExtensionApiSharedCatalogTest" --tests "mihon.desktop.extension.DesktopExtensionArtifactAuthenticityTest"` | v2 signing key 不匹配、JAR payload 未签名/摘要异常或 parser 退化 | 固定 1.6 JAR hash 与 provenance 一致，production authenticator 对全部 payload 成功；v2 gzip protobuf 解析出真实 artifact/source 且错误不吞掉 |
+| 仓库 CRUD、重启、迁移与备份 / AEX-02 | Android 仓库 ScreenModel/UseCase → HTTP → 真实数据库 → backup/restore；不以 fake repository 代替整链 | 待新增 `domain/src/commonTest/kotlin/tachiyomi/domain/extension/ExtensionRepoIdentityContractTest.kt`、`data/src/commonTest/kotlin/tachiyomi/data/extension/ExtensionRepoPersistenceIntegrationTest.kt` 及 `app/src/androidTest/java/eu/kanade/tachiyomi/extension/ExtensionRepoPersistenceInstrumentationTest.kt`；`:domain:jvmTest --tests "tachiyomi.domain.extension.ExtensionRepoIdentityContractTest"`、`:domain:testReleaseUnitTest --tests "tachiyomi.domain.extension.ExtensionRepoIdentityContractTest"`、`:data:jvmTest --tests "tachiyomi.data.extension.ExtensionRepoPersistenceIntegrationTest"`、`:data:testReleaseUnitTest --tests "tachiyomi.data.extension.ExtensionRepoPersistenceIntegrationTest"`、`:app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=eu.kanade.tachiyomi.extension.ExtensionRepoPersistenceInstrumentationTest'` | 新索引地址、重复/冲突、删除、重启或恢复后身份/信任丢失 | 旧 index.min.json 与 v2 deeplink 都能定位同一仓库；重复幂等、失败可重试，真实数据库重开与备份恢复保留身份/信任 |
+| Source-only 查询、分页、筛选、导航 / AEX-03A | 真实 `SourceManager` → query service/ScreenModel → Voyager nested navigator；DI 仅是附加 wiring | 待新增 `app/src/test/java/eu/kanade/tachiyomi/source/SourceOnlyQueryContractTest.kt` 与 `app-desktop/src/test/kotlin/mihon/desktop/extension/SourceOnlyQueryContractTest.kt`；复用已存在 `app/src/test/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModelBehaviorTest.kt`、`SourceSharedQueryWiringTest`，分别用 `:app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.source.SourceOnlyQueryContractTest"`、`:app-desktop:jvmTest --tests "mihon.desktop.extension.SourceOnlyQueryContractTest"` | Source-only 被类型过滤、未调用真实 source、分页/取消/失败反馈或导航上下文错误 | Source-only 进入热门/搜索/筛选/最新（可用时）、分页和取消行为正确，失败有反馈并进入正确 nested navigator |
+| update flags 与 memo 保真 / AEX-03B | 真实详情/后台更新作业 → source `getMangaUpdate` → data/backup → reader/download 消费；不以 codec round-trip 代替链路 | 待新增 `domain/src/commonTest/kotlin/tachiyomi/domain/extension/SourceUpdateMemoContractTest.kt`、`data/src/commonTest/kotlin/tachiyomi/data/extension/SourceUpdateMemoPersistenceIntegrationTest.kt` 与平台集成；复用 `app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt`、`app/src/test/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorerBehaviorTest.kt`；`:domain:jvmTest --tests "tachiyomi.domain.extension.SourceUpdateMemoContractTest"`、`:domain:testReleaseUnitTest --tests "tachiyomi.domain.extension.SourceUpdateMemoContractTest"`、`:data:jvmTest --tests "tachiyomi.data.extension.SourceUpdateMemoPersistenceIntegrationTest"`、`:data:testReleaseUnitTest --tests "tachiyomi.data.extension.SourceUpdateMemoPersistenceIntegrationTest"`、`:app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.data.library.LibraryUpdateJobSharedLifecycleIntegrationTest"` | flags/调用次数错误、memo 或已读/下载映射在存储重开/备份恢复中丢失 | 真实 source 调用次数与 flags 精确；重启和 production backup/restore 后 memo、章节状态、页图/下载关系保真 |
+| Android metadata、安装、信任、首次整链 / AEX-04 | Android `PackageManager`/正常 installer → `ExtensionLoader`/ART → `SourceManager`；不改 metadata、不扩大信任、不使用 shell 权限冒充用户安装 | 待新增 `app/src/androidTest/java/eu/kanade/tachiyomi/extension/ExtensionV16LifecycleInstrumentationTest.kt`；复用 `app/src/androidTest/java/eu/kanade/tachiyomi/extension/SystemExtensionRollbackInstrumentationTest.kt` 仅作回滚基础设施；`:app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=eu.kanade.tachiyomi.extension.ExtensionV16LifecycleInstrumentationTest'` | 真实 1.6 APK 被旧版本/metadata 拒绝，或正常安装后 source 注册/查询失败 | 固定签名 1.6 APK 经正常生产入口完成准入、安装、加载、source 查询；不同签名/损坏/未知版本分别拒绝并保留旧状态 |
+| 历史 1.5 升级与部分失败 / AEX-05 | 旧数据/旧 metadata → 已完成的 AEX-04 production chain；不把 1.6 改标签成 1.5；历史第三方 1.5 与用户批准的受控 1.5 分开 | 待新增 `app/src/androidTest/java/eu/kanade/tachiyomi/extension/ExtensionUpgradeWorkflowTest.kt`，历史第三方样本保持清单缺失；受控签名样本使用 `aex00-external-v15-suspend-only.jar` 与 `aex00-external-v15-controlled-sample.apk`；`:app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=eu.kanade.tachiyomi.extension.ExtensionUpgradeWorkflowTest'` | 受控 v1.5 替代样本的 metadata、签名、安装或升级中断恢复行为无法验证；历史第三方 1.5 provenance 缺失仅作为来源限制，不作为受控样本的 RED；不得以 mock/改 metadata 解除 | 受控签名 JAR 已有 JVM/Desktop loader/authenticator 证据，但不替代 Android APK 安装；旧数据/备份升级、部分失败和恢复均有真实设备证据后才可关闭，否则保持未验证 |
+| 发布 APK/Desktop runtime / AEX-06 | 最终 R8 release APK 与正式 Windows/macOS runtime；不把 debug/临时目录产物当发布证据 | 待新增 `app/src/androidTest/java/eu/kanade/tachiyomi/extension/ExtensionReleaseParityInstrumentationTest.kt`；默认 telemetry/updater 关闭：`python scripts/gradle-coordinator.py run --key aex06-android-release -- .\gradlew.bat :app:assembleRelease`；当前未配置 `testBuildType=release`，`connectedReleaseAndroidTest` 不是现成 task，待实现 `app/build.gradle.kts` 的 `mihon.testBuildType=release` 选择并校验 release test APK 的 R8/签名/hash（属性、wiring、校验和 runner 均待实现，现有 debug ART 不替代）后执行 `python scripts/gradle-coordinator.py run --key aex06-android-release-device -- .\gradlew.bat :app:connectedAndroidTest '-Pmihon.testBuildType=release' '-Pandroid.testInstrumentationRunnerArguments.class=eu.kanade.tachiyomi.extension.ExtensionReleaseParityInstrumentationTest'`；Desktop：`scripts/build-desktop.sh` 后 `scripts/desktop-smoke-test.sh`；均记录正式产物 hash、报告及 runner 设备 | 发布产物不匹配受测 hash、R8/平台行为差异或必要场景跳过 | 版本、签名、hash、设备/API/ABI、报告和用户路径全部可追溯；Android/Desktop 必需场景无跳过 |
+
+本批次实际执行的 AEX-00 探针覆盖已存在的 source-api、app、Desktop 入口，以及独立编译的受控 v1.5/v1.6 fixture 测试与导出；设备侧仅执行当前兼容的 `BrowseSourceUiWiringTest` runner 探针。AEX-01 至 AEX-06 的待新增产品行为测试保持未实施。所有 runner 仍按协调器串行执行，并在第 8 节记录命令、退出码、测试数、跳过数和报告路径。
 
 runner 分层与命令约束：
 
-- source-api 当前未显式配置测试 source set 依赖，不能假定新增契约会自动运行。AEX-00 必须明确最小测试配置、外部二进制资源接入和两端 runner；候选 `:source-api:jvmTest`、`:source-api:testReleaseUnitTest` 必须以实际配置核实，不能把候选名称当成已验证命令。
+- source-api 已在 AEX-00 显式配置 `commonTest`、`jvmTest` 与 `androidUnitTest` 的测试依赖、JUnit Platform launcher 和 `useJUnitPlatform()`；`SourceApiCurrentBaselineTest` 已实际运行 `:source-api:jvmTest --tests "eu.kanade.tachiyomi.source.SourceApiCurrentBaselineTest"` 与 `:source-api:testReleaseUnitTest --tests "eu.kanade.tachiyomi.source.SourceApiCurrentBaselineTest"`。后续外部二进制契约仍须接入准确的两个 target，不得把配置存在当作行为通过。
 - app/src/test 的 JVM/Robolectric、app/src/androidTest 的设备/ART、domain/data 的 commonTest 平台执行，以及 Desktop jvmTest 分别记录。Android JVM 测试不能代替 ART；设备测试也不能代替共享数据迁移契约。
 - `:app:testReleaseUnitTest` 不代表依赖模块的全部测试已执行。最终命令矩阵必须列出受影响 source-api/domain/data 的实际 Android/JVM 测试任务、app 设备任务和 Desktop 任务；不能仅复用下方两个示例命令便关闭全部验证。
 - 对每组记录选中的测试数、实际执行数、失败/跳过数和报告位置；任务退出码为 0 但 NO-SOURCE、未发现测试、必要测试 skipped 或仅完成编译时不得判通过。正常增量复用必须能指向同一 diff/fixture/配置的既有有效测试结果。
@@ -303,7 +324,7 @@ $env:HTTPS_PROXY = 'http://127.0.0.1:10808'
 $env:NO_PROXY = 'localhost,127.0.0.1,::1'
 
 # Focused 示例：一个调用期间不启动第二个重型 Gradle。
-python scripts/gradle-coordinator.py run --key aex-catalog -- .\gradlew.bat :app:testReleaseUnitTest --tests eu.kanade.tachiyomi.extension.api.ExtensionApiSharedCatalogTest
+python scripts/gradle-coordinator.py run --key aex-catalog -- .\gradlew.bat :app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.extension.api.ExtensionApiSharedCatalogTest"
 
 # 最终共享/Android 完整验证示例；AEX-00 核对并补足 source-api/data 等受影响 target。
 python scripts/gradle-coordinator.py run --key aex-final-android -- .\gradlew.bat spotlessCheck :domain:jvmTest :app:testReleaseUnitTest
@@ -335,11 +356,11 @@ MockWebServer 必须覆盖成功、空/缺失、403/429/500、畸形、取消和
 
 ## 8. 实施证据与风险记录
 
-本节供实施时维护，不创建第二份进度权威。本次证据仅为第 2 节的文档/源码对照；**尚无本专项实现、测试通过、APK 或设备验收结论**。
+本节是本专项唯一实施证据记录。AEX-00 经独立审查、定向修复及用户批准的补修复验后，代码、样本和 runner 已通过主模型验收。2026-09-13 用户明确允许本批次豁免 Luna 目标回执校验，依据主模型独立证据提交并继续 AEX-01；该例外仅限 AEX-00，不豁免产品测试，也不把有缺口的子 goal 回执改写为通过。下文保留历史失败、修复和验证边界。
 
 | 批次 | RED 与失败原因 | GREEN/回归命令和结果 | 独立审查 | 产物/运行环境 | 提交 |
 | --- | --- | --- | --- | --- | --- |
-| AEX-00 | 待实施；基线批次按实际内容注明适用性 | — | — | — | — |
+| AEX-00 | `source-api` 首次 RED：`FilterList()` 实际 size=0 而测试断言 1，确认为测试输入错误并修正，非产品 RED；外部 fixture 首次 plugin marker 未缓存、首次导出把 `--tests` 传给 Jar task、ART 首次未引用参数被 PowerShell 拆分，均为 runner/命令配置故障并留存日志；ART 离线首次另因 AndroidX Test/Compose AAR 未缓存失败，未执行用例 | `:source-api:jvmTest --tests "eu.kanade.tachiyomi.source.SourceApiCurrentBaselineTest"` exit0，XML tests=2 skipped=0 failures=0 errors=0；`:source-api:testReleaseUnitTest --tests "eu.kanade.tachiyomi.source.SourceApiCurrentBaselineTest"` exit0，XML tests=2/0/0/0；`:app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.extension.api.ExtensionApiSharedCatalogTest"` exit0，XML tests=8/0/0/0；`:app-desktop:jvmTest --tests "mihon.desktop.extension.DesktopExtensionApiSharedCatalogTest" --tests "mihon.desktop.extension.DesktopExtensionLoaderTest" --tests "mihon.desktop.extension.DesktopExtensionArtifactAuthenticityTest"` exit0，XML catalog=11/0/0/0、loader=15/0/0/0、authenticator=8/0/0/0；外部 v1.5 fixture test exit0，XML tests=1/0/0/0；外部 v1.6 static probe fixture test exit0，XML `app-desktop/tmp/aex00-external-v16/build/test-results/test/TEST-aex00.external.v16.V16ContractTest.xml` tests=1 skipped=0 failures=0 errors=0；v1.6 JAR export exit0，unsigned hash `50628427539f0b2839d251dd2c3af773456ff07763aabef188f2ec3737cd1d9c`，签名 JAR hash `e623be999c1c6b7c9a5383253645f6dc3d496de44d44a4fa1cd1a4fe020c33c4`，受控 v1.5 APK hash `caf80d849e2eb5ad8f0be5121f914d9cee1ee06c15653d15f33321602183a316`、v1.6 APK hash `34c21ef4c3a5b60b789cd5dce95a78f638ba9875007f19d094cb3e344df4e182`；在线依赖重试后 `BrowseSourceUiWiringTest` ART exit0，专用 `emulator-5580` API36/x86_64 XML tests=4 skipped=0 failures=0 errors=0；签名后 Desktop loader/authenticator 亦已 exit0（上述 XML loader=15/0/0/0、authenticator=8/0/0/0） | 主模型已核验 C1–C3；C4 的代码/范围审查通过，目标回执按用户本批次豁免关闭；见本节独立复验 | `source-api/src/commonTest/resources/aex00/fixture-manifest.json`；固定索引；真实 1.4/1.6 APK/JAR；签名受控 v1.5 Source-only JAR+APK 及 provenance；签名受控 v1.6 SourceFactory/memo/flags/error JAR+APK 及 provenance；外部 v0.19.4/v0.20.4 独立源码/依赖生成器；设备报告 `app/build/outputs/androidTest-results/connected/debug/TEST-mihon-aex-api36(AVD) - 16-_app-.xml`；1.5 历史第三方发布物未找到，受控样本不冒称历史 provenance；C3 尚未执行 1.6 ABI/正常安装整链 | 与本行同一 AEX-00 提交；提交主题 `test: freeze AEX-00 extension fixtures and add foreground verification` |
 | AEX-01 | — | — | — | — | — |
 | AEX-02 | — | — | — | — | — |
 | AEX-03A | — | — | — | — | — |
@@ -347,6 +368,44 @@ MockWebServer 必须覆盖成功、空/缺失、403/429/500、畸形、取消和
 | AEX-04 | — | — | — | — | — |
 | AEX-05 | — | — | — | — | — |
 | AEX-06 | — | — | — | — | — |
+
+历史环境事实和验证边界（以下保留首次审查时记录，后续补修结果见下文）：`app` 当前 `minSdk=26`、`target/compileSdk=36`；专用 `emulator-5580`（AVD `mihon-aex-api36`、API 36、x86_64）已执行 `BrowseSourceUiWiringTest` 4 个用例，tests=4、skipped=0、failures=0、errors=0。API 26、ARM、release test APK/R8 和 1.6 正常安装/ABI 整链仍未验证。当前 Android 身份为 `applicationId=app.mihon`、`versionCode=18`、`versionName=0.19.4`；没有 release `signingConfig`（现有 preview/benchmark 复用 debug signing），不代表未来 fork 的 release 发布身份。`app-desktop` 没有 `spotlessCheck` task，因此该任务解析失败不能记作格式通过；`source-api:spotlessCheck` 实际通过。主模型复审用 Gradle 重跑被工具策略拒绝启动，协调器状态保持 `NOT_STARTED`；原始 JUnit/XML 通过报告未改写，未能重跑的验证仍保持未验证。
+
+### AEX-00 首轮主模型核验与历史暂停点
+
+- 固定资源：独立核对 12 项可用索引/二进制的 SHA-256 与大小，全部与 manifest 一致；受控 1.5/1.6 APK 的原始 metadata 和 v2/v3 签名通过。使用现有独立编译的 unsigned JAR 重新执行 APK packager，两个输出分别与 `caf80d849e2eb5ad8f0be5121f914d9cee1ee06c15653d15f33321602183a316`、`34c21ef4c3a5b60b789cd5dce95a78f638ba9875007f19d094cb3e344df4e182` 完全一致。测试密钥未提交、未用于应用发布。
+- 外部编译输入：旧版 10 个、新版 17 个源码文件及实际编译副本均与对应官方固定 commit 的 git blob 一致；单独声明的 Rx JVM adapter 不冒称原始 API 文件。两份受控 JAR 的 1/4 个 class payload 分别与 unsigned 导出物一致，不包含宿主 API 类。
+- 运行证据：独立读取 9 份原始 JUnit XML，合计 52 个用例，失败/错误/跳过均为 0，其中 Android ART 基线为 4 个。`source-api:spotlessCheck` 原始记录 exit 0；本批次不声称 Desktop 存在同名格式 task。这些记录不替代尚未执行的主模型 focused 重跑，也不证明 1.6 ABI/安装/业务整链通过。
+- 首轮文档缺陷已修正：移除发布示例中的 telemetry/updater 开关，声明 release runner 的待实现前置，将 catalog 契约放回 domain，分离直接 ART classloader 组件测试与 AEX-04 完整准入，并区分样本提供的行为和真正执行过的断言。主模型对 3 个 PowerShell 脚本、3 个 JSON 和 `git diff --check` 的复验通过。
+- C2 复验仍未通过：生成器的 `build.sequence` 把绝对 `$outputPath` 传回仅按仓库相对路径拼接的 `-OutputDirectory`，只读重现得到 `D:\Shell\Github\mihon\D:\Shell\Github\mihon\app-desktop\tmp\aex00-external-v16`；自定义目录的 package 步骤也未传对应 `FixtureProject`。另需补齐生成清单的 launcher 依赖、v16 签名验证字段路径与可执行签名说明。上一轮仅做语法解析，未实际重放生成的复现步骤，故未发现这些语义缺口；固定 APK/JAR 不受影响。
+- C3 待验证：主模型启动 `aex00-main-focused` 被工具策略拒绝，状态核对为 `NOT_STARTED`。源码确认 `run` 仍调用同一个后台 `command_start`，未换命令或委派他人绕过。尚待用户选择增加真正前台模式或手动运行验证；新增前台模式不是已实施功能。
+- 预算与边界：已使用 1 轮独立审查、1 轮定向修复复验。若获准追加，仅修正上述 C2 复现链并真实重放，预计 5–10 分钟；构建协调器前台模式另需一个限域批次，预计 20–40 分钟。未获新方向前不启动 AEX-01、不勾选 AEX-00、不作纯状态推进提交。
+- 内聚性与风险：本批次超过 8 个文件/400 行，内容共同组成协议快照、独立样本、复现元数据和当前生产基线探针；没有产品行为变化。主要风险是二进制来源/签名、运行环境依赖与把基线误认作兼容性证明，已分别保留核验与未验证边界，不按文件机械拆分提交。
+
+### 2026-09-13 获准的限域补修
+
+用户已批准修正剩余复现命令并增加真正前台 Gradle 模式。恢复时 HEAD 为 `4bee4aab96d1090103a7ee18967ed48b621a43ec`；新增的多设备同步演示提交及未提交的 `docs/prototypes/multi-device-sync/ui-browser.test.cjs` 与本专项无关，全部保留、不混入提交。
+
+流程预算：沿用一个 GPT-5.6 Luna（xhigh），主模型只读准备验收；先复现失败、最小实现、定向回归，再做本次获准的一轮主模型复验与 AEX-00 抽验。全量测试 0 次，不新增计划/报告，预计 25–50 分钟。允许写入现有 fixture 脚本及其 manifest/provenance、`scripts/gradle-coordinator.py`、对应 `scripts/tests/` 测试和本节证据；不得改产品行为、签名身份、固定样本二进制或其他工作流。发布密钥尚未授权，本次不创建。
+
+| 补修验收 | 输入与操作 | 预期及证据 |
+| --- | --- | --- |
+| R1 / 对应 C2 | 在仓库相对路径和含空格的受控输出目录实际运行生成器，核对并重放生成命令；校验依赖与签名字段路径 | 生成与 package 命令指向同一明确目录；不重复拼接盘符；正常签名说明可执行、密钥不公开；默认固定样本与源码 hash 不变。测试须调用实际脚本，不能仅扫描字符串或解析语法 |
+| R2 / 构建工具 | 新增显式前台入口，真实启动成功/失败/快速退出/持续运行的受控子进程，并测试状态查询、重复启动和取消 | 当前协调器同步持有子进程，不创建 detached worker；日志、退出码、PID/identity 和状态准确；同 key 不重复启动；取消或异常清理不触及调用 shell、无关进程或复用 PID；原有 start/run/wait 状态语义保持 |
+| R3 / 对应 C3、C4 | Python focused 红绿与协调器相关回归、脚本解析/格式；前台入口执行 AEX-00 代表性 source-api 与 Desktop production 测试 | 真实命令可执行、必要测试非零且不跳过，退出码及原始报告可核对；不绕过工具限制、不启动并行 Gradle；只有全部通过并提交后才能关闭 AEX-00 |
+
+本轮若仍失败或出现必须扩大范围的依赖，先记录具体未通过项及证据再请求方向，不自行追加审查/修复轮次。实现代理自测后停止写入和 Gradle，主模型负责独立验收与 scoped commit。
+
+本轮限域补修实测记录（2026-09-13，仍为 Luna self-tested，主模型需独立复验）：先前 coordinator RED 为 `python scripts/tests/gradle-coordinator-test.py` exit 1，14 项中 5 项失败，原因是 `foreground` 尚未接入 argparse；修复后的同命令 exit 0，17 项、失败/错误/跳过均为 0，耗时 9.772 秒。生成器 RED 为 `python scripts/tests/aex00-fixture-generator-test.py` exit 1，实际生成清单显示 `testCommand` 仍使用旧 `run`；修复后同命令 exit 0，1 项、失败/错误/跳过均为 0，耗时 28.020 秒，实际重放默认与含空格目录的 generate/test/export、临时目录 package 及 `aapt2` metadata 检查。唯一前台 Gradle 抽验使用 key `aex00-20260913-foreground-focused`，命令为 `python scripts/gradle-coordinator.py foreground --key aex00-20260913-foreground-focused --timeout-seconds 1800 -- .\gradlew.bat :source-api:jvmTest --tests "eu.kanade.tachiyomi.source.SourceApiCurrentBaselineTest" :source-api:testReleaseUnitTest --tests "eu.kanade.tachiyomi.source.SourceApiCurrentBaselineTest" :app-desktop:jvmTest --tests "mihon.desktop.extension.DesktopExtensionArtifactAuthenticityTest" --tests "mihon.desktop.extension.DesktopExtensionLoaderTest" :source-api:spotlessCheck --no-daemon --offline`，协调器 exit 0，`workerPid=50840`、`processPid=34680`、`executionMode=foreground`，日志 `.gradle-coordinator/aex00-20260913-foreground-focused.log`；Gradle BUILD SUCCESSFUL（47 秒，97 actionable tasks，19 executed/78 up-to-date）。原始 XML 分别为 source-api JVM 2、source-api release unit 2、Desktop authenticity 8、Desktop loader 15，合计 27，失败/错误/跳过均为 0；报告路径保持原样。固定 APK/JAR hash 未因本轮文档/脚本修复改变，未执行 ART/ABI/正常安装整链，未提交且未修改用户 `testfile/`。
+
+### 2026-09-13 本轮主模型独立复验
+
+- R1：`python scripts/tests/aex00-fixture-generator-test.py` exit 0，1 项，29.931 秒，无失败/错误/跳过。实际重放默认及含空格相对目录的生成命令、默认 test 和含空格目录 export，再在该测试自有临时目录打包并读取原始 APK metadata。另分别重放 v15/v16 生成清单中的 JAR 签名和对应新输出验签命令，均 exit 0；自签名、无时间戳及公共证书链警告仍是 fixture 边界。独立复核 12 项固定资源的大小和 SHA-256 全部一致；重新签署的临时 JAR 不冒称与固定签名 JAR 字节相同。
+- R2：`python scripts/tests/gradle-coordinator-test.py` exit 0，17 项，10.625 秒，无失败/错误/跳过。验证运行环境为本机 Windows/Python 3.14；包含真实直接子进程、同 key 互斥、不同命令拒绝、旧 owner 状态覆盖防护、启动异常清理、超时/取消与无关进程保护。POSIX/macOS 分支本轮仅审阅代码，未在该平台运行，不能外推为 macOS 已验收。
+- R3：主模型串行运行 `python scripts/gradle-coordinator.py foreground --key aex00-main-20260913-foreground --timeout-seconds 1800 -- .\gradlew.bat :source-api:jvmTest --tests eu.kanade.tachiyomi.source.SourceApiCurrentBaselineTest :source-api:testReleaseUnitTest --tests eu.kanade.tachiyomi.source.SourceApiCurrentBaselineTest :app-desktop:jvmTest --tests mihon.desktop.extension.DesktopExtensionArtifactAuthenticityTest --tests mihon.desktop.extension.DesktopExtensionLoaderTest :source-api:spotlessCheck --no-daemon --offline`，exit 0，38 秒，97 actionable tasks（13 executed、84 up-to-date）。日志 `.gradle-coordinator/aex00-main-20260913-foreground.log`；协调器 `executionMode=foreground`、状态 `PASSED`。本次 Desktop 23 项实际重跑，Source API 4 项命中未变化输入的 up-to-date 结果，原 XML 时间戳和缓存事实保留，不写为四项重新执行。
+- 格式与数据：3 个 PowerShell 脚本、3 个 Python 文件语法解析及 `git diff --check` 通过；JSON 实际读取通过；`source-api:spotlessCheck` 通过。全量项目测试 0 次，无新增发布构建。历史 4 项 ART 基线继续仅证明既有 UI wiring；本轮未执行 1.6 ART/准入/安装业务整链。
+- 流程证据未通过：Luna 的目标回执 hash 与下达值不一致；补充原文经主模型计算为 2132 个 UTF-8 字节，与其自报 2287 字节不符，且原文混入上一轮“不得修改协调器”的旧约束；再次要求直接转交工具数据后，回执 Base64 不能通过标准解码。主模型不能据此确认持久子 goal 与本轮下达目标完全一致，也不采信其 complete 作为验收依据。以上是目标交接/回执缺口，不是上述代码测试失败。本次独立复验结束时曾据此暂停。随后用户明确批准：仅本批次豁免该回执校验，以主模型独立验收结果提交并继续 AEX-01。因此保留流程偏差记录，关闭本批次，不增加修复复审、不重复已通过测试。
+- 工作树：复验期间其他任务新增提交仅影响 `docs/prototypes/multi-device-sync/`，未修改本批次受测生产输入；不将它们或用户 `testfile/` 混入提交。设备状态在本轮结束前复查已出现 `emulator-5580`，不沿用本轮开始时无设备的状态判断后续 ART 可用性。
 
 关键风险及停止边界：
 
@@ -357,3 +416,44 @@ MockWebServer 必须覆盖成功、空/缺失、403/429/500、畸形、取消和
 5. **共享代码影响 Desktop**：必须用同一契约与正式 runtime 回归；不因当前目标是 Android 而跳过 Desktop 安全/ABI/数据验收，也不借机删除其独有能力。
 6. **依赖其他暂停计划**：只使用已存在的稳定实现和本专项最小必要接口，不隐式推进非 Reader、Authors 或 Reader 相邻工作。若无法在该边界交付，先说明具体依赖并请求重新排期。
 7. **完成标准失真**：catalog 成功、安装成功、类加载成功、业务成功和正式产物成功分别记录；缺任一必需层次，最终状态只能是部分完成。
+
+## 9. Luna 实施契约与主模型验收
+
+用户已明确授权实施本文件全部内容。主模型负责范围、标准、独立审核与提交；实施由 GPT-5.6 Luna（xhigh）承担。同一上下文优先复用一个子代理，各批按前置顺序交接；Luna 不创建下级代理，不擅自提交、发布或勾选完成。持久子 goal 的实际线程隔离与 objective 原文由双方核对；线程标识只用于临时交接，不写入仓库。
+
+执行基线：`568ea7bbc8edfa1b68ef6f0b018b1a8cd45ee5d4`；开始时仅有用户未跟踪目录 `testfile/`，不得读取其中无关数据、修改或提交它。目标协议及产品边界仍以第 1–7 节为准，下面的 C* 不替代原有必需验收。
+
+### 单元交接与文件所有权
+
+| 单元 | 前置 / 输入 | 实现步骤与允许写入范围 | 输出 / 验收 |
+| --- | --- | --- | --- |
+| AEX-00 | 本契约、固定上游 API、现有测试和 SDK | 冻结协议/样本 → 接通最小测试配置与基线探针 → 具体化矩阵；可改本计划第 6/8 节、source-api 的测试配置/测试、app 的测试配置/androidTest、既有共享测试资源及本专项 fixture 脚本；实施中已明确追加授权既有 DesktopExtensionLoaderTest、DesktopExtensionArtifactAuthenticityTest 的基线探针和第 3.3/5 节的受控 1.5 替代说明；不得改产品行为。计划顶层状态与第 9 节由主模型维护 | 可执行矩阵、固定样本与基线证据；C1–C4 |
+| AEX-01 | AEX-00 审核后的样本和 runner | 红绿实现 source-api、必要 core/network ABI 与平台加载基础组件；对应测试同批；不提前放开 APK 准入 | 双平台真实 ABI/旧桥契约；C4、C5 |
+| AEX-02 | ABI 与仓库协议契约 | 红绿实现 domain/data 的 repo/catalog、两端 ExtensionApi/仓库 UI、必要 schema/备份字段；删除重复协议判断 | 仓库和目录完整闭环；C4、C6 |
+| AEX-03A | AEX-01/02 已审实现 | 红绿调整真实 SourceManager、共享查询与两端浏览/搜索/导航；不改 memo 持久化格式 | Source-only 查询可用；C4、C7 |
+| AEX-03B | 查询边界稳定 | 红绿接通统一更新、source/domain/data 映射、schema/backup 与既有 UI/作业/阅读下载消费者 | memo 和更新闭环；C4、C8 |
+| AEX-04 | 前面各组件及业务契约通过 | 红绿修改 Android loader/manager/install adapter 与共享兼容状态消费者；设备整链测试 | 正常签名 APK 安装到业务闭环；C4、C9 |
+| AEX-05 | 安装与业务整链通过 | 增补升级/恢复 fixture 和回归测试；新发现 bug 回到所属生产边界按红绿修复 | 旧数据、部分失败与恢复；C4、C10 |
+| AEX-06 | 全部实现与相关回归通过 | 最终全量、格式、R8 Android 与正式 Desktop 构建/运行；只改必要发布配置、相应测试和本计划/受影响 parity 证据 | 可核验正式产物及完整验收；C4、C11 |
+
+跨单元授权按主模型交接推进，不能因为表中列出后续可写模块就提前修改其行为。Luna 实施期间主模型只读准备独立验收；同一 worktree 的 Gradle 由当前指定协调者串行运行。每批自测后暂停写入，交还主模型审核、记录并提交，再接收下一批。
+
+### 冻结验收 C*
+
+所有状态初始 pending；Luna 提供结果只能记为 self-tested，主模型复核当前产物后才能写 pass。正常、边界、失败及兼容性矩阵完整继承第 5–7 节，不允许以总分或部分通过抵消硬性缺陷。
+
+| ID / 单元 | 输入与操作 | 可观察预期 | 验证方式与必需环境 | 验收人 / 状态 |
+| --- | --- | --- | --- | --- |
+| C1 / AEX-00 | 对照冻结上游源码、现有生产入口和第 6 节逐行补矩阵 | 每个必需行为有真实入口、唯一负责批次、具体测试/source set、命令/runner、预期失败原因和断言；组件与整链无反向依赖 | 主模型逐条语义审阅、命令与文件存在性核查；本地仓库及固定 git 对象 | 主模型 / pass（2026-09-13，见第 8 节） |
+| C2 / AEX-00 | 获取/构建固定索引、旧/新 API 真实扩展及独立外部 API 受控样本，核对原始 metadata | 来源/ref、hash、版本、签名、许可和再现步骤可追溯；无可变网络唯一依赖、伪造版本或宿主内重定义 API；缺失样本明确未满足而不冒称通过 | 独立 hash/签名/metadata 检查与受控样本构建；相关编译器/SDK、必要外部资源 | 主模型 / pass（2026-09-13，见第 8 节） |
+| C3 / AEX-00 | 在 Android/JVM 共享 target、app JVM、app ART 及 Desktop 层执行当前兼容基线探针 | 准确 runner 可执行且必要用例实际运行、非零、无跳过；记录命令/退出码/测试数/报告；真实设备和正式签名未知项单列 | 主模型抽验代表性探针并核对各层原始报告；Gradle 协调器、SDK、对应设备/运行时 | 主模型 / pass（2026-09-13，见第 8 节） |
+| C4 / 全批次 | 审核 diff、红绿日志、未提交状态和平台行为保留 | 仅授权文件；无用户数据/签名绕过/无关重构/捐赠或遥测引入；行为改动均有真实 production/wiring 测试；待验收项不勾选；模型和目标隔离如实报告 | 主模型检查实际 diff 与定向测试；本仓库规则、Luna 回执及目标工具结果 | 主模型 / AEX-00 通过（目标回执为用户明确豁免）；后续逐批 pending |
+| C5 / AEX-01 | 外部二进制调用新旧 Source API、桥接及加载基础组件 | 真实 ABI 与语义符合固定规范；Android ART/JVM 和 Desktop 契约通过；完整 APK 准入仍不冒称完成 | 第 6 节 ABI 矩阵、各 target focused tests 和 ART 组件测试 | 主模型 / pending |
+| C6 / AEX-02 | 从旧/新仓库地址进入两端 production HTTP、数据与 UI 链路，注入成功/异常/冲突 | v2 形式、版本/分级/语言、身份迁移、签名和状态正确；失败保留可用数据；Android 未放行版本不可误装 | MockWebServer、真实数据库迁移/备份恢复、两端仓库及列表集成 | 主模型 / pending |
+| C7 / AEX-03A | 受控 Source-only 与旧源通过真实 manager、查询、ScreenModel 和导航 | 源可见，浏览/搜索/分页/筛选/最新能力/取消/错误反馈符合契约；无类型强转回归 | 双平台共享查询场景、真实 UI/DI/导航与 HTTP 集成 | 主模型 / pending |
+| C8 / AEX-03B | 详情/后台作业更新，持久化后重建服务，生产备份恢复再调用并阅读/下载 | flags/次数/章节同步正确；漫画/章节 memo、进度、自定义数据与下载关联保真；失败不静默成功 | 双平台更新契约、真实 SQL 迁移、生产 backup/restore、Reader/下载集成 | 主模型 / pending |
+| C9 / AEX-04 | 正常签名真实 APK 经系统/私有安装、信任、loader、源注册到全部业务及重启 | 1.6 真正可用；错误版本/签名/损坏/拒绝/取消安全反馈；不靠 Source 注入或 shell 权限替代普通用户流程 | Android ART 设备测试、JVM 安全生命周期及普通权限操作证据；Desktop 共享回归 | 主模型 / pending |
+| C10 / AEX-05 | 旧版本数据升级、跨签名备份迁移与断网/部分失败/中断恢复 | 旧用户状态保全、错误可区分和恢复；选定真实站点有实际 production 验收，缺失不伪报 | 固定旧数据 fixture 的 E2E 与有界真实联网；测试设备和可用外部站点 | 主模型 / pending |
+| C11 / AEX-06 | 最终提交对应 diff 的全量、R8 APK 与正式 Windows/macOS 运行验收 | 第 7 节必需项通过；报告 hash/版本/签名/flags/设备/真实产物路径；Desktop 独有能力不退化；不可用平台不能标完整 | 完整测试/格式、Android release 设备、项目 Desktop 构建脚本与 Test Mode；必要签名/设备/macOS 环境 | 主模型 / pending |
+
+每次交接使用七字段 goal；当前交接先限定 AEX-00 的 C1–C4，后续单元在其前置验收通过后沿用本表建立对应契约。goal 完成只代表子代理自测完成，不自动改变本表或第 5 节勾选状态。用量统计由统一插件负责，不另行采集或重复报告。

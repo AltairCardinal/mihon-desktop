@@ -2,6 +2,8 @@ package mihon.desktop.extension
 
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
+import eu.kanade.tachiyomi.source.model.SManga
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -59,6 +61,28 @@ class DesktopExtensionLoaderTest {
         )
 
         assertEquals(listOf(2L, 3L), sources.map(Source::id))
+    }
+
+    @Test
+    fun `AEX-00 external v1_5 source-only JAR loads through production loader`() = runBlocking {
+        val fixture = repositoryRoot().resolve(EXTERNAL_V15_JAR)
+        assertTrue(fixture.isFile, "Missing fixed v1.5 source-only fixture: $fixture")
+        val loader = DesktopExtensionLoader(tempDir)
+        val loaded = loader.loadFromSingleJar(fixture)
+        try {
+            assertEquals(1, loaded.size)
+            assertTrue(loader.diagnostics.isEmpty(), "v1.5 fixture loader diagnostics: ${loader.diagnostics}")
+            val source = loaded.single().source
+            assertEquals(0xAE0015L, source.id)
+            assertEquals("AEX-00 v1.5 suspend-only fixture", source.name)
+            val manga = SManga.create().apply {
+                url = "/aex00/v15"
+                title = "Legacy"
+            }
+            assertEquals("Legacy (v1.5)", source.getMangaDetails(manga).title)
+        } finally {
+            loaded.map { it.classLoader }.distinct().filterIsInstance<AutoCloseable>().forEach { it.close() }
+        }
     }
 
     @Test
@@ -161,6 +185,14 @@ class DesktopExtensionLoaderTest {
     fun `getExtensionsDirectory returns configured path`() {
         val loader = DesktopExtensionLoader(tempDir)
         assertEquals(tempDir, loader.extensionsDirectory)
+    }
+
+    private fun repositoryRoot(): File = generateSequence(File("").absoluteFile) { it.parentFile }
+        .first { File(it, "app-desktop").isDirectory && File(it, "docs").isDirectory }
+
+    private companion object {
+        const val EXTERNAL_V15_JAR =
+            "app-desktop/src/test/resources/extensions/real/aex00-external-v15-suspend-only.jar"
     }
 }
 

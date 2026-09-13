@@ -1,3 +1,4 @@
+import org.gradle.api.tasks.testing.Test
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 
 plugins {
@@ -23,6 +24,12 @@ kotlin {
                 // compose.runtime removed - @Stable annotation not needed for cross-platform
             }
         }
+        commonTest {
+            dependencies {
+                implementation(libs.bundles.test)
+                implementation(kotlinx.coroutines.test)
+            }
+        }
         androidMain {
             dependencies {
                 implementation(projects.core.common)
@@ -40,12 +47,30 @@ kotlin {
                 implementation(kotlinx.coroutines.core)
             }
         }
+        val androidUnitTest by getting {
+            dependencies {
+                implementation(libs.bundles.test)
+                implementation(kotlinx.coroutines.test)
+                runtimeOnly(libs.junit.platform.launcher)
+            }
+        }
+        jvmTest {
+            dependencies {
+                implementation(libs.bundles.test)
+                implementation(kotlinx.coroutines.test)
+                runtimeOnly(libs.junit.platform.launcher)
+            }
+        }
     }
 
     @OptIn(ExperimentalKotlinGradlePluginApi::class)
     compilerOptions {
         freeCompilerArgs.add("-Xexpect-actual-classes")
     }
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
 }
 
 android {

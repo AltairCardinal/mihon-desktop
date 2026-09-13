@@ -283,6 +283,53 @@ def detached_options() -> dict[str, object]:
     return {"start_new_session": True}
 
 
+def foreground_options() -> dict[str, object]:
+    """Put the managed child in a private process group without detaching it."""
+    if os.name == "nt":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"preexec_fn": os.setpgrp}
+
+
+def cleanup_foreground_process(
+    process: subprocess.Popen[object],
+    process_identity_value: str | None,
+) -> None:
+    """Terminate and reap a foreground child using its original identity."""
+    if process.poll() is None:
+        if process_identity_value is None:
+            # Popen still owns this handle, but no reusable identity was observed.
+            process.terminate()
+        else:
+            terminate_process_tree(
+                process.pid,
+                process_identity_value,
+                detached=False,
+            )
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        # The Popen handle still refers to the child created above.  This is the
+        # final escalation after the identity-checked tree termination.
+        process.kill()
+        process.wait(timeout=5)
+
+
+def foreground_state_belongs_to(
+    state: dict[str, object],
+    owner_pid: int,
+    owner_identity: str,
+    process_pid: int,
+    process_identity_value: str | None,
+) -> bool:
+    return (
+        state.get("executionMode") == "foreground"
+        and state.get("workerPid") == owner_pid
+        and state.get("workerIdentity") == owner_identity
+        and state.get("processPid") == process_pid
+        and state.get("processIdentity") == process_identity_value
+    )
+
+
 def command_start(args: argparse.Namespace) -> int:
     command = list(args.command)
     if command and command[0] == "--":
@@ -351,6 +398,218 @@ def command_run(args: argparse.Namespace) -> int:
     if start_exit_code != 0:
         return start_exit_code
     return command_wait(args)
+
+
+def command_foreground(args: argparse.Namespace) -> int:
+    command = list(args.command)
+    if command and command[0] == "--":
+        command.pop(0)
+    if not command:
+        print("ERROR: foreground requires a command after --", file=sys.stderr)
+        return 2
+
+    owner_pid = os.getpid()
+    owner_identity = await_process_identity(owner_pid)
+    if owner_identity is None:
+        print("ERROR: failed to identify foreground coordinator", file=sys.stderr)
+        return 1
+
+    attached = False
+    process: subprocess.Popen[str] | None = None
+    output = None
+    process_identity_value: str | None = None
+    quick_exit_code: int | None = None
+    with state_lock(args.state_dir, args.key):
+        existing = load_state(args.state_dir, args.key)
+        if (
+            existing
+            and existing.get("status") in ACTIVE
+            and active_process_is_alive(existing)
+        ):
+            if existing.get("command") != command:
+                print(
+                    f"ERROR: coordinator key is busy with a different command: {args.key}",
+                    file=sys.stderr,
+                )
+                return 2
+            print(
+                f"ATTACHED key={args.key} status={existing['status']} "
+                f"workerPid={existing['workerPid']} processPid={existing.get('processPid')}"
+            )
+            attached = True
+        else:
+            path = log_path(args.state_dir, args.key)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            state = {
+                "status": "STARTING",
+                "command": command,
+                "workerPid": owner_pid,
+                "workerIdentity": owner_identity,
+                "processPid": None,
+                "processIdentity": None,
+                "executionMode": "foreground",
+                "logPath": str(path),
+                "startedAt": now(),
+                "exitCode": None,
+            }
+            write_state(args.state_dir, args.key, state)
+            try:
+                output = path.open("w", encoding="utf-8")
+                process = subprocess.Popen(
+                    command,
+                    stdin=subprocess.DEVNULL,
+                    stdout=output,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding="utf-8",
+                    **foreground_options(),
+                )
+                process_identity_value = await_process_identity(process.pid)
+                if process_identity_value is None and process.poll() is None:
+                    cleanup_foreground_process(process, None)
+                    raise RuntimeError("failed to identify managed foreground process")
+                state = load_state(args.state_dir, args.key) or state
+                state.update(
+                    {
+                        "processPid": process.pid,
+                        "processIdentity": process_identity_value,
+                    }
+                )
+                if process_identity_value is None:
+                    quick_exit_code = process.wait()
+                    state.update(
+                        {
+                            "status": "PASSED" if quick_exit_code == 0 else "FAILED",
+                            "exitCode": quick_exit_code,
+                            "finishedAt": now(),
+                        }
+                    )
+                else:
+                    state["status"] = "RUNNING"
+                write_state(args.state_dir, args.key, state)
+            except BaseException as exc:
+                if process is not None and process.poll() is None:
+                    try:
+                        cleanup_foreground_process(process, process_identity_value)
+                    except BaseException as cleanup_error:
+                        exc = RuntimeError(f"{exc}; cleanup failed: {cleanup_error}")
+                state = load_state(args.state_dir, args.key) or state
+                state.update(
+                    {
+                        "status": "FAILED",
+                        "exitCode": 1,
+                        "finishedAt": now(),
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                )
+                try:
+                    write_state(args.state_dir, args.key, state)
+                except BaseException:
+                    # Preserve the original startup failure while ensuring the
+                    # managed child was not left detached.
+                    pass
+                if output is not None:
+                    output.close()
+                print(describe(state, args.key))
+                return 1
+
+    if attached:
+        return command_wait(args)
+
+    assert process is not None
+    print(f"STARTED key={args.key} workerPid={owner_pid} processPid={process.pid}")
+    if quick_exit_code is not None:
+        if output is not None:
+            output.close()
+        state = load_state(args.state_dir, args.key)
+        print(describe(state, args.key))
+        return quick_exit_code
+
+    timed_out = False
+    interrupted = False
+    wait_error: BaseException | None = None
+    process_exit_code = 1
+    try:
+        try:
+            process_exit_code = process.wait(timeout=args.timeout_seconds)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            cleanup_foreground_process(process, process_identity_value)
+            process_exit_code = process.returncode
+            if process_exit_code is None:
+                process_exit_code = 124
+        except KeyboardInterrupt:
+            interrupted = True
+            cleanup_foreground_process(process, process_identity_value)
+            process_exit_code = process.returncode
+            if process_exit_code is None:
+                process_exit_code = 130
+        except BaseException as exc:
+            process_exit_code = 1
+            wait_error = exc
+            try:
+                cleanup_foreground_process(process, process_identity_value)
+            except BaseException as cleanup_error:
+                wait_error = RuntimeError(f"{exc}; cleanup failed: {cleanup_error}")
+    finally:
+        if output is not None:
+            output.close()
+
+    with state_lock(args.state_dir, args.key):
+        state = load_state(args.state_dir, args.key) or {}
+        owns_state = foreground_state_belongs_to(
+            state,
+            owner_pid,
+            owner_identity,
+            process.pid,
+            process_identity_value,
+        )
+        if not owns_state:
+            print(
+                f"IGNORED stale foreground owner key={args.key} "
+                f"workerPid={owner_pid} processPid={process.pid}; {describe(state, args.key)}"
+            )
+            return process_exit_code
+        if state.get("status") != "CANCELLED":
+            if timed_out:
+                state.update(
+                    {
+                        "status": "CANCELLED",
+                        "exitCode": 124,
+                        "finishedAt": now(),
+                        "error": "foreground command timed out and was terminated",
+                    }
+                )
+            elif interrupted:
+                state.update(
+                    {
+                        "status": "CANCELLED",
+                        "exitCode": 130,
+                        "finishedAt": now(),
+                        "error": "foreground command interrupted and was terminated",
+                    }
+                )
+            elif wait_error is not None:
+                state.update(
+                    {
+                        "status": "FAILED",
+                        "exitCode": 1,
+                        "finishedAt": now(),
+                        "error": f"{type(wait_error).__name__}: {wait_error}",
+                    }
+                )
+            else:
+                state.update(
+                    {
+                        "status": "PASSED" if process_exit_code == 0 else "FAILED",
+                        "exitCode": process_exit_code,
+                        "finishedAt": now(),
+                    }
+                )
+            write_state(args.state_dir, args.key, state)
+        final_exit_code = int(state.get("exitCode") or 0)
+        print(describe(state, args.key))
+    return final_exit_code
 
 
 def command_worker(args: argparse.Namespace) -> int:
@@ -485,7 +744,11 @@ def command_wait(args: argparse.Namespace) -> int:
         time.sleep(0.05)
 
 
-def terminate_process_tree(pid: object, expected_identity: object) -> None:
+def terminate_process_tree(
+    pid: object,
+    expected_identity: object,
+    detached: bool = True,
+) -> None:
     if not isinstance(pid, int) or not process_matches(pid, expected_identity):
         return
     if os.name == "nt":
@@ -494,6 +757,27 @@ def terminate_process_tree(pid: object, expected_identity: object) -> None:
             capture_output=True,
             check=False,
         )
+    elif not detached:
+        # foreground_options() makes the child a process-group leader while it
+        # remains a direct child of this coordinator.  Verify both identity and
+        # ownership before signalling the group; this cannot reach the caller's
+        # group, and also works on macOS where /proc is unavailable.
+        try:
+            process_group = os.getpgid(pid)
+        except (OSError, ProcessLookupError):
+            process_group = None
+        if process_group == pid and process_matches(pid, expected_identity):
+            try:
+                os.killpg(process_group, signal.SIGTERM)
+            except (OSError, ProcessLookupError):
+                pass
+        else:
+            # The identity-checked root remains safe to terminate, but never
+            # walk unverified descendants or the caller's process group.
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except (OSError, ProcessLookupError):
+                pass
     else:
         try:
             os.killpg(os.getpgid(pid), signal.SIGTERM)
@@ -508,8 +792,23 @@ def command_stop(args: argparse.Namespace) -> int:
             print(describe(state, args.key))
             return 0
         if state.get("status") in ACTIVE:
-            terminate_process_tree(state.get("processPid"), state.get("processIdentity"))
-            terminate_process_tree(state.get("workerPid"), state.get("workerIdentity"))
+            foreground = state.get("executionMode") == "foreground"
+            process_alive = process_matches(
+                state.get("processPid"),
+                state.get("processIdentity"),
+            )
+            if foreground and not process_alive:
+                # The foreground owner may be between wait() and terminal-state write.
+                # Do not overwrite a fast process's eventual result with CANCELLED.
+                print(describe(state, args.key))
+                return 0
+            terminate_process_tree(
+                state.get("processPid"),
+                state.get("processIdentity"),
+                detached=not foreground,
+            )
+            if not foreground:
+                terminate_process_tree(state.get("workerPid"), state.get("workerIdentity"))
             state.update(
                 {
                     "status": "CANCELLED",
@@ -526,13 +825,13 @@ def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser()
     subparsers = root.add_subparsers(dest="action", required=True)
 
-    for action in ("start", "run", "status", "wait", "stop"):
+    for action in ("start", "run", "foreground", "status", "wait", "stop"):
         child = subparsers.add_parser(action)
         child.add_argument("--state-dir", type=Path, default=Path(".gradle-coordinator"))
         child.add_argument("--key", default="gradle")
-        if action in ("start", "run"):
+        if action in ("start", "run", "foreground"):
             child.add_argument("command", nargs=argparse.REMAINDER)
-        if action in ("run", "wait"):
+        if action in ("run", "foreground", "wait"):
             child.add_argument("--timeout-seconds", type=float, default=900)
 
     worker = subparsers.add_parser("_worker")
@@ -547,6 +846,7 @@ def main() -> int:
     actions = {
         "start": command_start,
         "run": command_run,
+        "foreground": command_foreground,
         "status": command_status,
         "wait": command_wait,
         "stop": command_stop,

@@ -1,0 +1,168 @@
+{
+  "schema": "aex00-external-source-fixture/v1",
+  "artifactKind": "controlled-source-factory-jar-and-apk",
+  "notAThirdPartyRelease": true,
+  "api": {
+    "repository": "https://github.com/mihonapp/mihon",
+    "tag": "v0.20.4",
+    "commit": "df6507256acce8e7f3660783a3db6dbd1a31b6b5",
+    "license": "Apache-2.0",
+    "licenseUrl": "https://github.com/mihonapp/mihon/blob/df6507256acce8e7f3660783a3db6dbd1a31b6b5/LICENSE",
+    "sourceFiles": {
+      "source-api/src/main/kotlin/eu/kanade/tachiyomi/source/Source.kt": "c31c6b24ef9ef038e749500032df0a8a707b9ce9074abaa4fb0df121e19816f5",
+      "source-api/src/main/kotlin/eu/kanade/tachiyomi/source/SourceFactory.kt": "4ff3f8e591d8d059dc665735f0cb1a7fd478c00db73e7b3928b95407c383bc44",
+      "source-api/src/main/kotlin/eu/kanade/tachiyomi/source/CatalogueSource.kt": "f83a7f5d698bc98213d0a07fd30ae50a38f15bac3e38d9e6101a18d78ed671ea",
+      "source-api/src/main/kotlin/eu/kanade/tachiyomi/source/model/Filter.kt": "077c1014fb22786502aa91e402e4516c7717351e4fc0bce5d8cbf09c39fdc201",
+      "source-api/src/main/kotlin/eu/kanade/tachiyomi/source/model/FilterList.kt": "0d914693cc6302260fe56294d58cebf67404a54f31744178e9cef10ae5512d39",
+      "source-api/src/main/kotlin/eu/kanade/tachiyomi/source/model/MangasPage.kt": "d8beea21945b98493f6531c4c9b5ba1169cd5dce5fac4de0701adb1f5401fad8",
+      "source-api/src/main/kotlin/eu/kanade/tachiyomi/source/model/Page.kt": "13bddc0f0fb954c45e6ca3294174d44b67eec59ef86b4ece4bc431a559425332",
+      "source-api/src/main/kotlin/eu/kanade/tachiyomi/source/model/SChapter.kt": "39c03a0b9011afbead061434daf79d696b12c0a5a0ae4a64f258f886f66499db",
+      "source-api/src/main/kotlin/eu/kanade/tachiyomi/source/model/SChapterImpl.kt": "732dd62c5539049656a3791481a3411956e5d162476e70aee11a4ea2cc58e1ea",
+      "source-api/src/main/kotlin/eu/kanade/tachiyomi/source/model/SManga.kt": "1848776bbd108f90063a04004286eacd82ab0cf1821be0b7ea59a09f7e8a7cdd",
+      "source-api/src/main/kotlin/eu/kanade/tachiyomi/source/model/SMangaImpl.kt": "e2608c2ba7e6712a10948802769a99a623947b109bd5b1b898863f7941e1b00d",
+      "source-api/src/main/kotlin/eu/kanade/tachiyomi/source/model/SMangaUpdate.kt": "f298847f29e2b70170487ef3bc3425c80f23f1e5ade7bb22f66851779f3c5b18",
+      "source-api/src/main/kotlin/eu/kanade/tachiyomi/source/model/UpdateStrategy.kt": "dcdf5b3a60108c7cc1ffc8f2954fc21ac9bacc5ca066c40037533cf17b03b3eb",
+      "core/common/src/main/kotlin/eu/kanade/tachiyomi/network/ProgressListener.kt": "a42a1c653053608d5a4b593d7600708778d1cbb05a20391eef99678c868c1670",
+      "core/common/src/main/kotlin/tachiyomi/core/common/util/lang/RxCoroutineBridge.kt": "126cf2276f3816c1426736ee612ed8d9d2ab912d4ebd5a23b9fce196520499b9",
+      "core/common/src/main/kotlin/mihon/core/common/extensions/JsonObject.kt": "a7003917b321a7a59a3401aa35ff4f05529a480ec89aa741813eccd9d1c07e41",
+      "source-api/src/main/kotlin/eu/kanade/tachiyomi/util/RxExtension.kt": "609f23b727c6ec388d109c5d06530ba952b336dbc166bf79bd5e26c06cdeedb7"
+    },
+    "sourceFilesGitBlobSha1": {
+      "Source.kt": "708012a8f3b0cdf693404a9b30d2df971ba4d382",
+      "SourceFactory.kt": "d326c437a555ffec0c60c88a9c272f5340fa898d",
+      "CatalogueSource.kt": "0aa0de3c49508fd4b01e8a763736abbb468e38a6",
+      "Filter.kt": "99c72e58e961530d44f376f66d6f1a60254f8db7",
+      "FilterList.kt": "6c99352665d00b64a95e1e474fc460ca22ea74fb",
+      "MangasPage.kt": "2424957f8e588d18eeffd21b772593be25553f12",
+      "Page.kt": "1119850439480370948570b61d61055b7a546562",
+      "SChapter.kt": "9fd3d6175f917fefaac2510384fe31cd949a72dd",
+      "SChapterImpl.kt": "2ee6d7d2309bdfc98e74734d7abd96f029a35451",
+      "SManga.kt": "983c16c18f2cd16d6e3a42d6d28fcab9a7678ce5",
+      "SMangaImpl.kt": "c3fcbf99a3c0202517ec7dade40677d119e9b3f5",
+      "SMangaUpdate.kt": "2b35cf6a37d17cedd8b1e712a9f97ebda863b453",
+      "UpdateStrategy.kt": "d76a7dd008b0f03f3e110a13e75cdb8566c03a31",
+      "ProgressListener.kt": "2e219895feef290ad2bfb18f5725fb77b53b355b",
+      "RxCoroutineBridge.kt": "d6f521cc01eb0caa32033b638471befb4c1e3627",
+      "JsonObject.kt": "d7d17b164486fca1d10f00111faf13ef3a86920a",
+      "RxExtension.kt": "511fc93cebaa9668bf8c08466793c273dac52abd"
+    }
+  },
+  "sample": {
+    "sourcePath": "src/main/kotlin/aex00/external/v16/V16Source.kt",
+    "sourceSha256": "84ae258d337324ec63d03852c5efd593ac0ec2e793afcad6a364194b5e59b911",
+    "testPath": "src/test/kotlin/aex00/external/v16/V16ContractTest.kt",
+    "testSha256": "872655f386d2dfee19bd0bc08b9e283eec944602aea0566836e5e2915bf50ab1",
+    "factoryEntryClass": "aex00.external.v16.V16SourceFactory",
+    "sourceImplementationClass": "aex00.external.v16.V16Source",
+    "abiProbeClass": "aex00.external.v16.V16SourceAbiProbe",
+    "contract": [
+      "sample provides SourceFactory, en/zh languages, supportsLatest, popular/latest/search pagination and FilterList behavior",
+      "V16ContractTest currently exercises SourceFactory, en/zh languages, popular page 1 and FilterList; latest/search pagination are not executed",
+      "getMangaUpdate is invoked through the statically typed Source interface for all four flag combinations",
+      "manga memo and chapter memo are asserted for both requested and preserved paths",
+      "getPageList error path is invoked through the Source interface and must throw IllegalStateException",
+      "contentWarning is accepted only from APK metadata/index; the source memo field is not a substitute"
+    ]
+  },
+  "artifacts": {
+    "jar": {
+      "path": "app-desktop/src/test/resources/extensions/real/aex00-external-v16-controlled-sample.jar",
+      "sha256": "e623be999c1c6b7c9a5383253645f6dc3d496de44d44a4fa1cd1a4fe020c33c4",
+      "sizeBytes": 11820,
+      "unsignedBuildSha256": "50628427539f0b2839d251dd2c3af773456ff07763aabef188f2ec3737cd1d9c",
+      "contents": [
+        "aex00/external/v16/V16Source.class",
+        "aex00/external/v16/V16SourceAbiProbe.class",
+        "aex00/external/v16/V16SourceAbiProbe$updateSummary$1.class",
+        "aex00/external/v16/V16SourceFactory.class"
+      ],
+      "signature": {
+        "scheme": "JAR-v1",
+        "signatureFile": "META-INF/AEX16.SF",
+        "certificateFile": "META-INF/AEX16.RSA",
+        "algorithm": "SHA256withRSA",
+        "signerSha256": "9be8a18439915033e8362f25426323e8b7b94f223eadca4962ce5f91a23d6021",
+        "command": "jarsigner '-J-Duser.language=en' '-J-Duser.country=US' -keystore app-desktop/tmp/aex00-v15-signing/repository.p12 -storetype PKCS12 -storepass:env AEX00_FIXTURE_STOREPASS -signedjar app-desktop/tmp/aex00-external-v16/build/outputs/aex00-external-v16-sample.jar.signed.jar app-desktop/tmp/aex00-external-v16/build/outputs/aex00-external-v16-sample.jar aex00-v15",
+        "verificationCommand": "jarsigner '-J-Duser.language=en' '-J-Duser.country=US' -verify -certs app-desktop/src/test/resources/extensions/real/aex00-external-v16-controlled-sample.jar",
+        "verificationExitCode": 0,
+        "warnings": ["self-signed certificate", "no timestamp", "invalid public trust chain"],
+        "keyMaterial": "not distributed; signing requires an authorized fixture key"
+      }
+    },
+    "apk": {
+      "path": "app-desktop/src/test/resources/extensions/real/aex00-external-v16-controlled-sample.apk",
+      "sha256": "34c21ef4c3a5b60b789cd5dce95a78f638ba9875007f19d094cb3e344df4e182",
+      "sizeBytes": 12498,
+      "packageName": "aex00.external.v16.controlled",
+      "versionName": "1.6.0",
+      "versionCode": 160000,
+      "extensionLibVersion": "1.6",
+      "minSdk": 26,
+      "targetSdk": 36,
+      "metadata": {
+        "factoryEntryClass": "aex00.external.v16.V16SourceFactory",
+        "nsfw": 1,
+        "contentWarning": 1
+      },
+      "dex": {
+        "input": "aex00-external-v16-sample.jar",
+        "tool": "D8 build-tools 36.0.0",
+        "warnings": [
+          "sample JAR intentionally omits host API classes; D8 reported unresolved Source/SourceFactory and Kotlin continuation references",
+          "D8 reported Kotlin metadata 2.3.0 newer than its parser maximum 2.2.0"
+        ],
+        "exitCode": 0
+      },
+      "signature": {
+        "schemes": ["v2", "v3"],
+        "signerSha256": "9be8a18439915033e8362f25426323e8b7b94f223eadca4962ce5f91a23d6021",
+        "verificationExitCode": 0
+      },
+      "boundary": "signed controlled APK for later ABI/metadata components; not an AEX-04 normal-install or source-registration success claim"
+    }
+  },
+  "build": {
+    "generator": "scripts/aex00-generate-external-v15-fixture.ps1 -ApiVersion v16",
+    "apkPackager": "scripts/aex00-package-controlled-v16-apk.ps1 -ApiVersion v16",
+    "testCommand": "python scripts/gradle-coordinator.py foreground --key aex00-external-v16-static-probe-test -- .\\gradlew.bat -p app-desktop/tmp/aex00-external-v16 test --tests \"aex00.external.v16.V16ContractTest\" --no-daemon --offline",
+    "exportCommand": "python scripts/gradle-coordinator.py foreground --key aex00-external-v16-static-probe-export -- .\\gradlew.bat -p app-desktop/tmp/aex00-external-v16 aex00ExportSampleJar --no-daemon --offline",
+    "apkCommand": "pwsh -File scripts/aex00-package-controlled-v16-apk.ps1 -ApiVersion v16",
+    "kotlin": "2.3.10",
+    "jvmToolchain": "21",
+    "jvmDefault": "compiler default",
+    "hostSourceApiOnClasspath": false,
+    "androidJar": "D:\\Android\\Sdk\\platforms\\android-36\\android.jar",
+    "androidJarSha256": "d9eb9da824d9e247a352f570f01e1169e725b2954bca9e283a71786c59b59f9a",
+    "composeAnnotationCoordinate": "androidx.compose.runtime:runtime-annotation-jvm:1.10.4",
+    "composeAnnotationJar": "C:\\Users\\feeli\\.gradle\\caches\\modules-2\\files-2.1\\androidx.compose.runtime\\runtime-annotation-jvm\\1.10.4\\ea491da34ba40ae9bd340c393566753ddfd95a76\\runtime-annotation-jvm-1.10.4.jar",
+    "composeAnnotationJarSha256": "f89dda8bcd73876d0fc16568844b2bd79443ee7ca62810874d25c7dcaa394bd6",
+    "dependencies": [
+      "io.reactivex:rxjava:1.3.8",
+      "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2",
+      "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2",
+      "org.jetbrains.kotlinx:kotlinx-serialization-core:1.10.0",
+      "org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0",
+      "androidx.compose.runtime:runtime-annotation-jvm:1.10.4",
+      "org.junit.jupiter:junit-jupiter:6.0.3",
+      "org.junit.platform:junit-platform-launcher"
+    ],
+    "prerequisites": [
+      "PowerShell 7 (pwsh)",
+      "JDK 21 (java, jar, jarsigner)",
+      "Android SDK D:\\Android\\Sdk with platforms;android-36/android.jar and build-tools;36.0.0/{d8,aapt2,apksigner}",
+      "local Git object df6507256acce8e7f3660783a3db6dbd1a31b6b5: generator verifies source SHA-256 and source git blob SHA-1",
+      "offline Gradle/Kotlin/Compose cache including Kotlin Gradle plugin 2.3.10 and the recorded dependency JARs",
+      "set AEX00_FIXTURE_STOREPASS in the current process before artifacts.jar.signature.command; the local keystore and private key are not distributed"
+    ],
+    "localGitObjectCheck": "git cat-file -e df6507256acce8e7f3660783a3db6dbd1a31b6b5^{commit}; git rev-parse df6507256acce8e7f3660783a3db6dbd1a31b6b5:<source-path>; git hash-object --no-filters <cached-source>",
+    "sequence": [
+      "1. generate with pwsh -File scripts/aex00-generate-external-v15-fixture.ps1 -ApiVersion v16",
+      "2. execute this build.testCommand through the Gradle coordinator with --offline",
+      "3. execute this build.exportCommand through the Gradle coordinator with --offline",
+      "4. execute this artifacts.jar.signature.command with AEX00_FIXTURE_STOREPASS, then run this artifacts.jar.signature.verificationCommand on the fixed resource",
+      "5. run pwsh -File scripts/aex00-package-controlled-v16-apk.ps1 -ApiVersion v16 and verify raw aapt2 metadata plus apksigner v2/v3"
+    ],
+    "offline": true,
+    "signingBoundary": "controlled JAR/APK signing uses a non-distributed authorized fixture key; self-signed/no-timestamp warnings are expected and this is not an official release key"
+  }
+}
