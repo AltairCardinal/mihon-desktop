@@ -80,19 +80,14 @@
     const navState = indicators || {};
     const unreadCount = Math.max(0, Number(navState.unreadCount) || 0);
     const contentText = unreadCount > 99 ? '99+' : String(unreadCount);
-    const sync = navState.sync || null;
-    const syncIcon = sync && (sync.icon || ({ failure: 'close', attention: 'checklist', syncing: 'sync', pending: 'upload' }[sync.kind] || 'info'));
     const label = (item) => {
       if (item.route !== 'updates') return item.label;
       const parts = [item.label];
       if (unreadCount > 0) parts.push(`${unreadCount} 条未读内容`);
-      if (sync && sync.label) parts.push(sync.label);
       return parts.join('；');
     };
     const contentBadge = (item) => item.route !== 'updates' ? '' : `${unreadCount > 0 ? `<span class="nav-badge nav-badge-content" data-testid="nav-updates-content-badge" title="${unreadCount} 条未读内容" aria-hidden="true">${contentText}</span>` : ''}`;
-    const syncBadge = (item) => item.route === 'updates' && sync ? `<span class="nav-badge nav-badge-sync ${sync.kind === 'syncing' ? 'is-spinning' : ''}" data-testid="nav-updates-sync-badge" data-badge-status="${sync.kind}" title="${sync.label}" aria-hidden="true">${icon(syncIcon)}</span>` : '';
-    const capsule = (item) => item.route === 'updates' && (unreadCount > 0 || sync) ? `<span class="nav-badge-capsule" aria-hidden="true">${contentBadge(item)}${unreadCount > 0 && sync ? '<span class="nav-badge-divider">·</span>' : ''}${syncBadge(item)}</span>` : '';
-    return `<nav class="native-navigation" aria-label="${spec.id === 'windows' ? 'Desktop 主导航' : '手机主导航'}">${spec.nav.map((item) => `<button class="native-nav-item ${item.route === active ? 'is-selected' : ''}" data-route="${item.route}" data-testid="nav-${item.route}" aria-current="${item.route === active ? 'page' : 'false'}" aria-label="${label(item)}" title="${label(item)}"><span class="nav-icon-anchor"><span class="nav-icon-wrap">${icon(item.icon)}</span>${capsule(item)}</span><span class="nav-label"><span class="nav-label-text">${item.label}</span></span></button>`).join('')}</nav>`;
+    return `<nav class="native-navigation" aria-label="${spec.id === 'windows' ? 'Desktop 主导航' : '手机主导航'}">${spec.nav.map((item) => `<button class="native-nav-item ${item.route === active ? 'is-selected' : ''}" data-route="${item.route}" data-testid="nav-${item.route}" aria-current="${item.route === active ? 'page' : 'false'}" aria-label="${label(item)}" title="${label(item)}"><span class="nav-icon-anchor"><span class="nav-icon-wrap">${icon(item.icon)}</span>${contentBadge(item)}</span><span class="nav-label"><span class="nav-label-text">${item.label}</span></span></button>`).join('')}</nav>`;
   }
 
   return { platformSpec, renderNav, icon, themeTokens, paths };

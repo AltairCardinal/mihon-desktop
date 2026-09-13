@@ -9,10 +9,10 @@
   state.selectedDevice = 'desktop-b';
   const UPDATE_IDS = ['manga-star', 'manga-dawn', 'manga-night'];
   state.ui = {
-    platform: 'windows', theme: 'light', route: 'updates', updatesTab: 'sync', browseTab: 'sources',
+    platform: 'windows', theme: 'light', route: 'library', browseTab: 'sources',
     detail: null, reader: false, busy: false, timerId: null, busyDeviceId: null,
     notice: 'Windows Desktop 原生界面预览；同步仍是离线演示。', tone: 'info', filter: false, calendar: false,
-    lastUpdatesTab: 'sync', lastUpdatesTabByDevice: { 'desktop-b': 'sync', 'phone-a': 'sync' }, readUpdates: { 'desktop-b': ['manga-night'], 'phone-a': ['manga-night'] },
+    readUpdates: { 'desktop-b': ['manga-night'], 'phone-a': ['manga-night'] },
   };
 
   const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -36,33 +36,20 @@
     state.ui.readUpdates[deviceId] = UPDATE_IDS.slice();
   }
   function pendingDecisionCount(device) { return device.confirmations.length + device.conflicts.length; }
-  function syncIndicator(device) {
-    const pending = pendingDecisionCount(device);
-    if (device.lastResult && device.lastResult.ok === false) return { kind: 'failure', icon: 'close', label: pending ? `最近一次同步失败；有${pending}项同步操作待确认` : '最近一次同步失败' };
-    if (pending) return { kind: 'attention', icon: 'checklist', label: `有${pending}项同步操作待确认` };
-    if (state.ui.busy && state.ui.busyDeviceId === device.id) return { kind: 'syncing', icon: 'sync', label: '正在同步' };
-    if (device.pendingOutgoing.length) return { kind: 'pending', icon: 'upload', label: `有 ${device.pendingOutgoing.length} 项操作待发送` };
-    return null;
+  function syncWorkCount(device) {
+    return pendingDecisionCount(device) + device.remoteSuggestions.length;
   }
-  function navIndicators() {
-    const current = currentDevice();
-    return { unreadCount: unreadUpdateCount(current.id), sync: syncIndicator(current) };
-  }
-  function rememberedUpdatesTab(deviceId) {
-    if (!state.ui.lastUpdatesTabByDevice) state.ui.lastUpdatesTabByDevice = {};
-    return state.ui.lastUpdatesTabByDevice[deviceId] || state.ui.lastUpdatesTab || state.ui.updatesTab || 'sync';
-  }
-  function chooseUpdatesTab() {
-    const current = currentDevice();
-    const indicator = syncIndicator(current);
-    if (indicator && (indicator.kind === 'failure' || indicator.kind === 'attention')) return 'sync';
-    if (unreadUpdateCount(current.id) > 0) return 'updates';
-    if (indicator && (indicator.kind === 'syncing' || indicator.kind === 'pending')) return 'sync';
-    return rememberedUpdatesTab(current.id);
-  }
+  function navIndicators() { return { unreadCount: unreadUpdateCount(currentDevice().id) }; }
   function navigateRoute(route) {
-    if (route === 'updates' && state.ui.route !== 'updates') state.ui.updatesTab = chooseUpdatesTab();
+    state.ui.syncOpen = false; state.ui.syncSettingsOpen = false;
     state.ui.route = route; state.ui.detail = null; state.ui.reader = false;
+  }
+  function renderLibrarySyncButton() {
+    const current = currentDevice();
+    const count = syncWorkCount(current);
+    const busy = state.ui.busy && state.ui.busyDeviceId === current.id;
+    const label = '同步' + (busy ? '；更新中' : '') + (count ? '；' + count + ' 项需要手动处理' : '');
+    return `<button class="m-icon-button library-sync-button" data-action="open-sync" data-testid="library-sync" data-syncing="${busy}" aria-label="${label}" title="${label}">${view.icon('sync')}${count ? `<span class="library-sync-count" data-testid="library-sync-count" aria-hidden="true">${count > 99 ? '99+' : count}</span>` : ''}</button>`;
   }
   const button = (label, attrs, className) => `<button class="m-button ${className || ''}" ${attrs || ''}>${label}</button>`;
   const iconButton = (name, label, attrs, className) => `<button class="m-icon-button ${className || ''}" aria-label="${esc(label)}" title="${esc(label)}" ${attrs || ''}>${view.icon(name)}</button>`;
@@ -83,7 +70,7 @@
 
   function statusText(device) {
     const status = activeStatus(device);
-    return status === 'syncing' ? '同步中' : status === 'offline' ? '离线，操作会保留' : status === 'attention' ? '有待处理' : status === 'pending' ? '有待发送' : '已准备好';
+    return status === 'syncing' ? '更新中' : status === 'offline' ? '离线，操作会保留' : status === 'attention' ? '有待处理' : status === 'pending' ? '有待发送' : '已准备好';
   }
 
   function topBar(title, actions, options) {
@@ -101,12 +88,7 @@
     const shell = platform === 'android' ? 'android-shell' : 'windows-shell';
     const frame = platform === 'android' ? `<div class="android-statusbar"><span>9:41</span><span class="status-icons">${view.icon('wifi')}${view.icon('signal')}${view.icon('battery')}</span></div>` : `<div class="desktop-windowbar"><span class="desktop-title"><img src="./mihon-desktop.png" alt="Mihon Desktop 图标"><span>Mihon Desktop 0.11.19.33 · 本地原型</span></span><span class="window-controls" aria-hidden="true"><i></i><i></i><i class="window-close"></i></span></div>`;
     const nav = state.ui.reader || (state.ui.detail && platform === 'android') ? '' : view.renderNav(spec(), state.ui.route, navIndicators());
-    return `<section class="app-window ${shell}" data-platform="${platform}" data-testid="app-window">${frame}<div class="app-body">${content}</div>${nav}${platform === 'android' ? '<div class="gesture-area" aria-hidden="true"></div>' : ''}${state.ui.syncSettingsOpen ? renderSyncSettingsSheet() : ''}</section>`;
-  }
-
-  function renderUpdateTabs() {
-    const pending = pendingDecisionCount(currentDevice());
-    return `<div class="update-tabs" role="tablist" aria-label="更新页内容"><button class="update-tab ${state.ui.updatesTab === 'updates' ? 'is-active' : ''}" role="tab" aria-selected="${state.ui.updatesTab === 'updates'}" data-updates-tab="updates" data-testid="updates-tab">更新</button><button class="update-tab ${state.ui.updatesTab === 'sync' ? 'is-active' : ''}" role="tab" aria-selected="${state.ui.updatesTab === 'sync'}" data-updates-tab="sync" data-testid="sync-tab">同步${pending ? `<span class="small-badge" data-testid="sync-tab-badge">${pending}</span>` : ''}</button></div>`;
+    return `<section class="app-window ${shell}" data-platform="${platform}" data-testid="app-window">${frame}<div class="app-body">${content}</div>${nav}${platform === 'android' ? '<div class="gesture-area" aria-hidden="true"></div>' : ''}${state.ui.syncOpen ? (state.ui.syncSettingsOpen ? renderSyncSettingsSheet() : renderSyncSheet()) : ''}</section>`;
   }
 
   function renderUpdatesActions() {
@@ -138,9 +120,16 @@
   }
 
   function renderUpdatesPage() {
-    const title = state.ui.updatesTab === 'updates' ? (isWindows() ? '最近更新' : '更新') : '同步';
-    const content = state.ui.updatesTab === 'updates' ? `<div class="updates-content">${state.ui.filter ? '<div class="filter-row"><span>未读</span><span>已下载</span><span>已开始</span></div>' : ''}${state.ui.calendar ? '<div class="inline-message">即将更新：演示源暂未安排新的章节。</div>' : ''}${renderUpdateList()}</div>` : renderSyncPage();
-    return `<div class="route-view updates-route">${topBar(title, state.ui.updatesTab === 'updates' ? renderUpdatesActions() : iconButton('settings', '同步设置', 'data-action="sync-settings" data-testid="sync-settings"'))}<div class="route-scroll">${renderUpdateTabs()}${content}</div></div>`;
+    return `<div class="route-view updates-route">${topBar(isWindows() ? '最近更新' : '更新', renderUpdatesActions())}<div class="route-scroll"><div class="updates-content">${state.ui.filter ? '<div class="filter-row"><span>未读</span><span>已下载</span><span>已开始</span></div>' : ''}${state.ui.calendar ? '<div class="inline-message">即将更新：演示源暂未安排新的章节。</div>' : ''}${renderUpdateList()}</div></div></div>`;
+  }
+
+  function renderSyncSheet() {
+    return `<div class="sheet-layer"><button class="sheet-scrim" tabindex="-1" aria-label="关闭同步" data-action="close-sync" data-testid="sync-scrim"></button><section class="sync-settings-sheet sync-panel-sheet" role="dialog" aria-modal="true" aria-labelledby="sync-sheet-title" tabindex="-1"><div class="sheet-drag-handle" data-sheet-drag aria-hidden="true"><span></span></div><header class="sheet-header"><div><h2 id="sync-sheet-title">同步</h2><p>书架 · ${esc(currentDevice().name)}</p></div><div class="appbar-actions">${iconButton('settings', '同步设置', 'data-action="sync-settings" data-testid="sync-settings"')}${iconButton('close', '关闭同步', 'data-action="close-sync" data-testid="sync-close"')}</div></header><div class="sync-panel-scroll">${renderSyncPage()}</div>${isWindows() ? '' : '<div class="gesture-area" aria-hidden="true"></div>'}</section></div>`;
+  }
+
+  function closeSyncLayer() {
+    if (state.ui.syncSettingsOpen) state.ui.syncSettingsOpen = false;
+    else state.ui.syncOpen = false;
   }
 
   function renderSyncPage() {
@@ -181,7 +170,7 @@
     const current = currentDevice();
     const ids = ['manga-star', 'manga-dawn', 'manga-night'].filter((id) => current.favorites.includes(id));
     const content = ids.length ? `<div class="library-grid ${isWindows() ? 'desktop-library-grid' : 'android-library-grid'}">${ids.map((id, index) => renderMangaCard(id, index, current)).join('')}</div>` : '<div class="library-empty"><strong>书架为空</strong><span>从更新或浏览页面加入漫画。</span></div>';
-    return `<div class="route-view library-route">${topBar('书架', iconButton('search', '搜索书架', 'data-action="search"') + iconButton('filter', '筛选书架', 'data-action="library-filter"'))}<div class="route-scroll library-scroll"><div class="library-header"><strong>全部</strong><span>${current.favorites.length} 本漫画</span>${state.ui.notice.includes('搜索') ? '<input class="inline-search" aria-label="搜索书架" placeholder="搜索标题" autofocus>' : ''}</div>${content}</div></div>`;
+    return `<div class="route-view library-route">${topBar('书架', renderLibrarySyncButton() + iconButton('search', '搜索书架', 'data-action="search"') + iconButton('filter', '筛选书架', 'data-action="library-filter"'))}<div class="route-scroll library-scroll"><div class="library-header"><strong>全部</strong><span>${current.favorites.length} 本漫画</span>${state.ui.notice.includes('搜索') ? '<input class="inline-search" aria-label="搜索书架" placeholder="搜索标题" autofocus>' : ''}</div>${content}</div></div>`;
   }
 
   function renderMangaCard(id, index, current) {
@@ -260,15 +249,20 @@
   }
 
   function render() {
-    const sheetWasOpen = Boolean(root.querySelector('.sync-settings-sheet'));
+    const previousSheet = root.querySelector('[role="dialog"]');
+    const wasSettings = previousSheet && !previousSheet.classList.contains('sync-panel-sheet');
     const focusId = document.activeElement?.dataset.testid;
+    const scroll = root.querySelector('.sync-panel-scroll');
+    if (scroll) state.ui.syncScroll = scroll.scrollTop;
     root.innerHTML = `<div class="prototype-root platform-${state.ui.platform} theme-${state.ui.theme}">${renderPreviewTools()}${renderWindowShell(renderRoute())}<div class="prototype-notice ${state.ui.tone}">${view.icon(state.ui.tone === 'failure' ? 'info' : 'cloud')}<span data-testid="notice">${esc(state.ui.notice)}</span></div></div>`;
-    if (state.ui.syncSettingsOpen) {
+    if (state.ui.syncOpen) {
       root.querySelectorAll('.app-window > .app-body, .app-window > .native-navigation, .app-window > .gesture-area').forEach(el => { el.inert = true; });
-      const controls = [...root.querySelectorAll('.sync-settings-sheet [data-testid]')];
-      const focus = controls.find(el => sheetWasOpen && el.dataset.testid === focusId) || root.querySelector('[data-testid="sync-settings-close"]');
-      focus.focus({ preventScroll: true });
-    } else if (sheetWasOpen) root.querySelector('[data-testid="sync-settings"]')?.focus({ preventScroll: true });
+      const controls = [...root.querySelectorAll('[role="dialog"] button[data-testid]')];
+      const fallback = state.ui.syncSettingsOpen ? 'sync-settings-close' : wasSettings ? 'sync-settings' : 'sync-close';
+      (controls.find(el => el.dataset.testid === focusId) || root.querySelector('[data-testid="' + fallback + '"]')).focus({ preventScroll: true });
+      const panel = root.querySelector('.sync-panel-scroll');
+      if (panel) panel.scrollTop = state.ui.syncScroll || 0;
+    } else if (previousSheet) root.querySelector('[data-testid="library-sync"]')?.focus({ preventScroll: true });
   }
 
   function scheduleSync(trigger) {
@@ -283,9 +277,9 @@
   }
 
   function switchPlatform(platform) {
-    state.ui.syncSettingsOpen = false;
+    state.ui.syncOpen = false; state.ui.syncSettingsOpen = false;
     if (state.ui.reader) model.setReadingActive(state, state.selectedDevice, false);
-    state.ui.platform = platform; state.selectedDevice = platform === 'windows' ? 'desktop-b' : 'phone-a'; state.ui.detail = null; state.ui.reader = false; state.ui.route = 'updates'; state.ui.updatesTab = 'sync'; state.ui.browseTab = 'sources';
+    state.ui.platform = platform; state.selectedDevice = platform === 'windows' ? 'desktop-b' : 'phone-a'; state.ui.detail = null; state.ui.reader = false; state.ui.route = 'library'; state.ui.browseTab = 'sources';
     notice(platform === 'windows' ? '已切换到 Windows Desktop 原生外壳。' : '已切换到 Android 手机预览；作者入口在浏览页签内。');
   }
 
@@ -298,7 +292,7 @@
   function handleAction(action, target) {
     const current = currentDevice();
     if (action === 'toggle-online') { model.setOnline(state, !state.online); notice(state.online ? '模拟网络已恢复，可以重试待发送操作。' : '模拟网络已断开；本地操作仍可继续。', state.online ? 'success' : 'failure'); }
-    else if (action === 'reset') { const platform = state.ui.platform; const theme = state.ui.theme; if (state.ui.timerId) window.clearTimeout(state.ui.timerId); model.resetDemo(state); state.selectedDevice = platform === 'windows' ? 'desktop-b' : 'phone-a'; state.ui = { platform, theme, route: 'updates', updatesTab: 'sync', browseTab: 'sources', detail: null, reader: false, busy: false, timerId: null, busyDeviceId: null, notice: '演示已重置；已恢复初始待确认示例。', tone: 'success', filter: false, calendar: false, lastUpdatesTab: 'sync', lastUpdatesTabByDevice: { 'desktop-b': 'sync', 'phone-a': 'sync' }, readUpdates: { 'desktop-b': ['manga-night'], 'phone-a': ['manga-night'] } }; }
+    else if (action === 'reset') { const platform = state.ui.platform; const theme = state.ui.theme; if (state.ui.timerId) window.clearTimeout(state.ui.timerId); model.resetDemo(state); state.selectedDevice = platform === 'windows' ? 'desktop-b' : 'phone-a'; state.ui = { platform, theme, route: 'library', browseTab: 'sources', detail: null, reader: false, busy: false, timerId: null, busyDeviceId: null, notice: '演示已重置；已恢复初始待确认示例。', tone: 'success', filter: false, calendar: false, readUpdates: { 'desktop-b': ['manga-night'], 'phone-a': ['manga-night'] } }; }
     else if (action === 'back') { if (state.ui.reader) { state.ui.reader = false; model.setReadingActive(state, current.id, false); } else { state.ui.detail = null; } }
     else if (action === 'open-manga') { state.ui.detail = target.dataset.object; state.ui.reader = false; }
     else if (action === 'open-author') { state.ui.detail = target.dataset.object; state.ui.reader = false; }
@@ -327,6 +321,8 @@
     else if (action === 'detail-track') notice('追踪入口已打开；本地原型保留作者追踪路径。');
     else if (action === 'detail-browser') notice('浏览器入口已保留；本地原型不会打开外部网页。');
     else if (action === 'reader-settings') notice('阅读设置保留为设备本地；不会随同步覆盖。');
+    else if (action === 'open-sync') { state.ui.syncOpen = true; state.ui.syncScroll = 0; }
+    else if (action === 'close-sync') state.ui.syncOpen = false;
     else if (action === 'sync-settings') state.ui.syncSettingsOpen = true;
     else if (action === 'close-sync-settings') state.ui.syncSettingsOpen = false;
     else if (action === 'more-item') notice(target.dataset.message || '该页面提供离线样本结构。');
@@ -338,7 +334,6 @@
     if (target.dataset.platform) switchPlatform(target.dataset.platform);
     else if (target.dataset.theme) { state.ui.theme = target.dataset.theme; notice(`已切换${state.ui.theme === 'light' ? '浅色' : '深色'}主题。`); }
     else if (target.dataset.route) navigateRoute(target.dataset.route);
-    else if (target.dataset.updatesTab) { state.ui.updatesTab = target.dataset.updatesTab; state.ui.lastUpdatesTab = target.dataset.updatesTab; if (!state.ui.lastUpdatesTabByDevice) state.ui.lastUpdatesTabByDevice = {}; state.ui.lastUpdatesTabByDevice[state.selectedDevice] = target.dataset.updatesTab; }
     else if (target.dataset.browseTab) state.ui.browseTab = target.dataset.browseTab;
     else if (target.dataset.confirm) { model.confirmCancellation(state, state.selectedDevice, target.dataset.confirm); notice('已确认取消，仅改变当前接收设备。', 'success'); }
     else if (target.dataset.ignore) { model.ignoreCancellation(state, state.selectedDevice, target.dataset.ignore); notice('已忽略本次取消；不反向恢复来源设备。'); }
@@ -353,8 +348,8 @@
   });
 
   window.addEventListener('keydown', (event) => {
-    if (state.ui.syncSettingsOpen) {
-      if (event.key === 'Escape') { event.preventDefault(); state.ui.syncSettingsOpen = false; render(); }
+    if (state.ui.syncOpen) {
+      if (event.key === 'Escape') { event.preventDefault(); closeSyncLayer(); render(); }
       if (event.key === 'Tab') {
         const controls = [...root.querySelectorAll('.sync-settings-sheet button')];
         const index = controls.indexOf(document.activeElement);
@@ -380,7 +375,7 @@
   });
   root.addEventListener('pointerup', (event) => {
     if (!sheetDrag || sheetDrag.pointerId !== event.pointerId) return;
-    if (sheetDrag.distance >= 56) { state.ui.syncSettingsOpen = false; render(); }
+    if (sheetDrag.distance >= 56) { closeSyncLayer(); render(); }
     else root.querySelector('.sync-settings-sheet')?.style.removeProperty('transform');
     sheetDrag = null;
   });
