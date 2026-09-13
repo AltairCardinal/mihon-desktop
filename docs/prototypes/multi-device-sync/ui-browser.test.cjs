@@ -71,21 +71,23 @@ test('同步设置底部面板：双端开关、关闭、焦点与异步重绘',
   } finally { await browser.close(); }
 });
 
-async function assertBadgesInsideIcon(nav) {
+async function assertNavIndicatorsLayout(nav) {
   const iconBox = await nav.locator('.nav-icon-anchor').boundingBox();
-  const glyphBox = await nav.locator('.nav-icon-wrap .MihonIcon').boundingBox();
-  const labelBox = await nav.locator(':scope > span').nth(1).boundingBox();
-  const badges = [
-    await nav.getByTestId('nav-updates-content-badge').boundingBox(),
-    await nav.getByTestId('nav-updates-sync-badge').boundingBox(),
-  ];
-  for (const badge of badges) {
-    assert.ok(badge.x >= iconBox.x && badge.x + badge.width <= iconBox.x + iconBox.width);
-    assert.ok(badge.y >= iconBox.y && badge.y + badge.height <= iconBox.y + iconBox.height);
-    assert.ok(badge.x + badge.width <= labelBox.x || labelBox.x + labelBox.width <= badge.x || badge.y + badge.height <= labelBox.y || labelBox.y + labelBox.height <= badge.y);
-  }
-  assert.ok(badges[0].x + badges[0].width <= badges[1].x || badges[1].x + badges[1].width <= badges[0].x || badges[0].y + badges[0].height <= badges[1].y || badges[1].y + badges[1].height <= badges[0].y);
-  assert.ok(Math.abs((glyphBox.x + glyphBox.width / 2) - (labelBox.x + labelBox.width / 2)) <= 1);
+  const content = await nav.getByTestId('nav-updates-content-badge').boundingBox();
+  const sync = nav.getByTestId('nav-updates-sync-badge');
+  const syncBox = await sync.boundingBox();
+  const textBox = await nav.locator('.nav-label-text').boundingBox();
+  const labelBox = await nav.locator('.nav-label').boundingBox();
+  const navBox = await nav.boundingBox();
+  assert.ok(content.x >= iconBox.x && content.x + content.width <= iconBox.x + iconBox.width);
+  assert.ok(content.y >= iconBox.y && content.y + content.height <= iconBox.y + iconBox.height);
+  assert.ok(syncBox.y >= iconBox.y + iconBox.height, '同步提示位于文字行，不再叠加主图标');
+  assert.ok(syncBox.x >= textBox.x + textBox.width + 2, '同步提示位于更新文字右侧');
+  assert.ok(Math.abs(syncBox.y + syncBox.height / 2 - (textBox.y + textBox.height / 2)) < 2);
+  assert.ok(labelBox.x >= navBox.x && labelBox.x + labelBox.width <= navBox.x + navBox.width);
+  assert.ok(Math.abs(labelBox.x + labelBox.width / 2 - (iconBox.x + iconBox.width / 2)) < 1);
+  assert.equal(await sync.evaluate(el => getComputedStyle(el).backgroundColor), 'rgba(0, 0, 0, 0)');
+  assert.equal(await sync.evaluate(el => getComputedStyle(el).borderTopWidth), '0px');
 }
 
 async function injectUpdateNav(page, platform, active) {
@@ -291,7 +293,7 @@ test('更新导航双角标、同源已读状态和同步优先级', { skip: !pl
     assert.equal(await page.getByTestId('nav-updates-content-badge').textContent(), '2');
     assert.equal(await nav.getByTestId('nav-updates-sync-badge').getAttribute('data-badge-status'), 'attention');
     assert.equal(await nav.locator('[data-icon="checklist"]').count(), 1);
-    await assertBadgesInsideIcon(nav);
+    await assertNavIndicatorsLayout(nav);
     assert.match(await nav.getAttribute('aria-label'), /2 条未读内容/);
     assert.match(await nav.getAttribute('aria-label'), /有1项同步操作待确认/);
     assert.equal(await page.getByTestId('sync-tab-badge').textContent(), '1');
@@ -312,7 +314,7 @@ test('更新导航双角标、同源已读状态和同步优先级', { skip: !pl
     await page.getByTestId('preview-tools').locator('summary').click();
 
     await page.getByTestId('nav-more').click();
-    await assertBadgesInsideIcon(page.getByTestId('nav-updates'));
+    await assertNavIndicatorsLayout(page.getByTestId('nav-updates'));
     await page.getByTestId('nav-updates').click();
     assert.equal(await page.getByTestId('sync-tab').getAttribute('aria-selected'), 'true');
     await page.locator('[data-confirm]').first().click();
@@ -366,7 +368,7 @@ test('更新导航双角标、同源已读状态和同步优先级', { skip: !pl
     await narrow.getByTestId('detail-favorite-text').click();
     await narrow.getByTestId('app-back').click();
     const narrowNav = narrow.getByTestId('nav-updates');
-    await assertBadgesInsideIcon(narrowNav);
+    await assertNavIndicatorsLayout(narrowNav);
     const narrowNavBox = await narrowNav.boundingBox();
     const narrowContent = await narrowNav.getByTestId('nav-updates-content-badge').boundingBox();
     const narrowSync = await narrowNav.getByTestId('nav-updates-sync-badge').boundingBox();
@@ -377,7 +379,7 @@ test('更新导航双角标、同源已读状态和同步优先级', { skip: !pl
     assert.ok(narrowSync.y >= narrowNavBox.y && narrowSync.y + narrowSync.height <= narrowNavBox.y + narrowNavBox.height);
     assert.ok(narrowContent.x + narrowContent.width <= narrowSync.x || narrowSync.x + narrowSync.width <= narrowContent.x || narrowContent.y + narrowContent.height <= narrowSync.y || narrowSync.y + narrowSync.height <= narrowContent.y);
     await narrow.getByTestId('nav-more').click();
-    await assertBadgesInsideIcon(narrow.getByTestId('nav-updates'));
+    await assertNavIndicatorsLayout(narrow.getByTestId('nav-updates'));
     await narrow.close();
   } finally {
     await browser.close();
@@ -413,9 +415,9 @@ test('更新双角标在Android窄屏与设备状态隔离', { skip: !playwright
     await page.getByTestId('detail-favorite-text').click();
     await page.getByTestId('app-back').click();
     assert.equal(await page.getByTestId('nav-updates').getByTestId('nav-updates-sync-badge').getAttribute('data-badge-status'), 'pending');
-    await assertBadgesInsideIcon(page.getByTestId('nav-updates'));
+    await assertNavIndicatorsLayout(page.getByTestId('nav-updates'));
     await page.getByTestId('nav-more').click();
-    await assertBadgesInsideIcon(page.getByTestId('nav-updates'));
+    await assertNavIndicatorsLayout(page.getByTestId('nav-updates'));
     await page.getByTestId('preview-tools').locator('summary').click();
     await page.getByTestId('platform-windows').click();
     assert.equal(await page.getByTestId('nav-updates-content-badge').textContent(), '2');
@@ -447,9 +449,9 @@ test('120条未读双角标在双端主题和选中状态下保持几何稳定',
         await page.getByTestId('platform-android').click();
       }
       await injectUpdateNav(page, scenario.platform, 'updates');
-      await assertBadgesInsideIcon(page.getByTestId('nav-updates'));
+      await assertNavIndicatorsLayout(page.getByTestId('nav-updates'));
       await injectUpdateNav(page, scenario.platform, 'more');
-      await assertBadgesInsideIcon(page.getByTestId('nav-updates'));
+      await assertNavIndicatorsLayout(page.getByTestId('nav-updates'));
       await page.close();
     }
   } finally {
