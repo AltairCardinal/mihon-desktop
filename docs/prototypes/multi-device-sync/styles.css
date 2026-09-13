@@ -239,6 +239,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .ix-pending .row-leading { flex-shrink: 0; }
 .ix-device-code { padding: 22px 12px; margin: 24px 0; border: 1px solid var(--outline-variant); border-radius: 12px; background: var(--surface); text-align: center; font-size: 28px; font-weight: 600; letter-spacing: 4px; user-select: all; }
 .sync-status-single { min-height: 92px; }
+.sync-status-single > .sync-symbol, .sync-status-single > .m-button { flex-shrink: 0; }
+.sync-status-single > .m-button { white-space: nowrap; }
+.sync-status-single + .snackbar-inline { margin-top: 12px; }
 .sync-status-single .sync-status-copy { flex: 1; min-width: 0; }
 .sync-status-single .sync-status-copy strong { font-size: 17px; }
 .sync-status-single .sync-status-copy small { white-space: normal; font-size: 12px; line-height: 1.6; }
