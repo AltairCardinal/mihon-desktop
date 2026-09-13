@@ -144,3 +144,23 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .sync-settings-page { flex: 1; min-height: 0; }
 .settings-section-label { margin: 16px 0 8px; color: var(--primary); font-size: 12px; }
 .sync-panel-sheet .native-confirmation .row-copy strong { white-space: normal; overflow-wrap: anywhere; }
+.sync-pending-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sync-pending-summary > div:first-child { display: grid; gap: 4px; }
+.batch-tools { display: flex; align-items: center; flex: 0 0 auto; }
+.batch-tools .m-button { padding: 8px; min-width: 40px; }
+.batch-menu { position: relative; }
+.batch-menu-items { position: absolute; z-index: 5; right: 0; top: 40px; width: 180px; padding: 8px; display: grid; border-radius: 12px; background: var(--surface); box-shadow: 0 4px 18px #0003; }
+.batch-menu-items .m-button { justify-content: start; }
+.selection-header { min-height: 73px; color: var(--on-secondary-container); background: var(--secondary-container); }
+.selection-header h2 { font-size: 18px; white-space: nowrap; }
+.selection-toggle { border: 1px solid var(--outline-variant); cursor: pointer; }
+.native-confirmation.is-selected { background: var(--secondary-container); border-radius: 8px; }
+.native-confirmation.is-selected .selection-toggle { color: var(--on-primary); background: var(--primary); border-color: transparent; }
+.native-confirmation .row-copy { user-select: none; }
+.batch-action-bar { flex: 0 0 auto; display: flex; justify-content: space-evenly; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--outline-variant); background: var(--surface-container); }
+.batch-action-bar button:disabled { opacity: .4; cursor: default; }
+.batch-review-overlay { position: absolute; inset: 0; z-index: 10; display: grid; place-items: center; padding: 16px; background: #0005; }
+.batch-review { width: min(380px, 100%); max-height: 100%; overflow-y: auto; padding: 24px; border-radius: 28px; color: var(--on-surface); background: var(--surface-container); box-shadow: 0 8px 28px #0003; }
+.batch-review h2 { font-size: 20px; font-weight: 500; margin: 0 0 16px; }
+.batch-review p { font-size: 13px; line-height: 1.6; }
+.batch-review-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 24px; }

@@ -17,6 +17,8 @@
     more: 'M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z',
     back: 'M19 12H5m6-6-6 6 6 6',
     checklist: 'M4 4h16v16H4zM8 8h.01M11 8h5M8 12h.01M11 12h5M8 16h.01M11 16h5',
+    selectAll: 'M3 5V3h2m4 0h2m4 0h2m2 0h2v2m0 4v2m0 4v2m0 2v2h-2m-4 0h-2m-4 0H7m-2 0H3v-2m0-4v-2m0-4V7M7 7h10v10H7z',
+    flipToBack: 'M3 7v12a2 2 0 0 0 2 2h12M7 5V3h2m4 0h2m4 0h2v2m0 4v2m0 4v2h-2m-4 0h-2m-4 0H7v-2m0-4V9',
     upload: 'M12 15V3m0 0-4 4m4-4 4 4M4 17v3h16v-3',
     filter: 'M4 6h16M7 12h10M10 18h4',
     calendar: 'M5 4v3m14-3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13H4V6a1 1 0 0 1 1-1M8 13h2m2 0h2m2 0h2m-8 3h2m2 0h2m2 0h2',

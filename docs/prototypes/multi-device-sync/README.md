@@ -21,7 +21,7 @@ node --test docs/prototypes/multi-device-sync/ui-view.test.cjs
 真实 file URL 浏览器验收（使用本机缓存的 Playwright/Chrome）：
 
 ```text
-node --test docs/prototypes/multi-device-sync/ui-browser.test.cjs docs/prototypes/multi-device-sync/library-sync.test.cjs
+node --test docs/prototypes/multi-device-sync/ui-browser.test.cjs docs/prototypes/multi-device-sync/library-sync.test.cjs docs/prototypes/multi-device-sync/batch-sync.test.cjs
 ```
 
 ## 原型路径
@@ -40,6 +40,14 @@ node --test docs/prototypes/multi-device-sync/ui-browser.test.cjs docs/prototype
 打开应用外「演示预览」→「120 项待处理」，会替换当前示例数据并自动打开当前设备的同步面板。80 项取消收藏与 40 项取消关注均通过现有模型的收藏/关注、交换、取消与接收流程生成；不是静态占位行。条目标题、来源及确认/忽略操作完整可用，处理后数量立即减少。再次点击会重新建立 120 项场景，重置演示恢复普通数据。
 
 标题、设置入口与待处理总数固定，列表内部滚动，优先展示待处理内容；书架顶栏超过 99 显示 99+，面板内显示精确总数。设置返回保留滚动位置。本原型直接渲染 120 行，不代表已实现面向无限数据的分页或虚拟列表。
+
+## 章节式批量处理
+
+交互参考原版 `MangaToolbar.kt`、`MangaBottomActionMenu.kt`、`MangaScreen.kt` 与 `MangaScreenModel.toggleSelection/toggleAllSelection/invertSelection`：长按条目进入选择，选择中点击条目切换；再次长按可连续选中范围，桌面端也可 Shift 点击。另提供“多选”显式入口。顶部显示已选数量、退出、全选和反选，底部固定显示“忽略所选”和“确认所选取消”，零选择时禁用操作。全选覆盖整个待确认列表，不只当前可见区域。
+
+待处理总数旁“更多”提供“全部确认取消”和“全部忽略取消”，无需逐项勾选。两者都会显示一次汇总确认，列出漫画与作者数量和后果；取消汇总框保留选择。执行复用已有确认/忽略模型，结果显示实际处理数，全部完成退出选择。关闭面板、切换设备及重置场景清除选择。
+
+批量仅处理取消收藏/关注，冲突与远端阅读位置需要各自的决定，不在此批量操作范围。确认框保存本次操作 ID；后台新到达的条目不加入，已被远端新操作作废的条目跳过并反馈。选择状态随有效待确认项更新，避免误处理失效操作。确认只移除接收端收藏/关注，忽略保留接收端状态，两者均不反向恢复来源端。
 
 ## 建议演示顺序
 
