@@ -1,5 +1,7 @@
 package mihon.domain.sync
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -135,6 +137,22 @@ data class SyncBatch(
     val generation: Long,
     val batchId: String,
     val events: List<SyncEventEnvelope>,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val objects: List<SyncObjectDescriptor> = emptyList(),
+)
+
+/** Display and reconstruction data; never a preference or an additional user operation. */
+@Serializable
+data class SyncObjectDescriptor(
+    val objectKey: SyncObjectKey,
+    val title: String,
+    val author: String? = null,
+    val artist: String? = null,
+    val thumbnailUrl: String? = null,
+    val chapterNumber: Double? = null,
+    val sourceOrder: Long? = null,
+    val scanlator: String? = null,
 )
 
 data class SyncFieldKey(

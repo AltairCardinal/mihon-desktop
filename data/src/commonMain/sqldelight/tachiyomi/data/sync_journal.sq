@@ -37,6 +37,7 @@ CREATE TABLE sync_batches (
     plaintext_bytes INTEGER NOT NULL,
     status TEXT NOT NULL DEFAULT 'OPEN',
     prepared_upload TEXT,
+    objects_json TEXT NOT NULL DEFAULT '[]',
     PRIMARY KEY (space_id, generation, batch_id),
     FOREIGN KEY (space_id, generation, actor_id, epoch)
         REFERENCES sync_actors(space_id, generation, actor_id, epoch)
@@ -116,7 +117,7 @@ INSERT INTO sync_batches(space_id, generation, batch_id, actor_id, epoch, first_
 VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 updateBatch:
-UPDATE sync_batches SET last_seq = ?, event_count = event_count + 1, plaintext_bytes = ?
+UPDATE sync_batches SET last_seq = ?, event_count = event_count + 1, plaintext_bytes = ?, objects_json = ?
 WHERE space_id = ? AND generation = ? AND batch_id = ?;
 
 sealBatch:
@@ -150,3 +151,29 @@ SELECT count(*) FROM sync_events;
 
 countBatches:
 SELECT count(*) FROM sync_batches;
+
+getNextUploadBatch:
+SELECT * FROM sync_batches WHERE space_id = ? AND generation = ? AND status != 'PUBLISHED' AND event_count > 0
+ORDER BY actor_id, epoch, first_seq LIMIT 1;
+
+getBatch:
+SELECT * FROM sync_batches WHERE space_id = ? AND generation = ? AND batch_id = ?;
+
+savePreparedUpload:
+UPDATE sync_batches SET prepared_upload = ?
+WHERE space_id = ? AND generation = ? AND batch_id = ? AND status = 'SEALED' AND prepared_upload IS NULL;
+
+markBatchPublished:
+UPDATE sync_batches SET status = 'PUBLISHED' WHERE space_id = ? AND generation = ? AND batch_id = ?;
+
+markOutboxPublished:
+UPDATE sync_outbox SET status = 'PUBLISHED' WHERE space_id = ? AND generation = ? AND batch_id = ?;
+
+-- Legacy business tables permit duplicate natural keys. Metadata selection must not merge or delete their rows.
+getSyncMangaDescription:
+SELECT * FROM mangas WHERE url = :mangaUrl AND source = :sourceId ORDER BY _id LIMIT 1;
+
+getSyncChapterDescription:
+SELECT chapters.* FROM chapters JOIN mangas ON mangas._id = chapters.manga_id
+WHERE chapters.url = :chapterUrl AND mangas.url = :mangaUrl AND mangas.source = :sourceId
+ORDER BY chapters._id LIMIT 1;

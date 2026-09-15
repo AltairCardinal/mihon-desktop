@@ -25,6 +25,7 @@ internal fun Database.appendSyncOperation(
     category: SyncCategory,
     effects: List<SyncEffect>,
     occurredAt: Long = System.currentTimeMillis(),
+    relatedObjects: List<SyncObjectKey> = emptyList(),
 ): SyncEventEnvelope? {
     if (!context.uploadAllowed || context.origin != SyncOrigin.USER) return null
     val queries = sync_journalQueries
@@ -42,6 +43,13 @@ internal fun Database.appendSyncOperation(
         effect.copy(parents = heads)
     }
     var open = queries.getOpenBatch(actor.space_id, actor.generation, actor.actor_id, actor.epoch).executeAsOneOrNull()
+    val descriptions = describeSyncObjects(effects.map { it.objectKey } + relatedObjects)
+    var previousObjects = open?.objects_json ?: "[]"
+    var objects = SyncObjectDescriptions.encode(
+        (SyncObjectDescriptions.decode(previousObjects) + descriptions).distinctBy { it.objectKey },
+    )
+    fun descriptionBytes() = SyncObjectDescriptions.batchBytes(objects) -
+        SyncObjectDescriptions.batchBytes(previousObjects)
     fun envelope(batchId: String) = SyncEventEnvelope(
         protocolVersion = SyncProtocol.CURRENT_VERSION,
         spaceId = actor.space_id,
@@ -60,7 +68,7 @@ internal fun Database.appendSyncOperation(
     var eventBytes = encoded.encodeToByteArray().size.toLong()
     if (open != null && (
             open.event_count >= SyncProtocol.MAX_EVENTS_PER_BATCH ||
-                open.plaintext_bytes + eventBytes + 1 > SyncProtocol.MAX_PLAINTEXT_BYTES_PER_BATCH
+                open.plaintext_bytes + eventBytes + 1 + descriptionBytes() > SyncProtocol.MAX_PLAINTEXT_BYTES_PER_BATCH
             )
     ) {
         queries.sealBatch(actor.space_id, actor.generation, open.batch_id)
@@ -68,12 +76,14 @@ internal fun Database.appendSyncOperation(
         event = envelope(UUID.randomUUID().toString())
         encoded = SyncCodec.encode(event)
         eventBytes = encoded.encodeToByteArray().size.toLong()
+        previousObjects = "[]"
+        objects = SyncObjectDescriptions.encode(descriptions)
     }
     val batchId = requireNotNull(event.batchId)
     val previousBytes = open?.plaintext_bytes ?: SyncBatchCodec.rawEncode(
         SyncBatch(SyncProtocol.CURRENT_VERSION, actor.space_id, actor.generation, batchId, emptyList()),
     ).encodeToByteArray().size.toLong()
-    val totalBytes = previousBytes + eventBytes + if ((open?.event_count ?: 0) > 0) 1 else 0
+    val totalBytes = previousBytes + eventBytes + descriptionBytes() + if ((open?.event_count ?: 0) > 0) 1 else 0
     require(totalBytes <= SyncProtocol.MAX_PLAINTEXT_BYTES_PER_BATCH) { "sync operation exceeds batch limit" }
     if (open == null) {
         queries.insertBatch(
@@ -108,7 +118,7 @@ internal fun Database.appendSyncOperation(
             Json.encodeToString(remainingHeads + effect.ref(event)),
         )
     }
-    queries.updateBatch(actor.next_seq, totalBytes, actor.space_id, actor.generation, batchId)
+    queries.updateBatch(actor.next_seq, totalBytes, objects, actor.space_id, actor.generation, batchId)
     queries.advanceSequence(actor.space_id, actor.generation, actor.actor_id, actor.epoch)
     return event
 }

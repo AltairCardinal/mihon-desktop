@@ -699,7 +699,7 @@ class SyncGitSafetyContractTest {
      * Models Git object reachability and HTTP shapes.
      * It never copies the client's sync codec or merge rules.
      */
-    private inner class GitFixture(empty: Boolean = false) : AutoCloseable {
+    internal inner class GitFixture(empty: Boolean = false) : AutoCloseable {
         val server = MockWebServer()
         private var nextObject = 1
         private val blobs = mutableMapOf<String, ByteArray>()

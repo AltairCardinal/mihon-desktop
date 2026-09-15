@@ -4,6 +4,7 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import kotlinx.coroutines.runBlocking
 import mihon.data.sync.journal.SyncLocalJournal
+import mihon.data.sync.journal.SyncObjectDescriptions
 import mihon.domain.sync.SyncBatchCodec
 import mihon.domain.sync.SyncCategory
 import mihon.domain.sync.SyncEffectKind
@@ -250,7 +251,17 @@ abstract class SyncJournalStorageContract {
                 val batches = events.groupBy { requireNotNull(it.batchId) }
                 assertTrue(batches.size > 1)
                 for ((batchId, batchEvents) in batches) {
-                    val encoded = SyncBatchCodec.encode(batchEvents, batchId, "space", generation = 1)
+                    val stored = storage.handler.await {
+                        sync_journalQueries.getBatch("space", 1, batchId).executeAsOne()
+                    }
+                    val encoded = SyncBatchCodec.encode(
+                        batchEvents,
+                        batchId,
+                        "space",
+                        generation = 1,
+                        objects = SyncObjectDescriptions.decode(stored.objects_json),
+                    )
+                    assertEquals(encoded.encodeToByteArray().size.toLong(), stored.plaintext_bytes)
                     assertTrue(batchEvents.size <= SyncProtocol.MAX_EVENTS_PER_BATCH)
                     assertTrue(encoded.encodeToByteArray().size <= SyncProtocol.MAX_PLAINTEXT_BYTES_PER_BATCH)
                 }
@@ -266,7 +277,7 @@ abstract class SyncJournalStorageContract {
             storage.repository.update(MangaUpdate(manga.id, favorite = true, viewerFlags = 7))
             removeSyncJournalSchema(storage.driver)
             storage.driver.execute(null, "PRAGMA user_version = 20", 0)
-            DatabaseMigration.migrateAtomically(storage.driver, 20, 21)
+            DatabaseMigration.migrateAtomically(storage.driver, 20, 22)
             storage.connect()
             val retained = storage.repository.getMangaById(manga.id)
             assertTrue(retained.favorite)

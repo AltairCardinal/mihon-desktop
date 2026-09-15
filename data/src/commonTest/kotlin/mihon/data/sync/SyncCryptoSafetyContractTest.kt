@@ -8,6 +8,7 @@ import mihon.domain.sync.SyncEffect
 import mihon.domain.sync.SyncEffectKind
 import mihon.domain.sync.SyncEventEnvelope
 import mihon.domain.sync.SyncField
+import mihon.domain.sync.SyncObjectDescriptor
 import mihon.domain.sync.SyncObjectKey
 import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.SyncOrigin
@@ -31,6 +32,15 @@ class SyncCryptoSafetyContractTest {
     private val engine = SyncAeadEngineFactory.create()
     private val secret = SyncSecret.fromBytes(ByteArray(32))
     private val path = ".mihon-sync/batches/actor/1/batch.json"
+
+    @Test
+    fun `authenticated batch retains object descriptions needed by a new device`() {
+        val input = batch(1).let {
+            it.copy(objects = listOf(SyncObjectDescriptor(it.events.single().effects.single().objectKey, "原始标题")))
+        }
+        val encrypted = SyncBatchEncryption.encrypt(engine, secret, input, path)
+        assertEquals(input, SyncBatchEncryption.decrypt(engine, secret, encrypted))
+    }
 
     @Test
     fun `Android and JVM decode the same fixed AES256 GCM wire vector`() {

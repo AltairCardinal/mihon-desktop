@@ -233,6 +233,7 @@ object SyncBatchEncryption {
             batch.spaceId,
             batch.generation,
             batch.protocolVersion,
+            batch.objects,
         ).encodeToByteArray()
         require(plaintext.size <= 512 * 1024) { "plaintext batch exceeds sync limit" }
         val binding = SyncCryptoBinding(batch.protocolVersion, batch.spaceId, batch.generation, batch.batchId, path)

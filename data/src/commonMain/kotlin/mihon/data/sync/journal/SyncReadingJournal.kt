@@ -47,7 +47,7 @@ internal fun Database.appendReadingOperation(event: ReadingProgressEvent): SyncE
             ),
         )
     }
-    return appendSyncOperation(event.syncContext, SyncCategory.READING, effects, event.readAt.time)
+    return appendSyncOperation(event.syncContext, SyncCategory.READING, effects, event.readAt.time, listOf(chapterKey))
 }
 
 internal fun Database.appendChapterReadOperation(chapterId: Long, read: Boolean, context: SyncMutationContext) {

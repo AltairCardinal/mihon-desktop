@@ -3,10 +3,12 @@ package mihon.data.sync
 import app.cash.sqldelight.db.SqlDriver
 import kotlinx.coroutines.runBlocking
 import mihon.data.sync.journal.SyncLocalJournal
+import mihon.data.sync.journal.SyncOutboxStore
 import mihon.domain.sync.SyncCategory
 import mihon.domain.sync.SyncEffectKind
 import mihon.domain.sync.SyncField
 import mihon.domain.sync.SyncMutationContext
+import mihon.domain.sync.SyncObjectDescriptor
 import mihon.domain.sync.SyncObjectKey
 import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.SyncOrigin
@@ -59,6 +61,8 @@ abstract class SyncCreatorJournalContract {
             assertEquals(SyncEffectKind.REMOVE, removed.kind)
             assertEquals(listOf(effect.ref(added)), removed.parents)
             assertTrue(removed.payload.isEmpty())
+            val batch = requireNotNull(SyncOutboxStore(storage.handler).nextBatch("space", 1))
+            assertEquals(listOf(SyncObjectDescriptor(effect.objectKey, "本机作者显示名")), batch.objects)
         }
     }
 

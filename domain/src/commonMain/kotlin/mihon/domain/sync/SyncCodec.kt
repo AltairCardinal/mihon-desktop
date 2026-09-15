@@ -79,8 +79,9 @@ object SyncBatchCodec {
         spaceId: String,
         generation: Long,
         protocolVersion: Int = SyncProtocol.CURRENT_VERSION,
+        objects: List<SyncObjectDescriptor> = emptyList(),
     ): String {
-        val batch = SyncBatch(protocolVersion, spaceId, generation, batchId, events)
+        val batch = SyncBatch(protocolVersion, spaceId, generation, batchId, events, objects)
         val rejection = validate(batch).firstOrNull()
         require(rejection == null) { rejection?.message.orEmpty() }
         return rawEncode(batch)
@@ -169,10 +170,90 @@ object SyncBatchCodec {
             }
             results += SyncValidator.validate(event)
         }
+        results += validateDescriptions(batch)
         if (rawEncode(batch).toByteArray(Charsets.UTF_8).size > SyncProtocol.MAX_PLAINTEXT_BYTES_PER_BATCH) {
             results += SyncRejection(SyncRejectionReason.BATCH_TOO_LARGE, "batch exceeds plaintext limit")
         }
         return results
+    }
+
+    private fun validateDescriptions(batch: SyncBatch): List<SyncRejection> {
+        fun invalid() = listOf(SyncRejection(SyncRejectionReason.INVALID_PAYLOAD, "invalid object descriptions"))
+        if (batch.objects.size > SyncProtocol.MAX_EVENTS_PER_BATCH * 3) return invalid()
+        val descriptionsByKey = batch.objects.associateBy { it.objectKey.stableKey }
+        batch.events.flatMap { it.effects }.forEach { effect ->
+            val chapterKey = (effect.payload["chapterKey"] as? JsonPrimitive)?.content
+            val describedChapter = descriptionsByKey[chapterKey]?.objectKey ?: return@forEach
+            if (describedChapter.type != SyncObjectType.CHAPTER) return invalid()
+            if (effect.objectKey.type == SyncObjectType.MANGA) {
+                if (describedChapter.sourceId != effect.objectKey.sourceId ||
+                    describedChapter.parentUrl != effect.objectKey.originalUrl
+                ) {
+                    return invalid()
+                }
+            } else if (describedChapter != effect.objectKey) {
+                return invalid()
+            }
+        }
+        val referenced = buildSet {
+            batch.events.flatMap { it.effects }.forEach { effect ->
+                add(effect.objectKey.stableKey)
+                (effect.payload["chapterKey"] as? JsonPrimitive)?.let { add(it.content) }
+                if (effect.objectKey.type == SyncObjectType.CHAPTER) {
+                    add(
+                        SyncObjectKey(
+                            SyncObjectType.MANGA,
+                            sourceId = effect.objectKey.sourceId,
+                            originalUrl = effect.objectKey.parentUrl,
+                        ).stableKey,
+                    )
+                }
+            }
+            // Partial reading effects reference a chapter through their payload.
+            batch.objects.filter { it.objectKey.stableKey in this && it.objectKey.type == SyncObjectType.CHAPTER }
+                .forEach {
+                    add(
+                        SyncObjectKey(
+                            SyncObjectType.MANGA,
+                            sourceId = it.objectKey.sourceId,
+                            originalUrl = it.objectKey.parentUrl,
+                        ).stableKey,
+                    )
+                }
+        }
+        val seen = mutableSetOf<String>()
+        for (descriptor in batch.objects) {
+            val key = descriptor.objectKey
+            if (!seen.add(key.stableKey) || key.stableKey !in referenced) return invalid()
+            if (descriptor.title.isBlank() || descriptor.title.length > 4096) return invalid()
+            if (listOf(descriptor.author, descriptor.artist, descriptor.scanlator).any { (it?.length ?: 0) > 4096 } ||
+                (descriptor.thumbnailUrl?.length ?: 0) > 8192
+            ) {
+                return invalid()
+            }
+            if (key.type != SyncObjectType.MANGA &&
+                listOf(descriptor.author, descriptor.artist, descriptor.thumbnailUrl).any { it != null }
+            ) {
+                return invalid()
+            }
+            if (key.type != SyncObjectType.CHAPTER &&
+                (descriptor.chapterNumber != null || descriptor.sourceOrder != null || descriptor.scanlator != null)
+            ) {
+                return invalid()
+            }
+            if (descriptor.chapterNumber?.isFinite() == false) return invalid()
+            val (category, field, kind) = when (key.type) {
+                SyncObjectType.MANGA -> Triple(SyncCategory.FAVORITE, SyncField.FAVORITE, SyncEffectKind.ADD)
+                SyncObjectType.AUTHOR -> Triple(SyncCategory.FOLLOW, SyncField.FOLLOWING, SyncEffectKind.ADD)
+                SyncObjectType.CHAPTER -> Triple(SyncCategory.READING, SyncField.READ_STATUS, SyncEffectKind.MARK_READ)
+            }
+            val identityProbe = batch.events.first().copy(
+                category = category,
+                effects = listOf(SyncEffect("identity", key, field, kind)),
+            )
+            if (SyncValidator.validate(identityProbe).isNotEmpty()) return invalid()
+        }
+        return emptyList()
     }
 }
 
