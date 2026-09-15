@@ -156,6 +156,8 @@ class BackupRestorer(
 
                 try {
                     mangaRestorer.restore(it, backupCategories)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     val sourceName = sourceMapping[it.source] ?: it.source.toString()
                     errors.add(Date() to "${it.title} [$sourceName]: ${e.message}")
@@ -207,6 +209,8 @@ class BackupRestorer(
 
                 try {
                     extensionRepoRestorer(it)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     errors.add(Date() to "Error Adding Repo: ${it.name} : ${e.message}")
                 }

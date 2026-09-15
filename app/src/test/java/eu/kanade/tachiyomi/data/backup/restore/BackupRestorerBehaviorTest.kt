@@ -15,13 +15,82 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
 import io.mockk.verify
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.data.backup.AuthorArchiveBackupContributor
 import java.io.File
 
 class BackupRestorerBehaviorTest {
+
+    @ParameterizedTest
+    @ValueSource(booleans = [false, true])
+    fun `cancelled restore does not report the interrupted entry as restored`(repository: Boolean) = runTest {
+        val bytes = repositoryFile("data/src/commonTest/resources/backup/android-full.tachibk").readBytes()
+        val uri = mockk<Uri>()
+        val resolver = mockk<ContentResolver>()
+        val context = mockk<Context>(relaxed = true)
+        every { context.contentResolver } returns resolver
+        every { resolver.openInputStream(uri) } returns bytes.inputStream()
+        val notifier = mockk<BackupNotifier>(relaxed = true)
+        val mangaRestorer = mockk<MangaRestorer>()
+        val repoRestorer = mockk<ExtensionRepoRestorer>()
+        lateinit var restoreJob: Job
+        coEvery { mangaRestorer.sortByNew(any()) } answers { firstArg() }
+        coEvery { mangaRestorer.restore(any(), any()) } coAnswers {
+            restoreJob.cancel()
+            currentCoroutineContext().ensureActive()
+        }
+        coEvery { repoRestorer(any()) } coAnswers {
+            restoreJob.cancel()
+            currentCoroutineContext().ensureActive()
+        }
+        val restorer = BackupRestorer(
+            context = context,
+            notifier = notifier,
+            isSync = false,
+            categoriesRestorer = mockk(relaxed = true),
+            preferenceRestorer = mockk(relaxed = true),
+            extensionRepoRestorer = repoRestorer,
+            mangaRestorer = mangaRestorer,
+            authorArchiveBackupContributor = mockk(relaxed = true),
+        )
+        restoreJob = launch(start = CoroutineStart.LAZY) {
+            restorer.restore(
+                uri,
+                RestoreOptions(
+                    libraryEntries = !repository,
+                    categories = false,
+                    appSettings = false,
+                    extensionRepoSettings = repository,
+                    sourceSettings = false,
+                ),
+            )
+        }
+        mockkStatic("tachiyomi.core.common.i18n.LocalizeKt")
+        try {
+            every { context.stringResource(any()) } returns "Repository settings"
+            restoreJob.start()
+            restoreJob.join()
+
+            coVerify(exactly = if (repository) 0 else 1) { mangaRestorer.restore(any(), any()) }
+            coVerify(exactly = if (repository) 1 else 0) { repoRestorer(any()) }
+            verify(exactly = 0) { notifier.showRestoreProgress(any(), any(), any(), any()) }
+            verify(exactly = 0) { notifier.showRestoreComplete(any(), any(), any(), any(), any()) }
+        } finally {
+            unmockkStatic("tachiyomi.core.common.i18n.LocalizeKt")
+        }
+    }
 
     @Test
     fun `current Android restorer sends fixed-main manga through production restore and progress`() = runTest {
