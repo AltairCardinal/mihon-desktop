@@ -473,10 +473,9 @@ class MangaDetailScreenModel(
         requireNotNull(setExcludedScanlators) { "SetExcludedScanlators is required" }.await(mangaId, excluded)
     }
 
-    fun sourceFor(manga: Manga): CatalogueSource? {
+    fun sourceFor(manga: Manga): eu.kanade.tachiyomi.source.Source? {
         return requireNotNull(sourceManager) { "SourceManager is required" }
-            .getCatalogueSources()
-            .find { it.id == manga.source }
+            .get(manga.source)
     }
 
     fun migrationSources(currentSourceId: Long?): List<CatalogueSource> {

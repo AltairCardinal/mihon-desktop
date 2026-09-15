@@ -215,6 +215,7 @@ class DesktopBackupRestorer(
                     initialized = existing.initialized || backupManga.initialized,
                     version = maxOf(existing.version, backupManga.version),
                     notes = backupManga.notes,
+                    memo = tachiyomi.data.MemoColumnAdapter.decode(backupManga.memo),
                 ),
             )
             return existing.id
@@ -248,6 +249,7 @@ class DesktopBackupRestorer(
                     favoriteModifiedAt = backupManga.favoriteModifiedAt,
                     version = backupManga.version,
                     notes = backupManga.notes,
+                    memo = tachiyomi.data.MemoColumnAdapter.decode(backupManga.memo),
                 ),
             ),
         )
@@ -343,6 +345,7 @@ class DesktopBackupRestorer(
                     sourceOrder = backupCh.sourceOrder,
                     lastModifiedAt = backupCh.lastModifiedAt,
                     version = backupCh.version,
+                    memo = tachiyomi.data.MemoColumnAdapter.decode(backupCh.memo),
                 )
             } else {
                 toUpdate += ChapterUpdate(
@@ -357,6 +360,7 @@ class DesktopBackupRestorer(
                     chapterNumber = backupCh.chapterNumber.toDouble(),
                     sourceOrder = backupCh.sourceOrder,
                     version = maxOf(existing.version, backupCh.version),
+                    memo = tachiyomi.data.MemoColumnAdapter.decode(backupCh.memo),
                 )
             }
         }

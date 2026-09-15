@@ -48,6 +48,7 @@ class MangaDetailSourceRefreshTest {
             genre = listOf("动作", "剧情"),
             status = 1L,
             initialized = true,
+            memo = kotlinx.serialization.json.Json.parseToJsonElement("""{"token":"UI"}""") as kotlinx.serialization.json.JsonObject,
         )
 
         val sourceManga = manga.toSourceMangaForRefresh()
@@ -61,5 +62,6 @@ class MangaDetailSourceRefreshTest {
         assertEquals("动作, 剧情", sourceManga.genre)
         assertEquals(manga.status.toInt(), sourceManga.status)
         assertEquals(manga.initialized, sourceManga.initialized)
+        assertEquals(manga.memo, sourceManga.memo)
     }
 }

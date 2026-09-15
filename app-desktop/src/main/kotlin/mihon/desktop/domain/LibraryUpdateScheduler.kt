@@ -1,6 +1,5 @@
 package mihon.desktop.domain
 
-import eu.kanade.tachiyomi.source.CatalogueSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -228,7 +227,7 @@ class LibraryUpdateScheduler(
 
     private suspend fun update(manga: Manga): LibraryUpdateChecker.UpdateResult {
         updateManga?.let { return it(manga) }
-        val source: CatalogueSource = requireNotNull(sourceManager).getCatalogueSources().find { it.id == manga.source }
+        val source = requireNotNull(sourceManager).get(manga.source)
             ?: return LibraryUpdateChecker.UpdateResult(0, error = "Source unavailable")
         return requireNotNull(updateChecker).checkForUpdates(manga, source)
     }

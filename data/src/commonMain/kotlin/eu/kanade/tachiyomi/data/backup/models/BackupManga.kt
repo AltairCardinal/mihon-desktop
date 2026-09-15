@@ -43,6 +43,7 @@ data class BackupManga(
     @ProtoNumber(109) var version: Long = 0,
     @ProtoNumber(110) var notes: String = "",
     @ProtoNumber(111) var initialized: Boolean = false,
+    @ProtoNumber(112) var memo: ByteArray = tachiyomi.data.JsonObjectEmptyBytes,
 ) {
     fun getMangaImpl(): Manga {
         return Manga.create().copy(
@@ -65,6 +66,7 @@ data class BackupManga(
             version = this@BackupManga.version,
             notes = this@BackupManga.notes,
             initialized = this@BackupManga.initialized,
+            memo = tachiyomi.data.MemoColumnAdapter.decode(this@BackupManga.memo),
         )
     }
 }

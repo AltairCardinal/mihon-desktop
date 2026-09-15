@@ -6,6 +6,7 @@ import tachiyomi.core.common.preference.TriState
 import java.io.Serializable
 import java.time.Instant
 
+@kotlinx.serialization.Serializable
 data class Manga(
     val id: Long,
     val source: Long,
@@ -31,7 +32,16 @@ data class Manga(
     val favoriteModifiedAt: Long?,
     val version: Long,
     val notes: String,
+    val memo: kotlinx.serialization.json.JsonObject = kotlinx.serialization.json.JsonObject(emptyMap()),
 ) : Serializable {
+
+    private fun writeReplace(): Any = SerializedManga(
+        kotlinx.serialization.json.Json.encodeToString(serializer(), this),
+    )
+
+    private class SerializedManga(private val data: String) : Serializable {
+        private fun readResolve(): Any = kotlinx.serialization.json.Json.decodeFromString(serializer(), data)
+    }
 
     val expectedNextUpdate: Instant?
         get() = nextUpdate

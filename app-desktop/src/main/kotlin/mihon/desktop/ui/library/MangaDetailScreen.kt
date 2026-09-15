@@ -1,5 +1,7 @@
 package mihon.desktop.ui.library
 
+import tachiyomi.domain.source.service.toSourceManga
+
 import tachiyomi.i18n.MR
 import java.util.Locale
 
@@ -219,7 +221,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         }
         val refreshFromSource = refresh@{
             val currentManga = manga ?: return@refresh
-            val currentSource = source as? CatalogueSource ?: return@refresh
+            val currentSource = source ?: return@refresh
             dependencies.saveSourceMangaForDetails.refreshFromSource(
                 source = currentSource,
                 listedManga = currentManga.toSourceMangaForRefresh(),
@@ -460,7 +462,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         } else {
                             IconButton(onClick = {
                                 val m = manga ?: return@IconButton
-                                if (source is CatalogueSource) {
+                                if (source != null) {
                                     refreshFromSource()
                                 } else {
                                     scope.launch {
@@ -1093,14 +1095,4 @@ internal fun mangaDetailChapterContentState(
     else -> MangaDetailChapterContentState.CONTENT
 }
 
-internal fun Manga.toSourceMangaForRefresh(): SManga = SManga.create().apply {
-    url = this@toSourceMangaForRefresh.url
-    title = this@toSourceMangaForRefresh.title
-    thumbnail_url = this@toSourceMangaForRefresh.thumbnailUrl
-    author = this@toSourceMangaForRefresh.author
-    artist = this@toSourceMangaForRefresh.artist
-    description = this@toSourceMangaForRefresh.description
-    genre = this@toSourceMangaForRefresh.genre?.joinToString(", ")
-    status = this@toSourceMangaForRefresh.status.toInt()
-    initialized = this@toSourceMangaForRefresh.initialized
-}
+internal fun Manga.toSourceMangaForRefresh(): SManga = toSourceManga()

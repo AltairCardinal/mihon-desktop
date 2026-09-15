@@ -108,6 +108,8 @@ class DesktopDatabaseMigrationSafetyTest {
     ) {
         JdbcSqliteDriver("jdbc:sqlite:${database.absolutePath}").use { driver ->
             Database.Schema.create(driver)
+            driver.execute(null, "ALTER TABLE mangas DROP COLUMN memo", 0)
+            driver.execute(null, "ALTER TABLE chapters DROP COLUMN memo", 0)
             // Restore the pre-v19 repository shape before exercising the actual migrations.
             listOf("index_url", "extension_list_url", "contact_discord").forEach { column ->
                 driver.execute(null, "ALTER TABLE extension_repos DROP COLUMN $column", 0)

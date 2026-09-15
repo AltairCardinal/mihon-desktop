@@ -36,6 +36,7 @@ import mihon.domain.reader.session.ReaderEncodedPageProvenance
 import mihon.domain.reader.session.ReaderPageDescriptor
 import mihon.domain.reader.storage.EncodedPageStoreWriteResult
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.service.toSourceChapter
 import java.io.File
 
 class DesktopReaderChapterContentPort(
@@ -48,6 +49,7 @@ class DesktopReaderChapterContentPort(
     private val leaseGeneration: Long = 0L,
     private val routeResolver: ReaderChapterRouteResolver = ReaderChapterContentResolver,
     private val partialDownloadSnapshotLookup: PartialDownloadSnapshotLookup = DisabledPartialDownloadSnapshotLookup,
+    private val chapterRepository: tachiyomi.domain.chapter.repository.ChapterRepository? = null,
 ) : ReaderChapterContentPort, DesktopReaderChapterDownloadState {
 
     override var chapterDownloaded: Boolean? = null
@@ -122,7 +124,9 @@ class DesktopReaderChapterContentPort(
     }
 
     private suspend fun loadSourcePages(source: CatalogueSource): List<Page> {
-        val chapter = SChapter.create().apply {
+        val storedChapter = chapterRepository?.getChapterById(context.chapterId)
+            ?.takeIf { it.url == context.chapterUrl && (context.mangaId == 0L || it.mangaId == context.mangaId) }
+        val chapter = storedChapter?.toSourceChapter() ?: SChapter.create().apply {
             url = context.chapterUrl
             name = context.chapterTitle
         }

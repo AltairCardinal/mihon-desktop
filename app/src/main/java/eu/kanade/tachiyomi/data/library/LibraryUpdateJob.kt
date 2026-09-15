@@ -303,6 +303,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                                             newUpdates.add(manga to newChapters.toTypedArray())
                                         }
                                     } catch (e: Throwable) {
+                                        if (e is kotlinx.coroutines.CancellationException) throw e
                                         val errorMessage = when (e) {
                                             is NoChaptersException -> context.stringResource(
                                                 MR.strings.no_chapters_error,
@@ -356,19 +357,18 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
     private suspend fun updateManga(manga: Manga, fetchWindow: Pair<Long, Long>): List<Chapter> {
         val source = sourceManager.getOrStub(manga.source)
 
-        // Update manga metadata if needed
-        if (libraryPreferences.autoUpdateMetadata().get()) {
-            val networkManga = source.getMangaDetails(manga.toSManga())
-            updateManga.awaitUpdateFromSource(manga, networkManga, manualFetch = false, coverCache)
-        }
-
-        val chapters = source.getChapterList(manga.toSManga())
-
-        // Get manga from database to account for if it was removed during the update and
-        // to get latest data so it doesn't get overwritten later on
-        val dbManga = getManga.await(manga.id)?.takeIf { it.favorite } ?: return emptyList()
-
-        return syncChaptersWithSource.await(chapters, dbManga, source, false, fetchWindow)
+        return updateManga.awaitFromRemote(
+            manga, source,
+            fetchDetails = libraryPreferences.autoUpdateMetadata().get(),
+            fetchChapters = true,
+            manualFetch = false,
+            fetchWindow = fetchWindow,
+            syncChaptersWithSource = syncChaptersWithSource,
+            coverCache = coverCache,
+            libraryPreferences = libraryPreferences,
+            downloadManager = downloadManager,
+            requireFavorite = true,
+        ).second
     }
 
     private suspend fun withUpdateNotification(

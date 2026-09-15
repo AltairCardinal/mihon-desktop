@@ -27,6 +27,7 @@ data class MangaUpdate(
     val initialized: Boolean? = null,
     val version: Long? = null,
     val notes: String? = null,
+    val memo: kotlinx.serialization.json.JsonObject? = null,
 )
 
 fun Manga.toMangaUpdate(): MangaUpdate {
@@ -55,5 +56,6 @@ fun Manga.toMangaUpdate(): MangaUpdate {
         initialized = initialized,
         version = version,
         notes = notes,
+        memo = memo,
     )
 }

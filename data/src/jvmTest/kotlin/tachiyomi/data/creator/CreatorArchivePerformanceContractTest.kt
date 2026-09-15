@@ -134,6 +134,7 @@ class CreatorArchivePerformanceContractTest {
                     calculateInterval = 0L,
                     version = 1L,
                     notes = "",
+                    memo = tachiyomi.data.JsonObjectEmptyBytes,
                 )
             }
         }

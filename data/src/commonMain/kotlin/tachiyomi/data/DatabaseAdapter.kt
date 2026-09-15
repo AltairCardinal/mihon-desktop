@@ -4,6 +4,15 @@ import app.cash.sqldelight.ColumnAdapter
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import java.util.Date
 
+val JsonObjectEmptyBytes: ByteArray = "{}".encodeToByteArray()
+
+object MemoColumnAdapter : ColumnAdapter<kotlinx.serialization.json.JsonObject, ByteArray> {
+    override fun decode(databaseValue: ByteArray): kotlinx.serialization.json.JsonObject =
+        kotlinx.serialization.json.Json.decodeFromString(databaseValue.decodeToString())
+
+    override fun encode(value: kotlinx.serialization.json.JsonObject): ByteArray = value.toString().encodeToByteArray()
+}
+
 object DateColumnAdapter : ColumnAdapter<Date, Long> {
     override fun decode(databaseValue: Long): Date = Date(databaseValue)
     override fun encode(value: Date): Long = value.time

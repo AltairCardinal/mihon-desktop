@@ -51,6 +51,10 @@ class BackupCodecContractTest {
 
         assertEquals(decoded, roundTrip)
         assertEquals(1, decoded.backupManga.size)
+        assertArrayEquals(tachiyomi.data.JsonObjectEmptyBytes, decoded.backupManga.single().memo)
+        decoded.backupManga.single().chapters.forEach {
+            assertArrayEquals(tachiyomi.data.JsonObjectEmptyBytes, it.memo)
+        }
         assertEquals(1, decoded.backupManga.single().tracking.size)
         assertEquals(1, decoded.backupPreferences.size)
         assertEquals(1, decoded.backupSourcePreferences.size)

@@ -10,6 +10,7 @@ import tachiyomi.core.metadata.comicinfo.ComicInfo
 import tachiyomi.core.metadata.comicinfo.ComicInfoPublishingStatus
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.source.service.toSourceManga
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -35,17 +36,7 @@ fun Manga.chaptersFiltered(): Boolean {
         bookmarkedFilter != TriState.DISABLED
 }
 
-fun Manga.toSManga(): SManga = SManga.create().also {
-    it.url = url
-    it.title = title
-    it.artist = artist
-    it.author = author
-    it.description = description
-    it.genre = genre.orEmpty().joinToString()
-    it.status = status.toInt()
-    it.thumbnail_url = thumbnailUrl
-    it.initialized = initialized
-}
+fun Manga.toSManga(): SManga = toSourceManga()
 
 fun Manga.copyFrom(other: SManga): Manga {
     val author = other.author ?: author
@@ -66,6 +57,7 @@ fun Manga.copyFrom(other: SManga): Manga {
         status = other.status.toLong(),
         updateStrategy = other.update_strategy,
         initialized = other.initialized && initialized,
+        memo = other.memo,
     )
 }
 

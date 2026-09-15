@@ -46,6 +46,7 @@ import okhttp3.Request
 import okhttp3.OkHttpClient
 import okhttp3.Response
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.source.service.toSourceChapter
 import tachiyomi.data.download.PersistentDownloadStore
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -105,6 +106,7 @@ class DesktopDownloadManager(
         PartialDownloadArtifactLifecycleCoordinator(),
     private val chapterCleanupDiagnosticObserver: (ChapterCleanupDiagnostic) -> Unit = {},
     private val queueEntryPersister: ((DownloadQueueEntry) -> Unit)? = null,
+    private val chapterRepository: tachiyomi.domain.chapter.repository.ChapterRepository? = null,
 ) : DownloadRepository, DesktopDownloadQueuePort, PartialDownloadSnapshotLookup {
     private data class DownloadAttempt(
         val item: DownloadItem,
@@ -847,7 +849,9 @@ class DesktopDownloadManager(
             fail(attempt, AppError.Unknown(IllegalStateException("Source ${item.sourceId} is unavailable")))
             return null
         }
-        val chapter = SChapter.create().apply {
+        val storedChapter = chapterRepository?.getChapterById(item.chapterId)
+            ?.takeIf { it.url == item.chapterUrl && (item.mangaId == 0L || it.mangaId == item.mangaId) }
+        val chapter = storedChapter?.toSourceChapter() ?: SChapter.create().apply {
             url = item.chapterUrl
             name = item.chapterName
         }

@@ -20,6 +20,62 @@ class UpdateManga(
     private val fetchInterval: FetchInterval,
 ) {
 
+    suspend fun awaitFromRemote(
+        manga: Manga,
+        source: eu.kanade.tachiyomi.source.Source,
+        fetchDetails: Boolean,
+        fetchChapters: Boolean,
+        manualFetch: Boolean = false,
+        fetchWindow: Pair<Long, Long> = 0L to 0L,
+        chapterRepository: tachiyomi.domain.chapter.repository.ChapterRepository = Injekt.get(),
+        syncChaptersWithSource: eu.kanade.domain.chapter.interactor.SyncChaptersWithSource = Injekt.get(),
+        coverCache: CoverCache = Injekt.get(),
+        libraryPreferences: LibraryPreferences = Injekt.get(),
+        downloadManager: DownloadManager = Injekt.get(),
+        requireFavorite: Boolean = false,
+    ): Pair<Manga, List<tachiyomi.domain.chapter.model.Chapter>> {
+        if (!fetchDetails && !fetchChapters) return manga to emptyList()
+        val chapters = chapterRepository.getChapterByMangaId(manga.id)
+        val update = tachiyomi.domain.source.service.SourceMangaUpdateService().await(
+            source,
+            manga,
+            chapters,
+            fetchDetails,
+            fetchChapters,
+        )
+        val latestManga = mangaRepository.getMangaById(manga.id)
+        if (requireFavorite && !latestManga.favorite) return latestManga to emptyList()
+        if (fetchDetails) {
+            check(
+                awaitUpdateFromSource(
+                    latestManga,
+                    update.manga,
+                    manualFetch,
+                    coverCache,
+                    libraryPreferences,
+                    downloadManager,
+                ),
+            )
+        } else {
+            check(mangaRepository.update(MangaUpdate(manga.id, memo = update.manga.memo)))
+        }
+        val currentManga = mangaRepository.getMangaById(manga.id)
+        val newChapters = if (fetchChapters) {
+            syncChaptersWithSource.await(update.chapters, currentManga, source, manualFetch, fetchWindow)
+        } else {
+            val knownByUrl = chapters.associateBy { it.url }
+            chapterRepository.updateAll(
+                update.chapters.mapNotNull { chapter ->
+                    knownByUrl[chapter.url]?.takeIf { it.memo != chapter.memo }?.let {
+                        tachiyomi.domain.chapter.model.ChapterUpdate(it.id, memo = chapter.memo)
+                    }
+                },
+            )
+            emptyList()
+        }
+        return mangaRepository.getMangaById(manga.id) to newChapters
+    }
+
     suspend fun await(mangaUpdate: MangaUpdate): Boolean {
         return mangaRepository.update(mangaUpdate)
     }
@@ -81,6 +137,7 @@ class UpdateManga(
                 status = remoteManga.status.toLong(),
                 updateStrategy = remoteManga.update_strategy,
                 initialized = true,
+                memo = remoteManga.memo,
             ),
         )
         if (success && title != null) {

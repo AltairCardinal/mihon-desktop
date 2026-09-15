@@ -76,6 +76,108 @@ import java.util.Collections
 @Config(sdk = [35], manifest = Config.NONE)
 class MangaScreenModelSharedMutationWiringTest {
 
+    @Test
+    fun `manual detail refresh reaches combined source update once and persists memo`() = verifyRealRefresh(
+        emptyChapters = false,
+    )
+
+    @Test
+    fun `empty combined chapter response shows localized snackbar and clears refresh state`() = verifyRealRefresh(
+        emptyChapters = true,
+    )
+
+    private fun verifyRealRefresh(emptyChapters: Boolean) = runTest {
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
+        )
+        tachiyomi.data.Database.Schema.create(driver)
+        val database = tachiyomi.data.Database(
+            driver,
+            historyAdapter = tachiyomi.data.History.Adapter(tachiyomi.data.DateColumnAdapter),
+            mangasAdapter = tachiyomi.data.Mangas.Adapter(
+                tachiyomi.data.StringListColumnAdapter,
+                tachiyomi.data.UpdateStrategyColumnAdapter,
+            ),
+        )
+        val handler = tachiyomi.data.AndroidDatabaseHandler(database, driver)
+        val mangas = tachiyomi.data.manga.MangaRepositoryImpl(
+            handler,
+            tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter,
+        )
+        val chapters = tachiyomi.data.chapter.ChapterRepositoryImpl(handler)
+        val stored = mangas.insertNetworkManga(listOf(manga(true).copy(id = -1, url = "/memo"))).single()
+        driver.execute(null, "UPDATE mangas SET _id = $MANGA_ID WHERE _id = ${stored.id}", 0)
+        val manga = mangas.getMangaById(MANGA_ID)
+        val chapter = chapters.addAll(
+            listOf(chapter(-1).copy(mangaId = MANGA_ID, url = "/chapter", chapterNumber = 1.0)),
+        ).single()
+        val memo = kotlinx.serialization.json.Json.parseToJsonElement(
+            """{"token":"UI"}""",
+        ) as kotlinx.serialization.json.JsonObject
+        val called = CompletableDeferred<Unit>()
+        coEvery { source.getMangaUpdate(any(), any(), true, true) } answers {
+            val sourceManga = firstArg<eu.kanade.tachiyomi.source.model.SManga>().apply { this.memo = memo }
+            called.complete(Unit)
+            eu.kanade.tachiyomi.source.model.SMangaUpdate(sourceManga, if (emptyChapters) emptyList() else secondArg())
+        }
+        val getChapters = tachiyomi.domain.chapter.interactor.GetChaptersByMangaId(chapters)
+        val update = UpdateManga(mangas, tachiyomi.domain.manga.interactor.FetchInterval(getChapters))
+        val sync = eu.kanade.domain.chapter.interactor.SyncChaptersWithSource(
+            mockk(relaxed = true), mockk(relaxed = true), chapters,
+            tachiyomi.domain.chapter.interactor.ShouldUpdateDbChapter(), update, UpdateChapter(chapters), getChapters,
+            GetExcludedScanlators(handler), LibraryPreferences(preferenceStore),
+        )
+        val localizedResources = mockk<Resources>(relaxed = true) {
+            every { getString(MR.strings.no_chapters_error.resourceId) } returns "No chapters found"
+        }
+        val localizedContext = mockk<Context>(relaxed = true) { every { resources } returns localizedResources }
+        val model =
+            screenModel(
+                context = localizedContext,
+                manga = manga,
+                chapters = listOf(chapter),
+                updateManga = update,
+                mangaRepository = mangas,
+                chapterRepository = chapters,
+                syncChaptersWithSource = sync,
+                getMangaWithChaptersOverride = GetMangaWithChapters(mangas, chapters),
+            )
+        try {
+            awaitSuccess(model)
+            model.fetchAllFromSource()
+            testScheduler.runCurrent()
+            withContext(Dispatchers.Default) {
+                withTimeout(5_000) {
+                    called.await()
+                    while (mangas.getMangaById(MANGA_ID).memo != memo) delay(10)
+                }
+            }
+            coVerify(exactly = 1) { source.getMangaUpdate(any(), any(), true, true) }
+            assertEquals(memo, mangas.getMangaById(MANGA_ID).memo)
+            coVerify(exactly = 0) { source.getMangaDetails(any()) }
+            coVerify(exactly = 0) { source.getChapterList(any()) }
+            if (emptyChapters) {
+                val snackbar = withContext(Dispatchers.Default) {
+                    withTimeout(5_000) {
+                        while (model.snackbarHostState.currentSnackbarData == null) {
+                            testScheduler.runCurrent()
+                            delay(10)
+                        }
+                        model.snackbarHostState.currentSnackbarData!!
+                    }
+                }
+                assertEquals("No chapters found", snackbar.visuals.message)
+                snackbar.dismiss()
+                testScheduler.runCurrent()
+                assertEquals(false, (model.state.value as MangaScreenModel.State.Success).isRefreshingData)
+                assertEquals(listOf(chapter.id), chapters.getChapterByMangaId(MANGA_ID).map { it.id })
+            }
+        } finally {
+            model.onDispose()
+            driver.close()
+        }
+    }
+
     private lateinit var previousInjekt: InjektScope
     private lateinit var sharedPreferences: SharedPreferences
     private lateinit var preferenceStore: AndroidPreferenceStore
@@ -205,12 +307,22 @@ class MangaScreenModelSharedMutationWiringTest {
         manga: Manga,
         chapters: List<Chapter>,
         setMangaCategories: SetMangaCategories = mockk(relaxed = true),
-        updateManga: UpdateManga = mockk(relaxed = true),
+        updateManga: UpdateManga = mockk(relaxed = true) {
+            coEvery {
+                awaitFromRemote(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
+            } returns (manga to emptyList())
+        },
         updateChapter: UpdateChapter = mockk(relaxed = true),
         updateLibraryMembership: UpdateLibraryMembership = UpdateLibraryMembership { },
         batchUpdateChapters: BatchUpdateChapters = BatchUpdateChapters(),
+        mangaRepository: MangaRepository = mockk(relaxed = true),
+        chapterRepository: ChapterRepository = mockk(relaxed = true),
+        syncChaptersWithSource: eu.kanade.domain.chapter.interactor.SyncChaptersWithSource = mockk(relaxed = true),
+        getMangaWithChaptersOverride: GetMangaWithChapters? = null,
     ): MangaScreenModel {
-        val getMangaWithChapters = mockk<GetMangaWithChapters> {
+        Injekt.addSingleton(chapterRepository)
+        Injekt.addSingleton(mockk<eu.kanade.tachiyomi.data.cache.CoverCache>(relaxed = true))
+        val getMangaWithChapters = getMangaWithChaptersOverride ?: mockk<GetMangaWithChapters> {
             coEvery { subscribe(MANGA_ID, applyScanlatorFilter = true) } returns flowOf(manga to chapters)
             coEvery { awaitManga(MANGA_ID) } returns manga
             coEvery { awaitChapters(MANGA_ID, applyScanlatorFilter = true) } returns chapters
@@ -255,14 +367,14 @@ class MangaScreenModelSharedMutationWiringTest {
             setReadStatus = mockk<SetReadStatus>(relaxed = true),
             updateChapter = updateChapter,
             updateManga = updateManga,
-            syncChaptersWithSource = mockk(relaxed = true),
+            syncChaptersWithSource = syncChaptersWithSource,
             getCategories = mockk<GetCategories>(relaxed = true),
             getTracks = mockk<GetTracks> {
                 every { subscribe(MANGA_ID) } returns flowOf(emptyList())
             },
             addTracks = mockk<AddTracks>(relaxed = true),
             setMangaCategories = setMangaCategories,
-            mangaRepository = mockk<MangaRepository>(relaxed = true),
+            mangaRepository = mangaRepository,
             filterChaptersForDownload = mockk(relaxed = true),
             updateLibraryMembership = updateLibraryMembership,
             batchUpdateChapters = batchUpdateChapters,

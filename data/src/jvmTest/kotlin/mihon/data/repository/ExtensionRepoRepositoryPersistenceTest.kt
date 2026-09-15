@@ -177,6 +177,9 @@ class ExtensionRepoRepositoryPersistenceTest {
     fun `version eighteen repository table migrates before metadata can be reopened`() = runTest {
         val databaseFile = File(directory, "extension-repos-v18.db")
         JdbcSqliteDriver("jdbc:sqlite:${databaseFile.absolutePath}").use { driver ->
+            // Subsequent schema-19 migration also updates these pre-existing tables.
+            driver.execute(null, "CREATE TABLE mangas (_id INTEGER PRIMARY KEY)", 0)
+            driver.execute(null, "CREATE TABLE chapters (_id INTEGER PRIMARY KEY)", 0)
             driver.execute(
                 null,
                 """CREATE TABLE extension_repos (

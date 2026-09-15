@@ -94,6 +94,9 @@ class ExtensionRepoPersistenceInstrumentationTest {
     fun versionEighteenMigrationRetainsLegacyIdentityAndAllowsMetadataAfterReopen() = runBlocking {
         withDatabaseNames { sourceName, _ ->
             context.openOrCreateDatabase(sourceName, Context.MODE_PRIVATE, null).use { legacy ->
+                // This repository-only fixture must also satisfy the subsequent schema-19 memo migration.
+                legacy.execSQL("CREATE TABLE mangas (_id INTEGER PRIMARY KEY)")
+                legacy.execSQL("CREATE TABLE chapters (_id INTEGER PRIMARY KEY)")
                 legacy.execSQL(
                     """CREATE TABLE extension_repos (
                         base_url TEXT NOT NULL PRIMARY KEY,
