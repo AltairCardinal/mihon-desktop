@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.ReaderProgressTracker
 import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.download.DirectPartialPageReadLeaseSource
+import mihon.desktop.download.DownloadIoProbe
+import mihon.desktop.download.PartialPageReadLeaseSource
 import mihon.desktop.ui.reader.ReaderScreenModel
 import mihon.domain.reader.content.DownloadArtifactProbe
 import mihon.domain.reader.content.DownloadChapterIdentity
@@ -18,9 +21,6 @@ import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.observability.ReaderMonotonicClock
 import mihon.domain.reader.partial.DisabledPartialDownloadSnapshotLookup
 import mihon.domain.reader.partial.PartialDownloadSnapshotLookup
-import mihon.desktop.download.DirectPartialPageReadLeaseSource
-import mihon.desktop.download.DownloadIoProbe
-import mihon.desktop.download.PartialPageReadLeaseSource
 import mihon.domain.reader.scheduler.ReaderRequestScheduler
 import mihon.domain.reader.scheduler.ReaderSchedulerPolicy
 import mihon.domain.reader.session.ReaderChapterId
@@ -126,7 +126,8 @@ class DesktopReaderRuntimeFactory internal constructor(
     private val readerIoProbe: ReaderIoProbe = ReaderIoProbe.None,
     private val readerMonotonicClock: ReaderMonotonicClock = ReaderMonotonicClock(System::nanoTime),
     private val readerIoGate: ReaderIoGate = ReaderIoGate.None,
-    private val readerContentOperationProbe: DesktopReaderContentOperationProbe = DesktopReaderContentOperationProbe.None,
+    private val readerContentOperationProbe: DesktopReaderContentOperationProbe =
+        DesktopReaderContentOperationProbe.None,
     private val disallowNonAsciiFilenames: () -> Boolean = { false },
     private val pageImageDecoder: DesktopReaderPageImageDecoder = SkiaDesktopReaderPageImageDecoder(),
     private val partialDownloadSnapshotLookup: PartialDownloadSnapshotLookup = DisabledPartialDownloadSnapshotLookup,
@@ -209,28 +210,7 @@ class DesktopReaderRuntimeFactory internal constructor(
                     ),
                 )
             },
-            progressPort = DesktopReaderProgressPort { context, effect ->
-                if (context.localChapterPath == null) {
-                    tracker.track(
-                        eventId = effect.idempotencyKey,
-                        chapterId = effect.chapterId.value,
-                        lastPageRead = effect.lastPageRead,
-                        totalPages = effect.totalPages,
-                        sourceId = context.sourceId,
-                        mangaId = context.mangaId,
-                        chapterNumber = context.chapterNumber,
-                        wasRead = effect.wasRead,
-                        downloadIdentity = DownloadChapterIdentity(
-                            sourceDisplayName = context.sourceDisplayName,
-                            mangaTitle = context.mangaTitle,
-                            chapterName = context.chapterTitle,
-                            scanlator = context.scanlator,
-                            chapterUrl = context.chapterUrl,
-                            disallowNonAsciiFilenames = context.disallowNonAsciiFilenames,
-                        ),
-                    )
-                }
-            },
+            progressPort = DesktopReaderTrackerPort(tracker),
             chapterLeasePort = contentAdapter,
             parentScope = parentScope,
             initialNextChapterPrefetchMode = prefs.nextChapterPrefetchMode,
@@ -339,4 +319,47 @@ class DesktopReaderRuntimeFactory internal constructor(
     private fun normalizeDownloadIdentity(context: DesktopReaderChapterContext) = context.copy(
         disallowNonAsciiFilenames = disallowNonAsciiFilenames(),
     )
+}
+
+private class DesktopReaderTrackerPort(
+    private val tracker: ReaderProgressTracker,
+    private val session: tachiyomi.domain.reader.interactor.ReadingProgressSession? = null,
+    private val incognitoAtAcceptance: Boolean? = null,
+) : DesktopReaderProgressPort {
+    override suspend fun open(context: DesktopReaderChapterContext): DesktopReaderProgressPort =
+        if (context.localChapterPath == null) {
+            DesktopReaderTrackerPort(tracker, tracker.openSession(context.chapterId))
+        } else {
+            this
+        }
+
+    override fun capture(context: DesktopReaderChapterContext): DesktopReaderProgressPort =
+        DesktopReaderTrackerPort(tracker, session, tracker.isIncognito(context.sourceId))
+
+    override suspend fun record(
+        context: DesktopReaderChapterContext,
+        effect: mihon.domain.reader.progress.ReaderProgressEffect,
+    ) {
+        if (context.localChapterPath != null) return
+        tracker.track(
+            eventId = effect.idempotencyKey,
+            chapterId = effect.chapterId.value,
+            lastPageRead = effect.lastPageRead,
+            totalPages = effect.totalPages,
+            sourceId = context.sourceId,
+            mangaId = context.mangaId,
+            chapterNumber = context.chapterNumber,
+            wasRead = effect.wasRead,
+            readingSession = checkNotNull(session),
+            incognitoAtAcceptance = incognitoAtAcceptance,
+            downloadIdentity = DownloadChapterIdentity(
+                sourceDisplayName = context.sourceDisplayName,
+                mangaTitle = context.mangaTitle,
+                chapterName = context.chapterTitle,
+                scanlator = context.scanlator,
+                chapterUrl = context.chapterUrl,
+                disallowNonAsciiFilenames = context.disallowNonAsciiFilenames,
+            ),
+        )
+    }
 }

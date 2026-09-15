@@ -1,13 +1,13 @@
 package mihon.desktop.domain
 
+import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import io.mockk.mockk
-import io.mockk.verify
 import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.settings.DesktopAppPreferences
@@ -15,8 +15,9 @@ import mihon.desktop.task.DesktopTaskScheduler
 import mihon.desktop.task.FileTaskCheckpointStore
 import mihon.desktop.tracking.DesktopNetworkConnectivity
 import mihon.desktop.tracking.DesktopTrackerSyncScheduler
-import mihon.domain.task.TaskStatus
 import mihon.domain.reader.content.DownloadChapterIdentity
+import mihon.domain.task.TaskStatus
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -31,9 +32,9 @@ import tachiyomi.domain.track.interactor.TrackerSyncRequest
 import tachiyomi.domain.track.interactor.TrackerSyncRetryScheduler
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
-import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.DelayedTrackerSyncItem
 import tachiyomi.domain.track.service.DelayedTrackerSyncPersistence
+import tachiyomi.domain.track.service.TrackEdit
 import tachiyomi.domain.track.service.TrackSearchResult
 import tachiyomi.domain.track.service.TrackerAuthentication
 import tachiyomi.domain.track.service.TrackerProfile
@@ -50,7 +51,6 @@ import tachiyomi.domain.track.service.TrackerProviderWorkflow
 import tachiyomi.domain.track.service.TrackerService
 import tachiyomi.domain.track.service.TrackerServiceRegistry
 import tachiyomi.domain.track.service.mergeHighest
-import org.junit.jupiter.api.Assertions.assertEquals
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
@@ -97,6 +97,7 @@ class ReaderProgressTrackerTest {
         tracker.track(eventId = "exit-1", chapterId = 1, lastPageRead = 9, totalPages = 10, sourceId = null)
 
         assertTrue(repository.event!!.isRead)
+        assertEquals(mihon.domain.sync.SyncMutationContext.User, repository.event!!.syncContext)
     }
 
     @Test
@@ -227,12 +228,15 @@ class ReaderProgressTrackerTest {
             RecordReadingProgress(repository),
             appPreferences = preferences,
             trackSync = ReadingProgressTrackSync(requests::add),
-            extensionPackageForSource = { sourceId -> if (sourceId == 10L) "extension.hidden" else "extension.visible" },
+            extensionPackageForSource = { sourceId ->
+                if (sourceId == 10L) "extension.hidden" else "extension.visible"
+            },
         )
 
         tracker.track("exit-extension-incognito", 8, 9, 10, sourceId = 10L, mangaId = 7, chapterNumber = 4.5)
 
         assertFalse(repository.event!!.recordHistory)
+        assertFalse(repository.event!!.syncContext.uploadAllowed)
         assertTrue(requests.isEmpty())
     }
 
@@ -249,12 +253,15 @@ class ReaderProgressTrackerTest {
             RecordReadingProgress(repository),
             appPreferences = preferences,
             trackSync = ReadingProgressTrackSync(requests::add),
-            extensionPackageForSource = { sourceId -> if (sourceId == 10L) "extension.hidden" else "extension.visible" },
+            extensionPackageForSource = { sourceId ->
+                if (sourceId == 10L) "extension.hidden" else "extension.visible"
+            },
         )
 
         tracker.track("exit-visible-extension", 9, 9, 10, sourceId = 11L, mangaId = 7, chapterNumber = 4.5)
 
         assertTrue(repository.event!!.recordHistory)
+        assertEquals(mihon.domain.sync.SyncMutationContext.User, repository.event!!.syncContext)
         assertEquals(listOf(TrackerSyncRequest("exit-visible-extension", 7, 4.5)), requests)
     }
 
@@ -536,6 +543,8 @@ class ReaderProgressTrackerTest {
 
     private class RecordingRepository : ReadingProgressRepository {
         var event: ReadingProgressEvent? = null
-        override suspend fun record(event: ReadingProgressEvent) { this.event = event }
+        override suspend fun record(event: ReadingProgressEvent) {
+            this.event = event
+        }
     }
 }

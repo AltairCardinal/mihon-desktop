@@ -793,14 +793,14 @@ class LibraryScreenModel(
             return
         }
 
-        val changedChapters = statusUpdater.filterToUpdate(chapters, read)
+        val newlyReadChapters = chapters.filterNot { it.read }.distinctBy { it.id }
         val item = state.value.allItems.firstOrNull { it.id == mangaId }
         statusUpdater.awaitOrThrow(chapters, read)
         if (read && sharedDownloadPreferences?.removeAfterMarkedAsRead()?.get() == true) {
             if (item != null) {
                 val delete = requireNotNull(deleteChapterDownload) { "Delete chapter download is required" }
                 try {
-                    changedChapters.forEach { chapter -> delete(item, chapter) }
+                    newlyReadChapters.forEach { chapter -> delete(item, chapter) }
                 } finally {
                     refreshDownloadState()
                 }

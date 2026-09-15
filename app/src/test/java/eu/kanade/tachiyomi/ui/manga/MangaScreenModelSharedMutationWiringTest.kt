@@ -37,6 +37,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import mihon.domain.sync.SyncMutationContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -55,6 +56,7 @@ import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
@@ -75,6 +77,33 @@ import java.util.Collections
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], manifest = Config.NONE)
 class MangaScreenModelSharedMutationWiringTest {
+
+    @Test
+    fun `chapter mark buttons reach the shared explicit user command`() = runTest {
+        val captured = Channel<List<ChapterUpdate>>(Channel.UNLIMITED)
+        val repository = mockk<ChapterRepository> {
+            coEvery { updateAll(any()) } coAnswers { captured.send(firstArg()) }
+        }
+        val preferences = mockk<DownloadPreferences> {
+            every { removeAfterMarkedAsRead().get() } returns false
+        }
+        val command = SetReadStatus(preferences, mockk(), mockk(), repository)
+        val chapter = chapter(1)
+        val model = screenModel(manga = manga(true), chapters = listOf(chapter), setReadStatus = command)
+        try {
+            awaitSuccess(model)
+            for (read in listOf(true, false)) {
+                model.markChaptersRead(listOf(chapter), read)
+                val update = withContext(Dispatchers.Default) {
+                    withTimeout(5_000) { captured.receive().single() }
+                }
+                assertEquals(read, update.read)
+                assertEquals(SyncMutationContext.User, update.syncContext)
+            }
+        } finally {
+            model.onDispose()
+        }
+    }
 
     private lateinit var previousInjekt: InjektScope
     private lateinit var sharedPreferences: SharedPreferences
@@ -209,6 +238,7 @@ class MangaScreenModelSharedMutationWiringTest {
         updateChapter: UpdateChapter = mockk(relaxed = true),
         updateLibraryMembership: UpdateLibraryMembership = UpdateLibraryMembership { },
         batchUpdateChapters: BatchUpdateChapters = BatchUpdateChapters(),
+        setReadStatus: SetReadStatus = mockk(relaxed = true),
     ): MangaScreenModel {
         val getMangaWithChapters = mockk<GetMangaWithChapters> {
             coEvery { subscribe(MANGA_ID, applyScanlatorFilter = true) } returns flowOf(manga to chapters)
@@ -252,7 +282,7 @@ class MangaScreenModelSharedMutationWiringTest {
             setExcludedScanlators = mockk<SetExcludedScanlators>(relaxed = true),
             setMangaChapterFlags = mockk<SetMangaChapterFlags>(relaxed = true),
             setMangaDefaultChapterFlags = mockk<SetMangaDefaultChapterFlags>(relaxed = true),
-            setReadStatus = mockk<SetReadStatus>(relaxed = true),
+            setReadStatus = setReadStatus,
             updateChapter = updateChapter,
             updateManga = updateManga,
             syncChaptersWithSource = mockk(relaxed = true),

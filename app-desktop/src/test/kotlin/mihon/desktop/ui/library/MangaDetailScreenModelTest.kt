@@ -247,7 +247,7 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
-    fun `selected unread resets progress skips unchanged and exposes write failure`() = runTest {
+    fun `selected unread preserves same value user intent and exposes write failure`() = runTest {
         val backing = FakeChapterRepository()
         val chapters = listOf(
             createFakeChapter(1L).copy(read = true, lastPageRead = 6L),
@@ -275,9 +275,10 @@ class MangaDetailScreenModelTest {
 
         model.markSelectedRead(chapters, read = false)
 
-        assertEquals(listOf(1L), backing.updates.map { it.id })
-        assertEquals(0L, backing.updates.single().lastPageRead)
-        assertEquals("1 succeeded, 1 failed", model.state.value.batchActionMessage)
+        assertEquals(listOf(1L, 2L), backing.updates.map { it.id })
+        assertTrue(backing.updates.all { it.lastPageRead == 0L })
+        assertTrue(backing.updates.all { it.syncContext == mihon.domain.sync.SyncMutationContext.User })
+        assertEquals("2 succeeded, 1 failed", model.state.value.batchActionMessage)
     }
 
     @Test

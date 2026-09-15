@@ -807,6 +807,7 @@ class LibraryScreenModelTest {
 
         assertEquals(listOf(1L, 2L), chapterRepository.updates.map { it.id })
         assertTrue(chapterRepository.updates.all { it.read == true })
+        assertTrue(chapterRepository.updates.all { it.syncContext == mihon.domain.sync.SyncMutationContext.User })
     }
 
     @Test
@@ -896,7 +897,7 @@ class LibraryScreenModelTest {
     }
 
     @Test
-    fun `mark manga unread resets progress and skips chapters already unread at start`() = runTest {
+    fun `mark manga unread preserves explicit intent for chapters already unread`() = runTest {
         val chapterRepository = FakeChapterRepository()
         chapterRepository.addAll(
             listOf(
@@ -909,8 +910,9 @@ class LibraryScreenModelTest {
 
         model.markMangaRead(mangaId = 10L, read = false)
 
-        assertEquals(listOf(1L, 3L), chapterRepository.updates.map { it.id })
+        assertEquals(listOf(1L, 2L, 3L), chapterRepository.updates.map { it.id })
         assertTrue(chapterRepository.updates.all { it.read == false && it.lastPageRead == 0L })
+        assertTrue(chapterRepository.updates.all { it.syncContext == mihon.domain.sync.SyncMutationContext.User })
     }
 
     @Test

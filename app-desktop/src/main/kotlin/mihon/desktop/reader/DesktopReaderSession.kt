@@ -1,22 +1,24 @@
 package mihon.desktop.reader
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableJob
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.CompletableJob
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import mihon.domain.error.AppError
 import mihon.domain.reader.ReaderAdjacentChapterEffect
 import mihon.domain.reader.ReaderAdjacentChapterPolicy
+import mihon.domain.reader.content.ReaderPageContentOpenRequest
 import mihon.domain.reader.materialize.CanonicalReaderMaterializeExecutor
 import mihon.domain.reader.materialize.ReaderChapterContentPort
 import mihon.domain.reader.materialize.ReaderChapterContentRequest
@@ -27,10 +29,10 @@ import mihon.domain.reader.materialize.ReaderPageFetchRequest
 import mihon.domain.reader.materialize.ReaderPageMaterializeEvent
 import mihon.domain.reader.materialize.ReaderPageMaterializeResult
 import mihon.domain.reader.observability.ReaderIoEventType
+import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderIoPurpose
 import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.observability.ReaderMonotonicClock
-import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.progress.ReaderProgressEffect
 import mihon.domain.reader.scheduler.ReaderEnqueueResult
 import mihon.domain.reader.scheduler.ReaderPageMaterializeCompletion
@@ -49,7 +51,6 @@ import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
 import mihon.domain.reader.session.ReaderSessionCore
 import mihon.domain.reader.session.ReaderSessionSnapshot
-import mihon.domain.reader.content.ReaderPageContentOpenRequest
 
 fun interface DesktopReaderChapterContentPortFactory {
     fun create(
@@ -66,6 +67,12 @@ fun interface DesktopReaderPageFetchPortFactory {
 }
 
 fun interface DesktopReaderProgressPort {
+    /** Called for actual activation, before page progress can be accepted; never for prefetch. */
+    suspend fun open(context: DesktopReaderChapterContext): DesktopReaderProgressPort = this
+
+    /** Freezes per-operation settings before a durable write waits in the progress queue. */
+    fun capture(context: DesktopReaderChapterContext): DesktopReaderProgressPort = this
+
     suspend fun record(
         context: DesktopReaderChapterContext,
         effect: ReaderProgressEffect,
@@ -149,6 +156,7 @@ class DesktopReaderSession(
     private var chapterJob: Job? = null
     private var adjacentChapterJob: Job? = null
     private var progressTail: Job? = null
+    private var activeProgressPort: DesktopReaderProgressPort? = null
     private var context = initialContext
     private var activationSequence = 0L
     private var adjacentSequence = 0L
@@ -231,6 +239,7 @@ class DesktopReaderSession(
             )
             activeContentLeaseGeneration = materializationLeaseGeneration
             activationSequence++
+            activeProgressPort = null
             sequence = activationSequence
             lastSettledAnchorPageIndex = null
             firstPagePresentedGeneration = null
@@ -258,6 +267,27 @@ class DesktopReaderSession(
             val opening = synchronized(lock) {
                 if (closed || activationSequence != sequence) return@launch
                 core.snapshot
+            }
+            val openedProgress = try {
+                progressPort.open(materializationContext)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                synchronized(lock) {
+                    if (!closed && activationSequence == sequence) {
+                        core.acceptChapterMaterialization(
+                            opening.activeChapter.id,
+                            opening.generation,
+                            ReaderChapterMaterializeResult.Failed(AppError.Storage(error)),
+                        )
+                        publishStateLocked()
+                    }
+                }
+                return@launch
+            }
+            synchronized(lock) {
+                if (closed || activationSequence != sequence) return@launch
+                activeProgressPort = openedProgress
             }
             val request = ReaderChapterContentRequest(
                 chapterId = ReaderChapterId(materializationContext.chapterId),
@@ -517,10 +547,11 @@ class DesktopReaderSession(
         effect: ReaderProgressEffect,
     ): Job {
         val predecessor = progressTail
+        val capturedProgress = checkNotNull(activeProgressPort).capture(progressContext)
         lateinit var job: Job
         job = progressScope.launch(start = CoroutineStart.LAZY) {
             predecessor?.join()
-            progressPort.record(progressContext, effect)
+            capturedProgress.record(progressContext, effect)
         }
         progressTail = job
         progressJobs += job
@@ -577,7 +608,10 @@ class DesktopReaderSession(
                         completedWithoutMaterialization = true
                         continue
                     }
-                    if (scheduledPage.descriptor.initialLoadState is ReaderPageLoadState.Ready && !request.forceRefresh) {
+                    if (
+                        scheduledPage.descriptor.initialLoadState is ReaderPageLoadState.Ready &&
+                        !request.forceRefresh
+                    ) {
                         completedWithoutMaterialization = true
                         core.completePageRequest(request.jobKey)
                         continue

@@ -4,8 +4,10 @@ import eu.kanade.domain.download.interactor.DeleteDownload
 import logcat.LogPriority
 import tachiyomi.core.common.util.lang.withNonCancellableContext
 import tachiyomi.core.common.util.system.logcat
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
+import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
+import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.Chapter
-import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.manga.model.Manga
@@ -18,29 +20,19 @@ class SetReadStatus(
     private val chapterRepository: ChapterRepository,
 ) {
 
-    private val mapper = { chapter: Chapter, read: Boolean ->
-        ChapterUpdate(
-            read = read,
-            lastPageRead = if (!read) 0 else null,
-            id = chapter.id,
-        )
-    }
+    private val setChapterReadStatus = SetChapterReadStatus(
+        GetChaptersByMangaId(chapterRepository),
+        UpdateChapter(chapterRepository),
+    )
 
     suspend fun await(read: Boolean, vararg chapters: Chapter): Result = withNonCancellableContext {
-        val chaptersToUpdate = chapters.filter {
-            when (read) {
-                true -> !it.read
-                false -> it.read || it.lastPageRead > 0
-            }
-        }
+        val chaptersToUpdate = setChapterReadStatus.filterToUpdate(chapters.toList(), read)
         if (chaptersToUpdate.isEmpty()) {
             return@withNonCancellableContext Result.NoChapters
         }
 
         try {
-            chapterRepository.updateAll(
-                chaptersToUpdate.map { mapper(it, read) },
-            )
+            setChapterReadStatus.awaitOrThrow(chaptersToUpdate, read)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             return@withNonCancellableContext Result.InternalError(e)
@@ -48,6 +40,7 @@ class SetReadStatus(
 
         if (read && downloadPreferences.removeAfterMarkedAsRead().get()) {
             chaptersToUpdate
+                .filterNot { it.read }
                 .groupBy { it.mangaId }
                 .forEach { (mangaId, chapters) ->
                     deleteDownload.awaitAll(

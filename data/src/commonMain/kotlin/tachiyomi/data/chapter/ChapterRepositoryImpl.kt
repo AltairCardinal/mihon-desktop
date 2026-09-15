@@ -2,6 +2,7 @@ package tachiyomi.data.chapter
 
 import kotlinx.coroutines.flow.Flow
 import logcat.LogPriority
+import mihon.data.sync.journal.appendChapterReadOperation
 import tachiyomi.core.common.util.lang.toLong
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.DatabaseHandler
@@ -68,6 +69,7 @@ class ChapterRepositoryImpl(
                     version = chapterUpdate.version,
                     isSyncing = 0,
                 )
+                chapterUpdate.read?.let { appendChapterReadOperation(chapterUpdate.id, it, chapterUpdate.syncContext) }
             }
         }
     }
