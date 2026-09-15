@@ -65,6 +65,7 @@ class ExtensionRepoCreateRepositoryTest {
     @Test
     fun `http failure returns repository unavailable instead of invalid url`() = runBlocking {
         server.enqueue(MockResponse(code = 404, body = "not found"))
+        server.enqueue(MockResponse(code = 404, body = "not found"))
         val baseUrl = server.url("/missing/repo").toString().removeSuffix("/")
 
         val result = createExtensionRepo.await(baseUrl)

@@ -8,7 +8,6 @@ import eu.kanade.tachiyomi.extension.util.ExtensionLoader
 import eu.kanade.tachiyomi.network.AndroidNetworkResponseAdapter
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.NetworkHelper
-import eu.kanade.tachiyomi.network.parseAs
 import kotlinx.serialization.json.Json
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.model.ExtensionCompatibility
@@ -20,8 +19,8 @@ import mihon.domain.extension.service.SharedExtensionUpdatePolicy
 import mihon.domain.extensionrepo.interactor.GetExtensionRepo
 import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
 import mihon.domain.extensionrepo.model.ExtensionRepo
-import mihon.domain.extensionrepo.service.ExtensionRepoIndexEntryDto
-import mihon.domain.extensionrepo.service.toCatalogEntry
+import mihon.domain.extensionrepo.service.ExtensionStoreCatalogDecoder
+import mihon.domain.extensionrepo.service.withCatalogRedirectPolicy
 import okhttp3.OkHttpClient
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
@@ -56,8 +55,12 @@ internal class ExtensionApi(
     }
 
     suspend fun findExtensions(): List<Extension.Available> {
-        return refreshCatalog().entries
-            .filter { it.compatibility == ExtensionCompatibility.Compatible }
+        return findExtensionsWithFailures().extensions
+    }
+
+    internal suspend fun findExtensionsWithFailures(): ExtensionDiscoveryResult {
+        val catalog = refreshCatalog()
+        val extensions = catalog.entries
             .map { entry ->
                 val artifact = entry.artifact
                 Extension.Available(
@@ -76,15 +79,16 @@ internal class ExtensionApi(
                             baseUrl = it.baseUrl,
                         )
                     },
-                    apkName = artifact.downloadUrl.substringAfterLast('/'),
+                    apkName = (artifact.apkUrl ?: artifact.downloadUrl).substringAfterLast('/'),
                     iconUrl = artifact.iconUrl,
                     repoUrl = artifact.repository.baseUrl,
                     repoName = artifact.repository.name,
                     repoFingerprint = artifact.repository.signingKeyFingerprint,
                     declaredSha256 = artifact.declaredSha256,
-                    downloadUrl = artifact.downloadUrl,
+                    downloadUrl = artifact.apkUrl ?: artifact.downloadUrl,
                 )
             }
+        return ExtensionDiscoveryResult(extensions, catalog.failures, catalog.repositories)
     }
 
     suspend fun refreshCatalog(): ExtensionCatalogResult = withIOContext {
@@ -94,16 +98,15 @@ internal class ExtensionApi(
 
     private suspend fun fetchRepository(repository: ExtensionRepo): RepositoryFetchResult {
         val adapter = responseAdapter ?: injectedResponseAdapter
-        val call = adapter.install(client ?: networkService.client)
-            .newCall(GET("${repository.baseUrl}/index.min.json"))
-        val response = adapter.awaitSuccess(call)
-        val entries = adapter.parsePayload {
-            with(json ?: injectedJson) {
-                response.parseAs<List<ExtensionRepoIndexEntryDto>>()
-                    .map { it.toCatalogEntry(repository) }
-            }
-        }
-        return RepositoryFetchResult.Success(repository.toIdentity(), entries)
+        val httpClient = adapter.install(client ?: networkService.client, allowEmptyPayload = true)
+            .withCatalogRedirectPolicy()
+        val catalog = ExtensionStoreCatalogDecoder.load(
+            repository,
+            json ?: injectedJson,
+            fetch = { url -> adapter.awaitSuccess(httpClient.newCall(GET(url))).use { it.body.bytes() } },
+            parse = { adapter.parsePayload(it) },
+        )
+        return RepositoryFetchResult.Success(repository.toIdentity(), catalog.entries)
     }
 
     suspend fun checkForUpdates(
@@ -133,7 +136,11 @@ internal class ExtensionApi(
         val extensionsWithUpdate = mutableListOf<Extension.Installed>()
         for (installedExt in installedExtensions) {
             val pkgName = installedExt.pkgName
-            val availableExt = extensions.find { it.pkgName == pkgName } ?: continue
+            val owner = installedExt.repoUrl?.trim()?.trimEnd('/')
+            val availableExt = extensions.find {
+                it.pkgName == pkgName && (owner == null || it.repoUrl.trim().trimEnd('/') == owner)
+            } ?: continue
+            if (availableExt.compatibility != ExtensionCompatibility.Compatible) continue
             val hasUpdate = updatePolicy.isUpdateAvailable(
                 availableVersionCode = availableExt.versionCode,
                 availableLibVersion = availableExt.libVersion,
@@ -157,3 +164,9 @@ internal class ExtensionApi(
         return extension.downloadUrl
     }
 }
+
+internal data class ExtensionDiscoveryResult(
+    val extensions: List<Extension.Available>,
+    val failures: List<mihon.domain.extension.model.RepositoryCatalogFailure>,
+    val repositories: List<mihon.domain.extension.model.RepositoryIdentity>,
+)

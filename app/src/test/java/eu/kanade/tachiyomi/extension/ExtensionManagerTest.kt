@@ -1,8 +1,10 @@
 package eu.kanade.tachiyomi.extension
 
 import android.content.Context
+import androidx.core.app.NotificationManagerCompat
 import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.extension.model.LoadResult
@@ -13,7 +15,9 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
+import io.mockk.mockkStatic
 import io.mockk.unmockkObject
+import io.mockk.unmockkStatic
 import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -27,17 +31,106 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import mihon.domain.error.AppError
+import mihon.domain.extension.model.RepositoryCatalogFailure
+import mihon.domain.extension.model.RepositoryIdentity
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.core.common.preference.Preference
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.InjektScope
+import uy.kohesive.injekt.api.addSingleton
+import uy.kohesive.injekt.registry.default.DefaultRegistrar
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CyclicBarrier
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class ExtensionManagerTest {
+
+    @Test
+    fun `refresh uses successful owner only and clears removed source metadata`() = runTest {
+        withNotificationEnvironment {
+            val owner = RepositoryIdentity("https://example.org", "Owner", "key")
+            val other = RepositoryIdentity("https://other.example", "Other", "other-key")
+            val candidate = available()
+            var discovery = eu.kanade.tachiyomi.extension.api.ExtensionDiscoveryResult(
+                listOf(candidate),
+                emptyList(),
+                listOf(owner),
+            )
+            val manager = ExtensionManager(
+                context = mockk(relaxed = true),
+                preferences = preferences(),
+                trustExtension = mockk(relaxed = true),
+                installedExtensionsLoader = { listOf(LoadResult.Success(installed().copy(repoUrl = owner.baseUrl))) },
+                installReceiverRegistrar = {},
+                scope = backgroundScope,
+                discoveryProvider = { discovery },
+            )
+            runCurrent()
+            manager.findAvailableExtensions()
+            assertEquals(7L, manager.getSourceData(7)?.id)
+            val failure = RepositoryCatalogFailure(owner, AppError.Network())
+            discovery = discovery.copy(failures = listOf(failure), repositories = listOf(owner, other))
+            manager.findAvailableExtensions()
+            assertEquals(listOf(failure), manager.repositoryFailures.value)
+            assertFalse(manager.installedExtensionsFlow.value.single().isObsolete)
+
+            discovery = discovery.copy(
+                extensions = listOf(candidate.copy(repoUrl = other.baseUrl)),
+                failures = emptyList(),
+            )
+            manager.findAvailableExtensions()
+            assertTrue(manager.installedExtensionsFlow.value.single().isObsolete)
+            assertEquals(owner.baseUrl, manager.installedExtensionsFlow.value.single().repoUrl)
+
+            discovery = discovery.copy(extensions = emptyList())
+            manager.findAvailableExtensions()
+            assertEquals(null, manager.getSourceData(7))
+            discovery = discovery.copy(extensions = listOf(candidate))
+            manager.findAvailableExtensions()
+            assertFalse(manager.installedExtensionsFlow.value.single().isObsolete)
+        }
+    }
+
+    @Test
+    fun `refresh cancellation propagates without changing published state`() = runTest {
+        val cancellation = java.util.concurrent.CancellationException("cancel refresh")
+        val manager = ExtensionManager(
+            context = mockk(relaxed = true),
+            preferences = preferences(),
+            trustExtension = mockk(relaxed = true),
+            installedExtensionsLoader = { emptyList() },
+            installReceiverRegistrar = {},
+            scope = backgroundScope,
+            availableExtensionsProvider = { throw cancellation },
+        )
+        val thrown = runCatching { manager.findAvailableExtensions() }.exceptionOrNull()
+        assertTrue(thrown === cancellation)
+        assertTrue(manager.availableExtensionsFlow.value.isEmpty())
+    }
+
+    @Test
+    fun `unsupported catalog candidate stays visible but cannot install or update`() = runTest {
+        withNotificationEnvironment {
+            val installer = mockk<ExtensionInstaller>(relaxed = true)
+            every { installer.downloadAndInstall(any(), any()) } returns flowOf(InstallStep.Installed)
+            val unsupported = available().copy(libVersion = ExtensionLoader.LIB_VERSION_MAX + 0.1, versionCode = 999)
+            val manager = manager(listOf(LoadResult.Success(installed())), listOf(unsupported), installer = installer)
+            manager.isInitialized.await { it }
+            manager.findAvailableExtensions()
+
+            assertEquals(listOf(unsupported), manager.availableExtensionsFlow.value)
+            assertEquals(listOf(InstallStep.Error), manager.installExtension(unsupported).toList())
+            assertEquals(listOf(InstallStep.Error), manager.updateExtension(installed()).toList())
+            assertFalse(manager.installedExtensionsFlow.value.single().hasUpdate)
+            verify(exactly = 0) { installer.downloadAndInstall(any(), any()) }
+        }
+    }
 
     @Test
     fun `runtime reload before initial publication is replayed over the loader snapshot`() = runTest {
@@ -393,9 +486,51 @@ class ExtensionManagerTest {
         Unit
     }
 
+    @Test
+    fun `partial catalog failure preserves the failed repository extension and exposes feedback`() = runTest {
+        val failedRepoUrl = "https://failed.example"
+        val failed = installed().copy(
+            pkgName = "failed.extension",
+            repoUrl = failedRepoUrl,
+            isObsolete = false,
+        )
+        val healthy = installed().copy(repoUrl = "https://example.org")
+        val failure = RepositoryCatalogFailure(
+            repository = RepositoryIdentity(failedRepoUrl, "Failed", "failed-key"),
+            error = AppError.Network(),
+        )
+        val manager = manager(
+            initial = listOf(LoadResult.Success(failed), LoadResult.Success(healthy)),
+            available = listOf(available()),
+            failures = listOf(failure),
+        )
+        manager.isInitialized.await { it }
+
+        manager.findAvailableExtensions()
+
+        assertEquals(listOf(failure), manager.repositoryFailures.value)
+        assertFalse(manager.installedExtensionsFlow.value.single { it.pkgName == failed.pkgName }.isObsolete)
+        assertFalse(manager.installedExtensionsFlow.value.single { it.pkgName == healthy.pkgName }.isObsolete)
+    }
+
+    @Test
+    fun `successful rediscovery clears obsolete status for a recovered extension`() = runTest {
+        val stale = installed().copy(repoUrl = "https://example.org", isObsolete = true)
+        val manager = manager(
+            initial = listOf(LoadResult.Success(stale)),
+            available = listOf(available()),
+        )
+        manager.isInitialized.await { it }
+
+        manager.findAvailableExtensions()
+
+        assertFalse(manager.installedExtensionsFlow.value.single { it.pkgName == stale.pkgName }.isObsolete)
+    }
+
     private fun manager(
         initial: List<LoadResult>,
         available: List<Extension.Available> = emptyList(),
+        failures: List<RepositoryCatalogFailure> = emptyList(),
         installer: ExtensionInstaller = mockk(relaxed = true),
         trust: TrustExtension = mockk(relaxed = true),
         loader: suspend (Context, String) -> LoadResult = { _, _ -> LoadResult.Error },
@@ -407,6 +542,7 @@ class ExtensionManagerTest {
         installedExtensionsLoader = { initial },
         extensionLoader = loader,
         availableExtensionsProvider = { available },
+        catalogFailuresProvider = { failures },
         installerFactory = { installer },
         installReceiverRegistrar = receiver,
     )
@@ -414,6 +550,24 @@ class ExtensionManagerTest {
     private fun preferences() = mockk<SourcePreferences>(relaxed = true) {
         every { enabledLanguages() } returns mockk<Preference<Set<String>>> {
             every { isSet() } returns true
+        }
+    }
+
+    private suspend fun withNotificationEnvironment(block: suspend () -> Unit) {
+        val previous = Injekt
+        Injekt = InjektScope(DefaultRegistrar())
+        Injekt.addSingleton(SecurityPreferences(InMemoryPreferenceStore()))
+        val notifications = mockk<NotificationManagerCompat>(relaxed = true)
+        mockkStatic(NotificationManagerCompat::class)
+        try {
+            every { NotificationManagerCompat.from(any()) } returns notifications
+            block()
+            verify(atLeast = 1) {
+                notifications.cancel(eu.kanade.tachiyomi.data.notification.Notifications.ID_UPDATES_TO_EXTS)
+            }
+        } finally {
+            unmockkStatic(NotificationManagerCompat::class)
+            Injekt = previous
         }
     }
 

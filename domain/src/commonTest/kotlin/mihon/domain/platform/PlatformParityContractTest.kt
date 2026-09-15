@@ -60,6 +60,17 @@ class PlatformParityContractTest {
         assertEquals(null, ExternalShare.fromUri("file:///book/1"))
     }
 
+    @Test
+    fun `extension store deep link accepts the current mihon scheme`() {
+        val action = ExternalActionParser.resolve(
+            ExternalActionInput.ViewUri(
+                "mihon://extension-store?url=https%3A%2F%2Fexample.com%2Frepo.json",
+            ),
+        )
+
+        assertEquals(ExternalAction.AddRepository("https://example.com/repo.json"), action)
+    }
+
     private fun inputFor(vector: JsonArray): ExternalActionInput = when (vector[0].jsonPrimitive.content) {
         "view" -> ExternalActionInput.ViewUri(vector[1].jsonPrimitive.content)
         "search" -> ExternalActionInput.Search(

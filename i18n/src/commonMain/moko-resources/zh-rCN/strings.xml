@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="extension_catalog_cached_failure">仓库刷新失败，列表可能仍显示上次成功加载的扩展。</string>
+    <string name="extension_unsupported_api">需要扩展 API %1$s；当前应用支持 %2$s–%3$s，无法安装或更新。</string>
     <string name="name">名称</string>
     <string name="categories">分类</string>
     <string name="manga">书架中的作品</string>

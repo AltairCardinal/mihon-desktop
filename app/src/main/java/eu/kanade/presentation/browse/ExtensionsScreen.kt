@@ -57,6 +57,7 @@ import eu.kanade.tachiyomi.ui.browse.extension.ExtensionsScreenModel
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import eu.kanade.tachiyomi.util.system.launchRequestPackageInstallsPermission
 import kotlinx.collections.immutable.persistentListOf
+import mihon.domain.extension.model.ExtensionCompatibility
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.FastScrollLazyColumn
 import tachiyomi.presentation.core.components.material.PullRefresh
@@ -95,7 +96,7 @@ fun ExtensionScreen(
     ) {
         when {
             state.isLoading -> LoadingScreen(Modifier.padding(contentPadding))
-            state.isEmpty -> {
+            state.isEmpty && state.repositoryFailures.isEmpty() -> {
                 val msg = if (!searchQuery.isNullOrEmpty()) {
                     MR.strings.no_results_found
                 } else {
@@ -153,6 +154,20 @@ private fun ExtensionContent(
     FastScrollLazyColumn(
         contentPadding = contentPadding + topSmallPaddingValues,
     ) {
+        if (state.repositoryFailures.isNotEmpty()) {
+            item(key = "extension-repository-failures") {
+                Column {
+                    WarningBanner(textRes = MR.strings.extension_catalog_cached_failure)
+                    state.repositoryFailures.forEach { failure ->
+                        Text(
+                            text = failure.repository.name.ifBlank { failure.repository.baseUrl },
+                            modifier = Modifier.padding(MaterialTheme.padding.medium),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            }
+        }
         if (!installGranted && state.installer?.requiresSystemPermission == true) {
             item(key = "extension-permissions-warning") {
                 WarningBanner(
@@ -217,7 +232,11 @@ private fun ExtensionContent(
                     item = item,
                     onClickItem = {
                         when (it) {
-                            is Extension.Available -> onInstallExtension(it)
+                            is Extension.Available -> if (it.compatibility ==
+                                ExtensionCompatibility.Compatible
+                            ) {
+                                onInstallExtension(it)
+                            }
                             is Extension.Installed -> onOpenExtension(it)
                             is Extension.Untrusted -> {
                                 trustState = it
@@ -235,7 +254,11 @@ private fun ExtensionContent(
                     onClickItemCancel = onClickItemCancel,
                     onClickItemAction = {
                         when (it) {
-                            is Extension.Available -> onInstallExtension(it)
+                            is Extension.Available -> if (it.compatibility ==
+                                ExtensionCompatibility.Compatible
+                            ) {
+                                onInstallExtension(it)
+                            }
                             is Extension.Installed -> {
                                 if (it.hasUpdate) {
                                     onUpdateExtension(it)
@@ -347,6 +370,23 @@ private fun ExtensionItemContent(
             overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.bodyMedium,
         )
+        val compatibility = when (extension) {
+            is Extension.Available -> extension.compatibility
+            is Extension.Installed -> extension.availableCompatibility
+            is Extension.Untrusted -> null
+        }
+        if (compatibility is ExtensionCompatibility.UnsupportedLib) {
+            Text(
+                text = stringResource(
+                    MR.strings.extension_unsupported_api,
+                    compatibility.libVersion.toString(),
+                    compatibility.minimum.toString(),
+                    compatibility.maximum.toString(),
+                ),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         // Won't look good but it's not like we can ellipsize overflowing content
         FlowRow(
             modifier = Modifier.secondaryItemAlpha(),
@@ -479,7 +519,10 @@ private fun ExtensionItemActions(
                             }
                         }
 
-                        IconButton(onClick = { onClickItemAction(extension) }) {
+                        IconButton(
+                            onClick = { onClickItemAction(extension) },
+                            enabled = extension.compatibility == ExtensionCompatibility.Compatible,
+                        ) {
                             Icon(
                                 imageVector = Icons.Outlined.GetApp,
                                 contentDescription = stringResource(MR.strings.ext_install),

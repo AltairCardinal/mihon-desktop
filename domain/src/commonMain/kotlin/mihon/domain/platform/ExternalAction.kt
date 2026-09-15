@@ -33,14 +33,18 @@ object ExternalActionParser {
         if (uri.isEmpty()) return ExternalAction.NoOp
         return when {
             uri.endsWith(".tachibk") -> ExternalAction.RestoreBackup(uri)
-            uri.startsWith("tachiyomi:") -> addRepository(uri)
+            uri.startsWith("tachiyomi:") || uri.startsWith("mihon:") -> addRepository(uri)
             hasScheme(uri) -> ExternalAction.Rejected(RejectionReason.UNSUPPORTED_URI)
             else -> ExternalAction.Rejected(RejectionReason.MALFORMED_URI)
         }
     }
 
     private fun addRepository(uri: String): ExternalAction {
-        val prefix = "tachiyomi://add-repo"
+        val prefix = when {
+            uri.startsWith("tachiyomi://add-repo") -> "tachiyomi://add-repo"
+            uri.startsWith("mihon://extension-store") -> "mihon://extension-store"
+            else -> return ExternalAction.Rejected(RejectionReason.UNSUPPORTED_URI)
+        }
         if (!uri.startsWith(prefix)) return ExternalAction.Rejected(RejectionReason.UNSUPPORTED_URI)
         if ('#' in uri) return ExternalAction.Rejected(RejectionReason.MALFORMED_URI)
         val suffix = uri.removePrefix(prefix)

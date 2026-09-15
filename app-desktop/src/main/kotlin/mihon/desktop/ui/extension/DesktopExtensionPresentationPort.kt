@@ -16,6 +16,8 @@ import mihon.desktop.extension.DesktopExtensionPresentationService
 import mihon.desktop.extension.InstalledExtension
 import mihon.desktop.settings.DesktopAppPreferences
 import mihon.domain.extension.model.ExtensionCatalogResult
+import mihon.domain.extension.model.ExtensionCompatibility
+import mihon.domain.extension.model.RepositoryIdentity
 import mihon.domain.extension.model.extractExtensionLibVersion
 import mihon.domain.extension.presentation.ExtensionPresentationAdapter
 import mihon.domain.extension.presentation.ExtensionPresentationAction
@@ -30,6 +32,7 @@ import mihon.domain.extension.service.ExtensionInstallState
 import mihon.domain.extension.service.ExtensionUpdatePolicy
 import mihon.domain.extension.service.SharedExtensionUpdatePolicy
 import mihon.domain.extensionrepo.model.ExtensionRepo
+import mihon.domain.extensionrepo.model.normalizedSigningKeyFingerprint
 import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.i18n.MR
 import java.util.Locale
@@ -39,6 +42,7 @@ data class DesktopExtensionItem(
     val operationPackageName: String,
     val installed: InstalledExtension? = null,
     val available: DesktopAvailableExtension? = null,
+    val compatibility: ExtensionCompatibility? = available?.compatibility,
 )
 
 data class DesktopExtensionProjection(
@@ -162,18 +166,31 @@ class DesktopExtensionPresentationPort(
         sourcePreferences?.setAllEnabled(extension.sources.map(Source::id), enabled)
 
     fun canonicalCandidates(catalog: DesktopExtensionCatalogState): Map<String, DesktopAvailableExtension> =
-        catalog.available.associateBy(DesktopAvailableExtension::pkgName)
+        catalog.available.groupBy(DesktopAvailableExtension::pkgName).mapValues { (packageName, candidates) ->
+            val installed = installedExtensions.value.find { it.pkgName == packageName }
+            candidates.find {
+                installed != null && it.repoUrl.normalizedRepo() == installed.repoUrl.normalizedRepo() &&
+                    (installed.repoFingerprint.isBlank() ||
+                        it.repoFingerprint.normalizedSigningKeyFingerprint() == installed.repoFingerprint.normalizedSigningKeyFingerprint())
+            } ?: candidates.last()
+        }
 
     fun project(catalog: DesktopExtensionCatalogState): DesktopExtensionProjection {
         val candidates = canonicalCandidates(catalog)
-        val successfulRepos = (catalog.available.map { it.repoUrl } +
-            catalog.catalog.entries.map { it.artifact.repository.baseUrl }).mapTo(mutableSetOf(), String::normalizedRepo)
+        val successfulRepos = catalog.catalog.repositories +
+            catalog.catalog.entries.map { it.artifact.repository } +
+            catalog.available.map { RepositoryIdentity(it.repoUrl, it.repoName, it.repoFingerprint) }
         val failedRepos = catalog.catalog.failures.mapTo(mutableSetOf()) { it.repository.baseUrl.normalizedRepo() }
         val installed = installedExtensions.value.map { extension ->
-            val candidate = candidates[extension.pkgName]
+            val candidate = catalog.available.find {
+                it.pkgName == extension.pkgName &&
+                    (extension.repoUrl.isBlank() || it.repoUrl.normalizedRepo() == extension.repoUrl.normalizedRepo()) &&
+                    (extension.repoFingerprint.isBlank() ||
+                        it.repoFingerprint.normalizedSigningKeyFingerprint() == extension.repoFingerprint.normalizedSigningKeyFingerprint())
+            }
             val bundled = extension.pkgName == BUNDLED_MANGADEX
             extension.item(
-                hasUpdate = !bundled && candidate != null && (
+                hasUpdate = !bundled && candidate != null && candidate.compatibility == ExtensionCompatibility.Compatible && (
                     extension.requiresApkReconversion ||
                         updatePolicy.isUpdateAvailable(
                             candidate.versionCode,
@@ -183,9 +200,13 @@ class DesktopExtensionPresentationPort(
                         )
                     ),
                 isObsolete = !bundled && candidate == null && extension.repoUrl.isNotBlank() &&
-                    extension.repoUrl.normalizedRepo() in successfulRepos &&
+                    successfulRepos.any {
+                        it.baseUrl.normalizedRepo() == extension.repoUrl.normalizedRepo() &&
+                            (extension.repoFingerprint.isBlank() ||
+                                it.signingKeyFingerprint.normalizedSigningKeyFingerprint() == extension.repoFingerprint.normalizedSigningKeyFingerprint())
+                    } &&
                     extension.repoUrl.normalizedRepo() !in failedRepos,
-            )
+            ).copy(compatibility = candidate?.compatibility)
         }
         return DesktopExtensionProjection(
             installed,

@@ -4,6 +4,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import mihon.domain.extensionrepo.model.ExtensionRepo
+import mihon.domain.extensionrepo.model.normalizedSigningKeyFingerprint
 import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
 import mihon.domain.extensionrepo.service.ExtensionRepoService
 
@@ -22,9 +23,16 @@ class UpdateExtensionRepo(
         val newRepo = service.fetchRepoDetails(repo.baseUrl) ?: return
         if (
             repo.signingKeyFingerprint.startsWith("NOFINGERPRINT") ||
-            repo.signingKeyFingerprint == newRepo.signingKeyFingerprint
+            repo.signingKeyFingerprint.normalizedSigningKeyFingerprint() ==
+            newRepo.signingKeyFingerprint.normalizedSigningKeyFingerprint()
         ) {
-            repository.upsertRepo(newRepo)
+            repository.upsertRepo(
+                if (repo.signingKeyFingerprint.startsWith("NOFINGERPRINT")) {
+                    newRepo
+                } else {
+                    newRepo.copy(signingKeyFingerprint = repo.signingKeyFingerprint)
+                },
+            )
         }
     }
 }

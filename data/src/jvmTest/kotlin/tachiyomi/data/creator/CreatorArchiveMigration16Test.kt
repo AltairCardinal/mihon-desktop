@@ -13,6 +13,9 @@ class CreatorArchiveMigration16Test {
     fun `v16 through latest preserves archive data and accepts split chapter variants`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         Database.Schema.create(driver)
+        listOf("index_url", "extension_list_url", "contact_discord").forEach { column ->
+            driver.execute(null, "ALTER TABLE extension_repos DROP COLUMN $column", 0)
+        }
         driver.execute(null, "DROP INDEX idx_author_archive_discoveries_unread", 0)
         driver.execute(null, "PRAGMA user_version = 16", 0)
         driver.execute(
@@ -25,7 +28,12 @@ class CreatorArchiveMigration16Test {
 
         DatabaseMigration.migrateAtomically(driver, 16, CreatorArchiveV2Contract.LATEST_SCHEMA_VERSION)
 
-        queryLong(driver, "PRAGMA user_version") shouldBe 18L
+        queryLong(driver, "PRAGMA user_version") shouldBe Database.Schema.version
+        queryLong(
+            driver,
+            "SELECT COUNT(*) FROM pragma_table_info('extension_repos') " +
+                "WHERE name IN ('index_url', 'extension_list_url', 'contact_discord')",
+        ) shouldBe 3L
         queryLong(driver, "SELECT COUNT(*) FROM author_archive_creators") shouldBe 1L
         queryLong(
             driver,

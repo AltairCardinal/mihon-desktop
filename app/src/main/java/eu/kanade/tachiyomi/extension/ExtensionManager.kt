@@ -5,6 +5,7 @@ import android.graphics.drawable.Drawable
 import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.api.ExtensionApi
+import eu.kanade.tachiyomi.extension.api.ExtensionDiscoveryResult
 import eu.kanade.tachiyomi.extension.api.ExtensionUpdateNotifier
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
@@ -13,6 +14,7 @@ import eu.kanade.tachiyomi.extension.util.ExtensionInstallReceiver
 import eu.kanade.tachiyomi.extension.util.ExtensionInstaller
 import eu.kanade.tachiyomi.extension.util.ExtensionLoader
 import eu.kanade.tachiyomi.util.system.toast
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -24,11 +26,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import mihon.domain.error.AppError
+import mihon.domain.extension.model.ExtensionCompatibility
+import mihon.domain.extension.model.RepositoryCatalogFailure
 import mihon.domain.extension.service.ExtensionInstallFailure
 import mihon.domain.extension.service.ExtensionUpdatePolicy
 import mihon.domain.extension.service.SharedExtensionUpdatePolicy
@@ -60,6 +65,8 @@ class ExtensionManager internal constructor(
         ExtensionInstallReceiver(listener).register(context)
     },
     val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
+    private val catalogFailuresProvider: (suspend () -> List<RepositoryCatalogFailure>)? = null,
+    private val discoveryProvider: (suspend () -> ExtensionDiscoveryResult)? = null,
 ) {
 
     private val _isInitialized = MutableStateFlow(false)
@@ -84,6 +91,9 @@ class ExtensionManager internal constructor(
 
     private val availableExtensionMapFlow = MutableStateFlow(emptyMap<String, Extension.Available>())
     val availableExtensionsFlow = availableExtensionMapFlow.mapValues()
+
+    private val _repositoryFailures = MutableStateFlow(emptyList<RepositoryCatalogFailure>())
+    val repositoryFailures: StateFlow<List<RepositoryCatalogFailure>> = _repositoryFailures.asStateFlow()
 
     private val untrustedExtensionMapFlow = MutableStateFlow(emptyMap<String, Extension.Untrusted>())
     val untrustedExtensionsFlow = untrustedExtensionMapFlow.mapValues()
@@ -127,7 +137,6 @@ class ExtensionManager internal constructor(
     private var availableExtensionsSourcesData: Map<Long, StubSource> = emptyMap()
 
     private fun setupAvailableExtensionsSourcesDataMap(extensions: List<Extension.Available>) {
-        if (extensions.isEmpty()) return
         availableExtensionsSourcesData = extensions
             .flatMap { ext -> ext.sources.map { it.toStubSource() } }
             .associateBy { it.id }
@@ -170,18 +179,39 @@ class ExtensionManager internal constructor(
      * Finds the available extensions in the [api] and updates [availableExtensionMapFlow].
      */
     suspend fun findAvailableExtensions() {
-        val extensions: List<Extension.Available> = try {
-            availableExtensionsProvider?.invoke() ?: api.findExtensions()
+        val discovery: ExtensionDiscoveryResult = try {
+            if (discoveryProvider != null) {
+                discoveryProvider.invoke()
+            } else if (availableExtensionsProvider != null) {
+                ExtensionDiscoveryResult(
+                    extensions = availableExtensionsProvider.invoke(),
+                    failures = catalogFailuresProvider?.invoke().orEmpty(),
+                    repositories = emptyList(),
+                )
+            } else {
+                api.findExtensionsWithFailures()
+            }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             withUIContext { context.toast(MR.strings.extension_api_error) }
             return
         }
+        val extensions = discovery.extensions
+        _repositoryFailures.value = discovery.failures
 
         enableAdditionalSubLanguages(extensions)
 
-        availableExtensionMapFlow.value = extensions.associateBy { it.pkgName }
-        updatedInstalledExtensionsStatuses(extensions)
+        availableExtensionMapFlow.value = extensions.groupBy { it.pkgName }.mapValues { (pkgName, candidates) ->
+            val owner = installedExtensionMapFlow.value[pkgName]?.repoUrl?.normalizedRepo()
+            candidates.find { it.repoUrl.normalizedRepo() == owner } ?: candidates.last()
+        }
+        updatedInstalledExtensionsStatuses(
+            availableExtensions = extensions,
+            failedRepositories = discovery.failures.mapTo(mutableSetOf()) { it.repository.baseUrl.normalizedRepo() },
+            successfulRepositories = discovery.repositories.mapTo(mutableSetOf()) { it.baseUrl.normalizedRepo() },
+        )
         setupAvailableExtensionsSourcesDataMap(extensions)
     }
 
@@ -220,21 +250,29 @@ class ExtensionManager internal constructor(
      *
      * @param availableExtensions The list of extensions given by the [api].
      */
-    private fun updatedInstalledExtensionsStatuses(availableExtensions: List<Extension.Available>) {
-        if (availableExtensions.isEmpty()) {
-            preferences.extensionUpdatesCount().set(0)
-            return
-        }
-
+    private fun updatedInstalledExtensionsStatuses(
+        availableExtensions: List<Extension.Available>,
+        failedRepositories: Set<String>,
+        successfulRepositories: Set<String>,
+    ) {
         installedExtensionMapFlow.update { installedExtensions ->
             installedExtensions.mapValues { (pkgName, extension) ->
-                val availableExt = availableExtensions.find { it.pkgName == pkgName }
+                val repository = extension.repoUrl?.normalizedRepo()
+                val availableExt = availableExtensions.find {
+                    it.pkgName == pkgName && (repository == null || it.repoUrl.normalizedRepo() == repository)
+                }
+                val repositoryFailed = repository in failedRepositories
+                val repositorySucceeded = repository in successfulRepositories
 
                 when {
-                    availableExt == null && !extension.isObsolete -> extension.copy(isObsolete = true)
+                    repositoryFailed -> extension
+                    availableExt == null && repositorySucceeded ->
+                        extension.copy(isObsolete = true, hasUpdate = false, availableCompatibility = null)
                     availableExt != null -> extension.copy(
                         hasUpdate = extension.updateExists(availableExt),
                         repoUrl = availableExt.repoUrl,
+                        isObsolete = false,
+                        availableCompatibility = availableExt.compatibility,
                     )
                     else -> extension
                 }
@@ -251,6 +289,7 @@ class ExtensionManager internal constructor(
      * @param extension The extension to be installed.
      */
     fun installExtension(extension: Extension.Available): Flow<InstallStep> {
+        if (extension.compatibility != ExtensionCompatibility.Compatible) return flowOf(InstallStep.Error)
         return installer.downloadAndInstall(api.getApkUrl(extension), extension)
     }
 
@@ -263,6 +302,9 @@ class ExtensionManager internal constructor(
      */
     fun updateExtension(extension: Extension.Installed): Flow<InstallStep> {
         val availableExt = availableExtensionMapFlow.value[extension.pkgName] ?: return emptyFlow()
+        if (extension.repoUrl != null && extension.repoUrl.normalizedRepo() != availableExt.repoUrl.normalizedRepo()) {
+            return flowOf(InstallStep.Error)
+        }
         return installExtension(availableExt)
     }
 
@@ -460,6 +502,8 @@ class ExtensionManager internal constructor(
             ?: availableExtensionMapFlow.value[pkgName]
             ?: return false
 
+        if (availableExt.compatibility != ExtensionCompatibility.Compatible) return false
+
         return updatePolicy.isUpdateAvailable(
             availableVersionCode = availableExt.versionCode,
             availableLibVersion = availableExt.libVersion,
@@ -478,6 +522,8 @@ class ExtensionManager internal constructor(
 
     private operator fun <T : Extension> Map<String, T>.plus(extension: T) = plus(extension.pkgName to extension)
 }
+
+private fun String.normalizedRepo(): String = trim().trimEnd('/')
 
 @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
 private fun <T : Extension> StateFlow<Map<String, T>>.mapValues(): StateFlow<List<T>> {

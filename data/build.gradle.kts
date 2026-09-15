@@ -42,6 +42,7 @@ kotlin {
         }
         val androidUnitTest by getting {
             dependencies {
+                implementation(libs.sqldelight.jvm.driver)
                 runtimeOnly(libs.junit.platform.launcher)
             }
         }

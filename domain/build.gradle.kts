@@ -13,10 +13,14 @@ kotlin {
     applyDefaultHierarchyTemplate()
 
     sourceSets {
+        commonTest {
+            resources.srcDir("../app-desktop/src/test/resources/extensions/index")
+        }
         commonMain {
             dependencies {
                 implementation(projects.sourceApi)
                 implementation(projects.core.common)
+                implementation(libs.okio)
 
                 implementation(project.dependencies.platform(kotlinx.coroutines.bom))
                 implementation(kotlinx.bundles.coroutines)
@@ -47,6 +51,7 @@ kotlin {
             dependencies {
                 implementation(libs.bundles.test)
                 implementation(kotlinx.coroutines.test)
+                implementation(libs.okhttp.mockwebserver)
                 runtimeOnly(libs.junit.platform.launcher)
             }
         }
@@ -67,4 +72,5 @@ android {
     }
 
     sourceSets["test"].resources.srcDir("src/commonTest/resources")
+    sourceSets["test"].resources.srcDir("../app-desktop/src/test/resources/extensions/index")
 }

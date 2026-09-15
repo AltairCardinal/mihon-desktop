@@ -321,6 +321,7 @@ dependencies {
 
     // Tests
     testImplementation(libs.bundles.test)
+    testImplementation(libs.sqldelight.jvm.driver)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(androidx.paging.testing)
     testImplementation("androidx.work:work-testing:2.11.1")

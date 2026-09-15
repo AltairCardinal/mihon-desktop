@@ -80,6 +80,7 @@ import mihon.domain.error.AppError
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationOptions
 import mihon.domain.extension.presentation.extensionActionEligibility
+import mihon.domain.extension.model.ExtensionCompatibility
 import tachiyomi.i18n.MR
 import java.util.Locale
 
@@ -444,6 +445,7 @@ private fun InstalledTab(
                 val ext = requireNotNull(item.installed)
                 ExtensionCard(
                     extension = ext,
+                    compatibility = item.compatibility,
                     onUninstall = { onUninstall(item) },
                     onOpen = { onOpen(ext) },
                     onSettings = onSettings,
@@ -540,6 +542,7 @@ private fun AvailableTab(
 @Composable
 private fun ExtensionCard(
     extension: InstalledExtension,
+    compatibility: ExtensionCompatibility?,
     onUninstall: () -> Unit,
     onOpen: () -> Unit,
     onSettings: (sourceId: Long, sourceName: String) -> Unit,
@@ -558,6 +561,7 @@ private fun ExtensionCard(
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = extension.name, style = MaterialTheme.typography.titleSmall)
+                ExtensionCompatibilityWarning(compatibility)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = extension.sources.joinToString(", ") {
@@ -635,6 +639,7 @@ private fun AvailableExtensionCard(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline,
                 )
+                ExtensionCompatibilityWarning(extension.compatibility)
                 extensionInstallStepCopy(installStep)?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
                 installError?.let {
                     Text(extensionInstallErrorCopy(presentation.name, it), color = MaterialTheme.colorScheme.error)
@@ -646,6 +651,10 @@ private fun AvailableExtensionCard(
                 }
             }
             when {
+                extension.compatibility != ExtensionCompatibility.Compatible -> OutlinedButton(
+                    onClick = {},
+                    enabled = false,
+                ) { Text(MR.strings.action_install.localized()) }
                 eligibility.canCancel -> Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(24.dp))
                     TextButton(
@@ -681,6 +690,22 @@ private fun AvailableExtensionCard(
                 else -> Unit
             }
         }
+    }
+}
+
+@Composable
+private fun ExtensionCompatibilityWarning(compatibility: ExtensionCompatibility?) {
+    if (compatibility is ExtensionCompatibility.UnsupportedLib) {
+        Text(
+            text = MR.strings.extension_unsupported_api.localized(
+                Locale.getDefault(),
+                compatibility.libVersion.toString(),
+                compatibility.minimum.toString(),
+                compatibility.maximum.toString(),
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
     }
 }
 

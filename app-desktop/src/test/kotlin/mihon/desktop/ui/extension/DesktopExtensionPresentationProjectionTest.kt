@@ -36,6 +36,57 @@ import org.junit.jupiter.api.Test
 
 class DesktopExtensionPresentationProjectionTest {
     @Test
+    fun `equivalent owner fingerprints preserve update candidates and successful empty decisions`() {
+        val repository = RepositoryIdentity("https://ok.example", "Owner", "aabb")
+        val installed = installed("pkg.reader", repository.baseUrl).copy(repoFingerprint = " AA:BB ")
+        val candidate = available("pkg.reader").copy(repoFingerprint = "aabb")
+        val port = port(listOf(installed), mihon.domain.extension.service.SharedExtensionUpdatePolicy)
+        val catalog = DesktopExtensionCatalogState(
+            ExtensionCatalogResult(emptyList(), emptyList(), listOf(repository)),
+            listOf(candidate, candidate.copy(repoFingerprint = "different", repoUrl = "https://other.example")),
+        )
+        val projected = port.project(catalog).installed.single().presentation
+        assertTrue(projected.hasUpdate)
+        assertFalse(projected.isObsolete)
+        assertEquals(candidate, port.canonicalCandidates(catalog).getValue(candidate.pkgName))
+        assertTrue(port.project(catalog.copy(available = emptyList())).installed.single().presentation.isObsolete)
+    }
+    @Test
+    fun `same URL with replaced signing identity cannot obsolete the installed owner`() {
+        val repository = RepositoryIdentity("https://ok.example", "Owner", "replacement-key")
+        val installed = installed("pkg.reader", repository.baseUrl).copy(repoFingerprint = "original-key")
+        val port = port(listOf(installed), mihon.domain.extension.service.SharedExtensionUpdatePolicy)
+        fun project(key: String) = port.project(
+            DesktopExtensionCatalogState(ExtensionCatalogResult(emptyList(), emptyList(), listOf(repository.copy(signingKeyFingerprint = key))), emptyList()),
+        ).installed.single().presentation
+        assertFalse(project("replacement-key").isObsolete)
+        assertTrue(project("original-key").isObsolete)
+    }
+    @Test
+    fun `successful empty owner marks obsolete and other repository package cannot replace it`() {
+        val owner = RepositoryIdentity("https://ok.example", "Owner", "key")
+        val other = RepositoryIdentity("https://other.example", "Other", "other")
+        val port = port(listOf(installed("pkg.reader", owner.baseUrl)), mihon.domain.extension.service.SharedExtensionUpdatePolicy)
+        fun project(available: List<DesktopAvailableExtension>, failures: List<RepositoryCatalogFailure> = emptyList()) =
+            port.project(DesktopExtensionCatalogState(ExtensionCatalogResult(emptyList(), failures, listOf(owner, other)), available))
+                .installed.single().presentation
+        assertTrue(project(emptyList()).isObsolete)
+        assertFalse(project(emptyList(), listOf(RepositoryCatalogFailure(owner, AppError.Network()))).isObsolete)
+        assertTrue(project(listOf(available("pkg.reader").copy(repoUrl = other.baseUrl))).isObsolete)
+        assertFalse(project(listOf(available("pkg.reader"))).isObsolete)
+    }
+
+    @Test
+    fun `unsupported candidate remains classified and never enters updates including reconversion`() {
+        val candidate = available("pkg.reader").copy(libVersion = mihon.domain.extension.model.EXTENSION_LIB_VERSION_MAX + 0.1)
+        val installed = installed(candidate.pkgName, candidate.repoUrl).copy(origin = ExtensionOrigin.CONVERTED_APK, apkConversionVersion = 0)
+        val port = port(listOf(installed), mihon.domain.extension.service.SharedExtensionUpdatePolicy)
+        val projection = port.project(DesktopExtensionCatalogState(ExtensionCatalogResult(emptyList(), emptyList()), listOf(candidate)))
+        assertFalse(projection.installed.single().presentation.hasUpdate)
+        assertFalse(projection.installed.single().presentation.isObsolete)
+        assertEquals(candidate, projection.available.single().available)
+    }
+    @Test
     fun `projection uses shared policy and classifier while preserving conservative desktop boundaries`() = runTest {
         val update = installed("pkg.update", repo = "https://ok.example")
         val noUpdate = installed("pkg.current", repo = "https://ok.example")

@@ -57,6 +57,11 @@ class DesktopDatabaseMigrationSafetyTest {
                 "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name LIKE 'author_archive_%'",
             ) shouldBe CreatorArchivePhysicalSchema.tables.size.toLong()
             queryLong(driver, "SELECT COUNT(*) FROM pragma_foreign_key_check") shouldBe 0L
+            queryLong(
+                driver,
+                "SELECT COUNT(*) FROM pragma_table_info('extension_repos') " +
+                    "WHERE name IN ('index_url', 'extension_list_url', 'contact_discord')",
+            ) shouldBe 3L
             assertForeignKeysEnforced(driver)
         }
     }
@@ -103,6 +108,10 @@ class DesktopDatabaseMigrationSafetyTest {
     ) {
         JdbcSqliteDriver("jdbc:sqlite:${database.absolutePath}").use { driver ->
             Database.Schema.create(driver)
+            // Restore the pre-v19 repository shape before exercising the actual migrations.
+            listOf("index_url", "extension_list_url", "contact_discord").forEach { column ->
+                driver.execute(null, "ALTER TABLE extension_repos DROP COLUMN $column", 0)
+            }
             CreatorArchivePhysicalSchema.tables.asReversed().forEach { table ->
                 driver.execute(null, "DROP TABLE IF EXISTS ${table.name}", 0)
             }

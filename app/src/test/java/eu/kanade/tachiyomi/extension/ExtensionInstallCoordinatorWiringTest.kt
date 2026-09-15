@@ -52,6 +52,7 @@ import tachiyomi.core.common.preference.Preference
 import java.io.File
 import java.nio.file.Path
 import java.util.Properties
+import java.util.concurrent.TimeUnit
 
 class ExtensionInstallCoordinatorWiringTest {
 
@@ -65,6 +66,7 @@ class ExtensionInstallCoordinatorWiringTest {
         try {
             MockWebServer().also { it.start() }.use { server ->
                 val index = INDEX_JSON.replace(DECLARED_SHA, Hash.sha256(candidate))
+                server.enqueue(MockResponse(body = REPOSITORY_JSON))
                 server.enqueue(MockResponse(body = index))
                 server.enqueue(MockResponse(body = candidate.decodeToString()))
                 val repository = ExtensionRepo(
@@ -108,6 +110,8 @@ class ExtensionInstallCoordinatorWiringTest {
                 val manager = managerWith(installer)
 
                 val available = api.findExtensions().single()
+                assertEquals("/repo.json", server.takeRequest(5, TimeUnit.SECONDS)?.url?.encodedPath)
+                assertEquals("/index.min.json", server.takeRequest(5, TimeUnit.SECONDS)?.url?.encodedPath)
                 val terminal = manager.installExtension(available).first(InstallStep::isCompleted)
 
                 assertEquals(InstallStep.Installed, terminal)
@@ -132,6 +136,7 @@ class ExtensionInstallCoordinatorWiringTest {
     @Test
     fun `catalog repository identity digest and download URL reach Android install request unchanged`() = runTest {
         MockWebServer().also { it.start() }.use { server ->
+            server.enqueue(MockResponse(body = REPOSITORY_JSON))
             server.enqueue(MockResponse(body = INDEX_JSON))
             val repository = ExtensionRepo(
                 baseUrl = server.url("/").toString().removeSuffix("/"),
@@ -148,6 +153,8 @@ class ExtensionInstallCoordinatorWiringTest {
                 responseAdapter = AndroidNetworkResponseAdapter(),
             )
             val available = api.findExtensions().single()
+            assertEquals("/repo.json", server.takeRequest(5, TimeUnit.SECONDS)?.url?.encodedPath)
+            assertEquals("/index.min.json", server.takeRequest(5, TimeUnit.SECONDS)?.url?.encodedPath)
             val port = RecordingInstallPort()
             val manager = managerWith(installerWith(port, this))
 
@@ -396,7 +403,10 @@ class ExtensionInstallCoordinatorWiringTest {
     private companion object {
         const val PACKAGE_NAME = "example.extension"
         const val DECLARED_SHA = "0123456789abcdef"
+        const val REPOSITORY_JSON = """{"meta":{"name":"Official extensions",
+            "website":"https://repo.example","signingKeyFingerprint":"AB:CD:EF"}}"""
         const val INDEX_JSON =
-            """[{"name":"Tachiyomi: Example","pkg":"example.extension","apk":"example.apk","lang":"en","code":1,"version":"1.4.1","nsfw":0,"sha256":"$DECLARED_SHA","sources":[]}]"""
+            """[{"name":"Tachiyomi: Example","pkg":"example.extension","apk":"example.apk","lang":"en",
+                "code":1,"version":"1.4.1","nsfw":0,"sha256":"$DECLARED_SHA","sources":[]}]"""
     }
 }

@@ -69,6 +69,8 @@
 
                 <data android:scheme="tachiyomi" />
                 <data android:host="add-repo" />
+                <data android:scheme="mihon" />
+                <data android:host="extension-store" />
             </intent-filter>
 
             <!-- Open backup files -->

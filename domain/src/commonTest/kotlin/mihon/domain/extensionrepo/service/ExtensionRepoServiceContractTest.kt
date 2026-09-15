@@ -1,8 +1,10 @@
 package mihon.domain.extensionrepo.service
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class ExtensionRepoServiceContractTest {
@@ -59,6 +61,26 @@ class ExtensionRepoServiceContractTest {
             success(ExtensionRepoAction.DELETE)
         }
         assertEquals(listOf(ExtensionRepoActionResult.Pending(ExtensionRepoAction.DELETE), result), events)
+    }
+
+    @Test
+    fun `repository actions propagate cancellation instead of reporting a failure`() = runTest {
+        val service = ExtensionRepoService()
+
+        assertCancellation {
+            service.create(old.baseUrl) { throw CancellationException("cancel create") }
+        }
+        assertCancellation {
+            service.replace(old, replacement) { throw CancellationException("cancel replace") }
+        }
+        assertCancellation {
+            service.delete(old.baseUrl) { throw CancellationException("cancel delete") }
+        }
+    }
+
+    private suspend fun assertCancellation(block: suspend () -> Any?) {
+        val failure = runCatching { block() }.exceptionOrNull()
+        assertTrue(failure is CancellationException, "Expected cancellation, got $failure")
     }
 
     private fun success(action: ExtensionRepoAction) = ExtensionRepoActionResult.Success(action)
