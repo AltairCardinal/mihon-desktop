@@ -239,6 +239,7 @@ class GitHubSyncTransport(
         repository: SyncRepository,
         snapshot: SyncSnapshot,
         upload: SyncPreparedUpload,
+        observeSnapshot: suspend (SyncSnapshot) -> Unit,
     ): SyncPublishResult {
         val batch = upload.encryptedBatch
         require(repository == snapshot.repository && repository == upload.repository) {
@@ -256,6 +257,7 @@ class GitHubSyncTransport(
                 require(matches(current, upload)) { "sync batch id already contains different bytes" }
                 // A caller may pass a historical snapshot after a restart. Only the live ref can confirm delivery.
                 val observed = readSnapshot(repository, snapshot.spaceId, snapshot.generation).getOrNull()
+                if (observed != null) observeSnapshot(observed)
                 if (observed == null || !suspendResult { matches(observed, upload) }.getOrDefault(false)) {
                     return SyncPublishResult(
                         SyncPublishStatus.UNCONFIRMED,
@@ -310,6 +312,7 @@ class GitHubSyncTransport(
                 refError = error
             }
             val observed = readSnapshot(repository, snapshot.spaceId, snapshot.generation).getOrNull()
+            if (observed != null) observeSnapshot(observed)
             if (observed != null && suspendResult { matches(observed, upload) }.getOrDefault(false)) {
                 return SyncPublishResult(SyncPublishStatus.PUBLISHED, batch.batchId, observed.head, attempts = attempt)
             }

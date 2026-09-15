@@ -7,6 +7,7 @@ CREATE TABLE sync_spaces (
     repository_name TEXT NOT NULL,
     repository_branch TEXT NOT NULL,
     active INTEGER AS Boolean NOT NULL DEFAULT 0,
+    exchange_enabled INTEGER AS Boolean NOT NULL DEFAULT 1,
     PRIMARY KEY (space_id, generation)
 );
 
@@ -98,7 +99,16 @@ getSpace:
 SELECT * FROM sync_spaces WHERE space_id = ? AND generation = ?;
 
 activateSpace:
-UPDATE sync_spaces SET active = 1 WHERE space_id = ? AND generation = ?;
+UPDATE sync_spaces SET active = 1, exchange_enabled = 1 WHERE space_id = ? AND generation = ?;
+
+disconnectSpace:
+UPDATE sync_spaces SET exchange_enabled = 0 WHERE space_id = ? AND generation = ?;
+
+retireActors:
+UPDATE sync_actors SET local_current = 0 WHERE space_id = ? AND generation = ?;
+
+sealSpaceBatches:
+UPDATE sync_batches SET status = 'SEALED' WHERE space_id = ? AND generation = ? AND status = 'OPEN';
 
 insertActor:
 INSERT INTO sync_actors(space_id, generation, actor_id, epoch) VALUES (?, ?, ?, ?);

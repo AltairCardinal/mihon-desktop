@@ -108,6 +108,7 @@ interface SyncTransportPort {
         repository: SyncRepository,
         snapshot: SyncSnapshot,
         upload: SyncPreparedUpload,
+        observeSnapshot: suspend (SyncSnapshot) -> Unit = {},
     ): SyncPublishResult
 
     suspend fun readBatch(snapshot: SyncSnapshot, entry: SyncBatchIndexEntry): Result<SyncEncryptedBatch> =

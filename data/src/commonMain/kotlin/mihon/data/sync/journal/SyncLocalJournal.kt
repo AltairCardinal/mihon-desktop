@@ -4,10 +4,28 @@ import mihon.domain.sync.SyncCodec
 import mihon.domain.sync.SyncDecodeResult
 import mihon.domain.sync.SyncEventEnvelope
 import mihon.domain.sync.transport.SyncRepository
+import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
+import java.util.UUID
 
 /** The active space records operations independently of scheduling and GitHub credential availability. */
 class SyncLocalJournal(private val handler: DatabaseHandler) {
+    suspend fun disconnect(spaceId: String, generation: Long) = handler.await {
+        sync_journalQueries.disconnectSpace(spaceId, generation)
+    }
+
+    suspend fun renewIdentity(spaceId: String, generation: Long): SyncLocalIdentity = handler.await(
+        inTransaction = true,
+    ) {
+        val current = sync_journalQueries.getCurrentActor(spaceId, generation).executeAsOne()
+        require(current.epoch < Long.MAX_VALUE) { "device epoch exhausted" }
+        val next = SyncLocalIdentity(UUID.randomUUID().toString(), current.epoch + 1)
+        sync_journalQueries.sealSpaceBatches(spaceId, generation)
+        sync_journalQueries.retireActors(spaceId, generation)
+        sync_journalQueries.insertActor(spaceId, generation, next.actorId, next.epoch)
+        next
+    }
+
     suspend fun connect(
         spaceId: String,
         generation: Long,
@@ -57,4 +75,11 @@ class SyncLocalJournal(private val handler: DatabaseHandler) {
             }
         }
     }
+}
+
+data class SyncLocalIdentity(val actorId: String, val epoch: Long)
+
+internal fun Database.requireSyncExchange(spaceId: String, generation: Long) {
+    val space = sync_journalQueries.getSpace(spaceId, generation).executeAsOneOrNull()
+    require(space?.active == true && space.exchange_enabled) { "sync space is disconnected or inactive" }
 }

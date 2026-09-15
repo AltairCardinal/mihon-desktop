@@ -52,6 +52,7 @@ internal fun Database.appendReadingOperation(event: ReadingProgressEvent): SyncE
 
 internal fun Database.appendChapterReadOperation(chapterId: Long, read: Boolean, context: SyncMutationContext) {
     if (!context.uploadAllowed || context.origin != SyncOrigin.USER) return
+    sync_importQueries.setPublicReadStatus(if (read) 1L else 0L, chapterId)
     val (chapterKey, _) = readingObjectKeys(chapterId)
     appendSyncOperation(
         context,

@@ -2,6 +2,7 @@ package mihon.data.sync.journal
 
 import mihon.data.sync.crypto.SyncAeadEngineFactory
 import mihon.data.sync.transport.SyncBatchSyncService
+import mihon.data.sync.transport.SyncRemoteSnapshotGuard
 import mihon.data.sync.transport.SyncUploadArtifactCodec
 import mihon.domain.sync.SyncBatch
 import mihon.domain.sync.SyncBatchCodec
@@ -19,6 +20,10 @@ import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.Sync_batches
 
 class SyncOutboxStore(private val handler: DatabaseHandler) {
+    private val remoteGuard = SyncRemoteSnapshotGuard(handler)
+
+    suspend fun observeSnapshot(snapshot: SyncSnapshot) = remoteGuard.observe(snapshot)
+
     suspend fun nextBatch(spaceId: String, generation: Long): SyncBatch? = handler.await(inTransaction = true) {
         requireActive(spaceId, generation)
         val stored = sync_journalQueries.getNextUploadBatch(spaceId, generation).executeAsOneOrNull()
@@ -71,9 +76,7 @@ class SyncOutboxStore(private val handler: DatabaseHandler) {
     }
 
     private fun Database.requireActive(spaceId: String, generation: Long) {
-        require(sync_journalQueries.getSpace(spaceId, generation).executeAsOneOrNull()?.active == true) {
-            "sync space is not active"
-        }
+        requireSyncExchange(spaceId, generation)
     }
 
     private fun Database.requireBatch(batch: SyncBatch): Sync_batches {
@@ -132,6 +135,7 @@ class SyncOutboxStore(private val handler: DatabaseHandler) {
 /** One bounded upload; application scheduling and receiving are separate responsibilities. */
 class SyncOutboxExchange(private val store: SyncOutboxStore, private val service: SyncBatchSyncService) {
     suspend fun uploadNext(snapshot: SyncSnapshot): SyncUploadResult? {
+        store.observeSnapshot(snapshot)
         val batch = store.nextBatch(snapshot.spaceId, snapshot.generation) ?: return null
         val upload = store.prepared(batch) ?: store.savePrepared(
             batch,
@@ -142,7 +146,7 @@ class SyncOutboxExchange(private val store: SyncOutboxStore, private val service
                     "${batch.events.first().epoch}/${batch.batchId}.json",
             ),
         )
-        val result = service.uploadPrepared(snapshot.repository, snapshot, upload)
+        val result = service.uploadPrepared(snapshot.repository, snapshot, upload, store::observeSnapshot)
         if (result.publish.status == SyncPublishStatus.PUBLISHED) store.acknowledge(upload, result.publish)
         return result
     }

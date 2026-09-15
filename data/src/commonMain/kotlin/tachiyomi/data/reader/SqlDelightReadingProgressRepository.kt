@@ -6,6 +6,7 @@ import mihon.data.sync.journal.readingObjectKeys
 import mihon.domain.sync.SyncEffectRef
 import mihon.domain.sync.SyncField
 import mihon.domain.sync.SyncFieldKey
+import mihon.domain.sync.SyncOrigin
 import tachiyomi.data.Database
 import tachiyomi.domain.reader.model.ReadingProgressEvent
 import tachiyomi.domain.reader.model.ReadingSyncScope
@@ -52,6 +53,16 @@ class SqlDelightReadingProgressRepository(private val database: Database) : Read
             )
             if (database.reading_eventsQueries.lastInsertWasNew().executeAsOne() == 0L) {
                 return@transactionWithResult snapshot
+            }
+            if (!event.syncContext.uploadAllowed) {
+                database.sync_importQueries.markPrivateReading(event.chapterId)
+            } else if (event.syncContext.origin == SyncOrigin.USER) {
+                database.sync_importQueries.advancePublicReading(
+                    finished = if (event.totalPages > 0 && event.lastPageRead >= event.totalPages - 1) 1L else 0L,
+                    page = event.lastPageRead.toLong(),
+                    readAt = if (event.recordHistory) event.readAt.time else -1L,
+                    chapterId = event.chapterId,
+                )
             }
             database.chaptersQueries.update(
                 mangaId = null,

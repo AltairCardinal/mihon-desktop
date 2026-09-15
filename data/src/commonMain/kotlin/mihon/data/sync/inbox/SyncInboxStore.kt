@@ -1,7 +1,9 @@
 package mihon.data.sync.inbox
 
 import kotlinx.serialization.json.Json
+import mihon.data.sync.journal.requireSyncExchange
 import mihon.data.sync.transport.SyncBatchSyncService
+import mihon.data.sync.transport.SyncRemoteSnapshotGuard
 import mihon.domain.sync.SyncBatch
 import mihon.domain.sync.SyncBatchCodec
 import mihon.domain.sync.SyncBatchDecodeResult
@@ -16,16 +18,22 @@ data class SyncReceptionResult(val accepted: Boolean, val duplicate: Boolean = f
 data class SyncInboxStatus(val receivedBatches: Long, val rejectedBatches: Long, val pendingDecisions: Long)
 
 class SyncInboxStore(private val handler: DatabaseHandler) {
+    private val remoteGuard = SyncRemoteSnapshotGuard(handler)
+
+    suspend fun observeSnapshot(snapshot: SyncSnapshot) = remoteGuard.observe(snapshot)
+
     suspend fun ingest(batch: SyncBatch): SyncReceptionResult {
         val encoded = SyncBatchCodec.rawEncode(batch)
         if (!validBatch(batch, encoded)) return SyncReceptionResult(false, error = "invalid sync batch")
         val active = handler.await {
-            sync_journalQueries.getSpace(batch.spaceId, batch.generation).executeAsOneOrNull()?.active == true
+            sync_journalQueries.getSpace(batch.spaceId, batch.generation).executeAsOneOrNull()?.let {
+                it.active && it.exchange_enabled
+            } == true
         }
         if (!active) return SyncReceptionResult(false, error = "sync space is not active")
         indexExisting(batch.spaceId, batch.generation)
         return handler.await(inTransaction = true) {
-            require(sync_journalQueries.getSpace(batch.spaceId, batch.generation).executeAsOne().active)
+            requireSyncExchange(batch.spaceId, batch.generation)
             val previous = sync_inboxQueries.getReceivedBatch(batch.spaceId, batch.generation, batch.batchId)
                 .executeAsOneOrNull()
             if (previous == encoded) return@await SyncReceptionResult(true, duplicate = true)
@@ -134,6 +142,7 @@ class SyncInboxStore(private val handler: DatabaseHandler) {
 
 class SyncInboxExchange(private val store: SyncInboxStore, private val service: SyncBatchSyncService) {
     suspend fun receive(snapshot: SyncSnapshot, entry: SyncBatchIndexEntry): SyncReceptionResult {
+        store.observeSnapshot(snapshot)
         val received = service.receive(snapshot, entry)
         val batch = received.batch ?: return SyncReceptionResult(false, error = received.error)
         return store.ingest(batch)

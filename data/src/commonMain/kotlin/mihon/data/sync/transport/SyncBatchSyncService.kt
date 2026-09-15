@@ -40,9 +40,10 @@ class SyncBatchSyncService(
         repository: SyncRepository,
         snapshot: SyncSnapshot,
         prepared: SyncPreparedUpload,
+        observeSnapshot: suspend (SyncSnapshot) -> Unit = {},
     ): SyncUploadResult = SyncUploadResult(
         prepared,
-        transport.publish(repository, snapshot, prepared),
+        transport.publish(repository, snapshot, prepared, observeSnapshot),
     )
 
     suspend fun receive(

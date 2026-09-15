@@ -99,6 +99,7 @@ class SyncRemoteProjectionWriter(
         validateChapter(chapterKey)
         val chapter = ensureChapter(chapterKey, describe)
         sync_projectionQueries.setReadStatus(read, chapter._id)
+        sync_importQueries.setPublicReadStatus(if (read) 1L else 0L, chapter._id)
         sync_projectionQueries.restoreChapterSyncing(chapter.is_syncing, chapter._id)
     }
 
@@ -112,6 +113,7 @@ class SyncRemoteProjectionWriter(
         if (pageIndex < 0) unavailable(SyncProjectionUnavailableReason.IDENTITY)
         val chapter = ensureChapter(chapterKey, describe)
         sync_projectionQueries.setResumePage(pageIndex.toLong(), chapter._id)
+        sync_importQueries.setPublicResume(pageIndex.toLong(), chapter._id)
         sync_projectionQueries.restoreChapterSyncing(chapter.is_syncing, chapter._id)
     }
 
@@ -126,6 +128,7 @@ class SyncRemoteProjectionWriter(
         val chapter = ensureChapter(chapterKey, describe)
         val previous = sync_projectionQueries.getChapterHistory(chapter._id).executeAsOneOrNull()?.last_read?.time
         historyQueries.upsert(chapter._id, Date(maxOf(previous ?: Long.MIN_VALUE, readAt)), 0)
+        sync_importQueries.setPublicHistory(readAt, chapter._id)
     }
 
     private fun Database.findManga(key: SyncObjectKey): Mangas? = sync_projectionQueries.getMangaByIdentity(

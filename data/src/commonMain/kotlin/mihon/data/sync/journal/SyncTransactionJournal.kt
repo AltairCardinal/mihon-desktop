@@ -13,6 +13,7 @@ import mihon.domain.sync.SyncEventEnvelope
 import mihon.domain.sync.SyncField
 import mihon.domain.sync.SyncFieldKey
 import mihon.domain.sync.SyncMutationContext
+import mihon.domain.sync.SyncObjectDescriptor
 import mihon.domain.sync.SyncObjectKey
 import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.SyncOrigin
@@ -27,8 +28,12 @@ internal fun Database.appendSyncOperation(
     effects: List<SyncEffect>,
     occurredAt: Long = System.currentTimeMillis(),
     relatedObjects: List<SyncObjectKey> = emptyList(),
+    frozenDescriptions: List<SyncObjectDescriptor>? = null,
 ): SyncEventEnvelope? {
-    if (!context.uploadAllowed || context.origin != SyncOrigin.USER) return null
+    val baseline =
+        frozenDescriptions != null && context.origin in setOf(SyncOrigin.INITIAL_IMPORT, SyncOrigin.BACKUP_RESTORE) &&
+            !context.importId.isNullOrBlank() && context.observedHeads != null
+    if (!context.uploadAllowed || (context.origin != SyncOrigin.USER && !baseline)) return null
     val queries = sync_journalQueries
     val actor = queries.getActiveActor().executeAsOneOrNull() ?: return null
     require(actor.next_seq < Long.MAX_VALUE) { "sync sequence requires a new device epoch" }
@@ -44,7 +49,7 @@ internal fun Database.appendSyncOperation(
         effect.copy(parents = heads)
     }
     var open = queries.getOpenBatch(actor.space_id, actor.generation, actor.actor_id, actor.epoch).executeAsOneOrNull()
-    val descriptions = describeSyncObjects(effects.map { it.objectKey } + relatedObjects)
+    val descriptions = frozenDescriptions ?: describeSyncObjects(effects.map { it.objectKey } + relatedObjects)
     var previousObjects = open?.objects_json ?: "[]"
     var objects = SyncObjectDescriptions.encode(
         (SyncObjectDescriptions.decode(previousObjects) + descriptions).distinctBy { it.objectKey },
@@ -60,7 +65,8 @@ internal fun Database.appendSyncOperation(
         seq = actor.next_seq,
         category = category,
         effects = linkedEffects,
-        origin = SyncOrigin.USER,
+        origin = context.origin,
+        importId = context.importId,
         occurredAt = occurredAt,
         batchId = batchId,
     )
@@ -100,7 +106,7 @@ internal fun Database.appendSyncOperation(
     }
     queries.insertEvent(
         actor.space_id, actor.generation, actor.actor_id, actor.epoch, actor.next_seq,
-        category.name, SyncOrigin.USER.name, batchId, encoded, occurredAt,
+        category.name, context.origin.name, batchId, encoded, occurredAt,
     )
     queries.insertOutbox(actor.space_id, actor.generation, actor.actor_id, actor.epoch, actor.next_seq, batchId)
     linkedEffects.forEach { effect ->
@@ -121,7 +127,7 @@ internal fun Database.appendSyncOperation(
     }
     queries.updateBatch(actor.next_seq, totalBytes, objects, actor.space_id, actor.generation, batchId)
     queries.advanceSequence(actor.space_id, actor.generation, actor.actor_id, actor.epoch)
-    indexSyncEvent(event, local = true)
+    indexSyncEvent(event, local = context.origin == SyncOrigin.USER)
     return event
 }
 
