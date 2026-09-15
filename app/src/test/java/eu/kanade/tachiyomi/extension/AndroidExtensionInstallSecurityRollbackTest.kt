@@ -58,6 +58,90 @@ import java.util.Properties
 class AndroidExtensionInstallSecurityRollbackTest {
 
     @Test
+    fun `first install binds candidate signer to the current repository before either commit target`(
+        @TempDir directory: Path,
+    ) = runTest {
+        for (target in AndroidInstallLocation.entries) {
+            withServer(CANDIDATE_BYTES) { server ->
+                val gateway = FakeGateway(directory.resolve(target.name).toFile(), target).apply {
+                    candidate = candidate.copy(signers = setOf("another-trusted-repository"))
+                }
+                val port = port(gateway, server)
+                val token = port.prepare(ExtensionInstallRequest(artifact(server)))
+                assertInstanceOf(
+                    AppError.Authentication::class.java,
+                    runCatching { port.validate(token) }.exceptionOrNull().installError(),
+                )
+                assertEquals(0, gateway.copyCount)
+                assertEquals(0, gateway.systemInstallCount)
+                assertEquals(PhysicalState(null, null), gateway.physicalState())
+            }
+        }
+    }
+
+    @Test
+    fun `candidate protocol must be supported and match the catalog before snapshot`(
+        @TempDir directory: Path,
+    ) = runTest {
+        for (protocol in listOf(null, 1.45, 1.7, 1.6, Double.NaN)) {
+            withServer(CANDIDATE_BYTES) { server ->
+                val gateway = FakeGateway(directory.toFile()).apply {
+                    candidate = candidate.copy(libVersion = protocol)
+                    privatePackage = installed(directory, "old-private", REPOSITORY)
+                }
+                val port = port(gateway, server)
+                val token = port.prepare(ExtensionInstallRequest(artifact(server)))
+                assertInstanceOf(
+                    AppError.MalformedData::class.java,
+                    runCatching {
+                        port.validate(token)
+                    }.exceptionOrNull().installError(),
+                )
+                assertEquals(0, gateway.copyCount)
+                assertEquals("old-private", gateway.privatePackage!!.apk.readText())
+            }
+        }
+    }
+
+    @Test
+    fun `explicit installed protocol prevents downgrade hidden by modern version name`(
+        @TempDir directory: Path,
+    ) = runTest {
+        withServer(CANDIDATE_BYTES) { server ->
+            val gateway = FakeGateway(directory.toFile()).apply {
+                privatePackage =
+                    installed(directory, "old-private", REPOSITORY, versionCode = 3, versionName = "release-3")
+                        .copy(libVersion = 1.6)
+            }
+            val port = port(gateway, server)
+            val token = port.prepare(ExtensionInstallRequest(artifact(server)))
+            assertInstanceOf(
+                AppError.MalformedData::class.java,
+                runCatching {
+                    port.validate(token)
+                }.exceptionOrNull().installError(),
+            )
+            assertEquals(0, gateway.copyCount)
+        }
+    }
+
+    @Test
+    fun `modern protocol is retained through normal private commit`(@TempDir directory: Path) = runTest {
+        withServer(CANDIDATE_BYTES) { server ->
+            val gateway = FakeGateway(directory.toFile()).apply {
+                candidate = candidate.copy(versionName = "release-2", libVersion = 1.6)
+            }
+            val port = port(gateway, server)
+            val token = port.prepare(
+                ExtensionInstallRequest(artifact(server, versionName = "release-2").copy(declaredLibVersion = 1.6)),
+            )
+            port.validate(token)
+            port.commit(token)
+            assertEquals(1.6, gateway.privatePackage!!.libVersion)
+        }
+    }
+
+    @Test
     fun `downloaded digest repository continuity and signer are enforced`(@TempDir directory: Path) = runTest {
         withServer(CANDIDATE_BYTES) { server ->
             val gateway = FakeGateway(directory.toFile(), AndroidInstallLocation.PRIVATE).apply {
@@ -1192,6 +1276,6 @@ class AndroidExtensionInstallSecurityRollbackTest {
         const val PACKAGE_NAME = "example.extension"
         const val SYSTEM_UNINSTALL_TIMEOUT_MILLIS = 2 * 60 * 1000L
         val CANDIDATE_BYTES = "candidate-v2".toByteArray()
-        val REPOSITORY = RepositoryIdentity("https://repo.example", "Official", "fingerprint")
+        val REPOSITORY = RepositoryIdentity("https://repo.example", "Official", "signer-a")
     }
 }

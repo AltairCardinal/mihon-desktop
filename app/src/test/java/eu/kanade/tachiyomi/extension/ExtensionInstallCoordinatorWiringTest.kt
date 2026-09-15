@@ -6,6 +6,7 @@ import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.api.ExtensionApi
+import eu.kanade.tachiyomi.extension.installer.Installer
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.extension.model.LoadResult
@@ -15,6 +16,7 @@ import eu.kanade.tachiyomi.extension.util.AndroidInstallLocation
 import eu.kanade.tachiyomi.extension.util.DefaultAndroidInstallGateway
 import eu.kanade.tachiyomi.extension.util.ExtensionInstallReceiver
 import eu.kanade.tachiyomi.extension.util.ExtensionInstaller
+import eu.kanade.tachiyomi.extension.util.ExtensionLoader
 import eu.kanade.tachiyomi.network.AndroidNetworkResponseAdapter
 import eu.kanade.tachiyomi.util.lang.Hash
 import io.mockk.every
@@ -25,12 +27,14 @@ import io.mockk.runs
 import io.mockk.unmockkObject
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import mihon.domain.error.AppError
 import mihon.domain.extension.service.ExtensionCatalogService
@@ -55,6 +59,115 @@ import java.util.Properties
 import java.util.concurrent.TimeUnit
 
 class ExtensionInstallCoordinatorWiringTest {
+
+    @Test
+    fun `uninstall clears only the affected package error`() = runTest {
+        mockkObject(ExtensionLoader, ExtensionInstallReceiver.Companion)
+        every { ExtensionLoader.uninstallPrivateExtension(any(), any()) } just runs
+        every { ExtensionInstallReceiver.notifyRemoved(any(), any()) } just runs
+        try {
+            val port = RecordingInstallPort().apply { validationError = AppError.Authentication() }
+            val manager = managerWith(installerWith(port, this))
+            val other = availableExtension().copy(pkgName = "other.extension")
+            manager.installExtension(availableExtension()).first(InstallStep::isCompleted)
+            manager.installExtension(other).first(InstallStep::isCompleted)
+            manager.uninstallExtension(availableExtension())
+            assertEquals(mapOf(other.pkgName to AppError.Authentication()), manager.installErrors.value)
+        } finally {
+            unmockkObject(ExtensionLoader, ExtensionInstallReceiver.Companion)
+        }
+    }
+
+    @Test
+    fun `late failed transaction cannot restore an error after a retry has started`() = runTest {
+        mockkObject(Installer.Companion)
+        every { Installer.cancelInstallQueue(any(), any()) } returns CompletableDeferred(Unit)
+        try {
+            val releaseOld = CompletableDeferred<Unit>()
+            var attempt = 0
+            val port = RecordingInstallPort(prepareAction = {
+                if (attempt++ == 0) {
+                    withContext(NonCancellable) {
+                        releaseOld.await()
+                        throw ExtensionInstallFailure(AppError.Authentication())
+                    }
+                }
+            })
+            val manager = managerWith(installerWith(port, this))
+            manager.installExtension(availableExtension())
+            runCurrent()
+            val observed = mutableListOf<Map<String, AppError>>()
+            backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                manager.installErrors.collect { observed += it }
+            }
+            val retry = manager.installExtension(availableExtension())
+            releaseOld.complete(Unit)
+            assertEquals(InstallStep.Installed, retry.first(InstallStep::isCompleted))
+            assertTrue(observed.all { it[PACKAGE_NAME] == null })
+        } finally {
+            unmockkObject(Installer.Companion)
+        }
+    }
+
+    @Test
+    fun `all typed failures survive and cancelling one package preserves other errors`() = runTest {
+        val port = RecordingInstallPort()
+        val manager = managerWith(installerWith(port, this))
+        val other = availableExtension().copy(pkgName = "other.extension")
+        port.validationError = AppError.Network()
+        manager.installExtension(other).first(InstallStep::isCompleted)
+        val failures = listOf(
+            AppError.Authentication(),
+            AppError.MalformedData(),
+            AppError.Network(),
+            AppError.Permission(),
+            AppError.Storage(),
+            AppError.RateLimited(12),
+            AppError.Server(500),
+            AppError.PartialFailure(listOf(AppError.Storage(), AppError.Unknown())),
+        )
+        for (failure in failures) {
+            port.validationError = failure
+            assertEquals(
+                InstallStep.Error,
+                manager.installExtension(availableExtension()).first(InstallStep::isCompleted),
+            )
+            assertEquals(failure, manager.installErrors.value[PACKAGE_NAME])
+        }
+        manager.cancelInstallUpdateExtension(availableExtension())
+        assertEquals(mapOf(other.pkgName to AppError.Network()), manager.installErrors.value)
+        port.validationError = AppError.Cancelled
+        assertEquals(InstallStep.Idle, manager.installExtension(availableExtension()).first(InstallStep::isCompleted))
+        assertEquals(mapOf(other.pkgName to AppError.Network()), manager.installErrors.value)
+    }
+
+    @Test
+    fun `typed coordinator failure survives manager and clears for retry success`() = runTest {
+        val failure = AppError.Authentication(IllegalStateException("private path and token must not become UI copy"))
+        val port = RecordingInstallPort().apply { validationError = failure }
+        val manager = managerWith(installerWith(port, this))
+        val available = availableExtension()
+        assertEquals(InstallStep.Error, manager.installExtension(available).first(InstallStep::isCompleted))
+        assertEquals(failure, manager.installErrors.value[PACKAGE_NAME])
+        port.validationError = null
+        val retry = manager.installExtension(available)
+        assertTrue(manager.installErrors.value.isEmpty())
+        assertEquals(InstallStep.Installed, retry.first(InstallStep::isCompleted))
+        assertTrue(manager.installErrors.value.isEmpty())
+    }
+
+    @Test
+    fun `explicit catalog protocol survives manager to installer request mapping`() = runTest {
+        val port = RecordingInstallPort()
+        val manager = managerWith(installerWith(port, this))
+        val available = availableExtension().copy(versionName = "release-2", libVersion = 1.6)
+
+        assertEquals(InstallStep.Installed, manager.installExtension(available).first(InstallStep::isCompleted))
+        val artifact = requireNotNull(port.request).artifact
+        assertEquals("release-2", artifact.versionName)
+        assertEquals(1.6, artifact.libVersion)
+        assertEquals(1.6, artifact.declaredLibVersion)
+    }
 
     @Test
     fun `catalog manager coordinator and default gateway install the catalog artifact unchanged`(
@@ -96,7 +209,7 @@ class ExtensionInstallCoordinatorWiringTest {
                     installSystem = { _, _, _ -> error("private install must not use PackageInstaller") },
                     commitPlanProvider = { AndroidCommitPlan(AndroidInstallLocation.PRIVATE) },
                     apkInspector = {
-                        AndroidApk(PACKAGE_NAME, "1.4.1", 1, setOf("signer-a"), isExtension = true)
+                        AndroidApk(PACKAGE_NAME, "1.4.1", 1, setOf("abcdef"), isExtension = true)
                     },
                 )
                 val installer = ExtensionInstaller(
@@ -292,7 +405,10 @@ class ExtensionInstallCoordinatorWiringTest {
         val runtimeReloader: suspend (String) -> Unit = {}
         @Suppress("UNCHECKED_CAST")
         return constructor.newInstance(
-            mockk<Context>(relaxed = true),
+            mockk<Context>(relaxed = true) {
+                every { packageManager.getApplicationInfo(any<String>(), any<Int>()) } throws
+                    PackageManager.NameNotFoundException()
+            },
             runtimeReloader,
             scope,
             port,
@@ -356,7 +472,9 @@ class ExtensionInstallCoordinatorWiringTest {
         private val failFirstReload: Boolean = false,
         private val blockCommit: Boolean = false,
         private val reloadAction: (suspend (String) -> Unit)? = null,
+        private val prepareAction: (suspend () -> Unit)? = null,
     ) : ExtensionInstallPort {
+        var validationError: AppError? = null
         val calls = mutableListOf<String>()
         var request: ExtensionInstallRequest? = null
         private var reloads = 0
@@ -369,11 +487,13 @@ class ExtensionInstallCoordinatorWiringTest {
         override suspend fun prepare(request: ExtensionInstallRequest): PreparedExtensionInstallToken {
             calls += "prepare"
             this.request = request
+            prepareAction?.invoke()
             return PreparedExtensionInstallToken("prepared")
         }
 
         override suspend fun validate(token: PreparedExtensionInstallToken): ExtensionInstallRollbackToken {
             calls += "validate"
+            validationError?.let { throw ExtensionInstallFailure(it) }
             if (failValidation) throw ExtensionInstallFailure(AppError.MalformedData())
             return ExtensionInstallRollbackToken("rollback")
         }

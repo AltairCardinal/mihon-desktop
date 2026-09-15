@@ -20,6 +20,7 @@ val syncAex01AndroidTestAssets = tasks.register<Sync>("syncAex01AndroidTestAsset
         include("aex00-external-v15-controlled-sample.apk")
         include("keiyoushi-comicfury-1.4.8.apk")
         include("keiyoushi-mangadex-1.6.0.apk")
+        include("keiyoushi-mangadex-1.4.211.apk")
     }
     into(aex01AndroidTestAssets)
 }

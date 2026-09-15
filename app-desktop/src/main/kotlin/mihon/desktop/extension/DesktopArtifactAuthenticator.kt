@@ -77,7 +77,9 @@ internal object DefaultDesktopArtifactAuthenticator : DesktopArtifactAuthenticat
         val normalized = uppercase()
         if (normalized == "META-INF/MANIFEST.MF") return true
         if (!normalized.startsWith("META-INF/")) return false
-        val fileName = normalized.substringAfterLast('/')
+        val fileName = normalized.removePrefix("META-INF/")
+        // Nested resources are payload even when their suffix resembles a signature block.
+        if ('/' in fileName) return false
         return fileName.startsWith("SIG-") ||
             fileName.endsWith(".SF") ||
             fileName.endsWith(".RSA") ||

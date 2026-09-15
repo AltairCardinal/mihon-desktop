@@ -135,7 +135,7 @@
 | [x] | AEX-02 共享仓库协议与迁移 | Android/Desktop 使用同一正确 v2 catalog，旧地址和仓库数据可迁移 | AEX-00、AEX-01 | 2–3 日 |
 | [x] | AEX-03A Source 查询与导航 | Source-only 的源发现、浏览、搜索及 UI wiring 可用 | AEX-01、AEX-02 | 0.5–1.5 日 |
 | [x] | AEX-03B 统一更新与 memo | 更新、持久化、重启、备份恢复及阅读/下载数据传递闭环 | AEX-01、AEX-03A | 1.5–2.5 日 |
-| [ ] | AEX-04 Android 安装与整链集成 | 1.6 APK 经版本/信任准入、安装加载、源注册到业务流程全部通过 | AEX-02、AEX-03A、AEX-03B | 1.5–3 日 |
+| [x] | AEX-04 Android 安装与整链集成 | 1.6 APK 经版本/信任准入、安装加载、源注册到业务流程全部通过；最终证据见文末 AEX-04 收口 | AEX-02、AEX-03A、AEX-03B | 1.5–3 日 |
 | [ ] | AEX-05 历史升级与故障验收 | 旧用户数据迁移、真实端到端与恢复路径通过 | AEX-04 | 1–2 日 |
 | [ ] | AEX-06 正式产物与跨平台收口 | R8 Android、Windows/macOS 发布及完整证据 | AEX-05 | 1–2 日 |
 
@@ -231,6 +231,15 @@
 - 验证：未改写 metadata 的签名 APK → 真实安装/信任与版本准入 → ExtensionLoader/ART → SourceManager → AEX-03A 查询导航 → AEX-03B 更新、阅读、下载和 memo → 退出重启后再调用。这是首次要求完整 APK 链路成功，不得通过测试注入 Source 跳过包加载/注册。保留独立 JVM 安全/生命周期测试；Desktop 同步回归共享信任/更新决策及每个 JAR payload 的真实性校验。
 - 关闭条件：新版目录项经真实生产入口安装并执行上述全部工作流；版本放行、安装成功、加载成功、源注册、业务成功分别有证据。测试源必须由生产 loader 注册，不能拿 AEX-03A/03B 的组件测试替代此门槛。
 
+#### AEX-04 整合出口及补验（2026-09-16）
+
+按依赖顺序继续，不重新拆成独立交付批次，也不扩大上述范围：
+
+1. **真实可信升级与失败保全（代表场景已补证）**：`aex04-upgrade-confirmation-final-art.log` 10项通过，包括系统/私有两种方式的真实同包升级与三类拒绝，见文末证据。已有 `SystemExtensionRollbackInstrumentationTest` 采用 shell 安装/删除权限，只作为底层回滚证据，不能代替普通用户确认链。新增验收不使用该权限绕过；批末仍须整合审查，不单独勾选或提交。
+2. **失败原因可见与重试（已修复并补证）**：原 `ExtensionInstaller.toInstallStep` 丢弃typed错误，只显示重试图标。现已从同一事务经Manager/ScreenModel保留原因，在原扩展条目显示安全中英文分类文案；旧会话不得覆盖新重试，成功/取消/卸载清理对应包。76项相关JVM及2项真实UI通过，见文末。共享协调器和Desktop未改，不以登录提示代替签名问题；该簇已审查，整批仍未提交。
+3. **实际加载源进入页面导航（已补证）**：`ExtensionInstalledSourceNavigationInstrumentationTest` 通过正常安装夹具注册真实 Source，默认 DI 的 BrowseSourceScreen → 真实查询/数据库 → 点击 MangaScreen → memo 和章节UI 验证通过，见文末。原 `BrowseSourceUiWiringTest` 仍作为组件回归，不拿测试 Source 替代此整链证据。
+4. **整合收口（补验通过）**：独立审查发现首次安装未将候选 APK 证书绑定当前仓库，已用 RED 复现并在快照/提交前补齐校验；另一受信仓库或全局信任不再能代签。69项相关JVM和真实跨可信仓库UI反例通过，唯一一轮定向复审通过。Reader 的503最终由实际 production 客户端证明：删除系统代理设置后，运行态 ProxySelector 仍选择 `10.0.2.2:10808`；显式清除代理运行态后恢复，不属于扩展兼容缺陷。临时HTTP探针已删除，保留安装错误及代理诊断。当前宿主16项ART整链全部通过，另有真正跨进程重启2次运行通过；见文末。ARM、R8及正式跨平台产物仍归 AEX-06，个人手机不作为当前工作的等待条件。
+
 ### AEX-05：历史升级、部分失败与真实端到端验收
 
 - 从本仓库旧版本数据夹具开始；若用户提供实际旧 Mihon 版本/备份，再增加对应迁移路径。分别记录原地升级与跨签名备份迁移，不能互相替代。
@@ -244,6 +253,7 @@
 
 ### AEX-06：正式发布、跨平台回归与证据收口
 
+- 设备调度（2026-09-16 用户确认）：个人 ARM 手机已拔出，所有必须依赖该真机的正式运行验收集中到最后。先完成不依赖手机的实现、模拟器、迁移及 Windows/macOS 工作，不等待或反复探测手机；用户重新连接后再执行 ARM 验收。设备暂离不阻塞这些独立工作，但 ARM 证据缺失时不得勾选本批或宣布 roadmap 全部完成。
 - Android：对最终 diff 跑相关模块完整单元/集成测试、格式检查；构建 R8 开启的目标 release variant，明确 updater/telemetry flags，不因验收自动启用。确认版本标识属于本 fork、versionCode 可合法升级目标实例，不冒充官方 v0.20.4 签名或版本。
 - 在 AEX-00 确认的最低/当前受支持 Android 系统及代表性 ABI 上，以可安装的正式 release 产物执行关键 fixture/代表性真实扩展的搜索、更新、阅读、下载、重启与信任验收。签名材料或设备缺失必须明确阻塞发布门槛。
 - R8/反射/资源/类加载问题以该 APK 的真实 ART 行为验证；debug、仅 JVM 或系统 JDK 结果不能替代。记录 APK 路径、SHA-256、签名指纹、版本、构建 flags、设备和结果。
@@ -393,7 +403,7 @@ MockWebServer 必须覆盖成功、空/缺失、403/429/500、畸形、取消和
 | AEX-02 | 接续新增真实 RED 覆盖目录跟随/二进制响应/有界读取、显式地址、失败快照、不兼容与所属仓库判断；复审另发现 protobuf/JSON 判别、未知 meta、改名缓存及指纹等价缺口，均已修复。继承的先改后测和测试装配错误不改写为产品 RED | 主模型核验原始 XML：domain JVM 424、Android 359；data JVM 136、Android 10；app focused 50；Desktop focused 81；ART 3，共 1063 项，全部实际执行且 failure/error/skip=0。平台证据 `aex02-final-green-art1`（该轮 data 尚失败）；data fixture 修正后 `aex02-final-data-fixtures-green1` exit0，1m4s。app/domain/data/i18n 无 hook 真实 spotlessCheck 与 git diff --check 通过；Desktop 无 Spotless 插件，人工检查受影响格式，不声称执行不存在的 task | 共享协议一次独立审查及一次定向修复复审通过；主模型独立核对平台、存储、备份、UI、连带 fixture 差异及最终日志/XML。C6 和本批 C4 通过 | 专用 `emulator-5580` / `mihon-aex-api36` / API36 x86_64；上述日志位于 `.gradle-coordinator/`，XML 位于各模块 test-results 与 app connected/debug。Android loader 1.6 准入尚属 AEX-04；Desktop 失败警告沿用即时投影，不新增持久状态机 | 测试、production、必要迁移 fixture 与本次 checkoff 同一功能提交，hash 见本文件 git 历史 |
 | AEX-03A | `aex03a-discovery-red2` 为 Android 真实 manager 漏 Source-only；`aex03a-query-red` 为 Android 筛选项应 1 实为 0、Desktop 真实浏览页从旧投影找不到源。首轮泛型编译错误、MockK getter 混淆和 ART Proxy 参数错误均为装配问题，不计产品 RED | `aex03a-validation` exit0：domain JVM 46、Android 6，app 23，Desktop 136，ART 4，相关 app/data/domain 格式通过。定向 `aex03a-review-verification` 中 Desktop 2 类 5 项通过，整轮因 ART 装配失败为 exit1；最终 `aex03a-art-final` exit0，真实数据库导航及模式按钮对照在内 ART 6 项通过，app 格式和 debug 编译通过。各最终目标 failure/error/skip=0；主模型核验原始日志和当前 XML，未重复计算替代轮次 | 主模型一次独立审查及定向复验完成；补齐两端 latest 入口可见性和 Android 真库结果导航，不接受固定 ID Proxy 作持久化证据。C7 和本批 C4 通过 | Android API36 x86_64、专用 emulator-5580。Desktop 离屏真实导航/HTTP parser、Authors、本地标记和旧源查询回归通过；不冒称本地磁盘重验或完整 APK 安装。日志 `.gradle-coordinator/aex03a-*.log/.json`；共享新契约 `tachiyomi.domain.source.service.SourceOnlyQueryContractTest` 在 domain JVM/Android 两 target 执行 | 测试、production、必要 UI 提取与 checkoff 同一功能提交，hash 见本文件 git 历史 |
 | AEX-03B | 统一调用/flags、memo 映射、已有章节恢复、Reader 转换、Desktop 下载与 Source-only 详情入口均有真实行为 RED；ART 另暴露文本默认值读取尾部 NUL。装配失败与后补旧实现对照如实分列 | domain JVM/Android 433/368；data 138/12；app 23 个唯一案例；Desktop 292；ART 5。最终相关结果无失败/错误/跳过，详见本节末尾原始 runner 与复验范围 | 主模型审查真实 diff、固定上游及报告，定向补 UI 错误提示、页面点击时机、旧库装配与 ART 默认值修复后复验通过；C4/C8 通过 | API36 x86_64 专用 AVD；真实库更新/关闭重开/备份恢复/页图与文件落盘。Source-only 查询/更新及旧 HttpSource 图片消费者分别验收，不冒称 APK 安装或任意 Source 图片引擎 | production、测试及 checkoff 同一功能提交；hash 见本文件 git 历史 |
-| AEX-04 | — | — | — | — | — |
+| AEX-04 | 进行中：`aex04-protocol-red` 证实范围判断误收未知协议、Android 拒绝 1.6；`aex04-loader-metadata-red` 证实显式协议未进入真实信任门；`aex04-installer-protocol-red` 的三项事务断言分别证实协议不匹配未拒绝、现代版本名掩盖降级、提交丢失显式协议；`aex04-gateway-metadata-red` 证实 APK inspection 将显式 1.6 误读为版本名的 9.0；`aex04-request-mapping-red` 证实目录项到安装请求遗漏协议 | 阶段内 checkpoint `aex04-metadata-checkpoint-green` exit0/1m9s：共享契约 JVM/Android 各 2；Android metadata 5、loader/真实 trust 与 gateway 接线 1、安装安全 26、manager 12、coordinator wiring 10，共 58 项，无失败/错误/跳过。app/domain 无 hook spotlessCheck、git diff --check 通过。此前加载器接线复验暴露测试用 InMemoryPreferenceStore.getStringSet 未实现，改用 AndroidPreferenceStore，不算产品 RED。测试中的 PackageManager 仍是边界模拟，不算签名 APK ART 验收 | 待批次独立审查 | 用户已接入 SM-S9280，ARM64/API36；仅只读核验，设备已有 app.mihon，不覆盖其安装。自动化继续指定专用 emulator-5580。真实普通权限安装、完整业务、重启和正式产物仍待验证 | 未提交、未勾选 |
 | AEX-05 | — | — | — | — | — |
 | AEX-06 | — | — | — | — | — |
 
@@ -484,7 +494,7 @@ MockWebServer 必须覆盖成功、空/缺失、403/429/500、畸形、取消和
 | C6 / AEX-02 | 从旧/新仓库地址进入两端 production HTTP、数据与 UI 链路，注入成功/异常/冲突 | v2 形式、版本/分级/语言、身份迁移、签名和状态正确；失败保留可用数据；Android 未放行版本不可误装 | MockWebServer、真实数据库迁移/备份恢复、两端仓库及列表集成 | 主模型 / 2026-09-15 通过，见第 8 节 |
 | C7 / AEX-03A | 受控 Source-only 与旧源通过真实 manager、查询、ScreenModel 和导航 | 源可见，浏览/搜索/分页/筛选/最新能力/取消/错误反馈符合契约；无类型强转回归 | 双平台共享查询场景、真实 UI/DI/导航与 HTTP 集成 | 主模型 / 2026-09-15 通过，见第 8 节 |
 | C8 / AEX-03B | 详情/后台作业更新，持久化后重建服务，生产备份恢复再调用并阅读/下载 | flags/次数/章节同步正确；漫画/章节 memo、进度、自定义数据与下载关联保真；失败不静默成功 | 双平台更新契约、真实 SQL 迁移、生产 backup/restore、Reader/下载集成 | 主模型 / 2026-09-16 通过，见 AEX-03B 最终验收 |
-| C9 / AEX-04 | 正常签名真实 APK 经系统/私有安装、信任、loader、源注册到全部业务及重启 | 1.6 真正可用；错误版本/签名/损坏/拒绝/取消安全反馈；不靠 Source 注入或 shell 权限替代普通用户流程 | Android ART 设备测试、JVM 安全生命周期及普通权限操作证据；Desktop 共享回归 | 主模型 / pending |
+| C9 / AEX-04 | 正常签名真实 APK 经系统/私有安装、信任、loader、源注册到全部业务及重启 | 1.6 真正可用；错误版本/签名/损坏/拒绝/取消安全反馈；不靠 Source 注入或 shell 权限替代普通用户流程 | 最终16项ART、跨进程2次运行、119项Android/共享回归及83项Desktop回归；见文末 | 主模型验收、独立整批审查及定向复审通过；随本功能提交完成 |
 | C10 / AEX-05 | 旧版本数据升级、跨签名备份迁移与断网/部分失败/中断恢复 | 旧用户状态保全、错误可区分和恢复；选定真实站点有实际 production 验收，缺失不伪报 | 固定旧数据 fixture 的 E2E 与有界真实联网；测试设备和可用外部站点 | 主模型 / pending |
 | C11 / AEX-06 | 最终提交对应 diff 的全量、R8 APK 与正式 Windows/macOS 运行验收 | 第 7 节必需项通过；报告 hash/版本/签名/flags/设备/真实产物路径；Desktop 独有能力不退化；不可用平台不能标完整 | 完整测试/格式、Android release 设备、项目 Desktop 构建脚本与 Test Mode；必要签名/设备/macOS 环境 | 主模型 / pending |
 
@@ -639,3 +649,120 @@ MockWebServer 必须覆盖成功、空/缺失、403/429/500、畸形、取消和
 - 最终 `aex03b-root-migration-green2` exit0、BUILD SUCCESSFUL（1m43s）：data JVM 20 类/138、Android 3 类/12；app 3 类/9；Desktop 9 类/68；ART 5，全部 failure/error/skip=0。修正原始旧表装配、mock 的显式类型返回及 BLOB 默认值后，只复验受影响集合；不把当前仅 68 项的 Desktop XML 冒称仍含前轮 292 项。合并有效覆盖为 1271 个案例，不重复计算子集与重试。domain/data 模块完整测试、本批两端相关回归及 app/domain/data 无 hook 的真实 SpotlessCheck、最终 `git diff --check` 通过。Desktop 无 Spotless task，受影响格式由主模型检查。
 - ART 精确 runner：`:app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=eu.kanade.tachiyomi.extension.SourceUpdateMemoPersistenceInstrumentationTest,eu.kanade.tachiyomi.data.backup.ExtensionRepoPersistenceInstrumentationTest'`；设备 `emulator-5580` / `mihon-aex-api36` / API36 x86_64。原始 XML 在 `app/build/outputs/androidTest-results/connected/debug/`，各 JVM/unit XML 在相应模块 `build/test-results/`。维护时可从上述协调器 JSON 复用实际 task/filter，并使用新的唯一 key。
 - 本批超出 8 文件/400 行，仍是同一更新与 memo 闭环：共享模型/schema、双平台合并与备份、实际 UI/作业和页图消费互相依赖；拆开提交将无法独立编译或证明保全。风险集中在复制方向、默认值类型及平台入口，已用共享契约、真实库和 ART 控制。AEX-04 安装版本/信任准入、AEX-05 升级故障整链及 AEX-06 正式发布尚未验收，未勾选。
+
+### AEX-04 私有安装 ART 中间证据（未关闭批次）
+
+- `ExtensionV16LifecycleInstrumentationTest` 在专用 API36 x86_64 模拟器运行，硬件身份保护拒绝在个人设备执行。固定 `aex00-external-v16-controlled-sample.apk` 原始字节从本地 HTTP 下载，SHA-256 和签名重新核验，未改 metadata、未注入 Source、未采用 shell 安装权限绕过扩展安装。
+- 调用真实 `ExtensionManager.installExtension`、默认 `ExtensionInstaller`/gateway、真实保存的仓库指纹、`TrustExtension`、`ExtensionLoader`、应用 DI 中的 `SourceManager`。调试宿主及测试 APK 的 adb 部署不算扩展用户安装；扩展本身走 production 私有安装链。
+- RED：`.gradle-coordinator/aex04-private-lifecycle-red-art.log`，实际运行 1、失败 1，已安装/加载后语言为 `""`，预期 `all`。原因是语言汇总仍过滤 CatalogueSource。GREEN：移除这一旧类型门槛，`.gradle-coordinator/aex04-private-lifecycle-green-art.log` 为 `OK (1 test)`；同一固定 APK 的语言 en/zh、生产注册对象身份、production 搜索、更新 memo 返回、再次从包加载及卸载清理通过。
+- 构建记录：`aex04-private-lifecycle-red-build`、`aex04-private-lifecycle-green-build`、`aex04-private-lifecycle-test-refresh` 均 exit0。最后一次仅刷新晚于打包修改的测试源码。个人 ARM 手机仅只读检查，未部署本批 APK。
+- 格式整理后复验：`aex04-lifecycle-refactor-check` exit0/1m25s，Android metadata/loader/manager 18 项零失败、零错误、零跳过，真实无 hook app spotlessCheck 与测试 APK 构建通过；`.gradle-coordinator/aex04-private-lifecycle-refactor-art.log` 再次 `OK (1 test)`，git diff --check 通过。没有把两次执行计为两个独立用例。
+- 边界：再次加载不等于宿主进程重启；当前测试没有证明业务 DB 持久化/恢复、实际阅读下载或系统安装授权。受控样本的正常 getPageList 返回空数组，不能拿此结果冒充页面阅读成功；这些门槛仍 pending，未审查、未提交、未勾选 AEX-04。
+
+### AEX-04 普通系统确认与交付文件生命周期（未关闭批次）
+
+- 扩展系统安装使用真实 `ExtensionManager` → `ExtensionInstallService` → `PackageInstallerInstaller`；测试通过 accessibility 点击系统 Install/Cancel/卸载按钮，没有 adoptShellPermissionIdentity 或 INSTALL_PACKAGES 特权。未知来源开关通过模拟器 Settings 界面操作，在 instrumentation 启动前开启、结束后恢复。测试自身要求权限预先满足，不在宿主进程中切换它。
+- 首次取消测试记录 `Process crashed`；设备 ApplicationExitInfo 证实系统以 `REQUEST_INSTALL_PACKAGES changed` / OTHER KILLS BY SYSTEM 终止 UID。属于测试恢复权限的生命周期错误，不称为产品崩溃 RED。改为进程外恢复后，`aex04-system-cancel-isolated-art.log` 为 `OK (1 test)`。
+- 正向系统安装真实 RED：`aex04-system-install-art.log` 运行 1/失败 1，终态 Error；系统实际已装入插件。设备日志显示 candidate.apk 已被 installer 消费删除，DefaultAndroidInstallGateway 后续读取它写信任记录失败。测试遗留的受控插件通过系统卸载对话框移除后重新验证。
+- 新增 `ExtensionInstallSessionLifecycleTest` 的交付文件参数化契约：无论平台是否消费文件，原事务 APK 仍在且交付副本最终不存在。`aex04-system-delivery-red` 证实交付原件而非副本；重试记录不重复计用例。修复在现有 installPrepared 内生成独立交付副本，事务仍保留原件用于签名/信任/运行时与回滚校验，沿用原清理协调者，不另建安装器。
+- 失败如实记录：`aex04-system-delivery-green` 因误引用类私有 storage helper 编译失败，未执行测试；提升为文件私有共用函数后，`aex04-system-delivery-green2` 发现 8 个旧测试使用不存在的 extension.apk/extension-v1.apk 占位路径，未到达原取消/超时断言。仅替换为每测试独立临时文件，不放宽 production 检查。`aex04-system-delivery-fixtures-green` exit0/44s：生命周期 28 + 安全回滚 26，54 项全部零失败/错误/跳过。
+- 真正设备 GREEN：`aex04-system-delivery-green-art.log` 为 `OK (3 tests)`：普通取消、私有安装、系统确认安装；两种成功路径均核验固定 APK 哈希、真实信任与 loader、双语言 SourceManager 注册、生产查询和更新 memo 返回、再次加载与正常卸载。未知来源权限已通过 Settings 恢复 deny；系统 `pm list packages --user 0 aex00` 为空。无个人 ARM 设备写入。
+- 格式整理后复验：`aex04-system-delivery-refactor-check` exit0/1m19s，以上 54 项零失败/错误/跳过、无 hook app spotlessCheck、debug 宿主及测试 APK 构建通过；`aex04-system-delivery-refactor-art.log` 再次 `OK (3 tests)`，进程外恢复权限 deny，受控系统包为空，git diff --check 通过。仍不把重复执行累计成新的测试用例。
+- 原私有安装段的“系统安装授权待验证”已由本段以上证据补充，但完整持久化/进程重启、页面阅读下载、缺失/异常包的加载安全矩阵、独立批次审查与提交仍 pending；AEX-04 保持未勾选。
+
+### AEX-04 已安装源的业务数据库与跨进程恢复（未关闭批次）
+
+- `ExtensionV16LifecycleInstrumentationTest#installedSourceUpdatesPersistMangaAndReadingState` 复用固定签名 APK 的正常私有安装与真实 SourceManager 注册；调用应用 DI 的 `UpdateManga.awaitFromRemote`、章节同步和 MangaRepository/ChapterRepository，将漫画/章节 memo 持久化。预置并核验收藏、标题、已读、书签、lastPageRead=7 与章节 ID，不使用源注入或假 repository。
+- 默认无参数运行是自清理数据库契约，不声称跨进程。显式 `-e aex04RestartPhase prepare` 保留固定插件、仓库和受控数据；宿主结束并执行 `adb -s emulator-5580 shell am force-stop app.mihon.dev` 后，另一次 instrumentation 使用 `-e aex04RestartPhase verify`，强制断言保存的 PID 与当前 PID 不同，再从实际安装 APK 恢复源、读回业务记录并继续走生产更新链。
+- 首次两个阶段均 `OK (1 test)`，prepare PID 17373 / verify PID 17505；这是新增验收，没有产品改动，也没有伪造 RED。格式整理后 `.gradle-coordinator/aex04-persistence-default-refactor-art.log`、`aex04-persistence-prepare-refactor-art.log`、`aex04-persistence-verify-refactor-art.log` 均通过；跨进程明确信息位于 `aex04-persistence-process-evidence.log`：preparePid=17958、verifyPid=18033、crossProcess=true。相同场景的重复运行不累计成新用例。
+- 清理只对测试交接记录内的精确 manga ID + source ID + 固定 URL 执行参数化 DELETE，随后通过真实 repository 断言漫画消失、关联章节级联删除；正常卸载固定私有插件，删除本次仓库，清空测试交接记录。没有记录时不清理既有状态。数据录入与验证均使用 production repository，裸 SQL 仅用于回收本次受控测试数据。最终记录为 `<map />`，私有扩展目录没有测试 APK。
+- 构建/格式：`aex04-persistence-test-build`、`aex04-persistence-format`、`aex04-persistence-refactor-build` 全部 exit0；最后构建 1m，包含无 hook app spotlessCheck。只改 Android 测试，未重复 JVM 或发布全量。
+- 本段补齐上段“持久化/进程重启”中漫画、章节 memo 与上述用户状态的跨进程门槛，不等于实际翻页、页面下载、备份跨版本迁移或所有错误恢复已验收。阅读/下载须继续使用能返回真实页面的已安装插件，异常包安全矩阵和批次独立审查/提交仍 pending，AEX-04 不勾选。
+
+### AEX-04 真实 MangaDex 1.6 阅读、下载与离线重读（未关闭批次）
+
+- `InstalledMangaDexReaderInstrumentationTest` 使用仓库已有原签名 `keiyoushi-mangadex-1.6.0.apk`，重新核对固定 SHA-256，经真实 ExtensionManager 私有安装、仓库指纹信任和 SourceManager 注册取得 61 个语言源。不修改 APK，不注入 Source；仅将 production HTTP 客户端的请求路由至受控本地响应。
+- 通过真实 MangaRepository/ChapterRepository 保存并读取本次 UUID 漫画章节；生产 ChapterLoader 完成页列表及图片加载，断言实际 stream 字节与返回的 PNG 完全一致。随后调用真实 DownloadManager.downloadChapters，由正常 WorkManager DownloadJob 执行下载；关闭 HTTP 服务后再次通过生产 ChapterLoader 加载，断言本地 loader、图片字节一致且没有新增网络请求。没有注入页面 loader，也没有绕过 DownloadJob 的网络检查。
+- 首次阅读运行因清理时误用必须存在的 getMangaById 而失败，属于测试错误，不算产品 RED。受控插件和仓库已通过一次明确标记的 cleanup-only 运行回收，此运行不计验收；临时清理入口已从最终测试删除。改用可空查询后 `aex04-real-reader-fixture-art.log` 为 `OK (1 test)`。最终清理逐项执行并保留原始异常，将后续清理错误附加为 suppressed，避免一个断言阻止卸载或设置恢复。
+- 首次完整下载 `aex04-real-download-art.log` 超时：系统 Wi-Fi 已连接但没有 VALIDATED，production DownloadJob 正常拒绝启动下载。临时模拟器代理恢复了系统网络验证，但代理启用时两个运行在 APK 安装阶段失败；没有归因于插件兼容性。恢复原代理配置后 `aex04-real-download-restored-network-art.log` 为 `OK (1 test)`，包含正常作业下载与断开测试服务后的离线重读。新增测试前置检查要求系统真实 validated 网络，环境不满足时及时失败，不强制 online 或修改产品限制。首次整理后运行 `aex04-reader-download-refactor-art.log` 因默认网络已转为 validated 蜂窝而被过严 Wi-Fi 前置拒绝，未进入业务；最终测试临时通过现有下载偏好允许蜂窝并恢复原值，不再依赖系统选择的传输类型。
+- 测试只在专用模拟器执行；临时下载目录限于本应用 cache 内且精确回收，仓库、插件和测试数据库记录正常清理，保存并恢复存储及安装偏好。系统四项 HTTP proxy 设置已恢复原先 null，未知来源权限维持 deny，私有扩展目录仅剩 oat。个人 ARM 手机未写入。
+- 格式处理曾因未引用的 Windows `-PspotlessIdeHook=D:/...` 参数被拆分而失败，随后因格式化后嵌套行超长失败两次，均未执行产品测试；`aex04-reader-format-wrapped` 已通过。`aex04-reader-download-refactor-build` 的测试 APK 构建和真实无 hook spotlessCheck 已通过；网络前置与偏好调整后的同级验证为 `aex04-reader-download-network-pref-build`，最终运行结果完成后补充，不用整理前绿灯证明新源码。
+- 此处证明固定真实插件的生产读取、作业下载和离线文件消费，不等于 UI 翻页交互、真实外部站点、跨进程下载恢复、历史备份迁移、ARM/R8 发布或整个 AEX-04 完成。异常包安全矩阵及批次独立审查、提交仍未完成。
+- 最终整理后证据：`aex04-reader-download-network-pref-build` exit0/51s，真实无 hook app spotlessCheck 和测试 APK 构建通过；`aex04-reader-download-network-pref-art.log` 为 `OK (1 test)` / 0.542s，执行最终 `installedV16MangaDexReadsDownloadsAndReopensOfflineThroughProduction`，非清理模式。git diff --check 通过。重复执行不增加独立用例数，本次只有测试和文档变化，不虚构产品 RED；整批未审查提交，checkbox 不变。
+
+### AEX-04 损坏包元数据的加载失败边界（未关闭批次）
+
+- 扩展 `ExtensionLoaderMetadataWiringTest`，只模拟 PackageManager OS 边界；版本解析、真实 TrustExtension/AndroidPreferenceStore 及 loader 入口均执行 production。缺失应用信息、签名信息和私有 archive 应用信息的矩阵在 `aex04-loader-malformed-red` 复现三个 NullPointerException；空证书列表已正确返回 Error，不把它写成新增修复。最小空值处理后 `aex04-loader-malformed-green` exit0。
+- 已信任包的缺失 metadata bundle、缺失入口类、入口类错误类型，在 `aex04-loader-entry-red` 再复现三个 NullPointerException；空/空白类名、不存在类和非 Source/SourceFactory 类已有 Error 行为并保留回归。修复在原信任判断之后安全读取入口类；不自动信任、不放宽签名/协议，也不删除未知类错误处理。
+- `aex04-loader-entry-green` exit0/39s：loader wiring 1、metadata 5、安全回滚 26，合计 32 个 JUnit 用例，failure/error/skip 均 0。矩阵分支与重试不重复计算成独立测试。格式与同组定向复验 `aex04-loader-safety-check` exit0/56s。
+- 同一签名函数的私有替换路径另补旧包保全矩阵：旧签名信息缺失、证书列表为空时，必须拒绝且保留旧文件原始字节。首次 `aex04-private-prior-signature-red` 因旧文件实际消失而在读取时报 FileNotFoundException；将“不存在”纳入保全断言后，`aex04-private-prior-signature-red-capture` 明确显示缺失信息为 `(NullPointerException, true)`，空列表为 `(false, false)`，预期均 `(false, true)`。修复为旧签名缺失/空列表时在写文件前拒绝，不以 containsAll(empty) 判断匹配。
+- 私有替换 GREEN 验证前两次被测试代码格式拦下（`aex04-private-prior-signature-green`、`aex04-private-prior-signature-verified`），没有算测试通过；最后按格式报告的准确差异换行，验证 key 为 `aex04-private-prior-signature-final`。此处未新建报告或过程提交，最终结果完成后补充。
+- 最终 `aex04-private-prior-signature-final` exit0/57s：上述 32 个 JUnit 用例零失败/错误/跳过，真实无 hook app spotlessCheck 和 git diff --check 通过。包含保留旧文件的新增签名矩阵；未把矩阵分支或重试重复计数。该功能批次尚未完成，不单独提交本检查点。
+- 首次私有安装另由 `aex04-first-signature-red` 确认：无签名/空证书的候选包均进入真实复制 helper（其 source.exists 被调用一次），预期应在文件操作前拒绝。File spy 仅计数真实文件方法，不替换复制或签名实现；测试环境最后返回 false 不能代表签名准入正确。将已有候选签名检查移至首次/更新共用入口后，`aex04-first-signature-green` exit0/57s，32 项相关测试及真实 spotlessCheck 通过。没有新增安装引擎或改变正常签名规则。
+
+### AEX-04 固定 APK 的真实信任对话框（未关闭批次）
+
+- 新增 `ExtensionTrustUiInstrumentationTest`，复用同一受控 APK 正常私有安装 fixture。仅撤去本次测试仓库和本包的信任记录，通过真实 ExtensionInstallReceiver 广播再次进入 loader，等待实际 Manager 不受信任状态及 SourceManager 移除该包源。没有注入 Source 或伪造加载结果。
+- 使用真实 extensionsTab → ExtensionScreen 信任图标/对话框 → ExtensionsScreenModel → ExtensionManager.trust → loader → SourceManager。返回键关闭警告后，信任记录仍缺失且包仍不受信任；重新打开并点击确认后，双语言源及其注册对象身份一致，警告入口消失。复用正常 Navigator 上下文，不复制信任按钮的实现。
+- `aex04-trust-ui-format` 通过。首次 `aex04-trust-ui-build` 宿主 APK 已完成，但测试编译因未提供 Espresso 类失败，不算产品 RED；改用已有 instrumentation 发送正常返回键，没有新增依赖。`aex04-trust-ui-key-build` exit0，包含真实 spotlessCheck 和测试 APK 构建；宿主及测试包均部署到 emulator-5580，`aex04-trust-ui-art.log` 为 `OK (1 test)` / 2.543s。
+- 补强关闭对话框后仍无源注册的直接断言，最终验证 key 为 `aex04-trust-ui-final-build`，设备结果完成后补充。清理沿原 fixture 正常卸载/删除本次仓库，恢复测试前信任偏好。测试只在专用模拟器执行；此宿主已包含前述 metadata/签名安全修复，未操作个人 ARM 手机。
+- 边界：这里覆盖现有扩展列表内的信任交互及真实包重载，不声称顶层 Browse 导航、系统外部 APK 文件打开、未知签名升级、备份迁移或 R8/ARM 发布已通过。没有产品 UI 改动，不虚构 UI RED。AEX-04 其余安全/兼容场景与独立批末审查、提交仍待完成。
+- 最终复验：`aex04-trust-ui-final-build` exit0/46s，真实 spotlessCheck 和测试 APK 构建通过；`aex04-trust-ui-final-art.log` 为 `OK (1 test)` / 2.164s，包含关闭对话框后 SourceManager 仍无测试源的直接断言。最后私有扩展目录仅有 oat、git diff --check 通过。同一用例重复运行不重复计数，未新增检查点提交。
+
+### AEX-04 旧版 APK 的系统/私有正常安装（未关闭批次）
+
+- `LegacyExtensionInstallInstrumentationTest` 使用原始 ComicFury 1.4.8 APK 和用户批准的受控 1.5 APK；SHA-256 与 provenance 固定值逐次核验，ComicFury signer 另以本机 apksigner 核对为 `9add655a78e96c4ec7a53ef89dccb557cb5d767489fac5e785d671a5a75d4da2`。1.5 的 APK 记录位于 `aex00-external-v15-suspend-only.provenance.json` 内，不另造历史发布来源或修改 metadata。
+- 把原 v1.6 安装 helper 的固定样本输入参数化为小型 LifecycleApkFixture，复用真实下载、Manager、安装器、OS 确认、信任、loader、SourceManager 与正常卸载链；1.6 的双语言、查询和 memo 原断言保留。跨进程 receipt 仍仅允许固定 v1.6 输入，防止错误复用已有受控记录。
+- 新增四个场景：1.4/1.5 各自私有安装及系统确认安装。全部验证原始 APK 哈希、版本、非空源集合、生产注册对象身份和 classloader、重新加载及卸载。1.4 通过已注册的真实 ComicFury 源与本地 HTTP HTML 响应执行页列表解析；1.5 通过已注册的旧 suspend Source 和 SourceMangaUpdateService 执行详情/章节更新。1.5 样本本来没有页面或目录查询功能，未把空章节等同完整阅读成功。
+- `aex04-legacy-install-format` exit0/30s；`aex04-legacy-install-build` 的真实 spotlessCheck 与测试 APK 构建 exit0。`.gradle-coordinator/aex04-legacy-and-v16-art.log` 为 `OK (9 tests)` / 9.79s：新增旧版4项 + 既有v1.6生命周期4项 + 信任UI1项，同一模拟器与当前宿主执行。生命周期中的持久化是默认自清理模式，不冒充本轮又执行跨进程重启。
+- 系统安装仍通过普通 Settings 未知来源开关和 OS Install/卸载确认，不用 shell 安装权限绕过；整个 instrumentation 前开启、结束后恢复原 deny。最终 aex00 和 ComicFury 系统包列表为空，私有扩展目录仅剩 oat，git diff --check 通过。个人 ARM 手机不探测、不写入。
+- 本轮仅测试复用及新增验收，未改变产品行为，不虚构 RED。已补齐所选旧版本的安装准入/加载回归，不替代同包跨版本升级、旧用户备份数据迁移、真实站点、Desktop JAR真实性或发布验收；AEX-04 尚未独立审查与提交，保持未勾选。
+
+### AEX-04 Desktop JAR 内容认证与相关回归（未关闭批次）
+
+- 核对原定 Desktop 验收时，发现原真实性套件未覆盖向真实签名 JAR 追加未签名内容。新增参数化测试只在临时目录复制固定 MangaDex 1.6 JAR，保留原签名及内容字节，分别追加普通类、服务资源和 `META-INF/nested/extra.SF`；原 fixture 不改写。
+- `aex04-desktop-payload-red` 11项/1失败：普通类和服务资源被拒绝，但嵌套 `.SF` 没抛认证错误。原因是签名元数据判断只取最后文件名，误把子目录资源也豁免。最小修复把豁免限定到 META-INF 直接目录，子目录内容仍逐项读取并核对签名。新测试同时执行真实 DesktopExtensionManager，要求明确的 JAR unsigned/differently-signed payload 错误及无安装 JAR/metadata 残留；仅 typed Authentication 不足以证明走了正确 JAR 路径，已补具体原因断言。
+- `aex04-desktop-payload-green` 的真实性11、事务44、ABI3、更新检测10通过；状态接线14中1失败，整体 FAILED。定位为旧正向测试的已安装来源 `https://repo` 与候选 `https://last` 不匹配；git blame 确认测试输入来自旧提交，而已知仓库/指纹匹配是 AEX-02 的 `d8f27b6df` 既有规则，不是此次放宽或收紧的结果。修正正向输入的真实来源绑定，并新增跨仓库/指纹不匹配均不进入自动更新的反向断言；生产更新策略不变。
+- `aex04-desktop-payload-refactor` exit0/29s：真实性11、安装事务44、ABI3、更新检测10、状态接线15，合计83项，failure/error/skip均0，git diff --check通过。Desktop 模块没有既有 spotlessCheck task，本轮沿原文件风格做局部检查，不把不存在的 task 声称通过；未执行完整 Desktop 测试、Test Mode 或正式发布构建，这些仍在批次/最终收口。
+- 此处补齐相关共享状态和 JAR payload 回归，并修复已复现的认证豁免问题；不等于 Windows/macOS 发布运行验收或 AEX-04 全部完成。独立批末审查、整合与提交仍待完成。
+
+### AEX-04 v2 目录到真实安装按钮（未关闭批次）
+
+- `ExtensionCatalogInstallUiInstrumentationTest` 复用原生命周期夹具，仅给本地 HTTP 服务增加 v2 索引响应并把索引地址写入真实仓库。默认 DI 的 ExtensionsScreenModel 自行发现目录，实际 extensionsTab 的安装按钮触发下载/认证/加载；不传入构造的 Available，也不直接调用 installExtension 代替按钮。随后沿原夹具验证原始 APK 哈希、协议、双语言源对象身份、查询和 memo，再确认 UI 不再显示安装按钮并正常卸载。
+- `aex04-catalog-ui-format` exit0/32s；`aex04-catalog-ui-build` exit0/62s，包含真实 spotlessCheck 和测试 APK 编译。`aex04-catalog-ui-art.log` 为 `OK (1 test)` / 1.832s，只有专用 emulator-5580 被操作。v2 协议本身不提供包哈希，该路径由实际仓库签名认证保护，安装后另与固定样本 SHA-256 对照，不伪造目录哈希字段。
+- 合并回归 `aex04-catalog-and-lifecycle-art.log` 实际11项/2失败：信任测试在安装后读取到相同 ID 的另一 Source 实例；阅读下载在前置检查发现 `isConnected=true,isValidated=false,isWifi=true`，没有进入业务验收。前者的 fixture 原来只等 ID 出现、卸载只等 Manager 删除，而实际 SourceManager 是异步收集；改为等待本次源实例身份，并在卸载后等待其源 ID 全部消失，不取消对象身份断言。后者保持产品网络要求，不算通过或改成跳过。
+- 最终 `aex04-catalog-ui-lifecycle-build` exit0/53s，真实 spotlessCheck 与测试 APK 编译通过；`aex04-catalog-and-lifecycle-final-art.log` 为 `OK (10 tests)` / 10.661s。包含新目录UI1、信任UI1、v1.6生命周期4、旧版安装4；阅读下载的网络失败未被算入通过数。恢复安装权限为 deny，测试系统包不存在，私有目录仅剩 oat，git diff --check 通过。
+- 这次只有测试与文档调整，没有新增产品行为，不虚构产品 RED。未执行完整模块测试、独立批末审查或提交，AEX-04 保持未勾选。真实手机仍留到最终验收，未探测或等待。下一步优先补同包可信升级与失败保全的真实安装证据，复用现有安全矩阵，不重复本轮目录/旧版安装验收；阅读下载待系统网络验证恢复后复验。
+
+### AEX-04 真实同包升级与三类失败保全（未关闭批次）
+
+- 窄上下文执行者新增 `ExtensionUpgradePreservationInstrumentationTest`：真实 MangaDex 1.4.211 → 1.6.0，系统与私有安装各一条完整序列；每条先尝试错误哈希、非APK内容和有效但签名冲突的APK，再进行可信升级。每次拒绝核对旧APK哈希、信任记录原始字节、版本、全部61个源ID、当前生产实例注册和真实 getMangaUrl 调用；升级后核对新哈希、信任仓库/指纹和所有源ID及实例。它不是站点联网或阅读下载验收。
+- 旧样本 SHA-256 `eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236`，新样本 `35d220b64162cb9409da47af81fbb09ae96f170ed77eaa0ffb440add65f92f35`，原签名均为 `9add655a78e96c4ec7a53ef89dccb557cb5d767489fac5e785d671a5a75d4da2`。新增负样本位于 `app/src/androidTest/assets/aex04-mangadex-conflicting-signer.apk`，哈希 `734f3181871394486aba5e2da4842913d244ef0e3d2da6a5c022ebbfe05f5ec5`，复用既有受控测试证书 `9be8a18439915033e8362f25426323e8b7b94f223eadca4962ce5f91a23d6021`；同目录 provenance 记录重签命令，明确不是上游发布。主模型独立运行 apksigner verify 并对比 ZIP 内 manifest/DEX 哈希，确认两项与原版相同；原始二进制不修改。
+- 早期失败均是测试假设：SManga 未设 title、把系统广播前的源对象当成永久实例、等待并不存在的第二次更新确认框。实际安装器在 API31+ 请求 USER_ACTION_NOT_REQUIRED，同安装器可信更新可由系统自动完成；最终测试在需要时点击正常确认，成功终态到达则取消确认等待，不采用 shell 安装/删除权限。首次系统安装仍正常确认。
+- `aex04-upgrade-confirmation-build` exit0/50s，真实 spotlessCheck 与测试APK编译通过；`aex04-upgrade-confirmation-final-art.log` 为 `OK (10 tests)` / 9.99s，新增升级2项、既有生命周期4项、历史安装4项。`aex04-upgrade-final-runtime.log` 含两种方式各三类保全和可信升级的实际输出。主模型已读取原始日志及审查测试差异；仅局部簇通过，未代替全批审查。测试APK当时哈希 `4bd8d2f8471d2b562bd3e08cd4feb3531e1060c800d231318f89329ef29df6ae`。
+- 权限通过Settings恢复deny，系统测试包已卸载、私有目录仅oat；无production改动、无新增发布密钥、无个人设备操作、无独立状态提交。AEX-04错误原因UI及导航/整合出口仍须完成。
+
+### AEX-04 已安装 Source 的真实页面导航（未关闭批次）
+
+- 主模型新增 `ExtensionInstalledSourceNavigationInstrumentationTest`，复用正常私有APK安装后注册的英文源，使用默认DI的实际 BrowseSourceScreen 和 CurrentScreen，不注入 Source/ScreenModel/仓库。点击实际热门漫画后，MangaScreen 的ID与真实数据库记录一致，详情更新产生的漫画memo与章节行均在真实存储/UI中验到。
+- 首次 `aex04-installed-source-navigation-art.log` 在标题等待处超时：测试错误地将 null listingQuery 当成热门；实际 Listing.valueOf(null) 是空搜索。改为现有 GetRemoteManga.QUERY_POPULAR，未改production、不冒称产品RED。`aex04-installed-navigation-popular-build` exit0/47s，真实spotlessCheck和测试APK编译通过；`aex04-installed-source-navigation-popular-art.log` 为 `OK (1 test)` / 2.45s。
+- 成功测试先销毁页面composition，再精确删除本次源的两个固定热门URL并复查不存在，恢复lastUsedSource偏好并正常卸载扩展。首次失败的空搜索另留下1条非收藏受控记录；主模型以模拟器run-as sqlite3只读确认ID=1、source=2919241217、URL与标题均为固定search--en-1后，按全部字段条件精确删除，changes=1，复查该测试源记录数为0。没有清空数据库或个人数据；测试记录可由固定样本再生成。
+- 上述是debug/API36/x86_64的已安装源页面串联，不替代正式R8、ARM或真实站点阅读。批次整体尚未独立审查/提交，失败原因UI和阅读下载复验仍待完成。
+
+### AEX-04 安装失败原因与重试闭环（未关闭整批）
+
+- 复用上一执行者的安装上下文，保留原 `Flow<InstallStep>` API，在同一installer维护只读typed错误映射，由事务身份锁防止旧会话迟到结果污染新重试。Manager转发、原ScreenModel观察，原扩展条目展示安全本地化原因与原有重试按钮；列表旧collector完成也不能清除新会话状态。成功、取消、重试开始和卸载清理对应包，不影响其他包。
+- 分类涵盖完整性/签名/仓库访问校验、网络、限流、服务端、安装许可、损坏/不兼容包、存储/恢复及未知错误。文案固定映射到资源ID，不展示cause中的路径、URL或凭据；签名错误不提示登录、不扩大信任；恢复提示明确Android可能无法降级且不要清除应用数据。未改共享AppError/coordinator、Desktop、发布标识或安装引擎。
+- 正确RED：`aex04-install-errors-red` 中installer/Manager及ScreenModel两条行为断言预期Authentication实际null；`aex04-install-error-ui-red-art.log` 实际目录安装损坏包后等待原因文案超时。第一轮GREEN的卸载fixture模拟错PackageManager方法，触发Uri.parse not mocked；按真实getApplicationInfo调用修正，未记作产品RED。`aex04-install-errors-green-fixture` exit0/37s，14+7+1共22项focused通过。
+- 主模型在冻结差异上审查事务归属、错误清理、旧collector、文案安全和真实UI测试，无阻塞项。`aex04-install-errors-regression-build` exit0/103s：安全回滚26、协调器接线14、会话28、列表接线7、文案1，共76项，XML failure/error/skip均0；真实spotlessCheck、assembleDebug、assembleDebugAndroidTest通过。`aex04-install-error-ui-green-art.log` 为 `OK (2 tests)` / 3.613s：损坏APK及合法换签名MangaDex分别经真实目录按钮显示分类原因，再点击Retry安装原始签名包、加载注册，原因和重试按钮消失。主模型已独立读取XML/ART日志并校验两份APK哈希，未仅采信回执。
+- 当前已部署debug宿主SHA-256 `2d8f5e0c09841d63ff57fd96f4f00d7cbcb23b8ca8bcf15018b7fad075023368`；测试APK `974de8e3ef33aa02708aa31cfb11c589d2ba6c0ea558b80bc4c577f16240045d`。安装权限deny，测试扩展已清理，Gradle/runner结束。完整AEX-04仍需当前宿主的必要整合复验、阅读下载网络前置恢复及全批审查/提交；不提前勾选C9或本批，不把debug当正式release证据。
+
+### 2026-09-16 AEX-04 收口（替代前文阶段内 pending 状态）
+
+- 独立整批审查发现首次安装的仓库签名绑定缺口；`aex04-repository-signer-red` 明确以预期 Authentication、实际 null 失败。最小修复在快照/提交前比较当前仓库指纹与 APK 签名，支持指纹大小写/冒号归一，不借全局信任绕过。PRIVATE/SYSTEM 的准入均受保护；真实UI反例把冲突证书添加为另一可信仓库，仍拒绝并允许用正确APK重试。唯一一次定向复审通过。
+- `aex04-final-related` exit0/80s：Android extension及列表相关完整测试组115项，共享协议JVM/Android各2项，合计119项，failure/error/skip均0；app/domain真实无hook格式检查通过。`aex04-signer-reader-refactor-format` 的69项及测试APK构建也通过。Desktop未再改动，复用并核对 `aex04-desktop-payload-refactor` 的83项XML（11+44+3+10+15），均0失败/错误/跳过；不冒称完整Desktop或正式构建验收。
+- 当前宿主上的 `aex04-final-batch-art.log` 为 `OK (16 tests)` /18.526s：目录按钮、信任确认/关闭、失败原因和Retry、实际源查询/详情导航、真实MangaDex1.4→1.6系统/私有升级及拒绝保全、1.4/受控1.5兼容、1.6系统/私有安装与取消、在线页图/正常DownloadJob/离线重读、memo及用户进度保留。没有注入Source代替APK加载。
+- `aex04-final-restart-prepare.log` / `aex04-final-restart-verify.log` 各1项通过；force-stop间隔后的运行日志明确 `preparePid=28687 verifyPid=28750 crossProcess=true`。不是同进程重建存储冒充重启。
+- 验收设备仅 `emulator-5580` / API36 / x86_64。已部署宿主 [app-x86_64-debug.apk](../../app/build/outputs/apk/debug/app-x86_64-debug.apk) SHA-256 `a0a415fe51d60d83827b8b9b84647275a6888d52d2c1fd4b20f45078dcc35d93`；测试APK SHA-256 `7e20a5f3fd78955ef78d995f0b8fdef57d87901203ef9ed238d3051c1c3ac4ee`。该临时debug产物仅供本批验收，不是AEX-06正式交付。普通Settings开启未知来源，结束恢复deny；未操作手机或使用shell安装权限绕过系统确认。
+- Reader 503诊断证明 Settings键删除并不等于Android运行态代理清除：实际client的ProxySelector仍选主机代理，回环夹具请求因此未到达。显式 `http_proxy :0` 清除后真实链路恢复，最后删除临时键恢复原未设置状态。临时探针已移除，保留失败诊断；没有为通过测试改变production网络策略。
+- 范围说明：多个文件共同组成metadata、签名准入、正常安装、失败UI和真实包业务整链，不能按文件数拆开提交。既有Desktop签名payload补修一并通过审查；受控1.5样本沿用用户授权，非历史第三方APK。旧数据/跨签名迁移和真实站点验收留AEX-05；最低API、ARM、R8、Windows/macOS正式发布留AEX-06。当前只勾选AEX-04/C9，不宣称整个roadmap完成。
