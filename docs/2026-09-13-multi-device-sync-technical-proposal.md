@@ -318,6 +318,14 @@ S4a 运行实现：同一 coordinator 以一位 leader 执行真实交换，其�
 
 Desktop 周期观察器与单次交换生命周期分开：手动取消/断开一次交换不关闭长期周期观察器，应用退出则取消并等待全部工作；最近一次实际尝试推迟下一周期。Android 使用唯一 periodic work 的 UPDATE 政策和 CONNECTED 约束；关闭周期取消该 unique work，调整周期不创建平行队列。Worker 对临时网络问题有界重试，对授权/存储/远端历史问题结束当前执行，保留数据供下一次明确重试。启动请求使用独立异步子任务，不能阻塞主线程或因一次取消结束周期设置监听。真实 Keystore/ART/R8、macOS 和 GitHub 账号证据仍由 S5 提供，JVM 平台测试不替代这些门槛。
 
+### 11.1 原生面板的实现与维护边界
+
+`SyncRuntime.panel` 是应用级单例，`SyncPanelController` 使用同一 runtime/coordinator、SQLDelight 收件箱与队列；窗口仅派发动作和展示状态。`presentation-sync` 共用 Compose 面板内容、设置/记录子页与批量交互。现有 `presentation-core` 是 Android 模块，不能直接供 Desktop 使用，因此新模块只承载同步界面，不迁移既有页面。Android 外壳复用 AdaptiveSheet，Desktop 使用 Material3 ModalBottomSheet；系统浏览器、剪贴板、恢复文件选择仍由平台 adapter 执行。
+
+关闭面板清除选择、未确认的批量快照、设备授权码、恢复资料及临时结果；已经确认的交换和批量任务由应用生命周期持有，不因面板收起而取消。暂停批量按空间和代次保存任务身份，只能继续该任务直至完成，避免新操作覆盖恢复入口；切换空间停止旧执行但保留原空间的继续入口。全选按完整待处理身份集合冻结，行显示分页加载，执行沿用有界数据库事务。首次导入可独立暂停，仍允许已生成的本机变动继续交换。恢复文件成功回执必须携带本次实际写入的资料，并与当前资料精确匹配，防止旧文件的迟到回执误确认新空间。Desktop 退出时停止并等待面板订阅和任务结束。
+
+倒计时与调度共用本机偏好的起算点、最近尝试/成功时间和周期；修改周期重设起算点。Android 使用 WorkManager 的 `setNextScheduleTimeOverride` 并更新同一周期任务，仍受网络、电量和系统最小周期限制，显示时间是计划时间，不能承诺准点后台执行。参见 [Android WorkManager 调度接口](https://developer.android.com/reference/androidx/work/PeriodicWorkRequest.Builder)。设备授权页仅打开 GitHub 官方登录/安装/创建仓库页面，由用户在 GitHub 选择私有仓库和授权范围；返回应用刷新列表，不自动创建仓库或覆盖远端空间。
+
 ## 12. 失败与恢复
 
 | 情形 | 行为 |

@@ -40,6 +40,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -55,6 +56,7 @@ fun AdaptiveSheet(
     enableSwipeDismiss: Boolean,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
+    maxWidth: Dp = 460.dp,
     content: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
@@ -85,7 +87,7 @@ fun AdaptiveSheet(
         ) {
             Surface(
                 modifier = Modifier
-                    .requiredWidthIn(max = 460.dp)
+                    .requiredWidthIn(max = maxWidth)
                     .clickable(
                         interactionSource = null,
                         indication = null,
@@ -142,7 +144,7 @@ fun AdaptiveSheet(
         ) {
             Surface(
                 modifier = Modifier
-                    .widthIn(max = 460.dp)
+                    .widthIn(max = maxWidth)
                     .clickable(
                         interactionSource = null,
                         indication = null,

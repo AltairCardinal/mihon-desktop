@@ -1,8 +1,10 @@
 package mihon.desktop.platform
 
 import kotlinx.coroutines.suspendCancellableCoroutine
+import tachiyomi.i18n.MR
 import java.io.File
 import javax.swing.JFileChooser
+import javax.swing.JOptionPane
 import javax.swing.SwingUtilities
 import javax.swing.filechooser.FileNameExtensionFilter
 import kotlin.coroutines.resume
@@ -30,6 +32,12 @@ sealed interface DesktopFilePickerRequest {
             require(extensions.isNotEmpty())
         }
     }
+
+    data class SaveFile(
+        override val title: String,
+        val suggestedName: String,
+        override val initialDirectory: File? = null,
+    ) : DesktopFilePickerRequest
 }
 
 sealed interface DesktopFilePickerResult {
@@ -63,6 +71,11 @@ internal fun createDesktopFileChooser(request: DesktopFilePickerRequest): JFileC
         dialogTitle = request.title
         currentDirectory = request.initialDirectory ?: File(System.getProperty("user.home"))
         when (request) {
+            is DesktopFilePickerRequest.SaveFile -> {
+                dialogType = JFileChooser.SAVE_DIALOG
+                fileSelectionMode = JFileChooser.FILES_ONLY
+                selectedFile = File(currentDirectory, request.suggestedName)
+            }
             is DesktopFilePickerRequest.Directory -> fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
             is DesktopFilePickerRequest.OpenFile -> {
                 fileSelectionMode = JFileChooser.FILES_ONLY
@@ -73,7 +86,18 @@ internal fun createDesktopFileChooser(request: DesktopFilePickerRequest): JFileC
 
 private fun showDesktopFileChooser(request: DesktopFilePickerRequest): DesktopFilePickerResult {
     val chooser = createDesktopFileChooser(request)
-    return if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+    return if (chooser.showDialog(null, null) == JFileChooser.APPROVE_OPTION) {
+        if (request is DesktopFilePickerRequest.SaveFile && chooser.selectedFile.exists() &&
+            JOptionPane.showConfirmDialog(
+                null,
+                MR.strings.sync_replace_file.localized(),
+                request.title,
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.QUESTION_MESSAGE,
+            ) != JOptionPane.YES_OPTION
+        ) {
+            return DesktopFilePickerResult.Cancelled
+        }
         DesktopFilePickerResult.Selected(chooser.selectedFile)
     } else {
         DesktopFilePickerResult.Cancelled

@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.sp
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.components.SearchToolbar
+import eu.kanade.tachiyomi.data.sync.AndroidLibrarySyncAction
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.Pill
@@ -94,6 +95,7 @@ private fun LibraryRegularToolbar(
         searchQuery = searchQuery,
         onChangeSearchQuery = onSearchQueryChange,
         actions = {
+            AndroidLibrarySyncAction()
             val filterTint = if (hasFilters) MaterialTheme.colorScheme.active else LocalContentColor.current
             AppBarActions(
                 persistentListOf(

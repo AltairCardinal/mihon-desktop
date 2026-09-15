@@ -57,6 +57,10 @@ CREATE TABLE sync_private_reading (
 getInitialImport:
 SELECT * FROM sync_imports WHERE space_id = ? AND generation = ? AND origin = 'INITIAL_IMPORT';
 
+countPendingImports:
+SELECT count(*) FROM sync_import_entries JOIN sync_imports USING(import_id)
+WHERE space_id = ? AND generation = ?;
+
 getImport:
 SELECT * FROM sync_imports WHERE import_id = ?;
 

@@ -141,6 +141,7 @@ kotlin {
                 implementation(projects.coreMetadata)
                 implementation(projects.i18n)
                 implementation(projects.presentationTheme)
+                implementation(projects.presentationSync)
 
                 // Network
                 implementation(libs.okhttp.core)

@@ -30,6 +30,7 @@ class SyncDatabaseExchange(
     private val projector: SyncInboxProjector,
     private val transport: SyncTransportPort,
     private val secret: SyncSecret,
+    private val allowImport: () -> Boolean = { true },
 ) {
     suspend fun exchange(spaceId: String, generation: Long, repository: SyncRepository): SyncRunResult {
         var uploaded = 0
@@ -43,7 +44,7 @@ class SyncDatabaseExchange(
                 } == true
             }
             if (!enabled) return SyncRunResult(SyncRunStatus.SKIPPED)
-            while (true) {
+            while (allowImport()) {
                 val importId = handler.await {
                     sync_importQueries.getNextPendingImport(spaceId, generation).executeAsOneOrNull()
                 } ?: break

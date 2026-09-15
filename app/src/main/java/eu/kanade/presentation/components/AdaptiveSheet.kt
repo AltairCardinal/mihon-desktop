@@ -6,6 +6,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import cafe.adriel.voyager.core.annotation.InternalVoyagerApi
@@ -64,9 +66,11 @@ fun AdaptiveSheet(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     enableSwipeDismiss: Boolean = true,
+    maxWidth: Dp = 460.dp,
+    forceBottom: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val isTabletUi = isTabletUi()
+    val isTabletUi = isTabletUi() && !forceBottom
 
     Dialog(
         onDismissRequest = onDismissRequest,
@@ -77,6 +81,7 @@ fun AdaptiveSheet(
             enableSwipeDismiss = enableSwipeDismiss,
             onDismissRequest = onDismissRequest,
             modifier = modifier,
+            maxWidth = maxWidth,
         ) {
             content()
         }

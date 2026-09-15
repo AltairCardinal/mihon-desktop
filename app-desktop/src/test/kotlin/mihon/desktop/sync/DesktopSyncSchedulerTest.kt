@@ -21,6 +21,32 @@ import tachiyomi.core.common.preference.InMemoryPreferenceStore
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DesktopSyncSchedulerTest {
     @Test
+    fun `scheduler uses the deadline already displayed by the panel`() = runTest {
+        val preferences = SyncPreferences(InMemoryPreferenceStore())
+        preferences.startup.set(false)
+        preferences.setInterval(15)
+        preferences.scheduleAnchor.set(1)
+        var calls = 0
+        val coordinator = SyncCoordinator(
+            SyncRunPort {
+                calls++
+                SyncRunResult(SyncRunStatus.SUCCESS)
+            },
+        )
+        advanceTimeBy(5 * 60_000L)
+        val scheduler =
+            DesktopSyncScheduler(coordinator, preferences, backgroundScope) { testScheduler.currentTime + 1 }
+        scheduler.start()
+        runCurrent()
+        advanceTimeBy(10 * 60_000L)
+        runCurrent()
+        assertEquals(1, calls)
+        assertEquals(testScheduler.currentTime + 1, preferences.scheduleAnchor.get())
+        scheduler.stop()
+        scheduler.awaitStopped()
+    }
+
+    @Test
     fun `canceling one periodic exchange does not stop the periodic observer`() = runTest {
         val preferences = SyncPreferences(InMemoryPreferenceStore())
         preferences.startup.set(false)

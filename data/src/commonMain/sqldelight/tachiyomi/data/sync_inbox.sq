@@ -231,6 +231,9 @@ SELECT * FROM sync_pending_decisions WHERE space_id = ? AND generation = ? ORDER
 countPendingDecisions:
 SELECT count(*) FROM sync_pending_decisions WHERE space_id = ? AND generation = ?;
 
+getPendingReferences:
+SELECT _id, binding, field FROM sync_pending_decisions WHERE space_id = ? AND generation = ? ORDER BY _id;
+
 getDecision:
 SELECT decision FROM sync_decisions WHERE space_id = ? AND generation = ? AND binding = ?;
 
@@ -255,6 +258,20 @@ freezeSelectedPending:
 INSERT INTO sync_bulk_items(job_id, pending_id, object_key, field, object_json, binding)
 SELECT :jobId, _id, object_key, field, object_json, binding FROM sync_pending_decisions
 WHERE space_id = :spaceId AND generation = :generation AND _id IN :pendingIds;
+
+freezeBoundPending:
+INSERT INTO sync_bulk_items(job_id, pending_id, object_key, field, object_json, binding)
+SELECT :jobId, _id, object_key, field, object_json, binding FROM sync_pending_decisions
+WHERE space_id = :spaceId AND generation = :generation AND _id = :pendingId AND binding = :binding;
+
+countBulkTypes:
+SELECT field, count(*) AS count FROM sync_bulk_items WHERE job_id = ? GROUP BY field;
+
+deleteBulkItems:
+DELETE FROM sync_bulk_items WHERE job_id = ?;
+
+deleteBulkJob:
+DELETE FROM sync_bulk_jobs WHERE job_id = ?;
 
 getBulkJob:
 SELECT * FROM sync_bulk_jobs WHERE job_id = ?;

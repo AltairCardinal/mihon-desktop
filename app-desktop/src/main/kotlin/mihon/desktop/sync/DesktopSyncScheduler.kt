@@ -21,6 +21,7 @@ class DesktopSyncScheduler(
     val coordinator: SyncCoordinator,
     private val preferences: SyncPreferences,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val onStopped: suspend () -> Unit = {},
     private val clock: () -> Long = System::currentTimeMillis,
 ) : DesktopRuntimeService {
     private var job: Job? = null
@@ -32,15 +33,23 @@ class DesktopSyncScheduler(
         job = scope.launch {
             coroutineScope {
                 if (preferences.startup.get()) launch { coordinator.synchronize(SyncTrigger.STARTUP) }
+                var observedPeriod: Int? = null
                 preferences.periodMinutes.changes().distinctUntilChanged().collectLatest {
                     val minutes = preferences.intervalMinutes()
+                    if (preferences.scheduleAnchor.get() == 0L || observedPeriod != null) {
+                        preferences.scheduleAnchor.set(clock())
+                    }
+                    observedPeriod = minutes
                     if (minutes == 0) return@collectLatest
                     val interval = minutes * 60_000L
-                    var scheduledAt = clock()
                     while (true) {
                         val now = clock()
                         // Wall-clock checks also handle a suspended laptop and backward clock adjustments.
-                        val anchor = maxOf(scheduledAt, preferences.lastAttempt.get()).coerceAtMost(now)
+                        val anchor = maxOf(
+                            preferences.scheduleAnchor.get(),
+                            preferences.lastAttempt.get(),
+                            preferences.lastSuccess.get(),
+                        ).coerceAtMost(now)
                         val remaining = (anchor + interval - now).coerceAtLeast(0)
                         if (remaining > 0) {
                             delay(minOf(remaining, 60_000))
@@ -51,7 +60,7 @@ class DesktopSyncScheduler(
                                 // Canceling a single exchange must not remove the device's periodic observer.
                                 currentCoroutineContext().ensureActive()
                             }
-                            scheduledAt = clock()
+                            preferences.scheduleAnchor.set(clock())
                         }
                     }
                 }
@@ -72,5 +81,6 @@ class DesktopSyncScheduler(
         val jobs = synchronized(this) { stopping.toList().also { stopping.clear() } }
         jobs.forEach { it.join() }
         coordinator.cancelAndJoin()
+        onStopped()
     }
 }

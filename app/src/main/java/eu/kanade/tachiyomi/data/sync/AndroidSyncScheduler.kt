@@ -9,8 +9,8 @@ import androidx.work.WorkManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.domain.sync.runtime.SyncPreferences
@@ -25,10 +25,23 @@ class AndroidSyncScheduler(private val context: Context, private val runtime: Sy
         running?.takeIf { it.isActive }?.let { return it }
         return scope.launch(Dispatchers.IO) {
             launch {
-                runtime.preferences.periodMinutes.changes()
-                    .map { it.takeIf(SyncPreferences.intervals::contains) ?: 0 }
+                val preferences = runtime.preferences
+                combine(
+                    preferences.periodMinutes.changes(),
+                    preferences.scheduleAnchor.changes(),
+                    preferences.lastAttempt.changes(),
+                    preferences.lastSuccess.changes(),
+                ) { minutes, anchor, attempt, success ->
+                    val period = minutes.takeIf(SyncPreferences.intervals::contains) ?: 0
+                    period to if (period == 0) {
+                        0L
+                    } else {
+                        maxOf(anchor, attempt, success) +
+                            TimeUnit.MINUTES.toMillis(period.toLong())
+                    }
+                }
                     .distinctUntilChanged()
-                    .collect(::schedule)
+                    .collect { (minutes, deadline) -> schedule(minutes, deadline) }
             }
             if (runtime.preferences.startup.get()) {
                 launch { runtime.coordinator.synchronize(SyncTrigger.STARTUP) }
@@ -36,13 +49,14 @@ class AndroidSyncScheduler(private val context: Context, private val runtime: Sy
         }.also { running = it }
     }
 
-    private fun schedule(minutes: Int) {
+    private fun schedule(minutes: Int, deadline: Long) {
         val manager = WorkManager.getInstance(context)
         if (minutes == 0) {
             manager.cancelUniqueWork(WORK_NAME)
         } else {
             val request = PeriodicWorkRequestBuilder<SyncWorker>(minutes.toLong(), TimeUnit.MINUTES)
                 .setConstraints(Constraints(requiredNetworkType = NetworkType.CONNECTED))
+                .setNextScheduleTimeOverride(deadline)
                 .build()
             manager.enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
         }

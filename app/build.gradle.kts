@@ -39,6 +39,7 @@ shortcutHelper.setFilePath("./shortcuts.xml")
 
 android {
     namespace = "eu.kanade.tachiyomi"
+    testOptions.unitTests.isIncludeAndroidResources = true
 
     defaultConfig {
         applicationId = "app.mihon"
@@ -219,6 +220,7 @@ dependencies {
     implementation(projects.domain)
     implementation(projects.presentationCore)
     implementation(projects.presentationTheme)
+    implementation(projects.presentationSync)
     implementation(projects.presentationWidget)
     implementation(projects.telemetry)
 
@@ -327,6 +329,7 @@ dependencies {
     testImplementation("androidx.work:work-testing:2.11.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation(androidCompose.ui.test.junit4)
     testRuntimeOnly(libs.junit.platform.launcher)
     testRuntimeOnly("org.junit.vintage:junit-vintage-engine:6.0.3")
     testRuntimeOnly("org.conscrypt:conscrypt-openjdk-uber:2.5.2")

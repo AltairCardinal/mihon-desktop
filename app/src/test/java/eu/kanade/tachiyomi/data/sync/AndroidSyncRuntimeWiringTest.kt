@@ -38,6 +38,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.domain.sync.runtime.SyncCoordinator
 import mihon.domain.sync.runtime.SyncPreferences
@@ -83,7 +84,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], manifest = Config.NONE)
+@Config(sdk = [35], manifest = Config.NONE, application = Application::class)
 class AndroidSyncRuntimeWiringTest {
     private lateinit var previous: InjektScope
     private lateinit var context: Application
@@ -186,6 +187,44 @@ class AndroidSyncRuntimeWiringTest {
             assertEquals(SyncRunStatus.SKIPPED, runtime.coordinator.activity.value.result?.status)
             assertEquals(0, networkCalls.get())
         }
+    }
+
+    @Test
+    fun `first periodic work waits for the deadline shown by the panel`() = runBlocking {
+        val runtime = runtime { SyncRunResult(SyncRunStatus.SKIPPED) }
+        val anchor = System.currentTimeMillis()
+        runtime.preferences.startup.set(false)
+        runtime.preferences.scheduleAnchor.set(anchor)
+        AndroidSyncScheduler(context, runtime).start(scope)
+        val first = awaitWork { it.state == WorkInfo.State.ENQUEUED }
+        assertEquals(anchor + TimeUnit.MINUTES.toMillis(60), first.nextScheduleTimeMillis)
+        assertTrue(first.nextScheduleTimeMillis > System.currentTimeMillis())
+    }
+
+    @Test
+    fun `manual completion and period changes move the existing work deadline`() = runBlocking {
+        val anchor = System.currentTimeMillis()
+        var completedAt = anchor + TimeUnit.MINUTES.toMillis(5)
+        val prefs = SyncPreferences(preferences)
+        val runtime = runtime {
+            // The exchange boundary produces timestamps; scheduling must observe their persisted values.
+            prefs.lastAttempt.set(completedAt - 1)
+            prefs.lastSuccess.set(completedAt)
+            SyncRunResult(SyncRunStatus.SUCCESS)
+        }
+        prefs.startup.set(false)
+        prefs.scheduleAnchor.set(anchor)
+        AndroidSyncScheduler(context, runtime).start(scope)
+        val first = awaitWork { it.state == WorkInfo.State.ENQUEUED }
+        assertEquals(SyncRunStatus.SUCCESS, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+        assertDeadline(first, completedAt + TimeUnit.MINUTES.toMillis(60))
+        completedAt += TimeUnit.MINUTES.toMillis(5)
+        prefs.scheduleAnchor.set(completedAt)
+        prefs.setInterval(15)
+        assertDeadline(first, completedAt + TimeUnit.MINUTES.toMillis(15))
+        assertEquals(first.id, manager.getWorkInfosForUniqueWork(AndroidSyncScheduler.WORK_NAME).get().single().id)
+        prefs.setInterval(0)
+        assertEquals(WorkInfo.State.CANCELLED, awaitWork { it.state == WorkInfo.State.CANCELLED }.state)
     }
 
     @Test
@@ -314,10 +353,18 @@ class AndroidSyncRuntimeWiringTest {
     private fun runtime(port: SyncRunPort): SyncRuntime {
         val coordinator = SyncCoordinator(port)
         val prefs = SyncPreferences(preferences)
+        prefs.scheduleAnchor.set(System.currentTimeMillis())
         return mockk<SyncRuntime> {
             every { this@mockk.coordinator } returns coordinator
             every { this@mockk.preferences } returns prefs
         }.also { Injekt.addSingleton(it) }
+    }
+
+    private suspend fun assertDeadline(info: WorkInfo, expected: Long) {
+        withTimeoutOrNull(5000) {
+            while (manager.getWorkInfoById(info.id).get()!!.nextScheduleTimeMillis != expected) delay(20)
+        }
+        assertEquals(expected, manager.getWorkInfoById(info.id).get()!!.nextScheduleTimeMillis)
     }
 
     private suspend fun awaitWork(predicate: (WorkInfo) -> Boolean): WorkInfo = withTimeout(5000) {

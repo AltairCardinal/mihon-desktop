@@ -1,5 +1,6 @@
 package mihon.desktop.sync
 
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.desktop.DesktopAppRuntime
@@ -30,7 +31,15 @@ class DesktopSyncWiringTest {
         val context = initDesktopDIForTest(folder, DesktopPreferenceStore(node))
         try {
             val runtime = Injekt.get<SyncRuntime>()
+            val longSpace = "space".repeat(25)
+            runtime.preferences.activeBulkJob(longSpace, 1).set("paused-a")
+            runtime.preferences.activeBulkJob("other", 1).set("paused-b")
+            val reopened = mihon.domain.sync.runtime.SyncPreferences(DesktopPreferenceStore(node))
+            assertEquals("paused-a", reopened.activeBulkJob(longSpace, 1).get())
+            assertEquals("paused-b", reopened.activeBulkJob("other", 1).get())
+            assertEquals("", reopened.activeBulkJob(longSpace, 2).get())
             assertSame(runtime, Injekt.get<SyncRuntime>())
+            assertSame(runtime.panel, mihon.desktop.DesktopUiDependencies.fromInjekt().syncPanel)
             assertTrue(Injekt.get<SyncSecureStore>() is DesktopSyncSecureStore)
             assertSame(runtime.coordinator, Injekt.get<DesktopSyncScheduler>().coordinator)
             assertEquals(SyncRunStatus.SKIPPED, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
@@ -40,6 +49,9 @@ class DesktopSyncWiringTest {
                 while (runtime.coordinator.activity.value.completion == before) kotlinx.coroutines.delay(10)
             }
             assertEquals(SyncRunStatus.SKIPPED, runtime.coordinator.activity.value.result?.status)
+            context.closeAndJoin()
+            runtime.panel.dispatch(mihon.data.sync.runtime.SyncPanelAction.Open)
+            assertEquals(null, kotlinx.coroutines.withTimeoutOrNull(500) { runtime.panel.state.first { it.visible } })
         } finally {
             context.closeAndJoin()
             node.removeNode()

@@ -170,6 +170,7 @@ internal fun LibraryToolbar(
         ) {
             if (searchQuery == null) {
                 Text(toolbarTitle, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                mihon.desktop.sync.DesktopLibrarySyncAction()
                 IconButton(onClick = { onSearchChange("") }) {
                     Icon(Icons.Default.Search, contentDescription = MR.strings.action_search.localized())
                 }

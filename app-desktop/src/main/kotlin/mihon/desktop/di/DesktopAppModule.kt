@@ -978,6 +978,7 @@ internal fun initUILayer(
     Injekt.addSingleton(syncRuntime)
     val syncScheduler = mihon.desktop.sync.DesktopSyncScheduler(
         syncRuntime.coordinator, syncRuntime.preferences, applicationScope,
+        onStopped = syncRuntime::stopPanel,
     )
     Injekt.addSingleton(syncScheduler)
     val autoBackupScheduler = registerDesktopBackup(

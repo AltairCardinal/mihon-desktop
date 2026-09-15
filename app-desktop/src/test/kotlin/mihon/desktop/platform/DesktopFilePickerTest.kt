@@ -19,6 +19,13 @@ import javax.swing.filechooser.FileNameExtensionFilter
 class DesktopFilePickerTest {
 
     @Test
+    fun `save chooser exposes save mode and suggested recovery file name`() {
+        val chooser = createDesktopFileChooser(DesktopFilePickerRequest.SaveFile("Save recovery", "recovery.json"))
+        assertEquals(JFileChooser.SAVE_DIALOG, chooser.dialogType)
+        assertEquals("recovery.json", chooser.selectedFile?.name)
+    }
+
+    @Test
     fun `chooser consumes title initial directory and selection mode`(
         @TempDir tempDir: File,
     ) {

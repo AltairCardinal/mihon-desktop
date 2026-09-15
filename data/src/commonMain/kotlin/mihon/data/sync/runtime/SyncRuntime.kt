@@ -69,6 +69,8 @@ class SyncRuntime(
     val credentials = PersistentGitHubCredentialStore(secureStore)
     val authorization = GitHubAuthClient(productionClient, endpoints, nowMillis = clock)
     val coordinator = SyncCoordinator(this)
+    private val panelDelegate = lazy { SyncPanelController(this, handler, clock = clock) }
+    val panel: SyncPanel get() = panelDelegate.value
     val repositories = GitHubPrivateRepositorySelector(productionClient, { accessToken() }, endpoints.apiBaseUrl)
     val baseline = SyncBaselineStore(handler, bootstrap)
     val projector =
@@ -85,6 +87,14 @@ class SyncRuntime(
         )
     private val refresher = GitHubTokenRefresher(authorization, credentials, clock)
     private val connectionMutex = Mutex()
+
+    init {
+        if (preferences.scheduleAnchor.get() == 0L) preferences.scheduleAnchor.set(clock())
+    }
+
+    suspend fun stopPanel() {
+        if (panelDelegate.isInitialized()) panelDelegate.value.stop()
+    }
 
     suspend fun accessToken(): String {
         if (credentials.read() == null) {
@@ -152,6 +162,14 @@ class SyncRuntime(
         }
     }
 
+    /** Explicit recovery-file UI only; callers must not persist this in ordinary view state. */
+    suspend fun recoveryData(): SyncRecoveryData = connectionMutex.withLock {
+        val connection = connection() ?: throw SyncSecureStoreException()
+        val stored = secureStore.read(secretKey(connection.spaceId, connection.generation))?.let(::decodeSpaceKey)
+            ?: throw SyncSecureStoreException()
+        stored.recovery
+    }
+
     override suspend fun exchange(trigger: SyncTrigger): SyncRunResult = connectionMutex.withLock {
         val connection = connection()?.takeIf { it.enabled } ?: return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
         val result = try {
@@ -169,7 +187,9 @@ class SyncRuntime(
                 connection.spaceId,
                 connection.generation,
             ).getOrThrow()
-            SyncDatabaseExchange(handler, baseline, projector, transport(secret), secret)
+            SyncDatabaseExchange(handler, baseline, projector, transport(secret), secret) {
+                !preferences.importPaused.get()
+            }
                 .exchange(connection.spaceId, connection.generation, connection.repository)
         } catch (cancelled: CancellationException) {
             throw cancelled

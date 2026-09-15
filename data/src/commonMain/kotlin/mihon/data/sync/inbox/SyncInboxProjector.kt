@@ -88,11 +88,16 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
         generation: Long,
         decision: SyncCancellationDecision,
         selected: List<Long>? = null,
+        expectedBindings: Map<Long, String>? = null,
     ): String = handler.await(inTransaction = true) {
         require(active(spaceId, generation)) { "sync space is not active" }
         val job = UUID.randomUUID().toString()
         sync_inboxQueries.insertBulkJob(job, spaceId, generation, decision.name)
-        if (selected == null) {
+        if (expectedBindings != null) {
+            expectedBindings.forEach { (id, binding) ->
+                sync_inboxQueries.freezeBoundPending(job, spaceId, generation, id, binding)
+            }
+        } else if (selected == null) {
             sync_inboxQueries.freezeAllPending(job, spaceId, generation)
         } else {
             selected.distinct().chunked(256).forEach {
@@ -136,7 +141,7 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
         return bulkProgress(jobId)
     }
 
-    private suspend fun bulkProgress(job: String): SyncBulkProgress = handler.await {
+    suspend fun bulkProgress(job: String): SyncBulkProgress = handler.await {
         val outcomes = sync_inboxQueries.countBulkOutcomes(job).executeAsList().associate { it.outcome to it.count }
         SyncBulkProgress(outcomes.values.sum(), outcomes["QUEUED"] ?: 0, outcomes)
     }
