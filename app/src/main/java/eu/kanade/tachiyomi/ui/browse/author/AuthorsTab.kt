@@ -270,7 +270,7 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
     }
 }
 
-private data class AuthorState(
+internal data class AuthorState(
     val details: CreatorDetails = CreatorDetails(null, emptyList(), emptyList()),
     val archive: CreatorWorkArchive = CreatorWorkArchive(emptyList(), emptyList(), emptyList()),
     val followed: Boolean = false,
@@ -282,7 +282,7 @@ private data class AuthorState(
     val languageTag: String = "",
 )
 
-private class AndroidAuthorDetailScreenModel(
+internal class AndroidAuthorDetailScreenModel(
     private val creatorId: Long,
     private val details: GetCreatorDetails = Injekt.get(),
     private val creators: GetCreators = Injekt.get(),

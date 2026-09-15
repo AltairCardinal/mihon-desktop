@@ -124,10 +124,11 @@ class CreatorDiscoveryServicePaginationTest {
         ) = Unit
         override suspend fun followCreator(
             creatorId: Long,
-            sourceIds: List<Long>,
-            languageTags: List<String>,
+            sourceIds: List<Long>?,
+            languageTags: List<String>?,
+            syncContext: mihon.domain.sync.SyncMutationContext,
         ): CreatorWatch = error("unused")
-        override suspend fun unfollowCreator(creatorId: Long) = Unit
+        override suspend fun unfollowCreator(creatorId: Long, syncContext: mihon.domain.sync.SyncMutationContext) = Unit
         override suspend fun getFollowedCreators(): List<CreatorWatch> = emptyList()
         override fun getFollowedCreatorsAsFlow(): Flow<List<CreatorWatch>> = flowOf(emptyList())
         override suspend fun updateWatchCheckResult(
