@@ -1,0 +1,116 @@
+ALTER TABLE sync_events ADD COLUMN event_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE sync_events ADD COLUMN sync_indexed INTEGER NOT NULL DEFAULT 0;
+UPDATE sync_events SET event_key = actor_id || ':' || epoch || ':' || seq;
+CREATE UNIQUE INDEX sync_event_key_index ON sync_events(space_id, generation, event_key);
+CREATE INDEX sync_unindexed_events ON sync_events(space_id, generation, sync_indexed);
+
+CREATE TABLE sync_inbox_batches (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    batch_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    body_json TEXT NOT NULL,
+    error TEXT,
+    PRIMARY KEY (space_id, generation, batch_id, status)
+);
+
+CREATE TABLE sync_descriptions (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    object_key TEXT NOT NULL,
+    description_json TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, object_key)
+);
+
+CREATE TABLE sync_event_fields (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    event_key TEXT NOT NULL,
+    object_key TEXT NOT NULL,
+    field TEXT NOT NULL,
+    object_json TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, event_key, object_key, field),
+    FOREIGN KEY (space_id, generation, event_key) REFERENCES sync_events(space_id, generation, event_key)
+        ON DELETE CASCADE
+);
+CREATE INDEX sync_events_for_field ON sync_event_fields(space_id, generation, object_key, field, event_key);
+
+CREATE TABLE sync_event_dependencies (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    parent_key TEXT NOT NULL,
+    child_key TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, parent_key, child_key),
+    FOREIGN KEY (space_id, generation, child_key) REFERENCES sync_events(space_id, generation, event_key)
+        ON DELETE CASCADE
+);
+
+CREATE TABLE sync_invalid_events (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    event_key TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, event_key)
+);
+
+CREATE TABLE sync_field_state (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    object_key TEXT NOT NULL,
+    field TEXT NOT NULL,
+    object_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'DIRTY',
+    dirty INTEGER NOT NULL DEFAULT 1,
+    revision INTEGER NOT NULL DEFAULT 1,
+    applied_heads TEXT,
+    PRIMARY KEY (space_id, generation, object_key, field)
+);
+CREATE INDEX sync_dirty_fields ON sync_field_state(space_id, generation, dirty);
+
+CREATE TABLE sync_pending_decisions (
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    object_key TEXT NOT NULL,
+    field TEXT NOT NULL,
+    object_json TEXT NOT NULL,
+    binding TEXT NOT NULL,
+    title TEXT NOT NULL,
+    local_creator_id INTEGER,
+    UNIQUE (space_id, generation, object_key, field)
+);
+CREATE INDEX sync_pending_author_identity ON sync_pending_decisions(space_id, generation, local_creator_id);
+
+CREATE TABLE sync_decisions (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    binding TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, binding)
+);
+
+CREATE TABLE sync_bulk_jobs (
+    job_id TEXT NOT NULL PRIMARY KEY,
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    decision TEXT NOT NULL
+);
+
+CREATE TABLE sync_projected_history (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    effect_key TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, effect_key)
+);
+
+CREATE TABLE sync_bulk_items (
+    job_id TEXT NOT NULL,
+    pending_id INTEGER NOT NULL,
+    object_key TEXT NOT NULL,
+    field TEXT NOT NULL,
+    object_json TEXT NOT NULL,
+    binding TEXT NOT NULL,
+    outcome TEXT NOT NULL DEFAULT 'QUEUED',
+    PRIMARY KEY (job_id, pending_id),
+    FOREIGN KEY (job_id) REFERENCES sync_bulk_jobs(job_id) ON DELETE CASCADE
+);

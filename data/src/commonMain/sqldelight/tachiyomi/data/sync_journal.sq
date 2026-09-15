@@ -56,6 +56,8 @@ CREATE TABLE sync_events (
     batch_id TEXT NOT NULL,
     event_json TEXT NOT NULL,
     occurred_at INTEGER NOT NULL,
+    event_key TEXT NOT NULL DEFAULT '',
+    sync_indexed INTEGER AS Boolean NOT NULL DEFAULT 0,
     PRIMARY KEY (space_id, generation, actor_id, epoch, seq)
 );
 
@@ -72,6 +74,9 @@ CREATE TABLE sync_outbox (
         REFERENCES sync_events(space_id, generation, actor_id, epoch, seq),
     FOREIGN KEY (space_id, generation, batch_id) REFERENCES sync_batches(space_id, generation, batch_id)
 );
+
+CREATE UNIQUE INDEX sync_event_key_index ON sync_events(space_id, generation, event_key);
+CREATE INDEX sync_unindexed_events ON sync_events(space_id, generation, sync_indexed);
 
 CREATE TABLE sync_object_heads (
     space_id TEXT NOT NULL,
@@ -124,8 +129,9 @@ sealBatch:
 UPDATE sync_batches SET status = 'SEALED' WHERE space_id = ? AND generation = ? AND batch_id = ? AND status = 'OPEN';
 
 insertEvent:
-INSERT INTO sync_events(space_id, generation, actor_id, epoch, seq, category, origin, batch_id, event_json, occurred_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO sync_events(space_id, generation, actor_id, epoch, seq, category, origin, batch_id, event_json, occurred_at, event_key)
+VALUES (:spaceId, :generation, :actorId, :epoch, :seq, :category, :origin, :batchId, :eventJson, :occurredAt,
+    :actorId || ':' || :epoch || ':' || :seq);
 
 insertOutbox:
 INSERT INTO sync_outbox(space_id, generation, actor_id, epoch, seq, batch_id) VALUES (?, ?, ?, ?, ?, ?);

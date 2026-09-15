@@ -1,0 +1,38 @@
+-- Resolve portable identities deterministically without merging legacy duplicate business rows.
+getMangaByIdentity:
+SELECT * FROM mangas WHERE url = :mangaUrl AND source = :sourceId ORDER BY _id LIMIT 1;
+
+getChapterByIdentity:
+SELECT chapters.* FROM chapters JOIN mangas ON mangas._id = chapters.manga_id
+WHERE chapters.url = :chapterUrl AND mangas.url = :mangaUrl AND mangas.source = :sourceId
+ORDER BY chapters._id LIMIT 1;
+
+getAuthorMembership:
+SELECT enabled FROM author_archive_watches WHERE creator_id = :creatorId;
+
+getChapterHistory:
+SELECT * FROM history WHERE chapter_id = :chapterId;
+
+-- Keep local preferences and versions. The caller restores the prior is_syncing flag in the same transaction.
+setFavorite:
+UPDATE mangas
+SET favorite = :favorite,
+    date_added = CASE WHEN :favorite THEN CASE WHEN favorite = 0 THEN :now ELSE date_added END ELSE 0 END,
+    is_syncing = 1
+WHERE _id = :mangaId;
+
+restoreMangaSyncing:
+UPDATE mangas SET is_syncing = :previous WHERE _id = :mangaId;
+
+setReadStatus:
+UPDATE chapters
+SET read = :read,
+    last_page_read = CASE WHEN :read THEN last_page_read ELSE 0 END,
+    is_syncing = 1
+WHERE _id = :chapterId;
+
+setResumePage:
+UPDATE chapters SET last_page_read = :pageIndex, is_syncing = 1 WHERE _id = :chapterId;
+
+restoreChapterSyncing:
+UPDATE chapters SET is_syncing = :previous WHERE _id = :chapterId;

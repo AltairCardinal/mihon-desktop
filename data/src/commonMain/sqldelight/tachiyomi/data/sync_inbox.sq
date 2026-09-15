@@ -1,0 +1,269 @@
+import kotlin.Boolean;
+
+CREATE TABLE sync_inbox_batches (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    batch_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    body_json TEXT NOT NULL,
+    error TEXT,
+    PRIMARY KEY (space_id, generation, batch_id, status)
+);
+
+CREATE TABLE sync_descriptions (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    object_key TEXT NOT NULL,
+    description_json TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, object_key)
+);
+
+CREATE TABLE sync_event_fields (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    event_key TEXT NOT NULL,
+    object_key TEXT NOT NULL,
+    field TEXT NOT NULL,
+    object_json TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, event_key, object_key, field),
+    FOREIGN KEY (space_id, generation, event_key) REFERENCES sync_events(space_id, generation, event_key)
+        ON DELETE CASCADE
+);
+CREATE INDEX sync_events_for_field ON sync_event_fields(space_id, generation, object_key, field, event_key);
+
+CREATE TABLE sync_event_dependencies (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    parent_key TEXT NOT NULL,
+    child_key TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, parent_key, child_key),
+    FOREIGN KEY (space_id, generation, child_key) REFERENCES sync_events(space_id, generation, event_key)
+        ON DELETE CASCADE
+);
+
+CREATE TABLE sync_invalid_events (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    event_key TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, event_key)
+);
+
+CREATE TABLE sync_field_state (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    object_key TEXT NOT NULL,
+    field TEXT NOT NULL,
+    object_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'DIRTY',
+    dirty INTEGER AS Boolean NOT NULL DEFAULT 1,
+    revision INTEGER NOT NULL DEFAULT 1,
+    applied_heads TEXT,
+    PRIMARY KEY (space_id, generation, object_key, field)
+);
+CREATE INDEX sync_dirty_fields ON sync_field_state(space_id, generation, dirty);
+
+CREATE TABLE sync_pending_decisions (
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    object_key TEXT NOT NULL,
+    field TEXT NOT NULL,
+    object_json TEXT NOT NULL,
+    binding TEXT NOT NULL,
+    title TEXT NOT NULL,
+    local_creator_id INTEGER,
+    UNIQUE (space_id, generation, object_key, field)
+);
+CREATE INDEX sync_pending_author_identity ON sync_pending_decisions(space_id, generation, local_creator_id);
+
+CREATE TABLE sync_decisions (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    binding TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, binding)
+);
+
+CREATE TABLE sync_projected_history (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    effect_key TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, effect_key)
+);
+
+CREATE TABLE sync_bulk_jobs (
+    job_id TEXT NOT NULL PRIMARY KEY,
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    decision TEXT NOT NULL
+);
+
+CREATE TABLE sync_bulk_items (
+    job_id TEXT NOT NULL,
+    pending_id INTEGER NOT NULL,
+    object_key TEXT NOT NULL,
+    field TEXT NOT NULL,
+    object_json TEXT NOT NULL,
+    binding TEXT NOT NULL,
+    outcome TEXT NOT NULL DEFAULT 'QUEUED',
+    PRIMARY KEY (job_id, pending_id),
+    FOREIGN KEY (job_id) REFERENCES sync_bulk_jobs(job_id) ON DELETE CASCADE
+);
+
+getReceivedBatch:
+SELECT body_json FROM sync_inbox_batches
+WHERE space_id = ? AND generation = ? AND batch_id = ? AND status = 'RECEIVED';
+
+saveInboxBatch:
+INSERT INTO sync_inbox_batches(space_id, generation, batch_id, status, body_json, error) VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT(space_id, generation, batch_id, status) DO UPDATE SET body_json = excluded.body_json, error = excluded.error;
+
+countInboxBatches:
+SELECT status, count(*) AS count FROM sync_inbox_batches WHERE space_id = ? AND generation = ? GROUP BY status;
+
+insertDescription:
+INSERT OR IGNORE INTO sync_descriptions(space_id, generation, object_key, description_json) VALUES (?, ?, ?, ?);
+
+getDescription:
+SELECT description_json FROM sync_descriptions WHERE space_id = ? AND generation = ? AND object_key = ?;
+
+getEvent:
+SELECT event_json FROM sync_events WHERE space_id = ? AND generation = ? AND event_key = ?;
+
+getEventsByKey:
+SELECT event_key, event_json FROM sync_events
+WHERE space_id = ? AND generation = ? AND event_key IN :eventKeys;
+
+getUnindexedEvents:
+SELECT event_key, event_json FROM sync_events
+WHERE space_id = ? AND generation = ? AND sync_indexed = 0 ORDER BY actor_id, epoch, seq LIMIT :limit;
+
+markEventIndexed:
+UPDATE sync_events SET sync_indexed = 1 WHERE space_id = ? AND generation = ? AND event_key = ?;
+
+insertEventField:
+INSERT OR IGNORE INTO sync_event_fields(space_id, generation, event_key, object_key, field, object_json)
+VALUES (?, ?, ?, ?, ?, ?);
+
+insertDependency:
+INSERT OR IGNORE INTO sync_event_dependencies(space_id, generation, parent_key, child_key) VALUES (?, ?, ?, ?);
+
+invalidateEvent:
+INSERT OR REPLACE INTO sync_invalid_events(space_id, generation, event_key, reason) VALUES (?, ?, ?, ?);
+
+getInvalidEventKeys:
+SELECT event_key FROM sync_invalid_events WHERE space_id = ? AND generation = ? AND event_key IN :eventKeys;
+
+getFieldEvents:
+SELECT sync_events.event_key, sync_events.event_json FROM sync_event_fields
+JOIN sync_events USING (space_id, generation, event_key)
+WHERE sync_event_fields.space_id = ? AND sync_event_fields.generation = ?
+    AND sync_event_fields.object_key = ? AND sync_event_fields.field = ?;
+
+getAffectedFields:
+WITH RECURSIVE affected(event_key) AS (
+    SELECT event_key FROM sync_events WHERE space_id = :spaceId AND generation = :generation AND event_key IN :eventKeys
+    UNION
+    SELECT child_key FROM sync_event_dependencies JOIN affected ON parent_key = affected.event_key
+    WHERE space_id = :spaceId AND generation = :generation
+)
+SELECT DISTINCT object_key, field, object_json FROM sync_event_fields
+WHERE space_id = :spaceId AND generation = :generation AND event_key IN (SELECT event_key FROM affected);
+
+markFieldDirty:
+INSERT INTO sync_field_state(space_id, generation, object_key, field, object_json) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(space_id, generation, object_key, field) DO UPDATE SET dirty = 1, revision = revision + 1;
+
+getDirtyFields:
+SELECT * FROM sync_field_state WHERE space_id = ? AND generation = ? AND dirty = 1
+ORDER BY object_key, field LIMIT :limit;
+
+setFieldState:
+UPDATE sync_field_state SET status = ?, dirty = 0, applied_heads = ?
+WHERE space_id = ? AND generation = ? AND object_key = ? AND field = ? AND revision = :expectedRevision;
+
+retryUnavailable:
+UPDATE sync_field_state SET dirty = 1, revision = revision + 1
+WHERE space_id = ? AND generation = ? AND status IN ('SOURCE', 'DESCRIPTION', 'IDENTITY');
+
+getFieldState:
+SELECT * FROM sync_field_state WHERE space_id = ? AND generation = ? AND object_key = ? AND field = ?;
+
+clearPendingField:
+DELETE FROM sync_pending_decisions WHERE space_id = ? AND generation = ? AND object_key = ? AND field = ?;
+
+upsertPendingDecision:
+INSERT INTO sync_pending_decisions(space_id, generation, object_key, field, object_json, binding, title, local_creator_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(space_id, generation, object_key, field) DO UPDATE
+SET binding = excluded.binding, title = excluded.title, local_creator_id = excluded.local_creator_id;
+
+invalidateAuthorDecisions:
+INSERT OR IGNORE INTO sync_decisions(space_id, generation, binding, decision)
+SELECT space_id, generation, binding, 'INVALIDATED' FROM sync_pending_decisions
+WHERE space_id = :spaceId AND generation = :generation AND local_creator_id IN (
+    WITH RECURSIVE aliases(creator_id) AS (
+        SELECT :creatorId
+        UNION
+        SELECT C._id FROM author_archive_creators C JOIN aliases A ON C.merged_into_creator_id = A.creator_id
+        WHERE C.status = 'MERGED'
+    ) SELECT creator_id FROM aliases
+);
+
+clearPendingAuthorDecisions:
+DELETE FROM sync_pending_decisions
+WHERE space_id = :spaceId AND generation = :generation AND local_creator_id IN (
+    WITH RECURSIVE aliases(creator_id) AS (
+        SELECT :creatorId
+        UNION
+        SELECT C._id FROM author_archive_creators C JOIN aliases A ON C.merged_into_creator_id = A.creator_id
+        WHERE C.status = 'MERGED'
+    ) SELECT creator_id FROM aliases
+);
+
+getPendingDecision:
+SELECT * FROM sync_pending_decisions WHERE _id = ?;
+
+getPendingDecisions:
+SELECT * FROM sync_pending_decisions WHERE space_id = ? AND generation = ? ORDER BY _id LIMIT :limit OFFSET :offset;
+
+countPendingDecisions:
+SELECT count(*) FROM sync_pending_decisions WHERE space_id = ? AND generation = ?;
+
+getDecision:
+SELECT decision FROM sync_decisions WHERE space_id = ? AND generation = ? AND binding = ?;
+
+insertDecision:
+INSERT OR IGNORE INTO sync_decisions(space_id, generation, binding, decision) VALUES (?, ?, ?, ?);
+
+getProjectedHistory:
+SELECT effect_key FROM sync_projected_history WHERE space_id = ? AND generation = ? AND effect_key = ?;
+
+recordProjectedHistory:
+INSERT OR IGNORE INTO sync_projected_history(space_id, generation, effect_key) VALUES (?, ?, ?);
+
+insertBulkJob:
+INSERT INTO sync_bulk_jobs(job_id, space_id, generation, decision) VALUES (?, ?, ?, ?);
+
+freezeAllPending:
+INSERT INTO sync_bulk_items(job_id, pending_id, object_key, field, object_json, binding)
+SELECT :jobId, _id, object_key, field, object_json, binding FROM sync_pending_decisions
+WHERE space_id = :spaceId AND generation = :generation;
+
+freezeSelectedPending:
+INSERT INTO sync_bulk_items(job_id, pending_id, object_key, field, object_json, binding)
+SELECT :jobId, _id, object_key, field, object_json, binding FROM sync_pending_decisions
+WHERE space_id = :spaceId AND generation = :generation AND _id IN :pendingIds;
+
+getBulkJob:
+SELECT * FROM sync_bulk_jobs WHERE job_id = ?;
+
+getBulkItems:
+SELECT * FROM sync_bulk_items WHERE job_id = ? AND outcome = 'QUEUED' ORDER BY pending_id LIMIT :limit;
+
+finishBulkItem:
+UPDATE sync_bulk_items SET outcome = ? WHERE job_id = ? AND pending_id = ? AND outcome = 'QUEUED';
+
+countBulkOutcomes:
+SELECT outcome, count(*) AS count FROM sync_bulk_items WHERE job_id = ? GROUP BY outcome;

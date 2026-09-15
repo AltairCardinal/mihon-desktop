@@ -1,6 +1,7 @@
 package mihon.data.sync.journal
 
 import kotlinx.serialization.json.Json
+import mihon.data.sync.inbox.indexSyncEvent
 import mihon.domain.sync.SyncBatch
 import mihon.domain.sync.SyncBatchCodec
 import mihon.domain.sync.SyncCategory
@@ -120,6 +121,7 @@ internal fun Database.appendSyncOperation(
     }
     queries.updateBatch(actor.next_seq, totalBytes, objects, actor.space_id, actor.generation, batchId)
     queries.advanceSequence(actor.space_id, actor.generation, actor.actor_id, actor.epoch)
+    indexSyncEvent(event, local = true)
     return event
 }
 
