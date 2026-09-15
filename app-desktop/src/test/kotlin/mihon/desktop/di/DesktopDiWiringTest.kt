@@ -1335,6 +1335,8 @@ class DesktopDiWiringTest {
         )
         assertEquals(emptySet<Long>(), Injekt.get<TrackerSessionProvider>().loggedInTrackerIds().first())
         assertNotNull(Injekt.get<BackupRestoreScreenModelFactory>())
+        assertTrue(Injekt.get<mihon.data.sync.journal.BackupRestoreSync>() is mihon.data.sync.journal.SyncBackupRestorer)
+        mihon.desktop.backup.verifyNativeBackupSync(Injekt.get(), handler, Injekt.get(), tempDir, this)
         val filePicker = Injekt.get<DesktopFilePicker>()
         assertTrue(filePicker is SwingDesktopFilePicker)
         val directoryOpener = Injekt.get<DesktopDirectoryOpenPort>()

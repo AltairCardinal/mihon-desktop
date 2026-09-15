@@ -1,0 +1,25 @@
+-- Ordinary restore units and local-only history suppression are not exported as sync identity.
+CREATE TABLE sync_restore_runs (
+    import_id TEXT NOT NULL PRIMARY KEY REFERENCES sync_imports(import_id),
+    state TEXT NOT NULL
+);
+
+CREATE TABLE sync_restore_units (
+    import_id TEXT NOT NULL REFERENCES sync_restore_runs(import_id),
+    unit_key TEXT NOT NULL,
+    PRIMARY KEY (import_id, unit_key)
+);
+
+CREATE TABLE sync_history_clears (
+    target_key TEXT NOT NULL PRIMARY KEY
+);
+
+CREATE TABLE sync_history_watermarks (
+    target_key TEXT NOT NULL REFERENCES sync_history_clears(target_key),
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    actor_id TEXT NOT NULL,
+    epoch INTEGER NOT NULL,
+    seq INTEGER NOT NULL,
+    PRIMARY KEY (target_key, space_id, generation, actor_id, epoch)
+);

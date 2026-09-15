@@ -67,7 +67,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
 freezeFavorites:
 INSERT INTO sync_import_entries(import_id, category, source_id, object_url, title, author, artist, thumbnail)
 SELECT :importId, 'FAVORITE', M.source, M.url, M.title, M.author, M.artist, M.thumbnail_url
-FROM mangas M WHERE M.favorite = 1 AND M._id = (
+FROM mangas M WHERE M.favorite = 1
+AND (:sourceId IS NULL OR M.source = :sourceId) AND (:mangaUrl IS NULL OR M.url = :mangaUrl)
+AND M._id = (
     SELECT min(D._id) FROM mangas D WHERE D.source = M.source AND D.url = M.url AND D.favorite = 1
 );
 
@@ -75,7 +77,7 @@ freezeFollows:
 INSERT INTO sync_import_entries(import_id, category, portable_key, title)
 SELECT :importId, 'FOLLOW', C.portable_key, C.display_name
 FROM author_archive_creators C JOIN author_archive_watches W ON W.creator_id = C._id
-WHERE C.status = 'ACTIVE' AND W.enabled = 1;
+WHERE C.status = 'ACTIVE' AND W.enabled = 1 AND (:portableKey IS NULL OR C.portable_key = :portableKey);
 
 freezeReading:
 INSERT INTO sync_import_entries(import_id, category, source_id, object_url, parent_url, title,
@@ -85,7 +87,8 @@ SELECT :importId, 'READING', M.source, C.url, M.url, C.name, M.title, M.author, 
     coalesce(PR.public_page, C.last_page_read), coalesce(PR.public_read_at, H.last_read, 0)
 FROM chapters C JOIN mangas M ON M._id = C.manga_id LEFT JOIN history H ON H.chapter_id = C._id
 LEFT JOIN sync_private_reading PR ON PR.chapter_id = C._id
-WHERE (coalesce(PR.public_read, C.read) = 1 OR coalesce(PR.public_page, C.last_page_read) > 0
+WHERE (:sourceId IS NULL OR M.source = :sourceId) AND (:mangaUrl IS NULL OR M.url = :mangaUrl)
+AND (coalesce(PR.public_read, C.read) = 1 OR coalesce(PR.public_page, C.last_page_read) > 0
     OR coalesce(PR.public_read_at, H.last_read, 0) > 0)
 AND C._id = (SELECT min(D._id) FROM chapters D JOIN mangas P ON P._id = D.manga_id
     LEFT JOIN history DH ON DH.chapter_id = D._id
@@ -98,6 +101,9 @@ ORDER BY coalesce(PR.public_read_at, H.last_read, 0), C._id;
 setImportTotal:
 UPDATE sync_imports SET total = (SELECT count(*) FROM sync_import_entries WHERE import_id = :importId)
 WHERE import_id = :importId;
+
+incrementImportTotal:
+UPDATE sync_imports SET total = total + :added WHERE import_id = :importId;
 
 getImportEntries:
 SELECT * FROM sync_import_entries WHERE import_id = ? ORDER BY id LIMIT :limit;

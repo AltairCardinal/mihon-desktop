@@ -277,7 +277,7 @@ abstract class SyncJournalStorageContract {
             storage.repository.update(MangaUpdate(manga.id, favorite = true, viewerFlags = 7))
             removeSyncJournalSchema(storage.driver)
             storage.driver.execute(null, "PRAGMA user_version = 20", 0)
-            DatabaseMigration.migrateAtomically(storage.driver, 20, 24)
+            DatabaseMigration.migrateAtomically(storage.driver, 20, 25)
             storage.connect()
             val retained = storage.repository.getMangaById(manga.id)
             assertTrue(retained.favorite)
@@ -347,6 +347,7 @@ abstract class SyncJournalStorageContract {
 /** Reconstruct the schema before synchronization when a test starts from the generated current schema. */
 internal fun removeSyncJournalSchema(driver: SqlDriver) {
     listOf(
+        "sync_restore_units", "sync_restore_runs", "sync_history_watermarks", "sync_history_clears",
         "sync_private_reading", "sync_import_heads", "sync_import_entries", "sync_imports",
         "sync_remote_heads", "sync_remote_objects", "sync_remote_guards",
         "sync_bulk_items", "sync_bulk_jobs", "sync_decisions", "sync_projected_history", "sync_pending_decisions",

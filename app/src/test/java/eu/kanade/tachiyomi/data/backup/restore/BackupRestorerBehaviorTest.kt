@@ -17,6 +17,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.test.runTest
+import mihon.data.sync.journal.NoopBackupRestoreSync
 import org.junit.jupiter.api.Test
 import tachiyomi.data.backup.AuthorArchiveBackupContributor
 import java.io.File
@@ -45,6 +46,7 @@ class BackupRestorerBehaviorTest {
             extensionRepoRestorer = mockk<ExtensionRepoRestorer>(relaxed = true),
             mangaRestorer = mangaRestorer,
             authorArchiveBackupContributor = authorArchiveBackupContributor,
+            backupRestoreSync = NoopBackupRestoreSync,
         )
 
         restorer.restore(
@@ -110,6 +112,7 @@ class BackupRestorerBehaviorTest {
             extensionRepoRestorer = mockk(relaxed = true),
             mangaRestorer = mockk(relaxed = true),
             authorArchiveBackupContributor = contributor,
+            backupRestoreSync = NoopBackupRestoreSync,
         ).restore(
             uri,
             RestoreOptions(

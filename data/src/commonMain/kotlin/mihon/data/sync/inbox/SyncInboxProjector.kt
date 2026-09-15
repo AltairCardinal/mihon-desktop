@@ -226,7 +226,8 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
         while (queue.isNotEmpty()) {
             val ref = queue.removeFirst()
             if (!seen.add(ref.stableKey)) continue
-            val effect = reduced.events[ref.eventId]?.effects?.firstOrNull { it.effectId == ref.effectId } ?: continue
+            val event = reduced.events[ref.eventId] ?: continue
+            val effect = event.effects.firstOrNull { it.effectId == ref.effectId } ?: continue
             queue.addAll(effect.parents)
             if (sync_inboxQueries.getProjectedHistory(state.space_id, state.generation, ref.stableKey)
                     .executeAsOneOrNull() != null
@@ -235,12 +236,15 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
             }
             val chapter = (effect.payload["chapterKey"] as JsonPrimitive).content
             val readAt = (effect.payload["readAt"] as JsonPrimitive).content.toLong()
-            writer.applyHistory(
-                projection.key.objectKey,
-                decodeChapterKey(chapter),
-                readAt,
-                descriptionLookup(state.space_id, state.generation),
-            )
+            val chapterKey = decodeChapterKey(chapter)
+            if (allowSyncHistory(event, chapterKey)) {
+                writer.applyHistory(
+                    projection.key.objectKey,
+                    chapterKey,
+                    readAt,
+                    descriptionLookup(state.space_id, state.generation),
+                )
+            }
             sync_inboxQueries.recordProjectedHistory(state.space_id, state.generation, ref.stableKey)
         }
     }

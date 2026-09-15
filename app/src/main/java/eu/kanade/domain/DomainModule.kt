@@ -26,6 +26,8 @@ import eu.kanade.domain.track.interactor.RefreshTracks
 import eu.kanade.domain.track.interactor.SyncChapterProgressWithTrack
 import eu.kanade.domain.track.interactor.TrackChapter
 import mihon.data.repository.ExtensionRepoRepositoryImpl
+import mihon.data.sync.journal.BackupRestoreSync
+import mihon.data.sync.journal.SyncBackupRestorer
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
 import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
 import mihon.domain.extensionrepo.interactor.DeleteExtensionRepo
@@ -141,6 +143,7 @@ class DomainModule : InjektModule {
 
         addSingletonFactory { CreatorArchiveLegacyBridge(get()) }
         addSingletonFactory<CreatorArchiveBootstrap> { CreatorArchiveLegacyBootstrap(get()) }
+        addSingletonFactory<BackupRestoreSync> { SyncBackupRestorer(get(), get()) }
         addSingletonFactory { CreatorRepositoryImpl(handler = get(), bootstrap = get()) }
         addSingletonFactory<CreatorRepository> { get<CreatorRepositoryImpl>() }
         addSingletonFactory<CreatorArchiveRepository> { get<CreatorRepositoryImpl>() }

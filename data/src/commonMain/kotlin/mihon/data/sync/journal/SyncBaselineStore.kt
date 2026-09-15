@@ -47,9 +47,9 @@ class SyncBaselineStore(private val handler: DatabaseHandler, private val bootst
                 actor.epoch,
                 actor.next_seq,
             )
-            sync_importQueries.freezeFavorites(id)
-            sync_importQueries.freezeFollows(id)
-            sync_importQueries.freezeReading(id)
+            sync_importQueries.freezeFavorites(id, null, null)
+            sync_importQueries.freezeFollows(id, null)
+            sync_importQueries.freezeReading(id, null, null)
             sync_importQueries.setImportTotal(id)
             id
         }

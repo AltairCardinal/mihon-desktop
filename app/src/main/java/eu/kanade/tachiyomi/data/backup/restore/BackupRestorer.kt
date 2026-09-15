@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import eu.kanade.tachiyomi.data.backup.BackupDecoder
 import eu.kanade.tachiyomi.data.backup.BackupNotifier
+import eu.kanade.tachiyomi.data.backup.models.Backup
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
 import eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
@@ -16,10 +17,15 @@ import eu.kanade.tachiyomi.data.backup.restore.restorers.PreferenceRestorer
 import eu.kanade.tachiyomi.util.system.createFileInCacheDir
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import mihon.data.sync.journal.BackupRestoreSync
+import mihon.data.sync.journal.SyncRestoreOutcome
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.data.backup.AuthorArchiveBackupContributor
 import tachiyomi.i18n.MR
@@ -40,6 +46,7 @@ class BackupRestorer(
     private val extensionRepoRestorer: ExtensionRepoRestorer = ExtensionRepoRestorer(),
     private val mangaRestorer: MangaRestorer = MangaRestorer(),
     private val authorArchiveBackupContributor: AuthorArchiveBackupContributor = Injekt.get(),
+    private val backupRestoreSync: BackupRestoreSync = Injekt.get(),
 ) {
 
     private var restoreAmount = 0
@@ -71,7 +78,22 @@ class BackupRestorer(
 
     private suspend fun restoreFromFile(uri: Uri, options: RestoreOptions) {
         val backup = BackupDecoder(context).decode(uri)
+        val importId = if (options.libraryEntries) backupRestoreSync.begin() else null
+        var outcome = SyncRestoreOutcome.FAILED
+        try {
+            restoreBackup(backup, options, importId)
+            outcome = if (errors.isEmpty()) SyncRestoreOutcome.COMPLETED else SyncRestoreOutcome.PARTIAL
+        } catch (error: CancellationException) {
+            outcome = SyncRestoreOutcome.CANCELLED
+            throw error
+        } finally {
+            if (options.libraryEntries) {
+                withContext(NonCancellable) { backupRestoreSync.finish(importId, outcome) }
+            }
+        }
+    }
 
+    private suspend fun restoreBackup(backup: Backup, options: RestoreOptions, importId: String?) {
         // Store source mapping for error messages
         val backupMaps = backup.backupSources
         sourceMapping = backupMaps.associate { it.sourceId to it.name }
@@ -94,21 +116,34 @@ class BackupRestorer(
         }
 
         coroutineScope {
-            if (options.categories) {
-                restoreCategories(backup.backupCategories)
-            }
-            if (options.appSettings) {
-                restoreAppPreferences(backup.backupPreferences, backup.backupCategories.takeIf { options.categories })
-            }
-            if (options.sourceSettings) {
-                restoreSourcePreferences(backup.backupSourcePreferences)
-            }
-            if (options.libraryEntries) {
-                restoreManga(backup.backupManga, if (options.categories) backup.backupCategories else emptyList())
-            }
-            if (options.extensionRepoSettings) {
-                restoreExtensionRepos(backup.backupExtensionRepo)
-            }
+            buildList {
+                if (options.categories) {
+                    add(restoreCategories(backup.backupCategories))
+                }
+                if (options.appSettings) {
+                    add(
+                        restoreAppPreferences(
+                            backup.backupPreferences,
+                            backup.backupCategories.takeIf { options.categories },
+                        ),
+                    )
+                }
+                if (options.sourceSettings) {
+                    add(restoreSourcePreferences(backup.backupSourcePreferences))
+                }
+                if (options.libraryEntries) {
+                    add(
+                        restoreManga(
+                            backup.backupManga,
+                            if (options.categories) backup.backupCategories else emptyList(),
+                            importId,
+                        ),
+                    )
+                }
+                if (options.extensionRepoSettings) {
+                    add(restoreExtensionRepos(backup.backupExtensionRepo))
+                }
+            }.awaitAll()
 
             // TODO: optionally trigger online library + tracker update
         }
@@ -116,7 +151,9 @@ class BackupRestorer(
             backup.backupAuthorArchive?.let { section ->
                 currentCoroutineContext().ensureActive()
                 try {
-                    authorArchiveBackupContributor.restoreSection(section)
+                    backupRestoreSync.restoreAuthors(importId, section.watches.map { it.creatorPortableKey }) {
+                        authorArchiveBackupContributor.restoreSection(section)
+                    }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
@@ -133,7 +170,7 @@ class BackupRestorer(
         }
     }
 
-    private fun CoroutineScope.restoreCategories(backupCategories: List<BackupCategory>) = launch {
+    private fun CoroutineScope.restoreCategories(backupCategories: List<BackupCategory>) = async {
         ensureActive()
         categoriesRestorer(backupCategories)
 
@@ -149,13 +186,18 @@ class BackupRestorer(
     private fun CoroutineScope.restoreManga(
         backupMangas: List<BackupManga>,
         backupCategories: List<BackupCategory>,
-    ) = launch {
+        importId: String?,
+    ) = async {
         mangaRestorer.sortByNew(backupMangas)
             .forEach {
                 ensureActive()
 
                 try {
-                    mangaRestorer.restore(it, backupCategories)
+                    backupRestoreSync.restoreManga(importId, it.source, it.url) {
+                        mangaRestorer.restore(it, backupCategories)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     val sourceName = sourceMapping[it.source] ?: it.source.toString()
                     errors.add(Date() to "${it.title} [$sourceName]: ${e.message}")
@@ -169,7 +211,7 @@ class BackupRestorer(
     private fun CoroutineScope.restoreAppPreferences(
         preferences: List<BackupPreference>,
         categories: List<BackupCategory>?,
-    ) = launch {
+    ) = async {
         ensureActive()
         preferenceRestorer.restoreApp(
             preferences,
@@ -185,7 +227,7 @@ class BackupRestorer(
         )
     }
 
-    private fun CoroutineScope.restoreSourcePreferences(preferences: List<BackupSourcePreferences>) = launch {
+    private fun CoroutineScope.restoreSourcePreferences(preferences: List<BackupSourcePreferences>) = async {
         ensureActive()
         preferenceRestorer.restoreSource(preferences)
 
@@ -200,13 +242,15 @@ class BackupRestorer(
 
     private fun CoroutineScope.restoreExtensionRepos(
         backupExtensionRepo: List<BackupExtensionRepos>,
-    ) = launch {
+    ) = async {
         backupExtensionRepo
             .forEach {
                 ensureActive()
 
                 try {
                     extensionRepoRestorer(it)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     errors.add(Date() to "Error Adding Repo: ${it.name} : ${e.message}")
                 }

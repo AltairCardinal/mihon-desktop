@@ -37,6 +37,8 @@ class BackupRestoreScreenModelFactory(
     private val preferenceStore: PreferenceStore,
     private val extensionRepoRepository: ExtensionRepoRepository,
     private val authorArchiveBackupContributor: AuthorArchiveBackupContributor? = null,
+    private val backupRestoreSync: mihon.data.sync.journal.BackupRestoreSync =
+        mihon.data.sync.journal.NoopBackupRestoreSync,
 ) {
     fun create(): BackupRestoreScreenModel = createModel()
 
@@ -72,6 +74,7 @@ class BackupRestoreScreenModelFactory(
                     },
                     extensionRepoRepository = extensionRepoRepository,
                     authorArchiveBackupContributor = authorArchiveBackupContributor,
+                    backupRestoreSync = backupRestoreSync,
                 )
                 BackupWorkflow.runRestore {
                     withContext(Dispatchers.IO) { restorer.restore(backup, onProgress) }

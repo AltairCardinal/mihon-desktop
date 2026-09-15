@@ -1,0 +1,34 @@
+-- Each committed restore unit contributes a baseline in the same transaction as its business writes.
+CREATE TABLE sync_restore_runs (
+    import_id TEXT NOT NULL PRIMARY KEY REFERENCES sync_imports(import_id),
+    state TEXT NOT NULL
+);
+
+CREATE TABLE sync_restore_units (
+    import_id TEXT NOT NULL REFERENCES sync_restore_runs(import_id),
+    unit_key TEXT NOT NULL,
+    PRIMARY KEY (import_id, unit_key)
+);
+
+startRun:
+INSERT INTO sync_restore_runs(import_id, state) VALUES (?, 'RUNNING');
+
+finishRun:
+UPDATE sync_restore_runs SET state = ? WHERE import_id = ? AND state = 'RUNNING';
+
+getRun:
+SELECT * FROM sync_restore_runs WHERE import_id = ?;
+
+hasUnit:
+SELECT count(*) FROM sync_restore_units WHERE import_id = ? AND unit_key = ?;
+
+recordUnit:
+INSERT INTO sync_restore_units(import_id, unit_key) VALUES (?, ?);
+
+getMangaHistory:
+SELECT C._id AS chapter_id, C.url AS chapter_url, H.last_read
+FROM chapters C JOIN mangas M ON M._id = C.manga_id LEFT JOIN history H ON H.chapter_id = C._id
+WHERE M.source = :sourceId AND M.url = :mangaUrl;
+
+restoreVisibleHistory:
+UPDATE history SET last_read = ? WHERE chapter_id = ?;

@@ -506,6 +506,9 @@ internal fun initDataLayer(
     Injekt.addSingleton(historyRepository)
     Injekt.addSingleton(updatesRepository)
     Injekt.addSingleton(creatorArchiveBootstrap)
+    Injekt.addSingleton<mihon.data.sync.journal.BackupRestoreSync>(
+        mihon.data.sync.journal.SyncBackupRestorer(handler, creatorArchiveBootstrap),
+    )
     Injekt.addSingleton(creatorRepository)
     Injekt.addSingleton<CreatorArchiveRepository>(creatorRepositoryImpl)
     Injekt.addSingleton(CreatorArchive(creatorRepositoryImpl, creatorRepositoryImpl))
@@ -815,6 +818,7 @@ internal fun initUILayer(
             preferenceStore = preferenceStore,
             extensionRepoRepository = Injekt.get(),
             authorArchiveBackupContributor = Injekt.get(),
+            backupRestoreSync = Injekt.get(),
         ),
     )
 

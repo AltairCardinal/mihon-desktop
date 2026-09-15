@@ -1,0 +1,53 @@
+-- Device-local history suppression; never synchronized as a deletion operation.
+CREATE TABLE sync_history_clears (
+    target_key TEXT NOT NULL PRIMARY KEY
+);
+
+CREATE TABLE sync_history_watermarks (
+    target_key TEXT NOT NULL REFERENCES sync_history_clears(target_key),
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    actor_id TEXT NOT NULL,
+    epoch INTEGER NOT NULL,
+    seq INTEGER NOT NULL,
+    PRIMARY KEY (target_key, space_id, generation, actor_id, epoch)
+);
+
+recordClear:
+INSERT OR IGNORE INTO sync_history_clears(target_key) VALUES (?);
+
+captureWatermarks:
+INSERT INTO sync_history_watermarks(target_key, space_id, generation, actor_id, epoch, seq)
+SELECT :target, space_id, generation, actor_id, epoch, max(seq)
+FROM sync_events GROUP BY space_id, generation, actor_id, epoch
+ON CONFLICT(target_key, space_id, generation, actor_id, epoch)
+DO UPDATE SET seq = max(seq, excluded.seq);
+
+hasClear:
+SELECT count(*) FROM sync_history_clears WHERE target_key IN :targets;
+
+getWatermark:
+SELECT max(seq) FROM sync_history_watermarks
+WHERE target_key IN :targets AND space_id = :spaceId AND generation = :generation
+    AND actor_id = :actorId AND epoch = :epoch;
+
+getHistoryTarget:
+SELECT C._id AS chapter_id, M.source, M.url AS manga_url, C.url AS chapter_url
+FROM history H JOIN chapters C ON C._id = H.chapter_id JOIN mangas M ON M._id = C.manga_id
+WHERE H._id = :historyId;
+
+clearPublicChapterHistory:
+UPDATE sync_private_reading SET public_read_at = 0 WHERE chapter_id = :chapterId;
+
+clearPublicMangaHistory:
+UPDATE sync_private_reading SET public_read_at = 0
+WHERE chapter_id IN (SELECT _id FROM chapters WHERE manga_id = :mangaId);
+
+clearAllPublicHistory:
+UPDATE sync_private_reading SET public_read_at = 0;
+
+countClears:
+SELECT count(*) FROM sync_history_clears;
+
+getPublicHistory:
+SELECT * FROM sync_private_reading WHERE chapter_id IN :chapterIds;

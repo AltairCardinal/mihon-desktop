@@ -2,6 +2,9 @@ package tachiyomi.data.history
 
 import kotlinx.coroutines.flow.Flow
 import logcat.LogPriority
+import mihon.data.sync.inbox.suppressAllSyncHistory
+import mihon.data.sync.inbox.suppressSyncChapterHistory
+import mihon.data.sync.inbox.suppressSyncMangaHistory
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.history.model.History
@@ -35,7 +38,10 @@ class HistoryRepositoryImpl(
 
     override suspend fun resetHistory(historyId: Long) {
         try {
-            handler.await { historyQueries.resetHistoryById(historyId) }
+            handler.await(inTransaction = true) {
+                suppressSyncChapterHistory(historyId)
+                historyQueries.resetHistoryById(historyId)
+            }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, throwable = e)
         }
@@ -43,7 +49,10 @@ class HistoryRepositoryImpl(
 
     override suspend fun resetHistoryByMangaId(mangaId: Long) {
         try {
-            handler.await { historyQueries.resetHistoryByMangaId(mangaId) }
+            handler.await(inTransaction = true) {
+                suppressSyncMangaHistory(mangaId)
+                historyQueries.resetHistoryByMangaId(mangaId)
+            }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, throwable = e)
         }
@@ -51,7 +60,10 @@ class HistoryRepositoryImpl(
 
     override suspend fun deleteAllHistory(): Boolean {
         return try {
-            handler.await { historyQueries.removeAllHistory() }
+            handler.await(inTransaction = true) {
+                suppressAllSyncHistory()
+                historyQueries.removeAllHistory()
+            }
             true
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, throwable = e)

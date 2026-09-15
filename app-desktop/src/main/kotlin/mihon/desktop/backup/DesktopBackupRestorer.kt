@@ -4,6 +4,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import mihon.data.sync.journal.SyncRestoreOutcome
+import tachiyomi.core.common.preference.Preference
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import mihon.desktop.backup.models.Backup
 import mihon.desktop.backup.models.BackupCategory
@@ -47,6 +51,8 @@ class DesktopBackupRestorer(
     private val sourcePreferenceStore: ((Long) -> PreferenceStore)? = null,
     private val extensionRepoRepository: ExtensionRepoRepository? = null,
     private val authorArchiveBackupContributor: AuthorArchiveBackupContributor? = null,
+    private val backupRestoreSync: mihon.data.sync.journal.BackupRestoreSync =
+        mihon.data.sync.journal.NoopBackupRestoreSync,
 ) {
 
     /**
@@ -54,6 +60,27 @@ class DesktopBackupRestorer(
      * Returns a [RestoreResult] summarising what was restored and what failed.
      */
     suspend fun restore(backup: Backup, onProgress: suspend (RestoreProgress) -> Unit = {}): RestoreResult {
+        val importId = if (backup.backupManga.isNotEmpty() || backup.backupAuthorArchive != null) {
+            backupRestoreSync.begin()
+        } else null
+        var outcome = SyncRestoreOutcome.FAILED
+        try {
+            return restoreContents(backup, importId, onProgress).also {
+                outcome = if (it.hasErrors) SyncRestoreOutcome.PARTIAL else SyncRestoreOutcome.COMPLETED
+            }
+        } catch (error: CancellationException) {
+            outcome = SyncRestoreOutcome.CANCELLED
+            throw error
+        } finally {
+            withContext(NonCancellable) { backupRestoreSync.finish(importId, outcome) }
+        }
+    }
+
+    private suspend fun restoreContents(
+        backup: Backup,
+        importId: String?,
+        onProgress: suspend (RestoreProgress) -> Unit,
+    ): RestoreResult {
         val result = RestoreResult()
         val total = backup.backupCategories.size + backup.backupManga.size +
             backup.backupPreferences.size + backup.backupSourcePreferences.sumOf { it.prefs.size } +
@@ -114,17 +141,19 @@ class DesktopBackupRestorer(
         for (backupManga in backup.backupManga) {
             currentCoroutineContext().ensureActive()
             try {
-                val mangaId = restoreManga(backupManga)
-                restoreTracking(mangaId, backupManga.tracking, result, ::reportProcessed)
-                restoreChapters(mangaId, backupManga.chapters, result)
-                restoreHistory(mangaId, backupManga.history, result)
-                restoreMangaCategories(
-                    mangaId,
-                    backupManga.categories,
-                    backup.backupCategories,
-                    categoryNameToId,
-                )
-                restoreExcludedScanlators(mangaId, backupManga.excludedScanlators, result)
+                backupRestoreSync.restoreManga(importId, backupManga.source, backupManga.url) {
+                    val mangaId = restoreManga(backupManga)
+                    restoreTracking(mangaId, backupManga.tracking, result, ::reportProcessed)
+                    restoreChapters(mangaId, backupManga.chapters, result)
+                    restoreHistory(mangaId, backupManga.history, result)
+                    restoreMangaCategories(
+                        mangaId,
+                        backupManga.categories,
+                        backup.backupCategories,
+                        categoryNameToId,
+                    )
+                    restoreExcludedScanlators(mangaId, backupManga.excludedScanlators, result)
+                }
                 result.incrementSuccess()
             } catch (e: CancellationException) {
                 throw e
@@ -139,7 +168,9 @@ class DesktopBackupRestorer(
             runRestoreUnit("authorArchive", result) {
                 val contributor = authorArchiveBackupContributor
                     ?: error("author archive backup dependency is missing")
-                contributor.restoreSection(section)
+                backupRestoreSync.restoreAuthors(importId, section.watches.map { it.creatorPortableKey }) {
+                    contributor.restoreSection(section)
+                }
             }
             reportProcessed()
         }
@@ -282,6 +313,7 @@ class DesktopBackupRestorer(
         preferences.forEach { preference ->
             currentCoroutineContext().ensureActive()
             try {
+                if (Preference.isAppState(preference.key)) return@forEach
                 val target = store ?: error("preference store dependency is missing")
                 when (val value = preference.value) {
                     is IntPreferenceValue -> target.getInt(preference.key).set(value.value)
