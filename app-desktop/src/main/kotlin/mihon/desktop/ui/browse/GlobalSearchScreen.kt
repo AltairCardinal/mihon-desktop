@@ -66,7 +66,7 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -81,7 +81,7 @@ import mihon.desktop.network.DesktopSourceLoginSessionFactory
 import mihon.desktop.platform.DesktopExternalActionTarget
 import mihon.desktop.settings.BROWSE_RECENT_SEARCH_LIMIT
 import mihon.desktop.settings.DesktopAppPreferences
-import mihon.desktop.source.getEnabledCatalogueSourceCandidates
+import mihon.desktop.source.getEnabledQuerySourceCandidates
 import mihon.desktop.ui.library.MangaDetailScreen
 import mihon.desktop.ui.authors.LanguageArchiveFilter
 import mihon.desktop.ui.authors.AuthorDetailScreen
@@ -108,7 +108,7 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 
 /** Result group from one source. */
 data class SourceSearchResult(
-    val source: CatalogueSource,
+    val source: Source,
     val results: List<Manga>,
     val kind: GlobalSearchRowKind,
     val error: SourcePageError? = null,
@@ -207,7 +207,7 @@ internal data class GlobalSearchUiState(
 
 internal object GlobalSearchStateProjector {
     fun project(
-        sources: List<CatalogueSource>,
+        sources: List<Source>,
         state: DesktopGlobalSearchState,
         canonicalResults: Map<Long, CanonicalSearchResult> = emptyMap(),
         pinnedIds: Set<String> = emptySet(),
@@ -268,7 +268,7 @@ internal object GlobalSearchStateProjector {
     }
 
     private fun recoveryIntent(
-        source: CatalogueSource,
+        source: Source,
         request: tachiyomi.domain.source.service.SourcePageRequest,
         action: SourceRecoveryAction?,
     ): DesktopSourceRecoveryIntent = when (action) {
@@ -306,9 +306,9 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
         appPreferences: DesktopAppPreferences,
         coordinator: DesktopGlobalSearchCoordinator,
         query: String,
-        onStarted: (Long, List<CatalogueSource>) -> Unit,
+        onStarted: (Long, List<Source>) -> Unit,
     ) = executeSearch(
-        sourceManager.getEnabledCatalogueSourceCandidates(appPreferences),
+        sourceManager.getEnabledQuerySourceCandidates(appPreferences),
         coordinator,
         query,
         GlobalSearchSourceFilter.All,
@@ -316,11 +316,11 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
     )
 
     private suspend fun executeSearch(
-        sources: List<CatalogueSource>,
+        sources: List<Source>,
         coordinator: DesktopGlobalSearchCoordinator,
         query: String,
         sourceFilter: GlobalSearchSourceFilter,
-        onStarted: (Long, List<CatalogueSource>) -> Unit,
+        onStarted: (Long, List<Source>) -> Unit,
     ) {
         var started = false
         coordinator.search(sources, query, sourceFilter) { state ->
@@ -333,7 +333,7 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
 
     internal suspend fun retry(
         coordinator: DesktopGlobalSearchCoordinator,
-        source: CatalogueSource,
+        source: Source,
         intent: DesktopSourceRecoveryIntent,
         sessionFactory: DesktopSourceLoginSessionFactory,
     ) {
@@ -386,7 +386,7 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
             initial = recentSearchesPreference.get(),
         )
         var historyExpanded by remember { mutableStateOf(false) }
-        var sourcesByGeneration by remember { mutableStateOf(emptyMap<Long, List<CatalogueSource>>()) }
+        var sourcesByGeneration by remember { mutableStateOf(emptyMap<Long, List<Source>>()) }
         val searchUiState = GlobalSearchStateProjector.project(
             sourcesByGeneration[searchState.generation].orEmpty(),
             searchState,
@@ -476,7 +476,7 @@ class GlobalSearchScreen(internal val initialQuery: String = "") : Screen {
                     return@launch
                 }
                 val sources = GlobalSearchSourcePolicy.select(
-                    sourceManager.getCatalogueSources(),
+                    sourceManager.getQuerySources(),
                     appPreferences.enabledLanguages.get(),
                     appPreferences.disabledSources.get(),
                     appPreferences.pinnedSources.get(),

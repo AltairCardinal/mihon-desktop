@@ -25,7 +25,7 @@ import androidx.paging.map
 import cafe.adriel.voyager.navigator.Navigator
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.network.HttpException
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -61,6 +62,80 @@ class BrowseSourceUiWiringTest {
 
     @get:Rule
     val composeTestRule = createComposeRule()
+
+    @Test
+    fun sourceOnlyLatestChipFollowsCapabilityAndDispatchesSelectedListing() {
+        val latestCapability = androidx.compose.runtime.mutableStateOf(false)
+        val source = object : Source {
+            override val id = 91L
+            override val name = "Source only capability"
+            override val supportsLatest get() = latestCapability.value
+        }
+        var selected: BrowseSourceScreenModel.Listing? = null
+        composeTestRule.setContent {
+            MaterialTheme {
+                BrowseSourceListingChips(
+                    source = source,
+                    listing = BrowseSourceScreenModel.Listing.Popular,
+                    hasFilters = false,
+                    onListingSelected = { selected = it },
+                    onFilterClick = {},
+                )
+            }
+        }
+        composeTestRule.onNode(hasText("Popular") and hasClickAction()).assertExists()
+        composeTestRule.onNode(hasText("Latest") and hasClickAction()).assertDoesNotExist()
+        composeTestRule.runOnIdle { latestCapability.value = true }
+        composeTestRule.onNode(hasText("Latest") and hasClickAction()).performClick()
+        composeTestRule.runOnIdle { assertEquals(BrowseSourceScreenModel.Listing.Latest, selected) }
+    }
+
+    @Test
+    fun sourceOnlyResultClickUsesProductionDetailsNavigation() {
+        val source = object : BaseCatalogueSource() {
+            override suspend fun getPopularManga(page: Int) =
+                MangasPage(listOf(manga("/selected", "Selected Source only manga")), false)
+        }
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+        val databaseName = "aex03a-source-navigation-${java.util.UUID.randomUUID()}.db"
+        val driver = app.cash.sqldelight.driver.android.AndroidSqliteDriver(
+            tachiyomi.data.Database.Schema,
+            context,
+            databaseName,
+        )
+        try {
+            val database = tachiyomi.data.Database(
+                driver,
+                tachiyomi.data.History.Adapter(tachiyomi.data.DateColumnAdapter),
+                tachiyomi.data.Mangas.Adapter(
+                    tachiyomi.data.StringListColumnAdapter,
+                    tachiyomi.data.UpdateStrategyColumnAdapter,
+                ),
+            )
+            val repository = tachiyomi.data.manga.MangaRepositoryImpl(
+                tachiyomi.data.AndroidDatabaseHandler(database, driver),
+                tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter,
+            )
+            lateinit var navigator: Navigator
+            showBrowse(source, productionPagingFlow(source, repository)) { navigator = it }
+            composeTestRule.waitForText("Selected Source only manga")
+            val persisted = runBlocking {
+                requireNotNull(repository.getMangaByUrlAndSourceId("/selected", source.id))
+            }
+            assertTrue(persisted.id > 0)
+            composeTestRule.onNodeWithText("Selected Source only manga").performClick()
+            composeTestRule.runOnIdle {
+                val destination = navigator.lastItem as eu.kanade.tachiyomi.ui.manga.MangaScreen
+                assertTrue(destination.fromSource)
+                val mangaId = destination.javaClass.getDeclaredField("mangaId").apply { isAccessible = true }
+                assertEquals(persisted.id, mangaId.getLong(destination))
+                assertTrue(navigator.items.first() === RootScreen)
+            }
+        } finally {
+            driver.close()
+            context.deleteDatabase(databaseName)
+        }
+    }
 
     @Test
     fun browseErrorRetryClicksRealPagingRetryBoundary() {
@@ -158,12 +233,14 @@ class BrowseSourceUiWiringTest {
     }
 
     private fun showBrowse(
-        source: CatalogueSource,
+        source: Source,
         pagingFlow: Flow<PagingData<StateFlow<Manga>>>,
+        onNavigator: (Navigator) -> Unit = {},
     ) {
         composeTestRule.setContent {
             MaterialTheme {
                 Navigator(RootScreen) { navigator ->
+                    onNavigator(navigator)
                     val snackbarHostState = remember { SnackbarHostState() }
                     Scaffold(
                         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -179,7 +256,6 @@ class BrowseSourceUiWiringTest {
                             onWebViewClick = {},
                             onHelpClick = {},
                             onLocalSourceHelpClick = {},
-                            onMangaClick = {},
                             onMangaLongClick = {},
                         )
                     }
@@ -188,8 +264,11 @@ class BrowseSourceUiWiringTest {
         }
     }
 
-    private fun productionPagingFlow(source: CatalogueSource): Flow<PagingData<StateFlow<Manga>>> {
-        val repository = Proxy.newProxyInstance(
+    private fun productionPagingFlow(
+        source: Source,
+        repository: MangaRepository? = null,
+    ): Flow<PagingData<StateFlow<Manga>>> {
+        val sourceRepository = repository ?: Proxy.newProxyInstance(
             MangaRepository::class.java.classLoader,
             arrayOf(MangaRepository::class.java),
         ) { _, method, args ->
@@ -201,7 +280,7 @@ class BrowseSourceUiWiringTest {
                 listing = BrowseSourceScreenModel.Listing.Popular,
                 generation = 1,
                 sourceMangaSearchService = SourceMangaSearchService(),
-                networkToLocalManga = NetworkToLocalManga(repository),
+                networkToLocalManga = NetworkToLocalManga(sourceRepository),
             )
         }.flow.map { pagingData -> pagingData.map { MutableStateFlow(it) as StateFlow<Manga> } }
     }
@@ -210,14 +289,14 @@ class BrowseSourceUiWiringTest {
         waitUntil(10_000) { onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
     }
 
-    private fun pagingFlow(source: CatalogueSource): Flow<PagingData<StateFlow<Manga>>> {
+    private fun pagingFlow(source: Source): Flow<PagingData<StateFlow<Manga>>> {
         return Pager(PagingConfig(pageSize = 25)) {
             FailingThenEmptyPagingSource(source)
         }.flow
     }
 
     private class FailingThenEmptyPagingSource(
-        private val source: CatalogueSource,
+        private val source: Source,
     ) : PagingSource<Int, StateFlow<Manga>>() {
         override suspend fun load(params: LoadParams<Int>): LoadResult<Int, StateFlow<Manga>> {
             val result = SourceMangaSearchService().loadPageResult(
@@ -312,7 +391,7 @@ class BrowseSourceUiWiringTest {
         override fun imageUrlParse(response: Response) = ""
     }
 
-    private abstract class BaseCatalogueSource : CatalogueSource {
+    private abstract class BaseCatalogueSource : Source {
         override val id = 7L
         override val name = "Retry source"
         override val lang = "en"

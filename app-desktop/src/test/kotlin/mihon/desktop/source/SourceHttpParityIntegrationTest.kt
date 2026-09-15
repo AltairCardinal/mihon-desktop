@@ -114,7 +114,7 @@ class SourceHttpParityIntegrationTest {
         assertEquals(SourceRecoveryAction.Retry, result.recoveryAction)
     }
 
-    private fun load(source: JsonHttpSource): SourcePageResult = runBlocking {
+    private fun load(source: eu.kanade.tachiyomi.source.Source): SourcePageResult = runBlocking {
         SourceMangaSearchService().loadPageResult(
             source,
             SourcePageRequest(
@@ -129,12 +129,16 @@ class SourceHttpParityIntegrationTest {
     private fun withServer(
         response: MockResponse,
         client: OkHttpClient = OkHttpClient(),
-        block: (JsonHttpSource) -> Unit,
+        block: (eu.kanade.tachiyomi.source.Source) -> Unit,
     ) {
         MockWebServer().use { server ->
             server.enqueue(response)
             server.start()
-            block(JsonHttpSource(server.url("/").toString().removeSuffix("/"), client))
+            val source = JsonHttpSource(server.url("/").toString().removeSuffix("/"), client)
+            block(source)
+            server.enqueue(response)
+            // A Source-only extension executes the same real HTTP transport and parser.
+            block(object : eu.kanade.tachiyomi.source.Source by source {})
         }
     }
 

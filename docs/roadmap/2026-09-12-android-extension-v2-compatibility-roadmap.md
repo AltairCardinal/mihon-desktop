@@ -1,7 +1,7 @@
 # Android 新版扩展系统完整兼容 Roadmap
 
 - 日期：2026-09-12
-- 状态：**IN_PROGRESS，2026-09-15 主模型接续实施；AEX-00/AEX-01/AEX-02 已验收，下一批 AEX-03A**
+- 状态：**IN_PROGRESS，2026-09-15 主模型接续实施；AEX-00/AEX-01/AEX-02/AEX-03A 已验收，下一批 AEX-03B**
 - 父计划：[Android / macOS / Windows 正式 Roadmap](./2026-06-30-mihon-desktop-refactor-roadmap.md)
 - 专项代码基线：`6d6263dcfeffdfbd5f810a54fa7a3d24c0a6ba50`
 - 协议对齐基线：Mihon `v0.20.4`，实际 commit `df6507256acce8e7f3660783a3db6dbd1a31b6b5`
@@ -133,7 +133,7 @@
 | [x] | AEX-00 协议与验收基线 | 固定 fixture、可执行测试矩阵和已验证的 runner | 本计划获准实施 | 0.5–1 日 |
 | [x] | AEX-01 Source ABI 与旧版桥接 | 外部二进制执行真实 API/加载基础组件契约；不含 APK 版本准入整链 | AEX-00 | 2–4 日 |
 | [x] | AEX-02 共享仓库协议与迁移 | Android/Desktop 使用同一正确 v2 catalog，旧地址和仓库数据可迁移 | AEX-00、AEX-01 | 2–3 日 |
-| [ ] | AEX-03A Source 查询与导航 | Source-only 的源发现、浏览、搜索及 UI wiring 可用 | AEX-01、AEX-02 | 0.5–1.5 日 |
+| [x] | AEX-03A Source 查询与导航 | Source-only 的源发现、浏览、搜索及 UI wiring 可用 | AEX-01、AEX-02 | 0.5–1.5 日 |
 | [ ] | AEX-03B 统一更新与 memo | 更新、持久化、重启、备份恢复及阅读/下载数据传递闭环 | AEX-01、AEX-03A | 1.5–2.5 日 |
 | [ ] | AEX-04 Android 安装与整链集成 | 1.6 APK 经版本/信任准入、安装加载、源注册到业务流程全部通过 | AEX-02、AEX-03A、AEX-03B | 1.5–3 日 |
 | [ ] | AEX-05 历史升级与故障验收 | 旧用户数据迁移、真实端到端与恢复路径通过 | AEX-04 | 1–2 日 |
@@ -391,7 +391,7 @@ MockWebServer 必须覆盖成功、空/缺失、403/429/500、畸形、取消和
 | AEX-00 | `source-api` 首次 RED：`FilterList()` 实际 size=0 而测试断言 1，确认为测试输入错误并修正，非产品 RED；外部 fixture 首次 plugin marker 未缓存、首次导出把 `--tests` 传给 Jar task、ART 首次未引用参数被 PowerShell 拆分，均为 runner/命令配置故障并留存日志；ART 离线首次另因 AndroidX Test/Compose AAR 未缓存失败，未执行用例 | `:source-api:jvmTest --tests "eu.kanade.tachiyomi.source.SourceApiCurrentBaselineTest"` exit0，XML tests=2 skipped=0 failures=0 errors=0；`:source-api:testReleaseUnitTest --tests "eu.kanade.tachiyomi.source.SourceApiCurrentBaselineTest"` exit0，XML tests=2/0/0/0；`:app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.extension.api.ExtensionApiSharedCatalogTest"` exit0，XML tests=8/0/0/0；`:app-desktop:jvmTest --tests "mihon.desktop.extension.DesktopExtensionApiSharedCatalogTest" --tests "mihon.desktop.extension.DesktopExtensionLoaderTest" --tests "mihon.desktop.extension.DesktopExtensionArtifactAuthenticityTest"` exit0，XML catalog=11/0/0/0、loader=15/0/0/0、authenticator=8/0/0/0；外部 v1.5 fixture test exit0，XML tests=1/0/0/0；外部 v1.6 static probe fixture test exit0，XML `app-desktop/tmp/aex00-external-v16/build/test-results/test/TEST-aex00.external.v16.V16ContractTest.xml` tests=1 skipped=0 failures=0 errors=0；v1.6 JAR export exit0，unsigned hash `50628427539f0b2839d251dd2c3af773456ff07763aabef188f2ec3737cd1d9c`，签名 JAR hash `e623be999c1c6b7c9a5383253645f6dc3d496de44d44a4fa1cd1a4fe020c33c4`，受控 v1.5 APK hash `caf80d849e2eb5ad8f0be5121f914d9cee1ee06c15653d15f33321602183a316`、v1.6 APK hash `34c21ef4c3a5b60b789cd5dce95a78f638ba9875007f19d094cb3e344df4e182`；在线依赖重试后 `BrowseSourceUiWiringTest` ART exit0，专用 `emulator-5580` API36/x86_64 XML tests=4 skipped=0 failures=0 errors=0；签名后 Desktop loader/authenticator 亦已 exit0（上述 XML loader=15/0/0/0、authenticator=8/0/0/0） | 主模型已核验 C1–C3；C4 的代码/范围审查通过，目标回执按用户本批次豁免关闭；见本节独立复验 | `source-api/src/commonTest/resources/aex00/fixture-manifest.json`；固定索引；真实 1.4/1.6 APK/JAR；签名受控 v1.5 Source-only JAR+APK 及 provenance；签名受控 v1.6 SourceFactory/memo/flags/error JAR+APK 及 provenance；外部 v0.19.4/v0.20.4 独立源码/依赖生成器；设备报告 `app/build/outputs/androidTest-results/connected/debug/TEST-mihon-aex-api36(AVD) - 16-_app-.xml`；1.5 历史第三方发布物未找到，受控样本不冒称历史 provenance；C3 尚未执行 1.6 ABI/正常安装整链 | 与本行同一 AEX-00 提交；提交主题 `test: freeze AEX-00 extension fixtures and add foreground verification` |
 | AEX-01 | 有效 RED：`aex01-desktop-red` 为固定外部 probe 调用缺失 `Source.getMangaUpdate`；`aex01-art-page-red3` 为真实 ComicFury 缺失 Android Uri 形态 Page 构造器；`aex01-review-image-override-red` 为零偏移新重载绕过旧 override；`aex01-art-final5/6` 与 `aex01-network-red` 为 Android 默认压缩链不兼容。编译错误、测试输入错误与中间绕过诊断不计产品 RED | 主模型最终 `aex01-main-final-verification` exit0（2026-09-13 11:46:58 UTC）：Source API JVM 17、Android release unit 17、core Android network 2、Desktop 21、API36/x86_64 ART 4，共 61 项，0 failure/error/skip；三个相关模块 spotlessCheck 通过，git diff --check 通过。此前模块完整 `aex01-source-phase-final` 两 target 各 19 项通过 | C5、A1–A4 与本批 C4 经首审及一次定向修复复验通过；仅 API/加载组件，不包含版本准入和安装整链 | 日志 `.gradle-coordinator/aex01-main-final-verification.log/.json`；各模块 test-results XML 与 Android connected/debug XML。7 个本批固定 APK/JAR 大小/hash 复核未变；Page Android Uri/JVM Object、旧 Authors 页图和 child-first 回归保留；详情见第 9 节最终复验 | 测试、production 与本次 checkoff 随同一功能提交；提交号见本文件 git 历史 |
 | AEX-02 | 接续新增真实 RED 覆盖目录跟随/二进制响应/有界读取、显式地址、失败快照、不兼容与所属仓库判断；复审另发现 protobuf/JSON 判别、未知 meta、改名缓存及指纹等价缺口，均已修复。继承的先改后测和测试装配错误不改写为产品 RED | 主模型核验原始 XML：domain JVM 424、Android 359；data JVM 136、Android 10；app focused 50；Desktop focused 81；ART 3，共 1063 项，全部实际执行且 failure/error/skip=0。平台证据 `aex02-final-green-art1`（该轮 data 尚失败）；data fixture 修正后 `aex02-final-data-fixtures-green1` exit0，1m4s。app/domain/data/i18n 无 hook 真实 spotlessCheck 与 git diff --check 通过；Desktop 无 Spotless 插件，人工检查受影响格式，不声称执行不存在的 task | 共享协议一次独立审查及一次定向修复复审通过；主模型独立核对平台、存储、备份、UI、连带 fixture 差异及最终日志/XML。C6 和本批 C4 通过 | 专用 `emulator-5580` / `mihon-aex-api36` / API36 x86_64；上述日志位于 `.gradle-coordinator/`，XML 位于各模块 test-results 与 app connected/debug。Android loader 1.6 准入尚属 AEX-04；Desktop 失败警告沿用即时投影，不新增持久状态机 | 测试、production、必要迁移 fixture 与本次 checkoff 同一功能提交，hash 见本文件 git 历史 |
-| AEX-03A | — | — | — | — | — |
+| AEX-03A | `aex03a-discovery-red2` 为 Android 真实 manager 漏 Source-only；`aex03a-query-red` 为 Android 筛选项应 1 实为 0、Desktop 真实浏览页从旧投影找不到源。首轮泛型编译错误、MockK getter 混淆和 ART Proxy 参数错误均为装配问题，不计产品 RED | `aex03a-validation` exit0：domain JVM 46、Android 6，app 23，Desktop 136，ART 4，相关 app/data/domain 格式通过。定向 `aex03a-review-verification` 中 Desktop 2 类 5 项通过，整轮因 ART 装配失败为 exit1；最终 `aex03a-art-final` exit0，真实数据库导航及模式按钮对照在内 ART 6 项通过，app 格式和 debug 编译通过。各最终目标 failure/error/skip=0；主模型核验原始日志和当前 XML，未重复计算替代轮次 | 主模型一次独立审查及定向复验完成；补齐两端 latest 入口可见性和 Android 真库结果导航，不接受固定 ID Proxy 作持久化证据。C7 和本批 C4 通过 | Android API36 x86_64、专用 emulator-5580。Desktop 离屏真实导航/HTTP parser、Authors、本地标记和旧源查询回归通过；不冒称本地磁盘重验或完整 APK 安装。日志 `.gradle-coordinator/aex03a-*.log/.json`；共享新契约 `tachiyomi.domain.source.service.SourceOnlyQueryContractTest` 在 domain JVM/Android 两 target 执行 | 测试、production、必要 UI 提取与 checkoff 同一功能提交，hash 见本文件 git 历史 |
 | AEX-03B | — | — | — | — | — |
 | AEX-04 | — | — | — | — | — |
 | AEX-05 | — | — | — | — | — |
@@ -479,10 +479,10 @@ MockWebServer 必须覆盖成功、空/缺失、403/429/500、畸形、取消和
 | C1 / AEX-00 | 对照冻结上游源码、现有生产入口和第 6 节逐行补矩阵 | 每个必需行为有真实入口、唯一负责批次、具体测试/source set、命令/runner、预期失败原因和断言；组件与整链无反向依赖 | 主模型逐条语义审阅、命令与文件存在性核查；本地仓库及固定 git 对象 | 主模型 / pass（2026-09-13，见第 8 节） |
 | C2 / AEX-00 | 获取/构建固定索引、旧/新 API 真实扩展及独立外部 API 受控样本，核对原始 metadata | 来源/ref、hash、版本、签名、许可和再现步骤可追溯；无可变网络唯一依赖、伪造版本或宿主内重定义 API；缺失样本明确未满足而不冒称通过 | 独立 hash/签名/metadata 检查与受控样本构建；相关编译器/SDK、必要外部资源 | 主模型 / pass（2026-09-13，见第 8 节） |
 | C3 / AEX-00 | 在 Android/JVM 共享 target、app JVM、app ART 及 Desktop 层执行当前兼容基线探针 | 准确 runner 可执行且必要用例实际运行、非零、无跳过；记录命令/退出码/测试数/报告；真实设备和正式签名未知项单列 | 主模型抽验代表性探针并核对各层原始报告；Gradle 协调器、SDK、对应设备/运行时 | 主模型 / pass（2026-09-13，见第 8 节） |
-| C4 / 全批次 | 审核 diff、红绿日志、未提交状态和平台行为保留 | 仅授权文件；无用户数据/签名绕过/无关重构/捐赠或遥测引入；行为改动均有真实 production/wiring 测试；待验收项不勾选；模型和目标隔离如实报告 | 主模型检查实际 diff 与定向测试；本仓库规则、Luna 回执及目标工具结果 | 主模型 / AEX-00 通过（目标回执为用户明确豁免）；AEX-01 通过；AEX-02 起逐批 pending |
+| C4 / 全批次 | 审核 diff、红绿日志、未提交状态和平台行为保留 | 仅授权文件；无用户数据/签名绕过/无关重构/捐赠或遥测引入；行为改动均有真实 production/wiring 测试；待验收项不勾选；模型和目标隔离如实报告 | 主模型检查实际 diff 与定向测试；本仓库规则和实际目标工具结果；历史 Luna 要求按后续用户取消指令处理 | 主模型 / AEX-00 通过（历史目标回执为用户明确豁免）；AEX-01、AEX-02、AEX-03A 通过；AEX-03B 起逐批 pending |
 | C5 / AEX-01 | 外部二进制调用新旧 Source API、桥接及加载基础组件 | 真实 ABI 与语义符合固定规范；Android ART/JVM 和 Desktop 契约通过；完整 APK 准入仍不冒称完成 | 第 6 节 ABI 矩阵、各 target focused tests 和 ART 组件测试 | 主模型 / pass（2026-09-13，第 9 节最终复验） |
 | C6 / AEX-02 | 从旧/新仓库地址进入两端 production HTTP、数据与 UI 链路，注入成功/异常/冲突 | v2 形式、版本/分级/语言、身份迁移、签名和状态正确；失败保留可用数据；Android 未放行版本不可误装 | MockWebServer、真实数据库迁移/备份恢复、两端仓库及列表集成 | 主模型 / 2026-09-15 通过，见第 8 节 |
-| C7 / AEX-03A | 受控 Source-only 与旧源通过真实 manager、查询、ScreenModel 和导航 | 源可见，浏览/搜索/分页/筛选/最新能力/取消/错误反馈符合契约；无类型强转回归 | 双平台共享查询场景、真实 UI/DI/导航与 HTTP 集成 | 主模型 / pending |
+| C7 / AEX-03A | 受控 Source-only 与旧源通过真实 manager、查询、ScreenModel 和导航 | 源可见，浏览/搜索/分页/筛选/最新能力/取消/错误反馈符合契约；无类型强转回归 | 双平台共享查询场景、真实 UI/DI/导航与 HTTP 集成 | 主模型 / 2026-09-15 通过，见第 8 节 |
 | C8 / AEX-03B | 详情/后台作业更新，持久化后重建服务，生产备份恢复再调用并阅读/下载 | flags/次数/章节同步正确；漫画/章节 memo、进度、自定义数据与下载关联保真；失败不静默成功 | 双平台更新契约、真实 SQL 迁移、生产 backup/restore、Reader/下载集成 | 主模型 / pending |
 | C9 / AEX-04 | 正常签名真实 APK 经系统/私有安装、信任、loader、源注册到全部业务及重启 | 1.6 真正可用；错误版本/签名/损坏/拒绝/取消安全反馈；不靠 Source 注入或 shell 权限替代普通用户流程 | Android ART 设备测试、JVM 安全生命周期及普通权限操作证据；Desktop 共享回归 | 主模型 / pending |
 | C10 / AEX-05 | 旧版本数据升级、跨签名备份迁移与断网/部分失败/中断恢复 | 旧用户状态保全、错误可区分和恢复；选定真实站点有实际 production 验收，缺失不伪报 | 固定旧数据 fixture 的 E2E 与有界真实联网；测试设备和可用外部站点 | 主模型 / pending |
@@ -616,3 +616,9 @@ MockWebServer 必须覆盖成功、空/缺失、403/429/500、畸形、取消和
 - 唯一新增经验记录为[执行成本与经验](./2026-09-15-android-extension-execution-costs.md)。累计用量使用现有工具提供的口径，缺失时明确不可得；分别标注主线程 goal 计数与含子代理的统一统计，不将两者相加。记录只在批次交接/完成或方法实质改变时更新，不逐工具写报告。
 - 当前成本判断：直接实施更能复用已加载的协议、平台 adapter 和测试上下文；独立审查仍具有发现盲点的价值。后续若某个平台需要大量独立上下文，再按已授权最多两个并发子代理调整，避免共享文件和重型构建冲突。外部发布身份/设备限制按具体证据处理，不扩展至遥测、捐赠或相邻功能。
 - 发布前置核对：2026-09-15 用户已授权创建本 fork 专用的新 Android 发布密钥；仅在发布配置批次生成，密钥/密码不得入库或日志，需提供安全备份说明。新签名不能覆盖其他签名的既有应用，版本与应用身份按 AEX-06 明确。当前 release 未配置签名，不把 preview/debug 签名当正式交付。Mac 初次 SSH 探测超时，用户开机后 `mbp-lan` 只读复查成功：Darwin / x86_64 / macOS 14.8.4。仅表示远程入口就绪，不表示正式构建或运行验收已通过。
+
+### AEX-03A 实施边界（2026-09-15）
+
+- 前置 AEX-02 已提交 `d8f27b6df`。一名实现者连续负责源发现、共享查询、两端浏览/全局搜索及导航，独占 Gradle；主模型独立验收。预算一轮审查及必要一次定向复审，focused 按行为红绿，批末相关模块/平台和格式验证；不新增报告或执行整仓发布。
+- 既有 `getCatalogueSources` 仍被阅读、下载、后台更新和 Authors 的强类型消费者使用。允许在同一个 SourceManager 增加 Source 查询投影供本批入口使用，旧 Catalogue 投影只保留兼容消费者；必须从同一真实注册集合派生，不能维护第二套可变源列表或复制筛选规则。所有本批查询入口都需使用新投影，不能只改测试默认实现。03B 在同一边界接通更新消费者，不另建管理器。
+- 不改变数据库/备份、memo 或 APK 版本准入；HttpSource 判断只用于实际 HTTP 专属能力。Source-only、旧 Catalogue、本地源和 Authors 均有对应回归，不用全量类型强转换取编译通过。

@@ -1,7 +1,7 @@
 package mihon.desktop.ui.browse
 
 import dev.icerock.moko.resources.StringResource
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import mihon.desktop.network.DesktopBrowserLoginTicket
 import mihon.desktop.network.DesktopSourceLoginAdapter
 import mihon.desktop.network.DesktopSourceLoginEndpoint
@@ -59,12 +59,12 @@ class DesktopSourceLoginController(
     fun newAttempt(): DesktopSourceLoginAttempt = DesktopSourceLoginAttempt()
 
     suspend fun login(
-        source: CatalogueSource,
+        source: Source,
         intent: DesktopSourceRecoveryIntent.OpenLogin,
     ): SourceLoginState = login(source, intent, newAttempt())
 
     suspend fun login(
-        source: CatalogueSource,
+        source: Source,
         intent: DesktopSourceRecoveryIntent.OpenLogin,
         attempt: DesktopSourceLoginAttempt,
         onAttemptAccepted: (DesktopSourceLoginAttempt) -> Unit = {},

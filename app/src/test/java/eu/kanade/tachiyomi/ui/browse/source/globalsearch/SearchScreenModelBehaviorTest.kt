@@ -3,7 +3,7 @@ package eu.kanade.tachiyomi.ui.browse.source.globalsearch
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.network.HttpException
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
@@ -40,6 +40,39 @@ import tachiyomi.domain.source.service.SourceQuery
 import tachiyomi.domain.source.service.SourceRecoveryAction
 
 class SearchScreenModelBehaviorTest {
+
+    @Test
+    fun `source only extension filter and partial failures preserve successful results`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        var successfulCalls = 0
+        val successful = object : Source {
+            override val id = 10L
+            override val name = "Successful Source only"
+            override val lang = "en"
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+                successfulCalls++
+                assertEquals("extension query", query)
+                return MangasPage(listOf(manga("/success", "Successful")), false)
+            }
+        }
+        val failed = RetrySearchSource()
+        val filtered =
+            screenModel(successful, additionalSources = listOf(failed), extensionPackage = "selected.extension")
+        filtered.updateSearchQuery("extension query")
+        filtered.search()
+        runCurrent()
+        assertEquals(1, successfulCalls)
+        assertEquals(0, failed.requestCount)
+        assertEquals(setOf(successful), filtered.state.value.items.keys)
+
+        val all = screenModel(successful, additionalSources = listOf(failed))
+        all.updateSearchQuery("extension query")
+        all.search()
+        runCurrent()
+        val content = assertInstanceOf(SearchItemResult.Success::class.java, all.state.value.items[successful])
+        assertEquals(listOf("/success"), content.result.map { it.url })
+        assertInstanceOf(SearchItemResult.Error::class.java, all.state.value.items[failed])
+    }
 
     @AfterEach
     fun tearDown() {
@@ -126,16 +159,29 @@ class SearchScreenModelBehaviorTest {
     }
 
     private fun kotlinx.coroutines.test.TestScope.screenModel(
-        source: CatalogueSource,
+        source: Source,
         sourceMangaSearchService: SourceMangaSearchService = SourceMangaSearchService(),
+        additionalSources: List<Source> = emptyList(),
+        extensionPackage: String? = null,
     ): SearchScreenModel {
         val preferences = preferences()
         val repository = mockk<MangaRepository>()
         coEvery { repository.insertNetworkManga(any()) } answers { firstArg() }
         return object : SearchScreenModel(
             sourcePreferences = preferences,
-            sourceManager = mockk<SourceManager>(),
-            extensionManager = mockk<ExtensionManager>(),
+            sourceManager = object : SourceManager by mockk(relaxed = true) {
+                override fun getQuerySources() = listOf(source) + additionalSources
+            },
+            extensionManager = mockk<ExtensionManager> {
+                every { installedExtensionsFlow } returns kotlinx.coroutines.flow.MutableStateFlow(
+                    listOf(
+                        mockk<eu.kanade.tachiyomi.extension.model.Extension.Installed> {
+                            every { pkgName } returns "selected.extension"
+                            every { sources } returns listOf(source)
+                        },
+                    ),
+                )
+            },
             networkToLocalManga = NetworkToLocalManga(repository),
             getManga = mockk<GetManga>(),
             preferences = preferences,
@@ -143,7 +189,9 @@ class SearchScreenModelBehaviorTest {
             workerScope = this,
             coroutineDispatcher = StandardTestDispatcher(testScheduler),
         ) {
-            override fun getEnabledSources() = listOf(source)
+            init {
+                extensionFilter = extensionPackage
+            }
         }
     }
 
@@ -193,7 +241,7 @@ class SearchScreenModelBehaviorTest {
             error("Production global search bypassed SourceMangaSearchService")
     }
 
-    private abstract class BaseCatalogueSource : CatalogueSource {
+    private abstract class BaseCatalogueSource : Source {
         override val id = 9L
         override val name = "Behavior source"
         override val lang = "en"

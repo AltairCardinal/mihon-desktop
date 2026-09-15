@@ -5,6 +5,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.AnnotatedString
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
@@ -12,7 +13,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.Tab
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -124,6 +125,15 @@ class GlobalSearchResultNavigationTest {
                 }
             }
             assertEquals(emptyList<String>(), fixture.searchQueries)
+            fun hasLabel(node: SemanticsNode, label: String): Boolean =
+                (node.config.contains(SemanticsProperties.Text) &&
+                    node.config[SemanticsProperties.Text].any { it.text == label }) ||
+                    node.children.any { hasLabel(it, label) }
+            val listingChips = nodes(scene).filter {
+                it.config.contains(SemanticsProperties.Selected) && it.config.contains(SemanticsActions.OnClick)
+            }
+            assertTrue(listingChips.any { hasLabel(it, tachiyomi.i18n.MR.strings.popular.localized()) })
+            assertFalse(listingChips.any { hasLabel(it, tachiyomi.i18n.MR.strings.latest.localized()) })
         } finally {
             scene.close()
         }
@@ -136,7 +146,7 @@ class GlobalSearchResultNavigationTest {
         val activeSubscriptions = ConcurrentHashMap.newKeySet<Pair<Long, String>>()
         private val filterListCalls = AtomicInteger()
         val popularCalls = AtomicInteger()
-        val source: CatalogueSource = mockk {
+        val source: Source = mockk {
             every { id } returns 91L
             every { name } returns "Authority"
             every { lang } returns "en"

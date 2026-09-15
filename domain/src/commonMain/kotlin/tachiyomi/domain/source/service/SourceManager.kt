@@ -11,7 +11,12 @@ interface SourceManager {
 
     val isInitialized: StateFlow<Boolean>
 
+    /** Legacy projection for consumers awaiting migration to the Source update API. */
     val catalogueSources: Flow<List<CatalogueSource>>
+
+    /** Query-capable registered sources, including Source-only extensions. */
+    val querySources: Flow<List<Source>>
+        get() = catalogueSources
 
     fun get(sourceKey: Long): Source?
 
@@ -20,6 +25,9 @@ interface SourceManager {
     fun getOnlineSources(): List<HttpSource>
 
     fun getCatalogueSources(): List<CatalogueSource>
+
+    /** Snapshot of the same registration authority exposed by [querySources]. */
+    fun getQuerySources(): List<Source> = getCatalogueSources()
 
     fun getStubSources(): List<StubSource>
 }

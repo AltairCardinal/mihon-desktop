@@ -1,6 +1,6 @@
 package tachiyomi.domain.source.service
 
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SManga
@@ -10,7 +10,7 @@ import mihon.domain.error.AppError
 class SourceMangaSearchService {
 
     suspend fun loadPageResult(
-        source: CatalogueSource,
+        source: Source,
         request: SourcePageRequest,
     ): SourcePageResult {
         return try {
@@ -33,7 +33,7 @@ class SourceMangaSearchService {
     }
 
     suspend fun loadPage(
-        source: CatalogueSource,
+        source: Source,
         page: Int,
         request: SourceMangaSearchRequest,
     ): MangasPage {
@@ -45,7 +45,7 @@ class SourceMangaSearchService {
     }
 
     suspend fun searchAllPages(
-        source: CatalogueSource,
+        source: Source,
         query: String,
         filters: FilterList = source.getFilterList(),
     ): List<SManga> {

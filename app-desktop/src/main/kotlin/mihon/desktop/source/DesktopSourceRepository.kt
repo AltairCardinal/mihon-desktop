@@ -18,21 +18,21 @@ class DesktopSourceRepository(
 ) : SourceRepository {
 
     override fun getSources(): Flow<List<DomainSource>> =
-        sourceManager.catalogueSources.map { sources ->
+        sourceManager.querySources.map { sources ->
             sources.map {
                 mapSourceToDomainSource(it).copy(supportsLatest = it.supportsLatest)
             }
         }
 
     override fun getOnlineSources(): Flow<List<DomainSource>> =
-        sourceManager.catalogueSources.map { sources ->
+        sourceManager.querySources.map { sources ->
             sources.filterIsInstance<HttpSource>().map(::mapSourceToDomainSource)
         }
 
     override fun getSourcesWithFavoriteCount(): Flow<List<Pair<DomainSource, Long>>> =
         combine(
             handler.subscribeToList { mangasQueries.getSourceIdWithFavoriteCount() },
-            sourceManager.catalogueSources,
+            sourceManager.querySources,
         ) { counts, _ -> counts }
             .map { counts ->
                 counts.map { (sourceId, count) ->

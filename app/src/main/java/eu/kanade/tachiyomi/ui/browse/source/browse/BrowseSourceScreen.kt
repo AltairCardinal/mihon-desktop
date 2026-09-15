@@ -48,7 +48,7 @@ import eu.kanade.presentation.category.components.ChangeCategoryDialog
 import eu.kanade.presentation.manga.DuplicateMangaDialog
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.Screen
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.browse.extension.details.SourcePreferencesScreen
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreenModel.Listing
@@ -151,68 +151,16 @@ data class BrowseSourceScreen(
                         onSearch = screenModel::search,
                     )
 
-                    Row(
-                        modifier = Modifier
-                            .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = MaterialTheme.padding.small),
-                        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
-                    ) {
-                        FilterChip(
-                            selected = state.listing == Listing.Popular,
-                            onClick = {
-                                screenModel.resetFilters()
-                                screenModel.setListing(Listing.Popular)
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Outlined.Favorite,
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .size(FilterChipDefaults.IconSize),
-                                )
-                            },
-                            label = {
-                                Text(text = stringResource(MR.strings.popular))
-                            },
-                        )
-                        if ((screenModel.source as CatalogueSource).supportsLatest) {
-                            FilterChip(
-                                selected = state.listing == Listing.Latest,
-                                onClick = {
-                                    screenModel.resetFilters()
-                                    screenModel.setListing(Listing.Latest)
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Outlined.NewReleases,
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .size(FilterChipDefaults.IconSize),
-                                    )
-                                },
-                                label = {
-                                    Text(text = stringResource(MR.strings.latest))
-                                },
-                            )
-                        }
-                        if (state.filters.isNotEmpty()) {
-                            FilterChip(
-                                selected = state.listing is Listing.Search,
-                                onClick = screenModel::openFilterSheet,
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Outlined.FilterList,
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .size(FilterChipDefaults.IconSize),
-                                    )
-                                },
-                                label = {
-                                    Text(text = stringResource(MR.strings.action_filter))
-                                },
-                            )
-                        }
-                    }
+                    BrowseSourceListingChips(
+                        source = screenModel.source,
+                        listing = state.listing,
+                        hasFilters = state.filters.isNotEmpty(),
+                        onListingSelected = {
+                            screenModel.resetFilters()
+                            screenModel.setListing(it)
+                        },
+                        onFilterClick = screenModel::openFilterSheet,
+                    )
 
                     HorizontalDivider()
                 }
@@ -220,7 +168,7 @@ data class BrowseSourceScreen(
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         ) { paddingValues ->
             BrowseSourceScreenContent(
-                source = screenModel.source as CatalogueSource,
+                source = screenModel.source,
                 mangaList = screenModel.mangaPagerFlowFlow.collectAsLazyPagingItems(),
                 navigator = navigator,
                 columns = screenModel.getColumnsPreference(LocalConfiguration.current.orientation),
@@ -230,7 +178,6 @@ data class BrowseSourceScreen(
                 onWebViewClick = onWebViewClick,
                 onHelpClick = { uriHandler.openUri(Constants.URL_HELP) },
                 onLocalSourceHelpClick = onHelpClick,
-                onMangaClick = { navigator.push((MangaScreen(it.id, true))) },
                 onMangaLongClick = { manga ->
                     scope.launchIO {
                         val duplicates = screenModel.getDuplicateLibraryManga(manga)
@@ -325,8 +272,78 @@ data class BrowseSourceScreen(
 }
 
 @Composable
+internal fun BrowseSourceListingChips(
+    source: Source,
+    listing: Listing,
+    hasFilters: Boolean,
+    onListingSelected: (Listing) -> Unit,
+    onFilterClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = MaterialTheme.padding.small),
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+    ) {
+        FilterChip(
+            selected = listing == Listing.Popular,
+            onClick = {
+                onListingSelected(Listing.Popular)
+            },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Outlined.Favorite,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(FilterChipDefaults.IconSize),
+                )
+            },
+            label = {
+                Text(text = stringResource(MR.strings.popular))
+            },
+        )
+        if (source.supportsLatest) {
+            FilterChip(
+                selected = listing == Listing.Latest,
+                onClick = {
+                    onListingSelected(Listing.Latest)
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Outlined.NewReleases,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(FilterChipDefaults.IconSize),
+                    )
+                },
+                label = {
+                    Text(text = stringResource(MR.strings.latest))
+                },
+            )
+        }
+        if (hasFilters) {
+            FilterChip(
+                selected = listing is Listing.Search,
+                onClick = onFilterClick,
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Outlined.FilterList,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(FilterChipDefaults.IconSize),
+                    )
+                },
+                label = {
+                    Text(text = stringResource(MR.strings.action_filter))
+                },
+            )
+        }
+    }
+}
+
+@Composable
 internal fun BrowseSourceScreenContent(
-    source: CatalogueSource,
+    source: Source,
     mangaList: LazyPagingItems<StateFlow<Manga>>,
     navigator: Navigator,
     columns: GridCells,
@@ -336,7 +353,7 @@ internal fun BrowseSourceScreenContent(
     onWebViewClick: () -> Unit,
     onHelpClick: () -> Unit,
     onLocalSourceHelpClick: () -> Unit,
-    onMangaClick: (Manga) -> Unit,
+    onMangaClick: (Manga) -> Unit = { navigator.push(MangaScreen(it.id, true)) },
     onMangaLongClick: (Manga) -> Unit,
 ) {
     BrowseSourceContent(
@@ -358,7 +375,7 @@ internal fun BrowseSourceScreenContent(
 }
 
 internal fun browseSourceRecoveryScreen(
-    source: CatalogueSource,
+    source: Source,
     pageError: SourcePageError,
 ): Screen? {
     if (pageError.recoveryAction != SourceRecoveryAction.OpenLogin) return null

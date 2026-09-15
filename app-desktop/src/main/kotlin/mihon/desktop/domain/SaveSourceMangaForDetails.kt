@@ -1,6 +1,6 @@
 package mihon.desktop.domain
 
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CoroutineScope
@@ -44,7 +44,7 @@ class SaveSourceMangaForDetails(
             .let { networkToLocalManga(it) }
 
     fun refreshFromSource(
-        source: CatalogueSource,
+        source: Source,
         listedManga: SManga,
     ): Job {
         val key = SourceMangaRefreshKey(source.id, listedManga.url)
@@ -69,7 +69,7 @@ class SaveSourceMangaForDetails(
     }
 
     suspend fun awaitFromSource(
-        source: CatalogueSource,
+        source: Source,
         listedManga: SManga,
     ): Manga {
         val details = mergeSourceMangaDetails(
@@ -81,7 +81,7 @@ class SaveSourceMangaForDetails(
     }
 
     suspend fun awaitLinkedChapter(
-        source: CatalogueSource,
+        source: Source,
         listedManga: SManga,
         linkedChapter: SChapter?,
     ): ResolvedSourceChapter {

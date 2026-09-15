@@ -51,6 +51,49 @@ import tachiyomi.domain.source.service.SourceQuery
 
 class BrowseSourceScreenModelBehaviorTest {
 
+    @Test
+    fun `source only browse exposes filters and accepts search`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val source = object : eu.kanade.tachiyomi.source.Source {
+            override val id = 81L
+            override val name = "Source only"
+            override fun getFilterList() = FilterList(
+                eu.kanade.tachiyomi.source.model.Filter.Header("Available filter"),
+            )
+        }
+        val model = screenModel(source)
+        assertEquals(1, model.state.value.filters.size)
+        model.search("source-only-query")
+        assertEquals("source-only-query", model.state.value.toolbarQuery)
+    }
+
+    @Test
+    fun `source only production Pager calls search with filters and subsequent pages`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        val calls = mutableListOf<Pair<Int, String>>()
+        val selectedFilters = FilterList(eu.kanade.tachiyomi.source.model.Filter.Header("Selected"))
+        val source = object : eu.kanade.tachiyomi.source.Source {
+            override val id = 82L
+            override val name = "Paged Source only"
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+                calls += page to query
+                assertSame(selectedFilters, filters)
+                return MangasPage(listOf(manga("/page/$page", "Page $page")), page == 1)
+            }
+        }
+        val model = screenModel(source)
+        model.search("filtered query", selectedFilters)
+        backgroundScope.launch(dispatcher) { model.mangaPagerFlowFlow.collect() }
+        runCurrent()
+        val snapshot = backgroundScope.async(dispatcher) {
+            model.mangaPagerFlowFlow.value.asSnapshot { appendScrollWhile { true } }
+        }
+        runCurrent()
+        assertEquals(listOf("/page/1", "/page/2"), snapshot.await().map { it.value.url })
+        assertEquals(listOf(1 to "filtered query", 2 to "filtered query"), calls)
+    }
+
     @AfterEach
     fun tearDown() {
         Dispatchers.resetMain()
@@ -118,7 +161,7 @@ class BrowseSourceScreenModelBehaviorTest {
     }
 
     private fun kotlinx.coroutines.test.TestScope.screenModel(
-        source: CatalogueSource,
+        source: eu.kanade.tachiyomi.source.Source,
         sourceMangaSearchService: SourceMangaSearchService = SourceMangaSearchService(),
     ): BrowseSourceScreenModel {
         val preferenceStore = InMemoryPreferenceStore()
@@ -155,7 +198,7 @@ class BrowseSourceScreenModelBehaviorTest {
         )
     }
 
-    private class HangingBrowseSource : CatalogueSource {
+    private class HangingBrowseSource : eu.kanade.tachiyomi.source.Source {
         val oldStarted = CompletableDeferred<Unit>()
         val newStarted = CompletableDeferred<Unit>()
         val oldResult = CompletableDeferred<MangasPage>()

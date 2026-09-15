@@ -34,6 +34,8 @@ class DesktopSourceManager(
         canonicalCatalogueSources(extensions)
     }
 
+    override val querySources: Flow<List<Source>> = extensionManager.installedExtensions.map(::canonicalQuerySources)
+
     override fun get(sourceKey: Long): Source? {
         return builtinSources.find { it.id == sourceKey }
             ?: additionalCatalogueSources().find { it.id == sourceKey }
@@ -54,10 +56,13 @@ class DesktopSourceManager(
     }
 
     private fun canonicalCatalogueSources(extensions: List<InstalledExtension>): List<CatalogueSource> {
-        val extensionSources = extensions.flatMap { it.sources }.filterIsInstance<CatalogueSource>()
-        return (builtinSources + additionalCatalogueSources() + extensionSources)
-            .distinctBy(CatalogueSource::id)
+        return canonicalQuerySources(extensions).filterIsInstance<CatalogueSource>()
     }
+
+    override fun getQuerySources(): List<Source> = canonicalQuerySources(extensionManager.installedExtensions.value)
+
+    private fun canonicalQuerySources(extensions: List<InstalledExtension>): List<Source> =
+        (builtinSources + additionalCatalogueSources() + extensions.flatMap { it.sources }).distinctBy(Source::id)
 
     /** Discovery/search candidates; disabled sources remain available through [get]. */
     fun getEnabledCatalogueSources(): List<CatalogueSource> = preferences
@@ -89,13 +94,17 @@ fun SourceManager.getEnabledCatalogueSourceCandidates(preferences: DesktopAppPre
     )
 }
 
-fun selectEnabledCatalogueSourceCandidates(
-    sources: List<CatalogueSource>,
+fun <T : Source> selectEnabledCatalogueSourceCandidates(
+    sources: List<T>,
     enabledLanguages: Set<String>,
     disabledSources: Set<String>,
-): List<CatalogueSource> = sources.filter { source ->
+): List<T> = sources.filter { source ->
     source.lang in enabledLanguages && source.id.toString() !in disabledSources
 }
+
+/** Uses the same eligibility policy as legacy catalogue discovery. */
+fun SourceManager.getEnabledQuerySourceCandidates(preferences: DesktopAppPreferences): List<Source> =
+    selectEnabledCatalogueSourceCandidates(getQuerySources(), preferences.enabledLanguages.get(), preferences.disabledSources.get())
 
 /** Online-source variant of [getEnabledCatalogueSourceCandidates]. */
 fun SourceManager.getEnabledOnlineSourceCandidates(preferences: DesktopAppPreferences): List<HttpSource> {

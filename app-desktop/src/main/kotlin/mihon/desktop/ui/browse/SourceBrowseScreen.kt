@@ -66,7 +66,7 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.compose.AsyncImage
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
@@ -123,7 +123,7 @@ class SourceBrowseRecoveryController(
     private val loginController: DesktopSourceLoginController,
 ) {
     suspend fun recover(
-        source: CatalogueSource,
+        source: Source,
         intent: DesktopSourceRecoveryIntent,
         onLoginStarted: (DesktopSourceLoginAttempt) -> Unit = {},
     ): SourceLoginState? = when (intent) {
@@ -243,7 +243,7 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
 
     internal suspend fun recover(
         controller: SourceBrowseRecoveryController,
-        source: CatalogueSource,
+        source: Source,
         intent: DesktopSourceRecoveryIntent,
         onLoginStarted: (DesktopSourceLoginAttempt) -> Unit = {},
     ) = controller.recover(source, intent, onLoginStarted)
@@ -257,7 +257,7 @@ data class SourceBrowseScreen(val sourceId: Long, val initialQuery: String? = nu
         val sourceMangaSearchService = dependencies.sourceMangaSearchService
         val saveSourceMangaForDetails = dependencies.saveSourceMangaForDetails
         val getManga = dependencies.getManga
-        val source = remember { sourceManager.getCatalogueSources().find { it.id == sourceId } }
+        val source = remember { sourceManager.getQuerySources().find { it.id == sourceId } }
         val sourceExtensionLookup = source?.let { dependencies.sourceExtensionLookup }
         val requiresApkReconversion = remember(sourceExtensionLookup, sourceId) {
             (sourceExtensionLookup as? DesktopSourceArtifactStatusLookup)
