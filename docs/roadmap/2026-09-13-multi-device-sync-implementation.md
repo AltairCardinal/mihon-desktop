@@ -1,12 +1,12 @@
 # 多设备同步实施计划
 
-状态：IN_PROGRESS；S1 已通过独立复验，当前执行单元 S2。完整目标是按已审核技术方案与最终 DEMO 在 Android / Windows / macOS 实现真实同步，完成共享协议不代表产品完成。
+状态：IN_PROGRESS；S1 已通过独立复验并提交。2026-09-15 用户授权主模型接续完成全部 roadmap，不再使用 Luna 技能；当前任务从下方有序清单的第一个未勾选项推导。完整目标是按已审核技术方案与最终 DEMO 在 Android / Windows / macOS 实现真实同步，完成共享协议不代表产品完成。
 
 ## 目标、权威与授权
 
 - 技术权威：[已审核技术方案](../2026-09-13-multi-device-sync-technical-proposal.md)。后续确认条款优先于其中旧 PAT、三行状态、人工冲突匹配等描述。
 - UI 权威：[DEMO](../prototypes/multi-device-sync/README.md)及其当前源码：书架顶栏 → 同步底部面板 → 同一面板的设置/记录子页。立即同步在状态栏右侧；定期启用显示省略零单位的倒计时；空列表为“当前没有待确认的操作”；记录页没有解释性引导行。
-- 主模型规划与独立验收；实现模型 GPT-5.6 Luna，xhigh。一个实现代理连续承担相同上下文，不同时写相同文件。
+- 当前主模型负责规划、强耦合实现、整合与最终验收；子代理仅承担独立能力或独立审查，继承当前模型，不使用 Luna 技能。相同上下文复用同一个执行者，不同时写相同文件。本文后部的 Luna GOAL、暂停点及旧预算保留为历史证据，不再支配本次执行。
 - 工作区：`D:/Shell/Github/mihon-sync`，分支 `codex/multi-device-sync`，基线 `b686564d3`。提交仅包含本任务文件，不自动发布远端或覆盖正在使用的数据。
 - 现有 Use Case / SQLDelight / NetworkHelper / Injekt / Voyager / AdaptiveSheet / WorkManager / Desktop runtime 为接入权威。现有业务表不是操作日志，需新增同步表；平台差异限制在 adapter，不复制两套规则。
 
@@ -19,6 +19,30 @@ Android 扩展任务在 `D:/Shell/Github/mihon` 的 `main` 上开发；本任务
 Gradle 由当前工作区一个协调者串行运行；不清理其他工作区的 Java/Gradle 进程。按本机资源限制 workers，网络使用会话代理 127.0.0.1:10808，本地请求 bypass；最多一次网络重试，不永久修改系统设置。Python 与文本使用 UTF-8。
 
 ## 实现单元与文件所有权
+
+### 2026-09-15 调整后的有序交付清单
+
+原 S2 的授权、加密、Git 协议可独立交付；Git 固定快照、索引与发布状态机共享同一格式和故障 fixture，保留在一个能力内，避免人为拆开尚不可用的接口。S3 按日志事务、接收投影、恢复各自的完整能力划分。以下拆分不降低 C1–C18，不扩大服务商、同步字段或后台常驻范围。
+
+- [x] S1：共享操作协议、归并与接收端规则；提交 `ed5501cb1`，证据见原 S1 记录。
+- [ ] S2a：GitHub 设备授权、凭据续期、私库选择及安全 HTTP。真实 HTTP 成功/拒绝/过期/取消/分页失败契约；外部账号与系统安全存储装配仍在 S4/S5。
+- [x] S2b：共享 AEAD、恢复资料与严格批次校验。两目标固定密文解密向量、AAD/篡改/范围失败；不把 JVM 测试冒充 ART/R8。实现、独立审查/一次修复复审和提交同本次记录落地。
+- [ ] S2c：Git 交换闭环。固定 HEAD 与近线性完整性校验、完整可持久化上传制品、非强制并发发布、未知结果确认、初始化竞争，真实 HTTP 故障注入。依赖 S2a/S2b。
+- [ ] S3a：现有业务事务中的日志与 outbox。收藏/关注/阅读/已读未读真实入口、来源及无痕边界、唯一序号、数据库迁移与回滚测试。
+- [ ] S3b：持久接收与投影、待处理决定和批量。稳定对象描述、缺源保留、重启/乱序/失效版本/有界事务，真实双端数据库契约。
+- [ ] S3c：首次合并、恢复、空间隔离与历史屏蔽。水位/基线优先级、旧备份、新 actor epoch、断开不丢队列；依赖 S3a/S3b。
+- [ ] S4a：应用级 coordinator、系统安全存储和三触发。串行合并请求、取消与恢复、Android WorkManager/Desktop runtime、真实 DI。
+- [ ] S4b：Android/Desktop 原生产品交互。书架入口、同步面板/设置/记录、浏览器设备授权/恢复资料、批量处理和倒计时，遵循最终 DEMO。
+- [ ] S5a：扩展任务整合与规模验收。只合并已提交上游改动，复核 schema/Source API/备份/DI；1万/10万事件与长待处理列表试验。
+- [ ] S5b：真实 GitHub 与正式双端发布收口。Android/R8、Windows 正式 EXE、macOS 构建运行、全量回归及可追溯交付证据；未实际验证不勾选。
+
+每个勾选表示实现、独立审查、相关验证和提交全部完成。子能力只是同一产品阶段中的交付边界，不为每个测试类创建计划。每项实现完成即提交源码、测试与本文件证据/checkoff；不单独提交推进状态。成本、失败与分工调整统一记录在[执行经验与成本](2026-09-15-multi-device-sync-execution-costs.md)。
+
+当前并行安排：主模型处理 S2b/S2c 的共享格式和协议；一个当前模型子代理负责 S2a 授权/HTTP，双方不改同一文件。Gradle 仅由主模型串行运行。第二子代理槽位在交付候选稳定后用于独立审查，不预先占用。预计 S2 收口约 2–4 小时，S3–S5 还需数小时以上；以真实证据调整，不承诺尚未验证的完工时间。
+
+S2b 完成证据（2026-09-15）：`sync-s2b-red` 10 项中 4 项业务断言失败，修复序号缺口、存储路径 ID 与恢复解析错误脱敏；独立审查新增 `sync-s2b-review-red` 13 项中 1 项失败，修复接收事件 batchId 与外层不一致。`sync-s2b-refactor` JVM/Android release JVM 各 15 项、零失败/跳过；`sync-s2b-format-verified` 对本项全部 9 个 Kotlin 文件逐个 IS CLEAN。同一独立审查代理的一次限定复审通过。基础依赖共 7 行追加，能力超过 8 文件的原因是共享契约、两目标必须的 Tink/SecureRandom adapter 及同一套测试；未引入独立平台业务规则。真实系统安全存储、ART/R8 和 Git 完整制品保留后续门槛。
+
+2026-09-15 隔离核对：主工作区 HEAD 为 `d8f27b6df`，扩展任务正在修改 source-only 查询、导航与 SourceManager 等文件；当前未提供跨任务消息工具。继续使用 `D:/Shell/Github/mihon-sync`，不触碰对方未提交工作。持久化开始前核对最新 migration 与已提交扩展变更；在本工作树顺序整合，不覆盖 main。
 
 | 单元 | 前置与输入 | 实现范围、所有权与输出 | 验收 |
 | --- | --- | --- | --- |
@@ -65,6 +89,93 @@ S1 是后续生产引擎的共享规则单元，不能以纯内存测试替代 S
 正当阻塞项：不可替代的构建环境或依赖不可用需报告真实命令和错误；子 goal 隔离不可用只报告流程缺口并继续已授权实现，不操作父目标。
 最终交付：按 C1-C6 提交源码路径、红绿命令与退出码、未验证边界以及 status/diff/tests/commit/process/next 回执，交由主模型独立验收；不自行提交。
 
+## S2 交付契约
+
+前置：S1 提交 `ed5501cb1`，本工作树干净；主工作树的扩展改动仍独立保留。S2 构建依赖只允许追加 data/build.gradle.kts 与 gradle/libs.versions.toml 必需项，避免改对方正在使用的 domain/build.gradle.kts。
+
+所有权：Luna 新增 domain sync 下 auth/crypto/transport 契约，以及 data/src/commonMain/kotlin/mihon/data/sync 与对应 commonTest/jvmTest（必要时 androidMain/jvmMain adapter）。本批不改 S1 归并规则、SQL schema、UI、主工作区和已有扩展代码；发现必须改这些边界时先报告具体依赖。主模型维护本计划并核查后续生产 wiring。现有 NetworkHelper/OkHttp、协程 await、平台 CredentialStore 是复用入口；数据库和平台安全存储最终装配仍由 S3/S4 完成。
+
+| S2 标准 | 输入与执行 | 必须观察到的结果 |
+| --- | --- | --- |
+| C1 授权协议（对应总 C11） | 真实 HTTP 设备码申请、pending→success、slow_down、拒绝、过期、403/429/500/畸形 JSON、用户取消 | 公开 Client ID，无 client_secret/PAT；先展示验证码再依 interval 轮询；slow_down 增加间隔，取消及时取消 HTTP 与轮询，不吞 CancellationException；有界超时，不把 error 的 HTTP 200 当成功 |
+| C2 续期与仓库选择（总 C11） | 设备流程 refresh、并发取 token、授权撤销、分页 installation/repositories、仓库无权限/非私库 | 续期 grant 不含 secret；一次刷新并原子替换整套凭据，失败保持原记录；返回可操作重新连接状态；只选可访问专用私库，分页去重且防循环、拒绝越主机 Link；不自动创建或覆盖仓库 |
+| C3 HTTP 边界（总 C9/C11） | 注入 production 客户端含代理/DNS/头日志/Cookie/重定向；连接测试和 Git API | 派生客户端保留 production 代理、TLS、DNS，隔离同步 Cookie 与日志并禁止跨站自动重定向；授权/API 主机受限；请求/错误/状态 toString 不泄露 token/device_code/密钥；MockWebServer 捕获实际请求而非 mock parser |
+| C4 加密与恢复数据（总 C10） | 新密钥、导出/导入、跨 Android/JVM 密文向量，错误密钥/AAD/篡改/超限/畸形恢复内容 | 采用验证过的 AEAD（Tink 候选），绑定 space/generation/protocol/batch/path；相同冻结密文字节可重试，禁止重生成覆盖同 ID；密钥访问显式、默认输出脱敏。客户端加密格式与解密后 SyncBatchCodec 串联；不把 JVM Android 单元测试冒充 ART/R8 实测 |
+| C5 固定 HEAD 读取（总 C9） | Git ref/commit/tree/blob 实际 HTTP，目录树截断、missing、大小超限、非法 index/批次/链断裂 | 从固定 HEAD 的 SHA 获取一致快照；清单有界分片/链式读取，不以 Contents 目录前 1000 项当全集；校验空间、代次、digest、seq 范围和解密后的批次；错误不伪报空同步或对象删除 |
+| C6 发布与竞争（总 C9） | 同一 H 的两设备发布、ref 409/422、提交后响应丢失、相同路径异内容、重试耗尽 | base_tree 保留所有其他文件，commit parent 为读取的 H、force=false；同一冻结密文有界重建提交，最多 3 次竞争重试；确认目标批次可从有效 ref 达到且字节一致才返回 Published，blob/commit 创建成功不代表已发布；未知结果保留未确认状态 |
+| C7 初始化（总 C9/C11） | 分支不存在、仓库为空、两端初始化竞争、私库 404/权限失败 | 初始化必须为显式动作；空库需 Contents bootstrap 后才可创建 ref；落败端加入胜者既有空间，不覆盖 spaceId/密钥；404 不自动新建。已有空间要导入匹配密钥，不凭 GitHub 登录推断可解密 |
+| C8 接口连通与失败保留（总 C9–C11） | 同步信封→批次→加密→真实 HTTP 发布/下载→解密→S1 codec，auth/transport取消及失败 | 一条集成路径实际执行所有 production 组件；上传和收件结果分离，调用方仅可清理已确认发布集合；模型保留原始批次与错误，不产生假成功。真实 App/私库竞争、系统安全存储与发布运行验收继续作为总 C9–C11 未完成门槛 |
+
+测试：用现有 mockwebserver3 与协程测试工具；可将 data 的 MockWebServer/coroutines-test 依赖追加到两个目标共用的测试集合，覆盖共享真实 HTTP/加密实现。先运行能失败的行为测试，再最小实现和重构；仅缺接口的编译失败不能替代行为 RED。格式使用受限文件集合的一次自动格式化，检查器的格式化中间行号不能用于逐行猜测修补。自测回执交接后由主模型进行一次独立审查及最多一次修复复验，最后一次相关模块全量与格式检查。
+
+外部资料：GitHub [设备授权](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app)、[续期](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/refreshing-user-access-tokens)、[Git refs](https://docs.github.com/en/rest/git/refs)、[Git commits](https://docs.github.com/en/rest/git/commits)、[Git trees](https://docs.github.com/en/rest/git/trees)、[安装仓库](https://docs.github.com/en/rest/apps/installations)、[Tink Java/Android](https://developers.google.com/tink/setup/java)。依赖实际可解析后锁定版本；应用 API version 使用已核对官方支持的版本。
+
+## S2 七行 GOAL
+
+结果：实现可用于真实多设备同步的 GitHub 设备授权、AEAD 批次加密及 Git Database HTTP 传输核心。
+证据与上下文：D:/Shell/Github/mihon-sync/docs/roadmap/2026-09-13-multi-device-sync-implementation.md 的 S2 交付契约 C1-C8；S1 已提交 ed5501cb1；已审核技术方案和最终 DEMO 是产品权威。
+范围：在隔离工作树新增 domain sync 的 auth/crypto/transport 契约、data sync 生产 adapter 与共享/HTTP 测试，按契约追加 data 和版本目录必需依赖；不改 UI、schema、扩展代码或主工作区。
+约束与授权：用户授权本人创建并执行独立持久 goal；逐字核对目标与隔离，UTF-8、红绿重构、复用 production 网络链、单 Gradle coordinator；禁止泄露凭据、外部账号写入、提交、下级代理和未经说明的范围变更。
+完成标准：(C1) 设备授权完整失败与取消协议；(C2) 安全幂等续期与有界私库选择；(C3) 复用代理且隔离凭据泄漏的实际 HTTP；(C4) AEAD 及恢复数据校验与平台共享向量；(C5) 固定 HEAD 的完整有界读取；(C6) 非强制发布、并发及未知结果确认；(C7) 显式初始化和竞争安全；(C8) 信封到 HTTP 再到解密的 production 集成路径和失败保留；相关 focused 与格式通过，真实服务未验证不宣称产品完成。
+正当阻塞项：不可替代依赖不可达或当前工具能力缺失时报告真实证据；用户尚无 GitHub App，不伪造 Client ID/授权/私库结果，继续可独立实现的工作；子 goal 隔离失败不操作父目标。
+最终交付：逐项 C1-C8 源码与真实测试证据、完整 goal objective 或哈希、命令和进程终态、未验证门槛，以及 status/diff/tests/commit/process/next 回执；停止写入后交主模型独立验收。
+
+## S2 独立审查与一次定向修复
+
+正式审查结论：未通过，进入原预算中的唯一修复复验。S2 自测 `sync-s2-final-green2` 的 JVM/Android release 各 21 项通过已由主模型核对 XML，但不覆盖完整 C1–C8。主模型准备的测试与正式审查共同构成以下门槛；不将原绿色结果升级为生产完成。
+
+- 子 goal 回执已核对：thread `01a09aea-666c-7110-918d-c4c3e7c0b4e3`，状态 active，与父线程不同；七行 objective SHA-256 为 `698911c67cfe76ad7accc350a93ae8253f4c618d6201f8dbc03aa4ec39caca82`，与原契约一致。子线程未提供 send_message 工具，不能要求它用不可用工具作即时回报；后续以最终回执交接，必要时由父模型停止空转后再 follow-up 恢复，不虚假完成 goal。
+- `sync-s2-review-red` 于 2026-09-13 15:55:47 UTC 终态 FAILED，JVM 29 项、8 项失败：授权 5 项、空库初始化、不可变批次覆盖、跨空间发布。授权矩阵中的循环在首个断言失败后停止，未运行的后续组合不能算作已复现；修复须运行完整矩阵。
+- 响应体取消测试曾等待首个字节到达后才取消，旧整体延迟 fixture 因而没有覆盖中途阻塞。主模型改为立即交付第一字节、第二字节延迟 4 秒；`sync-s2-review-body-red` 于 2026-09-13 15:58:11 UTC 终态 FAILED，8 项中该项失败，实测取消等待 4022 ms。修复不是放宽阈值，而是取消真实 call/body 并保证调用线程不执行阻塞网络读取。
+- 原 Git fixture 仅返回文件，遗漏真实递归 Git Tree 中的目录项。主模型补齐 `type=tree/mode=040000` 及子树读取；`sync-s2-review-tree-red` 于 16:01:35 UTC 终态 FAILED，7 项中 6 项失败，主要新增现象是把目录 SHA 交给 blob API。此轮核验属于同一次正式审查的 fixture 修正，不是第二轮审查。
+
+| 修复项 | 对应契约与证据 | 通过门槛 |
+| --- | --- | --- |
+| R1 授权与续期边界 | C1/C2；SyncAuthorizationSafetyContractTest 的 5 项失败 | 设备端点 HTTP 错误保留可重试/重新连接分类；JSON 字段严格类型、token_type、正数时限和溢出校验；GitHub 验证链接在展示前核对；pending/slow_down/deny/expired/取消完整矩阵，使用有界时限；refresh 的 error 优先于 token，真实 HTTP refresh 后整套原子保存；expectedRevision=null 表示预期不存在，不覆盖新登录 |
+| R2 完整 HTTP 生命周期 | C3；分段 body 取消等待 4022 ms，源码在调用协程中阻塞 source.read | 完整响应处理在可取消 I/O/回调链，不阻塞 UI；取消发生在等响应头或读 body 时均及时取消 call/关闭 response；保留代理/DNS/TLS、Cookie/日志/cache/redirect 隔离，响应/异常默认输出不含凭据；不得只在 Job 完成后 cancel，也不得用捕获 CancellationException 当普通失败 |
+| R3 可用恢复资料与冻结加密对象 | C4；当前只有未使用的 SyncRecoveryData 类型，没有生成、导入或导出流程；plaintextDigest 仍为外露可变数组 | 新建随机密钥，严格、有界的恢复资料编解码，足够的 space/generation/key 身份供新设备加入，错误版本/密钥/格式拒绝且脱敏；原始密钥不误称 wrapped；整个冻结制品不可被外部数组修改；实际共享解密向量覆盖 Android/JVM，不仅各自 round trip；加密前拒绝混合 actor/epoch 或错误 path/scope，解密后核验完整元数据 |
+| R4 完整有界索引读取 | C5；真实 Git Tree 目录项引发 blob 404，当前无 actor head、按文件名字典序猜前驱且 distinctBy 隐藏冲突 | 区分目录/文件，固定 HEAD；实现既定 actor/epoch 加密 head 与不可变分片链，不猜文件名顺序；有界读取和近线性链校验；校验 actor/epoch/seq 连续范围、path、空间代次、真实内容 digest、重复 ID 异内容及前驱/环，错误不伪装为空；接收批次还要对比 snapshot 与 index，而非只验证其自述 header |
+| R5 不可变发布与未知结果 | C6；现有路径异密文、跨空间发布实际通过而本应拒绝 | 发布前校验 repository/snapshot/scope/actor/path；同一 ID/path 已存在且字节相同可幂等确认，不同则拒绝且原文件不变；base_tree 与 parent SHA 正确、force=false，最多 3 次竞争尝试；重试和进程恢复都使用已冻结批次及索引字节；未知结果必须核对有效 ref 可达的真实制品，所有网络阶段失败保持准确未确认结果，取消不被内部 runCatching 吞掉 |
+| R6 显式初始化及竞争 | C7；空库 GET Contents 404 被直接当仓库不存在；有 README 也总是修改默认分支 bootstrap | 先区分仓库存在/私有/权限/默认分支：仅真正空库做明确 Contents bootstrap；已有提交时从已读 SHA 建同步分支并保留其他内容；重复初始化无无关默认分支写入；创建 ref/初始化竞争后读取胜者身份并返回可加入或需匹配恢复资料的状态，不重写其 bootstrap/space/key；404、损坏索引及权限错误不能触发新空间覆盖 |
+| R7 发布前可持久化的接口 | C8；SyncBatchSyncService.upload 在返回密文前已发起 HTTP，失败/取消时调用方拿不到待持久化制品 | 将准备冻结制品与 HTTP 发布分开，使 S3 能先在事务中保存批次和索引原始字节再请求网络；加入保存失败不发请求、重建服务后重试同一制品的集成测试；接收失败与上传结果独立，不能以 regenerated ciphertext 代替恢复；真实数据库装配仍留 S3 |
+| R8 补足实际失败证据与格式 | C1–C8 自测只有 6 项自身测试，加父模型 15 项，存在未覆盖正常/失败矩阵 | 在现有测试簇补齐 403/429/500/畸形响应、取消、分页循环/外链、树截断/链损坏、空库/竞争、同 ID 异内容、错误恢复资料；测试执行真实 production parser/crypto/Git HTTP；保留父模型断言与真实目录 fixture，允许接口变化所必需的机械适配及格式化，不弱化预期；最后相关 focused 两目标与格式通过后交回父模型一次复验 |
+
+修复范围仍为 S2 的 domain/data sync 包、对应测试及必要依赖。数据库、UI、扩展、主工作区和外部账号写入均不在本次修复范围。原 Luna 继续同一 active goal，不新增代理或审查轮次；主模型负责计划和最终复验。新增完整模块测试尚未运行，待修复通过后执行一次。
+
+### S2 修复复验结果：仍未通过
+
+2026-09-13 16:30 UTC，Luna 的最终 JVM / Android release 自测分别为 31 项，零失败、零跳过；`sync-s2-format-final-check` 对 data/domain 的 spotlessKotlinCheck 通过。主模型核对了真实 XML 和协调器终态。该结果不等于完整 C1–C8：Luna 回执明确尚缺授权拒绝/过期/取消、分页循环/外链、树截断/链损坏、初始化竞争等专门回归。新增“固定向量”测试只验证恢复资料的固定密钥十六进制文本，不是 Android/JVM 共用的固定 AEAD 密文解密向量。
+
+主模型在原定的唯一修复复验中，向既有 SyncGitSafetyContractTest 增加四条真实 HTTP/Git fixture 回归，未修改 production。`sync-s2-repair-review` 于 2026-09-13 16:35:06 UTC 终态 FAILED、exit 1，19 项中 4 项失败：
+
+| 失败项 | 实际结果与已确认原因 | 修正门槛 |
+| --- | --- | --- |
+| R5：旧快照遇到同批次异密文 | 第一发布者成功后，第二发布者持旧快照发布同 ID 的另一密文；409 后重读没有重新检查已存在批次，原远端字节被覆盖 | 每次重读和每次真正发布前都核对不可变路径；同字节幂等确认，异字节拒绝且不改原文件 |
+| R5/R7：服务重建后重试 | 使用已保存的同一 SyncEncryptedBatch 重建 service 并重试；批次密文相同，但远端不可变 index 文件变为新密文 | prepare 必须包含 batch/index/head 全部制品；调用方可在任何 HTTP 写入前持久化，重试与进程恢复不重新随机加密索引 |
+| R4：序号缺口 | 同一 actor 先发布 seq 1，再发布 seq 3；当前实现和读取均接受，缺失 seq 2 未被发现 | 验证约定的连续序号范围和链连接，不能仅检查前一范围小于后一范围 |
+| R4：缺失 actor head | 合法发布后，在 Git fixture 创建一个删除该 actor head 的后继提交；readSnapshot 仍成功并当作完整快照 | 每个实际 actor/epoch 索引链必须有且仅有可验证 head，不能把 head 当可选附加文件 |
+
+HTTP 的 8 项回归全部通过，包含真正分段响应的及时取消。原来“只有当前快照中已存在同 ID 才拒绝”的检查仍不足以覆盖竞争重读；prepare 目前也仅冻结批次，索引/head 在 publish 内生成。链验证仍逐节点回溯，最坏 O(n²)，尚未达到 R4 的近线性门槛。初始化竞争仍缺胜者恢复资料的端到端专门证据；“保存失败不发 HTTP”不能以尚未接数据库为由从原 S2 接口契约移除，至少要验证可注入持久化边界与失败时零网络写入。
+
+当前原预算的一轮正式审查和一轮修复复验均已执行。保持根 goal 与 S2 goal 未完成，停止继续改 production，不提交失败批次；完整模块测试尚未执行，避免把未通过修复的代码作为最终候选。拟向用户申请追加一轮原范围定向修复与复验，预计 60–90 分钟，复用原 Luna，无新子代理、无新过程报告；仅闭合上述失败与原 C1–C8 剩余覆盖，之后运行已计划的一次模块完整测试和格式检查。是否追加仍待用户答复，不把等待视为批准。
+
+## S3 接入准备（前置仍为 S2 验收，不代表已开工）
+
+本单元应形成可被既有业务调用链实际使用的持久化同步能力，不能只交付一组尚未装配的通用表或内存 repository。界面新增入口留 S4，但业务写入来源、无痕许可和当前阅读会话边界必须从真实调用方传递。继续由原 Luna 接同一上下文簇；开始前公布该单元流程预算并冻结验收表。
+
+| 接入项 | 复用入口与必须实现的行为 | 所需实际证据 |
+| --- | --- | --- |
+| 操作与业务原子性 | 收藏的 updateMembershipsAtomically / MangaUpdate 路径、CreatorRepositoryImpl、SqlDelightReadingProgressRepository、明确已读/未读用例在既有事务中写日志。无痕、恢复、metadata、REMOTE 的来源不能靠全局布尔值猜测 | 真实 SQL 故障注入同时回滚业务、序号、outbox；批量中途失败不得部分记日志。覆盖未配置、暂停自动同步、授权失效等连接状态 |
+| 重启可靠性 | 持久化空间绑定、actor/epoch/seq、原始事件、字段头、inbox/outbox、接收游标、已冻结发布制品与运行状态。新设备/恢复不能复制旧 actor 继续写序号 | 关闭数据库并重新打开；上传响应未知、收件后未投影、投影事务失败均可继续；清队列只包含确认为 Published 的原集合，运行时新操作仍保留 |
+| 接收与本地决定 | 调用 S1 reducer 与 receiver 规则，决定绑定精确有效头。远端取消只为接收端当前已收藏/关注对象产生待处理；本机保留或确认不产生反向 USER 事件 | 三个真实数据库乱序交换、重复投递、依赖迟到、远端重新收藏使旧决定失效、关闭重启后决定仍有效；有待处理时其他对象继续应用 |
+| 最低对象元数据 | 在批次中增加独立、严格校验的对象描述；复用稳定源/URL 和作者 portable_key，不猜测同名对象。缺源保留已验证输入并在条件恢复后重试 | 空库收到收藏后能显示真实标题；同名不同作者 key 独立；错空间/异内容重复 ID 隔离；不覆盖阅读模式、扫描来源/周期或扩展设置 |
+| 阅读与历史 | 一次进度提交产生一个多效果信封；幂等重试不重复。当前阅读会话携带自己的因果基线，收件不改变当前页；本机清除历史保存屏蔽范围 | 重读早页、并发跨章、明确未读、无痕退出不追补、recordHistory=false 与无痕分别验证；旧记录重复及投影重建不复现已清除历史 |
+| 批量持久处理 | 冻结选中项与有效头，按有界事务分段执行；新增项不混入已确认集合，失效项跳过；提供列表分页与完成/跳过/失败计数 | 批量中断重启、执行间到达重新收藏、重复提交同一任务；实际查询与事务数量有界，不能把 1 万项全部一次性映射为 UI 节点 |
+| 首次与旧备份 | 导入水位和 importId 持久化；baseline 低于明确 USER；导入期间新操作不能被扫描覆盖。普通备份不包含可继续使用的 actor、密钥、token 或接收端决定 | 空设备不产生取消，旧备份不复活有效取消，导入中断可继续，换空间不改写旧 outbox 的归属；现有备份测试继续通过 |
+| 迁移与接线 | 开工前重新核对扩展任务的 schema/migration；复用既有 DI 构造与 DatabaseHandler，不默认绑定永远不记录的 Noop 来假装完成 | 新建 schema 和真实旧 schema 升级均有测试；两端 production handler 跑共享契约；新增依赖解析/构造测试，扩展整合及正式运行门槛仍留 S5 |
+
+本表是原 S3 范围的接入准备，尚不分配迁移编号、不创建下一子 goal、不运行另一组 Gradle。S2 修复仍拥有当前重型验证与源码写入时段。
+
 ## 过程与证据
 
 - 初始核对：主工作区另有扩展改动，隔离 worktree 已建立；尚未实施生产功能或运行验收。
@@ -74,6 +185,9 @@ S1 是后续生产引擎的共享规则单元，不能以纯内存测试替代 S
 - 格式：限制于本次新增包的 Spotless 检查，不顺手格式化其他文件。阶段全量与正式构建由主模型统一安排。
 - 外部配置边界：当前源码未发现专用 GitHub App client ID；实际授权与私库竞争验收仍需真实 App/仓库，不能以模拟页或 MockWebServer 宣称完成。
 - 用户已回复没有现成 GitHub App。授权模块就绪后提供一次性注册步骤；此前继续协议、持久化和平台接入，不让终端用户手填 PAT。
+- 2026-09-13 后续配置：用户已创建 GitHub App，提供公开 Client ID `Iv23liNtj6rhGAXJEwCS` 与管理页 slug `mihon-desktop`；公开页面 https://github.com/apps/mihon-desktop 已核对存在，当前为 private GitHub App。此前“没有 App”的注册前置已解除；设备流程开关、仓库权限、真实登录/续期和私库交换尚未实际联调，不能据注册成功标为通过。这里记录的是公开应用标识，不保存任何客户端密钥、私钥、设备码或访问令牌。
+- S2 首次可执行行为 RED：`sync-s2-http-red` 于 2026-09-13 15:24:52 UTC 终态 FAILED、exit 1，实际执行 data JVM 9 项、6 项失败。其中主模型准备的 SyncHttpSafetyContractTest 有 6 项，4 项被短响应读取时的 EOFException 阻断；其余两项拒绝越主机和超限响应通过。Cookie/日志隔离断言尚未到达，不能将这些测试的失败误记为所有隔离问题均已复现。较早的测试语法与 Tink API 编译错误属于准备失败，不代替业务 RED；后续保留不同 coordinator key 的原始结果。
+- S2 实现方向：使用 Tink Aead 产生随机化密文，冻结首次产生的密文字节供发布重试；不自行推导固定 nonce。Maven Central 的 tink 1.23.0 POM 已通过本机会话代理取得 HTTP 200，此证据仅证明该 artifact 可达，不替代 Gradle 依赖解析和平台运行验证。
 - S1 自测交接：Luna 的隔离 goal 为 `01a09aea-666c-7110-918d-c4c3e7c0b4e3`；`sync-s1-green` 于 14:23:50 UTC 终态 PASSED。代理当时自报 14 条，最终以测试 XML 为准，不能用自报数量代替独立验收。
 - S1 独立审查：主模型新增 `SyncSafetyContractTest`，`sync-s1-review-red` 实际执行 Android release 测试 12 条，其中 10 条业务断言失败；Gradle 在该 task 失败后没有完成 JVM 测试，不能把两平台都记为已执行 RED。失败包括同 ID 异内容的顺序依赖、坏首条污染空间选择、恢复基线覆盖用户取消、相同 effectId 混淆阅读元数据、跨代次及重复本地决定、缺失身份和 payload/parent 校验。原始日志保留在协调器目录。
 - 原 Luna 已执行一次定向修复，保留失败语义，并以拓扑遍历收敛前驱图成本。主模型完成一次复验，审查中的行为缺陷已修复；未增加另一轮独立审查。
@@ -97,3 +211,15 @@ S1 是后续生产引擎的共享规则单元，不能以纯内存测试替代 S
 - 本机 SDK 36 的 android.jar / aapt2 / adb 已核对存在；只有 Android 36 系统镜像。现存 emulator-5580 属于扩展任务 `mihon-aex-api36`，禁止安装或更改它；最低版本/独立同步实机验收保持待验证。
 - S2 依赖预查：当前没有可直接复用的 AEAD 批次实现。Tink 官方[安装正文](https://developers.google.com/tink/setup/java)当前列出 Java/Android 1.23.0、Java 11+ 与 Android API 24+；页面自动摘要的旧版本不可用作依据。后续锁定依赖前仍需解析实际 artifact，验证 Android/JVM 互通及 release/R8；官方兼容声明不能替代本项目运行验收。
 - S2 网络边界：共享 adapter 应从注入的 production OkHttpClient 派生，保留其 ProxySelector、DNS、TLS 和超时，并移除同步请求链中的 HTTP 头/正文日志、跨站 Cookie 与自动重定向；GitHub token 只发送到受限授权/API 主机。授权、连接测试和 Git 交换都用该派生客户端，不另建绕过代理的测试客户端。
+- S3 身份接入补充：`author_archive_creators` 的 portable_key 唯一，normalized_name 仅有普通索引；新设备收到同名不同 key 时可沿用 `getArchiveCreatorIdByPortableKey` / `insertArchiveCreator` 建独立记录。不要走旧 creators 表的 normalized_name 唯一约束，也不要调用按名字归并的 upsertCreator。同步需要携带可重建最低限度对象的描述信息；S1 的身份/效果规则已存在，S3 必须补齐新漫画/章节/作者的必要描述与映射，不用 UUID 占位标题冒充可用作者。
+- S3 关注接入补充：现有 followCreator 会重写 watch sources/languages；远端投影应只修改关注 enabled，已有设备的扫描策略保持独立。新建关注采用本设备默认策略，缺来源时保留准确身份和输入，条件恢复后重试。
+- S3 阅读接入补充：Desktop 的 recordHistory=false 不等价于无痕。应从真实会话传递独立的同步许可/无痕标记，不能用关闭历史记录推断禁止全部阅读位置同步；数据写入与 outbox 仍在同一事务，接收路径不调用追踪、下载删除或当前页跳转副作用。
+- S3 事务接入补充：JvmDatabaseHandler 已有事务上下文与互斥复用，journal writer 应接收当前 Database 并在调用事务内同步写入，不在事务外另启协程或第二次连接。SqlDelightReadingProgressRepository 则直接使用 Database.transaction；须在其幂等插入确认之后写入同一次阅读的同步信封，失败时业务、历史和同步日志一起回滚。测试优先沿用现有 JdbcSqliteDriver、MangaRepositoryMembershipIntegrationTest 与 SqlDelightReadingProgressRepositoryTest 的真实数据库 fixture。
+- S3 本机历史清除补充：HistoryRepositoryImpl 的 resetHistory、resetHistoryByMangaId、deleteAllHistory 均需在原写入事务中持久化本机屏蔽水位/已见事件范围。重建投影或重复收件不能让旧历史复现；之后的新阅读可以显示，且此屏蔽不进入全局 outbox。
+- S3 对象描述补充：当前 S1 的 ADD/REMOVE payload 白名单为空，因此不能直接塞入标题等字段。S3 需以独立、受白名单与长度限制的批次对象描述扩展补充 manga/chapter/author 的最小可重建元数据，并以共享 codec 测试固定格式；不放宽操作 payload 为任意 JSON，也不改变已验收归并语义。恢复已有对象时以 source+originalUrl/portable_key 为准，不覆盖本设备阅读配置与作者扫描策略。
+- 整合前再次核对：2026-09-13 16:08 UTC 主工作区的扩展实现与 migration 18 仍未提交。不能以未提交文件已存在视为可合并基线，也不能发布跳过该迁移的升级路径。S3 开始前重新确认迁移编号，S5 必须验证从当前已发布 schema 到两项功能整合后 schema 的真实升级。当前没有可调用的跨任务消息工具，工作树隔离是已落实的措施，不宣称已与另一任务达成文件占用协议。
+- S4 设置入口复核：最终 sync-interactions.js 已包含登录、恢复资料、首次合并、连接测试、频率、设备名称、阅读与历史、断开和更换空间。断开会保留业务数据但停止原空间的未上传操作；更换空间需独立绑定与首次合并，不能把旧空间 outbox 直接改成新 spaceId 后上传。关闭自动同步则继续记录操作，并保留手动同步。
+- S4 组件复用复核：Android AdaptiveSheet 已有手机底部和平板居中适配，以及返回、遮罩和滑动关闭能力；同步子页的返回处理须优先于关闭整个面板。Desktop 使用其现有 Compose overlay 与应用主题，并复用 DesktopShareService 的复制/保存能力以及系统浏览器入口；domain 的 ExternalActionParser 是外部输入解析器，不为登录开浏览器修改该扩展任务正在使用的解析器。
+- S4 生命周期复核：同步运行属于应用 coordinator，面板关闭只结束局部通知展示，不取消正常数据交换。瞬时完成事件使用无重播的通道，重新打开仅呈现持久状态；不能读最后成功文案再次显示。Android Worker 复用现有 CreatorDiscoveryJob 的调度方式，保留独立工作名；共享取消传播不得照搬其将全部异常转为 retry 的写法。
+- S4 凭据复用复核：DesktopCredentialStore 的 backend 已提供 DPAPI/Keychain/Secret Service 且拒绝明文后备。同步使用独立 namespace 和单条完整凭据记录，token 与恢复密钥分开管理；不得复用 tracker 账号槽覆盖追踪服务。Android scoped 搜索未找到 AndroidKeyStore/EncryptedSharedPreferences 的现成包装实现，后续仅增加平台 adapter，真实 Keystore 与 release/R8 仍是验收门槛。
+- S3 两目标数据库契约准备：AndroidDatabaseHandler 和 JvmDatabaseHandler 都接受 Database/SqlDriver，Android 事务上下文不要求 Activity 或 Context。可在 commonTest 编写同一数据库行为契约，以两个测试目标的 fixture 分别实例化真实平台 handler，并用 JDBC SQLite 进行回滚、重启与收件测试；测试依赖和适配只加到测试集合。此证据执行的是 production repository/handler，不冒充 AndroidSqliteDriver 或 ART，真实 Android driver 仍在后续运行门槛验证。
