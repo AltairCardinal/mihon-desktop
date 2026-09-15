@@ -22,6 +22,65 @@ import org.junit.jupiter.api.Test
 
 class PlatformCredentialBackendTest {
     @Test
+    fun `Windows still roundtrips a valid empty shared credential`() {
+        val node = java.util.prefs.Preferences.userRoot().node("mihon-empty-credential-" + java.util.UUID.randomUUID())
+        var calls = 0
+        val runner = object : CommandRunner {
+            override fun run(arguments: List<String>, stdin: CharArray?): CommandResult =
+                CommandResult(0, if (calls++ == 0) "Y2lwaGVy" else "", "")
+        }
+        try {
+            val backend = PlatformCredentialBackend(OperatingSystem.WINDOWS, runner, preferencesRoot = node)
+            backend.save("empty", charArrayOf())
+            assertEquals("", backend.load("empty")?.concatToString())
+        } finally {
+            node.removeNode()
+        }
+    }
+
+    @Test
+    fun `Windows rejects failed protect and unprotect even with parseable output`() {
+        val root = Preferences.userRoot().node("/mihon-test/credentials/${UUID.randomUUID()}")
+        try {
+            val failedSave = PlatformCredentialBackend(
+                OperatingSystem.WINDOWS,
+                RecordingCommandRunner(CommandResult(1, "cGF5bG9hZA==", "secret failure")),
+                preferencesRoot = root,
+            )
+            assertThrows(PlatformCredentialException::class.java) { failedSave.save("account", "secret".toCharArray()) }
+            assertTrue(root.node("v2").keys().isEmpty())
+            PlatformCredentialBackend(
+                OperatingSystem.WINDOWS,
+                RecordingCommandRunner(CommandResult(0, "Y2lwaGVydGV4dA==", "")),
+                preferencesRoot = root,
+            ).save("account", "secret".toCharArray())
+            for (output in listOf("", "cGF5bG9hZA==")) {
+                val failedLoad = PlatformCredentialBackend(
+                    OperatingSystem.WINDOWS,
+                    RecordingCommandRunner(CommandResult(1, output, "secret failure")),
+                    preferencesRoot = root,
+                )
+                val error = assertThrows(PlatformCredentialException::class.java) { failedLoad.load("account") }
+                assertFalse(error.toString().contains("secret failure"))
+            }
+        } finally {
+            root.removeNode()
+        }
+    }
+
+    @Test
+    fun `credential command timeout terminates a real sleeping process`() {
+        val command = if (System.getProperty("os.name").lowercase().contains("win")) {
+            listOf("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 3")
+        } else {
+            listOf("sh", "-c", "sleep 3")
+        }
+        val started = System.nanoTime()
+        assertThrows(PlatformCredentialException::class.java) { ProcessCommandRunner(200).run(command) }
+        assertTrue((System.nanoTime() - started) / 1_000_000 < 2500)
+    }
+
+    @Test
     fun `credential store copies caller secret and clears backend copy after success and failure`() {
         val backend = ObservableCredentialBackend()
         val store = DesktopCredentialStore(backend)
@@ -113,7 +172,7 @@ class PlatformCredentialBackendTest {
 
         val root = Preferences.userRoot().node("/mihon-test/credentials/${UUID.randomUUID()}")
         try {
-            val runner = RecordingCommandRunner(CommandResult(0, "encrypted-one", ""), CommandResult(0, "encrypted-two", ""))
+            val runner = RecordingCommandRunner(CommandResult(0, "ZW5jcnlwdGVkLW9uZQ==", ""), CommandResult(0, "ZW5jcnlwdGVkLXR3bw==", ""))
             val tracker = PlatformCredentialBackend(OperatingSystem.WINDOWS, runner, CredentialNamespace.TRACKER_V1, root)
             val appLock = PlatformCredentialBackend(OperatingSystem.WINDOWS, runner, CredentialNamespace.APP_LOCK_V1, root)
             tracker.save("same", "tracker".toCharArray())
@@ -122,7 +181,7 @@ class PlatformCredentialBackendTest {
             assertEquals(0, root.node("v2").keys().size)
             assertEquals(1, root.node("app-lock/v1").keys().size)
             val persisted = root.node("app-lock/v1").get(root.node("app-lock/v1").keys().single(), "")
-            assertEquals("encrypted-two", persisted)
+            assertEquals("ZW5jcnlwdGVkLXR3bw==", persisted)
             assertFalse(persisted.contains("lock"))
         } finally {
             root.removeNode()
@@ -222,7 +281,7 @@ class PlatformCredentialBackendTest {
     fun `Windows clears transient stdin across every protect exit path`() {
         val root = Preferences.userRoot().node("/mihon-test/credentials/${UUID.randomUUID()}")
         try {
-            val success = RecordingCommandRunner(CommandResult(0, "encrypted", ""))
+            val success = RecordingCommandRunner(CommandResult(0, "ZW5jcnlwdGVk", ""))
             PlatformCredentialBackend(OperatingSystem.WINDOWS, success, preferencesRoot = root)
                 .save("success", "success-secret".toCharArray())
             assertTrue(success.lastStdin!!.all { it == '\u0000' })
@@ -241,7 +300,7 @@ class PlatformCredentialBackendTest {
             }
             assertTrue(empty.lastStdin!!.all { it == '\u0000' })
 
-            val flushFailure = RecordingCommandRunner(CommandResult(0, "encrypted", ""))
+            val flushFailure = RecordingCommandRunner(CommandResult(0, "ZW5jcnlwdGVk", ""))
             val flushError = assertThrows(PlatformCredentialException::class.java) {
                 PlatformCredentialBackend(
                     OperatingSystem.WINDOWS,
@@ -252,7 +311,7 @@ class PlatformCredentialBackendTest {
             assertTrue(flushFailure.lastStdin!!.all { it == '\u0000' })
             assertFalse(flushError.message.orEmpty().contains("flush-secret"))
 
-            val malformed = RecordingCommandRunner(CommandResult(0, "encrypted", ""))
+            val malformed = RecordingCommandRunner(CommandResult(0, "ZW5jcnlwdGVk", ""))
             val malformedSecret = charArrayOf('v', 'a', 'l', 'i', 'd', '-', '\uD800')
             val malformedError = assertThrows(PlatformCredentialException::class.java) {
                 PlatformCredentialBackend(OperatingSystem.WINDOWS, malformed, preferencesRoot = root)

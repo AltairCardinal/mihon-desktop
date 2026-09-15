@@ -1,6 +1,8 @@
 package mihon.desktop.platform
 
 import java.io.IOException
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.CharBuffer
 import java.nio.charset.CharacterCodingException
@@ -11,6 +13,8 @@ import java.util.Base64
 import java.util.Locale
 import java.util.prefs.BackingStoreException
 import java.util.prefs.Preferences
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 interface CredentialBackend {
     fun save(account: String, secret: CharArray)
@@ -92,6 +96,7 @@ enum class OperatingSystem {
 enum class CredentialNamespace(val service: String, val windowsNode: String, val label: String) {
     TRACKER_V1("mihon-desktop-tracker", "v2", "Mihon Desktop"),
     APP_LOCK_V1("mihon-desktop-app-lock-v1", "app-lock/v1", "Mihon Desktop App Lock"),
+    SYNC_V1("mihon-desktop-sync-v1", "sync/v1", "Mihon Desktop Sync"),
 }
 
 class CommandResult(
@@ -114,7 +119,7 @@ open class PlatformCredentialException(message: String) : IllegalStateException(
 class PlatformCredentialUnavailableException(platform: OperatingSystem) :
     PlatformCredentialException("Secure credential storage is unavailable on $platform")
 
-class ProcessCommandRunner : CommandRunner {
+class ProcessCommandRunner(private val timeoutMillis: Long = 30_000) : CommandRunner {
     override fun run(arguments: List<String>, stdin: CharArray?): CommandResult {
         require(arguments.isNotEmpty())
         val process = try {
@@ -122,12 +127,66 @@ class ProcessCommandRunner : CommandRunner {
         } catch (error: IOException) {
             throw CommandUnavailableException(arguments.first(), error)
         }
-        process.outputStream.writer(StandardCharsets.UTF_8).use { writer ->
-            if (stdin != null) writer.write(stdin)
+        val executor = Executors.newFixedThreadPool(3) { task ->
+            Thread(task, "mihon-credential-io").apply { isDaemon = true }
         }
-        val stdout = process.inputStream.reader(StandardCharsets.UTF_8).use { it.readText() }
-        val stderr = process.errorStream.reader(StandardCharsets.UTF_8).use { it.readText() }
-        return CommandResult(process.waitFor(), stdout, stderr)
+        val descendants = mutableSetOf<ProcessHandle>()
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis.coerceIn(1, 120_000))
+        try {
+            val output = executor.submit<String> { readBounded(process.inputStream, process) }
+            val errors = executor.submit<String> { readBounded(process.errorStream, process) }
+            val input = executor.submit {
+                process.outputStream.writer(StandardCharsets.UTF_8).use { writer ->
+                    if (stdin != null) writer.write(stdin)
+                }
+            }
+            while (process.isAlive) {
+                process.descendants().use { handles -> handles.forEach(descendants::add) }
+                val remaining = deadline - System.nanoTime()
+                if (remaining <= 0) throw PlatformCredentialException("Secure credential command timed out")
+                process.waitFor(minOf(remaining, TimeUnit.MILLISECONDS.toNanos(25)), TimeUnit.NANOSECONDS)
+            }
+            input.get(maxOf(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS)
+            val stdout = output.get(maxOf(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS)
+            val stderr = errors.get(maxOf(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS)
+            return CommandResult(process.exitValue(), stdout, stderr)
+        } catch (error: InterruptedException) {
+            throw error
+        } catch (error: PlatformCredentialException) {
+            throw error
+        } catch (_: Exception) {
+            throw PlatformCredentialException("Secure credential command failed")
+        } finally {
+            val interrupted = Thread.interrupted()
+            try {
+                process.descendants().use { handles -> handles.forEach(descendants::add) }
+                descendants.forEach { if (it.isAlive) it.destroyForcibly() }
+                if (process.isAlive) process.destroyForcibly()
+                process.waitFor(500, TimeUnit.MILLISECONDS)
+                process.inputStream.close()
+                process.errorStream.close()
+                process.outputStream.close()
+            } finally {
+                executor.shutdownNow()
+                if (interrupted) Thread.currentThread().interrupt()
+            }
+        }
+    }
+
+    private fun readBounded(stream: InputStream, process: Process): String = stream.use {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(4096)
+        while (true) {
+            val count = it.read(buffer)
+            if (count < 0) break
+            if (output.size() + count > 64 * 1024) {
+                process.destroyForcibly()
+                throw IOException("Credential output exceeds limit")
+            }
+            output.write(buffer, 0, count)
+        }
+        StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(output.toByteArray())).toString()
     }
 
     override fun toString(): String = "ProcessCommandRunner"
@@ -198,12 +257,19 @@ class PlatformCredentialBackend(
             val encodedStdin = CharArray(encodedLength) { encoded[it].toInt().and(0xff).toChar() }
             stdin = encodedStdin
 
-            val encrypted = runCommand(
+            val result = runCommand(
                 listOf("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", PROTECT_SCRIPT),
                 encodedStdin,
                 "protect",
-            ).stdout.trim()
+            )
+            requireSuccess(result, "protect")
+            val encrypted = result.stdout.trim()
             if (encrypted.isEmpty()) operationFailed("protect")
+            try {
+                if (Base64.getDecoder().decode(encrypted).isEmpty()) operationFailed("protect")
+            } catch (_: IllegalArgumentException) {
+                operationFailed("protect")
+            }
             preferences.put(preferenceKey(account), encrypted)
             preferences.flush()
         } catch (_: CharacterCodingException) {
@@ -237,9 +303,18 @@ class PlatformCredentialBackend(
             encrypted.toCharArray(),
             "unprotect",
         )
+        requireSuccess(result, "unprotect")
         return try {
-            String(Base64.getDecoder().decode(result.stdout.trim()), StandardCharsets.UTF_8).toCharArray()
+            val decoded = Base64.getDecoder().decode(result.stdout.trim())
+            try {
+                StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(decoded)).toString().toCharArray()
+            } finally {
+                decoded.fill(0)
+            }
         } catch (_: IllegalArgumentException) {
+            operationFailed("unprotect")
+        } catch (_: CharacterCodingException) {
             operationFailed("unprotect")
         }
     }
@@ -387,13 +462,13 @@ class PlatformCredentialBackend(
         private const val MAC_VALUE_PREFIX = "mihon-v1:"
         private const val MAC_ITEM_NOT_FOUND = 44
         private const val PROTECT_SCRIPT =
-            "Add-Type -AssemblyName System.Security; " +
+            "\$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.Security; " +
                 "\$value=[Console]::In.ReadToEnd(); " +
                 "\$bytes=[Convert]::FromBase64String(\$value); " +
                 "\$protected=[Security.Cryptography.ProtectedData]::Protect(\$bytes,\$null,[Security.Cryptography.DataProtectionScope]::CurrentUser); " +
                 "[Convert]::ToBase64String(\$protected)"
         private const val UNPROTECT_SCRIPT =
-            "Add-Type -AssemblyName System.Security; " +
+            "\$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.Security; " +
                 "\$value=[Console]::In.ReadToEnd(); " +
                 "\$bytes=[Convert]::FromBase64String(\$value); " +
                 "\$plain=[Security.Cryptography.ProtectedData]::Unprotect(\$bytes,\$null,[Security.Cryptography.DataProtectionScope]::CurrentUser); " +

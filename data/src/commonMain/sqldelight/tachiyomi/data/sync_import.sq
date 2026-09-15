@@ -111,6 +111,12 @@ SELECT * FROM sync_import_entries WHERE import_id = ? ORDER BY id LIMIT :limit;
 countImportEntries:
 SELECT count(*) FROM sync_import_entries WHERE import_id = ?;
 
+getNextPendingImport:
+SELECT DISTINCT sync_imports.import_id FROM sync_imports
+JOIN sync_import_entries USING (import_id)
+WHERE sync_imports.space_id = ? AND sync_imports.generation = ?
+ORDER BY sync_imports.import_id LIMIT 1;
+
 removeImportEntry:
 DELETE FROM sync_import_entries WHERE id = ?;
 

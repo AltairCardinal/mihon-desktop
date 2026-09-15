@@ -127,3 +127,13 @@ S1 为历史完成项（`ed5501cb1`），不重新计为本轮交付。
 - 准备开销：一次写错既有SyncObjectKey参数名导致编译失败；数次猜测文件位置失败；两端先误用copy型InMemoryPreferenceStore，结果为空值而不是备份覆盖，改真实平台存储后重新取得正确RED；Android设置-only使用完全空Backup，被真实Decoder拒绝，改为有效备份且不选libraryEntries。一条多任务Gradle命令把过滤器只附到后一task，意外多跑一次data JVM完整测试；后续过滤紧跟各自task。上述准备错误不计为产品缺陷，也不作为批准增加验证范围的依据。
 - 反思：复用fixture前应先确认写后再次读取是否持久；相似命名不能证明fake具有真实状态语义。恢复应冻结每个实际成功单元，不能预先上传备份意图，也不能在结束时整库扫描混入恢复期间的用户动作。协程子任务取消必须传到外层持久结局，launch单独取消不等于整个restore失败；Android改为async/awaitAll并有真实取消反例。
 - 方法调整：既有稳定shared API交给同一代理顺序完成相邻Android adapter，root并行处理Desktop，节省新代理重复加载；长测试名和SQL行在提交formatter前收齐，首次格式化即成功，最后检查复用相同输入。后续S4a先由root集中建立应用级协调边界，只有接口稳定且文件互斥的安全存储adapter值得并行；S4b不提前拆给尚缺production接口的UI代理。原范围仍以roadmap和C1–C18为准。
+
+### S4a：应用协调、安全存储与三种触发
+
+- 交付：同一代理先做跨平台安全存储，再复用Android上下文完成WorkManager/启动接线；root集中完成共享coordinator、真实SQLite/Git交换graph、恢复绑定和Desktop生命周期。未使用Luna技能，也未启动新代理。唯一交叉独立审查及一次限定复核通过；domain JVM36/Android36、data JVM198/Android193、Desktop83、Android9，共555项相关验证全绿。27个Kotlin文件限定格式通过，5个旧Desktop大文件只保留既有风格/核查变动，未做无关重排。正式全量构建仍留S5。
+- 提交前累计采样6,355,703 tokens /25,896秒；相对S3c2的5,084,542 /22,134增加1,271,161 tokens /3,762秒（约63分钟）。这是goal原始累计窗口，含代理、工具上下文、规划、实现、审查和恢复，并非净生成token或账单。窗口成本高于S3c2，但本批平台安全边界与应用生命周期更多，不能仅按每项任务数比较效率；下一批继续复用平台上下文，避免重新读整套协议。
+- 正确行为RED及修复：coordinator6/5、数据库交换4/3、应用graph4/3、Desktop接线3/3；安全存储/跨进程/旧后端退出码与取消均先失败后实现。新增针对性测试抓住Android启动任务取消会关闭周期订阅、Desktop取消周期任务会使后续周期停摆、可重试refresh误记为重新授权。共享Windows后端新增空明文拒绝会改变旧行为，补正对照1/1后去掉该非必需限制；同步包装密钥本身继续严格校验。500/429真实HTTP测试确认凭据完整保留，错误体不写展示记录。
+- 准备与测试开销：数次猜错已有文件位置；新测试误引入本模块没有的kotlin.test，改已有JUnit断言；泛型companion方法引用、MockK接收者歧义及JUnit4非Unit返回值各造成编译/初始化失败。新增SQL首轮未过SQLDelight解析，改用现有表名/JOIN写法后通过。格式首轮只剩一个长data class声明，展开后通过。旧Desktop DI测试仅期待APP_LOCK namespace，新增SYNC后更新精确预期。它们是准备/fixture适配，不能当产品修复数量。
+- 验证方法修正：原Android maxRetries=2导致确定性RED重复三次；这是重试，不是三个SDK。后续focused验证通过忽略目录中的init关闭自动重试。Worker裸stop加Looper排空仍不能模拟宿主取消；读取实际WorkManager2.11.1字节码确认WorkerWrapper负责取消job后，改真实入队→执行→cancelUniqueWork，finally/忙碌释放/状态CANCELLED全部通过，production无需为错误fixture增加逻辑。测试应从实际用户/系统宿主动作驱动，不能把底层名字相近的方法当完整流程。
+- 可复用结论：长期设置观察器与一次同步必须使用独立生命周期；取消一次网络任务不能关闭今后的定期触发，但应用停止必须取消并join。错误分类必须保留底层已有retryable语义，不能把所有授权端点失败归为凭据失效。跨平台凭据应整条原子CAS，并保留清除后的revision水位，避免旧refresh覆盖新账号；复用后端时正对照保护其他用户功能。系统后端只存小包装key，共享有界密文文件算法，可降低双端重复实现成本。
+- 后续方法：S4b先集中确认共享UI状态与动作端口，再按Android/Desktop文件互斥分工；不重新拆出协议/存储团队，不为最小UI操作另建代理。保留一次交叉审查与限定修复复核，模块全量/正式产物等到S5；每次新增fixture先检查已有工具的真实状态、返回类型和宿主取消链路。主树8a3ebaf5b3及其备份/扩展未提交内容只读核对，仍由S5a整合。

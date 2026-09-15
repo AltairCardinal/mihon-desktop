@@ -32,6 +32,7 @@ class DesktopAppRuntime(
     private val creatorLibraryIndexService: DesktopRuntimeService = NoopRuntimeService,
     private val creatorDiscoveryService: DesktopRuntimeService = NoopRuntimeService,
     private val creatorDiscoveryOutboxService: DesktopRuntimeService = NoopRuntimeService,
+    private val syncService: DesktopRuntimeService = NoopRuntimeService,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     internal val appLock: DesktopAppLockLifecycle = NoopAppLockLifecycle,
     private val updateScreenModel: DesktopUpdateScreenModel? = null,
@@ -50,6 +51,7 @@ class DesktopAppRuntime(
         creatorDiscoveryOutboxService,
         trackerSyncScheduler,
         batchMigrationController,
+        syncService,
     )
     private val runningServices = BooleanArray(services.size)
     private var closeStarted = false
@@ -163,6 +165,7 @@ class DesktopAppRuntime(
             creatorLibraryIndexService: DesktopRuntimeService = NoopRuntimeService,
             creatorDiscoveryScheduler: CreatorDiscoveryScheduler? = null,
             creatorDiscoveryOutboxService: DesktopRuntimeService = NoopRuntimeService,
+            syncService: DesktopRuntimeService = NoopRuntimeService,
             appLock: DesktopAppLockLifecycle = NoopAppLockLifecycle,
             scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
             updateScreenModel: DesktopUpdateScreenModel? = null,
@@ -177,6 +180,7 @@ class DesktopAppRuntime(
                 creatorLibraryIndexService = creatorLibraryIndexService,
                 creatorDiscoveryService = creatorDiscoveryScheduler?.asRuntimeService() ?: NoopRuntimeService,
                 creatorDiscoveryOutboxService = creatorDiscoveryOutboxService,
+                syncService = syncService,
                 scope = scope,
                 appLock = appLock,
                 updateScreenModel = updateScreenModel,

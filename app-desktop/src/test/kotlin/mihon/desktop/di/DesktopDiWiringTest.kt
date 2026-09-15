@@ -432,7 +432,7 @@ class DesktopDiWiringTest {
             },
         )
         try {
-            assertEquals(listOf(CredentialNamespace.APP_LOCK_V1), namespaces)
+            assertEquals(listOf(CredentialNamespace.APP_LOCK_V1, CredentialNamespace.SYNC_V1), namespaces)
             val securityPreferences = Injekt.get<SecurityPreferences>()
             val passphraseVerifier = Injekt.get<DesktopPassphraseVerifier>()
             val windowPrivacyController = Injekt.get<DesktopWindowPrivacyController>()
