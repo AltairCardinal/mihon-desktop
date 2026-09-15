@@ -1,6 +1,5 @@
 package tachiyomi.data.source
 
-import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -21,7 +20,7 @@ class SourceRepositoryImpl(
 ) : AndroidSourceRepository {
 
     override fun getSources(): Flow<List<DomainSource>> {
-        return sourceManager.catalogueSources.map { sources ->
+        return sourceManager.querySources.map { sources ->
             sources.map {
                 mapSourceToDomainSource(it).copy(
                     supportsLatest = it.supportsLatest,
@@ -31,7 +30,7 @@ class SourceRepositoryImpl(
     }
 
     override fun getOnlineSources(): Flow<List<DomainSource>> {
-        return sourceManager.catalogueSources.map { sources ->
+        return sourceManager.querySources.map { sources ->
             sources
                 .filterIsInstance<HttpSource>()
                 .map(::mapSourceToDomainSource)
@@ -41,7 +40,7 @@ class SourceRepositoryImpl(
     override fun getSourcesWithFavoriteCount(): Flow<List<Pair<DomainSource, Long>>> {
         return combine(
             handler.subscribeToList { mangasQueries.getSourceIdWithFavoriteCount() },
-            sourceManager.catalogueSources,
+            sourceManager.querySources,
         ) { sourceIdWithFavoriteCount, _ -> sourceIdWithFavoriteCount }
             .map {
                 it.map { (sourceId, count) ->
@@ -73,17 +72,17 @@ class SourceRepositoryImpl(
         query: String,
         filterList: FilterList,
     ): SourcePagingSource {
-        val source = sourceManager.get(sourceId) as CatalogueSource
+        val source = requireNotNull(sourceManager.get(sourceId))
         return SourceSearchPagingSource(source, query, filterList)
     }
 
     override fun getPopular(sourceId: Long): SourcePagingSource {
-        val source = sourceManager.get(sourceId) as CatalogueSource
+        val source = requireNotNull(sourceManager.get(sourceId))
         return SourcePopularPagingSource(source)
     }
 
     override fun getLatest(sourceId: Long): SourcePagingSource {
-        val source = sourceManager.get(sourceId) as CatalogueSource
+        val source = requireNotNull(sourceManager.get(sourceId))
         return SourceLatestPagingSource(source)
     }
 

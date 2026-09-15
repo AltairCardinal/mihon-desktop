@@ -2,15 +2,14 @@ package mihon.desktop.extension
 
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.HttpException
+import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.network.awaitSuccess
-import java.io.File
-import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionArtifact
@@ -29,10 +28,12 @@ import mihon.domain.extension.service.RepositoryFetchResult
 import mihon.domain.extension.service.TrustMismatch
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
-import mihon.domain.extensionrepo.service.ExtensionRepoIndexEntryDto
-import mihon.domain.extensionrepo.service.ExtensionRepoMetaDto
-import mihon.domain.extensionrepo.service.toCatalogEntry
+import mihon.domain.extensionrepo.service.ExtensionStoreCatalogDecoder
+import mihon.domain.extensionrepo.service.withCatalogRedirectPolicy
+import mihon.domain.network.requireSuccessfulHttpResponse
 import okhttp3.OkHttpClient
+import java.io.File
+import java.io.IOException
 import java.util.UUID
 
 sealed interface DesktopExtensionInstallStart {
@@ -70,7 +71,6 @@ class DesktopExtensionApi(
     suspend fun findAvailableExtensions(): List<DesktopAvailableExtension> = availableExtensions(refreshCatalog())
 
     internal fun availableExtensions(catalog: ExtensionCatalogResult): List<DesktopAvailableExtension> = catalog.entries
-        .filter { it.compatibility == ExtensionCompatibility.Compatible }
         .map { entry ->
             val artifact = entry.artifact
             DesktopAvailableExtension(
@@ -81,7 +81,7 @@ class DesktopExtensionApi(
                 libVersion = artifact.libVersion,
                 lang = artifact.language,
                 isNsfw = artifact.isNsfw,
-                jarUrl = artifact.downloadUrl,
+                jarUrl = artifact.jarUrl ?: artifact.downloadUrl,
                 iconUrl = artifact.iconUrl,
                 repoUrl = artifact.repository.baseUrl,
                 repoName = artifact.repository.name,
@@ -98,27 +98,16 @@ class DesktopExtensionApi(
     }
 
     private suspend fun fetchRepository(repo: ExtensionRepo): RepositoryFetchResult {
-        val manifest = client.newCall(GET("${repo.baseUrl}/repo.json")).awaitSuccess().use { response ->
-            json.decodeFromString<ExtensionRepoMetaDto>(response.body.string())
-        }
-        require(
-            manifest.meta.signingKeyFingerprint.normalizedFingerprint() ==
-                repo.signingKeyFingerprint.normalizedFingerprint(),
-        ) {
-            "Repository metadata signing key does not match the trusted repository identity"
-        }
-        val indexV2Url = manifest.indexV2Url
-        val entries = if (indexV2Url != null) {
-            client.newCall(GET(indexV2Url)).awaitSuccess().use { response ->
-                DesktopExtensionRepoV2Catalog.decode(response.body.bytes(), repo)
+        val catalogClient = client.withCatalogRedirectPolicy()
+        val catalog = ExtensionStoreCatalogDecoder.load(repo, json, fetch = { url ->
+            catalogClient.newCall(GET(url)).await().use { response ->
+                if (!response.isSuccessful) {
+                    requireSuccessfulHttpResponse(response.code, "", response.header("Retry-After"))
+                }
+                response.body.bytes()
             }
-        } else {
-            client.newCall(GET("${repo.baseUrl}/index.min.json")).awaitSuccess().use { response ->
-                json.decodeFromString<List<ExtensionRepoIndexEntryDto>>(response.body.string())
-                    .map { it.toCatalogEntry(repo) }
-            }
-        }
-        return RepositoryFetchResult.Success(repo.toIdentity(), entries)
+        })
+        return RepositoryFetchResult.Success(repo.toIdentity(), catalog.entries)
     }
 
     suspend fun installExtension(
@@ -145,6 +134,11 @@ class DesktopExtensionApi(
         extension: DesktopAvailableExtension,
         manager: DesktopExtensionPresentationService,
     ): DesktopExtensionInstallStart = withContext(Dispatchers.IO) {
+        if (extension.compatibility != ExtensionCompatibility.Compatible) {
+            return@withContext DesktopExtensionInstallStart.Rejected(
+                AppError.MalformedData(IllegalArgumentException("Unsupported extension API: ${extension.libVersion}")),
+            )
+        }
         try {
             val installedJar = extensionArtifactFile(manager.extensionsDirectory, extension.pkgName, "jar")
             val meta = readExtensionMeta(installedJar)
@@ -285,6 +279,7 @@ class DesktopExtensionApi(
                 downloadUrl = jarUrl,
                 iconUrl = iconUrl,
                 declaredSha256 = declaredSha256,
+                declaredLibVersion = libVersion,
             ),
             downloadedArtifactSha256 = null,
             installed = installed,
@@ -326,5 +321,3 @@ class DesktopExtensionApi(
         private const val MAX_ICON_BYTES = 2 * 1024 * 1024
     }
 }
-
-private fun String.normalizedFingerprint(): String = replace(":", "").trim().lowercase()

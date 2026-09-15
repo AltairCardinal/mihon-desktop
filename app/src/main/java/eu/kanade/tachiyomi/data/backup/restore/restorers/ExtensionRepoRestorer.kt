@@ -33,6 +33,9 @@ class ExtensionRepoRestorer(
                     backupRepo.shortName,
                     backupRepo.website,
                     backupRepo.signingKeyFingerprint,
+                    backupRepo.indexUrl,
+                    backupRepo.extensionListUrl,
+                    backupRepo.contactDiscord,
                 )
             }
         }

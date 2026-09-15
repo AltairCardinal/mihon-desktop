@@ -11,6 +11,9 @@ data class BackupExtensionRepos(
     @ProtoNumber(3) var shortName: String? = null,
     @ProtoNumber(4) var website: String,
     @ProtoNumber(5) var signingKeyFingerprint: String,
+    @ProtoNumber(6) var indexUrl: String? = null,
+    @ProtoNumber(7) var extensionListUrl: String? = null,
+    @ProtoNumber(8) var contactDiscord: String? = null,
 )
 
 val backupExtensionReposMapper = { repo: ExtensionRepo ->
@@ -20,5 +23,8 @@ val backupExtensionReposMapper = { repo: ExtensionRepo ->
         shortName = repo.shortName,
         website = repo.website,
         signingKeyFingerprint = repo.signingKeyFingerprint,
+        indexUrl = repo.indexUrl,
+        extensionListUrl = repo.extensionListUrl,
+        contactDiscord = repo.contactDiscord,
     )
 }

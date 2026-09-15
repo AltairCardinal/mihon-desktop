@@ -115,6 +115,10 @@ class ExtensionsScreenModel(
         basePreferences.extensionInstaller().changes()
             .onEach { mutableState.update { state -> state.copy(installer = it) } }
             .launchIn(screenModelScope)
+
+        extensionManager.repositoryFailures
+            .onEach { failures -> mutableState.update { it.copy(repositoryFailures = failures) } }
+            .launchIn(screenModelScope)
     }
 
     fun searchQueryPredicate(query: String, includePackageName: Boolean = false): (Extension) -> Boolean =
@@ -188,12 +192,13 @@ class ExtensionsScreenModel(
         screenModelScope.launchIO {
             dispatch(ExtensionPresentationAction.RefreshStarted)
 
-            extensionManager.findAvailableExtensions()
-
-            // Fake slower refresh so it doesn't seem like it's not doing anything
-            delay(1.seconds)
-
-            dispatch(ExtensionPresentationAction.RefreshFinished)
+            try {
+                extensionManager.findAvailableExtensions()
+                // Keep refresh feedback visible for very fast responses.
+                delay(1.seconds)
+            } finally {
+                dispatch(ExtensionPresentationAction.RefreshFinished)
+            }
         }
     }
 
@@ -211,6 +216,7 @@ class ExtensionsScreenModel(
         val updates: Int = 0,
         val installer: BasePreferences.ExtensionInstaller? = null,
         val searchQuery: String? = null,
+        val repositoryFailures: List<mihon.domain.extension.model.RepositoryCatalogFailure> = emptyList(),
     ) {
         val isEmpty = items.isEmpty()
     }

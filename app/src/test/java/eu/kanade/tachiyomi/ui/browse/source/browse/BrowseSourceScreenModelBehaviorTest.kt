@@ -24,11 +24,13 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withContext
+import mihon.domain.sync.SyncOrigin
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -43,6 +45,8 @@ import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
+import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
@@ -50,6 +54,69 @@ import tachiyomi.domain.source.service.SourcePageResult
 import tachiyomi.domain.source.service.SourceQuery
 
 class BrowseSourceScreenModelBehaviorTest {
+
+    @Test
+    fun `browse favorite toggles reach the repository as explicit user operations`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val updates = mutableListOf<MangaUpdate>()
+        val repository = mockk<MangaRepository>()
+        coEvery { repository.update(any()) } answers {
+            updates.add(firstArg())
+            true
+        }
+        val model = screenModel(DirectBrowseRejectingSource(), updateManga = UpdateManga(repository, mockk()))
+        for (favorite in listOf(false, true)) {
+            model.changeMangaFavorite(
+                Manga.create().copy(id = 31, source = 17, favorite = favorite),
+            )
+        }
+        runCurrent()
+        assertEquals(listOf(true, false), updates.map { it.favorite })
+        assertEquals(List(2) { SyncOrigin.USER }, updates.map { it.syncContext.origin })
+    }
+
+    @Test
+    fun `source only browse exposes filters and accepts search`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val source = object : eu.kanade.tachiyomi.source.Source {
+            override val id = 81L
+            override val name = "Source only"
+            override fun getFilterList() = FilterList(
+                eu.kanade.tachiyomi.source.model.Filter.Header("Available filter"),
+            )
+        }
+        val model = screenModel(source)
+        assertEquals(1, model.state.value.filters.size)
+        model.search("source-only-query")
+        assertEquals("source-only-query", model.state.value.toolbarQuery)
+    }
+
+    @Test
+    fun `source only production Pager calls search with filters and subsequent pages`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        val calls = mutableListOf<Pair<Int, String>>()
+        val selectedFilters = FilterList(eu.kanade.tachiyomi.source.model.Filter.Header("Selected"))
+        val source = object : eu.kanade.tachiyomi.source.Source {
+            override val id = 82L
+            override val name = "Paged Source only"
+            override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage {
+                calls += page to query
+                assertSame(selectedFilters, filters)
+                return MangasPage(listOf(manga("/page/$page", "Page $page")), page == 1)
+            }
+        }
+        val model = screenModel(source)
+        model.search("filtered query", selectedFilters)
+        backgroundScope.launch(dispatcher) { model.mangaPagerFlowFlow.collect() }
+        runCurrent()
+        val snapshot = backgroundScope.async(dispatcher) {
+            model.mangaPagerFlowFlow.value.asSnapshot { appendScrollWhile { true } }
+        }
+        runCurrent()
+        assertEquals(listOf("/page/1", "/page/2"), snapshot.await().map { it.value.url })
+        assertEquals(listOf(1 to "filtered query", 2 to "filtered query"), calls)
+    }
 
     @AfterEach
     fun tearDown() {
@@ -118,8 +185,9 @@ class BrowseSourceScreenModelBehaviorTest {
     }
 
     private fun kotlinx.coroutines.test.TestScope.screenModel(
-        source: CatalogueSource,
+        source: eu.kanade.tachiyomi.source.Source,
         sourceMangaSearchService: SourceMangaSearchService = SourceMangaSearchService(),
+        updateManga: UpdateManga = mockk(),
     ): BrowseSourceScreenModel {
         val preferenceStore = InMemoryPreferenceStore()
         val repository = mockk<MangaRepository>()
@@ -140,22 +208,22 @@ class BrowseSourceScreenModelBehaviorTest {
             sourceManager = sourceManager,
             sourcePreferences = SourcePreferences(preferenceStore),
             libraryPreferences = LibraryPreferences(preferenceStore),
-            coverCache = mockk<CoverCache>(),
+            coverCache = mockk<CoverCache>(relaxed = true),
             sourceMangaSearchService = sourceMangaSearchService,
             networkToLocalManga = NetworkToLocalManga(repository),
             getDuplicateLibraryManga = mockk<GetDuplicateLibraryManga>(),
             getCategories = mockk<GetCategories>(),
             setMangaCategories = mockk<SetMangaCategories>(),
-            setMangaDefaultChapterFlags = mockk<SetMangaDefaultChapterFlags>(),
+            setMangaDefaultChapterFlags = mockk<SetMangaDefaultChapterFlags>(relaxed = true),
             getManga = getManga,
-            updateManga = mockk<UpdateManga>(),
-            addTracks = mockk<AddTracks>(),
+            updateManga = updateManga,
+            addTracks = mockk<AddTracks>(relaxed = true),
             getIncognitoState = getIncognitoState,
             pagerCoroutineScope = backgroundScope,
         )
     }
 
-    private class HangingBrowseSource : CatalogueSource {
+    private class HangingBrowseSource : eu.kanade.tachiyomi.source.Source {
         val oldStarted = CompletableDeferred<Unit>()
         val newStarted = CompletableDeferred<Unit>()
         val oldResult = CompletableDeferred<MangasPage>()

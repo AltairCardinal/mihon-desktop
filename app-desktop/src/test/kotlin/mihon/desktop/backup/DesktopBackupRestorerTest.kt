@@ -28,9 +28,13 @@ import kotlinx.coroutines.flow.flowOf
 import mihon.desktop.backup.models.*
 import tachiyomi.data.Database
 import tachiyomi.data.DateColumnAdapter
+import tachiyomi.data.History
 import tachiyomi.data.JvmDatabaseHandler
+import tachiyomi.data.Mangas
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
+import mihon.data.repository.ExtensionRepoRepositoryImpl
+import io.mockk.mockk
 import tachiyomi.data.category.CategoryRepositoryImpl
 import tachiyomi.data.chapter.ChapterRepositoryImpl
 import tachiyomi.data.history.HistoryRepositoryImpl
@@ -69,6 +73,105 @@ class DesktopBackupRestorerTest {
 
         assertEquals(section, restored)
         assertEquals(listOf(RestoreProgress(1, 1)), progress)
+    }
+
+    @Test
+    fun `production backup creator and restorer preserve repository metadata across database reopen`() = runTest {
+        val expected = ExtensionRepo(
+            baseUrl = "https://repo.example",
+            name = "Example Store",
+            shortName = "Example",
+            website = "https://repo.example/about",
+            signingKeyFingerprint = "aa:bb",
+            indexUrl = "https://repo.example/index.pb",
+            extensionListUrl = "https://repo.example/extensions.pb",
+            contactDiscord = "https://discord.example/store",
+        )
+        val sourceFile = File(tempDir, "source.db")
+        val source = openDatabase(sourceFile)
+        val sourceRepos = ExtensionRepoRepositoryImpl(source.handler)
+        sourceRepos.insertRepo(expected)
+        val backup = try {
+            DesktopBackupCreator.createFromDatabase(
+                mangaRepository = FakeMangaRepository(),
+                chapterRepository = FakeChapterRepository(),
+                categoryRepository = FakeCategoryRepository(),
+                historyRepository = FakeHistoryRepository(),
+                trackRepository = mockk(relaxed = true),
+                preferenceStore = tachiyomi.core.common.preference.InMemoryPreferenceStore(),
+                sourcePreferenceStore = { tachiyomi.core.common.preference.InMemoryPreferenceStore() },
+                extensionRepoRepository = sourceRepos,
+            ).let { DesktopBackupCreator.decodeFromBytes(DesktopBackupCreator.encodeToBytes(it)) }
+        } finally {
+            source.close()
+        }
+
+        val targetFile = File(tempDir, "target.db")
+        val target = openDatabase(targetFile)
+        try {
+            val targetRepos = ExtensionRepoRepositoryImpl(target.handler)
+            val result = DesktopBackupRestorer(
+                mangaRepository = FakeMangaRepository(),
+                chapterRepository = FakeChapterRepository(),
+                categoryRepository = FakeCategoryRepository(),
+                historyRepository = FakeHistoryRepository(),
+                extensionRepoRepository = targetRepos,
+            ).restore(backup)
+
+            assertEquals(false, result.hasErrors)
+            assertEquals(expected, targetRepos.getRepo(expected.baseUrl))
+        } finally {
+            target.close()
+        }
+
+        val reopened = openDatabase(targetFile)
+        try {
+            assertEquals(expected, ExtensionRepoRepositoryImpl(reopened.handler).getRepo(expected.baseUrl))
+        } finally {
+            reopened.close()
+        }
+    }
+
+    @Test
+    fun `legacy repository backup restores without optional fields and conflicting restores retain trust`() = runTest {
+        val legacy = tachiyomi.data.backup.BackupCodec.decode(
+            eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos.serializer(),
+            java.util.Base64.getDecoder().decode(
+                "ChZodHRwczovL2xlZ2FjeS5leGFtcGxlEgZMZWdhY3kiHGh0dHBzOi8vbGVnYWN5LmV4YW1wbGUvYWJvdXQqCmxlZ2FjeS1rZXk=",
+            ),
+        )
+        val expected = ExtensionRepo(
+            baseUrl = "https://legacy.example",
+            name = "Legacy",
+            shortName = null,
+            website = "https://legacy.example/about",
+            signingKeyFingerprint = "legacy-key",
+        )
+        val targetFile = File(tempDir, "legacy-repository-restore.db")
+        openDatabase(targetFile).use { target ->
+            val repository = ExtensionRepoRepositoryImpl(target.handler)
+            val restorer = DesktopBackupRestorer(
+                mangaRepository = FakeMangaRepository(),
+                chapterRepository = FakeChapterRepository(),
+                categoryRepository = FakeCategoryRepository(),
+                historyRepository = FakeHistoryRepository(),
+                extensionRepoRepository = repository,
+            )
+            val backup = Backup(backupManga = emptyList(), backupExtensionRepo = listOf(legacy))
+            assertEquals(false, restorer.restore(backup).hasErrors)
+            assertEquals(listOf(expected), repository.getAll())
+            for (conflict in listOf(
+                legacy.copy(signingKeyFingerprint = "untrusted-key"),
+                legacy.copy(baseUrl = "https://different.example"),
+            )) {
+                val result = restorer.restore(backup.copy(backupExtensionRepo = listOf(conflict)))
+                assertEquals(true, result.hasErrors)
+                assertEquals(listOf(expected), repository.getAll())
+            }
+        }
+        openDatabase(targetFile).use { reopened ->
+            assertEquals(listOf(expected), ExtensionRepoRepositoryImpl(reopened.handler).getAll())
+        }
     }
 
     @Test
@@ -565,6 +668,31 @@ class DesktopBackupRestorerTest {
             .map { it.resolve(relativePath) }
             .firstOrNull(File::isFile)
             ?: error("Repository file not found: $relativePath")
+
+    private fun openDatabase(file: File): DatabaseFixture {
+        val needsSchema = !file.exists()
+        val driver = JdbcSqliteDriver("jdbc:sqlite:${file.absolutePath}")
+        if (needsSchema) Database.Schema.create(driver)
+        val database = Database(
+            driver = driver,
+            historyAdapter = History.Adapter(last_readAdapter = DateColumnAdapter),
+            mangasAdapter = Mangas.Adapter(
+                genreAdapter = StringListColumnAdapter,
+                update_strategyAdapter = UpdateStrategyColumnAdapter,
+            ),
+        )
+        return DatabaseFixture(driver, JvmDatabaseHandler(database, driver))
+    }
+
+    private class DatabaseFixture(
+        private val driver: JdbcSqliteDriver,
+        val handler: JvmDatabaseHandler,
+    ) : AutoCloseable {
+        override fun close() {
+            handler.close()
+            driver.close()
+        }
+    }
 
     @Test
     fun `restore preserves manga update metadata fields`() = runTest {

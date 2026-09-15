@@ -1,6 +1,6 @@
 package mihon.desktop.ui.browse
 
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -93,7 +93,7 @@ class SourceBrowseQueryCoordinator(
     internal val subscriberCount: Int get() = publisher.subscriberCount
 
     suspend fun load(
-        source: CatalogueSource,
+        source: Source,
         page: Int,
         query: SourceQuery,
         onStarted: (SourceQueryState) -> Unit = {},
@@ -150,7 +150,7 @@ class SourceBrowseQueryCoordinator(
     }
 
     private suspend fun completeLoad(
-        source: CatalogueSource,
+        source: Source,
         request: SourcePageRequest,
     ): SourceQueryState {
         val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { service.loadPageResult(source, request) }
@@ -165,17 +165,17 @@ class SourceBrowseQueryCoordinator(
     }
 
     suspend fun retry(
-        source: CatalogueSource,
+        source: Source,
         request: SourcePageRequest,
     ): SourceQueryState? = restart(source, request, SourceRecoveryAction.Retry)
 
     suspend fun retryAfterLogin(
-        source: CatalogueSource,
+        source: Source,
         request: SourcePageRequest,
     ): SourceQueryState? = restart(source, request, SourceRecoveryAction.OpenLogin)
 
     private suspend fun restart(
-        source: CatalogueSource,
+        source: Source,
         request: SourcePageRequest,
         expectedAction: SourceRecoveryAction,
     ): SourceQueryState? {
@@ -192,7 +192,7 @@ class SourceBrowseQueryCoordinator(
     }
 
     suspend fun retry(
-        source: CatalogueSource,
+        source: Source,
     ): SourceQueryState {
         val request = synchronized(lock) {
             requireNotNull(state?.request) { "No source request to retry" }
@@ -210,7 +210,7 @@ class SourceBrowseQueryCoordinator(
         return StampedSourceQueryState(++publicationOrdinal, state)
     }
 
-    fun recoveryIntent(source: CatalogueSource): DesktopSourceRecoveryIntent =
+    fun recoveryIntent(source: Source): DesktopSourceRecoveryIntent =
         desktopSourceRecoveryIntent(source, state)
 
     private fun recoveryAction(): SourceRecoveryAction? = when (val current = state) {
@@ -221,7 +221,7 @@ class SourceBrowseQueryCoordinator(
 }
 
 private fun desktopSourceRecoveryIntent(
-    source: CatalogueSource,
+    source: Source,
     state: SourceQueryState?,
 ): DesktopSourceRecoveryIntent = when (state.recoveryAction()) {
     SourceRecoveryAction.Retry -> state?.request?.let(DesktopSourceRecoveryIntent::Retry)
@@ -334,18 +334,18 @@ class DesktopGlobalSearchCoordinator(
     }
 
     suspend fun search(
-        sources: List<CatalogueSource>,
+        sources: List<Source>,
         query: String,
         onState: (DesktopGlobalSearchState) -> Unit = {},
     ) = search(sources, query, GlobalSearchSourceFilter.All, onState)
 
     suspend fun search(
-        sources: List<CatalogueSource>,
+        sources: List<Source>,
         query: String,
         sourceFilter: GlobalSearchSourceFilter,
         onState: (DesktopGlobalSearchState) -> Unit = {},
     ) {
-        val identity = SearchIdentity(query, sourceFilter, sources.map(CatalogueSource::id))
+        val identity = SearchIdentity(query, sourceFilter, sources.map(Source::id))
         val (started, session, previous) = synchronized(lock) {
             if (activeSession?.identity == identity) return
             val previousSession = activeSession
@@ -462,7 +462,7 @@ class DesktopGlobalSearchCoordinator(
 
     private suspend fun loadSource(
         coordinator: SourceBrowseQueryCoordinator,
-        source: CatalogueSource,
+        source: Source,
         query: String,
         onStarted: (SourceQueryState) -> Unit,
     ): SourceQueryState = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {

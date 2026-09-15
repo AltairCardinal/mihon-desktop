@@ -11,7 +11,7 @@ import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SManga
@@ -62,7 +62,7 @@ class SourceBrowseCanonicalResultWiringTest {
         val locale = Locale.SIMPLIFIED_CHINESE
         Locale.setDefault(locale)
         var calls = 0
-        val source = mockk<CatalogueSource> {
+        val source = mockk<eu.kanade.tachiyomi.source.Source> {
             every { id } returns 21L
             every { name } returns "Stale CopyManga"
             every { lang } returns "zh"
@@ -163,7 +163,7 @@ class SourceBrowseCanonicalResultWiringTest {
         val previousLocale = Locale.getDefault()
         val locale = Locale.SIMPLIFIED_CHINESE
         Locale.setDefault(locale)
-        val source = mockk<CatalogueSource> {
+        val source = mockk<Source> {
             every { id } returns 20L
             every { name } returns "Empty source"
             every { lang } returns "zh"
@@ -230,7 +230,7 @@ class SourceBrowseCanonicalResultWiringTest {
             thumbnail_url = "duplicate-cover"
         }
         val calls = mutableListOf<Int>()
-        val source = mockk<CatalogueSource> {
+        val source = mockk<Source> {
             every { id } returns 19L
             every { name } returns "Canonical browse"
             every { lang } returns "en"

@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
+import mihon.domain.sync.SyncMutationContext
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.core.common.util.lang.launchIO
@@ -467,6 +468,7 @@ class LibraryScreenModel(
                     MangaUpdate(
                         favorite = false,
                         id = it.id,
+                        syncContext = SyncMutationContext.User,
                     )
                 }
                 updateManga.awaitAll(toDelete)

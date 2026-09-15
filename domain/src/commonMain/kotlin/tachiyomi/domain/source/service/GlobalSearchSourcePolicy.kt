@@ -1,6 +1,6 @@
 package tachiyomi.domain.source.service
 
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 
 enum class GlobalSearchSourceFilter {
     PinnedOnly,
@@ -8,13 +8,13 @@ enum class GlobalSearchSourceFilter {
 }
 
 object GlobalSearchSourcePolicy {
-    fun select(
-        sources: List<CatalogueSource>,
+    fun <T : Source> select(
+        sources: List<T>,
         enabledLanguages: Set<String>,
         hiddenSourceIds: Set<String>,
         pinnedSourceIds: Set<String>,
         filter: GlobalSearchSourceFilter = GlobalSearchSourceFilter.PinnedOnly,
-    ): List<CatalogueSource> = sources
+    ): List<T> = sources
         .filter { source ->
             source.lang in enabledLanguages &&
                 source.id.toString() !in hiddenSourceIds &&

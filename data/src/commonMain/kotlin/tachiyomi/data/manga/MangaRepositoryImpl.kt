@@ -3,6 +3,7 @@ package tachiyomi.data.manga
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import logcat.LogPriority
+import mihon.data.sync.journal.appendFavoriteOperation
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.StringListColumnAdapter
@@ -48,6 +49,7 @@ class MangaRepositoryImpl(
                     updateStrategy = null, version = null, isSyncing = 0, notes = update.notes,
                 )
                 reconcileCreatorIndex(update.mangaId)
+                appendFavoriteOperation(update.mangaId, update.favorite, update.syncContext)
                 if (update.updateCategories) {
                     mangas_categoriesQueries.deleteMangaCategoryByMangaId(update.mangaId)
                     update.categoryIds.forEach { mangas_categoriesQueries.insert(update.mangaId, it) }
@@ -255,6 +257,7 @@ class MangaRepositoryImpl(
                 if (value.affectsCreatorIndex()) {
                     reconcileCreatorIndex(value.id)
                 }
+                value.favorite?.let { appendFavoriteOperation(value.id, it, value.syncContext) }
             }
         }
     }

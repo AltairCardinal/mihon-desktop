@@ -63,7 +63,7 @@ import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.Tab
 import cafe.adriel.voyager.navigator.tab.TabOptions
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import mihon.desktop.ui.extension.ExtensionListContent
 import mihon.desktop.ui.extension.pushExtensionDetails
 import mihon.desktop.ui.extension.pushExtensionRepository
@@ -82,7 +82,7 @@ sealed interface DesktopSourceGroupKey {
 }
 
 data class DesktopSourceListItem(
-    val source: CatalogueSource,
+    val source: Source,
     val isUsedLast: Boolean = false,
     val isPinned: Boolean = false,
 )
@@ -112,12 +112,12 @@ private fun String.sourceLocale(defaultLocale: Locale): Locale = when (this) {
 object DesktopSourceListProjector {
     fun project(
         sourceState: SourceScreenState,
-        catalogueSources: List<CatalogueSource>,
+        catalogueSources: List<Source>,
         selectedLanguage: String? = null,
     ): List<DesktopSourceListGroup> {
         val sources = (sourceState.content as? SourceScreenContent.Content)?.sources.orEmpty()
             .filter { selectedLanguage == null || it.lang == selectedLanguage }
-        val catalogueById = catalogueSources.associateBy(CatalogueSource::id)
+        val catalogueById = catalogueSources.associateBy(Source::id)
         val items = sources.mapNotNull { source ->
             catalogueById[source.id]?.let {
                 DesktopSourceListItem(it, source.isUsedLast, Pin.Actual in source.pin)
@@ -411,7 +411,7 @@ private fun BrowseSectionTabs(
     }
 }
 
-internal fun sourceEventMessage(event: SourceScreenEvent, sources: List<CatalogueSource>): String {
+internal fun sourceEventMessage(event: SourceScreenEvent, sources: List<Source>): String {
     val name = sources.firstOrNull { it.id == (event as? SourceScreenEvent.Pinned)?.sourceId }?.name.orEmpty()
     return when (event) {
         is SourceScreenEvent.Pinned -> "${if (event.pinned) "Pinned" else "Unpinned"} $name"

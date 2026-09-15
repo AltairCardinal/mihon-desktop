@@ -18,7 +18,7 @@ data class ExtensionRepoMetaDto(
 @Serializable
 data class ExtensionRepoDto(
     val name: String,
-    val shortName: String?,
+    val shortName: String? = null,
     val website: String,
     val signingKeyFingerprint: String,
 )
@@ -30,6 +30,7 @@ fun ExtensionRepoMetaDto.toExtensionRepo(baseUrl: String): ExtensionRepo {
         shortName = meta.shortName,
         website = meta.website,
         signingKeyFingerprint = meta.signingKeyFingerprint,
+        indexUrl = indexV2Url,
     )
 }
 
@@ -75,6 +76,7 @@ fun ExtensionRepoIndexEntryDto.toCatalogEntry(repository: ExtensionRepo): Extens
         downloadUrl = "$baseUrl/apk/$apk",
         iconUrl = "$baseUrl/icon/$pkg.png",
         declaredSha256 = sha256,
+        apkUrl = "$baseUrl/apk/$apk",
     )
     return ExtensionCatalogEntry(artifact, artifact.compatibility())
 }

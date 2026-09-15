@@ -1,7 +1,7 @@
 package mihon.desktop.ui.browse
 
 import cafe.adriel.voyager.core.model.ScreenModel
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source as QuerySource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,7 +27,7 @@ import tachiyomi.domain.source.service.SourceMembershipPreferences
 import tachiyomi.domain.source.service.SourceMembershipProjection
 import tachiyomi.domain.source.service.SourceManager
 
-data class DesktopSourcesState(val sourceState: SourceScreenState = SourceScreenState(), val catalogueSources: List<CatalogueSource> = emptyList(), val enabledLanguages: Set<String> = emptySet())
+data class DesktopSourcesState(val sourceState: SourceScreenState = SourceScreenState(), val catalogueSources: List<QuerySource> = emptyList(), val enabledLanguages: Set<String> = emptySet())
 class DesktopSourcesScreenModel(
     private val sourceManager: SourceManager, private val preferences: DesktopAppPreferences, coroutineScope: CoroutineScope? = null,
     private val reducer: SourceScreenReducer = SourceScreenReducer(),
@@ -39,7 +39,7 @@ class DesktopSourcesScreenModel(
     val state: StateFlow<DesktopSourcesState> = mutableState.asStateFlow()
     private var observeJob: Job? = null
     init { observe() }
-    fun togglePin(source: CatalogueSource) {
+    fun togglePin(source: QuerySource) {
         val id = source.id.toString()
         runCatching {
             val pinned = id in preferences.pinnedSources.get()
@@ -71,7 +71,7 @@ class DesktopSourcesScreenModel(
         observeJob?.cancel()
         observeJob = scope.launch {
             combine(
-                sourceManager.catalogueSources,
+                sourceManager.querySources,
                 preferences.enabledLanguages.changes(),
                 preferences.disabledSources.changes(),
                 preferences.pinnedSources.changes(),
@@ -110,7 +110,7 @@ class DesktopSourcesScreenModel(
         }
     }
     private fun initialState(): DesktopSourcesState {
-        val installed = sourceManager.getCatalogueSources()
+        val installed = sourceManager.getQuerySources()
         val enabled = preferences.enabledLanguages.get()
         return DesktopSourcesState(
             reducer.loaded(
@@ -126,7 +126,7 @@ class DesktopSourcesScreenModel(
             enabled,
         )
     }
-    private fun List<CatalogueSource>.toDomainSources(
+    private fun List<QuerySource>.toDomainSources(
         enabledLanguages: Set<String>,
         disabledSourceIds: Set<String>,
         pinnedSourceIds: Set<String>,

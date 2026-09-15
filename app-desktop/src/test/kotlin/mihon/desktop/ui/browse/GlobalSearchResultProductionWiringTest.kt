@@ -12,7 +12,7 @@ import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SManga
@@ -235,7 +235,7 @@ class GlobalSearchResultProductionWiringTest {
         listed: MutableList<SManga>? = null,
         details: DetailProbe? = null,
         resultCount: Int = 12,
-    ): CatalogueSource = mockk {
+    ): Source = mockk {
         every { this@mockk.id } returns id
         every { this@mockk.name } returns name
         every { lang } returns "en"

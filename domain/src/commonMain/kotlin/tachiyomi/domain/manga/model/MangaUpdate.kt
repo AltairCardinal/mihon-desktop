@@ -1,6 +1,7 @@
 package tachiyomi.domain.manga.model
 
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
+import mihon.domain.sync.SyncMutationContext
 
 data class MangaUpdate(
     val id: Long,
@@ -27,6 +28,7 @@ data class MangaUpdate(
     val initialized: Boolean? = null,
     val version: Long? = null,
     val notes: String? = null,
+    val syncContext: SyncMutationContext = SyncMutationContext.Metadata,
 )
 
 fun Manga.toMangaUpdate(): MangaUpdate {

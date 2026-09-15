@@ -492,7 +492,7 @@ class SourceSharedStateWiringTest {
             disabledSources = setOf(hidden.id.toString()),
         )
         val coordinator = DesktopGlobalSearchCoordinator(SourceMangaSearchService())
-        var selectedSources = emptyList<CatalogueSource>()
+        var selectedSources = emptyList<eu.kanade.tachiyomi.source.Source>()
 
         GlobalSearchScreen().search(sourceManager, preferences, coordinator, "authority") { _, sources ->
             selectedSources = sources

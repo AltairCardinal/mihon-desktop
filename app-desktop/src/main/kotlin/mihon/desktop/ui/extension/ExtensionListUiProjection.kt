@@ -48,6 +48,6 @@ internal fun extensionListCopy(locale: Locale = Locale.getDefault()) = Extension
     emptyAvailable = MR.strings.desktop_extension_empty_available.localized(locale),
     noRepositories = MR.strings.desktop_extension_no_repositories.localized(locale),
     refreshingCached = MR.strings.desktop_extension_refreshing_cached.localized(locale),
-    repositoryFailure = MR.strings.extension_api_error.localized(locale),
+    repositoryFailure = MR.strings.extension_catalog_cached_failure.localized(locale),
     retry = MR.strings.action_retry.localized(locale),
 )

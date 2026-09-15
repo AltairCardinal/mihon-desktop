@@ -1,0 +1,3 @@
+ALTER TABLE extension_repos ADD COLUMN index_url TEXT;
+ALTER TABLE extension_repos ADD COLUMN extension_list_url TEXT;
+ALTER TABLE extension_repos ADD COLUMN contact_discord TEXT;

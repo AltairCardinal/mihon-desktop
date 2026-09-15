@@ -45,6 +45,8 @@ class AndroidSourceManager(
         it.values.filterIsInstance<CatalogueSource>()
     }
 
+    override val querySources: Flow<List<Source>> = sourcesMapFlow.map { it.values.toList() }
+
     init {
         scope.launch {
             extensionManager.isInitialized.first { it }
@@ -94,6 +96,8 @@ class AndroidSourceManager(
     override fun getOnlineSources() = sourcesMapFlow.value.values.filterIsInstance<HttpSource>()
 
     override fun getCatalogueSources() = sourcesMapFlow.value.values.filterIsInstance<CatalogueSource>()
+
+    override fun getQuerySources(): List<Source> = sourcesMapFlow.value.values.toList()
 
     override fun getStubSources(): List<StubSource> {
         val onlineSourceIds = getOnlineSources().map { it.id }

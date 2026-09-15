@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="extension_catalog_cached_failure">Repository refresh failed. Previously loaded extensions may still be shown.</string>
+    <string name="extension_unsupported_api">Requires extension API %1$s; this app supports %2$s–%3$s. Installation and updates are unavailable.</string>
     <string name="app_name" translatable="false">Mihon</string>
 
     <!-- Generic strings -->

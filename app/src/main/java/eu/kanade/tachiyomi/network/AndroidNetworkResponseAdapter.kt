@@ -12,18 +12,20 @@ import okio.IOException
 
 internal class AndroidNetworkResponseAdapter {
 
-    fun install(client: OkHttpClient): OkHttpClient = client.newBuilder()
+    fun install(client: OkHttpClient, allowEmptyPayload: Boolean = false): OkHttpClient = client.newBuilder()
         .addInterceptor { chain ->
             val response = chain.proceed(chain.request())
-            val body = response.body.string()
+            val bytes = response.body.bytes()
             try {
-                val accepted = requireSuccessfulHttpResponse(
-                    statusCode = response.code,
-                    body = body,
-                    retryAfter = response.header("Retry-After"),
-                )
+                if (!(allowEmptyPayload && response.isSuccessful && bytes.isEmpty())) {
+                    requireSuccessfulHttpResponse(
+                        statusCode = response.code,
+                        body = bytes.decodeToString(),
+                        retryAfter = response.header("Retry-After"),
+                    )
+                }
                 response.newBuilder()
-                    .body(accepted.toResponseBody(response.body.contentType()))
+                    .body(bytes.toResponseBody(response.body.contentType()))
                     .build()
             } catch (error: AppErrorException) {
                 response.close()

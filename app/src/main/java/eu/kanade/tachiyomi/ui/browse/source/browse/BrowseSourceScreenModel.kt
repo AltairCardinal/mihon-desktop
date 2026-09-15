@@ -22,7 +22,7 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.track.interactor.AddTracks
 import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.data.cache.CoverCache
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.util.removeCovers
 import kotlinx.collections.immutable.ImmutableList
@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import mihon.domain.error.AppError
 import mihon.domain.manga.model.toDomainManga
+import mihon.domain.sync.SyncMutationContext
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.mapAsCheckboxState
 import tachiyomi.core.common.util.lang.launchIO
@@ -93,22 +94,20 @@ class BrowseSourceScreenModel(
     private val pagingScope = pagerCoroutineScope ?: ioCoroutineScope
 
     init {
-        if (source is CatalogueSource) {
-            mutableState.update {
-                var query: String? = null
-                var listing = it.listing
+        mutableState.update {
+            var query: String? = null
+            var listing = it.listing
 
-                if (listing is Listing.Search) {
-                    query = listing.query
-                    listing = Listing.Search(query, source.getFilterList())
-                }
-
-                it.copy(
-                    listing = listing,
-                    filters = source.getFilterList(),
-                    toolbarQuery = query,
-                )
+            if (listing is Listing.Search) {
+                query = listing.query
+                listing = Listing.Search(query, source.getFilterList())
             }
+
+            it.copy(
+                listing = listing,
+                filters = source.getFilterList(),
+                toolbarQuery = query,
+            )
         }
 
         if (!getIncognitoState.await(source.id)) {
@@ -126,7 +125,7 @@ class BrowseSourceScreenModel(
             val generation = ++queryGeneration
             Pager(PagingConfig(pageSize = 25)) {
                 SharedSourcePagingSource(
-                    source = source as CatalogueSource,
+                    source = source,
                     listing = listing,
                     generation = generation,
                     sourceMangaSearchService = sourceMangaSearchService,
@@ -155,8 +154,6 @@ class BrowseSourceScreenModel(
     }
 
     fun resetFilters() {
-        if (source !is CatalogueSource) return
-
         mutableState.update { it.copy(filters = source.getFilterList()) }
     }
 
@@ -165,8 +162,6 @@ class BrowseSourceScreenModel(
     }
 
     fun setFilters(filters: FilterList) {
-        if (source !is CatalogueSource) return
-
         mutableState.update {
             it.copy(
                 filters = filters,
@@ -175,8 +170,6 @@ class BrowseSourceScreenModel(
     }
 
     fun search(query: String? = null, filters: FilterList? = null) {
-        if (source !is CatalogueSource) return
-
         val input = state.value.listing as? Listing.Search
             ?: Listing.Search(query = null, filters = source.getFilterList())
 
@@ -192,8 +185,6 @@ class BrowseSourceScreenModel(
     }
 
     fun searchGenre(genreName: String) {
-        if (source !is CatalogueSource) return
-
         val defaultFilters = source.getFilterList()
         var genreExists = false
 
@@ -258,7 +249,7 @@ class BrowseSourceScreenModel(
                 addTracks.bindEnhancedTrackers(manga, source)
             }
 
-            updateManga.await(new.toMangaUpdate())
+            updateManga.await(new.toMangaUpdate().copy(syncContext = SyncMutationContext.User))
         }
     }
 
@@ -384,7 +375,7 @@ internal class SourcePageException(
 ) : RuntimeException(pageError.error::class.simpleName, pageError.error.cause)
 
 internal class SharedSourcePagingSource(
-    private val source: CatalogueSource,
+    private val source: Source,
     private val listing: BrowseSourceScreenModel.Listing,
     private val generation: Long,
     private val sourceMangaSearchService: SourceMangaSearchService,

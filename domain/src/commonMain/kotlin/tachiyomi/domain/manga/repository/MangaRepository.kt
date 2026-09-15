@@ -1,6 +1,7 @@
 package tachiyomi.domain.manga.repository
 
 import kotlinx.coroutines.flow.Flow
+import mihon.domain.sync.SyncMutationContext
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
@@ -19,6 +20,7 @@ data class LibraryMembershipUpdate(
     val chapterFlags: Long? = null,
     val viewerFlags: Long? = null,
     val notes: String? = null,
+    val syncContext: SyncMutationContext = SyncMutationContext.Metadata,
 )
 
 interface MangaRepository : LibraryMembershipRepository {

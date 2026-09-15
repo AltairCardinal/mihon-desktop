@@ -1,17 +1,30 @@
 package eu.kanade.tachiyomi.ui.library
 
+import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.base.BasePreferences
+import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.Source
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withTimeout
+import mihon.domain.sync.SyncOrigin
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -26,6 +39,8 @@ import tachiyomi.domain.library.model.LibrarySort
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaUpdate
+import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.InjektScope
@@ -33,6 +48,35 @@ import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.registry.default.DefaultRegistrar
 
 class LibrarySharedEvaluationWiringTest {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `Android bulk removal sends explicit user operations through its production command`() = runBlocking {
+        val requests = CompletableDeferred<List<MangaUpdate>>()
+        val repository = mockk<MangaRepository>()
+        coEvery { repository.updateAll(any()) } coAnswers {
+            requests.complete(firstArg())
+            true
+        }
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        val model = allocateModel(
+            "updateManga" to UpdateManga(repository, mockk()),
+            "coverCache" to mockk<CoverCache>(relaxed = true),
+        )
+        try {
+            model.removeMangas(
+                listOf(Manga.create().copy(id = 1, source = 7, favorite = true)),
+                deleteFromLibrary = true,
+                deleteChapters = false,
+            )
+            val updates = withTimeout(5_000) { requests.await() }
+            assertEquals(listOf(1L), updates.map { it.id })
+            assertTrue(updates.all { it.favorite == false && it.syncContext.origin == SyncOrigin.USER })
+        } finally {
+            model.screenModelScope.cancel()
+            Dispatchers.resetMain()
+        }
+    }
+
     @Test
     fun `Android query grouping toolbar and selection consumers execute shared library behavior`() {
         val previousInjekt = Injekt

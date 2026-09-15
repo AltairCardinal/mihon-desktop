@@ -32,7 +32,9 @@ class CreateExtensionRepo(
             ?: return null
 
         val isLocalHttp = parsed.scheme == "http" && parsed.host in setOf("localhost", "127.0.0.1", "::1")
-        if (parsed.scheme != "https" && !isLocalHttp) {
+        if (parsed.username.isNotEmpty() || parsed.password.isNotEmpty() ||
+            (parsed.scheme != "https" && !isLocalHttp)
+        ) {
             return null
         }
 
@@ -42,14 +44,18 @@ class CreateExtensionRepo(
     }
 
     private suspend fun insert(repo: ExtensionRepo): Result {
+        val matching = repository.getRepoBySigningKeyFingerprint(repo.signingKeyFingerprint)
+        if (matching != null) {
+            return if (matching.baseUrl ==
+                repo.baseUrl
+            ) {
+                Result.RepoAlreadyExists
+            } else {
+                Result.DuplicateFingerprint(matching, repo)
+            }
+        }
         return try {
-            repository.insertRepo(
-                repo.baseUrl,
-                repo.name,
-                repo.shortName,
-                repo.website,
-                repo.signingKeyFingerprint,
-            )
+            repository.insertRepo(repo)
             Result.Success
         } catch (e: SaveExtensionRepoException) {
             logcat(LogPriority.WARN, e) { "SQL Conflict attempting to add new repository ${repo.baseUrl}" }

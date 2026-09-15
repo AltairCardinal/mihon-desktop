@@ -43,6 +43,32 @@ import tachiyomi.core.common.preference.Preference
 import java.util.concurrent.atomic.AtomicBoolean
 
 class ExtensionPresentationWiringTest {
+    @Test
+    fun `android list subscribes to repository failure and recovery feedback`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val failure = mihon.domain.extension.model.RepositoryCatalogFailure(
+            mihon.domain.extension.model.RepositoryIdentity("https://repo.example", "Reader repository", "key"),
+            mihon.domain.error.AppError.Network(),
+        )
+        val failures = MutableStateFlow(listOf(failure))
+        val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { repositoryFailures } returns failures
+        }
+        val model =
+            screenModel(
+                manager,
+                Extensions(emptyList(), emptyList(), emptyList(), emptyList()),
+                androidExtensionPresentationStore,
+            )
+        try {
+            assertEquals(listOf(failure), model.state.value.repositoryFailures)
+            failures.value = emptyList()
+            assertTrue(model.state.value.repositoryFailures.isEmpty())
+        } finally {
+            model.onDispose()
+            Dispatchers.resetMain()
+        }
+    }
 
     @Test
     fun `android install collection stops at installed and cleans package state`() = runTest {

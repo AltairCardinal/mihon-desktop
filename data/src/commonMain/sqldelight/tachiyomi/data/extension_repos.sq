@@ -3,7 +3,10 @@ CREATE TABLE extension_repos (
     name TEXT NOT NULL,
     short_name TEXT,
     website TEXT NOT NULL,
-    signing_key_fingerprint TEXT UNIQUE NOT NULL
+    signing_key_fingerprint TEXT UNIQUE NOT NULL,
+    index_url TEXT,
+    extension_list_url TEXT,
+    contact_discord TEXT
 );
 
 findOne:
@@ -14,7 +17,9 @@ WHERE base_url = :base_url;
 findOneBySigningKeyFingerprint:
 SELECT *
 FROM extension_repos
-WHERE signing_key_fingerprint = :fingerprint;
+WHERE lower(replace(trim(signing_key_fingerprint), ':', '')) = lower(replace(trim(:fingerprint), ':', ''))
+ORDER BY base_url
+LIMIT 1;
 
 findAll:
 SELECT *
@@ -25,31 +30,55 @@ SELECT COUNT(*)
 FROM extension_repos;
 
 insert:
-INSERT INTO extension_repos(base_url, name, short_name, website, signing_key_fingerprint)
-VALUES (:base_url, :name, :short_name, :website, :fingerprint);
+INSERT INTO extension_repos(
+    base_url, name, short_name, website, signing_key_fingerprint,
+    index_url, extension_list_url, contact_discord
+)
+VALUES (
+    :base_url, :name, :short_name, :website, :fingerprint,
+    :index_url, :extension_list_url, :contact_discord
+);
 
 upsert:
-INSERT INTO extension_repos(base_url, name, short_name, website, signing_key_fingerprint)
-VALUES (:base_url, :name, :short_name, :website, :fingerprint)
+INSERT INTO extension_repos(
+    base_url, name, short_name, website, signing_key_fingerprint,
+    index_url, extension_list_url, contact_discord
+)
+VALUES (
+    :base_url, :name, :short_name, :website, :fingerprint,
+    :index_url, :extension_list_url, :contact_discord
+)
 ON CONFLICT(base_url)
 DO UPDATE
 SET
     name = :name,
     short_name = :short_name,
     website =: website,
-    signing_key_fingerprint = :fingerprint
+    signing_key_fingerprint = :fingerprint,
+    index_url = :index_url,
+    extension_list_url = :extension_list_url,
+    contact_discord = :contact_discord
 WHERE base_url = base_url;
 
 replace:
-INSERT INTO extension_repos(base_url, name, short_name, website, signing_key_fingerprint)
-VALUES (:base_url, :name, :short_name, :website, :fingerprint)
+INSERT INTO extension_repos(
+    base_url, name, short_name, website, signing_key_fingerprint,
+    index_url, extension_list_url, contact_discord
+)
+VALUES (
+    :base_url, :name, :short_name, :website, :fingerprint,
+    :index_url, :extension_list_url, :contact_discord
+)
 ON CONFLICT(signing_key_fingerprint)
 DO UPDATE
 SET
     base_url = :base_url,
     name = :name,
     short_name = :short_name,
-    website =: website
+    website =: website,
+    index_url = :index_url,
+    extension_list_url = :extension_list_url,
+    contact_discord = :contact_discord
 WHERE signing_key_fingerprint = signing_key_fingerprint;
 
 delete:

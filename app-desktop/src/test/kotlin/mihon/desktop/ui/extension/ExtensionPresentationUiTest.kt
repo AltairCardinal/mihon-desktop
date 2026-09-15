@@ -63,6 +63,39 @@ import java.util.prefs.Preferences
 class ExtensionPresentationUiTest {
     @OptIn(ExperimentalComposeUiApi::class)
     @Test
+    fun `unsupported extension is visible with disabled install action`() = runBlocking {
+        val candidate = extension("Future reader", "pkg.future", emptyList()).copy(
+            libVersion = mihon.domain.extension.model.EXTENSION_LIB_VERSION_MAX + 0.1,
+        )
+        val catalog = ExtensionCatalogResult(emptyList(), emptyList())
+        val api = mockk<DesktopExtensionApi> {
+            coEvery { refreshCatalog() } returns catalog
+            every { availableExtensions(catalog) } returns listOf(candidate)
+            coEvery { loadExtensionIcon(any()) } returns null
+        }
+        val manager = mockk<DesktopExtensionManager>(relaxed = true)
+        val model = ExtensionsScreenModel(DesktopExtensionPresentationPort(api, manager, MutableStateFlow(emptyList())), this, ExtensionPresentationOptions(false, setOf("en")))
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { extensionApi } returns api
+            every { extensionManager } returns manager
+        }
+        val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
+        try {
+            model.refresh().join()
+            scene.setContent { CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) { ExtensionListContent(model) } }
+            scene.render()
+            click(scene, extensionListCopy().available)
+            awaitText(scene, candidate.name)
+            val install = nodes(scene).filter { it.config.getOrElse(SemanticsProperties.ContentDescription) { emptyList() }.contains("${MR.strings.action_install.localized()} ${candidate.name}") }
+            assertTrue(install.isEmpty() || install.all { it.config.contains(SemanticsProperties.Disabled) })
+            assertTrue(nodes(scene).any { it.config.toString().contains(candidate.libVersion.toString()) })
+        } finally {
+            scene.close()
+            model.closeAndJoin()
+        }
+    }
+    @OptIn(ExperimentalComposeUiApi::class)
+    @Test
     fun `details opened from the list return to the list when the installed extension disappears`() = runBlocking {
         val installed = InstalledExtension(File("removed-details.jar"), emptyList(), displayName = "Removed details")
         val installedFlow = MutableStateFlow(listOf(installed))

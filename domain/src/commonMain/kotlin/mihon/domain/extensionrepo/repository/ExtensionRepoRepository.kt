@@ -23,6 +23,10 @@ interface ExtensionRepoRepository {
         signingKeyFingerprint: String,
     )
 
+    suspend fun insertRepo(repo: ExtensionRepo) {
+        insertRepo(repo.baseUrl, repo.name, repo.shortName, repo.website, repo.signingKeyFingerprint)
+    }
+
     suspend fun upsertRepo(
         baseUrl: String,
         name: String,
@@ -32,6 +36,11 @@ interface ExtensionRepoRepository {
     )
 
     suspend fun upsertRepo(repo: ExtensionRepo) {
+        upsertRepoWithMetadata(repo)
+    }
+
+    /** Persists discovery metadata while preserving the repository identity. */
+    suspend fun upsertRepoWithMetadata(repo: ExtensionRepo) {
         upsertRepo(
             baseUrl = repo.baseUrl,
             name = repo.name,

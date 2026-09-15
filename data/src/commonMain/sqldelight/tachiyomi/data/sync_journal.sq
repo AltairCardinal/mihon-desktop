@@ -1,0 +1,152 @@
+import kotlin.Boolean;
+
+CREATE TABLE sync_spaces (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL CHECK (generation >= 0),
+    repository_owner TEXT NOT NULL,
+    repository_name TEXT NOT NULL,
+    repository_branch TEXT NOT NULL,
+    active INTEGER AS Boolean NOT NULL DEFAULT 0,
+    PRIMARY KEY (space_id, generation)
+);
+
+CREATE UNIQUE INDEX sync_one_active_space ON sync_spaces(active) WHERE active = 1;
+
+CREATE TABLE sync_actors (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    actor_id TEXT NOT NULL,
+    epoch INTEGER NOT NULL CHECK (epoch > 0),
+    next_seq INTEGER NOT NULL DEFAULT 1 CHECK (next_seq > 0),
+    local_current INTEGER AS Boolean NOT NULL DEFAULT 1,
+    PRIMARY KEY (space_id, generation, actor_id, epoch),
+    FOREIGN KEY (space_id, generation) REFERENCES sync_spaces(space_id, generation)
+);
+
+CREATE UNIQUE INDEX sync_one_local_actor ON sync_actors(space_id, generation) WHERE local_current = 1;
+
+CREATE TABLE sync_batches (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    batch_id TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    epoch INTEGER NOT NULL,
+    first_seq INTEGER NOT NULL,
+    last_seq INTEGER NOT NULL,
+    event_count INTEGER NOT NULL DEFAULT 0,
+    plaintext_bytes INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'OPEN',
+    prepared_upload TEXT,
+    PRIMARY KEY (space_id, generation, batch_id),
+    FOREIGN KEY (space_id, generation, actor_id, epoch)
+        REFERENCES sync_actors(space_id, generation, actor_id, epoch)
+);
+
+CREATE UNIQUE INDEX sync_one_open_batch ON sync_batches(space_id, generation, actor_id, epoch) WHERE status = 'OPEN';
+
+CREATE TABLE sync_events (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    actor_id TEXT NOT NULL,
+    epoch INTEGER NOT NULL,
+    seq INTEGER NOT NULL,
+    category TEXT NOT NULL,
+    origin TEXT NOT NULL,
+    batch_id TEXT NOT NULL,
+    event_json TEXT NOT NULL,
+    occurred_at INTEGER NOT NULL,
+    PRIMARY KEY (space_id, generation, actor_id, epoch, seq)
+);
+
+CREATE TABLE sync_outbox (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    actor_id TEXT NOT NULL,
+    epoch INTEGER NOT NULL,
+    seq INTEGER NOT NULL,
+    batch_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'QUEUED',
+    PRIMARY KEY (space_id, generation, actor_id, epoch, seq),
+    FOREIGN KEY (space_id, generation, actor_id, epoch, seq)
+        REFERENCES sync_events(space_id, generation, actor_id, epoch, seq),
+    FOREIGN KEY (space_id, generation, batch_id) REFERENCES sync_batches(space_id, generation, batch_id)
+);
+
+CREATE TABLE sync_object_heads (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    object_key TEXT NOT NULL,
+    field TEXT NOT NULL,
+    refs_json TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, object_key, field)
+);
+
+deactivateSpaces:
+UPDATE sync_spaces SET active = 0;
+
+insertSpace:
+INSERT INTO sync_spaces(space_id, generation, repository_owner, repository_name, repository_branch, active)
+VALUES (?, ?, ?, ?, ?, 1);
+
+getSpace:
+SELECT * FROM sync_spaces WHERE space_id = ? AND generation = ?;
+
+activateSpace:
+UPDATE sync_spaces SET active = 1 WHERE space_id = ? AND generation = ?;
+
+insertActor:
+INSERT INTO sync_actors(space_id, generation, actor_id, epoch) VALUES (?, ?, ?, ?);
+
+getCurrentActor:
+SELECT * FROM sync_actors WHERE space_id = ? AND generation = ? AND local_current = 1;
+
+getActiveActor:
+SELECT sync_actors.* FROM sync_actors JOIN sync_spaces USING (space_id, generation)
+WHERE sync_spaces.active = 1 AND sync_actors.local_current = 1;
+
+advanceSequence:
+UPDATE sync_actors SET next_seq = next_seq + 1
+WHERE space_id = ? AND generation = ? AND actor_id = ? AND epoch = ?;
+
+getOpenBatch:
+SELECT * FROM sync_batches WHERE space_id = ? AND generation = ? AND actor_id = ? AND epoch = ? AND status = 'OPEN';
+
+insertBatch:
+INSERT INTO sync_batches(space_id, generation, batch_id, actor_id, epoch, first_seq, last_seq, plaintext_bytes)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+updateBatch:
+UPDATE sync_batches SET last_seq = ?, event_count = event_count + 1, plaintext_bytes = ?
+WHERE space_id = ? AND generation = ? AND batch_id = ?;
+
+sealBatch:
+UPDATE sync_batches SET status = 'SEALED' WHERE space_id = ? AND generation = ? AND batch_id = ? AND status = 'OPEN';
+
+insertEvent:
+INSERT INTO sync_events(space_id, generation, actor_id, epoch, seq, category, origin, batch_id, event_json, occurred_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+insertOutbox:
+INSERT INTO sync_outbox(space_id, generation, actor_id, epoch, seq, batch_id) VALUES (?, ?, ?, ?, ?, ?);
+
+getHeads:
+SELECT refs_json FROM sync_object_heads WHERE space_id = ? AND generation = ? AND object_key = ? AND field = ?;
+
+setHeads:
+INSERT OR REPLACE INTO sync_object_heads(space_id, generation, object_key, field, refs_json) VALUES (?, ?, ?, ?, ?);
+
+getPendingEvents:
+SELECT sync_events.event_json FROM sync_events JOIN sync_outbox
+USING (space_id, generation, actor_id, epoch, seq)
+WHERE sync_events.space_id = ? AND sync_events.generation = ? AND sync_outbox.status != 'PUBLISHED'
+ORDER BY sync_events.actor_id, sync_events.epoch, sync_events.seq
+LIMIT :limit OFFSET :offset;
+
+getBatchEvents:
+SELECT event_json FROM sync_events WHERE space_id = ? AND generation = ? AND batch_id = ? ORDER BY seq;
+
+countEvents:
+SELECT count(*) FROM sync_events;
+
+countBatches:
+SELECT count(*) FROM sync_batches;

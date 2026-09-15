@@ -123,6 +123,13 @@ class CreatorArchiveMigration15Test {
         fresh.execute(null, "PRAGMA foreign_keys = ON", 0)
 
         val migrated = legacyDriver()
+        migrated.execute(
+            null,
+            "CREATE TABLE extension_repos(" +
+                "base_url TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, short_name TEXT, " +
+                "website TEXT NOT NULL, signing_key_fingerprint TEXT UNIQUE NOT NULL)",
+            0,
+        )
         DatabaseMigration.migrateAtomically(migrated, 15, CreatorArchiveV2Contract.LATEST_SCHEMA_VERSION)
 
         archiveTables(migrated) shouldBe archiveTables(fresh)

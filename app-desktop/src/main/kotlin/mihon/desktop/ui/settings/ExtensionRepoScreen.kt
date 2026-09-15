@@ -116,6 +116,15 @@ internal class DesktopExtensionRepoActions(
 data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
     internal fun initialCreatePrompt(): RepoDialog.Create? = initialUrl?.let(RepoDialog::Create)
     internal fun freshCreatePrompt() = RepoDialog.Create()
+    internal fun createActions(
+        create: CreateExtensionRepo,
+        replace: ReplaceExtensionRepo,
+        delete: DeleteExtensionRepo,
+    ) = DesktopExtensionRepoActions(
+        create = { create.await(it).toDesktopOutcome() },
+        replace = replace::await,
+        delete = delete::await,
+    )
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
@@ -132,11 +141,7 @@ data class ExtensionRepoScreen(val initialUrl: String? = null) : Screen {
         val replaceExtensionRepo = LocalDesktopUiDependencies.current.replaceExtensionRepo
         val updateExtensionRepo = LocalDesktopUiDependencies.current.updateExtensionRepo
         val actions = remember(createExtensionRepo, deleteExtensionRepo, replaceExtensionRepo) {
-            DesktopExtensionRepoActions(
-                create = { createExtensionRepo.await(it).toDesktopOutcome() },
-                replace = replaceExtensionRepo::await,
-                delete = deleteExtensionRepo::await,
-            )
+            createActions(createExtensionRepo, replaceExtensionRepo, deleteExtensionRepo)
         }
 
         val repos by getExtensionRepo.subscribeAll().collectAsState(initial = emptyList())

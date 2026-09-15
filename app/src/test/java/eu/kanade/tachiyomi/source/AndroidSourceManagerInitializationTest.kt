@@ -13,6 +13,7 @@ import io.mockk.mockk
 import io.mockk.mockkConstructor
 import io.mockk.unmockkConstructor
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -34,13 +35,14 @@ class AndroidSourceManagerInitializationTest {
     fun `source manager initializes only after the first installed extension snapshot is complete`() = runTest {
         val releaseLoader = CompletableDeferred<Unit>()
         val installedExtensionCollectionStarted = CompletableDeferred<Unit>()
-        val extensionSource = mockk<HttpSource> {
+        val extensionSource = mockk<Source> {
             every { id } answers {
                 installedExtensionCollectionStarted.complete(Unit)
                 7L
             }
             every { lang } returns "en"
             every { name } returns "Example"
+            every { supportsLatest } returns true
         }
         val extensionManager = ExtensionManager(
             context = mockk(relaxed = true),
@@ -80,6 +82,17 @@ class AndroidSourceManagerInitializationTest {
             assertTrue(installedExtensionCollectionStarted.isCompleted)
             assertTrue(sourceManager.isInitialized.value)
             assertEquals(extensionSource, sourceManager.get(7L))
+            assertTrue(extensionSource in sourceManager.getQuerySources())
+            val repository = tachiyomi.data.source.SourceRepositoryImpl(sourceManager, mockk())
+            val enabled = eu.kanade.domain.source.interactor.GetEnabledSources(repository, queryPreferences())
+            val projected = enabled.subscribe().first()
+            assertTrue(projected.any { it.id == 7L && it.supportsLatest })
+            val disabled = eu.kanade.domain.source.interactor.GetEnabledSources(
+                repository,
+                queryPreferences(setOf("7")),
+            )
+            assertFalse(disabled.subscribe().first().any { it.id == 7L })
+            assertEquals(extensionSource, sourceManager.getOrStub(7L))
         } finally {
             unmockkConstructor(LocalSource::class)
         }
@@ -89,6 +102,17 @@ class AndroidSourceManagerInitializationTest {
         every { enabledLanguages() } returns mockk<Preference<Set<String>>> {
             every { isSet() } returns true
         }
+    }
+
+    private fun queryPreferences(disabled: Set<String> = emptySet()) = mockk<SourcePreferences> {
+        every { enabledLanguages() } returns queryPreference(setOf("en"))
+        every { disabledSources() } returns queryPreference(disabled)
+        every { pinnedSources() } returns queryPreference(setOf("7"))
+        every { lastUsedSource() } returns queryPreference(0L)
+    }
+
+    private fun <T> queryPreference(value: T) = mockk<Preference<T>> {
+        every { changes() } returns flowOf(value)
     }
 
     private fun installed(source: Source) = Extension.Installed(

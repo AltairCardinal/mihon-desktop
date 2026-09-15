@@ -36,8 +36,12 @@ data class ExtensionArtifact(
     val downloadUrl: String,
     val iconUrl: String,
     val declaredSha256: String?,
+    val declaredLibVersion: Double? = null,
+    val apkUrl: String? = null,
+    val jarUrl: String? = null,
 ) {
-    val libVersion: Double = extractExtensionLibVersion(versionName) ?: 0.0
+    /** The explicit catalog declaration wins over the legacy version-name convention. */
+    val libVersion: Double = declaredLibVersion ?: extractExtensionLibVersion(versionName) ?: 0.0
 
     fun compatibility(): ExtensionCompatibility = when (libVersion) {
         in EXTENSION_LIB_VERSION_MIN..EXTENSION_LIB_VERSION_MAX -> ExtensionCompatibility.Compatible

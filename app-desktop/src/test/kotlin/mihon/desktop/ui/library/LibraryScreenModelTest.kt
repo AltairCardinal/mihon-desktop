@@ -1,33 +1,35 @@
 package mihon.desktop.ui.library
 
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
-import mihon.desktop.domain.SortMode
 import mihon.desktop.di.isolatedDesktopPreferenceStore
-import mihon.desktop.domain.fakes.FakeChapterRepository
+import mihon.desktop.domain.SortMode
 import mihon.desktop.domain.fakes.FakeCategoryRepository
-import mihon.desktop.domain.fakes.FakeMangaRepository
+import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeHistoryRepository
-import mihon.desktop.download.DownloadItem
+import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.download.DownloadItem
 import mihon.desktop.download.DownloadStatus
 import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.source.FakeDesktopSourceManager
 import mihon.desktop.source.FakeSource
 import mihon.domain.reader.content.DownloadChapterIdentity
+import mihon.domain.sync.SyncOrigin
+import mihon.domain.task.TaskStatus
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -35,9 +37,11 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.category.interactor.GetCategories
-import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.interactor.SetDisplayMode
+import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.interactor.SetSortModeForCategory
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
@@ -46,28 +50,25 @@ import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.download.service.DownloadPreferences
+import tachiyomi.domain.history.interactor.GetNextChapters
+import tachiyomi.domain.library.interactor.LibraryFilter
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.model.LibrarySort
 import tachiyomi.domain.library.service.LibraryPreferences
-import tachiyomi.domain.manga.model.Manga
-import tachiyomi.core.common.preference.InMemoryPreferenceStore
-import tachiyomi.core.common.preference.TriState
-import tachiyomi.domain.download.service.DownloadPreferences
-import tachiyomi.domain.library.interactor.LibraryFilter
-import tachiyomi.domain.history.interactor.GetNextChapters
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.UpdateManga
+import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.repository.MangaRepository
-import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.interactor.GetTracksPerManga
+import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.track.service.TrackerSessionProvider
-import mihon.domain.task.TaskStatus
 import tachiyomi.i18n.MR
+import java.awt.image.BufferedImage
 import java.nio.file.Files
 import java.nio.file.Path
-import java.awt.image.BufferedImage
 import javax.imageio.ImageIO
 
 /**
@@ -84,8 +85,14 @@ class LibraryScreenModelTest {
         var started = 0
         var cancelled = 0
         val model = LibraryScreenModel(
-            startBackgroundUpdate = { started++; kotlinx.coroutines.Job().also { it.complete() } },
-            cancelBackgroundUpdate = { cancelled++; true },
+            startBackgroundUpdate = {
+                started++
+                kotlinx.coroutines.Job().also { it.complete() }
+            },
+            cancelBackgroundUpdate = {
+                cancelled++
+                true
+            },
         )
 
         model.refreshLibrary(emptyList())
@@ -115,7 +122,10 @@ class LibraryScreenModelTest {
     fun `refresh while an update is running does not cancel the existing update`() = runTest {
         var cancelled = 0
         val model = LibraryScreenModel(
-            cancelBackgroundUpdate = { cancelled++; true },
+            cancelBackgroundUpdate = {
+                cancelled++
+                true
+            },
         )
         model.setIsUpdating(true)
 
@@ -131,7 +141,10 @@ class LibraryScreenModelTest {
         var starts = 0
         val running = kotlinx.coroutines.Job()
         val model = LibraryScreenModel(
-            startBackgroundUpdate = { starts++; kotlinx.coroutines.Job().also { it.complete() } },
+            startBackgroundUpdate = {
+                starts++
+                kotlinx.coroutines.Job().also { it.complete() }
+            },
             backgroundUpdateStatus = { TaskStatus.Running },
             backgroundUpdateJob = { running.takeIf { it.isActive } },
         )
@@ -159,7 +172,10 @@ class LibraryScreenModelTest {
         var starts = 0
         var running: kotlinx.coroutines.Job? = null
         val model = LibraryScreenModel(
-            startBackgroundUpdate = { starts++; kotlinx.coroutines.Job().also { it.complete() } },
+            startBackgroundUpdate = {
+                starts++
+                kotlinx.coroutines.Job().also { it.complete() }
+            },
             backgroundUpdateJob = { running?.takeIf { it.isActive } },
         )
 
@@ -187,7 +203,10 @@ class LibraryScreenModelTest {
     fun `stale persisted running status does not block a new refresh`() = runTest {
         var starts = 0
         val model = LibraryScreenModel(
-            startBackgroundUpdate = { starts++; kotlinx.coroutines.Job().also { it.complete() } },
+            startBackgroundUpdate = {
+                starts++
+                kotlinx.coroutines.Job().also { it.complete() }
+            },
             backgroundUpdateStatus = { TaskStatus.Running },
             backgroundUpdateJob = { null },
         )
@@ -670,11 +689,16 @@ class LibraryScreenModelTest {
         }
         val downloadedChapter = tempDir.resolve("10/Downloaded/Chapter 1")
         Files.createDirectories(downloadedChapter)
-        Files.write(downloadedChapter.resolve("page.png"), byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
-        val tracks = MutableStateFlow(listOf(
-            sampleTrack(id = 1L, mangaId = 3L, trackerId = 2L, score = 80.0),
-            sampleTrack(id = 2L, mangaId = 3L, trackerId = 7L, score = 6.0),
-        ))
+        Files.write(
+            downloadedChapter.resolve("page.png"),
+            byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A),
+        )
+        val tracks = MutableStateFlow(
+            listOf(
+                sampleTrack(id = 1L, mangaId = 3L, trackerId = 2L, score = 80.0),
+                sampleTrack(id = 2L, mangaId = 3L, trackerId = 7L, score = 6.0),
+            ),
+        )
         val loggedInTrackerIds = MutableStateFlow(emptySet<Long>())
         val model = LibraryScreenModel(
             getLibraryManga = GetLibraryManga(repository),
@@ -900,6 +924,7 @@ class LibraryScreenModelTest {
 
         assertEquals(listOf(1L, 2L), mangaRepository.updates.map { it.id })
         assertTrue(mangaRepository.updates.all { it.favorite == false })
+        assertTrue(mangaRepository.updates.all { it.syncContext.origin == SyncOrigin.USER })
     }
 
     @Test
@@ -938,7 +963,10 @@ class LibraryScreenModelTest {
             deleteMangaDownloads = { item ->
                 provider.deleteMangaDownloads(item.manga.source, item.manga.title)
             },
-            deleteCustomCover = { id -> deletedCoverId = id; true },
+            deleteCustomCover = { id ->
+                deletedCoverId = id
+                true
+            },
         ).apply { setAllItems(listOf(sampleLibraryManga(manga))) }
 
         model.removeFromLibrary(listOf(manga.id), deleteDownloads = true)
@@ -979,9 +1007,30 @@ class LibraryScreenModelTest {
         val enqueued = mutableListOf<DownloadItem>()
         backing.addAll(
             listOf(
-                Chapter.create().copy(id = 1L, mangaId = 10L, name = "Three", url = "/1", sourceOrder = 1L, chapterNumber = 3.0),
-                Chapter.create().copy(id = 2L, mangaId = 10L, name = "Filtered", url = "/2", sourceOrder = 2L, chapterNumber = 1.0),
-                Chapter.create().copy(id = 3L, mangaId = 10L, name = "Two", url = "/3", sourceOrder = 3L, chapterNumber = 2.0),
+                Chapter.create().copy(
+                    id = 1L,
+                    mangaId = 10L,
+                    name = "Three",
+                    url = "/1",
+                    sourceOrder = 1L,
+                    chapterNumber = 3.0,
+                ),
+                Chapter.create().copy(
+                    id = 2L,
+                    mangaId = 10L,
+                    name = "Filtered",
+                    url = "/2",
+                    sourceOrder = 2L,
+                    chapterNumber = 1.0,
+                ),
+                Chapter.create().copy(
+                    id = 3L,
+                    mangaId = 10L,
+                    name = "Two",
+                    url = "/3",
+                    sourceOrder = 3L,
+                    chapterNumber = 2.0,
+                ),
             ),
         )
         var scanlatorFilterApplied = false
@@ -1090,17 +1139,19 @@ class LibraryScreenModelTest {
     @Test
     fun `batch download preserves all six fixed-main chapter selections`() = runTest {
         val repository = FakeChapterRepository().apply {
-            addAll((1L..30L).map { id ->
-                Chapter.create().copy(
-                    id = id,
-                    mangaId = 10L,
-                    name = "Chapter $id",
-                    url = "/$id",
-                    sourceOrder = id,
-                    bookmark = id <= 2L,
-                    read = id == 1L,
-                )
-            })
+            addAll(
+                (1L..30L).map { id ->
+                    Chapter.create().copy(
+                        id = id,
+                        mangaId = 10L,
+                        name = "Chapter $id",
+                        url = "/$id",
+                        sourceOrder = id,
+                        bookmark = id <= 2L,
+                        read = id == 1L,
+                    )
+                },
+            )
         }
         val item = sampleLibraryManga(sampleManga(id = 10L, source = 7L, title = "Manga"))
         val expected = listOf(1, 5, 10, 25, 29, 2)
@@ -1120,9 +1171,30 @@ class LibraryScreenModelTest {
         val backing = FakeChapterRepository().apply {
             addAll(
                 listOf(
-                    Chapter.create().copy(id = 1L, mangaId = 10L, name = "Three", url = "/1", sourceOrder = 1L, chapterNumber = 3.0),
-                    Chapter.create().copy(id = 2L, mangaId = 10L, name = "Filtered", url = "/2", sourceOrder = 2L, chapterNumber = 1.0),
-                    Chapter.create().copy(id = 3L, mangaId = 10L, name = "Two", url = "/3", sourceOrder = 3L, chapterNumber = 2.0),
+                    Chapter.create().copy(
+                        id = 1L,
+                        mangaId = 10L,
+                        name = "Three",
+                        url = "/1",
+                        sourceOrder = 1L,
+                        chapterNumber = 3.0,
+                    ),
+                    Chapter.create().copy(
+                        id = 2L,
+                        mangaId = 10L,
+                        name = "Filtered",
+                        url = "/2",
+                        sourceOrder = 2L,
+                        chapterNumber = 1.0,
+                    ),
+                    Chapter.create().copy(
+                        id = 3L,
+                        mangaId = 10L,
+                        name = "Two",
+                        url = "/3",
+                        sourceOrder = 3L,
+                        chapterNumber = 2.0,
+                    ),
                 ),
             )
         }
@@ -1162,10 +1234,14 @@ class LibraryScreenModelTest {
     @Test
     fun `batch download skips queued downloading and downloaded chapters then continues after failure`() = runTest {
         val backing = FakeChapterRepository().apply {
-            addAll((1L..5L).map { id ->
-                Chapter.create().copy(id = id, mangaId = 10L, name = "Chapter $id", url = "/$id", sourceOrder = id)
-            })
-            addAll(listOf(Chapter.create().copy(id = 6L, mangaId = 12L, name = "Chapter 6", url = "/6", sourceOrder = 6L)))
+            addAll(
+                (1L..5L).map { id ->
+                    Chapter.create().copy(id = id, mangaId = 10L, name = "Chapter $id", url = "/$id", sourceOrder = id)
+                },
+            )
+            addAll(
+                listOf(Chapter.create().copy(id = 6L, mangaId = 12L, name = "Chapter 6", url = "/6", sourceOrder = 6L)),
+            )
         }
         val repository = object : ChapterRepository by backing {
             override suspend fun getChapterByMangaId(mangaId: Long, applyScanlatorFilter: Boolean) =
@@ -1198,7 +1274,10 @@ class LibraryScreenModelTest {
         assertEquals(LibraryBatchDownloadResult(queued = 2, skipped = 4, failures = 1), result)
         assertEquals(listOf(5L, 6L), enqueued)
         assertEquals("2 queued, 4 skipped, 1 failed", model.state.value.batchCategoryResultMessage)
-        assertEquals(LibraryBatchDownloadResult(), model.enqueueDownloads(emptyList(), MangaDetailDownloadAction.UNREAD_CHAPTERS))
+        assertEquals(
+            LibraryBatchDownloadResult(),
+            model.enqueueDownloads(emptyList(), MangaDetailDownloadAction.UNREAD_CHAPTERS),
+        )
         assertEquals("No manga selected", model.state.value.batchCategoryResultMessage)
     }
 
@@ -1226,8 +1305,22 @@ class LibraryScreenModelTest {
         val chapterRepository = FakeChapterRepository()
         chapterRepository.addAll(
             listOf(
-                Chapter.create().copy(id = 2L, mangaId = 10L, name = "Read", url = "/read", read = true, sourceOrder = 1L),
-                Chapter.create().copy(id = 1L, mangaId = 10L, name = "Newer unread", url = "/newer", read = false, sourceOrder = 0L),
+                Chapter.create().copy(
+                    id = 2L,
+                    mangaId = 10L,
+                    name = "Read",
+                    url = "/read",
+                    read = true,
+                    sourceOrder = 1L,
+                ),
+                Chapter.create().copy(
+                    id = 1L,
+                    mangaId = 10L,
+                    name = "Newer unread",
+                    url = "/newer",
+                    read = false,
+                    sourceOrder = 0L,
+                ),
                 Chapter.create().copy(
                     id = 3L,
                     mangaId = 10L,
@@ -1241,7 +1334,9 @@ class LibraryScreenModelTest {
         )
         val model = modelWithChapterUseCases(chapterRepository)
 
-        val request = model.continueReadingRequest(sampleLibraryManga(sampleManga(id = 10L, source = 7L, viewerFlags = 0x44L)))
+        val request = model.continueReadingRequest(
+            sampleLibraryManga(sampleManga(id = 10L, source = 7L, viewerFlags = 0x44L)),
+        )
 
         assertNotNull(request)
         assertEquals("Oldest started", request?.chapterTitle)

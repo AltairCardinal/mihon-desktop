@@ -1,7 +1,9 @@
 package eu.kanade.tachiyomi.extension.model
 
 import android.graphics.drawable.Drawable
+import eu.kanade.tachiyomi.extension.util.ExtensionLoader
 import eu.kanade.tachiyomi.source.Source
+import mihon.domain.extension.model.ExtensionCompatibility
 import tachiyomi.domain.source.model.StubSource
 
 sealed class Extension {
@@ -29,6 +31,7 @@ sealed class Extension {
         val isObsolete: Boolean = false,
         val isShared: Boolean,
         val repoUrl: String? = null,
+        val availableCompatibility: ExtensionCompatibility? = null,
     ) : Extension()
 
     data class Available(
@@ -48,6 +51,17 @@ sealed class Extension {
         val declaredSha256: String? = null,
         val downloadUrl: String = "$repoUrl/apk/$apkName",
     ) : Extension() {
+
+        val compatibility: ExtensionCompatibility
+            get() = if (libVersion in ExtensionLoader.LIB_VERSION_MIN..ExtensionLoader.LIB_VERSION_MAX) {
+                ExtensionCompatibility.Compatible
+            } else {
+                ExtensionCompatibility.UnsupportedLib(
+                    libVersion,
+                    ExtensionLoader.LIB_VERSION_MIN,
+                    ExtensionLoader.LIB_VERSION_MAX,
+                )
+            }
 
         data class Source(
             val id: Long,

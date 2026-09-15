@@ -83,7 +83,26 @@ class DesktopBackupRestorer(
             currentCoroutineContext().ensureActive()
             runRestoreUnit("extensionRepo:${repo.baseUrl}", result) {
                 val repository = extensionRepoRepository ?: error("extension repository dependency is missing")
-                repository.upsertRepo(repo.baseUrl, repo.name, repo.shortName, repo.website, repo.signingKeyFingerprint)
+                val existingByUrl = repository.getRepo(repo.baseUrl)
+                if (existingByUrl != null && existingByUrl.signingKeyFingerprint != repo.signingKeyFingerprint) {
+                    error("Already Exists with different signing key fingerprint")
+                }
+                val existingByFingerprint = repository.getRepoBySigningKeyFingerprint(repo.signingKeyFingerprint)
+                if (existingByFingerprint != null) {
+                    error("${existingByFingerprint.name} has the same signing key fingerprint")
+                }
+                repository.insertRepo(
+                    mihon.domain.extensionrepo.model.ExtensionRepo(
+                        baseUrl = repo.baseUrl,
+                        name = repo.name,
+                        shortName = repo.shortName,
+                        website = repo.website,
+                        signingKeyFingerprint = repo.signingKeyFingerprint,
+                        indexUrl = repo.indexUrl,
+                        extensionListUrl = repo.extensionListUrl,
+                        contactDiscord = repo.contactDiscord,
+                    ),
+                )
             }
             reportProcessed()
         }

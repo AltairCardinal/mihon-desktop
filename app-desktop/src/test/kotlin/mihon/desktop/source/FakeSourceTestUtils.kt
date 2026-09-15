@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -59,11 +60,14 @@ class FakeHttpSource(
 }
 
 class FakeDesktopSourceManager(
-    private val sources: List<CatalogueSource>,
-    override val catalogueSources: Flow<List<CatalogueSource>> = flowOf(sources),
+    private val sources: List<eu.kanade.tachiyomi.source.Source>,
+    catalogueSources: Flow<List<eu.kanade.tachiyomi.source.Source>> = flowOf(sources),
 ) : SourceManager {
+    override val querySources = catalogueSources
+    override val catalogueSources = querySources.map { it.filterIsInstance<CatalogueSource>() }
+    override fun getQuerySources() = sources
     override val isInitialized: StateFlow<Boolean> = MutableStateFlow(true)
-    override fun getCatalogueSources(): List<CatalogueSource> = sources
+    override fun getCatalogueSources(): List<CatalogueSource> = sources.filterIsInstance<CatalogueSource>()
     override fun getOnlineSources(): List<HttpSource> = sources.filterIsInstance<HttpSource>()
     override fun getStubSources(): List<StubSource> = emptyList()
     override fun get(sourceKey: Long) = sources.find { it.id == sourceKey }
