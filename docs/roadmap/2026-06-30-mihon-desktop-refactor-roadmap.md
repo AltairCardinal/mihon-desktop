@@ -4,9 +4,9 @@
 
 正式版日期：2026-06-30
 
-- active-child-plan: [Android 新版扩展系统完整兼容 Roadmap](./2026-09-12-android-extension-v2-compatibility-roadmap.md)（用户已明确授权实施全部内容；从首个未勾选批次 AEX-00 开始。原书架交互对齐计划保持完成，其他暂停计划不自动恢复）
+- active-child-plan: none（2026-09-16 Android扩展专项按收紧范围完成；其他暂停计划不自动恢复）
 
-- 当前专项：[Android 新版扩展系统完整兼容 Roadmap](./2026-09-12-android-extension-v2-compatibility-roadmap.md)（2026-09-12，IN_PROGRESS）。Android release 与设备验收是该专项的必要关闭条件，不适用下文早期 Android 发布延期方针。与暂停中的非 Reader `EX-01` 的切片交接和 Desktop 回归范围见子计划；仅开始执行，不代表已通过任何实现验收。
+- 最近完成专项：[Android 新版扩展系统完整兼容 Roadmap](./2026-09-12-android-extension-v2-compatibility-roadmap.md)（2026-09-16，COMPLETE）。产品提交 `b3d81b34dc`；rc9正式Android/ARM业务及Windows/macOS限定回归已验收。MangaPlus live仍未验证成功，明确限制和证据以子计划为准。
 
 ## 0. 产品路线
 
