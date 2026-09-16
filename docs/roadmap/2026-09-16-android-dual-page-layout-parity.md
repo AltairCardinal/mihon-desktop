@@ -1,8 +1,8 @@
 # Android 双页布局修复与跨端显示契约
 
-- 状态：COMPLETE（布局修复、审查、正式包与实机验收完成）
-- active-task：无（全部完成）
-- 范围：修复 Android 双页顶端错位、单侧异常放大/裁切；保护 Desktop 既有双页行为。
+- 状态：IN_PROGRESS（原布局修复完成；继续用户实测发现的章节与双页稳定性问题）
+- active-task：DP-04
+- 范围：修复 Android 双页布局、章节落点、跨章配对稳定性和入场提示；共享两端章节入口/章界语义，修复 Desktop 已读重开末页问题。
 - 本计划是独立执行计划；不推进其他 reader roadmap 或改写 parity manifest 的既有完成证据。
 
 ## 问题与证据
@@ -84,3 +84,44 @@ checkbox 仅在实现、审查、验证与提交全部完成时勾选。
 - 横屏视口3120×1440：两侧图片均1012×1440，左右槽各1560宽，图片向中间书脊对齐；[横屏实机证据](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.2-rc1/acceptance/landscape.png)。已返回竖屏，系统user_rotation/accelerometer_rotation及插电亮屏设置均恢复原值0。
 - 功能边界：保持比例的Fit；同宽高比图片显示等大，不同宽高比允许自然留白与尺寸差异；Desktop production及平台独有封面策略未改。Desktop仅共用向量验证真实renderer，因此本轮没有无关桌面版本发布。
 - 另行记录的导航观察：本次首次进入Ch.1/Ch.3时先显示章节过渡页，向章内返回后正常显示双页；尚未确定该现象产生时间或因果。该配对/章节落点问题不属于本轮固定槽位与组手势修复，不以本次几何PASS声称导航异常已修复；后续应独立定位，不在本任务无授权扩大实现范围。
+
+## 用户实测续修：章节衔接与双页稳定性
+
+用户追加授权：修复已读章节打开落到章尾、存在相邻章仍显示过渡页、双页阅读中意外变单页，以及进入阅读时的模式气泡。Android 向 Windows 的正确行为对齐，两端共有缺陷同时修复。
+
+### DP-03：共享阅读行为与平台接线（依赖已完成 DP-01）
+
+- [x] 核实两端入口、章节窗口、配对及提示的实际 production 链路，区分已证实根因与待复现现象。
+- [x] 红绿测试覆盖已读章节从第一页打开、显式定位/未读续读边界；已有相邻章时直接衔接，真实边界及加载失败仍有可操作反馈。
+- [x] 红绿测试覆盖连续翻页、异步尺寸与章节窗口变化时双页稳定；保留宽图及奇数尾页的合理单页，不意外修改用户模式。
+- [x] 进入阅读不弹模式气泡；必要的设置入口与用户主动操作反馈保持可用。
+- [x] 复用已有 shared reader entry/session/pairing 核心，平台只保留 View/Compose 适配；共享契约与两端 production wiring 均有行为测试。
+- [x] 一轮独立审查、必要的一轮定向修复复审通过；更新架构边界。
+
+### DP-04：跨端正式产物及验收（依赖 DP-03）
+
+- [ ] 串行完成一次 Android/Desktop 全量测试及格式检查；Windows 使用正式构建脚本与 Test Mode 验收，macOS 按环境可用性验证并记录真实限制。
+- [ ] Android 增加版本并沿用原签名，正式 APK 原位安装三星；检查用户三项复现路径及跨章前后双页状态。
+- [ ] Windows 检查已读章节入口、跨章与双页，记录实际发布 EXE；只提交本任务变化，保留用户文件。
+
+复用决策：已有 domain reader 核心与两端 adapter 可继续使用，不创建第二套 session、配对算法、下载器或进度存储；新增公共规则必须被真实两端链路消费。
+
+本轮预算：复用一个实施代理和一个独立审查代理，无冲突实现并行；主代理负责 roadmap、设备诊断和发布验收。红绿仅 focused，收口全量一次，审查一轮及必要修复复审一轮，预计45–90分钟。过程证据沿用协调器日志，本文件记录计划与结果，不另建逐任务报告。重型 Gradle 同一时刻只有一个协调者。构建/设备/远程环境失败先诊断已有进程，只有具体失败路径追加验证；扩大范围或超过审查预算先说明并等待用户决定。
+
+### DP-03/04 证据与限制（执行中）
+
+- 三星原版aex.2复现：从章节列表打开已读Ch.3，画面为“已读完Ch.3/下一章Ch.4”，底部页码却为1/9，同时出现模式Toast；证据 `.gradle-coordinator/dp03-read-reopen-before.png`。
+- 有效RED：`dp03-red-pairing` 的真实holder/adapter测试确认整窗R2L顺序错误、刷新丢尺寸及配对偏移、不能按双页任一成员恢复位置。`dp03-green-pairing` 首簇相关测试通过，后续继续入口/提示/未知尺寸测试。
+- 对齐事实：Desktop无相邻章才显示终点；Android原来还根据forceTransition、章节编号gap及加载状态插入终点文案。Desktop章节详情入口对已读章仍采用lastPageRead，需要一并修复。
+- macOS环境预检：`mbp`超时，`mbp-lan`可连接；现有仓库有用户改动，未触碰。远端`java -version`明确报告无法找到Java Runtime，常用JDK目录未找到安装，本轮macOS构建目前缺少JDK，不能以Windows通过代替macOS构建证据。优先完成用户指定Android/Windows，不擅自安装远程工具链。
+- 验收临时设置：三星插电亮屏从0改为3，结束时恢复0；未改变系统旋转设置或清除应用数据。
+- 内聚性与风险：本批次超过8文件，涉及共享入口/章界规则、Android三种viewer及Desktop三种presentation的真实消费点，不能只修双页后让单页/Webtoon继续出现有邻章的终点页。作为一个阅读行为批次审查；重点验证显式同步定位、未读续读、真正终点、邻章加载失败与配对更新，避免按文件拆开核心和接线。
+- 进一步RED：`dp03-red-entry-feedback`确认Android真实updateViewer自动Toast、未知尺寸没有预占双槽，以及Desktop已读章实际落page7而非0；`dp03-red-boundary-runtime`确认Loaded邻章仍受gap/force影响保留过渡项，且有邻章终点文案仍VISIBLE。早期`dp03-red-boundary`测试编译失败不作为产品RED。
+- 一轮独立审查进行中：已发现双页真实NEXT指令方向与整窗R2L顺序相反，以及单页过渡项Loaded后删除时需要显式首/末页anchor。均为本批次导航闭环，交原实施者补mounted/输入链测试；不以纯items列表或helper通过替代真实导航验收。
+- 独立审查最终PASS：同一连续审查内关闭双页NEXT方向、普通Pager/Webtoon首末锚点、失效配对缓存，以及Activity恢复/同模式刷新Toast漏项；真实模式切换继续遵守提示偏好。没有开启额外审查轮次。
+- 最终focused：`dp03-final-related` domain8、Android40、Desktop50，共98项全部通过、0失败/0跳过，包括原双页几何、真实输入、mounted跨章定位、同步恢复及架构守卫。该进程末尾ReaderActivity CRLF格式失败，纯换行修复后`dp03-final-format-check` PASS；`git diff --check` PASS，未重复无变化行为测试。
+- 补充有效RED：`dp03-red-navigation`、`dp03-red-ready-anchor-fixture`、`dp03-red-final-wiring`。早期Compose宿主生命周期缺失及重复setup等待卡住属于fixture问题，已采线程栈、仅终止对应协调器进程树并修正，不算产品RED；后续真实mounted测试正确红绿。
+- 全量收口已启动`dp04-full-tests`：domain JVM、Android release单测、Desktop JVM、全仓spotless，串行workers2/offline；结果待完成，不提前勾选。
+- 全量结果：`dp04-full-tests`运行6m48s，domain473/0失败、Android438/0失败；Desktop3070/1失败/2跳过，唯一失败为ID22的当前源码证据行号漂移。仅校正manifest 8处当前roleEvidence行号，能力状态、符号和历史authority/provenance不变；其余272处当前引用静态核对一致。补验`dp04-manifest-recheck`，不重跑全量。该机械维护是本批次源码移动导致的必要证据修正，不推进其他reader计划。
+
+- `dp04-manifest-recheck` PASS（1m6s），唯一契约失败已关闭，全仓spotless通过；合并有效证据为domain473、Android438、Desktop3068通过/2按环境跳过。DP-03实现、测试、架构文档及必要证据修正随本批次提交；DP-04继续正式产物验收。

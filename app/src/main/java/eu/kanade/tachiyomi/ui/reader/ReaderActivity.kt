@@ -559,12 +559,15 @@ open class ReaderActivity : BaseActivity() {
         }
     }
 
+    private var displayedReadingMode: Int? = null
+
     /**
      * Called from the presenter when a manga is ready. Used to instantiate the appropriate viewer.
      */
     private fun updateViewer() {
         val prevViewer = viewModel.state.value.viewer
-        val newViewer = ReadingMode.toViewer(viewModel.getMangaReadingMode(), this)
+        val readingMode = viewModel.getMangaReadingMode()
+        val newViewer = ReadingMode.toViewer(readingMode, this)
 
         if (window.sharedElementEnterTransition is MaterialContainerTransform) {
             // Wait until transition is complete to avoid crash on API 26
@@ -584,9 +587,13 @@ open class ReaderActivity : BaseActivity() {
         updateViewerInset(readerPreferences.fullscreen().get(), readerPreferences.drawUnderCutout().get())
         binding.viewerContainer.addView(newViewer.getView())
 
-        if (readerPreferences.showReadingMode().get()) {
-            showReadingModeToast(viewModel.getMangaReadingMode())
+        if (
+            displayedReadingMode != null && displayedReadingMode != readingMode &&
+            readerPreferences.showReadingMode().get()
+        ) {
+            showReadingModeToast(readingMode)
         }
+        displayedReadingMode = readingMode
 
         loadingIndicator = ReaderProgressIndicator(this)
         binding.readerContainer.addView(loadingIndicator)

@@ -1,8 +1,10 @@
 package eu.kanade.tachiyomi.ui.reader.viewer
 
 import android.app.Application
+import android.view.View
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.ui.UiPreferences
+import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.databinding.ReaderActivityBinding
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
@@ -14,7 +16,9 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DisplayPage
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewerAdapter
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonAdapter
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
 import io.mockk.mockk
 import mihon.domain.reader.ReaderAdjacentChapterEffect
@@ -40,6 +44,44 @@ import uy.kohesive.injekt.registry.default.DefaultRegistrar
 class ReaderAdjacentChapterViewerProductionWiringTest {
 
     private lateinit var previousInjekt: InjektScope
+
+    @Test
+    fun `loaded adjacent chapters never retain forced or gap transition pages in any viewer`() {
+        val activity = recordingReaderActivity()
+        val current = loadedChapter(5, 4)
+        val chapters = ViewerChapters(current, loadedChapter(1, 2), loadedChapter(9, 2))
+        for (case in viewerCases()) {
+            val viewer = case.create(activity)
+            try {
+                val items = when (viewer) {
+                    is PagerViewer -> PagerViewerAdapter(viewer).also { it.setChapters(chapters, true) }.items
+                    is DualPageR2LPagerViewer -> viewer.adapter.also { it.setChapters(chapters, true) }.items
+                    is WebtoonViewer -> WebtoonAdapter(viewer).also { it.setChapters(chapters, true) }.items
+                    else -> error("Unexpected viewer")
+                }
+                assertEquals(
+                    "${case.name} must join existing chapters",
+                    0,
+                    items.filterIsInstance<ChapterTransition>().size,
+                )
+            } finally {
+                case.destroy(viewer)
+            }
+        }
+    }
+
+    @Test
+    fun `existing adjacent chapter never renders terminal chapter text while loader feedback remains separate`() {
+        val activity = recordingReaderActivity()
+        val from = loadedChapter(1, 2)
+        val next = ReaderChapter(chapter(2))
+        val view = ReaderTransitionView(activity)
+        val downloads = mockk<DownloadManager>(relaxed = true)
+        view.bind(ChapterTransition.Next(from, next), downloads, null)
+        assertEquals(View.GONE, view.visibility)
+        view.bind(ChapterTransition.Next(from, null), downloads, null)
+        assertEquals(View.VISIBLE, view.visibility)
+    }
 
     @Before
     fun setUp() {
@@ -274,8 +316,11 @@ class ReaderAdjacentChapterViewerProductionWiringTest {
 
 internal class RecordingReaderActivity : ReaderActivity() {
     val requests = mutableListOf<RecordedAdjacentRequest>()
+    val selectedPages = mutableListOf<ReaderPage>()
 
-    override fun onPageSelected(page: ReaderPage) = Unit
+    override fun onPageSelected(page: ReaderPage) {
+        selectedPages += page
+    }
 
     override fun requestPreloadChapter(
         chapter: ReaderChapter,

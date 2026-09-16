@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.pager
 
+import mihon.domain.reader.PageLayout
 import mihon.domain.reader.PagePairingOptions
 import mihon.domain.reader.ReaderPairingState
 
@@ -7,10 +8,12 @@ import mihon.domain.reader.ReaderPairingState
 class PairingState(
     val pageCount: Int,
     val isR2L: Boolean,
+    initialLayout: PageLayout = PageLayout.UNKNOWN,
 ) {
     private val shared = ReaderPairingState(
         pageCount = pageCount,
         isRtl = isR2L,
+        defaultLayout = initialLayout,
         options = PagePairingOptions(pairAdjacentPortraitPages = true),
     )
 

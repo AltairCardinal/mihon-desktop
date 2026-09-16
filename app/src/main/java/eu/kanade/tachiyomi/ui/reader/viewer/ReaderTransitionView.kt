@@ -16,7 +16,9 @@ import eu.kanade.presentation.theme.TachiyomiTheme
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.toSharedTransitionModel
+import mihon.domain.reader.ReaderChapterBoundary
 import mihon.domain.reader.ReaderNavigationCommand
+import mihon.domain.reader.readerChapterBoundary
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.source.local.isLocal
 
@@ -30,6 +32,8 @@ class ReaderTransitionView @JvmOverloads constructor(context: Context, attrs: At
     }
 
     fun bind(transition: ChapterTransition, downloadManager: DownloadManager, manga: Manga?) {
+        visibility =
+            if (readerChapterBoundary(transition.to != null) == ReaderChapterBoundary.TERMINAL) VISIBLE else GONE
         val command = transition.toSharedTransitionModel().retryCommand()
         data = if (manga != null) {
             Data(

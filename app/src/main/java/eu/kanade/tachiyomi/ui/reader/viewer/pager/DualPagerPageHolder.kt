@@ -284,7 +284,7 @@ class DualPagerPageHolder(
             Side.CENTER -> (displayPage as? DisplayPage.Single)?.page
         } ?: return
 
-        viewer.adapter.updatePageDimensions(page.index, width, height)
+        viewer.adapter.updatePageDimensions(page, width, height)
 
         val slot = if (side == Side.LEFT) leftSlot else rightSlot
         slot?.setImageDimensions(width, height)

@@ -45,6 +45,21 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 class ReaderSyncResumeWiringTest {
     @Test
+    fun `explicit selection of a read chapter starts at first page without adopting sync resume`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        try {
+            Fixture(savedState = SavedStateHandle(mapOf("resume" to false))).use { fixture ->
+                assertTrue(fixture.model.init(1, 2).getOrThrow())
+                assertEquals(2L, fixture.model.state.value.currentChapter!!.chapter.id)
+                assertEquals(0, fixture.model.state.value.currentChapter!!.requestedPage)
+                assertEquals(0, fixture.repository.lookups)
+            }
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun `continue reading selects the merged chapter and early page even when it is already read`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val fixture = Fixture()

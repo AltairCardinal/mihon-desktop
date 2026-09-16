@@ -6,20 +6,33 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.Looper
 import android.os.SystemClock
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.ComponentActivity
+import androidx.recyclerview.widget.LinearLayoutManager
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.ui.UiPreferences
+import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.databinding.ReaderActivityBinding
 import eu.kanade.tachiyomi.databinding.ReaderErrorBinding
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.ui.reader.ReaderActivity
+import eu.kanade.tachiyomi.ui.reader.ReaderViewModel
 import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
+import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
+import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.model.openPageListForTest
+import eu.kanade.tachiyomi.ui.reader.model.publishLoadedPageListForTest
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.RecordingReaderActivity
+import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonAdapter
+import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
 import io.mockk.every
 import io.mockk.mockk
@@ -28,6 +41,7 @@ import io.mockk.unmockkObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -36,6 +50,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -45,6 +60,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowToast
+import org.robolectric.util.ReflectionHelpers
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.core.common.util.system.ImageUtil
 import tachiyomi.domain.chapter.model.Chapter
@@ -65,6 +82,258 @@ class DualPagerPageHolderLayoutTest {
     private lateinit var previousInjekt: InjektScope
     private lateinit var viewer: DualPageR2LPagerViewer
 
+    @Test
+    fun `mounted pagers restore loaded next to first page and previous to last page`() = runTest {
+        for (rtl in listOf(true, false)) {
+            for (previous in listOf(true, false)) {
+                val candidate: PagerViewer = if (rtl) {
+                    R2LPagerViewer(viewer.activity)
+                } else {
+                    L2RPagerViewer(viewer.activity)
+                }
+                candidate.config.navigationModeChangedListener = null
+                val current = loadedChapter(11)
+                val adjacent = ReaderChapter(Chapter.create().copy(id = 12, mangaId = 1))
+                val chapters = if (previous) {
+                    ViewerChapters(current, adjacent, null)
+                } else {
+                    ViewerChapters(current, null, adjacent)
+                }
+                try {
+                    candidate.setChapters(chapters)
+                    Robolectric.buildActivity(ComponentActivity::class.java)
+                        .setup().visible().get().setContentView(candidate.pager)
+                    measure(candidate.pager, 1440, 3120)
+                    val adapter = candidate.pager.adapter as PagerViewerAdapter
+                    val loadingIndex = adapter.items.indexOfFirst { it is ChapterTransition && it.to === adjacent }
+                    candidate.pager.setCurrentItem(loadingIndex, false)
+                    val pages = List(3) { ReaderPage(it).apply { chapter = adjacent } }
+                    adjacent.publishLoadedPageListForTest(pages)
+                    candidate.setChapters(chapters)
+                    measure(candidate.pager, 1440, 3120)
+                    assertEquals(
+                        "rtl=$rtl previous=$previous must preserve logical boundary entry",
+                        if (previous) pages.last() else pages.first(),
+                        adapter.items[candidate.pager.currentItem],
+                    )
+                } finally {
+                    candidate.destroy()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `mounted webtoon restores loaded boundary to the adjacent entry page`() = runTest {
+        val host = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible().get()
+        for (previous in listOf(true, false)) {
+            val candidate = WebtoonViewer(viewer.activity)
+            candidate.config.navigationModeChangedListener = null
+            val current = loadedChapter(11)
+            val adjacent = ReaderChapter(Chapter.create().copy(id = 12, mangaId = 1))
+            val chapters = if (previous) {
+                ViewerChapters(current, adjacent, null)
+            } else {
+                ViewerChapters(current, null, adjacent)
+            }
+            try {
+                candidate.setChapters(chapters)
+                host.setContentView(candidate.getView())
+                measure(candidate.recycler, 1440, 3120)
+                val adapter = candidate.recycler.adapter as WebtoonAdapter
+                val loadingIndex = adapter.items.indexOfFirst { it is ChapterTransition && it.to === adjacent }
+                val manager = candidate.recycler.layoutManager as LinearLayoutManager
+                manager.scrollToPositionWithOffset(loadingIndex, 0)
+                measure(candidate.recycler, 1440, 3120)
+                candidate.onScrolled(loadingIndex)
+                val pages = List(8) { ReaderPage(it).apply { chapter = adjacent } }
+                adjacent.publishLoadedPageListForTest(pages)
+                candidate.setChapters(chapters)
+                measure(candidate.recycler, 1440, 3120)
+                assertEquals(
+                    "previous=$previous must restore boundary entry at top",
+                    if (previous) pages.last() else pages.first(),
+                    adapter.items[manager.findFirstVisibleItemPosition()],
+                )
+            } finally {
+                candidate.destroy()
+            }
+        }
+    }
+
+    @Test
+    fun `mounted dual dimension regroup keeps selected source without transient wrong progress`() = runTest {
+        val chapter = loadedChapter(11, 6)
+        viewer.setChapters(ViewerChapters(chapter, loadedChapter(10), loadedChapter(12)))
+        Robolectric.buildActivity(ComponentActivity::class.java)
+            .setup().visible().get().setContentView(viewer.pager)
+        measure(viewer.pager, 1440, 3120)
+        val selected = requireNotNull(chapter.pages)[4]
+        viewer.moveToPage(selected)
+        measure(viewer.pager, 1440, 3120)
+        val activity = viewer.activity as RecordingReaderActivity
+        activity.selectedPages.clear()
+        viewer.adapter.updatePageDimensions(requireNotNull(chapter.pages)[0], 400, 200)
+        measure(viewer.pager, 1440, 3120)
+        val actual = viewer.adapter.items[viewer.pager.currentItem] as DisplayPage
+        assertTrue(actual.containsPage(selected))
+        assertTrue("Regroup must not publish an unrelated page", activity.selectedPages.all { actual.containsPage(it) })
+    }
+
+    @Test
+    fun `next page input advances R2L groups and crosses into next chapter while previous returns`() = runTest {
+        val chapter = loadedChapter(11, 4)
+        val next = loadedChapter(12)
+        viewer.adapter.setChapters(ViewerChapters(chapter, loadedChapter(10), next), false)
+        viewer.moveToPage(requireNotNull(chapter.pages)[0])
+        viewer.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_PAGE_DOWN))
+        assertEquals(
+            requireNotNull(chapter.pages)[2],
+            (viewer.adapter.items[viewer.pager.currentItem] as DisplayPage).firstPage,
+        )
+        viewer.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_LEFT))
+        assertEquals(next, (viewer.adapter.items[viewer.pager.currentItem] as DisplayPage).firstPage.chapter)
+        viewer.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_PAGE_UP))
+        assertEquals(
+            requireNotNull(chapter.pages)[2],
+            (viewer.adapter.items[viewer.pager.currentItem] as DisplayPage).firstPage,
+        )
+    }
+
+    @Test
+    fun `invalidated page list cannot leave old paired pages in the visible window`() = runTest {
+        val chapter = loadedChapter(11, 4)
+        val chapters = ViewerChapters(chapter, null, null)
+        viewer.adapter.setChapters(chapters, false)
+        chapter.openPageListForTest()
+        viewer.adapter.setChapters(chapters, false)
+        assertEquals(0, viewer.adapter.items.filterIsInstance<DisplayPage>().size)
+    }
+
+    @Test
+    fun `unknown image sizes already reserve dual slots until a real wide image is known`() = runTest {
+        val chapter = loadedChapter(11, 4)
+        viewer.adapter.setChapters(ViewerChapters(chapter, null, null), false)
+        assertEquals(2, viewer.adapter.items.filterIsInstance<DisplayPage.Double>().size)
+    }
+
+    @Test
+    fun `entering the production reader does not show an automatic reading mode toast`() = runTest {
+        val activity = viewer.activity
+        activity.setTheme(eu.kanade.tachiyomi.R.style.Theme_Tachiyomi)
+        activity.binding = ReaderActivityBinding.inflate(activity.layoutInflater)
+        val model = mockk<ReaderViewModel>(relaxed = true)
+        every { model.state } returns MutableStateFlow(ReaderViewModel.State())
+        every { model.getMangaReadingMode(any()) } returns ReadingMode.DUAL_PAGE_R2L.flagValue
+        every { model.getMangaOrientation(any()) } returns 0
+        ReflectionHelpers.setField(activity, "viewModel\$delegate", lazyOf(model))
+        ShadowToast.reset()
+        val update = ReaderActivity::class.java.getDeclaredMethod("updateViewer").apply { isAccessible = true }
+        update.invoke(activity)
+        assertNull(ShadowToast.getTextOfLatestToast())
+    }
+
+    @Test
+    fun `same mode rebuild and restored viewer are silent while explicit mode changes give feedback`() = runTest {
+        val activity = viewer.activity
+        activity.setTheme(eu.kanade.tachiyomi.R.style.Theme_Tachiyomi)
+        activity.binding = ReaderActivityBinding.inflate(activity.layoutInflater)
+        val model = mockk<ReaderViewModel>(relaxed = true)
+        val state = MutableStateFlow(ReaderViewModel.State(viewer = viewer))
+        every { model.state } returns state
+        var mode = ReadingMode.DUAL_PAGE_R2L.flagValue
+        every { model.getMangaReadingMode(any()) } answers { mode }
+        every { model.getMangaOrientation(any()) } returns 0
+        every { model.onViewerLoaded(any()) } answers { state.value = state.value.copy(viewer = firstArg()) }
+        ReflectionHelpers.setField(activity, "viewModel\$delegate", lazyOf(model))
+        val update = ReaderActivity::class.java.getDeclaredMethod("updateViewer").apply { isAccessible = true }
+        try {
+            ShadowToast.reset()
+            update.invoke(activity)
+            assertNull("Activity restored with a viewer must remain silent", ShadowToast.getTextOfLatestToast())
+            update.invoke(activity)
+            assertNull("Same-mode metadata refresh must remain silent", ShadowToast.getTextOfLatestToast())
+            mode = ReadingMode.WEBTOON.flagValue
+            update.invoke(activity)
+            assertTrue(ShadowToast.getTextOfLatestToast() != null)
+            ShadowToast.reset()
+            mode = ReadingMode.CONTINUOUS_VERTICAL.flagValue
+            update.invoke(activity)
+            assertTrue(
+                "Different modes of the same viewer class must give feedback",
+                ShadowToast.getTextOfLatestToast() != null,
+            )
+        } finally {
+            state.value.viewer?.destroy()
+        }
+    }
+
+    @Test
+    fun `whole chapter window follows R2L order before and after adjacent dimensions arrive`() = runTest {
+        val previous = loadedChapter(10)
+        val current = loadedChapter(11)
+        val next = loadedChapter(12)
+        val chapters = ViewerChapters(current, previous, next)
+        viewer.adapter.setChapters(chapters, false)
+        fun chapterIds() = viewer.adapter.items.filterIsInstance<DisplayPage>().map { it.firstPage.chapter.chapter.id }
+        assertEquals(listOf(12L, 11L, 10L), chapterIds())
+        val wideBytes = ByteArrayOutputStream().also {
+            Bitmap.createBitmap(400, 200, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.PNG, 100, it)
+        }.toByteArray()
+        requireNotNull(next.pages)[0].stream = { wideBytes.inputStream() }
+        for (page in requireNotNull(next.pages)) decodeForAdapter(page)
+        assertEquals(listOf(12L, 12L, 11L, 10L), chapterIds())
+        assertEquals(
+            1,
+            viewer.adapter.items.filterIsInstance<DisplayPage.Double>().count {
+                it.firstPage.chapter ==
+                    current
+            },
+        )
+        for (page in requireNotNull(current.pages)) decodeForAdapter(page)
+        assertEquals(listOf(12L, 12L, 11L, 10L), chapterIds())
+    }
+
+    @Test
+    fun `chapter window refresh preserves decoded pairings and manual pairing offset`() = runTest {
+        val chapter = loadedChapter(11, 4)
+        val chapters = ViewerChapters(chapter, null, null)
+        viewer.adapter.setChapters(chapters, false)
+        for (page in requireNotNull(chapter.pages)) decodeForAdapter(page)
+        viewer.adapter.adjustPairing(0)
+        val before = viewer.adapter.items.filterIsInstance<DisplayPage>()
+        viewer.adapter.setChapters(chapters, false)
+        assertEquals(before, viewer.adapter.items.filterIsInstance<DisplayPage>())
+    }
+
+    @Test
+    fun `restoring either member of a pair selects its display unit not a chapter boundary`() = runTest {
+        val chapter = loadedChapter(11)
+        viewer.adapter.setChapters(ViewerChapters(chapter, null, null), false)
+        for (page in requireNotNull(chapter.pages)) decodeForAdapter(page)
+        viewer.pager.clearOnPageChangeListeners()
+        viewer.moveToPage(requireNotNull(chapter.pages)[1])
+        assertTrue(viewer.adapter.items[viewer.pager.currentItem] is DisplayPage.Double)
+    }
+
+    private fun loadedChapter(id: Long, count: Int = 2): ReaderChapter {
+        val chapter = ReaderChapter(Chapter.create().copy(id = id, mangaId = 1, chapterNumber = id.toDouble()))
+        val bytes = ByteArrayOutputStream().also {
+            Bitmap.createBitmap(100, 200, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.PNG, 100, it)
+        }.toByteArray()
+        chapter.publishLoadedPageListForTest(
+            List(count) { index ->
+                ReaderPage(index, stream = { bytes.inputStream() }).apply { this.chapter = chapter }
+            },
+        )
+        return chapter
+    }
+
+    private suspend fun decodeForAdapter(page: ReaderPage) {
+        val holder = DualPagerPageHolder(viewer.activity, viewer, DisplayPage.Single(page))
+        load(holder, page, "CENTER")
+    }
+
     @Before
     fun setUp() {
         previousInjekt = Injekt
@@ -72,6 +341,7 @@ class DualPagerPageHolderLayoutTest {
         val preferences = InMemoryPreferenceStore()
         Injekt.addSingleton(ReaderPreferences(preferences))
         Injekt.addSingleton(UiPreferences(preferences))
+        Injekt.addSingleton(mockk<DownloadManager>(relaxed = true))
         Injekt.addSingleton(BasePreferences(RuntimeEnvironment.getApplication() as Application, preferences))
         // Native format sniffing is unavailable in a Windows JVM; dimensions still use
         // the real BitmapFactory and the production ReaderPageImageView is mounted.
@@ -80,6 +350,9 @@ class DualPagerPageHolderLayoutTest {
         Dispatchers.setMain(StandardTestDispatcher())
         val activity = Robolectric.buildActivity(RecordingReaderActivity::class.java).get()
         activity.binding = mockk<ReaderActivityBinding>(relaxed = true)
+        val model = mockk<ReaderViewModel>(relaxed = true)
+        every { model.state } returns MutableStateFlow(ReaderViewModel.State())
+        ReflectionHelpers.setField(activity, "viewModel\$delegate", lazyOf(model))
         viewer = DualPageR2LPagerViewer(activity)
         // This fixture mounts the reader viewport, not the activity's navigation help overlay.
         viewer.config.navigationModeChangedListener = null

@@ -1,5 +1,6 @@
 package mihon.desktop.ui.library
 
+import mihon.domain.reader.progress.resolveReaderChapterEntryPage
 import cafe.adriel.voyager.core.model.ScreenModel
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -482,7 +483,7 @@ class MangaDetailScreenModel(
             chapterId = chapter.id,
             chapters = chapterRefs,
             currentChapterIndex = ReaderNavigator.indexForId(chapterRefs, chapter.id),
-            initialPage = chapter.lastPageRead.toInt().coerceAtLeast(0),
+            initialPage = resolveReaderChapterEntryPage(chapter.read, chapter.lastPageRead),
             mangaViewerFlags = manga.viewerFlags,
         )
     }

@@ -17,6 +17,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.model.loadedEntryPage
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
 import kotlinx.coroutines.MainScope
@@ -293,6 +294,7 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
         // Remove listener so the change in item doesn't trigger it
         pager.removeOnPageChangeListener(pagerListener)
 
+        val entryPage = (adapter.items.getOrNull(pager.currentItem) as? ChapterTransition)?.loadedEntryPage()
         val forceTransition = config.alwaysShowChapterTransition ||
             adapter.items.getOrNull(pager.currentItem) is ChapterTransition
         adapter.setChapters(chapters, forceTransition)
@@ -303,6 +305,11 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
             val pages = chapters.currChapter.pages ?: return
             moveToPage(pages[min(chapters.currChapter.requestedPage, pages.lastIndex)])
             pager.isVisible = true
+        }
+
+        if (entryPage != null) {
+            val position = adapter.items.indexOf(entryPage)
+            if (position >= 0) pager.setCurrentItem(position, false)
         }
 
         pager.addOnPageChangeListener(pagerListener)

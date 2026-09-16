@@ -26,3 +26,8 @@ sealed class DisplayPage {
             is Double -> rightPage
         }
 }
+
+internal fun DisplayPage.containsPage(page: ReaderPage?): Boolean = when (this) {
+    is DisplayPage.Single -> this.page === page
+    is DisplayPage.Double -> rightPage === page || leftPage === page
+}

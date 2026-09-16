@@ -6,10 +6,14 @@ import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
-import eu.kanade.tachiyomi.ui.reader.viewer.calculateChapterGap
+import eu.kanade.tachiyomi.ui.reader.model.loadedEntryPage
 import eu.kanade.tachiyomi.util.system.createReaderThemeContext
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
+import mihon.domain.reader.PageLayout
+import mihon.domain.reader.ReaderChapterBoundary
+import mihon.domain.reader.readerChapterBoundary
 import tachiyomi.core.common.util.system.logcat
+import java.util.IdentityHashMap
 
 /**
  * ViewPager adapter for [DualPageR2LPagerViewer].
@@ -34,50 +38,49 @@ class DualPageViewerAdapter(private val viewer: DualPageR2LPagerViewer) : ViewPa
 
     private var readerThemedContext = viewer.activity.createReaderThemeContext()
 
-    /** Chapter pages (non-reversed logical order) currently loaded. */
-    private var currentPages: List<ReaderPage> = emptyList()
+    private data class ChapterPairing(val pages: List<ReaderPage>, val state: PairingState)
 
-    /** Pairing state for the current chapter. */
-    private var pairingState: PairingState = PairingState(pageCount = 0, isR2L = true)
+    private val chapterPairings = IdentityHashMap<ReaderChapter, ChapterPairing>()
+    private var chapters: ViewerChapters? = null
 
-    // ── Public API ──────────────────────────────────────────────────────────
-
-    /**
-     * Updates this adapter with the given [chapters].
-     * Handles prev/next chapter pages for seamless transitions.
-     */
-    fun setChapters(chapters: ViewerChapters, forceTransition: Boolean) {
-        val prevHasMissingChapters = calculateChapterGap(chapters.currChapter, chapters.prevChapter) > 0
-        val nextHasMissingChapters = calculateChapterGap(chapters.nextChapter, chapters.currChapter) > 0
-
+    /** Keep decode facts and manual pairing while the same chapter page identities remain loaded. */
+    fun setChapters(chapters: ViewerChapters, @Suppress("UNUSED_PARAMETER") forceTransition: Boolean) {
+        this.chapters = chapters
         currentChapter = chapters.currChapter
-        currentPages = chapters.currChapter.pages ?: emptyList()
-
-        // Rebuild PairingState for the new chapter (resets offset to 0)
-        pairingState = PairingState(pageCount = currentPages.size, isR2L = true)
-
-        rebuildItems(chapters, forceTransition, prevHasMissingChapters, nextHasMissingChapters)
+        val window = listOfNotNull(chapters.prevChapter, chapters.currChapter, chapters.nextChapter)
+        chapterPairings.keys.retainAll(window.toSet())
+        for (chapter in window) {
+            val pages = chapter.pages
+            if (pages == null) {
+                chapterPairings.remove(chapter)
+                continue
+            }
+            if (chapterPairings[chapter]?.pages != pages) {
+                chapterPairings[chapter] = ChapterPairing(
+                    pages,
+                    PairingState(pages.size, isR2L = false, initialLayout = PageLayout.PORTRAIT),
+                )
+            }
+        }
+        rebuildItems()
     }
 
-    /**
-     * Called when a page's image dimensions become known.
-     * Rebuilds pairings and refreshes the adapter.
-     */
-    fun updatePageDimensions(pageIndex: Int, width: Int, height: Int) {
+    /** The chapter identity is part of every decode fact; page ordinals alone are not unique. */
+    fun updatePageDimensions(page: ReaderPage, width: Int, height: Int) {
         if (width <= 0 || height <= 0) return
-        pairingState.updateDimensions(pageIndex, width, height)
-        rebuildCurrentChapterItems()
+        val pairing = chapterPairings[page.chapter] ?: return
+        if (pairing.pages.getOrNull(page.index) !== page) return
+        pairing.state.updateDimensions(page.index, width, height)
+        rebuildItems()
     }
 
-    /**
-     * Shifts the pairing offset by 1, allowing the user to realign double-page spreads.
-     * Returns the ViewPager position that should be shown after the adjustment.
-     */
     fun adjustPairing(currentFirstPageIndex: Int): Int {
-        pairingState.adjustPairing()
-        rebuildCurrentChapterItems()
-        return pairingState.findDisplayUnitIndexForPage(currentFirstPageIndex)
-            .coerceAtLeast(0)
+        val chapter = currentChapter ?: return -1
+        chapterPairings[chapter]?.state?.adjustPairing()
+        rebuildItems()
+        return items.indexOfFirst { item ->
+            item is DisplayPage && item.containsPage(chapter.pages?.getOrNull(currentFirstPageIndex))
+        }
     }
 
     fun refresh() {
@@ -105,77 +108,42 @@ class DualPageViewerAdapter(private val viewer: DualPageR2LPagerViewer) : ViewPa
         return POSITION_NONE
     }
 
-    // ── Private helpers ─────────────────────────────────────────────────────
-
-    /**
-     * Rebuilds [items] from the current chapters, pairing state, and chapter transitions.
-     * Chapter pages from prev/next chapters are added as raw [DisplayPage.Single] items
-     * around the central chapter's paired display units.
-     */
-    private fun rebuildItems(
-        chapters: ViewerChapters,
-        forceTransition: Boolean,
-        prevHasMissingChapters: Boolean,
-        nextHasMissingChapters: Boolean,
-    ) {
-        val newItems = mutableListOf<Any>()
-
-        // Previous chapter pages (shown as singles — no dual-page pairing across chapters)
-        chapters.prevChapter?.pages?.forEach { newItems.add(DisplayPage.Single(it)) }
-
-        if (prevHasMissingChapters || forceTransition ||
-            chapters.prevChapter?.state !is ReaderChapter.State.Loaded
-        ) {
-            newItems.add(ChapterTransition.Prev(chapters.currChapter, chapters.prevChapter))
+    /** Assemble in story order and reverse the entire window once, including its boundaries. */
+    private fun rebuildItems() {
+        val chapters = chapters ?: return
+        val selected = items.getOrNull(viewer.pager.currentItem)
+        val anchor = when (selected) {
+            is DisplayPage -> selected.firstPage
+            is ChapterTransition -> selected.loadedEntryPage()
+            else -> null
         }
-
-        // Current chapter display units (paired by PairingState)
-        newItems.addAll(buildDisplayPages(currentPages, pairingState))
-
-        nextTransition = ChapterTransition.Next(chapters.currChapter, chapters.nextChapter)
-            .also {
-                if (nextHasMissingChapters || forceTransition ||
-                    chapters.nextChapter?.state !is ReaderChapter.State.Loaded
-                ) {
-                    newItems.add(it)
-                }
+        val logical = buildList<Any> {
+            chapters.prevChapter?.let { chapter ->
+                chapterPairings[chapter]?.let { addAll(buildDisplayPages(it.pages, it.state)) }
             }
-
-        // Next chapter pages (singles)
-        chapters.nextChapter?.pages?.forEach { newItems.add(DisplayPage.Single(it)) }
-
-        items = newItems
-        notifyDataSetChanged()
-    }
-
-    /**
-     * Rebuilds only the current chapter's display units in [items] after a pairing change,
-     * while preserving prev/next chapter items.
-     */
-    private fun rebuildCurrentChapterItems() {
-        if (currentPages.isEmpty()) return
-
-        val newUnits = buildDisplayPages(currentPages, pairingState)
-
-        // Replace the slice of items that belongs to the current chapter
-        val newItems = mutableListOf<Any>()
-        for (item in items) {
-            when {
-                item is DisplayPage && item.firstPage.chapter.chapter.id == currentChapter?.chapter?.id -> {
-                    // Will be replaced — skip old items
-                }
-                else -> newItems.add(item)
+            if (readerChapterBoundary(
+                    chapters.prevChapter != null,
+                    chapters.prevChapter?.state is ReaderChapter.State.Loaded,
+                ) != ReaderChapterBoundary.NONE
+            ) {
+                add(ChapterTransition.Prev(chapters.currChapter, chapters.prevChapter))
+            }
+            chapterPairings[chapters.currChapter]?.let { addAll(buildDisplayPages(it.pages, it.state)) }
+            nextTransition = ChapterTransition.Next(chapters.currChapter, chapters.nextChapter)
+            if (readerChapterBoundary(
+                    chapters.nextChapter != null,
+                    chapters.nextChapter?.state is ReaderChapter.State.Loaded,
+                ) != ReaderChapterBoundary.NONE
+            ) {
+                add(requireNotNull(nextTransition))
+            }
+            chapters.nextChapter?.let { chapter ->
+                chapterPairings[chapter]?.let { addAll(buildDisplayPages(it.pages, it.state)) }
             }
         }
-
-        // Find insertion point: after Prev transition (or start of list)
-        val insertIndex = newItems.indexOfFirst {
-            it is ChapterTransition.Next && it.from.chapter.id == currentChapter?.chapter?.id
-        }.let { if (it == -1) newItems.size else it }
-
-        newItems.addAll(insertIndex, newUnits)
-        items = newItems
+        items = logical.asReversed().toMutableList()
         notifyDataSetChanged()
+        if (anchor != null) viewer.moveToPage(anchor)
     }
 
     private fun buildDisplayPages(pages: List<ReaderPage>, state: PairingState): List<DisplayPage> {

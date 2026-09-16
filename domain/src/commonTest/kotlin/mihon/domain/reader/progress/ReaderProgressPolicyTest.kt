@@ -11,6 +11,14 @@ import org.junit.jupiter.api.Test
 class ReaderProgressPolicyTest {
 
     @Test
+    fun `explicit chapter entry restarts read chapters but preserves unread and restored positions`() {
+        assertEquals(0, resolveReaderChapterEntryPage(isRead = true, lastPageRead = 8))
+        assertEquals(8, resolveReaderChapterEntryPage(isRead = false, lastPageRead = 8))
+        assertEquals(3, resolveReaderChapterEntryPage(isRead = true, lastPageRead = 8, restoredPage = 3))
+        assertEquals(0, resolveReaderChapterEntryPage(isRead = false, lastPageRead = -1))
+    }
+
+    @Test
     fun `only a settled viewport in the active chapter produces a progress effect`() {
         val chapterId = chapterId(2)
         val pageId = pageId(chapterId, 4)

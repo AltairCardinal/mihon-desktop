@@ -166,7 +166,7 @@ class DualPageR2LPagerViewer(override val activity: ReaderActivity) : Viewer, Vi
     override fun moveToPage(page: ReaderPage) {
         // Find the ViewPager position of the display unit containing this page
         val position = adapter.items.indexOfFirst { item ->
-            item is DisplayPage && item.firstPage == page
+            item is DisplayPage && item.containsPage(page)
         }
         if (position != -1) {
             val currentPosition = pager.currentItem
@@ -181,7 +181,7 @@ class DualPageR2LPagerViewer(override val activity: ReaderActivity) : Viewer, Vi
 
     // ── R2L navigation ───────────────────────────────────────────────────────
 
-    /** In R2L mode, "next" page is to the LEFT (higher ViewPager index). */
+    /** The complete R2L window is reversed, so next is the lower ViewPager index. */
     override fun handleKeyEvent(event: KeyEvent): Boolean {
         val isUp = event.action == KeyEvent.ACTION_UP
         val ctrlPressed = event.metaState.and(KeyEvent.META_CTRL_ON) > 0
@@ -236,14 +236,14 @@ class DualPageR2LPagerViewer(override val activity: ReaderActivity) : Viewer, Vi
     private fun moveToPrevious() = moveRight()
 
     private fun moveLeft() {
-        if (pager.currentItem != adapter.count - 1) {
-            pager.setCurrentItem(pager.currentItem + 1, config.usePageTransitions)
+        if (pager.currentItem != 0) {
+            pager.setCurrentItem(pager.currentItem - 1, config.usePageTransitions)
         }
     }
 
     private fun moveRight() {
-        if (pager.currentItem != 0) {
-            pager.setCurrentItem(pager.currentItem - 1, config.usePageTransitions)
+        if (pager.currentItem != adapter.count - 1) {
+            pager.setCurrentItem(pager.currentItem + 1, config.usePageTransitions)
         }
     }
 

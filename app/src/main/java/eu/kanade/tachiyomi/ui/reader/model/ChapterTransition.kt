@@ -57,3 +57,9 @@ private fun ReaderChapter.toSharedChapterModel() = ReaderChapterModel(
     name = chapter.name,
     chapterNumber = chapter.chapter_number.toDouble(),
 )
+
+/** Resolve a completed boundary in story order, independent of the platform scroll direction. */
+internal fun ChapterTransition.loadedEntryPage(): ReaderPage? = when (this) {
+    is ChapterTransition.Prev -> to?.pages?.lastOrNull()
+    is ChapterTransition.Next -> to?.pages?.firstOrNull()
+}

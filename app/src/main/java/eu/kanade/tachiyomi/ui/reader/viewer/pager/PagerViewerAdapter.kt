@@ -7,9 +7,10 @@ import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
-import eu.kanade.tachiyomi.ui.reader.viewer.calculateChapterGap
 import eu.kanade.tachiyomi.util.system.createReaderThemeContext
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
+import mihon.domain.reader.ReaderChapterBoundary
+import mihon.domain.reader.readerChapterBoundary
 import tachiyomi.core.common.util.system.logcat
 
 /**
@@ -44,18 +45,18 @@ class PagerViewerAdapter(private val viewer: PagerViewer) : ViewPagerAdapter() {
      * next/previous chapter to allow seamless transitions and inverting the pages if the viewer
      * has R2L direction.
      */
-    fun setChapters(chapters: ViewerChapters, forceTransition: Boolean) {
+    fun setChapters(chapters: ViewerChapters, @Suppress("UNUSED_PARAMETER") forceTransition: Boolean) {
         val newItems = mutableListOf<Any>()
-
-        // Forces chapter transition if there is missing chapters
-        val prevHasMissingChapters = calculateChapterGap(chapters.currChapter, chapters.prevChapter) > 0
-        val nextHasMissingChapters = calculateChapterGap(chapters.nextChapter, chapters.currChapter) > 0
 
         // Add previous chapter pages and transition
         chapters.prevChapter?.pages?.let(newItems::addAll)
 
-        // Skip transition page if the chapter is loaded & current page is not a transition page
-        if (prevHasMissingChapters || forceTransition || chapters.prevChapter?.state !is ReaderChapter.State.Loaded) {
+        // Loaded neighbours join directly; keep only loading/error or terminal boundaries.
+        if (readerChapterBoundary(
+                chapters.prevChapter != null,
+                chapters.prevChapter?.state is ReaderChapter.State.Loaded,
+            ) != ReaderChapterBoundary.NONE
+        ) {
             newItems.add(ChapterTransition.Prev(chapters.currChapter, chapters.prevChapter))
         }
 
@@ -86,9 +87,10 @@ class PagerViewerAdapter(private val viewer: PagerViewer) : ViewPagerAdapter() {
         nextTransition = ChapterTransition.Next(chapters.currChapter, chapters.nextChapter)
             .also {
                 if (
-                    nextHasMissingChapters ||
-                    forceTransition ||
-                    chapters.nextChapter?.state !is ReaderChapter.State.Loaded
+                    readerChapterBoundary(
+                        chapters.nextChapter != null,
+                        chapters.nextChapter?.state is ReaderChapter.State.Loaded,
+                    ) != ReaderChapterBoundary.NONE
                 ) {
                     newItems.add(it)
                 }

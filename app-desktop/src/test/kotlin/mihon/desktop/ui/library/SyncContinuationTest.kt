@@ -33,7 +33,7 @@ class SyncContinuationTest {
     }
 
     @Test
-    fun `detail continuation can reread while explicit chapter selection is unchanged`() = runTest {
+    fun `detail continuation keeps saved position while explicit read chapter selection restarts`() = runTest {
         val manga = Manga.create().copy(id = 10, source = 42, url = "/manga")
         val chapters = listOf(
             Chapter.create().copy(id = 1, mangaId = 10, url = "/first", read = true),
@@ -44,7 +44,7 @@ class SyncContinuationTest {
         assertEquals(1L, request.chapterId)
         assertEquals(2, request.initialPage)
         assertEquals(2L, model.readerRequest(manga, chapters, chapters[1])?.chapterId)
-        assertEquals(7, model.readerRequest(manga, chapters, chapters[1])?.initialPage)
+        assertEquals(0, model.readerRequest(manga, chapters, chapters[1])?.initialPage)
     }
 
     private fun progress(snapshot: ReadingSyncSnapshot) = RecordReadingProgress(object : ReadingProgressRepository {

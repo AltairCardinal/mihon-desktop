@@ -72,6 +72,7 @@ import mihon.domain.reader.isReaderChapterFiltered
 import mihon.domain.reader.markDuplicateChapters
 import mihon.domain.reader.progress.ReaderProgressPolicy
 import mihon.domain.reader.progress.ReaderProgressSignal
+import mihon.domain.reader.progress.resolveReaderChapterEntryPage
 import mihon.domain.reader.session.ReaderChapterLoadPurpose
 import mihon.domain.reader.session.ReaderChapterLoadState
 import mihon.domain.reader.session.ReaderChapterWindowEffect
@@ -267,12 +268,11 @@ class ReaderViewModel @JvmOverloads constructor(
             .distinctUntilChanged()
             .filterNotNull()
             .onEach { currentChapter ->
-                if (chapterPageIndex >= 0) {
-                    // Restore from SavedState
-                    currentChapter.requestedPage = chapterPageIndex
-                } else if (!currentChapter.chapter.read) {
-                    currentChapter.requestedPage = currentChapter.chapter.last_page_read
-                }
+                currentChapter.requestedPage = resolveReaderChapterEntryPage(
+                    isRead = currentChapter.chapter.read,
+                    lastPageRead = currentChapter.chapter.last_page_read.toLong(),
+                    restoredPage = chapterPageIndex.takeIf { it >= 0 },
+                )
                 chapterId = currentChapter.chapter.id!!
             }
             .launchIn(viewModelScope)

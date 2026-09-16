@@ -6,9 +6,11 @@ import mihon.domain.reader.PagePairingOptions
 import mihon.domain.reader.PageRotation
 import mihon.domain.reader.PageSplitHalf
 import mihon.domain.reader.PixelBounds
+import mihon.domain.reader.ReaderChapterBoundary
 import mihon.domain.reader.ReaderDirection
-import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.ReaderPagePairing
+import mihon.domain.reader.ReaderTransitionDirection
+import mihon.domain.reader.readerChapterBoundary
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageSession
 import mihon.domain.reader.splitPageBounds
@@ -50,13 +52,13 @@ internal object DualPagedPresentation : ReaderPresentationStrategy {
         return ReaderPresentationSnapshot(
             mode = mode,
             displayUnits = buildList {
-                if (!request.hasPreviousChapter) {
+                if (readerChapterBoundary(request.hasPreviousChapter) == ReaderChapterBoundary.TERMINAL) {
                     add(chapterTransitionDisplayUnit(mode, ReaderTransitionDirection.PREVIOUS))
                 }
                 addAll(groups.mapIndexed { groupIndex, group ->
                     request.toDisplayUnit(groupIndex, groups.lastIndex, group.map(pages::get))
                 })
-                if (!request.hasNextChapter) {
+                if (readerChapterBoundary(request.hasNextChapter) == ReaderChapterBoundary.TERMINAL) {
                     add(chapterTransitionDisplayUnit(mode, ReaderTransitionDirection.NEXT))
                 }
             },
