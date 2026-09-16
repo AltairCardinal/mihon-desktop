@@ -15,6 +15,7 @@ data class Chapter(
     val scanlator: String?,
     val lastModifiedAt: Long,
     val version: Long,
+    val memo: kotlinx.serialization.json.JsonObject = kotlinx.serialization.json.JsonObject(emptyMap()),
 ) {
     val isRecognizedNumber: Boolean
         get() = chapterNumber >= 0f

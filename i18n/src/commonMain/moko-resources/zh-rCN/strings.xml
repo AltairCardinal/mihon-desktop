@@ -1616,7 +1616,7 @@
     <string name="sync_minutes">%1$d分</string>
     <string name="sync_pending">待手动处理的同步</string>
     <string name="sync_pending_count">待确认 %1$d 项</string>
-    <string name="sync_empty">暂无需要确认的取消事项</string>
+    <string name="sync_empty">当前没有待确认的操作</string>
     <string name="sync_multi">多选</string>
     <string name="sync_all">全选</string>
     <string name="sync_invert">反选</string>
@@ -1684,4 +1684,12 @@
     <string name="sync_create_repo">前往创建仓库</string>
     <string name="sync_repository_setup_hint">请先创建私有仓库，再授权 Mihon GitHub App 访问该仓库。完成后返回此处刷新列表。</string>
     <string name="sync_resume_page_unavailable">保存的阅读页码已失效，已从本章开头继续。</string>
+    <string name="extension_install_error_verification">无法验证扩展包完整性、签名或仓库访问权限。请刷新可信仓库后重试，不要通过信任不同签名来绕过校验。</string>
+    <string name="extension_install_error_network">无法下载扩展。请检查网络连接及仓库可用性后重试。</string>
+    <string name="extension_install_error_rate_limit">仓库正在限制请求，请稍后重试。</string>
+    <string name="extension_install_error_server">仓库暂时无法提供扩展，请稍后重试。</string>
+    <string name="extension_install_error_permission">安装未获许可。请检查 Android 设置中的安装权限后重试。</string>
+    <string name="extension_install_error_package">扩展包已损坏或不兼容。请刷新仓库后重试。</string>
+    <string name="extension_install_error_recovery">安装或恢复未能完成。请检查存储空间、已安装版本及源是否可用后再重试。Android 可能不允许恢复旧版本，请勿清除应用数据。</string>
+    <string name="extension_install_error_unknown">安装失败。请确认已安装版本及源是否可用后再重试，必要时重启应用，请勿清除应用数据。</string>
 </resources>

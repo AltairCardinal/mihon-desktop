@@ -1,9 +1,11 @@
 package eu.kanade.tachiyomi.extension.model
 
 import android.graphics.drawable.Drawable
-import eu.kanade.tachiyomi.extension.util.ExtensionLoader
 import eu.kanade.tachiyomi.source.Source
+import mihon.domain.extension.model.EXTENSION_LIB_VERSION_MAX
+import mihon.domain.extension.model.EXTENSION_LIB_VERSION_MIN
 import mihon.domain.extension.model.ExtensionCompatibility
+import mihon.domain.extension.model.isSupportedExtensionLibVersion
 import tachiyomi.domain.source.model.StubSource
 
 sealed class Extension {
@@ -53,13 +55,13 @@ sealed class Extension {
     ) : Extension() {
 
         val compatibility: ExtensionCompatibility
-            get() = if (libVersion in ExtensionLoader.LIB_VERSION_MIN..ExtensionLoader.LIB_VERSION_MAX) {
+            get() = if (isSupportedExtensionLibVersion(libVersion)) {
                 ExtensionCompatibility.Compatible
             } else {
                 ExtensionCompatibility.UnsupportedLib(
                     libVersion,
-                    ExtensionLoader.LIB_VERSION_MIN,
-                    ExtensionLoader.LIB_VERSION_MAX,
+                    EXTENSION_LIB_VERSION_MIN,
+                    EXTENSION_LIB_VERSION_MAX,
                 )
             }
 

@@ -5,6 +5,9 @@ import mihon.domain.extensionrepo.model.ExtensionRepo
 const val EXTENSION_LIB_VERSION_MIN = 1.4
 const val EXTENSION_LIB_VERSION_MAX = 1.6
 
+/** Protocol versions are discrete contracts, not a continuous numeric range. */
+fun isSupportedExtensionLibVersion(version: Double): Boolean = version == 1.4 || version == 1.5 || version == 1.6
+
 data class RepositoryIdentity(
     val baseUrl: String,
     val name: String,
@@ -43,9 +46,10 @@ data class ExtensionArtifact(
     /** The explicit catalog declaration wins over the legacy version-name convention. */
     val libVersion: Double = declaredLibVersion ?: extractExtensionLibVersion(versionName) ?: 0.0
 
-    fun compatibility(): ExtensionCompatibility = when (libVersion) {
-        in EXTENSION_LIB_VERSION_MIN..EXTENSION_LIB_VERSION_MAX -> ExtensionCompatibility.Compatible
-        else -> ExtensionCompatibility.UnsupportedLib(
+    fun compatibility(): ExtensionCompatibility = if (isSupportedExtensionLibVersion(libVersion)) {
+        ExtensionCompatibility.Compatible
+    } else {
+        ExtensionCompatibility.UnsupportedLib(
             libVersion = libVersion,
             minimum = EXTENSION_LIB_VERSION_MIN,
             maximum = EXTENSION_LIB_VERSION_MAX,

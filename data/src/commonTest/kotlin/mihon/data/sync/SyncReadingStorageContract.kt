@@ -38,6 +38,23 @@ abstract class SyncReadingStorageContract {
     protected abstract fun open(): Storage
 
     @Test
+    fun `synchronized reading and explicit read state preserve extension memo`() = runBlocking {
+        open().use { s ->
+            val chapter = s.seed()
+            val memo = kotlinx.serialization.json.buildJsonObject {
+                put("opaque-source-value", kotlinx.serialization.json.JsonPrimitive("device-local"))
+            }
+            s.chapters.update(ChapterUpdate(chapter.id, memo = memo))
+            assertTrue(s.journal.pendingEvents("space", 1).isEmpty())
+            s.recorder.await(s.reading(chapter, 2))
+            assertEquals(memo, s.chapters.getChapterById(chapter.id)!!.memo)
+            s.markRead.awaitOrThrow(listOf(s.chapters.getChapterById(chapter.id)!!), true)
+            assertEquals(memo, s.chapters.getChapterById(chapter.id)!!.memo)
+            assertEquals(2, s.journal.pendingEvents("space", 1).size)
+        }
+    }
+
+    @Test
     fun `resume selects causal reread and respects active scope`() = runBlocking {
         open().use { s ->
             val chapter = s.seed()

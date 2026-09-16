@@ -146,6 +146,7 @@ object DesktopBackupCreator {
                     sourceOrder = ch.sourceOrder,
                     lastModifiedAt = ch.lastModifiedAt,
                     version = ch.version,
+                    memo = tachiyomi.data.MemoColumnAdapter.encode(ch.memo),
                 )
             }
 
@@ -201,6 +202,7 @@ object DesktopBackupCreator {
                 version = manga.version,
                 notes = manga.notes,
                 initialized = manga.initialized,
+                memo = tachiyomi.data.MemoColumnAdapter.encode(manga.memo),
             )
         }
 

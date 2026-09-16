@@ -113,6 +113,7 @@ class MangaRestorer(
             status = newer.status,
             initialized = this.initialized || newer.initialized,
             version = newer.version,
+            memo = newer.memo,
         )
     }
 
@@ -144,6 +145,7 @@ class MangaRestorer(
                 version = manga.version,
                 isSyncing = 1,
                 notes = manga.notes,
+                memo = tachiyomi.data.MemoColumnAdapter.encode(manga.memo),
             )
         }
         return manga
@@ -218,6 +220,7 @@ class MangaRestorer(
                     chapter.dateFetch,
                     chapter.dateUpload,
                     chapter.version,
+                    tachiyomi.data.MemoColumnAdapter.encode(chapter.memo),
                 )
             }
         }
@@ -241,6 +244,7 @@ class MangaRestorer(
                     chapterId = chapter.id,
                     version = chapter.version,
                     isSyncing = 0,
+                    memo = tachiyomi.data.MemoColumnAdapter.encode(chapter.memo),
                 )
             }
         }
@@ -275,6 +279,7 @@ class MangaRestorer(
                 updateStrategy = manga.updateStrategy,
                 version = manga.version,
                 notes = manga.notes,
+                memo = tachiyomi.data.MemoColumnAdapter.encode(manga.memo),
             )
             mangasQueries.selectLastInsertedRowId()
         }

@@ -15,11 +15,15 @@ plugins {
 
 val aex01AndroidTestAssets = layout.buildDirectory.dir("generated/aex01AndroidTestAssets")
 val syncAex01AndroidTestAssets = tasks.register<Sync>("syncAex01AndroidTestAssets") {
+    from(rootProject.file("data/src/commonTest/resources/backup")) {
+        include("android-full.tachibk")
+    }
     from(rootProject.file("app-desktop/src/test/resources/extensions/real")) {
         include("aex00-external-v16-controlled-sample.apk")
         include("aex00-external-v15-controlled-sample.apk")
         include("keiyoushi-comicfury-1.4.8.apk")
         include("keiyoushi-mangadex-1.6.0.apk")
+        include("keiyoushi-mangadex-1.4.211.apk")
     }
     into(aex01AndroidTestAssets)
 }

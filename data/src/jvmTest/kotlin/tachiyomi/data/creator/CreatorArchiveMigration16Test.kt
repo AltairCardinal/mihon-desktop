@@ -14,6 +14,8 @@ class CreatorArchiveMigration16Test {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         Database.Schema.create(driver)
         mihon.data.sync.removeSyncJournalSchema(driver)
+        driver.execute(null, "ALTER TABLE mangas DROP COLUMN memo", 0)
+        driver.execute(null, "ALTER TABLE chapters DROP COLUMN memo", 0)
         listOf("index_url", "extension_list_url", "contact_discord").forEach { column ->
             driver.execute(null, "ALTER TABLE extension_repos DROP COLUMN $column", 0)
         }

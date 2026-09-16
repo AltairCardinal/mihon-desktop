@@ -47,6 +47,7 @@ class MangaRepositoryImpl(
                     chapterFlags = update.chapterFlags,
                     coverLastModified = null, dateAdded = update.dateAdded, mangaId = update.mangaId,
                     updateStrategy = null, version = null, isSyncing = 0, notes = update.notes,
+                    memo = null,
                 )
                 reconcileCreatorIndex(update.mangaId)
                 appendFavoriteOperation(update.mangaId, update.favorite, update.syncContext)
@@ -207,6 +208,7 @@ class MangaRepositoryImpl(
                     dateAdded = it.dateAdded,
                     updateStrategy = it.updateStrategy,
                     version = it.version,
+                    memo = tachiyomi.data.MemoColumnAdapter.encode(it.memo),
                     updateTitle = it.title.isNotBlank(),
                     updateCover = !it.thumbnailUrl.isNullOrBlank(),
                     updateDetails = it.initialized,
@@ -253,6 +255,7 @@ class MangaRepositoryImpl(
                     version = value.version,
                     isSyncing = 0,
                     notes = value.notes,
+                    memo = value.memo?.let(tachiyomi.data.MemoColumnAdapter::encode),
                 )
                 if (value.affectsCreatorIndex()) {
                     reconcileCreatorIndex(value.id)

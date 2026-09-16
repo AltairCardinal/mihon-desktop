@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -44,6 +45,7 @@ import mihon.domain.extension.model.ExtensionSourceDescriptor
 import mihon.domain.extension.model.InstalledExtensionTrustRecord
 import mihon.domain.extension.model.RepositoryIdentity
 import mihon.domain.extension.model.extractExtensionLibVersion
+import mihon.domain.extension.model.isSupportedExtensionLibVersion
 import mihon.domain.extension.service.ExtensionInstallCoordinator
 import mihon.domain.extension.service.ExtensionInstallFailure
 import mihon.domain.extension.service.ExtensionInstallPort
@@ -98,6 +100,12 @@ internal class ExtensionInstaller private constructor(
     ) : this(context, runtimeReloader, scope, null, gateway, client, installerProvider)
 
     private val activeJobs = ConcurrentHashMap<String, ActiveInstallJob>()
+    private val mutableInstallErrors = MutableStateFlow<Map<String, AppError>>(emptyMap())
+    val installErrors = mutableInstallErrors.asStateFlow()
+
+    // Installation session identity and UI error publication must advance together on retry.
+    // Old coordinators can finish cleanup after a replacement transaction has already started.
+    private val installErrorLock = Any()
     private val activeTransactions = ConcurrentHashMap<String, ActiveTransaction>()
     private val activeSteps = ConcurrentHashMap<String, MutableStateFlow<InstallStep>>()
     private val platformResults = ConcurrentHashMap<String, CompletableDeferred<InstallStep>>()
@@ -147,11 +155,23 @@ internal class ExtensionInstaller private constructor(
         )
         transactionLifecycles[transactionId] = lifecycle
         activeSteps[transactionId] = step
-        activeTransactions[extension.pkgName] = activeTransaction
+        synchronized(installErrorLock) {
+            activeTransactions[extension.pkgName] = activeTransaction
+            mutableInstallErrors.update { it - extension.pkgName }
+        }
         val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
                 coordinator.install(ExtensionInstallRequest(extension.toArtifact(url))).collect { state ->
                     val installStep = state.toInstallStep()
+                    synchronized(installErrorLock) {
+                        if (activeTransactions[extension.pkgName] === activeTransaction) {
+                            val error = (state as? ExtensionInstallState.Failed)?.error
+                                ?.takeUnless { it == AppError.Cancelled }
+                            mutableInstallErrors.update { errors ->
+                                if (error == null) errors - extension.pkgName else errors + (extension.pkgName to error)
+                            }
+                        }
+                    }
                     if (installStep.isCompleted()) {
                         activeJobs.remove(
                             extension.pkgName,
@@ -200,6 +220,7 @@ internal class ExtensionInstaller private constructor(
         downloadUrl = url,
         iconUrl = iconUrl,
         declaredSha256 = declaredSha256,
+        declaredLibVersion = libVersion,
     )
 
     private fun ExtensionInstallState.toInstallStep(): InstallStep = when (this) {
@@ -247,13 +268,19 @@ internal class ExtensionInstaller private constructor(
     ) {
         val lifecycle = transactionLifecycles.computeIfAbsent(transactionId) { TransactionLifecycle() }
         val result = CompletableDeferred<InstallStep>()
+        var deliveryFile: File? = null
         try {
             synchronized(lifecycle) {
                 if (cancelledTransactions.contains(transactionId)) {
                     throw CancellationException("Extension install cancelled")
                 }
                 platformResults[transactionId] = result
-                installApk(transactionId, file, installer)
+                // Platform installers consume their URI. Keep the coordinator's verified APK
+                // available for post-commit trust persistence, runtime verification and rollback.
+                val delivery = storage { File.createTempFile("delivery-", ".apk", file.parentFile) }
+                    .also { deliveryFile = it }
+                storage { file.copyTo(delivery, overwrite = true) }
+                installApk(transactionId, delivery, installer)
                 lifecycle.markHandedOff()
             }
             val platformStep = try {
@@ -276,6 +303,12 @@ internal class ExtensionInstaller private constructor(
             throw error
         } finally {
             platformResults.remove(transactionId, result)
+            deliveryFile?.let {
+                if (it.exists() && !it.delete()) {
+                    // The owning transaction will report/retry directory cleanup if this remains.
+                    logcat(LogPriority.WARN) { "Failed to remove extension delivery file" }
+                }
+            }
         }
     }
 
@@ -322,11 +355,16 @@ internal class ExtensionInstaller private constructor(
     }
 
     fun cancelInstall(pkgName: String) {
+        clearInstallError(pkgName)
         val active = activeTransactions[pkgName] ?: return
         requestCancellation(pkgName, active)
     }
 
     internal fun isInstallTransactionActive(pkgName: String): Boolean = activeTransactions.containsKey(pkgName)
+
+    fun clearInstallError(pkgName: String) = synchronized(installErrorLock) {
+        mutableInstallErrors.update { it - pkgName }
+    }
 
     private fun cancelActiveInstall(pkgName: String) {
         val active = activeTransactions[pkgName] ?: return
@@ -392,6 +430,7 @@ internal class ExtensionInstaller private constructor(
     }
 
     fun uninstallApk(pkgName: String) {
+        clearInstallError(pkgName)
         if (context.isPackageInstalled(pkgName)) {
             @Suppress("DEPRECATION")
             val intent = Intent(Intent.ACTION_UNINSTALL_PACKAGE, "package:$pkgName".toUri())
@@ -564,6 +603,7 @@ internal data class AndroidApk(
     val versionCode: Long,
     val signers: Set<String>,
     val isExtension: Boolean,
+    val libVersion: Double? = extractExtensionLibVersion(versionName),
 )
 
 internal data class AndroidInstalledPackage(
@@ -572,6 +612,7 @@ internal data class AndroidInstalledPackage(
     val versionCode: Long,
     val signers: Set<String>,
     val trust: InstalledExtensionTrustRecord?,
+    val libVersion: Double? = extractExtensionLibVersion(versionName),
 )
 
 internal data class AndroidInstallTopology(
@@ -664,11 +705,21 @@ internal class AndroidInstallPort(
             ?: failMalformed("Downloaded file is not an APK")
         if (!candidate.isExtension || candidate.packageName != install.artifact.packageName ||
             candidate.versionName != install.artifact.versionName ||
-            candidate.versionCode != install.artifact.versionCode
+            candidate.versionCode != install.artifact.versionCode ||
+            candidate.libVersion?.let(::isSupportedExtensionLibVersion) != true ||
+            candidate.libVersion != install.artifact.libVersion
         ) {
             failMalformed("Downloaded APK metadata does not match repository metadata")
         }
         if (candidate.signers.isEmpty()) failMalformed("Downloaded extension is unsigned")
+        // Global loader trust is insufficient: another trusted repository must not sign this artifact.
+        val expectedSigner = install.artifact.repository.signingKeyFingerprint.replace(":", "").trim().lowercase()
+        if (expectedSigner.isBlank() || candidate.signers.none {
+                it.replace(":", "").trim().lowercase() == expectedSigner
+            }
+        ) {
+            throw ExtensionInstallFailure(AppError.Authentication())
+        }
 
         val downloadedSha = digest(install.download)
         val topology = storage { gateway.topology(candidate.packageName) }
@@ -706,7 +757,7 @@ internal class AndroidInstallPort(
             }
         }
         selected?.let { installed ->
-            val installedLibVersion = extractExtensionLibVersion(installed.versionName) ?: 0.0
+            val installedLibVersion = installed.libVersion ?: 0.0
             val upgrade = updatePolicy.isUpdateAvailable(
                 candidate.versionCode,
                 install.artifact.libVersion,
@@ -757,6 +808,7 @@ internal class AndroidInstallPort(
             versionCode = candidate.versionCode,
             signers = candidate.signers,
             trust = InstalledExtensionTrustRecord(install.artifact.repository, install.downloadedSha),
+            libVersion = candidate.libVersion,
         )
         when (preState.commitTarget) {
             AndroidInstallLocation.PRIVATE -> if (!gateway.installPrivate(install.download, metadata)) {
@@ -922,16 +974,6 @@ internal class AndroidInstallPort(
         runCatching { gateway.delete(file) }.getOrDefault(false).not()
     }
 
-    private inline fun <T> storage(block: () -> T): T = try {
-        block()
-    } catch (failure: ExtensionInstallFailure) {
-        throw failure
-    } catch (failure: CancellationException) {
-        throw failure
-    } catch (failure: Throwable) {
-        throw ExtensionInstallFailure(AppError.Storage(failure))
-    }
-
     private fun okhttp3.Response.toDownloadError(): AppError = when (code) {
         401, 403 -> AppError.Authentication()
         429 -> AppError.RateLimited(header("Retry-After")?.toLongOrNull())
@@ -1002,6 +1044,7 @@ internal class DefaultAndroidInstallGateway(
             versionCode = PackageInfoCompat.getLongVersionCode(info),
             signers = signatures(info).toSet(),
             isExtension = info.reqFeatures.orEmpty().any { it.name == "tachiyomi.extension" },
+            libVersion = readExtensionPackageMetadata(info.applicationInfo?.metaData, "", info.versionName).libVersion,
         )
     }
 
@@ -1125,7 +1168,14 @@ internal class DefaultAndroidInstallGateway(
     ): AndroidInstalledPackage? = inspect(file)?.let { apk ->
         if (apk.packageName != packageName) failMalformed("Installed extension APK package does not match request")
         if (!apk.isExtension) failMalformed("Installed APK does not declare the extension feature")
-        AndroidInstalledPackage(file, apk.versionName, apk.versionCode, apk.signers, readTrust(packageName, location))
+        AndroidInstalledPackage(
+            file,
+            apk.versionName,
+            apk.versionCode,
+            apk.signers,
+            readTrust(packageName, location),
+            apk.libVersion,
+        )
     }
 
     private fun metadataPackage(file: File): String = inspect(file)?.packageName ?: error("Invalid extension APK")
@@ -1223,6 +1273,16 @@ internal class DefaultAndroidInstallGateway(
 }
 
 private const val SYSTEM_UNINSTALL_TIMEOUT_MILLIS = 2 * 60 * 1000L
+
+private inline fun <T> storage(block: () -> T): T = try {
+    block()
+} catch (failure: ExtensionInstallFailure) {
+    throw failure
+} catch (failure: CancellationException) {
+    throw failure
+} catch (failure: Throwable) {
+    throw ExtensionInstallFailure(AppError.Storage(failure))
+}
 
 private fun failMalformed(message: String): Nothing =
     throw ExtensionInstallFailure(AppError.MalformedData(IllegalArgumentException(message)))

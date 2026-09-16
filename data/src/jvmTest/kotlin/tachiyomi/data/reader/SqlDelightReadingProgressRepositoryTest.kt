@@ -73,6 +73,7 @@ class SqlDelightReadingProgressRepositoryTest {
             chapterId = 2,
             version = null,
             isSyncing = 0,
+            memo = null,
         )
         val recorder = RecordReadingProgress(SqlDelightReadingProgressRepository(fixture.database))
 

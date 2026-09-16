@@ -20,6 +20,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.spyk
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -40,9 +41,103 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.Preference
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class ExtensionPresentationWiringTest {
+    @Test
+    fun `late error from an old screen collection cannot replace an active retry`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val extension = available("Reader", "pkg.reader", emptyList())
+        val oldGate = CompletableDeferred<Unit>()
+        val newGate = CompletableDeferred<Unit>()
+        val oldDone = CountDownLatch(1)
+        val actionStore = spyk(androidExtensionPresentationStore)
+        val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { installExtension(extension) } returnsMany listOf(
+                flow {
+                    try {
+                        emit(eu.kanade.tachiyomi.extension.model.InstallStep.Pending)
+                        oldGate.await()
+                        emit(eu.kanade.tachiyomi.extension.model.InstallStep.Error)
+                    } finally {
+                        oldDone.countDown()
+                    }
+                },
+                flow {
+                    emit(eu.kanade.tachiyomi.extension.model.InstallStep.Downloading)
+                    newGate.await()
+                    emit(eu.kanade.tachiyomi.extension.model.InstallStep.Installed)
+                },
+            )
+        }
+        val model =
+            screenModel(manager, Extensions(emptyList(), emptyList(), listOf(extension), emptyList()), actionStore)
+        try {
+            model.installExtension(extension)
+            verify(timeout = 5_000) {
+                actionStore.reduce(
+                    any(),
+                    ExtensionPresentationAction.InstallStepChanged(
+                        extension.pkgName,
+                        ExtensionPresentationInstallStep.Pending,
+                    ),
+                )
+            }
+            model.installExtension(extension)
+            verify(timeout = 5_000) {
+                actionStore.reduce(
+                    any(),
+                    ExtensionPresentationAction.InstallStepChanged(
+                        extension.pkgName,
+                        ExtensionPresentationInstallStep.Downloading,
+                    ),
+                )
+            }
+            oldGate.complete(Unit)
+            assertTrue(oldDone.await(5, TimeUnit.SECONDS))
+            verify(exactly = 0) {
+                actionStore.reduce(
+                    any(),
+                    ExtensionPresentationAction.InstallStepChanged(
+                        extension.pkgName,
+                        ExtensionPresentationInstallStep.Error,
+                    ),
+                )
+                actionStore.reduce(any(), ExtensionPresentationAction.InstallFinished(extension.pkgName))
+            }
+        } finally {
+            oldGate.complete(Unit)
+            newGate.complete(Unit)
+            model.onDispose()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `android screen observes typed install failure and recovery from production manager contract`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val failure = mihon.domain.error.AppError.Authentication()
+        val errors = MutableStateFlow(mapOf("pkg.reader" to failure as mihon.domain.error.AppError))
+        val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { installErrors } returns errors
+        }
+        val model = screenModel(
+            manager,
+            Extensions(emptyList(), emptyList(), emptyList(), emptyList()),
+            androidExtensionPresentationStore,
+        )
+        try {
+            assertEquals(failure, model.state.value.installErrors["pkg.reader"])
+            errors.value = emptyMap()
+            assertTrue(model.state.value.installErrors.isEmpty())
+        } finally {
+            model.onDispose()
+            Dispatchers.resetMain()
+        }
+    }
+
     @Test
     fun `android list subscribes to repository failure and recovery feedback`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))

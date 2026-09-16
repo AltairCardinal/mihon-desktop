@@ -101,4 +101,5 @@ private fun Manga.toBackupManga() =
         version = this.version,
         notes = this.notes,
         initialized = this.initialized,
+        memo = tachiyomi.data.MemoColumnAdapter.encode(this.memo),
     )

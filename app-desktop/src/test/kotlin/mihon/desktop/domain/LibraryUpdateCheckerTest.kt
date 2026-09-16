@@ -17,6 +17,10 @@ import tachiyomi.domain.manga.model.Manga
 import java.io.IOException
 
 class LibraryUpdateCheckerTest {
+    private fun checker(chapterRepository: FakeChapterRepository) = LibraryUpdateChecker(
+        chapterRepository,
+        mihon.desktop.domain.fakes.FakeMangaRepository().apply { seed(manga()) },
+    )
 
     private val sourceId = 42L
 
@@ -59,7 +63,7 @@ class LibraryUpdateCheckerTest {
             sChapter("/ch/3", "Ch 3"),
         ))
 
-        val checker = LibraryUpdateChecker(chapterRepo)
+        val checker = checker(chapterRepo)
         val result = checker.checkForUpdates(manga(), source)
 
         assertEquals(2, result.newChapterCount)
@@ -76,7 +80,7 @@ class LibraryUpdateCheckerTest {
 
         val source = StubSource(listOf(sChapter("/ch/1", "Ch 1")))
 
-        val checker = LibraryUpdateChecker(chapterRepo)
+        val checker = checker(chapterRepo)
         val result = checker.checkForUpdates(manga(), source)
 
         assertEquals(0, result.newChapterCount)
@@ -90,7 +94,7 @@ class LibraryUpdateCheckerTest {
         ))
 
         val source = StubSource(emptyList())
-        val checker = LibraryUpdateChecker(chapterRepo)
+        val checker = checker(chapterRepo)
         val result = checker.checkForUpdates(manga(), source)
 
         assertEquals(0, result.newChapterCount)
@@ -104,7 +108,7 @@ class LibraryUpdateCheckerTest {
             sChapter("/ch/2", "Ch 2"),
         ))
 
-        val checker = LibraryUpdateChecker(chapterRepo)
+        val checker = checker(chapterRepo)
         checker.checkForUpdates(manga(), source)
 
         val chapters = chapterRepo.getChapterByMangaId(1L)
@@ -122,7 +126,7 @@ class LibraryUpdateCheckerTest {
             sChapter("/ch/22", "第22卷"),
         ))
 
-        val checker = LibraryUpdateChecker(chapterRepo)
+        val checker = checker(chapterRepo)
         checker.checkForUpdates(
             manga = manga().copy(title = "SOUL EATER噬魂者"),
             source = source,
@@ -145,7 +149,7 @@ class LibraryUpdateCheckerTest {
             sChapter("/ch/22", "第22卷"),
         ))
 
-        val checker = LibraryUpdateChecker(chapterRepo)
+        val checker = checker(chapterRepo)
         checker.checkForUpdates(
             manga = manga().copy(title = "SOUL EATER噬魂者"),
             source = source,
@@ -162,7 +166,7 @@ class LibraryUpdateCheckerTest {
             sChapter("/ch/2", "Ch 2"),
         ))
 
-        val checker = LibraryUpdateChecker(chapterRepo)
+        val checker = checker(chapterRepo)
         val result = checker.checkForUpdates(manga(), source)
 
         assertEquals(2, result.newChapters.size)
@@ -179,7 +183,7 @@ class LibraryUpdateCheckerTest {
         ))
         val source = StubSource(listOf(sChapter("/ch/1")))
 
-        val checker = LibraryUpdateChecker(chapterRepo)
+        val checker = checker(chapterRepo)
         val result = checker.checkForUpdates(manga(), source)
 
         assertEquals(0, result.newChapters.size)
@@ -187,7 +191,7 @@ class LibraryUpdateCheckerTest {
 
     @Test
     fun `source network failure remains structured for scheduler and notification presentation`() = runBlocking<Unit> {
-        val result = LibraryUpdateChecker(FakeChapterRepository()).checkForUpdates(
+        val result = checker(FakeChapterRepository()).checkForUpdates(
             manga(),
             StubSource(emptyList(), failure = IOException("connection reset")),
         )

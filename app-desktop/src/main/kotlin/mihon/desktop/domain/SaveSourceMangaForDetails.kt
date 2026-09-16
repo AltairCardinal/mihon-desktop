@@ -21,7 +21,9 @@ import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
+import tachiyomi.domain.source.service.SourceMangaUpdateService
 
 private const val MAX_REFRESH_STATES = 128
 
@@ -72,12 +74,16 @@ class SaveSourceMangaForDetails(
         source: Source,
         listedManga: SManga,
     ): Manga {
+        val manga = mangaRepository.getMangaByUrlAndSourceId(listedManga.url, source.id)
+            ?: listedManga.toDomainManga(source.id)
+        val update = SourceMangaUpdateService().await(
+            source, manga, chapterRepository.getChapterByMangaId(manga.id), fetchDetails = true, fetchChapters = true,
+        )
         val details = mergeSourceMangaDetails(
             original = listedManga,
-            details = source.getMangaDetails(listedManga),
+            details = update.manga,
         )
-        val chapters = source.getChapterList(details)
-        return await(details, source.id, chapters)
+        return await(details, source.id, update.chapters)
     }
 
     suspend fun awaitLinkedChapter(
@@ -88,9 +94,12 @@ class SaveSourceMangaForDetails(
         val manga = awaitSearchResults(listOf(listedManga), source.id).single()
         val existing = linkedChapter?.let { chapterRepository.getChapterByUrlAndMangaId(it.url, manga.id) }
         if (linkedChapter == null || existing != null) return ResolvedSourceChapter(manga, existing)
-        await(listedManga, source.id, source.getChapterList(listedManga))
+        val update = SourceMangaUpdateService().await(
+            source, manga, chapterRepository.getChapterByMangaId(manga.id), fetchDetails = false, fetchChapters = true,
+        )
+        val updatedManga = await(update.manga, source.id, update.chapters, fetchDetails = false)
         val chapter = chapterRepository.getChapterByUrlAndMangaId(linkedChapter.url, manga.id)
-        return ResolvedSourceChapter(manga, chapter)
+        return ResolvedSourceChapter(updatedManga, chapter)
     }
 
     suspend fun awaitListed(
@@ -105,6 +114,7 @@ class SaveSourceMangaForDetails(
             source = sourceId,
             thumbnailUrl = sManga.thumbnail_url,
             initialized = false,
+            memo = sManga.memo,
         )
 
         return networkToLocalManga(networkManga)
@@ -126,6 +136,7 @@ class SaveSourceMangaForDetails(
         sManga: SManga,
         sourceId: Long,
         sChapters: List<SChapter>,
+        fetchDetails: Boolean = true,
     ): Manga {
         val networkManga = Manga.create().copy(
             url = sManga.url,
@@ -138,9 +149,14 @@ class SaveSourceMangaForDetails(
             genre = sManga.genre?.split(", ")?.takeIf { it.isNotEmpty() },
             status = sManga.status.toLong(),
             initialized = true,
+            memo = sManga.memo,
         )
 
-        val dbManga = networkToLocalManga(networkManga)
+        val storedManga = if (fetchDetails) networkToLocalManga(networkManga) else {
+            requireNotNull(mangaRepository.getMangaByUrlAndSourceId(sManga.url, sourceId))
+        }
+        check(mangaRepository.update(MangaUpdate(storedManga.id, memo = sManga.memo, initialized = true.takeIf { fetchDetails })))
+        val dbManga = mangaRepository.getMangaById(storedManga.id)
         val knownChaptersByUrl = chapterRepository.getChapterByMangaId(dbManga.id)
             .associateBy { it.url }
         val now = System.currentTimeMillis()
@@ -150,8 +166,8 @@ class SaveSourceMangaForDetails(
             val chapterNumber = sourceChapter.recognizedChapterNumber(dbManga)
             val knownChapter = knownChaptersByUrl[sourceChapter.url]
             if (knownChapter != null) {
-                if (knownChapter.chapterNumber != chapterNumber) {
-                    toUpdate += ChapterUpdate(id = knownChapter.id, chapterNumber = chapterNumber)
+                if (knownChapter.chapterNumber != chapterNumber || knownChapter.memo != sourceChapter.memo) {
+                    toUpdate += ChapterUpdate(id = knownChapter.id, chapterNumber = chapterNumber, memo = sourceChapter.memo)
                 }
                 return@mapIndexedNotNull null
             }
@@ -164,6 +180,7 @@ class SaveSourceMangaForDetails(
                 scanlator = sourceChapter.scanlator?.ifBlank { null }?.trim(),
                 sourceOrder = index.toLong(),
                 dateFetch = now,
+                memo = sourceChapter.memo,
             )
         }
 

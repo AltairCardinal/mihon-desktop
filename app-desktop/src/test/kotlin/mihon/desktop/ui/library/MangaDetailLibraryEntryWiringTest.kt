@@ -366,31 +366,42 @@ class MangaDetailLibraryEntryWiringTest {
     }
 
     @Test
-    fun `real MangaDetailScreen automatically refreshes an initially empty chapter list`() = runBlocking {
-        val mangaRepository = FakeMangaRepository()
-        val manga = Manga.create().copy(
+    fun `real MangaDetailScreen automatically refreshes an initially empty chapter list`() = verifyCombinedSourceRefresh(manual = false)
+
+    @Test
+    fun `real MangaDetailScreen refresh button uses combined Source-only update and persists memo`() = verifyCombinedSourceRefresh(manual = true)
+
+    private fun verifyCombinedSourceRefresh(manual: Boolean) = runBlocking {
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY)
+        tachiyomi.data.Database.Schema.create(driver)
+        val database = tachiyomi.data.Database(driver, historyAdapter = tachiyomi.data.History.Adapter(tachiyomi.data.DateColumnAdapter),
+            mangasAdapter = tachiyomi.data.Mangas.Adapter(tachiyomi.data.StringListColumnAdapter, tachiyomi.data.UpdateStrategyColumnAdapter))
+        val handler = tachiyomi.data.JvmDatabaseHandler(database, driver)
+        val mangaRepository = tachiyomi.data.manga.MangaRepositoryImpl(handler, tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter)
+        val manga = mangaRepository.insertNetworkManga(listOf(Manga.create().copy(
             id = 45L,
             source = 42L,
             url = "/auto-refresh",
             title = "Auto refresh fixture",
             initialized = true,
-        )
-        mangaRepository.seed(manga)
-        val chapterRepository = FakeChapterRepository()
-        val details = SManga.create().apply {
-            url = manga.url
-            title = manga.title
-            initialized = true
+        ))).single()
+        val chapterRepository = tachiyomi.data.chapter.ChapterRepositoryImpl(handler)
+        if (manual) chapterRepository.addAll(listOf(Chapter.create().copy(mangaId = manga.id, url = "/auto-refresh/chapter-1", name = "Auto-loaded chapter", read = true, bookmark = true, lastPageRead = 7)))
+        val memo = kotlinx.serialization.json.Json.parseToJsonElement("""{"token":"Desktop UI"}""") as kotlinx.serialization.json.JsonObject
+        var calls = 0
+        val source = object : Source {
+            override val id = 42L
+            override val name = "Combined UI source"
+            override suspend fun getMangaUpdate(manga: SManga, chapters: List<SChapter>, fetchDetails: Boolean, fetchChapters: Boolean): eu.kanade.tachiyomi.source.model.SMangaUpdate {
+                calls++
+                assertEquals(true, fetchDetails)
+                assertEquals(true, fetchChapters)
+                manga.memo = memo
+                return eu.kanade.tachiyomi.source.model.SMangaUpdate(manga, listOf(SChapter.create().apply {
+                    url = "/auto-refresh/chapter-1"; name = "Auto-loaded chapter"; this.memo = memo
+                }))
+            }
         }
-        val source = FakeCatalogueSource(
-            details = details,
-            chapters = listOf(
-                SChapter.create().apply {
-                    url = "/auto-refresh/chapter-1"
-                    name = "Auto-loaded chapter"
-                },
-            ),
-        )
         val sourceManager = SingleSourceManager(source)
         val saveSourceMangaForDetails = SaveSourceMangaForDetails(
             NetworkToLocalManga(mangaRepository),
@@ -425,10 +436,23 @@ class MangaDetailLibraryEntryWiringTest {
                 }
             }
 
-            renderUntil(scene) { chapterRepository.addedChapters.any { it.name == "Auto-loaded chapter" } }
-            assertEquals(1, chapterRepository.addedChapters.size)
+            if (manual) {
+                renderUntil(scene) { nodes(scene).any { it.hasText("Auto-loaded chapter") } }
+                invokeDescriptionClick(scene, MR.strings.check_for_updates.localized())
+            }
+            renderUntil(scene) { model.state.value.chapters.any { it.memo == memo } }
+            assertEquals(1, calls)
+            assertEquals(memo, mangaRepository.getMangaById(manga.id).memo)
+            val chapter = chapterRepository.getChapterByMangaId(manga.id).single()
+            assertEquals(memo, chapter.memo)
+            if (manual) {
+                assertTrue(chapter.read)
+                assertTrue(chapter.bookmark)
+                assertEquals(7, chapter.lastPageRead)
+            }
         } finally {
             scene.close()
+            driver.close()
         }
     }
 
@@ -760,10 +784,10 @@ class MangaDetailLibraryEntryWiringTest {
     }
 
     private class SingleSourceManager(
-        private val source: CatalogueSource,
+        private val source: Source,
     ) : SourceManager {
         override val isInitialized: StateFlow<Boolean> = MutableStateFlow(true)
-        override val catalogueSources: Flow<List<CatalogueSource>> = flowOf(listOf(source))
+        override val catalogueSources: Flow<List<CatalogueSource>> = flowOf(listOfNotNull(source as? CatalogueSource))
 
         override fun get(sourceKey: Long): Source? = source.takeIf { it.id == sourceKey }
 
@@ -771,7 +795,7 @@ class MangaDetailLibraryEntryWiringTest {
 
         override fun getOnlineSources(): List<HttpSource> = emptyList()
 
-        override fun getCatalogueSources(): List<CatalogueSource> = listOf(source)
+        override fun getCatalogueSources(): List<CatalogueSource> = listOfNotNull(source as? CatalogueSource)
 
         override fun getStubSources(): List<StubSource> = emptyList()
     }

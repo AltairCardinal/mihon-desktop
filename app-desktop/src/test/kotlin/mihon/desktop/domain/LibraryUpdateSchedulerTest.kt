@@ -46,7 +46,7 @@ class LibraryUpdateSchedulerTest {
     private val prefs = DesktopAppPreferences(store)
     private val chapterRepo = FakeChapterRepository()
     private val mangaRepo = FakeMangaRepository()
-    private val checker = LibraryUpdateChecker(chapterRepo)
+    private val checker = LibraryUpdateChecker(chapterRepo, mangaRepo)
     private val getLibraryManga = GetLibraryManga(mangaRepo)
 
     private val noopSourceManager = object : SourceManager {

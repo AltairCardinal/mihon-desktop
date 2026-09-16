@@ -38,6 +38,7 @@ import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.seconds
 
 class ExtensionsScreenModel(
@@ -52,6 +53,7 @@ class ExtensionsScreenModel(
 ) : StateScreenModel<ExtensionsScreenModel.State>(State()) {
 
     private val actionState = MutableStateFlow(ExtensionPresentationActionState())
+    private val installCollections = ConcurrentHashMap<String, Any>()
 
     init {
         val extensionMapper: (Map<String, InstallStep>) -> ((Extension) -> ExtensionUiModel.Item) = { map ->
@@ -119,6 +121,10 @@ class ExtensionsScreenModel(
         extensionManager.repositoryFailures
             .onEach { failures -> mutableState.update { it.copy(repositoryFailures = failures) } }
             .launchIn(screenModelScope)
+
+        extensionManager.installErrors
+            .onEach { errors -> mutableState.update { it.copy(installErrors = errors) } }
+            .launchIn(screenModelScope)
     }
 
     fun searchQueryPredicate(query: String, includePackageName: Boolean = false): (Extension) -> Boolean =
@@ -141,20 +147,19 @@ class ExtensionsScreenModel(
     }
 
     fun installExtension(extension: Extension.Available) {
-        screenModelScope.launchIO {
-            extensionManager.installExtension(extension).collectToInstallUpdate(extension)
-        }
+        launchInstall(extension) { extensionManager.installExtension(extension) }
     }
 
     fun updateExtension(extension: Extension.Installed) {
-        screenModelScope.launchIO {
-            extensionManager.updateExtension(extension).collectToInstallUpdate(extension)
-        }
+        launchInstall(extension) { extensionManager.updateExtension(extension) }
     }
 
     fun cancelInstallUpdateExtension(extension: Extension) {
-        extensionManager.cancelInstallUpdateExtension(extension)
-        removeDownloadState(extension)
+        synchronized(installCollections) {
+            installCollections.remove(extension.pkgName)
+            extensionManager.cancelInstallUpdateExtension(extension)
+            removeDownloadState(extension)
+        }
     }
 
     private fun addDownloadState(extension: Extension, installStep: InstallStep) {
@@ -175,14 +180,31 @@ class ExtensionsScreenModel(
         mutableState.update { it.copy(isRefreshing = actionState.value.isRefreshing) }
     }
 
-    private suspend fun Flow<InstallStep>.collectToInstallUpdate(extension: Extension) =
-        this
-            .onEach { installStep -> addDownloadState(extension, installStep) }
-            .takeWhile { installStep ->
-                actionStore.shouldContinue(ExtensionPresentationInstallStep.valueOf(installStep.name))
-            }
-            .onCompletion { removeDownloadState(extension) }
-            .collect()
+    private fun launchInstall(extension: Extension, operation: () -> Flow<InstallStep>) {
+        val collection = Any()
+        synchronized(installCollections) { installCollections[extension.pkgName] = collection }
+        screenModelScope.launchIO {
+            val steps = synchronized(installCollections) {
+                if (installCollections[extension.pkgName] === collection) operation() else null
+            } ?: return@launchIO
+            steps
+                .onEach { step ->
+                    synchronized(installCollections) {
+                        if (installCollections[extension.pkgName] === collection) addDownloadState(extension, step)
+                    }
+                }
+                .takeWhile { step ->
+                    actionStore.shouldContinue(ExtensionPresentationInstallStep.valueOf(step.name)) &&
+                        !step.isCompleted()
+                }
+                .onCompletion {
+                    synchronized(installCollections) {
+                        if (installCollections.remove(extension.pkgName, collection)) removeDownloadState(extension)
+                    }
+                }
+                .collect()
+        }
+    }
 
     fun uninstallExtension(extension: Extension) {
         extensionManager.uninstallExtension(extension)
@@ -217,6 +239,7 @@ class ExtensionsScreenModel(
         val installer: BasePreferences.ExtensionInstaller? = null,
         val searchQuery: String? = null,
         val repositoryFailures: List<mihon.domain.extension.model.RepositoryCatalogFailure> = emptyList(),
+        val installErrors: Map<String, mihon.domain.error.AppError> = emptyMap(),
     ) {
         val isEmpty = items.isEmpty()
     }

@@ -136,6 +136,7 @@ class SqlDelightReadingProgressRepository(private val database: Database) : Read
                 chapterId = event.chapterId,
                 version = null,
                 isSyncing = 0,
+                memo = null,
             )
             if (event.recordHistory) {
                 database.historyQueries.upsert(event.chapterId, event.readAt, event.sessionReadDuration)

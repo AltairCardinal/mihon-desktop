@@ -1,12 +1,12 @@
 package mihon.desktop.di
 
-import io.kotest.assertions.throwables.shouldThrow
-import io.kotest.matchers.string.shouldContain
-import io.kotest.matchers.shouldBe
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import tachiyomi.data.Database
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import tachiyomi.data.Database
 import tachiyomi.domain.creator.model.CreatorArchivePhysicalSchema
 import java.io.File
 
@@ -108,6 +108,23 @@ class DesktopDatabaseMigrationSafetyTest {
     ) {
         JdbcSqliteDriver("jdbc:sqlite:${database.absolutePath}").use { driver ->
             Database.Schema.create(driver)
+            val laterSyncTables = driver.executeQuery(
+                null,
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name GLOB 'sync_*'",
+                { cursor ->
+                    app.cash.sqldelight.db.QueryResult.Value(
+                        buildList {
+                            while (cursor.next().value) add(requireNotNull(cursor.getString(0)))
+                        },
+                    )
+                },
+                0,
+            ).value
+            laterSyncTables.forEach { table ->
+                driver.execute(null, "DROP TABLE $table", 0)
+            }
+            driver.execute(null, "ALTER TABLE mangas DROP COLUMN memo", 0)
+            driver.execute(null, "ALTER TABLE chapters DROP COLUMN memo", 0)
             // Restore the pre-v19 repository shape before exercising the actual migrations.
             listOf("index_url", "extension_list_url", "contact_discord").forEach { column ->
                 driver.execute(null, "ALTER TABLE extension_repos DROP COLUMN $column", 0)
@@ -136,7 +153,11 @@ class DesktopDatabaseMigrationSafetyTest {
     private fun queryUserVersion(driver: app.cash.sqldelight.db.SqlDriver): Int = driver.executeQuery(
         null,
         "PRAGMA user_version",
-        { cursor -> app.cash.sqldelight.db.QueryResult.Value(if (cursor.next().value) cursor.getLong(0)!!.toInt() else 0) },
+        { cursor ->
+            app.cash.sqldelight.db.QueryResult.Value(
+                if (cursor.next().value) cursor.getLong(0)!!.toInt() else 0,
+            )
+        },
         0,
     ).value
 

@@ -1822,7 +1822,7 @@
     <string name="sync_minutes">%1$d min</string>
     <string name="sync_pending">Changes needing your decision</string>
     <string name="sync_pending_count">%1$d pending</string>
-    <string name="sync_empty">No cancellations need a decision</string>
+    <string name="sync_empty">No operations need confirmation</string>
     <string name="sync_multi">Select</string>
     <string name="sync_all">Select all</string>
     <string name="sync_invert">Invert</string>
@@ -1890,4 +1890,12 @@
     <string name="sync_create_repo">Go to create a repository</string>
     <string name="sync_repository_setup_hint">Create a private repository, then authorize the Mihon GitHub App to access it. Return here and refresh the list.</string>
     <string name="sync_resume_page_unavailable">The saved reading page is unavailable. Continuing from the chapter beginning.</string>
+    <string name="extension_install_error_verification">Package integrity, signature or repository access could not be verified. Refresh the trusted repository before retrying. Do not trust a different signer to bypass this check.</string>
+    <string name="extension_install_error_network">The extension could not be downloaded. Check your connection and repository availability, then retry.</string>
+    <string name="extension_install_error_rate_limit">The repository is limiting requests. Wait before retrying.</string>
+    <string name="extension_install_error_server">The repository could not provide the extension. Try again later.</string>
+    <string name="extension_install_error_permission">Installation was not permitted. Check installation permissions in Android settings, then retry.</string>
+    <string name="extension_install_error_package">The extension package is damaged or incompatible. Refresh the repository and retry.</string>
+    <string name="extension_install_error_recovery">Installation or recovery could not finish. Check storage, the installed version and source availability before retrying. Android may not allow restoring an older version. Do not clear app data.</string>
+    <string name="extension_install_error_unknown">Installation failed. Check the installed version and source availability before retrying. Restart the app if needed; do not clear app data.</string>
 </resources>

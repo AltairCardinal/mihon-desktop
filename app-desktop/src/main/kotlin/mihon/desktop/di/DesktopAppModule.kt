@@ -710,7 +710,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
     )
     Injekt.addSingleton(UpdateMangaNotes(mangaRepository))
     Injekt.addSingleton(ReaderModeMemoryCleaner(mangaRepository))
-    Injekt.addSingleton(LibraryUpdateChecker(chapterRepository))
+    Injekt.addSingleton(LibraryUpdateChecker(chapterRepository, mangaRepository))
     val creatorDiscoverySourcePort = CatalogueCreatorDiscoverySourceAdapter(
         enabledSourcesProvider = {
             runCatching { Injekt.get<DesktopSourceManager>() }
@@ -950,6 +950,7 @@ internal fun initUILayer(
             progressTracker = readerProgressTracker,
             mangaRepository = mangaRepository,
             encodedCacheDirectory = paths.networkCacheDir.resolve("reader-encoded"),
+            chapterRepository = chapterRepository,
             readerIoProbe = mihon.desktop.test.http.ReaderIoTestModeBridge,
             disallowNonAsciiFilenames = {
                 Injekt.get<LibraryPreferences>().disallowNonAsciiFilenames().get()
@@ -1114,6 +1115,7 @@ private fun registerDesktopDownload(
         fileOperations = fileOperations,
         downloadIdentityResolver = downloadIdentityResolver::resolve,
         ioProbe = mihon.desktop.test.http.ReaderIoTestModeBridge,
+        chapterRepository = Injekt.get(),
     )
     if (startWorker) downloadManager.start()
     Injekt.addSingleton(directoryState)

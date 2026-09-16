@@ -19,6 +19,38 @@ import tachiyomi.domain.manga.model.Manga
 class SaveSourceMangaForDetailsTest {
 
     @Test
+    fun `detail refresh calls combined update exactly once with both flags`() = runBlocking<Unit> {
+        val mangaRepo = FakeMangaRepository()
+        val chapterRepo = FakeChapterRepository()
+        val useCase = SaveSourceMangaForDetails(NetworkToLocalManga(mangaRepo), mangaRepo, chapterRepo)
+        val listed = SManga.create().apply { url = "/combined"; title = "Combined" }
+        var calls = 0
+        val source = object : eu.kanade.tachiyomi.source.Source {
+            override val id = 42L
+            override val name = "Combined update source"
+            override suspend fun getMangaUpdate(
+                manga: SManga,
+                chapters: List<SChapter>,
+                fetchDetails: Boolean,
+                fetchChapters: Boolean,
+            ): eu.kanade.tachiyomi.source.model.SMangaUpdate {
+                calls++
+                assertEquals(true, fetchDetails)
+                assertEquals(true, fetchChapters)
+                return eu.kanade.tachiyomi.source.model.SMangaUpdate(
+                    manga,
+                    listOf(SChapter.create().apply { url = "/chapter"; name = "Chapter 1" }),
+                )
+            }
+        }
+
+        val saved = useCase.awaitFromSource(source, listed)
+
+        assertEquals(1, calls)
+        assertEquals(listOf("/chapter"), chapterRepo.getChapterByMangaId(saved.id).map { it.url })
+    }
+
+    @Test
     fun `background detail refresh publishes loading then keeps the structured source failure`() = runBlocking<Unit> {
         val mangaRepo = FakeMangaRepository()
         val chapterRepo = FakeChapterRepository()

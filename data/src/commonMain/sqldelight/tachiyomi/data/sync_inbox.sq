@@ -135,8 +135,10 @@ getEventsByKey:
 SELECT event_key, event_json FROM sync_events
 WHERE space_id = ? AND generation = ? AND event_key IN :eventKeys;
 
+-- Preserve bounded work when the remaining set is empty; the primary-key order otherwise scans the whole space.
 getUnindexedEvents:
 SELECT event_key, event_json FROM sync_events
+INDEXED BY sync_unindexed_events
 WHERE space_id = ? AND generation = ? AND sync_indexed = 0 ORDER BY actor_id, epoch, seq LIMIT :limit;
 
 markEventIndexed:
@@ -161,22 +163,24 @@ JOIN sync_events USING (space_id, generation, event_key)
 WHERE sync_event_fields.space_id = ? AND sync_event_fields.generation = ?
     AND sync_event_fields.object_key = ? AND sync_event_fields.field = ?;
 
+-- Drive both joins from the small causal frontier instead of scanning all events in the space per root.
 getAffectedFields:
 WITH RECURSIVE affected(event_key) AS (
     SELECT event_key FROM sync_events WHERE space_id = :spaceId AND generation = :generation AND event_key IN :eventKeys
     UNION
-    SELECT child_key FROM sync_event_dependencies JOIN affected ON parent_key = affected.event_key
-    WHERE space_id = :spaceId AND generation = :generation
+    SELECT d.child_key FROM affected CROSS JOIN sync_event_dependencies d
+    WHERE d.space_id = :spaceId AND d.generation = :generation AND d.parent_key = affected.event_key
 )
-SELECT DISTINCT object_key, field, object_json FROM sync_event_fields
-WHERE space_id = :spaceId AND generation = :generation AND event_key IN (SELECT event_key FROM affected);
+SELECT DISTINCT f.object_key, f.field, f.object_json FROM affected CROSS JOIN sync_event_fields f
+WHERE f.space_id = :spaceId AND f.generation = :generation AND f.event_key = affected.event_key;
 
 markFieldDirty:
 INSERT INTO sync_field_state(space_id, generation, object_key, field, object_json) VALUES (?, ?, ?, ?, ?)
 ON CONFLICT(space_id, generation, object_key, field) DO UPDATE SET dirty = 1, revision = revision + 1;
 
+-- Prefer the dirty predicate over the display order when most fields have already been projected.
 getDirtyFields:
-SELECT * FROM sync_field_state WHERE space_id = ? AND generation = ? AND dirty = 1
+SELECT * FROM sync_field_state INDEXED BY sync_dirty_fields WHERE space_id = ? AND generation = ? AND dirty = 1
 ORDER BY object_key, field LIMIT :limit;
 
 setFieldState:

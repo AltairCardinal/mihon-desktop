@@ -1,6 +1,6 @@
 package mihon.desktop.domain
 
-import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SManga
 import mihon.desktop.extension.SourceCallResult
 import mihon.desktop.extension.safeSourceCall
@@ -16,6 +16,7 @@ import tachiyomi.domain.manga.model.Manga
  */
 class LibraryUpdateChecker(
     private val chapterRepository: ChapterRepository,
+    private val mangaRepository: tachiyomi.domain.manga.repository.MangaRepository,
 ) {
 
     /**
@@ -24,17 +25,17 @@ class LibraryUpdateChecker(
      *
      * @return an [UpdateResult] with the count of newly added chapters.
      */
-    suspend fun checkForUpdates(manga: Manga, source: CatalogueSource): UpdateResult {
-        val sManga = SManga.create().apply {
-            url = manga.url
-            title = manga.title
-        }
-
-        val remoteChapters = when (val r = safeSourceCall { source.getChapterList(sManga) }) {
+    suspend fun checkForUpdates(manga: Manga, source: Source): UpdateResult {
+        val knownChapters = chapterRepository.getChapterByMangaId(manga.id)
+        val remoteUpdate = when (val r = safeSourceCall {
+            tachiyomi.domain.source.service.SourceMangaUpdateService().await(source, manga, knownChapters, false, true)
+        }) {
             is SourceCallResult.Success -> r.value
             is SourceCallResult.Timeout -> return UpdateResult(newChapterCount = 0, sourceError = r.error)
             is SourceCallResult.Error -> return UpdateResult(newChapterCount = 0, sourceError = r.error)
         }
+        check(mangaRepository.update(tachiyomi.domain.manga.model.MangaUpdate(manga.id, memo = remoteUpdate.manga.memo)))
+        val remoteChapters = remoteUpdate.chapters
 
         val knownChaptersByUrl = chapterRepository.getChapterByMangaId(manga.id)
             .associateBy { it.url }
@@ -44,8 +45,8 @@ class LibraryUpdateChecker(
             val chapterNumber = sc.recognizedChapterNumber(manga)
             val knownChapter = knownChaptersByUrl[sc.url]
             if (knownChapter != null) {
-                if (knownChapter.chapterNumber != chapterNumber) {
-                    toUpdate += ChapterUpdate(id = knownChapter.id, chapterNumber = chapterNumber)
+                if (knownChapter.chapterNumber != chapterNumber || knownChapter.memo != sc.memo) {
+                    toUpdate += ChapterUpdate(id = knownChapter.id, chapterNumber = chapterNumber, memo = sc.memo)
                 }
                 return@mapIndexedNotNull null
             }
@@ -58,6 +59,7 @@ class LibraryUpdateChecker(
                 scanlator = sc.scanlator?.ifBlank { null }?.trim(),
                 sourceOrder = index.toLong(),
                 dateFetch = System.currentTimeMillis(),
+                memo = sc.memo,
             )
         }
 

@@ -57,6 +57,7 @@ import eu.kanade.tachiyomi.ui.browse.extension.ExtensionsScreenModel
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import eu.kanade.tachiyomi.util.system.launchRequestPackageInstallsPermission
 import kotlinx.collections.immutable.persistentListOf
+import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionCompatibility
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.FastScrollLazyColumn
@@ -230,6 +231,7 @@ private fun ExtensionContent(
                 ExtensionItem(
                     modifier = Modifier.animateItemFastScroll(),
                     item = item,
+                    installError = state.installErrors[item.extension.pkgName],
                     onClickItem = {
                         when (it) {
                             is Extension.Available -> if (it.compatibility ==
@@ -295,6 +297,7 @@ private fun ExtensionContent(
 @Composable
 private fun ExtensionItem(
     item: ExtensionUiModel.Item,
+    installError: AppError?,
     onClickItem: (Extension) -> Unit,
     onLongClickItem: (Extension) -> Unit,
     onClickItemCancel: (Extension) -> Unit,
@@ -302,7 +305,14 @@ private fun ExtensionItem(
     onClickItemSecondaryAction: (Extension) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val (extension, installStep) = item
+    val extension = item.extension
+    val installStep = if (installError != null &&
+        installError != AppError.Cancelled
+    ) {
+        InstallStep.Error
+    } else {
+        item.installStep
+    }
     BaseBrowseItem(
         modifier = modifier
             .combinedClickable(
@@ -350,6 +360,7 @@ private fun ExtensionItem(
         ExtensionItemContent(
             extension = extension,
             installStep = installStep,
+            installError = installError,
             modifier = Modifier.weight(1f),
         )
     }
@@ -359,6 +370,7 @@ private fun ExtensionItem(
 private fun ExtensionItemContent(
     extension: Extension,
     installStep: InstallStep,
+    installError: AppError?,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -370,6 +382,13 @@ private fun ExtensionItemContent(
             overflow = TextOverflow.Ellipsis,
             style = MaterialTheme.typography.bodyMedium,
         )
+        installError?.let(::extensionInstallErrorMessage)?.let { message ->
+            Text(
+                text = stringResource(message),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         val compatibility = when (extension) {
             is Extension.Available -> extension.compatibility
             is Extension.Installed -> extension.availableCompatibility

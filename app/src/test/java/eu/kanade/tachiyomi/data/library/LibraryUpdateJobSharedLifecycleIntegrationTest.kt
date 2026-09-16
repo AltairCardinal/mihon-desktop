@@ -71,6 +71,7 @@ import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.InjektScope
 import uy.kohesive.injekt.api.addSingleton
+import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.registry.default.DefaultRegistrar
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
@@ -80,6 +81,139 @@ import java.util.concurrent.TimeUnit
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], manifest = Config.NONE)
 class LibraryUpdateJobSharedLifecycleIntegrationTest {
+
+    @Test
+    fun `library worker reaches real combined chapter update and stores memo`() = runBlocking {
+        verifyMemoWorker(metadata = false)
+    }
+
+    @Test
+    fun `metadata worker reaches real combined detail update and stores memo`() = runBlocking {
+        verifyMemoWorker(metadata = true)
+    }
+
+    private suspend fun verifyMemoWorker(metadata: Boolean) {
+        Injekt = InjektScope(DefaultRegistrar())
+        Injekt.addSingleton(mockk<SecurityPreferences>(relaxed = true))
+        Injekt.addSingleton(mockk<DownloadManager>(relaxed = true))
+        Injekt.addSingleton(mockk<CoverCache>(relaxed = true))
+        Injekt.addSingleton(
+            mockk<FetchInterval> {
+                every { getWindow(any()) } returns (0L to Long.MAX_VALUE)
+            },
+        )
+        Injekt.addSingleton(mockk<FilterChaptersForDownload>(relaxed = true))
+        mockkStatic("eu.kanade.tachiyomi.util.system.WorkManagerExtensionsKt")
+        coEvery { any<CoroutineWorker>().setForegroundSafely() } returns Unit
+        io.mockk.mockkConstructor(LibraryUpdateNotifier::class)
+        every { anyConstructed<LibraryUpdateNotifier>().showProgressNotification(any(), any(), any()) } returns Unit
+        every { anyConstructed<LibraryUpdateNotifier>().showQueueSizeWarningNotificationIfNeeded(any()) } returns Unit
+        every { anyConstructed<LibraryUpdateNotifier>().cancelProgressNotification() } returns Unit
+        every { anyConstructed<LibraryUpdateNotifier>().showUpdateErrorNotification(any(), any()) } returns Unit
+        val path = java.nio.file.Files.createTempFile("worker-memo-", ".db")
+        try {
+            eu.kanade.tachiyomi.data.backup.SourceUpdateMemoBackupIntegrationTest.Storage(
+                path.toFile(),
+                true,
+            ).use { storage ->
+                val manga = storage.mangas.insertNetworkManga(
+                    listOf(
+                        Manga.create().copy(
+                            source = 42,
+                            url = "/manga",
+                            title = "Worker manga",
+                            favorite = true,
+                            initialized = true,
+                        ),
+                    ),
+                ).single()
+                storage.chapters.addAll(
+                    listOf(
+                        tachiyomi.domain.chapter.model.Chapter.create().copy(
+                            mangaId = manga.id,
+                            url = "/chapter",
+                            name = "Chapter 1",
+                            chapterNumber = 1.0,
+                            dateUpload = 123,
+                            read = true,
+                            bookmark = true,
+                            lastPageRead = 7,
+                        ),
+                    ),
+                )
+                val memo = kotlinx.serialization.json.Json.parseToJsonElement(
+                    """{"worker":"memo"}""",
+                ) as kotlinx.serialization.json.JsonObject
+                var calls = 0
+                val source = object : Source {
+                    override val id = 42L
+                    override val name = "Worker source"
+                    override suspend fun getMangaUpdate(
+                        manga: eu.kanade.tachiyomi.source.model.SManga,
+                        chapters: List<eu.kanade.tachiyomi.source.model.SChapter>,
+                        fetchDetails: Boolean,
+                        fetchChapters: Boolean,
+                    ): eu.kanade.tachiyomi.source.model.SMangaUpdate {
+                        calls++
+                        assertEquals(metadata, fetchDetails)
+                        assertEquals(!metadata, fetchChapters)
+                        manga.memo = memo
+                        chapters.single().memo = memo
+                        return eu.kanade.tachiyomi.source.model.SMangaUpdate(manga, chapters)
+                    }
+                }
+                val preferences = libraryPreferences()
+                every { preferences.autoUpdateMetadata().get() } returns false
+                every { preferences.markDuplicateReadChapterAsRead().get() } returns emptySet()
+                every { preferences.updateMangaTitles().get() } returns false
+                Injekt.addSingleton(preferences)
+                Injekt.addSingleton<SourceManager>(
+                    mockk {
+                        every { get(42) } returns source
+                        every { getOrStub(42) } returns source
+                    },
+                )
+                Injekt.addSingleton(GetLibraryManga(storage.mangas))
+                Injekt.addSingleton(GetManga(storage.mangas))
+                Injekt.addSingleton(storage.updateManga)
+                Injekt.addSingleton<tachiyomi.domain.chapter.repository.ChapterRepository>(storage.chapters)
+                Injekt.addSingleton(
+                    SyncChaptersWithSource(
+                        mockk(relaxed = true), mockk(relaxed = true), storage.chapters,
+                        tachiyomi.domain.chapter.interactor.ShouldUpdateDbChapter(), storage.updateManga,
+                        tachiyomi.domain.chapter.interactor.UpdateChapter(storage.chapters), storage.getChapters,
+                        eu.kanade.domain.manga.interactor.GetExcludedScanlators(storage.handler), preferences,
+                    ),
+                )
+                assertFalse(
+                    "worker update must be the production instance",
+                    io.mockk.isMockKMock(Injekt.get<UpdateManga>()),
+                )
+                assertEquals(
+                    "real library query must include the seeded manga",
+                    1,
+                    Injekt.get<GetLibraryManga>().await().size,
+                )
+                assertEquals(source, Injekt.get<SourceManager>().getOrStub(42))
+                val worker = if (metadata) {
+                    TestListenableWorkerBuilder<MetadataUpdateJob>(context).build()
+                } else {
+                    TestListenableWorkerBuilder<LibraryUpdateJob>(context).setTags(listOf(WORK_NAME_MANUAL)).build()
+                }
+                worker.doWork()
+                assertEquals("worker must call the combined source API once", 1, calls)
+                assertEquals(memo, storage.mangas.getMangaById(manga.id).memo)
+                val chapter = storage.chapters.getChapterByMangaId(manga.id).single()
+                assertEquals(memo, chapter.memo)
+                assertTrue(chapter.read)
+                assertTrue(chapter.bookmark)
+                assertEquals(7L, chapter.lastPageRead)
+            }
+        } finally {
+            io.mockk.unmockkConstructor(LibraryUpdateNotifier::class)
+            java.nio.file.Files.deleteIfExists(path)
+        }
+    }
     private lateinit var context: Application
     private lateinit var previousInjekt: InjektScope
     private lateinit var workerExecutor: ExecutorService

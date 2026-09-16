@@ -31,6 +31,7 @@ class ChapterRepositoryImpl(
                         chapter.dateFetch,
                         chapter.dateUpload,
                         chapter.version,
+                        tachiyomi.data.MemoColumnAdapter.encode(chapter.memo),
                     )
                     val lastInsertId = chaptersQueries.selectLastInsertedRowId().executeAsOne()
                     chapter.copy(id = lastInsertId)
@@ -68,6 +69,7 @@ class ChapterRepositoryImpl(
                     chapterId = chapterUpdate.id,
                     version = chapterUpdate.version,
                     isSyncing = 0,
+                    memo = chapterUpdate.memo?.let(tachiyomi.data.MemoColumnAdapter::encode),
                 )
                 chapterUpdate.read?.let { appendChapterReadOperation(chapterUpdate.id, it, chapterUpdate.syncContext) }
             }
@@ -146,6 +148,7 @@ class ChapterRepositoryImpl(
         version: Long,
         @Suppress("UNUSED_PARAMETER")
         isSyncing: Long,
+        memo: ByteArray,
     ): Chapter = Chapter(
         id = id,
         mangaId = mangaId,
@@ -161,5 +164,6 @@ class ChapterRepositoryImpl(
         scanlator = scanlator,
         lastModifiedAt = lastModifiedAt,
         version = version,
+        memo = tachiyomi.data.MemoColumnAdapter.decode(memo),
     )
 }

@@ -391,6 +391,7 @@ class CreatorArchiveMigration15Test {
                 "cover_last_modified INTEGER NOT NULL DEFAULT 0, date_added INTEGER NOT NULL DEFAULT 0)",
             0,
         )
+        driver.execute(null, "CREATE TABLE chapters(_id INTEGER NOT NULL PRIMARY KEY, manga_id INTEGER NOT NULL)", 0)
         return driver
     }
 

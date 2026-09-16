@@ -1,0 +1,9 @@
+{
+  "purpose": "Negative ART upgrade fixture only; not an upstream release",
+  "input": "app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.6.0.apk",
+  "inputSha256": "35d220b64162cb9409da47af81fbb09ae96f170ed77eaa0ffb440add65f92f35",
+  "sha256": "734f3181871394486aba5e2da4842913d244ef0e3d2da6a5c022ebbfe05f5ec5",
+  "signerSha256": "9be8a18439915033e8362f25426323e8b7b94f223eadca4962ce5f91a23d6021",
+  "transformation": "Re-sign only; manifest and dex unchanged. Uses the existing AEX-00 controlled-fixture certificate, never a production key.",
+  "reproduction": "apksigner sign --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled false --v4-signing-enabled false --ks app-desktop/tmp/aex00-v15-signing/repository.p12 --ks-type PKCS12 --ks-pass pass:changeit --ks-key-alias aex00-v15 --out app/src/androidTest/assets/aex04-mangadex-conflicting-signer.apk app-desktop/src/test/resources/extensions/real/keiyoushi-mangadex-1.6.0.apk"
+}

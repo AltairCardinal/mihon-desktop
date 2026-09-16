@@ -158,7 +158,7 @@ class SyncRemoteProjectionWriter(
             nextUpdate = manga.nextUpdate, initialized = manga.initialized, viewerFlags = manga.viewerFlags,
             chapterFlags = manga.chapterFlags, coverLastModified = manga.coverLastModified, dateAdded = manga.dateAdded,
             updateStrategy = manga.updateStrategy, calculateInterval = manga.fetchInterval.toLong(),
-            version = manga.version, notes = manga.notes,
+            version = manga.version, notes = manga.notes, memo = tachiyomi.data.MemoColumnAdapter.encode(manga.memo),
         )
         return requireNotNull(findManga(key))
     }
@@ -186,7 +186,7 @@ class SyncRemoteProjectionWriter(
         chaptersQueries.insert(
             chapter.mangaId, chapter.url, chapter.name, chapter.scanlator, chapter.read, chapter.bookmark,
             chapter.lastPageRead, chapter.chapterNumber, chapter.sourceOrder, chapter.dateFetch, chapter.dateUpload,
-            chapter.version,
+            chapter.version, tachiyomi.data.MemoColumnAdapter.encode(chapter.memo),
         )
         val id = chaptersQueries.selectLastInsertedRowId().executeAsOne()
         return chaptersQueries.getChapterById(id).executeAsOne()

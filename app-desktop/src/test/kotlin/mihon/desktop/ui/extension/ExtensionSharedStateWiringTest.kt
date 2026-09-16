@@ -245,7 +245,7 @@ class ExtensionSharedStateWiringTest {
 
     @Test
     fun `real shared update projection selects raw catalog candidate and typed uninstall exact instance`() = runTest {
-        val installed = installed("pkg.update", "https://repo")
+        val installed = installed("pkg.update", "https://last").copy(repoFingerprint = "last")
         val installedFlow = MutableStateFlow(listOf(installed))
         val firstCandidate = available("pkg.update").copy(name = "First candidate", repoUrl = "https://first", repoFingerprint = "first")
         val candidate = available("pkg.update").copy(name = "Last candidate", repoUrl = "https://last", repoFingerprint = "last")
@@ -624,6 +624,22 @@ class ExtensionSharedStateWiringTest {
         verify(exactly = 2) { api.discardTrust("two") }
         verify(exactly = 1) { api.discardTrust("late") }
         assertThrows(IllegalStateException::class.java) { model.install(late.item()) }
+    }
+
+    @Test
+    fun `known repository identity excludes foreign candidates from automatic updates`() = runTest {
+        val installed = installed("pkg.update", "https://owner").copy(repoFingerprint = "owner-key")
+        val foreign = available("pkg.update").copy(repoUrl = "https://foreign", repoFingerprint = "owner-key")
+        val wrongKey = available("pkg.update").copy(repoUrl = "https://owner", repoFingerprint = "other-key")
+        val catalog = ExtensionCatalogResult(emptyList(), emptyList())
+        val api = mockk<DesktopExtensionApi>()
+        coEvery { api.refreshCatalog() } returns catalog
+        every { api.availableExtensions(catalog) } returns listOf(foreign, wrongKey)
+        val port = DesktopExtensionPresentationPort(api, mockk(), MutableStateFlow(listOf(installed)))
+        val model = ExtensionsScreenModel(port, backgroundScope, ExtensionPresentationOptions(false, setOf("en")))
+        model.refresh().join()
+        assertFalse(model.state.value.projection!!.installed.single().presentation.hasUpdate)
+        assertTrue(model.updateAllCandidates().isEmpty())
     }
 
     private fun installed(pkg: String, repo: String) = InstalledExtension(

@@ -33,6 +33,7 @@ object MangaMapper {
         @Suppress("UNUSED_PARAMETER")
         isSyncing: Long,
         notes: String,
+        memo: ByteArray,
     ): Manga = Manga(
         id = id,
         source = source,
@@ -58,6 +59,7 @@ object MangaMapper {
         favoriteModifiedAt = favoriteModifiedAt,
         version = version,
         notes = notes,
+        memo = tachiyomi.data.MemoColumnAdapter.decode(memo),
     )
 
     fun mapLibraryManga(
@@ -86,6 +88,7 @@ object MangaMapper {
         version: Long,
         isSyncing: Long,
         notes: String,
+        memo: ByteArray,
         totalCount: Long,
         readCount: Double,
         latestUpload: Long,
@@ -120,6 +123,7 @@ object MangaMapper {
             version,
             isSyncing,
             notes,
+            memo,
         ),
         categories = categories.split(",").map { it.toLong() },
         totalChapters = totalCount,
@@ -156,6 +160,7 @@ object MangaMapper {
         version: Long,
         isSyncing: Long,
         notes: String,
+        memo: ByteArray,
         totalCount: Long,
     ): MangaWithChapterCount = MangaWithChapterCount(
         manga = mapManga(
@@ -184,6 +189,7 @@ object MangaMapper {
             version,
             isSyncing,
             notes,
+            memo,
         ),
         chapterCount = totalCount,
     )

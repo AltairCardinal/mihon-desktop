@@ -94,6 +94,49 @@ import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 @OptIn(ExperimentalAtomicApi::class)
 class ExtensionInstallSessionLifecycleTest {
 
+    @TempDir
+    lateinit var lifecycleFixtureDirectory: Path
+
+    private fun transactionApk(): File = lifecycleFixtureDirectory.resolve("extension.apk").toFile().apply {
+        writeText("controlled-platform-payload")
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun `system delivery preserves transaction APK whether platform consumes its copy`(
+        consumed: Boolean,
+        @TempDir directory: Path,
+    ) = runTest {
+        val original = directory.resolve("candidate.apk").toFile().apply { writeText("signed-candidate") }
+        val context = mockk<Context>(relaxed = true) {
+            every { packageName } returns "eu.kanade.tachiyomi"
+        }
+        val bridge = ExtensionInstaller(context, scope = backgroundScope, installPort = mockk(relaxed = true))
+        var delivered: File? = null
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } answers {
+            delivered = thirdArg()
+            mockk()
+        }
+        every { ContextCompat.startForegroundService(context, any()) } answers {
+            assertEquals("signed-candidate", requireNotNull(delivered).readText())
+            if (consumed) check(requireNotNull(delivered).delete())
+            bridge.updateInstallStep(
+                checkNotNull(capturedStringExtras[ExtensionInstaller.EXTRA_TRANSACTION_ID]),
+                InstallStep.Installed,
+            )
+            mockk()
+        }
+        bridge.installSystemAttempt(
+            UUID.randomUUID().toString(),
+            original,
+            BasePreferences.ExtensionInstaller.PACKAGEINSTALLER,
+        )
+        assertNotEquals(original.canonicalFile, requireNotNull(delivered).canonicalFile)
+        assertEquals("signed-candidate", original.readText())
+        assertFalse(requireNotNull(delivered).exists())
+    }
+
     private val capturedStringExtras = mutableMapOf<String, String>()
     private val capturedIntExtras = mutableMapOf<String, Int>()
     private var pendingIdentity: CallbackIdentity? = null
@@ -902,7 +945,7 @@ class ExtensionInstallSessionLifecycleTest {
             mockk()
         }
         val waiting = async {
-            runCatching { installPrepared(installer, TRANSACTION_ONE, File("extension.apk")) }.exceptionOrNull()
+            runCatching { installPrepared(installer, TRANSACTION_ONE, transactionApk()) }.exceptionOrNull()
         }
 
         try {
@@ -954,7 +997,7 @@ class ExtensionInstallSessionLifecycleTest {
 
             override suspend fun commit(token: PreparedExtensionInstallToken) {
                 calls += "commit"
-                installPrepared(installer, token.value, File("extension.apk"))
+                installPrepared(installer, token.value, transactionApk())
             }
 
             override suspend fun reload(packageName: String) {
@@ -1047,7 +1090,7 @@ class ExtensionInstallSessionLifecycleTest {
 
             override suspend fun commit(token: PreparedExtensionInstallToken) {
                 calls += "commit"
-                installPrepared(installer, token.value, File("extension.apk"))
+                installPrepared(installer, token.value, transactionApk())
             }
 
             override suspend fun reload(packageName: String) {
@@ -1148,7 +1191,7 @@ class ExtensionInstallSessionLifecycleTest {
                 val versionCode = artifactsByToken.getValue(token.value).versionCode
                 calls += "commit:$versionCode"
                 if (versionCode == 1L) {
-                    installPrepared(installer, token.value, File("extension-v1.apk"))
+                    installPrepared(installer, token.value, transactionApk())
                 }
             }
 
@@ -1266,7 +1309,7 @@ class ExtensionInstallSessionLifecycleTest {
 
             override suspend fun commit(token: PreparedExtensionInstallToken) {
                 calls += "commit"
-                installPrepared(installer, token.value, File("extension.apk"))
+                installPrepared(installer, token.value, transactionApk())
             }
 
             override suspend fun reload(packageName: String) {
@@ -1377,7 +1420,7 @@ class ExtensionInstallSessionLifecycleTest {
 
             override suspend fun commit(token: PreparedExtensionInstallToken) {
                 calls += "commit"
-                installPrepared(installer, token.value, File("extension.apk"))
+                installPrepared(installer, token.value, transactionApk())
             }
 
             override suspend fun reload(packageName: String) {
@@ -1497,7 +1540,7 @@ class ExtensionInstallSessionLifecycleTest {
 
             override suspend fun commit(token: PreparedExtensionInstallToken) {
                 calls += "commit"
-                installPrepared(installer, token.value, File("extension.apk"))
+                installPrepared(installer, token.value, transactionApk())
             }
 
             override suspend fun reload(packageName: String) {
@@ -1647,7 +1690,7 @@ class ExtensionInstallSessionLifecycleTest {
                 ExtensionInstallRollbackToken(token.value)
 
             override suspend fun commit(token: PreparedExtensionInstallToken) {
-                installPrepared(installer, token.value, File("extension.apk"))
+                installPrepared(installer, token.value, transactionApk())
             }
 
             override suspend fun reload(packageName: String) {
@@ -2086,7 +2129,7 @@ class ExtensionInstallSessionLifecycleTest {
 
     private companion object {
         const val PACKAGE_NAME = "example.extension"
-        val REPOSITORY = RepositoryIdentity("https://repo.example", "Official", "fingerprint")
+        val REPOSITORY = RepositoryIdentity("https://repo.example", "Official", "signer-a")
         const val SESSION_ONE = 101
         const val SESSION_TWO = 202
     }

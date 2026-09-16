@@ -87,6 +87,41 @@ abstract class SyncRuntimeStorageContract {
     }
 
     @Test
+    fun `exchange preserves receiver memo without sharing opaque source values`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            open().use { first ->
+                open().use { second ->
+                    first.connect("a", repository)
+                    val item = first.favorite("/memo")
+                    val remoteMemo = kotlinx.serialization.json.buildJsonObject {
+                        put("opaque", kotlinx.serialization.json.JsonPrimitive("sender-only"))
+                    }
+                    first.manga.update(MangaUpdate(item.id, memo = remoteMemo))
+                    first.exchange(transport, secret, repository)
+                    second.connect("b", repository)
+                    second.exchange(transport, secret, repository)
+                    val received = second.manga.getLibraryManga().single().manga
+                    assertTrue(received.memo.isEmpty())
+                    val localMemo = kotlinx.serialization.json.buildJsonObject {
+                        put("opaque", kotlinx.serialization.json.JsonPrimitive("receiver-only"))
+                    }
+                    second.manga.update(MangaUpdate(received.id, memo = localMemo))
+                    first.manga.update(MangaUpdate(item.id, favorite = false, syncContext = SyncMutationContext.User))
+                    first.exchange(transport, secret, repository)
+                    val result = second.exchange(transport, secret, repository)
+                    assertEquals(SyncRunStatus.SUCCESS, result.status)
+                    assertEquals(1, result.pending)
+                    assertEquals(0, result.uploaded)
+                    assertEquals(localMemo, second.manga.getMangaById(received.id).memo)
+                    assertTrue(second.manga.getMangaById(received.id).favorite)
+                }
+            }
+        }
+    }
+
+    @Test
     fun `network failure retains queue and a later run recovers`() = runBlocking {
         SyncGitSafetyContractTest().GitFixture().use { git ->
             val transport = git.transport()

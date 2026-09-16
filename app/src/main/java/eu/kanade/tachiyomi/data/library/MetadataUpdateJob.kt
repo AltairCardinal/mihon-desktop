@@ -120,15 +120,16 @@ class MetadataUpdateJob(private val context: Context, workerParams: WorkerParame
                                 ) {
                                     val source = sourceManager.get(manga.source) ?: return@withUpdateNotification
                                     try {
-                                        val networkManga = source.getMangaDetails(manga.toSManga())
-                                        val updatedManga = manga.prepUpdateCover(coverCache, networkManga, true)
-                                            .copyFrom(networkManga)
-                                        try {
-                                            updateManga.await(updatedManga.toMangaUpdate())
-                                        } catch (e: Exception) {
-                                            logcat(LogPriority.ERROR) { "Manga doesn't exist anymore" }
-                                        }
+                                        updateManga.awaitFromRemote(
+                                            manga,
+                                            source,
+                                            fetchDetails = true,
+                                            fetchChapters = false,
+                                            manualFetch = true,
+                                            coverCache = coverCache,
+                                        )
                                     } catch (e: Throwable) {
+                                        if (e is CancellationException) throw e
                                         // Ignore errors and continue
                                         logcat(LogPriority.ERROR, e)
                                     }

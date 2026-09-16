@@ -1,0 +1,14 @@
+// Test-only identity shared by the fixed historical and current debug APKs.
+// Keep namespace, data schema, signing configuration and application code unchanged.
+gradle.beforeProject { project ->
+    project.pluginManager.withPlugin('com.android.application') {
+        if (project.path == ':app') {
+            project.extensions.getByName('androidComponents').finalizeDsl { android ->
+                if (android.defaultConfig.applicationId != 'app.mihon') {
+                    throw new GradleException('AEX-05 identity override requires the expected Mihon application')
+                }
+                android.defaultConfig.applicationId = 'app.mihon.aex05'
+            }
+        }
+    }
+}

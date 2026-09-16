@@ -77,6 +77,8 @@ class DesktopDownloadDirectoryDiWiringTest {
             assertSame(manager, ui.downloadManager)
             assertSame(provider, manager.privateField("provider"))
             assertSame(provider, reader.privateField("downloadProvider"))
+            assertSame(Injekt.get<ChapterRepository>(), manager.privateField("chapterRepository"))
+            assertSame(Injekt.get<ChapterRepository>(), reader.privateField("chapterRepository"))
             assertProviderRoot(provider, expected)
         } finally {
             context.closeAndJoin()

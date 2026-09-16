@@ -133,6 +133,7 @@ class DesktopReaderRuntimeFactory internal constructor(
     private val partialDownloadSnapshotLookup: PartialDownloadSnapshotLookup = DisabledPartialDownloadSnapshotLookup,
     private val partialPageReadLeaseSource: PartialPageReadLeaseSource = DirectPartialPageReadLeaseSource,
     private val partialDownloadIoProbe: DownloadIoProbe = DownloadIoProbe.None,
+    private val chapterRepository: tachiyomi.domain.chapter.repository.ChapterRepository? = null,
 ) {
     internal val configuredReaderIoProbe: ReaderIoProbe get() = readerIoProbe
     internal val configuredPartialDownloadSnapshotLookup: PartialDownloadSnapshotLookup
@@ -192,6 +193,7 @@ class DesktopReaderRuntimeFactory internal constructor(
                     disallowNonAsciiFilenames = context.disallowNonAsciiFilenames,
                     leaseGeneration = leaseGeneration,
                     partialDownloadSnapshotLookup = partialDownloadSnapshotLookup,
+                    chapterRepository = chapterRepository,
                 )
             },
             pageFetchPortFactory = DesktopReaderPageFetchPortFactory { context, descriptor ->

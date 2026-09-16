@@ -17,8 +17,59 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 
 class DesktopExtensionArtifactAuthenticityTest {
+    @ParameterizedTest
+    @ValueSource(strings = ["injected/Source.class", "META-INF/services/example.Source", "META-INF/nested/extra.SF"])
+    fun `every added unsigned payload is rejected by authenticator and manager`(
+        entryName: String,
+        @TempDir directory: Path,
+    ) = runBlocking {
+        val original = repositoryRoot().resolve(MANGADEX_1_6_JAR).toFile()
+        assertEquals(MANGADEX_1_6_JAR_SHA256, original.sha256())
+        val augmented = directory.resolve("augmented.jar").toFile()
+        java.util.zip.ZipFile(original).use { input ->
+            java.util.zip.ZipOutputStream(augmented.outputStream()).use { output ->
+                input.entries().asSequence().forEach { entry ->
+                    output.putNextEntry(java.util.zip.ZipEntry(entry.name))
+                    input.getInputStream(entry).use { it.copyTo(output) }
+                    output.closeEntry()
+                }
+                output.putNextEntry(java.util.zip.ZipEntry(entryName))
+                output.write("unsigned test payload".toByteArray(Charsets.UTF_8))
+                output.closeEntry()
+            }
+        }
+        val directFailure = assertThrows(ExtensionInstallFailure::class.java) {
+            DefaultDesktopArtifactAuthenticator.authenticate(augmented, MANGADEX_SIGNER_SHA256, isApk = false)
+        }
+        val directAuthentication = assertInstanceOf(AppError.Authentication::class.java, directFailure.error)
+        assertEquals("Extension JAR contains unsigned or differently signed payload", directAuthentication.cause?.message)
+
+        val installDirectory = directory.resolve("installed")
+        val manager = DesktopExtensionManager(
+            loader = DesktopExtensionLoader(installDirectory.toFile()),
+            artifactProvider = { _, destination -> augmented.copyTo(destination, overwrite = true) },
+        )
+        val terminal = try {
+            manager.installExtension(
+                artifact(MANGADEX_SIGNER_SHA256, augmented.sha256()).copy(
+                    versionName = "1.6.0", versionCode = 106000,
+                    downloadUrl = "https://repo.example/jar/mangadex.jar",
+                ),
+            )
+        } finally {
+            manager.close()
+        }
+        val failure = assertInstanceOf(ExtensionInstallState.Failed::class.java, terminal)
+        val authentication = assertInstanceOf(AppError.Authentication::class.java, failure.error)
+        assertEquals("Extension JAR contains unsigned or differently signed payload", authentication.cause?.message)
+        assertFalse(installDirectory.resolve("$MANGADEX_PACKAGE.jar").toFile().exists())
+        assertFalse(installDirectory.resolve("$MANGADEX_PACKAGE.meta.json").toFile().exists())
+    }
+
     @Test
     fun `matching declared digest cannot authenticate an APK signed by another repository key`(
         @TempDir directory: Path,

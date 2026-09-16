@@ -34,10 +34,13 @@ Regenerate offline from the repository root:
 The fixture covers manga, chapters, categories, history, tracking, application preferences,
 source preferences, sources, extension repositories, and both legacy `viewer` and modern
 `viewer_flags`. Its SHA-256 is
-`43FA65A3469932F4DA2794E8BDF69C7BEF7D65D4E77FE894E1B1798ED1EFAD8D` and is asserted by
+`F8DDFE8BEA24FF9D428CE06058BEEF8194144542C8774B6AB25493528ACD89A8` and is asserted by
 `BackupCodecContractTest`.
-Regeneration from the fixed main ref produced the same SHA-256 and byte-identical output, so this
-remains the single canonical artifact for Android and Desktop compatibility.
+Commit `907f1783e464b4e8ec4e7e0d1975b255f223bed7` corrected the generated manga's category
+reference from `7` to the fixture category's actual order `1`, and updated the binary and contract
+test together. The earlier `43FA65...` hash predates that correction; the fixed historical serializer
+sources did not change. The current binary remains the single canonical artifact for Android and
+Desktop compatibility.
 
 ## Desktop first-writer fixture provenance
 

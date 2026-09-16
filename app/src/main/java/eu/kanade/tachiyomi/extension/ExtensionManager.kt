@@ -281,6 +281,9 @@ class ExtensionManager internal constructor(
         updatePendingUpdatesCount()
     }
 
+    /** Current-session failures for the extension list; InstallStep remains compatible with existing callers. */
+    val installErrors get() = installer.installErrors
+
     /**
      * Returns a flow of the installation process for the given extension. It will complete
      * once the extension is installed or throws an error. The process will be canceled if
