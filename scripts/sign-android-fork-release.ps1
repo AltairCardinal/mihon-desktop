@@ -23,7 +23,7 @@ if ($Instrumentation) {
         throw 'Instrumentation APK must target only the fork release host'
     }
 } elseif ($packageLine -notmatch "name='app\.mihon\.desktop\.fork'" -or
-    $packageLine -notmatch "versionCode='24'" -or $packageLine -notmatch "versionName='0\.19\.4-aex\.6'" -or
+    $packageLine -notmatch "versionCode='25'" -or $packageLine -notmatch "versionName='0\.19\.4-aex\.7'" -or
     ($badging | Where-Object { $_ -like 'application-debuggable*' })) {
     throw 'Input APK does not match the non-debuggable fork release identity'
 }

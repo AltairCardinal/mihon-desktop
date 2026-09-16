@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.browse.source
 
 import android.content.ActivityNotFoundException
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
@@ -22,6 +23,8 @@ import eu.kanade.presentation.browse.SourceOptionsDialog
 import eu.kanade.presentation.browse.SourcesScreen
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.TabContent
+import eu.kanade.tachiyomi.extension.permission.AndroidInstalledAppsPermissionDetector
+import eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionStatus
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import kotlinx.collections.immutable.persistentListOf
@@ -51,15 +54,48 @@ fun Screen.sourcesTab(screenModel: SourcesScreenModel = rememberScreenModel { So
         ),
         content = { contentPadding, snackbarHostState ->
             var showPermissionDialog by rememberSaveable { mutableStateOf(false) }
+            var permissionNeedsSettings by rememberSaveable { mutableStateOf(false) }
+            val activity = LocalActivity.current
+            val installedAppsPermission = AndroidInstalledAppsPermissionDetector.PERMISSION
+            LaunchedEffect(state.installedAppsPermission.status) {
+                if (state.installedAppsPermission.status == InstalledAppsPermissionStatus.GRANTED ||
+                    state.installedAppsPermission.status == InstalledAppsPermissionStatus.NOT_REQUIRED
+                ) {
+                    permissionNeedsSettings = false
+                    showPermissionDialog = false
+                }
+            }
+            val runtimePermissionLauncher =
+                rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                    screenModel.refreshInstalledAppsPermission()
+                    if (!granted && activity?.shouldShowRequestPermissionRationale(installedAppsPermission) != true) {
+                        // A suppressed request needs settings; never navigate there without another explicit action.
+                        permissionNeedsSettings = true
+                        showPermissionDialog = true
+                    }
+                }
             val permissionLauncher =
                 rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
                     screenModel.refreshInstalledAppsPermission()
                 }
             if (showPermissionDialog) {
                 InstalledAppsPermissionDialog(
+                    settingsRequired = permissionNeedsSettings,
                     onDismiss = { showPermissionDialog = false },
                     onGetPermission = {
                         showPermissionDialog = false
+                        if (!permissionNeedsSettings) {
+                            try {
+                                runtimePermissionLauncher.launch(installedAppsPermission)
+                            } catch (_: ActivityNotFoundException) {
+                                permissionNeedsSettings = true
+                                showPermissionDialog = true
+                            } catch (_: SecurityException) {
+                                permissionNeedsSettings = true
+                                showPermissionDialog = true
+                            }
+                            return@InstalledAppsPermissionDialog
+                        }
                         var launched = false
                         for (fallback in listOf(false, true)) {
                             try {

@@ -95,15 +95,37 @@ fun InstalledAppsPermissionNotice(
 }
 
 @Composable
-fun InstalledAppsPermissionDialog(onGetPermission: () -> Unit, onDismiss: () -> Unit) {
+fun InstalledAppsPermissionDialog(
+    onGetPermission: () -> Unit,
+    onDismiss: () -> Unit,
+    settingsRequired: Boolean = false,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(MR.strings.installed_apps_permission_name)) },
-        text = { Text(stringResource(MR.strings.installed_apps_permission_explanation)) },
+        text = {
+            Text(
+                stringResource(
+                    if (settingsRequired) {
+                        MR.strings.installed_apps_permission_settings_required
+                    } else {
+                        MR.strings.installed_apps_permission_explanation
+                    },
+                ),
+            )
+        },
         confirmButton = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onGetPermission, modifier = Modifier.fillMaxWidth().testTag("permission-dialog-get")) {
-                    Text(stringResource(MR.strings.installed_apps_permission_get))
+                    Text(
+                        stringResource(
+                            if (settingsRequired) {
+                                MR.strings.installed_apps_permission_open_settings
+                            } else {
+                                MR.strings.installed_apps_permission_get
+                            },
+                        ),
+                    )
                 }
                 Button(
                     onClick = onDismiss,

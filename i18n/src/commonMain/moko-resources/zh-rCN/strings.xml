@@ -1711,4 +1711,6 @@
     <string name="installed_apps_permission_read_failed">插件读取失败，请重试；无需再次授权或重新安装。</string>
     <string name="installed_apps_permission_settings_unavailable">无法打开权限设置。请在系统设置 → 应用 → Mihon → 权限中允许“获取已安装应用列表”，然后返回应用。不同设备的入口可能不同。</string>
     <string name="installed_apps_permission_private_read_failed">私有插件读取失败，请重试。重试私有插件不需要应用列表权限。</string>
+    <string name="installed_apps_permission_settings_required">系统未授予此权限，可能已不再显示授权请求。请在 Mihon 的系统设置中允许读取已安装应用列表，然后返回。</string>
+    <string name="installed_apps_permission_open_settings">前往设置</string>
 </resources>

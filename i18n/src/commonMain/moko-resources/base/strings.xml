@@ -1917,4 +1917,6 @@
     <string name="installed_apps_permission_read_failed">Unable to read extensions. Please retry; there is no need to grant permission again or reinstall extensions.</string>
     <string name="installed_apps_permission_settings_unavailable">Unable to open permission settings. In system settings, open Apps → Mihon → Permissions and allow access to the installed app list, then return here. The path may differ on your device.</string>
     <string name="installed_apps_permission_private_read_failed">Private extensions could not be loaded. Retry without granting access to the installed app list.</string>
+    <string name="installed_apps_permission_settings_required">The system did not grant this permission and may no longer show the request. Allow access to the installed app list in Mihon’s system settings, then return here.</string>
+    <string name="installed_apps_permission_open_settings">Open settings</string>
 </resources>
