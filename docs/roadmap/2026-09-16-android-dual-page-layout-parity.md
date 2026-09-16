@@ -1,9 +1,9 @@
 # Android 双页布局修复与跨端显示契约
 
-- 状态：IN_PROGRESS（原布局修复完成；继续用户实测发现的章节与双页稳定性问题）
-- active-task：DP-04
+- 状态：COMPLETE（布局与后续阅读行为修复完成，Android/Windows正式产物验收通过；macOS工具链限制见下文）
+- active-task：无（全部完成）
 - 范围：修复 Android 双页布局、章节落点、跨章配对稳定性和入场提示；共享两端章节入口/章界语义，修复 Desktop 已读重开末页问题。
-- 本计划是独立执行计划；不推进其他 reader roadmap 或改写 parity manifest 的既有完成证据。
+- 本计划是独立执行计划；不推进其他 reader roadmap 或 parity manifest 能力状态；本批次源码移动所需的当前证据行号维护单独记录。
 
 ## 问题与证据
 
@@ -100,15 +100,15 @@ checkbox 仅在实现、审查、验证与提交全部完成时勾选。
 
 ### DP-04：跨端正式产物及验收（依赖 DP-03）
 
-- [ ] 串行完成一次 Android/Desktop 全量测试及格式检查；Windows 使用正式构建脚本与 Test Mode 验收，macOS 按环境可用性验证并记录真实限制。
-- [ ] Android 增加版本并沿用原签名，正式 APK 原位安装三星；检查用户三项复现路径及跨章前后双页状态。
-- [ ] Windows 检查已读章节入口、跨章与双页，记录实际发布 EXE；只提交本任务变化，保留用户文件。
+- [x] 串行完成一次 Android/Desktop 全量测试及格式检查；Windows 使用正式构建脚本与 Test Mode 验收，macOS 按环境可用性验证并记录真实限制。
+- [x] Android 增加版本并沿用原签名，正式 APK 原位安装三星；检查用户三项复现路径及跨章前后双页状态。
+- [x] Windows 检查已读章节入口、跨章与双页，记录实际发布 EXE；只提交本任务变化，保留用户文件。
 
 复用决策：已有 domain reader 核心与两端 adapter 可继续使用，不创建第二套 session、配对算法、下载器或进度存储；新增公共规则必须被真实两端链路消费。
 
 本轮预算：复用一个实施代理和一个独立审查代理，无冲突实现并行；主代理负责 roadmap、设备诊断和发布验收。红绿仅 focused，收口全量一次，审查一轮及必要修复复审一轮，预计45–90分钟。过程证据沿用协调器日志，本文件记录计划与结果，不另建逐任务报告。重型 Gradle 同一时刻只有一个协调者。构建/设备/远程环境失败先诊断已有进程，只有具体失败路径追加验证；扩大范围或超过审查预算先说明并等待用户决定。
 
-### DP-03/04 证据与限制（执行中）
+### DP-03/04 证据与限制（已完成）
 
 - 三星原版aex.2复现：从章节列表打开已读Ch.3，画面为“已读完Ch.3/下一章Ch.4”，底部页码却为1/9，同时出现模式Toast；证据 `.gradle-coordinator/dp03-read-reopen-before.png`。
 - 有效RED：`dp03-red-pairing` 的真实holder/adapter测试确认整窗R2L顺序错误、刷新丢尺寸及配对偏移、不能按双页任一成员恢复位置。`dp03-green-pairing` 首簇相关测试通过，后续继续入口/提示/未知尺寸测试。
@@ -117,11 +117,23 @@ checkbox 仅在实现、审查、验证与提交全部完成时勾选。
 - 验收临时设置：三星插电亮屏从0改为3，结束时恢复0；未改变系统旋转设置或清除应用数据。
 - 内聚性与风险：本批次超过8文件，涉及共享入口/章界规则、Android三种viewer及Desktop三种presentation的真实消费点，不能只修双页后让单页/Webtoon继续出现有邻章的终点页。作为一个阅读行为批次审查；重点验证显式同步定位、未读续读、真正终点、邻章加载失败与配对更新，避免按文件拆开核心和接线。
 - 进一步RED：`dp03-red-entry-feedback`确认Android真实updateViewer自动Toast、未知尺寸没有预占双槽，以及Desktop已读章实际落page7而非0；`dp03-red-boundary-runtime`确认Loaded邻章仍受gap/force影响保留过渡项，且有邻章终点文案仍VISIBLE。早期`dp03-red-boundary`测试编译失败不作为产品RED。
-- 一轮独立审查进行中：已发现双页真实NEXT指令方向与整窗R2L顺序相反，以及单页过渡项Loaded后删除时需要显式首/末页anchor。均为本批次导航闭环，交原实施者补mounted/输入链测试；不以纯items列表或helper通过替代真实导航验收。
+- 一轮独立审查期间发现双页真实NEXT指令方向与整窗R2L顺序相反，以及单页过渡项Loaded后删除时需要显式首/末页anchor。均为本批次导航闭环，交原实施者补mounted/输入链测试；不以纯items列表或helper通过替代真实导航验收。
 - 独立审查最终PASS：同一连续审查内关闭双页NEXT方向、普通Pager/Webtoon首末锚点、失效配对缓存，以及Activity恢复/同模式刷新Toast漏项；真实模式切换继续遵守提示偏好。没有开启额外审查轮次。
 - 最终focused：`dp03-final-related` domain8、Android40、Desktop50，共98项全部通过、0失败/0跳过，包括原双页几何、真实输入、mounted跨章定位、同步恢复及架构守卫。该进程末尾ReaderActivity CRLF格式失败，纯换行修复后`dp03-final-format-check` PASS；`git diff --check` PASS，未重复无变化行为测试。
 - 补充有效RED：`dp03-red-navigation`、`dp03-red-ready-anchor-fixture`、`dp03-red-final-wiring`。早期Compose宿主生命周期缺失及重复setup等待卡住属于fixture问题，已采线程栈、仅终止对应协调器进程树并修正，不算产品RED；后续真实mounted测试正确红绿。
-- 全量收口已启动`dp04-full-tests`：domain JVM、Android release单测、Desktop JVM、全仓spotless，串行workers2/offline；结果待完成，不提前勾选。
+- 全量收口已启动`dp04-full-tests`：domain JVM、Android release单测、Desktop JVM、全仓spotless，串行workers2/offline；最终结果与补验见下文。
 - 全量结果：`dp04-full-tests`运行6m48s，domain473/0失败、Android438/0失败；Desktop3070/1失败/2跳过，唯一失败为ID22的当前源码证据行号漂移。仅校正manifest 8处当前roleEvidence行号，能力状态、符号和历史authority/provenance不变；其余272处当前引用静态核对一致。补验`dp04-manifest-recheck`，不重跑全量。该机械维护是本批次源码移动导致的必要证据修正，不推进其他reader计划。
 
 - `dp04-manifest-recheck` PASS（1m6s），唯一契约失败已关闭，全仓spotless通过；合并有效证据为domain473、Android438、Desktop3068通过/2按环境跳过。DP-03实现、测试、架构文档及必要证据修正随本批次提交；DP-04继续正式产物验收。
+
+### DP-04 正式产物与最终验收
+
+- 实现提交`2fcbc9cb0`；发布配置、桌面版本分配及本节验收同属DP-04发布提交，不创建纯状态推进提交。源码行为自独立审查/全量完成后未修改。
+- Android：`dp04-android-release` PASS，正式R8/resource shrinking构建2m17s；`dp04-signing.log`核验原证书、code21/`0.19.4-aex.3`，原位安装Success，设备base.apk SHA与受测签名包一致，未清除书架或下载数据。
+- Android产物：[Mihon-Fork-0.19.4-aex.3-rc1-universal.apk](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.3-rc1/Mihon-Fork-0.19.4-aex.3-rc1-universal.apk)，SHA-256 `6c3634bba3266f1270d112d1cc22ba99c634b7ab80920433a49fa255cfef0ade`。
+- 三星实测：已读Ch.3重开即1/9双页，无章尾文案和模式气泡；[首次打开](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.3-rc1/acceptance/read-chapter-first-page.png)。连续真实左侧点击遍历Ch.3，9/9为正常奇数尾页，下一次直接进入Ch.4的1/9，继续3/9仍双页；[下一章首页](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.3-rc1/acceptance/forward-5.png)、[下一章继续双页](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.3-rc1/acceptance/forward-6.png)。
+- 反向实测：右侧点击从Ch.4返回Ch.3末页，再回7/9双页，不出现有邻章的过渡提示；[返回前章双页](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.3-rc1/acceptance/backward-3.png)。退出再打开Ch.3仍从1/9开始，无自动气泡；[再次重开](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.3-rc1/acceptance/reopen-after-cross-chapter.png)。插电亮屏恢复原值0，旋转设置未修改。
+- Windows：`dp04-windows-build`通过`scripts/build-desktop.sh build-only`，使用同一已通过全量+契约补验的代码，未重复全量测试。构建、正式发布运行时扩展验收、未打包发布与ZIP打包均PASS（1m38s）。最终EXE已核验存在：[Mihon Desktop.exe](<D:/Shell/Github/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.39.2fcbc9c-unpacked/Mihon Desktop.exe>)；ZIP SHA-256 `f10c42875460a9644e759ef632a422d6e6c4e8d63d5fa6d8d410c0982697941b`。
+- Windows最终EXE另以独立profile启动Test Mode，通过production downloaded-directory route实际打开12页章节，收到真实OPEN_PAGE/DECODE/FIRST_PAGE_PRESENTED；向该实例原生窗口投递实际方向键，呈现记录推进至page5；关闭后productionClosed=true，再通过shutdown正常退出。证据`.gradle-coordinator/dp04-windows-reader-state.json`、`dp04-windows-after-navigation.json`、`dp04-windows-reader-closed.json`。未触碰用户原有运行实例。
+- Windows Test Mode夹具显式`isDualPage=false`，因此上述运行时证据仅覆盖单页打开/输入/关闭，不能因相邻页呈现事件误称双页运行时验收；双页、已读入口和跨章语义以真实production/mounted自动化证据为准，Android补实机跨章。没有新增测试专用产品接口。
+- 边界：未读章节保留进度，显式同步/恢复定位优先；有邻章时直连，等待与失败仍有加载/重试反馈；宽图与奇数尾页可合法单页，模式不会因异步尺寸或邻章窗口更新意外退化。Desktop既有独立封面策略保持。macOS因远端缺少JDK未构建，不宣称本轮macOS产物通过。
