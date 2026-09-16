@@ -747,6 +747,22 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
+    fun `detail default survives persistence and following global removes desktop dual override`() = runTest {
+        val mangaRepository = FakeMangaRepository()
+        val model = MangaDetailScreenModel(mangaId = 1L, updateManga = UpdateManga(mangaRepository))
+        val oldFlags = mihon.desktop.reader.viewerFlagsWithDualPage(0x100L, true)
+        model.setReadingMode(1L, oldFlags, ReadingMode.DEFAULT)
+        val automaticFlags = requireNotNull(mangaRepository.updates.last().viewerFlags)
+        assertEquals(ReadingMode.DEFAULT, mihon.desktop.reader.readingModeFromViewerFlags(automaticFlags))
+        assertEquals(0x100L, automaticFlags and 0x100L)
+        model.setReadingMode(1L, automaticFlags, null)
+        val inherited = requireNotNull(mangaRepository.updates.last().viewerFlags)
+        assertNull(mihon.desktop.reader.readingModeFromViewerFlags(inherited))
+        assertNull(mihon.desktop.reader.dualPageFromViewerFlags(inherited))
+        assertEquals(0x100L, inherited)
+    }
+
+    @Test
     fun `enqueueDownload skips already downloaded chapters`() {
         val enqueued = mutableListOf<DownloadItem>()
         val model = MangaDetailScreenModel(

@@ -65,6 +65,8 @@ import mihon.desktop.reader.ZoomState
 @Composable
 fun ReaderSettingsPanel(
     currentMode: ReadingMode,
+    followsGlobal: Boolean = false,
+    onFollowGlobal: () -> Unit = {},
     isDualPage: Boolean,
     autoSplitPages: Boolean,
     isAutoSpreadMatching: Boolean,
@@ -132,6 +134,8 @@ fun ReaderSettingsPanel(
                     when (selectedTab) {
                         0 -> GeneralTab(
                             currentMode = currentMode,
+                            followsGlobal = followsGlobal,
+                            onFollowGlobal = onFollowGlobal,
                             isDualPage = isDualPage,
                             autoSplitPages = autoSplitPages,
                             isAutoSpreadMatching = isAutoSpreadMatching,
@@ -183,8 +187,10 @@ fun ReaderSettingsPanel(
 // ── Tab content composables ───────────────────────────────────────────────────
 
 @Composable
-private fun GeneralTab(
+internal fun GeneralTab(
     currentMode: ReadingMode,
+    followsGlobal: Boolean = false,
+    onFollowGlobal: () -> Unit = {},
     isDualPage: Boolean,
     autoSplitPages: Boolean,
     isAutoSpreadMatching: Boolean,
@@ -207,12 +213,17 @@ private fun GeneralTab(
 ) {
     // Reading mode
     SettingsSection(MR.strings.desktop_ui_reading_mode.localized()) {
+        RadioRow(MR.strings.desktop_reader_follow_global.localized(), followsGlobal, onFollowGlobal)
         ReadingMode.entries.forEach { mode ->
             RadioRow(
                 label = readingModeLabel(mode),
-                selected = currentMode == mode,
+                selected = !followsGlobal && currentMode == mode,
                 onClick = { onModeChange(mode) },
             )
+        }
+        if (currentMode == ReadingMode.DEFAULT) {
+            Text(if (isDualPage) MR.strings.desktop_reader_default_dual.localized() else MR.strings.desktop_reader_default_single.localized())
+            Text(MR.strings.desktop_reader_default_summary.localized(), style = MaterialTheme.typography.bodySmall)
         }
     }
 
@@ -239,6 +250,7 @@ private fun GeneralTab(
                 label = MR.strings.desktop_ui_dual_page_side_by_side.localized(),
                 checked = isDualPage,
                 onCheckedChange = onDualPageChange,
+                enabled = currentMode != ReadingMode.DEFAULT,
             )
             if (isDualPage) {
                 CheckboxRow(
@@ -495,15 +507,15 @@ private fun RadioRow(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun CheckboxRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, indented: Boolean = false) {
+private fun CheckboxRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, indented: Boolean = false, enabled: Boolean = true) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = if (indented) 24.dp else 0.dp)
-            .clickable { onCheckedChange(!checked) },
+            .clickable(enabled = enabled) { onCheckedChange(!checked) },
     ) {
-        Checkbox(checked = checked, onCheckedChange = onCheckedChange)
+        Checkbox(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 4.dp))
     }
 }
@@ -578,6 +590,7 @@ private fun BackgroundThemeChip(
 }
 
 internal fun readingModeLabel(mode: ReadingMode): String = when (mode) {
+    ReadingMode.DEFAULT -> MR.strings.label_default.localized()
     ReadingMode.LTR -> MR.strings.left_to_right_viewer.localized()
     ReadingMode.RTL -> MR.strings.right_to_left_viewer.localized()
     ReadingMode.WEBTOON -> MR.strings.webtoon_viewer.localized()

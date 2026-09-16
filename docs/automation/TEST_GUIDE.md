@@ -194,3 +194,31 @@ Capabilities: 64/64 unmapped=0
 ```
 
 产物错误会给出固定路径和 `evidence` 构建命令；启动错误会区分旧 health 占用、本次进程提前退出与超时，并给出进程或启动日志。provenance、health command 和 test command override 仅用于隔离 runner fixture，正常验收不得用它们替换真实 verifier、固定路径或默认 `test-desktop` client。
+
+
+## Windows 默认自适应阅读模式
+
+入口：设置 → 阅读器 → 默认；或漫画详情／阅读器设置 → 阅读模式 → 默认。
+“跟随全局设置”单独表示继承全局方向与单双页设置；阅读器选择漫画模式不会改写全局阅读方向。
+全新偏好采用默认模式，已保存的手动方向保持原值；仅保存过单双页的旧配置保留手动 RTL 布局。
+显式保存的 DEFAULT 不受历史单双页值影响。Android 阅读器本轮不变。
+
+默认模式复用现有 RTL 单页／双页 presentation，以实际阅读内容 viewport 的宽高比判断。
+首次有效尺寸或主动选择默认时，比例 ≥ 1.35 为双页，否则单页；后续单页在 ≥ 1.35 进入双页，
+双页在 ≤ 1.25 退出。跨阈值后的目标须连续保持 150 ms；同一目标的连续 resize 不重置计时，
+回到当前布局区间则取消待切换。无效尺寸取消待切换并保持布局；离开自动模式、销毁阅读器时取消计时。
+共享策略位于 domain 的 `AdaptiveReaderLayout`，当前只有 Desktop adapter 接入。
+临时工具栏和弹窗属于 overlay，不改变内容 viewport；图片比例变化不触发自动布局。
+
+设置面板显示“默认 · 单页／双页”及说明，并禁用手动双页开关。双页配对、横向跨页图和章节末尾
+继续按现有 presentation 处理，因此双页布局不保证每个视口都显示两张图。
+切换保留当前源页及强制单页配对设置；新布局中包含该锚页的 settled 回调只更新显示状态，
+不因新增伴页推进阅读进度。用户跳页、选中其他显示单元或翻到不包含锚页的视口后，恢复正常进度上报。
+
+Desktop 自动标记保存于 viewerFlags 第 34 位，低 8 位仍为 Android RTL 值 2；显式方向覆盖清除自动标记，
+继承全局同时清除 Desktop 双页覆盖位。Android 尚未接入自动策略；跨端使用本轮数据时仍以 RTL 解释。
+
+回归证据使用共享 `AdaptiveReaderLayoutContractTest`、Desktop `DefaultReaderModeTest`、
+真实 `ReaderContent` 离屏挂载的 `AdaptiveReaderViewportTest`，以及设置搜索和漫画详情 persistence 测试。
+手工验收：选择默认，拖动内容比例跨过 1.35／1.25，确认方向、单双页、当前页与阅读进度；
+打开／关闭设置和工具栏不切换；选择手动方向后拉伸窗口不再自动切换；重开漫画仍保留选择。

@@ -815,7 +815,7 @@ class SecuritySettingsWiringTest {
                 assertTrue(appDir.isDirectory)
                 assertFalse(Injekt.get<SecurityPreferences>().useAuthenticator().get())
                 assertEquals(ThemeMode.SYSTEM, Injekt.get<DesktopAppPreferences>().themeMode.get())
-                assertEquals(mihon.desktop.reader.ReadingMode.RTL, Injekt.get<ReaderPreferences>().readingMode)
+                assertEquals(mihon.desktop.reader.ReadingMode.DEFAULT, Injekt.get<ReaderPreferences>().readingMode)
                 assertTrue(node.node("desktop/app").keys().isEmpty())
                 assertTrue(node.node("desktop/reader").keys().isEmpty())
                 assertTrue(constructed > 0)

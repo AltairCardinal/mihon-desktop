@@ -1900,4 +1900,8 @@
     <string name="extension_install_error_package">The extension package is damaged or incompatible. Refresh the repository and retry.</string>
     <string name="extension_install_error_recovery">Installation or recovery could not finish. Check storage, the installed version and source availability before retrying. Android may not allow restoring an older version. Do not clear app data.</string>
     <string name="extension_install_error_unknown">Installation failed. Check the installed version and source availability before retrying. Restart the app if needed; do not clear app data.</string>
+    <string name="desktop_reader_follow_global">Follow global settings</string>
+    <string name="desktop_reader_default_summary">Right to left; switch between one and two pages to fit the window. Dual page is controlled automatically.</string>
+    <string name="desktop_reader_default_single">Default · Single page</string>
+    <string name="desktop_reader_default_dual">Default · Dual page</string>
 </resources>

@@ -26,7 +26,8 @@ import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import mihon.desktop.settings.ReaderDefaultMode
+import mihon.desktop.reader.ReadingMode
+import mihon.desktop.ui.reader.readingModeLabel
 import mihon.desktop.reader.NextChapterPrefetchMode
 import tachiyomi.i18n.MR
 
@@ -40,8 +41,7 @@ class ReaderSettingsScreen : Screen {
         val prefs = dependencies.appPreferences
         val readerPreferences = dependencies.readerPreferences
         val pageTurnAnimation by prefs.pageTurnAnimation.changes().collectAsState(initial = prefs.pageTurnAnimation.get())
-        var readerMode by remember { mutableStateOf(prefs.defaultReaderMode.get()) }
-        var isRtl by remember { mutableStateOf(prefs.defaultRtl.get()) }
+        var readerMode by remember { mutableStateOf(readerPreferences.readingMode) }
         val nextChapterPrefetchMode by readerPreferences.nextChapterPrefetchPreference.changes().collectAsState(
             initial = readerPreferences.nextChapterPrefetchMode,
         )
@@ -73,21 +73,23 @@ class ReaderSettingsScreen : Screen {
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.desktopSettingsAnchor(viewerTypeTitle).padding(horizontal = 16.dp, vertical = 8.dp),
                 )
-                ReaderDefaultMode.entries.forEach { mode ->
-                    val modeTitle = when (mode) {
-                        ReaderDefaultMode.PAGER -> MR.strings.desktop_reader_pager_mode.localized()
-                        ReaderDefaultMode.WEBTOON -> MR.strings.desktop_reader_webtoon_mode.localized()
-                    }
+                ReadingMode.entries.forEach { mode ->
+                    val modeTitle = readingModeLabel(mode)
                     RadioSettingsItem(
                         title = modeTitle,
                         selected = readerMode == mode,
                         onClick = {
                             readerMode = mode
-                            prefs.defaultReaderMode.set(mode)
+                            readerPreferences.readingMode = mode
                         },
                         modifier = Modifier.desktopSettingsAnchor(modeTitle),
                     )
                 }
+                Text(
+                    text = MR.strings.desktop_reader_default_summary.localized(),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                 SwitchSettingsItem(
@@ -97,16 +99,6 @@ class ReaderSettingsScreen : Screen {
                     onCheckedChange = { prefs.pageTurnAnimation.set(it) },
                     modifier = Modifier.desktopSettingsAnchor(MR.strings.pref_page_transitions.localized()),
                 )
-                SwitchSettingsItem(
-                    title = MR.strings.desktop_reader_rtl.localized(),
-                    subtitle = MR.strings.desktop_reader_rtl_summary.localized(),
-                    checked = isRtl,
-                    onCheckedChange = {
-                        isRtl = it
-                        prefs.defaultRtl.set(it)
-                    },
-                )
-
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                 Text(
                     text = prefetchTitle,

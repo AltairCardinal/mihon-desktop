@@ -943,16 +943,23 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                         Text(MR.strings.desktop_ui_reading_mode_e073e5df.localized(), style = MaterialTheme.typography.bodyMedium)
                         Box {
                             TextButton(onClick = { expanded = true }) {
-                                Text(currentOverride?.let(::readingModeLabel) ?: MR.strings.label_default.localized())
+                                Text(currentOverride?.let(::readingModeLabel) ?: MR.strings.desktop_reader_follow_global.localized())
                             }
                             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                                 DropdownMenuItem(
-                                    text = { Text(MR.strings.label_default.localized()) },
+                                    text = { Text(MR.strings.desktop_reader_follow_global.localized()) },
                                     onClick = {
                                         expanded = false
                                         scope.launch {
                                             model.setReadingMode(mangaId, currentFlags, null)
                                         }
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(readingModeLabel(ReadingMode.DEFAULT)) },
+                                    onClick = {
+                                        expanded = false
+                                        scope.launch { model.setReadingMode(mangaId, currentFlags, ReadingMode.DEFAULT) }
                                     },
                                 )
                                 DropdownMenuItem(

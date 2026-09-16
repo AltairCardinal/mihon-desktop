@@ -1694,4 +1694,8 @@
     <string name="extension_install_error_package">扩展包已损坏或不兼容。请刷新仓库后重试。</string>
     <string name="extension_install_error_recovery">安装或恢复未能完成。请检查存储空间、已安装版本及源是否可用后再重试。Android 可能不允许恢复旧版本，请勿清除应用数据。</string>
     <string name="extension_install_error_unknown">安装失败。请确认已安装版本及源是否可用后再重试，必要时重启应用，请勿清除应用数据。</string>
+    <string name="desktop_reader_follow_global">跟随全局设置</string>
+    <string name="desktop_reader_default_summary">从右到左，按窗口比例自动切换单页／双页；双页开关由默认模式自动管理。</string>
+    <string name="desktop_reader_default_single">默认 · 单页</string>
+    <string name="desktop_reader_default_dual">默认 · 双页</string>
 </resources>

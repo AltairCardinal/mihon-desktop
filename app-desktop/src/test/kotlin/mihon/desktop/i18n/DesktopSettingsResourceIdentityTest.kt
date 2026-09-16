@@ -1039,7 +1039,9 @@ class DesktopSettingsResourceIdentityTest {
     @Test
     fun `Reader Library and Download render their shared MR identities`() = runBlocking {
         val prefs = DesktopAppPreferences(InMemoryPreferenceStore())
-        val readerPrefs = mihon.desktop.reader.ReaderPreferences(InMemoryPreferenceStore())
+        val readerPrefs = mihon.desktop.reader.ReaderPreferences(InMemoryPreferenceStore()).apply {
+            readingMode = mihon.desktop.reader.ReadingMode.DEFAULT
+        }
         val downloadPrefs = DesktopDownloadPreferences(InMemoryPreferenceStore())
         val downloads = mockk<DesktopDownloadManager> {
             every { queue } returns MutableStateFlow(emptyList())
@@ -1065,10 +1067,11 @@ class DesktopSettingsResourceIdentityTest {
                     reader.text,
                     MR.strings.pref_category_reader.localized(locale),
                     MR.strings.pref_viewer_type.localized(locale),
-                    MR.strings.desktop_reader_pager_mode.localized(locale),
-                    MR.strings.desktop_reader_webtoon_mode.localized(locale),
-                    MR.strings.desktop_reader_rtl.localized(locale),
-                    MR.strings.desktop_reader_rtl_summary.localized(locale),
+                    MR.strings.label_default.localized(locale),
+                    MR.strings.left_to_right_viewer.localized(locale),
+                    MR.strings.right_to_left_viewer.localized(locale),
+                    MR.strings.webtoon_viewer.localized(locale),
+                    MR.strings.desktop_reader_default_summary.localized(locale),
                     MR.strings.desktop_reader_prefetch_next_chapter.localized(locale),
                     MR.strings.desktop_reader_prefetch_summary.localized(locale),
                     MR.strings.desktop_reader_prefetch_first_viewport.localized(locale),
@@ -1076,9 +1079,10 @@ class DesktopSettingsResourceIdentityTest {
                 )
                 assertEntry(
                     reader,
-                    MR.strings.desktop_reader_rtl.localized(locale),
-                    MR.strings.desktop_reader_rtl_summary.localized(locale),
+                    MR.strings.pref_page_transitions.localized(locale),
+                    MR.strings.desktop_general_page_transition_summary.localized(locale),
                 )
+                assertSelectedEntry(reader, MR.strings.label_default.localized(locale))
                 assertCopy(reader.descriptions, MR.strings.action_bar_up_description.localized(locale))
 
                 val library = render(LibrarySettingsScreen(), dependencies, locale)
@@ -2107,10 +2111,10 @@ class DesktopSettingsResourceIdentityTest {
         MR.strings.not_selected,
         MR.strings.on,
         MR.strings.off,
-        MR.strings.desktop_reader_pager_mode,
-        MR.strings.desktop_reader_webtoon_mode,
-        MR.strings.desktop_reader_rtl,
-        MR.strings.desktop_reader_rtl_summary,
+        MR.strings.desktop_reader_follow_global,
+        MR.strings.desktop_reader_default_summary,
+        MR.strings.desktop_reader_default_single,
+        MR.strings.desktop_reader_default_dual,
         MR.strings.desktop_download_cbz_summary,
         MR.strings.desktop_download_parallel,
         MR.strings.desktop_download_new_chapters_summary,

@@ -11,8 +11,8 @@ import org.junit.jupiter.api.Test
 class PhaseEReaderTest {
 
     @Test
-    fun `ReadingMode has LTR RTL WEBTOON values`() {
-        assertEquals(3, ReadingMode.entries.size)
+    fun `ReadingMode has DEFAULT LTR RTL WEBTOON values`() {
+        assertEquals(4, ReadingMode.entries.size)
         assertNotNull(ReadingMode.LTR)
         assertNotNull(ReadingMode.RTL)
         assertNotNull(ReadingMode.WEBTOON)

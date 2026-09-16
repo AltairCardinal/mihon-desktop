@@ -20,6 +20,7 @@ import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.externalChapterUrlOrNull
+import mihon.desktop.reader.viewerFlagsFollowingGlobal
 import mihon.desktop.reader.viewerFlagsWithReadingMode
 import mihon.domain.task.TaskState
 import tachiyomi.domain.category.interactor.GetCategories
@@ -372,7 +373,7 @@ class MangaDetailScreenModel(
 
     suspend fun setReadingMode(mangaId: Long, currentFlags: Long, mode: ReadingMode?) {
         requireNotNull(updateManga) { "UpdateManga is required" }
-            .await(MangaUpdate(id = mangaId, viewerFlags = viewerFlagsWithReadingMode(currentFlags, mode)))
+            .await(MangaUpdate(id = mangaId, viewerFlags = if (mode == null) viewerFlagsFollowingGlobal(currentFlags) else viewerFlagsWithReadingMode(currentFlags, mode)))
     }
 
     suspend fun setChapterSort(manga: Manga, requestedMode: ChapterSortMode) {

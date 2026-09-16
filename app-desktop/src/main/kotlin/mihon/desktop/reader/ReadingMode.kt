@@ -2,9 +2,10 @@ package mihon.desktop.reader
 
 /**
  * Reading direction / layout mode for the reader.
- * Mirrors Android's ReadingMode enum.
+ * DEFAULT is Desktop's adaptive RTL layout; Android's zero flag still means inheritance.
  */
 enum class ReadingMode(val displayName: String) {
+    DEFAULT("Default"),
     LTR("Left to Right"),
     RTL("Right to Left"),
     WEBTOON("Webtoon (Scroll)");
@@ -31,8 +32,11 @@ enum class ReadingMode(val displayName: String) {
 private const val READING_MODE_MASK = 0xFFL
 private const val DUAL_PAGE_SET_FLAG = 1L shl 32
 private const val DUAL_PAGE_VALUE_FLAG = 1L shl 33
+private const val ADAPTIVE_READING_FLAG = 1L shl 34
 
-fun readingModeFromViewerFlags(flags: Long): ReadingMode? = when (flags and READING_MODE_MASK) {
+fun readingModeFromViewerFlags(flags: Long): ReadingMode? = if (flags and ADAPTIVE_READING_FLAG != 0L && flags and READING_MODE_MASK == 2L) {
+    ReadingMode.DEFAULT
+} else when (flags and READING_MODE_MASK) {
     0L -> null
     1L -> ReadingMode.LTR
     2L -> ReadingMode.RTL
@@ -53,12 +57,16 @@ fun viewerFlagsWithDualPage(flags: Long, enabled: Boolean): Long {
     return cleared or DUAL_PAGE_SET_FLAG or value
 }
 
+fun viewerFlagsFollowingGlobal(flags: Long): Long =
+    viewerFlagsWithReadingMode(flags, null) and (DUAL_PAGE_SET_FLAG or DUAL_PAGE_VALUE_FLAG).inv()
+
 fun viewerFlagsWithReadingMode(flags: Long, mode: ReadingMode?): Long {
     val readingFlag = when (mode) {
+        ReadingMode.DEFAULT -> 2L or ADAPTIVE_READING_FLAG
         null -> 0L
         ReadingMode.LTR -> 1L
         ReadingMode.RTL -> 2L
         ReadingMode.WEBTOON -> 5L
     }
-    return (flags and READING_MODE_MASK.inv()) or readingFlag
+    return (flags and (READING_MODE_MASK or ADAPTIVE_READING_FLAG).inv()) or readingFlag
 }
