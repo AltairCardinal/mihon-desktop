@@ -1,0 +1,53 @@
+import kotlin.Boolean;
+
+CREATE TABLE sync_remote_guards (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    repository_owner TEXT NOT NULL,
+    repository_name TEXT NOT NULL,
+    repository_branch TEXT NOT NULL,
+    blocked INTEGER AS Boolean NOT NULL DEFAULT 0,
+    latest_head TEXT,
+    PRIMARY KEY (space_id, generation)
+);
+
+CREATE TABLE sync_remote_objects (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    object_id TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, object_id)
+);
+
+CREATE TABLE sync_remote_heads (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    head_sha TEXT NOT NULL,
+    snapshot_fingerprint TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, head_sha)
+);
+
+getGuard:
+SELECT * FROM sync_remote_guards WHERE space_id = ? AND generation = ?;
+
+insertGuard:
+INSERT INTO sync_remote_guards(space_id, generation, repository_owner, repository_name, repository_branch)
+VALUES (?, ?, ?, ?, ?);
+
+blockGuard:
+UPDATE sync_remote_guards SET blocked = 1 WHERE space_id = ? AND generation = ?;
+
+advanceHead:
+UPDATE sync_remote_guards SET latest_head = ? WHERE space_id = ? AND generation = ?;
+
+getObjects:
+SELECT object_id, fingerprint FROM sync_remote_objects WHERE space_id = ? AND generation = ?;
+
+insertObject:
+INSERT OR IGNORE INTO sync_remote_objects(space_id, generation, object_id, fingerprint) VALUES (?, ?, ?, ?);
+
+getHead:
+SELECT snapshot_fingerprint FROM sync_remote_heads WHERE space_id = ? AND generation = ? AND head_sha = ?;
+
+insertHead:
+INSERT OR IGNORE INTO sync_remote_heads(space_id, generation, head_sha, snapshot_fingerprint) VALUES (?, ?, ?, ?);

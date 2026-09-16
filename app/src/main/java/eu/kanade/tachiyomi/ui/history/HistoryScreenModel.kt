@@ -16,6 +16,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -41,6 +42,7 @@ import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaWithChapterCount
+import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -58,6 +60,7 @@ class HistoryScreenModel(
     private val updateManga: UpdateManga = Injekt.get(),
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
     private val sourceManager: SourceManager = Injekt.get(),
+    private val recordReadingProgress: RecordReadingProgress = Injekt.get(),
 ) : StateScreenModel<HistoryScreenModel.State>(State()) {
 
     private val _events: Channel<Event> = Channel(Channel.UNLIMITED)
@@ -95,13 +98,25 @@ class HistoryScreenModel(
     }
 
     suspend fun getNextChapter(): Chapter? {
-        return withIOContext { getNextChapters.await(onlyUnread = false).firstOrNull() }
+        return withIOContext {
+            val latest = getHistory.subscribe("").first().firstOrNull()
+            latest?.let { synchronizedResumeChapter(it.mangaId) }
+                ?: getNextChapters.await(onlyUnread = false).firstOrNull()
+        }
     }
 
     fun getNextChapterForManga(mangaId: Long, chapterId: Long) {
         screenModelScope.launchIO {
-            sendNextChapterEvent(getNextChapters.await(mangaId, chapterId, onlyUnread = false))
+            val synchronized = synchronizedResumeChapter(mangaId)
+            sendNextChapterEvent(
+                synchronized?.let(::listOf) ?: getNextChapters.await(mangaId, chapterId, onlyUnread = false),
+            )
         }
+    }
+
+    private suspend fun synchronizedResumeChapter(mangaId: Long): Chapter? {
+        val position = recordReadingProgress.resumePosition(mangaId) ?: return null
+        return getNextChapters.await(mangaId, onlyUnread = false).firstOrNull { it.id == position.chapterId }
     }
 
     private suspend fun sendNextChapterEvent(chapters: List<Chapter>) {

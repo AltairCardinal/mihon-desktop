@@ -294,9 +294,12 @@ private fun actionJson(
 internal fun Application.testHttpServer(
     updateModel: DesktopUpdateScreenModel? = runCatching { Injekt.get<DesktopUpdateScreenModel>() }.getOrNull(),
     platformAcceptanceController: DesktopPlatformAcceptanceController? = null,
+    syncPanel: mihon.data.sync.runtime.SyncPanel? = null,
+    syncSecureStore: mihon.domain.sync.security.SyncSecureStore? = null,
     onShutdownRequested: () -> Unit = {},
 ) {
     routing {
+        syncTestRoutes(syncPanel, syncSecureStore)
         // Health check
         get("/test/health") {
             call.respondText(

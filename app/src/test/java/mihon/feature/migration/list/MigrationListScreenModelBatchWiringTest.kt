@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.test.ScreenModelTestHost
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -47,8 +48,11 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingleton
 
 class MigrationListScreenModelBatchWiringTest {
+    private val modelHost = ScreenModelTestHost()
+
     @AfterEach
     fun tearDown() {
+        modelHost.close()
         Dispatchers.resetMain()
     }
 
@@ -71,19 +75,21 @@ class MigrationListScreenModelBatchWiringTest {
         every { preferences.migrationPrioritizeByChapters() } returns falsePreference
         every { preferences.migrationDeepSearchMode() } returns falsePreference
         every { preferences.migrationSources() } returns sourceIdsPreference
-        val screenModel = MigrationListScreenModel(
-            mangaIds = emptyList(),
-            extraSearchQuery = null,
-            preferences = preferences,
-            sourceManager = mockk<SourceManager>(relaxed = true),
-            getManga = mockk<GetManga>(relaxed = true),
-            networkToLocalManga = mockk<NetworkToLocalManga>(relaxed = true),
-            updateManga = mockk<UpdateManga>(relaxed = true),
-            syncChaptersWithSource = mockk<SyncChaptersWithSource>(relaxed = true),
-            getChaptersByMangaId = mockk<GetChaptersByMangaId>(relaxed = true),
-            migrateManga = mockk<MigrateMangaUseCase>(relaxed = true),
-            batchMigrationRunner = runner,
-        )
+        val screenModel = modelHost.create {
+            MigrationListScreenModel(
+                mangaIds = emptyList(),
+                extraSearchQuery = null,
+                preferences = preferences,
+                sourceManager = mockk<SourceManager>(relaxed = true),
+                getManga = mockk<GetManga>(relaxed = true),
+                networkToLocalManga = mockk<NetworkToLocalManga>(relaxed = true),
+                updateManga = mockk<UpdateManga>(relaxed = true),
+                syncChaptersWithSource = mockk<SyncChaptersWithSource>(relaxed = true),
+                getChaptersByMangaId = mockk<GetChaptersByMangaId>(relaxed = true),
+                migrateManga = mockk<MigrateMangaUseCase>(relaxed = true),
+                batchMigrationRunner = runner,
+            )
+        }
 
         screenModel.migrateMangas()
         withContext(Dispatchers.Default.limitedParallelism(1)) {
@@ -197,19 +203,21 @@ class MigrationListScreenModelBatchWiringTest {
             insertTrack = mockk<InsertTrack>(relaxed = true),
             coverCache = mockk<CoverCache>(relaxed = true),
         )
-        val screenModel = MigrationListScreenModel(
-            mangaIds = listOf(1, 2),
-            extraSearchQuery = null,
-            preferences = preferences,
-            sourceManager = sourceManager,
-            getManga = getManga,
-            networkToLocalManga = mockk<NetworkToLocalManga>(relaxed = true),
-            updateManga = mockk<UpdateManga>(relaxed = true),
-            syncChaptersWithSource = mockk<SyncChaptersWithSource>(relaxed = true),
-            getChaptersByMangaId = getChapters,
-            migrateManga = migrateManga,
-            batchMigrationRunner = AndroidBatchMigrationRunner(),
-        )
+        val screenModel = modelHost.create {
+            MigrationListScreenModel(
+                mangaIds = listOf(1, 2),
+                extraSearchQuery = null,
+                preferences = preferences,
+                sourceManager = sourceManager,
+                getManga = getManga,
+                networkToLocalManga = mockk<NetworkToLocalManga>(relaxed = true),
+                updateManga = mockk<UpdateManga>(relaxed = true),
+                syncChaptersWithSource = mockk<SyncChaptersWithSource>(relaxed = true),
+                getChaptersByMangaId = getChapters,
+                migrateManga = migrateManga,
+                batchMigrationRunner = AndroidBatchMigrationRunner(),
+            )
+        }
         val items = withContext(Dispatchers.Default.limitedParallelism(1)) {
             withTimeout(5_000) {
                 screenModel.state.mapNotNull { it.items.takeIf { list -> list.size == 2 } }.first()
@@ -261,18 +269,20 @@ class MigrationListScreenModelBatchWiringTest {
         every { preferences.migrationPrioritizeByChapters() } returns falsePreference
         every { preferences.migrationDeepSearchMode() } returns falsePreference
         every { preferences.migrationSources() } returns sourceIdsPreference
-        return MigrationListScreenModel(
-            mangaIds = emptyList(),
-            extraSearchQuery = null,
-            preferences = preferences,
-            sourceManager = mockk<SourceManager>(relaxed = true),
-            getManga = mockk<GetManga>(relaxed = true),
-            networkToLocalManga = mockk<NetworkToLocalManga>(relaxed = true),
-            updateManga = mockk<UpdateManga>(relaxed = true),
-            syncChaptersWithSource = mockk<SyncChaptersWithSource>(relaxed = true),
-            getChaptersByMangaId = mockk<GetChaptersByMangaId>(relaxed = true),
-            migrateManga = mockk<MigrateMangaUseCase>(relaxed = true),
-            batchMigrationRunner = runner,
-        )
+        return modelHost.create {
+            MigrationListScreenModel(
+                mangaIds = emptyList(),
+                extraSearchQuery = null,
+                preferences = preferences,
+                sourceManager = mockk<SourceManager>(relaxed = true),
+                getManga = mockk<GetManga>(relaxed = true),
+                networkToLocalManga = mockk<NetworkToLocalManga>(relaxed = true),
+                updateManga = mockk<UpdateManga>(relaxed = true),
+                syncChaptersWithSource = mockk<SyncChaptersWithSource>(relaxed = true),
+                getChaptersByMangaId = mockk<GetChaptersByMangaId>(relaxed = true),
+                migrateManga = mockk<MigrateMangaUseCase>(relaxed = true),
+                batchMigrationRunner = runner,
+            )
+        }
     }
 }

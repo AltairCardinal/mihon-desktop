@@ -3,6 +3,15 @@ package tachiyomi.data.creator
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
+import mihon.data.sync.journal.appendSyncOperation
+import mihon.domain.sync.SyncCategory
+import mihon.domain.sync.SyncEffect
+import mihon.domain.sync.SyncEffectKind
+import mihon.domain.sync.SyncField
+import mihon.domain.sync.SyncMutationContext
+import mihon.domain.sync.SyncObjectKey
+import mihon.domain.sync.SyncObjectType
+import mihon.domain.sync.SyncOrigin
 import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.creator.model.ArchiveAppendOutcome
@@ -1140,8 +1149,9 @@ class CreatorRepositoryImpl(
 
     override suspend fun followCreator(
         creatorId: Long,
-        sourceIds: List<Long>,
-        languageTags: List<String>,
+        sourceIds: List<Long>?,
+        languageTags: List<String>?,
+        syncContext: SyncMutationContext,
     ): CreatorWatch {
         bootstrap.awaitReady()
         val now = clock()
@@ -1153,8 +1163,8 @@ class CreatorRepositoryImpl(
                 lastModifiedAt = now,
             )
             val watchId = author_archiveQueries.getArchiveWatchIdByCreator(creatorId).executeAsOne()
-            val requestedSourceIds = sourceIds.distinct()
             val existingSourceIds = author_archiveQueries.getArchiveWatchSourceIds(watchId).executeAsList()
+            val requestedSourceIds = sourceIds?.distinct() ?: existingSourceIds
             (existingSourceIds - requestedSourceIds.toSet()).forEach { sourceId ->
                 author_archiveQueries.deleteArchiveWatchSource(watchId, sourceId)
             }
@@ -1172,27 +1182,57 @@ class CreatorRepositoryImpl(
                 lastModifiedAt = now,
             )
             val policyId = author_archiveQueries.getArchiveWatchPolicyId(watchId).executeAsOne()
-            val requestedLanguageTags = languageTags
-                .map(CreatorArchiveLanguageTag::normalize)
-                .filter { it != "und" }
-                .distinct()
             val existingLanguageTags = author_archiveQueries.getArchiveWatchLanguages(policyId).executeAsList()
+            val requestedLanguageTags = languageTags
+                ?.map(CreatorArchiveLanguageTag::normalize)
+                ?.filter { it != "und" }
+                ?.distinct()
+                ?: existingLanguageTags
             (existingLanguageTags - requestedLanguageTags.toSet()).forEach { languageTag ->
                 author_archiveQueries.deleteArchiveWatchLanguage(policyId, languageTag)
             }
             requestedLanguageTags.forEach { languageTag ->
                 author_archiveQueries.insertArchiveWatchLanguage(policyId, languageTag)
             }
-            author_archiveQueries.getArchiveFollowedCreators(::mapCreatorWatch)
+            val watch = author_archiveQueries.getArchiveFollowedCreators(::mapCreatorWatch)
                 .executeAsList()
                 .first { it.creatorId == creatorId }
+            appendFollowOperation(creatorId, followed = true, syncContext, now)
+            watch
         }
     }
 
-    override suspend fun unfollowCreator(creatorId: Long) {
+    override suspend fun unfollowCreator(creatorId: Long, syncContext: SyncMutationContext) {
         bootstrap.awaitReady()
         val now = clock()
-        handler.await { author_archiveQueries.unfollowArchiveCreator(now, creatorId) }
+        handler.await(inTransaction = true) {
+            author_archiveQueries.unfollowArchiveCreator(now, creatorId)
+            appendFollowOperation(creatorId, followed = false, syncContext, now)
+        }
+    }
+
+    /** The portable identity is read alongside the watch mutation; local scan policy stays on this device. */
+    private fun Database.appendFollowOperation(
+        creatorId: Long,
+        followed: Boolean,
+        context: SyncMutationContext,
+        now: Long,
+    ) {
+        if (!context.uploadAllowed || context.origin != SyncOrigin.USER) return
+        val identity = author_archiveQueries.getArchiveCreatorIdentityRecord(creatorId).executeAsOne()
+        appendSyncOperation(
+            context = context,
+            category = SyncCategory.FOLLOW,
+            effects = listOf(
+                SyncEffect(
+                    effectId = "following",
+                    objectKey = SyncObjectKey(SyncObjectType.AUTHOR, portableKey = identity.portable_key),
+                    field = SyncField.FOLLOWING,
+                    kind = if (followed) SyncEffectKind.ADD else SyncEffectKind.REMOVE,
+                ),
+            ),
+            occurredAt = now,
+        )
     }
 
     override suspend fun getFollowedCreators(): List<CreatorWatch> {

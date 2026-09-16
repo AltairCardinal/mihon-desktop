@@ -24,6 +24,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import mihon.data.sync.journal.NoopBackupRestoreSync
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
@@ -64,6 +65,7 @@ class BackupRestorerBehaviorTest {
             extensionRepoRestorer = repoRestorer,
             mangaRestorer = mangaRestorer,
             authorArchiveBackupContributor = mockk(relaxed = true),
+            backupRestoreSync = NoopBackupRestoreSync,
         )
         restoreJob = launch(start = CoroutineStart.LAZY) {
             restorer.restore(
@@ -114,6 +116,7 @@ class BackupRestorerBehaviorTest {
             extensionRepoRestorer = mockk<ExtensionRepoRestorer>(relaxed = true),
             mangaRestorer = mangaRestorer,
             authorArchiveBackupContributor = authorArchiveBackupContributor,
+            backupRestoreSync = NoopBackupRestoreSync,
         )
 
         restorer.restore(
@@ -179,6 +182,7 @@ class BackupRestorerBehaviorTest {
             extensionRepoRestorer = mockk(relaxed = true),
             mangaRestorer = mockk(relaxed = true),
             authorArchiveBackupContributor = contributor,
+            backupRestoreSync = NoopBackupRestoreSync,
         ).restore(
             uri,
             RestoreOptions(

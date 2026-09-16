@@ -1,10 +1,10 @@
 package mihon.desktop.ui.library
 
 import mihon.desktop.domain.SortMode
-import tachiyomi.domain.category.model.Category
-import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.core.common.preference.TriState
+import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.interactor.LibraryFilter
+import tachiyomi.domain.library.model.LibraryManga
 
 /**
  * All state for [LibraryRootScreen], owned by [LibraryScreenModel].
@@ -13,6 +13,7 @@ import tachiyomi.domain.library.interactor.LibraryFilter
 data class LibraryState(
     // ── Loaded data ──────────────────────────────────────────────────────────
     val allItems: List<LibraryManga> = emptyList(),
+    val syncedResumeMangaIds: Set<Long> = emptySet(),
     val allCategories: List<Category> = emptyList(),
     val categories: List<Category> = emptyList(),
 

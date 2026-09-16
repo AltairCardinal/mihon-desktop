@@ -1,5 +1,6 @@
 package eu.kanade.domain
 
+import android.app.Application
 import eu.kanade.domain.chapter.interactor.GetAvailableScanlators
 import eu.kanade.domain.chapter.interactor.SetReadStatus
 import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
@@ -25,7 +26,13 @@ import eu.kanade.domain.track.interactor.AddTracks
 import eu.kanade.domain.track.interactor.RefreshTracks
 import eu.kanade.domain.track.interactor.SyncChapterProgressWithTrack
 import eu.kanade.domain.track.interactor.TrackChapter
+import eu.kanade.tachiyomi.data.sync.AndroidSyncScheduler
+import eu.kanade.tachiyomi.data.sync.AndroidSyncSecureStore
+import eu.kanade.tachiyomi.network.NetworkHelper
 import mihon.data.repository.ExtensionRepoRepositoryImpl
+import mihon.data.sync.journal.BackupRestoreSync
+import mihon.data.sync.journal.SyncBackupRestorer
+import mihon.data.sync.runtime.SyncRuntime
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
 import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
 import mihon.domain.extensionrepo.interactor.DeleteExtensionRepo
@@ -36,6 +43,7 @@ import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
 import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
 import mihon.domain.extensionrepo.service.ExtensionRepoService
 import mihon.domain.migration.usecases.MigrateMangaUseCase
+import mihon.domain.sync.security.SyncSecureStore
 import mihon.domain.upcoming.interactor.GetUpcomingManga
 import tachiyomi.data.category.CategoryRepositoryImpl
 import tachiyomi.data.chapter.ChapterRepositoryImpl
@@ -111,6 +119,7 @@ import tachiyomi.domain.source.interactor.GetSourcesWithNonLibraryManga
 import tachiyomi.domain.source.repository.AndroidSourceRepository
 import tachiyomi.domain.source.repository.SourceRepository
 import tachiyomi.domain.source.repository.StubSourceRepository
+import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import tachiyomi.domain.track.interactor.DeleteTrack
 import tachiyomi.domain.track.interactor.GetTracks
@@ -128,6 +137,21 @@ import uy.kohesive.injekt.api.get
 class DomainModule : InjektModule {
 
     override fun InjektRegistrar.registerInjectables() {
+        addSingletonFactory<SyncSecureStore> { AndroidSyncSecureStore(get<Application>()) }
+        addSingletonFactory {
+            val sources = get<SourceManager>()
+            SyncRuntime(
+                handler = get(),
+                bootstrap = get(),
+                creatorIndexWriter = get(),
+                creatorRepository = get(),
+                sourceAvailable = { sources.get(it) != null },
+                secureStore = get(),
+                preferenceStore = get(),
+                productionClient = get<NetworkHelper>().client,
+            )
+        }
+        addSingletonFactory { AndroidSyncScheduler(get<Application>(), get()) }
         addSingletonFactory<CategoryRepository> { CategoryRepositoryImpl(get()) }
         addFactory { GetCategories(get()) }
         addFactory { ResetCategoryFlags(get(), get()) }
@@ -141,6 +165,7 @@ class DomainModule : InjektModule {
 
         addSingletonFactory { CreatorArchiveLegacyBridge(get()) }
         addSingletonFactory<CreatorArchiveBootstrap> { CreatorArchiveLegacyBootstrap(get()) }
+        addSingletonFactory<BackupRestoreSync> { SyncBackupRestorer(get(), get()) }
         addSingletonFactory { CreatorRepositoryImpl(handler = get(), bootstrap = get()) }
         addSingletonFactory<CreatorRepository> { get<CreatorRepositoryImpl>() }
         addSingletonFactory<CreatorArchiveRepository> { get<CreatorRepositoryImpl>() }

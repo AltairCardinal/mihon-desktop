@@ -1,28 +1,28 @@
 package mihon.desktop.library
 
+import mihon.desktop.domain.DesktopCoverUpdater
+import mihon.desktop.domain.DesktopCustomCoverStore
 import mihon.desktop.domain.GetAvailableScanlators
 import mihon.desktop.domain.GetExcludedScanlators
 import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.domain.SetExcludedScanlators
-import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.download.DesktopDownloadIdentityResolver
-import mihon.desktop.ui.library.MangaDetailScreenModel
-import mihon.desktop.ui.library.MangaCoverAdapter
+import mihon.desktop.download.DesktopDownloadManager
 import mihon.desktop.ui.library.DesktopCoverFilePicker
-import mihon.desktop.domain.DesktopCoverUpdater
-import mihon.desktop.domain.DesktopCustomCoverStore
+import mihon.desktop.ui.library.MangaCoverAdapter
+import mihon.desktop.ui.library.MangaDetailScreenModel
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
-import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
+import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.creator.interactor.LinkMangaCreator
 import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
 import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
-import tachiyomi.domain.manga.interactor.UpdateManga
 import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
-import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.domain.manga.interactor.UpdateManga
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -34,6 +34,7 @@ object MangaDetailScreenModelFactory {
         val coverStore = Injekt.get<DesktopCustomCoverStore>()
         val coverUpdater = DesktopCoverUpdater(coverStore, Injekt.get())
         return MangaDetailScreenModel(
+            readingProgress = Injekt.get<tachiyomi.domain.reader.interactor.RecordReadingProgress>(),
             mangaId = mangaId,
             getMangaWithChapters = Injekt.get<GetMangaWithChapters>(),
             sourceManager = Injekt.get<SourceManager>(),

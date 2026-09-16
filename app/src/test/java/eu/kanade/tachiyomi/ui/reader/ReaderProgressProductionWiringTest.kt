@@ -23,6 +23,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import mihon.domain.sync.SyncMutationContext
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -150,6 +151,7 @@ class ReaderProgressProductionWiringTest {
             assertEquals(3, event.totalPages)
             assertFalse(event.isRead)
             assertFalse(event.recordHistory)
+            assertEquals(SyncMutationContext.User, event.syncContext)
             assertTrue(event.idempotencyKey.contains(":2:1:"))
             assertEquals(1, current.chapter.last_page_read)
 

@@ -20,6 +20,7 @@ import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.spyk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
@@ -40,6 +41,7 @@ import mihon.desktop.ui.library.MangaDetailScreen
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.data.Database
@@ -73,6 +75,9 @@ class GlobalSearchResultProductionWiringTest {
             val searchesB = mutableListOf<String>()
             val listedA = mutableListOf<SManga>()
             val details = DetailProbe()
+            val refreshInputs = mutableListOf<SManga>()
+            val saver = spyk(fixture.saver)
+            every { saver.refreshFromSource(any(), capture(refreshInputs)) } answers { callOriginal() }
             val sourceA = source(9, "A", searchesA, "/shared", listedA, details, resultCount = 1)
             val sourceB = source(10, "B", searchesB, "/shared", resultCount = 1)
             val preferences = DesktopAppPreferences(DesktopPreferenceStore(fixture.preferenceRoot)).apply {
@@ -83,7 +88,7 @@ class GlobalSearchResultProductionWiringTest {
                 every { sourceManager } returns FakeDesktopSourceManager(listOf(sourceA, sourceB))
                 every { appPreferences } returns preferences
                 every { sourceMangaSearchService } returns SourceMangaSearchService()
-                every { saveSourceMangaForDetails } returns fixture.saver
+                every { saveSourceMangaForDetails } returns saver
                 every { getManga } returns fixture.getManga
                 every { sourceLoginSessionFactory } returns mockk(relaxed = true)
                 every { creatorDiscoverySourcePort } returns null
@@ -158,6 +163,7 @@ class GlobalSearchResultProductionWiringTest {
                 withTimeout(ASYNC_TIMEOUT_MS) { details.started.await() }
                 assertEquals(1, details.inputs.size)
                 val updateInput = details.inputs.single()
+                assertSame(listed, refreshInputs.single())
                 assertEquals(listOf("/shared", "DB updated", "updated-cover"), listOf(updateInput.url, updateInput.title, updateInput.thumbnail_url))
                 assertEquals(listOf("/shared", "A listed 0", "A-cover-0"), listOf(listed.url, listed.title, listed.thumbnail_url))
                 details.release.complete(Unit)

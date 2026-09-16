@@ -1,6 +1,7 @@
 package tachiyomi.domain.creator.repository
 
 import kotlinx.coroutines.flow.Flow
+import mihon.domain.sync.SyncMutationContext
 import tachiyomi.domain.creator.model.CanonicalWork
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.CreatorRole
@@ -38,13 +39,18 @@ interface CreatorRepository {
         evidence: String,
     )
 
+    /** Null source/language arguments preserve local preferences; explicit empty lists clear them. */
     suspend fun followCreator(
         creatorId: Long,
-        sourceIds: List<Long> = emptyList(),
-        languageTags: List<String> = emptyList(),
+        sourceIds: List<Long>? = null,
+        languageTags: List<String>? = null,
+        syncContext: SyncMutationContext = SyncMutationContext.Metadata,
     ): CreatorWatch
 
-    suspend fun unfollowCreator(creatorId: Long)
+    suspend fun unfollowCreator(
+        creatorId: Long,
+        syncContext: SyncMutationContext = SyncMutationContext.Metadata,
+    )
 
     suspend fun getFollowedCreators(): List<CreatorWatch>
 

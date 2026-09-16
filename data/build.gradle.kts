@@ -32,12 +32,15 @@ kotlin {
         commonTest {
             dependencies {
                 implementation(libs.bundles.test)
+                implementation(kotlinx.coroutines.test)
+                implementation(libs.okhttp.mockwebserver)
             }
         }
         androidMain {
             dependencies {
                 api(libs.sqldelight.android.driver)
                 api(libs.sqldelight.android.paging)
+                implementation(libs.tink.android)
             }
         }
         val androidUnitTest by getting {
@@ -51,6 +54,7 @@ kotlin {
                 api(libs.sqldelight.jvm.driver)
                 implementation(project.dependencies.platform(kotlinx.coroutines.bom))
                 implementation(kotlinx.coroutines.core)
+                implementation(libs.tink.core)
             }
         }
         jvmTest {

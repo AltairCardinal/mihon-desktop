@@ -13,6 +13,12 @@ plugins {
     alias(libs.plugins.test.retry)
 }
 
+aboutLibraries {
+    collect {
+        configPath.set(layout.projectDirectory.dir("license-metadata"))
+    }
+}
+
 val aex01AndroidTestAssets = layout.buildDirectory.dir("generated/aex01AndroidTestAssets")
 val syncAex01AndroidTestAssets = tasks.register<Sync>("syncAex01AndroidTestAssets") {
     from(rootProject.file("data/src/commonTest/resources/backup")) {
@@ -47,6 +53,7 @@ android {
     testBuildType = providers.gradleProperty("mihon.testBuildType").orElse("debug").get().also {
         require(it == "debug" || it == "release") { "mihon.testBuildType must be debug or release" }
     }
+    testOptions.unitTests.isIncludeAndroidResources = true
 
     defaultConfig {
         applicationId = "app.mihon"
@@ -232,6 +239,7 @@ dependencies {
     implementation(projects.domain)
     implementation(projects.presentationCore)
     implementation(projects.presentationTheme)
+    implementation(projects.presentationSync)
     implementation(projects.presentationWidget)
     implementation(projects.telemetry)
 
@@ -340,6 +348,7 @@ dependencies {
     testImplementation("androidx.work:work-testing:2.11.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation(androidCompose.ui.test.junit4)
     testRuntimeOnly(libs.junit.platform.launcher)
     testRuntimeOnly("org.junit.vintage:junit-vintage-engine:6.0.3")
     testRuntimeOnly("org.conscrypt:conscrypt-openjdk-uber:2.5.2")

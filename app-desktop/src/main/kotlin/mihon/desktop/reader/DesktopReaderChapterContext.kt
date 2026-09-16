@@ -17,6 +17,7 @@ data class DesktopReaderChapterContext(
     val isDownloaded: Boolean = false,
     val sourceDisplayName: String = sourceId.toString(),
     val disallowNonAsciiFilenames: Boolean = false,
+    val resumeSnapshot: tachiyomi.domain.reader.model.ReadingSyncSnapshot? = null,
 )
 
 /** Exposes the resolved content route to the mounted reader without leaking I/O adapters into UI. */

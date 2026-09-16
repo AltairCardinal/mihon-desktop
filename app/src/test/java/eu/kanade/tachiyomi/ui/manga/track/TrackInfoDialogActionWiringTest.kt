@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.manga.track
 
 import eu.kanade.tachiyomi.data.track.Tracker
+import eu.kanade.tachiyomi.test.ScreenModelTestHost
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.collections.immutable.persistentListOf
@@ -29,6 +30,8 @@ import java.util.Collections
 import java.util.TimeZone
 
 class TrackInfoDialogActionWiringTest {
+    private val modelHost = ScreenModelTestHost()
+
     @Test
     fun `production actions emit exact requests and report only failures`() = runTest {
         val requests = mutableListOf<TrackerProviderRequest>()
@@ -99,25 +102,36 @@ class TrackInfoDialogActionWiringTest {
                 every { indexToScore(1) } returns 9.0
             }
 
-            TrackInfoDialogHomeScreen.Model(2, 1, mockk<GetTracks>(), actions, startObservers = false)
-                .togglePrivate(TrackItem(track, tracker))
-            TrackStatusSelectorScreen.Model(track, tracker, actions).apply {
+            modelHost.create {
+                TrackInfoDialogHomeScreen.Model(2, 1, mockk<GetTracks>(), actions, startObservers = false)
+            }.togglePrivate(TrackItem(track, tracker))
+            modelHost.create { TrackStatusSelectorScreen.Model(track, tracker, actions) }.apply {
                 setSelection(2)
                 setStatus()
             }
-            TrackChapterSelectorScreen.Model(track, tracker, actions).apply {
+            modelHost.create { TrackChapterSelectorScreen.Model(track, tracker, actions) }.apply {
                 setSelection(3)
                 setChapter()
             }
-            TrackScoreSelectorScreen.Model(track, tracker, actions).apply {
+            modelHost.create { TrackScoreSelectorScreen.Model(track, tracker, actions) }.apply {
                 setSelection("9")
                 setScore()
             }
-            TrackDateSelectorScreen.Model(track, tracker, start = true, actions = actions).setDate(100_000_000)
-            TrackDateSelectorScreen.Model(track, tracker, start = false, actions = actions).setDate(200_000_000)
-            TrackDateRemoverScreen.Model(track, tracker, start = true, actions = actions).removeDate()
-            TrackDateRemoverScreen.Model(track, tracker, start = false, actions = actions).removeDate()
-            TrackerRemoveScreen.Model(2, track, tracker, mockk<DeleteTrack>(), actions).deleteMangaFromService()
+            modelHost.create {
+                TrackDateSelectorScreen.Model(track, tracker, start = true, actions = actions)
+            }.setDate(100_000_000)
+            modelHost.create {
+                TrackDateSelectorScreen.Model(track, tracker, start = false, actions = actions)
+            }.setDate(200_000_000)
+            modelHost.create {
+                TrackDateRemoverScreen.Model(track, tracker, start = true, actions = actions)
+            }.removeDate()
+            modelHost.create {
+                TrackDateRemoverScreen.Model(track, tracker, start = false, actions = actions)
+            }.removeDate()
+            modelHost.create {
+                TrackerRemoveScreen.Model(2, track, tracker, mockk<DeleteTrack>(), actions)
+            }.deleteMangaFromService()
 
             advanceUntilIdle()
             withContext(Dispatchers.Default) {
@@ -141,6 +155,7 @@ class TrackInfoDialogActionWiringTest {
             assertEquals(listOf(error), failures)
         } finally {
             TimeZone.setDefault(previousTimeZone)
+            modelHost.close()
             Dispatchers.resetMain()
         }
     }

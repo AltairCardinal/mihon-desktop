@@ -1,38 +1,38 @@
 package mihon.desktop.library
 
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import mihon.desktop.domain.DesktopCustomCoverStore
+import mihon.desktop.domain.LibraryUpdateChecker
+import mihon.desktop.domain.LibraryUpdateScheduler
+import mihon.desktop.download.DesktopDownloadIdentityResolver
+import mihon.desktop.download.DesktopDownloadManager
+import mihon.desktop.download.DesktopDownloadPreferences
+import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.settings.LibraryCategoryPrefs
+import mihon.desktop.ui.library.LibraryScreenModel
 import tachiyomi.domain.category.interactor.CreateCategoryWithName
 import tachiyomi.domain.category.interactor.DeleteCategory
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.RenameCategory
 import tachiyomi.domain.category.interactor.ReorderCategory
-import mihon.desktop.domain.LibraryUpdateChecker
-import mihon.desktop.domain.LibraryUpdateScheduler
-import mihon.desktop.download.DesktopDownloadManager
-import mihon.desktop.download.DesktopDownloadPreferences
-import mihon.desktop.download.DesktopDownloadProvider
-import mihon.desktop.download.DesktopDownloadIdentityResolver
-import mihon.desktop.settings.LibraryCategoryPrefs
-import mihon.desktop.domain.DesktopCustomCoverStore
-import mihon.desktop.ui.library.LibraryScreenModel
-import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.interactor.SetDisplayMode
+import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.interactor.SetSortModeForCategory
 import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.download.service.DownloadPreferences
-import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.history.interactor.GetNextChapters
+import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.UpdateManga
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.interactor.GetTracksPerManga
 import tachiyomi.domain.track.service.TrackerSessionProvider
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
 
 object LibraryScreenModelFactory {
     fun create(): LibraryScreenModel {
@@ -42,6 +42,7 @@ object LibraryScreenModelFactory {
         val getChaptersByMangaId = Injekt.get<GetChaptersByMangaId>()
         val updateScheduler = Injekt.get<LibraryUpdateScheduler>()
         return LibraryScreenModel(
+            readingProgress = Injekt.get<tachiyomi.domain.reader.interactor.RecordReadingProgress>(),
             getLibraryManga = Injekt.get<GetLibraryManga>(),
             getCategories = Injekt.get<GetCategories>(),
             createCategory = Injekt.get<CreateCategoryWithName>(),
@@ -77,7 +78,9 @@ object LibraryScreenModelFactory {
             cancelBackgroundUpdate = updateScheduler::cancelUpdate,
             backgroundUpdateStatus = { updateScheduler.taskSnapshot()?.status },
             backgroundUpdateJob = updateScheduler::currentUpdateJob,
-            libraryPreferences = runCatching { Injekt.get<tachiyomi.domain.library.service.LibraryPreferences>() }.getOrNull(),
+            libraryPreferences = runCatching {
+                Injekt.get<tachiyomi.domain.library.service.LibraryPreferences>()
+            }.getOrNull(),
             setDisplayModeInteractor = runCatching { Injekt.get<SetDisplayMode>() }.getOrNull(),
             setSortModeForCategory = runCatching { Injekt.get<SetSortModeForCategory>() }.getOrNull(),
             downloadedChapterCount = if (downloadProvider != null && downloadIdentityResolver != null) {
@@ -101,11 +104,13 @@ object LibraryScreenModelFactory {
                             "Unable to retire downloads for manga ${item.id}"
                         }
                     }
-                    check(downloadProvider.deleteMangaDownloads(
-                        item.manga.source,
-                        item.manga.title,
-                        downloadIdentityResolver.resolve(item.manga),
-                    )) { "Unable to delete downloads for manga ${item.id}" }
+                    check(
+                        downloadProvider.deleteMangaDownloads(
+                            item.manga.source,
+                            item.manga.title,
+                            downloadIdentityResolver.resolve(item.manga),
+                        ),
+                    ) { "Unable to delete downloads for manga ${item.id}" }
                 }
             } else {
                 null
@@ -121,10 +126,12 @@ object LibraryScreenModelFactory {
                             "Unable to retire download ${chapter.id}"
                         }
                     }
-                    check(downloadProvider.deleteChapterDownload(
-                        item.manga.source,
-                        downloadIdentityResolver.resolve(item.manga, chapter),
-                    )) { "Unable to delete download ${chapter.id}" }
+                    check(
+                        downloadProvider.deleteChapterDownload(
+                            item.manga.source,
+                            downloadIdentityResolver.resolve(item.manga, chapter),
+                        ),
+                    ) { "Unable to delete download ${chapter.id}" }
                 }
             } else {
                 null

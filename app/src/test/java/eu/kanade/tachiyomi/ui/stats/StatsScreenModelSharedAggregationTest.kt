@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.stats
 import eu.kanade.presentation.more.stats.StatsScreenState
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.track.TrackerManager
+import eu.kanade.tachiyomi.test.ScreenModelTestHost
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -29,6 +30,7 @@ import tachiyomi.domain.track.interactor.GetTracks
 import kotlin.time.Duration.Companion.seconds
 
 class StatsScreenModelSharedAggregationTest {
+    private val modelHost = ScreenModelTestHost()
 
     @Test
     fun `current Android stats screen consumes shared title and chapter aggregation`() = runTest {
@@ -50,19 +52,21 @@ class StatsScreenModelSharedAggregationTest {
             val trackerManager = mockk<TrackerManager>()
             every { trackerManager.loggedInTrackers() } returns emptyList()
             val aggregate = spyk(AggregateLibraryStats())
-            val model = StatsScreenModel(
-                downloadManager = mockk<DownloadManager> {
-                    every { getDownloadCount() } returns 5
-                },
-                getLibraryManga = getLibraryManga,
-                getTotalReadDuration = mockk<GetTotalReadDuration> {
-                    coEvery { await() } returns 60
-                },
-                getTracks = getTracks,
-                preferences = preferences,
-                trackerManager = trackerManager,
-                aggregateLibraryStats = aggregate,
-            )
+            val model = modelHost.create {
+                StatsScreenModel(
+                    downloadManager = mockk<DownloadManager> {
+                        every { getDownloadCount() } returns 5
+                    },
+                    getLibraryManga = getLibraryManga,
+                    getTotalReadDuration = mockk<GetTotalReadDuration> {
+                        coEvery { await() } returns 60
+                    },
+                    getTracks = getTracks,
+                    preferences = preferences,
+                    trackerManager = trackerManager,
+                    aggregateLibraryStats = aggregate,
+                )
+            }
 
             val state = assertInstanceOf(
                 StatsScreenState.Success::class.java,
@@ -76,6 +80,7 @@ class StatsScreenModelSharedAggregationTest {
             assertEquals(2, state.chapters.readChapterCount)
             verify(exactly = 1) { aggregate(library) }
         } finally {
+            modelHost.close()
             Dispatchers.resetMain()
         }
     }

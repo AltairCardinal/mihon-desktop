@@ -1,6 +1,9 @@
 package mihon.desktop.ui.library
 
 import eu.kanade.tachiyomi.source.model.SManga
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.mockk
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.domain.fakes.FakeCategoryRepository
@@ -9,43 +12,40 @@ import mihon.desktop.domain.fakes.FakeMangaRepository
 import mihon.desktop.download.DownloadItem
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.viewerFlagsWithReadingMode
+import mihon.domain.error.AppError
+import mihon.domain.task.TaskState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.category.repository.CategoryRepository
-import tachiyomi.domain.chapter.interactor.UpdateChapter
+import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
 import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
+import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.creator.interactor.LinkMangaCreator
+import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.model.Creator
-import tachiyomi.domain.creator.model.CreatorRole
-import tachiyomi.domain.creator.repository.CreatorRepository
-import tachiyomi.domain.manga.model.MangaUpdate
-import tachiyomi.domain.manga.model.Manga
-import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
-import tachiyomi.domain.manga.interactor.UpdateManga
-import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
-import tachiyomi.domain.library.service.LibraryPreferences
-import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
-import mihon.domain.task.TaskState
-import mihon.domain.error.AppError
-import io.mockk.coEvery
-import io.mockk.coVerify
-import io.mockk.mockk
 import tachiyomi.domain.creator.model.CreatorIdentityOption
 import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.creator.model.CreatorPortableKey
+import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
-import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
+import tachiyomi.domain.creator.repository.CreatorRepository
+import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
+import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
+import tachiyomi.domain.manga.interactor.UpdateManga
+import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaUpdate
 
 /**
  * Stage 25.1 — MangaDetailScreenModel tests.
@@ -128,6 +128,7 @@ class MangaDetailScreenModelTest {
 
         coVerify(exactly = 2) { repository.createAndBindMangaCreatorIdentity(manga, mention) }
     }
+
     @Test
     fun `categories and manga assignments are read through category use case`() = runTest {
         val repository = FakeCategoryRepository()
@@ -164,7 +165,10 @@ class MangaDetailScreenModelTest {
         var updates = 0
         val model = MangaDetailScreenModel(
             mangaId = 1L,
-            coverAdapter = MangaCoverAdapter(CoverFilePicker { null }) { _, _ -> updates++; TaskState.Success(Unit) },
+            coverAdapter = MangaCoverAdapter(CoverFilePicker { null }) { _, _ ->
+                updates++
+                TaskState.Success(Unit)
+            },
             deleteCover = { TaskState.Success(Unit) },
             resolveCoverModel = { _, fallback -> fallback },
         )
@@ -243,7 +247,7 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
-    fun `selected unread resets progress skips unchanged and exposes write failure`() = runTest {
+    fun `selected unread preserves same value user intent and exposes write failure`() = runTest {
         val backing = FakeChapterRepository()
         val chapters = listOf(
             createFakeChapter(1L).copy(read = true, lastPageRead = 6L),
@@ -271,9 +275,10 @@ class MangaDetailScreenModelTest {
 
         model.markSelectedRead(chapters, read = false)
 
-        assertEquals(listOf(1L), backing.updates.map { it.id })
-        assertEquals(0L, backing.updates.single().lastPageRead)
-        assertEquals("1 succeeded, 1 failed", model.state.value.batchActionMessage)
+        assertEquals(listOf(1L, 2L), backing.updates.map { it.id })
+        assertTrue(backing.updates.all { it.lastPageRead == 0L })
+        assertTrue(backing.updates.all { it.syncContext == mihon.domain.sync.SyncMutationContext.User })
+        assertEquals("2 succeeded, 1 failed", model.state.value.batchActionMessage)
     }
 
     @Test
@@ -704,7 +709,9 @@ class MangaDetailScreenModelTest {
     fun `chapter sort and display persist through chapter flags use case`() = runTest {
         val genericRepository = FakeMangaRepository()
         val flagsRepository = FakeMangaRepository()
-        val manga = createFakeManga(id = 1L).copy(chapterFlags = chapterSortFlags(ChapterSortMode.BY_SOURCE_ORDER, false))
+        val manga = createFakeManga(
+            id = 1L,
+        ).copy(chapterFlags = chapterSortFlags(ChapterSortMode.BY_SOURCE_ORDER, false))
         genericRepository.seed(manga)
         flagsRepository.seed(manga)
         val model = MangaDetailScreenModel(
@@ -955,14 +962,20 @@ private class FakeCreatorRepository : CreatorRepository {
     ) = Unit
     override suspend fun followCreator(
         creatorId: Long,
-        sourceIds: List<Long>,
-        languageTags: List<String>,
+        sourceIds: List<Long>?,
+        languageTags: List<String>?,
+        syncContext: mihon.domain.sync.SyncMutationContext,
     ) = error("unused")
-    override suspend fun unfollowCreator(creatorId: Long) = Unit
+    override suspend fun unfollowCreator(creatorId: Long, syncContext: mihon.domain.sync.SyncMutationContext) = Unit
     override suspend fun getFollowedCreators() = emptyList<tachiyomi.domain.creator.model.CreatorWatch>()
     override fun getFollowedCreatorsAsFlow() =
         kotlinx.coroutines.flow.flowOf(emptyList<tachiyomi.domain.creator.model.CreatorWatch>())
-    override suspend fun updateWatchCheckResult(creatorId: Long, checkedAt: Long, success: Boolean, error: String?) = Unit
+    override suspend fun updateWatchCheckResult(
+        creatorId: Long,
+        checkedAt: Long,
+        success: Boolean,
+        error: String?,
+    ) = Unit
     override suspend fun upsertDiscoveryCandidate(
         source: Long,
         url: String,

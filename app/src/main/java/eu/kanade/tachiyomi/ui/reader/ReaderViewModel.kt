@@ -44,8 +44,9 @@ import eu.kanade.tachiyomi.util.lang.byteSize
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.storage.cacheImageDir
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -78,6 +79,7 @@ import mihon.domain.reader.session.ReaderChapterWindowIntent
 import mihon.domain.reader.session.ReaderChapterWindowReducer
 import mihon.domain.reader.session.ReaderChapterWindowSnapshot
 import mihon.domain.reader.session.ReaderPageId
+import mihon.domain.sync.SyncMutationContext
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
@@ -96,8 +98,10 @@ import tachiyomi.domain.history.model.HistoryUpdate
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.reader.interactor.ReadingProgressSession
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.reader.model.ReadingProgressEvent
+import tachiyomi.domain.reader.model.ReadingResumePosition
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
@@ -172,6 +176,14 @@ class ReaderViewModel @JvmOverloads constructor(
     private val chapterWindowOwner = ReaderChapterWindowOwner()
     private val readerProgressSessionId = UUID.randomUUID().toString()
     private val readerProgressSettlementArbiter = ReaderViewportSettlementArbiter()
+    private var readingActivation: ReadingActivation? = null
+    private var pendingResumePosition: ReadingResumePosition? = null
+
+    private data class ReadingActivation(
+        val chapter: ReaderChapter,
+        val windowSequence: Long,
+        val session: ReadingProgressSession?,
+    )
 
     /**
      * The time the chapter was started reading
@@ -302,7 +314,29 @@ class ReaderViewModel @JvmOverloads constructor(
                 if (manga != null) {
                     sourceManager.isInitialized.first { it }
                     mutableState.update { it.copy(manga = manga) }
-                    if (chapterId == -1L) chapterId = initialChapterId
+                    if (chapterId == -1L) {
+                        val resume = if (savedState.get<Boolean>("resume") == true) {
+                            recordReadingProgress.resumePosition(mangaId)?.takeIf { position ->
+                                getChaptersByMangaId.await(mangaId, applyScanlatorFilter = true).any { chapter ->
+                                    chapter.id == position.chapterId && !isChapterFiltered(manga, chapter) &&
+                                        (
+                                            !basePreferences.downloadedOnly().get() || manga.isLocal() ||
+                                                downloadManager.isChapterDownloaded(
+                                                    chapter.name,
+                                                    chapter.scanlator,
+                                                    chapter.url,
+                                                    manga.title,
+                                                    manga.source,
+                                                )
+                                            )
+                                }
+                            }
+                        } else {
+                            null
+                        }
+                        pendingResumePosition = resume
+                        chapterId = resume?.chapterId ?: initialChapterId
+                    }
 
                     val source = sourceManager.getOrStub(manga.source)
                     loader = chapterLoaderFactory(manga, source)
@@ -337,7 +371,7 @@ class ReaderViewModel @JvmOverloads constructor(
         chapter: ReaderChapter,
         activationIntent: ReaderChapterWindowIntent.OpenAdjacent? = null,
         canActivate: () -> Boolean = { true },
-    ): ViewerChapters {
+    ): ReadingActivation? {
         if (activationIntent == null) {
             loader.loadChapter(chapter)
         } else {
@@ -346,7 +380,7 @@ class ReaderViewModel @JvmOverloads constructor(
                 activationIntent,
             ).effects.filterIsInstance<ReaderChapterWindowEffect.BeginPageListLoad>()
                 .singleOrNull { it.chapterId == chapter.sharedChapterId() }
-                ?: return requireNotNull(state.value.viewerChapters)
+                ?: return null
             loader.loadChapter(chapter, pageListEffect)
         }
 
@@ -359,9 +393,23 @@ class ReaderViewModel @JvmOverloads constructor(
         )
 
         return withUIContext {
-            if (activationIntent != null && !canActivate()) {
-                return@withUIContext requireNotNull(state.value.viewerChapters)
+            val expectedWindow = chapterWindowOwner.snapshot
+            if (!canActivate()) return@withUIContext null
+            if (
+                activationIntent != null &&
+                ReaderChapterWindowReducer.reduce(expectedWindow, activationIntent).effects
+                    .none { it is ReaderChapterWindowEffect.ActivateChapter }
+            ) {
+                return@withUIContext null
             }
+            val resume = pendingResumePosition?.takeIf { it.chapterId == chapter.chapter.id }
+            // Keep the baseline that selected this position; newer receipts must not alter it while loading.
+            val session = if (incognitoMode || getIncognitoState.await(manga?.source)) {
+                null
+            } else {
+                recordReadingProgress.openSession(chapter.sharedChapterId().value, resume?.snapshot)
+            }
+            if (chapterWindowOwner.snapshot != expectedWindow || !canActivate()) return@withUIContext null
             val windowReduction = if (activationIntent == null) {
                 chapterWindowOwner.replace(requestedChapters)
             } else {
@@ -371,19 +419,29 @@ class ReaderViewModel @JvmOverloads constructor(
                 activationIntent != null &&
                 windowReduction.effects.none { it is ReaderChapterWindowEffect.ActivateChapter }
             ) {
-                return@withUIContext requireNotNull(state.value.viewerChapters)
+                return@withUIContext null
             }
 
             val newChapters = requireNotNull(chapterWindowOwner.viewerChapters())
+            val window = requireNotNull(windowReduction.snapshot)
+            val activation = ReadingActivation(newChapters.currChapter, window.activationSequence, session)
+            val invalidResumePage = resume != null && resume.pageIndex !in chapter.pages.orEmpty().indices
+            if (resume != null) {
+                chapterPageIndex = if (invalidResumePage) 0 else resume.pageIndex
+                chapter.requestedPage = chapterPageIndex
+                pendingResumePosition = null
+            }
+            readingActivation = activation
             chapterToDownload = cancelQueuedDownloads(newChapters.currChapter)
             mutableState.update {
                 it.copy(
                     viewerChapters = newChapters,
-                    chapterWindow = requireNotNull(windowReduction.snapshot),
+                    chapterWindow = window,
                     bookmarked = newChapters.currChapter.chapter.bookmark,
                 )
             }
-            newChapters
+            if (invalidResumePage) eventChannel.send(Event.SyncResumePageUnavailable)
+            activation
         }
     }
 
@@ -391,17 +449,17 @@ class ReaderViewModel @JvmOverloads constructor(
      * Called when the user changed to the given [chapter] when changing pages from the viewer.
      * It's used only to set this chapter as active.
      */
-    private fun loadNewChapter(chapter: ReaderChapter, settlementSequence: Long): Job? {
+    private fun loadNewChapter(chapter: ReaderChapter, settlementSequence: Long): Deferred<ReadingActivation?>? {
         val loader = loader ?: return null
         val activationIntent = createAdjacentActivationIntent(chapter) ?: return null
 
-        return viewModelScope.launchIO {
-            if (!readerProgressSettlementArbiter.isLatest(settlementSequence)) return@launchIO
+        return viewModelScope.async(Dispatchers.IO) {
+            if (!readerProgressSettlementArbiter.isLatest(settlementSequence)) return@async null
             logcat { "Loading ${chapter.chapter.url}" }
 
             updateHistory()
             restartReadTimer()
-            if (!readerProgressSettlementArbiter.isLatest(settlementSequence)) return@launchIO
+            if (!readerProgressSettlementArbiter.isLatest(settlementSequence)) return@async null
 
             try {
                 loadChapter(loader, chapter, activationIntent) {
@@ -412,6 +470,7 @@ class ReaderViewModel @JvmOverloads constructor(
                     throw e
                 }
                 logcat(LogPriority.ERROR, e)
+                null
             }
         }
     }
@@ -545,6 +604,8 @@ class ReaderViewModel @JvmOverloads constructor(
         val selectedChapter = page.chapter
         val pages = selectedChapter.pages ?: return
         val settlementSequence = readerProgressSettlementArbiter.nextToken()
+        val selectedActivation = readingActivation?.takeIf { it.chapter === selectedChapter }
+        val recordProgress = !incognitoMode && !getIncognitoState.await(manga?.source)
 
         val activationJob = if (selectedChapter != getCurrentChapter()) {
             logcat { "Setting ${selectedChapter.chapter.url} as active" }
@@ -555,9 +616,10 @@ class ReaderViewModel @JvmOverloads constructor(
 
         // Persist only after an adjacent chapter has become the canonical active chapter.
         viewModelScope.launchNonCancellable {
-            activationJob?.join()
+            val activation = if (activationJob == null) selectedActivation else activationJob.await()
+            if (activation == null) return@launchNonCancellable
             readerProgressSettlementArbiter.runIfLatest(settlementSequence) {
-                updateChapterProgress(selectedChapter, page, settlementSequence)
+                updateChapterProgress(selectedChapter, page, settlementSequence, activation, recordProgress)
             }
         }
 
@@ -642,10 +704,17 @@ class ReaderViewModel @JvmOverloads constructor(
         readerChapter: ReaderChapter,
         page: Page,
         settlementSequence: Long,
+        activation: ReadingActivation,
+        recordProgress: Boolean,
     ) {
         val chapterId = readerChapter.sharedChapterId()
         val activeChapterId = getCurrentChapter()?.sharedChapterId() ?: return
         if (chapterId != activeChapterId) return
+        if (readingActivation !== activation ||
+            state.value.chapterWindow?.activationSequence != activation.windowSequence
+        ) {
+            return
+        }
 
         val pageIndex = page.index
 
@@ -655,7 +724,8 @@ class ReaderViewModel @JvmOverloads constructor(
         readerChapter.requestedPage = pageIndex
         chapterPageIndex = pageIndex
 
-        if (!incognitoMode && page.status !is Page.State.Error) {
+        val session = activation.session
+        if (recordProgress && session != null && page.status !is Page.State.Error) {
             val totalPages = readerChapter.pages?.size ?: return
             val progress = ReaderProgressPolicy.reduce(
                 ReaderProgressSignal.ViewportSettled(
@@ -674,7 +744,7 @@ class ReaderViewModel @JvmOverloads constructor(
                 updateChapterProgressOnComplete(readerChapter)
             }
 
-            recordReadingProgress.await(
+            session.await(
                 ReadingProgressEvent(
                     chapterId = progress.chapterId.value,
                     lastPageRead = progress.lastPageRead,
@@ -685,6 +755,7 @@ class ReaderViewModel @JvmOverloads constructor(
                     wasRead = progress.wasRead,
                     recordHistory = false,
                     idempotencyKey = progress.idempotencyKey,
+                    syncContext = SyncMutationContext.User,
                 ),
             )
         }
@@ -1150,6 +1221,7 @@ class ReaderViewModel @JvmOverloads constructor(
     sealed interface Event {
         data object ReloadViewerChapters : Event
         data object PageChanged : Event
+        data object SyncResumePageUnavailable : Event
         data class SetOrientation(val orientation: Int) : Event
         data class SetCoverResult(val result: SetAsCoverResult) : Event
 

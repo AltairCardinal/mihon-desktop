@@ -1,0 +1,86 @@
+ALTER TABLE sync_spaces ADD COLUMN exchange_enabled INTEGER NOT NULL DEFAULT 1;
+
+CREATE TABLE sync_imports (
+    import_id TEXT NOT NULL PRIMARY KEY,
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    origin TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    epoch INTEGER NOT NULL,
+    next_seq INTEGER NOT NULL,
+    total INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (space_id, generation) REFERENCES sync_spaces(space_id, generation)
+);
+
+CREATE UNIQUE INDEX sync_initial_import ON sync_imports(space_id, generation) WHERE origin = 'INITIAL_IMPORT';
+
+-- Values and descriptions are copied in the activation transaction, not read again during chunk processing.
+CREATE TABLE sync_import_entries (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    import_id TEXT NOT NULL REFERENCES sync_imports(import_id),
+    category TEXT NOT NULL,
+    source_id INTEGER,
+    object_url TEXT,
+    parent_url TEXT,
+    portable_key TEXT,
+    title TEXT NOT NULL,
+    parent_title TEXT,
+    author TEXT,
+    artist TEXT,
+    thumbnail TEXT,
+    chapter_number REAL,
+    source_order INTEGER,
+    scanlator TEXT,
+    is_read INTEGER NOT NULL DEFAULT 0,
+    page_index INTEGER NOT NULL DEFAULT 0,
+    read_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX sync_import_queue ON sync_import_entries(import_id, id);
+
+-- Only previous effects from the same frozen import may be causal parents of a baseline effect.
+CREATE TABLE sync_import_heads (
+    import_id TEXT NOT NULL REFERENCES sync_imports(import_id),
+    object_key TEXT NOT NULL,
+    field TEXT NOT NULL,
+    ref_json TEXT NOT NULL,
+    PRIMARY KEY (import_id, object_key, field)
+);
+
+-- Preserve the last shareable values before private reading changes business rows.
+-- These device-local values never enter ordinary backups as machine state.
+CREATE TABLE sync_private_reading (
+    chapter_id INTEGER NOT NULL PRIMARY KEY REFERENCES chapters(_id) ON DELETE CASCADE,
+    public_read INTEGER NOT NULL,
+    public_page INTEGER NOT NULL,
+    public_read_at INTEGER NOT NULL
+);
+
+
+
+CREATE TABLE sync_remote_guards (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    repository_owner TEXT NOT NULL,
+    repository_name TEXT NOT NULL,
+    repository_branch TEXT NOT NULL,
+    blocked INTEGER NOT NULL DEFAULT 0,
+    latest_head TEXT,
+    PRIMARY KEY (space_id, generation)
+);
+
+CREATE TABLE sync_remote_objects (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    object_id TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, object_id)
+);
+
+CREATE TABLE sync_remote_heads (
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    head_sha TEXT NOT NULL,
+    snapshot_fingerprint TEXT NOT NULL,
+    PRIMARY KEY (space_id, generation, head_sha)
+);

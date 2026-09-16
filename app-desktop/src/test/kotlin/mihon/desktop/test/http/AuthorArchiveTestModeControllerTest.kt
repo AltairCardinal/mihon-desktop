@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import mihon.desktop.domain.CreatorDiscoveryScheduler
 import mihon.desktop.domain.CreatorDiscoveryTaskState
+import mihon.domain.sync.SyncMutationContext
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -25,8 +26,9 @@ class AuthorArchiveTestModeControllerTest {
         val watch = CreatorWatch(7, true, emptyList(), emptyList(), null, null, null, 2)
         val repository = mockk<CreatorRepository>()
         every { repository.getCreatorsAsFlow() } returns flowOf(listOf(creator))
-        coEvery { repository.getFollowedCreators() } returnsMany listOf(emptyList(), listOf(watch))
-        coEvery { repository.followCreator(7) } returns watch
+        coEvery { repository.getFollowedCreators() } returnsMany listOf(emptyList(), listOf(watch), emptyList())
+        coEvery { repository.followCreator(7, syncContext = SyncMutationContext.User) } returns watch
+        coEvery { repository.unfollowCreator(7, syncContext = SyncMutationContext.User) } returns Unit
         val archive = mockk<CreatorArchiveRepository>()
         coEvery { archive.getDiscoveries(200) } returns emptyList()
         val scheduler = mockk<CreatorDiscoveryScheduler>()
@@ -39,7 +41,11 @@ class AuthorArchiveTestModeControllerTest {
         assertTrue(result.success)
         assertEquals(listOf(7L), result.snapshot.creators)
         assertEquals(listOf(7L), result.snapshot.followedCreators)
-        coVerify(exactly = 1) { repository.followCreator(7) }
+        coVerify(exactly = 1) { repository.followCreator(7, syncContext = SyncMutationContext.User) }
+        val unfollowed = controller.execute("author_unfollow", mapOf("creatorId" to "7"))
+        assertTrue(unfollowed.success)
+        assertTrue(unfollowed.snapshot.followedCreators.isEmpty())
+        coVerify(exactly = 1) { repository.unfollowCreator(7, syncContext = SyncMutationContext.User) }
     }
 
     @Test
@@ -58,6 +64,6 @@ class AuthorArchiveTestModeControllerTest {
 
         assertFalse(result.success)
         assertEquals(AuthorArchiveTestFailureCode.MISSING_PARAMETER, result.failureCode)
-        coVerify(exactly = 0) { repository.followCreator(any()) }
+        coVerify(exactly = 0) { repository.followCreator(any(), any(), any(), any()) }
     }
 }

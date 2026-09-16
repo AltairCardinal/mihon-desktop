@@ -2,6 +2,7 @@ package tachiyomi.domain.creator.interactor
 
 import eu.kanade.tachiyomi.source.CatalogueSource
 import kotlinx.coroutines.flow.Flow
+import mihon.domain.sync.SyncMutationContext
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.CreatorWatch
 import tachiyomi.domain.creator.model.DiscoveryCandidate
@@ -43,9 +44,9 @@ class SetCreatorFollow(
 ) {
     suspend fun await(creatorId: Long, followed: Boolean) {
         if (followed) {
-            repository.followCreator(creatorId)
+            repository.followCreator(creatorId, syncContext = SyncMutationContext.User)
         } else {
-            repository.unfollowCreator(creatorId)
+            repository.unfollowCreator(creatorId, syncContext = SyncMutationContext.User)
         }
     }
 }

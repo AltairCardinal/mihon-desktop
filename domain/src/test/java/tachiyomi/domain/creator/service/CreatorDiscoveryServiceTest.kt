@@ -220,10 +220,12 @@ class CreatorDiscoveryServiceTest {
         }
         override suspend fun followCreator(
             creatorId: Long,
-            sourceIds: List<Long>,
-            languageTags: List<String>,
+            sourceIds: List<Long>?,
+            languageTags: List<String>?,
+            syncContext: mihon.domain.sync.SyncMutationContext,
         ) = error("unused")
-        override suspend fun unfollowCreator(creatorId: Long) = error("unused")
+        override suspend fun unfollowCreator(creatorId: Long, syncContext: mihon.domain.sync.SyncMutationContext) =
+            error("unused")
         override suspend fun getFollowedCreators(): List<CreatorWatch> = watches
         override fun getFollowedCreatorsAsFlow(): Flow<List<CreatorWatch>> = flowOf(watches)
         override suspend fun updateWatchCheckResult(

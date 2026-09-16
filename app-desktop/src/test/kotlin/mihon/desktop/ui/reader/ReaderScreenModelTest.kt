@@ -44,6 +44,15 @@ import tachiyomi.i18n.MR
 import java.util.prefs.Preferences
 
 class ReaderScreenModelTest {
+    @Test
+    fun `invalid saved page resumes from chapter beginning with feedback`() {
+        val reader = desktopReaderSessionState(chapterId = 7L, pageCount = 3, initialPage = 10)
+        val model = ReaderScreenModel(initialSessionState = reader)
+        assertEquals(0, model.state.value.currentPage)
+        assertTrue(model.state.value.resumePageUnavailable)
+        model.acceptSessionState(reader.copy(context = reader.context.copy(initialPage = 2)))
+        assertEquals(0, model.state.value.currentPage)
+    }
 
     private val preferenceRoots = mutableListOf<Preferences>()
 
@@ -54,7 +63,8 @@ class ReaderScreenModelTest {
     }
 
     private fun testPreferences(configure: ReaderPreferences.() -> Unit = {}): ReaderPreferences {
-        val root = Preferences.userRoot().node("/mihon/reader-screen-model/${System.nanoTime()}-${preferenceRoots.size}")
+        val root = Preferences.userRoot()
+            .node("/mihon/reader-screen-model/${System.nanoTime()}-${preferenceRoots.size}")
         preferenceRoots += root
         return ReaderPreferences(DesktopPreferenceStore(root.node("current")), root.node("legacy")).apply(configure)
     }
@@ -77,7 +87,11 @@ class ReaderScreenModelTest {
     fun `zero-page loading error and loaded chapters select one canonical viewport body`() {
         assertEquals(
             ReaderViewportBody.LOADING,
-            readerViewportBody(ReaderScreenModel(initialSessionState = nonLoadedState(1L, ReaderChapterLoadState.LoadingPageList)).state.value),
+            readerViewportBody(
+                ReaderScreenModel(
+                    initialSessionState = nonLoadedState(1L, ReaderChapterLoadState.LoadingPageList),
+                ).state.value,
+            ),
         )
         assertEquals(
             ReaderViewportBody.ERROR,
@@ -92,11 +106,15 @@ class ReaderScreenModelTest {
         )
         assertEquals(
             ReaderViewportBody.CONTENT,
-            readerViewportBody(ReaderScreenModel(initialSessionState = desktopReaderSessionState(pageCount = 2)).state.value),
+            readerViewportBody(
+                ReaderScreenModel(initialSessionState = desktopReaderSessionState(pageCount = 2)).state.value,
+            ),
         )
         assertEquals(
             ReaderViewportBody.EMPTY,
-            readerViewportBody(ReaderScreenModel(initialSessionState = desktopReaderSessionState(pageCount = 0)).state.value),
+            readerViewportBody(
+                ReaderScreenModel(initialSessionState = desktopReaderSessionState(pageCount = 0)).state.value,
+            ),
         )
     }
 
@@ -317,7 +335,10 @@ class ReaderScreenModelTest {
     @Test
     fun `activateChapter delegates the target context without creating a Screen`() {
         val activations = mutableListOf<DesktopReaderChapterContext>()
-        val model = ReaderScreenModel(onChapterActivated = { activations += it; null })
+        val model = ReaderScreenModel(onChapterActivated = {
+            activations += it
+            null
+        })
         val target = desktopReaderSessionState(chapterId = 9L, pageCount = 0).context
 
         model.activateChapter(target)

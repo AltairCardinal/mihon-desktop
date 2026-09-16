@@ -697,6 +697,7 @@ class LibraryRootScreen : Screen {
                                 showLocalBadge = state.showLocalBadge,
                                 showLanguageBadge = state.showLanguageBadge,
                                 showContinueReadingButton = state.showContinueReadingButton,
+                                syncedResumeMangaIds = state.syncedResumeMangaIds,
                                 localMangaIds = state.localMangaIds,
                                 onContextMenu = { item -> model.setContextMenuManga(item) },
                                 onItemClick = onItemPrimaryClick,
@@ -719,6 +720,7 @@ class LibraryRootScreen : Screen {
                                 showLocalBadge = state.showLocalBadge,
                                 showLanguageBadge = state.showLanguageBadge,
                                 showContinueReadingButton = state.showContinueReadingButton,
+                                syncedResumeMangaIds = state.syncedResumeMangaIds,
                                 localMangaIds = state.localMangaIds,
                                 onContextMenu = { item -> model.setContextMenuManga(item) },
                                 onItemClick = onItemPrimaryClick,
@@ -737,6 +739,7 @@ class LibraryRootScreen : Screen {
                                 showLocalBadge = state.showLocalBadge,
                                 showLanguageBadge = state.showLanguageBadge,
                                 showContinueReadingButton = state.showContinueReadingButton,
+                                syncedResumeMangaIds = state.syncedResumeMangaIds,
                                 localMangaIds = state.localMangaIds,
                                 onContextMenu = { item -> model.setContextMenuManga(item) },
                                 onItemClick = onItemPrimaryClick,
@@ -759,6 +762,7 @@ class LibraryRootScreen : Screen {
                                 showLocalBadge = state.showLocalBadge,
                                 showLanguageBadge = state.showLanguageBadge,
                                 showContinueReadingButton = state.showContinueReadingButton,
+                                syncedResumeMangaIds = state.syncedResumeMangaIds,
                                 localMangaIds = state.localMangaIds,
                                 onContextMenu = { item -> model.setContextMenuManga(item) },
                                 onItemClick = onItemPrimaryClick,
@@ -779,6 +783,7 @@ internal fun libraryPageItems(model: LibraryScreenModel, categoryId: Long?): Lis
     model.visibleItems(categoryId)
 
 private fun LibraryReaderRequest.toDesktopReaderScreen() = DesktopReaderScreen(
+    resumeSnapshot = resumeSnapshot,
     chapterTitle = chapterTitle,
     mangaTitle = mangaTitle,
     isWebtoon = false,

@@ -1217,7 +1217,7 @@
         {
           "path": "app/src/main/java/eu/kanade/domain/DomainModule.kt",
           "symbol": "override fun InjektRegistrar.registerInjectables",
-          "line": 130
+          "line": 139
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -1232,7 +1232,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "initDesktopDI()",
-          "line": 98
+          "line": 101
         }
       ],
       "FIXTURE": [
@@ -4216,7 +4216,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 1006
+          "line": 1032
         }
       ],
       "FIXTURE": [
@@ -5368,7 +5368,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "private val createCategory",
-          "line": 92
+          "line": 95
         }
       ],
       "FIXTURE": [
@@ -6253,12 +6253,12 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt",
           "symbol": "return evaluateLibrary.filter(",
-          "line": 206
+          "line": 210
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt",
           "symbol": "evaluateLibrary.sortForAndroid(",
-          "line": 260
+          "line": 264
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -9818,7 +9818,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt",
           "symbol": "fun setMangaCategories",
-          "line": 493
+          "line": 505
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -9838,12 +9838,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "internal suspend fun enqueueDownloads(",
-          "line": 897
+          "line": 937
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 1002
+          "line": 1049
         }
       ],
       "FIXTURE": [
@@ -11339,17 +11339,17 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun toggleFavorite(",
-          "line": 327
+          "line": 335
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun moveMangaToCategoriesAndAddToLibrary",
-          "line": 460
+          "line": 468
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt",
           "symbol": "fun removeMangas",
-          "line": 462
+          "line": 473
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -11357,7 +11357,7 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/tachiyomi/domain/manga/interactor/UpdateLibraryMembership.kt",
           "symbol": "class UpdateLibraryMembership",
-          "line": 7
+          "line": 8
         },
         {
           "kind": "SHARED",
@@ -11370,12 +11370,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt",
           "symbol": "categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY",
-          "line": 918
+          "line": 917
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
           "symbol": "suspend fun toggleLibrary",
-          "line": 276
+          "line": 292
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailComponents.kt",
@@ -11385,7 +11385,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/LibraryScreenModel.kt",
           "symbol": "suspend fun setCategoriesForManga",
-          "line": 1002
+          "line": 1049
         }
       ],
       "FIXTURE": [
@@ -20362,7 +20362,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun bookmarkChapters",
-          "line": 813
+          "line": 827
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -20377,7 +20377,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
           "symbol": "suspend fun markSelectedBookmark",
-          "line": 255
+          "line": 271
         }
       ],
       "FIXTURE": [
@@ -23333,7 +23333,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/browse/BrowseSourceScreenModel.kt",
           "symbol": "class BrowseSourceScreenModel(",
-          "line": 69
+          "line": 70
         },
         {
           "path": "data/src/androidMain/kotlin/tachiyomi/data/source/SourcePagingSource.kt",
@@ -29497,7 +29497,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt",
           "symbol": "private fun enqueueAdjacentImagesLocked",
-          "line": 811
+          "line": 845
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/settings/ReaderSettingsScreen.kt",
@@ -29737,7 +29737,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
           "symbol": "private suspend fun loadChapter",
-          "line": 335
+          "line": 369
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/loader/ChapterLoader.kt",
@@ -29795,7 +29795,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt",
           "symbol": "class DesktopReaderSession",
-          "line": 115
+          "line": 122
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt",
@@ -29805,7 +29805,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
           "symbol": "fun acceptSessionState",
-          "line": 118
+          "line": 122
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt",
@@ -30196,7 +30196,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt",
           "symbol": "readerPreferences.grayscale().changes()",
-          "line": 909
+          "line": 913
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt",
@@ -30216,12 +30216,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "ReaderViewportColorLayer(state.colorFilter)",
-          "line": 549
+          "line": 559
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "internal fun ReaderViewportColorLayer",
-          "line": 656
+          "line": 666
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",
@@ -30345,9 +30345,9 @@
     ],
     "roleEvidence": {
       "FIXED_ORIGINAL": [{"ref": "main@6fbf6dfca203d99d6dd32137f2df97ced40c81b8", "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "private suspend fun updateChapterProgress", "line": 534}],
-      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "recordReadingProgress.await", "line": 677}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiter.kt", "symbol": "internal class ReaderViewportSettlementArbiter", "line": 7}],
-      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/progress/ReaderProgressPolicy.kt", "symbol": "object ReaderProgressPolicy", "line": 59}, {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/reader/interactor/RecordReadingProgress.kt", "symbol": "class RecordReadingProgress", "line": 6}],
-      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt", "symbol": "recordReadingProgress.await", "line": 54}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt", "symbol": "class DesktopReaderSession", "line": 115}],
+      "CURRENT_ANDROID": [{"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt", "symbol": "session.await(", "line": 747}, {"path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiter.kt", "symbol": "internal class ReaderViewportSettlementArbiter", "line": 7}],
+      "SHARED_OR_ADAPTER": [{"kind": "SHARED", "path": "domain/src/commonMain/kotlin/mihon/domain/reader/progress/ReaderProgressPolicy.kt", "symbol": "object ReaderProgressPolicy", "line": 59}, {"kind": "SHARED", "path": "domain/src/commonMain/kotlin/tachiyomi/domain/reader/interactor/RecordReadingProgress.kt", "symbol": "class RecordReadingProgress", "line": 9}],
+      "DESKTOP_CONSUMER": [{"path": "app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt", "symbol": "readingSession.await(event)", "line": 78}, {"path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderSession.kt", "symbol": "class DesktopReaderSession", "line": 122}],
       "FIXTURE": [{"artifact": "domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt#only a settled viewport in the active chapter produces a progress effect", "productionMarkers": ["ReaderProgressPolicy.reduce"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressProductionWiringTest.kt#Android current settled page records progress through the canonical shared transaction", "productionMarkers": ["viewModel.onPageSelected", "awaitRecordedEvent"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt#newer current settlement rejects older adjacent activation and progress", "productionMarkers": ["viewModel.onPageSelected", "releaseAdjacentLoad.complete"]}, {"artifact": "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt#an in-flight write completes before the latest settlement enters the serialized transaction", "productionMarkers": ["ReaderViewportSettlementArbiter", "runIfLatest"]}, {"artifact": "data/src/jvmTest/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepositoryTest.kt#reading a later chapter updates only that row and requires its last page to mark read", "productionMarkers": ["recorder.await"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#dual presentation settles both source pages through screen model and session progress port", "productionMarkers": ["DualPagedPresentation.present", "model.settleDualPage", "progress.single"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#settling the last page then paging backward never makes the chapter unread", "productionMarkers": ["session.settleViewport", "wasRead"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt#closing immediately after settlement lets the final progress write finish", "productionMarkers": ["session.close", "allowWrite.complete", "writeCompleted"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt#local reader session identity never becomes a durable chapter progress id", "productionMarkers": ["localReaderScreen", "progressTracker.track"]}, {"artifact": "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt#settling an already read chapter mid chapter keeps it read", "productionMarkers": ["tracker.track", "wasRead"]}]
     },
     "protectionTests": ["domain/src/commonTest/kotlin/mihon/domain/reader/progress/ReaderProgressPolicyTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressProductionWiringTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderProgressSettlementRaceTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderViewportSettlementArbiterTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/ReaderDuplicateCompletionPolicyTest.kt", "data/src/jvmTest/kotlin/tachiyomi/data/reader/SqlDelightReadingProgressRepositoryTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerIntegrationTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/domain/ReaderProgressTrackerTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactoryTest.kt", "app-desktop/src/test/kotlin/mihon/desktop/ui/library/ChapterReadPresentationTest.kt", "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt"],
@@ -30434,7 +30434,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt",
           "symbol": "filterAndroidReaderChapters(",
-          "line": 212
+          "line": 224
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/util/chapter/ChapterGetNextUnread.kt",
@@ -33150,7 +33150,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "filterChaptersForDownload.await(manga, chapters)",
-          "line": 1049
+          "line": 1075
         }
       ],
       "FIXTURE": [
@@ -36805,7 +36805,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/history/HistoryScreenModel.kt",
           "symbol": "getHistory.subscribe(query ?: \"\")",
-          "line": 71
+          "line": 74
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -36820,7 +36820,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/history/HistoryScreenModel.kt",
           "symbol": "getHistory.subscribe(query).first()",
-          "line": 43
+          "line": 45
         }
       ],
       "FIXTURE": [
@@ -41795,7 +41795,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/ReaderProgressTracker.kt",
           "symbol": "class ReaderProgressTracker(",
-          "line": 24
+          "line": 26
         }
       ],
       "FIXTURE": [
@@ -43180,7 +43180,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorer.kt",
           "symbol": "suspend fun restore",
-          "line": 54
+          "line": 61
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -43195,7 +43195,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/backup/DesktopBackupRestorer.kt",
           "symbol": "suspend fun restore",
-          "line": 56
+          "line": 62
         }
       ],
       "FIXTURE": [
@@ -44725,7 +44725,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "internal fun wireDesktopOpenUriEvents",
-          "line": 624
+          "line": 629
         }
       ],
       "FIXTURE": [
@@ -53665,7 +53665,7 @@
         {
           "path": "app/build.gradle.kts",
           "symbol": "implementation(projects.domain)",
-          "line": 232
+          "line": 239
         }
       ],
       "SHARED_OR_ADAPTER": [

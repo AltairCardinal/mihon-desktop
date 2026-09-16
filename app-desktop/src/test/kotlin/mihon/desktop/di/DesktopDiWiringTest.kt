@@ -5,12 +5,15 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import java.awt.GraphicsEnvironment
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
@@ -432,7 +435,7 @@ class DesktopDiWiringTest {
             },
         )
         try {
-            assertEquals(listOf(CredentialNamespace.APP_LOCK_V1), namespaces)
+            assertEquals(listOf(CredentialNamespace.APP_LOCK_V1, CredentialNamespace.SYNC_V1), namespaces)
             val securityPreferences = Injekt.get<SecurityPreferences>()
             val passphraseVerifier = Injekt.get<DesktopPassphraseVerifier>()
             val windowPrivacyController = Injekt.get<DesktopWindowPrivacyController>()
@@ -1290,6 +1293,8 @@ class DesktopDiWiringTest {
             startDownloadWorker = false,
         )
 
+        val statsJob = SupervisorJob()
+        var statsModel: StatsScreenModel? = null
         try {
         val handler = context.handler
         assertSame(configuredStore, Injekt.get<PreferenceStore>())
@@ -1335,6 +1340,8 @@ class DesktopDiWiringTest {
         )
         assertEquals(emptySet<Long>(), Injekt.get<TrackerSessionProvider>().loggedInTrackerIds().first())
         assertNotNull(Injekt.get<BackupRestoreScreenModelFactory>())
+        assertTrue(Injekt.get<mihon.data.sync.journal.BackupRestoreSync>() is mihon.data.sync.journal.SyncBackupRestorer)
+        mihon.desktop.backup.verifyNativeBackupSync(Injekt.get(), handler, Injekt.get(), tempDir, this)
         val filePicker = Injekt.get<DesktopFilePicker>()
         assertTrue(filePicker is SwingDesktopFilePicker)
         val directoryOpener = Injekt.get<DesktopDirectoryOpenPort>()
@@ -1352,7 +1359,11 @@ class DesktopDiWiringTest {
         assertSame(context.libraryController, Injekt.get<LibraryMangaTestModeController>())
         assertNotNull(LibraryScreenModelFactory.create())
         assertNotNull(MangaDetailScreenModelFactory.create(manga.id))
-        assertNotNull(StatsScreenModel(Injekt.get<GetLibraryManga>().subscribe()))
+        statsModel = StatsScreenModel(
+            Injekt.get<GetLibraryManga>().subscribe(),
+            CoroutineScope(statsJob + Dispatchers.IO),
+        )
+        assertNotNull(statsModel)
 
         Injekt.get<LibraryUpdateScheduler>().runNow().join()
         val database = handler.db
@@ -1365,6 +1376,8 @@ class DesktopDiWiringTest {
         preference.set("updated")
         assertEquals("updated", withTimeout(1_000) { changed.await() })
         } finally {
+            statsModel?.onDispose()
+            statsJob.cancelAndJoin()
             context.closeAndJoin()
         }
     }

@@ -9,6 +9,7 @@ import eu.kanade.core.preference.asState
 import eu.kanade.core.util.fastFilterNot
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.chapter.interactor.SetReadStatus
+import eu.kanade.domain.chapter.model.applyFilters
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.presentation.components.SEARCH_DEBOUNCE_MILLIS
 import eu.kanade.presentation.library.components.LibraryToolbarTitle
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
+import mihon.domain.sync.SyncMutationContext
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.core.common.util.lang.launchIO
@@ -68,6 +70,7 @@ import tachiyomi.domain.library.toggleLibraryItem
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
+import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.interactor.GetTracksPerManga
 import tachiyomi.domain.track.model.Track
@@ -92,6 +95,7 @@ class LibraryScreenModel(
     private val downloadManager: DownloadManager = Injekt.get(),
     private val downloadCache: DownloadCache = Injekt.get(),
     private val trackerManager: TrackerManager = Injekt.get(),
+    private val recordReadingProgress: RecordReadingProgress = Injekt.get(),
 ) : StateScreenModel<LibraryScreenModel.State>(State()) {
     private val evaluateLibrary = EvaluateLibrary()
 
@@ -306,7 +310,8 @@ class LibraryScreenModel(
             getLibraryManga.subscribe(),
             getLibraryItemPreferencesFlow(),
             downloadCache.changes,
-        ) { libraryManga, preferences, _ ->
+            libraryPreferences.showContinueReadingButton().changes(),
+        ) { libraryManga, preferences, _, showContinue ->
             libraryManga.map { manga ->
                 val badges = projectLibraryBadges(
                     downloadCount = { downloadManager.getDownloadCount(manga.manga).toLong() },
@@ -324,6 +329,8 @@ class LibraryScreenModel(
                     unreadCount = badges.unreadCount,
                     isLocal = badges.isLocal,
                     sourceLanguage = badges.sourceLanguage,
+                    hasSynchronizedResume = showContinue && manga.unreadCount == 0L &&
+                        getNextUnreadChapter(manga.manga) != null,
                 )
             }
         }
@@ -360,7 +367,11 @@ class LibraryScreenModel(
     }
 
     suspend fun getNextUnreadChapter(manga: Manga): Chapter? {
-        return getChaptersByMangaId.await(manga.id, applyScanlatorFilter = true).getNextUnread(manga, downloadManager)
+        val chapters = getChaptersByMangaId.await(manga.id, applyScanlatorFilter = true)
+        val synchronized = recordReadingProgress.resumePosition(manga.id)?.let { position ->
+            chapters.applyFilters(manga, downloadManager).firstOrNull { it.id == position.chapterId }
+        }
+        return synchronized ?: chapters.getNextUnread(manga, downloadManager)
     }
 
     /**
@@ -467,6 +478,7 @@ class LibraryScreenModel(
                     MangaUpdate(
                         favorite = false,
                         id = it.id,
+                        syncContext = SyncMutationContext.User,
                     )
                 }
                 updateManga.awaitAll(toDelete)

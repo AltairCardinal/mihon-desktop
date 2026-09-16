@@ -51,10 +51,11 @@ internal suspend fun <T> AndroidDatabaseHandler.withTransaction(block: suspend (
     // We just reuse the existing thread/context.
     if (transactionElement != null) {
         return withContext(transactionElement.transactionDispatcher) {
+            val inheritedTransactionContext = coroutineContext
             transactionElement.acquire()
             try {
                 db.transactionWithResult {
-                    runBlocking(transactionElement.transactionDispatcher) {
+                    runBlocking(inheritedTransactionContext) {
                         block()
                     }
                 }

@@ -1,5 +1,6 @@
 package tachiyomi.domain.manga.interactor
 
+import mihon.domain.sync.SyncMutationContext
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.repository.LibraryMembershipRepository
 import tachiyomi.domain.manga.repository.LibraryMembershipUpdate
@@ -29,6 +30,7 @@ class UpdateLibraryMembership(
                     0L
                 },
                 categoryIds = if (favorite) categoryIds.distinct() else emptyList(),
+                syncContext = SyncMutationContext.User,
             ),
         )
         LibraryMembershipResult.Success(manga.id, favorite)

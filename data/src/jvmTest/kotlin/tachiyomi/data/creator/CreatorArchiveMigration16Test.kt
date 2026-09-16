@@ -13,6 +13,7 @@ class CreatorArchiveMigration16Test {
     fun `v16 through latest preserves archive data and accepts split chapter variants`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         Database.Schema.create(driver)
+        mihon.data.sync.removeSyncJournalSchema(driver)
         driver.execute(null, "ALTER TABLE mangas DROP COLUMN memo", 0)
         driver.execute(null, "ALTER TABLE chapters DROP COLUMN memo", 0)
         listOf("index_url", "extension_list_url", "contact_discord").forEach { column ->

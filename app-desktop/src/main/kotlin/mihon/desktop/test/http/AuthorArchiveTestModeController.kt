@@ -1,15 +1,16 @@
 package mihon.desktop.test.http
 
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import mihon.desktop.domain.CreatorDiscoveryScheduler
+import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorRepository
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 @Serializable
 data class AuthorArchiveTestSnapshot(
@@ -44,6 +45,7 @@ class AuthorArchiveTestModeController(
 ) {
     private val closed = AtomicBoolean(false)
     private val cachedSnapshot = AtomicReference(emptySnapshot())
+    private val setCreatorFollow = SetCreatorFollow(creatorRepository)
 
     suspend fun hydrate() = refresh()
 
@@ -54,8 +56,8 @@ class AuthorArchiveTestModeController(
         val failure = runCatching {
             when (action) {
                 "authors_state", "author_compare" -> null
-                "author_follow" -> creatorAction(params, creatorRepository::followCreator)
-                "author_unfollow" -> creatorAction(params, creatorRepository::unfollowCreator)
+                "author_follow" -> creatorAction(params) { setCreatorFollow.await(it, true) }
+                "author_unfollow" -> creatorAction(params) { setCreatorFollow.await(it, false) }
                 "author_manual_scan" -> creatorAction(params) { scheduler.runForCreator(it).join() }
                 "author_cancel_scan" -> null.also { scheduler.cancel() }
                 "author_feed_seen" -> discoveryAction(params) { archiveRepository.markDiscoverySeen(it, now()) }
@@ -124,8 +126,9 @@ class AuthorArchiveTestModeController(
 
     private suspend fun languageOverride(params: Map<String, String>): AuthorArchiveTestFailureCode? {
         val subject = languageSubject(params) ?: return AuthorArchiveTestFailureCode.MISSING_PARAMETER
-        val dimension = params["dimension"]?.let { runCatching { LanguageDimension.valueOf(it.uppercase()) }.getOrNull() }
-            ?: return AuthorArchiveTestFailureCode.INVALID_PARAMETER
+        val dimension =
+            params["dimension"]?.let { runCatching { LanguageDimension.valueOf(it.uppercase()) }.getOrNull() }
+                ?: return AuthorArchiveTestFailureCode.INVALID_PARAMETER
         val tag = params["tag"]?.takeIf(String::isNotBlank) ?: return AuthorArchiveTestFailureCode.MISSING_PARAMETER
         archiveRepository.setManualLanguage(subject, dimension, tag, now())
         return null
@@ -133,8 +136,9 @@ class AuthorArchiveTestModeController(
 
     private suspend fun languageUndo(params: Map<String, String>): AuthorArchiveTestFailureCode? {
         val subject = languageSubject(params) ?: return AuthorArchiveTestFailureCode.MISSING_PARAMETER
-        val dimension = params["dimension"]?.let { runCatching { LanguageDimension.valueOf(it.uppercase()) }.getOrNull() }
-            ?: return AuthorArchiveTestFailureCode.INVALID_PARAMETER
+        val dimension =
+            params["dimension"]?.let { runCatching { LanguageDimension.valueOf(it.uppercase()) }.getOrNull() }
+                ?: return AuthorArchiveTestFailureCode.INVALID_PARAMETER
         archiveRepository.withdrawManualLanguage(subject, dimension, now())
         return null
     }

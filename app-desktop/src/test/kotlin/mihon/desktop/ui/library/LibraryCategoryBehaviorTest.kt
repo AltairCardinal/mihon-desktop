@@ -16,6 +16,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.state.ToggleableState
+import cafe.adriel.voyager.core.model.screenModelScope
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.CurrentScreen
 import cafe.adriel.voyager.navigator.Navigator
@@ -31,6 +32,7 @@ import java.util.prefs.Preferences
 import javax.imageio.ImageIO
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
@@ -168,10 +170,12 @@ class LibraryCategoryBehaviorTest {
             assertTrue(provider.isChapterDownloaded(target.source, target.title, targetRead.name))
             assertTrue(provider.isChapterDownloaded(unrelated.source, unrelated.title, otherUnread.name))
         } finally {
+            val modelJob = model?.screenModelScope?.coroutineContext?.get(Job)
             scene?.close()
             model?.onDispose()
-            Dispatchers.resetMain()
+            modelJob?.cancelAndJoin()
             context.closeAndJoin()
+            Dispatchers.resetMain()
             preferencesNode.removeNode()
         }
     }
@@ -305,10 +309,12 @@ class LibraryCategoryBehaviorTest {
             )
         } finally {
             release.complete(Unit)
+            val modelJob = model?.screenModelScope?.coroutineContext?.get(Job)
             scene?.close()
             model?.onDispose()
-            Dispatchers.resetMain()
+            modelJob?.cancelAndJoin()
             context.closeAndJoin()
+            Dispatchers.resetMain()
             preferencesNode.removeNode()
         }
     }
@@ -424,11 +430,13 @@ class LibraryCategoryBehaviorTest {
             assertFalse(nodes(scene).flatMap { it.semanticLabels() }.contains(manga.title))
             assertTrue(repository.getMangaById(manga.id).favorite)
         } finally {
+            val modelJob = model?.screenModelScope?.coroutineContext?.get(Job)
             scene?.close()
             model?.onDispose()
+            modelJob?.cancelAndJoin()
             server.close()
-            Dispatchers.resetMain()
             context.closeAndJoin()
+            Dispatchers.resetMain()
             preferencesNode.removeNode()
         }
     }
@@ -670,10 +678,12 @@ class LibraryCategoryBehaviorTest {
             assertTrue(destination is LibraryRootScreen)
             assertTrue(DesktopUiDependencies.fromInjekt().batchMigrationController.queues.value.isEmpty())
         } finally {
+            val modelJob = model?.screenModelScope?.coroutineContext?.get(Job)
             scene?.close()
             model?.onDispose()
-            Dispatchers.resetMain()
+            modelJob?.cancelAndJoin()
             context.closeAndJoin()
+            Dispatchers.resetMain()
             preferencesNode.removeNode()
         }
     }
@@ -809,10 +819,12 @@ class LibraryCategoryBehaviorTest {
             assertTrue(repository.getMangaById(late.id).favorite)
             assertTrue(provider.hasMangaDownloads(late.source, late.title))
         } finally {
+            val modelJob = model?.screenModelScope?.coroutineContext?.get(Job)
             scene?.close()
             model?.onDispose()
-            Dispatchers.resetMain()
+            modelJob?.cancelAndJoin()
             context.closeAndJoin()
+            Dispatchers.resetMain()
             preferencesNode.removeNode()
         }
     }
@@ -947,10 +959,12 @@ class LibraryCategoryBehaviorTest {
             assertEquals(setOf(3L), rootModel.categoryIdsForManga(first.id))
             assertEquals(setOf(2L, 3L), rootModel.categoryIdsForManga(second.id))
         } finally {
+            val modelJob = model?.screenModelScope?.coroutineContext?.get(Job)
             scene?.close()
             model?.onDispose()
-            Dispatchers.resetMain()
+            modelJob?.cancelAndJoin()
             context.closeAndJoin()
+            Dispatchers.resetMain()
             preferencesNode.removeNode()
         }
     }
@@ -1193,8 +1207,8 @@ class LibraryCategoryBehaviorTest {
             }
         } finally {
             controller?.closeAndJoin()
-            Dispatchers.resetMain()
             context.closeAndJoin()
+            Dispatchers.resetMain()
             preferencesNode.removeNode()
         }
     }
@@ -1296,11 +1310,13 @@ class LibraryCategoryBehaviorTest {
             assertEquals(SortMode.DATE_ADDED, recreated.state.value.sortMode)
             assertEquals(LibrarySort.Type.DateAdded, preferences.sortingMode().get().type)
         } finally {
+            val modelJobs = listOfNotNull(recreatedModel, rootModel).mapNotNull { it.screenModelScope.coroutineContext[Job] }
             scene?.close()
             recreatedModel?.onDispose()
             rootModel?.onDispose()
-            Dispatchers.resetMain()
+            modelJobs.forEach { it.cancelAndJoin() }
             context.closeAndJoin()
+            Dispatchers.resetMain()
             preferencesNode.removeNode()
         }
     }

@@ -1,5 +1,7 @@
 package tachiyomi.domain.chapter.model
 
+import mihon.domain.sync.SyncMutationContext
+
 data class ChapterUpdate(
     val id: Long,
     val mangaId: Long? = null,
@@ -15,6 +17,7 @@ data class ChapterUpdate(
     val scanlator: String? = null,
     val version: Long? = null,
     val memo: kotlinx.serialization.json.JsonObject? = null,
+    val syncContext: SyncMutationContext = SyncMutationContext.Metadata,
 )
 
 fun Chapter.toChapterUpdate(): ChapterUpdate {

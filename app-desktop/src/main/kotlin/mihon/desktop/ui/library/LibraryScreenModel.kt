@@ -1,64 +1,66 @@
 package mihon.desktop.ui.library
 
-import tachiyomi.i18n.MR
-import java.util.Locale
+import mihon.desktop.reader.externalChapterUrlOrNull
 
 import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import mihon.desktop.domain.LibrarySearchFilter
 import mihon.desktop.domain.LibraryUpdateChecker
-import mihon.desktop.download.DownloadItem
 import mihon.desktop.domain.SortMode
 import mihon.desktop.download.DesktopDownloadPreferences
 import mihon.desktop.download.DesktopDownloadProvider
+import mihon.desktop.download.DownloadItem
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.settings.LibraryCategoryPrefs
+import mihon.domain.sync.SyncMutationContext
 import mihon.domain.task.TaskStatus
-import tachiyomi.domain.category.interactor.SetMangaCategories
-import tachiyomi.domain.category.interactor.SetDisplayMode
-import tachiyomi.domain.category.interactor.SetSortModeForCategory
+import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.category.interactor.CreateCategoryWithName
 import tachiyomi.domain.category.interactor.DeleteCategory
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.RenameCategory
 import tachiyomi.domain.category.interactor.ReorderCategory
+import tachiyomi.domain.category.interactor.SetDisplayMode
+import tachiyomi.domain.category.interactor.SetMangaCategories
+import tachiyomi.domain.category.interactor.SetSortModeForCategory
+import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
 import tachiyomi.domain.chapter.model.Chapter
-import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.download.service.DownloadPreferences
+import tachiyomi.domain.history.interactor.GetNextChapters
+import tachiyomi.domain.library.applyLibraryCategoryDelta
+import tachiyomi.domain.library.interactor.LibraryFilter
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.model.LibrarySort
-import tachiyomi.domain.library.model.LibraryDisplayMode as SharedLibraryDisplayMode
-import tachiyomi.domain.library.service.LibraryPreferences
-import tachiyomi.domain.library.applyLibraryCategoryDelta
 import tachiyomi.domain.library.selectLibraryDownloadChapters
-import tachiyomi.domain.history.interactor.GetNextChapters
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.UpdateManga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.source.service.SourceManager
-import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.interactor.GetTracksPerManga
+import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.service.TrackerSessionProvider
-import tachiyomi.core.common.preference.TriState
-import tachiyomi.domain.library.interactor.LibraryFilter
-import mihon.desktop.domain.LibrarySearchFilter
+import tachiyomi.i18n.MR
+import java.util.Locale
 import kotlin.random.Random
+import tachiyomi.domain.library.model.LibraryDisplayMode as SharedLibraryDisplayMode
 
 /**
  * Voyager ScreenModel for [LibraryRootScreen].
@@ -78,6 +80,7 @@ data class LibraryReaderRequest(
     val chapters: List<ReaderChapterRef>,
     val currentChapterIndex: Int,
     val initialPage: Int,
+    val resumeSnapshot: tachiyomi.domain.reader.model.ReadingSyncSnapshot? = null,
 )
 
 data class LibraryBatchDownloadResult(
@@ -125,6 +128,7 @@ class LibraryScreenModel(
     private val isChapterDownloaded: ((LibraryManga, Chapter) -> Boolean)? = null,
     private val isChapterQueued: ((Chapter) -> Boolean)? = null,
     private val downloadQueueChanges: Flow<Unit> = flowOf(Unit),
+    private val readingProgress: tachiyomi.domain.reader.interactor.RecordReadingProgress? = null,
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(LibraryState())
@@ -161,7 +165,15 @@ class LibraryScreenModel(
         getTracksPerManga?.subscribe() ?: flowOf(emptyMap()),
         trackerSessionProvider?.loggedInTrackerIds() ?: flowOf(emptySet()),
         downloadQueueChanges,
-    ) { items, tracksByManga, loggedInTrackerIds, _ ->
+        libraryPreferences?.showContinueReadingButton()?.changes() ?: flowOf(false),
+    ) { items, tracksByManga, loggedInTrackerIds, _, showContinue ->
+        val resumable = if (showContinue && readingProgress != null) items.distinctBy { it.id }
+            .filter { item ->
+                val resume = readingProgress.resumePosition(item.id)
+                resume != null && getChaptersByMangaId?.awaitOrThrow(item.id, applyScanlatorFilter = true)
+                    ?.any { it.id == resume.chapterId && it.url.externalChapterUrlOrNull() == null } == true
+            }.mapTo(mutableSetOf()) { it.id } else emptySet()
+        _state.update { it.copy(syncedResumeMangaIds = resumable) }
         updateLibrarySnapshot(items, tracksByManga, loggedInTrackerIds)
         items
     }.catch { error ->
@@ -201,8 +213,10 @@ class LibraryScreenModel(
                 allItems = items,
                 downloadedMangaIds = downloadedIds,
                 downloadCountsByManga = items.associate { item ->
-                    item.id to (downloadedChapterCount?.invoke(item)
-                        ?: if (item.id in downloadedIds) 1L else 0L)
+                    item.id to (
+                        downloadedChapterCount?.invoke(item)
+                            ?: if (item.id in downloadedIds) 1L else 0L
+                        )
                 },
                 localMangaIds = localMangaIds,
                 sourceLanguagesByManga = sourceLanguagesByManga(items),
@@ -249,7 +263,11 @@ class LibraryScreenModel(
     }
 
     suspend fun renameCategory(categoryId: Long, name: String) {
-        when (val result = requireNotNull(renameCategory) { "RenameCategory is required" }.await(categoryId, name.trim())) {
+        when (
+            val result = requireNotNull(renameCategory) {
+                "RenameCategory is required"
+            }.await(categoryId, name.trim())
+        ) {
             RenameCategory.Result.Success -> {
                 setOperationFeedback(null)
                 refreshCategoriesAfterCategoryOperation()
@@ -270,7 +288,11 @@ class LibraryScreenModel(
 
     suspend fun reorderCategory(categoryId: Long, newIndex: Int) {
         val category = state.value.categories.firstOrNull { it.id == categoryId } ?: return
-        when (val result = requireNotNull(reorderCategory) { "ReorderCategory is required" }.await(category, newIndex)) {
+        when (
+            val result = requireNotNull(reorderCategory) {
+                "ReorderCategory is required"
+            }.await(category, newIndex)
+        ) {
             ReorderCategory.Result.Success -> {
                 setOperationFeedback(null)
                 refreshCategoriesAfterCategoryOperation()
@@ -297,8 +319,10 @@ class LibraryScreenModel(
                 allItems = items,
                 downloadedMangaIds = downloadedIds,
                 downloadCountsByManga = items.associate { item ->
-                    item.id to (downloadedChapterCount?.invoke(item)
-                        ?: if (item.id in downloadedIds) 1L else 0L)
+                    item.id to (
+                        downloadedChapterCount?.invoke(item)
+                            ?: if (item.id in downloadedIds) 1L else 0L
+                        )
                 },
                 sourceLanguagesByManga = sourceLanguagesByManga(items),
                 categories = projectedCategories,
@@ -515,7 +539,9 @@ class LibraryScreenModel(
             applySharedPreferences(null)
         }.onFailure {
             _state.update { state ->
-                state.copy(filter = state.filter.copy(skipOutsideReleasePeriod = !state.filter.skipOutsideReleasePeriod))
+                state.copy(
+                    filter = state.filter.copy(skipOutsideReleasePeriod = !state.filter.skipOutsideReleasePeriod),
+                )
             }
         }
     }
@@ -656,8 +682,10 @@ class LibraryScreenModel(
             it.copy(
                 downloadedMangaIds = downloadedIds,
                 downloadCountsByManga = items.associate { item ->
-                    item.id to (downloadedChapterCount?.invoke(item)
-                        ?: if (item.id in downloadedIds) 1L else 0L)
+                    item.id to (
+                        downloadedChapterCount?.invoke(item)
+                            ?: if (item.id in downloadedIds) 1L else 0L
+                        )
                 },
             )
         }
@@ -747,11 +775,13 @@ class LibraryScreenModel(
 
     private fun chapterIsDownloaded(item: LibraryManga, chapter: Chapter): Boolean =
         isChapterDownloaded?.invoke(item, chapter)
-            ?: (downloadProvider?.isChapterDownloaded(
-                item.manga.source,
-                item.manga.title,
-                chapter.name,
-            ) == true)
+            ?: (
+                downloadProvider?.isChapterDownloaded(
+                    item.manga.source,
+                    item.manga.title,
+                    chapter.name,
+                ) == true
+                )
 
     suspend fun markMangaRead(mangaId: Long, read: Boolean): Boolean {
         return try {
@@ -775,14 +805,14 @@ class LibraryScreenModel(
             return
         }
 
-        val changedChapters = statusUpdater.filterToUpdate(chapters, read)
+        val newlyReadChapters = chapters.filterNot { it.read }.distinctBy { it.id }
         val item = state.value.allItems.firstOrNull { it.id == mangaId }
         statusUpdater.awaitOrThrow(chapters, read)
         if (read && sharedDownloadPreferences?.removeAfterMarkedAsRead()?.get() == true) {
             if (item != null) {
                 val delete = requireNotNull(deleteChapterDownload) { "Delete chapter download is required" }
                 try {
-                    changedChapters.forEach { chapter -> delete(item, chapter) }
+                    newlyReadChapters.forEach { chapter -> delete(item, chapter) }
                 } finally {
                     refreshDownloadState()
                 }
@@ -827,7 +857,14 @@ class LibraryScreenModel(
             var membershipUpdated = true
             try {
                 if (removeFromLibrary) {
-                    if (!requireNotNull(updater).await(MangaUpdate(id = mangaId, favorite = false))) {
+                    if (!requireNotNull(updater).await(
+                            MangaUpdate(
+                                id = mangaId,
+                                favorite = false,
+                                syncContext = SyncMutationContext.User,
+                            ),
+                        )
+                    ) {
                         itemFailed = true
                         membershipUpdated = false
                     } else {
@@ -858,8 +895,11 @@ class LibraryScreenModel(
         _state.update {
             it.copy(
                 operationFeedback = if (failures == 0) {
-                    if (removeFromLibrary) MR.strings.manga_removed_library.localized()
-                    else MR.strings.desktop_ui_delete_download.localized()
+                    if (removeFromLibrary) {
+                        MR.strings.manga_removed_library.localized()
+                    } else {
+                        MR.strings.desktop_ui_delete_download.localized()
+                    }
                 } else {
                     MR.strings.desktop_ui_items_updated_failed.localized(
                         Locale.getDefault(),
@@ -973,9 +1013,11 @@ class LibraryScreenModel(
 
     suspend fun continueReadingRequest(item: LibraryManga): LibraryReaderRequest? {
         val chapters = requireNotNull(getChaptersByMangaId) { "GetChaptersByMangaId is required" }
-            .awaitOrThrow(item.manga.id)
+            .awaitOrThrow(item.manga.id, applyScanlatorFilter = true)
             .sortedBy { it.sourceOrder }
-        val target = nextUnreadChapter(chapters, item.manga) ?: run {
+        val resume = readingProgress?.resumePosition(item.manga.id)
+        val resumedChapter = chapters.find { it.id == resume?.chapterId && it.url.externalChapterUrlOrNull() == null }
+        val target = resumedChapter ?: nextUnreadChapter(chapters, item.manga) ?: run {
             setOperationFeedback(MR.strings.no_next_chapter.localized())
             return null
         }
@@ -995,7 +1037,12 @@ class LibraryScreenModel(
             mangaViewerFlags = item.manga.viewerFlags,
             chapters = chapterRefs,
             currentChapterIndex = ReaderNavigator.indexForId(chapterRefs, target.id),
-            initialPage = target.lastPageRead.toInt().coerceAtLeast(0),
+            initialPage = if (resumedChapter != null) {
+                requireNotNull(resume).pageIndex
+            } else {
+                target.lastPageRead.toInt().coerceAtLeast(0)
+            },
+            resumeSnapshot = resume?.snapshot.takeIf { resumedChapter != null },
         )
     }
 
@@ -1032,8 +1079,9 @@ class LibraryScreenModel(
                 )
                 when (val result = setter.awaitResult(mangaId, target)) {
                     SetMangaCategories.Result.Success -> succeeded += mangaId
-                    is SetMangaCategories.Result.InternalError -> failures +=
-                        SetMangaCategories.BatchFailure(mangaId, result.error)
+                    is SetMangaCategories.Result.InternalError ->
+                        failures +=
+                            SetMangaCategories.BatchFailure(mangaId, result.error)
                 }
             } catch (error: CancellationException) {
                 throw error

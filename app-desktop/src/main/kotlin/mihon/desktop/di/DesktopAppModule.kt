@@ -506,6 +506,9 @@ internal fun initDataLayer(
     Injekt.addSingleton(historyRepository)
     Injekt.addSingleton(updatesRepository)
     Injekt.addSingleton(creatorArchiveBootstrap)
+    Injekt.addSingleton<mihon.data.sync.journal.BackupRestoreSync>(
+        mihon.data.sync.journal.SyncBackupRestorer(handler, creatorArchiveBootstrap),
+    )
     Injekt.addSingleton(creatorRepository)
     Injekt.addSingleton<CreatorArchiveRepository>(creatorRepositoryImpl)
     Injekt.addSingleton(CreatorArchive(creatorRepositoryImpl, creatorRepositoryImpl))
@@ -815,6 +818,7 @@ internal fun initUILayer(
             preferenceStore = preferenceStore,
             extensionRepoRepository = Injekt.get(),
             authorArchiveBackupContributor = Injekt.get(),
+            backupRestoreSync = Injekt.get(),
         ),
     )
 
@@ -957,6 +961,27 @@ internal fun initUILayer(
         ),
     )
 
+    val syncSecureStore = mihon.desktop.sync.DesktopSyncSecureStore(
+        File(paths.configDir, "sync-secrets"),
+        credentialBackendFactory(CredentialNamespace.SYNC_V1),
+    )
+    Injekt.addSingleton<mihon.domain.sync.security.SyncSecureStore>(syncSecureStore)
+    val syncRuntime = mihon.data.sync.runtime.SyncRuntime(
+        handler = handler,
+        bootstrap = Injekt.get(),
+        creatorIndexWriter = Injekt.get(),
+        creatorRepository = Injekt.get(),
+        sourceAvailable = { Injekt.get<SourceManager>().get(it) != null },
+        secureStore = syncSecureStore,
+        preferenceStore = preferenceStore,
+        productionClient = networkHelper.client,
+    )
+    Injekt.addSingleton(syncRuntime)
+    val syncScheduler = mihon.desktop.sync.DesktopSyncScheduler(
+        syncRuntime.coordinator, syncRuntime.preferences, applicationScope,
+        onStopped = syncRuntime::stopPanel,
+    )
+    Injekt.addSingleton(syncScheduler)
     val autoBackupScheduler = registerDesktopBackup(
         appPreferences,
         mangaRepository,
@@ -977,6 +1002,7 @@ internal fun initUILayer(
         ),
         creatorDiscoveryScheduler = Injekt.get<mihon.desktop.domain.CreatorDiscoveryScheduler>(),
         creatorDiscoveryOutboxService = Injekt.get<mihon.desktop.domain.CreatorDiscoveryOutboxService>(),
+        syncService = syncScheduler,
         appLock = appLock,
         scope = applicationScope,
         updateScreenModel = updateScreenModel,

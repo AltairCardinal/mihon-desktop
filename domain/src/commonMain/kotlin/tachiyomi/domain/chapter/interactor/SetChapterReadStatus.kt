@@ -1,5 +1,6 @@
 package tachiyomi.domain.chapter.interactor
 
+import mihon.domain.sync.SyncMutationContext
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 
@@ -7,14 +8,9 @@ class SetChapterReadStatus(
     private val getChaptersByMangaId: GetChaptersByMangaId,
     private val updateChapter: UpdateChapter,
 ) {
-    fun filterToUpdate(chapters: List<Chapter>, read: Boolean): List<Chapter> =
-        chapters.filter { chapter ->
-            if (read) {
-                !chapter.read
-            } else {
-                chapter.read || chapter.lastPageRead > 0
-            }
-        }
+    // An explicit command still matters when another device has a different state.
+    @Suppress("UNUSED_PARAMETER")
+    fun filterToUpdate(chapters: List<Chapter>, read: Boolean): List<Chapter> = chapters.distinctBy { it.id }
 
     suspend fun awaitOrThrow(mangaId: Long, read: Boolean) {
         awaitOrThrow(getChaptersByMangaId.awaitOrThrow(mangaId), read)
@@ -26,6 +22,7 @@ class SetChapterReadStatus(
                 id = chapter.id,
                 read = read,
                 lastPageRead = if (read) null else 0L,
+                syncContext = SyncMutationContext.User,
             )
         }
         if (updates.isNotEmpty()) {

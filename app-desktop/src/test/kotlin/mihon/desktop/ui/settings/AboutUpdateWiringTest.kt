@@ -76,7 +76,7 @@ class AboutUpdateWiringTest {
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
         lateinit var navigator: Navigator
         try {
-            assertEquals(196, notices.size)
+            assertEquals(199, notices.size)
             assertTrue(coroutinesIndex >= 0)
             scene.setContent {
                 CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {

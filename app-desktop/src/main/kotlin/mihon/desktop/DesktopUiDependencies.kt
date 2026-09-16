@@ -166,6 +166,7 @@ data class DesktopUiDependencies(
     val updateController: DesktopUpdateController? = null,
     val updateScreenModel: DesktopUpdateScreenModel? = null,
     val libraryPreferences: LibraryPreferences? = null,
+    val syncPanel: mihon.data.sync.runtime.SyncPanel? = null,
 ) {
     suspend fun getMangaTitle(mangaId: Long): String {
         return mangaRepository.getMangaById(mangaId).title
@@ -259,6 +260,7 @@ data class DesktopUiDependencies(
                 updateController = Injekt.get(),
                 updateScreenModel = Injekt.get(),
                 libraryPreferences = Injekt.get(),
+                syncPanel = Injekt.get<mihon.data.sync.runtime.SyncRuntime>().panel,
             )
         }
     }

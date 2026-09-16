@@ -1,0 +1,152 @@
+CREATE TABLE sync_imports (
+    import_id TEXT NOT NULL PRIMARY KEY,
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    origin TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    epoch INTEGER NOT NULL,
+    next_seq INTEGER NOT NULL,
+    total INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (space_id, generation) REFERENCES sync_spaces(space_id, generation)
+);
+
+CREATE UNIQUE INDEX sync_initial_import ON sync_imports(space_id, generation) WHERE origin = 'INITIAL_IMPORT';
+
+-- Values and descriptions are copied in the activation transaction, not read again during chunk processing.
+CREATE TABLE sync_import_entries (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    import_id TEXT NOT NULL REFERENCES sync_imports(import_id),
+    category TEXT NOT NULL,
+    source_id INTEGER,
+    object_url TEXT,
+    parent_url TEXT,
+    portable_key TEXT,
+    title TEXT NOT NULL,
+    parent_title TEXT,
+    author TEXT,
+    artist TEXT,
+    thumbnail TEXT,
+    chapter_number REAL,
+    source_order INTEGER,
+    scanlator TEXT,
+    is_read INTEGER NOT NULL DEFAULT 0,
+    page_index INTEGER NOT NULL DEFAULT 0,
+    read_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX sync_import_queue ON sync_import_entries(import_id, id);
+
+-- Only previous effects from the same frozen import may be causal parents of a baseline effect.
+CREATE TABLE sync_import_heads (
+    import_id TEXT NOT NULL REFERENCES sync_imports(import_id),
+    object_key TEXT NOT NULL,
+    field TEXT NOT NULL,
+    ref_json TEXT NOT NULL,
+    PRIMARY KEY (import_id, object_key, field)
+);
+
+-- Preserve the last shareable values before private reading changes business rows.
+-- These device-local values never enter ordinary backups as machine state.
+CREATE TABLE sync_private_reading (
+    chapter_id INTEGER NOT NULL PRIMARY KEY REFERENCES chapters(_id) ON DELETE CASCADE,
+    public_read INTEGER NOT NULL,
+    public_page INTEGER NOT NULL,
+    public_read_at INTEGER NOT NULL
+);
+
+getInitialImport:
+SELECT * FROM sync_imports WHERE space_id = ? AND generation = ? AND origin = 'INITIAL_IMPORT';
+
+countPendingImports:
+SELECT count(*) FROM sync_import_entries JOIN sync_imports USING(import_id)
+WHERE space_id = ? AND generation = ?;
+
+getImport:
+SELECT * FROM sync_imports WHERE import_id = ?;
+
+insertImport:
+INSERT INTO sync_imports(import_id, space_id, generation, origin, actor_id, epoch, next_seq)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+freezeFavorites:
+INSERT INTO sync_import_entries(import_id, category, source_id, object_url, title, author, artist, thumbnail)
+SELECT :importId, 'FAVORITE', M.source, M.url, M.title, M.author, M.artist, M.thumbnail_url
+FROM mangas M WHERE M.favorite = 1
+AND (:sourceId IS NULL OR M.source = :sourceId) AND (:mangaUrl IS NULL OR M.url = :mangaUrl)
+AND M._id = (
+    SELECT min(D._id) FROM mangas D WHERE D.source = M.source AND D.url = M.url AND D.favorite = 1
+);
+
+freezeFollows:
+INSERT INTO sync_import_entries(import_id, category, portable_key, title)
+SELECT :importId, 'FOLLOW', C.portable_key, C.display_name
+FROM author_archive_creators C JOIN author_archive_watches W ON W.creator_id = C._id
+WHERE C.status = 'ACTIVE' AND W.enabled = 1 AND (:portableKey IS NULL OR C.portable_key = :portableKey);
+
+freezeReading:
+INSERT INTO sync_import_entries(import_id, category, source_id, object_url, parent_url, title,
+    parent_title, author, artist, thumbnail, chapter_number, source_order, scanlator, is_read, page_index, read_at)
+SELECT :importId, 'READING', M.source, C.url, M.url, C.name, M.title, M.author, M.artist, M.thumbnail_url,
+    C.chapter_number, C.source_order, C.scanlator, coalesce(PR.public_read, C.read),
+    coalesce(PR.public_page, C.last_page_read), coalesce(PR.public_read_at, H.last_read, 0)
+FROM chapters C JOIN mangas M ON M._id = C.manga_id LEFT JOIN history H ON H.chapter_id = C._id
+LEFT JOIN sync_private_reading PR ON PR.chapter_id = C._id
+WHERE (:sourceId IS NULL OR M.source = :sourceId) AND (:mangaUrl IS NULL OR M.url = :mangaUrl)
+AND (coalesce(PR.public_read, C.read) = 1 OR coalesce(PR.public_page, C.last_page_read) > 0
+    OR coalesce(PR.public_read_at, H.last_read, 0) > 0)
+AND C._id = (SELECT min(D._id) FROM chapters D JOIN mangas P ON P._id = D.manga_id
+    LEFT JOIN history DH ON DH.chapter_id = D._id
+    LEFT JOIN sync_private_reading DPR ON DPR.chapter_id = D._id
+    WHERE P.source = M.source AND P.url = M.url AND D.url = C.url
+      AND (coalesce(DPR.public_read, D.read) = 1 OR coalesce(DPR.public_page, D.last_page_read) > 0
+          OR coalesce(DPR.public_read_at, DH.last_read, 0) > 0))
+ORDER BY coalesce(PR.public_read_at, H.last_read, 0), C._id;
+
+setImportTotal:
+UPDATE sync_imports SET total = (SELECT count(*) FROM sync_import_entries WHERE import_id = :importId)
+WHERE import_id = :importId;
+
+incrementImportTotal:
+UPDATE sync_imports SET total = total + :added WHERE import_id = :importId;
+
+getImportEntries:
+SELECT * FROM sync_import_entries WHERE import_id = ? ORDER BY id LIMIT :limit;
+
+countImportEntries:
+SELECT count(*) FROM sync_import_entries WHERE import_id = ?;
+
+getNextPendingImport:
+SELECT DISTINCT sync_imports.import_id FROM sync_imports
+JOIN sync_import_entries USING (import_id)
+WHERE sync_imports.space_id = ? AND sync_imports.generation = ?
+ORDER BY sync_imports.import_id LIMIT 1;
+
+removeImportEntry:
+DELETE FROM sync_import_entries WHERE id = ?;
+
+getImportHead:
+SELECT ref_json FROM sync_import_heads WHERE import_id = ? AND object_key = ? AND field = ?;
+
+setImportHead:
+INSERT OR REPLACE INTO sync_import_heads(import_id, object_key, field, ref_json) VALUES (?, ?, ?, ?);
+
+markPrivateReading:
+INSERT OR IGNORE INTO sync_private_reading(chapter_id, public_read, public_page, public_read_at)
+SELECT C._id, C.read, C.last_page_read, coalesce(H.last_read, 0)
+FROM chapters C LEFT JOIN history H ON H.chapter_id = C._id WHERE C._id = :chapterId;
+
+advancePublicReading:
+UPDATE sync_private_reading SET public_read = max(public_read, :finished), public_page = :page,
+    public_read_at = CASE WHEN :readAt >= 0 THEN :readAt ELSE public_read_at END
+WHERE chapter_id = :chapterId;
+
+setPublicReadStatus:
+UPDATE sync_private_reading SET public_read = :isRead,
+    public_page = CASE WHEN :isRead = 0 THEN 0 ELSE public_page END
+WHERE chapter_id = :chapterId;
+
+setPublicResume:
+UPDATE sync_private_reading SET public_page = :page WHERE chapter_id = :chapterId;
+
+setPublicHistory:
+UPDATE sync_private_reading SET public_read_at = max(public_read_at, :readAt) WHERE chapter_id = :chapterId;

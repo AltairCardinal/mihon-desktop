@@ -1,7 +1,7 @@
 package mihon.desktop.ui.reader
 
-import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.DesktopReaderChapterContext
+import mihon.desktop.reader.ReaderBackgroundTheme
 import mihon.desktop.reader.ReaderColorFilter
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.ScaleType
@@ -36,6 +36,7 @@ data class ReaderState(
     ),
     val session: ReaderSessionSnapshot = ReaderSessionSnapshot.initial(ReaderChapterId(context.chapterId)),
     val currentPage: Int = 0,
+    val resumePageUnavailable: Boolean = false,
     val currentDisplayUnitId: DisplayUnitId? = null,
     val visiblePageIds: Set<ReaderPageId> = emptySet(),
     val webtoonScrollAnchor: WebtoonScrollAnchor? = null,

@@ -20,7 +20,16 @@ class UpdateLibraryMembershipTest {
             nowMillis = 123L,
         )
 
-        assertEquals(LibraryMembershipUpdate(1L, true, 123L, listOf(10L, 11L)), request)
+        assertEquals(
+            LibraryMembershipUpdate(
+                1L,
+                true,
+                123L,
+                listOf(10L, 11L),
+                syncContext = mihon.domain.sync.SyncMutationContext.User,
+            ),
+            request,
+        )
     }
 
     @Test

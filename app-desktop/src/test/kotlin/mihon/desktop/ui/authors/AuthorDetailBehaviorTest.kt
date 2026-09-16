@@ -7,25 +7,26 @@ import io.mockk.mockk
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import mihon.domain.sync.SyncMutationContext
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.domain.creator.interactor.DiscoverCreatorWorks
+import tachiyomi.domain.creator.interactor.GetCreatorDetails
+import tachiyomi.domain.creator.interactor.GetCreators
+import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
+import tachiyomi.domain.creator.interactor.SetCreatorFollow
+import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.DiscoveryCandidateState
 import tachiyomi.domain.creator.model.MangaCreator
-import tachiyomi.domain.creator.model.Creator
-import tachiyomi.domain.creator.interactor.GetCreatorDetails
-import tachiyomi.domain.creator.interactor.GetCreators
-import tachiyomi.domain.creator.interactor.DiscoverCreatorWorks
-import tachiyomi.domain.creator.interactor.SetCreatorFollow
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
 import tachiyomi.domain.creator.service.CreatorLibraryIndexState
-import tachiyomi.domain.creator.repository.CreatorArchiveRepository
-import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 
 class AuthorDetailBehaviorTest {
     @Test
@@ -74,6 +75,7 @@ class AuthorDetailBehaviorTest {
         coVerify(exactly = 1) { repository.mergeCreatorIdentities(1L, 2L) }
         coVerify(exactly = 1) { repository.splitCreatorIdentity(1L, setOf(11L, 12L), "ONE") }
     }
+
     @Test
     fun `manual discovery interactor executes production service before reloading details`() {
         runTest {
@@ -126,8 +128,8 @@ class AuthorDetailBehaviorTest {
         coEvery { repository.getDiscoveryCandidatesForCreator(7L) } returns listOf(candidate)
         coEvery { repository.getMangaCreatorsForCreator(7L) } returns emptyList()
         coEvery { repository.getDiscoveryCandidate(candidate.id) } returns candidate
-        coEvery { repository.followCreator(7L, emptyList(), emptyList()) } returns mockk()
-        coEvery { repository.unfollowCreator(7L) } returns Unit
+        coEvery { repository.followCreator(7L, syncContext = SyncMutationContext.User) } returns mockk()
+        coEvery { repository.unfollowCreator(7L, syncContext = SyncMutationContext.User) } returns Unit
 
         val creators = GetCreators(repository)
         val details = GetCreatorDetails(repository)
@@ -140,8 +142,8 @@ class AuthorDetailBehaviorTest {
         follow.await(7L, followed = true)
         follow.await(7L, followed = false)
 
-        coVerify(exactly = 1) { repository.followCreator(7L, emptyList(), emptyList()) }
-        coVerify(exactly = 1) { repository.unfollowCreator(7L) }
+        coVerify(exactly = 1) { repository.followCreator(7L, syncContext = SyncMutationContext.User) }
+        coVerify(exactly = 1) { repository.unfollowCreator(7L, syncContext = SyncMutationContext.User) }
     }
 
     @Test

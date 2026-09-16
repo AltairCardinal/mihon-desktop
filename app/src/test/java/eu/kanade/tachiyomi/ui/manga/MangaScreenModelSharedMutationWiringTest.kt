@@ -3,17 +3,33 @@ package eu.kanade.tachiyomi.ui.manga
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.Resources
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.printToString
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.chapter.interactor.GetAvailableScanlators
 import eu.kanade.domain.chapter.interactor.SetReadStatus
 import eu.kanade.domain.manga.interactor.GetExcludedScanlators
 import eu.kanade.domain.manga.interactor.SetExcludedScanlators
 import eu.kanade.domain.manga.interactor.UpdateManga
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.track.interactor.AddTracks
 import eu.kanade.domain.track.interactor.TrackChapter
 import eu.kanade.domain.track.service.TrackPreferences
+import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.track.TrackerManager
@@ -31,21 +47,26 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import mihon.domain.sync.SyncMutationContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.AndroidPreferenceStore
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
@@ -55,6 +76,7 @@ import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
@@ -63,6 +85,10 @@ import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.repository.LibraryMembershipUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
+import tachiyomi.domain.reader.interactor.RecordReadingProgress
+import tachiyomi.domain.reader.model.ReadingResumePosition
+import tachiyomi.domain.reader.model.ReadingSyncSnapshot
+import tachiyomi.domain.reader.repository.ReadingProgressRepository
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.i18n.MR
@@ -75,6 +101,99 @@ import java.util.Collections
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], manifest = Config.NONE)
 class MangaScreenModelSharedMutationWiringTest {
+    @get:Rule
+    val compose = createEmptyComposeRule()
+    private val readingRepository = mockk<ReadingProgressRepository>(relaxed = true)
+
+    @Test
+    @Config(qualifiers = "w1200dp-h800dp")
+    fun `continue reading can reopen the synchronized chapter when every chapter is read`() = runBlocking {
+        Dispatchers.resetMain()
+        val synced = chapter(2).copy(read = true, lastPageRead = 8)
+        coEvery { readingRepository.resumePosition(MANGA_ID) } returns
+            ReadingResumePosition(synced.id, 1, ReadingSyncSnapshot())
+        val model = screenModel(manga = manga(true), chapters = listOf(chapter(1).copy(read = true), synced))
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            awaitSuccess(model)
+            assertEquals(synced.id, (model.state.value as MangaScreenModel.State.Success).synchronizedResumeId)
+            assertEquals(synced.id, model.getNextUnreadChapter()?.id)
+            val tablet = mutableStateOf(false)
+            var clicks = 0
+            activity.get().setContent {
+                MaterialTheme {
+                    eu.kanade.presentation.manga.MangaScreen(
+                        state = model.state.value as MangaScreenModel.State.Success,
+                        snackbarHostState = model.snackbarHostState,
+                        nextUpdate = null,
+                        isTabletUi = tablet.value,
+                        chapterSwipeStartAction = LibraryPreferences.ChapterSwipeAction.Disabled,
+                        chapterSwipeEndAction = LibraryPreferences.ChapterSwipeAction.Disabled,
+                        navigateUp = {}, onChapterClicked = {}, onDownloadChapter = null,
+                        onAddToLibraryClicked = {}, onWebViewClicked = null, onWebViewLongClicked = null,
+                        onTrackingClicked = {}, onTagSearch = {}, onFilterButtonClicked = {}, onRefresh = {},
+                        onContinueReading = { clicks++ }, onSearch = { _, _ -> }, creatorMentions = emptyList(),
+                        onCreatorClick = {}, onCoverClicked = {}, onShareClicked = null, onDownloadActionClicked = null,
+                        onEditCategoryClicked = null, onEditFetchIntervalClicked = null, onMigrateClicked = null,
+                        onEditNotesClicked = {}, onMultiBookmarkClicked = { _, _ -> },
+                        onMultiMarkAsReadClicked = { _, _ -> }, onMarkPreviousAsReadClicked = {},
+                        onMultiDeleteClicked = {},
+                        onChapterSwipe = { _, _ -> }, onChapterSelected = { _, _, _ -> },
+                        onAllChapterSelected = {}, onInvertSelection = {},
+                    )
+                }
+            }
+            for (isTablet in listOf(false, true)) {
+                compose.runOnIdle { tablet.value = isTablet }
+                compose.mainClock.advanceTimeBy(500)
+                try {
+                    val resumeText = activity.get().stringResource(MR.strings.action_resume)
+                    compose.onNode(
+                        hasClickAction() and hasAnyDescendant(hasText(resumeText)),
+                        useUnmergedTree = true,
+                    ).assertIsDisplayed().performTouchInput { click() }
+                } catch (error: AssertionError) {
+                    throw AssertionError(
+                        "Resume must be displayed for tablet=$isTablet\n" +
+                            compose.onRoot(useUnmergedTree = true).printToString(),
+                        error,
+                    )
+                }
+            }
+            assertEquals(2, clicks)
+            assertEquals(synced.id, model.getNextUnreadChapter()?.id)
+        } finally {
+            activity.pause().stop().destroy()
+            model.onDispose()
+        }
+    }
+
+    @Test
+    fun `chapter mark buttons reach the shared explicit user command`() = runTest {
+        val captured = Channel<List<ChapterUpdate>>(Channel.UNLIMITED)
+        val repository = mockk<ChapterRepository> {
+            coEvery { updateAll(any()) } coAnswers { captured.send(firstArg()) }
+        }
+        val preferences = mockk<DownloadPreferences> {
+            every { removeAfterMarkedAsRead().get() } returns false
+        }
+        val command = SetReadStatus(preferences, mockk(), mockk(), repository)
+        val chapter = chapter(1)
+        val model = screenModel(manga = manga(true), chapters = listOf(chapter), setReadStatus = command)
+        try {
+            awaitSuccess(model)
+            for (read in listOf(true, false)) {
+                model.markChaptersRead(listOf(chapter), read)
+                val update = withContext(Dispatchers.Default) {
+                    withTimeout(5_000) { captured.receive().single() }
+                }
+                assertEquals(read, update.read)
+                assertEquals(SyncMutationContext.User, update.syncContext)
+            }
+        } finally {
+            model.onDispose()
+        }
+    }
 
     @Test
     fun `manual detail refresh reaches combined source update once and persists memo`() = verifyRealRefresh(
@@ -189,12 +308,16 @@ class MangaScreenModelSharedMutationWiringTest {
         Dispatchers.setMain(StandardTestDispatcher())
         previousInjekt = Injekt
         Injekt = InjektScope(DefaultRegistrar())
+        Injekt.addSingleton(RecordReadingProgress(readingRepository))
         val application = RuntimeEnvironment.getApplication()
         sharedPreferences = application.getSharedPreferences(
             "manga-screen-shared-mutations-${System.nanoTime()}",
             Context.MODE_PRIVATE,
         )
         preferenceStore = AndroidPreferenceStore(application, sharedPreferences)
+        Injekt.addSingleton(BasePreferences(application, preferenceStore))
+        Injekt.addSingleton(UiPreferences(preferenceStore))
+        Injekt.addSingleton(SourcePreferences(preferenceStore))
         lifecycleOwner = TestLifecycleOwner().also {
             it.registry.currentState = Lifecycle.State.RESUMED
         }
@@ -315,6 +438,7 @@ class MangaScreenModelSharedMutationWiringTest {
         updateChapter: UpdateChapter = mockk(relaxed = true),
         updateLibraryMembership: UpdateLibraryMembership = UpdateLibraryMembership { },
         batchUpdateChapters: BatchUpdateChapters = BatchUpdateChapters(),
+        setReadStatus: SetReadStatus = mockk(relaxed = true),
         mangaRepository: MangaRepository = mockk(relaxed = true),
         chapterRepository: ChapterRepository = mockk(relaxed = true),
         syncChaptersWithSource: eu.kanade.domain.chapter.interactor.SyncChaptersWithSource = mockk(relaxed = true),
@@ -364,7 +488,7 @@ class MangaScreenModelSharedMutationWiringTest {
             setExcludedScanlators = mockk<SetExcludedScanlators>(relaxed = true),
             setMangaChapterFlags = mockk<SetMangaChapterFlags>(relaxed = true),
             setMangaDefaultChapterFlags = mockk<SetMangaDefaultChapterFlags>(relaxed = true),
-            setReadStatus = mockk<SetReadStatus>(relaxed = true),
+            setReadStatus = setReadStatus,
             updateChapter = updateChapter,
             updateManga = updateManga,
             syncChaptersWithSource = syncChaptersWithSource,
