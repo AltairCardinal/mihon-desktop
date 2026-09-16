@@ -27,8 +27,9 @@ class ReaderPreferences(
     private fun <T> Preference<T>.legacy(key: String, read: () -> T?): Preference<T> =
         migrateFrom(legacy, key) { read() }
 
-    private val readingModePref = store.getEnum("reader_reading_mode", ReadingMode.DEFAULT)
+    private val readingModePref = store.getEnum("reader_reading_mode", ReadingMode.AUTO)
         .legacy("readingMode") { legacy.get("readingMode", null)?.let { runCatching { ReadingMode.valueOf(it) }.getOrNull() } }
+        .apply { if (get() == ReadingMode.DEFAULT) set(ReadingMode.AUTO) }
     private val navigationModePref = store.getEnum("reader_navigation_mode", NavigationMode.RightAndLeft)
         .legacy("navigationMode") { legacy.get("navigationMode", null)?.let { runCatching { NavigationMode.valueOf(it) }.getOrNull() } }
     private val dualPagePref = store.getBoolean("reader_dual_page", false)

@@ -8,8 +8,8 @@ gradle.beforeProject { project ->
                     throw new GradleException('Fork identity requires the expected upstream application ID')
                 }
                 android.defaultConfig.applicationId = 'app.mihon.desktop.fork'
-                android.defaultConfig.versionCode = 22
-                android.defaultConfig.versionName = '0.19.4-aex.4'
+                android.defaultConfig.versionCode = 23
+                android.defaultConfig.versionName = '0.19.4-aex.5'
                 project.tasks.register('verifyForkReleaseConfiguration') {
                     doLast {
                         def release = android.buildTypes.getByName('release')
@@ -24,11 +24,11 @@ gradle.beforeProject { project ->
                         }
                         if (android.namespace != 'eu.kanade.tachiyomi' ||
                             android.defaultConfig.applicationId != 'app.mihon.desktop.fork' ||
-                            android.defaultConfig.versionCode != 22 ||
-                            android.defaultConfig.versionName != '0.19.4-aex.4') {
+                            android.defaultConfig.versionCode != 23 ||
+                            android.defaultConfig.versionName != '0.19.4-aex.5') {
                             throw new GradleException('Unexpected fork release identity')
                         }
-                        println('FORK_RELEASE_CONFIG_OK id=app.mihon.desktop.fork version=0.19.4-aex.4 code=22 R8=true telemetry=false updater=false')
+                        println('FORK_RELEASE_CONFIG_OK id=app.mihon.desktop.fork version=0.19.4-aex.5 code=23 R8=true telemetry=false updater=false')
                     }
                 }
                 project.tasks.matching { it.name == 'preReleaseBuild' }.configureEach {

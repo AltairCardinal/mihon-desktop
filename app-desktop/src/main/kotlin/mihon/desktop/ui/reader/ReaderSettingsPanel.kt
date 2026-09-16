@@ -213,15 +213,15 @@ internal fun GeneralTab(
 ) {
     // Reading mode
     SettingsSection(MR.strings.desktop_ui_reading_mode.localized()) {
-        RadioRow(MR.strings.desktop_reader_follow_global.localized(), followsGlobal, onFollowGlobal)
-        ReadingMode.entries.forEach { mode ->
+        RadioRow(MR.strings.label_default.localized(), followsGlobal, onFollowGlobal)
+        ReadingMode.entries.filter { it != ReadingMode.DEFAULT }.forEach { mode ->
             RadioRow(
                 label = readingModeLabel(mode),
                 selected = !followsGlobal && currentMode == mode,
                 onClick = { onModeChange(mode) },
             )
         }
-        if (currentMode == ReadingMode.DEFAULT) {
+        if (currentMode == ReadingMode.AUTO) {
             Text(if (isDualPage) MR.strings.desktop_reader_default_dual.localized() else MR.strings.desktop_reader_default_single.localized())
             Text(MR.strings.desktop_reader_default_summary.localized(), style = MaterialTheme.typography.bodySmall)
         }
@@ -250,7 +250,7 @@ internal fun GeneralTab(
                 label = MR.strings.desktop_ui_dual_page_side_by_side.localized(),
                 checked = isDualPage,
                 onCheckedChange = onDualPageChange,
-                enabled = currentMode != ReadingMode.DEFAULT,
+                enabled = currentMode != ReadingMode.AUTO,
             )
             if (isDualPage) {
                 CheckboxRow(
@@ -591,6 +591,7 @@ private fun BackgroundThemeChip(
 
 internal fun readingModeLabel(mode: ReadingMode): String = when (mode) {
     ReadingMode.DEFAULT -> MR.strings.label_default.localized()
+    ReadingMode.AUTO -> MR.strings.automatic_background.localized()
     ReadingMode.LTR -> MR.strings.left_to_right_viewer.localized()
     ReadingMode.RTL -> MR.strings.right_to_left_viewer.localized()
     ReadingMode.WEBTOON -> MR.strings.webtoon_viewer.localized()

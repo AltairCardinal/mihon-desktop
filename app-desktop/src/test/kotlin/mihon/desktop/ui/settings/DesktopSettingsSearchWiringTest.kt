@@ -279,8 +279,8 @@ class DesktopSettingsSearchWiringTest {
             withSearchScene(ReaderSettingsScreen()) { scene ->
                 currentReaderPreferences.readingMode = mihon.desktop.reader.ReadingMode.LTR
                 render(scene)
-                click(scene, MR.strings.label_default.localized(Locale.US))
-                assertEquals(mihon.desktop.reader.ReadingMode.DEFAULT, currentReaderPreferences.readingMode)
+                click(scene, MR.strings.automatic_background.localized(Locale.US))
+                assertEquals(mihon.desktop.reader.ReadingMode.AUTO, currentReaderPreferences.readingMode)
             }
         }
     }

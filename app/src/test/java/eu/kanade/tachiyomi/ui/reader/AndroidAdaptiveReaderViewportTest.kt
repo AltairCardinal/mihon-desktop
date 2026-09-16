@@ -20,6 +20,15 @@ import java.time.Duration
 @Config(sdk = [35], manifest = Config.NONE)
 class AndroidAdaptiveReaderViewportTest {
     @Test
+    fun `old global zero migrates to automatic while manga default remains inheritance`() {
+        val store = AndroidPreferenceStore(RuntimeEnvironment.getApplication())
+        store.getInt("pref_default_reading_mode_key", -1).set(0)
+        assertEquals(7, ReaderPreferences(store).defaultReadingMode().get())
+        assertEquals(7, ReaderPreferences(store).defaultReadingMode().get())
+        assertEquals(0, ReadingMode.DEFAULT.flagValue)
+    }
+
+    @Test
     fun `stable resize target does not debounce forever and hysteresis ignores overlay`() {
         val view = FrameLayout(RuntimeEnvironment.getApplication())
         view.layout(0, 0, 900, 1000)
@@ -73,7 +82,7 @@ class AndroidAdaptiveReaderViewportTest {
         AdaptiveReaderViewport(view, restoredDualPage = true) {}.use { assertTrue(it.configure(true)) }
         val store = AndroidPreferenceStore(RuntimeEnvironment.getApplication())
         val preferences = ReaderPreferences(store)
-        assertEquals(ReadingMode.DEFAULT.flagValue, preferences.defaultReadingMode().get())
+        assertEquals(ReadingMode.AUTO.flagValue, preferences.defaultReadingMode().get())
         preferences.defaultReadingMode().set(ReadingMode.RIGHT_TO_LEFT.flagValue)
         assertEquals(ReadingMode.RIGHT_TO_LEFT.flagValue, ReaderPreferences(store).defaultReadingMode().get())
         assertTrue(ReadingMode.isPagerType(ReadingMode.DEFAULT.flagValue))

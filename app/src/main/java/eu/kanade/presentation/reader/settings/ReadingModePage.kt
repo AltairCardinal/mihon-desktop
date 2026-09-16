@@ -39,7 +39,7 @@ internal fun ColumnScope.ReadingModePage(screenModel: ReaderSettingsScreenModel)
                 selected = it == readingMode,
                 onClick = { screenModel.onChangeReadingMode(it) },
                 label = {
-                    val label = if (it == ReadingMode.DEFAULT) MR.strings.desktop_reader_follow_global else it.stringRes
+                    val label = it.stringRes
                     Text(stringResource(label))
                 },
             )
@@ -48,18 +48,20 @@ internal fun ColumnScope.ReadingModePage(screenModel: ReaderSettingsScreenModel)
 
     if (readingMode == ReadingMode.DEFAULT) {
         Text(
-            stringResource(MR.strings.desktop_reader_follow_global) + " · " +
+            stringResource(MR.strings.label_default) + " · " +
                 stringResource(ReadingMode.fromPreference(globalMode).stringRes),
         )
-        if (globalMode == ReadingMode.DEFAULT.flagValue) {
-            val status = if (viewer is DualPageR2LPagerViewer) {
-                MR.strings.desktop_reader_default_dual
-            } else {
-                MR.strings.desktop_reader_default_single
-            }
-            Text(stringResource(status))
-            Text(stringResource(MR.strings.desktop_reader_default_summary))
+    }
+    if (readingMode == ReadingMode.AUTO ||
+        (readingMode == ReadingMode.DEFAULT && globalMode == ReadingMode.AUTO.flagValue)
+    ) {
+        val status = if (viewer is DualPageR2LPagerViewer) {
+            MR.strings.desktop_reader_default_dual
+        } else {
+            MR.strings.desktop_reader_default_single
         }
+        Text(stringResource(status))
+        Text(stringResource(MR.strings.desktop_reader_default_summary))
     }
 
     val orientation = remember(manga) { ReaderOrientation.fromPreference(manga?.readerOrientation?.toInt()) }

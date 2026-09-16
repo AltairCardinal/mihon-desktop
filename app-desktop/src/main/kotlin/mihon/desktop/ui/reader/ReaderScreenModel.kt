@@ -85,6 +85,7 @@ class ReaderScreenModel(
     private val ownedRuntimeScope: CoroutineScope? = null,
     private val onProductionClosed: () -> Unit = {},
 ) : ScreenModel {
+    private val globalPreferences = prefs
     private val _state = MutableStateFlow(buildInitialState(prefs, initialSessionState))
     val state: StateFlow<ReaderState> = _state.asStateFlow()
     private var lastSettledViewport: SettledViewportIdentity? = null
@@ -105,7 +106,7 @@ class ReaderScreenModel(
     ): ReaderState {
         val resolvedMode = when {
             isWebtoon -> ReadingMode.WEBTOON
-            readingModeFromViewerFlags(mangaViewerFlags) == null && prefs.readingMode == ReadingMode.DEFAULT &&
+            readingModeFromViewerFlags(mangaViewerFlags) == null && prefs.readingMode == ReadingMode.AUTO &&
                 (dualPageFromViewerFlags(mangaViewerFlags) != null || dualPageOverride != null) -> ReadingMode.RTL
             else -> readingModeFromViewerFlags(mangaViewerFlags) ?: prefs.readingMode
         }
@@ -117,11 +118,11 @@ class ReaderScreenModel(
                 reader.context.initialPage,
                 reader.snapshot.activeChapter.pages.size,
             ),
-            readingMode = if (resolvedMode == ReadingMode.DEFAULT) ReadingMode.RTL else resolvedMode,
-            automaticLayout = resolvedMode == ReadingMode.DEFAULT,
+            readingMode = if (resolvedMode == ReadingMode.AUTO) ReadingMode.RTL else resolvedMode,
+            automaticLayout = resolvedMode == ReadingMode.AUTO,
             followsGlobalReadingMode = !isWebtoon && readingModeFromViewerFlags(mangaViewerFlags) == null &&
                 dualPageFromViewerFlags(mangaViewerFlags) == null && dualPageOverride == null,
-            dualPageMode = resolvedMode != ReadingMode.DEFAULT && (dualPageFromViewerFlags(mangaViewerFlags) ?: dualPageOverride ?: prefs.isDualPage),
+            dualPageMode = resolvedMode != ReadingMode.AUTO && (dualPageFromViewerFlags(mangaViewerFlags) ?: dualPageOverride ?: prefs.isDualPage),
             autoSplitPages = prefs.autoSplitPages,
             autoSpreadMatching = prefs.isAutoSpreadMatching,
             backgroundTheme = prefs.backgroundTheme,
@@ -395,15 +396,19 @@ class ReaderScreenModel(
         if (current.followsGlobalReadingMode) return viewerFlagsFollowingGlobal(mangaViewerFlags)
         return viewerFlagsWithReadingMode(
             viewerFlagsWithDualPage(mangaViewerFlags, manualDualPage),
-            if (current.automaticLayout) ReadingMode.DEFAULT else current.readingMode,
+            if (current.automaticLayout) ReadingMode.AUTO else current.readingMode,
         )
     }
 
     fun setReadingMode(mode: ReadingMode, prefs: ReaderPreferences? = null) {
         if (isWebtoon) return
+        if (mode == ReadingMode.DEFAULT) {
+            followGlobalReadingMode(prefs ?: globalPreferences)
+            return
+        }
         cancelPendingLayout()
         adaptiveInitialized = false
-        val automatic = mode == ReadingMode.DEFAULT
+        val automatic = mode == ReadingMode.AUTO
         val dual = if (automatic) {
             viewportSize?.let { (width, height) -> AdaptiveReaderLayout.dualPage(width, height) } ?: false
         } else manualDualPage

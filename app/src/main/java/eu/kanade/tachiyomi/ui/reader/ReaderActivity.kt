@@ -542,7 +542,7 @@ open class ReaderActivity : BaseActivity() {
             },
             onClickSettings = viewModel::openSettingsDialog,
             isDualPageMode = state.viewer is DualPageR2LPagerViewer,
-            isAutomaticMode = viewModel.getMangaReadingMode() == ReadingMode.DEFAULT.flagValue,
+            isAutomaticMode = viewModel.getMangaReadingMode() == ReadingMode.AUTO.flagValue,
             onClickAdjustPairing = {
                 (state.viewer as? DualPageR2LPagerViewer)?.adjustPagePairing()
             },
@@ -561,7 +561,8 @@ open class ReaderActivity : BaseActivity() {
         }
     }
 
-    private var displayedReadingMode: Int? = null
+    private var displayedReadingMode: Pair<Int, Int>? = null
+    private var showModeNavigation = false
     private var adaptiveViewport: AdaptiveReaderViewport? = null
     private var installedViewer: eu.kanade.tachiyomi.ui.reader.viewer.Viewer? = null
     private var changingLayout = false
@@ -586,7 +587,9 @@ open class ReaderActivity : BaseActivity() {
     private fun updateViewer() {
         val prevViewer = viewModel.state.value.viewer
         val requestedMode = viewModel.getMangaReadingMode()
-        val automatic = requestedMode == ReadingMode.DEFAULT.flagValue
+        val selection = viewModel.getMangaReadingMode(resolveDefault = false) to requestedMode
+        showModeNavigation = displayedReadingMode != null && displayedReadingMode != selection
+        val automatic = requestedMode == ReadingMode.AUTO.flagValue
         val dual = viewportController().configure(automatic)
         val readingMode = if (automatic) {
             viewModel.automaticDualPage = dual
@@ -619,12 +622,12 @@ open class ReaderActivity : BaseActivity() {
         binding.viewerContainer.addView(newViewer.getView())
 
         if (
-            displayedReadingMode != null && displayedReadingMode != readingMode &&
+            showModeNavigation &&
             readerPreferences.showReadingMode().get()
         ) {
-            showReadingModeToast(readingMode)
+            showReadingModeToast(requestedMode)
         }
-        displayedReadingMode = readingMode
+        displayedReadingMode = selection
 
         if (loadingIndicator != null) binding.readerContainer.removeView(loadingIndicator)
         loadingIndicator = ReaderProgressIndicator(this)
@@ -639,6 +642,13 @@ open class ReaderActivity : BaseActivity() {
         }
 
         startPostponedEnterTransition()
+    }
+
+    internal fun setViewerNavigation(
+        navigation: eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation,
+        showOnStart: Boolean,
+    ) {
+        binding.navigationOverlay.setNavigation(navigation, showOnStart, allowDisplay = showModeNavigation)
     }
 
     private fun openMangaScreen() {

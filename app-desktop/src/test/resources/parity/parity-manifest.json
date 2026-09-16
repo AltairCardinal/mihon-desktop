@@ -29805,7 +29805,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
           "symbol": "fun acceptSessionState",
-          "line": 142
+          "line": 143
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt",
@@ -30196,7 +30196,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderActivity.kt",
           "symbol": "readerPreferences.grayscale().changes()",
-          "line": 979
+          "line": 989
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderColorFilter.kt",

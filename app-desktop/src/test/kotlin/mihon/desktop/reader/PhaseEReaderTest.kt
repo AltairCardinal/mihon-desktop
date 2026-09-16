@@ -11,8 +11,11 @@ import org.junit.jupiter.api.Test
 class PhaseEReaderTest {
 
     @Test
-    fun `ReadingMode has DEFAULT LTR RTL WEBTOON values`() {
-        assertEquals(4, ReadingMode.entries.size)
+    fun `ReadingMode distinguishes DEFAULT inheritance from AUTO and manual values`() {
+        assertEquals(
+            listOf(ReadingMode.DEFAULT, ReadingMode.AUTO, ReadingMode.LTR, ReadingMode.RTL, ReadingMode.WEBTOON),
+            ReadingMode.entries,
+        )
         assertNotNull(ReadingMode.LTR)
         assertNotNull(ReadingMode.RTL)
         assertNotNull(ReadingMode.WEBTOON)
@@ -20,6 +23,8 @@ class PhaseEReaderTest {
 
     @Test
     fun `ReadingMode display names are human-readable`() {
+        assertEquals("Default", ReadingMode.DEFAULT.displayName)
+        assertEquals("Auto", ReadingMode.AUTO.displayName)
         assertTrue(ReadingMode.LTR.displayName.isNotBlank())
         assertTrue(ReadingMode.RTL.displayName.isNotBlank())
         assertTrue(ReadingMode.WEBTOON.displayName.isNotBlank())

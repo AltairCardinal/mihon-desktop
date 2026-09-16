@@ -133,7 +133,7 @@ class DualPageR2LPagerViewer(
 
         config.navigationModeChangedListener = {
             val showOnStart = config.navigationOverlayOnStart || config.forceNavigationOverlay
-            activity.binding.navigationOverlay.setNavigation(config.navigator, showOnStart)
+            activity.setViewerNavigation(config.navigator, showOnStart)
         }
     }
 

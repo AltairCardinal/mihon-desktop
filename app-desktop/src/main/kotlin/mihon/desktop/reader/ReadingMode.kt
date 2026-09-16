@@ -1,11 +1,14 @@
 package mihon.desktop.reader
 
+import mihon.domain.reader.ReaderModeFlags
+
 /**
  * Reading direction / layout mode for the reader.
- * DEFAULT is Desktop's adaptive RTL layout; Android's zero flag still means inheritance.
+ * DEFAULT inherits global settings; AUTO uses the shared adaptive RTL layout.
  */
 enum class ReadingMode(val displayName: String) {
     DEFAULT("Default"),
+    AUTO("Auto"),
     LTR("Left to Right"),
     RTL("Right to Left"),
     WEBTOON("Webtoon (Scroll)");
@@ -29,25 +32,20 @@ enum class ReadingMode(val displayName: String) {
  *
  * Returns null for 0 (use global default) or unknown values.
  */
-private const val READING_MODE_MASK = 0xFFL
 private const val DUAL_PAGE_SET_FLAG = 1L shl 32
 private const val DUAL_PAGE_VALUE_FLAG = 1L shl 33
-private const val ADAPTIVE_READING_FLAG = 1L shl 34
 
-fun readingModeFromViewerFlags(flags: Long): ReadingMode? = if (flags and ADAPTIVE_READING_FLAG != 0L && flags and READING_MODE_MASK == 2L) {
-    ReadingMode.DEFAULT
-} else when (flags and READING_MODE_MASK) {
+fun readingModeFromViewerFlags(flags: Long): ReadingMode? = when (ReaderModeFlags.read(flags)) {
     0L -> null
-    1L -> ReadingMode.LTR
-    2L -> ReadingMode.RTL
-    3L -> ReadingMode.LTR
-    4L -> ReadingMode.WEBTOON
-    5L -> ReadingMode.WEBTOON
+    1L, 3L -> ReadingMode.LTR
+    2L, 6L -> ReadingMode.RTL
+    4L, 5L -> ReadingMode.WEBTOON
+    7L -> ReadingMode.AUTO
     else -> null
 }
 
 fun dualPageFromViewerFlags(flags: Long): Boolean? {
-    if (flags and DUAL_PAGE_SET_FLAG == 0L) return null
+    if (flags and DUAL_PAGE_SET_FLAG == 0L) return if (ReaderModeFlags.read(flags) == 6L) true else null
     return flags and DUAL_PAGE_VALUE_FLAG != 0L
 }
 
@@ -62,11 +60,11 @@ fun viewerFlagsFollowingGlobal(flags: Long): Long =
 
 fun viewerFlagsWithReadingMode(flags: Long, mode: ReadingMode?): Long {
     val readingFlag = when (mode) {
-        ReadingMode.DEFAULT -> 2L or ADAPTIVE_READING_FLAG
-        null -> 0L
+        ReadingMode.AUTO -> ReaderModeFlags.AUTO
+        null, ReadingMode.DEFAULT -> ReaderModeFlags.DEFAULT
         ReadingMode.LTR -> 1L
         ReadingMode.RTL -> 2L
         ReadingMode.WEBTOON -> 5L
     }
-    return (flags and (READING_MODE_MASK or ADAPTIVE_READING_FLAG).inv()) or readingFlag
+    return ReaderModeFlags.write(flags, readingFlag)
 }

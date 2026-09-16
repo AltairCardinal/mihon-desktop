@@ -30,17 +30,45 @@ class DefaultReaderModeTest {
     fun cleanup() = root.removeNode()
 
     @Test
-    fun `default mode persists separately from inherited mode with Android RTL fallback`() {
-        val mode = ReadingMode.valueOf("DEFAULT")
+    fun `default clears old manual layout override and inherits global automatic`() {
+        val old = mihon.desktop.reader.viewerFlagsWithDualPage(2L or (1L shl 34), true)
+        val flags = viewerFlagsWithReadingMode(old, ReadingMode.DEFAULT)
+        assertEquals(0L, flags)
+        val reopened = ReaderScreenModel(prefs = prefs(), mangaViewerFlags = flags)
+        assertTrue(reopened.state.value.automaticLayout)
+        assertTrue(reopened.state.value.followsGlobalReadingMode)
+    }
+
+    @Test
+    fun `legacy automatic flags preserve orientation and new automatic uses shared value seven`() {
+        val legacy = (1L shl 34) or 2L or 0x28L
+        val mode = readingModeFromViewerFlags(legacy)
+        assertEquals("AUTO", mode?.name)
+        val written = viewerFlagsWithReadingMode(legacy, mode)
+        assertEquals(7L, written and 7L)
+        assertEquals(0x28L, written and 0x38L)
+        assertEquals(0L, written and (1L shl 34))
+    }
+
+    @Test
+    fun `saved global default migrates to automatic without changing manual values`() {
+        DesktopPreferenceStore(root.node("current")).getString("reader_reading_mode", "").set("DEFAULT")
+        assertEquals("AUTO", prefs().readingMode.name)
+        assertEquals("AUTO", prefs().readingMode.name)
+    }
+
+    @Test
+    fun `automatic mode persists separately from default using shared value seven`() {
+        val mode = ReadingMode.valueOf("AUTO")
         val flags = viewerFlagsWithReadingMode(0L, mode)
         assertEquals(mode, readingModeFromViewerFlags(flags))
-        assertEquals(2L, flags and 0xFFL)
+        assertEquals(7L, flags and 7L)
         assertEquals(null, readingModeFromViewerFlags(viewerFlagsWithReadingMode(flags, null)))
     }
 
     @Test
     fun `fresh default is adaptive while saved manual preference remains manual`() = runTest {
-        assertEquals(ReadingMode.DEFAULT, prefs().readingMode)
+        assertEquals(ReadingMode.AUTO, prefs().readingMode)
         val auto = ReaderScreenModel(prefs = prefs())
         auto.updateViewportSize(1350, 1000, this)
         assertTrue(auto.state.value.dualPageMode)
@@ -68,8 +96,8 @@ class DefaultReaderModeTest {
     fun `legacy single layout is preserved but explicit adaptive preference wins`() {
         root.node("legacy").putBoolean("isDualPage", false)
         assertEquals(ReadingMode.RTL, prefs().readingMode)
-        prefs().readingMode = ReadingMode.DEFAULT
-        assertEquals(ReadingMode.DEFAULT, prefs().readingMode)
+        prefs().readingMode = ReadingMode.AUTO
+        assertEquals(ReadingMode.AUTO, prefs().readingMode)
         assertTrue(ReaderScreenModel(prefs = prefs()).state.value.automaticLayout)
     }
 
@@ -80,7 +108,7 @@ class DefaultReaderModeTest {
         assertFalse(model.state.value.automaticLayout)
         assertFalse(model.state.value.followsGlobalReadingMode)
         assertTrue(model.state.value.dualPageMode)
-        model.setReadingMode(ReadingMode.DEFAULT)
+        model.setReadingMode(ReadingMode.AUTO)
         val reopened = ReaderScreenModel(prefs = prefs(), mangaViewerFlags = model.currentViewerFlags())
         assertTrue(reopened.state.value.automaticLayout)
     }
@@ -171,7 +199,7 @@ class DefaultReaderModeTest {
         val preferences = prefs().apply { readingMode = ReadingMode.LTR; isDualPage = true }
         val model = ReaderScreenModel(prefs = preferences)
         model.updateViewportSize(900, 1000, this)
-        model.setReadingMode(ReadingMode.DEFAULT, preferences)
+        model.setReadingMode(ReadingMode.AUTO, preferences)
         assertEquals(ReadingMode.LTR, preferences.readingMode)
         assertFalse(model.state.value.dualPageMode)
         model.setDualPageMode(true, preferences)

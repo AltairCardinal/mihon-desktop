@@ -57,7 +57,7 @@ class AdaptiveReaderViewportTest {
     fun `production reader resize preserves page and progress and real next tap resumes reporting`() = runTest {
         val root = Preferences.userRoot().node("/mihon/viewport-test/${System.nanoTime()}")
         val prefs = ReaderPreferences(DesktopPreferenceStore(root.node("current")), root.node("legacy"))
-        prefs.readingMode = ReadingMode.DEFAULT
+        prefs.readingMode = ReadingMode.AUTO
         val reports = mutableListOf<Int>()
         val model = ReaderScreenModel(
             prefs = prefs, initialSessionState = desktopReaderSessionState(pageCount = 5, initialPage = 2),
@@ -155,7 +155,7 @@ class AdaptiveReaderViewportTest {
                     Column {
                         val state by model.state.collectAsState()
                         GeneralTab(
-                            currentMode = if (state.automaticLayout) ReadingMode.DEFAULT else state.readingMode,
+                            currentMode = if (state.automaticLayout) ReadingMode.AUTO else state.readingMode,
                             followsGlobal = state.followsGlobalReadingMode,
                             onFollowGlobal = { model.followGlobalReadingMode(prefs) },
                             isDualPage = state.dualPageMode,
@@ -171,8 +171,8 @@ class AdaptiveReaderViewportTest {
                 }
             }
             render()
-            val inherited = MR.strings.desktop_reader_follow_global.localized()
-            val default = MR.strings.label_default.localized()
+            val inherited = MR.strings.label_default.localized()
+            val default = MR.strings.automatic_background.localized()
             val dual = MR.strings.desktop_ui_dual_page_side_by_side.localized()
             assertTrue(selected(inherited))
             click(default)

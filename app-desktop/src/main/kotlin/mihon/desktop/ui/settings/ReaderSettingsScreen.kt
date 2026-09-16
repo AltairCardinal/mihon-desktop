@@ -73,7 +73,7 @@ class ReaderSettingsScreen : Screen {
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.desktopSettingsAnchor(viewerTypeTitle).padding(horizontal = 16.dp, vertical = 8.dp),
                 )
-                ReadingMode.entries.forEach { mode ->
+                ReadingMode.entries.filter { it != ReadingMode.DEFAULT }.forEach { mode ->
                     val modeTitle = readingModeLabel(mode)
                     RadioSettingsItem(
                         title = modeTitle,

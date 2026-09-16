@@ -11,9 +11,12 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.recyclerview.widget.LinearLayoutManager
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.ui.UiPreferences
+import eu.kanade.presentation.more.settings.Preference
+import eu.kanade.presentation.more.settings.screen.SettingsReaderScreen
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.databinding.ReaderActivityBinding
 import eu.kanade.tachiyomi.databinding.ReaderErrorBinding
@@ -86,6 +89,25 @@ class DualPagerPageHolderLayoutTest {
     private lateinit var viewer: DualPageR2LPagerViewer
 
     @Test
+    fun `global settings composition offers automatic but never recursive default`() {
+        val controller = Robolectric.buildActivity(ComponentActivity::class.java).setup().visible()
+        var preferences: List<Preference> = emptyList()
+        try {
+            controller.get().setContent {
+                preferences = SettingsReaderScreen.getPreferences()
+            }
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
+            val mode = preferences.first() as Preference.PreferenceItem.ListPreference<*>
+            assertEquals(7, mode.preference.get())
+            assertTrue(mode.entries.containsKey(7))
+            assertTrue(!mode.entries.containsKey(0))
+            assertTrue(mode.entries[7] != mode.entries[2])
+        } finally {
+            controller.pause().stop().destroy()
+        }
+    }
+
+    @Test
     fun `new activity retains current and pairing while global changes update the real viewer`() = runTest {
         val preferences = Injekt.get<ReaderPreferences>()
         val chapter = loadedChapter(11, 9)
@@ -146,7 +168,7 @@ class DualPagerPageHolderLayoutTest {
         assertEquals(2, current?.index)
         assertTrue(reports.isEmpty())
         assertEquals(7, chapter.chapter.last_page_read)
-        preferences.defaultReadingMode().set(ReadingMode.DEFAULT.flagValue)
+        preferences.defaultReadingMode().set(ReadingMode.AUTO.flagValue)
         shadowOf(Looper.getMainLooper()).idle()
         runCurrent()
         measure(second.binding.viewerContainer, 1500, 1000)
@@ -215,7 +237,7 @@ class DualPagerPageHolderLayoutTest {
     @Test
     fun `global default is adaptive and real reader container resize changes viewer`() = runTest {
         val preferences = ReaderPreferences(InMemoryPreferenceStore())
-        assertEquals(ReadingMode.DEFAULT.flagValue, preferences.defaultReadingMode().get())
+        assertEquals(ReadingMode.AUTO.flagValue, preferences.defaultReadingMode().get())
         val activity = viewer.activity
         activity.setTheme(eu.kanade.tachiyomi.R.style.Theme_Tachiyomi)
         activity.binding = ReaderActivityBinding.inflate(activity.layoutInflater)
@@ -223,7 +245,10 @@ class DualPagerPageHolderLayoutTest {
         every { model.dualPagePairings } returns DualPagePairingStore()
         val state = MutableStateFlow(ReaderViewModel.State())
         every { model.state } returns state
-        every { model.getMangaReadingMode(any()) } returns ReadingMode.DEFAULT.flagValue
+        var selectedMode = ReadingMode.DEFAULT.flagValue
+        every { model.getMangaReadingMode(any()) } answers {
+            if (firstArg<Boolean>() && selectedMode == 0) ReadingMode.AUTO.flagValue else selectedMode
+        }
         every { model.getMangaOrientation(any()) } returns 0
         every { model.onViewerLoaded(any()) } answers { state.value = state.value.copy(viewer = firstArg()) }
         ReflectionHelpers.setField(activity, "viewModel\$delegate", lazyOf(model))
@@ -232,14 +257,50 @@ class DualPagerPageHolderLayoutTest {
         measure(container, 900, 1000)
         update.invoke(activity)
         assertTrue(state.value.viewer is R2LPagerViewer)
+        (state.value.viewer as R2LPagerViewer).config.navigationModeChangedListener?.invoke()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
+        activity.binding.navigationOverlay.visibility = android.view.View.GONE
         measure(container, 1400, 1000)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(149))
         assertTrue(state.value.viewer is R2LPagerViewer)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(2))
         assertTrue(state.value.viewer is DualPageR2LPagerViewer)
+        (state.value.viewer as DualPageR2LPagerViewer).config.navigationModeChangedListener?.invoke()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
+        assertEquals(android.view.View.GONE, activity.binding.navigationOverlay.visibility)
         measure(container, 1200, 1000)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(151))
         assertTrue(state.value.viewer is R2LPagerViewer)
+        ShadowToast.reset()
+        selectedMode = ReadingMode.AUTO.flagValue
+        update.invoke(activity)
+        assertTrue(
+            "Choosing explicit AUTO from inherited AUTO is a manual change",
+            ShadowToast.getTextOfLatestToast() != null,
+        )
+        (state.value.viewer as R2LPagerViewer).config.navigationModeChangedListener?.invoke()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
+        assertEquals(View.VISIBLE, activity.binding.navigationOverlay.visibility)
+        ShadowToast.reset()
+        measure(container, 1400, 1000)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(151))
+        (state.value.viewer as DualPageR2LPagerViewer).config.navigationModeChangedListener?.invoke()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
+        assertNull(ShadowToast.getTextOfLatestToast())
+        assertEquals(View.GONE, activity.binding.navigationOverlay.visibility)
+        measure(container, 900, 1000)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(151))
+        for (manual in listOf(ReadingMode.RIGHT_TO_LEFT, ReadingMode.AUTO)) {
+            ShadowToast.reset()
+            selectedMode = manual.flagValue
+            update.invoke(activity)
+            assertTrue(state.value.viewer is R2LPagerViewer)
+            assertTrue(ShadowToast.getTextOfLatestToast() != null)
+            activity.binding.navigationOverlay.visibility = View.GONE
+            (state.value.viewer as R2LPagerViewer).config.navigationModeChangedListener?.invoke()
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
+            assertEquals(View.VISIBLE, activity.binding.navigationOverlay.visibility)
+        }
         state.value.viewer?.destroy()
     }
 

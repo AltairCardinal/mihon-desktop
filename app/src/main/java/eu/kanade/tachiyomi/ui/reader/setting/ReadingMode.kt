@@ -62,6 +62,7 @@ enum class ReadingMode(
         Direction.Horizontal,
         ViewerType.Pager,
     ),
+    AUTO(MR.strings.automatic_background, R.drawable.ic_reader_default_24dp, 7, Direction.Horizontal, ViewerType.Pager),
     ;
 
     companion object {
@@ -82,7 +83,7 @@ enum class ReadingMode(
                 WEBTOON -> WebtoonViewer(activity)
                 CONTINUOUS_VERTICAL -> WebtoonViewer(activity, isContinuous = false)
                 DUAL_PAGE_R2L -> DualPageR2LPagerViewer(activity, activity.viewModel.dualPagePairings)
-                DEFAULT -> R2LPagerViewer(activity)
+                DEFAULT, AUTO -> R2LPagerViewer(activity)
             }
         }
     }

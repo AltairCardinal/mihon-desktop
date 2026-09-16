@@ -194,7 +194,7 @@ data class DesktopReaderScreen(
         // Settings dialog
         if (state.showSettings) {
             ReaderSettingsPanel(
-                currentMode = if (state.automaticLayout) ReadingMode.DEFAULT else state.readingMode,
+                currentMode = if (state.automaticLayout) ReadingMode.AUTO else state.readingMode,
                 followsGlobal = state.followsGlobalReadingMode,
                 onFollowGlobal = {
                     model.followGlobalReadingMode(runtime.prefs)
@@ -867,7 +867,7 @@ internal fun ReaderContent(
                     hasNextChapter = readerNav?.nextToRead != null,
                     onNextChapter = if (readerNav?.nextToRead != null) onNextChapter else null,
                 )
-                ReadingMode.DEFAULT, ReadingMode.LTR, ReadingMode.RTL -> {
+                ReadingMode.DEFAULT, ReadingMode.AUTO, ReadingMode.LTR, ReadingMode.RTL -> {
                     val rtl = state.readingMode == ReadingMode.RTL
                     val animationPreference = LocalDesktopUiDependencies.current.appPreferences.pageTurnAnimation
                     val pageTurnAnimation by animationPreference.changes().collectAsState(initial = animationPreference.get())

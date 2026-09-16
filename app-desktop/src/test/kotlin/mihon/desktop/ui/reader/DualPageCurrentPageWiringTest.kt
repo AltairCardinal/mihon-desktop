@@ -56,7 +56,7 @@ import java.util.prefs.Preferences
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalCoroutinesApi::class)
 class DualPageCurrentPageWiringTest {
     @ParameterizedTest
-    @EnumSource(value = ReadingMode::class, names = ["DEFAULT", "RTL", "LTR"])
+    @EnumSource(value = ReadingMode::class, names = ["AUTO", "RTL", "LTR"])
     fun `normal dual current is leading page and single return does not report layout progress`(mode: ReadingMode) = runTest {
         Fixture(this, mode, initialPage = 2).use { fixture ->
             fixture.frames()
@@ -76,7 +76,7 @@ class DualPageCurrentPageWiringTest {
     }
 
     @ParameterizedTest
-    @CsvSource("DEFAULT,true", "RTL,true", "LTR,true", "RTL,false", "LTR,false")
+    @CsvSource("AUTO,true", "RTL,true", "LTR,true", "RTL,false", "LTR,false")
     fun `mounted adjust spread button alternates paired units without runaway paging`(mode: ReadingMode, animated: Boolean) = runTest {
         Fixture(this, mode, initialPage = 1, animated = animated).use { fixture ->
             fixture.frames()
@@ -116,7 +116,7 @@ class DualPageCurrentPageWiringTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = ReadingMode::class, names = ["DEFAULT", "RTL", "LTR"])
+    @EnumSource(value = ReadingMode::class, names = ["AUTO", "RTL", "LTR"])
     fun `cover stays uniquely current in left slot and adjust has no effect`(mode: ReadingMode) = runTest {
         Fixture(this, mode, initialPage = 0).use { fixture ->
             fixture.frames()
@@ -191,7 +191,7 @@ class DualPageCurrentPageWiringTest {
         }
 
         fun dual(enabled: Boolean) {
-            if (mode == ReadingMode.DEFAULT) width = if (enabled) 700.dp else 400.dp
+            if (mode == ReadingMode.AUTO) width = if (enabled) 700.dp else 400.dp
             else model.setDualPageMode(enabled)
         }
 

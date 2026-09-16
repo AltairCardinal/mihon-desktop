@@ -132,11 +132,11 @@ class DesktopSettingsContentAccessibilityTest {
     fun `Reader Library Download and Backup controls expose one labeled action with role and state`() = runBlocking {
         val store = InMemoryPreferenceStore()
         val readerPreferences = ReaderPreferences(store).apply {
-            readingMode = mihon.desktop.reader.ReadingMode.DEFAULT
+            readingMode = mihon.desktop.reader.ReadingMode.AUTO
         }
         val dependencies = dependencies(store, this, readerPreferences)
         withScene(ReaderSettingsScreen(), dependencies) { scene ->
-            assertToggle(scene, MR.strings.label_default.localized(), Role.RadioButton, selected = true)
+            assertToggle(scene, MR.strings.automatic_background.localized(), Role.RadioButton, selected = true)
             assertToggle(scene, MR.strings.right_to_left_viewer.localized(), Role.RadioButton, selected = false)
             requireNotNull(
                 semanticBranch(scene, MR.strings.right_to_left_viewer.localized(), Role.RadioButton)
@@ -144,7 +144,7 @@ class DesktopSettingsContentAccessibilityTest {
             ).invoke()
             render(scene)
             assertToggle(scene, MR.strings.right_to_left_viewer.localized(), Role.RadioButton, selected = true)
-            assertToggle(scene, MR.strings.label_default.localized(), Role.RadioButton, selected = false)
+            assertToggle(scene, MR.strings.automatic_background.localized(), Role.RadioButton, selected = false)
             assertEquals(mihon.desktop.reader.ReadingMode.RTL, readerPreferences.readingMode)
             assertToggle(
                 scene,

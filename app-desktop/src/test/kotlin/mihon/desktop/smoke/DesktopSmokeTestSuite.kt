@@ -151,6 +151,8 @@ class DesktopSmokeTestSuite {
 
     @Test
     fun `reading modes can be instantiated`() {
+        assertNotNull(ReadingMode.DEFAULT)
+        assertNotNull(ReadingMode.AUTO)
         assertNotNull(ReadingMode.LTR)
         assertNotNull(ReadingMode.RTL)
         assertNotNull(ReadingMode.WEBTOON)
@@ -158,6 +160,8 @@ class DesktopSmokeTestSuite {
 
     @Test
     fun `reading modes have correct names`() {
+        assertEquals("Default", ReadingMode.DEFAULT.displayName)
+        assertEquals("Auto", ReadingMode.AUTO.displayName)
         assertEquals("Left to Right", ReadingMode.LTR.displayName)
         assertEquals("Right to Left", ReadingMode.RTL.displayName)
         assertEquals("Webtoon (Scroll)", ReadingMode.WEBTOON.displayName)
@@ -171,7 +175,9 @@ class DesktopSmokeTestSuite {
         assertEquals(ReadingMode.WEBTOON, readingModeFromViewerFlags(4L))
         assertEquals(ReadingMode.WEBTOON, readingModeFromViewerFlags(5L))
         assertNull(readingModeFromViewerFlags(0L))
-        assertNull(readingModeFromViewerFlags(99L))
+        assertEquals(ReadingMode.RTL, readingModeFromViewerFlags(6L))
+        assertEquals(ReadingMode.AUTO, readingModeFromViewerFlags(7L))
+        assertEquals(ReadingMode.LTR, readingModeFromViewerFlags(99L))
     }
 
     @Test
