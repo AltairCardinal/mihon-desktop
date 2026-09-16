@@ -8,6 +8,8 @@
 
 - 最近完成专项：[Android 新版扩展系统完整兼容 Roadmap](./2026-09-12-android-extension-v2-compatibility-roadmap.md)（2026-09-16，COMPLETE）。产品提交 `b3d81b34dc`；rc9正式Android/ARM业务及Windows/macOS限定回归已验收。MangaPlus live仍未验证成功，明确限制和证据以子计划为准。
 
+- 待执行专项：[收藏缺失插件「建议安装」完整 Roadmap](./2026-09-16-extension-install-suggestions-roadmap.md)（PLANNED，HTML 交互已通过；共享识别、双端单项操作、Desktop 批量、Android 系统流程、三端发布五个批次）。本次仅编写计划，不切换上述执行指针。
+
 ## 0. 产品路线
 
 本 roadmap 固定以下产品路线，后续重构不得偏离：
