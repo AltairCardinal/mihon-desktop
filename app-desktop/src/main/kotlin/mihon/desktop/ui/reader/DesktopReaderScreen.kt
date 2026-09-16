@@ -107,6 +107,7 @@ data class DesktopReaderScreen(
     val isDualPage: Boolean? = null,
     val localChapterPath: String? = null,
     @Transient val progressTracker: ReaderProgressTracker? = null,
+    @Transient val resumeSnapshot: tachiyomi.domain.reader.model.ReadingSyncSnapshot? = null,
     @Transient val onProductionClosed: () -> Unit = {},
 ) : Screen {
 
@@ -131,6 +132,14 @@ data class DesktopReaderScreen(
         }
         val runtime = checkNotNull(model.runtime)
         val state by model.state.collectAsState()
+        val notifications = LocalDesktopUiDependencies.current.notificationService
+        LaunchedEffect(state.context.chapterId, state.resumePageUnavailable) {
+            if (state.resumePageUnavailable) notifications.post(
+                mihon.desktop.domain.DesktopNotification(
+                    MR.strings.action_resume.localized(), MR.strings.sync_resume_page_unavailable.localized(),
+                ),
+            )
+        }
         val focusRequester = remember { FocusRequester() }
         ReaderLifecycleEffect(model)
         LaunchedEffect(runtime.session) {
@@ -317,6 +326,7 @@ data class DesktopReaderScreen(
     )
 
     internal fun initialContext() = DesktopReaderChapterContext(
+        resumeSnapshot = resumeSnapshot,
         chapterId = chapterId,
         sourceId = sourceId,
         chapterUrl = chapterUrl,

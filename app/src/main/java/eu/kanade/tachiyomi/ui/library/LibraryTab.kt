@@ -193,7 +193,7 @@ data object LibraryTab : Tab {
                                 val chapter = screenModel.getNextUnreadChapter(it.manga)
                                 if (chapter != null) {
                                     context.startActivity(
-                                        ReaderActivity.newIntent(context, chapter.mangaId, chapter.id),
+                                        ReaderActivity.newIntent(context, chapter.mangaId, chapter.id, resume = true),
                                     )
                                 } else {
                                     snackbarHostState.showSnackbar(context.stringResource(MR.strings.no_next_chapter))

@@ -1,5 +1,7 @@
 package mihon.desktop.ui.library
 
+import mihon.desktop.reader.externalChapterUrlOrNull
+
 import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import kotlinx.coroutines.CancellationException
@@ -78,6 +80,7 @@ data class LibraryReaderRequest(
     val chapters: List<ReaderChapterRef>,
     val currentChapterIndex: Int,
     val initialPage: Int,
+    val resumeSnapshot: tachiyomi.domain.reader.model.ReadingSyncSnapshot? = null,
 )
 
 data class LibraryBatchDownloadResult(
@@ -125,6 +128,7 @@ class LibraryScreenModel(
     private val isChapterDownloaded: ((LibraryManga, Chapter) -> Boolean)? = null,
     private val isChapterQueued: ((Chapter) -> Boolean)? = null,
     private val downloadQueueChanges: Flow<Unit> = flowOf(Unit),
+    private val readingProgress: tachiyomi.domain.reader.interactor.RecordReadingProgress? = null,
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(LibraryState())
@@ -161,7 +165,15 @@ class LibraryScreenModel(
         getTracksPerManga?.subscribe() ?: flowOf(emptyMap()),
         trackerSessionProvider?.loggedInTrackerIds() ?: flowOf(emptySet()),
         downloadQueueChanges,
-    ) { items, tracksByManga, loggedInTrackerIds, _ ->
+        libraryPreferences?.showContinueReadingButton()?.changes() ?: flowOf(false),
+    ) { items, tracksByManga, loggedInTrackerIds, _, showContinue ->
+        val resumable = if (showContinue && readingProgress != null) items.distinctBy { it.id }
+            .filter { item ->
+                val resume = readingProgress.resumePosition(item.id)
+                resume != null && getChaptersByMangaId?.awaitOrThrow(item.id, applyScanlatorFilter = true)
+                    ?.any { it.id == resume.chapterId && it.url.externalChapterUrlOrNull() == null } == true
+            }.mapTo(mutableSetOf()) { it.id } else emptySet()
+        _state.update { it.copy(syncedResumeMangaIds = resumable) }
         updateLibrarySnapshot(items, tracksByManga, loggedInTrackerIds)
         items
     }.catch { error ->
@@ -1001,9 +1013,11 @@ class LibraryScreenModel(
 
     suspend fun continueReadingRequest(item: LibraryManga): LibraryReaderRequest? {
         val chapters = requireNotNull(getChaptersByMangaId) { "GetChaptersByMangaId is required" }
-            .awaitOrThrow(item.manga.id)
+            .awaitOrThrow(item.manga.id, applyScanlatorFilter = true)
             .sortedBy { it.sourceOrder }
-        val target = nextUnreadChapter(chapters, item.manga) ?: run {
+        val resume = readingProgress?.resumePosition(item.manga.id)
+        val resumedChapter = chapters.find { it.id == resume?.chapterId && it.url.externalChapterUrlOrNull() == null }
+        val target = resumedChapter ?: nextUnreadChapter(chapters, item.manga) ?: run {
             setOperationFeedback(MR.strings.no_next_chapter.localized())
             return null
         }
@@ -1023,7 +1037,12 @@ class LibraryScreenModel(
             mangaViewerFlags = item.manga.viewerFlags,
             chapters = chapterRefs,
             currentChapterIndex = ReaderNavigator.indexForId(chapterRefs, target.id),
-            initialPage = target.lastPageRead.toInt().coerceAtLeast(0),
+            initialPage = if (resumedChapter != null) {
+                requireNotNull(resume).pageIndex
+            } else {
+                target.lastPageRead.toInt().coerceAtLeast(0)
+            },
+            resumeSnapshot = resume?.snapshot.takeIf { resumedChapter != null },
         )
     }
 

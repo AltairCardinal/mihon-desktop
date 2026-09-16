@@ -1,7 +1,5 @@
 package mihon.desktop.ui.history
 
-import tachiyomi.i18n.MR
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -60,6 +58,7 @@ import kotlinx.coroutines.launch
 import mihon.desktop.history.HistoryScreenModelFactory
 import mihon.desktop.ui.reader.DesktopReaderScreen
 import tachiyomi.domain.history.model.HistoryWithRelations
+import tachiyomi.i18n.MR
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -141,7 +140,9 @@ class HistoryRootScreen : Screen {
             AlertDialog(
                 onDismissRequest = { model.setShowClearAllDialog(false) },
                 title = { Text(MR.strings.desktop_ui_clear_all_history_81616b91.localized()) },
-                text = { Text(MR.strings.desktop_ui_this_will_permanently_delete_all_reading_history_this_ca.localized()) },
+                text = {
+                    Text(MR.strings.desktop_ui_this_will_permanently_delete_all_reading_history_this_ca.localized())
+                },
                 confirmButton = {
                     TextButton(
                         onClick = {
@@ -152,7 +153,9 @@ class HistoryRootScreen : Screen {
                     ) { Text(MR.strings.desktop_ui_clear_all.localized(), color = MaterialTheme.colorScheme.error) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { model.setShowClearAllDialog(false) }) { Text(MR.strings.action_cancel.localized()) }
+                    TextButton(onClick = {
+                        model.setShowClearAllDialog(false)
+                    }) { Text(MR.strings.action_cancel.localized()) }
                 },
             )
         }
@@ -168,7 +171,9 @@ class HistoryRootScreen : Screen {
                     value = state.searchQuery,
                     onValueChange = { query -> scope.launch { model.loadHistory(query) } },
                     placeholder = { Text(MR.strings.desktop_ui_search_history.localized()) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = MR.strings.action_search.localized()) },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = MR.strings.action_search.localized())
+                    },
                     singleLine = true,
                     modifier = Modifier.weight(1f),
                 )
@@ -236,6 +241,7 @@ class HistoryRootScreen : Screen {
                                                 mangaId = request.mangaId,
                                                 mangaViewerFlags = request.mangaViewerFlags,
                                                 initialPage = request.initialPage,
+                                                resumeSnapshot = request.resumeSnapshot,
                                             ),
                                         )
                                     }

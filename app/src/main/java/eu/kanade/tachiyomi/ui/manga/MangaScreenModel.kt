@@ -17,6 +17,7 @@ import eu.kanade.core.util.insertSeparators
 import eu.kanade.domain.chapter.interactor.GetAvailableScanlators
 import eu.kanade.domain.chapter.interactor.SetReadStatus
 import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
+import eu.kanade.domain.chapter.model.applyFilters
 import eu.kanade.domain.manga.interactor.GetExcludedScanlators
 import eu.kanade.domain.manga.interactor.SetExcludedScanlators
 import eu.kanade.domain.manga.interactor.UpdateManga
@@ -87,6 +88,7 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.manga.model.applyFilter
 import tachiyomi.domain.manga.repository.MangaRepository
+import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.i18n.MR
@@ -126,6 +128,7 @@ class MangaScreenModel(
     private val setMangaCategories: SetMangaCategories = Injekt.get(),
     private val mangaRepository: MangaRepository = Injekt.get(),
     private val filterChaptersForDownload: FilterChaptersForDownload = Injekt.get(),
+    private val recordReadingProgress: RecordReadingProgress = Injekt.get(),
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
 ) : StateScreenModel<MangaScreenModel.State>(State.Loading) {
 
@@ -180,10 +183,13 @@ class MangaScreenModel(
             ) { mangaAndChapters, _, _ -> mangaAndChapters }
                 .flowWithLifecycle(lifecycle)
                 .collectLatest { (manga, chapters) ->
+                    val chapterItems = chapters.toChapterListItems(manga)
+                    val synchronizedResumeId = synchronizedResumeChapter(manga, chapterItems)?.id
                     updateSuccessState {
                         it.copy(
                             manga = manga,
-                            chapters = chapters.toChapterListItems(manga),
+                            chapters = chapterItems,
+                            synchronizedResumeId = synchronizedResumeId,
                         )
                     }
                 }
@@ -224,6 +230,7 @@ class MangaScreenModel(
 
             val needRefreshInfo = !manga.initialized
             val needRefreshChapter = chapters.isEmpty()
+            val synchronizedResumeId = synchronizedResumeChapter(manga, chapters)?.id
 
             // Show what we have earlier
             mutableState.update {
@@ -232,6 +239,7 @@ class MangaScreenModel(
                     source = Injekt.get<SourceManager>().getOrStub(manga.source),
                     isFromSource = isFromSource,
                     chapters = chapters,
+                    synchronizedResumeId = synchronizedResumeId,
                     availableScanlators = getAvailableScanlators.await(mangaId),
                     excludedScanlators = getExcludedScanlators.await(mangaId),
                     isRefreshingData = needRefreshInfo || needRefreshChapter,
@@ -644,11 +652,17 @@ class MangaScreenModel(
     }
 
     /**
-     * Returns the next unread chapter or null if everything is read.
+     * Returns an available synchronized continuation, otherwise the usual next unread chapter.
      */
-    fun getNextUnreadChapter(): Chapter? {
+    suspend fun getNextUnreadChapter(): Chapter? {
         val successState = successState ?: return null
-        return successState.chapters.getNextUnread(successState.manga)
+        return synchronizedResumeChapter(successState.manga, successState.chapters)
+            ?: successState.chapters.getNextUnread(successState.manga)
+    }
+
+    private suspend fun synchronizedResumeChapter(manga: Manga, chapters: List<ChapterList.Item>): Chapter? {
+        val position = recordReadingProgress.resumePosition(manga.id) ?: return null
+        return chapters.applyFilters(manga).firstOrNull { it.chapter.id == position.chapterId }?.chapter
     }
 
     private fun getUnreadChapters(): List<Chapter> {
@@ -1166,6 +1180,7 @@ class MangaScreenModel(
             val dialog: Dialog? = null,
             val hasPromptedToAddBefore: Boolean = false,
             val hideMissingChapters: Boolean = false,
+            val synchronizedResumeId: Long? = null,
         ) : State {
             val processedChapters by lazy {
                 chapters.applyFilters(manga).toList()

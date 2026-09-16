@@ -24,6 +24,59 @@ import java.util.prefs.Preferences
 @Isolated
 class DesktopSyncWiringTest {
     @Test
+    fun `native continuation factories use the real shared sync candidate`(@TempDir folder: File) = runBlocking {
+        val node = Preferences.userRoot().node("mihon-sync-resume-di-" + UUID.randomUUID())
+        val context = initDesktopDIForTest(folder, DesktopPreferenceStore(node))
+        try {
+            mihon.data.sync.journal.SyncLocalJournal(Injekt.get()).connect(
+                "space",
+                1,
+                mihon.domain.sync.transport.SyncRepository("owner", "sync", "sync"),
+                "reader",
+                1,
+            )
+            val manga = Injekt.get<tachiyomi.domain.manga.repository.MangaRepository>().insertNetworkManga(
+                listOf(tachiyomi.domain.manga.model.Manga.create().copy(source = 42, url = "/manga", title = "Resume")),
+            ).single()
+            val chapter = Injekt.get<tachiyomi.domain.chapter.repository.ChapterRepository>().addAll(
+                listOf(
+                    tachiyomi.domain.chapter.model.Chapter.create().copy(
+                        mangaId = manga.id,
+                        url = "/chapter",
+                        read = true,
+                    ),
+                ),
+            ).single()
+            Injekt.get<tachiyomi.domain.reader.interactor.RecordReadingProgress>().await(
+                tachiyomi.domain.reader.model.ReadingProgressEvent(
+                    chapter.id,
+                    2,
+                    10,
+                    java.util.Date(1000),
+                    0,
+                    wasRead = true,
+                    syncContext = mihon.domain.sync.SyncMutationContext.User,
+                ),
+            )
+            val item = tachiyomi.domain.library.model.LibraryManga(manga, emptyList(), 1, 1, 0, 0, 0, 0)
+            val library = mihon.desktop.library.LibraryScreenModelFactory.create().continueReadingRequest(item)
+            val detail = mihon.desktop.library.MangaDetailScreenModelFactory.create(manga.id)
+                .continueReadingRequest(manga, listOf(chapter))
+            assertEquals(2, library?.initialPage)
+            assertEquals(2, detail?.initialPage)
+            assertTrue(library?.resumeSnapshot?.heads?.isNotEmpty() == true)
+            assertEquals(library?.resumeSnapshot, detail?.resumeSnapshot)
+            val history = Injekt.get<tachiyomi.domain.history.interactor.GetHistory>().subscribe("").first().single()
+            val request = mihon.desktop.history.HistoryScreenModelFactory.create().readerRequestFor(history)
+            assertEquals(2, request?.initialPage)
+            assertEquals(library?.resumeSnapshot, request?.resumeSnapshot)
+        } finally {
+            context.closeAndJoin()
+            node.removeNode()
+        }
+    }
+
+    @Test
     fun `default graph exposes one sync runtime and lifecycle reaches the same coordinator`(
         @TempDir folder: File,
     ) = runBlocking {

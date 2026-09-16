@@ -19,8 +19,8 @@ import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.reader.dualPageFromViewerFlags
 import mihon.desktop.reader.readingModeFromViewerFlags
-import mihon.desktop.ui.reader.presentation.VisiblePageSet
 import mihon.desktop.ui.reader.presentation.DisplayUnitId
+import mihon.desktop.ui.reader.presentation.VisiblePageSet
 import mihon.desktop.ui.reader.presentation.WebtoonViewportUpdate
 import mihon.domain.reader.ReaderChapterModel
 import mihon.domain.reader.ReaderChapterState
@@ -96,6 +96,10 @@ class ReaderScreenModel(
             context = reader.context,
             session = reader.snapshot,
             currentPage = resolveInitialPage(reader.context.initialPage, reader.snapshot.activeChapter.pages.size),
+            resumePageUnavailable = invalidSavedPage(
+                reader.context.initialPage,
+                reader.snapshot.activeChapter.pages.size,
+            ),
             readingMode = resolvedMode,
             dualPageMode = dualPageFromViewerFlags(mangaViewerFlags) ?: dualPageOverride ?: prefs.isDualPage,
             autoSplitPages = prefs.autoSplitPages,
@@ -130,6 +134,11 @@ class ReaderScreenModel(
                 context = reader.context,
                 session = reader.snapshot,
                 currentPage = currentPage,
+                resumePageUnavailable = if (chapterChanged || firstStablePageList) {
+                    invalidSavedPage(reader.context.initialPage, pageCount)
+                } else {
+                    current.resumePageUnavailable
+                },
                 currentDisplayUnitId = if (chapterChanged) null else current.currentDisplayUnitId,
                 visiblePageIds = if (chapterChanged) emptySet() else current.visiblePageIds,
                 webtoonScrollAnchor = if (chapterChanged) null else current.webtoonScrollAnchor,
@@ -473,5 +482,8 @@ private data class SettledViewportIdentity(
 private fun resolveInitialPage(requestedPage: Int, pageCount: Int): Int = when {
     pageCount <= 0 -> 0
     requestedPage == ReaderInitialPage.LAST -> pageCount - 1
-    else -> requestedPage.coerceIn(0, pageCount - 1)
+    else -> requestedPage.takeIf { it in 0 until pageCount } ?: 0
 }
+
+private fun invalidSavedPage(requestedPage: Int, pageCount: Int): Boolean =
+    pageCount > 0 && requestedPage != ReaderInitialPage.LAST && requestedPage !in 0 until pageCount

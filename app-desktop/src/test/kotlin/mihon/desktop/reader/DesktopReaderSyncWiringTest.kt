@@ -41,6 +41,22 @@ class DesktopReaderSyncWiringTest {
     lateinit var directory: File
 
     @Test
+    fun `selected continuation baseline survives later activation data`() = runTest {
+        val repository = CapturingRepository()
+        val selected = ReadingSyncSnapshot(ReadingSyncScope("space", 0, "actor", 77))
+        val runtime = runtime(repository, snapshot = selected)
+        try {
+            advanceUntilIdle()
+            settle(runtime, 0)
+            advanceUntilIdle()
+            assertEquals(listOf(77L), repository.records.map { it.second?.scope?.epoch })
+            assertTrue(repository.opened.isEmpty())
+        } finally {
+            runtime.close()
+        }
+    }
+
+    @Test
     fun `failed causal snapshot opens the existing chapter error and can be retried`() = runTest {
         val repository = CapturingRepository(failFirstOpen = true)
         val runtime = runtime(repository)
@@ -147,6 +163,7 @@ class DesktopReaderSyncWiringTest {
     private fun TestScope.runtime(
         repository: CapturingRepository,
         preferences: DesktopAppPreferences? = null,
+        snapshot: ReadingSyncSnapshot? = null,
     ): DesktopReaderRuntime {
         val pages = List(3) { index ->
             directory.resolve("$index.png").apply { writeBytes(byteArrayOf(1, 2, 3)) }
@@ -186,7 +203,7 @@ class DesktopReaderSyncWiringTest {
             mangaRepository = null,
             encodedCacheDirectory = directory.resolve("encoded"),
             partialDownloadSnapshotLookup = lookup,
-        ).createRuntime(context(), this)
+        ).createRuntime(context().copy(resumeSnapshot = snapshot), this)
     }
 
     private fun settle(runtime: DesktopReaderRuntime, index: Int) {

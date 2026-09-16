@@ -24,6 +24,38 @@ import java.util.Date
 class HistoryScreenModelTest {
 
     @Test
+    fun `history continuation adopts another synchronized chapter`() = runTest {
+        val chapters = FakeChapterRepository()
+        chapters.addAll(
+            listOf(
+                Chapter.create().copy(id = 1, mangaId = 10, url = "/first"),
+                Chapter.create().copy(id = 2, mangaId = 10, url = "/second", read = true),
+            ),
+        )
+        val mangas = FakeMangaRepository().apply { seed(Manga.create().copy(id = 10, source = 42)) }
+        val snapshot = tachiyomi.domain.reader.model.ReadingSyncSnapshot()
+        val progress = tachiyomi.domain.reader.interactor.RecordReadingProgress(
+            object : tachiyomi.domain.reader.repository.ReadingProgressRepository {
+                override suspend fun record(event: tachiyomi.domain.reader.model.ReadingProgressEvent) = Unit
+                override suspend fun resumePosition(mangaId: Long) =
+                    tachiyomi.domain.reader.model.ReadingResumePosition(2, 2, snapshot)
+            },
+        )
+        val history = FakeHistoryRepository()
+        val model = HistoryScreenModel(
+            GetHistory(history),
+            RemoveHistory(history),
+            GetChapter(chapters),
+            GetManga(mangas),
+            progress,
+        )
+        val request = requireNotNull(model.readerRequestFor(sampleHistory(chapterId = 1, mangaId = 10)))
+        assertEquals(2L, request.chapterId)
+        assertEquals(2, request.initialPage)
+        assertEquals(snapshot, request.resumeSnapshot)
+    }
+
+    @Test
     fun `initial state has expected defaults`() {
         val model = buildModel()
         val state: StateFlow<HistoryState> = model.state

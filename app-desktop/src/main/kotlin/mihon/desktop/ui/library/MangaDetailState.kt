@@ -1,15 +1,16 @@
 package mihon.desktop.ui.library
 
 import eu.kanade.tachiyomi.source.model.SManga
+import mihon.domain.task.TaskState
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
-import mihon.domain.task.TaskState
 
 /**
  * All state for [MangaDetailScreen], owned by [MangaDetailScreenModel].
  * Pure data — no Compose dependencies, fully testable on the JVM.
  */
 data class MangaDetailState(
+    val syncedResumeChapterId: Long? = null,
     // ── Loaded data ──────────────────────────────────────────────────────────
     val manga: Manga? = null,
     val chapters: List<Chapter> = emptyList(),

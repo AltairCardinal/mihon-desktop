@@ -101,6 +101,7 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.reader.interactor.ReadingProgressSession
 import tachiyomi.domain.reader.interactor.RecordReadingProgress
 import tachiyomi.domain.reader.model.ReadingProgressEvent
+import tachiyomi.domain.reader.model.ReadingResumePosition
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
@@ -176,6 +177,7 @@ class ReaderViewModel @JvmOverloads constructor(
     private val readerProgressSessionId = UUID.randomUUID().toString()
     private val readerProgressSettlementArbiter = ReaderViewportSettlementArbiter()
     private var readingActivation: ReadingActivation? = null
+    private var pendingResumePosition: ReadingResumePosition? = null
 
     private data class ReadingActivation(
         val chapter: ReaderChapter,
@@ -312,7 +314,29 @@ class ReaderViewModel @JvmOverloads constructor(
                 if (manga != null) {
                     sourceManager.isInitialized.first { it }
                     mutableState.update { it.copy(manga = manga) }
-                    if (chapterId == -1L) chapterId = initialChapterId
+                    if (chapterId == -1L) {
+                        val resume = if (savedState.get<Boolean>("resume") == true) {
+                            recordReadingProgress.resumePosition(mangaId)?.takeIf { position ->
+                                getChaptersByMangaId.await(mangaId, applyScanlatorFilter = true).any { chapter ->
+                                    chapter.id == position.chapterId && !isChapterFiltered(manga, chapter) &&
+                                        (
+                                            !basePreferences.downloadedOnly().get() || manga.isLocal() ||
+                                                downloadManager.isChapterDownloaded(
+                                                    chapter.name,
+                                                    chapter.scanlator,
+                                                    chapter.url,
+                                                    manga.title,
+                                                    manga.source,
+                                                )
+                                            )
+                                }
+                            }
+                        } else {
+                            null
+                        }
+                        pendingResumePosition = resume
+                        chapterId = resume?.chapterId ?: initialChapterId
+                    }
 
                     val source = sourceManager.getOrStub(manga.source)
                     loader = chapterLoaderFactory(manga, source)
@@ -378,11 +402,12 @@ class ReaderViewModel @JvmOverloads constructor(
             ) {
                 return@withUIContext null
             }
-            // Capture the baseline before publishing pages, then reject an activation superseded while opening it.
+            val resume = pendingResumePosition?.takeIf { it.chapterId == chapter.chapter.id }
+            // Keep the baseline that selected this position; newer receipts must not alter it while loading.
             val session = if (incognitoMode || getIncognitoState.await(manga?.source)) {
                 null
             } else {
-                recordReadingProgress.openSession(chapter.sharedChapterId().value)
+                recordReadingProgress.openSession(chapter.sharedChapterId().value, resume?.snapshot)
             }
             if (chapterWindowOwner.snapshot != expectedWindow || !canActivate()) return@withUIContext null
             val windowReduction = if (activationIntent == null) {
@@ -400,6 +425,12 @@ class ReaderViewModel @JvmOverloads constructor(
             val newChapters = requireNotNull(chapterWindowOwner.viewerChapters())
             val window = requireNotNull(windowReduction.snapshot)
             val activation = ReadingActivation(newChapters.currChapter, window.activationSequence, session)
+            val invalidResumePage = resume != null && resume.pageIndex !in chapter.pages.orEmpty().indices
+            if (resume != null) {
+                chapterPageIndex = if (invalidResumePage) 0 else resume.pageIndex
+                chapter.requestedPage = chapterPageIndex
+                pendingResumePosition = null
+            }
             readingActivation = activation
             chapterToDownload = cancelQueuedDownloads(newChapters.currChapter)
             mutableState.update {
@@ -409,6 +440,7 @@ class ReaderViewModel @JvmOverloads constructor(
                     bookmarked = newChapters.currChapter.chapter.bookmark,
                 )
             }
+            if (invalidResumePage) eventChannel.send(Event.SyncResumePageUnavailable)
             activation
         }
     }
@@ -1189,6 +1221,7 @@ class ReaderViewModel @JvmOverloads constructor(
     sealed interface Event {
         data object ReloadViewerChapters : Event
         data object PageChanged : Event
+        data object SyncResumePageUnavailable : Event
         data class SetOrientation(val orientation: Int) : Event
         data class SetCoverResult(val result: SetAsCoverResult) : Event
 

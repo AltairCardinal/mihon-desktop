@@ -1,51 +1,51 @@
 package mihon.desktop.ui.library
 
-import tachiyomi.i18n.MR
-
 import cafe.adriel.voyager.core.model.ScreenModel
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
-import mihon.desktop.download.DownloadItem
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import mihon.desktop.domain.GetAvailableScanlators
 import mihon.desktop.domain.GetExcludedScanlators
 import mihon.desktop.domain.LibraryUpdateChecker
 import mihon.desktop.domain.SetExcludedScanlators
+import mihon.desktop.download.DownloadItem
 import mihon.desktop.reader.ReaderChapterRef
 import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.reader.ReadingMode
 import mihon.desktop.reader.externalChapterUrlOrNull
 import mihon.desktop.reader.viewerFlagsWithReadingMode
-import eu.kanade.tachiyomi.source.model.FilterList
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import tachiyomi.domain.category.interactor.SetMangaCategories
+import mihon.domain.task.TaskState
 import tachiyomi.domain.category.interactor.GetCategories
+import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
-import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.interactor.BatchChapterResult
 import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
 import tachiyomi.domain.chapter.interactor.SetChapterReadStatus
 import tachiyomi.domain.chapter.interactor.UpdateChapter
+import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
-import tachiyomi.domain.creator.interactor.LinkMangaCreator
 import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
+import tachiyomi.domain.creator.interactor.LinkMangaCreator
 import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.creator.model.CreatorRole
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
-import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
-import tachiyomi.domain.manga.interactor.UpdateManga
-import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.manga.interactor.LibraryMembershipResult
+import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
+import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
+import tachiyomi.domain.manga.interactor.UpdateManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
-import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.source.service.SourceManager
-import mihon.domain.task.TaskState
+import tachiyomi.i18n.MR
 
 /**
  * Voyager ScreenModel for [MangaDetailScreen].
@@ -83,6 +83,7 @@ class MangaDetailScreenModel(
     private val coverAdapter: MangaCoverAdapter? = null,
     private val deleteCover: (suspend (Long) -> TaskState<Unit>)? = null,
     private val resolveCoverModel: ((Long, String?) -> String?)? = null,
+    private val readingProgress: tachiyomi.domain.reader.interactor.RecordReadingProgress? = null,
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(MangaDetailState())
@@ -92,7 +93,14 @@ class MangaDetailScreenModel(
 
     suspend fun mangaWithChaptersFlow(): Flow<Pair<Manga, List<Chapter>>> {
         return requireNotNull(getMangaWithChapters) { "GetMangaWithChapters is required" }
-            .subscribe(mangaId, applyScanlatorFilter = true)
+            .subscribe(mangaId, applyScanlatorFilter = true).map { (manga, chapters) ->
+                val candidate = readingProgress?.resumePosition(manga.id)
+                val chapter = chapters.find {
+                    it.id == candidate?.chapterId && it.url.externalChapterUrlOrNull() == null
+                }
+                _state.update { it.copy(syncedResumeChapterId = chapter?.id) }
+                manga to chapters
+            }
     }
 
     fun availableScanlatorsFlow(): Flow<Set<String>> {
@@ -116,8 +124,16 @@ class MangaDetailScreenModel(
                 state.copy(
                     manga = manga,
                     coverModel = resolveCoverModel?.invoke(manga.id, manga.thumbnailUrl) ?: manga.thumbnailUrl,
-                    filterShowRead = if (initializeFilters) manga.unreadFilterRaw != Manga.CHAPTER_SHOW_UNREAD else state.filterShowRead,
-                    filterShowUnread = if (initializeFilters) manga.unreadFilterRaw != Manga.CHAPTER_SHOW_READ else state.filterShowUnread,
+                    filterShowRead = if (initializeFilters) {
+                        manga.unreadFilterRaw != Manga.CHAPTER_SHOW_UNREAD
+                    } else {
+                        state.filterShowRead
+                    },
+                    filterShowUnread = if (initializeFilters) {
+                        manga.unreadFilterRaw != Manga.CHAPTER_SHOW_READ
+                    } else {
+                        state.filterShowUnread
+                    },
                     filterShowBookmarked = if (initializeFilters) {
                         manga.bookmarkedFilterRaw == Manga.CHAPTER_SHOW_BOOKMARKED
                     } else {
@@ -329,11 +345,16 @@ class MangaDetailScreenModel(
                 coverTask = result,
                 coverFeedback = when (result) {
                     is TaskState.Success -> successFeedback
-                    is TaskState.Failure -> result.error.cause?.message
-                        ?: MR.strings.desktop_ui_unable_to_update_cover.localized()
+                    is TaskState.Failure ->
+                        result.error.cause?.message
+                            ?: MR.strings.desktop_ui_unable_to_update_cover.localized()
                     else -> null
                 },
-                coverLastModified = if (result is TaskState.Success) System.currentTimeMillis() else it.coverLastModified,
+                coverLastModified = if (result is TaskState.Success) {
+                    System.currentTimeMillis()
+                } else {
+                    it.coverLastModified
+                },
                 coverModel = if (result is TaskState.Success) {
                     resolveCoverModel?.invoke(mangaId, manga?.thumbnailUrl) ?: manga?.thumbnailUrl
                 } else {
@@ -421,6 +442,21 @@ class MangaDetailScreenModel(
 
     fun isChapterDownloaded(manga: Manga, chapter: Chapter): Boolean {
         return isDownloaded?.invoke(manga, chapter) ?: false
+    }
+
+    suspend fun continueReadingRequest(manga: Manga, chapters: List<Chapter>): MangaDetailReaderRequest? {
+        val resume = readingProgress?.resumePosition(manga.id)
+        val resumed = chapters.find { it.id == resume?.chapterId && it.url.externalChapterUrlOrNull() == null }
+        val target = resumed ?: nextUnreadChapter(chapters, manga) ?: return null
+        val request = readerRequest(manga, chapters, target) ?: return null
+        return if (resumed != null) {
+            request.copy(
+                initialPage = requireNotNull(resume).pageIndex,
+                resumeSnapshot = resume.snapshot,
+            )
+        } else {
+            request
+        }
     }
 
     fun readerRequest(
@@ -530,7 +566,8 @@ class MangaDetailScreenModel(
     }
 
     suspend fun createDistinctCreatorIdentity(manga: Manga, mention: CreatorMention): Long {
-        return requireNotNull(manageCreatorIdentity) { "ManageCreatorIdentity is required" }.createDistinct(manga, mention)
+        return requireNotNull(manageCreatorIdentity) { "ManageCreatorIdentity is required" }
+            .createDistinct(manga, mention)
     }
 }
 
@@ -551,4 +588,5 @@ data class MangaDetailReaderRequest(
     val currentChapterIndex: Int,
     val initialPage: Int,
     val mangaViewerFlags: Long,
+    val resumeSnapshot: tachiyomi.domain.reader.model.ReadingSyncSnapshot? = null,
 )

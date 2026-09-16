@@ -12,6 +12,7 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.text.AnnotatedString
+import io.mockk.every
 import io.mockk.mockk
 import java.nio.file.Files
 import java.util.Locale
@@ -112,7 +113,8 @@ class LibraryPageCompositionTest {
         val received = mutableListOf<DesktopNotification>()
         val notificationJob = backgroundScope.launch { notifications.notifications.collect(received::add) }
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
-            io.mockk.every { notificationService } returns notifications
+            every { notificationService } returns notifications
+            every { syncPanel } returns null
         }
         val scene = ImageComposeScene(1_200, 900, coroutineContext = coroutineContext) {}
         scene.setContent {
@@ -642,7 +644,9 @@ class LibraryPageCompositionTest {
             sourceManager = FakeDesktopSourceManager(listOf(FakeSource(id = 42L, lang = "fr", name = "French source"))),
             libraryPreferences = preferences,
         )
-        val dependencies = mockk<DesktopUiDependencies>(relaxed = true)
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { syncPanel } returns null
+        }
         var destination: Screen? = null
         val scene = ImageComposeScene(1_200, 900, coroutineContext = coroutineContext) {}
         try {
@@ -729,7 +733,9 @@ class LibraryPageCompositionTest {
             getTracksPerManga = GetTracksPerManga(trackRepositoryOf(tracks)),
             trackerSessionProvider = TrackerSessionProvider { sessions },
         )
-        val dependencies = mockk<DesktopUiDependencies>(relaxed = true)
+        val dependencies = mockk<DesktopUiDependencies>(relaxed = true) {
+            every { syncPanel } returns null
+        }
         model.setFilter(
             LibraryFilter(
                 downloaded = TriState.ENABLED_NOT,
@@ -865,7 +871,9 @@ class LibraryPageCompositionTest {
         ImageComposeScene(1_200, 900, coroutineContext = kotlinx.coroutines.Dispatchers.Unconfined) {}.also { scene ->
             scene.setContent {
                 CompositionLocalProvider(
-                    LocalDesktopUiDependencies provides mockk<DesktopUiDependencies>(relaxed = true),
+                    LocalDesktopUiDependencies provides mockk<DesktopUiDependencies>(relaxed = true) {
+                        every { syncPanel } returns null
+                    },
                     LocalUriHandler provides uriHandler,
                 ) {
                     ProvideLibraryScreenModelFactory(factory = { model }) {
@@ -938,6 +946,71 @@ class LibraryPageCompositionTest {
     private fun secondaryRelease(scene: ImageComposeScene, node: androidx.compose.ui.semantics.SemanticsNode) {
         val center = node.boundsInRoot.center
         scene.sendPointerEvent(PointerEventType.Release, Offset(center.x, center.y), button = PointerButton.Secondary)
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `all library layouts offer synchronized rereading with frozen navigation`() = runTest {
+        val node = Preferences.userRoot().node("/mihon-sync-reader-test/${UUID.randomUUID()}")
+        val preferences = LibraryPreferences(DesktopPreferenceStore(node))
+        preferences.showContinueReadingButton().set(true)
+        val manga = sampleManga(81L, "Synced reread", 42L)
+        val mangas = FakeMangaRepository().apply {
+            seed(manga)
+            libraryManga = listOf(sampleLibraryManga(manga).copy(totalChapters = 1, readCount = 1))
+        }
+        val chapters = FakeChapterRepository().apply {
+            seed(Chapter.create().copy(id = 8101, mangaId = 81, url = "/reread", read = true))
+        }
+        val snapshot = tachiyomi.domain.reader.model.ReadingSyncSnapshot()
+        val progress = tachiyomi.domain.reader.interactor.RecordReadingProgress(
+            object : tachiyomi.domain.reader.repository.ReadingProgressRepository {
+                override suspend fun record(event: tachiyomi.domain.reader.model.ReadingProgressEvent) = Unit
+                override suspend fun resumePosition(mangaId: Long) =
+                    tachiyomi.domain.reader.model.ReadingResumePosition(8101, 2, snapshot)
+            },
+        )
+        val model = LibraryScreenModel(
+            getLibraryManga = GetLibraryManga(mangas), getCategories = GetCategories(FakeCategoryRepository()),
+            getChaptersByMangaId = GetChaptersByMangaId(chapters), libraryPreferences = preferences,
+            readingProgress = progress,
+        )
+        var destination: Screen? = null
+        val scene = ImageComposeScene(1200, 900, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent {
+                CompositionLocalProvider(
+                    LocalDesktopUiDependencies provides mockk<DesktopUiDependencies>(relaxed = true) {
+                        every { syncPanel } returns null
+                    },
+                ) {
+                    ProvideLibraryScreenModelFactory(factory = { model }) {
+                        Navigator(LibraryRootScreen()) { navigator ->
+                            destination = navigator.lastItem
+                            if (navigator.lastItem is LibraryRootScreen) CurrentScreen()
+                        }
+                    }
+                }
+            }
+            for (mode in listOf(SharedLibraryDisplayMode.CompactGrid, SharedLibraryDisplayMode.ComfortableGrid,
+                SharedLibraryDisplayMode.List, SharedLibraryDisplayMode.CoverOnlyGrid)) {
+                preferences.displayMode().set(mode)
+                render(scene)
+                assertTrue(
+                    semanticLabels(scene).contains(MR.strings.desktop_ui_continue_reading.localized()),
+                    mode.toString(),
+                )
+            }
+            click(scene, MR.strings.desktop_ui_continue_reading.localized())
+            render(scene)
+            val reader = destination as mihon.desktop.ui.reader.DesktopReaderScreen
+            assertEquals(8101L, reader.chapterId)
+            assertEquals(2, reader.initialPage)
+            assertEquals(snapshot, reader.initialContext().resumeSnapshot)
+        } finally {
+            scene.close()
+            node.removeNode()
+        }
     }
 
     private suspend fun render(scene: ImageComposeScene) {

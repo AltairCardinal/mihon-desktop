@@ -328,7 +328,7 @@ private class DesktopReaderTrackerPort(
 ) : DesktopReaderProgressPort {
     override suspend fun open(context: DesktopReaderChapterContext): DesktopReaderProgressPort =
         if (context.localChapterPath == null) {
-            DesktopReaderTrackerPort(tracker, tracker.openSession(context.chapterId))
+            DesktopReaderTrackerPort(tracker, tracker.openSession(context.chapterId, context.resumeSnapshot))
         } else {
             this
         }

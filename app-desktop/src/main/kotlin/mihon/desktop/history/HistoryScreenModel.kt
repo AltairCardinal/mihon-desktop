@@ -27,6 +27,7 @@ data class HistoryReaderRequest(
     val mangaId: Long,
     val mangaViewerFlags: Long,
     val initialPage: Int,
+    val resumeSnapshot: tachiyomi.domain.reader.model.ReadingSyncSnapshot? = null,
 )
 
 class HistoryScreenModel(
@@ -34,6 +35,7 @@ class HistoryScreenModel(
     private val removeHistory: RemoveHistory,
     private val getChapter: GetChapter,
     private val getManga: GetManga,
+    private val readingProgress: tachiyomi.domain.reader.interactor.RecordReadingProgress? = null,
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(HistoryState())
@@ -59,8 +61,10 @@ class HistoryScreenModel(
     }
 
     suspend fun readerRequestFor(item: HistoryWithRelations): HistoryReaderRequest? {
-        val chapter = getChapter.await(item.chapterId) ?: return null
         val manga = getManga.await(item.mangaId) ?: return null
+        val resume = readingProgress?.resumePosition(manga.id)
+        val resumed = resume?.let { getChapter.await(it.chapterId) }?.takeIf { it.mangaId == manga.id }
+        val chapter = resumed ?: getChapter.await(item.chapterId) ?: return null
         return HistoryReaderRequest(
             chapterTitle = chapter.name,
             mangaTitle = manga.title,
@@ -69,7 +73,12 @@ class HistoryScreenModel(
             chapterId = chapter.id,
             mangaId = manga.id,
             mangaViewerFlags = manga.viewerFlags,
-            initialPage = chapter.lastPageRead.toInt().coerceAtLeast(0),
+            initialPage = if (resumed != null) {
+                requireNotNull(resume).pageIndex
+            } else {
+                chapter.lastPageRead.toInt().coerceAtLeast(0)
+            },
+            resumeSnapshot = resume?.snapshot.takeIf { resumed != null },
         )
     }
 }

@@ -32,7 +32,10 @@ class ReaderProgressTracker(
     private val extensionPackageForSource: (Long) -> String? = { null },
 ) {
 
-    suspend fun openSession(chapterId: Long): ReadingProgressSession = recordReadingProgress.openSession(chapterId)
+    suspend fun openSession(
+        chapterId: Long,
+        snapshot: tachiyomi.domain.reader.model.ReadingSyncSnapshot? = null,
+    ): ReadingProgressSession = recordReadingProgress.openSession(chapterId, snapshot)
 
     fun isIncognito(sourceId: Long?): Boolean {
         val extensionPackage = sourceId?.let(extensionPackageForSource)

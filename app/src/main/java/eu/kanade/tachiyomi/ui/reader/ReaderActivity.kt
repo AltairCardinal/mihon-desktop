@@ -112,10 +112,11 @@ import java.io.ByteArrayOutputStream
 open class ReaderActivity : BaseActivity() {
 
     companion object {
-        fun newIntent(context: Context, mangaId: Long?, chapterId: Long?): Intent {
+        fun newIntent(context: Context, mangaId: Long?, chapterId: Long?, resume: Boolean = false): Intent {
             return Intent(context, ReaderActivity::class.java).apply {
                 putExtra("manga", mangaId)
                 putExtra("chapter", chapterId)
+                putExtra("resume", resume)
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
         }
@@ -230,6 +231,9 @@ open class ReaderActivity : BaseActivity() {
                     }
                     ReaderViewModel.Event.PageChanged -> {
                         displayRefreshHost.flash()
+                    }
+                    ReaderViewModel.Event.SyncResumePageUnavailable -> {
+                        toast(MR.strings.sync_resume_page_unavailable)
                     }
                     is ReaderViewModel.Event.SetOrientation -> {
                         setOrientation(event.orientation)

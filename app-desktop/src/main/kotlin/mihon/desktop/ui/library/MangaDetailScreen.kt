@@ -251,8 +251,8 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val linkActions = mangaUrl?.let {
             mangaLinkActions(it)
         }
-        val nextUnread = remember(chapters, manga?.chapterFlags) {
-            manga?.let { nextUnreadChapter(chapters, it) }
+        val nextUnread = remember(chapters, manga?.chapterFlags, state.syncedResumeChapterId) {
+            chapters.find { it.id == state.syncedResumeChapterId } ?: manga?.let { nextUnreadChapter(chapters, it) }
         }
 
         Scaffold(
@@ -558,26 +558,25 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                 openExternalLink(externalUrl)
                                 return@ExtendedFloatingActionButton
                             }
-                            val request = model.readerRequest(
-                                manga = manga!!,
-                                chapters = chapters,
-                                chapter = ch,
-                            ) ?: return@ExtendedFloatingActionButton
-                            navigator.push(
-                                DesktopReaderScreen(
-                                    chapterTitle = request.chapterTitle,
-                                    mangaId = request.mangaId,
-                                    mangaTitle = request.mangaTitle,
-                                    isWebtoon = false,
-                                    sourceId = request.sourceId,
-                                    chapterUrl = request.chapterUrl,
-                                    chapterId = request.chapterId,
-                                    chapters = request.chapters,
-                                    currentChapterIndex = request.currentChapterIndex,
-                                    initialPage = request.initialPage,
-                                    mangaViewerFlags = request.mangaViewerFlags,
-                                ),
-                            )
+                            scope.launch {
+                                val request = model.continueReadingRequest(manga!!, chapters) ?: return@launch
+                                navigator.push(
+                                    DesktopReaderScreen(
+                                        resumeSnapshot = request.resumeSnapshot,
+                                        chapterTitle = request.chapterTitle,
+                                        mangaId = request.mangaId,
+                                        mangaTitle = request.mangaTitle,
+                                        isWebtoon = false,
+                                        sourceId = request.sourceId,
+                                        chapterUrl = request.chapterUrl,
+                                        chapterId = request.chapterId,
+                                        chapters = request.chapters,
+                                        currentChapterIndex = request.currentChapterIndex,
+                                        initialPage = request.initialPage,
+                                        mangaViewerFlags = request.mangaViewerFlags,
+                                    ),
+                                )
+                            }
                         },
                     )
                 }

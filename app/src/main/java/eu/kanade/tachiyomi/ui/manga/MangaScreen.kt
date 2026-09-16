@@ -160,7 +160,7 @@ class MangaScreen(
             onTagSearch = { scope.launch { performGenreSearch(navigator, it, screenModel.source!!) } },
             onFilterButtonClicked = screenModel::showSettingsDialog,
             onRefresh = screenModel::fetchAllFromSource,
-            onContinueReading = { continueReading(context, screenModel.getNextUnreadChapter()) },
+            onContinueReading = { scope.launch { continueReading(context, screenModel.getNextUnreadChapter()) } },
             onSearch = { query, global -> scope.launch { performSearch(navigator, query, global) } },
             creatorMentions = creatorMentions,
             onCreatorClick = { mention ->
@@ -333,7 +333,11 @@ class MangaScreen(
     }
 
     private fun continueReading(context: Context, unreadChapter: Chapter?) {
-        if (unreadChapter != null) openChapter(context, unreadChapter)
+        if (unreadChapter != null) {
+            context.startActivity(
+                ReaderActivity.newIntent(context, unreadChapter.mangaId, unreadChapter.id, resume = true),
+            )
+        }
     }
 
     private fun openChapter(context: Context, chapter: Chapter) {

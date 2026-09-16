@@ -559,6 +559,7 @@ internal fun LibraryGrid(
     showLocalBadge: Boolean = true,
     showLanguageBadge: Boolean = false,
     showContinueReadingButton: Boolean = true,
+    syncedResumeMangaIds: Set<Long> = emptySet(),
     onContextMenu: (LibraryManga) -> Unit,
     onItemClick: (LibraryManga, shiftPressed: Boolean) -> Unit,
     onItemLongClick: (LibraryManga) -> Unit,
@@ -589,6 +590,7 @@ internal fun LibraryGrid(
                     showLocalBadge = showLocalBadge,
                     showLanguageBadge = showLanguageBadge,
                     showContinueReadingButton = showContinueReadingButton,
+                    syncedResumeMangaIds = syncedResumeMangaIds,
                     onClick = { shiftPressed -> onItemClick(item, shiftPressed) },
                     onLongClick = { onItemLongClick(item) },
                     onContinueReading = { onContinueReading(item) },
@@ -615,6 +617,7 @@ internal fun LibraryList(
     showLocalBadge: Boolean = true,
     showLanguageBadge: Boolean = false,
     showContinueReadingButton: Boolean = true,
+    syncedResumeMangaIds: Set<Long> = emptySet(),
     onContextMenu: (LibraryManga) -> Unit,
     onItemClick: (LibraryManga, shiftPressed: Boolean) -> Unit,
     onItemLongClick: (LibraryManga) -> Unit,
@@ -633,7 +636,8 @@ internal fun LibraryList(
             val showTrailingIndicators =
                     badges.unreadCount > 0L || badges.downloadCount > 0L || badges.isLocal ||
                     showLanguageIndicator
-            val showContinueReading = showContinueReadingButton && badges.unreadCount > 0L
+            val showContinueReading = showContinueReadingButton &&
+                (badges.unreadCount > 0L || item.id in syncedResumeMangaIds)
             ListItem(
                 headlineContent = {
                     Text(
@@ -758,6 +762,7 @@ internal fun MangaCoverCard(
     showLocalBadge: Boolean = true,
     showLanguageBadge: Boolean = false,
     showContinueReadingButton: Boolean = true,
+    syncedResumeMangaIds: Set<Long> = emptySet(),
     onClick: (shiftPressed: Boolean) -> Unit,
     onLongClick: () -> Unit,
     onContinueReading: () -> Unit,
@@ -864,7 +869,7 @@ internal fun MangaCoverCard(
                 }
 
                 // Continue reading FAB overlay (bottom-start, visible on hover via always-visible small icon)
-                if (showContinueReadingButton && badges.unreadCount > 0L) {
+                if (showContinueReadingButton && (badges.unreadCount > 0L || item.id in syncedResumeMangaIds)) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)

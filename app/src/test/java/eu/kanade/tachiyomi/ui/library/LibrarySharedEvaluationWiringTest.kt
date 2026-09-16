@@ -330,6 +330,7 @@ class LibrarySharedEvaluationWiringTest {
             every { unreadBadge() } returns preference(unread)
             every { localBadge() } returns preference(local)
             every { languageBadge() } returns preference(language)
+            every { showContinueReadingButton() } returns preference(false)
             every { autoUpdateMangaRestrictions() } returns preference(emptySet())
             every { filterDownloaded() } returns preference(TriState.DISABLED)
             every { filterUnread() } returns preference(TriState.DISABLED)

@@ -10,3 +10,10 @@ data class ReadingSyncSnapshot(
     val scope: ReadingSyncScope? = null,
     val heads: Map<SyncFieldKey, List<SyncEffectRef>> = emptyMap(),
 )
+
+/** A single, atomically selected continuation; later receipts must not change its causal baseline. */
+data class ReadingResumePosition(
+    val chapterId: Long,
+    val pageIndex: Int,
+    val snapshot: ReadingSyncSnapshot,
+)

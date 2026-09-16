@@ -1683,4 +1683,5 @@
     <string name="sync_install_app">授权同步仓库</string>
     <string name="sync_create_repo">前往创建仓库</string>
     <string name="sync_repository_setup_hint">请先创建私有仓库，再授权 Mihon GitHub App 访问该仓库。完成后返回此处刷新列表。</string>
+    <string name="sync_resume_page_unavailable">保存的阅读页码已失效，已从本章开头继续。</string>
 </resources>

@@ -38,6 +38,40 @@ abstract class SyncReadingStorageContract {
     protected abstract fun open(): Storage
 
     @Test
+    fun `resume selects causal reread and respects active scope`() = runBlocking {
+        open().use { s ->
+            val chapter = s.seed()
+            assertEquals(null, s.recorder.resumePosition(chapter.mangaId))
+            s.recorder.await(s.reading(chapter, 8))
+            s.recorder.await(s.reading(chapter, 2).copy(readAt = Date(500)))
+            val position = requireNotNull(s.recorder.resumePosition(chapter.mangaId))
+            assertEquals(chapter.id, position.chapterId)
+            assertEquals(2, position.pageIndex)
+            s.journal.connect("other", 1, SyncRepository("owner", "other", "sync"), "other-reader", 1)
+            assertEquals(null, s.recorder.resumePosition(chapter.mangaId))
+        }
+    }
+
+    @Test
+    fun `continuation adopts the selected snapshot even after later receipt`() = runBlocking {
+        open().use { s ->
+            val chapter = s.seed()
+            s.recorder.await(s.reading(chapter, 8))
+            val initial = s.journal.pendingEvents("space", 1).single()
+            val position = requireNotNull(s.recorder.resumePosition(chapter.mangaId))
+            s.recorder.await(s.reading(chapter, 2))
+            s.recorder.openSession(chapter.id, position.snapshot).await(s.reading(chapter, 7))
+            val effect = s.journal.pendingEvents("space", 1).last().effects.single {
+                it.field == SyncField.RESUME_POSITION
+            }
+            assertEquals(
+                listOf(initial.effects.single { it.field == SyncField.RESUME_POSITION }.ref(initial)),
+                effect.parents,
+            )
+        }
+    }
+
+    @Test
     fun `second manual chapter outbox failure rolls back every chapter and sequence`() = runBlocking {
         open().use { storage ->
             val first = storage.seed()

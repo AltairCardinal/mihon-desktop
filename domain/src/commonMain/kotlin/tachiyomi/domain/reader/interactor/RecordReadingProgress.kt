@@ -7,10 +7,12 @@ import tachiyomi.domain.reader.model.ReadingSyncSnapshot
 import tachiyomi.domain.reader.repository.ReadingProgressRepository
 
 class RecordReadingProgress(private val repository: ReadingProgressRepository) {
+    suspend fun resumePosition(mangaId: Long) = repository.resumePosition(mangaId)
+
     suspend fun await(event: ReadingProgressEvent) = repository.record(event)
 
-    suspend fun openSession(chapterId: Long): ReadingProgressSession =
-        ReadingProgressSession(repository, repository.beginSyncSession(chapterId))
+    suspend fun openSession(chapterId: Long, snapshot: ReadingSyncSnapshot? = null): ReadingProgressSession =
+        ReadingProgressSession(repository, snapshot ?: repository.beginSyncSession(chapterId))
 }
 
 class ReadingProgressSession internal constructor(

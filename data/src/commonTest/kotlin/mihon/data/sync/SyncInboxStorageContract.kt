@@ -415,6 +415,54 @@ abstract class SyncInboxStorageContract {
         }
     }
 
+    @Test
+    fun `native continuation chooses remote chapter by stable tie and retains histories`() = runBlocking {
+        open().use { s ->
+            s.connect(repository)
+            val firstKey = SyncObjectKey(
+                SyncObjectType.CHAPTER,
+                sourceId = "42",
+                originalUrl = "/first",
+                parentUrl = "/manga",
+            )
+            val secondKey = firstKey.copy(originalUrl = "/second")
+            val first = reading(1, firstKey, 8)
+            val second = reading(2, secondKey, 2).let { batch ->
+                batch.copy(events = batch.events.map { it.copy(occurredAt = 1000) })
+            }
+            s.inbox.ingest(second)
+            s.inbox.ingest(first)
+            s.projectAll()
+            val repo = s.handler.await { tachiyomi.data.reader.SqlDelightReadingProgressRepository(this) }
+            val local = s.handler.await { sync_projectionQueries.getMangaByIdentity("/manga", 42).executeAsOne() }
+            val position = requireNotNull(repo.resumePosition(local._id))
+            val chapter = s.handler.await { chaptersQueries.getChapterById(position.chapterId).executeAsOne() }
+            assertEquals("/second", chapter.url)
+            assertEquals(2, position.pageIndex)
+            assertEquals(2, s.handler.await { historyQueries.getHistoryByMangaId(local._id).executeAsList().size })
+            val recorder = tachiyomi.domain.reader.interactor.RecordReadingProgress(repo)
+            val session = recorder.openSession(chapter._id, position.snapshot)
+            s.inbox.ingest(reading(3, firstKey, 1, second.events.single()))
+            s.projectAll()
+            session.await(
+                tachiyomi.domain.reader.model.ReadingProgressEvent(
+                    chapter._id,
+                    3,
+                    10,
+                    java.util.Date(4000),
+                    0,
+                    syncContext = SyncMutationContext.User,
+                ),
+            )
+            val written = s.journal.pendingEvents("space", 1).last()
+            val resume = written.effects.single { it.field == SyncField.RESUME_POSITION }
+            assertEquals(
+                position.snapshot.heads[mihon.domain.sync.SyncFieldKey(manga, SyncField.RESUME_POSITION)],
+                resume.parents,
+            )
+        }
+    }
+
     private fun reading(
         seq: Long,
         chapter: SyncObjectKey,

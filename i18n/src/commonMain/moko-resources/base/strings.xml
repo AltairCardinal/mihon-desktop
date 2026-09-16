@@ -1889,4 +1889,5 @@
     <string name="sync_install_app">Authorize sync repository</string>
     <string name="sync_create_repo">Go to create a repository</string>
     <string name="sync_repository_setup_hint">Create a private repository, then authorize the Mihon GitHub App to access it. Return here and refresh the list.</string>
+    <string name="sync_resume_page_unavailable">The saved reading page is unavailable. Continuing from the chapter beginning.</string>
 </resources>

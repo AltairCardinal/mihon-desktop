@@ -10,6 +10,7 @@ import uy.kohesive.injekt.api.get
 object HistoryScreenModelFactory {
 
     fun create(): HistoryScreenModel = HistoryScreenModel(
+        readingProgress = Injekt.get<tachiyomi.domain.reader.interactor.RecordReadingProgress>(),
         getHistory = Injekt.get<GetHistory>(),
         removeHistory = Injekt.get<RemoveHistory>(),
         getChapter = Injekt.get<GetChapter>(),
