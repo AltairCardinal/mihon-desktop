@@ -63,7 +63,8 @@ class DualPagedPresentationTest {
 
         val visible = rtl.resolveDualVisiblePages(rtl.displayUnits[1].id)
         assertEquals(setOf(pageId(1), pageId(2)), visible.pageIds)
-        assertEquals(pageId(2), visible.activePageId)
+        assertEquals(pageId(1), visible.activePageId)
+        assertEquals(pageId(1), ltr.resolveDualVisiblePages(ltr.displayUnits[1].id).activePageId)
     }
 
     @Test

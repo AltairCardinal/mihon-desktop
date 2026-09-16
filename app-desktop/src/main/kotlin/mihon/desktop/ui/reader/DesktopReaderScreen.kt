@@ -400,25 +400,30 @@ internal fun ReaderState.singlePresentationSnapshot(
     return DesktopReaderPresentationRegistry.require(ReaderPresentationMode.SINGLE_PAGED).present(request)
 }
 
-internal fun adjustedForcedSinglePages(state: ReaderState): Set<Int> {
-    if (!state.dualPageMode || state.session.activeChapter.pages.isEmpty()) return state.forcedSinglePages
+internal data class ReaderSpreadAdjustment(val forcedSinglePages: Set<Int>, val currentPage: Int)
+
+internal fun adjustedForcedSinglePages(state: ReaderState): Set<Int> = adjustedSpread(state).forcedSinglePages
+
+internal fun adjustedSpread(state: ReaderState): ReaderSpreadAdjustment {
+    val unchanged = ReaderSpreadAdjustment(state.forcedSinglePages, state.currentPage)
+    if (!state.dualPageMode || state.session.activeChapter.pages.isEmpty()) return unchanged
     val presentation = state.dualPresentationSnapshot()
     val unitIndex = presentation.dualDisplayUnitIndexForSourcePage(state.currentPage)
-    if (unitIndex < 0) return state.forcedSinglePages
+    if (unitIndex < 0) return unchanged
 
     val pageIndices = presentation.displayUnits[unitIndex].slots
         .mapNotNull { it.page?.id?.sourcePageIndex }
         .distinct()
     val forcedSingle = pageIndices.singleOrNull()?.takeIf(state.forcedSinglePages::contains)
-    if (forcedSingle != null) return state.forcedSinglePages - forcedSingle
-    if (pageIndices.size != 2) return state.forcedSinglePages
+    if (forcedSingle != null) return ReaderSpreadAdjustment(state.forcedSinglePages - forcedSingle, forcedSingle)
+    if (pageIndices.size != 2) return unchanged
 
     val firstPage = pageIndices.min()
     val precedingAdjustment = (firstPage - 1).takeIf(state.forcedSinglePages::contains)
     return if (precedingAdjustment != null) {
-        state.forcedSinglePages - precedingAdjustment
+        ReaderSpreadAdjustment(state.forcedSinglePages - precedingAdjustment, precedingAdjustment)
     } else {
-        state.forcedSinglePages + firstPage
+        ReaderSpreadAdjustment(state.forcedSinglePages + firstPage, pageIndices.max())
     }
 }
 
@@ -504,7 +509,7 @@ internal suspend fun resolveDesktopMatchedPairs(
 
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalMaterial3Api::class)
 @Composable
-private fun ReaderViewport(
+internal fun ReaderViewport(
     state: ReaderState,
     model: ReaderScreenModel,
     navigator: Navigator,
@@ -575,7 +580,7 @@ private fun ReaderViewport(
                             isDualPage = state.dualPageMode, hasPrevChapter = readerNav?.previousRead != null,
                             hasNextChapter = readerNav?.nextToRead != null, onPrevChapter = onPrevChapter,
                             onNextChapter = onNextChapter,
-                            onAdjustSpread = { model.setForcedSinglePages(adjustedForcedSinglePages(state)) },
+                            onAdjustSpread = model::adjustSpread,
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
                     }

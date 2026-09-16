@@ -29805,7 +29805,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderScreenModel.kt",
           "symbol": "fun acceptSessionState",
-          "line": 140
+          "line": 142
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/presentation/ReaderPresentation.kt",
@@ -30216,12 +30216,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "ReaderViewportColorLayer(state.colorFilter)",
-          "line": 557
+          "line": 562
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/DesktopReaderScreen.kt",
           "symbol": "internal fun ReaderViewportColorLayer",
-          "line": 664
+          "line": 669
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/reader/ReaderVisualComponents.kt",

@@ -96,7 +96,7 @@ class AdaptiveReaderViewportTest {
             width = 160.dp
             frames()
             assertTrue(model.state.value.dualPageMode)
-            assertEquals(2, model.state.value.currentPage)
+            assertEquals(1, model.state.value.currentPage)
             assertEquals(listOf(2), reports)
             model.toggleUI()
             frames()
@@ -104,14 +104,18 @@ class AdaptiveReaderViewportTest {
             width = 100.dp
             frames()
             assertFalse(model.state.value.dualPageMode)
-            assertEquals(2, model.state.value.currentPage)
+            assertEquals(1, model.state.value.currentPage)
             assertEquals(listOf(2), reports)
             val pageBounds = scene.semanticsOwners.flatMap { flatten(it.unmergedRootSemanticsNode) }
                 .first { node ->
                     node.config.contains(ReaderDisplayUnitIdKey) &&
-                        node.config[ReaderDisplayUnitIdKey].slots.any { it.pageId?.sourcePageIndex == 2 }
+                        node.config[ReaderDisplayUnitIdKey].slots.any { it.pageId?.sourcePageIndex == 1 }
                 }.boundsInRoot
             val nextTap = Offset(pageBounds.left + 5f, pageBounds.center.y)
+            scene.sendPointerEvent(PointerEventType.Press, nextTap, button = PointerButton.Primary)
+            scene.sendPointerEvent(PointerEventType.Release, nextTap, button = PointerButton.Primary)
+            frames()
+            assertEquals(2, model.state.value.currentPage)
             scene.sendPointerEvent(PointerEventType.Press, nextTap, button = PointerButton.Primary)
             scene.sendPointerEvent(PointerEventType.Release, nextTap, button = PointerButton.Primary)
             frames()

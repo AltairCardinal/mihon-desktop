@@ -1,6 +1,8 @@
 package mihon.desktop.image
 
 import coil3.PlatformContext
+import coil3.decode.DataSource
+import coil3.request.CachePolicy
 import coil3.request.ErrorResult
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
@@ -14,13 +16,14 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
 import java.util.Base64
+import java.util.concurrent.TimeUnit
 
 class DesktopImageLoaderTest {
 
     @Test
     fun `plain and source cover requests use the managed global and plugin clients`() = runBlocking {
         MockWebServer().also { it.start() }.use { server ->
-            repeat(2) {
+            repeat(4) {
                 server.enqueue(
                     MockResponse.Builder()
                         .setHeader("Content-Type", "image/png")
@@ -38,24 +41,35 @@ class DesktopImageLoaderTest {
             )
 
             try {
-                val global = imageLoader.execute(
-                    ImageRequest.Builder(PlatformContext.INSTANCE)
-                        .data(server.url("/global.png").toString())
-                        .build(),
-                )
-                val plugin = imageLoader.execute(
-                    ImageRequest.Builder(PlatformContext.INSTANCE)
-                        .data(DesktopSourceImage(server.url("/plugin.png").toString(), sourceId = 42L))
-                        .build(),
-                )
+                // Repeated URLs must still exercise both client routes rather than Coil's caches.
+                repeat(2) {
+                    val global = imageLoader.execute(
+                        ImageRequest.Builder(PlatformContext.INSTANCE)
+                            .memoryCachePolicy(CachePolicy.DISABLED)
+                            .diskCachePolicy(CachePolicy.DISABLED)
+                            .data(server.url("/global.png").toString())
+                            .build(),
+                    )
+                    val plugin = imageLoader.execute(
+                        ImageRequest.Builder(PlatformContext.INSTANCE)
+                            .memoryCachePolicy(CachePolicy.DISABLED)
+                            .diskCachePolicy(CachePolicy.DISABLED)
+                            .data(DesktopSourceImage(server.url("/plugin.png").toString(), sourceId = 42L))
+                            .build(),
+                    )
 
-                assertInstanceOf(SuccessResult::class.java, global)
-                assertInstanceOf(SuccessResult::class.java, plugin)
-                val globalRequest = server.takeRequest()
-                val pluginRequest = server.takeRequest()
-                assertEquals("global", globalRequest.headers["X-Mihon-Route"])
-                assertEquals("plugin", pluginRequest.headers["X-Mihon-Route"])
-                assertEquals("https://source.example/", pluginRequest.headers["Referer"])
+                    assertEquals(DataSource.NETWORK, assertInstanceOf(SuccessResult::class.java, global).dataSource)
+                    assertEquals(DataSource.NETWORK, assertInstanceOf(SuccessResult::class.java, plugin).dataSource)
+                    val globalRequest = requireNotNull(server.takeRequest(5, TimeUnit.SECONDS)) {
+                        "Expected global network request"
+                    }
+                    val pluginRequest = requireNotNull(server.takeRequest(5, TimeUnit.SECONDS)) {
+                        "Expected plugin network request"
+                    }
+                    assertEquals("global", globalRequest.headers["X-Mihon-Route"])
+                    assertEquals("plugin", pluginRequest.headers["X-Mihon-Route"])
+                    assertEquals("https://source.example/", pluginRequest.headers["Referer"])
+                }
             } finally {
                 imageLoader.shutdown()
             }
@@ -86,12 +100,17 @@ class DesktopImageLoaderTest {
             try {
                 val result = imageLoader.execute(
                     ImageRequest.Builder(PlatformContext.INSTANCE)
+                        .memoryCachePolicy(CachePolicy.DISABLED)
+                        .diskCachePolicy(CachePolicy.DISABLED)
                         .data(DesktopSourceImage(server.url("/forbidden.png").toString(), sourceId = 42L))
                         .build(),
                 )
 
                 assertInstanceOf(ErrorResult::class.java, result)
-                assertEquals("plugin", server.takeRequest().headers["X-Mihon-Route"])
+                val request = requireNotNull(server.takeRequest(5, TimeUnit.SECONDS)) {
+                    "Expected plugin failure request"
+                }
+                assertEquals("plugin", request.headers["X-Mihon-Route"])
             } finally {
                 imageLoader.shutdown()
             }

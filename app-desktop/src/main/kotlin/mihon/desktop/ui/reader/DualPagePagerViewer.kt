@@ -263,6 +263,7 @@ internal fun DualPagePagerViewer(
     DualPageSettledVisiblePageReporter(
         presentation = presentation,
         isRtl = isRtl,
+        positionRequest = currentPageId to currentDisplayUnitId,
         settledPagerIndex = { pagerState.settledPage },
         shouldReportSettledPage = { pagerIndex ->
             programmaticTarget.value?.let { it == pagerIndex } ?: true
@@ -360,12 +361,14 @@ internal fun DualPageSettledVisiblePageReporter(
     isRtl: Boolean,
     settledPagerIndex: () -> Int,
     shouldReportSettledPage: (Int) -> Boolean = { true },
+    positionRequest: Pair<ReaderPageId, DisplayUnitId?>? = null,
     onVisiblePagesChanged: (VisiblePageSet) -> Unit,
 ) {
     val currentCallback by rememberUpdatedState(onVisiblePagesChanged)
     val currentShouldReport by rememberUpdatedState(shouldReportSettledPage)
     val displayUnitIds = presentation.displayUnits.map(DisplayUnit::id)
-    LaunchedEffect(displayUnitIds, isRtl) {
+    // Reconfirm explicit positioning even when rapid regrouping returns to the same numeric index.
+    LaunchedEffect(displayUnitIds, isRtl, positionRequest) {
         snapshotFlow {
             val displayUnits = presentation.displayUnits
             if (displayUnits.isEmpty()) {
