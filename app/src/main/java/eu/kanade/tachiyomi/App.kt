@@ -40,6 +40,7 @@ import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.data.sync.AndroidSyncScheduler
 import eu.kanade.tachiyomi.di.AppModule
 import eu.kanade.tachiyomi.di.PreferenceModule
+import eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionController
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.NetworkPreferences
 import eu.kanade.tachiyomi.ui.base.delegate.SecureActivityDelegate
@@ -243,6 +244,7 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
 
     override fun onStart(owner: LifecycleOwner) {
         SecureActivityDelegate.onApplicationStart()
+        owner.lifecycleScope.launch { Injekt.get<InstalledAppsPermissionController>().refresh() }
     }
 
     override fun onStop(owner: LifecycleOwner) {

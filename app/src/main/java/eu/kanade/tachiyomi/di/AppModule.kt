@@ -17,6 +17,7 @@ import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.data.saver.ImageSaver
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.extension.ExtensionManager
+import eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionController
 import eu.kanade.tachiyomi.network.AndroidNetworkResponseAdapter
 import eu.kanade.tachiyomi.network.JavaScriptEngine
 import eu.kanade.tachiyomi.network.NetworkHelper
@@ -120,7 +121,8 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { JavaScriptEngine(app) }
 
         addSingletonFactory<SourceManager> { AndroidSourceManager(app, get(), get()) }
-        addSingletonFactory { ExtensionManager(app) }
+        addSingletonFactory { InstalledAppsPermissionController.android(app) }
+        addSingletonFactory { ExtensionManager(app, installedAppsPermissionController = get()) }
 
         addSingletonFactory { DownloadProvider(app) }
         addSingletonFactory { DownloadManager(app) }

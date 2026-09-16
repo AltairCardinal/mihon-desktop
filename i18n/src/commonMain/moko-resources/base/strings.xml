@@ -1904,4 +1904,17 @@
     <string name="desktop_reader_default_summary">Right to left; switch between one and two pages to fit the window. Dual page is controlled automatically.</string>
     <string name="desktop_reader_default_single">Auto · Single page</string>
     <string name="desktop_reader_default_dual">Auto · Dual page</string>
+    <string name="installed_apps_permission_name">Get installed app list</string>
+    <string name="installed_apps_permission_title">Cannot read installed extensions</string>
+    <string name="installed_apps_permission_required">Allow “Get installed app list” permission to read the list of installed extensions.</string>
+    <string name="installed_apps_permission_explanation">Grant this permission so Mihon can load installed extensions.</string>
+    <string name="installed_apps_permission_get">Get permission</string>
+    <string name="installed_apps_permission_back">Back</string>
+    <string name="installed_apps_permission_local_available">You do not need to reinstall extensions. Local and private sources remain available.</string>
+    <string name="installed_apps_permission_checking">Checking installed app list permission…</string>
+    <string name="installed_apps_permission_reading">Reading installed extensions…</string>
+    <string name="installed_apps_permission_check_failed">Unable to check permission. This does not mean extensions were uninstalled. Please retry.</string>
+    <string name="installed_apps_permission_read_failed">Unable to read extensions. Please retry; there is no need to grant permission again or reinstall extensions.</string>
+    <string name="installed_apps_permission_settings_unavailable">Unable to open permission settings. In system settings, open Apps → Mihon → Permissions and allow access to the installed app list, then return here. The path may differ on your device.</string>
+    <string name="installed_apps_permission_private_read_failed">Private extensions could not be loaded. Retry without granting access to the installed app list.</string>
 </resources>

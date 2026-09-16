@@ -116,10 +116,14 @@ internal object ExtensionLoader {
      *
      * @param context The application context.
      */
-    suspend fun loadExtensions(context: Context): List<LoadResult> {
+    suspend fun loadExtensions(context: Context): List<LoadResult> = loadExtensions(context, includeShared = true)
+
+    suspend fun loadExtensions(context: Context, includeShared: Boolean): List<LoadResult> {
         val pkgManager = context.packageManager
 
-        val installedPkgs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val installedPkgs = if (!includeShared) {
+            emptyList()
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             pkgManager.getInstalledPackages(PackageManager.PackageInfoFlags.of(PACKAGE_FLAGS.toLong()))
         } else {
             pkgManager.getInstalledPackages(PACKAGE_FLAGS)

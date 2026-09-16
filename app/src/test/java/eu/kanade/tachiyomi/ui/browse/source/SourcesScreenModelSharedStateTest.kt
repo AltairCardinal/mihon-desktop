@@ -3,11 +3,14 @@ package eu.kanade.tachiyomi.ui.browse.source
 import eu.kanade.domain.source.interactor.GetEnabledSources
 import eu.kanade.domain.source.interactor.ToggleSource
 import eu.kanade.domain.source.interactor.ToggleSourcePin
+import eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionController
+import eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionState
 import eu.kanade.tachiyomi.test.ScreenModelTestHost
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -33,6 +36,9 @@ class SourcesScreenModelSharedStateTest {
     private val modelHost = ScreenModelTestHost()
 
     private val source = Source(7, "en", "Example", true, false)
+    private val permission = mockk<InstalledAppsPermissionController> {
+        every { state } returns MutableStateFlow(InstalledAppsPermissionState())
+    }
 
     @AfterEach
     fun tearDown() {
@@ -50,7 +56,9 @@ class SourcesScreenModelSharedStateTest {
         every { toggleSource.await(source, false) } returns Unit
         every { toggleSource.await(source, true) } throws AssertionError("enabled source must be disabled")
         every { togglePin.await(any()) } returns Unit
-        val model = modelHost.create { SourcesScreenModel(getSources, toggleSource, togglePin) }
+        val model = modelHost.create {
+            SourcesScreenModel(getSources, toggleSource, togglePin, installedAppsPermission = permission)
+        }
 
         val content = awaitContent(model) { it is SourceScreenContent.Content } as SourceScreenContent.Content
         assertEquals(listOf(source), content.sources)
@@ -85,6 +93,7 @@ class SourcesScreenModelSharedStateTest {
                 getEnabledSources = getSources,
                 toggleSource = mockk(relaxed = true),
                 toggleSourcePin = mockk(relaxed = true),
+                installedAppsPermission = permission,
             )
         }
 

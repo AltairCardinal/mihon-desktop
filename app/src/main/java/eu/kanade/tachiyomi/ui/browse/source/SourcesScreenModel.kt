@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.browse.source
 
+import android.content.Intent
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
@@ -7,6 +8,8 @@ import eu.kanade.domain.source.interactor.GetEnabledSources
 import eu.kanade.domain.source.interactor.ToggleSource
 import eu.kanade.domain.source.interactor.ToggleSourcePin
 import eu.kanade.presentation.browse.SourceUiModel
+import eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionController
+import eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionState
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
@@ -35,6 +38,7 @@ class SourcesScreenModel(
     private val toggleSource: ToggleSource = Injekt.get(),
     private val toggleSourcePin: ToggleSourcePin = Injekt.get(),
     private val sourceReducer: SourceScreenReducer = SourceScreenReducer(),
+    private val installedAppsPermission: InstalledAppsPermissionController = Injekt.get(),
 ) : StateScreenModel<SourcesScreenModel.State>(State()) {
 
     private val _events = Channel<Event>(Int.MAX_VALUE)
@@ -44,6 +48,23 @@ class SourcesScreenModel(
 
     init {
         observeSources()
+        screenModelScope.launchIO {
+            installedAppsPermission.state.collectLatest { permission ->
+                mutableState.update { it.copy(installedAppsPermission = permission) }
+            }
+        }
+    }
+
+    fun refreshInstalledAppsPermission() {
+        mutableState.update { it.copy(permissionSettingsUnavailable = false) }
+        screenModelScope.launchIO { installedAppsPermission.refresh() }
+    }
+
+    fun permissionSettingsIntent(fallback: Boolean = false): Intent? =
+        if (fallback) installedAppsPermission.applicationSettingsIntent() else installedAppsPermission.settingsIntent()
+
+    fun permissionSettingsUnavailable() {
+        mutableState.update { it.copy(permissionSettingsUnavailable = true) }
     }
 
     private fun observeSources() {
@@ -147,6 +168,8 @@ class SourcesScreenModel(
         val dialog: Dialog? = null,
         val isLoading: Boolean = true,
         val items: ImmutableList<SourceUiModel> = persistentListOf(),
+        val installedAppsPermission: InstalledAppsPermissionState = InstalledAppsPermissionState(),
+        val permissionSettingsUnavailable: Boolean = false,
     ) {
         val isEmpty = items.isEmpty()
     }

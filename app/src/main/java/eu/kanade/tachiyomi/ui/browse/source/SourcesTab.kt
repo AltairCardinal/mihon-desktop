@@ -1,5 +1,8 @@
 package eu.kanade.tachiyomi.ui.browse.source
 
+import android.content.ActivityNotFoundException
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.TravelExplore
@@ -7,10 +10,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.presentation.browse.InstalledAppsPermissionDialog
 import eu.kanade.presentation.browse.SourceOptionsDialog
 import eu.kanade.presentation.browse.SourcesScreen
 import eu.kanade.presentation.components.AppBar
@@ -24,9 +31,8 @@ import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 
 @Composable
-fun Screen.sourcesTab(): TabContent {
+fun Screen.sourcesTab(screenModel: SourcesScreenModel = rememberScreenModel { SourcesScreenModel() }): TabContent {
     val navigator = LocalNavigator.currentOrThrow
-    val screenModel = rememberScreenModel { SourcesScreenModel() }
     val state by screenModel.state.collectAsState()
 
     return TabContent(
@@ -44,6 +50,33 @@ fun Screen.sourcesTab(): TabContent {
             ),
         ),
         content = { contentPadding, snackbarHostState ->
+            var showPermissionDialog by rememberSaveable { mutableStateOf(false) }
+            val permissionLauncher =
+                rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+                    screenModel.refreshInstalledAppsPermission()
+                }
+            if (showPermissionDialog) {
+                InstalledAppsPermissionDialog(
+                    onDismiss = { showPermissionDialog = false },
+                    onGetPermission = {
+                        showPermissionDialog = false
+                        var launched = false
+                        for (fallback in listOf(false, true)) {
+                            try {
+                                val intent = screenModel.permissionSettingsIntent(fallback) ?: continue
+                                permissionLauncher.launch(intent)
+                                launched = true
+                                break
+                            } catch (_: ActivityNotFoundException) {
+                                // Some device-specific permission activities are not exported.
+                            } catch (_: SecurityException) {
+                                // Fall back to the application's ordinary settings page.
+                            }
+                        }
+                        if (!launched) screenModel.permissionSettingsUnavailable()
+                    },
+                )
+            }
             SourcesScreen(
                 state = state,
                 contentPadding = contentPadding,
@@ -52,6 +85,8 @@ fun Screen.sourcesTab(): TabContent {
                 },
                 onClickPin = screenModel::togglePin,
                 onLongClickItem = screenModel::showSourceDialog,
+                onGetInstalledAppsPermission = { showPermissionDialog = true },
+                onRetryInstalledAppsPermission = screenModel::refreshInstalledAppsPermission,
             )
 
             state.dialog?.let { dialog ->

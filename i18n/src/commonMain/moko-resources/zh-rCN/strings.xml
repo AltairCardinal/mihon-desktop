@@ -1698,4 +1698,17 @@
     <string name="desktop_reader_default_summary">从右到左，按窗口比例自动切换单页／双页；双页开关由自动模式管理。</string>
     <string name="desktop_reader_default_single">自动 · 单页</string>
     <string name="desktop_reader_default_dual">自动 · 双页</string>
+    <string name="installed_apps_permission_name">获取已安装应用列表</string>
+    <string name="installed_apps_permission_title">无法读取已安装插件</string>
+    <string name="installed_apps_permission_required">需要允许“获取已安装应用列表”权限，否则无法读取已安装的插件列表</string>
+    <string name="installed_apps_permission_explanation">为了使Mihon能正常加载已安装插件，需要授予此权限</string>
+    <string name="installed_apps_permission_get">获取权限</string>
+    <string name="installed_apps_permission_back">返回</string>
+    <string name="installed_apps_permission_local_available">已安装的插件无需重新安装。本地和私有图源仍可使用。</string>
+    <string name="installed_apps_permission_checking">正在检查插件列表权限…</string>
+    <string name="installed_apps_permission_reading">正在读取已安装插件…</string>
+    <string name="installed_apps_permission_check_failed">暂时无法确认权限状态。这不表示插件已卸载，请重试检查。</string>
+    <string name="installed_apps_permission_read_failed">插件读取失败，请重试；无需再次授权或重新安装。</string>
+    <string name="installed_apps_permission_settings_unavailable">无法打开权限设置。请在系统设置 → 应用 → Mihon → 权限中允许“获取已安装应用列表”，然后返回应用。不同设备的入口可能不同。</string>
+    <string name="installed_apps_permission_private_read_failed">私有插件读取失败，请重试。重试私有插件不需要应用列表权限。</string>
 </resources>

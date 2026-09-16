@@ -10,6 +10,8 @@ import eu.kanade.tachiyomi.extension.api.ExtensionUpdateNotifier
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.extension.model.LoadResult
+import eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionController
+import eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionStatus
 import eu.kanade.tachiyomi.extension.util.ExtensionInstallReceiver
 import eu.kanade.tachiyomi.extension.util.ExtensionInstaller
 import eu.kanade.tachiyomi.extension.util.ExtensionLoader
@@ -57,7 +59,7 @@ class ExtensionManager internal constructor(
     private val preferences: SourcePreferences = Injekt.get(),
     private val trustExtension: TrustExtension = Injekt.get(),
     private val updatePolicy: ExtensionUpdatePolicy = SharedExtensionUpdatePolicy,
-    private val installedExtensionsLoader: suspend (Context) -> List<LoadResult> = ExtensionLoader::loadExtensions,
+    private val installedExtensionsLoader: (suspend (Context) -> List<LoadResult>)? = null,
     private val extensionLoader: suspend (Context, String) -> LoadResult = ExtensionLoader::loadExtensionFromPkgName,
     private val availableExtensionsProvider: (suspend () -> List<Extension.Available>)? = null,
     private val installerFactory: (((suspend (String) -> Unit)) -> ExtensionInstaller)? = null,
@@ -67,6 +69,7 @@ class ExtensionManager internal constructor(
     val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
     private val catalogFailuresProvider: (suspend () -> List<RepositoryCatalogFailure>)? = null,
     private val discoveryProvider: (suspend () -> ExtensionDiscoveryResult)? = null,
+    private val installedAppsPermissionController: InstalledAppsPermissionController? = null,
 ) {
 
     private val _isInitialized = MutableStateFlow(false)
@@ -148,17 +151,39 @@ class ExtensionManager internal constructor(
      * Loads and registers the installed extensions.
      */
     private fun initExtensions() {
-        scope.launch {
-            val extensions = installedExtensionsLoader(context)
+        val controller = installedAppsPermissionController
+        if (controller != null) {
+            controller.scan = ::refreshInstalledExtensions
+            scope.launch { controller.refresh() }
+        } else {
+            scope.launch { refreshInstalledExtensions(InstalledAppsPermissionStatus.NOT_REQUIRED) }
+        }
+    }
 
-            var installedExtensions = extensions
-                .filterIsInstance<LoadResult.Success>()
+    private suspend fun refreshInstalledExtensions(status: InstalledAppsPermissionStatus) {
+        val canReadShared = status == InstalledAppsPermissionStatus.GRANTED ||
+            status == InstalledAppsPermissionStatus.NOT_REQUIRED
+        synchronized(installationStateLock) { installationEventsLive = false }
+        try {
+            val extensions = installedExtensionsLoader?.invoke(context)
+                ?: ExtensionLoader.loadExtensions(context, includeShared = canReadShared)
+            // Recheck after the asynchronous package query: revocation can turn that query into
+            // an incomplete empty snapshot even though it started with a valid permission.
+            val publishStatus = installedAppsPermissionController?.checkStatus() ?: status
+            val completeSharedSnapshot = canReadShared && (
+                publishStatus == InstalledAppsPermissionStatus.GRANTED ||
+                    publishStatus == InstalledAppsPermissionStatus.NOT_REQUIRED
+                )
+            var installedExtensions = extensions.filterIsInstance<LoadResult.Success>()
                 .associate { it.extension.pkgName to it.extension }
-            var untrustedExtensions = extensions
-                .filterIsInstance<LoadResult.Untrusted>()
+            var untrustedExtensions = extensions.filterIsInstance<LoadResult.Untrusted>()
                 .associate { it.extension.pkgName to it.extension }
-
             val replayedEvents = synchronized(installationStateLock) {
+                // An incomplete package list is not proof that an extension was uninstalled.
+                if (!completeSharedSnapshot) {
+                    installedExtensions = installedExtensionMapFlow.value + installedExtensions
+                    untrustedExtensions = untrustedExtensionMapFlow.value + untrustedExtensions
+                }
                 pendingInstallationEvents.forEach { event ->
                     installedExtensions = event.applyToInstalled(installedExtensions)
                     untrustedExtensions = event.applyToUntrusted(untrustedExtensions)
@@ -172,6 +197,17 @@ class ExtensionManager internal constructor(
                 replayedEvents
             }
             if (replayedEvents) updatePendingUpdatesCount()
+        } finally {
+            // A failed scan must not strand install broadcasts or block local source initialization.
+            synchronized(installationStateLock) {
+                pendingInstallationEvents.forEach { event ->
+                    installedExtensionMapFlow.update(event::applyToInstalled)
+                    untrustedExtensionMapFlow.update(event::applyToUntrusted)
+                }
+                pendingInstallationEvents.clear()
+                installationEventsLive = true
+                _isInitialized.value = true
+            }
         }
     }
 

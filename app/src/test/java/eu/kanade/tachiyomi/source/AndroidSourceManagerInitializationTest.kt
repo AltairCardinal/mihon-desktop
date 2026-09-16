@@ -98,6 +98,82 @@ class AndroidSourceManagerInitializationTest {
         }
     }
 
+    @Test
+    fun `grant after denied startup rescans installed extensions and registers real sources`() = runTest {
+        var permission = eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionStatus.DENIED
+        val controller = eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionController({ permission })
+        val releaseLoader = CompletableDeferred<Unit>()
+        val installedExtensionCollectionStarted = CompletableDeferred<Unit>()
+        val extensionSource = mockk<Source> {
+            every { id } answers {
+                installedExtensionCollectionStarted.complete(Unit)
+                7L
+            }
+            every { lang } returns "en"
+            every { name } returns "Example"
+            every { supportsLatest } returns true
+        }
+        val extensionManager = ExtensionManager(
+            context = mockk(relaxed = true),
+            preferences = preferences(),
+            trustExtension = mockk(relaxed = true),
+            installedExtensionsLoader = {
+                if (permission == eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionStatus.DENIED) {
+                    emptyList()
+                } else {
+                    releaseLoader.await()
+                    listOf(LoadResult.Success(installed(extensionSource).copy(isShared = true)))
+                }
+            },
+            installedAppsPermissionController = controller,
+            installReceiverRegistrar = {},
+            scope = backgroundScope,
+        )
+        val sourceRepository = mockk<StubSourceRepository>(relaxed = true) {
+            every { subscribeAll() } returns flowOf(emptyList())
+            coEvery { getStubSource(any()) } returns null
+        }
+        val localSourceFileSystem: LocalSourceFileSystem = mockk(relaxed = true)
+        val localCoverManager: LocalCoverManager = mockk(relaxed = true)
+        Injekt.addSingleton(localSourceFileSystem)
+        Injekt.addSingleton(localCoverManager)
+        mockkConstructor(LocalSource::class)
+        try {
+            val sourceManager = AndroidSourceManager(
+                context = mockk(relaxed = true),
+                extensionManager = extensionManager,
+                sourceRepository = sourceRepository,
+                scope = backgroundScope,
+            )
+
+            runCurrent()
+            assertTrue(sourceManager.isInitialized.value)
+            assertFalse(installedExtensionCollectionStarted.isCompleted)
+
+            permission = eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionStatus.GRANTED
+            releaseLoader.complete(Unit)
+            controller.refresh()
+            runCurrent()
+
+            assertTrue(installedExtensionCollectionStarted.isCompleted)
+            assertTrue(sourceManager.isInitialized.value)
+            assertEquals(extensionSource, sourceManager.get(7L))
+            assertTrue(extensionSource in sourceManager.getQuerySources())
+            val repository = tachiyomi.data.source.SourceRepositoryImpl(sourceManager, mockk())
+            val enabled = eu.kanade.domain.source.interactor.GetEnabledSources(repository, queryPreferences())
+            val projected = enabled.subscribe().first()
+            assertTrue(projected.any { it.id == 7L && it.supportsLatest })
+            val disabled = eu.kanade.domain.source.interactor.GetEnabledSources(
+                repository,
+                queryPreferences(setOf("7")),
+            )
+            assertFalse(disabled.subscribe().first().any { it.id == 7L })
+            assertEquals(extensionSource, sourceManager.getOrStub(7L))
+        } finally {
+            unmockkConstructor(LocalSource::class)
+        }
+    }
+
     private fun preferences() = mockk<SourcePreferences>(relaxed = true) {
         every { enabledLanguages() } returns mockk<Preference<Set<String>>> {
             every { isSet() } returns true
