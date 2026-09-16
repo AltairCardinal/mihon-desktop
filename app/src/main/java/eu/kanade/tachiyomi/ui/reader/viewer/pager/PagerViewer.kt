@@ -236,7 +236,7 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
     internal fun onReaderPageSelected(page: ReaderPage, allowPreload: Boolean, forward: Boolean) {
         val pages = page.chapter.pages ?: return
         logcat { "onReaderPageSelected: ${page.number}/${pages.size}" }
-        activity.onPageSelected(page)
+        activity.onViewerPageSelected(this, page)
 
         // Notify holder of page change
         getPageHolder(page)?.onPageSelected(forward)

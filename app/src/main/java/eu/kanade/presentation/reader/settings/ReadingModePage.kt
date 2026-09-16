@@ -14,6 +14,7 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPageR2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.CheckboxItem
@@ -29,14 +30,35 @@ internal fun ColumnScope.ReadingModePage(screenModel: ReaderSettingsScreenModel)
     HeadingItem(MR.strings.pref_category_for_this_series)
     val manga by screenModel.mangaFlow.collectAsState()
 
+    val viewer by screenModel.viewerFlow.collectAsState()
+    val globalMode by screenModel.preferences.defaultReadingMode().collectAsState()
     val readingMode = remember(manga) { ReadingMode.fromPreference(manga?.readingMode?.toInt()) }
     SettingsChipRow(MR.strings.pref_category_reading_mode) {
         ReadingMode.entries.map {
             FilterChip(
                 selected = it == readingMode,
                 onClick = { screenModel.onChangeReadingMode(it) },
-                label = { Text(stringResource(it.stringRes)) },
+                label = {
+                    val label = if (it == ReadingMode.DEFAULT) MR.strings.desktop_reader_follow_global else it.stringRes
+                    Text(stringResource(label))
+                },
             )
+        }
+    }
+
+    if (readingMode == ReadingMode.DEFAULT) {
+        Text(
+            stringResource(MR.strings.desktop_reader_follow_global) + " · " +
+                stringResource(ReadingMode.fromPreference(globalMode).stringRes),
+        )
+        if (globalMode == ReadingMode.DEFAULT.flagValue) {
+            val status = if (viewer is DualPageR2LPagerViewer) {
+                MR.strings.desktop_reader_default_dual
+            } else {
+                MR.strings.desktop_reader_default_single
+            }
+            Text(stringResource(status))
+            Text(stringResource(MR.strings.desktop_reader_default_summary))
         }
     }
 
@@ -51,7 +73,6 @@ internal fun ColumnScope.ReadingModePage(screenModel: ReaderSettingsScreenModel)
         }
     }
 
-    val viewer by screenModel.viewerFlow.collectAsState()
     if (viewer is WebtoonViewer) {
         WebtoonViewerSettings(screenModel)
     } else {

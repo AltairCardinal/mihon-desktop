@@ -71,7 +71,7 @@ enum class ReadingMode(
 
         fun isPagerType(preference: Int): Boolean {
             val mode = fromPreference(preference)
-            return mode.type is ViewerType.Pager
+            return mode == DEFAULT || mode.type is ViewerType.Pager
         }
 
         fun toViewer(preference: Int?, activity: ReaderActivity): Viewer {
@@ -81,8 +81,8 @@ enum class ReadingMode(
                 VERTICAL -> VerticalPagerViewer(activity)
                 WEBTOON -> WebtoonViewer(activity)
                 CONTINUOUS_VERTICAL -> WebtoonViewer(activity, isContinuous = false)
-                DUAL_PAGE_R2L -> DualPageR2LPagerViewer(activity)
-                DEFAULT -> throw IllegalStateException("Preference value must be resolved: $preference")
+                DUAL_PAGE_R2L -> DualPageR2LPagerViewer(activity, activity.viewModel.dualPagePairings)
+                DEFAULT -> R2LPagerViewer(activity)
             }
         }
     }

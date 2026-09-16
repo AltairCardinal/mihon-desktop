@@ -368,6 +368,7 @@ open class ReaderActivity : BaseActivity() {
      */
     override fun onDestroy() {
         super.onDestroy()
+        adaptiveViewport?.close()
         viewModel.state.value.viewer?.destroy()
         config = null
         menuToggleToast?.cancel()
@@ -541,6 +542,7 @@ open class ReaderActivity : BaseActivity() {
             },
             onClickSettings = viewModel::openSettingsDialog,
             isDualPageMode = state.viewer is DualPageR2LPagerViewer,
+            isAutomaticMode = viewModel.getMangaReadingMode() == ReadingMode.DEFAULT.flagValue,
             onClickAdjustPairing = {
                 (state.viewer as? DualPageR2LPagerViewer)?.adjustPagePairing()
             },
@@ -560,13 +562,41 @@ open class ReaderActivity : BaseActivity() {
     }
 
     private var displayedReadingMode: Int? = null
+    private var adaptiveViewport: AdaptiveReaderViewport? = null
+    private var installedViewer: eu.kanade.tachiyomi.ui.reader.viewer.Viewer? = null
+    private var changingLayout = false
+    private var protectedLayoutPage: ReaderPage? = null
+
+    private fun viewportController(): AdaptiveReaderViewport = adaptiveViewport ?: AdaptiveReaderViewport(
+        binding.viewerContainer,
+        viewModel.automaticDualPage,
+    ) { dual ->
+        viewModel.automaticDualPage = dual
+        updateViewer()
+    }.also {
+        adaptiveViewport = it
+        readerPreferences.defaultReadingMode().changes().drop(1).onEach {
+            if (viewModel.getMangaReadingMode(resolveDefault = false) == ReadingMode.DEFAULT.flagValue) updateViewer()
+        }.launchIn(lifecycleScope)
+    }
 
     /**
      * Called from the presenter when a manga is ready. Used to instantiate the appropriate viewer.
      */
     private fun updateViewer() {
         val prevViewer = viewModel.state.value.viewer
-        val readingMode = viewModel.getMangaReadingMode()
+        val requestedMode = viewModel.getMangaReadingMode()
+        val automatic = requestedMode == ReadingMode.DEFAULT.flagValue
+        val dual = viewportController().configure(automatic)
+        val readingMode = if (automatic) {
+            viewModel.automaticDualPage = dual
+            if (dual) ReadingMode.DUAL_PAGE_R2L.flagValue else ReadingMode.RIGHT_TO_LEFT.flagValue
+        } else {
+            requestedMode
+        }
+        val anchor = viewModel.currentReaderPage
+        val chapters = viewModel.state.value.viewerChapters
+        if (anchor != null && chapters?.currChapter === anchor.chapter) anchor.chapter.requestedPage = anchor.index
         val newViewer = ReadingMode.toViewer(readingMode, this)
 
         if (window.sharedElementEnterTransition is MaterialContainerTransform) {
@@ -583,6 +613,7 @@ open class ReaderActivity : BaseActivity() {
             prevViewer.destroy()
             binding.viewerContainer.removeAllViews()
         }
+        installedViewer = newViewer
         viewModel.onViewerLoaded(newViewer)
         updateViewerInset(readerPreferences.fullscreen().get(), readerPreferences.drawUnderCutout().get())
         binding.viewerContainer.addView(newViewer.getView())
@@ -595,8 +626,17 @@ open class ReaderActivity : BaseActivity() {
         }
         displayedReadingMode = readingMode
 
+        if (loadingIndicator != null) binding.readerContainer.removeView(loadingIndicator)
         loadingIndicator = ReaderProgressIndicator(this)
         binding.readerContainer.addView(loadingIndicator)
+        if (chapters != null) {
+            changingLayout = anchor != null
+            try {
+                setChapters(chapters)
+            } finally {
+                changingLayout = false
+            }
+        }
 
         startPostponedEnterTransition()
     }
@@ -722,7 +762,26 @@ open class ReaderActivity : BaseActivity() {
      * bottom menu and delegates the change to the presenter.
      */
     open fun onPageSelected(page: ReaderPage) {
-        viewModel.onPageSelected(page)
+        if (changingLayout || protectedLayoutPage === page) {
+            onLayoutPageSelected(page)
+        } else {
+            protectedLayoutPage = null
+            viewModel.onPageSelected(page)
+        }
+    }
+
+    open fun onLayoutPageSelected(page: ReaderPage) {
+        protectedLayoutPage = page
+        viewModel.onLayoutPageSelected(page)
+    }
+
+    internal fun onViewerPageSelected(
+        source: eu.kanade.tachiyomi.ui.reader.viewer.Viewer,
+        page: ReaderPage,
+        layoutOnly: Boolean = false,
+    ) {
+        if (installedViewer != null && viewModel.state.value.viewer !== source) return
+        if (layoutOnly) onLayoutPageSelected(page) else onPageSelected(page)
     }
 
     /**

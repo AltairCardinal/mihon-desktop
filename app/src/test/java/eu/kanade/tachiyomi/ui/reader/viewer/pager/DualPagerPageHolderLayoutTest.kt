@@ -44,6 +44,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withContext
@@ -62,12 +63,14 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowToast
 import org.robolectric.util.ReflectionHelpers
+import tachiyomi.core.common.preference.AndroidPreferenceStore
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.core.common.util.system.ImageUtil
 import tachiyomi.domain.chapter.model.Chapter
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.InjektScope
 import uy.kohesive.injekt.api.addSingleton
+import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.registry.default.DefaultRegistrar
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -81,6 +84,164 @@ import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 class DualPagerPageHolderLayoutTest {
     private lateinit var previousInjekt: InjektScope
     private lateinit var viewer: DualPageR2LPagerViewer
+
+    @Test
+    fun `new activity retains current and pairing while global changes update the real viewer`() = runTest {
+        val preferences = Injekt.get<ReaderPreferences>()
+        val chapter = loadedChapter(11, 9)
+        chapter.chapter.last_page_read = 7
+        val model = mockk<ReaderViewModel>(relaxed = true)
+        val store = DualPagePairingStore()
+        val state = MutableStateFlow(ReaderViewModel.State(viewerChapters = ViewerChapters(chapter, null, null)))
+        var current: ReaderPage? = requireNotNull(chapter.pages)[2]
+        var automaticDual: Boolean? = null
+        val reports = mutableListOf<ReaderPage>()
+        every { model.state } returns state
+        every { model.dualPagePairings } returns store
+        every { model.currentReaderPage } answers { current }
+        every { model.automaticDualPage } answers { automaticDual }
+        every { model.automaticDualPage = any() } answers { automaticDual = firstArg() }
+        every { model.getMangaReadingMode(any()) } answers {
+            if (firstArg<Boolean>()) preferences.defaultReadingMode().get() else ReadingMode.DEFAULT.flagValue
+        }
+        every { model.getMangaOrientation(any()) } returns 0
+        every { model.onViewerLoaded(any()) } answers { state.value = state.value.copy(viewer = firstArg()) }
+        fun select(page: ReaderPage) {
+            current = page
+            chapter.requestedPage = page.index
+            state.value = state.value.copy(currentPage = page.number)
+        }
+        every { model.onLayoutPageSelected(any()) } answers { select(firstArg()) }
+        every { model.onPageSelected(any()) } answers {
+            reports += firstArg<ReaderPage>()
+            select(firstArg())
+        }
+        val update = ReaderActivity::class.java.getDeclaredMethod("updateViewer").apply { isAccessible = true }
+        fun activity(width: Int): ReaderActivity = Robolectric.buildActivity(ReaderActivity::class.java).get().also {
+            it.setTheme(eu.kanade.tachiyomi.R.style.Theme_Tachiyomi)
+            it.binding = ReaderActivityBinding.inflate(it.layoutInflater)
+            ReflectionHelpers.setField(it, "viewModel\$delegate", lazyOf(model))
+            measure(it.binding.viewerContainer, width, 1000)
+            update.invoke(it)
+        }
+        val first = activity(1400)
+        runCurrent()
+        val oldViewer = state.value.viewer as DualPageR2LPagerViewer
+        assertEquals(1, current?.index)
+        oldViewer.adjustPagePairing()
+        assertEquals(2, current?.index)
+        val second = activity(1300)
+        runCurrent()
+        assertTrue(state.value.viewer is DualPageR2LPagerViewer)
+        assertEquals(2, current?.index)
+        val restored = state.value.viewer as DualPageR2LPagerViewer
+        val pair = restored.adapter.items[restored.pager.currentItem] as DisplayPage.Double
+        assertEquals(2, pair.rightPage.index)
+        first.onViewerPageSelected(oldViewer, requireNotNull(chapter.pages)[8])
+        assertEquals(2, current?.index)
+        preferences.defaultReadingMode().set(ReadingMode.RIGHT_TO_LEFT.flagValue)
+        shadowOf(Looper.getMainLooper()).idle()
+        runCurrent()
+        assertTrue(state.value.viewer is R2LPagerViewer)
+        assertEquals(2, current?.index)
+        assertTrue(reports.isEmpty())
+        assertEquals(7, chapter.chapter.last_page_read)
+        preferences.defaultReadingMode().set(ReadingMode.DEFAULT.flagValue)
+        shadowOf(Looper.getMainLooper()).idle()
+        runCurrent()
+        measure(second.binding.viewerContainer, 1500, 1000)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(151))
+        assertTrue(state.value.viewer is DualPageR2LPagerViewer)
+        state.value.viewer?.destroy()
+    }
+
+    @Test
+    fun `loaded transition becomes real adjacent page and still reports navigation`() = runTest {
+        val current = loadedChapter(11, 3)
+        val next = ReaderChapter(Chapter.create().copy(id = 12, mangaId = 1))
+        val chapters = ViewerChapters(current, null, next)
+        viewer.setChapters(chapters)
+        val transition = viewer.adapter.items.indexOfFirst { it is ChapterTransition.Next }
+        viewer.pager.setCurrentItem(transition, false)
+        val pages = List(3) { ReaderPage(it).apply { chapter = next } }
+        next.publishLoadedPageListForTest(pages)
+        val activity = viewer.activity as RecordingReaderActivity
+        activity.selectedPages.clear()
+        viewer.setChapters(chapters)
+        assertTrue(activity.selectedPages.any { it === pages[0] })
+    }
+
+    @Test
+    fun `portrait cover keeps a left half slot while unique current remains the cover`() = runTest {
+        val chapter = loadedChapter(11, 3)
+        val page = requireNotNull(chapter.pages)[0]
+        val holder = DualPagerPageHolder(viewer.activity, viewer, DisplayPage.Single(page, coverSlot = true))
+        load(holder, page, "CENTER")
+        measure(holder, 1400, 1000)
+        val image = descendants(holder).filterIsInstance<ReaderPageImageView>().single()
+        assertEquals(700, (image.parent as View).width)
+        assertEquals(0, (image.parent as View).left)
+        assertEquals(500, image.width)
+        assertEquals(700, image.right)
+        assertEquals(page, holder.displayPage.firstPage)
+        detach(holder)
+    }
+
+    @Test
+    fun `dual cover is unique and repeated pairing adjustment keeps a right current page`() = runTest {
+        val chapter = loadedChapter(11, 9)
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        val pages = requireNotNull(chapter.pages)
+        val cover = viewer.adapter.items.filterIsInstance<DisplayPage>().first { it.containsPage(pages[0]) }
+        assertTrue("Cover must not pair with page one", cover is DisplayPage.Single)
+    }
+
+    @Test
+    fun `pairing adjustment keeps paired right page and does not report layout progress`() = runTest {
+        val chapter = loadedChapter(11, 9)
+        viewer.setChapters(ViewerChapters(chapter, null, null))
+        viewer.moveToPage(requireNotNull(chapter.pages)[1])
+        val activity = viewer.activity as RecordingReaderActivity
+        activity.selectedPages.clear()
+        repeat(6) { iteration ->
+            viewer.adjustPagePairing()
+            val pair = viewer.adapter.items[viewer.pager.currentItem] as DisplayPage
+            assertTrue("Adjusting a normal pair must not leave a lone page", pair is DisplayPage.Double)
+            assertEquals(if (iteration % 2 == 0) 2 else 1, pair.firstPage.index)
+            assertTrue("Layout changes must not mark pages read", activity.selectedPages.isEmpty())
+        }
+    }
+
+    @Test
+    fun `global default is adaptive and real reader container resize changes viewer`() = runTest {
+        val preferences = ReaderPreferences(InMemoryPreferenceStore())
+        assertEquals(ReadingMode.DEFAULT.flagValue, preferences.defaultReadingMode().get())
+        val activity = viewer.activity
+        activity.setTheme(eu.kanade.tachiyomi.R.style.Theme_Tachiyomi)
+        activity.binding = ReaderActivityBinding.inflate(activity.layoutInflater)
+        val model = mockk<ReaderViewModel>(relaxed = true)
+        every { model.dualPagePairings } returns DualPagePairingStore()
+        val state = MutableStateFlow(ReaderViewModel.State())
+        every { model.state } returns state
+        every { model.getMangaReadingMode(any()) } returns ReadingMode.DEFAULT.flagValue
+        every { model.getMangaOrientation(any()) } returns 0
+        every { model.onViewerLoaded(any()) } answers { state.value = state.value.copy(viewer = firstArg()) }
+        ReflectionHelpers.setField(activity, "viewModel\$delegate", lazyOf(model))
+        val update = ReaderActivity::class.java.getDeclaredMethod("updateViewer").apply { isAccessible = true }
+        val container = activity.binding.viewerContainer
+        measure(container, 900, 1000)
+        update.invoke(activity)
+        assertTrue(state.value.viewer is R2LPagerViewer)
+        measure(container, 1400, 1000)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(149))
+        assertTrue(state.value.viewer is R2LPagerViewer)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(2))
+        assertTrue(state.value.viewer is DualPageR2LPagerViewer)
+        measure(container, 1200, 1000)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(151))
+        assertTrue(state.value.viewer is R2LPagerViewer)
+        state.value.viewer?.destroy()
+    }
 
     @Test
     fun `mounted pagers restore loaded next to first page and previous to last page`() = runTest {
@@ -188,14 +349,16 @@ class DualPagerPageHolderLayoutTest {
         viewer.moveToPage(requireNotNull(chapter.pages)[0])
         viewer.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_PAGE_DOWN))
         assertEquals(
-            requireNotNull(chapter.pages)[2],
+            requireNotNull(chapter.pages)[1],
             (viewer.adapter.items[viewer.pager.currentItem] as DisplayPage).firstPage,
         )
+        viewer.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_LEFT))
+        assertEquals(3, (viewer.adapter.items[viewer.pager.currentItem] as DisplayPage).firstPage.index)
         viewer.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_LEFT))
         assertEquals(next, (viewer.adapter.items[viewer.pager.currentItem] as DisplayPage).firstPage.chapter)
         viewer.handleKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_PAGE_UP))
         assertEquals(
-            requireNotNull(chapter.pages)[2],
+            requireNotNull(chapter.pages)[3],
             (viewer.adapter.items[viewer.pager.currentItem] as DisplayPage).firstPage,
         )
     }
@@ -214,7 +377,7 @@ class DualPagerPageHolderLayoutTest {
     fun `unknown image sizes already reserve dual slots until a real wide image is known`() = runTest {
         val chapter = loadedChapter(11, 4)
         viewer.adapter.setChapters(ViewerChapters(chapter, null, null), false)
-        assertEquals(2, viewer.adapter.items.filterIsInstance<DisplayPage.Double>().size)
+        assertEquals(1, viewer.adapter.items.filterIsInstance<DisplayPage.Double>().size)
     }
 
     @Test
@@ -223,6 +386,7 @@ class DualPagerPageHolderLayoutTest {
         activity.setTheme(eu.kanade.tachiyomi.R.style.Theme_Tachiyomi)
         activity.binding = ReaderActivityBinding.inflate(activity.layoutInflater)
         val model = mockk<ReaderViewModel>(relaxed = true)
+        every { model.dualPagePairings } returns DualPagePairingStore()
         every { model.state } returns MutableStateFlow(ReaderViewModel.State())
         every { model.getMangaReadingMode(any()) } returns ReadingMode.DUAL_PAGE_R2L.flagValue
         every { model.getMangaOrientation(any()) } returns 0
@@ -239,6 +403,7 @@ class DualPagerPageHolderLayoutTest {
         activity.setTheme(eu.kanade.tachiyomi.R.style.Theme_Tachiyomi)
         activity.binding = ReaderActivityBinding.inflate(activity.layoutInflater)
         val model = mockk<ReaderViewModel>(relaxed = true)
+        every { model.dualPagePairings } returns DualPagePairingStore()
         val state = MutableStateFlow(ReaderViewModel.State(viewer = viewer))
         every { model.state } returns state
         var mode = ReadingMode.DUAL_PAGE_R2L.flagValue
@@ -270,19 +435,19 @@ class DualPagerPageHolderLayoutTest {
 
     @Test
     fun `whole chapter window follows R2L order before and after adjacent dimensions arrive`() = runTest {
-        val previous = loadedChapter(10)
-        val current = loadedChapter(11)
-        val next = loadedChapter(12)
+        val previous = loadedChapter(10, 3)
+        val current = loadedChapter(11, 3)
+        val next = loadedChapter(12, 3)
         val chapters = ViewerChapters(current, previous, next)
         viewer.adapter.setChapters(chapters, false)
         fun chapterIds() = viewer.adapter.items.filterIsInstance<DisplayPage>().map { it.firstPage.chapter.chapter.id }
-        assertEquals(listOf(12L, 11L, 10L), chapterIds())
+        assertEquals(listOf(12L, 12L, 11L, 11L, 10L, 10L), chapterIds())
         val wideBytes = ByteArrayOutputStream().also {
             Bitmap.createBitmap(400, 200, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.PNG, 100, it)
         }.toByteArray()
-        requireNotNull(next.pages)[0].stream = { wideBytes.inputStream() }
+        requireNotNull(next.pages)[1].stream = { wideBytes.inputStream() }
         for (page in requireNotNull(next.pages)) decodeForAdapter(page)
-        assertEquals(listOf(12L, 12L, 11L, 10L), chapterIds())
+        assertEquals(listOf(12L, 12L, 12L, 11L, 11L, 10L, 10L), chapterIds())
         assertEquals(
             1,
             viewer.adapter.items.filterIsInstance<DisplayPage.Double>().count {
@@ -291,7 +456,7 @@ class DualPagerPageHolderLayoutTest {
             },
         )
         for (page in requireNotNull(current.pages)) decodeForAdapter(page)
-        assertEquals(listOf(12L, 12L, 11L, 10L), chapterIds())
+        assertEquals(listOf(12L, 12L, 12L, 11L, 11L, 10L, 10L), chapterIds())
     }
 
     @Test
@@ -308,7 +473,7 @@ class DualPagerPageHolderLayoutTest {
 
     @Test
     fun `restoring either member of a pair selects its display unit not a chapter boundary`() = runTest {
-        val chapter = loadedChapter(11)
+        val chapter = loadedChapter(11, 3)
         viewer.adapter.setChapters(ViewerChapters(chapter, null, null), false)
         for (page in requireNotNull(chapter.pages)) decodeForAdapter(page)
         viewer.pager.clearOnPageChangeListeners()
@@ -338,7 +503,11 @@ class DualPagerPageHolderLayoutTest {
     fun setUp() {
         previousInjekt = Injekt
         Injekt = InjektScope(DefaultRegistrar())
-        val preferences = InMemoryPreferenceStore()
+        val application = RuntimeEnvironment.getApplication()
+        val preferences = AndroidPreferenceStore(
+            application,
+            application.getSharedPreferences("reader-layout-${System.nanoTime()}", 0),
+        )
         Injekt.addSingleton(ReaderPreferences(preferences))
         Injekt.addSingleton(UiPreferences(preferences))
         Injekt.addSingleton(mockk<DownloadManager>(relaxed = true))
@@ -351,6 +520,7 @@ class DualPagerPageHolderLayoutTest {
         val activity = Robolectric.buildActivity(RecordingReaderActivity::class.java).get()
         activity.binding = mockk<ReaderActivityBinding>(relaxed = true)
         val model = mockk<ReaderViewModel>(relaxed = true)
+        every { model.dualPagePairings } returns DualPagePairingStore()
         every { model.state } returns MutableStateFlow(ReaderViewModel.State())
         ReflectionHelpers.setField(activity, "viewModel\$delegate", lazyOf(model))
         viewer = DualPageR2LPagerViewer(activity)

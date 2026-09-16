@@ -35,7 +35,10 @@ import kotlin.math.min
  * [PagerViewerAdapter] to manage page pairings.
  */
 @Suppress("LeakingThis")
-class DualPageR2LPagerViewer(override val activity: ReaderActivity) : Viewer, ViewerWithPager {
+class DualPageR2LPagerViewer(
+    override val activity: ReaderActivity,
+    pairingStore: DualPagePairingStore = DualPagePairingStore(),
+) : Viewer, ViewerWithPager {
 
     override val downloadManager: DownloadManager by injectLazy()
 
@@ -45,9 +48,11 @@ class DualPageR2LPagerViewer(override val activity: ReaderActivity) : Viewer, Vi
 
     val config = PagerConfig(this, scope)
 
-    val adapter = DualPageViewerAdapter(this)
+    val adapter = DualPageViewerAdapter(this, pairingStore)
 
     private var currentPage: Any? = null
+    private var replacingPairing = false
+    private var destroyed = false
 
     private var awaitingIdleViewerChapters: ViewerChapters? = null
 
@@ -76,6 +81,7 @@ class DualPageR2LPagerViewer(override val activity: ReaderActivity) : Viewer, Vi
 
     private val pagerListener = object : ViewPager.SimpleOnPageChangeListener() {
         override fun onPageSelected(position: Int) {
+            if (replacingPairing || destroyed) return
             if (!activity.isScrollingThroughPages) {
                 activity.hideMenu()
             }
@@ -132,6 +138,8 @@ class DualPageR2LPagerViewer(override val activity: ReaderActivity) : Viewer, Vi
     }
 
     override fun destroy() {
+        destroyed = true
+        pager.removeOnPageChangeListener(pagerListener)
         scope.cancel()
     }
 
@@ -252,22 +260,23 @@ class DualPageR2LPagerViewer(override val activity: ReaderActivity) : Viewer, Vi
 
     // ── Page change handling ─────────────────────────────────────────────────
 
-    private fun onPageChange(position: Int) {
+    private fun onPageChange(position: Int, layoutOnly: Boolean = false) {
         val item = adapter.items.getOrNull(position)
         if (item != null && currentPage != item) {
             currentPage = item
             when (item) {
-                is DisplayPage -> onDisplayPageSelected(item)
+                is DisplayPage -> onDisplayPageSelected(item, layoutOnly)
                 is ChapterTransition -> onTransitionSelected(item)
             }
         }
     }
 
-    internal fun onDisplayPageSelected(displayPage: DisplayPage) {
+    internal fun onDisplayPageSelected(displayPage: DisplayPage, layoutOnly: Boolean = false) {
         val page = displayPage.firstPage
         val pages = page.chapter.pages ?: return
         logcat { "onDisplayPageSelected: ${page.number}/${pages.size}" }
-        activity.onPageSelected(page)
+        activity.onViewerPageSelected(this, page, layoutOnly)
+        if (layoutOnly) return
 
         // Preload next chapter when near the end
         val adjacentEffect = ReaderAdjacentChapterPolicy.effectForPageAnchor(page.index, pages.size)
@@ -299,10 +308,21 @@ class DualPageR2LPagerViewer(override val activity: ReaderActivity) : Viewer, Vi
      */
     fun adjustPagePairing() {
         val currentFirstPageIndex = (currentPage as? DisplayPage)?.firstPage?.index ?: return
-        val newPosition = adapter.adjustPairing(currentFirstPageIndex)
-        if (newPosition >= 0 && newPosition < adapter.count) {
-            pager.setCurrentItem(newPosition, false)
+        adapter.adjustPairing(currentFirstPageIndex)
+    }
+
+    internal fun replacePairing(anchor: ReaderPage?, layoutOnly: Boolean, replace: () -> Unit) {
+        replacingPairing = true
+        try {
+            replace()
+            if (anchor != null) {
+                val position = adapter.items.indexOfFirst { it is DisplayPage && it.containsPage(anchor) }
+                if (position >= 0) pager.setCurrentItem(position, false)
+            }
+        } finally {
+            replacingPairing = false
         }
+        if (pager.isVisible && anchor != null) onPageChange(pager.currentItem, layoutOnly = layoutOnly)
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────

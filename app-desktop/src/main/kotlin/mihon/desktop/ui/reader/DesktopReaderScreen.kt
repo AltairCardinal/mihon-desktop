@@ -400,7 +400,7 @@ internal fun ReaderState.singlePresentationSnapshot(
     return DesktopReaderPresentationRegistry.require(ReaderPresentationMode.SINGLE_PAGED).present(request)
 }
 
-internal data class ReaderSpreadAdjustment(val forcedSinglePages: Set<Int>, val currentPage: Int)
+internal typealias ReaderSpreadAdjustment = mihon.domain.reader.ReaderPairingAdjustment
 
 internal fun adjustedForcedSinglePages(state: ReaderState): Set<Int> = adjustedSpread(state).forcedSinglePages
 
@@ -414,17 +414,7 @@ internal fun adjustedSpread(state: ReaderState): ReaderSpreadAdjustment {
     val pageIndices = presentation.displayUnits[unitIndex].slots
         .mapNotNull { it.page?.id?.sourcePageIndex }
         .distinct()
-    val forcedSingle = pageIndices.singleOrNull()?.takeIf(state.forcedSinglePages::contains)
-    if (forcedSingle != null) return ReaderSpreadAdjustment(state.forcedSinglePages - forcedSingle, forcedSingle)
-    if (pageIndices.size != 2) return unchanged
-
-    val firstPage = pageIndices.min()
-    val precedingAdjustment = (firstPage - 1).takeIf(state.forcedSinglePages::contains)
-    return if (precedingAdjustment != null) {
-        ReaderSpreadAdjustment(state.forcedSinglePages - precedingAdjustment, precedingAdjustment)
-    } else {
-        ReaderSpreadAdjustment(state.forcedSinglePages + firstPage, pageIndices.max())
-    }
+    return mihon.domain.reader.adjustReaderPairing(state.currentPage, pageIndices, state.forcedSinglePages)
 }
 
 @Composable

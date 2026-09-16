@@ -1,11 +1,14 @@
 package eu.kanade.presentation.reader.appbars
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,6 +31,7 @@ fun ReaderBottomBar(
     onClickSettings: () -> Unit,
     modifier: Modifier = Modifier,
     isDualPageMode: Boolean = false,
+    isAutomaticMode: Boolean = false,
     onClickAdjustPairing: () -> Unit = {},
 ) {
     Row(
@@ -36,11 +40,24 @@ fun ReaderBottomBar(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onClickReadingMode) {
-            Icon(
-                painter = painterResource(readingMode.iconRes),
-                contentDescription = stringResource(MR.strings.viewer),
-            )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            IconButton(onClick = onClickReadingMode) {
+                Icon(
+                    painter = painterResource(readingMode.iconRes),
+                    contentDescription = stringResource(MR.strings.viewer),
+                )
+            }
+            if (isAutomaticMode) {
+                val status = if (isDualPageMode) {
+                    MR.strings.desktop_reader_default_dual
+                } else {
+                    MR.strings.desktop_reader_default_single
+                }
+                Text(
+                    text = stringResource(status),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
         }
 
         IconButton(onClick = onClickOrientation) {
