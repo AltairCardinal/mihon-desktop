@@ -28,10 +28,14 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.reader.readerChapterSession
 import mihon.desktop.ui.reader.DualPageDisplayUnitCompositionIdentityKey
 import mihon.desktop.ui.reader.DualPageDisplayUnitFrame
+import mihon.desktop.ui.reader.DualPagePagerViewer
 import mihon.desktop.ui.reader.DualPageDisplayUnitIdKey
 import mihon.desktop.ui.reader.DualPagePhysicalSlot
 import mihon.desktop.ui.reader.DualPagePhysicalSlotKey
@@ -46,14 +50,89 @@ import mihon.domain.reader.session.ReaderChapterSession
 import mihon.domain.reader.session.ReaderPageId
 import mihon.domain.reader.session.ReaderPageLoadState
 import mihon.domain.reader.session.ReaderPageSession
+import mihon.domain.reader.session.EncodedPageRef
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.jetbrains.skia.Bitmap
+import java.io.File
+import java.io.ByteArrayOutputStream
+import java.awt.image.BufferedImage
+import javax.imageio.ImageIO
 
 @OptIn(ExperimentalComposeUiApi::class)
 class DualPagePresentationIdentityTest {
+
+    @Test
+    fun `shared Android Desktop Fit vectors render centered spine aligned pages`() = runTest {
+        val vectors = generateSequence(File("").absoluteFile) { it.parentFile }
+            .map { File(it, "domain/src/commonTest/resources/reader/dual-page-fit.csv") }
+            .first { it.isFile }
+            .readLines(Charsets.UTF_8)
+            .filter { it.isNotBlank() && !it.startsWith("#") }
+            .map { line -> line.split(',').map(String::toInt) }
+        vectors.forEach { v ->
+            val original = pairUnit(ReaderPageLoadState.Ready, ReaderPageLoadState.Ready)
+            val refs = listOf(EncodedPageRef("fixture-left"), EncodedPageRef("fixture-right"))
+            val unit = original.copy(slots = original.slots.mapIndexed { index, slot ->
+                slot.copy(page = requireNotNull(slot.page).copy(encodedPageRef = refs[index]))
+            })
+            fun png(w: Int, h: Int): ByteArray {
+                val bitmap = BufferedImage(w, h, BufferedImage.TYPE_INT_RGB)
+                bitmap.createGraphics().apply {
+                    color = java.awt.Color.WHITE
+                    fillRect(0, 0, w, h)
+                    dispose()
+                }
+                return ByteArrayOutputStream().also { ImageIO.write(bitmap, "png", it) }.toByteArray()
+            }
+            val bytes = mapOf(refs[0] to png(v[2], v[3]), refs[1] to png(v[4], v[5]))
+            val imageOwner = PresentationImageOwnerFixture(this, bytes::get)
+            imageOwner.owner.beginGeneration(19)
+            val scene = ImageComposeScene(v[0], v[1], coroutineContext = currentCoroutineContext()) {}
+            try {
+                scene.setContent {
+                    Box(Modifier.fillMaxSize().background(Color.Black)) {
+                        DualPagePagerViewer(
+                            presentation = ReaderPresentationSnapshot(ReaderPresentationMode.DUAL_PAGED, listOf(unit)),
+                            currentPageId = requireNotNull(unit.slots.first().page).id,
+                            currentDisplayUnitId = unit.id,
+                            isRtl = false,
+                            zoomState = ZoomState(),
+                            presentationImageOwner = imageOwner.owner,
+                            onVisiblePagesChanged = {},
+                            onZoomChange = {},
+                            onRetryPage = {},
+                            generation = 19,
+                            pageTurnAnimation = false,
+                        )
+                    }
+                }
+                var pixels = scene.render().toComposeImageBitmap().asSkiaBitmap()
+                for (attempt in 0 until 100) {
+                    yield()
+                    pixels = scene.render().toComposeImageBitmap().asSkiaBitmap()
+                    if (pixels.getColor(v[6] + 2, v[7] + 2) == -1 && pixels.getColor(v[10] + 2, v[11] + 2) == -1) break
+                    withContext(Dispatchers.Default) { delay(10) }
+                }
+                for (offset in listOf(6, 10)) {
+                    val x = v[offset]
+                    val y = v[offset + 1]
+                    val w = v[offset + 2]
+                    val h = v[offset + 3]
+                    assertPixel(pixels.getColor(x + 2, y + 2), expectedWhite = true)
+                    assertPixel(pixels.getColor(x + w - 3, y + h - 3), expectedWhite = true)
+                    if (y >= 2) assertPixel(pixels.getColor(x + w / 2, y - 2), expectedWhite = false)
+                    if (offset == 6 && x >= 2) assertPixel(pixels.getColor(x - 2, y + h / 2), expectedWhite = false)
+                    if (offset == 10 && x + w + 2 < v[0]) assertPixel(pixels.getColor(x + w + 2, y + h / 2), expectedWhite = false)
+                }
+            } finally {
+                scene.close()
+                imageOwner.close()
+            }
+        }
+    }
 
     @Test
     fun `mounted cover keeps a full viewport two-slot frame with the page in the physical left slot`() = runTest {

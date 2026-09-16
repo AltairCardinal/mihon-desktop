@@ -292,6 +292,24 @@ decision family，或新增第二个 fetch/materialize/decode/cache owner，架�
 
 ## 验证与失败处理
 
+### 双页显示契约与平台布局边界
+
+Android `DualPagerPageHolder` 与 Desktop `DualPagePagerViewer` 的普通双页使用完整阅读视口、固定物理左右半屏槽。
+默认 Fit 保持原图宽高比、完整显示、垂直居中并朝书脊对齐。同宽高比的图片无论原始像素分辨率如何均显示为
+相同尺寸；不同宽高比允许自然留白，不能靠拉伸或隐式裁切强制等高。Desktop 显式选择其他缩放模式、封面槽、
+拆图等平台能力仍按既有设置工作；Android 单页保留完整视口及原有独立图片手势。
+
+槽位必须在图片就绪前建立。Android 由 View 测量生命周期计算槽内 Fit 尺寸，首次测量前缓存命中、左右到达顺序、
+重试及窗口 resize 都重新使用当前约束，不依赖某一张图的加载回调补做布局。图像尺寸通知仍交给既有配对 adapter；
+像素坐标与窗口尺寸不进入 `ReaderSessionCore`。双页缩放、拖动与双击重置由整组容器接收，子图不能独立放大；
+内容加载不能重置整组变换。放大拖动需阻止外层 pager 抢占，回到默认倍率后恢复普通翻页。
+
+共享验收向量位于 `domain/src/commonTest/resources/reader/dual-page-fit.csv`，仅是测试输入与预期矩形，不是 domain
+运行时几何模型。Android 测试执行真实 holder 字节绑定、Ready 状态收集与 View 测量，Desktop 测试挂载真实
+`DualPagePagerViewer`、图片 pipeline 与 `ZoomablePageBox` 并检验离屏像素；不能用源码扫描或测试内另写 Fit 算法
+替代这两条生产链路。Windows Robolectric 仅替代不可用的 Android 原生格式嗅探，尺寸解析及 View 实现保持真实；
+正式 APK 在实机上补验原生解码与交互。
+
 1. 产品行为严格红→绿→重构；source/HTTP 变更覆盖成功、空、403、429、500、畸形响应和 cached Retry。
 2. 每个平台 adapter 使用同一 shared contract 向量；production wiring 被绕过时集成测试必须失败。
 3. Compose/pager/Lazy 测试验证 stable key/container identity，而不是扫描源码字符串证明行为。

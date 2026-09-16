@@ -8,9 +8,11 @@ import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.domain.reader.observability.ReaderIoProbe
 import mihon.domain.reader.observability.ReaderIoReporter
 import mihon.domain.reader.observability.ReaderMonotonicClock
+import mihon.domain.reader.session.EncodedPageRef
 
 internal class PresentationImageOwnerFixture(
     scope: CoroutineScope,
+    encodedPageReader: suspend (EncodedPageRef) -> ByteArray? = { null },
 ) : AutoCloseable {
     private val reporter = ReaderIoReporter(
         probe = ReaderIoProbe.None,
@@ -18,7 +20,7 @@ internal class PresentationImageOwnerFixture(
     )
     private val contentOwner = DesktopReaderPageContentOwner(
         scope = scope,
-        encodedPageReader = { null },
+        encodedPageReader = encodedPageReader,
         ioReporter = reporter,
     )
     private val pipeline = DesktopReaderPageImagePipeline(

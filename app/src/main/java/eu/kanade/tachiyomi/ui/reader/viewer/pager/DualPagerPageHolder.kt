@@ -2,8 +2,8 @@ package eu.kanade.tachiyomi.ui.reader.viewer.pager
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.Matrix
-import android.graphics.PointF
+import android.graphics.Rect
+import android.view.GestureDetector
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -20,6 +20,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.ReaderPageImageView
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.collectLatest
@@ -42,16 +43,14 @@ import kotlin.math.min
  * Handles both [DisplayPage.Single] (one image, centred) and
  * [DisplayPage.Double] (two portrait images side-by-side, right image first in R2L order).
  *
- * For double pages the holder uses a horizontal [LinearLayout] with the right page on the right
- * side and the left page on the left side.  Both images are scaled so their combined width fits
- * within the screen while their shared height fills as much of the screen as possible
- * (CENTER_INSIDE of the combined bounding box).
+ * Double pages have permanent physical half-screen slots. Each image fits its slot without
+ * stretching, is vertically centred and aligns to the spine, independently of loading order.
  *
  * When both images are loaded the holder reports their dimensions back to the adapter so that
  * the pairing algorithm can reassign pages if necessary.
  *
  * Zooming/panning in double mode is handled by a container-level gesture detector that applies
- * a shared [Matrix] transform to both child views, giving the illusion of a single zoomable image.
+ * a shared transform to both child views.
  */
 @SuppressLint("ViewConstructor")
 class DualPagerPageHolder(
@@ -67,8 +66,12 @@ class DualPagerPageHolder(
     /** Container for the page image(s). */
     private val pageContainer = LinearLayout(readerThemedContext).also {
         it.orientation = LinearLayout.HORIZONTAL
+        it.layoutDirection = View.LAYOUT_DIRECTION_LTR
         addView(it, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
+
+    private var leftSlot: PageSlot? = null
+    private var rightSlot: PageSlot? = null
 
     private var rightHolder: SinglePageSubHolder? = null
     private var leftHolder: SinglePageSubHolder? = null
@@ -77,16 +80,12 @@ class DualPagerPageHolder(
 
     private var progressIndicator: ReaderProgressIndicator? = null
     private var errorLayout: ReaderErrorBinding? = null
+    private var errorPage: ReaderPage? = null
 
     // ── Coroutines ──────────────────────────────────────────────────────────
 
     private val scope = MainScope()
     private var loadJob: Job? = null
-
-    // ── Dimension state ─────────────────────────────────────────────────────
-
-    private var rightDims: Pair<Int, Int>? = null // width × height
-    private var leftDims: Pair<Int, Int>? = null
 
     // ── Zoom / pan state (double-page mode only) ────────────────────────────
 
@@ -100,6 +99,31 @@ class DualPagerPageHolder(
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 val newScale = (currentScale * detector.scaleFactor).coerceIn(1f, 5f)
                 currentScale = newScale
+                constrainTranslation()
+                applyTransform()
+                return true
+            }
+        },
+    )
+
+    private val gestureDetector = GestureDetector(
+        readerThemedContext,
+        object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean = true
+
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                currentScale = if (currentScale > 1f) 1f else 2f
+                translateX = 0f
+                translateY = 0f
+                applyTransform()
+                return true
+            }
+
+            override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
+                if (currentScale <= 1f || scaleGestureDetector.isInProgress) return false
+                translateX -= distanceX
+                translateY -= distanceY
+                constrainTranslation()
                 applyTransform()
                 return true
             }
@@ -107,6 +131,14 @@ class DualPagerPageHolder(
     )
 
     init {
+        if (displayPage is DisplayPage.Double) {
+            leftSlot = PageSlot(readerThemedContext, alignRight = true).also {
+                pageContainer.addView(it, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+            }
+            rightSlot = PageSlot(readerThemedContext, alignRight = false).also {
+                pageContainer.addView(it, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+            }
+        }
         loadJob = scope.launch { loadPages() }
     }
 
@@ -116,14 +148,38 @@ class DualPagerPageHolder(
         loadJob = null
     }
 
-    // ── Touch handling for coordinated zoom ─────────────────────────────────
+    // Receive gestures in the fixed viewport coordinates, never in the transformed image's
+    // coordinates: otherwise each scale/translation feeds back into the next pointer event.
+    override fun onInterceptTouchEvent(event: MotionEvent): Boolean =
+        displayPage is DisplayPage.Double && !hitsErrorAction(event)
+
+    private fun hitsErrorAction(event: MotionEvent): Boolean {
+        val error = errorLayout?.takeIf { it.root.isVisible } ?: return false
+        val bounds = Rect()
+        return listOf(error.actionRetry, error.actionOpenInWebView).any { button ->
+            if (!button.isVisible) return@any false
+            button.getDrawingRect(bounds)
+            offsetDescendantRectToMyCoords(button, bounds)
+            bounds.contains(event.x.toInt(), event.y.toInt())
+        }
+    }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (displayPage is DisplayPage.Double) {
-            scaleGestureDetector.onTouchEvent(event)
+        if (displayPage !is DisplayPage.Double) return super.onTouchEvent(event)
+        if (event.pointerCount > 1 || currentScale > 1f) parent?.requestDisallowInterceptTouchEvent(true)
+        scaleGestureDetector.onTouchEvent(event)
+        gestureDetector.onTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            parent?.requestDisallowInterceptTouchEvent(false)
         }
-        return super.onTouchEvent(event)
+        return true
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        constrainTranslation()
+        applyTransform()
     }
 
     // ── Page loading ─────────────────────────────────────────────────────────
@@ -188,15 +244,25 @@ class DualPagerPageHolder(
                     minimumScaleType = com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
                         .SCALE_TYPE_CENTER_INSIDE,
                     cropBorders = viewer.config.imageCropBorders,
-                    zoomStartPosition = viewer.config.imageZoomType,
+                    zoomStartPosition = if (displayPage is DisplayPage.Double) {
+                        ReaderPageImageView.ZoomStartPosition.CENTER
+                    } else {
+                        viewer.config.imageZoomType
+                    },
                     landscapeZoom = false, // handled by dual-page container zoom
                 )
 
                 val holder = getOrCreateSubHolder(side, page)
                 holder.setImage(source, isAnimated, config, page.index)
                 if (!isAnimated) holder.pageBackground = background
+                if (errorPage === page) {
+                    errorLayout?.root?.isVisible = false
+                    errorPage = null
+                }
                 removeProgressIndicator()
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             logcat(LogPriority.ERROR, e)
             withUIContext { setError(e, page, side) }
@@ -208,7 +274,7 @@ class DualPagerPageHolder(
     /**
      * Called when a page's dimensions are decoded.
      * Reports back to the adapter so it can rebuild pairings if needed.
-     * Also triggers a layout update for the double-page combined view.
+     * Slot measurement owns geometry; this notification cannot resize its neighbour.
      */
     private fun onDimensionsDecoded(side: Side, width: Int, height: Int) {
         val page = when (side) {
@@ -220,68 +286,20 @@ class DualPagerPageHolder(
 
         viewer.adapter.updatePageDimensions(page.index, width, height)
 
-        when (side) {
-            Side.RIGHT, Side.CENTER -> rightDims = width to height
-            Side.LEFT -> leftDims = width to height
-        }
-
-        if (displayPage is DisplayPage.Double) {
-            layoutDoublePage()
-        }
+        val slot = if (side == Side.LEFT) leftSlot else rightSlot
+        slot?.setImageDimensions(width, height)
     }
 
-    /**
-     * Sizes the two sub-holders so that the combined image pair fills the screen
-     * with the same CENTER_INSIDE behaviour as a single page.
-     *
-     * Given screen W×H and two images (w1,h1) and (w2,h2):
-     *   combined display height h = min(H, W * h1*h2 / (w1*h2 + w2*h1))
-     *   display widths:  dw1 = h * w1/h1,  dw2 = h * w2/h2
-     */
-    private fun layoutDoublePage() {
-        val (w1, h1) = rightDims ?: return
-        val (w2, h2) = leftDims ?: return
-        if (w1 <= 0 || h1 <= 0 || w2 <= 0 || h2 <= 0) return
-
-        val screenW = width.takeIf { it > 0 } ?: return
-        val screenH = height.takeIf { it > 0 } ?: return
-
-        // Combined height that fits both images side-by-side within screen bounds
-        val combinedH = min(
-            screenH.toFloat(),
-            screenW.toFloat() * h1.toFloat() * h2.toFloat() /
-                (w1.toFloat() * h2.toFloat() + w2.toFloat() * h1.toFloat()),
-        )
-        val dw1 = (combinedH * w1 / h1).toInt()
-        val dw2 = (combinedH * w2 / h2).toInt()
-        val combinedHi = combinedH.toInt()
-
-        // Centre the combined pair vertically
-        val topPad = ((screenH - combinedHi) / 2).coerceAtLeast(0)
-
-        pageContainer.setPadding(0, topPad, 0, 0)
-
-        // Right page (displayed on the right side of the container in R2L)
-        rightHolder?.let {
-            val lp = it.layoutParams as? LinearLayout.LayoutParams
-                ?: LinearLayout.LayoutParams(0, 0)
-            lp.width = dw1
-            lp.height = combinedHi
-            it.layoutParams = lp
-        }
-        // Left page (displayed on the left side of the container in R2L)
-        leftHolder?.let {
-            val lp = it.layoutParams as? LinearLayout.LayoutParams
-                ?: LinearLayout.LayoutParams(0, 0)
-            lp.width = dw2
-            lp.height = combinedHi
-            it.layoutParams = lp
-        }
+    private fun constrainTranslation() {
+        val maxX = width * (currentScale - 1f) / 2f
+        val maxY = height * (currentScale - 1f) / 2f
+        translateX = translateX.coerceIn(-maxX, maxX)
+        translateY = translateY.coerceIn(-maxY, maxY)
     }
 
     private fun applyTransform() {
-        pageContainer.pivotX = pageContainer.width / 2f
-        pageContainer.pivotY = pageContainer.height / 2f
+        pageContainer.pivotX = width / 2f
+        pageContainer.pivotY = height / 2f
         pageContainer.scaleX = currentScale
         pageContainer.scaleY = currentScale
         pageContainer.translationX = translateX
@@ -297,14 +315,7 @@ class DualPagerPageHolder(
                     rightHolder = holder
                     when (displayPage) {
                         is DisplayPage.Double -> {
-                            // Right page goes to the RIGHT inside the container
-                            pageContainer.addView(
-                                holder,
-                                LinearLayout.LayoutParams(
-                                    LayoutParams.WRAP_CONTENT,
-                                    LayoutParams.WRAP_CONTENT,
-                                ),
-                            )
+                            rightSlot!!.addView(holder)
                         }
                         is DisplayPage.Single -> {
                             // Single: fill the whole container
@@ -322,15 +333,7 @@ class DualPagerPageHolder(
             Side.LEFT -> {
                 leftHolder ?: SinglePageSubHolder(readerThemedContext, page).also { holder ->
                     leftHolder = holder
-                    // Left page goes to the LEFT (index 0) in the container
-                    pageContainer.addView(
-                        holder,
-                        0,
-                        LinearLayout.LayoutParams(
-                            LayoutParams.WRAP_CONTENT,
-                            LayoutParams.WRAP_CONTENT,
-                        ),
-                    )
+                    leftSlot!!.addView(holder)
                 }
             }
         }
@@ -363,9 +366,10 @@ class DualPagerPageHolder(
         if (errorLayout == null) {
             errorLayout = ReaderErrorBinding.inflate(LayoutInflater.from(readerThemedContext), this, true)
             errorLayout?.actionRetry?.viewer = viewer
-            errorLayout?.actionRetry?.setOnClickListener {
-                page.chapter.pageLoader?.retryPage(page)
-            }
+        }
+        errorPage = page
+        errorLayout?.actionRetry?.setOnClickListener {
+            page.chapter.pageLoader?.retryPage(page)
         }
         val imageUrl = page.imageUrl
         errorLayout?.actionOpenInWebView?.isVisible = imageUrl != null
@@ -385,6 +389,45 @@ class DualPagerPageHolder(
     // ── Internal types ───────────────────────────────────────────────────────
 
     private enum class Side { RIGHT, LEFT, CENTER }
+
+    /** A stable physical half of the viewport; image availability never controls its size. */
+    private class PageSlot(context: Context, private val alignRight: Boolean) : ViewGroup(context) {
+        private var imageWidth = 0
+        private var imageHeight = 0
+
+        fun setImageDimensions(width: Int, height: Int) {
+            imageWidth = width
+            imageHeight = height
+            requestLayout()
+        }
+
+        override fun generateDefaultLayoutParams(): ViewGroup.LayoutParams =
+            ViewGroup.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val w = MeasureSpec.getSize(widthMeasureSpec)
+            val h = MeasureSpec.getSize(heightMeasureSpec)
+            setMeasuredDimension(w, h)
+            if (childCount == 0) return
+            val scale = if (imageWidth > 0 && imageHeight > 0) {
+                min(w.toFloat() / imageWidth, h.toFloat() / imageHeight)
+            } else {
+                0f
+            }
+            getChildAt(0).measure(
+                MeasureSpec.makeMeasureSpec((imageWidth * scale).toInt(), MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec((imageHeight * scale).toInt(), MeasureSpec.EXACTLY),
+            )
+        }
+
+        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+            if (childCount == 0) return
+            val child = getChildAt(0)
+            val x = if (alignRight) width - child.measuredWidth else 0
+            val y = (height - child.measuredHeight) / 2
+            child.layout(x, y, x + child.measuredWidth, y + child.measuredHeight)
+        }
+    }
 
     /**
      * A thin wrapper around [ReaderPageImageView] that stores the page reference
