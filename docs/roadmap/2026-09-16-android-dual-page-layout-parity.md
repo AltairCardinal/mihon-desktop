@@ -1,7 +1,7 @@
 # Android 双页布局修复与跨端显示契约
 
-- 状态：IN_PROGRESS（DP-01验收通过，执行DP-02正式包实机验收）
-- active-task：DP-02
+- 状态：COMPLETE（布局修复、审查、正式包与实机验收完成）
+- active-task：无（全部完成）
 - 范围：修复 Android 双页顶端错位、单侧异常放大/裁切；保护 Desktop 既有双页行为。
 - 本计划是独立执行计划；不推进其他 reader roadmap 或改写 parity manifest 的既有完成证据。
 
@@ -41,10 +41,10 @@
 
 ### DP-02：正式 Android 更新与实机验收（依赖 DP-01）
 
-- [ ] 沿用 fork 包名与原发布证书，增加版本号；同步 release identity 校验，完成受影响测试及正式 R8 APK 构建签名。
-- [ ] 保留用户数据原位升级已连接三星实机，核验 APK 哈希/证书/版本和真实 ReaderActivity。
-- [ ] 在原问题章节核验双页居中、等比例同尺寸、翻页/返回与旋转或等价视口变化；自动化补充可控图片与加载时序证据。
-- [ ] 记录真实结果、产物路径、限制；提交发布配置和最终验收状态。未通过不得勾选。
+- [x] 沿用 fork 包名与原发布证书，增加版本号；同步 release identity 校验，完成受影响测试及正式 R8 APK 构建签名。
+- [x] 保留用户数据原位升级已连接三星实机，核验 APK 哈希/证书/版本和真实 ReaderActivity。
+- [x] 在原问题章节核验双页居中、等比例同尺寸、翻页/返回与旋转或等价视口变化；自动化补充可控图片与加载时序证据。
+- [x] 记录真实结果、产物路径、限制；提交发布配置和最终验收状态。未通过不得勾选。
 
 本轮默认不修改 Desktop production，因此不做无关桌面版本发布。若实施确需改变 Desktop production，按项目构建脚本完成 Windows 发布与运行验收并明确原因。
 
@@ -70,6 +70,17 @@ checkbox 仅在实现、审查、验证与提交全部完成时勾选。
 - 最终错误态 RED：`dp01-red-error-touch` 记录存活 SSIV 接收4次触摸（期望0）、组双指不放大；改为仅可见按钮命中范围放行。Retry 使用真实 `dispatchTouchEvent` 坐标点击，经 loader→Ready 清理错误。
 - 最终 focused：`dp01-final-related` Android 33/33（holder9、pairing12、adapter8、adjacent4）行为测试通过；该进程随后因测试排版失败，纯排版修复后 `dp01-final-format` 的 `:app:spotlessCheck` exit0。`dp01-desktop-fit` Desktop 10/10（identity7、layout3）通过，实际 renderer/pipeline 共用5组向量。`git diff --check` 通过。最后错误路由修复已由用户追加授权的定向复审确认PASS。
 - DP-02 收口全量：`dp02-full-tests` 串行运行 `:app:testReleaseUnitTest :app-desktop:jvmTest spotlessCheck`，exit0，6m42s；Android 424 tests/0 failure/0 skip，Desktop 3070 tests/0 failure/2 skip（macOS JXA 与非release专属假设），即3068通过；全仓格式通过。本轮唯一全量已完成，不重复运行。
-- 发布准备：`dp02-release-build` 按 `scripts/android-fork-release.init.gradle` 构建 code20/`0.19.4-aex.2`、R8开启的正式配置 APK，exit0，2m32s；R8有Android Window/jsoup缺失可选类告警，未调整忽略规则，未阻断构建。沿用原4096位发布密钥签名并验证证书，日志 `.gradle-coordinator/dp02-signing.log`。
-- 待验收产物：[Mihon-Fork-0.19.4-aex.2-rc1-universal.apk](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.2-rc1/Mihon-Fork-0.19.4-aex.2-rc1-universal.apk)，SHA-256 `47133d98ae7cef00b94f35fd3e8d0d6f72405bcb4ce10b9241a03ba792b184fa`。包名 `app.mihon.desktop.fork`，versionCode20，versionName `0.19.4-aex.2`。候选基于工作区 HEAD `4bea9ad34e` 加本任务未提交 diff；未声称已提交或完成设备验收。
+- 发布准备：`dp02-release-build` 按 `scripts/android-fork-release.init.gradle` 构建 code20/`0.19.4-aex.2`、R8开启的正式配置 APK，exit0，2m32s；R8有Android Window/jsoup缺失类告警，未调整忽略规则，未阻断构建。沿用原4096位发布密钥签名并验证证书，日志 `.gradle-coordinator/dp02-signing.log`。
+- 已验收产物：[Mihon-Fork-0.19.4-aex.2-rc1-universal.apk](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.2-rc1/Mihon-Fork-0.19.4-aex.2-rc1-universal.apk)，SHA-256 `47133d98ae7cef00b94f35fd3e8d0d6f72405bcb4ce10b9241a03ba792b184fa`。包名 `app.mihon.desktop.fork`，versionCode20，versionName `0.19.4-aex.2`。产物构建源为 HEAD `4bea9ad34e` 加本任务当时未提交 diff；同一 production/test diff 已提交为 `9ade703ae`。审查后未更改功能代码，复用同一受测二进制，不重新构建。
 - 追加定向复审：用户已明确同意；复用 `dual_layout_review` 确认PASS，错误态按钮矩形路由及真实dispatch测试有效，无剩余审查阻塞。未改动已通过全量与构建的代码，不重复全量；DP-01在本批次提交，DP-02继续原位升级与实机验收。
+
+
+## 最终实机验收与交付
+
+- DP-01提交：`9ade703ae`。DP-02发布脚本版本升级与本节验收随本批次提交；共两个内聚提交，无纯状态推进提交。
+- 三星 SM-S9280 原位 `adb install -r` Success；核验已安装 `app.mihon.desktop.fork` 的 versionCode20/`0.19.4-aex.2`，设备 `base.apk` SHA与上述签名产物完全一致。未清除用户数据，书架原书与下载章节仍能打开。
+- 原问题 Ch.3 双页：视口1440×3120，两侧各720×1024，y=1048，右页不再以1125×1600溢出半屏；[竖屏实机证据](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.2-rc1/acceptance/portrait.png)。
+- Ch.1翻页与双击：实际图片内容切换后仍居中等大；两页一起放大，再次双击恢复。证据：[整组放大](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.2-rc1/acceptance/group-zoom.png)、[重置](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.2-rc1/acceptance/group-reset.png)。连续双指与错误态Retry由真实dispatch自动化覆盖；不声称已在实机注入双指或网络故障。
+- 横屏视口3120×1440：两侧图片均1012×1440，左右槽各1560宽，图片向中间书脊对齐；[横屏实机证据](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.2-rc1/acceptance/landscape.png)。已返回竖屏，系统user_rotation/accelerometer_rotation及插电亮屏设置均恢复原值0。
+- 功能边界：保持比例的Fit；同宽高比图片显示等大，不同宽高比允许自然留白与尺寸差异；Desktop production及平台独有封面策略未改。Desktop仅共用向量验证真实renderer，因此本轮没有无关桌面版本发布。
+- 另行记录的导航观察：本次首次进入Ch.1/Ch.3时先显示章节过渡页，向章内返回后正常显示双页；尚未确定该现象产生时间或因果。该配对/章节落点问题不属于本轮固定槽位与组手势修复，不以本次几何PASS声称导航异常已修复；后续应独立定位，不在本任务无授权扩大实现范围。
