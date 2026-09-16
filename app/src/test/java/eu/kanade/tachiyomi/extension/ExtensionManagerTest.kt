@@ -22,10 +22,13 @@ import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -34,6 +37,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.RepositoryCatalogFailure
 import mihon.domain.extension.model.RepositoryIdentity
+import mihon.domain.extensionrepo.model.ExtensionRepo
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -50,6 +54,132 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class ExtensionManagerTest {
+
+    @Test
+    fun `repository updates suppress a late obsolete catalog and refresh through the existing manager`() = runTest {
+        withNotificationEnvironment {
+            val old = ExtensionRepo("https://old.example", "Old", null, "", "old")
+            val next = old.copy(baseUrl = "https://new.example", signingKeyFingerprint = "new")
+            val repositories = MutableSharedFlow<List<ExtensionRepo>>(extraBufferCapacity = 1)
+            val response = CompletableDeferred<eu.kanade.tachiyomi.extension.api.ExtensionDiscoveryResult>()
+            var calls = 0
+            val manager = ExtensionManager(
+                context = mockk(relaxed = true),
+                preferences = preferences(),
+                trustExtension = mockk(relaxed = true),
+                installedExtensionsLoader = { emptyList() },
+                installReceiverRegistrar = {},
+                scope = backgroundScope,
+                repositoryUpdates = repositories,
+                discoveryProvider = {
+                    if (++calls == 1) {
+                        response.await()
+                    } else {
+                        eu.kanade.tachiyomi.extension.api.ExtensionDiscoveryResult(
+                            listOf(available().copy(repoUrl = next.baseUrl)),
+                            emptyList(),
+                            listOf(RepositoryIdentity(next.baseUrl, next.name, next.signingKeyFingerprint)),
+                        )
+                    }
+                },
+            )
+            val seen = mutableListOf<String>()
+            backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) {
+                manager.suggestionCatalog.collect { catalog ->
+                    seen += catalog?.repositories.orEmpty().map { it.baseUrl }
+                }
+            }
+            runCurrent()
+            val refresh = async { manager.findAvailableExtensions() }
+            runCurrent()
+            repositories.tryEmit(listOf(next))
+            runCurrent()
+            response.complete(
+                eu.kanade.tachiyomi.extension.api.ExtensionDiscoveryResult(
+                    listOf(available().copy(repoUrl = old.baseUrl)),
+                    emptyList(),
+                    listOf(RepositoryIdentity(old.baseUrl, old.name, old.signingKeyFingerprint)),
+                ),
+            )
+            runCurrent()
+            refresh.await()
+            assertFalse(old.baseUrl in seen)
+            assertEquals(next.baseUrl, manager.suggestionCatalog.value!!.repositories.single().baseUrl)
+        }
+    }
+
+    @Test
+    fun `suggestion catalog preserves mutually exclusive repositories before ordinary list deduplication`() = runTest {
+        withNotificationEnvironment {
+            val first = available()
+            val second = first.copy(repoUrl = "https://other.example", repoFingerprint = "other")
+            val manager = ExtensionManager(
+                context = mockk(relaxed = true),
+                preferences = preferences(),
+                trustExtension = mockk(relaxed = true),
+                installedExtensionsLoader = { emptyList() },
+                installReceiverRegistrar = {},
+                scope = backgroundScope,
+                availableExtensionsProvider = { listOf(first, second) },
+            )
+            manager.findAvailableExtensions()
+            assertEquals(1, manager.availableExtensionsFlow.value.size)
+            assertEquals(
+                setOf(first.repoUrl, second.repoUrl),
+                manager.suggestionCatalog.value!!.entries.map { it.artifact.repository.baseUrl }.toSet(),
+            )
+        }
+    }
+
+    @Test
+    fun `inventory retries a stale initial scan after uninstall and retains failed load presence`() = runTest {
+        withNotificationEnvironment {
+            val oldScan = CompletableDeferred<mihon.domain.extension.suggestion.ExtensionInventory>()
+            var scans = 0
+            lateinit var listener: ExtensionInstallReceiver.Listener
+            val manager = ExtensionManager(
+                context = mockk(relaxed = true),
+                preferences = preferences(),
+                trustExtension = mockk(relaxed = true),
+                installedExtensionsLoader = { emptyList() },
+                installerFactory = { mockk(relaxed = true) },
+                installReceiverRegistrar = { listener = it },
+                scope = backgroundScope,
+                inventoryProvider = {
+                    scans++
+                    if (scans == 1) {
+                        oldScan.await()
+                    } else {
+                        mihon.domain.extension.suggestion.ExtensionInventory(
+                            true,
+                            mapOf("pkg.failed" to mihon.domain.extension.suggestion.ExtensionPresence.PRESENT),
+                        )
+                    }
+                },
+            )
+            runCurrent()
+            assertFalse(manager.inventory.value.initialized)
+            mockkObject(ExtensionLoader)
+            try {
+                every { ExtensionLoader.uninstallPrivateExtension(any(), any()) } returns Unit
+                listener.onPackageUninstalled("pkg.removed")
+                oldScan.complete(
+                    mihon.domain.extension.suggestion.ExtensionInventory(
+                        true,
+                        mapOf("pkg.removed" to mihon.domain.extension.suggestion.ExtensionPresence.PRESENT),
+                    ),
+                )
+                runCurrent()
+                assertTrue(manager.inventory.value.initialized)
+                assertEquals(
+                    mapOf("pkg.failed" to mihon.domain.extension.suggestion.ExtensionPresence.LOAD_FAILED),
+                    manager.inventory.value.packages,
+                )
+            } finally {
+                unmockkObject(ExtensionLoader)
+            }
+        }
+    }
 
     @Test
     fun `refresh uses successful owner only and clears removed source metadata`() = runTest {

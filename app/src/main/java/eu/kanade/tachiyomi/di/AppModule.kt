@@ -120,7 +120,12 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { JavaScriptEngine(app) }
 
         addSingletonFactory<SourceManager> { AndroidSourceManager(app, get(), get()) }
-        addSingletonFactory { ExtensionManager(app) }
+        addSingletonFactory {
+            ExtensionManager(
+                app,
+                repositoryUpdates = get<mihon.domain.extensionrepo.interactor.GetExtensionRepo>().subscribeAll(),
+            )
+        }
 
         addSingletonFactory { DownloadProvider(app) }
         addSingletonFactory { DownloadManager(app) }

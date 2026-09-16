@@ -10,6 +10,7 @@ import eu.kanade.tachiyomi.extension.api.ExtensionUpdateNotifier
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.extension.model.LoadResult
+import eu.kanade.tachiyomi.extension.model.toArtifact
 import eu.kanade.tachiyomi.extension.util.ExtensionInstallReceiver
 import eu.kanade.tachiyomi.extension.util.ExtensionInstaller
 import eu.kanade.tachiyomi.extension.util.ExtensionLoader
@@ -25,18 +26,30 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import logcat.LogPriority
 import mihon.domain.error.AppError
+import mihon.domain.extension.model.ExtensionCatalogEntry
+import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.model.ExtensionCompatibility
 import mihon.domain.extension.model.RepositoryCatalogFailure
+import mihon.domain.extension.model.RepositoryIdentity
+import mihon.domain.extension.model.toIdentity
 import mihon.domain.extension.service.ExtensionInstallFailure
 import mihon.domain.extension.service.ExtensionUpdatePolicy
 import mihon.domain.extension.service.SharedExtensionUpdatePolicy
+import mihon.domain.extension.suggestion.ExtensionInventory
+import mihon.domain.extension.suggestion.ExtensionInventoryRecord
+import mihon.domain.extension.suggestion.ExtensionPresence
+import mihon.domain.extensionrepo.model.ExtensionRepo
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.source.model.StubSource
@@ -67,10 +80,22 @@ class ExtensionManager internal constructor(
     val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
     private val catalogFailuresProvider: (suspend () -> List<RepositoryCatalogFailure>)? = null,
     private val discoveryProvider: (suspend () -> ExtensionDiscoveryResult)? = null,
+    private val inventoryProvider: suspend (Context) -> ExtensionInventory =
+        { ExtensionLoader.scanInventory(it) },
+    private val repositoryUpdates: Flow<List<ExtensionRepo>>? = null,
 ) {
 
     private val _isInitialized = MutableStateFlow(false)
     val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
+    private val mutableInventory = MutableStateFlow(ExtensionInventory())
+    val inventory = mutableInventory.asStateFlow()
+    private val mutableSuggestionCatalog = MutableStateFlow<ExtensionCatalogResult?>(null)
+    val suggestionCatalog = mutableSuggestionCatalog.asStateFlow()
+    private val inventoryMutex = Mutex()
+    private var inventoryRevision = 0L
+    private val catalogRefreshMutex = Mutex()
+    private val catalogStateLock = Any()
+    private var configuredCatalogIdentities: Set<RepositoryIdentity>? = null
 
     /**
      * API where all the available extensions can be found.
@@ -105,6 +130,21 @@ class ExtensionManager internal constructor(
     init {
         installReceiverRegistrar(InstallationListener())
         initExtensions()
+        repositoryUpdates?.let { updates ->
+            scope.launch {
+                updates.collectLatest { repositories ->
+                    val identities = repositories.map { it.toIdentity() }.toSet()
+                    synchronized(catalogStateLock) {
+                        configuredCatalogIdentities = identities
+                        if (mutableSuggestionCatalog.value?.repositories?.toSet() != identities) {
+                            mutableSuggestionCatalog.value = null
+                        }
+                    }
+                    // Reuse the manager's serialized refresh, including changes received through restore/sync.
+                    findAvailableExtensions()
+                }
+            }
+        }
     }
 
     private var subLanguagesEnabledOnFirstRun = preferences.enabledLanguages().isSet()
@@ -172,13 +212,59 @@ class ExtensionManager internal constructor(
                 replayedEvents
             }
             if (replayedEvents) updatePendingUpdatesCount()
+            refreshInventory()
         }
+    }
+
+    private fun requestInventoryRefresh() {
+        synchronized(installationStateLock) {
+            inventoryRevision++
+            mutableInventory.value = mutableInventory.value.copy(initialized = false)
+        }
+        scope.launch { refreshInventory() }
+    }
+
+    private suspend fun refreshInventory() = inventoryMutex.withLock {
+        do {
+            val revision = synchronized(installationStateLock) { inventoryRevision }
+            val scanned = try {
+                inventoryProvider(context)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                ExtensionInventory(initialized = true, hasUnknownArtifacts = true)
+            }
+            val published = synchronized(installationStateLock) {
+                if (revision != inventoryRevision) {
+                    false
+                } else {
+                    val packages = scanned.packages.mapValues { (name, presence) ->
+                        when {
+                            presence == ExtensionPresence.UNKNOWN -> presence
+                            name in untrustedExtensionMapFlow.value -> ExtensionPresence.UNTRUSTED
+                            name in installedExtensionMapFlow.value -> ExtensionPresence.PRESENT
+                            else -> ExtensionPresence.LOAD_FAILED
+                        }
+                    } + installedExtensionMapFlow.value.mapValues { ExtensionPresence.PRESENT } +
+                        untrustedExtensionMapFlow.value.mapValues { ExtensionPresence.UNTRUSTED }
+                    mutableInventory.value = scanned.copy(
+                        records = packages.mapValues { (name, presence) ->
+                            (scanned.records[name] ?: ExtensionInventoryRecord(presence)).copy(
+                                presence = presence,
+                                runtimeLoaded = presence == ExtensionPresence.PRESENT,
+                            )
+                        },
+                    )
+                    true
+                }
+            }
+        } while (!published)
     }
 
     /**
      * Finds the available extensions in the [api] and updates [availableExtensionMapFlow].
      */
-    suspend fun findAvailableExtensions() {
+    suspend fun findAvailableExtensions() = catalogRefreshMutex.withLock {
         val discovery: ExtensionDiscoveryResult = try {
             if (discoveryProvider != null) {
                 discoveryProvider.invoke()
@@ -196,10 +282,22 @@ class ExtensionManager internal constructor(
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             withUIContext { context.toast(MR.strings.extension_api_error) }
-            return
+            return@withLock
         }
         val extensions = discovery.extensions
         _repositoryFailures.value = discovery.failures
+        val suggestionCatalog = discovery.catalog ?: ExtensionCatalogResult(
+            extensions.map { ExtensionCatalogEntry(it.toArtifact(), it.compatibility) },
+            discovery.failures,
+            discovery.repositories,
+        )
+        synchronized(catalogStateLock) {
+            if (configuredCatalogIdentities == null ||
+                suggestionCatalog.repositories.toSet() == configuredCatalogIdentities
+            ) {
+                mutableSuggestionCatalog.value = suggestionCatalog
+            }
+        }
 
         enableAdditionalSubLanguages(extensions)
 
@@ -296,7 +394,9 @@ class ExtensionManager internal constructor(
      */
     fun installExtension(extension: Extension.Available): Flow<InstallStep> {
         if (extension.compatibility != ExtensionCompatibility.Compatible) return flowOf(InstallStep.Error)
-        return installer.downloadAndInstall(api.getApkUrl(extension), extension)
+        return installer.downloadAndInstall(api.getApkUrl(extension), extension).onCompletion {
+            requestInventoryRefresh()
+        }
     }
 
     /**
@@ -356,6 +456,7 @@ class ExtensionManager internal constructor(
         extensionLoader(context, extension.pkgName)
             .let { it as? LoadResult.Success }
             ?.let { registerNewExtension(it.extension) }
+        requestInventoryRefresh()
     }
 
     /**
@@ -411,6 +512,10 @@ class ExtensionManager internal constructor(
      */
     private inner class InstallationListener : ExtensionInstallReceiver.Listener {
 
+        override fun onPackageChanged(pkgName: String) {
+            if (!installer.isInstallTransactionActive(pkgName)) requestInventoryRefresh()
+        }
+
         override fun onExtensionInstalled(extension: Extension.Installed) {
             if (installer.isInstallTransactionActive(extension.pkgName)) return
             acceptInstallationEvent(InstallationEvent.Installed(extension.withUpdateCheck()))
@@ -447,6 +552,7 @@ class ExtensionManager internal constructor(
         if (applied) {
             updatePendingUpdatesCount()
         }
+        requestInventoryRefresh()
     }
 
     private sealed interface InstallationEvent {

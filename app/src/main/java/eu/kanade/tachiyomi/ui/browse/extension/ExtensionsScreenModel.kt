@@ -34,6 +34,7 @@ import mihon.domain.extension.presentation.ExtensionPresentationActionState
 import mihon.domain.extension.presentation.ExtensionPresentationClassifier
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationStore
+import mihon.domain.extension.suggestion.ExtensionSuggestions
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
@@ -50,12 +51,15 @@ class ExtensionsScreenModel(
     private val context: Application = Injekt.get(),
     private val actionStore: ExtensionPresentationStore<Extension> =
         androidExtensionPresentationStore,
+    suggestions: Flow<ExtensionSuggestions>? = null,
 ) : StateScreenModel<ExtensionsScreenModel.State>(State()) {
 
     private val actionState = MutableStateFlow(ExtensionPresentationActionState())
     private val installCollections = ConcurrentHashMap<String, Any>()
 
     init {
+        suggestions?.onEach { value -> mutableState.update { it.copy(suggestions = value) } }
+            ?.launchIn(screenModelScope)
         val extensionMapper: (Map<String, InstallStep>) -> ((Extension) -> ExtensionUiModel.Item) = { map ->
             {
                 ExtensionUiModel.Item(it, map[it.pkgName] ?: InstallStep.Idle)
@@ -240,6 +244,7 @@ class ExtensionsScreenModel(
 
     @Immutable
     data class State(
+        val suggestions: ExtensionSuggestions = ExtensionSuggestions(),
         val isLoading: Boolean = true,
         val isRefreshing: Boolean = false,
         val items: ItemGroups = mutableMapOf(),

@@ -1,5 +1,6 @@
 package mihon.desktop.extension
 
+import mihon.domain.extension.suggestion.ExtensionInventory
 import eu.kanade.tachiyomi.source.Source
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +50,8 @@ class DesktopExtensionManager(
     private val installCoordinator = ExtensionInstallCoordinator(installPort, installScope)
     private val mutableInstalledExtensions = MutableStateFlow<List<InstalledExtension>>(emptyList())
     override val installedExtensions: StateFlow<List<InstalledExtension>> = mutableInstalledExtensions.asStateFlow()
+    private val mutableInventory = MutableStateFlow(ExtensionInventory())
+    val inventory = mutableInventory.asStateFlow()
 
     /** Loads all extensions from the extensions directory. */
     fun loadAll() {
@@ -126,11 +129,13 @@ class DesktopExtensionManager(
 
     private fun publishInstalledExtensions() {
         val snapshot = snapshotInstalledExtensions()
+        val inventorySnapshot = scanDesktopExtensionInventory(loader.extensionsDirectory, snapshot.extensions)
         synchronized(runtimeLock) {
             // Snapshot projection performs file I/O outside the runtime lock. A slower, older
             // projection must not overwrite a newer installation snapshot that already won.
             if (snapshot.revision >= publishedRuntimeRevision) {
                 mutableInstalledExtensions.value = snapshot.extensions
+                mutableInventory.value = inventorySnapshot
                 publishedRuntimeRevision = snapshot.revision
             }
         }

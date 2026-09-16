@@ -88,7 +88,7 @@ internal class ExtensionApi(
                     downloadUrl = artifact.apkUrl ?: artifact.downloadUrl,
                 )
             }
-        return ExtensionDiscoveryResult(extensions, catalog.failures, catalog.repositories)
+        return ExtensionDiscoveryResult(extensions, catalog.failures, catalog.repositories, catalog)
     }
 
     suspend fun refreshCatalog(): ExtensionCatalogResult = withIOContext {
@@ -169,4 +169,5 @@ internal data class ExtensionDiscoveryResult(
     val extensions: List<Extension.Available>,
     val failures: List<mihon.domain.extension.model.RepositoryCatalogFailure>,
     val repositories: List<mihon.domain.extension.model.RepositoryIdentity>,
+    val catalog: ExtensionCatalogResult? = null,
 )

@@ -23,6 +23,10 @@ import logcat.LogPriority
 import mihon.domain.extension.model.EXTENSION_LIB_VERSION_MAX
 import mihon.domain.extension.model.EXTENSION_LIB_VERSION_MIN
 import mihon.domain.extension.model.isSupportedExtensionLibVersion
+import mihon.domain.extension.suggestion.ExtensionInventory
+import mihon.domain.extension.suggestion.ExtensionInventoryLocation
+import mihon.domain.extension.suggestion.ExtensionInventoryRecord
+import mihon.domain.extension.suggestion.ExtensionPresence
 import tachiyomi.core.common.util.system.logcat
 import uy.kohesive.injekt.injectLazy
 import java.io.File
@@ -42,6 +46,59 @@ import java.io.File
  * one with higher version code will be used.
  */
 internal object ExtensionLoader {
+
+    /** Read package existence without class loading, trust checks, or modifying private files. */
+    fun scanInventory(context: Context): ExtensionInventory = try {
+        val packages = installedSharedPackages(context).filter(::isPackageAnExtension)
+            .associateTo(mutableMapOf()) { info ->
+                val location = ExtensionInventoryLocation.ANDROID_SHARED
+                val repository = runCatching {
+                    readAndroidExtensionTrust(context, info.packageName, AndroidInstallLocation.SYSTEM)?.repository
+                }.getOrNull()
+                info.packageName to ExtensionInventoryRecord(
+                    ExtensionPresence.PRESENT,
+                    setOf(location),
+                    repository?.let { mapOf(location to it) }.orEmpty(),
+                )
+            }
+        val directory = getPrivateExtensionDir(context)
+        val files = if (directory.exists()) directory.listFiles() else emptyArray()
+        var unknown = files == null
+        files.orEmpty().filter { it.isFile && it.extension == PRIVATE_EXTENSION_EXTENSION }.forEach { file ->
+            val info = context.packageManager.getPackageArchiveInfo(file.absolutePath, PACKAGE_FLAGS)
+            if (info != null && isPackageAnExtension(info)) {
+                val location = ExtensionInventoryLocation.ANDROID_PRIVATE
+                val previous = packages[info.packageName]
+                val repository = runCatching {
+                    readAndroidExtensionTrust(context, info.packageName, AndroidInstallLocation.PRIVATE)?.repository
+                }.getOrNull()
+                packages[info.packageName] = ExtensionInventoryRecord(
+                    ExtensionPresence.PRESENT,
+                    previous?.locations.orEmpty() + location,
+                    previous?.repositoriesByLocation.orEmpty() + repository?.let { mapOf(location to it) }.orEmpty(),
+                )
+            } else {
+                packages.putIfAbsent(
+                    file.nameWithoutExtension,
+                    ExtensionInventoryRecord(
+                        ExtensionPresence.UNKNOWN,
+                        setOf(ExtensionInventoryLocation.ANDROID_PRIVATE),
+                    ),
+                )
+                unknown = true
+            }
+        }
+        ExtensionInventory(true, unknown, packages)
+    } catch (_: Exception) {
+        ExtensionInventory(initialized = true, hasUnknownArtifacts = true)
+    }
+
+    private fun installedSharedPackages(context: Context): List<PackageInfo> =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.getInstalledPackages(PackageManager.PackageInfoFlags.of(PACKAGE_FLAGS.toLong()))
+        } else {
+            context.packageManager.getInstalledPackages(PACKAGE_FLAGS)
+        }
 
     private val preferences: SourcePreferences by injectLazy()
     private val trustExtension: TrustExtension by injectLazy()
@@ -119,11 +176,7 @@ internal object ExtensionLoader {
     suspend fun loadExtensions(context: Context): List<LoadResult> {
         val pkgManager = context.packageManager
 
-        val installedPkgs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            pkgManager.getInstalledPackages(PackageManager.PackageInfoFlags.of(PACKAGE_FLAGS.toLong()))
-        } else {
-            pkgManager.getInstalledPackages(PACKAGE_FLAGS)
-        }
+        val installedPkgs = installedSharedPackages(context)
 
         val sharedExtPkgs = installedPkgs
             .asSequence()

@@ -16,6 +16,7 @@ import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.extension.installer.Installer
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
+import eu.kanade.tachiyomi.extension.model.toArtifact
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.util.lang.Hash
 import eu.kanade.tachiyomi.util.storage.getUriCompat
@@ -41,7 +42,6 @@ import kotlinx.coroutines.withTimeout
 import logcat.LogPriority
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionArtifact
-import mihon.domain.extension.model.ExtensionSourceDescriptor
 import mihon.domain.extension.model.InstalledExtensionTrustRecord
 import mihon.domain.extension.model.RepositoryIdentity
 import mihon.domain.extension.model.extractExtensionLibVersion
@@ -229,21 +229,6 @@ internal class ExtensionInstaller private constructor(
             job.cancel()
         }
     }
-
-    private fun Extension.Available.toArtifact(url: String) = ExtensionArtifact(
-        name = name,
-        packageName = pkgName,
-        versionName = versionName,
-        versionCode = versionCode,
-        language = lang,
-        isNsfw = isNsfw,
-        sources = sources.map { ExtensionSourceDescriptor(it.id, it.lang, it.name, it.baseUrl) },
-        repository = RepositoryIdentity(repoUrl, repoName, repoFingerprint),
-        downloadUrl = url,
-        iconUrl = iconUrl,
-        declaredSha256 = declaredSha256,
-        declaredLibVersion = libVersion,
-    )
 
     private fun ExtensionInstallState.toInstallStep(): InstallStep = when (this) {
         ExtensionInstallState.Preparing -> InstallStep.Downloading
@@ -1228,28 +1213,8 @@ internal class DefaultAndroidInstallGateway(
 
     private fun metadataPackage(file: File): String = inspect(file)?.packageName ?: error("Invalid extension APK")
 
-    private fun readTrust(packageName: String, location: AndroidInstallLocation): InstalledExtensionTrustRecord? {
-        val file = trustFile(packageName, location)
-        if (!file.exists()) return null
-        if (!file.isFile) failMalformed("Extension trust metadata is not a regular file")
-        val properties = try {
-            Properties().also { values -> trustInput(file).use(values::load) }
-        } catch (failure: IllegalArgumentException) {
-            failMalformed("Extension trust metadata is malformed")
-        } catch (failure: Throwable) {
-            throw ExtensionInstallFailure(AppError.Storage(failure))
-        }
-        fun required(key: String): String = properties.getProperty(key)?.takeIf(String::isNotBlank)
-            ?: failMalformed("Extension trust metadata is missing $key")
-        return InstalledExtensionTrustRecord(
-            repository = RepositoryIdentity(
-                baseUrl = required("repository.baseUrl"),
-                name = required("repository.name"),
-                signingKeyFingerprint = required("repository.fingerprint"),
-            ),
-            artifactSha256 = required("artifact.sha256"),
-        )
-    }
+    private fun readTrust(packageName: String, location: AndroidInstallLocation): InstalledExtensionTrustRecord? =
+        readAndroidExtensionTrust(context, packageName, location, trustInput)
 
     private fun writeTrust(
         packageName: String,
@@ -1283,16 +1248,8 @@ internal class DefaultAndroidInstallGateway(
         return deleteFile(file)
     }
 
-    private fun trustFile(packageName: String, location: AndroidInstallLocation): File = try {
-        val root = File(context.filesDir, "extension-install-metadata").canonicalFile
-        val target = File(root, "${location.name.lowercase()}-$packageName.properties").canonicalFile
-        if (!target.toPath().startsWith(root.toPath())) failStorage("Extension trust metadata escaped root")
-        target
-    } catch (failure: ExtensionInstallFailure) {
-        throw failure
-    } catch (failure: Throwable) {
-        throw ExtensionInstallFailure(AppError.Storage(failure))
-    }
+    private fun trustFile(packageName: String, location: AndroidInstallLocation): File =
+        androidExtensionTrustFile(context, packageName, location)
 
     @Suppress("DEPRECATION")
     private fun packageInfo(file: File): PackageInfo? = context.packageManager.getPackageArchiveInfo(
@@ -1340,3 +1297,46 @@ private fun failMalformed(message: String): Nothing =
 
 private fun failStorage(message: String): Nothing =
     throw ExtensionInstallFailure(AppError.Storage(IllegalStateException(message)))
+
+internal fun readAndroidExtensionTrust(
+    context: Context,
+    packageName: String,
+    location: AndroidInstallLocation,
+    trustInput: (File) -> InputStream = File::inputStream,
+): InstalledExtensionTrustRecord? {
+    val file = androidExtensionTrustFile(context, packageName, location)
+    if (!file.exists()) return null
+    if (!file.isFile) failMalformed("Extension trust metadata is not a regular file")
+    val properties = try {
+        Properties().also { values -> trustInput(file).use(values::load) }
+    } catch (failure: IllegalArgumentException) {
+        failMalformed("Extension trust metadata is malformed")
+    } catch (failure: Throwable) {
+        throw ExtensionInstallFailure(AppError.Storage(failure))
+    }
+    fun required(key: String): String = properties.getProperty(key)?.takeIf(String::isNotBlank)
+        ?: failMalformed("Extension trust metadata is missing $key")
+    return InstalledExtensionTrustRecord(
+        repository = RepositoryIdentity(
+            baseUrl = required("repository.baseUrl"),
+            name = required("repository.name"),
+            signingKeyFingerprint = required("repository.fingerprint"),
+        ),
+        artifactSha256 = required("artifact.sha256"),
+    )
+}
+
+private fun androidExtensionTrustFile(
+    context: Context,
+    packageName: String,
+    location: AndroidInstallLocation,
+): File = try {
+    val root = File(context.filesDir, "extension-install-metadata").canonicalFile
+    val target = File(root, "${location.name.lowercase()}-$packageName.properties").canonicalFile
+    if (!target.toPath().startsWith(root.toPath())) failStorage("Extension trust metadata escaped root")
+    target
+} catch (failure: ExtensionInstallFailure) {
+    throw failure
+} catch (failure: Throwable) {
+    throw ExtensionInstallFailure(AppError.Storage(failure))
+}

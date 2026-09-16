@@ -1,7 +1,7 @@
 # 收藏缺失插件「建议安装」完整实施 Roadmap
 
 - 日期：2026-09-16
-- 状态：PLANNED；用户已通过 HTML 交互，当前仅编写实施计划，尚未启动生产实现。
+- 状态：IN_PROGRESS；已获准实施，EIS-01 已完成，EIS-02 待实施，完成状态以第 4 节批次勾选为准。
 - 类型：产品 child plan；进度从第 4 节第一个未勾选批次推导，不另设活动任务字段。
 - 父路线：[Android / macOS / Windows 正式 Roadmap](2026-06-30-mihon-desktop-refactor-roadmap.md)。本稿登记为待执行专项，不切换父计划当前执行指针，不恢复其他专项。
 - 产品依据：[需求与技术可行性](../2026-09-16-extension-install-suggestions-requirements.md)；已通过的 [HTML DEMO](../prototypes/multi-device-sync/index.html)，交互提交 `2289a939f`。
@@ -76,7 +76,7 @@
 
 每个 checkbox 仅在实现、必要独立审查、验证、提交均完成后勾选；批内步骤不另设进度 checkbox。第一个未勾选项就是下一个执行批次。
 
-- [ ] EIS-01：共享建议识别、安装存在性与双端 production 接线。
+- [x] EIS-01：共享建议识别、安装存在性与双端 production 接线。
 - [ ] EIS-02：双端建议分栏与完整单项操作、本地偏好及数据隔离。
 - [ ] EIS-03：共享批次编排、安装入口去重与 Desktop 全部安装闭环。
 - [ ] EIS-04：Android 全部安装、系统交互与生命周期闭环。
@@ -256,7 +256,22 @@ python scripts/gradle-coordinator.py run --key eis-final -- gradlew.bat :domain:
 
 ## 9. 完成证据记录与最终验收清单
 
-当前生产批次均未执行。实施后在本节按批次追加简短记录：提交、正确失败的 red 命令/断言、green/重构结果、独立检查结论、平台及产物、限制。规划提交、DEMO通过均不得替代这些证据。
+### EIS-01 完成记录
+
+- 工作树：`codex/extension-install-suggestions`，隔离目录 `D:/Shell/Github/mihon-eis`，基线 `3503af8b85`。只处理本专项；主工作树其他变更未纳入。
+- 环境预检（2026-09-16，只读）：Android SDK 的 `android.jar`、`aapt2.exe`、`adb.exe` 存在；专用 AVD `mihon-aex-api36`、`mihon-aex-api26` 在线；`mbp-lan` 的 Darwin/JDK 21 与约 30 GiB 可用空间已核对；发布签名文件存在。未进行正式安装或构建；Shizuku 可用场景尚未验证。
+- 红测试：所有命令由 `scripts/gradle-coordinator.py` 串行管理，记录位于工作树 `.gradle-coordinator/<key>.log`。`eis01-red-proxy` 的共享计算 6 项中 5 项因缺匹配/诊断/来源选择结果而失败；`eis01-observer-red` 在共享计算 6 项已绿时，观察器未订阅导致建议断言失败；`eis01-inventory-red` 的两端真实库存测试因包/初始化/未知文件缺失而失败。`eis01-candidate-red` 又确认了“已装候选被忽略后误推荐替代”“同身份版本倒序”“新版本删除旧源描述”三项正确失败。
+- 接线红测试：`eis01-desktop-wiring-red` 在修复测试关闭方法后，从真实 SQLite 收藏查询到 ScreenModel 状态的等待超时；Android 同一契约也在订阅缺失时超时；两端 DI 因缺 `ObserveExtensionSuggestions` 注册失败。`eis01-manager-red` 覆盖完整目录候选保留与旧库存扫描晚到；`eis01-inventory-detail-red` 覆盖系统/私有位置、来源元数据、失败加载广播仍通知库存。
+- 仓库时序红：`eis01-refresh-red`（Desktop）和 `eis01-android-refresh-red`（Android）均确认删除仓库后，旧在途请求短暂发出旧建议的断言失败。两端现按当前仓库身份过滤发布；Android 订阅已有 `GetExtensionRepo.subscribeAll()` 并复用 manager 串行刷新，覆盖设置、恢复及同步配置变化，不新增目录请求实现。
+- 非行为红/验证诊断：最初一次 Gradle 直连依赖解析卡在 HTTP HEAD/TLS 连接，协调器已终止该进程，唯一一次带会话 JVM 代理的重试成功进入测试；不把网络等待计为功能红。测试中曾发生关闭方法误引用、MockK 默认 Flow getter 类型擦除及临时 Source 缺 `lang/name`，均属于 fixture 故障，不能代替红证据。后一异常还被后续 presentation `runTest` 报为 `UncaughtExceptionsBeforeTest`；需要修复并重跑受影响测试，不据单项滚动日志宣称整轮通过。
+- 维护边界：`domain/.../extension/suggestion` 是两端建议语义唯一实现；源 ID 始终为 Long。先在同仓库签名身份内采用更新策略，再建源索引，不能从旧版描述复活已删除源，也不跨仓库自动选最高版本。存在性先于忽略过滤，已装/未信任/加载失败均不建议替代。
+- 库存是只读的最终产物/包清单，记录已知位置、已有来源元数据及加载结果；来源未知保持空值，不从可用目录反推。Android 复用系统/私有枚举及已有 trust metadata 读取，接收失败加载的包变化通知；Desktop 只扫描顶层最终 JAR 和相应 metadata，临时事务目录及 sidecar 单独存在不计已安装。未知旧手工 JAR、无法解析的 private `.ext`、目录不可读会保守阻止确认缺失，不自动删除或修复。
+- 两端 ScreenModel 消费共享 Flow：复用真实 SourceRepository 收藏计数与 SourceManager 注册状态，初始库存未齐保持 loading；磁盘扫描仅在库存生命周期变化执行。`data/src/testFixtures/kotlin/mihon/data/extension/ExtensionSuggestionSqlContract.kt` 仅为两端复用的测试契约，执行真实 SQLite、各平台 repository 和 ScreenModel/DI，不在测试内复制建议算法。
+- 内聚性：本批超过 8 个文件/400 行，是同一内部能力的共享计算、平台库存适配、目录/包事件、两端 DI/状态接线及同契约测试；不能按文件拆为独立交付。安装器修改仅抽取既有 artifact/信任元数据映射供库存复用，保留原安全检查、提交和回滚流程；无数据库 schema、安装队列、同步协议或新增 UI。
+- Green/重构：`eis01-final-green` 于 2026-09-17 终态 `PASSED / exit 0`，Gradle `BUILD SUCCESSFUL in 3m 8s`。原始 XML 核对：domain JVM 11、domain Android 11、Desktop 20、Android app 73，合计 115 项，失败/错误/跳过均为 0。Android app 包含 manager 15、库存 2、SQL/DI 2、presentation 9、安全回滚 31、install wiring 14；Desktop 包含真实 DI 1、库存 2、晚到仓库 1、真实 SQL 1、既有 shared wiring 15。真实 SQL 契约已通过收藏添加、迁移、移除、运行时注册和卸载反应；前次 fixture 故障涉及的 observer 与 presentation 整类已重跑通过。
+- 重现参数：协调器 key `eis01-final-green` 的 JSON 保存完整命令；测试任务为 `:domain:jvmTest` 与 `:domain:testReleaseUnitTest --tests mihon.domain.extension.*Suggestion*`、`:app:testReleaseUnitTest`（上述 6 类）及 `:app-desktop:jvmTest`（上述 5 类），均为本批 focused，不是全量。`--max-workers=2`、Gradle 堆 2 GiB；HTTP/HTTPS JVM 代理仅当前调用。
+- 格式：`eis01-format-clean` 已应用本任务 Kotlin 文件格式，最终同一 green 调用中 `:domain:spotlessCheck :app:spotlessCheck :data:spotlessCheck` 通过，`spotlessIdeHook` 限定本任务变更文件。此前格式调用的长行错误已修正；Desktop 没有 Spotless 插件/task，未为此引入新插件，完成编译、focused 测试及 `git diff --check`。标准编译仍有既有弃用警告和共享 SQL 测试的协程实验 API opt-in 警告，无构建错误。
+- 独立检查与提交：2026-09-17 主代理独立验收通过，已核对最终源码、Android AppModule 仓库 Flow、双端旧快照门槛、库存来源及原 trust 读取逻辑、协调器终态与四组原始 XML。此前发现项在限定复验中全部关闭，无新增阻塞；本批测试、实现、文档与 EIS-01 勾选合并为同一功能提交，hash 由完成回执记录，不另建状态提交。协调器全部已结束，无本批残留 Gradle 任务。此批未生成发布产物，不能替代 EIS-02～05 的用户功能及正式平台验收。
 
 最终验收路径（全部满足后方可关闭 EIS-05）：
 

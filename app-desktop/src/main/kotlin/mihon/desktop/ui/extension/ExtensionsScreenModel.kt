@@ -1,5 +1,8 @@
 package mihon.desktop.ui.extension
 
+import mihon.domain.extension.model.ExtensionCatalogResult
+import mihon.domain.extension.suggestion.ObserveExtensionSuggestions
+import mihon.domain.extension.suggestion.ExtensionSuggestions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
@@ -14,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.update
@@ -36,6 +40,7 @@ data class DesktopPendingTrust(
 )
 
 data class DesktopExtensionsState(
+    val suggestions: ExtensionSuggestions = ExtensionSuggestions(),
     val searchQuery: String = "",
     val projection: DesktopExtensionProjection? = null,
     val presentation: ExtensionPresentationResult<DesktopExtensionItem>? = null,
@@ -58,6 +63,7 @@ class ExtensionsScreenModel(
     private val onShowNsfwChanged: (Boolean) -> Unit = {},
     private val nowMillis: () -> Long = System::currentTimeMillis,
     private val catalogFreshnessMillis: Long = DEFAULT_CATALOG_FRESHNESS_MILLIS,
+    private val suggestionObserver: ObserveExtensionSuggestions? = null,
 ) {
     private val ownerJob = SupervisorJob(parentScope?.coroutineContext?.get(Job))
     private val scope = CoroutineScope((parentScope?.coroutineContext ?: Dispatchers.Default) + ownerJob)
@@ -71,12 +77,21 @@ class ExtensionsScreenModel(
     private var activeTrust: DesktopPendingTrust? = null
     private var isClosed = false
     private var latestCatalog: DesktopExtensionCatalogState? = null
+    private var configuredCatalogIdentities: List<RepositoryIdentity>? = null
+    private val suggestionCatalog = MutableStateFlow<ExtensionCatalogResult?>(null)
     private var catalogLoadedAtMillis: Long? = null
     internal val closed get() = synchronized(lock) { isClosed }
     internal val activeJobCount get() = synchronized(lock) { packageJobs.values.count(Job::isActive) }
 
     init {
         require(catalogFreshnessMillis >= 0) { "Catalog freshness must not be negative" }
+        suggestionObserver?.let { observer ->
+            scope.launch {
+                observer.subscribe(suggestionCatalog, port.inventory, options.map { it.showNsfw }).collect { result ->
+                    mutableState.update { it.copy(suggestions = result) }
+                }
+            }
+        }
         scope.launch {
             combine(port.installedExtensions, options, port.disabledSources) { _, currentOptions, disabledSources ->
                 currentOptions to disabledSources
@@ -262,8 +277,11 @@ class ExtensionsScreenModel(
         drainActive()
     }
 
-    private fun publish(currentOptions: ExtensionPresentationOptions, clearRefreshError: Boolean = false) {
-        val loadedCatalog = synchronized(lock) { latestCatalog }
+    private fun publish(currentOptions: ExtensionPresentationOptions, clearRefreshError: Boolean = false) = synchronized(lock) {
+        val loadedCatalog = latestCatalog
+        suggestionCatalog.value = loadedCatalog?.catalog?.takeIf { catalog ->
+            configuredCatalogIdentities?.let { catalog.repositories.matches(it) } != false
+        }
         val catalog = loadedCatalog ?: EMPTY_CATALOG
         val projection = port.project(catalog)
         mutableState.update {
@@ -280,6 +298,10 @@ class ExtensionsScreenModel(
     private suspend fun onRepositoriesChanged(repositories: List<ExtensionRepo>) {
         val snapshot = repositories.toList()
         val identities = snapshot.map { it.toIdentity() }
+        synchronized(lock) {
+            configuredCatalogIdentities = identities
+            if (suggestionCatalog.value?.repositories.matches(identities).not()) suggestionCatalog.value = null
+        }
         mutableState.update { it.copy(configuredRepositoryCount = snapshot.size) }
         val activeRefresh = synchronized(lock) { refreshJob?.takeIf(Job::isActive) }
 
@@ -467,7 +489,7 @@ class ExtensionsScreenModel(
     private companion object {
         const val DEFAULT_CATALOG_FRESHNESS_MILLIS = 5 * 60 * 1_000L
         val EMPTY_CATALOG = DesktopExtensionCatalogState(
-            catalog = mihon.domain.extension.model.ExtensionCatalogResult(emptyList(), emptyList()),
+            catalog = ExtensionCatalogResult(emptyList(), emptyList()),
             available = emptyList(),
         )
     }

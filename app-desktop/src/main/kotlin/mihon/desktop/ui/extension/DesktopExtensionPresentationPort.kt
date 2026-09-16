@@ -1,5 +1,6 @@
 package mihon.desktop.ui.extension
 
+import mihon.domain.extension.suggestion.ExtensionInventory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -107,6 +108,8 @@ class DesktopExtensionPresentationPort(
     private val updatePolicy: ExtensionUpdatePolicy = SharedExtensionUpdatePolicy,
     private val sourcePreferences: DesktopExtensionSourcePreferenceAdapter? = null,
     internal val configuredRepositories: Flow<List<ExtensionRepo>>? = null,
+    val inventory: Flow<ExtensionInventory> =
+        flowOf(ExtensionInventory()),
 ) {
     val installedExtensions: StateFlow<List<InstalledExtension>> = installedExtensions
     val disabledSources: Flow<Set<String>> = sourcePreferences?.disabledSources ?: flowOf(emptySet())

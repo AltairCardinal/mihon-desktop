@@ -56,6 +56,7 @@ internal class ExtensionInstallReceiver(private val listener: Listener) : Broadc
                         is LoadResult.Untrusted -> listener.onExtensionUntrusted(result.extension)
                         else -> {}
                     }
+                    getPackageNameFromIntent(intent)?.let(listener::onPackageChanged)
                 }
             }
             Intent.ACTION_PACKAGE_REPLACED, ACTION_EXTENSION_REPLACED -> {
@@ -65,6 +66,7 @@ internal class ExtensionInstallReceiver(private val listener: Listener) : Broadc
                         is LoadResult.Untrusted -> listener.onExtensionUntrusted(result.extension)
                         else -> {}
                     }
+                    getPackageNameFromIntent(intent)?.let(listener::onPackageChanged)
                 }
             }
             Intent.ACTION_PACKAGE_REMOVED, ACTION_EXTENSION_REMOVED -> {
@@ -113,6 +115,7 @@ internal class ExtensionInstallReceiver(private val listener: Listener) : Broadc
      * Listener that receives extension installation events.
      */
     interface Listener {
+        fun onPackageChanged(pkgName: String) {}
         fun onExtensionInstalled(extension: Extension.Installed)
         fun onExtensionUpdated(extension: Extension.Installed)
         fun onExtensionUntrusted(extension: Extension.Untrusted)

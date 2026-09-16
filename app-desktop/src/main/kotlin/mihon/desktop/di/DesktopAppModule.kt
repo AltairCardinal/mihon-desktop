@@ -1,5 +1,6 @@
 package mihon.desktop.di
 
+import mihon.domain.extension.suggestion.ObserveExtensionSuggestions
 import android.app.Application
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
@@ -582,11 +583,16 @@ private fun registerDesktopExtension(
     )
     Injekt.addSingleton<SourceManager>(sourceManager)
     Injekt.addSingleton(sourceManager)
+    val sourceRepository = DesktopSourceRepository(sourceManager, handler)
+    Injekt.addSingleton<SourceRepository>(sourceRepository)
+    val suggestionObserver = ObserveExtensionSuggestions(sourceRepository, sourceManager)
+    Injekt.addSingleton(suggestionObserver)
     val presentationPort = DesktopExtensionPresentationPort(
         extensionApi,
         extensionManager,
         sourcePreferences = DesktopExtensionSourcePreferenceAdapter(appPreferences),
         configuredRepositories = extensionRepoRepository.subscribeAll(),
+        inventory = extensionManager.inventory,
     )
     Injekt.addSingleton(presentationPort)
     val extensionScreenModel = ExtensionsScreenModel(
@@ -596,13 +602,13 @@ private fun registerDesktopExtension(
             enabledLanguages = appPreferences.enabledLanguages.get(),
         ),
         onShowNsfwChanged = appPreferences.showNsfwSources::set,
+        suggestionObserver = suggestionObserver,
     )
     Injekt.addSingleton(extensionScreenModel)
     val extensionController = SourceExtensionTestModeController(extensionScreenModel)
     Injekt.addSingleton(extensionController)
     SourceExtensionTestModeBridge.install(extensionController)
     registerDesktopTracking(sourceManager, networkHelper.client, trackerServiceRegistry)
-    Injekt.addSingleton<SourceRepository>(DesktopSourceRepository(sourceManager, handler))
     val extensionRepoService = ExtensionRepoService(Injekt.get<NetworkHelper>(), Injekt.get<Json>())
     Injekt.addSingleton(extensionRepoService)
     Injekt.addSingleton(GetExtensionRepo(extensionRepoRepository))
