@@ -1,9 +1,23 @@
 package mihon.desktop.ui.extension
 
+import mihon.domain.extension.service.ExtensionInstallBusy
 import mihon.domain.extension.model.ExtensionCatalogResult
 import mihon.domain.extension.suggestion.ObserveExtensionSuggestions
 import mihon.domain.extension.suggestion.ExtensionSuggestions
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import mihon.domain.extension.model.ExtensionArtifact
+import mihon.domain.extension.service.ExtensionInstallLease
+import mihon.domain.extension.service.ExtensionInstallInvalidation
+import mihon.domain.extension.service.ExtensionInstallInvalidated
+import mihon.domain.extension.suggestion.ExtensionSuggestionBatchController
+import mihon.domain.extension.suggestion.SuggestionBatchInstallPort
+import mihon.domain.extension.suggestion.SuggestionBatchResult
+import mihon.domain.extension.suggestion.SuggestionIdentity
+import mihon.domain.extension.suggestion.suggestionIdentityKey
+import mihon.domain.extension.suggestion.ExtensionInventory
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +52,7 @@ import mihon.domain.extensionrepo.model.ExtensionRepo
 data class DesktopPendingTrust(
     val packageName: String,
     val request: DesktopExtensionInstallStart.TrustRequired,
+    val batchTransactionId: Long? = null,
 )
 
 data class DesktopExtensionsState(
@@ -56,7 +71,10 @@ data class DesktopExtensionsState(
     val installErrors: Map<String, AppError> = emptyMap(),
     val pendingTrust: DesktopPendingTrust? = null,
     val disabledSourceIds: Set<String> = emptySet(),
-)
+    val reservedSteps: Map<String, ExtensionPresentationInstallStep> = emptyMap(),
+) {
+    val installSteps get() = actions.installSteps + reservedSteps
+}
 
 class ExtensionsScreenModel(
     private val port: DesktopExtensionPresentationPort,
@@ -84,15 +102,59 @@ class ExtensionsScreenModel(
     private var configuredCatalogIdentities: List<RepositoryIdentity>? = null
     private val suggestionCatalog = MutableStateFlow<ExtensionCatalogResult?>(null)
     private var catalogLoadedAtMillis: Long? = null
+    private val currentInventory = MutableStateFlow(ExtensionInventory())
+    private val batchOperations = mutableMapOf<Long, BatchOperation>()
     internal val closed get() = synchronized(lock) { isClosed }
     internal val activeJobCount get() = synchronized(lock) { packageJobs.values.count(Job::isActive) }
 
     val suggestionPanel = mihon.domain.extension.suggestion.ExtensionSuggestionPanel(
         scope, state.map { it.suggestions }.distinctUntilChanged(),
-        state.map { it.actions.installSteps }.distinctUntilChanged(), suggestionPreferences,
+        state.map { it.installSteps }.distinctUntilChanged(), suggestionPreferences,
     )
 
+    val suggestionBatch by lazy {
+        ExtensionSuggestionBatchController(
+            scope, port.installArbiter,
+            SuggestionBatchInstallPort(::installReserved),
+            ::suggestionEligibility,
+        )
+    }
+
+    fun suggestionSnapshot() = suggestionPanel.state.value.rows.filter { it.canInstall }.map { it.suggestion.artifact }
+
+    fun confirmSuggestionBatch(snapshot: List<mihon.domain.extension.model.ExtensionArtifact>) = suggestionBatch.start(snapshot)
+
+    fun updatedBatchSnapshot(previous: List<ExtensionArtifact>): List<ExtensionArtifact> = previous.map { artifact ->
+        val candidates = batchReplacementCandidates(artifact)
+        val explicitlySelected = suggestionPanel.state.value.selected.values.toSet()
+        candidates.singleOrNull { SuggestionIdentity.of(it) in explicitlySelected }
+            ?: candidates.firstOrNull { SuggestionIdentity.of(it) == SuggestionIdentity.of(artifact) } ?: artifact
+    }
+
+    fun batchReplacementCandidates(artifact: ExtensionArtifact): List<ExtensionArtifact> =
+        suggestionCatalog.value?.entries.orEmpty()
+            .filter { it.artifact.packageName == artifact.packageName && it.compatibility == mihon.domain.extension.model.ExtensionCompatibility.Compatible }
+            .map { it.artifact }.groupBy { SuggestionIdentity.of(it) }
+            .values.map { versions -> versions.maxBy { it.versionCode } }
+
+    fun isCurrentBatchArtifact(artifact: ExtensionArtifact) = artifact in batchReplacementCandidates(artifact)
+
+    fun batchSourcesConflict(snapshot: List<ExtensionArtifact>, continuing: Boolean): Boolean {
+        val installed = if (continuing) suggestionBatch.state.value.items
+            .filter { it.result == SuggestionBatchResult.Installed }.map { it.artifact } else emptyList()
+        val sources = (snapshot + installed).flatMap { it.sources.map { source -> source.id }.distinct() }
+        return sources.size != sources.distinct().size
+    }
+
     init {
+        scope.launch { port.inventory.collect { currentInventory.value = it } }
+        scope.launch {
+            port.installArbiter.reservations.collect { reservations ->
+                mutableState.update { it.copy(reservedSteps = reservations.mapValues { (_, reservation) ->
+                    reservation.progress?.presentationStep() ?: ExtensionPresentationInstallStep.Pending
+                }) }
+            }
+        }
         scope.launch { suggestionPanel.state.collect { panel -> mutableState.update { it.copy(suggestionPanel = panel) } } }
         require(catalogFreshnessMillis >= 0) { "Catalog freshness must not be negative" }
         suggestionObserver?.let { observer ->
@@ -186,7 +248,7 @@ class ExtensionsScreenModel(
 
     fun install(item: DesktopExtensionItem): Job = synchronized(lock) {
         packageJobs[item.operationPackageName]?.takeIf { it.isActive }?.let { return@synchronized it }
-        if (state.value.actions.installSteps[item.operationPackageName]?.isCompleted() == false) {
+        if (state.value.installSteps[item.operationPackageName]?.isCompleted() == false) {
             return@synchronized scope.launch {}
         }
         checkOpen()
@@ -199,7 +261,10 @@ class ExtensionsScreenModel(
                 is DesktopPresentationInstallStart.TrustRequired -> enqueuePending(
                     DesktopPendingTrust(item.operationPackageName, start.request),
                 )
-                is DesktopPresentationInstallStart.Rejected -> recordError(item.operationPackageName, start.error)
+                is DesktopPresentationInstallStart.Rejected -> {
+                    if (start.error.cause is ExtensionInstallBusy) clearTerminal(item.operationPackageName)
+                    else recordError(item.operationPackageName, start.error)
+                }
             }
         }
     }
@@ -230,7 +295,11 @@ class ExtensionsScreenModel(
         checkOpen()
         return scope.launch {
             synchronized(lock) { packageJobs[packageName] }?.cancelAndJoin()
-            takePending(packageName)?.let { port.discardTrust(it.request.requestId) }
+            takePending(packageName)?.let { pending ->
+                port.discardTrust(pending.request.requestId)
+                pending.batchTransactionId?.let { synchronized(lock) { batchOperations[it] } }
+                    ?.completion?.complete(SuggestionBatchResult.Cancelled)
+            }
             clearTerminal(packageName)
             publishPending()
         }
@@ -242,15 +311,22 @@ class ExtensionsScreenModel(
         return launchPackage(pending.packageName) {
             var completed = false
             try {
-                port.confirmPresentationTrust(pending.request.requestId)?.let {
-                    collectInstall(pending.packageName, it)
+                val operation = pending.batchTransactionId?.let { synchronized(lock) { batchOperations[it] } }
+                operation?.job = currentCoroutineContext()[Job]
+                val terminal = port.confirmPresentationTrust(pending.request.requestId)?.let {
+                    collectInstall(pending.packageName, it, operation?.onProgress)
                 }
+                operation?.completion?.complete(terminal.batchResult())
                 completed = true
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
+            } catch (failure: Exception) {
+                pending.batchTransactionId?.let { synchronized(lock) { batchOperations[it] } }
+                    ?.completion?.complete(SuggestionBatchResult.Failed(AppError.Unknown(failure)))
             } finally {
                 finishActive(pending, completed)
+                pending.batchTransactionId?.let { synchronized(lock) { batchOperations[it] } }
+                    ?.completion?.complete(SuggestionBatchResult.Cancelled)
             }
         }
     }
@@ -261,6 +337,8 @@ class ExtensionsScreenModel(
         return try {
             port.discardTrust(pending.request.requestId)
         } finally {
+            pending.batchTransactionId?.let { synchronized(lock) { batchOperations[it] } }
+                ?.completion?.complete(SuggestionBatchResult.Cancelled)
             clearTerminal(pending.packageName)
             publishPending()
         }
@@ -372,21 +450,101 @@ class ExtensionsScreenModel(
             }
         }
 
-    private suspend fun collectInstall(packageName: String, events: Flow<DesktopPresentationInstallEvent>) {
+    private suspend fun collectInstall(packageName: String, events: Flow<DesktopPresentationInstallEvent>, onProgress: ((ExtensionInstallState) -> Unit)? = null): ExtensionInstallState? {
         var lastStep: ExtensionPresentationInstallStep? = null
+        var terminal: ExtensionInstallState? = null
         events.onEach { event ->
-            lastStep = event.step
-            dispatchStep(packageName, event.step)
+            val invalidated = (event.raw as? ExtensionInstallState.Failed)?.error?.cause is ExtensionInstallInvalidated
+            val step = if (invalidated) ExtensionPresentationInstallStep.Idle else event.step
+            lastStep = step
+            dispatchStep(packageName, step)
             event.raw?.let { raw ->
+                terminal = raw
+                onProgress?.invoke(raw)
                 mutableState.update { it.copy(rawInstallStates = it.rawInstallStates + (packageName to raw)) }
                 (raw as? ExtensionInstallState.Failed)?.error?.let { error ->
-                    if (error == AppError.Cancelled) clearEvidence(packageName) else recordError(packageName, error)
+                    if (error == AppError.Cancelled || error.cause is ExtensionInstallInvalidated) {
+                        clearEvidence(packageName)
+                    } else recordError(packageName, error)
                 }
             }
         }.takeWhile { desktopExtensionPresentationStore.shouldContinue(it.step) }.collect()
         if (lastStep == ExtensionPresentationInstallStep.Installed || lastStep == ExtensionPresentationInstallStep.Idle) {
             clearTerminal(packageName)
         }
+        return terminal
+    }
+
+    private fun suggestionEligibility(artifact: ExtensionArtifact): ExtensionInstallInvalidation? {
+        if (suggestionIdentityKey(SuggestionIdentity.of(artifact)) in suggestionPreferences.ignored.get().lineSequence()) {
+            return ExtensionInstallInvalidation.IGNORED
+        }
+        val inventory = currentInventory.value
+        if (!inventory.initialized || inventory.hasUnknownArtifacts) return ExtensionInstallInvalidation.INVENTORY_UNKNOWN
+        if (artifact.packageName in inventory.records) return ExtensionInstallInvalidation.PRESENT
+        if (suggestionCatalog.value?.entries?.any { it.artifact == artifact } != true) return ExtensionInstallInvalidation.CATALOG_CHANGED
+        val suggestions = state.value.suggestions
+        if (suggestions.isLoading) return ExtensionInstallInvalidation.INVENTORY_UNKNOWN
+        if (suggestions.suggestions.none { it.identity == SuggestionIdentity.of(artifact) }) return ExtensionInstallInvalidation.INELIGIBLE
+        return null
+    }
+
+    private suspend fun installReserved(lease: ExtensionInstallLease, onProgress: (Long, ExtensionInstallState) -> Unit): SuggestionBatchResult {
+        val packageName = lease.artifact.packageName
+        val operation = BatchOperation(CompletableDeferred()) { onProgress(lease.transactionId, it) }
+        synchronized(lock) { batchOperations[lease.transactionId] = operation }
+        var waitingForTrust = false
+        val job = launchPackage(packageName) {
+            try {
+                clearEvidence(packageName)
+                dispatchStep(packageName, ExtensionPresentationInstallStep.Pending)
+                when (val start = port.beginReservedInstall(lease.artifact, lease)) {
+                    is DesktopPresentationInstallStart.Started -> operation.completion.complete(
+                        collectInstall(packageName, start.events, operation.onProgress).batchResult(),
+                    )
+                    is DesktopPresentationInstallStart.TrustRequired -> {
+                        waitingForTrust = true
+                        enqueuePending(DesktopPendingTrust(packageName, start.request, lease.transactionId))
+                    }
+                    is DesktopPresentationInstallStart.Rejected -> operation.completion.complete(SuggestionBatchResult.Failed(start.error))
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                operation.completion.complete(SuggestionBatchResult.Failed(AppError.Unknown(failure)))
+            } finally {
+                if (!waitingForTrust) operation.completion.complete(SuggestionBatchResult.Cancelled)
+            }
+        }
+        return try {
+            operation.completion.await()
+        } finally {
+            withContext(NonCancellable) {
+                if (!operation.completion.isCompleted) {
+                    job.cancelAndJoin()
+                    synchronized(lock) { packageJobs[packageName] }?.cancelAndJoin()
+                    takePending(packageName)?.let { port.discardTrust(it.request.requestId) }
+                    publishPending()
+                    clearTerminal(packageName)
+                } else {
+                    (operation.job ?: job).join()
+                }
+                synchronized(lock) { batchOperations.remove(lease.transactionId, operation) }
+            }
+        }
+    }
+
+    private fun ExtensionInstallState?.batchResult(): SuggestionBatchResult = when (this) {
+        is ExtensionInstallState.Installed -> SuggestionBatchResult.Installed
+        is ExtensionInstallState.Failed -> when (val invalidation = error.cause) {
+            is ExtensionInstallInvalidated -> SuggestionBatchResult.Invalidated(invalidation.reason)
+            else -> if (error == AppError.Cancelled) SuggestionBatchResult.Cancelled else SuggestionBatchResult.Failed(error)
+        }
+        else -> SuggestionBatchResult.Failed(AppError.Unknown(IllegalStateException("Installation ended without a result")))
+    }
+
+    private class BatchOperation(val completion: CompletableDeferred<SuggestionBatchResult>, val onProgress: (ExtensionInstallState) -> Unit) {
+        @Volatile var job: Job? = null
     }
 
     private fun dispatchStep(packageName: String, step: ExtensionPresentationInstallStep) =

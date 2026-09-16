@@ -158,16 +158,22 @@ class DesktopExtensionManager(
 
     /**
      * Deletes the JAR file and its meta sidecar for [extension].
-     * @return true if the JAR was deleted successfully.
+     * @return true if both the JAR and its metadata were deleted successfully.
      */
     override fun removeExtensionWithMeta(extension: InstalledExtension): Boolean {
         val removed = lifecycleGate.withPublicOperation {
             releaseRuntime(extension.pkgName)
-            extension.jarFile.delete().also { deleted ->
+            extension.jarFile.delete().let { deleted ->
                 if (deleted) {
-                    deleteExtensionMeta(extension.jarFile)
+                    try {
+                        deleteExtensionMeta(extension.jarFile)
+                        true
+                    } catch (_: java.io.IOException) {
+                        false
+                    }
                 } else {
                     reloadRuntime(extension.pkgName, extension.sources.map { it.id }.toSet())
+                    false
                 }
             }
         }
@@ -181,8 +187,8 @@ class DesktopExtensionManager(
     internal suspend fun installExtension(artifact: ExtensionArtifact): ExtensionInstallState =
         installExtensionStates(artifact).last()
 
-    override fun installExtensionStates(artifact: ExtensionArtifact): Flow<ExtensionInstallState> =
-        installCoordinator.install(ExtensionInstallRequest(artifact))
+    override fun installExtensionStates(artifact: ExtensionArtifact, beforeCommit: (() -> Unit)?): Flow<ExtensionInstallState> =
+        installCoordinator.install(ExtensionInstallRequest(artifact, beforeCommit))
             .onCompletion { publishInstalledExtensions() }
 
     private fun releaseRuntime(packageName: String) {

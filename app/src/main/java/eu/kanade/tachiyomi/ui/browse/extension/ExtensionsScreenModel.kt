@@ -30,11 +30,14 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import mihon.domain.error.AppError
 import mihon.domain.extension.presentation.ExtensionPresentationAction
 import mihon.domain.extension.presentation.ExtensionPresentationActionState
 import mihon.domain.extension.presentation.ExtensionPresentationClassifier
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationStore
+import mihon.domain.extension.service.ExtensionInstallBusy
+import mihon.domain.extension.service.ExtensionInstallState
 import mihon.domain.extension.suggestion.ExtensionSuggestionPreferences
 import mihon.domain.extension.suggestion.ExtensionSuggestions
 import mihon.domain.extension.suggestion.SuggestionPanelState
@@ -62,10 +65,27 @@ class ExtensionsScreenModel(
 
     private val actionState = MutableStateFlow(ExtensionPresentationActionState())
     private val installCollections = ConcurrentHashMap<String, Any>()
+    private val sharedInstallSteps =
+        combine(actionState, extensionManager.installArbiter.reservations) { local, reservations ->
+            local.installSteps + reservations.mapValues { (_, reservation) ->
+                when (val progress = reservation.progress) {
+                    null, ExtensionInstallState.Queued -> ExtensionPresentationInstallStep.Pending
+                    ExtensionInstallState.Preparing -> ExtensionPresentationInstallStep.Downloading
+                    is ExtensionInstallState.Installed -> ExtensionPresentationInstallStep.Installed
+                    is ExtensionInstallState.Failed ->
+                        if (progress.error == AppError.Cancelled) {
+                            ExtensionPresentationInstallStep.Idle
+                        } else {
+                            ExtensionPresentationInstallStep.Error
+                        }
+                    else -> ExtensionPresentationInstallStep.Installing
+                }
+            }
+        }
     val suggestionPanel = mihon.domain.extension.suggestion.ExtensionSuggestionPanel(
         screenModelScope,
         state.map { it.suggestions }.distinctUntilChanged(),
-        actionState.map { it.installSteps },
+        sharedInstallSteps,
         suggestionPreferences,
     )
 
@@ -86,8 +106,8 @@ class ExtensionsScreenModel(
                     .distinctUntilChanged()
                     .debounce(SEARCH_DEBOUNCE_MILLIS)
                     .map { searchQueryPredicate(it ?: "") },
-                actionState.map { actionState ->
-                    actionState.installSteps.mapValues { InstallStep.valueOf(it.value.name) }
+                sharedInstallSteps.map { steps ->
+                    steps.mapValues { InstallStep.valueOf(it.value.name) }
                 },
                 getExtensions.subscribe(),
             ) { predicate, downloads, (_updates, _installed, _available, _untrusted) ->
@@ -202,6 +222,9 @@ class ExtensionsScreenModel(
     }
 
     private fun addDownloadState(extension: Extension, installStep: InstallStep) {
+        if (installStep != InstallStep.Error && installStep != InstallStep.Pending) {
+            mutableState.update { it.copy(installErrors = it.installErrors - extension.pkgName) }
+        }
         dispatch(
             ExtensionPresentationAction.InstallStepChanged(
                 extension.pkgName,
@@ -227,29 +250,53 @@ class ExtensionsScreenModel(
             addDownloadState(extension, InstallStep.Pending)
         }
         screenModelScope.launchIO {
-            val steps = synchronized(installCollections) {
-                if (installCollections[extension.pkgName] === collection) operation() else null
-            } ?: return@launchIO
-            steps
-                .onEach { step ->
-                    synchronized(installCollections) {
-                        if (installCollections[extension.pkgName] === collection) addDownloadState(extension, step)
+            try {
+                val steps = synchronized(installCollections) {
+                    if (installCollections[extension.pkgName] === collection) operation() else null
+                } ?: return@launchIO
+                steps
+                    .onEach { step ->
+                        synchronized(installCollections) {
+                            if (installCollections[extension.pkgName] === collection) addDownloadState(extension, step)
+                        }
                     }
-                }
-                .takeWhile { step ->
-                    actionStore.shouldContinue(ExtensionPresentationInstallStep.valueOf(step.name)) &&
-                        !step.isCompleted()
-                }
-                .onCompletion {
-                    synchronized(installCollections) {
-                        if (installCollections.remove(extension.pkgName, collection) &&
-                            actionState.value.installSteps[extension.pkgName] != ExtensionPresentationInstallStep.Error
-                        ) {
-                            removeDownloadState(extension)
+                    .takeWhile { step ->
+                        actionStore.shouldContinue(ExtensionPresentationInstallStep.valueOf(step.name)) &&
+                            !step.isCompleted()
+                    }
+                    .onCompletion {
+                        synchronized(installCollections) {
+                            if (installCollections.remove(extension.pkgName, collection) &&
+                                actionState.value.installSteps[extension.pkgName] !=
+                                ExtensionPresentationInstallStep.Error
+                            ) {
+                                removeDownloadState(extension)
+                            }
+                        }
+                    }
+                    .collect()
+            } catch (busy: ExtensionInstallBusy) {
+                mutableState.update { it.copy(installRequestBusy = true) }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                synchronized(installCollections) {
+                    if (installCollections[extension.pkgName] === collection) {
+                        addDownloadState(extension, InstallStep.Error)
+                        mutableState.update {
+                            it.copy(installErrors = it.installErrors + (extension.pkgName to AppError.Unknown(failure)))
                         }
                     }
                 }
-                .collect()
+            } finally {
+                synchronized(installCollections) {
+                    if (installCollections.remove(extension.pkgName, collection) &&
+                        actionState.value.installSteps[extension.pkgName] != ExtensionPresentationInstallStep.Error
+                    ) {
+                        removeDownloadState(extension)
+                    }
+                }
+            }
         }
     }
 
@@ -292,7 +339,8 @@ class ExtensionsScreenModel(
         val installer: BasePreferences.ExtensionInstaller? = null,
         val searchQuery: String? = null,
         val repositoryFailures: List<mihon.domain.extension.model.RepositoryCatalogFailure> = emptyList(),
-        val installErrors: Map<String, mihon.domain.error.AppError> = emptyMap(),
+        val installErrors: Map<String, AppError> = emptyMap(),
+        val installRequestBusy: Boolean = false,
         val originConfirmations: List<eu.kanade.tachiyomi.extension.util.ExtensionOriginConfirmation> = emptyList(),
     ) {
         val isEmpty = items.isEmpty()

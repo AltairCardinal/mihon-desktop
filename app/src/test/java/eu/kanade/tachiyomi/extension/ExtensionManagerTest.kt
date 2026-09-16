@@ -56,6 +56,26 @@ import java.util.concurrent.TimeUnit
 class ExtensionManagerTest {
 
     @Test
+    fun `normal install and update entry cannot replace an already reserved package`() = runBlocking {
+        val available = available()
+        val installer = mockk<ExtensionInstaller>(relaxed = true) {
+            every { downloadAndInstall(any(), any(), any(), any()) } returns flowOf(InstallStep.Pending)
+        }
+        val manager =
+            manager(
+                initial = listOf(LoadResult.Success(installed())),
+                available = listOf(available),
+                installer = installer,
+            )
+        manager.isInitialized.await { it }
+        manager.findAvailableExtensions()
+        assertEquals(InstallStep.Pending, manager.installExtension(available).first())
+        val second = runCatching { manager.updateExtension(installed()).first() }
+        verify(exactly = 1) { installer.downloadAndInstall(any(), any(), any(), any()) }
+        assertTrue(second.exceptionOrNull()?.message.orEmpty().contains("already"))
+    }
+
+    @Test
     fun `repository updates suppress a late obsolete catalog and refresh through the existing manager`() = runTest {
         withNotificationEnvironment {
             val old = ExtensionRepo("https://old.example", "Old", null, "", "old")
@@ -278,7 +298,7 @@ class ExtensionManagerTest {
     fun `unsupported catalog candidate stays visible but cannot install or update`() = runTest {
         withNotificationEnvironment {
             val installer = mockk<ExtensionInstaller>(relaxed = true)
-            every { installer.downloadAndInstall(any(), any()) } returns flowOf(InstallStep.Installed)
+            every { installer.downloadAndInstall(any(), any(), any(), any()) } returns flowOf(InstallStep.Installed)
             val unsupported = available().copy(libVersion = ExtensionLoader.LIB_VERSION_MAX + 0.1, versionCode = 999)
             val manager = manager(listOf(LoadResult.Success(installed())), listOf(unsupported), installer = installer)
             manager.isInitialized.await { it }
@@ -288,7 +308,7 @@ class ExtensionManagerTest {
             assertEquals(listOf(InstallStep.Error), manager.installExtension(unsupported).toList())
             assertEquals(listOf(InstallStep.Error), manager.updateExtension(installed()).toList())
             assertFalse(manager.installedExtensionsFlow.value.single().hasUpdate)
-            verify(exactly = 0) { installer.downloadAndInstall(any(), any()) }
+            verify(exactly = 0) { installer.downloadAndInstall(any(), any(), any(), any()) }
         }
     }
 
@@ -506,7 +526,16 @@ class ExtensionManagerTest {
         val installed = installed()
         val available = available()
         val installer = mockk<ExtensionInstaller> {
-            every { downloadAndInstall(any(), available) } returns flowOf(InstallStep.Pending)
+            every { downloadAndInstall(any(), available, any(), any()) } answers {
+                val finished = lastArg<() -> Unit>()
+                kotlinx.coroutines.flow.flow {
+                    try {
+                        emit(InstallStep.Pending)
+                    } finally {
+                        finished()
+                    }
+                }
+            }
             every { cancelInstall(any()) } returns Unit
             every { uninstallApk(any()) } returns Unit
             every { isInstallTransactionActive(any()) } returns false
@@ -539,7 +568,7 @@ class ExtensionManagerTest {
         manager.cancelInstallUpdateExtension(installed)
         manager.uninstallExtension(installed)
         assertTrue(manager.installedExtensionsFlow.value.any { it.pkgName == installed.pkgName })
-        verify(exactly = 2) { installer.downloadAndInstall(any(), available) }
+        verify(exactly = 2) { installer.downloadAndInstall(any(), available, any(), any()) }
         verify { installer.cancelInstall(installed.pkgName) }
         verify { installer.uninstallApk(installed.pkgName) }
 

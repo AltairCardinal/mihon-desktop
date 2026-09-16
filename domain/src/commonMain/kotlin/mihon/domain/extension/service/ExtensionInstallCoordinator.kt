@@ -17,6 +17,7 @@ import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionArtifact
 
 sealed interface ExtensionInstallState {
+    data object Queued : ExtensionInstallState
     data object Preparing : ExtensionInstallState
     data object Validating : ExtensionInstallState
     data object Committing : ExtensionInstallState
@@ -133,11 +134,14 @@ class ExtensionInstallCoordinator(
         var cleanupCompleted = false
         var transactionFailure: Throwable? = null
         var error: AppError? = null
+        var commitEntered = false
         try {
             events.state(ExtensionInstallState.Preparing)
             prepared = port.prepare(request)
             events.state(ExtensionInstallState.Validating)
             rollback = port.validate(prepared)
+            request.beforeCommit?.invoke()
+            commitEntered = true
             events.state(ExtensionInstallState.Committing)
             port.commit(prepared)
             events.state(ExtensionInstallState.Reloading)
@@ -146,7 +150,7 @@ class ExtensionInstallCoordinator(
             cleanupCompleted = true
         } catch (failure: Throwable) {
             transactionFailure = failure
-            error = if (rollback == null) {
+            error = if (rollback == null || !commitEntered) {
                 failure.toAppError()
             } else {
                 withContext(NonCancellable) {

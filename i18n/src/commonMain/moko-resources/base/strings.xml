@@ -1920,4 +1920,20 @@
     <string name="extension_suggestions_active">%1$d installations in progress</string>
     <string name="extension_suggestions_source">Source %1$s · %2$d manga</string>
     <string name="extension_suggestions_checked">Installed extensions checked.</string>
+    <string name="extension_batch_install_all">Install all suggestions</string>
+    <string name="extension_batch_install_matching">Install matching</string>
+    <string name="extension_batch_confirm">Confirm installations</string>
+    <string name="extension_batch_install_count">Install selected (%1$d)</string>
+    <string name="extension_batch_stop">Stop remaining</string>
+    <string name="extension_batch_progress">%1$d of %2$d installations completed</string>
+    <string name="extension_batch_retry">Retry failed</string>
+    <string name="extension_batch_busy">Already queued or installing — skipped</string>
+    <string name="extension_batch_stopped">Stopped</string>
+    <string name="extension_batch_failed">Failed</string>
+    <string name="extension_batch_changed">Conditions changed — skipped or awaiting confirmation</string>
+    <string name="extension_batch_review">Review remaining</string>
+    <string name="extension_batch_reconfirm">Installation paused. Review the remaining extensions before continuing.</string>
+    <string name="extension_batch_conflict">Selected extensions provide the same source. Choose one provider before continuing.</string>
+    <string name="extension_batch_unavailable">The list changed. Refresh extensions or explicitly select a replacement repository, then review again.</string>
+    <string name="extension_batch_use_repository">Use this repository</string>
 </resources>

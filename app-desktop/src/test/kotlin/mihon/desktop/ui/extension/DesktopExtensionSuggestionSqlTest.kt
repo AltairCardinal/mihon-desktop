@@ -1,5 +1,6 @@
 package mihon.desktop.ui.extension
 
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import io.mockk.coEvery
 import io.mockk.every
@@ -28,6 +29,7 @@ class DesktopExtensionSuggestionSqlTest : ExtensionSuggestionSqlContract() {
         val handler = JvmDatabaseHandler(database, driver)
         val observer = ObserveExtensionSuggestions(DesktopSourceRepository(manager, handler), manager)
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } answers { requireNotNull(catalog.value) }
             every { availableExtensions(any()) } returns emptyList()
         }

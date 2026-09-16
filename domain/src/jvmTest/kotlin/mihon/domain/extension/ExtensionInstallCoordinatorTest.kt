@@ -34,6 +34,28 @@ import kotlin.coroutines.CoroutineContext
 class ExtensionInstallCoordinatorTest {
 
     @Test
+    fun `reservation guard checks current eligibility after download and before any commit side effect`() = runTest {
+        val port = RecordingInstallPort(blockPreparation = true)
+        val arbiter = mihon.domain.extension.service.ExtensionInstallArbiter()
+        var invalid: mihon.domain.extension.service.ExtensionInstallInvalidation? = null
+        val lease = requireNotNull(arbiter.reserve(request().artifact) { invalid })
+        assertTrue(arbiter.activate(lease, lease.artifact))
+        val job = async {
+            ExtensionInstallCoordinator(port, backgroundScope)
+                .install(request().copy(beforeCommit = { arbiter.enterCommit(lease) })).toList()
+        }
+        port.preparationStarted.await()
+        invalid = mihon.domain.extension.service.ExtensionInstallInvalidation.CATALOG_CHANGED
+        port.releasePreparation.complete(Unit)
+        val states = job.await()
+        assertEquals(0, port.commitCalls)
+        assertEquals(1, port.cleanupCalls)
+        assertTrue(states.last() is ExtensionInstallState.Failed)
+        assertTrue(arbiter.isBusy(lease.artifact.packageName))
+        arbiter.release(lease)
+    }
+
+    @Test
     fun `successful install emits stages in order and only installs after reload`() = runTest {
         val port = RecordingInstallPort()
         val request = request()

@@ -1,5 +1,6 @@
 package mihon.desktop.ui.extension
 
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -39,6 +40,7 @@ class DesktopExtensionSuggestionRefreshTest {
         val secondStarted = CompletableDeferred<Unit>()
         var calls = 0
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } coAnswers {
                 if (++calls == 1) oldResponse.await() else {
                     secondStarted.complete(Unit)

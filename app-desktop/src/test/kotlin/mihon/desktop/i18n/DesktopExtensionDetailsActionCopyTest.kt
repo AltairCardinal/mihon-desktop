@@ -1,5 +1,6 @@
 package mihon.desktop.i18n
 
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
@@ -58,6 +59,7 @@ class DesktopExtensionDetailsActionCopyTest {
             repoUrl = "https://repo.example/details",
         )
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } returns ExtensionCatalogResult(emptyList(), emptyList())
             every { availableExtensions(any()) } returns emptyList()
             coEvery { loadExtensionIcon(any()) } returns null

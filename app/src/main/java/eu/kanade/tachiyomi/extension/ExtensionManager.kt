@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -43,7 +44,10 @@ import mihon.domain.extension.model.ExtensionCompatibility
 import mihon.domain.extension.model.RepositoryCatalogFailure
 import mihon.domain.extension.model.RepositoryIdentity
 import mihon.domain.extension.model.toIdentity
+import mihon.domain.extension.service.ExtensionInstallArbiter
+import mihon.domain.extension.service.ExtensionInstallBusy
 import mihon.domain.extension.service.ExtensionInstallFailure
+import mihon.domain.extension.service.ExtensionInstallState
 import mihon.domain.extension.service.ExtensionUpdatePolicy
 import mihon.domain.extension.service.SharedExtensionUpdatePolicy
 import mihon.domain.extension.suggestion.ExtensionInventory
@@ -83,6 +87,7 @@ class ExtensionManager internal constructor(
     private val inventoryProvider: suspend (Context) -> ExtensionInventory =
         { ExtensionLoader.scanInventory(it) },
     private val repositoryUpdates: Flow<List<ExtensionRepo>>? = null,
+    val installArbiter: ExtensionInstallArbiter = ExtensionInstallArbiter(),
 ) {
 
     private val _isInitialized = MutableStateFlow(false)
@@ -397,8 +402,31 @@ class ExtensionManager internal constructor(
      */
     fun installExtension(extension: Extension.Available): Flow<InstallStep> {
         if (extension.compatibility != ExtensionCompatibility.Compatible) return flowOf(InstallStep.Error)
-        return installer.downloadAndInstall(api.getApkUrl(extension), extension).onCompletion {
-            requestInventoryRefresh()
+        val url = api.getApkUrl(extension)
+        val artifact = extension.toArtifact(url)
+        val lease = installArbiter.reserve(artifact)
+            ?: throw ExtensionInstallBusy(extension.pkgName)
+        check(installArbiter.activate(lease, artifact))
+        return try {
+            installer.downloadAndInstall(url, extension, beforeCommit = { installArbiter.enterCommit(lease) }) {
+                installArbiter.release(lease)
+                requestInventoryRefresh()
+            }.onEach { step ->
+                val progress = when (step) {
+                    InstallStep.Pending -> ExtensionInstallState.Queued
+                    InstallStep.Downloading -> ExtensionInstallState.Preparing
+                    InstallStep.Installing -> ExtensionInstallState.Committing
+                    InstallStep.Installed -> ExtensionInstallState.Installed(artifact)
+                    InstallStep.Idle -> ExtensionInstallState.Failed(AppError.Cancelled)
+                    InstallStep.Error -> ExtensionInstallState.Failed(
+                        installer.installErrors.value[extension.pkgName] ?: AppError.Unknown(),
+                    )
+                }
+                installArbiter.progress(lease, progress)
+            }
+        } catch (failure: Throwable) {
+            installArbiter.release(lease)
+            throw failure
         }
     }
 
@@ -440,7 +468,7 @@ class ExtensionManager internal constructor(
      * @param extension The extension to uninstall.
      */
     fun uninstallExtension(extension: Extension) {
-        installer.uninstallApk(extension.pkgName)
+        installArbiter.withRemoval(extension.pkgName) { installer.uninstallApk(extension.pkgName) }
     }
 
     /**

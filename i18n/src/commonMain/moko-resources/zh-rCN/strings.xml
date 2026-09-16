@@ -1714,4 +1714,20 @@
     <string name="extension_suggestions_active">%1$d 项正在安装</string>
     <string name="extension_suggestions_source">源 %1$s · %2$d 部漫画</string>
     <string name="extension_suggestions_checked">已重新检查插件。</string>
+    <string name="extension_batch_install_all">安装全部建议</string>
+    <string name="extension_batch_install_matching">安装匹配项</string>
+    <string name="extension_batch_confirm">确认安装清单</string>
+    <string name="extension_batch_install_count">安装 %1$d 个插件</string>
+    <string name="extension_batch_stop">停止后续安装</string>
+    <string name="extension_batch_progress">已完成 %1$d / %2$d 项安装</string>
+    <string name="extension_batch_retry">重试失败项</string>
+    <string name="extension_batch_busy">已排队或正在安装，已跳过</string>
+    <string name="extension_batch_stopped">已停止</string>
+    <string name="extension_batch_failed">失败</string>
+    <string name="extension_batch_changed">安装条件已变化，已跳过或等待重新确认</string>
+    <string name="extension_batch_review">检查剩余项</string>
+    <string name="extension_batch_reconfirm">安装已暂停。继续前请重新检查并确认剩余插件。</string>
+    <string name="extension_batch_conflict">所选插件提供了相同来源。继续前请只选择一个提供者。</string>
+    <string name="extension_batch_unavailable">清单已变化。请刷新插件或明确选择替代仓库，然后重新检查。</string>
+    <string name="extension_batch_use_repository">使用此仓库</string>
 </resources>

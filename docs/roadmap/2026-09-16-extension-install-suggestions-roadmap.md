@@ -1,7 +1,7 @@
 # 收藏缺失插件「建议安装」完整实施 Roadmap
 
 - 日期：2026-09-16
-- 状态：IN_PROGRESS；已获准实施，EIS-01、EIS-02 已完成，EIS-03 待实施，完成状态以第 4 节批次勾选为准。
+- 状态：IN_PROGRESS；已获准实施，EIS-01、EIS-02、EIS-03 已完成，EIS-04 待实施，完成状态以第 4 节批次勾选为准。
 - 类型：产品 child plan；进度从第 4 节第一个未勾选批次推导，不另设活动任务字段。
 - 父路线：[Android / macOS / Windows 正式 Roadmap](2026-06-30-mihon-desktop-refactor-roadmap.md)。本稿登记为待执行专项，不切换父计划当前执行指针，不恢复其他专项。
 - 产品依据：[需求与技术可行性](../2026-09-16-extension-install-suggestions-requirements.md)；已通过的 [HTML DEMO](../prototypes/multi-device-sync/index.html)，交互提交 `2289a939f`。
@@ -78,7 +78,7 @@
 
 - [x] EIS-01：共享建议识别、安装存在性与双端 production 接线。
 - [x] EIS-02：双端建议分栏与完整单项操作、本地偏好及数据隔离。
-- [ ] EIS-03：共享批次编排、安装入口去重与 Desktop 全部安装闭环。
+- [x] EIS-03：共享批次编排、安装入口去重与 Desktop 全部安装闭环。
 - [ ] EIS-04：Android 全部安装、系统交互与生命周期闭环。
 - [ ] EIS-05：跨端集成收口、正式产物与真实运行验收。
 
@@ -134,6 +134,8 @@ EIS-01 是有真实消费方的内部能力，EIS-02 是可用的单项建议功
 5. 接通一次确认清单、搜索范围、收起仍可见进度、失败重试与停止按钮；页面离开重进保留实际批次，不把 Composable 生命周期当安装生命周期。
 6. 覆盖安装中卸载/其他入口同包请求、来源拒绝、晚到回调、应用级 controller 清理；保存事实结果，不把取消和失败混成成功。
 
+**已冻结的平台边界**：EIS-03 的 Desktop 同步卸载全过程使用同包互斥。Android 本批确保已有安装预留时不派发卸载，且卸载派发与安装预留原子互斥；系统卸载等待确认的异步窗口由 EIS-04 结果协议闭合，不用超时或猜测窗口关闭来解锁。
+
 **验证与验收**：从真实两个 UI action 入口竞争同包，只有一个有效事务且另一请求不取消它；批次失败不回滚成功项；无新增建议自动加入；未提交项停止，正在提交的项依真实结果结束。使用本地 HTTP fixture→production coordinator→临时插件目录→真实 loader 的闭环测试；真实产物来源可验证且不执行未知远端代码。
 
 **独立检查门槛**：主代理或未实施该部分的审查者检查去重原子性、取消/提交边界、来源与签名策略，确认通过后 EIS-04 方可依赖。
@@ -141,6 +143,8 @@ EIS-01 是有真实消费方的内部能力，EIS-02 是可用的单项建议功
 **预期修改范围**：共享 install/presentation、两端必须共享的 install action adapter、Desktop UI/runtime 与安装集成测试。不新建下载队列或全局任务系统。预计 1–1.5 工程日。
 
 ### EIS-04：Android 批次安装与系统生命周期
+
+**平台生命周期补充**：复用真实 `ExtensionInstallActivity` / Activity 结果桥关联系统卸载请求，覆盖先等待卸载确认后发起同包安装、取消和重建释放；该竞争必须在 EIS-05 前闭合。同步核对安装 Activity 重建不重复发起、配置变化不提前删除 URI、启动异常回传真实终态；不重写通用应用卸载器。
 
 **用户入口**：Android 建议安装 → 全部安装 → 系统/私有/Shizuku 当前安装方式对应流程。前置 EIS-03 高风险接口检查通过。
 
@@ -309,3 +313,37 @@ python scripts/gradle-coordinator.py run --key eis-final -- gradlew.bat :domain:
 | 正式 Android/Windows/macOS 运行 | 同一产品行为通过真实链路；发布身份、产物位置与证据可追溯 |
 
 最终面向用户按项目要求报告功能、BUG修复与可执行验收项，附正式产物绝对链接、实际测试结果、已知限制及提交 hash；不能只说“全部完成”或让用户从过程日志拼出交付状态。
+
+
+### EIS-03 已完成（历史红绿过程及最终验收）
+
+- 基线为 EIS-02 `6b34ea3a606a233ddd715ef65485cae401a61bef`，同一实施代理负责修改与串行 Gradle，主代理独立检查；不增加发布或全量测试。
+- 安装预留位于应用级入口、底层既有 coordinator 之前；完整产物与 lease 对象归属同时校验。停止与提交门共用原子边界，旧 lease 不能释放重试事务；实际安装清理完成前保留同包占用。
+- `eis03-arbiter-red` 2 项有效红；`eis03-batch-red` 第一项受 arbiter 前置未实现阻挡，不作批次行为红。`eis03-batch-red-ready` 在 arbiter 2 项通过后确认 batch 3 项有效红。
+- `eis03-guard-red` 确认真实 coordinator 提交前资格复核、单项已存在/忽略/收藏移除跳过的 2 项有效红。`eis03-shared-green` PASSED/exit 0，原始 XML 为 JVM 3+23+4、Android 3+4，共 37 项，无失败/错误/跳过。Kotlin 增量编译曾自动回退非增量，最终任务成功。
+- `eis03-desktop-arbitration-red` 确认真正 API 两入口会同时进入同包安装；`eis03-resume-red` 确认暂停项被错误计为完成。修复后 `eis03-resume-api-green` PASSED/exit 0（共享恢复 5 项、Desktop API 2 项）。暂停恢复保留原批次和已完成事实，只重新确认固定剩余包清单；未完成 Desktop UI/真实安装闭环及 Android 共用入口，不能作为批次完成证据。
+
+- EIS-03 后续有效红：`eis03-boundary-red` 原始 XML 确认 metadata 未受预留保护、信任确认同步异常泄露 lease、恢复产物与已成功源冲突共 3 项；仅为取红临时恢复的两个 API 旧边界已还原修复版。`eis03-android-arbitration-red` 确认真实 manager 安装/更新造成两次低层请求。`eis03-platform-green` 整轮 FAILED（Desktop 测试 fixture 单行补桩缺换行导致编译错误）；其有效 XML 为 domain 4+23+7、Android manager 1，通过不代表整轮通过。Desktop 新依赖的测试 fixture 仅增加真实 arbiter，未用宽松 mock 掩盖状态行为。
+
+- 2026-09-17 交接：实施子代理因平台用量限制进入 errored，主代理核对状态后接管已有 diff；没有重启仍在运行的 Gradle。遗留 `eis03-ui-boundary-red` 随后正常结束为 FAILED / exit 1（2m16s）：共享停止后仍可恢复、失败项重试未实现；Android 真 manager→ScreenModel 重复请求的原始失败含未捕获 `ExtensionInstallBusy`；Desktop 离屏测试尚找不到批量确认入口。这些属于待修行为红，不能作为完成证据。
+- 接管后的未验证实现：共享重试只重交明确确认的失败包并保留成功记录；停止后保留当前项真实中断结果但不再提供继续清单；Android 在同步 Busy 时释放页面自身请求标记，不释放另一入口的安装 lease。Desktop 增加固定清单确认入口与独立于折叠区的批次计数/停止反馈，尚缺完整逐项结果、暂停/重试 UI 及真实 HTTP→loader 闭环收口。
+- 验证限制：启动 `eis03-takeover-green` focused Gradle 命令被执行策略拒绝（仅返回 `blocked by policy`，具体策略来源未确认），命令没有启动；未换写命令规避拒绝。新增 base/简中/繁中资源 XML 可解析且键唯一，`git diff --check` 通过，但这些不替代编译与行为绿测试。EIS-03 保持未勾选、未提交；主代理接管的变更仍需独立审查。
+- 后续只读核验再次确认 `eis03-ui-boundary-red` 为终态 FAILED、`eis03-takeover-green` 为 NOT_STARTED；没有后台验证仍在进行。已补写 Desktop 真实 ScreenModel/API + 离屏页面的逐项结果与失败项确认重试测试，尚未运行，故对应 UI 实现未推进为完成；focused 验证重试已向用户提出确认，确认前不重新执行被拒命令。当前 diff-check 通过。
+- 用户随后明确批准重试。主代理先核对 coordinator 状态，再重新执行完全相同的 `eis03-takeover-green` 启动命令；执行环境仍在 CreateProcess 前拒绝，仍仅返回 `blocked by policy`。因此授权已具备，但环境策略阻塞未解除；测试未启动，不要求用户重复批准，不据此声称验证通过。
+- 拒绝来源排查：已读取两处用户级 default.rules，未发现禁止 Gradle 的显式条目；对精简命令的本地 execpolicy check 返回 matchedRules 为空，此结果不能证明完整 PowerShell 调用在所有有效策略层下获准。当前会话为 danger-full-access / approval_policy=never；因此先前直接称作 Auto-review 拒绝缺乏证据，已纠正。没有改动安全配置。最新 coordinator 状态仍为 NOT_STARTED，待执行环境解除阻塞后再完成红绿验证与独立审查。
+- 卸载边界：EIS-03 Desktop 同步卸载全过程受同包仲裁保护。Android 本批仅保证已有安装 lease 时不派发卸载、卸载派发与安装预留互斥；系统卸载确认窗口的异步结果关联及取消释放必须在 EIS-04 生命周期实现中闭合，禁止用猜测超时解锁，也不能作为最终未解决限制留到交付。
+- 后续根因（用户提供）：Codex Windows `0.154.0-alpha.6.2` 将整段 PowerShell 参数中同时出现的 `start` 与 HTTP URL 误判为危险启动操作，叠加 `approval_policy=never` 直接拒绝。用户用纯文本输出的三组对照复现；具体结果、归因边界与恢复条件已归档到 [实施交接](../2026-09-17-extension-install-suggestions-handoff.md#后续根因定位用户提供)。本轮未独立复现或读取用户所述源码，未修改安全配置，功能验证尚未恢复；不将根因定位等同于 EIS-03 验收完成。
+- focused 验证随后恢复：使用既有协调器 `foreground` 模式及 Gradle `--offline`，不传代理参数，限制为缓存依赖与前台受管理进程；`eis03-offline-green` PASSED / exit 0，1m22s。原始 XML 核对：共享批次 9 项、Android 真实 manager→ScreenModel 同包竞争 1 项，共 10 项，failure/error/skipped 均为 0，验证了接管后的停止/失败重试和 Busy 清理修复。没有修改 Codex 安全配置。此结果不覆盖 Desktop UI、完整安装闭环或独立审查，EIS-03 仍未勾选。
+- 原实施子代理恢复后继续承担 EIS-03 主实现及唯一 Gradle 执行者。主代理独立检查首 Pending 取消修复：等待事件移入持有安装预留的 Flow 的 `try/finally`，重复订阅检查保持在其外，避免第二个订阅释放第一个事务。`eis03-pending-green` 协调器终态 PASSED / exit 0（1m01s）；子代理报告普通安装、信任确认两条真实 API→presentation 用例均通过，批次最终回归仍需覆盖既有事件序列。
+- 主代理已读取保留的 `.gradle-coordinator/eis03-results-green-resume-red.xml`：结果/失败项确认重试的完整界面用例通过；暂停用例准确失败于缺少 `Review remaining`，批次事实为 0/2、原清单仍保留。此轮整体 FAILED，不能作为暂停恢复完成证据；后续补恢复确认、目录变化及真实 HTTP→loader 闭环。尚未完成本批验收与提交，保持未勾选。
+- Desktop 后续证据：主代理核对 `eis03-ui-green-api.xml`（22 项）与 `eis03-ui-green-rendered.xml`（6 项），失败/错误/跳过均为 0。`eis03-reconfirm-red-fixed` 整轮 FAILED，但原始 XML 中真实 Browse 批量入口→本地 HTTP 目录解析/下载→默认签名校验→production manager/coordinator→真实 loader 用例通过；断言受控 JAR 的 SHA-256、安装字节、来源元数据、加载出的源、请求数及预留释放。另一用例准确显示目录已更新到 1.6.2 而恢复确认框仍为 1.6.1，作为重新确认修复的有效红，不混作整轮通过。
+- Android 跨入口进度：`eis03-android-progress-green` 整轮 FAILED；主代理核对原始 XML，presentation wiring 12 项通过，manager 19 项中的 3 个失败均来自旧 `fixed main routes package actions...` 测试变体。其 installer fixture 未调用新清理完成回调，前次请求仍持有预留；应补真实完成语义的 fixture，再复验整类，不得为通过旧断言而提前释放 production 事务。阶段验收仍未完成。
+
+- EIS-03 维护边界：应用入口统一先获取同包 lease，完整产物、owner 对象与事务 ID 一起校验；等待来源确认也持有预留。Busy 不创建等待安装请求，不取消当前 owner；底层既有 coordinator 的合并/回滚能力继续保留。Desktop 产品入口统一经过 API，内部发布验收可直接调用 manager。首 Queued 事件在所有权 Flow 的 `try/finally` 内发出，真实清理完成才释放；Android 普通页面与建议区共用 manager 的预留/真实进度，页面自己的重复请求不得覆盖它。
+- EIS-03 UI/恢复边界：应用级批次只保留内存事务，页面退出/重进不重放或取消，进程重启不自动续装。确认、恢复、失败重试均固定包清单；同来源身份内更新版本，仓库/指纹变更必须显式选择替代来源并再次确认。完整产物的源冲突（含本批已成功产物）阻止确认并给出解释；暂停/跳过不冒充安装成功，批次结果独立于建议行与折叠状态。停止后，已进入提交的当前项继续接收真实结果，仅停止后续项。目录资格失效呈现重新确认，不向用户泄露内部枚举错误。
+- 本批跨越共享仲裁/批次、双端安装入口与进度、Desktop 页面/API/真实安装器以及关联测试 fixture，超过 8 文件/400 行属于同一个不能拆开验收的安装事务协议。风险集中在取消/提交竞态、来源信任、清理完成与页面寿命；以真实双线程、共享契约、双端入口、受控签名本地 HTTP 闭环和受影响整类回归覆盖，未引入新的下载器、签名策略或持久队列。
+
+- EIS-03 限定回归进一步关闭两个边界：信任确认展示与提交都使用 `claimed.artifact` 的同一个冻结实例；Desktop 元数据读取与删除的真实 Windows 句柄竞争可导致 JAR 已删但 sidecar 遗留。`eis03-metadata-red-fixed` 在 production 读/删边界用真实句柄与屏障复现 `done=true, sidecarExists=true`，不可删除 sidecar 也必须显式失败；`eis03-metadata-manager-red-fixed` 验证真实 manager 不得返回成功。修复使用仅覆盖元数据的读写锁，包含普通读写删、commit 替换、rollback 恢复与恢复快照读取，不锁整个库存投影、不嵌套不可重入生命周期门。删除失败转为既有卸载 Boolean false 并发布实际库存，页面继续使用原失败 Snackbar。`eis03-metadata-write-red` 的真实 commit/rollback 两项进一步确认直接 fileSystem 替换也必须加入该锁；线程屏障只控制时序，不替代 production I/O。首次两个测试夹具编译失败已修正，不算行为红。
+
+- EIS-03 最终验收（2026-09-17）：`eis03-repair-final` PASSED / exit 0，33s，四个直接受影响整类 77 项通过。首轮 `eis03-focused-final` 留存且未受后续修改影响的 XML，结合最终四类替换后的联合证据为 27 suites / 294 项（domain JVM 36、domain Android 13、app 58、Desktop 187），failure/error/skipped 均为 0；不是将失败轮整轮计为通过。原始证据保留 `.gradle-coordinator/eis03-final-*-TEST-*.xml` 和 `eis03-repair-final-TEST-*.xml`。受影响格式与最终 `git diff --check` 通过。主代理独立核对实际源码、原始 XML、协调器终态及真实签名 HTTP→coordinator→目录→loader 闭环，所有本批审查项关闭；接管代码也已由原实施代理独立核查。实现、测试、文档与 checkoff 纳入同一 EIS-03 功能提交，hash 随回执提供，不另建状态提交。
+- 下一批为 EIS-04：Android 系统批次、取消/权限/重建/晚回调，以及系统卸载等待窗口的异步预留必须闭合；本批未执行全量或正式发布构建，不代表 EIS-04/05 完成。

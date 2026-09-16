@@ -1,5 +1,6 @@
 package mihon.desktop.test.http
 
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
 import io.mockk.coEvery
@@ -97,6 +98,7 @@ class SourceExtensionTestModeHttpTest {
         val installed = MutableStateFlow(emptyList<InstalledExtension>())
         val manager = mockk<DesktopExtensionManager>()
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } returns ExtensionCatalogResult(emptyList(), emptyList())
             every { availableExtensions(any()) } returns listOf(extension)
             coEvery { beginInstall(extension, manager) } answers { starts.removeFirst() }

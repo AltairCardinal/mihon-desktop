@@ -27,29 +27,163 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import mihon.domain.error.AppError
 import mihon.domain.extension.presentation.ExtensionPresentationAction
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationStore
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.Preference
+import uy.kohesive.injekt.api.addSingleton
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class ExtensionPresentationWiringTest {
     private val modelHost = ScreenModelTestHost()
+
+    @Test
+    fun `synchronous install failure is visible and releases screen ownership for retry`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val extension = available("Reader", "pkg.sync.failure", emptyList())
+        val failure = IllegalStateException("Installer could not start")
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { installArbiter } returns ExtensionInstallArbiter()
+            every { installExtension(extension) } answers {
+                if (calls.incrementAndGet() == 1) throw failure
+                flow {
+                    emit(eu.kanade.tachiyomi.extension.model.InstallStep.Downloading)
+                    kotlinx.coroutines.awaitCancellation()
+                }
+            }
+        }
+        val model =
+            screenModel(
+                manager,
+                Extensions(emptyList(), emptyList(), listOf(extension), emptyList()),
+                androidExtensionPresentationStore,
+            )
+        try {
+            model.installExtension(extension)
+            kotlinx.coroutines.withContext(Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(5_000) {
+                    model.state.first {
+                        it.installErrors[extension.pkgName]?.cause ===
+                            failure
+                    }
+                }
+            }
+            model.installExtension(extension)
+            kotlinx.coroutines.withContext(Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(5_000) {
+                    model.state.first {
+                        it.items.values.flatten().singleOrNull()?.installStep ==
+                            eu.kanade.tachiyomi.extension.model.InstallStep.Downloading
+                    }
+                }
+            }
+            assertEquals(2, calls.get())
+            assertFalse(model.state.value.installErrors.containsKey(extension.pkgName))
+        } finally {
+            val owner = model.screenModelScope.coroutineContext[kotlinx.coroutines.Job]
+            modelHost.close()
+            kotlinx.coroutines.withContext(Dispatchers.Default) { owner?.join() }
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `another manager entry remains downloading when the real screen rejects its duplicate`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val previousInjekt = uy.kohesive.injekt.Injekt
+        uy.kohesive.injekt.Injekt =
+            uy.kohesive.injekt.api.InjektScope(uy.kohesive.injekt.registry.default.DefaultRegistrar())
+        uy.kohesive.injekt.Injekt.addSingleton(
+            eu.kanade.tachiyomi.core.security.SecurityPreferences(
+                tachiyomi.core.common.preference.InMemoryPreferenceStore(),
+            ),
+        )
+        io.mockk.mockkStatic(androidx.core.app.NotificationManagerCompat::class)
+        every { androidx.core.app.NotificationManagerCompat.from(any()) } returns mockk(relaxed = true)
+        val extension = available("Reader", "pkg.held", emptyList())
+        val steps = MutableStateFlow(eu.kanade.tachiyomi.extension.model.InstallStep.Downloading)
+        val installer = mockk<eu.kanade.tachiyomi.extension.util.ExtensionInstaller>(relaxed = true) {
+            every { installErrors } returns MutableStateFlow(emptyMap())
+            every { originConfirmations } returns MutableStateFlow(emptyList())
+            every { downloadAndInstall(any(), any(), any(), any()) } answers {
+                val finished = lastArg<() -> Unit>()
+                steps.onCompletion { finished() }
+            }
+        }
+        val manager = ExtensionManager(
+            context = mockk(relaxed = true),
+            preferences = mockk(relaxed = true) {
+                every { enabledLanguages() } returns
+                    mockk { every { isSet() } returns true }
+            },
+            trustExtension = mockk(relaxed = true),
+            installedExtensionsLoader = { emptyList() },
+            availableExtensionsProvider = { listOf(extension) },
+            installerFactory = { installer },
+            installReceiverRegistrar = {},
+            inventoryProvider = { mihon.domain.extension.suggestion.ExtensionInventory(true) },
+            scope = backgroundScope,
+        )
+        val first = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            manager.installExtension(extension).collect {}
+        }
+        val model =
+            screenModel(
+                manager,
+                Extensions(emptyList(), emptyList(), listOf(extension), emptyList()),
+                androidExtensionPresentationStore,
+            )
+        try {
+            model.installExtension(extension)
+            kotlinx.coroutines.withContext(Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(5_000) { model.state.first { it.installRequestBusy } }
+            }
+            verify(exactly = 1) { installer.downloadAndInstall(any(), any(), any(), any()) }
+            assertTrue(manager.installArbiter.isBusy(extension.pkgName))
+            assertTrue(model.state.value.installErrors.isEmpty())
+            assertFalse(first.isCancelled)
+            kotlinx.coroutines.withContext(Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(5_000) { model.state.first { it.items.isNotEmpty() } }
+            }
+            assertEquals(
+                eu.kanade.tachiyomi.extension.model.InstallStep.Downloading,
+                model.state.value.items.values.flatten().single().installStep,
+            )
+            model.installExtension(extension)
+            kotlinx.coroutines.withContext(Dispatchers.Default) { kotlinx.coroutines.delay(50) }
+            verify(exactly = 1) { installer.downloadAndInstall(any(), any(), any(), any()) }
+        } finally {
+            val owner = model.screenModelScope.coroutineContext[kotlinx.coroutines.Job]
+            modelHost.close()
+            kotlinx.coroutines.withContext(Dispatchers.Default) { owner?.join() }
+            first.cancelAndJoin()
+            io.mockk.unmockkStatic(androidx.core.app.NotificationManagerCompat::class)
+            uy.kohesive.injekt.Injekt = previousInjekt
+            Dispatchers.resetMain()
+        }
+    }
 
     @Test
     fun `suggestion and ordinary install share active state and cannot submit twice`() = runTest {
@@ -76,6 +210,7 @@ class ExtensionPresentationWiringTest {
         val gate = CompletableDeferred<Unit>()
         val calls = java.util.concurrent.atomic.AtomicInteger()
         val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { installArbiter } returns ExtensionInstallArbiter()
             every { inventory } returns MutableStateFlow(mihon.domain.extension.suggestion.ExtensionInventory(true))
             every {
                 suggestionCatalog
@@ -136,6 +271,7 @@ class ExtensionPresentationWiringTest {
     fun `suggestion diagnosis calls inventory recheck without catalog install or runtime reload`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { installArbiter } returns ExtensionInstallArbiter()
             every { recheckInstalledInventory() } returns kotlinx.coroutines.Job().apply { complete() }
         }
         val model = screenModel(
@@ -167,6 +303,7 @@ class ExtensionPresentationWiringTest {
         val request = eu.kanade.tachiyomi.extension.util.ExtensionOriginConfirmation("transaction", artifact)
         val requests = MutableStateFlow(listOf(request))
         val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { installArbiter } returns ExtensionInstallArbiter()
             every { originConfirmations } returns requests
         }
         val model = screenModel(
@@ -200,6 +337,7 @@ class ExtensionPresentationWiringTest {
         val oldDone = CountDownLatch(1)
         val actionStore = spyk(androidExtensionPresentationStore)
         val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { installArbiter } returns ExtensionInstallArbiter()
             every { installExtension(extension) } returnsMany listOf(
                 flow {
                     try {
@@ -282,9 +420,10 @@ class ExtensionPresentationWiringTest {
     @Test
     fun `android screen observes typed install failure and recovery from production manager contract`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        val failure = mihon.domain.error.AppError.Authentication()
-        val errors = MutableStateFlow(mapOf("pkg.reader" to failure as mihon.domain.error.AppError))
+        val failure = AppError.Authentication()
+        val errors = MutableStateFlow(mapOf("pkg.reader" to failure as AppError))
         val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { installArbiter } returns ExtensionInstallArbiter()
             every { installErrors } returns errors
         }
         val model = screenModel(
@@ -307,10 +446,11 @@ class ExtensionPresentationWiringTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val failure = mihon.domain.extension.model.RepositoryCatalogFailure(
             mihon.domain.extension.model.RepositoryIdentity("https://repo.example", "Reader repository", "key"),
-            mihon.domain.error.AppError.Network(),
+            AppError.Network(),
         )
         val failures = MutableStateFlow(listOf(failure))
         val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { installArbiter } returns ExtensionInstallArbiter()
             every { repositoryFailures } returns failures
         }
         val model =
@@ -336,6 +476,7 @@ class ExtensionPresentationWiringTest {
         val collectedPastInstalled = AtomicBoolean(false)
         val actionStore = spyk(androidExtensionPresentationStore)
         val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { installArbiter } returns ExtensionInstallArbiter()
             every { installExtension(extension) } returns flow {
                 emit(eu.kanade.tachiyomi.extension.model.InstallStep.Installing)
                 emit(eu.kanade.tachiyomi.extension.model.InstallStep.Installed)
@@ -380,6 +521,7 @@ class ExtensionPresentationWiringTest {
         val extension = installed("Reader", "pkg.reader", sources = listOf(disabled, alpha, zulu))
         val installedFlow = MutableStateFlow(listOf(extension))
         val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { installArbiter } returns ExtensionInstallArbiter()
             every { installedExtensionsFlow } returns installedFlow
         }
         val toggleSource = mockk<ToggleSource>(relaxed = true)
@@ -511,6 +653,7 @@ class ExtensionPresentationWiringTest {
         ).available.filterIsInstance<Extension.Available>()
         val gate = CompletableDeferred<Unit>()
         val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { installArbiter } returns ExtensionInstallArbiter()
             every { installExtension(any()) } returns flow {
                 emit(eu.kanade.tachiyomi.extension.model.InstallStep.Downloading)
                 gate.await()

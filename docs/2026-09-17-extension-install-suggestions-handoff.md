@@ -2,12 +2,14 @@
 
 更新时间：2026-09-17。本文由用户明确要求在重试失败后生成，用于接续工作，不代表功能验收完成。
 
+**最新恢复状态（EIS-03 验收完成）**：EIS-03 共享仲裁/批次、Desktop 完整结果/暂停恢复/失败重试、真实 Browse→本地 HTTP→默认签名校验→production coordinator→临时插件目录→真实 loader 闭环均已完成。最终 `eis03-repair-final` PASSED / exit 0（33s）；首轮未受影响 XML 与最后四整类替换联合为 27 suites / 294 项，failure/error/skipped 均为 0（domain JVM 36、domain Android 13、app 58、Desktop 187）。格式及 diff-check 通过，主代理独立验收全部关闭。本文随同 EIS-03 功能提交更新，提交可由 `git log` 定位；下一批是 EIS-04，最终发布仍未完成。后文第 3、5 节保留历史失败和恢复过程，不代表当前阻塞。验证使用协调器 `foreground` + Gradle `--offline`，没有修改安全配置或恢复旧联网后台启动命令。
+
 ## 1. 目标与唯一执行工作区
 
 - 原目标：完整实现 [roadmap](roadmap/2026-09-16-extension-install-suggestions-roadmap.md)，每完成一个批次才勾选；需求依据为 [requirements](2026-09-16-extension-install-suggestions-requirements.md)。不可将目标缩减为仅共享逻辑或 Desktop。
 - **实施目录：`D:/Shell/Github/mihon-eis`**；分支：`codex/extension-install-suggestions`。
 - 原目录 `D:/Shell/Github/mihon` 有其他任务的未提交改动。本次再次只读核对，包含源权限、导航、AndroidManifest、AppModule、ExtensionManager、i18n 等；不得覆盖、清理、回滚或混入本专项。
-- EIS-03 未提交代码、测试及 roadmap 记录都在实施目录内。**仅取得 Git 提交并不能恢复这些未提交文件**；换任务时须继续使用现有目录，先检查 `git status --short`。
+- EIS-03 代码、测试及 roadmap 记录已纳入本次功能提交；继续使用实施目录，接续前检查 `git status --short` 和 HEAD。
 - 遵守实际 AGENTS.md：中文交流、严格红绿重构、真实 production wiring 测试、重型 Gradle 串行协调、功能提交前独立审查。checkbox 表示实现、审查、验证、提交全部完成。
 
 ## 2. 已完成并提交
@@ -17,9 +19,9 @@
 | EIS-01 | `c1d733810e79acf8a9c4e06f9ca8abca93a2d550` | 共享识别、Android 系统/私有库存、Desktop 最终产物库存、双端 Flow/DI 与真实 SQL 契约；最终 focused 115 项通过，详见 roadmap 第 9 节 |
 | EIS-02 | `6b34ea3a606a233ddd715ef65485cae401a61bef` | 双端建议区、单项安装、来源/网站选择、忽略/撤销/折叠、本地偏好及真实备份/同步隔离；有效 XML 合计 107 项通过，窄屏离屏检查已完成，详见 roadmap |
 
-当前功能基线是 EIS-02。EIS-03、04、05 均未勾选；没有本专项最终发布产物。本文的文档提交不能充当 EIS-03 功能提交。
+当前功能基线推进至 EIS-03（本次功能提交）。EIS-04、05 保持未勾选；没有本专项最终发布产物。
 
-## 3. 本次重试与真实阻塞
+## 3. 历史重试与当时阻塞（已恢复）
 
 用户已多次明确授权执行 focused 验证，最后要求“再次尝试，如果失败的话写入交接文档”。本轮先核对 `eis03-takeover-green` 为 `NOT_STARTED`，随后重试原命令一次，仍在工具的 CreateProcess 阶段被拒绝：
 
@@ -50,23 +52,23 @@ exec_command failed: CreateProcess ... rejected: blocked by policy
 
 本轮没有修改安全配置、变换命令绕过检查或恢复功能验证。根因已定位与执行限制已解除是不同状态；须在修正或正式审批生效后重新检查协调器并继续 focused 验证。EIS-03～05 仍未完成。
 
-## 4. EIS-03 未提交实现位置
+## 4. EIS-03 已验收实现位置
 
 | 范围 | 当前文件与状态 |
 |---|---|
 | 共享仲裁 | `domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionInstallArbiter.kt`：同包 lease、事务 ID、精确 owner 释放、停止/提交原子边界、进度及同步卸载预留 |
-| 共享批次 | `domain/src/commonMain/kotlin/mihon/domain/extension/suggestion/ExtensionSuggestionBatchController.kt`：固定完整产物清单、串行安装、跳过/失败/暂停、恢复、停止；最新失败项重试与停止后不可继续修复尚未验证 |
+| 共享批次 | `domain/src/commonMain/kotlin/mihon/domain/extension/suggestion/ExtensionSuggestionBatchController.kt`：固定完整产物清单、串行安装、跳过/失败/暂停、恢复、停止；失败项重试、停止后不恢复未提交后续项已验证 |
 | 提交门 | 同目录 service 下 `ExtensionInstallPort.kt`、`ExtensionInstallCoordinator.kt` 增加 `beforeCommit`；提交门拒绝时仅清理，不错误回滚未提交产物 |
 | Desktop 安装 | `app-desktop/.../extension/DesktopExtensionApi.kt` 在读取信任 metadata 前预留；信任确认持有 lease；Flow 单次消费及异常释放。manager/UiPorts/presentation port 接入同一 arbiter |
 | Desktop 状态 | `app-desktop/.../ui/extension/ExtensionsScreenModel.kt`：应用级 batch、资格复核、真实 API 安装、信任队列关联 batch transactionId、等待真实确认 job 清理 |
-| Desktop 页面 | 新增 `ExtensionSuggestionBatchSection.kt` 并接入 `ExtensionListScreen.kt`：全部/搜索匹配安装、固定清单确认、折叠外计数与停止按钮。**只有初版，完整逐项结果、暂停/继续/失败重试 UI 未完成** |
+| Desktop 页面 | 新增 `ExtensionSuggestionBatchSection.kt` 并接入 `ExtensionListScreen.kt`：全部/搜索匹配安装、固定清单确认、折叠外计数与停止按钮。完整逐项结果、暂停后显式重确认、失败重试与来源冲突反馈均已通过真实离屏验证 |
 | Android 入口 | `app/.../extension/ExtensionManager.kt`、`util/ExtensionInstaller.kt` 在普通安装/更新入口仲裁，真实安装 job 完成才释放；系统卸载仅派发阶段互斥 |
-| Android 页面 | `app/.../ui/browse/extension/ExtensionsScreenModel.kt` 捕获同步 Busy 并清理自身请求标记；新增 `installRequestBusy` 状态。**用户可见提示及所有页面共享真实进度还须完善和验证** |
+| Android 页面 | `app/.../ui/browse/extension/ExtensionsScreenModel.kt` 捕获同步 Busy 并清理自身请求标记；普通页面与建议区共享真实进度，Busy 不覆盖 owner；同步异常、清理和重试已验证 |
 | 测试/资源 | domain 共享行为测试、Desktop API/ScreenModel/离屏测试、Android manager/UI wiring；若干旧测试增加真实 arbiter fixture。base/简中/繁中新增 batch 文案，XML 已解析核验，不等于资源编译通过 |
 
 `...` 表示对应平台既有源码包路径；精确变更列表使用 `git status --short`。不要误删未跟踪的新 production/test 文件。
 
-## 5. 测试证据与接续顺序
+## 5. 历史测试证据与当时接续顺序（最终结果见顶部）
 
 协调器记录都位于实施目录 `.gradle-coordinator/<key>.json` 和同名 `.log`，不受 Git 提交保护。原始 XML 在各模块 `build/test-results/`，会被之后测试覆盖。
 
@@ -82,7 +84,7 @@ exec_command failed: CreateProcess ... rejected: blocked by policy
 
 主代理在最后一轮红之后实现了共享停止/重试、Android Busy 清理及 Desktop 确认初版，均未通过后续编译/行为测试。最后又补写 `ExtensionSuggestionRenderedTest.batch shows each result and confirms only failed items for retry`，**尚未运行**，也尚未实施该测试对应的完整结果/重试 UI。不得把未运行的测试称为有效红。
 
-环境恢复后的首个 focused 命令如下（就是被拒绝的原命令，不是绕行方案）：
+以下仅归档当时被拒绝的命令，不再作为接续命令；当前采用顶部说明的 foreground/offline 验证：
 
 ```powershell
 Set-Location -LiteralPath 'D:\Shell\Github\mihon-eis'
@@ -117,10 +119,11 @@ python scripts/gradle-coordinator.py wait --key eis03-takeover-green --timeout-s
 - `util/ExtensionInstallActivity.kt` 的既有 onCreate 无重建 guard、onDestroy 删除 URI、启动异常只 toast 的路径已定位，必须用真实生命周期测试覆盖，而非只 JVM fake。
 - Shizuku 回调须核对 `ShizukuInstaller.kt`、`IShellInterface.aidl`、`ShellInterface.kt` 的事务关联；不能让迟到回调推进新批次。Legacy/PackageInstaller 成功、取消、连续安装，私有安装重启，Shizuku 可用/不可用，均须真实平台验证。
 - 历史环境准备：Android SDK `D:/Android/Sdk`；AVD `mihon-aex-api36` / `mihon-aex-api26`，曾对应 emulator-5580/5582。接续时重查设备身份，不据历史直接安装，不清用户数据，不覆盖官方包。fork 签名沿用仓库脚本，禁止把凭据写入文档。
-- 官方 Shizuku APK 曾下载至 `.gradle-coordinator/eis04-tools/`，仅准备未安装；使用前重新校验文件及身份。
+- 2026-09-17 主代理重新核对 AVD 身份后，仅在 `emulator-5580`（`mihon-aex-api36`）安装官方 Shizuku APK；SHA-256 为 `6e273ab0e991c4e79bc8b1bbb9b9dd739ccac1a8712a541a214078886b7b790f`，本地包位于 `.gradle-coordinator/eis04-tools/`。按应用“View command”显示的已安装原生 `lib/x86_64/libshizuku.so` 入口启动；旧 `/sdcard/Android/data/moe.shizuku.privileged.api/start.sh` 不存在，不应复用旧命令。核验时服务 PID 为 28602，应用显示 `Shizuku is running`、`Version 13.5, adb`、`Authorized 0 applications`。重启后须重新检查服务与当前安装路径；后续须经正常授权流程验证 Mihon adapter，此环境准备不算 Shizuku 安装功能验收。`emulator-5582`（API 26）仍未安装，保留无服务对照；不操作另行连接的物理设备。
+- 2026-09-17 最新包身份：API 36 的 `app.mihon.desktop.fork` 已为 versionCode 25 / `0.19.4-aex.7`，API 26 仍为 19 / `aex.1`。并行工作更新过 API 36；不得按当前工作树旧版本覆盖、降级或清数据。EIS-04 优先核对独立 debug/test 包，EIS-05 正式版本重新检查后递增。
 - macOS 隔离目录曾建立于 `mbp-lan:/Users/altair/Github/mihon-eis`，分支 `codex/eis-release`，当时停在 EIS-02；尚未同步 EIS-03 未提交 diff，也未构建。重查 SSH、工作区和 HEAD，保护 Mac 原有脏目录。
 - 最终全量 Android/Desktop 集合、Test Mode、Windows/macOS 运行验收尚未执行。正式桌面构建必须用 `scripts/build-desktop.sh`；最终 Windows 链接只用日志 `Final unpacked EXE:` 实际存在的路径。不得交付 tmp/build 中 EXE 冒充正式产物。
 
 ## 7. 文档与提交边界
 
-本次只提交这份用户明确要求的交接文档。未验证的 EIS-03 production/test/资源/roadmap diff 不纳入文档提交；它们保留在同一工作区。交接文件做只读内容与 diff 检查，不运行额外全量测试。完成后仍不得标记整个 roadmap 完成。
+本次 EIS-03 功能提交包含 production、测试、资源、roadmap checkoff 与本交接状态。EIS-03 独立验收已通过；不得把该批次完成解释为整个 roadmap 完成。下一步复用原实施代理开展 EIS-04，Android 异步卸载窗口、真实系统安装生命周期及最终三平台发布边界仍以第 6 节和 roadmap 为准。

@@ -164,7 +164,12 @@ internal class ExtensionInstaller private constructor(
         scope,
     )
 
-    fun downloadAndInstall(url: String, extension: Extension.Available): Flow<InstallStep> {
+    fun downloadAndInstall(
+        url: String,
+        extension: Extension.Available,
+        beforeCommit: (() -> Unit)? = null,
+        onFinished: () -> Unit = {},
+    ): Flow<InstallStep> {
         cancelActiveInstall(extension.pkgName)
 
         val transactionId = UUID.randomUUID().toString()
@@ -183,7 +188,7 @@ internal class ExtensionInstaller private constructor(
         }
         val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
-                coordinator.install(ExtensionInstallRequest(extension.toArtifact(url))).collect { state ->
+                coordinator.install(ExtensionInstallRequest(extension.toArtifact(url), beforeCommit)).collect { state ->
                     val installStep = state.toInstallStep()
                     synchronized(installErrorLock) {
                         if (activeTransactions[extension.pkgName] === activeTransaction) {
@@ -220,6 +225,7 @@ internal class ExtensionInstaller private constructor(
         }
         val activeJob = ActiveInstallJob(transactionId, job)
         activeJobs[extension.pkgName] = activeJob
+        job.invokeOnCompletion { onFinished() }
         job.start()
 
         return step.asStateFlow().onCompletion {
@@ -231,6 +237,7 @@ internal class ExtensionInstaller private constructor(
     }
 
     private fun ExtensionInstallState.toInstallStep(): InstallStep = when (this) {
+        ExtensionInstallState.Queued -> InstallStep.Pending
         ExtensionInstallState.Preparing -> InstallStep.Downloading
         ExtensionInstallState.Validating,
         ExtensionInstallState.Committing,

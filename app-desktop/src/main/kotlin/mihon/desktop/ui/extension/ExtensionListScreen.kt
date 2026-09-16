@@ -368,6 +368,7 @@ internal fun ExtensionListContent(
                 }
                 when (selectedTab) {
                 0 -> Column(Modifier.weight(1f)) {
+                    ExtensionSuggestionBatchSection(model)
                     ExtensionSuggestionSection(
                         state.suggestionPanel, model.suggestionPanel,
                         onInstall = { model.installSuggestion(it) },
@@ -404,7 +405,7 @@ internal fun ExtensionListContent(
                     loadState = state.availableExtensionLoadState((ui.updates + ui.available).isNotEmpty()),
                     installedExtensions = installedExtensions,
                     updatableExtensions = ui.updates,
-                    installSteps = state.actions.installSteps,
+                    installSteps = state.installSteps,
                     installErrors = state.installErrors,
                     onInstall = model::install,
                     onUpdate = { model.update(it) },

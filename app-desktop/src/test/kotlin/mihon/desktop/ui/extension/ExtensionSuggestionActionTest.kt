@@ -1,5 +1,6 @@
 package mihon.desktop.ui.extension
 
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -8,6 +9,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import mihon.desktop.extension.DesktopAvailableExtension
@@ -29,6 +31,69 @@ import tachiyomi.domain.source.model.Source
 import tachiyomi.domain.source.repository.SourceRepository
 class ExtensionSuggestionActionTest {
     @Test
+    fun `confirmed suggestion batch uses production API reservation and normal action cannot replace it`() = runTest {
+        val artifact = ExtensionArtifact("Reader", "pkg.batch", "1.6.1", 1, "ja", false,
+            listOf(ExtensionSourceDescriptor(71, "ja", "Source", "https://source.example")),
+            RepositoryIdentity("https://repo.example", "Repo", "key"), "https://repo.example/a.jar", "", null)
+        val catalog = ExtensionCatalogResult(listOf(ExtensionCatalogEntry(artifact, ExtensionCompatibility.Compatible)), emptyList())
+        val api = io.mockk.spyk(DesktopExtensionApi(okhttp3.OkHttpClient(), kotlinx.serialization.json.Json,
+            mihon.desktop.domain.fakes.FakeExtensionRepoRepository()))
+        coEvery { api.refreshCatalog() } returns catalog
+        val gate = CompletableDeferred<Unit>()
+        val entered = CompletableDeferred<Unit>()
+        val directory = java.nio.file.Files.createTempDirectory("batch-action").toFile()
+        val service = mockk<mihon.desktop.extension.DesktopExtensionPresentationService> {
+            every { installedExtensions } returns MutableStateFlow(emptyList())
+            every { extensionsDirectory } returns directory
+            every { installExtensionStates(any(), any()) } answers {
+                val selected = firstArg<ExtensionArtifact>()
+                val guard = secondArg<(() -> Unit)?>()
+                flow {
+                    entered.complete(Unit)
+                    emit(ExtensionInstallState.Preparing)
+                    gate.await()
+                    guard?.invoke()
+                    emit(ExtensionInstallState.Installed(selected))
+                }
+            }
+        }
+        val sources = mockk<SourceRepository> {
+            every { getSourcesWithFavoriteCount() } returns flowOf(listOf(Source(71, "ja", "Source", false, true) to 1L))
+        }
+        val model = ExtensionsScreenModel(DesktopExtensionPresentationPort(api, service,
+            inventory = flowOf(ExtensionInventory(true))), backgroundScope, ExtensionPresentationOptions(true, setOf("ja")),
+            suggestionObserver = ObserveExtensionSuggestions(sources, FakeDesktopSourceManager(emptyList())))
+        try {
+            model.refresh().join(); runCurrent()
+            val snapshot = model.suggestionSnapshot()
+            assertEquals(listOf(artifact), snapshot)
+            assertTrue(model.confirmSuggestionBatch(snapshot))
+            runCurrent()
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(5_000) {
+                    model.suggestionBatch.state.first { !it.running || it.items.any { item -> item.progress != null } }
+                }
+            }
+            assertTrue(entered.isCompleted)
+            assertFalse(model.confirmSuggestionBatch(snapshot))
+            val ordinary = model.install(api.availableExtensions(catalog).single().item())
+            runCurrent()
+            io.mockk.verify(exactly = 1) { service.installExtensionStates(any(), any()) }
+            assertTrue(model.suggestionBatch.state.value.running)
+            gate.complete(Unit)
+            runCurrent()
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(5_000) { model.suggestionBatch.state.first { !it.running } }
+            }
+            assertEquals(mihon.domain.extension.suggestion.SuggestionBatchResult.Installed,
+                model.suggestionBatch.state.value.items.single().result)
+        } finally {
+            model.closeAndJoin()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `suggestion and normal list share one active operation and failed suggestion retries exact origin`() = runTest {
         val artifact = ExtensionArtifact("Reader", "pkg.reader", "1.6.1", 1, "ja", false,
             listOf(ExtensionSourceDescriptor(71, "ja", "Source", "https://source.example")),
@@ -39,6 +104,7 @@ class ExtensionSuggestionActionTest {
             sources = listOf(DesktopAvailableSource(71, "ja", "Source", "https://source.example")))
         val gate = CompletableDeferred<Unit>()
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } returns ExtensionCatalogResult(
                 listOf(ExtensionCatalogEntry(artifact, ExtensionCompatibility.Compatible)), emptyList())
             every { availableExtensions(any()) } returns listOf(available)

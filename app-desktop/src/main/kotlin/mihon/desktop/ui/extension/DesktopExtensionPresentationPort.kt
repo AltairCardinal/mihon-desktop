@@ -1,12 +1,13 @@
 package mihon.desktop.ui.extension
 
+import mihon.domain.error.AppError
+import mihon.domain.extension.service.ExtensionInstallLease
 import mihon.domain.extension.suggestion.ExtensionInventory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.withContext
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -93,7 +94,7 @@ data class DesktopPresentationInstallEvent(
 sealed interface DesktopPresentationInstallStart {
     data class Started(val events: Flow<DesktopPresentationInstallEvent>) : DesktopPresentationInstallStart
     data class TrustRequired(val request: DesktopExtensionInstallStart.TrustRequired) : DesktopPresentationInstallStart
-    data class Rejected(val error: mihon.domain.error.AppError) : DesktopPresentationInstallStart
+    data class Rejected(val error: AppError) : DesktopPresentationInstallStart
 }
 
 data class DesktopExtensionCatalogState(
@@ -111,6 +112,7 @@ class DesktopExtensionPresentationPort(
     val inventory: Flow<ExtensionInventory> =
         flowOf(ExtensionInventory()),
 ) {
+    val installArbiter get() = api.installArbiter
     val installedExtensions: StateFlow<List<InstalledExtension>> = installedExtensions
     val disabledSources: Flow<Set<String>> = sourcePreferences?.disabledSources ?: flowOf(emptySet())
 
@@ -124,6 +126,18 @@ class DesktopExtensionPresentationPort(
 
     suspend fun beginPresentationInstall(extension: DesktopAvailableExtension): DesktopPresentationInstallStart =
         beginInstall(extension).toPresentation()
+
+    suspend fun beginReservedInstall(
+        artifact: mihon.domain.extension.model.ExtensionArtifact,
+        lease: ExtensionInstallLease,
+    ): DesktopPresentationInstallStart {
+        val catalog = ExtensionCatalogResult(
+            listOf(mihon.domain.extension.model.ExtensionCatalogEntry(artifact, artifact.compatibility())),
+            emptyList(),
+        )
+        val extension = api.availableExtensions(catalog).single()
+        return api.beginInstall(extension, service, lease).toPresentation()
+    }
 
     fun confirmTrust(requestId: String): Flow<ExtensionInstallState>? = api.confirmTrust(requestId, service)
 
@@ -148,7 +162,7 @@ class DesktopExtensionPresentationPort(
     )
 
     fun uninstall(item: DesktopExtensionItem): Boolean =
-        item.installed?.let(service::removeExtensionWithMeta) == true
+        installArbiter.withRemoval(item.operationPackageName) { item.installed?.let(service::removeExtensionWithMeta) == true } == true
 
     suspend fun reloadInstalled() = withContext(Dispatchers.IO) { service.reloadAll() }
 
@@ -269,13 +283,13 @@ private fun DesktopExtensionInstallStart.toPresentation(): DesktopPresentationIn
 
 private fun Flow<ExtensionInstallState>.toPresentationEvents() =
     map { DesktopPresentationInstallEvent(it.presentationStep(), it) }
-        .onStart { emit(DesktopPresentationInstallEvent(ExtensionPresentationInstallStep.Pending, null)) }
 
-private fun ExtensionInstallState.presentationStep() = when (this) {
+internal fun ExtensionInstallState.presentationStep() = when (this) {
+    ExtensionInstallState.Queued -> ExtensionPresentationInstallStep.Pending
     ExtensionInstallState.Preparing -> ExtensionPresentationInstallStep.Downloading
     is ExtensionInstallState.Installed -> ExtensionPresentationInstallStep.Installed
     is ExtensionInstallState.Failed ->
-        if (error == mihon.domain.error.AppError.Cancelled) ExtensionPresentationInstallStep.Idle
+        if (error == AppError.Cancelled) ExtensionPresentationInstallStep.Idle
         else ExtensionPresentationInstallStep.Error
     else -> ExtensionPresentationInstallStep.Installing
 }
