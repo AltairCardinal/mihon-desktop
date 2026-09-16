@@ -1,5 +1,7 @@
 # Mihon 双端原生界面同步演示
 
+Android「获取已安装应用列表」权限提示的独立审阅入口见[插件列表权限 DEMO](../installed-apps-permission/index.html)及[说明](../installed-apps-permission/README.md)。该同级原型复用本目录外壳；本页继续保留同步及建议安装交互，不加载权限模拟脚本。
+
 ## 收藏缺失插件：建议安装交互
 
 2026-09-16 增加「浏览 → 插件」的建议安装原型，需求与技术边界见[建议安装需求](../../2026-09-16-extension-install-suggestions-requirements.md)。这是现有双端 DEMO 的新增页面交互，不代表 Android/Desktop 生产功能已经实现；原同步演示路径继续保留。

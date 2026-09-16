@@ -315,6 +315,8 @@
   }
 
   function renderSourceList() {
+    const permissionSources = window.MihonInstalledAppsPermissionDemo?.renderSources(state, render);
+    if (permissionSources != null) return permissionSources;
     return `<div class="source-list"><div class="simple-list-heading">已安装图源</div>${['Mihon 演示源', '本地演示源'].map((name, i) => `<div class="source-row"><span class="source-logo">${i ? '本' : 'M'}</span><span class="row-copy"><strong>${name}</strong><small>${i ? '可离线查看样本' : '最近检查：今天'}</small></span><span class="source-state">${i ? '离线' : '可用'}</span></div>`).join('')}</div>`;
   }
 
