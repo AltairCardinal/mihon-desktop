@@ -375,6 +375,20 @@ Desktop 周期观察器与单次交换生命周期分开：手动取消/断开�
 
 每批红绿循环只跑 focused tests；完成批次做相应集成与格式核验，阶段/最终才扩展完整测试。正式 Desktop 发布按仓库构建脚本和实际运行产物验收。HTML 的27项测试只能作为交互参考，不能证明生产同步可靠。
 
+### 13.1 正式运行时验收的隔离边界
+
+Desktop验收从构建脚本最终发布的EXE/App启动，使用`--test-mode --headless --test-http-port=<独立端口> --test-profile-dir=<绝对专用目录>`。显式profile给默认DI、数据库、单实例broker和原生Java Preferences指定独立身份；它不是覆盖所有功能的沙箱。另为子进程设置`JAVA_TOOL_OPTIONS=-Duser.home=<另一个专用fallback目录>`，Windows同时把APPDATA/LOCALAPPDATA设到该fallback目录下，承接仍使用全局路径的日志、缓存和文件服务。两个目录必须与用户原配置及其他任务目录分离。Mac不设置HOME/CFFIXED_USER_HOME、不变更用户Keychain配置；否则可能把验收环境故障误报为产品凭据故障。隔离profile启动不应注册系统URI关联。
+
+本轮Test Mode只观察原生同步状态和触发既有动作：`GET /test/sync`只返回安全状态白名单；`POST /test/sync/open`等仍经过同一个原生panel。设备登录信息仅通过显式临时接口提供userCode和verificationUri，不返回设备秘密、令牌或恢复资料；真实授权链接/代码不进入长期文档。通用HTTP测试宿主不从全局旧DI隐式启动面板，真实TestMode入口显式传入当前实例。
+
+系统安全存储跨进程验收使用`POST /test/sync/probe/write`创建随机UUID命名的合成记录，退出实际应用后以同一隔离目录重启，再调用`POST /test/sync/probe/verify/<UUID>`，预期首次200并删除合成记录、再次409。只允许保留前缀和规范UUID，不接受真实凭据键；失败仅暴露阶段与异常类型。真实DI和真实平台凭据后端保持不变。JVM图重建或辅助进程测试不代替此发布产物证据；Android也须执行实际minified/R8 APK的prepare→force-stop→verify及最低API验证。任何前置缺失或失败都保留为发布门槛，不以DEMO、旧许可证清单或跳过生成步骤替代。
+
+macOS验收必须核对实际测试worker/应用进程所属的登录安全会话。SSH会话与已解锁的GUI会话可能对同一login钥匙串报告不同可用状态；在本机GUI域验证真实App，不通过修改HOME、钥匙串默认项或放宽安全策略规避。自动化临时LaunchAgent仅管理本任务独立label，结束后移除。
+
+Android跨APK instrumentation中，测试运行器及测试直接调用的入口可能不属于正式应用的R8可达图。验收专用`scripts/sync-android-acceptance.pro`仅保留这些明确边界，方法体仍参与优化；普通发布ProGuard和R8开关保持原样。新增测试接口时先核对release mapping/usage及测试DEX，不能用整包keep或关闭混淆掩盖接口差异。许可证构建插件与应用运行库分开管理，缺失POM只补已核验单库metadata；依赖完整性按官方MERGE/EXACT导出语义核对，不能把平台别名直接当缺项或一律忽略。
+
+Android instrumentation宿主没有Activity停止生命周期；prepare结束前须对production默认SharedPreferences文件执行空`commit()`，等待既有`apply()`落盘后才结束进程。该屏障不写入或替换同步记录，verify仍以真实runtime从另一ART进程读取。验收证明完成写入后的跨进程恢复，不承诺任意强杀时异步偏好零丢失；不得以延时猜测、手工补记录或删除断言代替。
+
 ## 14. 提交审核的决策
 
 | 编号 | 推荐批准项 | 对用户的实际影响 |

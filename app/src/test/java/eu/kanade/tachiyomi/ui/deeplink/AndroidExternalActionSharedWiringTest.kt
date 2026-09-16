@@ -13,6 +13,7 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.online.ResolvableSource
 import eu.kanade.tachiyomi.source.online.UriType
+import eu.kanade.tachiyomi.test.ScreenModelTestHost
 import eu.kanade.tachiyomi.ui.main.navigateExternalAction
 import eu.kanade.tachiyomi.ui.main.toExternalAction
 import io.mockk.coEvery
@@ -43,8 +44,11 @@ import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.service.SourceManager
 
 class AndroidExternalActionSharedWiringTest {
+    private val modelHost = ScreenModelTestHost()
+
     @AfterEach
     fun tearDown() {
+        modelHost.close()
         Dispatchers.resetMain()
         unmockkAll()
     }
@@ -98,13 +102,15 @@ class AndroidExternalActionSharedWiringTest {
         val later = resolvableSource(UriType.Manga)
         coEvery { (selected as ResolvableSource).getManga(url) } returns null
         val sourceManager = TestSourceManager(listOf(unknown, selected, later))
-        val model = DeepLinkScreenModel(
-            query = (act(Intent.ACTION_SEND, text = url) as ExternalAction.Search).query,
-            sourceManager = sourceManager,
-            networkToLocalManga = mockk<NetworkToLocalManga>(relaxed = true),
-            getChapterByUrlAndMangaId = mockk<GetChapterByUrlAndMangaId>(relaxed = true),
-            syncChaptersWithSource = mockk<SyncChaptersWithSource>(relaxed = true),
-        )
+        val model = modelHost.create {
+            DeepLinkScreenModel(
+                query = (act(Intent.ACTION_SEND, text = url) as ExternalAction.Search).query,
+                sourceManager = sourceManager,
+                networkToLocalManga = mockk<NetworkToLocalManga>(relaxed = true),
+                getChapterByUrlAndMangaId = mockk<GetChapterByUrlAndMangaId>(relaxed = true),
+                syncChaptersWithSource = mockk<SyncChaptersWithSource>(relaxed = true),
+            )
+        }
         val state = withContext(Dispatchers.IO) {
             withTimeout(5_000) { model.state.first { it !is DeepLinkScreenModel.State.Loading } }
         }

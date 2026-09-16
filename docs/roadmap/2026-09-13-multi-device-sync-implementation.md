@@ -1,10 +1,10 @@
 # 多设备同步实施计划
 
-状态：HANDOFF（用户要求收紧并移交；S5b仍未完成）；S1、S2a、S2b、S2c 已完成（S2c 提交 `2e5c8bf47`），S3a1 提交 `fc7a9c482`，S3a2 提交 `ba14962ac`，S3a3 提交 `40993b94b`，S3b1 提交 `c79057639`；S3b2 提交 `ce444410d`；S3c1 提交 `c4a12e7b3`；S3c2 提交 `7e3bdf22d2`；S4a 已完成（`2f52c5c3c2`），S4b 原生交互已完成（`ef0e42f31a`）；S4c 已完成（`49381942b0`），S5a 已完成（`7338d529ab`），S5b执行中。2026-09-15 用户授权主模型接续完成全部 roadmap，不再使用 Luna 技能；当前任务从下方有序清单的第一个未勾选项推导。完整目标是按已审核技术方案与最终 DEMO 在 Android / Windows / macOS 实现真实同步，完成共享协议不代表产品完成。
+状态：COMPLETE（S5b 发布门槛已完成，随本批产品提交收口）；S1、S2a、S2b、S2c 已完成（S2c 提交 `2e5c8bf47`），S3a1 提交 `fc7a9c482`，S3a2 提交 `ba14962ac`，S3a3 提交 `40993b94b`，S3b1 提交 `c79057639`；S3b2 提交 `ce444410d`；S3c1 提交 `c4a12e7b3`；S3c2 提交 `7e3bdf22d2`；S4a 已完成（`2f52c5c3c2`），S4b 原生交互已完成（`ef0e42f31a`）；S4c 已完成（`49381942b0`），S5a 已完成（`7338d529ab`），S5b已完成。2026-09-15 用户授权主模型接续完成全部 roadmap，不再使用 Luna 技能；当前任务从下方有序清单的第一个未勾选项推导。完整目标是按已审核技术方案与最终 DEMO 在 Android / Windows / macOS 实现真实同步，完成共享协议不代表产品完成。
 
-## 当前交接入口（2026-09-16）
+## 最终收口（2026-09-16）
 
-用户要求本代理停止实施，后续由其他 agents 接手。以[收紧交接文档](2026-09-16-multi-device-sync-handoff.md)为当前状态与剩余步骤入口；下方较早的执行记录保留作历史证据。Windows v36 / Mac v37 及真实 GitHub 非空交换已通过，Android 最新隔离 R8 构建成功，仍需既定 ART 验收和正常发布包，随后最终提交。产品 S5b 候选仍在原工作树未提交；本次仅提交交接文档和本计划，不勾选 S5b，不代表产品完成。
+按[收紧交接文档](2026-09-16-multi-device-sync-handoff.md)接手原工作树，已完成 Android API26/36 的 R8/ART 两阶段验收、正常 release 构建及实际包内许可证核对，复用已通过的 Windows v36 / Mac v37、真实 GitHub 非空交换与完整回归。S5b 产品候选及必要修正随本批提交；下方旧的“未完成”“等待授权”等执行记录仅为历史，不覆盖本节。正常 Android APK 未签名，未执行公开发布或安装覆盖；真实 GitHub 现场联调在 Windows 两实例完成，不冒充 Android/Mac 账号现场联调。
 
 范围冻结：不重做已通过的 Desktop/规模/授权验收，不追加功能或通用基础设施整治，不追赶扩展任务的新 main。新失败先判断是否直接阻断现有交付，非阻断问题仅记录移交。
 
@@ -45,24 +45,24 @@ Gradle 由当前工作区一个协调者串行运行；不清理其他工作区�
 - [x] S4b：Android/Desktop 原生产品交互。书架入口、同步面板/设置/记录、浏览器设备授权/恢复资料、批量处理和倒计时，遵循最终 DEMO。
 - [x] S4c：阅读器续读接入与保护。补齐原验收项 C5：真实续读入口选择同步候选、页码失效从章首继续并提示，正在阅读的会话不被收件跳页；复用既有 reader 状态与提示，不增加阅读同步字段。
 - [x] S5a：扩展任务整合与规模验收。只合并已提交上游改动，复核 schema/Source API/备份/DI；1万/10万事件与长待处理列表试验。
-- [ ] S5b：真实 GitHub 与正式双端发布收口。Android/R8、Windows 正式 EXE、macOS 构建运行、全量回归及可追溯交付证据；未实际验证不勾选。
+- [x] S5b：真实 GitHub 与正式双端发布收口。Android API26/36 ART、正常未签名 release APK、Windows v36 EXE、macOS v37 App、既有完整回归和限定补验通过；独立审查及必要修复复核完成，随本批产品提交。
 
 每个勾选表示实现、独立审查、相关验证和提交全部完成。子能力只是同一产品阶段中的交付边界，不为每个测试类创建计划。每项实现完成即提交源码、测试与本文件证据/checkoff；不单独提交推进状态。成本、失败与分工调整统一记录在[执行经验与成本](2026-09-15-multi-device-sync-execution-costs.md)。
 
-当前安排（2026-09-16）：S4c提交 `49381942b0`；S5a已完成固定上游 `dbf3f050a1` 的整合与规模验证，schema25包含真实迁移19。当前S5b统一原生真实服务与发布验收。主树未提交改动仍未复制，产品范围继续以最终DEMO及C1–C18为准。
+当前安排（2026-09-16）：S4c提交 `49381942b0`；S5a已完成固定上游 `dbf3f050a1` 的整合与规模验证，schema25包含真实迁移19。S5b已闭合原生真实服务与发布验收，实际范围及限制见本节和最终证据。主树未提交改动仍未复制，产品范围继续以最终DEMO及C1–C18为准。
 
-S5b最新进度（以下为证据状态，不等于整个任务已提交勾选）：
+S5b最终证据（随本批产品提交）：
 
 | 验收项 | 当前结果 | 剩余门槛 |
 | --- | --- | --- |
 | 完整共享/Android JVM | 共享1459项、app409项、test-desktop52项通过 | 不代替ART/R8 |
-| Windows Desktop | 3067项零失败、3项既有条件跳过；规定脚本正式构建及扩展运行验收通过 | 当前产物包含S5b未提交候选，最终提交后核对可追溯性 |
-| 正式EXE同步接线/DPAPI | 正式EXE原生panel、DPAPI跨进程、授权重启持久及非空双实例交换通过；保留本机无反向回声 | 修正待上传计数后的最终EXE复验 |
+| Windows Desktop | 完整3067项中仅manifest行号失败、3项既有条件跳过；修正锚点后34项定向通过，规定脚本build-only成功 | 最终v36；没有把失败整轮标为全绿，条件跳过不计通过 |
+| 正式EXE同步接线/DPAPI | 最终v36原生panel、DPAPI跨进程、授权重启持久及非空双实例交换通过；两端待上传0，保留本机无反向回声 | 已通过；delivery36-evidence.json为最终计数修复证据 |
 | GitHub真实设备授权 | 两个隔离正式EXE已完成原生授权/空间恢复、并发交换、待确认时上传及KEEP_LOCAL；两库7事件/2actor | 已通过；不声称现场强制制造同HEAD碰撞 |
-| Android正式R8/ART | 许可证真实采集修复通过，R8隔离APK已生成；跨APK测试入口被优化导致runner启动失败 | 限定保留实际测试入口后重建；API26/36及正式APK |
+| Android正式R8/ART | API26/36各prepare3+verify3通过，真实App DI/业务日志/Keystore跨进程与fail-closed；正常release构建通过 | app.mihon 0.19.4/code18，未签名；263工件/293库完整，包内清单一致 |
 | macOS正式构建/Keychain | 最终v37完整3067/0/8跳过；正式App跨进程Keychain写201→读取200/重复409、面板与正常退出通过 | 已通过，原始证据已取回独立核验 |
 
-Windows实际交付路径：[Mihon Desktop.exe](../../app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.34.7338d52-unpacked/Mihon%20Desktop.exe)。`sync-s5b-windows-release-fixed`总用时4分55秒、exit0；构建日志Final unpacked EXE与实际文件已核对。其来源为7338d529ab加本工作树S5b候选，不把版本中的基础提交短hash当作全部未提交改动的身份。
+Windows实际交付路径：[Mihon Desktop.exe](D:/Shell/Github/mihon-sync/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.36.7338d52-unpacked/Mihon%20Desktop.exe)。`sync-s5b-windows-delivery` exit0，构建日志Final unpacked EXE与实际文件已核对；修复后真实同步及待上传归零见delivery36-evidence.json。来源为7338d529ab加S5b候选，不把版本中的基础提交短hash当作全部候选的身份。
 
 S4b 完成证据（2026-09-16）：唯一交叉独立审查和一次限定复核 PASS。重新授权入口、跨空间批量生命周期/持久指针、迟到恢复保存回执均正确 RED 后修复。`sync-s4b-storage-final` domain 两目标各6项、data JVM59/Android54项（含面板共享契约各15项）共125项通过；`sync-s4b-native-final`共享UI14项、Android19项、Desktop10项通过，合计168项零失败/错误/跳过。真实Desktop偏好重建覆盖长空间ID、空间和代际隔离。四张实际Compose离屏图通过；`sync-s4b-format-check`限定28个Kotlin输入检查通过（Desktop7项已核真实输入，相同输入缓存复用），3个旧Desktop大文件保留既有风格并核对diff。新增presentation-sync只共用面板内容，平台适配原生外壳/文件/浏览器；Android资源型UI测试隔离基础Application且保留真实onCreate测试。源码、行为契约及必要文档规模较大，但属于同一原生产品入口，不拆出不可独立使用的碎片；没有新增迁移或发布构建，GitHub/ART/R8/macOS仍留S5真实门槛。C5实际阅读器入口明确留S4c，未用投影测试替代。
 
@@ -132,20 +132,20 @@ S1 是后续生产引擎的共享规则单元，不能以纯内存测试替代 S
 | C2 | 三端 ADD→REMOVE→ADD 的所有收件排列、重复接收、缺失前驱、跨字段前驱/环/重复 ID 异内容 | 明确后继覆盖旧取消；依赖完整才参加归并；有效头与收件顺序无关；缺失/无效输入不污染有效投影 | S1 passed |
 | C3 | 并发 ADD/REMOVE、FOLLOW/UNFOLLOW、明确未读/读完；初始导入或旧备份迟到 | 并发保留收藏/关注、明确未读优先；baseline 低于明确操作；缺失不生成取消；后续明确用户操作仍可改变结果，无强制冲突选择 | S1 passed |
 | C4 | 有效远端取消到已收藏 B/空 C，B 忽略或确认，再接收重复及后继 | 只 B 产生待确认，决定绑定有效版本集合且只影响本设备，无反向 ADD；后继重新收藏使旧决定失效；不同接收端可不同 | S1 policy passed；持久化与批量接入仍在 C8/C14 |
-| C5 | 重读早页、不同章节阅读、同时间候选、坏页码提示、正在阅读时接收新位置 | 因果后继允许页码回退；并发按可用时间+稳定 ID 后备选续读、保留其他历史；不篡改当前会话页/模式，不使用永久最大页码 | S1 policy / S4c真实入口、默认DI、SQL快照、两端reader及反馈接线 passed；实际发布运行仍由S5验收 |
+| C5 | 重读早页、不同章节阅读、同时间候选、坏页码提示、正在阅读时接收新位置 | 因果后继允许页码回退；并发按可用时间+稳定 ID 后备选续读、保留其他历史；不篡改当前会话页/模式，不使用永久最大页码 | S1/S4c passed；S5b发布门已闭合，实际运行范围见最终证据 |
 | C6 | 非法类别/效果组合、未知版本/代次/空间、超限字段/批次、损坏一个效果 | 信封整体拒绝或隔离，不部分接受坏信封；单批至多 256 事件与 512 KiB 明文；不泄露凭据；共享失败契约 | S1 passed |
 | C7 | 所有实际收藏/批量/浏览、作者关注、章节已读未读、阅读提交；事务失败与无痕 | 业务和 outbox 原子提交，重复幂等阅读不重复计数；metadata/迁移/恢复/REMOTE 不伪造 USER；无痕不上传也不追补。真实 repository + SQLite 故障注入测试 | S3a/S3c passed；真实入口与事务测试见对应完成记录 |
-| C8 | 重启、同 ID 异内容、收件/应用崩溃、缺源后恢复、同步时新增本机动作 | inbox/outbox/游标/决定持久化，成功只清发布集合，待确认不阻塞其他数据；来源恢复自动重试，无强制匹配或自动安装扩展 | S3b/S4a 持久化与重试、S4b 原生反馈 passed；正式产物 S5b pending |
-| C9 | 同一 HEAD 竞争、未知发布结果、空库竞争、分页/截断、403/429/500/畸形响应 | Git DB REST force=false，有界重试且保留其他设备文件；确认有效 ref 内容后才清队列；固定密文字节重试；MockWebServer 完整解析链 + 真实私库竞争 | S2c/S3b/S4a HTTP与SQLite契约 passed；真实私库 S5 pending |
-| C10 | Android/Windows 加密互读、错误密钥/AAD、历史回退、凭据后端故障 | AEAD 绑定空间/代次/协议/批次；密钥与授权分离、系统安全存储不可用不降明文；最低 Android/R8 与真实 Desktop runtime | S2b/S4a 两目标与Windows凭据 passed；ART/R8/macOS runtime S5 pending |
-| C11 | 首次 GitHub 设备登录、授权取消/过期/限流/重新连接、选择新/已有专库 | 系统浏览器设备码授权，无 PAT 输入；自动接收结果；恢复资料确认与首次合并；设备名称、换空间/断开隔离。真实服务配置与运行证据 | S2a HTTP/S4a安全凭据与graph、S4b原生UI passed；真实账号 S5b pending |
-| C12 | 手动、启动、15分/1时/6时/24时周期同时触发、离线/休眠恢复 | 共享 coordinator 串行且合并请求；UI 异步；各设备设置独立；Desktop 退出不运行，Android WorkManager 尽力；保留队列、失败可重试 | S4a shared coordinator/真实WorkManager/Desktop生命周期 passed；正式产物 S5 pending |
-| C13 | 双端从书架进入/关闭同步，进入设置返回，后台完成，长倒计时 | UI 对齐最终 DEMO：三种顶栏表现可组合忙与数量，99+，设置齿轮子页、状态右侧立即同步、瞬时通知不重放；真实 Compose/导航/DI 与视觉验收 | S4b共享UI/两端入口/四张Compose离屏图 passed；正式运行 S5b pending |
+| C8 | 重启、同 ID 异内容、收件/应用崩溃、缺源后恢复、同步时新增本机动作 | inbox/outbox/游标/决定持久化，成功只清发布集合，待确认不阻塞其他数据；来源恢复自动重试，无强制匹配或自动安装扩展 | S3b/S4a/S4b passed；S5b真实Windows待确认仍上传、Android日志跨进程通过 |
+| C9 | 同一 HEAD 竞争、未知发布结果、空库竞争、分页/截断、403/429/500/畸形响应 | Git DB REST force=false，有界重试且保留其他设备文件；确认有效 ref 内容后才清队列；固定密文字节重试；MockWebServer 完整解析链 + 真实私库竞争 | S2c/S3b/S4a故障契约及S5b真实私库并发交换passed；现场未强制制造同HEAD碰撞 |
+| C10 | Android/Windows 加密互读、错误密钥/AAD、历史回退、凭据后端故障 | AEAD 绑定空间/代次/协议/批次；密钥与授权分离、系统安全存储不可用不降明文；最低 Android/R8 与真实 Desktop runtime | passed：共享固定向量/回退契约，API26/36 ART及Windows DPAPI/macOS GUI Keychain真实跨进程；Android验收专用入口keep不用于正常release |
+| C11 | 首次 GitHub 设备登录、授权取消/过期/限流/重新连接、选择新/已有专库 | 系统浏览器设备码授权，无 PAT 输入；自动接收结果；恢复资料确认与首次合并；设备名称、换空间/断开隔离。真实服务配置与运行证据 | passed：原生UI/HTTP契约与Windows两实例真实GitHub授权、恢复和非空交换；未声称Android/Mac账号现场联调 |
+| C12 | 手动、启动、15分/1时/6时/24时周期同时触发、离线/休眠恢复 | 共享 coordinator 串行且合并请求；UI 异步；各设备设置独立；Desktop 退出不运行，Android WorkManager 尽力；保留队列、失败可重试 | S4a共享/真实WorkManager/Desktop生命周期passed；S5b正式运行门闭合，仍保留平台调度边界 |
+| C13 | 双端从书架进入/关闭同步，进入设置返回，后台完成，长倒计时 | UI 对齐最终 DEMO：三种顶栏表现可组合忙与数量，99+，设置齿轮子页、状态右侧立即同步、瞬时通知不重放；真实 Compose/导航/DI 与视觉验收 | S4b共享UI/两端入口/四张Compose离屏图passed；S5b正式Desktop原生面板运行通过 |
 | C14 | 120/1万待确认、长按/范围/全选/反选/全部处理、执行中新增/失效/关闭 | 条目直接上方吸附操作条，LazyColumn/分页、冻结版本、汇总确认、有界分段事务、实际完成/跳过/失败反馈、恢复不重复应用 | S3b/S4b行为契约及S5a规模 passed；1万项耗时与边界见规模表 |
 | C15 | 空设备、已有书架、旧备份、克隆 actor、首次导入中继续操作、本机清除历史 | 只合并基线且不复活明确取消；水位后操作不被导入覆盖；新 epoch；本机历史屏蔽持久化、真实新阅读可重新显示，不上传全局删除 | S3c/S4a 基线、历史、水位和新epoch passed；不可观察整机回滚边界见技术方案 |
 | C16 | 1万/10万事件、3/10设备历史、120/1万待确认 | 记录首次与增量时间、请求量、内存、仓库增长、交互响应，暴露真实上限；保留完整历史，不自动 force push/删 tombstone | S5a passed；actor/真实运行边界见上表 |
-| C17 | 全部产品链路和构建 | 相关共享 Android/JVM 契约、完整 Android/Desktop 测试、Test Mode、Android 发布/R8、Windows 构建脚本正式 EXE 与 macOS 发布验收；未运行不算通过 | pending |
-| C18 | 整合扩展任务后的最新仓库 | 逐项核对共享 schema、migration、备份、Source API、DI、依赖，冲突已解决且两功能回归；主工作区用户修改未被回滚，提交/正式产物可追溯 | S5a固定dbf3f050a1整合passed；S5b发布门仍pending |
+| C17 | 全部产品链路和构建 | 相关共享 Android/JVM 契约、完整 Android/Desktop 测试、Test Mode、Android 发布/R8、Windows 构建脚本正式 EXE 与 macOS 发布验收；未运行不算通过 | passed：复用既有完整回归及限定补验；API26/36 ART12项、正常未签名APK、Windows v36/macOS v37构建运行；条件跳过不计通过 |
+| C18 | 整合扩展任务后的最新仓库 | 逐项核对共享 schema、migration、备份、Source API、DI、依赖，冲突已解决且两功能回归；主工作区用户修改未被回滚，提交/正式产物可追溯 | passed：固定dbf3f050a1整合；S5b同批提交；产物来自7338d529ab加候选，版本基线hash不冒充干净提交；主工作树未修改 |
 
 S3c1 完成证据（2026-09-16）：基线4/4、回退7/6、发布确认10/3均有正确RED；无痕追补边界在初轮发现并修复。独立审查的P1为私密已读被正常部分重读/Metadata继承，10/2 RED后以最后可共享值修复；同次限定复核发现REMOTE接线遗漏，11/1 RED后补齐三个同事务字段写入，最终复核通过。`sync-s3c1-final` domain JVM/Android各38，data JVM170/Android149，共395项零失败/错误/跳过，20个Kotlin文件限定格式通过。事务冻结/水位、120章分段、重启续传、断开和新actor、23→24迁移、真实Git回退/不可变初始化索引/发布确认落盘失败有实际契约。代码与共享测试、平台薄适配、schema和必要维护文档共26个文件，超过规模提示仍是同一首次同步可靠性能力；只扩既有publish观察回调，不增加HTTP轮次。S3c2、原生UI与正式发布尚未完成。
 
@@ -374,3 +374,12 @@ GitHub非空真实验收：两个正式EXE各自独立授权/profile，合成漫
 
 
 S5b最终候选修复验证（2026-09-16）：macOS v37已用规定脚本生成正式App，完整3067项零失败、8项既有条件跳过；真实GUI安全会话的两个App进程完成Keychain写入/读取与正常退出，root已读取runtime-final-result.json核验。Windows计数修复后的完整回归3067项仅1失败：许可证配置使manifest ID95 CURRENT_ANDROID的implementation(projects.domain)证据224→230；只更新这一行引用，全部当前角色锚点只读核验无其他失效。其余3066项原结果保留，定向补验契约后以规定脚本build-only生成，避免无业务变化的重复全量。
+
+## S5b 最终提交证据（2026-09-16 接续）
+
+- Android隔离应用仍为`app.mihon.syncacceptance`，debug key仅签该隔离身份，R8/shrink开启且non-debuggable。已保存原APK、mapping与SHA于`.gradle-coordinator/s5b-android-runtime/artifacts-entry-final/`。新增测试宿主写盘屏障经过一次独立限定审查PASS，`sync-s5b-android-art-prefs-barrier`构建成功；`emulator-5582-prefs-barrier-{prepare,verify}.log`与`emulator-5580-prefs-barrier-{prepare,verify}.log`各3项通过。只在新一轮prepare前清自有隔离包，prepare/verify之间仅force-stop。屏障不改产品写入，也不承诺任意强杀瞬间异步偏好零丢失。
+- 正常发布按`-Pinclude-telemetry -Penable-updater`且无验收init/单测许可证适配完成。首轮许可证复用旧清单被核对拦截；原生成任务强制刷新后，`sync-s5b-android-normal-license-refresh`确认263工件模块、293导出库、95官方合并别名，缺失0、版本不符0；`sync-s5b-android-normal-release-final`用时2分31秒、exit0。最终包内`res/M7.json`与已验证生成清单逐字节一致，包含15个Firebase库。本次改动的格式检查IS CLEAN，`git diff --check`通过。
+- [正常Android release APK（未签名）](D:/Shell/Github/mihon-sync/.gradle-coordinator/s5b-android-runtime/artifacts-normal-release-final/app/app-universal-release-unsigned.apk)：appId `app.mihon`、versionName `0.19.4`、versionCode `18`、minSdk26/targetSdk36。SHA-256 `8af45f6c86ac0c57a6d49e9046a606d44a8ddbe2e6431844e858fe3a7699d287`。mapping、metadata、全部ABI APK及核对结果在同一最终目录；`artifacts-normal-release/`是旧清单失败候选，不交付。没有正式签名密钥证据，未签名包不能直接安装，未覆盖用户原应用。
+- [Windows最终EXE](D:/Shell/Github/mihon-sync/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.36.7338d52-unpacked/Mihon%20Desktop.exe)与[ZIP](D:/Shell/Github/mihon-sync/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.36.7338d52-windows.zip)已核对存在。Mac最终App位于远端`mbp-lan:/Users/altair/github/mihon-sync-acceptance/app-desktop/artifacts/macos/Mihon-Desktop-0.11.19.37.7338d52-unpacked/Mihon Desktop.app`，SSH只读核对存在；[GUI系统后端运行证据](C:/Users/feeli/AppData/Local/Temp/mihon-sync-macos-acceptance/runtime-final-result.json)已复核。Mac与Windows版本BUILD不同，且来自基线加候选，并非最终提交hash的干净重建。
+- 复用共享1459、Android app409、test-desktop52项与Mac3067项结果；Mac8项/Windows3项既有条件跳过不算通过。共享组合协调器整体FAILED是当时app16项夹具失败，后续app409全量通过；不能把该组合终态误写成PASSED。Windows3067项中的唯一manifest行号失败由34项定向补验闭合，未重复全量、规模或账号流程。
+- 候选跨平台验收隔离、必要fixture、许可证构建和文档超过8文件/400行提示，仍是一个可交付S5b批次；风险集中在发布接线与隔离边界，已有完整回归、真实系统后端及新增ART复验覆盖。未新增同步字段/服务商/界面、未改schema、未修改另一工作树或继续合并main。最终同批提交源码、测试、必要文档及checkoff；已有Windows额外合成探针仍在原隔离profile，按交接保留，不为清理它另起运行验收。

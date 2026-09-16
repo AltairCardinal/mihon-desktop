@@ -12,6 +12,7 @@ import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.test.ScreenModelTestHost
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -54,6 +55,7 @@ import tachiyomi.domain.source.service.SourcePageResult
 import tachiyomi.domain.source.service.SourceQuery
 
 class BrowseSourceScreenModelBehaviorTest {
+    private val modelHost = ScreenModelTestHost()
 
     @Test
     fun `browse favorite toggles reach the repository as explicit user operations`() = runTest {
@@ -120,6 +122,7 @@ class BrowseSourceScreenModelBehaviorTest {
 
     @AfterEach
     fun tearDown() {
+        modelHost.close()
         Dispatchers.resetMain()
     }
 
@@ -202,25 +205,27 @@ class BrowseSourceScreenModelBehaviorTest {
             every { await(source.id) } returns false
         }
 
-        return BrowseSourceScreenModel(
-            sourceId = source.id,
-            listingQuery = BrowseSourceScreenModel.Listing.Popular.query,
-            sourceManager = sourceManager,
-            sourcePreferences = SourcePreferences(preferenceStore),
-            libraryPreferences = LibraryPreferences(preferenceStore),
-            coverCache = mockk<CoverCache>(relaxed = true),
-            sourceMangaSearchService = sourceMangaSearchService,
-            networkToLocalManga = NetworkToLocalManga(repository),
-            getDuplicateLibraryManga = mockk<GetDuplicateLibraryManga>(),
-            getCategories = mockk<GetCategories>(),
-            setMangaCategories = mockk<SetMangaCategories>(),
-            setMangaDefaultChapterFlags = mockk<SetMangaDefaultChapterFlags>(relaxed = true),
-            getManga = getManga,
-            updateManga = updateManga,
-            addTracks = mockk<AddTracks>(relaxed = true),
-            getIncognitoState = getIncognitoState,
-            pagerCoroutineScope = backgroundScope,
-        )
+        return modelHost.create {
+            BrowseSourceScreenModel(
+                sourceId = source.id,
+                listingQuery = BrowseSourceScreenModel.Listing.Popular.query,
+                sourceManager = sourceManager,
+                sourcePreferences = SourcePreferences(preferenceStore),
+                libraryPreferences = LibraryPreferences(preferenceStore),
+                coverCache = mockk<CoverCache>(relaxed = true),
+                sourceMangaSearchService = sourceMangaSearchService,
+                networkToLocalManga = NetworkToLocalManga(repository),
+                getDuplicateLibraryManga = mockk<GetDuplicateLibraryManga>(),
+                getCategories = mockk<GetCategories>(),
+                setMangaCategories = mockk<SetMangaCategories>(),
+                setMangaDefaultChapterFlags = mockk<SetMangaDefaultChapterFlags>(relaxed = true),
+                getManga = getManga,
+                updateManga = updateManga,
+                addTracks = mockk<AddTracks>(relaxed = true),
+                getIncognitoState = getIncognitoState,
+                pagerCoroutineScope = backgroundScope,
+            )
+        }
     }
 
     private class HangingBrowseSource : eu.kanade.tachiyomi.source.Source {

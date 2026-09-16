@@ -16,9 +16,11 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.spyk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
@@ -73,6 +75,9 @@ class GlobalSearchResultProductionWiringTest {
             val searchesB = mutableListOf<String>()
             val listedA = mutableListOf<SManga>()
             val details = DetailProbe()
+            val refreshInputs = mutableListOf<SManga>()
+            val saver = spyk(fixture.saver)
+            every { saver.refreshFromSource(any(), capture(refreshInputs)) } answers { callOriginal() }
             val sourceA = source(9, "A", searchesA, "/shared", listedA, details, resultCount = 1)
             val sourceB = source(10, "B", searchesB, "/shared", resultCount = 1)
             val preferences = DesktopAppPreferences(DesktopPreferenceStore(fixture.preferenceRoot)).apply {
@@ -83,7 +88,7 @@ class GlobalSearchResultProductionWiringTest {
                 every { sourceManager } returns FakeDesktopSourceManager(listOf(sourceA, sourceB))
                 every { appPreferences } returns preferences
                 every { sourceMangaSearchService } returns SourceMangaSearchService()
-                every { saveSourceMangaForDetails } returns fixture.saver
+                every { saveSourceMangaForDetails } returns saver
                 every { getManga } returns fixture.getManga
                 every { sourceLoginSessionFactory } returns mockk(relaxed = true)
                 every { creatorDiscoverySourcePort } returns null
@@ -157,7 +162,11 @@ class GlobalSearchResultProductionWiringTest {
                 assertEquals(observed.id, (requireNotNull(navigator).items.last() as MangaDetailScreen).mangaId)
                 withTimeout(ASYNC_TIMEOUT_MS) { details.started.await() }
                 assertEquals(1, details.inputs.size)
-                assertSame(listed, details.inputs.single())
+                assertSame(listed, refreshInputs.single())
+                assertEquals(
+                    listOf("/shared", "DB updated", "updated-cover"),
+                    details.inputs.single().let { listOf(it.url, it.title, it.thumbnail_url) },
+                )
                 assertEquals(listOf("/shared", "A listed 0", "A-cover-0"), listOf(listed.url, listed.title, listed.thumbnail_url))
                 details.release.complete(Unit)
                 withTimeout(ASYNC_TIMEOUT_MS) { details.completed.await() }
@@ -253,10 +262,13 @@ class GlobalSearchResultProductionWiringTest {
             listed?.addAll(items)
             MangasPage(items, false)
         }
-        coEvery { getMangaDetails(any()) } coAnswers {
-            firstArg<SManga>().also { details?.inputs?.add(it); details?.started?.complete(Unit); details?.release?.await() }
+        coEvery { getMangaUpdate(any(), any(), true, true) } coAnswers {
+            val manga = firstArg<SManga>()
+            details?.inputs?.add(manga)
+            details?.started?.complete(Unit)
+            details?.release?.await()
+            SMangaUpdate(manga, emptyList()).also { details?.completed?.complete(Unit) }
         }
-        coEvery { getChapterList(any()) } answers { details?.completed?.complete(Unit); emptyList() }
     }
 
     private fun nodes(scene: ImageComposeScene, unmerged: Boolean = false): List<SemanticsNode> = scene.semanticsOwners.flatMap { owner ->

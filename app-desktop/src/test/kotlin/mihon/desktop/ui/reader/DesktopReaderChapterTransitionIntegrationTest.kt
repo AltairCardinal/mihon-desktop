@@ -1,5 +1,6 @@
 package mihon.desktop.ui.reader
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import cafe.adriel.voyager.navigator.Navigator
@@ -12,6 +13,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import mihon.desktop.DesktopUiDependencies
+import mihon.desktop.LocalDesktopUiDependencies
+import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.reader.DesktopReaderChapterContext
 import mihon.desktop.reader.DesktopReaderChapterContentPortFactory
 import mihon.desktop.reader.DesktopReaderEncodedPageStore
@@ -29,6 +33,7 @@ import mihon.desktop.reader.ReaderNavigator
 import mihon.desktop.reader.ReaderPreferences
 import mihon.desktop.reader.ReaderPageIoObserver
 import mihon.desktop.reader.ReadingMode
+import mihon.desktop.settings.DesktopAppPreferences
 import mihon.domain.reader.ReaderTransitionDirection
 import mihon.domain.reader.materialize.ReaderChapterContentPort
 import mihon.domain.reader.materialize.ReaderChapterMaterializeResult
@@ -312,11 +317,17 @@ class DesktopReaderChapterTransitionIntegrationTest {
         )
         val previousInjekt = Injekt
         val scene = ImageComposeScene(640, 480, coroutineContext = currentCoroutineContext()) {}
+        val uiDependencies = mockk<DesktopUiDependencies> {
+            every { appPreferences } returns DesktopAppPreferences(InMemoryPreferenceStore())
+            every { notificationService } returns DesktopNotificationService()
+        }
         try {
             patchInjekt()
             Injekt.addSingleton(factory)
             scene.setContent {
-                Navigator(screen) { screen.Content() }
+                CompositionLocalProvider(LocalDesktopUiDependencies provides uiDependencies) {
+                    Navigator(screen) { screen.Content() }
+                }
             }
             repeat(3) {
                 scene.render()

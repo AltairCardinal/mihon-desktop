@@ -1,6 +1,5 @@
 package eu.kanade.tachiyomi.ui.library
 
-import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.source.service.SourcePreferences
@@ -8,13 +7,13 @@ import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.test.ScreenModelTestHost
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -48,6 +47,8 @@ import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.registry.default.DefaultRegistrar
 
 class LibrarySharedEvaluationWiringTest {
+    private val modelHost = ScreenModelTestHost()
+
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun `Android bulk removal sends explicit user operations through its production command`() = runBlocking {
@@ -58,10 +59,12 @@ class LibrarySharedEvaluationWiringTest {
             true
         }
         Dispatchers.setMain(UnconfinedTestDispatcher())
-        val model = allocateModel(
-            "updateManga" to UpdateManga(repository, mockk()),
-            "coverCache" to mockk<CoverCache>(relaxed = true),
-        )
+        val model = modelHost.create {
+            allocateModel(
+                "updateManga" to UpdateManga(repository, mockk()),
+                "coverCache" to mockk<CoverCache>(relaxed = true),
+            )
+        }
         try {
             model.removeMangas(
                 listOf(Manga.create().copy(id = 1, source = 7, favorite = true)),
@@ -72,7 +75,7 @@ class LibrarySharedEvaluationWiringTest {
             assertEquals(listOf(1L), updates.map { it.id })
             assertTrue(updates.all { it.favorite == false && it.syncContext.origin == SyncOrigin.USER })
         } finally {
-            model.screenModelScope.cancel()
+            modelHost.close()
             Dispatchers.resetMain()
         }
     }

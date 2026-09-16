@@ -1,5 +1,6 @@
 [versions]
 aboutlib_version = "13.2.1"
+aboutlib_plugin_version = "14.0.0"
 leakcanary = "2.14"
 moko = "0.26.0"
 okhttp_version = "5.3.2"
@@ -127,7 +128,7 @@ materialKolor = { module = "com.materialkolor:material-kolor", version.ref = "ma
 
 [plugins]
 google-services = { id = "com.google.gms.google-services", version = "4.4.4" }
-aboutLibraries = { id = "com.mikepenz.aboutlibraries.plugin.android", version.ref = "aboutlib_version" }
+aboutLibraries = { id = "com.mikepenz.aboutlibraries.plugin.android", version.ref = "aboutlib_plugin_version" }
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
 moko = { id = "dev.icerock.mobile.multiplatform-resources", version.ref = "moko" }
 firebase-crashlytics = { id = "com.google.firebase.crashlytics", version = "3.0.6" }

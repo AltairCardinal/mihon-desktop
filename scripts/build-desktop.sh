@@ -10,6 +10,10 @@
 #   ./scripts/build-desktop.sh build-only  # bump BUILD and build after equivalent tests already passed
 #   ./scripts/build-desktop.sh test-only   # run tests only where supported
 #   ./scripts/build-desktop.sh full-tests  # run full tests only where supported
+#
+# Isolated macOS builds may set MIHON_MACOS_DIST_ROOT and MIHON_MACOS_DEPLOY_DIR
+# to absolute, non-overlapping paths on APFS. The deploy path must end in .app.
+# Invalid paths fail before version allocation or Gradle; defaults stay unchanged.
 
 set -euo pipefail
 
@@ -17,6 +21,37 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_VERSION_FILE="$REPO_ROOT/app-desktop/src/main/kotlin/mihon/desktop/AppVersion.kt"
 HOST_OS="${MIHON_HOST_OS:-$(uname -s)}"
 MODE="${1:-hash}"
+
+if [[ "$HOST_OS" == "Darwin" ]]; then
+  MACOS_PATHS="$(python3 - "$REPO_ROOT" \
+    "${MIHON_MACOS_DIST_ROOT:-/private/tmp/mihon-dist}" \
+    "${MIHON_MACOS_DEPLOY_DIR:-/Applications/Mihon Desktop.app}" <<'PY'
+import pathlib
+import sys
+
+repo = pathlib.Path(sys.argv[1]).resolve()
+raw_paths = sys.argv[2:]
+if any(not pathlib.Path(value).is_absolute() or '\n' in value or '\r' in value for value in raw_paths):
+    sys.exit('Unsafe macOS build paths: absolute single-line paths are required')
+dist, deploy = (pathlib.Path(value).resolve() for value in raw_paths)
+protected = {
+    pathlib.Path(value).resolve()
+    for value in ('/', '/Applications', '/Users', '/System', '/Library', '/private', '/tmp', '/Volumes')
+}
+protected.add(pathlib.Path.home().resolve())
+if any(path in protected or path == repo or path in repo.parents for path in (dist, deploy)):
+    sys.exit('Unsafe macOS build paths: a system, home, or repository root cannot be used')
+if deploy.suffix != '.app':
+    sys.exit('Unsafe macOS build paths: the deployment destination must be an .app bundle')
+if dist == deploy or dist in deploy.parents or deploy in dist.parents:
+    sys.exit('Unsafe macOS build paths: distribution and deployment must not overlap')
+print(dist)
+print(deploy)
+PY
+  )"
+  export MIHON_MACOS_DIST_ROOT="${MACOS_PATHS%%$'\n'*}"
+  MACOS_DEPLOY_DIR="${MACOS_PATHS#*$'\n'}"
+fi
 
 read_version_constant() {
   local name="$1"
@@ -81,8 +116,8 @@ FULL_VERSION="0.$STAGE.$FEATURE.$BUILD.$GIT_HASH"
 echo "Full version: $FULL_VERSION"
 
 run_macos() {
-  local DEPLOY_DIR="/Applications/Mihon Desktop.app"
-  local DIST_DIR="/private/tmp/mihon-dist/main/app/Mihon Desktop.app"
+  local DEPLOY_DIR="$MACOS_DEPLOY_DIR"
+  local DIST_DIR="$MIHON_MACOS_DIST_ROOT/main/app/Mihon Desktop.app"
   local PROVENANCE_SOURCE=""
 
   cleanup_macos_provenance_source() {
@@ -129,6 +164,8 @@ run_macos() {
 
   echo ""
   echo "Deploying to $DEPLOY_DIR..."
+  [[ -d "$DIST_DIR" ]] || { echo "Built macOS bundle not found: $DIST_DIR" >&2; exit 1; }
+  mkdir -p "$(dirname "$DEPLOY_DIR")"
   rm -rf "$DEPLOY_DIR"
   cp -R "$DIST_DIR" "$DEPLOY_DIR"
 
@@ -144,7 +181,7 @@ run_macos() {
 
   echo ""
   echo "Deployed Mihon Desktop $FULL_VERSION"
-  echo "  $DEPLOY_DIR"
+  echo "Final macOS app: $DEPLOY_DIR"
 }
 
 run_windows() {

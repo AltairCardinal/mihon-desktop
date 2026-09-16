@@ -445,8 +445,13 @@ compose.desktop {
         jvmArgs += listOf("-Djava.net.useSystemProxies=true")
 
         nativeDistributions {
-            // Redirect output to local APFS volume — codesign fails on exFAT
-            outputBaseDir.set(project.file("/tmp/mihon-dist"))
+            // macOS codesign requires APFS; the build entrypoint validates isolated output paths.
+            val distributionRoot = if (System.getProperty("os.name").startsWith("Mac", ignoreCase = true)) {
+                providers.environmentVariable("MIHON_MACOS_DIST_ROOT").getOrElse("/tmp/mihon-dist")
+            } else {
+                "/tmp/mihon-dist"
+            }
+            outputBaseDir.set(project.file(distributionRoot))
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi)
             packageName = "Mihon Desktop"
             packageVersion = desktopNativePackageVersion

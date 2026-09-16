@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.browse.source
 import eu.kanade.domain.source.interactor.GetEnabledSources
 import eu.kanade.domain.source.interactor.ToggleSource
 import eu.kanade.domain.source.interactor.ToggleSourcePin
+import eu.kanade.tachiyomi.test.ScreenModelTestHost
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -29,10 +30,15 @@ import org.junit.jupiter.api.Test
 import tachiyomi.domain.source.model.Source
 
 class SourcesScreenModelSharedStateTest {
+    private val modelHost = ScreenModelTestHost()
+
     private val source = Source(7, "en", "Example", true, false)
 
     @AfterEach
-    fun tearDown() = Dispatchers.resetMain()
+    fun tearDown() {
+        modelHost.close()
+        Dispatchers.resetMain()
+    }
 
     @Test
     fun `production ScreenModel renders reducer output and consumes action results once`() = runTest {
@@ -44,7 +50,7 @@ class SourcesScreenModelSharedStateTest {
         every { toggleSource.await(source, false) } returns Unit
         every { toggleSource.await(source, true) } throws AssertionError("enabled source must be disabled")
         every { togglePin.await(any()) } returns Unit
-        val model = SourcesScreenModel(getSources, toggleSource, togglePin)
+        val model = modelHost.create { SourcesScreenModel(getSources, toggleSource, togglePin) }
 
         val content = awaitContent(model) { it is SourceScreenContent.Content } as SourceScreenContent.Content
         assertEquals(listOf(source), content.sources)
@@ -74,11 +80,13 @@ class SourcesScreenModelSharedStateTest {
             flow { throw IllegalStateException("offline") },
             flowOf(listOf(source)),
         )
-        val model = SourcesScreenModel(
-            getEnabledSources = getSources,
-            toggleSource = mockk(relaxed = true),
-            toggleSourcePin = mockk(relaxed = true),
-        )
+        val model = modelHost.create {
+            SourcesScreenModel(
+                getEnabledSources = getSources,
+                toggleSource = mockk(relaxed = true),
+                toggleSourcePin = mockk(relaxed = true),
+            )
+        }
 
         val failed = awaitContent(model) { it is SourceScreenContent.Failure } as SourceScreenContent.Failure
         assertTrue(failed.retryable)

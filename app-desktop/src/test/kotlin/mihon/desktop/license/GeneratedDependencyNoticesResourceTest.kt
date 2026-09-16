@@ -14,7 +14,7 @@ class GeneratedDependencyNoticesResourceTest {
         val notices = assertInstanceOf(LicenseNoticeResult.Success::class.java, result).notices
         val names = notices.map { it.name }
 
-        assertEquals(196, notices.size)
+        assertEquals(199, notices.size)
         assertEquals(
             names.sortedWith(compareBy<String> { it.lowercase() }.thenBy { it }),
             names,
@@ -26,6 +26,10 @@ class GeneratedDependencyNoticesResourceTest {
         assertTrue(
             names.containsAll(listOf("okhttp-zstd", "zstd-kmp", "zstd-kmp-okio")),
             "Zstandard dependency notices missing: $names",
+        )
+        assertTrue(
+            names.containsAll(listOf("Tink Cryptography API", "Gson", "Protocol Buffers [Core]")),
+            "Synchronization dependency notices missing: $names",
         )
         val coroutines = notices.first { "kotlinx-coroutines-core" in it.name }
         assertTrue(

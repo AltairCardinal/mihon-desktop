@@ -452,9 +452,13 @@ abstract class SyncPanelStorageContract {
                     panel.act(SyncPanelAction.Open)
                     assertTrue(panel.state.value.importPaused)
                     assertEquals(1L, panel.state.value.importRemaining)
+                    assertEquals(0L, panel.state.value.queuedMembership)
+                    assertEquals(0L, panel.state.value.queuedTotal)
                     panel.act(SyncPanelAction.ResumeImport)
                     withTimeout(5_000) { panel.state.first { it.importRemaining == 0L && !it.busy } }
                     assertFalse(panel.state.value.importPaused)
+                    panel.act(SyncPanelAction.Open)
+                    assertEquals(0L, panel.state.value.queuedTotal)
                 }
             }
         }

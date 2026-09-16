@@ -14,6 +14,7 @@ import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.test.ScreenModelTestHost
 import eu.kanade.tachiyomi.ui.browse.extension.details.ExtensionDetailsEvent
 import eu.kanade.tachiyomi.ui.browse.extension.details.ExtensionDetailsScreenModel
 import io.mockk.every
@@ -46,6 +47,8 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class ExtensionPresentationWiringTest {
+    private val modelHost = ScreenModelTestHost()
+
     @Test
     fun `late error from an old screen collection cannot replace an active retry`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
@@ -110,7 +113,7 @@ class ExtensionPresentationWiringTest {
         } finally {
             oldGate.complete(Unit)
             newGate.complete(Unit)
-            model.onDispose()
+            modelHost.close()
             Dispatchers.resetMain()
         }
     }
@@ -133,7 +136,7 @@ class ExtensionPresentationWiringTest {
             errors.value = emptyMap()
             assertTrue(model.state.value.installErrors.isEmpty())
         } finally {
-            model.onDispose()
+            modelHost.close()
             Dispatchers.resetMain()
         }
     }
@@ -160,7 +163,7 @@ class ExtensionPresentationWiringTest {
             failures.value = emptyList()
             assertTrue(model.state.value.repositoryFailures.isEmpty())
         } finally {
-            model.onDispose()
+            modelHost.close()
             Dispatchers.resetMain()
         }
     }
@@ -202,7 +205,7 @@ class ExtensionPresentationWiringTest {
             }
             assertFalse(collectedPastInstalled.get())
         } finally {
-            screenModel.onDispose()
+            modelHost.close()
             Dispatchers.resetMain()
         }
     }
@@ -224,25 +227,27 @@ class ExtensionPresentationWiringTest {
             every { incognitoExtensions() } returns preference(setOf(extension.pkgName))
         }
         val actionStore = spyk(androidExtensionPresentationStore)
-        val details = ExtensionDetailsScreenModel(
-            extension.pkgName,
-            mockk(relaxed = true),
-            mockk<NetworkHelper>(relaxed = true),
-            manager,
-            mockk {
-                every { subscribe(extension) } returns flowOf(
-                    listOf(
-                        ExtensionSourceItem(disabled, false, true),
-                        ExtensionSourceItem(alpha, true, true),
-                        ExtensionSourceItem(zulu, true, true),
-                    ),
-                )
-            },
-            toggleSource,
-            toggleIncognito,
-            preferences,
-            actionStore,
-        )
+        val details = modelHost.create {
+            ExtensionDetailsScreenModel(
+                extension.pkgName,
+                mockk(relaxed = true),
+                mockk<NetworkHelper>(relaxed = true),
+                manager,
+                mockk {
+                    every { subscribe(extension) } returns flowOf(
+                        listOf(
+                            ExtensionSourceItem(disabled, false, true),
+                            ExtensionSourceItem(alpha, true, true),
+                            ExtensionSourceItem(zulu, true, true),
+                        ),
+                    )
+                },
+                toggleSource,
+                toggleIncognito,
+                preferences,
+                actionStore,
+            )
+        }
         try {
             assertEquals(listOf(3L, 2L, 1L), details.state.value.sources.map { it.source.id })
             verify { actionStore.enabledFirst<ExtensionSourceItem>(any(), any(), any()) }
@@ -260,7 +265,7 @@ class ExtensionPresentationWiringTest {
             installedFlow.value = emptyList()
             assertEquals(ExtensionDetailsEvent.Uninstalled, event.await())
         } finally {
-            details.onDispose()
+            modelHost.close()
             Dispatchers.resetMain()
         }
     }
@@ -353,14 +358,16 @@ class ExtensionPresentationWiringTest {
         val getExtensions = mockk<GetExtensionsByType> {
             every { subscribe() } returns flowOf(Extensions(emptyList(), emptyList(), emptyList(), emptyList()))
         }
-        val screenModel = ExtensionsScreenModel(
-            preferences,
-            basePreferences,
-            mockk(relaxed = true),
-            getExtensions,
-            classifier,
-            mockk<Application>(relaxed = true),
-        )
+        val screenModel = modelHost.create {
+            ExtensionsScreenModel(
+                preferences,
+                basePreferences,
+                mockk(relaxed = true),
+                getExtensions,
+                classifier,
+                mockk<Application>(relaxed = true),
+            )
+        }
 
         try {
             assertTrue(screenModel.searchQueryPredicate("installed reader")(installed))
@@ -372,7 +379,7 @@ class ExtensionPresentationWiringTest {
             verify { classifier.searchPredicate("org.example", false) }
             verify { classifier.searchPredicate("org.example", true) }
         } finally {
-            screenModel.onDispose()
+            modelHost.close()
             Dispatchers.resetMain()
         }
     }
@@ -435,15 +442,17 @@ class ExtensionPresentationWiringTest {
                 every { changes() } returns flowOf(BasePreferences.ExtensionInstaller.PACKAGEINSTALLER)
             }
         }
-        return ExtensionsScreenModel(
-            preferences,
-            basePreferences,
-            manager,
-            mockk { every { subscribe() } returns flowOf(extensions) },
-            androidExtensionPresentationStore,
-            mockk(relaxed = true),
-            actionStore,
-        )
+        return modelHost.create {
+            ExtensionsScreenModel(
+                preferences,
+                basePreferences,
+                manager,
+                mockk { every { subscribe() } returns flowOf(extensions) },
+                androidExtensionPresentationStore,
+                mockk(relaxed = true),
+                actionStore,
+            )
+        }
     }
 
     private fun <T> preference(value: T) = mockk<Preference<T>> {

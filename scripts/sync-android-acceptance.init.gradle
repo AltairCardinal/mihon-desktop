@@ -1,0 +1,28 @@
+// Isolated ART acceptance of the production release/R8 variant.
+// The local debug key signs only this acceptance identity, not a distributable release.
+// Do not combine with -Pdisable-code-shrink or a license-generation bypass.
+gradle.beforeProject { project ->
+    project.pluginManager.withPlugin('com.android.application') {
+        if (project.path == ':app') {
+            project.extensions.getByName('androidComponents').finalizeDsl { android ->
+                if (android.defaultConfig.applicationId != 'app.mihon') {
+                    throw new GradleException('Sync acceptance requires the expected Mihon application')
+                }
+                def release = android.buildTypes.getByName('release')
+                if (!release.minifyEnabled || !release.shrinkResources) {
+                    throw new GradleException('Sync ART acceptance requires production R8 and resource shrinking')
+                }
+                android.defaultConfig.applicationId = 'app.mihon.syncacceptance'
+                android.defaultConfig.testApplicationId = 'app.mihon.syncacceptance.test'
+                android.testBuildType = 'release'
+                release.signingConfig = android.signingConfigs.getByName('debug')
+                release.proguardFiles(project.rootProject.file('scripts/sync-android-acceptance.pro'))
+
+                // Other acceptance suites own separate app identities and fixture assets.
+                def tests = android.sourceSets.getByName('androidTest')
+                tests.java.setSrcDirs(['src/androidTest/java/eu/kanade/tachiyomi/sync'])
+                tests.assets.setSrcDirs([])
+            }
+        }
+    }
+}

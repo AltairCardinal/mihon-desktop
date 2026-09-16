@@ -1,0 +1,21 @@
+{
+  "uniqueId": "com.github.arkon.FlexibleAdapter:flexible-adapter",
+  "funding": [],
+  "developers": [
+    {
+      "name": ""
+    }
+  ],
+  "artifactVersion": "c8013533",
+  "description": "Fast and versatile Adapter for RecyclerView which regroups several features into one library to considerably improve the user experience :-)",
+  "scm": {
+    "connection": "scm:git://github.com/arkon/FlexibleAdapter.git",
+    "url": "git://github.com/arkon/FlexibleAdapter.git",
+    "developerConnection": "scm:git://github.com/arkon/FlexibleAdapter.git"
+  },
+  "name": "arkon/FlexibleAdapter",
+  "website": "https://github.com/arkon/FlexibleAdapter",
+  "licenses": [
+    "Apache-2.0"
+  ]
+}

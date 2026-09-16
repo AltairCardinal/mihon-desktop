@@ -288,6 +288,8 @@ object TestMode {
                 startedServer = embeddedServer(Netty, host = TEST_MODE_HOST, port = args.httpPort) {
                     testHttpServer(
                         platformAcceptanceController = platformAcceptance,
+                        syncPanel = Injekt.get<mihon.data.sync.runtime.SyncRuntime>().panel,
+                        syncSecureStore = Injekt.get<mihon.domain.sync.security.SyncSecureStore>(),
                         onShutdownRequested = run::terminate,
                     )
                 }.start(wait = false)

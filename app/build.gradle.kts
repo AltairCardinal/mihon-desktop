@@ -13,6 +13,12 @@ plugins {
     alias(libs.plugins.test.retry)
 }
 
+aboutLibraries {
+    collect {
+        configPath.set(layout.projectDirectory.dir("license-metadata"))
+    }
+}
+
 val aex01AndroidTestAssets = layout.buildDirectory.dir("generated/aex01AndroidTestAssets")
 val syncAex01AndroidTestAssets = tasks.register<Sync>("syncAex01AndroidTestAssets") {
     from(rootProject.file("data/src/commonTest/resources/backup")) {

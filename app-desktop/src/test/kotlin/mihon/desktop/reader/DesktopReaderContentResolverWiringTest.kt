@@ -4,7 +4,9 @@ import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
+import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import java.awt.image.BufferedImage
 import java.io.File
@@ -32,6 +34,9 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import tachiyomi.domain.reader.interactor.RecordReadingProgress
+import tachiyomi.domain.reader.model.ReadingSyncSnapshot
+import tachiyomi.domain.reader.repository.ReadingProgressRepository
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.service.SourceManager
 import java.util.concurrent.CountDownLatch
@@ -165,6 +170,10 @@ class DesktopReaderContentResolverWiringTest {
         val downloaded = provider.canonicalChapterDownloadDir(identity).also(File::mkdirs)
         ImageIO.write(BufferedImage(8, 12, BufferedImage.TYPE_INT_RGB), "png", downloaded.resolve("001.png"))
         val progressTracker = mockk<ReaderProgressTracker>(relaxed = true)
+        val readingSession = RecordReadingProgress(mockk<ReadingProgressRepository>())
+            .openSession(context.chapterId, ReadingSyncSnapshot())
+        coEvery { progressTracker.openSession(context.chapterId, context.resumeSnapshot) } returns readingSession
+        every { progressTracker.isIncognito(context.sourceId) } returns false
         val factory = DesktopReaderRuntimeFactory(
             prefs = ReaderPreferences(),
             downloadProvider = provider,
@@ -183,6 +192,7 @@ class DesktopReaderContentResolverWiringTest {
             advanceUntilIdle()
 
             coVerify(exactly = 1) {
+                progressTracker.openSession(context.chapterId, context.resumeSnapshot)
                 progressTracker.track(
                     any(),
                     context.chapterId,
@@ -197,6 +207,8 @@ class DesktopReaderContentResolverWiringTest {
                     any(),
                     any(),
                     identity,
+                    readingSession = readingSession,
+                    incognitoAtAcceptance = false,
                 )
             }
         } finally {

@@ -104,7 +104,8 @@ SELECT * FROM sync_spaces WHERE active = 1;
 getPendingCategoryCounts:
 SELECT sync_events.category, count(*) AS count FROM sync_outbox
 JOIN sync_events USING (space_id, generation, actor_id, epoch, seq)
-WHERE sync_outbox.space_id = ? AND sync_outbox.generation = ? GROUP BY sync_events.category;
+WHERE sync_outbox.space_id = ? AND sync_outbox.generation = ? AND sync_outbox.status != 'PUBLISHED'
+GROUP BY sync_events.category;
 
 activateSpace:
 UPDATE sync_spaces SET active = 1, exchange_enabled = 1 WHERE space_id = ? AND generation = ?;

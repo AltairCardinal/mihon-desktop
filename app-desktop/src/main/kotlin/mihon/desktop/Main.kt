@@ -88,12 +88,15 @@ suspend fun main(args: Array<String>) {
 
 internal suspend fun startProductionDesktopApplication(
     args: Array<String>,
-    broker: DesktopExternalActionBroker = DesktopExternalActionBroker(DesktopPlatformPaths.current().instanceStateFile),
+    broker: DesktopExternalActionBroker = DesktopExternalActionBroker(
+        (mihon.desktop.test.desktopTestProfile(args)?.paths ?: DesktopPlatformPaths.current()).instanceStateFile,
+    ),
     registrar: DesktopUriSchemeRegistrar = DesktopUriSchemeRegistration(),
     reportRegistration: (DesktopUriSchemeRegistration.Result) -> Unit = ::reportUriSchemeRegistration,
     openUriEventPort: DesktopOpenUriEventPort = AwtDesktopOpenUriEventPort(),
     ownerIngressDependencies: (DesktopOwnerTransaction) -> DesktopOwnerIngressDependencies = { transaction ->
-        initDesktopDI()
+        val profile = mihon.desktop.test.desktopTestProfile(args)
+        if (profile == null) initDesktopDI() else initDesktopDI(profile.paths, profile.preferences())
         val runtime = Injekt.get<DesktopAppRuntime>()
         transaction.registerRuntime(runtime)
         DesktopOwnerIngressDependencies(runtime, DesktopUiDependencies.fromInjekt())
@@ -110,7 +113,9 @@ internal suspend fun startProductionDesktopApplication(
     val testArgs = TestArguments.parse(args)
     return try {
         val result = startDesktopInstance(broker, desktopExternalActionRaw(args)) { electedBroker ->
-            reportDesktopOwnerRegistration(registrar, reportRegistration)
+            if (mihon.desktop.test.desktopTestProfile(args) == null) {
+                reportDesktopOwnerRegistration(registrar, reportRegistration)
+            }
             owner = prepareDesktopOwner(transaction, electedBroker, args, openUriEventPort, ownerIngressDependencies)
         }
         owner?.let { startup ->

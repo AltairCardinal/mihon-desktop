@@ -3,6 +3,7 @@ package eu.kanade.presentation.more.settings.screen.browse
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.test.ScreenModelTestHost
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
@@ -43,8 +44,12 @@ import tachiyomi.i18n.MR
 import java.util.concurrent.TimeUnit
 
 class ExtensionReposLifecycleIntegrationTest {
+    private val modelHost = ScreenModelTestHost()
+
     @Test
     fun `both deeplinks drive real screen model discovery confirmation replacement and deletion`() = runBlocking {
+        val jdbcDriver = (Class.forName("org.sqlite.JDBC").getDeclaredConstructor().newInstance() as java.sql.Driver)
+            .also(java.sql.DriverManager::registerDriver)
         Dispatchers.setMain(UnconfinedTestDispatcher())
         try {
             MockWebServer().also { it.start() }.use { server ->
@@ -61,15 +66,17 @@ class ExtensionReposLifecycleIntegrationTest {
                     val repository = ExtensionRepoRepositoryImpl(AndroidDatabaseHandler(database, driver))
                     val network = mockk<NetworkHelper> { every { client } returns OkHttpClient() }
                     val service = ExtensionRepoService(network, Json { ignoreUnknownKeys = true })
-                    val model = ExtensionReposScreenModel(
-                        GetExtensionRepo(repository),
-                        CreateExtensionRepo(repository, service),
-                        DeleteExtensionRepo(repository),
-                        ReplaceExtensionRepo(repository),
-                        UpdateExtensionRepo(repository, service),
-                        mockk<ExtensionManager>(relaxed = true),
-                        service,
-                    )
+                    val model = modelHost.create {
+                        ExtensionReposScreenModel(
+                            GetExtensionRepo(repository),
+                            CreateExtensionRepo(repository, service),
+                            DeleteExtensionRepo(repository),
+                            ReplaceExtensionRepo(repository),
+                            UpdateExtensionRepo(repository, service),
+                            mockk<ExtensionManager>(relaxed = true),
+                            service,
+                        )
+                    }
                     try {
                         withTimeout(5_000) { model.state.first { it is RepoScreenState.Success } }
                         val root = server.url("/").toString().removeSuffix("/")
@@ -135,12 +142,14 @@ class ExtensionReposLifecycleIntegrationTest {
                         withTimeout(5_000) { model.state.first { it is RepoScreenState.Success && it.isEmpty } }
                         assertEquals(0, repository.getAll().size)
                     } finally {
-                        model.onDispose()
+                        modelHost.close()
                     }
                 }
             }
         } finally {
+            modelHost.close()
             Dispatchers.resetMain()
+            java.sql.DriverManager.deregisterDriver(jdbcDriver)
         }
     }
 
