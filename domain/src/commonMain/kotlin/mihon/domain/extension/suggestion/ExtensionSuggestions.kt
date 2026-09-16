@@ -54,7 +54,12 @@ enum class SuggestionProblem {
     INVENTORY_UNKNOWN,
 }
 
-data class UnmatchedLibrarySource(val sourceId: Long, val count: Long, val problem: SuggestionProblem)
+data class UnmatchedLibrarySource(
+    val sourceId: Long,
+    val count: Long,
+    val problem: SuggestionProblem,
+    val name: String? = null,
+)
 data class SuggestedSource(val source: ExtensionSourceDescriptor, val count: Long)
 data class ExtensionSuggestion(
     val identity: SuggestionIdentity,

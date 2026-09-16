@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.takeWhile
@@ -41,6 +42,7 @@ data class DesktopPendingTrust(
 
 data class DesktopExtensionsState(
     val suggestions: ExtensionSuggestions = ExtensionSuggestions(),
+    val suggestionPanel: mihon.domain.extension.suggestion.SuggestionPanelState = mihon.domain.extension.suggestion.SuggestionPanelState(),
     val searchQuery: String = "",
     val projection: DesktopExtensionProjection? = null,
     val presentation: ExtensionPresentationResult<DesktopExtensionItem>? = null,
@@ -64,6 +66,8 @@ class ExtensionsScreenModel(
     private val nowMillis: () -> Long = System::currentTimeMillis,
     private val catalogFreshnessMillis: Long = DEFAULT_CATALOG_FRESHNESS_MILLIS,
     private val suggestionObserver: ObserveExtensionSuggestions? = null,
+    private val suggestionPreferences: mihon.domain.extension.suggestion.ExtensionSuggestionPreferences =
+        mihon.domain.extension.suggestion.ExtensionSuggestionPreferences(tachiyomi.core.common.preference.InMemoryPreferenceStore()),
 ) {
     private val ownerJob = SupervisorJob(parentScope?.coroutineContext?.get(Job))
     private val scope = CoroutineScope((parentScope?.coroutineContext ?: Dispatchers.Default) + ownerJob)
@@ -83,11 +87,17 @@ class ExtensionsScreenModel(
     internal val closed get() = synchronized(lock) { isClosed }
     internal val activeJobCount get() = synchronized(lock) { packageJobs.values.count(Job::isActive) }
 
+    val suggestionPanel = mihon.domain.extension.suggestion.ExtensionSuggestionPanel(
+        scope, state.map { it.suggestions }.distinctUntilChanged(),
+        state.map { it.actions.installSteps }.distinctUntilChanged(), suggestionPreferences,
+    )
+
     init {
+        scope.launch { suggestionPanel.state.collect { panel -> mutableState.update { it.copy(suggestionPanel = panel) } } }
         require(catalogFreshnessMillis >= 0) { "Catalog freshness must not be negative" }
         suggestionObserver?.let { observer ->
             scope.launch {
-                observer.subscribe(suggestionCatalog, port.inventory, options.map { it.showNsfw }).collect { result ->
+                observer.subscribe(suggestionCatalog, port.inventory, options.map { it.showNsfw }, suggestionPreferences.ignoredIdentities()).collect { result ->
                     mutableState.update { it.copy(suggestions = result) }
                 }
             }
@@ -164,6 +174,7 @@ class ExtensionsScreenModel(
     }
 
     fun search(query: String) {
+        suggestionPanel.search(query)
         mutableState.update { it.copy(searchQuery = query) }
     }
 
@@ -173,10 +184,14 @@ class ExtensionsScreenModel(
         }
     }
 
-    fun install(item: DesktopExtensionItem): Job {
+    fun install(item: DesktopExtensionItem): Job = synchronized(lock) {
+        packageJobs[item.operationPackageName]?.takeIf { it.isActive }?.let { return@synchronized it }
+        if (state.value.actions.installSteps[item.operationPackageName]?.isCompleted() == false) {
+            return@synchronized scope.launch {}
+        }
         checkOpen()
         val extension = requireNotNull(item.available)
-        return launchPackage(item.operationPackageName) {
+        return@synchronized launchPackage(item.operationPackageName) {
             clearEvidence(item.operationPackageName)
             dispatchStep(item.operationPackageName, ExtensionPresentationInstallStep.Pending)
             when (val start = port.beginPresentationInstall(extension)) {
@@ -187,6 +202,17 @@ class ExtensionsScreenModel(
                 is DesktopPresentationInstallStart.Rejected -> recordError(item.operationPackageName, start.error)
             }
         }
+    }
+
+    fun installSuggestion(identity: mihon.domain.extension.suggestion.SuggestionIdentity): Job? {
+        val artifact = suggestionPanel.installable(identity) ?: return null
+        if (suggestionCatalog.value?.entries?.none { it.artifact == artifact } != false) return null
+        val candidate = latestCatalog?.available?.firstOrNull {
+            it.pkgName == artifact.packageName && it.repoUrl == artifact.repository.baseUrl &&
+                it.repoFingerprint == artifact.repository.signingKeyFingerprint && it.versionCode == artifact.versionCode &&
+                it.libVersion == artifact.libVersion
+        } ?: return null
+        return install(candidate.item())
     }
 
     fun update(item: DesktopExtensionItem): Job? {

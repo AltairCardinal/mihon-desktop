@@ -188,6 +188,7 @@ class BrowseSourceListScreen : Screen {
                 onRepositories = navigator::pushExtensionRepository,
                 onOpen = navigator::pushExtensionDetails,
                 onSettings = navigator::pushSourcePreferences,
+                onSuggestionMigration = { navigator.push(mihon.desktop.ui.extension.suggestionMigrationDestination(it)) },
                 primaryNavigation = {
                     BrowseSectionTabs(
                         selectedSection = selectedSection,

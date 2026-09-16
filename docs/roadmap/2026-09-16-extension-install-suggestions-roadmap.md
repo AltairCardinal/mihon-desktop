@@ -1,7 +1,7 @@
 # 收藏缺失插件「建议安装」完整实施 Roadmap
 
 - 日期：2026-09-16
-- 状态：IN_PROGRESS；已获准实施，EIS-01 已完成，EIS-02 待实施，完成状态以第 4 节批次勾选为准。
+- 状态：IN_PROGRESS；已获准实施，EIS-01、EIS-02 已完成，EIS-03 待实施，完成状态以第 4 节批次勾选为准。
 - 类型：产品 child plan；进度从第 4 节第一个未勾选批次推导，不另设活动任务字段。
 - 父路线：[Android / macOS / Windows 正式 Roadmap](2026-06-30-mihon-desktop-refactor-roadmap.md)。本稿登记为待执行专项，不切换父计划当前执行指针，不恢复其他专项。
 - 产品依据：[需求与技术可行性](../2026-09-16-extension-install-suggestions-requirements.md)；已通过的 [HTML DEMO](../prototypes/multi-device-sync/index.html)，交互提交 `2289a939f`。
@@ -77,7 +77,7 @@
 每个 checkbox 仅在实现、必要独立审查、验证、提交均完成后勾选；批内步骤不另设进度 checkbox。第一个未勾选项就是下一个执行批次。
 
 - [x] EIS-01：共享建议识别、安装存在性与双端 production 接线。
-- [ ] EIS-02：双端建议分栏与完整单项操作、本地偏好及数据隔离。
+- [x] EIS-02：双端建议分栏与完整单项操作、本地偏好及数据隔离。
 - [ ] EIS-03：共享批次编排、安装入口去重与 Desktop 全部安装闭环。
 - [ ] EIS-04：Android 全部安装、系统交互与生命周期闭环。
 - [ ] EIS-05：跨端集成收口、正式产物与真实运行验收。
@@ -272,6 +272,26 @@ python scripts/gradle-coordinator.py run --key eis-final -- gradlew.bat :domain:
 - 重现参数：协调器 key `eis01-final-green` 的 JSON 保存完整命令；测试任务为 `:domain:jvmTest` 与 `:domain:testReleaseUnitTest --tests mihon.domain.extension.*Suggestion*`、`:app:testReleaseUnitTest`（上述 6 类）及 `:app-desktop:jvmTest`（上述 5 类），均为本批 focused，不是全量。`--max-workers=2`、Gradle 堆 2 GiB；HTTP/HTTPS JVM 代理仅当前调用。
 - 格式：`eis01-format-clean` 已应用本任务 Kotlin 文件格式，最终同一 green 调用中 `:domain:spotlessCheck :app:spotlessCheck :data:spotlessCheck` 通过，`spotlessIdeHook` 限定本任务变更文件。此前格式调用的长行错误已修正；Desktop 没有 Spotless 插件/task，未为此引入新插件，完成编译、focused 测试及 `git diff --check`。标准编译仍有既有弃用警告和共享 SQL 测试的协程实验 API opt-in 警告，无构建错误。
 - 独立检查与提交：2026-09-17 主代理独立验收通过，已核对最终源码、Android AppModule 仓库 Flow、双端旧快照门槛、库存来源及原 trust 读取逻辑、协调器终态与四组原始 XML。此前发现项在限定复验中全部关闭，无新增阻塞；本批测试、实现、文档与 EIS-01 勾选合并为同一功能提交，hash 由完成回执记录，不另建状态提交。协调器全部已结束，无本批残留 Gradle 任务。此批未生成发布产物，不能替代 EIS-02～05 的用户功能及正式平台验收。
+
+### EIS-02 实施记录（已完成）
+
+- 前置 EIS-01 已独立验收并提交：`c1d733810e79acf8a9c4e06f9ca8abca93a2d550`；仍在同一隔离工作树实施，不改主工作树其他任务。
+- 共享面板红绿：`eis02-panel-red` 的搜索/忽略/进度/来源选择占位实现产生正确失败，`eis02-panel-green` 三项通过；独立审查发现“裁剪显示源不等于完整包不冲突”，`eis02-selection-red` 对完整 artifact 的冲突选择产生正确失败，修复后 `eis02-ui-red` 的共享三项通过。选择新候选会清除冲突候选的旧选择并要求重选；运行中按完整 artifact 源集防冲突，网站仅列关联缺失源。
+- 两端接线：`eis02-panel-wiring-red` 的真实 SQLite→ScreenModel→panel 均因缺订阅超时；Android 在 `eis02-ui-red`、Desktop 在 `eis02-ui-red-fixed` 通过。新增真实 AppModule→ExtensionManager→GetExtensionRepo 无页面配置变更测试在 `eis02-ui-red-fixed` 通过，未 mock manager 或扫描源码。
+- UI/action 红：Desktop `eis02-ui-red-fixed` 在 panel 已有一条建议后等不到真实页面文字；Android `eis02-android-root-red` 真实 ExtensionScreen 报建议不可见。`eis02-action-red` 的 Desktop installSuggestion 返回 null、Android 等不到 Downloading，构成安装接线红；不把未到达的重复点击后半段当作 busy guard 红。独立 busy guard 红：`eis02-duplicate-red` 的 Desktop 首次 Job 被取消、第二次为另一 Job；`eis02-navigation-red` 修正真实调度器等待后 Android 三个运行变体均 expected 1 / actual 2。随后恢复防重复实现；首次虚拟时钟等待超时不算 busy guard 红。
+- fixture 诊断：Desktop 新 DI 曾误引用另一函数的局部变量，修正为真实 PreferenceStore 解析；AppModule fixture 补真实 PreferenceModule 后避免 SecurityPreferences 缺失中断第二次刷新。Android Compose host 先遇到 ActivityScenario 未注册 Activity，随后匿名 Voyager Screen 无 key；改用现有 Robolectric ActivityController/Compose rule 与明确 Screen key 后才取得真实行为红。这些故障不算功能红。一次调用 https.proxyHost 误写 `127.0.1`，无网络阻塞，后续已恢复 `127.0.0.1`。
+- 本地性：`eis02-android-ui-red` 中两端真实 backup creator/restorer 新契约通过，覆盖重建 store、导出过滤、外来 app-state 无法覆盖及第二设备默认值。`eis02-android-root-red` 中两端共享 SQL 同步契约通过：真实 journal→outbox batch→inbox ingest/projector→SQL→panel；折叠/忽略不新增事件、不传播偏好，接收收藏会重算建议。接收端有已有未收藏元数据、缺运行时插件，遵守现有同步边界，不扩张缺源重建语义。
+- 忽略只按规范化仓库/签名/包身份持久化并反馈 observer。若目录彻底删除映射，已无法从源反推历史包，此时未匹配解释仍合理；不新增历史源快照或永久忽略源。撤销只在当前面板会话有效，离开清除提示而不清除持久化忽略。
+- 来源同名辨识与主入口：`eis02-navigation-red` 候选缺 URL/签名身份产生正确红；补显示后 `eis02-navigation-red-fixed` 此项通过。真实 Android extensionsTab 在临时撤除导航 callback 时，嵌套 Navigator 目标类型断言失败；恢复 callback 后再验证网站与迁移。Desktop 实际 BrowseSourceListScreen 的新增迁移消费方也纳入测试，未仅验证独立 ExtensionListScreen。
+- 诊断红：`eis02-diagnosis-red` 的 Desktop assertAll 同时捕获迁移缺线、检查后折叠及说明不可见；Android 真实 Tab 与 ScreenModel 的库存重新检查缺调用、真实 manager inventoryProvider 扫描 expected 2 / actual 1 均正确失败。最小修复保留说明、显示中性检查完成提示；Android 只重新读取库存，不运行插件代码，Desktop 复用既有 reloadInstalled 与错误反馈。未知/加载失败结果继续由真实状态展示，不宣称检查等于修复。
+- 其余 fixture 更正：主入口测试曾把现有英文 Migrate 硬编码为 Migration、使用不实现 StringSet 的 InMemoryPreferenceStore；Android 重建 observer fixture 曾触发 MockK 默认 Flow getter 类型擦除。修正为正确现有文案、隔离的真实 DesktopPreferenceStore、明确的 SourceManager Flow 属性；这些失败均不计行为红。
+- 本批超过 8 文件是一个不可分割的双端单项能力：共享状态与设备偏好、真实页面/导航/DI、现有安装与库存 adapter、备份/同步契约及本地化共同交付。无新安装队列、仓库协议、同步事件类型或数据库迁移；主要风险为异步状态及平台导航，由真实接线测试覆盖。
+- 共享计算、面板与偏好为双端唯一语义；Compose 适配既有平台页面、导航和本地化。单项通过既有安装链路，当前批次只处理同 ScreenModel 重复点击；跨入口事务仲裁与批次仍属 EIS-03/04。
+- 最终 focused：`eis02-final-green` 首轮终态 FAILED（3m19s），不得称为整轮全绿；失败限于四处测试兼容问题：MockK 的 chained verify 同时禁止了合法 getter、只读库存测试误套用通知取消尾断言、Android 显式取消应贡献一次 InstallFinished、Desktop 旧测试仍假定重复点击取消重启。另一次 Main dispatcher 污染来自失败路径清理。修正测试后 `eis02-focused-repair` 终态 PASSED / exit 0（1m09s），重跑四个完整类：Android UI 2、manager 16、presentation 11、Desktop shared wiring 15，共 44 项。Android 仍验证旧 Error 不发出、显式取消仅一次 Finished、重试保持 Downloading，并等 owner Job 关闭再 resetMain；Desktop 在清理期间实际点击重试并断言 attempts 仍为 1，清理结束后才允许新安装。
+- 原始 XML 联合核对：首轮未受影响的有效结果加修复轮替换失败类，domain JVM 16、domain Android 16、Android app 51、Desktop 24，合计 107 项，failure/error/skipped 均为 0。保留于 `.gradle-coordinator/eis02-passed-xml/`；首轮原始 suite 统计为 `eis02-final-green-results.json`。覆盖完整身份编码/解码、重建 preferences/panel/observer、版本更新仍忽略、普通列表不受忽略影响、真实多源网站/无URL禁用、嵌套导航、AppModule 仓库变化、单项重复与重试、备份及真实同步 SQL 链路。
+- 格式：domain/data/i18n 受影响 Spotless 在 `eis02-final-green` 通过；Android 新 UI 与最后测试修正在 `eis02-format-clean`、`eis02-fixture-format` Apply 后由 `eis02-focused-repair` scoped Check 确认；`git diff --check` 通过。Desktop 沿用现有无 Spotless 插件边界，未增设独立格式体系。
+- 窄屏离屏 PNG：`.gradle-coordinator/eis02-suggestions-narrow.png`（360×800），由真实 ExtensionListContent 的 ImageComposeScene 测试生成。长插件名、多源说明、安装/网站/忽略按钮不裁切；主代理已检查布局，最新实现同测试复跑通过。未读取系统桌面像素。
+- 本批未运行全量或发布构建。单项共享忙碌范围为现有 ScreenModel；全入口事务仲裁和批量仍由 EIS-03/04 实施。主代理于 2026-09-17 独立验收通过：核实两轮原始 XML 联合 19 suites / 107 项、最终修复轮 PASSED exit 0、真实页面/导航/DI/数据隔离、窄屏 PNG 与 diff-check。此前审查项均关闭，本批 checkoff 与实现、测试、文档放入同一功能提交；hash 由完成回执记录，不另建纯状态提交。
 
 最终验收路径（全部满足后方可关闭 EIS-05）：
 

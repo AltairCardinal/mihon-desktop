@@ -40,7 +40,10 @@ class ObserveExtensionSuggestions(
                     installed,
                     display.second,
                     display.first,
-                )
+                ).let { result ->
+                    val names = counts.associate { it.first.id to it.first.name }
+                    result.copy(unmatched = result.unmatched.map { it.copy(name = names[it.sourceId]) })
+                }
             }
         }
     }

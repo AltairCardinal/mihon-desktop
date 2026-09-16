@@ -34,6 +34,6 @@ class DesktopExtensionSuggestionSqlTest : ExtensionSuggestionSqlContract() {
         val port = DesktopExtensionPresentationPort(api, mockk(), MutableStateFlow(emptyList()), inventory = inventory)
         val model = ExtensionsScreenModel(port, initialOptions = ExtensionPresentationOptions(true, emptySet()),
             suggestionObserver = observer)
-        return Session(handler, model.state.map { it.suggestions }, { model.refresh().join() }, model::closeAndJoin)
+        return Session(handler, model.state.map { it.suggestions }, model.state.map { it.suggestionPanel }, model.suggestionPanel, { model.refresh().join() }, model::closeAndJoin)
     }
 }

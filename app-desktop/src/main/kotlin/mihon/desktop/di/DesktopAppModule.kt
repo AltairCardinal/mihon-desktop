@@ -603,6 +603,7 @@ private fun registerDesktopExtension(
         ),
         onShowNsfwChanged = appPreferences.showNsfwSources::set,
         suggestionObserver = suggestionObserver,
+        suggestionPreferences = mihon.domain.extension.suggestion.ExtensionSuggestionPreferences(Injekt.get()),
     )
     Injekt.addSingleton(extensionScreenModel)
     val extensionController = SourceExtensionTestModeController(extensionScreenModel)

@@ -20,6 +20,8 @@ import mihon.domain.extension.suggestion.ExtensionInventory
 import mihon.domain.extension.suggestion.ObserveExtensionSuggestions
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.data.AndroidDatabaseHandler
 import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
@@ -72,6 +74,7 @@ class AndroidExtensionSuggestionSqlTest : ExtensionSuggestionSqlContract() {
         Injekt.importModule(DomainModule())
         Injekt.addSingleton<DatabaseHandler>(handler)
         Injekt.addSingleton<SourceManager>(manager)
+        Injekt.addSingleton<PreferenceStore>(InMemoryPreferenceStore())
         Injekt.addSingleton(preferences)
         Injekt.addSingleton(basePreferences)
         Injekt.addSingleton<Application>(mockk(relaxed = true))
@@ -89,9 +92,16 @@ class AndroidExtensionSuggestionSqlTest : ExtensionSuggestionSqlContract() {
             Injekt = previous
             throw error
         }
-        return Session(handler, model.state.map { it.suggestions }, {}, {
-            host.close()
-            Injekt = previous
-        })
+        return Session(
+            handler,
+            model.state.map { it.suggestions },
+            model.state.map { it.suggestionPanel },
+            model.suggestionPanel,
+            {},
+            {
+                host.close()
+                Injekt = previous
+            },
+        )
     }
 }

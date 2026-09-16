@@ -9,6 +9,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -22,6 +23,8 @@ import eu.kanade.tachiyomi.ui.browse.extension.details.ExtensionDetailsScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
 import eu.kanade.tachiyomi.util.system.isPackageInstalled
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.launch
+import mihon.domain.extension.model.ExtensionSourceDescriptor
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 
@@ -31,6 +34,8 @@ fun extensionsTab(
 ): TabContent {
     val navigator = LocalNavigator.currentOrThrow
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val checkedMessage = stringResource(MR.strings.extension_suggestions_checked)
 
     val state by extensionsScreenModel.state.collectAsState()
     var privateExtensionToUninstall by remember { mutableStateOf<Extension?>(null) }
@@ -49,7 +54,7 @@ fun extensionsTab(
                 onClick = { navigator.push(ExtensionReposScreen()) },
             ),
         ),
-        content = { contentPadding, _ ->
+        content = { contentPadding, snackbarHostState ->
             BackHandler(enabled = state.searchQuery != null) {
                 extensionsScreenModel.search(null)
             }
@@ -89,6 +94,16 @@ fun extensionsTab(
                 onUninstallExtension = { extensionsScreenModel.uninstallExtension(it) },
                 onUpdateExtension = extensionsScreenModel::updateExtension,
                 onRefresh = extensionsScreenModel::findAvailableExtensions,
+                suggestionController = extensionsScreenModel.suggestionPanel,
+                onInstallSuggestion = extensionsScreenModel::installSuggestion,
+                onSuggestionWebsite = { source -> suggestionWebsiteDestination(source)?.let(navigator::push) },
+                onSuggestionMigration = { navigator.push(suggestionMigrationDestination(it)) },
+                onSuggestionDiagnose = {
+                    scope.launch {
+                        extensionsScreenModel.recheckInstalledInventory().join()
+                        snackbarHostState.showSnackbar(checkedMessage)
+                    }
+                },
             )
 
             state.originConfirmations.firstOrNull()?.let { request ->
@@ -166,3 +181,14 @@ private fun ExtensionUninstallConfirmation(
         onDismissRequest = onDismissRequest,
     )
 }
+
+internal fun suggestionWebsiteDestination(source: ExtensionSourceDescriptor): WebViewScreen? =
+    if (mihon.domain.extension.suggestion.isValidSuggestionWebsite(source.baseUrl)) {
+        // Suggested sources are not loaded; let the existing WebView use its ordinary browser headers.
+        WebViewScreen(url = source.baseUrl, initialTitle = source.name)
+    } else {
+        null
+    }
+
+internal fun suggestionMigrationDestination(sourceId: Long) =
+    eu.kanade.tachiyomi.ui.browse.migration.manga.MigrateMangaScreen(sourceId)

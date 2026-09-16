@@ -13,6 +13,7 @@ import eu.kanade.presentation.components.SEARCH_DEBOUNCE_MILLIS
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
+import eu.kanade.tachiyomi.extension.model.toAvailable
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -34,7 +35,10 @@ import mihon.domain.extension.presentation.ExtensionPresentationActionState
 import mihon.domain.extension.presentation.ExtensionPresentationClassifier
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationStore
+import mihon.domain.extension.suggestion.ExtensionSuggestionPreferences
 import mihon.domain.extension.suggestion.ExtensionSuggestions
+import mihon.domain.extension.suggestion.SuggestionPanelState
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
@@ -52,12 +56,22 @@ class ExtensionsScreenModel(
     private val actionStore: ExtensionPresentationStore<Extension> =
         androidExtensionPresentationStore,
     suggestions: Flow<ExtensionSuggestions>? = null,
+    suggestionPreferences: ExtensionSuggestionPreferences =
+        ExtensionSuggestionPreferences(InMemoryPreferenceStore()),
 ) : StateScreenModel<ExtensionsScreenModel.State>(State()) {
 
     private val actionState = MutableStateFlow(ExtensionPresentationActionState())
     private val installCollections = ConcurrentHashMap<String, Any>()
+    val suggestionPanel = mihon.domain.extension.suggestion.ExtensionSuggestionPanel(
+        screenModelScope,
+        state.map { it.suggestions }.distinctUntilChanged(),
+        actionState.map { it.installSteps },
+        suggestionPreferences,
+    )
 
     init {
+        suggestionPanel.state.onEach { panel -> mutableState.update { it.copy(suggestionPanel = panel) } }
+            .launchIn(screenModelScope)
         suggestions?.onEach { value -> mutableState.update { it.copy(suggestions = value) } }
             ?.launchIn(screenModelScope)
         val extensionMapper: (Map<String, InstallStep>) -> ((Extension) -> ExtensionUiModel.Item) = { map ->
@@ -139,9 +153,14 @@ class ExtensionsScreenModel(
         classifier.searchPredicate(query, includePackageName)
 
     fun search(query: String?) {
+        suggestionPanel.search(query.orEmpty())
         mutableState.update {
             it.copy(searchQuery = query)
         }
+    }
+
+    fun recheckInstalledInventory() = screenModelScope.launchIO {
+        extensionManager.recheckInstalledInventory().join()
     }
 
     fun updateAllExtensions() {
@@ -156,6 +175,18 @@ class ExtensionsScreenModel(
 
     fun installExtension(extension: Extension.Available) {
         launchInstall(extension) { extensionManager.installExtension(extension) }
+    }
+
+    fun installSuggestion(identity: mihon.domain.extension.suggestion.SuggestionIdentity) {
+        val artifact = suggestionPanel.installable(identity) ?: return
+        val inventory = extensionManager.inventory.value
+        if (!inventory.initialized || inventory.hasUnknownArtifacts ||
+            artifact.packageName in inventory.packages
+        ) {
+            return
+        }
+        if (extensionManager.suggestionCatalog.value?.entries?.none { it.artifact == artifact } != false) return
+        installExtension(artifact.toAvailable())
     }
 
     fun updateExtension(extension: Extension.Installed) {
@@ -190,7 +221,11 @@ class ExtensionsScreenModel(
 
     private fun launchInstall(extension: Extension, operation: () -> Flow<InstallStep>) {
         val collection = Any()
-        synchronized(installCollections) { installCollections[extension.pkgName] = collection }
+        synchronized(installCollections) {
+            if (installCollections.containsKey(extension.pkgName)) return
+            installCollections[extension.pkgName] = collection
+            addDownloadState(extension, InstallStep.Pending)
+        }
         screenModelScope.launchIO {
             val steps = synchronized(installCollections) {
                 if (installCollections[extension.pkgName] === collection) operation() else null
@@ -207,7 +242,11 @@ class ExtensionsScreenModel(
                 }
                 .onCompletion {
                     synchronized(installCollections) {
-                        if (installCollections.remove(extension.pkgName, collection)) removeDownloadState(extension)
+                        if (installCollections.remove(extension.pkgName, collection) &&
+                            actionState.value.installSteps[extension.pkgName] != ExtensionPresentationInstallStep.Error
+                        ) {
+                            removeDownloadState(extension)
+                        }
                     }
                 }
                 .collect()
@@ -245,6 +284,7 @@ class ExtensionsScreenModel(
     @Immutable
     data class State(
         val suggestions: ExtensionSuggestions = ExtensionSuggestions(),
+        val suggestionPanel: SuggestionPanelState = SuggestionPanelState(),
         val isLoading: Boolean = true,
         val isRefreshing: Boolean = false,
         val items: ItemGroups = mutableMapOf(),

@@ -2,6 +2,7 @@ package mihon.data.extension
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import io.mockk.every
 import io.mockk.mockk
@@ -15,6 +16,11 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
+import mihon.data.sync.inbox.SyncInboxProjector
+import mihon.data.sync.inbox.SyncInboxStore
+import mihon.data.sync.journal.SyncLocalJournal
+import mihon.data.sync.journal.SyncOutboxStore
+import mihon.data.sync.projection.SyncRemoteProjectionWriter
 import mihon.domain.extension.model.ExtensionArtifact
 import mihon.domain.extension.model.ExtensionCatalogEntry
 import mihon.domain.extension.model.ExtensionCatalogResult
@@ -23,7 +29,12 @@ import mihon.domain.extension.model.ExtensionSourceDescriptor
 import mihon.domain.extension.model.RepositoryIdentity
 import mihon.domain.extension.suggestion.ExtensionInventory
 import mihon.domain.extension.suggestion.ExtensionPresence
+import mihon.domain.extension.suggestion.ExtensionSuggestionPanel
 import mihon.domain.extension.suggestion.ExtensionSuggestions
+import mihon.domain.extension.suggestion.SuggestionPanelState
+import mihon.domain.sync.SyncMutationContext
+import mihon.domain.sync.transport.SyncRepository
+import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import tachiyomi.data.Database
@@ -33,14 +44,114 @@ import tachiyomi.data.History
 import tachiyomi.data.Mangas
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
+import tachiyomi.data.creator.CreatorArchiveLegacyBootstrap
+import tachiyomi.data.creator.CreatorArchiveLegacyBridge
+import tachiyomi.data.creator.CreatorRepositoryImpl
 import tachiyomi.data.manga.MangaRepositoryImpl
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.service.SourceManager
-
+import java.sql.Driver
+import java.sql.DriverManager
 /** One behavior contract, executed through each platform's real SQL repository and screen model. */
 abstract class ExtensionSuggestionSqlContract {
+    @Test
+    fun `real sync export and remote apply recompute suggestions without propagating panel choices`() = runBlocking {
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        val jdbc = Class.forName("org.sqlite.JDBC").getDeclaredConstructor().newInstance() as Driver
+        DriverManager.registerDriver(jdbc)
+        val firstDriver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val secondDriver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        var first: Session? = null
+        var second: Session? = null
+        try {
+            fun database(driver: JdbcSqliteDriver): Database {
+                Database.Schema.create(driver)
+                return Database(
+                    driver,
+                    historyAdapter = History.Adapter(DateColumnAdapter),
+                    mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+                )
+            }
+            fun sources() = object : SourceManager {
+                override val isInitialized = MutableStateFlow(true)
+                override val querySources = MutableStateFlow(emptyList<Source>())
+                override val catalogueSources = querySources.map { it.filterIsInstance<CatalogueSource>() }
+                override fun get(sourceKey: Long): Source? = null
+                override fun getOrStub(sourceKey: Long) = StubSource(sourceKey, "en", "Source")
+                override fun getOnlineSources() = emptyList<HttpSource>()
+                override fun getCatalogueSources() = emptyList<CatalogueSource>()
+                override fun getStubSources() = emptyList<StubSource>()
+            }
+            val sourceId = 9007199254740993L
+            val available = artifact("pkg.sync", sourceId)
+            fun catalog() = MutableStateFlow<ExtensionCatalogResult?>(
+                ExtensionCatalogResult(
+                    listOf(ExtensionCatalogEntry(available, ExtensionCompatibility.Compatible)),
+                    emptyList(),
+                ),
+            )
+            // Open receiver before sender so Android's isolated DI scopes close in reverse order.
+            second = open(
+                secondDriver,
+                database(secondDriver),
+                sources(),
+                catalog(),
+                MutableStateFlow(ExtensionInventory(true)),
+            )
+            first = open(
+                firstDriver,
+                database(firstDriver),
+                sources(),
+                catalog(),
+                MutableStateFlow(ExtensionInventory(true)),
+            )
+            val sender = first!!
+            val receiver = second!!
+            sender.refresh()
+            receiver.refresh()
+            val senderManga = MangaRepositoryImpl(sender.handler, mockk(relaxed = true))
+            val receiverManga = MangaRepositoryImpl(receiver.handler, mockk(relaxed = true))
+            val seed = Manga.create().copy(source = sourceId, url = "/sync-book", title = "Synced book")
+            val local = senderManga.insertNetworkManga(listOf(seed)).single()
+            // Existing unfavorited metadata is valid input even when this device lacks the runtime source.
+            receiverManga.insertNetworkManga(listOf(seed))
+            val repository = SyncRepository("fixture", "private-sync", "mihon-sync")
+            val senderJournal = SyncLocalJournal(sender.handler)
+            val receiverJournal = SyncLocalJournal(receiver.handler)
+            senderJournal.connect("space", 1, repository, "sender", 1)
+            receiverJournal.connect("space", 1, repository, "receiver", 1)
+            senderManga.update(MangaUpdate(local.id, favorite = true, syncContext = SyncMutationContext.User))
+            val row = withTimeout(5_000) { sender.panel.first { it.rows.size == 1 } }.rows.single()
+            val before = senderJournal.pendingEvents("space", 1)
+            assertEquals(1, before.size)
+            sender.actions.toggle()
+            sender.actions.ignore(row.suggestion.identity)
+            withTimeout(5_000) { sender.panel.first { !it.expanded && it.rows.isEmpty() } }
+            assertEquals(before, senderJournal.pendingEvents("space", 1))
+            val exported = requireNotNull(SyncOutboxStore(sender.handler).nextBatch("space", 1))
+            assertEquals(before, exported.events)
+            val received = SyncInboxStore(receiver.handler).ingest(exported)
+            Assertions.assertTrue(received.accepted)
+            val bootstrap = CreatorArchiveLegacyBootstrap(CreatorArchiveLegacyBridge(receiver.handler))
+            val creators = CreatorRepositoryImpl(receiver.handler, bootstrap = bootstrap)
+            val writer = SyncRemoteProjectionWriter(receiver.handler, creators, creators, bootstrap, { false })
+            SyncInboxProjector(receiver.handler, writer).project("space", 1)
+            val receivedPanel = withTimeout(5_000) { receiver.panel.first { it.rows.size == 1 } }
+            Assertions.assertTrue(receivedPanel.expanded)
+            assertEquals(sourceId, receivedPanel.rows.single().suggestion.sources.single().source.id)
+            assertEquals(emptyList<Any>(), receiverJournal.pendingEvents("space", 1))
+            assertEquals(sourceId, receiverManga.getMangaByUrlAndSourceId("/sync-book", sourceId)!!.source)
+        } finally {
+            first?.close?.invoke()
+            second?.close?.invoke()
+            firstDriver.close()
+            secondDriver.close()
+            DriverManager.deregisterDriver(jdbc)
+            Dispatchers.resetMain()
+        }
+    }
     protected abstract fun open(
         driver: JdbcSqliteDriver,
         database: Database,
@@ -52,6 +163,8 @@ abstract class ExtensionSuggestionSqlContract {
     protected class Session(
         val handler: DatabaseHandler,
         val state: Flow<ExtensionSuggestions>,
+        val panel: Flow<SuggestionPanelState>,
+        val actions: ExtensionSuggestionPanel,
         val refresh: suspend () -> Unit,
         val close: suspend () -> Unit,
     )
@@ -59,8 +172,8 @@ abstract class ExtensionSuggestionSqlContract {
     @Test
     fun `SQL favorites migration removal and uninstall reach both screens`() = runBlocking {
         Dispatchers.setMain(UnconfinedTestDispatcher())
-        val jdbcDriver = Class.forName("org.sqlite.JDBC").getDeclaredConstructor().newInstance() as java.sql.Driver
-        java.sql.DriverManager.registerDriver(jdbcDriver)
+        val jdbcDriver = Class.forName("org.sqlite.JDBC").getDeclaredConstructor().newInstance() as Driver
+        DriverManager.registerDriver(jdbcDriver)
         try {
             JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).use { driver ->
                 Database.Schema.create(driver)
@@ -69,7 +182,7 @@ abstract class ExtensionSuggestionSqlContract {
                     historyAdapter = History.Adapter(DateColumnAdapter),
                     mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
                 )
-                val registered = MutableStateFlow(emptyList<eu.kanade.tachiyomi.source.Source>())
+                val registered = MutableStateFlow(emptyList<Source>())
                 val manager = object : SourceManager {
                     override val isInitialized = MutableStateFlow(true)
                     override val querySources = registered
@@ -99,10 +212,15 @@ abstract class ExtensionSuggestionSqlContract {
                 try {
                     session.refresh()
                     suspend fun awaitPackages(vararg packages: String): ExtensionSuggestions = withTimeout(10_000) {
-                        session.state.first { state ->
+                        val result = session.state.first { state ->
                             !state.isLoading &&
                                 state.suggestions.map { it.artifact.packageName }.toSet() == packages.toSet()
                         }
+                        session.panel.first { panel ->
+                            !panel.loading &&
+                                panel.rows.map { it.suggestion.artifact.packageName }.toSet() == packages.toSet()
+                        }
+                        result
                     }
                     awaitPackages()
                     val mangas = MangaRepositoryImpl(session.handler, mockk(relaxed = true))
@@ -141,7 +259,7 @@ abstract class ExtensionSuggestionSqlContract {
                 }
             }
         } finally {
-            java.sql.DriverManager.deregisterDriver(jdbcDriver)
+            DriverManager.deregisterDriver(jdbcDriver)
             Dispatchers.resetMain()
         }
     }

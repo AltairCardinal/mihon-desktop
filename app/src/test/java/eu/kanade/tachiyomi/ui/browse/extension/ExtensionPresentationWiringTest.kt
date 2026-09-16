@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.browse.extension
 
 import android.app.Application
+import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.extension.interactor.ExtensionSourceItem
 import eu.kanade.domain.extension.interactor.GetExtensionsByType
@@ -11,6 +12,7 @@ import eu.kanade.domain.source.interactor.ToggleSource
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
+import eu.kanade.tachiyomi.extension.model.toArtifact
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -50,6 +52,110 @@ class ExtensionPresentationWiringTest {
     private val modelHost = ScreenModelTestHost()
 
     @Test
+    fun `suggestion and ordinary install share active state and cannot submit twice`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val extension = available(
+            "Suggested Reader",
+            "pkg.suggested",
+            listOf(Extension.Available.Source(71, "ja", "Source", "https://source.example")),
+        )
+            .copy(versionName = "1.6.1", libVersion = 1.6)
+        val artifact = extension.toArtifact()
+        val identity = mihon.domain.extension.suggestion.SuggestionIdentity.of(artifact)
+        val suggestions = mihon.domain.extension.suggestion.ExtensionSuggestions(
+            false,
+            listOf(
+                mihon.domain.extension.suggestion.ExtensionSuggestion(
+                    identity,
+                    artifact,
+                    artifact.sources.map { mihon.domain.extension.suggestion.SuggestedSource(it, 2) },
+                    false,
+                ),
+            ),
+        )
+        val gate = CompletableDeferred<Unit>()
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { inventory } returns MutableStateFlow(mihon.domain.extension.suggestion.ExtensionInventory(true))
+            every {
+                suggestionCatalog
+            } returns MutableStateFlow(
+                mihon.domain.extension.model.ExtensionCatalogResult(
+                    listOf(
+                        mihon.domain.extension.model.ExtensionCatalogEntry(
+                            artifact,
+                            mihon.domain.extension.model.ExtensionCompatibility.Compatible,
+                        ),
+                    ),
+                    emptyList(),
+                ),
+            )
+            every { installExtension(extension) } answers {
+                calls.incrementAndGet()
+                flow {
+                    emit(eu.kanade.tachiyomi.extension.model.InstallStep.Downloading)
+                    gate.await()
+                    emit(eu.kanade.tachiyomi.extension.model.InstallStep.Error)
+                }
+            }
+        }
+        val model = screenModel(
+            manager,
+            Extensions(emptyList(), emptyList(), listOf(extension), emptyList()),
+            androidExtensionPresentationStore,
+            flowOf(suggestions),
+        )
+        try {
+            kotlinx.coroutines.withTimeout(5_000) { model.state.first { it.suggestionPanel.total == 1 } }
+            model.installSuggestion(identity)
+            kotlinx.coroutines.withContext(Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(5_000) {
+                    model.state.first {
+                        it.suggestionPanel.rows.single().step ==
+                            ExtensionPresentationInstallStep.Downloading
+                    }
+                }
+            }
+            model.installSuggestion(identity)
+            model.installExtension(extension)
+            kotlinx.coroutines.withContext(Dispatchers.IO) { Thread.sleep(100) }
+            assertEquals(1, calls.get())
+            model.suggestionPanel.ignore(identity)
+            assertFalse(model.state.value.suggestionPanel.rows.single().canIgnore)
+            gate.complete(Unit)
+        } finally {
+            gate.complete(Unit)
+            val owner = model.screenModelScope.coroutineContext[kotlinx.coroutines.Job]
+            modelHost.close()
+            kotlinx.coroutines.withContext(Dispatchers.Default) { owner?.join() }
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `suggestion diagnosis calls inventory recheck without catalog install or runtime reload`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { recheckInstalledInventory() } returns kotlinx.coroutines.Job().apply { complete() }
+        }
+        val model = screenModel(
+            manager,
+            Extensions(emptyList(), emptyList(), emptyList(), emptyList()),
+            androidExtensionPresentationStore,
+        )
+        try {
+            model.recheckInstalledInventory().join()
+            verify(exactly = 1) { manager.recheckInstalledInventory() }
+            verify(exactly = 0) { manager.installExtension(any()) }
+        } finally {
+            val owner = model.screenModelScope.coroutineContext[kotlinx.coroutines.Job]
+            modelHost.close()
+            kotlinx.coroutines.withContext(Dispatchers.Default) { owner?.join() }
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun `origin confirmation is observed and both dialog answers reach manager with exact request id`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val artifact = mihon.domain.extension.model.ExtensionArtifact(
@@ -77,7 +183,9 @@ class ExtensionPresentationWiringTest {
             requests.value = emptyList()
             assertTrue(model.state.value.originConfirmations.isEmpty())
         } finally {
-            model.onDispose()
+            val owner = model.screenModelScope.coroutineContext[kotlinx.coroutines.Job]
+            modelHost.close()
+            kotlinx.coroutines.withContext(Dispatchers.Default) { owner?.join() }
             Dispatchers.resetMain()
         }
     }
@@ -87,6 +195,7 @@ class ExtensionPresentationWiringTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val extension = available("Reader", "pkg.reader", emptyList())
         val oldGate = CompletableDeferred<Unit>()
+        val oldStarted = CompletableDeferred<Unit>()
         val newGate = CompletableDeferred<Unit>()
         val oldDone = CountDownLatch(1)
         val actionStore = spyk(androidExtensionPresentationStore)
@@ -94,6 +203,7 @@ class ExtensionPresentationWiringTest {
             every { installExtension(extension) } returnsMany listOf(
                 flow {
                     try {
+                        oldStarted.complete(Unit)
                         emit(eu.kanade.tachiyomi.extension.model.InstallStep.Pending)
                         oldGate.await()
                         emit(eu.kanade.tachiyomi.extension.model.InstallStep.Error)
@@ -121,6 +231,10 @@ class ExtensionPresentationWiringTest {
                     ),
                 )
             }
+            kotlinx.coroutines.withContext(Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(5_000) { oldStarted.await() }
+            }
+            model.cancelInstallUpdateExtension(extension)
             model.installExtension(extension)
             verify(timeout = 5_000) {
                 actionStore.reduce(
@@ -141,12 +255,26 @@ class ExtensionPresentationWiringTest {
                         ExtensionPresentationInstallStep.Error,
                     ),
                 )
+            }
+            verify(exactly = 1) {
                 actionStore.reduce(any(), ExtensionPresentationAction.InstallFinished(extension.pkgName))
+            }
+            kotlinx.coroutines.withContext(Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(5_000) {
+                    model.state.first { state ->
+                        state.items.values.flatten().any {
+                            it.extension.pkgName == extension.pkgName &&
+                                it.installStep == eu.kanade.tachiyomi.extension.model.InstallStep.Downloading
+                        }
+                    }
+                }
             }
         } finally {
             oldGate.complete(Unit)
             newGate.complete(Unit)
+            val owner = model.screenModelScope.coroutineContext[kotlinx.coroutines.Job]
             modelHost.close()
+            kotlinx.coroutines.withContext(Dispatchers.Default) { owner?.join() }
             Dispatchers.resetMain()
         }
     }
@@ -411,7 +539,9 @@ class ExtensionPresentationWiringTest {
             }
         } finally {
             gate.complete(Unit)
-            model.onDispose()
+            val owner = model.screenModelScope.coroutineContext[kotlinx.coroutines.Job]
+            modelHost.close()
+            kotlinx.coroutines.withContext(Dispatchers.Default) { owner?.join() }
             Dispatchers.resetMain()
         }
     }
@@ -520,6 +650,7 @@ class ExtensionPresentationWiringTest {
         manager: ExtensionManager,
         extensions: Extensions,
         actionStore: ExtensionPresentationStore<Extension>,
+        suggestions: kotlinx.coroutines.flow.Flow<mihon.domain.extension.suggestion.ExtensionSuggestions>? = null,
     ): ExtensionsScreenModel {
         val preferences = mockk<SourcePreferences> { every { extensionUpdatesCount() } returns preference(0) }
         val basePreferences = mockk<BasePreferences> {
@@ -536,6 +667,7 @@ class ExtensionPresentationWiringTest {
                 androidExtensionPresentationStore,
                 mockk(relaxed = true),
                 actionStore,
+                suggestions,
             )
         }
     }

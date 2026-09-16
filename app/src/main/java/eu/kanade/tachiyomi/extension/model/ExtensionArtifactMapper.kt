@@ -18,3 +18,28 @@ internal fun Extension.Available.toArtifact(url: String = downloadUrl) = Extensi
     declaredSha256 = declaredSha256,
     declaredLibVersion = libVersion,
 )
+
+internal fun ExtensionArtifact.toAvailable() = Extension.Available(
+    name = name,
+    pkgName = packageName,
+    versionName = versionName,
+    versionCode = versionCode,
+    libVersion = libVersion,
+    lang = language,
+    isNsfw = isNsfw,
+    sources = sources.map {
+        Extension.Available.Source(
+            id = it.id,
+            lang = it.language,
+            name = it.name,
+            baseUrl = it.baseUrl,
+        )
+    },
+    apkName = (apkUrl ?: downloadUrl).substringAfterLast('/'),
+    iconUrl = iconUrl,
+    repoUrl = repository.baseUrl,
+    repoName = repository.name,
+    repoFingerprint = repository.signingKeyFingerprint,
+    declaredSha256 = declaredSha256,
+    downloadUrl = apkUrl ?: downloadUrl,
+)

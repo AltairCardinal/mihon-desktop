@@ -87,6 +87,11 @@ fun ExtensionScreen(
     onOpenExtension: (Extension.Installed) -> Unit,
     onClickUpdateAll: () -> Unit,
     onRefresh: () -> Unit,
+    suggestionController: mihon.domain.extension.suggestion.ExtensionSuggestionPanel? = null,
+    onInstallSuggestion: (mihon.domain.extension.suggestion.SuggestionIdentity) -> Unit = {},
+    onSuggestionWebsite: (mihon.domain.extension.model.ExtensionSourceDescriptor) -> Unit = {},
+    onSuggestionMigration: (Long) -> Unit = {},
+    onSuggestionDiagnose: () -> Unit = {},
 ) {
     val navigator = LocalNavigator.currentOrThrow
 
@@ -97,7 +102,9 @@ fun ExtensionScreen(
     ) {
         when {
             state.isLoading -> LoadingScreen(Modifier.padding(contentPadding))
-            state.isEmpty && state.repositoryFailures.isEmpty() -> {
+            state.isEmpty && state.repositoryFailures.isEmpty() && !state.suggestionPanel.loading &&
+                state.suggestionPanel.total == 0 && state.suggestionPanel.unmatched.isEmpty() &&
+                !state.suggestionPanel.canUndo -> {
                 val msg = if (!searchQuery.isNullOrEmpty()) {
                     MR.strings.no_results_found
                 } else {
@@ -128,6 +135,12 @@ fun ExtensionScreen(
                     onTrustExtension = onTrustExtension,
                     onOpenExtension = onOpenExtension,
                     onClickUpdateAll = onClickUpdateAll,
+                    suggestionController = suggestionController,
+                    onInstallSuggestion = onInstallSuggestion,
+                    onSuggestionWebsite = onSuggestionWebsite,
+                    onSuggestionMigration = onSuggestionMigration,
+                    onSuggestionDiagnose = onSuggestionDiagnose,
+                    onRefresh = onRefresh,
                 )
             }
         }
@@ -147,8 +160,15 @@ private fun ExtensionContent(
     onTrustExtension: (Extension.Untrusted) -> Unit,
     onOpenExtension: (Extension.Installed) -> Unit,
     onClickUpdateAll: () -> Unit,
+    onRefresh: () -> Unit,
+    suggestionController: mihon.domain.extension.suggestion.ExtensionSuggestionPanel? = null,
+    onInstallSuggestion: (mihon.domain.extension.suggestion.SuggestionIdentity) -> Unit = {},
+    onSuggestionWebsite: (mihon.domain.extension.model.ExtensionSourceDescriptor) -> Unit = {},
+    onSuggestionMigration: (Long) -> Unit = {},
+    onSuggestionDiagnose: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val navigator = LocalNavigator.currentOrThrow
     var trustState by remember { mutableStateOf<Extension.Untrusted?>(null) }
     val installGranted = rememberRequestPackageInstallsPermissionState(initialValue = true)
 
@@ -180,7 +200,24 @@ private fun ExtensionContent(
             }
         }
 
+        fun suggestionItem() {
+            item(key = "extension-suggestions") {
+                ExtensionSuggestionSection(
+                    state.suggestionPanel, suggestionController,
+                    onInstallSuggestion, onSuggestionWebsite,
+                    onRepositories = { navigator.push(ExtensionReposScreen()) },
+                    onMigrate = onSuggestionMigration,
+                    onDiagnose = onSuggestionDiagnose,
+                    onRefresh = onRefresh, errors = state.installErrors,
+                )
+            }
+        }
+        var suggestionAdded = false
         state.items.forEach { (header, items) ->
+            if (!suggestionAdded && header != ExtensionUiModel.Header.Resource(MR.strings.ext_updates_pending)) {
+                suggestionItem()
+                suggestionAdded = true
+            }
             item(
                 contentType = "header",
                 key = "extensionHeader-${header.hashCode()}",
@@ -276,6 +313,7 @@ private fun ExtensionContent(
                 )
             }
         }
+        if (!suggestionAdded) suggestionItem()
     }
     if (trustState != null) {
         ExtensionTrustDialog(

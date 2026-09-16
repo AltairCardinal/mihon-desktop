@@ -1694,4 +1694,24 @@
     <string name="extension_install_error_package">扩展包已损坏或不兼容。请刷新仓库后重试。</string>
     <string name="extension_install_error_recovery">安装或恢复未能完成。请检查存储空间、已安装版本及源是否可用后再重试。Android 可能不允许恢复旧版本，请勿清除应用数据。</string>
     <string name="extension_install_error_unknown">安装失败。请确认已安装版本及源是否可用后再重试，必要时重启应用，请勿清除应用数据。</string>
+    <string name="extension_suggestions_title">建议安装</string>
+    <string name="extension_suggestions_count">%1$d 部漫画 · %2$d 个源</string>
+    <string name="extension_suggestions_ignore">忽略</string>
+    <string name="extension_suggestions_ignored">已忽略建议</string>
+    <string name="extension_suggestions_choose">为 %1$s 选择仓库</string>
+    <string name="extension_suggestions_choice_hint">请逐源选择提供方。一个插件可能包含多个源；冲突的先前选择将被清除。</string>
+    <string name="extension_suggestions_website">选择源网站</string>
+    <string name="extension_suggestions_open_website">打开网站</string>
+    <string name="extension_suggestions_no_website">这些关联源未提供可用网站。</string>
+    <string name="extension_suggestions_not_found">当前仓库没有匹配插件。</string>
+    <string name="extension_suggestions_incompatible">匹配的插件与当前应用不兼容。</string>
+    <string name="extension_suggestions_restricted">匹配的插件受内容设置限制。</string>
+    <string name="extension_suggestions_installed_unavailable">插件已安装但源不可用，请在下方检查信任及源设置。</string>
+    <string name="extension_suggestions_inventory_unknown">无法确认已安装插件，请检查已安装插件后重试。</string>
+    <string name="extension_suggestions_diagnose">检查已安装插件</string>
+    <string name="extension_suggestions_expand">展开建议</string>
+    <string name="extension_suggestions_collapse">收起建议</string>
+    <string name="extension_suggestions_active">%1$d 项正在安装</string>
+    <string name="extension_suggestions_source">源 %1$s · %2$d 部漫画</string>
+    <string name="extension_suggestions_checked">已重新检查插件。</string>
 </resources>

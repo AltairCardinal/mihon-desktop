@@ -182,6 +182,36 @@ class ExtensionManagerTest {
     }
 
     @Test
+    fun `explicit inventory recheck performs a fresh read without loading or installing packages`() = runTest {
+        withNotificationEnvironment(expectNotification = false) {
+            var scans = 0
+            var loads = 0
+            val manager = ExtensionManager(
+                context = mockk(relaxed = true),
+                preferences = preferences(),
+                trustExtension = mockk(relaxed = true),
+                installedExtensionsLoader = {
+                    loads++
+                    emptyList()
+                },
+                installReceiverRegistrar = {},
+                scope = backgroundScope,
+                inventoryProvider = {
+                    scans++
+                    mihon.domain.extension.suggestion.ExtensionInventory(true, hasUnknownArtifacts = scans == 1)
+                },
+            )
+            runCurrent()
+            assertTrue(manager.inventory.value.hasUnknownArtifacts)
+            manager.recheckInstalledInventory().join()
+            runCurrent()
+            assertEquals(2, scans)
+            assertEquals(1, loads)
+            assertFalse(manager.inventory.value.hasUnknownArtifacts)
+        }
+    }
+
+    @Test
     fun `refresh uses successful owner only and clears removed source metadata`() = runTest {
         withNotificationEnvironment {
             val owner = RepositoryIdentity("https://example.org", "Owner", "key")
@@ -683,7 +713,7 @@ class ExtensionManagerTest {
         }
     }
 
-    private suspend fun withNotificationEnvironment(block: suspend () -> Unit) {
+    private suspend fun withNotificationEnvironment(expectNotification: Boolean = true, block: suspend () -> Unit) {
         val previous = Injekt
         Injekt = InjektScope(DefaultRegistrar())
         Injekt.addSingleton(SecurityPreferences(InMemoryPreferenceStore()))
@@ -692,8 +722,12 @@ class ExtensionManagerTest {
         try {
             every { NotificationManagerCompat.from(any()) } returns notifications
             block()
-            verify(atLeast = 1) {
-                notifications.cancel(eu.kanade.tachiyomi.data.notification.Notifications.ID_UPDATES_TO_EXTS)
+            if (expectNotification) {
+                verify(atLeast = 1) {
+                    notifications.cancel(eu.kanade.tachiyomi.data.notification.Notifications.ID_UPDATES_TO_EXTS)
+                }
+            } else {
+                verify(exactly = 0) { notifications.cancel(any<Int>()) }
             }
         } finally {
             unmockkStatic(NotificationManagerCompat::class)

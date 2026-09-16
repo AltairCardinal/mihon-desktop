@@ -528,7 +528,7 @@ class ExtensionSharedStateWiringTest {
     }
 
     @Test
-    fun `same package replacement joins cleanup and cancel leaves sibling independent`() = runTest {
+    fun `explicit cancel joins cleanup before retry and leaves sibling independent`() = runTest {
         val api = mockk<DesktopExtensionApi>()
         val manager = mockk<DesktopExtensionManager>()
         val model = model(api, manager, backgroundScope)
@@ -553,12 +553,19 @@ class ExtensionSharedStateWiringTest {
             flow { emit(ExtensionInstallState.Preparing); awaitCancellation() },
         )
 
-        model.install(replace.item())
+        val first = model.install(replace.item())
         firstStarted.await()
-        val current = model.install(replace.item())
+        assertSame(first, model.install(replace.item()))
+        val cancellation = model.cancel(replace.pkgName)
         cleanupEntered.await()
+        model.install(replace.item())
+        testScheduler.runCurrent()
+        assertFalse(cancellation.isCompleted)
+        assertEquals(1, attempts)
         assertFalse(secondStarted.isCompleted)
         releaseCleanup.complete(Unit)
+        cancellation.join()
+        val current = model.install(replace.item())
         secondStarted.await()
         val sibling = model.install(siblingExtension.item())
         model.cancel(replace.pkgName).join()

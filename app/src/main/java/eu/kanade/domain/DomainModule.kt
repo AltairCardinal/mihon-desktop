@@ -258,14 +258,18 @@ class DomainModule : InjektModule {
 
         addFactory { GetExtensionsByType(get(), get()) }
         addFactory { ObserveExtensionSuggestions(get(), get()) }
+        addFactory { mihon.domain.extension.suggestion.ExtensionSuggestionPreferences(get()) }
         addFactory {
             val manager = get<ExtensionManager>()
             val preferences = get<SourcePreferences>()
+            val suggestionPreferences = get<mihon.domain.extension.suggestion.ExtensionSuggestionPreferences>()
             ExtensionsScreenModel(
+                suggestionPreferences = suggestionPreferences,
                 suggestions = get<ObserveExtensionSuggestions>().subscribe(
                     manager.suggestionCatalog,
                     manager.inventory,
                     preferences.showNsfwSource().changes(),
+                    suggestionPreferences.ignoredIdentities(),
                 ),
             )
         }

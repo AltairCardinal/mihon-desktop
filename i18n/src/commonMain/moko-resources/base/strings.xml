@@ -1900,4 +1900,24 @@
     <string name="extension_install_error_package">The extension package is damaged or incompatible. Refresh the repository and retry.</string>
     <string name="extension_install_error_recovery">Installation or recovery could not finish. Check storage, the installed version and source availability before retrying. Android may not allow restoring an older version. Do not clear app data.</string>
     <string name="extension_install_error_unknown">Installation failed. Check the installed version and source availability before retrying. Restart the app if needed; do not clear app data.</string>
+    <string name="extension_suggestions_title">Suggested installations</string>
+    <string name="extension_suggestions_count">%1$d manga · %2$d sources</string>
+    <string name="extension_suggestions_ignore">Ignore</string>
+    <string name="extension_suggestions_ignored">Suggestion ignored</string>
+    <string name="extension_suggestions_choose">Choose a repository for %1$s</string>
+    <string name="extension_suggestions_choice_hint">Choose a provider for each source. A package may include several sources; conflicting earlier choices will be cleared.</string>
+    <string name="extension_suggestions_website">Choose a source website</string>
+    <string name="extension_suggestions_open_website">Open website</string>
+    <string name="extension_suggestions_no_website">No website is available for these sources.</string>
+    <string name="extension_suggestions_not_found">No matching extension in your repositories.</string>
+    <string name="extension_suggestions_incompatible">The matching extension is incompatible with this app.</string>
+    <string name="extension_suggestions_restricted">The matching extension is hidden by content settings.</string>
+    <string name="extension_suggestions_installed_unavailable">An installed extension is unavailable. Review its trust and source settings below.</string>
+    <string name="extension_suggestions_inventory_unknown">Installed extensions could not be verified. Check installed extensions and retry.</string>
+    <string name="extension_suggestions_diagnose">Review installed extensions</string>
+    <string name="extension_suggestions_expand">Expand suggestions</string>
+    <string name="extension_suggestions_collapse">Collapse suggestions</string>
+    <string name="extension_suggestions_active">%1$d installations in progress</string>
+    <string name="extension_suggestions_source">Source %1$s · %2$d manga</string>
+    <string name="extension_suggestions_checked">Installed extensions checked.</string>
 </resources>

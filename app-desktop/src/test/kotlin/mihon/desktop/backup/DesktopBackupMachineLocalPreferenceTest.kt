@@ -19,6 +19,42 @@ import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.track.repository.TrackRepository
 
 class DesktopBackupMachineLocalPreferenceTest {
+    @Test
+    fun `suggestion choices persist locally and both backup directions exclude them`() = runTest {
+        val node = java.util.prefs.Preferences.userRoot().node("/mihon-eis-test-${java.util.UUID.randomUUID()}")
+        try {
+            val store = tachiyomi.core.common.preference.DesktopPreferenceStore(node.node("first"))
+            val preferences = mihon.domain.extension.suggestion.ExtensionSuggestionPreferences(store)
+            preferences.expanded.set(false)
+            preferences.ignored.set("local-identity")
+            val restarted = mihon.domain.extension.suggestion.ExtensionSuggestionPreferences(
+                tachiyomi.core.common.preference.DesktopPreferenceStore(node.node("first")))
+            assertFalse(restarted.expanded.get())
+            assertEquals("local-identity", restarted.ignored.get())
+            val backup = DesktopBackupCreator.createFromDatabase(
+                mangaRepository = FakeMangaRepository(), chapterRepository = FakeChapterRepository(),
+                categoryRepository = FakeCategoryRepository(), historyRepository = FakeHistoryRepository(),
+                trackRepository = emptyTrackRepository(), preferenceStore = store,
+                sourcePreferenceStore = { preferenceStoreOf() }, extensionRepoRepository = FakeExtensionRepoRepository(),
+            )
+            assertTrue(backup.backupPreferences.none { it.key in setOf(preferences.expanded.key(), preferences.ignored.key()) })
+            val foreign = backup.copy(backupPreferences = listOf(
+                mihon.desktop.backup.models.BackupPreference(preferences.expanded.key(),
+                    mihon.desktop.backup.models.BooleanPreferenceValue(true)),
+                mihon.desktop.backup.models.BackupPreference(preferences.ignored.key(), StringPreferenceValue("foreign")),
+            ))
+            val secondStore = tachiyomi.core.common.preference.DesktopPreferenceStore(node.node("second"))
+            for (target in listOf(store, secondStore)) {
+                DesktopBackupRestorer(FakeMangaRepository(), FakeChapterRepository(), FakeCategoryRepository(),
+                    FakeHistoryRepository(), preferenceStore = target).restore(foreign)
+            }
+            assertFalse(preferences.expanded.get())
+            assertEquals("local-identity", preferences.ignored.get())
+            val second = mihon.domain.extension.suggestion.ExtensionSuggestionPreferences(secondStore)
+            assertTrue(second.expanded.get())
+            assertEquals("", second.ignored.get())
+        } finally { node.removeNode() }
+    }
 
     @Test
     fun `desktop backup keeps ordinary preferences and excludes machine local app state`() = runTest {

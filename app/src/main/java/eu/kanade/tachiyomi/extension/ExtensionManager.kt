@@ -216,12 +216,15 @@ class ExtensionManager internal constructor(
         }
     }
 
-    private fun requestInventoryRefresh() {
+    /** Re-read package presence only; this does not install or reload extension code. */
+    fun recheckInstalledInventory() = requestInventoryRefresh()
+
+    private fun requestInventoryRefresh(): kotlinx.coroutines.Job {
         synchronized(installationStateLock) {
             inventoryRevision++
             mutableInventory.value = mutableInventory.value.copy(initialized = false)
         }
-        scope.launch { refreshInventory() }
+        return scope.launch { refreshInventory() }
     }
 
     private suspend fun refreshInventory() = inventoryMutex.withLock {
