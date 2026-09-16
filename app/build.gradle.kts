@@ -43,6 +43,10 @@ shortcutHelper.setFilePath("./shortcuts.xml")
 
 android {
     namespace = "eu.kanade.tachiyomi"
+    // Opt in explicitly: ordinary device tests must retain their debug target.
+    testBuildType = providers.gradleProperty("mihon.testBuildType").orElse("debug").get().also {
+        require(it == "debug" || it == "release") { "mihon.testBuildType must be debug or release" }
+    }
 
     defaultConfig {
         applicationId = "app.mihon"
@@ -112,7 +116,12 @@ android {
     sourceSets {
         getByName("preview").res.srcDirs("src/debug/res")
         getByName("benchmark").res.srcDirs("src/debug/res")
-        getByName("androidTest").assets.srcDir(aex01AndroidTestAssets)
+        getByName("androidTest").apply {
+            assets.srcDir(aex01AndroidTestAssets)
+            if (testBuildType == "release") {
+                java.srcDir("src/releaseAndroidTest/java")
+            }
+        }
     }
 
     splits {
@@ -173,7 +182,7 @@ android {
     }
 }
 
-tasks.matching { it.name == "mergeDebugAndroidTestAssets" }.configureEach {
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("AndroidTestAssets") }.configureEach {
     dependsOn(syncAex01AndroidTestAssets)
 }
 

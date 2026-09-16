@@ -47,6 +47,39 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class ExtensionPresentationWiringTest {
     @Test
+    fun `origin confirmation is observed and both dialog answers reach manager with exact request id`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val artifact = mihon.domain.extension.model.ExtensionArtifact(
+            name = "Legacy", packageName = "pkg.legacy", versionName = "1.6.0", versionCode = 2,
+            language = "en", isNsfw = false, sources = emptyList(),
+            repository = mihon.domain.extension.model.RepositoryIdentity("https://repo.example", "Repo", "key"),
+            downloadUrl = "https://repo.example/extension.apk", iconUrl = "", declaredSha256 = null,
+        )
+        val request = eu.kanade.tachiyomi.extension.util.ExtensionOriginConfirmation("transaction", artifact)
+        val requests = MutableStateFlow(listOf(request))
+        val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { originConfirmations } returns requests
+        }
+        val model = screenModel(
+            manager,
+            Extensions(emptyList(), emptyList(), emptyList(), emptyList()),
+            androidExtensionPresentationStore,
+        )
+        try {
+            assertEquals(listOf(request), model.state.value.originConfirmations)
+            model.answerOriginConfirmation(request.id, false)
+            verify(exactly = 1) { manager.answerOriginConfirmation("transaction", false) }
+            model.answerOriginConfirmation(request.id, true)
+            verify(exactly = 1) { manager.answerOriginConfirmation("transaction", true) }
+            requests.value = emptyList()
+            assertTrue(model.state.value.originConfirmations.isEmpty())
+        } finally {
+            model.onDispose()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun `late error from an old screen collection cannot replace an active retry`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val extension = available("Reader", "pkg.reader", emptyList())
@@ -305,7 +338,7 @@ class ExtensionPresentationWiringTest {
         assertFalse(result.available.any { it.pkgName == duplicateInstalled.pkgName })
         assertFalse(result.available.any { it.pkgName == duplicateUntrusted.pkgName })
         val synthetic = result.available.single()
-        assertEquals("pkg.bundle-7", synthetic.pkgName)
+        assertEquals("pkg.bundle", synthetic.pkgName)
         assertEquals("en", synthetic.lang)
         val source = synthetic.sources.single()
         assertEquals(
@@ -324,6 +357,58 @@ class ExtensionPresentationWiringTest {
             ),
         )
         verify(exactly = 1) { classifier.classify(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `projected language rows send the real package identity to install and cancel`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val bundle = available(
+            "Bundle",
+            "pkg.bundle",
+            listOf(
+                Extension.Available.Source(7, "en", "Reader", "https://en.example"),
+                Extension.Available.Source(8, "fr", "Reader", "https://fr.example"),
+            ),
+        )
+        val projected = androidExtensionPresentationStore.classify(
+            emptyList(),
+            emptyList(),
+            listOf(bundle),
+            mihon.domain.extension.presentation.ExtensionPresentationOptions(false, setOf("en", "fr")),
+        ).available.filterIsInstance<Extension.Available>()
+        val gate = CompletableDeferred<Unit>()
+        val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { installExtension(any()) } returns flow {
+                emit(eu.kanade.tachiyomi.extension.model.InstallStep.Downloading)
+                gate.await()
+            }
+        }
+        val model = screenModel(
+            manager,
+            Extensions(emptyList(), emptyList(), projected, emptyList()),
+            androidExtensionPresentationStore,
+        )
+        try {
+            assertEquals(2, projected.size)
+            assertEquals(2, projected.map { it.hashCode() }.distinct().size)
+            for (row in projected) {
+                model.installExtension(row)
+                verify(timeout = 5_000) {
+                    manager.installExtension(
+                        match {
+                            it.pkgName == bundle.pkgName && it.lang == row.lang &&
+                                it.downloadUrl == bundle.downloadUrl && it.versionCode == bundle.versionCode
+                        },
+                    )
+                }
+                model.cancelInstallUpdateExtension(row)
+                verify { manager.cancelInstallUpdateExtension(match { it.pkgName == bundle.pkgName }) }
+            }
+        } finally {
+            gate.complete(Unit)
+            model.onDispose()
+            Dispatchers.resetMain()
+        }
     }
 
     @Test

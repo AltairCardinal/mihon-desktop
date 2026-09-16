@@ -29,10 +29,13 @@ import io.mockk.unmockkStatic
 import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import logcat.LogPriority
+import logcat.LogcatLogger
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.ExtensionArtifact
 import mihon.domain.extension.model.InstalledExtensionTrustRecord
@@ -58,6 +61,148 @@ import java.util.Properties
 class AndroidExtensionInstallSecurityRollbackTest {
 
     @Test
+    fun `legacy origin refusal and changed bytes never commit`(@TempDir directory: Path) = runTest {
+        for (change in listOf("cancel", "candidate", "installed", "repository", "signer", "digest")) {
+            withServer(CANDIDATE_BYTES) { server ->
+                val gateway = FakeGateway(directory.resolve(change).toFile()).apply {
+                    systemPackage = installed(directory, "legacy-$change", null).copy(trust = null)
+                    if (change == "signer") candidate = candidate.copy(signers = setOf("wrong"))
+                    if (change == "repository") {
+                        systemPackage = systemPackage!!.copy(
+                            trust = InstalledExtensionTrustRecord(
+                                REPOSITORY.copy(baseUrl = "https://other.example"),
+                                null,
+                            ),
+                        )
+                    }
+                }
+                var prompts = 0
+                val port = AndroidInstallPort(
+                    gateway = gateway,
+                    client = OkHttpClient(),
+                    confirmLegacyOrigin = {
+                        prompts++
+                        when (change) {
+                            "candidate" -> gateway.transactionRoot.walkTopDown()
+                                .first { it.name == "candidate.apk" }.writeText("candidate-tampered")
+                            "installed" -> gateway.systemPackage!!.apk.writeText("changed-system")
+                        }
+                        change != "cancel"
+                    },
+                )
+                val request = artifact(
+                    server,
+                    declaredSha = if (change ==
+                        "digest"
+                    ) {
+                        "wrong"
+                    } else {
+                        Hash.sha256(CANDIDATE_BYTES)
+                    },
+                )
+                val terminal = coordinator(port, this).install(ExtensionInstallRequest(request)).last()
+                assertInstanceOf(ExtensionInstallState.Failed::class.java, terminal, change)
+                if (change ==
+                    "cancel"
+                ) {
+                    assertEquals(AppError.Cancelled, (terminal as ExtensionInstallState.Failed).error)
+                }
+                assertEquals(if (change in listOf("repository", "signer", "digest")) 0 else 1, prompts, change)
+                assertEquals(null, gateway.privatePackage, change)
+                assertEquals(0, gateway.systemInstallCount, change)
+            }
+        }
+    }
+
+    @Test
+    fun `production installer publishes scoped origin request and consumes only its answer`(
+        @TempDir directory: Path,
+    ) = runTest {
+        for (accepted in listOf(false, true)) {
+            withServer(CANDIDATE_BYTES) { server ->
+                val gateway = FakeGateway(directory.resolve(accepted.toString()).toFile()).apply {
+                    systemPackage = installed(directory, "system-$accepted", null).copy(trust = null)
+                }
+                val installer = eu.kanade.tachiyomi.extension.util.ExtensionInstaller(
+                    context = mockk(relaxed = true),
+                    runtimeReloader = {},
+                    scope = backgroundScope,
+                    gateway = gateway,
+                    client = OkHttpClient(),
+                    installerProvider = { BasePreferences.ExtensionInstaller.PRIVATE },
+                )
+                val artifact = artifact(server)
+                val extension = eu.kanade.tachiyomi.extension.model.Extension.Available(
+                    name = artifact.name,
+                    pkgName = artifact.packageName,
+                    versionName = artifact.versionName,
+                    versionCode = artifact.versionCode,
+                    libVersion = artifact.libVersion,
+                    lang = "en",
+                    isNsfw = false,
+                    sources = emptyList(),
+                    apkName = "example.apk",
+                    iconUrl = "",
+                    repoUrl = REPOSITORY.baseUrl,
+                    repoName = REPOSITORY.name,
+                    repoFingerprint = REPOSITORY.signingKeyFingerprint,
+                    declaredSha256 = artifact.declaredSha256,
+                )
+                val steps = installer.downloadAndInstall(artifact.downloadUrl, extension)
+                runCurrent()
+                val prompt = installer.originConfirmations.value.single()
+                assertEquals(artifact.copy(declaredLibVersion = artifact.libVersion), prompt.artifact)
+                installer.answerOriginConfirmation("stale-id", true)
+                runCurrent()
+                assertEquals(null, gateway.privatePackage)
+                installer.answerOriginConfirmation(prompt.id, accepted)
+                runCurrent()
+                assertTrue(installer.originConfirmations.value.isEmpty())
+                assertEquals(accepted, gateway.privatePackage != null)
+                assertEquals("system-$accepted", gateway.systemPackage!!.apk.readText())
+                assertEquals(
+                    if (accepted) {
+                        eu.kanade.tachiyomi.extension.model.InstallStep.Installed
+                    } else {
+                        eu.kanade.tachiyomi.extension.model.InstallStep.Idle
+                    },
+                    steps.first(),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `legacy system origin confirmation permits private upgrade without changing system bytes`(
+        @TempDir directory: Path,
+    ) = runTest {
+        withServer(CANDIDATE_BYTES) { server ->
+            val gateway = FakeGateway(directory.toFile(), AndroidInstallLocation.PRIVATE).apply {
+                systemPackage = installed(directory, "legacy-system", null).copy(trust = null)
+            }
+            val original = gateway.systemPackage
+            var confirmations = 0
+            val port = AndroidInstallPort(
+                gateway = gateway,
+                client = OkHttpClient(),
+                confirmLegacyOrigin = { candidate ->
+                    confirmations++
+                    assertEquals(artifact(server), candidate)
+                    assertEquals(original, gateway.systemPackage)
+                    assertEquals(null, gateway.privatePackage)
+                    true
+                },
+            )
+            val terminal = coordinator(port, this).install(ExtensionInstallRequest(artifact(server))).last()
+            assertInstanceOf(ExtensionInstallState.Installed::class.java, terminal)
+            assertEquals(1, confirmations)
+            assertEquals(original, gateway.systemPackage)
+            assertEquals("legacy-system", original!!.apk.readText())
+            assertEquals(REPOSITORY, gateway.privatePackage!!.trust!!.repository)
+        }
+    }
+
+    @Test
     fun `first install binds candidate signer to the current repository before either commit target`(
         @TempDir directory: Path,
     ) = runTest {
@@ -76,6 +221,44 @@ class AndroidExtensionInstallSecurityRollbackTest {
                 assertEquals(0, gateway.systemInstallCount)
                 assertEquals(PhysicalState(null, null), gateway.physicalState())
             }
+        }
+    }
+
+    @Test
+    fun `rejected APK logs its fixed validation reason without request secrets`(@TempDir directory: Path) = runTest {
+        val messages = mutableListOf<String>()
+        val logger = object : LogcatLogger {
+            override fun isLoggable(priority: LogPriority) = true
+            override fun isLoggable(priority: LogPriority, tag: String) = true
+            override fun log(priority: LogPriority, tag: String, message: String) {
+                messages += message
+            }
+        }
+        val wasInstalled = LogcatLogger.isInstalled
+        if (!wasInstalled) LogcatLogger.install()
+        LogcatLogger.loggers += logger
+        try {
+            withServer(CANDIDATE_BYTES) { server ->
+                val gateway = FakeGateway(directory.toFile()).apply {
+                    candidate = candidate.copy(libVersion = null)
+                }
+                val port = port(gateway, server)
+                val token = port.prepare(ExtensionInstallRequest(artifact(server)))
+                assertInstanceOf(
+                    AppError.MalformedData::class.java,
+                    runCatching { port.validate(token) }.exceptionOrNull().installError(),
+                )
+                assertTrue(messages.contains("Downloaded APK metadata does not match repository metadata"))
+                assertFalse(
+                    messages.any {
+                        it.contains(directory.toString()) || it.contains(server.url("/").toString())
+                    },
+                )
+                port.cleanup(token)
+            }
+        } finally {
+            LogcatLogger.loggers -= logger
+            if (!wasInstalled) LogcatLogger.uninstall()
         }
     }
 

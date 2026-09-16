@@ -283,6 +283,9 @@ class ExtensionManager internal constructor(
 
     /** Current-session failures for the extension list; InstallStep remains compatible with existing callers. */
     val installErrors get() = installer.installErrors
+    val originConfirmations get() = installer.originConfirmations
+
+    fun answerOriginConfirmation(id: String, accepted: Boolean) = installer.answerOriginConfirmation(id, accepted)
 
     /**
      * Returns a flow of the installation process for the given extension. It will complete

@@ -144,6 +144,7 @@ class PlatformCredentialBackend(
     preferencesRoot: Preferences = Preferences.userRoot().node("mihon/desktop/credentials"),
 ) : CredentialBackend {
     private val preferences = preferencesRoot.node(namespace.windowsNode)
+    private val service = DesktopTestProfile.credentialService(namespace.service)
     override fun save(account: String, secret: CharArray) {
         when (platform) {
             OperatingSystem.WINDOWS -> saveWindows(account, secret)
@@ -261,7 +262,7 @@ class PlatformCredentialBackend(
         try {
             requireSuccess(
                 runCommand(
-                    listOf("security", "add-generic-password", "-U", "-a", account, "-s", namespace.service, "-w"),
+                    listOf("security", "add-generic-password", "-U", "-a", account, "-s", service, "-w"),
                     stdin,
                     "save",
                 ),
@@ -275,7 +276,7 @@ class PlatformCredentialBackend(
 
     private fun loadMac(account: String): CharArray? {
         val result = runCommand(
-            listOf("security", "find-generic-password", "-a", account, "-s", namespace.service, "-w"),
+            listOf("security", "find-generic-password", "-a", account, "-s", service, "-w"),
             operation = "load",
         )
         if (result.exitCode == MAC_ITEM_NOT_FOUND) return null
@@ -314,7 +315,7 @@ class PlatformCredentialBackend(
 
     private fun deleteMac(account: String) {
         val result = runCommand(
-            listOf("security", "delete-generic-password", "-a", account, "-s", namespace.service),
+            listOf("security", "delete-generic-password", "-a", account, "-s", service),
             operation = "delete",
         )
         if (result.exitCode != MAC_ITEM_NOT_FOUND) requireSuccess(result, "delete")
@@ -323,7 +324,7 @@ class PlatformCredentialBackend(
     private fun saveLinux(account: String, secret: CharArray) {
         requireSuccess(
             runCommand(
-                listOf("secret-tool", "store", "--label=${namespace.label}", "service", namespace.service, "account", account),
+                listOf("secret-tool", "store", "--label=${namespace.label}", "service", service, "account", account),
                 secret,
                 "save",
             ),
@@ -333,7 +334,7 @@ class PlatformCredentialBackend(
 
     private fun loadLinux(account: String): CharArray? {
         val result = runCommand(
-            listOf("secret-tool", "lookup", "service", namespace.service, "account", account),
+            listOf("secret-tool", "lookup", "service", service, "account", account),
             operation = "load",
         )
         if (result.exitCode == 1 && result.stdout.isBlank() && result.stderr.isBlank()) return null
@@ -343,7 +344,7 @@ class PlatformCredentialBackend(
 
     private fun deleteLinux(account: String) {
         val result = runCommand(
-            listOf("secret-tool", "clear", "service", namespace.service, "account", account),
+            listOf("secret-tool", "clear", "service", service, "account", account),
             operation = "delete",
         )
         if (result.exitCode != 1 || result.stdout.isNotBlank() || result.stderr.isNotBlank()) {

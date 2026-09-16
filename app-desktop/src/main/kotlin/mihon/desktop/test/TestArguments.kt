@@ -1,5 +1,7 @@
 package mihon.desktop.test
 
+import java.io.File
+
 /**
  * Parsed command-line arguments for test mode.
  */
@@ -9,6 +11,7 @@ data class TestArguments(
     val jmxPort: Int = DEFAULT_JMX_PORT,
     val headless: Boolean = false,
     val platformAcceptanceToken: String? = null,
+    val testProfile: String? = null,
 ) {
     companion object {
         const val DEFAULT_HTTP_PORT = 8080
@@ -23,9 +26,18 @@ data class TestArguments(
             var jmxPort = DEFAULT_JMX_PORT
             var headless = false
             var platformAcceptanceToken: String? = null
+            var testProfile: String? = null
 
             for (arg in args) {
                 when {
+                    arg == "--test-profile" -> require(false) { "Use --test-profile=<absolute-directory>" }
+                    arg.startsWith("--test-profile=") -> {
+                        require(testProfile == null) { "Only one test profile may be selected" }
+                        testProfile = arg.substringAfter("=")
+                        require(testProfile.isNotBlank() && File(testProfile).isAbsolute) {
+                            "Test profile requires an absolute directory"
+                        }
+                    }
                     arg == "--test-mode" -> testMode = true
                     arg.startsWith("--test-http-port=") -> {
                         httpPort = arg.substringAfter("=").toIntOrNull() ?: DEFAULT_HTTP_PORT
@@ -40,12 +52,14 @@ data class TestArguments(
                 }
             }
 
+            require(testProfile == null || testMode) { "--test-profile requires --test-mode" }
             return TestArguments(
                 testMode = testMode,
                 httpPort = httpPort,
                 jmxPort = jmxPort,
                 headless = headless,
                 platformAcceptanceToken = platformAcceptanceToken,
+                testProfile = testProfile,
             )
         }
     }

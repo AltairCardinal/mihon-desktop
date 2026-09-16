@@ -86,16 +86,37 @@ app-desktop/artifacts/windows/Mihon-Desktop-0.STAGE.FEATURE.BUILD.GIT_HASH-windo
 启动测试模式：
 
 ```bash
-"/Applications/Mihon Desktop.app" \
+"/Applications/Mihon Desktop.app/Contents/MacOS/Mihon Desktop" \
   --test-mode \
+  --test-profile=/absolute/path/to/dedicated-mihon-test-profile \
   --test-http-port=8080
 ```
 
 无界面模式仅适合 HTTP 状态/API 测试：
 
 ```bash
-"/Applications/Mihon Desktop.app" --test-mode --test-http-port=8080 --headless
+"/Applications/Mihon Desktop.app/Contents/MacOS/Mihon Desktop" \
+  --test-mode --test-profile=/absolute/path/to/dedicated-mihon-test-profile \
+  --test-http-port=8080 --headless
 ```
+
+### 隔离验收配置
+
+在个人电脑验收时始终显式传 `--test-mode --test-profile=<绝对目录>`。Windows 使用本轮正式未打包 EXE，
+参数相同；不要仅修改 `user.home` 或指定 JDK 内部 `FileSystemPreferencesFactory`，前者不能隔离
+Windows APPDATA/注册表，后者不保证在 macOS 发布运行时可用。
+
+- 首次使用不存在或空目录；程序写入 `.mihon-test-profile` 标记，后续可复用以验证冷启动持久化。
+  非空且无标记、根目录、普通 home、符号链接路径被拒绝。不要将日常数据目录伪装成测试目录。
+- 启动入口在 crash handler、实例选举和 DI 之前选择 profile。数据库、缓存、日志、扩展、下载默认目录
+  及历史 `user.home` 路径均隔离；Java Preferences 全局切换到该 profile 的可持久化后端，涵盖旧偏好和扩展设置。
+  偏好已提前初始化时拒绝启动，不退回普通用户后端。普通启动及未传 profile 的历史 Test Mode 行为不变。
+- Windows 凭据仍通过 DPAPI 加密，密文保存到隔离偏好；macOS Keychain/Linux Secret Service 使用 profile
+  路径派生的专用 service 名，保留生产安全存储实现。不会注册或覆盖系统 URI handler。
+- 这是默认状态隔离，不是恶意扩展沙箱。测试主动传入的导入、导出或存储路径仍须位于专用目录，勿登录真实账号。
+  一个 profile 只供一个应用 owner 使用；不要在运行期间手动编辑 profile 文件。删除 profile 文件不会自动清除
+  OS 安全存储中的测试凭据，应先在该 profile 内正常退出测试账号/关闭测试应用锁。
+- `--headless` 只验收 HTTP/状态，不替代真实 Reader Compose 窗口验收；Test Mode 不提供屏幕截图。
 
 ## 测试分层
 

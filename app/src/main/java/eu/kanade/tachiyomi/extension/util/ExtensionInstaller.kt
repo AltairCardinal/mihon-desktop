@@ -58,6 +58,7 @@ import mihon.domain.extension.service.ExtensionTrustRequest
 import mihon.domain.extension.service.ExtensionUpdatePolicy
 import mihon.domain.extension.service.PreparedExtensionInstallToken
 import mihon.domain.extension.service.SharedExtensionUpdatePolicy
+import mihon.domain.extension.service.TrustMismatch
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import tachiyomi.core.common.util.system.logcat
@@ -102,6 +103,26 @@ internal class ExtensionInstaller private constructor(
     private val activeJobs = ConcurrentHashMap<String, ActiveInstallJob>()
     private val mutableInstallErrors = MutableStateFlow<Map<String, AppError>>(emptyMap())
     val installErrors = mutableInstallErrors.asStateFlow()
+    private val mutableOriginConfirmations = MutableStateFlow<List<ExtensionOriginConfirmation>>(emptyList())
+    val originConfirmations = mutableOriginConfirmations.asStateFlow()
+    private val originAnswers = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
+
+    fun answerOriginConfirmation(id: String, accepted: Boolean) {
+        originAnswers[id]?.complete(accepted)
+    }
+
+    private suspend fun confirmLegacyOrigin(artifact: ExtensionArtifact): Boolean {
+        val request = ExtensionOriginConfirmation(UUID.randomUUID().toString(), artifact)
+        val answer = CompletableDeferred<Boolean>()
+        originAnswers[request.id] = answer
+        mutableOriginConfirmations.update { it + request }
+        return try {
+            answer.await()
+        } finally {
+            originAnswers.remove(request.id, answer)
+            mutableOriginConfirmations.update { requests -> requests.filterNot { it.id == request.id } }
+        }
+    }
 
     // Installation session identity and UI error publication must advance together on retry.
     // Old coordinators can finish cleanup after a replacement transaction has already started.
@@ -134,6 +155,7 @@ internal class ExtensionInstaller private constructor(
                 ),
                 client = client ?: httpClient,
                 runtimeReloader = runtimeReloader,
+                confirmLegacyOrigin = ::confirmLegacyOrigin,
                 transactionIdProvider = { packageName ->
                     activeTransactions[packageName]?.transactionId
                 },
@@ -650,6 +672,7 @@ internal class AndroidInstallPort(
     private val trustPolicy: ExtensionTrustPolicy = ExtensionTrustPolicy(),
     private val updatePolicy: ExtensionUpdatePolicy = SharedExtensionUpdatePolicy,
     private val transactionIdProvider: (String) -> String? = { null },
+    private val confirmLegacyOrigin: (suspend (ExtensionArtifact) -> Boolean)? = null,
 ) : ExtensionInstallPort {
     private val prepared = ConcurrentHashMap<String, PreparedInstall>()
     private val failedPreparationCleanup = ConcurrentHashMap<String, List<File>>()
@@ -725,6 +748,13 @@ internal class AndroidInstallPort(
         val topology = storage { gateway.topology(candidate.packageName) }
         val selected = topology.selected()
         val installedPackages = topology.allPackages()
+        val installedDigests = installedPackages.map { digest(it.apk) }
+        installedPackages.forEach { installed ->
+            if (!candidate.signers.containsAll(installed.signers)) {
+                throw ExtensionInstallFailure(AppError.Authentication())
+            }
+        }
+        var legacyConfirmationRequired = false
         val trustContinuityPackages = if (installedPackages.isEmpty()) {
             listOf<AndroidInstalledPackage?>(null)
         } else {
@@ -745,17 +775,21 @@ internal class AndroidInstallPort(
             ) {
                 ExtensionTrustDecision.Trusted -> Unit
                 is ExtensionTrustDecision.Rejected -> throw ExtensionInstallFailure(trustDecision.error)
-                is ExtensionTrustDecision.ConfirmationRequired -> throw ExtensionInstallFailure(
-                    AppError.Authentication(TrustConfirmationRequiredException(trustDecision)),
-                )
+                is ExtensionTrustDecision.ConfirmationRequired -> {
+                    if (confirmLegacyOrigin == null || trustDecision.reasons.any {
+                            it != TrustMismatch.LegacyMetadataMissingRepositoryIdentity &&
+                                it != TrustMismatch.LegacyMetadataMissingArtifactDigest
+                        }
+                    ) {
+                        throw ExtensionInstallFailure(
+                            AppError.Authentication(TrustConfirmationRequiredException(trustDecision)),
+                        )
+                    }
+                    legacyConfirmationRequired = true
+                }
             }
         }
 
-        topology.allPackages().forEach { installed ->
-            if (!candidate.signers.containsAll(installed.signers)) {
-                throw ExtensionInstallFailure(AppError.Authentication())
-            }
-        }
         selected?.let { installed ->
             val installedLibVersion = installed.libVersion ?: 0.0
             val upgrade = updatePolicy.isUpdateAvailable(
@@ -768,6 +802,20 @@ internal class AndroidInstallPort(
                 install.artifact.libVersion == installedLibVersion
             if (!upgrade && !exactVersion) {
                 failMalformed("Extension downgrade is not allowed")
+            }
+        }
+
+        if (legacyConfirmationRequired) {
+            if (confirmLegacyOrigin?.invoke(install.artifact) != true) {
+                throw ExtensionInstallFailure(AppError.Cancelled)
+            }
+            // A response authorizes only these verified bytes and this installed topology.
+            // Never carry consent across a retry, repository change, or external package update.
+            if (digest(install.download) != downloadedSha ||
+                storage { gateway.topology(candidate.packageName) } != topology ||
+                installedPackages.map { digest(it.apk) } != installedDigests
+            ) {
+                throw ExtensionInstallFailure(AppError.Authentication())
             }
         }
 
@@ -1285,7 +1333,10 @@ private inline fun <T> storage(block: () -> T): T = try {
 }
 
 private fun failMalformed(message: String): Nothing =
-    throw ExtensionInstallFailure(AppError.MalformedData(IllegalArgumentException(message)))
+    throw ExtensionInstallFailure(AppError.MalformedData(IllegalArgumentException(message))).also {
+        // Only fixed validation reasons: do not log artifact URLs, credentials, or private paths.
+        it.logcat(LogPriority.ERROR) { message }
+    }
 
 private fun failStorage(message: String): Nothing =
     throw ExtensionInstallFailure(AppError.Storage(IllegalStateException(message)))

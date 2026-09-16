@@ -21,6 +21,7 @@ import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.extension.util.AndroidApk
 import eu.kanade.tachiyomi.extension.util.AndroidCommitPlan
+import eu.kanade.tachiyomi.extension.util.AndroidInstallGateway
 import eu.kanade.tachiyomi.extension.util.AndroidInstallLocation
 import eu.kanade.tachiyomi.extension.util.AndroidInstallPort
 import eu.kanade.tachiyomi.extension.util.DefaultAndroidInstallGateway
@@ -537,6 +538,8 @@ class ExtensionInstallSessionLifecycleTest {
         val allowLifecycleLookup = CountDownLatch(1)
         val cancellationReturned = CountDownLatch(1)
         val childStarted = CountDownLatch(1)
+        val cleanupStarted = CountDownLatch(1)
+        val allowCleanup = CountDownLatch(1)
         val installerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         lateinit var bridge: ExtensionInstaller
         val childAttempts = Collections.synchronizedList(mutableListOf<String>())
@@ -559,7 +562,13 @@ class ExtensionInstallSessionLifecycleTest {
             context = context,
             runtimeReloader = {},
             scope = installerScope,
-            gateway = gateway,
+            gateway = object : AndroidInstallGateway by gateway {
+                override fun delete(file: File): Boolean {
+                    cleanupStarted.countDown()
+                    check(allowCleanup.await(10, TimeUnit.SECONDS)) { "Test did not release transaction cleanup" }
+                    return gateway.delete(file)
+                }
+            },
             client = OkHttpClient(),
             installerProvider = { BasePreferences.ExtensionInstaller.PACKAGEINSTALLER },
         )
@@ -632,6 +641,7 @@ class ExtensionInstallSessionLifecycleTest {
 
                 allowLifecycleLookup.countDown()
                 assertTrue(cancellationReturned.await(10, TimeUnit.SECONDS))
+                assertTrue(cleanupStarted.await(10, TimeUnit.SECONDS))
                 runCurrent()
 
                 val cancellationExtra = Installer::class.java.getDeclaredField("EXTRA_TRANSACTION_ID").apply {
@@ -640,6 +650,7 @@ class ExtensionInstallSessionLifecycleTest {
                 assertEquals(parent, capturedStringExtras[cancellationExtra])
                 assertFalse(terminal.isCompleted, "cancellation must wait for outer rollback and cleanup")
                 assertTrue(activeTransactionIds(bridge).containsKey(PACKAGE_NAME))
+                allowCleanup.countDown()
                 assertEquals(InstallStep.Idle, terminal.await())
                 assertTrue(activeTransactionIds(bridge).isEmpty())
                 assertTrue(platformResults(bridge).isEmpty())
@@ -647,6 +658,7 @@ class ExtensionInstallSessionLifecycleTest {
                 assertTrue(activeTransactionIds(bridge).isEmpty())
             } finally {
                 allowLifecycleLookup.countDown()
+                allowCleanup.countDown()
                 installerScope.cancel()
                 unmockkStatic(FileProvider::class)
             }

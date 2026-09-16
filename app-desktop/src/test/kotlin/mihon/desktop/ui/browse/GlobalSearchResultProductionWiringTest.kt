@@ -16,6 +16,7 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -39,7 +40,6 @@ import mihon.desktop.ui.library.MangaDetailScreen
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
-import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.data.Database
@@ -157,7 +157,8 @@ class GlobalSearchResultProductionWiringTest {
                 assertEquals(observed.id, (requireNotNull(navigator).items.last() as MangaDetailScreen).mangaId)
                 withTimeout(ASYNC_TIMEOUT_MS) { details.started.await() }
                 assertEquals(1, details.inputs.size)
-                assertSame(listed, details.inputs.single())
+                val updateInput = details.inputs.single()
+                assertEquals(listOf("/shared", "DB updated", "updated-cover"), listOf(updateInput.url, updateInput.title, updateInput.thumbnail_url))
                 assertEquals(listOf("/shared", "A listed 0", "A-cover-0"), listOf(listed.url, listed.title, listed.thumbnail_url))
                 details.release.complete(Unit)
                 withTimeout(ASYNC_TIMEOUT_MS) { details.completed.await() }
@@ -253,10 +254,13 @@ class GlobalSearchResultProductionWiringTest {
             listed?.addAll(items)
             MangasPage(items, false)
         }
-        coEvery { getMangaDetails(any()) } coAnswers {
-            firstArg<SManga>().also { details?.inputs?.add(it); details?.started?.complete(Unit); details?.release?.await() }
+        coEvery { getMangaUpdate(any(), any(), true, true) } coAnswers {
+            val manga = firstArg<SManga>()
+            details?.inputs?.add(manga)
+            details?.started?.complete(Unit)
+            details?.release?.await()
+            SMangaUpdate(manga, emptyList()).also { details?.completed?.complete(Unit) }
         }
-        coEvery { getChapterList(any()) } answers { details?.completed?.complete(Unit); emptyList() }
     }
 
     private fun nodes(scene: ImageComposeScene, unmerged: Boolean = false): List<SemanticsNode> = scene.semanticsOwners.flatMap { owner ->

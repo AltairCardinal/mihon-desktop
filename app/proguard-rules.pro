@@ -4,6 +4,12 @@
 -keep,allowoptimization class tachiyomi.**
 -keep,allowoptimization class mihon.**
 
+# AndroidJUnitRunner calls this public API from the separate instrumentation APK.
+# AGP removes dependencies shared with the host from that APK, so release shrinking
+# must retain this entry point even when the host itself no longer calls it.
+# Keep the same rule in ordinary releases so tests exercise the shipped artifact.
+-keep,allowoptimization class androidx.tracing.Trace { public static *; }
+
 # Keep common dependencies used in extensions
 -keep,allowoptimization class androidx.preference.** { public protected *; }
 -keep,allowoptimization class kotlin.** { public protected *; }
@@ -12,6 +18,18 @@
 -keep,allowoptimization class kotlin.time.** { public protected *; }
 -keep,allowoptimization class okhttp3.** { public protected *; }
 -keep,allowoptimization class okio.** { public protected *; }
+# Separately compiled extensions call this Zstd facade; host-only calls can be inlined away.
+-keep,allowoptimization class com.squareup.zstd.okio.OkioZstd { public static *; }
+# zstd-kmp 0.4.0 JNI looks up these base classes and fields by name, even for decompression.
+# Its Android AAR supplies no consumer rules; prevent class merging and field relocation.
+-keep class com.squareup.zstd.ZstdCompressor {
+    int inputBytesProcessed;
+    int outputBytesProcessed;
+}
+-keep class com.squareup.zstd.ZstdDecompressor {
+    int inputBytesProcessed;
+    int outputBytesProcessed;
+}
 -keep,allowoptimization class org.jsoup.** { public protected *; }
 -keep,allowoptimization class rx.** { public protected *; }
 -keep,allowoptimization class app.cash.quickjs.** { public protected *; }

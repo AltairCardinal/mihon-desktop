@@ -1,7 +1,7 @@
 # Android 新版扩展系统完整兼容 Roadmap
 
 - 日期：2026-09-12
-- 状态：**IN_PROGRESS，AEX-00 至 AEX-05 已验收并提交；AEX-06 部分实现及发布验收未提交，已收紧范围并交接，未完成**
+- 状态：**IN_PROGRESS，AEX-00 至 AEX-05 已验收并提交；AEX-06 产品实现已保存，rc9发布与ABI通过；ARM来源确认及1.6业务链仍待实机解锁验收，未完成**
 - 父计划：[Android / macOS / Windows 正式 Roadmap](./2026-06-30-mihon-desktop-refactor-roadmap.md)
 - 专项代码基线：`6d6263dcfeffdfbd5f810a54fa7a3d24c0a6ba50`
 - 协议对齐基线：Mihon `v0.20.4`，实际 commit `df6507256acce8e7f3660783a3db6dbd1a31b6b5`
@@ -391,7 +391,7 @@ MockWebServer 必须覆盖成功、空/缺失、403/429/500、畸形、取消和
 |---|---|---|
 | Android 正式安装安全及更新 | AEX04/05 已提交的系统/私有升级、拒绝、信任及数据保全整链；rc8 双安装入口、ABI、真实源查询、下载及离线冷启；已补 rc8 信任UI和系统旧版→新版/签名冲突/损坏拒绝黑盒证据 | 最终核对覆盖边界：未声称在rc8重跑私有升级全部反例；不以debug白盒替代已要求的发布运行时证据 |
 | 已知单站限制（不自动追加修复） | MangaPlus 缺类/JNI 已有红绿修复；当前 HTTP200、4字节错误字段响应仍失败；MangaDex 正式查询阅读下载已通过 | 保留失败，不声称外部故障或全站兼容；停止重复查询/解码诊断。新增调查须用户另行决定，不以该站必须成功替代“代表性真实源”门槛 |
-| Desktop 正式 Test Mode | 隔离 profile 已获批实现；Windows/macOS 0.11.19.35 正式构建，Windows 旧 APK 运行验收，Mac 五类 Reader fixture 首屏及关闭均通过；完整 JVM 与相关回归证据可复用 | 只补 Windows 正式 GUI 对应运行缺口，待用户手动启动；不重跑已有效覆盖项，不将通用 13-family 清单的既有 partial 项变成新增能力任务 |
+| Desktop 正式 Test Mode | 隔离 profile 已获批实现；Windows/macOS 0.11.19.35 正式构建，Windows 旧 APK 运行验收，Mac 五类 Reader fixture 首屏及关闭均通过；完整 JVM 与相关回归证据可复用 | 已补 Windows 正式 GUI 五类 Reader 验收（本节末新增证据）；不重跑已有效覆盖项，不将通用 13-family 清单的既有 partial 项变成新增能力任务 |
 | 最终变更审查 | AEX06 原首审/修复复审、Zstd 定向审查已完成；Desktop 隔离额外审查发现 P2，已主线程 RED/GREEN 修复 | 不再开全仓审查；后续旧来源确认修复按一个内聚批次完成必要审查。隔离修复只有主线程复验，无第二轮独立复审，不虚构审查覆盖 |
 | ARM 正式运行验收 | rc8 ARM64/API36 的 5 项 ABI/Zstd 已通过；真实私有安装、旧 1.4 搜索/详情/单章下载/离线冷启已取得证据 | 修复旧系统扩展缺来源记录时升级无法确认；保留旧系统包，补代表性真实 1.6 私有升级→查询/更新→阅读/下载→冷启链。不能以旧版通过替代新版 |
 | 提交与交付 | 产品基线 AEX05 `dbf3f050a1`；AEX06 dirty 候选产物和增量证据已记录；交接文档提交不是产品完成提交 | 上述必需出口关闭后核对最终 diff、受影响验证、scoped commit/checkoff及正式来源信息；不把 dirty 候选 hash 或本轮纯文档提交当 AEX06 完成 |
@@ -1044,3 +1044,19 @@ adb -s <dedicated-emulator-serial> shell am instrument -w -r -e class eu.kanade.
 - Mac输入实际生成并上传：增量bundle13,420,826字节，SHA `92e4d15e561f385a0001d9b92fbfd40a9a5797fe9caa6c7e5bf8c92c1722608a`；覆盖包482,590字节，SHA `d3c41bee866207948cf8cd68fd911342b690d69d8f7bd2f90374c3c9eb3068bd`。双端SHA一致，仅本批源文件/测试/脚本与文档，不含用户testfile、签名密钥或机器local.properties；AppVersion特意保留基线BUILD33，让Mac脚本分配为34。
 - Mac已在 `/Users/altair/Github/mihon-aex06-release` 独立clone、fetch bundle并检出dbf3f050a1，覆盖本批文件；原dirty树未修改。旧 `/Applications/Mihon Desktop.app` 已ditto备份到 `/Users/altair/Github/mihon-aex06-release-input/previous-app/Mihon Desktop.app`，diff -qr内容一致后才进入构建。协调器 `aex06-macos-release` 通过规定 `scripts/build-desktop.sh` 默认模式执行；此条仅记录构建启动，终态和运行验收须另记，不提前称Mac通过。
 - 变体接线补验：`aex06-default-debug-variant` 17秒dry-run，未提供属性时真实选中 `assembleDebugAndroidTest`；不把SKIPPED任务图当行为测试。非法值第一次因PowerShell未引用 `-Pmihon.testBuildType=bogus` 被拆成错误任务名（14秒），不算配置guard成功。引用完整参数后 `aex06-invalid-test-variant-quoted` 10秒按预期拒绝，确切错误 `mihon.testBuildType must be debug or release`；与已实际构建/执行的release variant形成默认、合法、非法三种证据。文档PowerShell复验命令已同步加引号，没有重新构建APK或修改产品。
+
+
+### 2026-09-16 旧来源确认闭环与最终候选补验
+
+- Android 沿用安装协调器，在 APK 身份、仓库签名、摘要及版本校验通过后，只对旧来源/摘要记录缺失发布当前事务的来源确认。浏览→插件→更新会展示扩展版本、仓库名称、完整仓库 URL 和签名指纹；确认继续原事务，取消不写信任或替换包。已有来源改变、不同签名、损坏候选不进入此许可路径。确认后再次核对候选字节、已安装拓扑与旧包字节，防止等待期间变化；信任仅随成功安装保存，不使用全局信任代替仓库绑定。
+- 确认请求及 UUID 仅保存在安装器内存，Manager→ScreenModel→弹窗使用同一请求；答复不迁移到重试，取消/结束通过 finally 清除请求。既有安装协调器、原版加载信任和平台 adapter 均保留，不新增信任系统，也不修改共享 TrustPolicy。
+- TDD：`aex06-origin-red` 1m2s，正确复现旧系统包缺来源记录时被终止；`aex06-origin-green` 1m56s 的桥接测试预期漏写 declaredLibVersion，非产品失败；`aex06-origin-green-fixed` 52s 因新增页面测试漏传 declaredSha256 编译失败。修正后 `aex06-origin-green-verified` 安全31、生命周期28、页面wiring9，共68项/0失败及 app Spotless 通过。独立窄审查1轮无阻塞发现，未重审既有 AEX06 实现。
+- `aex06-origin-final-full` 6m10s：Android 369项/0失败/0跳过；Desktop 3027项/1失败/2跳过。唯一失败明确为 ID34 CURRENT_ANDROID 安装器证据行120过期；同文件 ID36 行650也已移至672。只更新两个 roleEvidence 行号（141、672），不改变 capability 状态；修正后的契约验收记录另附，不将本次全量命令记为成功。
+- 用户明确授权自行启动后，Windows 正式 0.11.19.35 GUI 成功启动；已核对正式 EXE、专用 profile、启动器44128及监听子进程7776。`aex06-windows-035-reader-evidence.json` 五类 downloaded_directory / downloaded_cbz / local_archive / online / partial_download 均通过既有客户端的真实首屏事件和 I/O 断言，首屏分别320.3228/194.0689/142.4061/309.4371/128.5321ms，全部 productionClosed=true。online 仅回环 fixture；Mac 已有效的五类证据继续复用。未重新构建 Desktop、未扩大其他 family 或互联网诊断。
+- ARM升级前复核原系统MangaDex字节 SHA-256仍为 `1dadd0391066e33e3d433eff08f251c29b46923a4aa38b5d44185cf71c2072c2`，UI显示1.4.202。只操作独立fork；新版来源确认、升级与业务结果以下续记，不能用此事前核对代替完成。
+
+- `aex06-origin-rc9-release` 2m57s：修正后的 Desktop parity 契约、正式 R8 构建和 app Spotless 通过。最终 [rc9 universal APK](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.1-rc9/Mihon-Fork-0.19.4-aex.1-rc9-universal.apk)，SHA-256 `12f83d907ac6866c9fc6a321025bb78cb4945b8e1077f0d0274b007bff74671d`；既有证书 `bd8e3af75921fc4356deacabd44a3d491fda8439ffbc7d073c363974a648cae3`，fork包/versionCode19/版本0.19.4-aex.1、R8/resource shrink启用、非debug、telemetry/updater关闭。构建来源为交接HEAD `852d0d796c` 加本批产品diff，不把该HEAD当产品完成提交。签名日志 `aex06-rc9-sign.log`，未新建密钥。
+- 同一rc9覆盖安装至ARM64/API36与专用API26/5582，仅fork包；复用既有发布测试APK并传入上述实际SHA guard。`aex06-rc9-arm64-abi.log` 0.335s与`aex06-rc9-api26-abi.log` 0.723s均 `OK (5 tests)`，包含真实Source ABI与Zstd解压。未把模拟器专用入口用于实机。
+- 本批跨Android发布、已有Desktop隔离、签名脚本和必要文档，超过8文件/400行；它们共同支撑同一AEX06正式产物验收，保留历史已审改动并只审新增来源确认。主要风险为发布裁剪与安装信任边界，分别由正式ABI及安装事务/实机链验证；不为行数限制拆开可交付批次。
+
+- 本次停止条件：用户首次解锁后，构建等待期间手机再次锁屏；rc9已安装并通过ARM ABI，第二次解锁请求尚未得到响应，后续只读UI仍为锁屏。没有尝试绕过设备锁，没有关闭网络或修改系统代理。已完成产品改动先随本批提交保存，AEX06及第7节未关闭项保持未勾选；不是完整兼容性完成提交。继续时直接从rc9实际来源确认的取消/接受→私有1.6升级→查询/更新→阅读/新下载→断网冷启开始，保留原系统包并核验字节；无需再次全量或重建。Windows五类Reader已完成，当前测试实例仍运行。

@@ -342,6 +342,8 @@
     <string name="ext_installing">Installing</string>
     <string name="ext_installed">Installed</string>
     <string name="ext_trust">Trust</string>
+    <string name="ext_confirm_origin_title">Confirm extension repository</string>
+    <string name="ext_confirm_origin_message">The installed extension has no complete repository record. Trust this repository for %1$s %2$s and continue installation?\n\nRepository: %3$s\n%4$s\n\nSigning fingerprint:\n%5$s\n\nCancel keeps the installed extension and its trust unchanged.</string>
     <string name="ext_untrusted">Untrusted</string>
     <string name="ext_uninstall">Uninstall</string>
     <string name="desktop_extension_details_title">Extension details</string>

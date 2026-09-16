@@ -36,6 +36,7 @@ import mihon.desktop.di.initDesktopDI
 import mihon.desktop.platform.DesktopExternalActionBroker
 import mihon.desktop.platform.DesktopOpenUriEventPort
 import mihon.desktop.platform.DesktopPlatformPaths
+import mihon.desktop.platform.DesktopTestProfile
 import mihon.desktop.platform.DesktopUriSchemeRegistrar
 import mihon.desktop.platform.DesktopUriSchemeRegistration
 import mihon.desktop.platform.AwtDesktopOpenUriEventPort
@@ -75,7 +76,8 @@ import kotlin.system.exitProcess
  * - --headless: Run without UI (for automated testing)
  */
 suspend fun main(args: Array<String>) {
-    // Install crash handler FIRST
+    DesktopTestProfile.configure(args)
+    // Profile selection must precede crash paths, preferences, the instance broker, and DI.
     CrashHandler.install()
 
     desktopExtensionRuntimeAcceptanceRequest(args)?.let { request ->
@@ -110,7 +112,7 @@ internal suspend fun startProductionDesktopApplication(
     val testArgs = TestArguments.parse(args)
     return try {
         val result = startDesktopInstance(broker, desktopExternalActionRaw(args)) { electedBroker ->
-            reportDesktopOwnerRegistration(registrar, reportRegistration)
+            if (testArgs.testProfile == null) reportDesktopOwnerRegistration(registrar, reportRegistration)
             owner = prepareDesktopOwner(transaction, electedBroker, args, openUriEventPort, ownerIngressDependencies)
         }
         owner?.let { startup ->

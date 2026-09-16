@@ -18,7 +18,7 @@ data class DesktopPlatformPaths(
         fun current(createDirectories: Boolean = true): DesktopPlatformPaths = resolve(
             osName = System.getProperty("os.name"),
             userHome = System.getProperty("user.home"),
-            env = System.getenv(),
+            env = if (DesktopTestProfile.root == null) System.getenv() else emptyMap(),
             createDirectories = createDirectories,
         )
 

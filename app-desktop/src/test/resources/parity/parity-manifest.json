@@ -1232,7 +1232,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "initDesktopDI()",
-          "line": 96
+          "line": 98
         }
       ],
       "FIXTURE": [
@@ -2760,7 +2760,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/network/AndroidNetworkResponseAdapter.kt",
           "symbol": "requireSuccessfulHttpResponse(",
-          "line": 20
+          "line": 21
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -4216,7 +4216,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 1005
+          "line": 1006
         }
       ],
       "FIXTURE": [
@@ -4794,7 +4794,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "CrashHandler.install()",
-          "line": 79
+          "line": 81
         }
       ],
       "FIXTURE": [
@@ -11339,12 +11339,12 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun toggleFavorite(",
-          "line": 316
+          "line": 327
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun moveMangaToCategoriesAndAddToLibrary",
-          "line": 449
+          "line": 460
         },
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt",
@@ -11370,7 +11370,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreen.kt",
           "symbol": "categoryDialogMode = MangaCategoryDialogMode.ADD_TO_LIBRARY",
-          "line": 916
+          "line": 918
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/library/MangaDetailScreenModel.kt",
@@ -20362,7 +20362,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt",
           "symbol": "fun bookmarkChapters",
-          "line": 838
+          "line": 813
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -24855,7 +24855,7 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/extensionrepo/service/ExtensionRepoService.kt",
           "symbol": "class ExtensionRepoService private constructor(",
-          "line": 17
+          "line": 22
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -25368,7 +25368,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/extension/api/ExtensionApi.kt",
           "symbol": "private val catalogService",
-          "line": 37
+          "line": 36
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -25376,7 +25376,7 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionCatalogService.kt",
           "symbol": "class ExtensionCatalogService",
-          "line": 33
+          "line": 37
         },
         {
           "kind": "PLATFORM_ADAPTER",
@@ -25389,7 +25389,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt",
           "symbol": "private val catalogService",
-          "line": 55
+          "line": 56
         }
       ],
       "FIXTURE": [
@@ -26020,7 +26020,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstaller.kt",
           "symbol": "private val coordinator = ExtensionInstallCoordinator",
-          "line": 112
+          "line": 141
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -26306,7 +26306,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt",
           "symbol": "private suspend fun loadExtension",
-          "line": 226
+          "line": 227
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -26719,7 +26719,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstaller.kt",
           "symbol": "private val trustPolicy",
-          "line": 609
+          "line": 672
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -26734,7 +26734,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt",
           "symbol": "private val trustPolicy",
-          "line": 56
+          "line": 57
         }
       ],
       "FIXTURE": [
@@ -27361,7 +27361,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPort.kt",
           "symbol": "desktopExtensionPresentationStore =",
-          "line": 198
+          "line": 219
         }
       ],
       "FIXTURE": [
@@ -29482,7 +29482,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderMaterializePorts.kt",
           "symbol": "class DesktopReaderPageFetchPort",
-          "line": 184
+          "line": 188
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/reader/DesktopReaderRuntimeFactory.kt",
@@ -29909,7 +29909,7 @@
       "domain/src/commonTest/kotlin/mihon/domain/reader/session/ReaderSessionCoreTest.kt": [
         "open publishes zero-page loading then stable page identities and per-page states",
         "rapid viewport change promotes visible page and rejects the cancelled late result",
-        "retry keeps page identity and creates force-refresh P0 work"
+        "double retry advances only target attempt clears stale content and keeps force-refresh P0 work"
       ],
       "domain/src/commonTest/kotlin/mihon/domain/reader/session/ReaderChapterWindowReducerTest.kt": [
         "replacing the window retains additions before releasing chapters that left it",
@@ -29951,7 +29951,7 @@
       "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/DesktopReaderChapterTransitionIntegrationTest.kt": [
         "next chapter activates inside the same core at zero pages without a replacement screen",
         "previous chapter resolves last page after its stable page list arrives",
-        "chapter boundaries do not activate and keep explicit feedback"
+        "chapter boundaries do not activate and do not keep viewport feedback"
       ],
       "app/src/test/java/eu/kanade/tachiyomi/ui/reader/AndroidReaderCoreProductionContractTest.kt": [
         "online ReaderViewModel executes shared session scheduler encoded cache and progress chain",
@@ -32722,17 +32722,17 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "stateMachine.schedule(",
-          "line": 562
+          "line": 564
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "val wait = stateMachine.retryDelayMillis(retryAttempt++) ?: break",
-          "line": 974
+          "line": 978
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/download/DesktopDownloadManager.kt",
           "symbol": "val wait = stateMachine.retryDelayMillis(publishAttempt++) ?: break",
-          "line": 733
+          "line": 735
         }
       ],
       "FIXTURE": [
@@ -33150,7 +33150,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "filterChaptersForDownload.await(manga, chapters)",
-          "line": 1048
+          "line": 1049
         }
       ],
       "FIXTURE": [
@@ -34414,7 +34414,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/domain/LibraryUpdateScheduler.kt",
           "symbol": "fun runNow",
-          "line": 80
+          "line": 79
         }
       ],
       "FIXTURE": [
@@ -44725,7 +44725,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/Main.kt",
           "symbol": "internal fun wireDesktopOpenUriEvents",
-          "line": 622
+          "line": 624
         }
       ],
       "FIXTURE": [
@@ -47111,7 +47111,7 @@
           "kind": "SHARED",
           "path": "i18n/src/commonMain/moko-resources/base/strings.xml",
           "symbol": "pref_app_language",
-          "line": 257
+          "line": 259
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -51244,7 +51244,7 @@
         {
           "path": "app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsAdvancedScreen.kt",
           "symbol": "object SettingsAdvancedScreen",
-          "line": 75
+          "line": 74
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -53665,7 +53665,7 @@
         {
           "path": "app/build.gradle.kts",
           "symbol": "implementation(projects.domain)",
-          "line": 202
+          "line": 232
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -53673,7 +53673,7 @@
           "kind": "SHARED",
           "path": "domain/build.gradle.kts",
           "symbol": "commonMain {",
-          "line": 16
+          "line": 19
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -54293,7 +54293,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt",
           "symbol": "suspend fun loadExtensions",
-          "line": 118
+          "line": 119
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -54301,7 +54301,7 @@
           "kind": "SHARED",
           "path": "source-api/src/commonMain/kotlin/eu/kanade/tachiyomi/source/Source.kt",
           "symbol": "interface Source",
-          "line": 12
+          "line": 17
         },
         {
           "kind": "PLATFORM_ADAPTER",

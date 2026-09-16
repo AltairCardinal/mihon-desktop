@@ -91,6 +91,35 @@ fun extensionsTab(
                 onRefresh = extensionsScreenModel::findAvailableExtensions,
             )
 
+            state.originConfirmations.firstOrNull()?.let { request ->
+                AlertDialog(
+                    onDismissRequest = { extensionsScreenModel.answerOriginConfirmation(request.id, false) },
+                    title = { Text(stringResource(MR.strings.ext_confirm_origin_title)) },
+                    text = {
+                        Text(
+                            stringResource(
+                                MR.strings.ext_confirm_origin_message,
+                                request.artifact.name,
+                                request.artifact.versionName,
+                                request.artifact.repository.name,
+                                request.artifact.repository.baseUrl,
+                                request.artifact.repository.signingKeyFingerprint,
+                            ),
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { extensionsScreenModel.answerOriginConfirmation(request.id, true) }) {
+                            Text(stringResource(MR.strings.ext_trust))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { extensionsScreenModel.answerOriginConfirmation(request.id, false) }) {
+                            Text(stringResource(MR.strings.action_cancel))
+                        }
+                    },
+                )
+            }
+
             privateExtensionToUninstall?.let { extension ->
                 ExtensionUninstallConfirmation(
                     extensionName = extension.name,

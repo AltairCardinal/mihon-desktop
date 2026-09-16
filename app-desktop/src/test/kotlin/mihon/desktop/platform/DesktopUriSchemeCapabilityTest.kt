@@ -23,6 +23,30 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 class DesktopUriSchemeCapabilityTest {
     @Test
+    fun `isolated test owner does not modify system URI registration`(@TempDir tempDir: File) = runBlocking {
+        val context = initDesktopDIForTest(tempDir, isolatedDesktopPreferenceStore())
+        val registrar = RecordingRegistrar()
+        try {
+            startProductionDesktopApplication(
+                args = arrayOf("--test-mode", "--headless", "--test-profile=${File(tempDir, "profile").absolutePath}"),
+                broker = DesktopExternalActionBroker(File(tempDir, "isolated-instance.json")),
+                registrar = registrar,
+                openUriEventPort = unsupportedOpenUriPort,
+                ownerIngressDependencies = {
+                    DesktopOwnerIngressDependencies(runtime(RecordingRuntimeService()), DesktopUiDependencies.fromInjekt())
+                },
+                startTestMode = {},
+                awaitTestModeTermination = {},
+                stopTestMode = {},
+                runWindowEventLoop = { _, requestClose -> requestClose() },
+            )
+            assertEquals(0, registrar.calls)
+        } finally {
+            context.closeAndJoin()
+        }
+    }
+
+    @Test
     fun `packaging resources register only canonical tachiyomi scheme`() {
         val windows = resource("platform/windows/tachiyomi-url-protocol.reg.template")
         assertTrue(windows.contains("Software\\Classes\\tachiyomi"))

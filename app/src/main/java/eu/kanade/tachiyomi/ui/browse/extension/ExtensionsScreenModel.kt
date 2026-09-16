@@ -125,6 +125,10 @@ class ExtensionsScreenModel(
         extensionManager.installErrors
             .onEach { errors -> mutableState.update { it.copy(installErrors = errors) } }
             .launchIn(screenModelScope)
+
+        extensionManager.originConfirmations
+            .onEach { requests -> mutableState.update { it.copy(originConfirmations = requests) } }
+            .launchIn(screenModelScope)
     }
 
     fun searchQueryPredicate(query: String, includePackageName: Boolean = false): (Extension) -> Boolean =
@@ -230,6 +234,10 @@ class ExtensionsScreenModel(
         }
     }
 
+    fun answerOriginConfirmation(id: String, accepted: Boolean) {
+        extensionManager.answerOriginConfirmation(id, accepted)
+    }
+
     @Immutable
     data class State(
         val isLoading: Boolean = true,
@@ -240,6 +248,7 @@ class ExtensionsScreenModel(
         val searchQuery: String? = null,
         val repositoryFailures: List<mihon.domain.extension.model.RepositoryCatalogFailure> = emptyList(),
         val installErrors: Map<String, mihon.domain.error.AppError> = emptyMap(),
+        val originConfirmations: List<eu.kanade.tachiyomi.extension.util.ExtensionOriginConfirmation> = emptyList(),
     ) {
         val isEmpty = items.isEmpty()
     }

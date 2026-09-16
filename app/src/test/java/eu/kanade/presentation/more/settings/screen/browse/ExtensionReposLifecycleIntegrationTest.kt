@@ -45,8 +45,11 @@ import java.util.concurrent.TimeUnit
 class ExtensionReposLifecycleIntegrationTest {
     @Test
     fun `both deeplinks drive real screen model discovery confirmation replacement and deletion`() = runBlocking {
+        // Mixed JVM/Robolectric suites cannot rely on DriverManager's one-time service discovery.
+        val jdbcDriver = Class.forName("org.sqlite.JDBC").getDeclaredConstructor().newInstance() as java.sql.Driver
         Dispatchers.setMain(UnconfinedTestDispatcher())
         try {
+            java.sql.DriverManager.registerDriver(jdbcDriver)
             MockWebServer().also { it.start() }.use { server ->
                 JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).use { driver ->
                     Database.Schema.create(driver)
@@ -140,6 +143,7 @@ class ExtensionReposLifecycleIntegrationTest {
                 }
             }
         } finally {
+            java.sql.DriverManager.deregisterDriver(jdbcDriver)
             Dispatchers.resetMain()
         }
     }

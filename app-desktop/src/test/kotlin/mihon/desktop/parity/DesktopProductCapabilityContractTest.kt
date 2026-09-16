@@ -197,6 +197,11 @@ class DesktopProductCapabilityContractTest {
         mapOf(
             45 to
                 mapOf(
+                    "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderPageImagePipelineTest.kt" to
+                        setOf(
+                            "generation fence rejects and releases a non cooperative stale decode",
+                            "decode concurrency is bounded and a stale queued request never starts",
+                        ),
                     "domain/src/commonTest/kotlin/mihon/domain/reader/scheduler/ReaderRequestSchedulerTest.kt" to
                         setOf(
                             "original Mihon policy schedules visible page then four forward pages serially",
@@ -277,6 +282,7 @@ class DesktopProductCapabilityContractTest {
                         setOf(
                             "production runtime follows persisted next chapter prefetch changes",
                             "production runtime preference changes drive off first viewport and full request sets",
+                            "production runtime binds the independent 512 MiB encoded cache policy",
                             "production factory creates one shared core and exposes its canonical state to the model",
                             "production factory coordinates encoded cache across concurrent reader runtimes",
                         ),
@@ -297,7 +303,7 @@ class DesktopProductCapabilityContractTest {
                         setOf(
                             "open publishes zero-page loading then stable page identities and per-page states",
                             "rapid viewport change promotes visible page and rejects the cancelled late result",
-                            "retry keeps page identity and creates force-refresh P0 work",
+                            "double retry advances only target attempt clears stale content and keeps force-refresh P0 work",
                         ),
                     "app/src/test/java/eu/kanade/tachiyomi/ui/reader/model/ReaderSessionProductionWiringTest.kt" to
                         setOf(
@@ -327,7 +333,7 @@ class DesktopProductCapabilityContractTest {
                         setOf(
                             "next chapter activates inside the same core at zero pages without a replacement screen",
                             "previous chapter resolves last page after its stable page list arrives",
-                            "chapter boundaries do not activate and keep explicit feedback",
+                            "chapter boundaries do not activate and do not keep viewport feedback",
                         ),
                 ),
             53 to
@@ -369,6 +375,7 @@ class DesktopProductCapabilityContractTest {
                     "app-desktop/src/test/kotlin/mihon/desktop/reader/DesktopReaderSessionIntegrationTest.kt" to
                         setOf(
                             "one session opens at zero pages then materializes visible pages and settled progress",
+                            "dual presentation settles both source pages through screen model and session progress port",
                             "settling the last page then paging backward never makes the chapter unread",
                             "closing immediately after settlement lets the final progress write finish",
                         ),

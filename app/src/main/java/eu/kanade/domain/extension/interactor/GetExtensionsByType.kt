@@ -71,7 +71,6 @@ private object AndroidExtensionPresentationAdapter : ExtensionPresentationAdapte
         (extension as Extension.Available).copy(
             name = source.name,
             lang = source.language,
-            pkgName = "${extension.pkgName}-${source.id}",
             sources = extension.sources.filter { it.id == source.id },
         )
 }

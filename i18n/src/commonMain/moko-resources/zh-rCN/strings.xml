@@ -96,6 +96,8 @@
     <string name="ext_installing">安装中</string>
     <string name="ext_installed">已安装</string>
     <string name="ext_trust">信任</string>
+    <string name="ext_confirm_origin_title">确认扩展仓库来源</string>
+    <string name="ext_confirm_origin_message">已安装扩展缺少完整的仓库记录。是否信任以下仓库并继续安装 %1$s %2$s？\n\n仓库：%3$s\n%4$s\n\n签名指纹：\n%5$s\n\n取消会保留原扩展及其信任状态。</string>
     <string name="ext_untrusted">未信任</string>
     <string name="ext_uninstall">卸载</string>
     <string name="desktop_extension_details_title">扩展详情</string>
