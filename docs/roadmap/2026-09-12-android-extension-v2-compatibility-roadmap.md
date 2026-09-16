@@ -1,14 +1,16 @@
 # Android 新版扩展系统完整兼容 Roadmap
 
 - 日期：2026-09-12
-- 状态：**IN_PROGRESS，2026-09-15 主模型接续实施；AEX-00/AEX-01/AEX-02/AEX-03A 已验收，下一批 AEX-03B**
+- 状态：**IN_PROGRESS，AEX-00 至 AEX-05 已验收并提交；AEX-06 部分实现及发布验收未提交，已收紧范围并交接，未完成**
 - 父计划：[Android / macOS / Windows 正式 Roadmap](./2026-06-30-mihon-desktop-refactor-roadmap.md)
 - 专项代码基线：`6d6263dcfeffdfbd5f810a54fa7a3d24c0a6ba50`
 - 协议对齐基线：Mihon `v0.20.4`，实际 commit `df6507256acce8e7f3660783a3db6dbd1a31b6b5`
 
 2026-09-12 首次审阅调整（历史记录）：解除早期组件测试对 AEX-04 安装/版本放行的反向依赖；AEX-03 拆为查询与更新数据闭环两个行为批次；AEX-00 增加可执行测试矩阵的强制关闭门槛。当时仅规划；后续已按用户授权开始 AEX-00，当前进度以下文实施证据为准。
 
-本文件是本专项唯一计划与进度记录。实施进度仅从第 5 节第一个未勾选的批次推导；不增加 `active-task`。用户于 2026-09-15 明确要求主模型完成全部剩余工作，停止使用 Luna 技能，并授权按成本收益选择子代理。当前执行规则以本文件末尾的 2026-09-15 接续约定为准；此前的技能、等待批准和暂停描述保留为历史记录。规划、开始执行和子代理自测均不等于兼容性完成证据。
+本文件是本专项唯一计划与进度记录。实施进度仅从第 5 节第一个未勾选的批次推导；不增加 `active-task`。用户于 2026-09-15 明确要求主模型完成全部剩余工作，停止使用 Luna 技能，并授权按成本收益选择子代理。执行规则沿用 2026-09-15 接续约定，但下述 2026-09-16 收紧边界优先；此前的技能、等待批准和暂停描述保留为历史记录。规划、开始执行和子代理自测均不等于兼容性完成证据。
+
+2026-09-16 用户要求收紧并交接。最新执行边界以本段及第 7 节剩余出口为准；历史日志中的“待批准、手机已拔出、Mac 隔离尚未实现”等不是当前状态。后续 agents 从[收紧交接文档](./2026-09-16-aex06-scoped-handoff.md)恢复工作，它是入口与证据索引，不是第二份进度权威。停止自动扩大站点诊断、一般网络排障和测试基础设施；不重新启用 Luna。
 
 2026-09-13 执行复盘调整：保留全部产品范围、8 个交付批次及 C1–C11 门槛；区分交付批次与批内行为循环，细化 AEX-02 的依赖和恢复入口。原“每个 B 组红/绿/重构各一次”不再作为执行预算。用户本轮只要求修改 roadmap 并交接 Luna 技能改进，不恢复实施、不授予 TDD 例外。技能改进需求另见[交接清单](./2026-09-13-luna-workflow-improvement-handoff.md)，它不是本专项第二份进度计划，也不表示技能已修改或效果已验证。
 
@@ -259,13 +261,13 @@
 
 ### AEX-06：正式发布、跨平台回归与证据收口
 
-- 设备调度（2026-09-16 用户确认）：个人 ARM 手机已拔出，所有必须依赖该真机的正式运行验收集中到最后。先完成不依赖手机的实现、模拟器、迁移及 Windows/macOS 工作，不等待或反复探测手机；用户重新连接后再执行 ARM 验收。设备暂离不阻塞这些独立工作，但 ARM 证据缺失时不得勾选本批或宣布 roadmap 全部完成。
+- 设备调度（2026-09-16 最新）：用户已重新连接 ARM 手机并完成部分验证，详见第 7 节和交接文档；连接是动态状态，实际需要使用时再核对。设备不在时继续独立工作，不轮询等待；ARM 新版业务证据仍缺失时不得勾选完成。
 - Android：对最终 diff 跑相关模块完整单元/集成测试、格式检查；构建 R8 开启的目标 release variant，明确 updater/telemetry flags，不因验收自动启用。确认版本标识属于本 fork、versionCode 可合法升级目标实例，不冒充官方 v0.20.4 签名或版本。
 - 在 AEX-00 确认的最低/当前受支持 Android 系统及代表性 ABI 上，以可安装的正式 release 产物执行关键 fixture/代表性真实扩展的搜索、更新、阅读、下载、重启与信任验收。签名材料或设备缺失必须明确阻塞发布门槛。
 - R8/反射/资源/类加载问题以该 APK 的真实 ART 行为验证；debug、仅 JVM 或系统 JDK 结果不能替代。记录 APK 路径、SHA-256、签名指纹、版本、构建 flags、设备和结果。
 - Desktop：共享改动必须通过完整 Desktop JVM 测试、Test Mode 及 Windows/macOS 正式构建和运行验收；特别覆盖 JAR-first、旧 APK、Source ABI、Authors、FlareSolverr 和既有 Reader 行为。
 - Desktop 构建只能走 `scripts/build-desktop.sh`。同一最终 diff 已有等价完整 Desktop 测试时可用 `build-only` 避免重复全量测试；仍需正式 runtime 验收。Windows 交付路径必须来自日志 `Final unpacked EXE:` 且确认存在，不用 tmp/build 目录。
-- 无关已有失败与本次回归分别记录；不能凭“可能是旧问题”忽略。无法证明不相关的失败作为收口阻塞。
+- 无关已有失败与本次回归分别记录；不能凭“可能是旧问题”忽略。失败先映射到冻结协议、实际改动与明确验收项。必需项缺证据仍阻塞；额外站点或通用环境问题不自动升级为无限修复任务。既有调查后仍不能归因时保留已知限制，不宣称已修复；若需要追加诊断或影响最终兼容声明，提交证据、单一假设、预算及停止条件，请用户决定，不无限等待“证明无关”。
 - 将测试命令/结果、设备证据、正式产物和受影响 capability 证据写入第 8 节及既有机器权威。实现、独立审查、验证和提交完成后才勾选批次；不另建关闭/推进状态的空提交。
 - 关闭条件：第 7 节所有必需项通过，必要平台不存在“待验证”；交付真实 APK 和平台产物链接、版本边界、升级说明及 commit。未达成时报告剩余门槛，不宣布完整支持。
 
@@ -314,7 +316,7 @@
 | 更新与 memo / AEX-03B | 详情/后台作业 → 统一更新/同步 → 数据库 → 备份/恢复 → 再调用及页图/下载消费 | 待新增 `domain/src/commonTest/kotlin/tachiyomi/domain/extension/SourceUpdateMemoContractTest.kt`、`data/src/commonTest/kotlin/tachiyomi/data/extension/SourceUpdateMemoPersistenceIntegrationTest.kt`；复用 `app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt`、`app/src/test/java/eu/kanade/tachiyomi/data/backup/create/BackupCreatorBehaviorTest.kt`、`app/src/test/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorerBehaviorTest.kt`；`:domain:jvmTest --tests "tachiyomi.domain.extension.SourceUpdateMemoContractTest"`、`:domain:testReleaseUnitTest --tests "tachiyomi.domain.extension.SourceUpdateMemoContractTest"`、`:data:jvmTest --tests "tachiyomi.data.extension.SourceUpdateMemoPersistenceIntegrationTest"`、`:data:testReleaseUnitTest --tests "tachiyomi.data.extension.SourceUpdateMemoPersistenceIntegrationTest"`、`:app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.data.library.LibraryUpdateJobSharedLifecycleIntegrationTest"` | flags/次数错误或任一数据环节丢失 memo/进度；真实存储重开和生产备份恢复后重新调用正确，旧数据不损坏；codec 自身 round-trip 不足以关闭 |
 | APK 准入、安装与整链 / AEX-04 | 真实 `PackageManager`/installer → `ExtensionLoader`/ART → `SourceManager` → 查询/更新/阅读/下载 | 待新增 `app/src/androidTest/java/eu/kanade/tachiyomi/extension/ExtensionV16LifecycleInstrumentationTest.kt`；复用 `app/src/androidTest/java/eu/kanade/tachiyomi/extension/SystemExtensionRollbackInstrumentationTest.kt` 的设备基础设施；`:app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=eu.kanade.tachiyomi.extension.ExtensionV16LifecycleInstrumentationTest'` | 真实 1.6 APK 被版本/metadata 拒绝或源注册/业务调用失败；同一签名 APK 经正常产品入口完成全部步骤；无 Source 注入、metadata 改写或信任后门 |
 | 历史升级与恢复 / AEX-05 | 旧版本数据/备份进入已完成的产品整链 | 待新增 `app/src/androidTest/java/eu/kanade/tachiyomi/extension/ExtensionUpgradeWorkflowTest.kt`；复用 AEX-04 的 `ExtensionV16LifecycleInstrumentationTest`，并在同一 ART runner 使用固定旧数据/受控 v1.5 APK；`:app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=eu.kanade.tachiyomi.extension.ExtensionUpgradeWorkflowTest'` | 受控 v1.5 替代样本的 metadata、签名、安装或升级中断恢复行为无法验证；历史第三方 1.5 provenance 缺失仅作为来源限制，不作为受控样本的 RED；随后升级/中断恢复全流程通过，独立记录旧数据版本及结果 |
-| 发布产物 / AEX-06 | 最终 R8 APK 与正式 Windows/macOS runtime | 待新增 `app/src/androidTest/java/eu/kanade/tachiyomi/extension/ExtensionReleaseParityInstrumentationTest.kt`；默认 telemetry/updater 关闭：`python scripts/gradle-coordinator.py run --key aex06-android-release -- .\gradlew.bat :app:assembleRelease`；当前未配置 `testBuildType=release`，`connectedReleaseAndroidTest` 不是现成 task，待实现 `app/build.gradle.kts` 的 `mihon.testBuildType=release` 选择并校验 release test APK 的 R8/签名/hash（属性、wiring、校验和 runner 均待实现，现有 debug ART 不替代）后执行 `python scripts/gradle-coordinator.py run --key aex06-android-release-device -- .\gradlew.bat :app:connectedAndroidTest '-Pmihon.testBuildType=release' '-Pandroid.testInstrumentationRunnerArguments.class=eu.kanade.tachiyomi.extension.ExtensionReleaseParityInstrumentationTest'`；Desktop：`scripts/build-desktop.sh` 后 `scripts/desktop-smoke-test.sh`；均记录正式产物 hash、报告及 runner 设备 | 本批次是发布集成门槛，不虚构必须先失败；若产物失败，定位后对相关行为补 RED 并修复；最终产物与受测 hash/版本一致、必要场景不跳过 |
+| 发布产物 / AEX-06 | 最终 R8 APK 与正式 Windows/macOS runtime | 已接入 `mihon.testBuildType=release`；按文末“正式release复验命令”构建、外部签名及指定模拟器运行 `ExtensionReleaseParityInstrumentationTest` 公开ABI门槛（身份/证书/SHA校验必需）；内部白盒debug结果与正式APK外部UI生命周期验收分开记录，不能互相替代。Desktop：`scripts/build-desktop.sh` 后 `scripts/desktop-smoke-test.sh`；正式产物hash、报告、API/ABI均须记录，ARM实机最后 | 本批次是发布集成门槛，不虚构必须先失败；若产物失败，定位后对相关行为补 RED 并修复；最终产物与受测 hash/版本一致、必要场景不跳过 |
 
 ### AEX-00 已具体化的行为—入口—runner 矩阵
 
@@ -332,7 +334,7 @@
 | update flags 与 memo 保真 / AEX-03B | 真实详情/后台更新作业 → source `getMangaUpdate` → data/backup → reader/download 消费；不以 codec round-trip 代替链路 | 待新增 `domain/src/commonTest/kotlin/tachiyomi/domain/extension/SourceUpdateMemoContractTest.kt`、`data/src/commonTest/kotlin/tachiyomi/data/extension/SourceUpdateMemoPersistenceIntegrationTest.kt` 与平台集成；复用 `app/src/test/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJobSharedLifecycleIntegrationTest.kt`、`app/src/test/java/eu/kanade/tachiyomi/data/backup/restore/BackupRestorerBehaviorTest.kt`；`:domain:jvmTest --tests "tachiyomi.domain.extension.SourceUpdateMemoContractTest"`、`:domain:testReleaseUnitTest --tests "tachiyomi.domain.extension.SourceUpdateMemoContractTest"`、`:data:jvmTest --tests "tachiyomi.data.extension.SourceUpdateMemoPersistenceIntegrationTest"`、`:data:testReleaseUnitTest --tests "tachiyomi.data.extension.SourceUpdateMemoPersistenceIntegrationTest"`、`:app:testReleaseUnitTest --tests "eu.kanade.tachiyomi.data.library.LibraryUpdateJobSharedLifecycleIntegrationTest"` | flags/调用次数错误、memo 或已读/下载映射在存储重开/备份恢复中丢失 | 真实 source 调用次数与 flags 精确；重启和 production backup/restore 后 memo、章节状态、页图/下载关系保真 |
 | Android metadata、安装、信任、首次整链 / AEX-04 | Android `PackageManager`/正常 installer → `ExtensionLoader`/ART → `SourceManager`；不改 metadata、不扩大信任、不使用 shell 权限冒充用户安装 | 待新增 `app/src/androidTest/java/eu/kanade/tachiyomi/extension/ExtensionV16LifecycleInstrumentationTest.kt`；复用 `app/src/androidTest/java/eu/kanade/tachiyomi/extension/SystemExtensionRollbackInstrumentationTest.kt` 仅作回滚基础设施；`:app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=eu.kanade.tachiyomi.extension.ExtensionV16LifecycleInstrumentationTest'` | 真实 1.6 APK 被旧版本/metadata 拒绝，或正常安装后 source 注册/查询失败 | 固定签名 1.6 APK 经正常生产入口完成准入、安装、加载、source 查询；不同签名/损坏/未知版本分别拒绝并保留旧状态 |
 | 历史 1.5 升级与部分失败 / AEX-05 | 旧数据/旧 metadata → 已完成的 AEX-04 production chain；不把 1.6 改标签成 1.5；历史第三方 1.5 与用户批准的受控 1.5 分开 | 待新增 `app/src/androidTest/java/eu/kanade/tachiyomi/extension/ExtensionUpgradeWorkflowTest.kt`，历史第三方样本保持清单缺失；受控签名样本使用 `aex00-external-v15-suspend-only.jar` 与 `aex00-external-v15-controlled-sample.apk`；`:app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=eu.kanade.tachiyomi.extension.ExtensionUpgradeWorkflowTest'` | 受控 v1.5 替代样本的 metadata、签名、安装或升级中断恢复行为无法验证；历史第三方 1.5 provenance 缺失仅作为来源限制，不作为受控样本的 RED；不得以 mock/改 metadata 解除 | 受控签名 JAR 已有 JVM/Desktop loader/authenticator 证据，但不替代 Android APK 安装；旧数据/备份升级、部分失败和恢复均有真实设备证据后才可关闭，否则保持未验证 |
-| 发布 APK/Desktop runtime / AEX-06 | 最终 R8 release APK 与正式 Windows/macOS runtime；不把 debug/临时目录产物当发布证据 | 待新增 `app/src/androidTest/java/eu/kanade/tachiyomi/extension/ExtensionReleaseParityInstrumentationTest.kt`；默认 telemetry/updater 关闭：`python scripts/gradle-coordinator.py run --key aex06-android-release -- .\gradlew.bat :app:assembleRelease`；当前未配置 `testBuildType=release`，`connectedReleaseAndroidTest` 不是现成 task，待实现 `app/build.gradle.kts` 的 `mihon.testBuildType=release` 选择并校验 release test APK 的 R8/签名/hash（属性、wiring、校验和 runner 均待实现，现有 debug ART 不替代）后执行 `python scripts/gradle-coordinator.py run --key aex06-android-release-device -- .\gradlew.bat :app:connectedAndroidTest '-Pmihon.testBuildType=release' '-Pandroid.testInstrumentationRunnerArguments.class=eu.kanade.tachiyomi.extension.ExtensionReleaseParityInstrumentationTest'`；Desktop：`scripts/build-desktop.sh` 后 `scripts/desktop-smoke-test.sh`；均记录正式产物 hash、报告及 runner 设备 | 发布产物不匹配受测 hash、R8/平台行为差异或必要场景跳过 | 版本、签名、hash、设备/API/ABI、报告和用户路径全部可追溯；Android/Desktop 必需场景无跳过 |
+| 发布 APK/Desktop runtime / AEX-06 | 最终 R8 release APK 与正式 Windows/macOS runtime；不把 debug/临时目录产物当发布证据 | 已接入 `mihon.testBuildType=release`；按文末“正式release复验命令”构建、外部签名及指定模拟器运行 `ExtensionReleaseParityInstrumentationTest` 公开ABI门槛（身份/证书/SHA校验必需）；内部白盒debug结果与正式APK外部UI生命周期验收分开记录，不能互相替代。Desktop：`scripts/build-desktop.sh` 后 `scripts/desktop-smoke-test.sh`；正式产物hash、报告、API/ABI均须记录，ARM实机最后 | 发布产物不匹配受测 hash、R8/平台行为差异或必要场景跳过 | 版本、签名、hash、设备/API/ABI、报告和用户路径全部可追溯；Android/Desktop 必需场景无跳过 |
 
 上述 AEX-00 矩阵保留当时的探针和拟新增名称，不是当前进度快照；实际完成状态以第 5 节 checkbox 和第 8/9 节证据为准。所有 runner 仍按协调器串行执行，新增套件应更新实际落点而非重复建立计划中的占位类。
 
@@ -381,7 +383,22 @@ MockWebServer 必须覆盖成功、空/缺失、403/429/500、畸形、取消和
 
 ## 7. 用户验收清单
 
-以下均未执行，不能据此声称功能已完成。每项完成后关联第 8 节对应设备/自动化证据。
+以下是专项最终验收门槛，不是“均未执行”的状态清单。AEX-00 至 AEX-05 已完成的实现、审查、测试与提交见第 5/8 节；AEX-06 的部分发布证据见文末。最终勾选须核对每项完整范围，不因这里尚未勾选而重复已有效完成的验证，也不以 debug/JVM 证据替代明确要求的正式运行时验收。
+
+### AEX-06 剩余执行出口（2026-09-16 核对）
+
+| 出口 | 已有可复用证据 | 尚需动作 / 依赖 |
+|---|---|---|
+| Android 正式安装安全及更新 | AEX04/05 已提交的系统/私有升级、拒绝、信任及数据保全整链；rc8 双安装入口、ABI、真实源查询、下载及离线冷启；已补 rc8 信任UI和系统旧版→新版/签名冲突/损坏拒绝黑盒证据 | 最终核对覆盖边界：未声称在rc8重跑私有升级全部反例；不以debug白盒替代已要求的发布运行时证据 |
+| 已知单站限制（不自动追加修复） | MangaPlus 缺类/JNI 已有红绿修复；当前 HTTP200、4字节错误字段响应仍失败；MangaDex 正式查询阅读下载已通过 | 保留失败，不声称外部故障或全站兼容；停止重复查询/解码诊断。新增调查须用户另行决定，不以该站必须成功替代“代表性真实源”门槛 |
+| Desktop 正式 Test Mode | 隔离 profile 已获批实现；Windows/macOS 0.11.19.35 正式构建，Windows 旧 APK 运行验收，Mac 五类 Reader fixture 首屏及关闭均通过；完整 JVM 与相关回归证据可复用 | 只补 Windows 正式 GUI 对应运行缺口，待用户手动启动；不重跑已有效覆盖项，不将通用 13-family 清单的既有 partial 项变成新增能力任务 |
+| 最终变更审查 | AEX06 原首审/修复复审、Zstd 定向审查已完成；Desktop 隔离额外审查发现 P2，已主线程 RED/GREEN 修复 | 不再开全仓审查；后续旧来源确认修复按一个内聚批次完成必要审查。隔离修复只有主线程复验，无第二轮独立复审，不虚构审查覆盖 |
+| ARM 正式运行验收 | rc8 ARM64/API36 的 5 项 ABI/Zstd 已通过；真实私有安装、旧 1.4 搜索/详情/单章下载/离线冷启已取得证据 | 修复旧系统扩展缺来源记录时升级无法确认；保留旧系统包，补代表性真实 1.6 私有升级→查询/更新→阅读/下载→冷启链。不能以旧版通过替代新版 |
+| 提交与交付 | 产品基线 AEX05 `dbf3f050a1`；AEX06 dirty 候选产物和增量证据已记录；交接文档提交不是产品完成提交 | 上述必需出口关闭后核对最终 diff、受影响验证、scoped commit/checkoff及正式来源信息；不把 dirty 候选 hash 或本轮纯文档提交当 AEX06 完成 |
+
+第 7 节清单保留原必需范围，不增加产品能力。优先完成旧来源升级闭环，再对最终候选做缺失的 ARM 新版业务与 Windows GUI 验收，最后统一交付。Mac 用户报告网络提示，当前没有确切页面/错误原文，单列待澄清；已有五类本地 fixture 成功不证明真实互联网链路成功，也不授权网络层重构。
+
+发布安全补验前置核对：现有 `ExtensionUpgradePreservationInstrumentationTest` 通过debug内部manager/DI组织整链，不能直接作R8黑盒复验；旧、新及冲突签名APK均已有固定fixture，无须重造。正常添加本地旧/新MangaDex仓库会由 `CreateExtensionRepo` 检出与现有Keiyoushi相同签名指纹，不能静默绕过。后续在专用模拟器采用可恢复的仓库/扩展临时切换，先记录原仓库入口和扩展字节，再走真实UI安装/更新/拒绝并恢复；保留原书库与下载。Android多用户共享同包安装版本，不把增加用户当作旧/新APK完全隔离方案。此段仅记录已检查的约束，尚未实施切换或通过升级验收。
 
 - [ ] 旧安装数据升级 → 原仓库、扩展信任、书架、进度和源设置保留；版本/签名不允许覆盖时使用明确的备份迁移流程，不卸载主实例试错。
 - [ ] 浏览 → 扩展 → 刷新原 Keiyoushi 仓库 → 能看到兼容的新扩展；不会因旧目录下线或一次请求失败全体变成已废弃。
@@ -826,3 +843,204 @@ MockWebServer 必须覆盖成功、空/缺失、403/429/500、畸形、取消和
 - 重放需在现有历史/跨签名流程后进行：以同一隔离身份编译测试包，并用当前实例证书签名；并行启动prepare runner与有界主机监视器。监视器读取仅该实例的 `shared_prefs/aex05-interrupted-upgrade.xml`，核对收据PID仍为 `pidof app.mihon.aex05.dev` 后force-stop；随后verify。不得等待prepare正常结束再强杀。完成后保留本次拥有的1.6扩展和本地夹具仓库用于后续验收；旧跨签名恢复测试不再可直接重复运行，须按各自前置重建。
 - 证据边界：覆盖升级下载请求阶段进程中断与成功重试，不证明数据库迁移/文件提交每个指令边界的断电原子性。旧下载本地读取、跨签名图片复制、在线单页分别记录，不宣称本批完成正式release整章下载。正式密钥/R8、最低API、ARM及完整Windows/macOS验收仍是AEX-06硬门槛。
 - 本批跨多个测试文件是同一历史升级/数据保全功能簇，production仅源枚举及两个取消分支；超出8文件/400行主要为真实ART夹具、设备步骤和既有文档证据。风险集中在隔离测试状态与签名，已用专用applicationId、显式阶段及精确fixture边界限制；不为行数拆开不可独立验收的迁移链。独立审查、相关验证和主模型结果核验完成，AEX-05/C10随本次功能提交关闭。
+
+### 2026-09-16 AEX-06 发布前置（未完成）
+
+- AEX-05提交 `dbf3f050a1a5cd112b9a3347285259f4d319e161`。本批按Android正式产物→Windows/macOS正式产物→最后ARM实机/证据总审推进；共享worktree重型Gradle仍仅主模型串行执行，Mac前置只读检查可并行，不把前置核对拆成独立交付提交。
+- 新增显式启用的 `scripts/android-fork-release.init.gradle`，发布包名 `app.mihon.desktop.fork`、versionName `0.19.4-aex.1`、versionCode19。普通构建不使用该脚本时仍保留原身份；namespace不变。独立包名不能覆盖官方 `app.mihon`，迁移按备份/存储选择/正常扩展安装处理，绝不把新证书冒称官方签名。今后该fork更新必须继续同一包名/密钥并增加versionCode。
+- `aex06-release-config` 以真实AGP DSL运行 `:app:verifyForkReleaseConfiguration` 通过（13秒），核对R8与资源压缩开启、不可调试、遥测/updater关闭、签名由Gradle外处理。校验任务随后挂入 `preReleaseBuild`，实际发布构建时再次强制检查；本轮未运行assembleRelease，不能以配置绿代替R8/ART验收。
+- 按用户批准，新建正式4096位RSA/PKCS12密钥：`D:/Android/Signing/mihon-desktop-fork/release.p12`，alias `mihon-desktop-fork`，证书SHA-256 `bd8e3af75921fc4356deacabd44a3d491fda8439ffbc7d073c363974a648cae3`，不是AEX-05测试证书。一次性创建入口 `scripts/create-android-fork-release-key.ps1` 拒绝覆盖既有目录/密钥及写入仓库路径；生成后以keytool实际重读验证。目录ACL关闭继承且仅当前用户一条完整访问规则，检查通过。
+- 随机密码仅保存在该目录的 `password.dpapi.xml`（Windows当前用户/机器DPAPI加密），未写入仓库、命令参数或日志；用于keytool的临时环境变量已清除。签名时应在受控本地进程解密至临时环境变量，使用apksigner的 `env:` 参数，并在finally清除；不得打印密码。密码文件不能直接跨机器解密，迁机前需安全离线备份密钥及另行妥善保存可恢复的密码；禁止为方便重建/轮换此密钥。当前只创建密钥，尚未签名交付APK。
+- 子代理 `aex06_mac_preflight` 只读确认 `ssh -o BatchMode=yes -o ConnectTimeout=8 mbp-lan` 可用；macOS14.8.4/x86_64，脚本所需 `/Users/altair/.jdks/jdk-21.0.10+7/Contents/Home` 可运行，Python3.9.6，剩余磁盘约35GiB。`/Users/altair/Github/mihon` 停留旧提交 `c84ed331fa0b` 且有用户改动，不覆盖/清理；后续同步最终提交至隔离工作目录，仍通过 `scripts/build-desktop.sh`，谨慎处理现有 `/Applications/Mihon Desktop.app`。未启动远端构建或应用，不声称macOS发布验收已通过。
+- 下一出口：执行上述init配置下真实R8 release构建，校验manifest/版本/证书/flags，隔离模拟器运行生产调用链；再集中最终全量与正式Desktop验收。最低API/ARM、正式APK、平台运行和parity收口证据仍缺失，AEX-06保持未勾选。
+
+### 2026-09-16 AEX-06 首个签名R8候选产物（运行验收待完成）
+
+- `aex06-r8-release` 离线构建48秒后因Compose映射工具及其依赖未缓存失败，不是产品/R8缺陷。按本机代理规则使用明确HTTP/HTTPS JVM代理重试一次，未改依赖版本；`aex06-r8-release-proxy` 2m1s通过，实际执行 `minifyReleaseWithR8`、desugaring及资源压缩/优化。`preReleaseBuild` 已实际执行fork身份校验；未传遥测、updater或disable-code-shrink参数。
+- 生成BuildConfig确认DEBUG=false、包名 `app.mihon.desktop.fork`、versionName `0.19.4-aex.1`、versionCode19、TELEMETRY_INCLUDED=false、UPDATER_ENABLED=false。源码基线 `dbf3f050a1` 加本批未提交的发布配置，不冒称产物来自干净的已提交AEX-06版本。mapping/configuration/usage等真实压缩输出位于 `app/build/outputs/mapping/release/`；不读取或提交巨型mapping快照。
+- R8输出AndroidX Window extensions/sidecar及jsoup RE2/J缺失类警告，但任务最终成功；没有添加dontwarn或关闭R8。[Android官方说明](https://source.android.com/docs/core/display/windowmanager-extensions)将前者描述为设备可选平台模块；[jsoup 1.22.1官方发布说明](https://jsoup.org/news/release-1.22.1)将RE2/J描述为需另加依赖启用的正则引擎。这仅解释可选性，实际折叠屏/HTML解析运行仍须验证，不能凭文档消除运行风险。
+- 新增 `scripts/sign-android-fork-release.ps1`：先对实际APK执行身份/debuggable与zipalign检查，再从仓库外DPAPI文件在受控进程临时解密，使用apksigner `env:` 参数签名，finally清理密码，最后核验证书及输出SHA。`aex06-release-signing.log` v2/v3签名均通过、单一4096位RSA签名者，证书为上一节的新fork密钥。实测拒绝覆盖已有签名APK、拒绝debug/错误身份且不产生文件；未暴露密码。正式输出目录 `app/artifacts/` 加入Git忽略，不将二进制混入提交。
+- 候选产物：[Mihon Fork 0.19.4-aex.1 rc1 universal APK](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.1-rc1/Mihon-Fork-0.19.4-aex.1-rc1-universal.apk)，67,339,965字节，SHA-256 `6f57c3a9e36b9e64d9643cb7b33a4dcbb18baf3bad1fbcb57fcaddbd40f7e281`。targetSdk36，含arm64-v8a/armeabi-v7a/x86/x86_64。`rc1` 是候选文件标记，不改变APK内versionName；未来修复产物必须另用候选路径，脚本拒绝静默覆盖。
+- 本輪没有安装此包、没有运行实机或Desktop构建，没有进行最终独立审查/全量测试；此链接不是完成验收的发布承诺。下一步以该实际签名/R8 APK运行新版扩展搜索/更新/阅读/下载/重启及信任工作流，不能用debug结果替代。AEX-06仍未勾选、未提交。
+
+### 2026-09-16 AEX-06 首轮最终回归与候选运行失败（未完成）
+
+- 用户已拔出ARM实机；实机任务统一排在其他工作之后，不轮询、不等待手机连接。当前设备操作仅限专用 `emulator-5580`。
+- `aex06-full-offline-regression` 执行 `testReleaseUnitTest jvmTest :test-desktop:test spotlessCheck --continue --max-workers=2 --no-parallel --no-daemon --offline`，7m24s失败：Android仓库生命周期测试JDBC driver未注册、Desktop全局搜索测试超时、parity当前源码行号失效，共3项失败；Desktop另有2项跳过。部分任务命中缓存/UP-TO-DATE，不能宣称全部重新执行；默认排除的联网/最终parity标签也不属于本命令的覆盖范围。
+- 仓库生命周期测试按项目现有模式显式注册/清理SQLite JDBC driver；`aex06-regression-focused-diagnosis` 中该行为测试及Android格式检查通过，桌面超时仍独立复现。桌面夹具只模拟旧接口，而production已使用 `getMangaUpdate`；修正为新版接口并断言数据库最新标题/封面传入，仍验证原搜索对象未被修改、重复点击不重复导航或刷新，不延长超时。`aex06-regression-focused-green` 37秒通过，全局搜索2项及parity契约34项均无失败/跳过。
+- parity仅修正26处当前角色证据行号，不改变能力状态。一次补丁误命中ID35冻结历史锚点，经对照HEAD发现并恢复；最终只读核验所有 `FIXED_ORIGINAL` 与HEAD一致，所有当前角色行号仍指向声明符号。未扩大为清单重写或更新历史基线。
+- 子代理以实际rc1签名R8 APK完成首次启动、存储/权限设置、添加真实Keiyoushi仓库并显示MangaDex1.6.0；点击安装后出现损坏/不兼容提示，未进入系统安装确认，尚未完成源查询、阅读、下载或重启业务验证。直连和一次临时代理重试均失败；统一文案可对应MalformedData或NoResults，现有日志未暴露具体cause，不能认定为R8或网络根因。优先核对实际下载物解析、元数据与摘要验证；本地fixture不是此次下载物，不能替代证据。
+- 已清理模拟器临时全局代理（`:0`后delete），并仅force-stop `app.mihon.desktop.fork`，无运行中的该宿主。子代理只读核对source-api consumer keep与有限裁剪条目，未取得外部必需ABI被裁剪的证据，没有放宽校验、关闭R8或重复构建。下一步先定位安装失败具体边界；最终审查、正式Windows/macOS运行、最低API/ARM及最终回归仍待完成，AEX-06保持未勾选，不以定向绿灯替代完整验收。
+
+### 2026-09-16 AEX-06 正式运行安装身份缺陷修复（批次仍未完成）
+
+- 真实新版目录 `repo.json → index.pb` 发布MangaDex包名 `eu.kanade.tachiyomi.extension.all.mangadex`、versionCode106000、versionName1.6.0、协议1.6。实际应用HTTP缓存APK与该目录下载APK的SHA-256相同：`35d220b64162cb9409da47af81fbb09ae96f170ed77eaa0ffb440add65f92f35`。临时Android只读探针确认系统及候选R8包中的metadata/gateway解析能识别包名、协议、版本、扩展feature及仓库签名；探针不是production wiring验收，不能替代真实应用运行。
+- 新增固定校验拒绝原因日志，不记录URL、凭据或私有路径。`aex06-validation-log-red` 因缺少日志正确失败；随后28项安装安全/回滚测试通过，长行格式修正后 `aex06-diagnostic-r8` 通过。rc2新签名候选SHA-256 `e55cea28f4f929b972dfe6af6dd2d29a3c48a48c4d12f106db1d9a40a7287d37`，实际应用日志确认失败在APK/目录元数据一致性检查，而不是签名拒绝或类加载；记录 `.gradle-coordinator/aex06-rc2-validation-reason.log`。
+- 已证实根因：Android `GetExtensionsByType` 的语言行投影把 `pkgName` 改成 `包名-源ID`，ScreenModel将此投影直接交给安装器，和真实APK包名不匹配。删除该包名改写，保留语言/源投影；现有UI行hash含源数据，仍区分不同语言行，安装/取消/错误状态统一使用真实包名。Desktop已有独立真实安装包名字段，没有把Android修复扩张到Desktop重构。
+- `aex06-projection-identity-red` 中分类和实际ScreenModel安装入口均因收到 `pkg.bundle-7` 而失败（Gradle自动重试使2个逻辑失败记录为6次失败）；一行production修复后8项界面链路及28项安全/回滚测试通过。测试覆盖两个语言行独立展示、点击安装与取消传递真实包名、保留版本/下载地址；两处测试格式问题修正后 `aex06-identity-fixed-r8` 2m53s通过，包含上述36项测试、格式检查、真实R8及资源压缩构建。
+- 新候选：[Mihon Fork 0.19.4-aex.1 rc3 universal APK](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.1-rc3/Mihon-Fork-0.19.4-aex.1-rc3-universal.apk)，SHA-256 `63e87ad7a5a959856fd6ca188fc7ee800192f16036cc60257c2583bcb492ad9a`，同一正式fork证书、独立包名、不可调试，旧rc1/rc2未覆盖。当前仍来自AEX-05基线加本批未提交差异，不冒称最终发布。
+- 专用API36模拟器真实UI确认：扩展列表搜索MangaDex → 点击英文源行 → 出现系统安装确认 → 确认后显示Installed/Multi/1.6.0 → force-stop重启 → Sources中仍有MangaDex English → 打开Popular得到真实在线漫画列表。已明确确认本项安装bug修复；UI证据 `.gradle-coordinator/aex06-rc3-popular-ui.xml`。本轮未证明搜索、详情更新、阅读、完整下载或最低API/ARM兼容。
+- 结束时临时HTTP代理已按`:0 → delete`清理，仅fork宿主force-stop，Gradle均已结束。MangaDex现为模拟器系统安装包，后续验证不得误以为不存在或无条件卸载。ARM任务仍最后，AEX-06未审查/提交/勾选；下一步复用rc3继续完整业务运行及其他平台验收。
+
+### 2026-09-16 AEX-06 rc3真实阅读/下载/离线重启证据
+
+- 复用上一节同一rc3，不修改代码、不重建；专用 `emulator-5580` 为API36/x86_64。实际已安装base.apk的SHA-256再次核对为 `63e87ad7a5a959856fd6ca188fc7ee800192f16036cc60257c2583bcb492ad9a`，与[rc3 APK](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.1-rc3/Mihon-Fork-0.19.4-aex.1-rc3-universal.apk)一致，记录 `.gradle-coordinator/aex06-rc3-installed-hash.log`。
+- 真实UI：Browse → MangaDex English → 搜索 `The Story of a Girl Who Can Read Minds` → 返回单个目标结果 → 打开详情后载入作者/状态与5个章节 → 加入专用测试书库 → 打开第1章，实际显示页图并翻到第2页。搜索/详情XML记录 `aex06-rc3-search-ui.xml`、`aex06-rc3-details-ui.xml`；在线截图 `aex06-rc3-reader-online.png`、`aex06-rc3-reader-page2.png`，均位于忽略目录 `.gradle-coordinator/`，不是新的版本管理快照包。
+- 仅下载第1章，不下载整部作品。生产下载目录 `/storage/emulated/0/ihonAex06Release/downloads/MangaDex (EN)/The Story of a Girl Who Can Read Minds/` 生成 `Scribe's Chamber_Ch.1 - The Story of How We Met_4a37f9.cbz`，8,509,461字节，SHA-256 `a214f4b57b33891c5139a4a898faea6a333ac0d49339885b3c042b4b9b2f4e16`。只读检查CBZ含19张非空JPG及ComicInfo.xml；下载副本仅在忽略的 `app/build/tmp/aex06-rc3-chapter.cbz`，不提交漫画或截图。
+- 离线验证前记录Wi-Fi=1、mobile_data=1、airplane_mode=0；关闭专用模拟器Wi-Fi/移动数据，系统确认 `Active default network: none`，force-stop并重启fork宿主。从书库重开已下载第1章，定位并实际显示第18、19页（19/19），不是只复用先前浏览过的第1/2页；证据 `aex06-rc3-offline-network.log` 与 `aex06-rc3-reader-offline-last.png`。返回详情后阅读进度不再显示第2页的未完成状态。未对19页逐张视觉审查，不把该证据扩大为所有站点/章节验收。
+- 结束时Wi-Fi/mobile_data恢复为1，临时HTTP代理`:0 → delete`后为null，仅fork宿主force-stop；书库、系统扩展和单章下载保留供后续验收。没有查询ARM手机，没有启动Gradle或代理。此证据补齐当前API36代表性真实扩展的搜索/详情更新/在线阅读/翻页/完整单章下载/离线重启链路，尚不满足最低API、ARM、正式release夹具runner、全部信任反例或Windows/macOS发布门槛；AEX-06仍未勾选、未提交。
+
+### 2026-09-16 AEX-06 release夹具构建接线（运行仍未通过）
+
+- `aex06-release-runner-preflight` 实际确认此前 `-Pmihon.testBuildType=release` 不生效，`:app:assembleReleaseAndroidTest` 不存在。`app/build.gradle.kts` 现显式读取此属性，只允许debug/release，默认debug不变；`aex06-release-runner-taskgraph` dry-run通过并出现release测试编译、R8和打包任务。此项仅证明配置接通，不是设备测试通过；默认/非法值的独立拒绝验证尚待执行。
+- 新增 `ExtensionReleaseParityInstrumentationTest` suite，复用既有1.4/1.5/1.6 ABI、旧版安装、1.6生命周期、信任UI、失败反馈及升级回滚6个测试类，不复制业务测试。Suite的BeforeClass要求专用模拟器、fork包名、非debug标记、明确传入 `aex06ReleaseSha256` 与实际安装APK一致、实际签名为正式fork证书；缺参/错误hash不得静默跳过。此guard目前编译通过但尚未成功执行，不能宣称它已通过反例验收。
+- 签名脚本新增显式 `-Instrumentation`，只允许 `app.mihon.desktop.fork.test` 且manifest的targetPackage为 `app.mihon.desktop.fork`；普通宿主校验仍保持不可调试/指定版本/包名，正则中的点改为字面匹配。实测拒绝旧AEX-05 debug测试包及把正常rc3宿主误当测试包，均不产生输出；随后对真实release测试APK签名成功。未改变密钥或把密码写入Gradle。
+- `aex06-release-test-build` 因新增日志长行格式失败；修正后 `aex06-release-test-package` 52秒通过（`:app:assembleReleaseAndroidTest :app:assembleRelease :app:spotlessCheck`，带fork init与release测试属性）。宿主R8/打包UP-TO-DATE，再签名到忽略的验证路径所得SHA仍为rc3的 `63e87ad7a5a959856fd6ca188fc7ee800192f16036cc60257c2583bcb492ad9a`，因此没有冒称或另建新宿主候选。测试输入实际名为 `app-release-androidTest.apk`，不是推测的`-unsigned.apk`。
+- 已签名测试产物：[rc3 release instrumentation APK](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.1-rc3/Mihon-Fork-0.19.4-aex.1-rc3-release-tests.apk)，SHA-256 `5273a4d52dc8af534514954874891b64363dacc6e2b9dc4754707a20be9ca02b`，同fork证书，已仅安装在 `emulator-5580`。用全零hash运行Suite的预期反例，却在AndroidJUnitRunner.onCreate先崩溃：`NoClassDefFoundError: androidx.tracing.Trace`；没有进入guard或业务测试。日志 `aex06-release-hash-guard-negative.log`、`aex06-release-runner-trace-failure.log`。adb退出0/`INSTRUMENTATION_CODE: 0`不表示通过，必须检查进程崩溃及测试结果。
+- 这是release测试框架依赖被宿主优化后的边界问题，非rc3普通UI链路失败。[官方当前Runner源码](https://raw.githubusercontent.com/android/android-test/main/runner/android_junit_runner/java/androidx/test/runner/AndroidJUnitRunner.java)的onCreate仍调用Trace，不能猜测升级runner就解决。[AOSP历史同名异常修复](https://android.googlesource.com/platform/frameworks/support/+/5f46cf5b34082a0efcbb7d32ef43873ad0300696)针对API17主DEX缺类，与当前API36证据不同，未照搬multidex修复。尚未添加宽泛keep或关闭R8；下一步限定到测试入口实际依赖，并重新执行错误hash反例，再执行真实hash套件。
+- Suite中的真实MangaDex安装夹具拒绝覆盖既有系统扩展；当前rc3手动验收留下的系统MangaDex仍存在。正向套件运行前须明确保存并处理这一个自有测试安装，不能盲跑或卸载其他应用。真实release签名由外部脚本完成，所以设备步骤应使用指定序列号的 `adb install`/`am instrument -w -r -e class ... -e aex06ReleaseSha256 <actual-sha> app.mihon.desktop.fork.test/androidx.test.runner.AndroidJUnitRunner`；原表中无签名/hash参数的connected命令仍不是可用验收证据。ARM最后，不接触手机。AEX-06未完成、未审查/提交。
+
+### 2026-09-16 AEX-06 release测试边界与最低API环境
+
+- `aex06-release-trace-entry` 一次2m20s构建/格式通过。仅保留Runner外部调用的 `androidx.tracing.Trace` 公共static入口，普通release与受测release共用规则，未关闭R8。rc4宿主SHA-256 `3a7b54e303f4226e422bd982d85cf5b4c6c69a1d6bc8b4e3641ec6eb4e009afb`，测试APK仍为 `5273a4d52dc8af534514954874891b64363dacc6e2b9dc4754707a20be9ca02b`；产物保存在 `app/artifacts/android/0.19.4-aex.1-rc4/`。错误SHA实际在Suite BeforeClass拒绝，0项业务/1项guard失败是预期反例，不算业务通过；日志 `aex06-rc4-release-hash-guard-negative.log`。
+- 主线程先导出自有系统MangaDex，核对SHA仍为 `35d220b64162cb9409da47af81fbb09ae96f170ed77eaa0ffb440add65f92f35`，才临时卸载这一个测试扩展。正确SHA套件真实执行17项、16失败，日志 `aex06-rc4-release-suite.log`；结束后已从已核验副本恢复系统扩展，书库和下载未清除。未操作其他实例或实机。
+- 区分两种边界：`BasePreferences.extensionInstaller` 被删除、协程 `TestScopeImpl` 覆盖已final的 `JobSupport.toString`，是白盒夹具依赖宿主内部优化前结构；`Source.getPageList` 缺失则是公开动态扩展ABI缺陷。releaseAndroidTest配置实际含宿主 `-applymapping`，不是遗漏mapping；R8 usage与ART错误共同证实接口方法被删除。现有consumer规则只匹配Source子类型，[官方规则说明](https://developer.android.com/topic/performance/app-optimization/add-keep-rules)明确不包含基接口本身。
+- 后续验证按边界分层：内部生命周期/Compose夹具仍在debug执行；release Suite只运行公开ABI契约并保留身份、SHA与证书guard，正式生命周期/安全反馈仍须通过同一发布产物的外部UI验收。删除不适用于R8内部结构的Suite注册不等于免除release行为要求；不引入Keeper或批量内部keep来制造绿灯。公开Source ABI修复及复验正在进行，当前未宣称修复完成。
+- 最低支持版本由 `AndroidConfig.MIN_SDK=26` 确认。SDK Manager通过规定代理安装官方 `system-images;android-26;google_apis;x86_64` revision16，正常退出；创建 `D:/Android/Avd/mihon-aex-api26.avd`。avdmanager打印devices.xml警告，但AVD实际生成，`emulator -list-avds`识别且成功启动，不把警告误判为创建失败。
+- 为控制内存，先关闭本任务API36/5580，再以2核/1536MiB启动API26/5582。实际 `sys.boot_completed=1`、SDK26/x86_64；rc4安装Success，MainActivity `Status: ok`，PID4441处于resumed，UI XML `aex06-api26-startup.xml`确认显示Welcome初始设置页。启动早期有system_server NetworkPolicyManager异常，随后启动完成；不是宿主崩溃证据。此项仅证明最低API安装/首屏，不证明扩展业务、最终rc5或ARM通过。模拟器日志位于 `.gradle-coordinator/aex06-api26-emulator.log/.err.log`。
+
+#### 正式release复验命令
+
+公开ABI后续绿证据：consumer规则明确保留 `Source` 与 `Source$DefaultImpls` 的public成员，不放开内部应用API。`aex06-release-source-abi` 2m16s构建/格式通过；首次尝试notClass仍运行17项，其中4项ABI各自通过、其余13项失败，不计Suite通过。精简Suite注册后 `aex06-release-abi-suite-only` 仅49秒，宿主R8为UP-TO-DATE，测试APK重建及app/source-api格式通过。主线程独立核对 `.gradle-coordinator/aex06-rc5-api26-release-abi-suite.log`：numtests=4、`OK (4 tests)`，以及 `aex06-rc5-api26-guard.log` 中真实 `AEX06_RELEASE_VERIFIED`、API26/x86_64和宿主hash。因此已明确确认公开Source.getPageList被R8删除的bug修复；不宣称其他release门槛完成。
+
+该证据产物：[rc5 R8宿主](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.1-rc5/Mihon-Fork-0.19.4-aex.1-rc5-universal.apk)，SHA-256 `8de7a74f576e7d72cd749ca59664f7409d860b02953aab08ea310e3e72ac63f3`；[rc5公开ABI测试APK](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.1-rc5/Mihon-Fork-0.19.4-aex.1-rc5-release-abi-tests.apk)，SHA-256 `e51374d6d20af8c725a80a894bfec009dac96b5ece1c0bf2877aa70c0015d2d6`。二者由主线程重新计算hash吻合，使用同一正式fork证书。当前API26模拟器5582保留、宿主force-stop；API36模拟器5580已关闭（AVD数据保留），所有Gradle终止，无实机操作。rc5的API36/完整UI链路、Windows/macOS最终产物、最终全量及独立批审、ARM实机仍待验证，AEX-06不勾选、不做部分提交。
+
+本节替代矩阵中历史未接线的connected命令；先确认协调器空闲。设置仓库要求的UTF-8、JDK及SDK环境后：
+
+```powershell
+python scripts/gradle-coordinator.py foreground --key aex06-release-final --timeout-seconds 900 -- .\gradlew.bat -I scripts/android-fork-release.init.gradle :app:assembleRelease :app:assembleReleaseAndroidTest :app:spotlessCheck :source-api:spotlessCheck '-Pmihon.testBuildType=release' --max-workers=2 --no-parallel --no-daemon --offline
+```
+
+构建成功后，用 `scripts/sign-android-fork-release.ps1` 分别签名 `app/build/outputs/apk/release/app-universal-release-unsigned.apk` 与 `app/build/outputs/apk/androidTest/release/app-release-androidTest.apk`；后者必须传 `-Instrumentation`，两个输出必须指定不存在的正式候选文件路径，不覆盖历史产物。对输出执行Get-FileHash，签名脚本核对正式证书；指定专用模拟器 `adb -s <serial> install -r <signed-apk>` 依次安装宿主/测试包，再运行：
+
+```text
+adb -s <dedicated-emulator-serial> shell am instrument -w -r -e class eu.kanade.tachiyomi.extension.ExtensionReleaseParityInstrumentationTest -e aex06ReleaseSha256 <signed-host-sha256> app.mihon.desktop.fork.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+占位值必须取实际产物与本任务专用模拟器，不能复制为实机指令。以guard证书/SHA通过、当前5项公开ABI全部执行且0失败/跳过为该门槛的标准（原4项加正式宿主Zstd/JNI真实解压回归）。旧17项Suite的 `-e notClass` 实测不排除Suite内部子类，必须使用当前注册后重建的测试APK，不能用旧APK或零散成功status冒充全绿信封。此命令不验收系统/私有安装生命周期、信任UI、真实查询/阅读/下载或跨进程恢复；这些仍需单独按矩阵在相同正式宿主上取得外部UI/运行证据。签名输出、构建版本或宿主行为变化后，不自动继承旧候选运行结论。
+
+### 2026-09-16 AEX-06 修复后完整回归与取消夹具稳定性
+
+- `aex06-final-regression-repaired` 实际运行 `testReleaseUnitTest jvmTest :test-desktop:test spotlessCheck --continue --max-workers=2 --no-parallel --no-daemon --offline`，6m26s返回BUILD SUCCESSFUL，373 tasks中19执行、10缓存、344 UP-TO-DATE。Android原始XML为367条记录/1次失败：安装取消参数化案例自动重试后通过，所以不能只凭Gradle退出0宣称无失败；上一轮JDBC、全局搜索和manifest锚点三个问题未再失败。
+- Desktop XML 3021项、0失败/错误、2跳过：`MacOsNativeSharePortTest` 的真实JXA用例标注仅macOS，后续须在Mac执行；`LibraryPageCompositionTest` 的“explicit non release build”要求 `BuildInfo.IS_NON_RELEASE_BUILD`，当前release配置不满足，不能算release功能失败或非release功能通过。默认integration/live-network/network-survey/final-parity/parity-governance标签仍排除，另行验收，未把默认完整回归扩大解释。
+- 其他模块XML核对：Source API Android/JVM各19、domain Android370/JVM435、data Android12/JVM138、core/common Android10/JVM56、test-desktop52，均0失败/错误/跳过；部分为UP-TO-DATE/缓存证据，不声称全部重新执行。
+- 取消用例根因：真实Default dispatcher可在测试执行 `runCurrent()` 前完成回滚/清理，原测试没有明确阻塞清理却断言terminal未完成；同次重试一失败一通过。仅在该用例委托真实AndroidInstallGateway，给delete清理入口加入显式latch，等待实际清理到达→断言terminal和active transaction仍未结束→放行清理→断言最终Idle与生命周期清空；finally必放行，未改production取消语义、未去掉等待清理的断言或添加睡眠。
+- `aex06-cancellation-fixture-stable` 定向该类及app格式检查，1m11s通过；主线程读取XML确认28项、0失败/错误/跳过，未触发重试。该测试文件在本轮app测试已结束后修改，不能把前一完整命令当成此修改的执行证据；本定向结果补齐变化部分。不改正式rc5宿主，不为测试同步另建产品候选或独立提交。
+
+### 2026-09-16 AEX-06 API26正式rc5业务链路
+
+- 专用 `emulator-5582`、API26/x86_64，沿用SHA `8de7a74f576e7d72cd749ca59664f7409d860b02953aab08ea310e3e72ac63f3` 的正式rc5。真实UI完成首次设置、SAF目录 `/sdcard/MihonAex06Api26`、本fork未知来源安装许可（原OFF→系统UI允许）、真实Keiyoushi仓库添加、新索引、MangaDex1.6.0下载和系统INSTALL确认。English Sources搜索 `The Story of a Girl Who Can Read Minds`，载入详情5章，打开Ch1真实页图1/19。主线程目视核对 `aex06-rc5-api26-ui-reader.png`；安装/详情XML为同前缀 `ui-install.xml` / `ui-detail.xml`。上述搜索/阅读直连成功。
+- 直连下载失败如实保留：点击下载及一次Resume后Paused1、无CBZ；同一宿主PID5966的DownloadJob约12ms即FAILURE，通知为“No network connection available”。系统连接但WIFI/CELLULAR无VALIDATED，生产 `NetworkStateTracker.isOnline=isConnected&&isValidated`、DownloadJob先检查网络再调用downloaderStart，故此次在下载前置检查短路，不能归因于尚未发生的漫画HTTP或SAF写入。证据 `ui-download-failure.log`、`ui-network-state.log`、`ui-notification.xml`。
+- 一次有界临时HTTP代理 `10.0.2.2:10808` 对照，未改校验地址或禁用校验：原系统HTTP/HTTPS验证均204，network102获得VALIDATED，日志 `ui-proxy-network.log`。随后真实UI Resume一次，队列清空并生成Ch1 CBZ；不是仅curl代理成功。文件8,509,461字节，SHA-256 `8c2da3190fcadadcd6db3a41c79a0c11a0fd5ef6aa64f5b7fc6a71a0aecfcbf1`，主线程独立读取忽略副本 `aex06-rc5-api26-ui-ch1.cbz`，确认19个非空JPG+ComicInfo.xml。不提交漫画数据。
+- 断网并force-stop冷启动，从已下载章节定位此前未在线浏览的末页19/19，实际显示页图。主线程目视复核 `aex06-rc5-api26-ui-offline-last-page.png`，并读取 `ui-offline-network.log` 的 `Active default network: none`。这是API26正式rc5下载/离线重启证据，不能写成直连下载通过，也不证明所有19页逐张视觉检查。
+- 结束时飞行模式0、Wi-Fi/mobile_data均1，代理按`:0 → delete`清除，主线程确认http_proxy=null且宿主PID为空；保留该fork书库/系统扩展/一章下载。清代理后系统网络可再次无VALIDATED，这属于已记录测试网络限制。API36最新rc5、ARM实机、正式Windows/macOS产物、其余release安全UI门槛仍未借此关闭，AEX-06继续未勾选。
+
+### 2026-09-16 AEX-06 显式parity门槛
+
+- `aex06-explicit-parity-gates` 51秒：finalParityAudit 1项通过；parityGovernanceCheck 7项中1项失败。错误是旧治理预期与已存在的当前Reader证据不一致，不是Reader功能测试失败。ID45漏列decode concurrency/512MiB cache两个已执行测试；补充在当前readerCoreMigration预期中，不改task3冻结历史基线。
+- 后续真实失败保留：`aex06-parity-governance-aligned` 17秒在任务选择阶段失败，`:app-desktop:spotlessCheck`不存在（命令错误，不计测试结果）；`aex06-parity-governance-aligned-task` 32秒发现ID47引用已改名方法；一次只读当前behaviorMethods核对发现两处，分别同步为双重重试保留页身份/force refresh，以及章节边界不激活且不保留viewport反馈。第二项与既有statusDecision及当前真实行为一致，没有在本任务改变Reader语义。`aex06-governance-current-methods` 30秒继续发现ID53漏列已通过的双页进度契约，随后补齐当前预期。
+- `aex06-governance-reader-evidence` 35秒最终通过，主线程XML核对7项、0失败/错误/跳过。相关新名称均对应真实执行通过的domain/Desktop测试，不以方法文本存在冒充行为验收。manifest仅更新两处当前方法引用；与HEAD比较所有capability状态变更数为0，未提升状态。git diff --check通过；Desktop模块本身无spotlessCheck任务，不声称该任务通过。
+- 这些是本批最终回归的证据/测试修正，不作独立产品迭代、单独提交或新建治理工具。仍需后续正式平台产物、最终diff相关验证及独立AEX-06批审；full parity JVM门槛不等价于发布runtime全部通过。
+
+### 2026-09-16 AEX-06 Windows候选正式构建
+
+- 在前述完整Desktop JVM及定向治理修复证据后，按规定执行 `scripts/build-desktop.sh build-only`，由协调器 `aex06-windows-release` 独占本地Gradle。脚本分配BUILD33→34，版本 `0.11.19.34.dbf3f05`，约3m06s正常结束；不额外重跑完整JVM。此产物来自AEX-05 HEAD加本批未提交变更，版本hash不是声称AEX-06已提交。本轮未改Desktop产品逻辑，治理与测试同步修正不影响正式产品字节；分配版本的机械修改保留在本批。
+- 脚本实际发布运行时的独立profile验收通过：正常安装真实签名旧漫画柜1.4.28 APK，加载源ID `7057750772596492765`；日志明确 `Extension runtime acceptance passed`，没有用系统JDK或旁路loader代替发布运行时。未发现正在运行的用户桌面实例，未触碰正常书库。
+- 已核对日志 `Final unpacked EXE:` 指向且文件存在：[Mihon Desktop 0.11.19.34.dbf3f05](D:/Shell/Github/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.34.dbf3f05-unpacked/Mihon%20Desktop.exe)。[Windows ZIP](D:/Shell/Github/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.34.dbf3f05-windows.zip) SHA-256 `ff3f57c5dc53dc033b04d8f13fee2a94e5380008359b7298a1fefbf3451be33c`，主线程重算与旁边.sha256一致。只交付artifacts路径，临时tmp产物不作为地址。
+- 额外启动同一EXE的Test Mode时，工具策略在命令执行前拒绝了Start-Process操作；预定独立profile目录实际不存在，未启动进程或改动环境。已异步询问用户是否方便手动启动，不通过包装脚本/换壳绕过拒绝；此额外runtime门槛仍待执行，内置旧APK验收不能替代全部JAR-first、Authors、FlareSolverr与Reader场景。
+- Mac只读二次核验：mbp-lan可达，旧工作树仍dirty且HEAD `c84ed331fa0b`；旧app259MB存在、本次未运行，35GiB可用，指定JDK21.0.10可用。候选隔离目录 `/Users/altair/Github/mihon-aex06-release` 和公共 `/private/tmp/mihon-dist` 尚不存在。后续须独立同步、保护旧应用、协调同版本输入及串行使用公共分发目录，尚未部署或构建Mac。
+- API26验证已结束，Windows编译前内存趋紧时关闭本任务 `emulator-5582`，保留AVD数据。没有查询实机。AEX-06仍未审查/提交/勾选，当前Windows候选成功不等价于整个发布批次完成。
+- 随后实际执行roadmap所列 `scripts/desktop-smoke-test.sh`（协调器 `aex06-desktop-smoke-script`）：3m02s、47个任务全部执行，主线程XML核对94项、0失败/错误/跳过。脚本强制rerun，属于JVM冒烟而非已发布EXE的额外Test Mode，不能替代被策略拒绝的运行项。当前jvmTest XML已由这次过滤运行更新，完整3021项结果的历史命令/记录见上节，不能把现有94项报告冒充全量。
+- Mac同步的只读核对确认旧提交 `c84ed331fa0b7851b62dc44a66a8602bb3f60876` 是当前HEAD祖先，可以使用增量bundle加当前源文件覆盖到新隔离checkout；不要传整份约6.6GiB Git历史、用户testfile或签名密钥。Mac普通构建也增加BUILD，须从同一BUILD33输入形成BUILD34，或使用满足提交前置的evidence入口，不能把Windows的BUILD34直接再加一。尚未实际执行同步，不能把此方案写成已构建。
+
+### 2026-09-16 AEX-06 发布入口缺口与Test Mode边界
+
+- rc8/API36正式私有MangaDex已补证：先从专用模拟器导出原系统APK，SHA `35d220b64162cb9409da47af81fbb09ae96f170ed77eaa0ffb440add65f92f35` 与既有样本一致；通过UI卸载单一系统扩展、选Private、从原仓库正常安装1.6.0，Installed·Private且系统包不存在。English Sources实际搜索The Story of a Girl Who Can Read Minds→唯一结果→In library/5 chapters→此前未读且有Download按钮的Ch.2在线页图1/9。force-stop冷启后从原书库仍能打开Ch.2。root目视核对 `.gradle-coordinator/aex06-rc8-md-reader.png` / `aex06-rc8-md-cold-reader.png`，不是只核对页码；冷启可能使用缓存，不冒称第二次重新下载。
+- 临时私有MangaDex已通过UI卸载，再用先前验证的APK恢复系统安装；root独立计算备份和恢复后再次导出的APK，两者SHA均为上述35d220…值。UI恢复PackageInstaller，MangaDex无Private、MangaPlus仍Private；原书库关联与Ch.1下载未删除。恢复副本在 `.gradle-coordinator/aex06-rc8-mangadex-system-backup.apk` / `aex06-rc8-mangadex-system-restored.apk`，卸载内容可由这些副本恢复。本簇没有新增下载/离线验收，不能将缓存当新下载。
+- 为定位泛化Unknown error，新增release-only显式opt-in `ExtensionLiveReleaseQueryInstrumentationTest`：默认assumption跳过且不在离线ABI Suite；只有 `-e aex06LiveMangaPlus true` 并通过正式host/emulator/hash/cert guard才加载已通过UI安装的私有样本，使用production ChildFirstPathClassLoader/public Source默认筛选与真实搜索，45秒上限，不自行拼HTTP/替换parser、不安装或信任代码。仅输出异常类型、HTTP code（若有）及堆栈，不打印任意异常message/响应/凭据。首次43s构建被一处格式换行拦截，按实际diff修正后46s构建/格式通过，未改宿主行为。
+- [rc8显式诊断测试APK](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.1-rc8/Mihon-Fork-0.19.4-aex.1-rc8-live-query-tests.apk) SHA `c99b4c1fb2e50abd8e1240e7e318e40bee028e018d633f84a7264464199adaf5`，正式签名，宿主仍6808a79b…rc8。单次诊断 `aex06-rc8-mangaplus-query-diagnostic.log` 2.77s、1项1失败；root核对脱敏帧，扩展map_id51a199…的c0.t→c0.u→c0.q→f1抛出java.lang.Exception，没有HTTP状态，未再出现缺类/native崩溃。现有页面将多类AppError统一显示Unknown，所以截图不能用于归因；本结果把失败定位至扩展内部异常，但仍不足以证明外部站点或宿主无关。MangaDex通过不能掩盖该失败，继续保留待诊断。设备/Gradle均已释放，代理实际host空/port0，宿主停止。
+- rc8真实MangaPlus复验未闭环：保留的私有扩展在Sources进入并搜索One Piece不再发生原缺类/native崩溃，但UI显示Unknown error，无搜索列表、详情或阅读成功。直连与一次临时HTTP代理对照均同反馈；现有进程日志仅证明libzstd-kmp加载，不足以区分HTTP/TLS、站点响应或扩展处理错误，不能断言外部网络根因。主线程目视核对 `.gradle-coordinator/aex06-rc8-private-search.png`，保留失败，不以“无崩溃”替代业务通过。后续须取得具体错误证据，私有整链仍未完成。
+- JNI第二层依据固定版本[官方源码](https://github.com/square/zstd-kmp/blob/parent-0.4.0/zstd-kmp/native/ZstdKmp.cpp)：初始化按名称查找ZstdCompressor/ZstdDecompressor，两类各读取inputBytesProcessed/outputBytesProcessed整数域；主线程独立读取确认。rc7映射显示类被删除、域迁移至子类，与真实native异常吻合。依赖AAR无consumer规则，最小补充精确保留这两个类及四个字段（不允许类合并/字段优化），未保留整个包。
+- `aex06-zstd-jni-green-build` 2m24s构建/格式通过。[rc8 R8宿主](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.1-rc8/Mihon-Fork-0.19.4-aex.1-rc8-universal.apk) SHA `6808a79bd13cd18d257eb5ea47b71446db247478e21ec9787426ae75fbd9e4f0`；[rc8测试APK](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.1-rc8/Mihon-Fork-0.19.4-aex.1-rc8-release-tests.apk) SHA `6d18e9bb2ef897d7c6b613dfef050ad133aef75e425216ce42616d5c165fc359`，与rc6/rc7失败时相同测试字节，正式证书保持不变。API36/5580 `aex06-zstd-rc8-green-suite.log` 0.319s、OK(5 tests)，主线程核对终态和双APK哈希；真实解压GREEN，不只是类存在。原MangaPlus业务路径还须单独复验，未借此宣布整个AEX-06完成。
+- Zstd根因第一层已证实为R8：rc6的map_id与崩溃一致，usage删除OkioZstd整类，mapping将其标为REMOVED并把宿主decompress调用内联；依赖AAR中原类存在，正式APK含四种ABI的libzstd-kmp.so。新增release-only `ExtensionZstdReleaseAbiInstrumentationTest`，先确认测试APK及split不包含com.squareup.zstd实现，再按精确公开类/方法反射调用，实际解压固定Zstd帧为hello，不让AGP映射改写或测试自带依赖制造假绿；纳入正式Suite，当前应执行5项。rc6测试日志 `aex06-zstd-rc6-red.log` 为1项1失败、明确ClassNotFoundException，guard与测试dex检查先通过。首次构建因DexFile不实现Closeable失败19s，不算产品RED；改try/finally后仅测试构建46s通过。
+- 仅保留OkioZstd公开静态接口后，`aex06-zstd-green-build` R8构建2m27s及格式通过。新 [rc7宿主](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.1-rc7/Mihon-Fork-0.19.4-aex.1-rc7-universal.apk) SHA `8a798d33000377732ca45e64ac90acbb25db7b9b3ea6846ada1e5ede867ea0d1`；[rc7测试APK](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.1-rc7/Mihon-Fork-0.19.4-aex.1-rc7-release-tests.apk) SHA `6d18e9bb2ef897d7c6b613dfef050ad133aef75e425216ce42616d5c165fc359`，与rc6 RED测试包完全一致。两者正式证书不变，root签名重算hash，历史候选保留。
+- **rc7不是通过候选**：API36前4项通过，第5项实际解压触发native SIGABRT，精确新异常为JNI无法找到 `com.squareup.zstd.ZstdCompressor`；主线程核对 `.gradle-coordinator/aex06-zstd-rc7-crash.log` 的01:01:51新崩溃及新map_id，不把同一crash缓冲里的旧OkioZstd异常混入。公开入口恢复后暴露native ABI裁剪边界，尚需核对JNI消费规则再最小修复；未重复真实源查询，未宣称修复完成。新增产品缺陷超出已完成接线复审范围，已请求用户追加一次5–10分钟定向只读审查，尚待答复；不擅自重开全仓审计。
+- 上述两项P2已由原独立审查者完成唯一一轮定向复审并通过：确认release源集隔离、所有资产merge依赖、真实APK夹具内容及正式guard未减弱；API26实际UI/ABI终态另由主线程核对通过。此审查结论仅覆盖当前已审diff/接线修复，不替代后续Zstd修复的定向审查或剩余正式运行门槛；不提前勾选/提交AEX-06。
+- 独立AEX-06批审发现两项P2测试接线缺陷：release资产合并未依赖fixture同步任务、release-only测试混入默认debug源集。主线程以真实Gradle任务图/Java源目录验证，`aex06-wiring-debug-red-scoped` 19s按预期拒绝默认debug发现release类，`aex06-wiring-release-red-scoped` 14s按预期拒绝缺sync依赖。修正为所有merge*AndroidTestAssets依赖sync，两个正式专用测试放入 `app/src/releaseAndroidTest/java`，仅显式release变体加载，身份/证书/SHA硬检查未放宽。最终 `aex06-wiring-debug-explicit-green` 19s、`aex06-wiring-release-explicit-green` 14s通过任务图核验；dry-run不计设备行为通过。
+- 验证装配失败如实保留：首条命令误用Windows批处理不接受的`./gradlew.bat`；随后init脚本错误作用于buildSrc，修为仅目标app。初次用assets.srcDir(taskProvider)未建立AGP任务依赖，debug/release GREEN尝试仍失败；最终显式依赖才通过。没有把这些失败算产品RED。将旧生成目录精确移动到 `.gradle-coordinator/aex06-assets-before-clean-proof` 保留可恢复副本，实际从无生成目录执行 `aex06-release-tests-clean-assets`，48s构建及格式通过，日志确实执行sync，主线程核对APK包含固定1.4/1.5/1.6样本与备份。
+- 测试产物更新但正式rc6宿主不变：[rc6接线修正测试APK](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.1-rc6/Mihon-Fork-0.19.4-aex.1-rc6-release-tests-wiring.apk)，SHA `3fd773d8571a68dd124c5059fbd3333bdf19423d41cc0ed7ec94e2ef09056d6f`，同正式证书。API26/5582最初4项ABI通过，UI复验在Advanced同名标题无可点击祖先失败；仅将测试findText限制可点击祖先，保留有界条件等待，不增加固定sleep。更新测试APK后 `aex06-rc6-api26-private-settings-clickable.log` 15.032s、OK(1 test)，`aex06-rc6-api26-clean-assets-abi.log` 0.501s、OK(4 tests)，均通过rc6 hash/证书guard。最终宿主force-stop，原安装器由UI测试恢复。
+- API36正式rc6真实私有安装MANGA Plus by SHUEISHA1.6.66成功，显示Installed·Private并注册英文源，原系统MangaDex/书库下载保留。搜索时主进程6663的明确主异常为 `NoClassDefFoundError: com.squareup.zstd.okio.OkioZstd`，私有扩展ClassLoader路径在完整日志 `.gradle-coordinator/aex06-rc6-private-primary-crash.log`；error_handler的WorkManager异常是另一个二次异常，不能当原始根因。搜索/详情/阅读尚未通过。恢复PackageInstaller并force-stop，私有样本保留以供复现；未root导出其字节，不能虚构样本SHA。代理始终实际host空/port0，没有为缺类错误重试网络。依赖缺口需补行为回归后修复，不借已安装成功关闭整链。
+- 私有安装入口修复已GREEN：`aex06-private-settings-green-build` 2m47s正常结束，app格式及SecurityRollback28/SessionLifecycle28共56项通过，主线程核对原始XML零失败/错误/跳过。正式rc6在API36/5580运行同一真实UI测试，`aex06-private-settings-green.log` 为17.7s、OK(1 test)，选择Private后离开重开仍选中，再恢复原安装器；`aex06-rc6-api36-release-abi-suite.log` 同一宿主4项ABI通过。主线程读取两份终态日志；无跳过、未使用内部偏好注入。此证据只关闭“入口与选择持久化”缺口，私有扩展实际安装和其余发布业务链仍须验证。
+- 当前最新候选为 [rc6 R8 APK](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.1-rc6/Mihon-Fork-0.19.4-aex.1-rc6-universal.apk)，SHA `ff4d2124a25f0e9b08427f73b3f4557b79310217fe35db8233e5fb2794c48d26`；[rc6测试APK](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.1-rc6/Mihon-Fork-0.19.4-aex.1-rc6-release-tests.apk)，SHA `249db44adb0b41957796fec3efa0d720a4a4900fc65701489496302d4966074a`。正式fork证书/身份/版本/flags不变，主线程签名并重算hash，未覆盖rc5。模拟器系统MangaDex与数据保留、宿主已停止、Gradle结束。API26/ARM及其余同产物门槛不自动继承rc5结果，AEX-06仍待批审/收口提交。
+- 已新增 `ExtensionInstallerSettingsReleaseInstrumentationTest`，使用Android系统UiAutomation走正式MainActivity/设置导航，不调用被R8优化的内部偏好方法，不依赖Compose test runtime。先只构建/签名测试APK，在原rc5上执行，`aex06-private-settings-red.log` 为1项1失败，确切断言 `The real release Installer dialog must offer Private`；不是编译/导航/权限失败。测试APK SHA `7d4b1d3c8b9acfa83f441513d17b70587da1935a1ac5165c7ad968d029fa956d`，复用既有正式证书，未替换密钥。随后才移除SettingsAdvancedScreen的release选项过滤及unused import；原安装安全校验未修改。修复后的R8构建/定向回归由 `aex06-private-settings-green-build` 串行执行，未取得GREEN前不声明修复完成。
+- Mac隔离入口核对：普通启动默认DesktopPreferenceStore使用全局Preferences.userRoot()/mihon；backup、source preferences、兼容SharedPreferences、credential/reader/app legacy路径还有直接userRoot调用，单改user.home或只替换DI一个store不能证明全部隔离。已有extension runtime acceptance仅独立注入偏好节点用于扩展验收，不是完整Test Mode隔离能力。已异步请求用户选择专用Mac账户或授权Test Mode profile扩展；未擅自新增账户/偏好架构，Android独立工作继续。
+- 已读取实际Mac JVM原始XML并核对对应production测试：AuthorsProductionWiringTest 4、AuthorDetailBehaviorTest 8、FlareSolverrClientTest 2、DesktopExtensionLoaderTest 15、JvmExtensionArtifactAdapterTest 1、DesktopExtensionArtifactAuthenticityTest 11，均0失败/错误/跳过。Authors覆盖真实挂载UI/业务接线（仓库依赖受控），FlareSolverr为真实客户端对MockWebServer契约；这些证明对应JVM回归，不宣称正式包真实外部FlareSolverr服务/GUI运行已通过。复用已执行报告，没有再次运行全量。
+- 主线程在同一正式rc5/API36模拟器5580执行 More → Settings → Advanced → Extensions → Installer，实际弹窗只有Legacy、PackageInstaller、Shizuku，没有Private；UI证据 `.gradle-coordinator/aex06-rc5-release-installer-options.xml`。只打开/关闭弹窗，未改变安装设置。源码 `SettingsAdvancedScreen.getExtensionsGroup` 明确在isReleaseBuildType时过滤PRIVATE；不能以debug测试直接设置偏好代替用户入口。下一步必须补真实设置接线失败测试并最小修复，再对新候选验证；当前不能宣称正式版双安装路径完整可用。原TODO所指URL处理边界也须核对，不盲目暴露尚不安全的能力。
+- Mac现有final-parity客户端尝试使用独立profile与FileSystemPreferencesFactory，正式应用在health前因 `UnsatisfiedLinkError: FileSystemPreferences.chmod` 退出1。主线程读取远端日志确认栈经过DesktopPreferenceStore/production DI；这是所选偏好隔离方式失败，未证明默认产品运行故障。日志 `/Users/altair/Github/mihon-aex06-release-input/runtime-final-parity/app.log`；无客户端执行/summary，无Reader场景通过，不移除隔离后冒险使用普通偏好。该应用已退出，没有重建。
+- 通用inventory里的既有authors-entry=partial不构成本任务新增Authors能力的授权。验收须保护现有Authors/FlareSolverr/Reader行为，不用静态family映射冒充真实场景，也不因全清单封存失败扩展产品范围。Windows手动隔离启动仍待用户回复；ARM仍最后。
+
+### 2026-09-16 AEX-06 Mac终态与设备排程
+
+- rc8/API26代表性系统升级/拒绝黑盒通过：先导出原系统MangaDex并确认SHA `35d220b64162cb9409da47af81fbb09ae96f170ed77eaa0ffb440add65f92f35`，从仓库UI复制并记录原入口 `https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json`。仅本专用实例正常UI删除仓库、卸载扩展，书库/下载不动；添加回环固定v2仓库。临时Python服务仅绑定127.0.0.1:18089，adb reverse仅5582；启动时核验旧/新/冲突签名fixture固定SHA，不改任何APK metadata或签名。
+- 从真实扩展列表安装旧MangaDex1.4.211并经Android INSTALL确认。仓库切换到声明1.6.0的既有冲突签名样本后，刷新/Update：UI显示完整性/签名拒绝，实际已安装APK仍为旧SHA `eff4ee157380f0cd4f19a2150f93220ca7a9bcd4e5d570736f639230ef338236`。损坏APK再经刷新/Retry被拒，UI明确damaged or incompatible，导出的旧APK SHA再次不变。服务会话84565实际记录GET wrong.apk/broken.apk各200，不能把未下载候选或缓存旧错误当证据。对应XML `aex06-rc8-upgrade-wrong-ui.xml` / `-broken-ui.xml`，对应导出 `aex06-rc8-after-wrong.apk` / `-after-broken.apk`。
+- 正确同签名新版刷新/Retry进入Android“update existing application”确认，INSTALL后为1.6.0；实际导出 `aex06-rc8-after-upgrade.apk` SHA恢复为上述35d220…，UI `aex06-rc8-upgrade-system-success.xml`。最后正常UI删除本地测试仓库并恢复原Keiyoushi旧入口，成功显示Keiyoushi；记录 `aex06-rc8-restored-repo.xml`。冷启原书库仍有漫画，旧Ch1 CBZ导出SHA `8c2da3190fcadadcd6db3a41c79a0c11a0fd5ef6aa64f5b7fc6a71a0aecfcbf1` 与验收前一致。已移除本轮adb reverse、停止fork和仅本轮服务PID41324，核对进程不存在/转发列表为空。无Gradle/实机访问；不冒称此次重跑了全部私有升级反例或验证每个内部偏好键。
+
+- rc8/API36真实信任UI：事前确认 `aex00.external.v16.controlled` 未安装，固定APK SHA `34c21ef4c3a5b60b789cd5dce95a78f638ba9875007f19d094cb3e344df4e182`。adb安装仅作为“外部安装、不受信”前置，不冒称应用内安装验收。正式Browse→Extensions显示AEX-00 v1.6 controlled为UNTRUSTED；打开风险提示后Back取消，Sources完整可见列表无测试源。再次点击Trust并明确确认后扩展不再UNTRUSTED，Sources出现 `AEX-00 v1.6 en fixture`；force-stop冷启再进入Sources仍可见，原MangaDex/MANGA Plus仍在。证据 `aex06-rc8-trust-before.xml`、`-dialog.xml`、`-rejected-sources.xml`、`-confirmed.xml`、`-cold-sources.xml`。这证明指定源UI准入及重启，不以列表观察断言所有内部信任键或同签名其他包均已检验。
+- 收尾通过该扩展info→Uninstall→Android OK正常卸载，pm path为空，停止fork。只移除本轮安装的受控测试扩展，未删书库/已有扩展；固定APK可恢复。模拟器可能保留此fixture的信任偏好，不声称完整还原其信任存储，也不为此全局重置信任。无构建/源码修改/实机访问。最终rc8同签名升级与错误候选拒绝仍需证据，不借本次信任流程关闭整个发布安全出口。
+
+- rc8/API36新增下载与离线冷启通过：原系统MangaDex1.6.0、原书库，事前下载目录仅Ch1；真实UI为Ch2点击Download后队列Paused1，直连网络缺VALIDATED。一次临时代理10.0.2.2:10808后网络100实际IS_VALIDATED，点击Resume，见临时001–005.jpg逐步生成，最终队列No downloads、生成Ch2 CBZ。主线程拉取忽略副本 `aex06-rc8-api36-ch2.cbz`，4,019,702字节，SHA `1f340563b1a3679c7ba7296c56780e75b91eecf4162a13a450b8f690f6a99bca`，实际ZIP含9个非空JPG+ComicInfo.xml；不是沿用旧下载或仅看队列。
+- 随后清代理、关闭Wi-Fi/mobile data，确认实际network none后force-stop冷启，Library→原漫画→Ch2，显示1/9，再翻至9/9实际页图。主线程目视核对 `aex06-rc8-api36-ch2-offline.png` / `aex06-rc8-api36-ch2-last.png`，日志 `aex06-rc8-api36-ch2-offline-network.log`，末页时再次确认none。未把9页逐张截图作为完成条件；此为正式rc8新增下载和离线冷启证据，不宣称直连下载成功。结束Wi-Fi1/mobile_data1、实际proxy host空/port0、network105、fork PID为空；原数据保留，实机未访问。
+
+- MangaPlus真实响应边界：opt-in观察模式绑定固定私有APK SHA，在测试进程中把该扩展客户端复制后仅增加最外层只读观察器，保留全部原有interceptors、proxy、TLS、cache，finally恢复原lazy引用；不改发布宿主、不替换响应、不输出正文或凭据。一次实际查询得到 `status=200 encoding=none peekBytes=4 firstByte=18 network=true cache=true`，随后仍走c0.t缺success异常。首字节18是长度分隔的字段2，匹配固定协议error字段；可区分于缺类/JNI直接失败，但没有完整error内容，也因network/cache均参与而不能声称这次是远端全新正文。日志 `aex06-rc8-response-access-result.log` / `-frames.log`，该查询仍失败，不算业务通过。
+- 观察器装配成本：首次20s编译失败（误用OkHttp内部Builder属性），公开interceptors()修正后52s构建/格式通过；首次设备运行因未显式反射访问final字段失败，查询尚未发生。明确启用测试内反射访问后46s构建/格式通过，才得到上述一次真实响应。最终测试APK `Mihon-Fork-0.19.4-aex.1-rc8-response-access-tests.apk` SHA `5862fdfa1344db8a409cea083e7875e7196261b454877fed1dc6d0ac839ca98b`。宿主rc8未重建，测试结束停止fork；没有实机访问。不继续同条件联网重试。
+
+- MangaPlus离线解码分界验证：固定APK自带d2.a流式protobuf解码器（不是直接用宿主ProtoBuf.decodeFromByteArray），已用固定字段1/success与字段2/error空嵌套消息 `0a00` / `1200` 调用真实扩展serializer和decoder。测试要求私有APK SHA精确匹配，再引用该版本混淆符号；在rc8正式宿主API36上 `OK (1 test)`、0.076s，无网络请求，分别确认预期字段非null、另一字段null。`aex06-mangaplus-codec-only`测试构建/格式46s通过；测试APK `Mihon-Fork-0.19.4-aex.1-rc8-codec-tests.apk` SHA `94aee9ce206c8497abe38bd7df1066dfa40437acc382b2bfebce91b3ef72be91`。日志 `aex06-rc8-mangaplus-codec-result.log` / `-frames.log`。仅排除了这两个固定消息的基础解码/字段识别故障，不证明真实响应正确、所有protobuf结构兼容或站点查询通过；下一步须观察实际响应边界，而非继续同条件查询。宿主未重建，无产品改动或实机访问。
+
+- MangaPlus字节身份后续已闭合：opt-in发布诊断在targetContext流式计算私有扩展SHA，实际为 `e9511110525f81f30139704bda07b0a910e5100e42326570c5c9870a7529f94b`，与上述官方APK完全相同。`aex06-live-query-identity`仅测试APK构建及格式53s通过，未重建rc8宿主；签名测试APK `Mihon-Fork-0.19.4-aex.1-rc8-query-identity-tests.apk` SHA `b7c0d5730d1d42bfafc3ad7d3be72c1dcf0c7f88fe2fdd3ba6bc6c1f47d287dc`。一次API36诊断仍1项失败，日志 `aex06-rc8-query-identity-result.log` / `aex06-rc8-query-identity-frames.log`；宿主hash/cert guard通过，固定脱敏关键词仅unknown=true，其余update/maintenance/region/rate_limit=false，堆栈与前次相同。关键词不是服务端错误码；没有记录原始message/响应/凭据，没有再次换代理重试。剩余缺口是响应结构与宿主解码是否一致，不能凭通用错误认定站点故障。宿主已停止，未访问实机。
+
+- rc8 API26补验：专用5582，标准发布ABI套件5项通过（0.683s，`aex06-rc8-api26-abi.log`），真实安装器设置1项通过（15.035s，`aex06-rc8-api26-settings.log`）。本次主线程重读终态日志，没有重建或重跑套件。关闭实际网络、force-stop冷启、Library→已有漫画→Ch1，实际显示1/19页；截图 `aex06-rc8-api26-offline-verified.png` 与 `aex06-rc8-api26-offline-verified-network.log`，阅读前后均确认 `Active default network: none`。复用先前rc5下载的数据，不宣称本次新增下载或全部19页逐页验收。
+- 断网准备失败记录：直接广播飞行模式被系统权限拒绝，未绕过；改正常系统设置UI。首次快速切换后网络重新连接为102，旧 `aex06-rc8-api26-offline-reader.png` 不能作为离线证据。重新明确关闭Wi-Fi并再冷启才取得上述通过证据。结束恢复飞行模式0、Wi-Fi1、mobile_data1，实际代理host空/port0、网络103，停止fork；未查询实机。
+- MangaPlus诊断补充：官方固定仓库提交f672d80f44f299c21a0f6c73055e1ce022d96f97关联release1fbc35e的1.6.66 APK，主线程重算SHA `e9511110525f81f30139704bda07b0a910e5100e42326570c5c9870a7529f94b`。其DEX map ID与设备异常51a199…一致，SDK dexdump中c0.q:16在allV2响应protobuf解析后调用c0.u:7→c0.t:34；后者在success为空时构造Exception，主线程读取构造指令确认。不是新的缺类/JNI直接异常；HTTP状态、具体error内容及设备私有样本完整SHA尚未验证，不能归因限流或网络，也不能以另一个源通过关闭此问题。证据 `aex06-mangaplus-public-dexdump.log`；没有新增产品修改。
+
+- 用户已拔出安卓实机：全部ARM实机验收留到最后，不轮询设备、不等待连接；模拟器、桌面端和审查工作继续。实机证据缺失仍保持未完成，不以x86_64结果替代。
+- Mac协调器 `aex06-macos-release` 正常结束，一次完整JVM测试6m47s、正式打包41s；主线程经SSH独立解析395份XML，确认3021项、0失败/错误、7跳过（6项Windows限定、1项非release限定）。没有重新跑全量。正式应用 `/Applications/Mihon Desktop.app`，版本 `0.11.19.34.dbf3f05`；主线程确认launcher存在，SHA `e9a9c74b1f59f964438d6f1dee86185a6ae17e284cadb55f10b274629dbe2fa7` 仅标识launcher，不是整个app包的摘要。
+- 两次正式应用独立profile运行均退出0。主线程读取 `/Users/altair/Github/mihon-aex06-release-input/runtime-mangadex-jar/result.json` 与 `runtime-manhuagui-apk/result.json`，确认同版本、success=true，真实MangaDex1.6.0 JAR注册61个源、真实漫画柜1.4.28 APK注册源7057750772596492765。这覆盖production安装/加载，不代表GUI阅读、外部站点或完整Test Mode全部通过。
+- 原Mac dirty工作树与普通书库未修改；旧app备份保留在release-input/previous-app。代理回执确认构建、临时SSH代理及验收应用已结束。AEX-06尚需剩余发布运行门槛、独立批审与最终实机验收，未提交/勾选。
+
+### 2026-09-16 AEX-06 用户重连 ARM 实机后的验收
+
+- 用户重新连接 SM-S9280，ARM64/API36。仅新装隔离包 `app.mihon.desktop.fork` 与其测试包，不覆盖 `app.mihon`，不卸载或升级系统扩展。宿主仍为 rc8 SHA `6808a79bd13cd18d257eb5ea47b71446db247478e21ec9787426ae75fbd9e4f0`。新测试入口 `ExtensionArmReleaseAbiInstrumentationTest` 只注册 4 项固定 ABI 与 1 项 Zstd 解压，不注册安装器/信任/数据库夹具；原模拟器 Suite 的硬件限制保留。所有入口仍核对 fork 身份、非 debug、实际 APK SHA 与正式证书。
+- `aex06-arm-abi-runner` 测试 APK 构建及 app 格式检查 1m8s 通过，无宿主重建。[ARM ABI 测试 APK](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.1-rc8/Mihon-Fork-0.19.4-aex.1-rc8-arm-abi-tests.apk) SHA `8b3417bbfcceff659fe89295f5e39528e1d8ef20321d35552a65b48324d031c0`。实机 `aex06-rc8-arm64-abi.log` 为 `OK (5 tests)`、0.293s，无跳过。错误 SHA 与误用模拟器 Suite 分别在 BeforeClass 拒绝，0 项业务执行，见 `aex06-rc8-arm64-hash-negative.log` / `aex06-rc8-arm64-emulator-guard-negative.log`；这些失败是保护的反例，不算业务失败。
+- 正常初始设置创建独立 `/storage/emulated/0/MA06ARAEX06ARM`，通过生产 add-repo URI 确认添加原 Keiyoushi 入口；选择 Private 后正常安装 MANGA Plus 1.6.66，UI 显示 Installed/Private，系统 pm path 无该包。实机打开其 English 图源仍显示未知错误，证据 `aex06-arm-mangaplus-live.xml`，未因 ABI 通过而关闭此业务失败。
+- 新发现迁移缺口：系统 MangaDex 1.4.202 与仓库新版均为证书 `9add655a78e96c4ec7a53ef89dccb557cb5d767489fac5e785d671a5a75d4da2`；仅在 fork 中信任旧包，尝试私有升级后收到通用信任校验错误，刷新后重试同样失败。代码路径对无来源记录的旧安装构造空 trust record，策略返回 ConfirmationRequired，但安装端转成 Authentication 错误，当前 UI 无对应来源确认闭环。旧包 SHA `1dadd0391066e33e3d433eff08f251c29b46923a4aa38b5d44185cf71c2072c2` 前后相同；不得靠卸载用户旧包或放宽签名校验绕过。后续需针对该路径补 RED、最小修复与验收；此项并非已经修复。
+- 旧系统 MangaDex 1.4.202 在 rc8 上完成真实搜索、详情/5 章更新、加入隔离书库、新下载 Ch.2 与实际阅读。CBZ 4,019,702 字节，SHA `18bb8d0d3cfc53aa29fd89d1d2c28d57933d0aeba85bd3305f718163232e2697`，含 9 张非空 JPG 与 ComicInfo.xml，副本 `aex06-arm-ch2.cbz`。临时 Wi-Fi/data 关闭，实际 default network 为 none 后 force-stop 冷启，从书库打开 Ch.2 显示真实第 1 页；主线程目视核对 `aex06-arm-offline.png` 与 `aex06-arm-offline-last.png`，两张均为 1/9，后者文件名不代表末页，不能宣称末页或进度恢复通过。快速点击造成缩放/异步页码，不作为翻页验收证据。
+- 结束恢复 Wi-Fi=1、mobile_data=1、airplane=0，未修改 VPN/代理；停止 fork。独立书库、私有扩展及新增单章下载保留供复验，原系统 MangaDex 哈希再次相同。手机当前无需持续占用；ARM 新版业务完整门槛仍未关闭。
+- 同期获准的一轮 Zstd/诊断独立审查已通过，无 finding；该结论仅覆盖保留规则、宿主 ABI、固定样本诊断与 Suite wiring，不覆盖之后新增 ARM 入口或 Desktop profile。桌面隔离先写测试，`aex06-profile-red` 50s、8 项中 2 项按预期失败：未限制 profile 参数、隔离启动仍调用 URI 注册。收到手机重连消息后保留 RED 现场，尚未开始隔离 production 实现。
+
+### 2026-09-16 Desktop profile 定向审查与正式运行
+
+- 用户批准额外一轮只读隔离审查，复用原代理；发现 P2：Base64 偏好节点目录在大小写不敏感文件系统上碰撞。focused RED 38s 复现，改用小写 SHA-256 目录及 UTF-8 节点名；43s、26 项 GREEN，覆盖跨进程持久化、长 Unicode 节点、独立删除及真实 main 接线。Mac 同组 26 项全绿，39s。修复未追加独立复审。
+- Windows 完整 Desktop 回归 5m49s：3027 项、1 失败、2 跳过；唯一失败为 parity manifest 当前树证据行号过期，更正后契约 focused 通过。test-desktop 客户端未修改，任务 UP-TO-DATE。没有把原完整调用描述为 exit 0。定向 ktlint 最终 28s 通过。
+- 双平台按 `scripts/build-desktop.sh build-only` 构建 `0.11.19.35.dbf3f05`：Windows 2m26s 后 production APK 安装运行验收通过，实际产物 `app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.35.dbf3f05-unpacked/Mihon Desktop.exe`；ZIP SHA `92a3f912799f47c9d77162e34ef880b489d2107330d70ccba6a5c8a0ac31e415`。Mac 32s，部署 `/Applications/Mihon Desktop.app`，原应用备份保留。以上仍为未提交候选。
+- Mac 使用独立 profile `/Users/altair/Github/mihon-aex06-release-input/profile-035-runtime`，DB、日志与 Java Preferences 落在隔离目录。SSH 直接启动因 HeadlessException 退出，系统 open 启动成功。PowerShell stdin 末尾 CR 导致端口回落到 8080，经 PID 19449/lsof 核对归属后才执行客户端；不是对其他实例验收。
+- Reader 客户端 downloaded_directory 首项失败：180 页 fixture 已产生 OPEN_READER_INTENT、PAGE_LIST_READY、OPEN_PAGE、DECODE，但缺 FIRST_PAGE_PRESENTED；关闭请求后 productionClosed=false。原始状态保存在 Mac 输入目录 `profile-035-reader-failure.json`。其余四类未执行，不用静态 inventory 摘要替代运行证据。用户随后确认 Mac 已解锁、未休眠、窗口为空书架；空书架符合隔离数据，但不能据此定位首屏/关闭事件缺失原因。Windows 完整 GUI Test Mode 已请求用户手动启动，不绕过先前工具策略拒绝。
+- 用户确认桌面状态后，使用同一进程、同一 production Python Reader 客户端单独复测 downloaded_directory，真实首屏 115.323ms，通过；没有修改代码，首次失败原因仍未证实。随后关闭成功，再顺序执行五类：downloaded_directory 121.749ms、downloaded_cbz 187.052ms、local_archive 115.714ms、online 273.321ms、partial_download 145.231ms，全部通过首屏/I/O 契约且各自 productionClosed=true。这证明 Mac 正式 GUI 五类 fixture 阅读链路，不代表真实远程站点或全部 13 类能力运行通过。末尾请求正常 Test Mode shutdown，不保留后台验收进程。
+- AEX-06 仍未提交/勾选：Windows GUI 验收、实机旧扩展来源确认升级闭环与 MANGA Plus live 失败仍待处理，不因部分运行、构建和单测通过关闭所有出口。
+
+### 2026-09-16 AEX-06 rc5 API36补验与Mac隔离同步
+
+- 冷启动原专用API36/5580，覆盖安装同一rc5宿主及公开ABI测试APK（沿用API26已验证的签名/hash，不重建）。首次guard明确报告API36/x86_64、宿主SHA `8de7a74f576e7d72cd749ca59664f7409d860b02953aab08ea310e3e72ac63f3`；4项中2项真实本地HTTP返回503，日志 `aex06-rc5-api36-release-abi-suite.log`。这是HTTP失败，不是缺方法。
+- 只读确认 `http_proxy=null`，但 `global_http_proxy_host=10.0.2.2`、port10808仍在。执行 `http_proxy=:0` 后先等待实际host为空、port0，再删除legacy主键并force-stop宿主；同一APK/测试立即 `OK (4 tests)`、0跳过，日志 `aex06-rc5-api36-release-abi-direct.log`。这修正了测试环境代理残留，没有修改产品。旧的“主键null即清理完成”证据不足，今后清理必须核对实际字段并用production请求确认；不把可能的异步处理时序直接写成已证实根因。
+- Mac输入实际生成并上传：增量bundle13,420,826字节，SHA `92e4d15e561f385a0001d9b92fbfd40a9a5797fe9caa6c7e5bf8c92c1722608a`；覆盖包482,590字节，SHA `d3c41bee866207948cf8cd68fd911342b690d69d8f7bd2f90374c3c9eb3068bd`。双端SHA一致，仅本批源文件/测试/脚本与文档，不含用户testfile、签名密钥或机器local.properties；AppVersion特意保留基线BUILD33，让Mac脚本分配为34。
+- Mac已在 `/Users/altair/Github/mihon-aex06-release` 独立clone、fetch bundle并检出dbf3f050a1，覆盖本批文件；原dirty树未修改。旧 `/Applications/Mihon Desktop.app` 已ditto备份到 `/Users/altair/Github/mihon-aex06-release-input/previous-app/Mihon Desktop.app`，diff -qr内容一致后才进入构建。协调器 `aex06-macos-release` 通过规定 `scripts/build-desktop.sh` 默认模式执行；此条仅记录构建启动，终态和运行验收须另记，不提前称Mac通过。
+- 变体接线补验：`aex06-default-debug-variant` 17秒dry-run，未提供属性时真实选中 `assembleDebugAndroidTest`；不把SKIPPED任务图当行为测试。非法值第一次因PowerShell未引用 `-Pmihon.testBuildType=bogus` 被拆成错误任务名（14秒），不算配置guard成功。引用完整参数后 `aex06-invalid-test-variant-quoted` 10秒按预期拒绝，确切错误 `mihon.testBuildType must be debug or release`；与已实际构建/执行的release variant形成默认、合法、非法三种证据。文档PowerShell复验命令已同步加引号，没有重新构建APK或修改产品。
