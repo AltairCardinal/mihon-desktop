@@ -44,6 +44,7 @@
   }
   function navIndicators() { return { unreadCount: unreadUpdateCount(currentDevice().id) }; }
   function navigateRoute(route) {
+    extensions.close();
     clearBatchSelection();
     state.ui.syncOpen = false; state.ui.syncSettingsOpen = false;
     state.ui.route = route; state.ui.detail = null; state.ui.reader = false;
@@ -59,6 +60,8 @@
   const iconButton = (name, label, attrs, className) => `<button class="m-icon-button ${className || ''}" aria-label="${esc(label)}" title="${esc(label)}" ${attrs || ''}>${view.icon(name)}</button>`;
   const iconLabel = (name, label, attrs, className) => `<button class="m-icon-label ${className || ''}" ${attrs || ''}>${view.icon(name, label)}</button>`;
   const interactions = window.MihonSyncInteractions.create({ state, currentDevice, isWindows, esc, view, button, render });
+
+  const extensions = window.MihonExtensionSuggestions.create({ state, currentDevice, isWindows, esc, render });
 
   function notice(message, tone) {
     state.ui.notice = message;
@@ -85,7 +88,7 @@
 
   function renderPreviewTools() {
     const windows = state.ui.platform === 'windows';
-    return `<details class="preview-tools" data-testid="preview-tools"><summary><span class="tool-summary-icon">${view.icon('settings')}</span><strong>演示预览</strong><span class="tool-summary-muted">应用外控制 · ${windows ? 'Windows Desktop' : 'Android 手机'} · ${state.ui.theme === 'light' ? '浅色' : '深色'}</span></summary><div class="preview-tool-panel"><div class="tool-group"><span>平台</span><div class="tool-choice">${button('Windows Desktop', 'data-platform="windows" data-testid="platform-windows"', windows ? 'is-selected' : '')}${button('Android 手机', 'data-platform="android" data-testid="platform-android"', windows ? '' : 'is-selected')}</div></div><div class="tool-group"><span>主题</span><div class="tool-choice">${button('浅色', 'data-theme="light" data-testid="theme-light"', state.ui.theme === 'light' ? 'is-selected' : '')}${button('深色', 'data-theme="dark" data-testid="theme-dark"', state.ui.theme === 'dark' ? 'is-selected' : '')}</div></div><div class="tool-group"><span>同步触发</span><div class="tool-choice">${button('模拟启动同步', 'data-action="sync-startup" data-testid="startup-sync"', 'm-button-tonal')}${button('模拟定期到期', 'data-action="sync-periodic" data-testid="periodic-sync"', 'm-button-tonal')}</div></div><div class="tool-group tool-actions"><span>模拟条件</span>${iconLabel(state.online ? 'cloud' : 'close', state.online ? '切换离线' : '恢复在线', 'data-action="toggle-online" data-testid="network-toggle"')}${button('120 项待处理', 'data-action="many-pending" data-testid="many-pending"', 'm-button-tonal')}${button('重置演示', 'data-action="reset" data-testid="reset-demo"', 'tool-reset')}</div><small class="preview-boundary">本地离线演示，不连接 Git 或系统后台任务。</small></div></details>`;
+    return `<details class="preview-tools" data-testid="preview-tools"><summary><span class="tool-summary-icon">${view.icon('settings')}</span><strong>演示预览</strong><span class="tool-summary-muted">应用外控制 · ${windows ? 'Windows Desktop' : 'Android 手机'} · ${state.ui.theme === 'light' ? '浅色' : '深色'}</span></summary><div class="preview-tool-panel"><div class="tool-group"><span>平台</span><div class="tool-choice">${button('Windows Desktop', 'data-platform="windows" data-testid="platform-windows"', windows ? 'is-selected' : '')}${button('Android 手机', 'data-platform="android" data-testid="platform-android"', windows ? '' : 'is-selected')}</div></div><div class="tool-group"><span>主题</span><div class="tool-choice">${button('浅色', 'data-theme="light" data-testid="theme-light"', state.ui.theme === 'light' ? 'is-selected' : '')}${button('深色', 'data-theme="dark" data-testid="theme-dark"', state.ui.theme === 'dark' ? 'is-selected' : '')}</div></div><div class="tool-group"><span>同步触发</span><div class="tool-choice">${button('模拟启动同步', 'data-action="sync-startup" data-testid="startup-sync"', 'm-button-tonal')}${button('模拟定期到期', 'data-action="sync-periodic" data-testid="periodic-sync"', 'm-button-tonal')}</div></div><div class="tool-group tool-actions"><span>模拟条件</span>${iconLabel(state.online ? 'cloud' : 'close', state.online ? '切换离线' : '恢复在线', 'data-action="toggle-online" data-testid="network-toggle"')}${button('120 项待处理', 'data-action="many-pending" data-testid="many-pending"', 'm-button-tonal')}${button('重置演示', 'data-action="reset" data-testid="reset-demo"', 'tool-reset')}</div><div class="tool-group">插件建议：${["sample", "incomplete", "private", "permission", "failure", "reset"].map((scene, i) => `<button class="m-button" data-ext-scene="${scene}">${["多源收藏样本", "目录不完整", "私有安装", "缺少安装权限", "下一项安装失败", "重置插件建议"][i]}</button>`).join("")}</div><small class="preview-boundary">本地离线演示，不连接 Git 或系统后台任务。</small></div></details>`;
   }
 
   function renderWindowShell(content) {
@@ -93,7 +96,7 @@
     const shell = platform === 'android' ? 'android-shell' : 'windows-shell';
     const frame = platform === 'android' ? `<div class="android-statusbar"><span>9:41</span><span class="status-icons">${view.icon('wifi')}${view.icon('signal')}${view.icon('battery')}</span></div>` : `<div class="desktop-windowbar"><span class="desktop-title"><img src="./mihon-desktop.png" alt="Mihon Desktop 图标"><span>Mihon Desktop 0.11.19.33 · 本地原型</span></span><span class="window-controls" aria-hidden="true"><i></i><i></i><i class="window-close"></i></span></div>`;
     const nav = state.ui.reader || (state.ui.detail && platform === 'android') ? '' : view.renderNav(spec(), state.ui.route, navIndicators());
-    return `<section class="app-window ${shell}" data-platform="${platform}" data-testid="app-window">${frame}<div class="app-body">${content}</div>${nav}${platform === 'android' ? '<div class="gesture-area" aria-hidden="true"></div>' : ''}${state.ui.syncOpen ? renderSyncSheet() : ''}</section>`;
+    return `<section class="app-window ${shell}" data-platform="${platform}" data-testid="app-window">${frame}<div class="app-body">${content}</div>${nav}${platform === 'android' ? '<div class="gesture-area" aria-hidden="true"></div>' : ''}${state.ui.syncOpen ? renderSyncSheet() : ''}${extensions.modal()}</section>`;
   }
 
   function renderUpdatesActions() {
@@ -324,7 +327,7 @@
     const item = creator(id); return `<button class="author-row" data-action="open-author" data-object="${id}" data-testid="author-row-${id}"><span class="author-avatar">${esc(item.name.slice(0, 1))}</span><span class="row-copy"><strong>${esc(item.name)}</strong><small>${followed || current.following.includes(id) ? '已关注 · 可查看作者详情' : item.detail}</small></span>${view.icon('chevron')}</button>`;
   }
 
-  function renderExtensionList() { return `<div class="simple-list"><div class="simple-list-heading">插件</div><div class="empty-inline">当前没有可安装插件。</div></div>`; }
+  function renderExtensionList() { return extensions.renderList(); }
   function renderMigrationList() { return `<div class="simple-list"><div class="simple-list-heading">迁移</div><div class="empty-inline">选择来源图源后开始迁移。</div>${button('查看迁移帮助', 'data-action="more-item" data-message="迁移帮助已打开。"', 'm-button-tonal')}</div>`; }
 
   function renderAuthors() {
@@ -365,6 +368,9 @@
     const wasSettings = previousSheet?.dataset.settings === 'true';
     const focusId = document.activeElement?.dataset.testid;
     const selection = document.activeElement instanceof HTMLInputElement ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
+    const extensionSearchFocused = document.activeElement?.matches('[data-ext-search]');
+    const browseScroll = root.querySelector('.browse-scroll')?.scrollTop || 0;
+    const suggestionScroll = root.querySelector('.ext-suggestion-scroll')?.scrollTop || 0;
     const scroll = root.querySelector('.sync-panel-scroll');
     if (scroll) state.ui.syncScroll = scroll.scrollTop;
     root.innerHTML = `<div class="prototype-root platform-${state.ui.platform} theme-${state.ui.theme}">${renderPreviewTools()}${renderWindowShell(renderRoute())}<div class="prototype-notice ${state.ui.tone}">${view.icon(state.ui.tone === 'failure' ? 'info' : 'cloud')}<span data-testid="notice">${esc(state.ui.notice)}</span></div></div>`;
@@ -383,6 +389,16 @@
       const panel = root.querySelector('.sync-panel-scroll');
       if (panel) panel.scrollTop = state.ui.syncScroll || 0;
     } else if (previousSheet && (!preview || document.hasFocus())) root.querySelector('[data-testid="library-sync"]')?.focus({ preventScroll: true });
+    const extensionDialog = root.querySelector('.ext-dialog');
+    if (extensionDialog) {
+      root.querySelectorAll('.app-window > .app-body, .app-window > .native-navigation').forEach(el => { el.inert = true; });
+      if (!preview || document.hasFocus()) (extensionDialog.querySelector(`[data-testid="${focusId}"]`) || extensionDialog.querySelector('button'))?.focus({ preventScroll: true });
+    } else if (extensionSearchFocused && (!preview || document.hasFocus())) {
+      const field = root.querySelector('[data-ext-search]'); field?.focus({ preventScroll: true });
+      if (field && selection) field.setSelectionRange(...selection);
+    }
+    if (root.querySelector('.browse-scroll')) root.querySelector('.browse-scroll').scrollTop = browseScroll;
+    if (root.querySelector('.ext-suggestion-scroll')) root.querySelector('.ext-suggestion-scroll').scrollTop = suggestionScroll;
     if (preview && publish) preview.refreshOthers(window);
   }
 
@@ -469,6 +485,10 @@
   }
 
   root.addEventListener('click', (event) => {
+    const extScene = event.target.closest('[data-ext-scene]');
+    if (extScene) { extensions.scene(extScene.dataset.extScene); return; }
+    const extTarget = event.target.closest('[data-ext]');
+    if (extTarget) { extensions.action(extTarget.dataset.ext, extTarget.dataset.id); return; }
     const row = event.target.closest('[data-pending-id]');
     const selector = event.target.closest('[data-select-id]');
     if (row && Date.now() < suppressSelectionClickUntil) { event.preventDefault(); return; }
@@ -493,6 +513,12 @@
   });
 
   window.addEventListener('keydown', (event) => {
+    const extDialog = root.querySelector('.ext-dialog');
+    if (extDialog) {
+      if (event.key === 'Escape') { event.preventDefault(); extensions.action(extensions.local().dialog.type === 'system' ? 'system-cancel' : 'close'); }
+      if (event.key === 'Tab') { const controls = [...extDialog.querySelectorAll('button:not(:disabled)')]; const index = controls.indexOf(document.activeElement); event.preventDefault(); controls[(index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length]?.focus(); }
+      return;
+    }
     if (state.ui.syncOpen) {
       if (event.key === 'Escape') { event.preventDefault(); closeSyncLayer(); render(); }
       if (event.key === 'Tab') {
@@ -546,8 +572,8 @@
     if (target.dataset.action === 'reader-mode') { model.setReadingMode(state, state.selectedDevice, state.ui.detail || 'manga-star', target.value); notice(`阅读模式已设为${target.value}，仅保存在本设备。`, 'success'); render(); }
   });
 
-  root.addEventListener('input', event => interactions.input(event.target));
-  window.__mihonSyncDemo = { state, model, view, render, scheduleSync, showInteractionScenario: interactions.showScenario };
+  root.addEventListener('input', event => { interactions.input(event.target); extensions.input(event.target); });
+  window.__mihonSyncDemo = { state, model, view, render, scheduleSync, showInteractionScenario: interactions.showScenario, extensions };
   if (preview) {
     switchPlatform(window.frameElement.dataset.platform);
     state.ui.theme = preview.theme;

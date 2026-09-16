@@ -258,3 +258,37 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
   .parallel-preview .preview-tool-panel { align-items: flex-start; }
   .parallel-preview .tool-group { width: auto; justify-content: flex-start; }
 }
+/* Extension suggestions reuse the native shell, typography and theme tokens. */
+.extension-page { padding: 8px 20px 24px; }
+.ext-search { display: flex; align-items: center; gap: 12px; margin: 8px 0 18px; font-size: 12px; }
+.ext-search input { flex: 1; min-width: 0; background: var(--surface-container); color: var(--on-surface); border: 1px solid var(--outline-variant); border-radius: 24px; padding: 10px 14px; }
+.ext-suggestions { border: 1px solid var(--outline-variant); border-radius: 16px; overflow: hidden; }
+.ext-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px; padding: 8px; background: var(--surface-container); }
+.ext-heading button:first-child { font-weight: 700; }
+.ext-hint { margin: 12px 16px; font-size: 12px; color: var(--outline); line-height: 1.6; }
+.ext-suggestion-scroll { max-height: 330px; overflow-y: auto; }
+.ext-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 16px; border-bottom: 1px solid var(--outline-variant); }
+.ext-row:last-child { border-bottom: 0; }
+.ext-avatar { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--secondary-container); color: var(--on-secondary-container); }
+.ext-copy { display: flex; flex: 1; min-width: 120px; gap: 5px; flex-direction: column; font-size: 14px; }
+.ext-copy small, .ext-copy span { font-size: 11px; color: var(--outline); line-height: 1.5; }
+.ext-copy .ext-state { color: var(--primary); }
+.ext-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px; margin-left: auto; }
+.ext-actions .m-button { min-height: 36px; padding: 6px 10px; }
+.ext-installed { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 16px; font-size: 13px; }
+.ext-installed small { color: var(--outline); }
+.ext-progress, .ext-note, .ext-snackbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 16px; font-size: 12px; line-height: 1.6; background: var(--surface-container); }
+.ext-progress { border-bottom: 1px solid var(--outline-variant); }
+.ext-progress strong, .ext-progress span { flex-basis: 100%; }
+.ext-snackbar { border-radius: 12px; margin-top: 10px; }
+.ext-modal-layer { position: absolute; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px; }
+.ext-modal-scrim { position: absolute; inset: 0; background: #0009; }
+.ext-dialog { position: relative; width: 100%; max-width: 440px; max-height: 90%; overflow-y: auto; box-sizing: border-box; padding: 24px; background: var(--surface-container); border-radius: 28px; box-shadow: 0 12px 48px #0005; font-size: 14px; line-height: 1.7; }
+.ext-dialog h2 { font-size: 20px; line-height: 1.4; margin: 0 0 16px; }
+.ext-dialog li { margin: 8px 0; }
+.ext-address { overflow-wrap: anywhere; border-radius: 12px; background: var(--surface); padding: 10px; font-size: 12px; }
+.ext-site { margin: 16px 0; border: 1px solid var(--outline-variant); padding: 20px; border-radius: 12px; }
+.platform-android .extension-page { padding: 8px 12px 24px; }
+.platform-android .ext-actions { flex-basis: 100%; }
+.platform-android .ext-dialog { padding: 20px; }
+.platform-android .ext-row { padding: 12px; }

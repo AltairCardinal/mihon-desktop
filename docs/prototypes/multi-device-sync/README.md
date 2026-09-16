@@ -1,5 +1,35 @@
 # Mihon 双端原生界面同步演示
 
+## 收藏缺失插件：建议安装交互
+
+2026-09-16 增加「浏览 → 插件」的建议安装原型，需求与技术边界见[建议安装需求](../../2026-09-16-extension-install-suggestions-requirements.md)。这是现有双端 DEMO 的新增页面交互，不代表 Android/Desktop 生产功能已经实现；原同步演示路径继续保留。
+
+建议按以下顺序审阅：
+
+1. 打开 `index.html`，在 Windows 或 Android 设备内进入「浏览 → 插件」，观察「建议安装」位于「已安装」上方。条目应显示关联收藏、图源、仓库及忽略/网站/安装操作。
+2. 收起建议、切换页面再返回，或刷新浏览器，检查折叠记忆；在一端忽略插件，检查另一端不受影响。即时撤销恢复当前建议，普通可用列表仍保留安装入口。
+3. 点击网站操作；多图源先选择关联图源。网站内容为本地模拟，不访问真实网站，不证明插件登录或反爬流程可用。
+4. 单项安装观察进度和已安装列表；「全部安装」先核对本次清单。Android 系统模式逐项显示模拟确认，取消当前项后暂停，用户可以继续剩余或停止后续。
+5. 使用应用外演示控件查看其他场景、故障和安装方式；正式产品界面不包含这些控件。修改收藏后返回插件页，建议由本机收藏样本重新计算。
+
+建议匹配使用 DEMO 的 source ID 映射与示例插件目录，不获取真实仓库。折叠和忽略按设备身份存入浏览器本地存储，不写入共享同步模型；Android 系统安装弹窗、权限及安装结果均为模拟，不能代替设备验收。生产方案中 Desktop 的具体位置、内嵌 WebView、长期忽略管理和备份边界仍待审阅。
+
+应用外「插件建议」提供多源收藏样本、目录不完整、Android 私有安装、安装权限缺失、下一项安装失败及建议重置场景。并列预览先选择「触发设备」，再点「显示插件场景」。默认场景按现有收藏漫画映射到字符串 source ID；多源场景额外注入明确的演示收藏样本。安装是本地定时状态转换，刷新会恢复安装样本；「建议重置」用于清除所选端的展开/忽略偏好并重新演示，另一端不受影响。
+
+本轮未模拟跨仓库候选歧义、缺少网站 URL、Shizuku、签名/哈希校验和真实插件加载；这些仍是生产需求与未来验收项。目录失败也仅是演示状态，不请求网络。
+
+建议安装的浏览器行为测试（执行真实 DEMO 页面）：
+
+```text
+node --test docs/prototypes/multi-device-sync/extension-suggestions.test.cjs
+```
+
+完整 DEMO 回归使用 `node --test --test-concurrency=1 docs/prototypes/multi-device-sync/*.test.cjs`；执行前设置 `PLAYWRIGHT_CORE_PATH` 为本机 `playwright-core` 目录，需要可启动的 Chrome。不使用生产 Android/Desktop 构建作为 HTML 原型测试。
+
+本轮验证：新增浏览器行为测试 3/3 通过；独立检查并列预览、320px 手机布局和系统确认弹窗，无横向溢出或页面脚本错误。完整 DEMO 回归为 33 项中 29 项通过、4 项失败；4 项均在修改前 HEAD 导出的 DEMO 中以相同断言复现，分别为 `library-sync.test.cjs` 的临时通知计数和旧待上传选择器、`parallel-preview.test.cjs` 的离线文案、`ui-browser.test.cjs` 的设置焦点。它们是现有同步测试问题，本轮不扩修同步逻辑。最后补充的安装方式切换暂停修正已通过新增 3 项 focused 复验，未重复全套测试。
+
+本次变更涉及双端脚本加载、现有路由接入、独立建议模块、样式、行为测试和说明文档，构成一个完整交互批次。主要风险为模态焦点、安装定时器、设备状态隔离和旧页面回归；未修改生产 Kotlin、数据库、构建或同步协议。
+
 这是本地 HTML 交互原型。它把同步操作放进 Windows Desktop 与 Android 手机的 Mihon 页面路径中，不连接 Git 服务。[技术方案](../../2026-09-13-multi-device-sync-technical-proposal.md)已于2026-09-13通过用户审核；当前原型与方案仍有[交互调整项](../2026-09-13-sync-demo-interaction-audit.md)，不代表生产同步已实现。
 
 2026-09-13 按用户后续要求，DEMO 仅用于调整交互。此次补充页面、选择与反馈，不修复审查中记录的同步模型问题，也不实现真实 Git、加密、匹配或导入。
@@ -89,13 +119,13 @@ node --test docs/prototypes/multi-device-sync/ui-browser.test.cjs docs/prototype
 
 ## 源码对照与边界
 
-`preview.js` 提供并列容器及公共工具条，用同源 srcdoc iframe 隔离两端的视口、焦点与键盘事件，继续加载原有 `app.js`。双端复用同一个 `sync-model.js` 模型和内存操作日志；代理状态只把导航、选择、面板通知和定时器留在各自视图，收藏、阅读、待上传队列仍按设备 ID 隔离。重绘另一端不抢焦点、不接收尚未同步的操作。重置及大量待处理场景会终止两端现有定时器、重建视图，避免旧后台任务修改新场景。页面刷新丢失演示状态；这不是跨浏览器通信。单端隔离验收保留 `device.html`，并列入口的共享状态、工具条和双端交换由 `parallel-preview.test.cjs` 覆盖。
+`preview.js` 提供并列容器及公共工具条，用同源 srcdoc iframe 隔离两端的视口、焦点与键盘事件，继续加载原有 `app.js`。双端复用同一个 `sync-model.js` 模型和内存操作日志；代理状态只把导航、选择、面板通知和定时器留在各自视图，收藏、阅读、待上传队列仍按设备 ID 隔离。重绘另一端不抢焦点、不接收尚未同步的操作。重置及大量待处理场景会终止两端现有定时器、重建视图，避免旧后台任务修改新场景。页面刷新丢失原同步演示状态；新增插件建议的折叠与忽略偏好例外，会按设备保存在浏览器本地。这不是跨浏览器通信。单端隔离验收保留 `device.html`，并列入口的共享状态、工具条和双端交换由 `parallel-preview.test.cjs` 覆盖。
 
 同步设置面板参考 Android 书架筛选使用的 `LibrarySettingsDialog.kt`、`TabbedDialog.kt` 和 `presentation-core/src/main/java/tachiyomi/presentation/core/components/AdaptiveSheet.kt`：采用顶部圆角、surfaceContainerHigh 表面、24px 内容边距；同步与设置子页面共用最大 560px 的面板，以容纳待处理列表并避免切换时尺寸跳变。按本次设计要求，Windows 与 Android 原型均从应用窗口底部弹出；这不表示 Windows 原有书架筛选已经采用底部面板。齿轮使用对应 `Icons.Default.Settings` 的 Material Filled SVG 路径。
 
 界面还原依据仓库中的 `app-desktop/src/main/kotlin/mihon/desktop/ui/home/HomeScreen.kt`、`app-desktop/src/main/kotlin/mihon/desktop/ui/updates/UpdatesTab.kt`、`app-desktop/src/main/kotlin/mihon/desktop/ui/authors/AuthorsTab.kt`、`app/src/main/java/eu/kanade/tachiyomi/ui/home/HomeScreen.kt`、`app/src/main/java/eu/kanade/tachiyomi/ui/browse/BrowseTab.kt`、`app/src/main/java/eu/kanade/presentation/updates/UpdatesScreen.kt` 和 `presentation-theme/src/commonMain/kotlin/eu/kanade/presentation/theme/colorscheme/TachiyomiColorScheme.kt`。颜色使用 Tachiyomi 默认浅色/深色主题；图标为本地 SVG Material 路径。
 
-收藏、确认、去重、冲突、阅读位置和离线待上传由 `sync-model.js` 内存模型驱动。刷新页面会重新建立示例状态；没有持久化、真实远端、系统后台调度、真实凭据、跨源匹配、完整历史迁移、真实下载或漫画图片。Android 手机预览是本地视口原型，不能代替真实 Android 构建；Windows 窗口标题和控件是原应用外观示意。
+收藏、确认、去重、冲突、阅读位置和离线待上传由 `sync-model.js` 内存模型驱动。刷新页面会重新建立同步与插件安装示例状态，插件建议的折叠/忽略偏好单独保留。没有真实远端、系统后台调度、真实凭据、真实跨源匹配、完整历史迁移、真实下载或漫画图片。Android 手机预览是本地视口原型，不能代替真实 Android 构建；Windows 窗口标题和控件是原应用外观示意。
 - 同步结果和批量处理结果属于本次打开面板的临时通知。收起后清除，重开不回放；关闭期间完成的后台同步也不补播通知。进入设置再返回仍保留本次通知。业务层最近同步结果、待处理条目和待上传操作不因关闭面板而删除。
 
 同步列表标题为“待手动处理的同步”，只列取消收藏与关注。顶部一条状态在定期同步开启且空闲时显示倒计时，小字给出收藏/关注与阅读明细；关闭定期同步时显示待同步总数，无待上传时显示已同步，有取消待确认时显示“数据交换已完成”。待确认不会阻止继续上传或接收。收到的数据不计为本机新操作，阅读模式也不计入变动；真实算法由后续生产实现验证。
