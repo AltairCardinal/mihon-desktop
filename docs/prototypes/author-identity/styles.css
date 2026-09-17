@@ -2,3 +2,5 @@
 @media(max-width:440px) { .content { padding: 0 16px 18px; }.bar { padding: 12px; }.hero { gap: 15px; }.cover { width: 94px; height: 140px; font-size: 19px; }.hero h2 { font-size: 21px; }.modal-backdrop { padding: 8px; }.modal { max-height: calc(100vh - 16px); border-radius: 20px; }.modal header { padding: 18px 16px 8px; }.modal-body { padding: 0 16px 14px; }.modal footer { padding: 12px 16px; }.modal h2 { font-size: 18px; }.row { gap: 8px; }.actions button { flex: 1; }.native-nav-item { padding: 8px 2px; }.native-nav-item .nav-label { font-size: 11px; } }
 .device-root { min-width: 0; }.hero > div { min-width: 0; overflow-wrap: anywhere; }
 .review-heading { color: #e3e2e6; }.review-heading .eyebrow { color: #b0c6ff; }
+
+.author-settings { margin-left: auto; flex: none; }

@@ -8,20 +8,20 @@
     return id;
   }
   function names(author) { return [author.name, ...author.aliases]; }
-  function mergeInto(state, selected, target, follow, interval, displayName) {
+  function mergeInto(state, selected, target, follow, frequency, displayName) {
     const retained = state.authors.find(a => a.id === target);
     const members = state.authors.filter(a => selected.includes(a.id));
     const allNames = [...new Set(members.flatMap(names))];
     retained.name = displayName || retained.name;
     retained.aliases = allNames.filter(n => n !== retained.name);
-    retained.follow = follow; retained.interval = interval;
+    retained.follow = follow; retained.frequency = frequency;
     members.forEach(a => { if (a.id !== target) state.redirects[a.id] = target; });
     state.versions.forEach(v => { if (selected.includes(v.author)) v.author = target; });
     state.authors = state.authors.filter(a => !selected.includes(a.id) || a.id === target);
   }
-  function recommendedInterval(authors) {
+  function recommendedFrequency(authors) {
     const enabled = authors.filter(a => a.follow);
-    return enabled.length ? Math.min(...enabled.map(a => a.interval)) : 24;
+    return ['daily', 'weekly', 'monthly'].find(value => enabled.some(a => a.frequency === value)) || 'daily';
   }
   function normalize(input) {
     const state = structuredClone(input);
@@ -33,7 +33,7 @@
         const accepted = new Set(names(original));
         const same = state.authors.filter(a => names(a).some(n => accepted.has(n)));
         if (same.length > 1) {
-          mergeInto(state, same.map(a => a.id), original.id, same.some(a => a.follow), recommendedInterval(same));
+          mergeInto(state, same.map(a => a.id), original.id, same.some(a => a.follow), recommendedFrequency(same));
           changed = true;
           break;
         }
@@ -44,7 +44,7 @@
   function create() {
     return normalize({
       revision: 0, redirects: {}, fail: false, unavailable: false,
-      authors: ['a', 'b', 'c', 'en', 'tw'].map((id, i) => ({ id, name: ['冈本伦', '冈本伦', '冈本伦', 'Okamoto Lynn', '岡本倫'][i], aliases: [], follow: i === 1, interval: i === 1 ? 12 : 24 })),
+      authors: ['a', 'b', 'c', 'en', 'tw'].map((id, i) => ({ id, name: ['冈本伦', '冈本伦', '冈本伦', 'Okamoto Lynn', '岡本倫'][i], aliases: [], follow: i === 1, frequency: 'daily' })),
       versions: [
         { id: 'v0', work: 'w0', title: '平行天堂', source: '漫画柜', author: 'a', signature: '冈本伦' },
         { id: 'v1', work: 'w1', title: '极黑的布伦希尔德', source: '文字图源（演示）', author: 'b', signature: '冈本伦' },
@@ -59,7 +59,7 @@
     const state = structuredClone(input);
     let author = state.authors.find(a => names(a).includes(observation.name));
     if (!author) {
-      author = { id: 'name-' + observation.name, name: observation.name, aliases: [], follow: false, interval: 24 };
+      author = { id: 'name-' + observation.name, name: observation.name, aliases: [], follow: false, frequency: 'daily' };
       state.authors.push(author);
     }
     const version = { ...observation, author: author.id, signature: observation.name };
@@ -82,7 +82,10 @@
     if (plan.selected.length < 2 || !plan.selected.includes(plan.target)) throw Error('请选择至少两个不同名字，并从中选择主显示名。');
     if (plan.displayName && !plan.names.includes(plan.displayName)) throw Error('主显示名必须属于本次名称范围。');
     const state = structuredClone(input);
-    mergeInto(state, plan.selected, plan.target, !!plan.follow, plan.interval || recommendedInterval(plan.authorSnapshot), plan.displayName);
+    const initiator = resolve(state, plan.initiator || plan.selected[0]);
+    if (!plan.selected.includes(initiator)) throw Error('发起作者必须在本次范围内。');
+    const frequency = state.authors.find(a => a.id === initiator).frequency;
+    mergeInto(state, plan.selected, plan.target, plan.selected.some(id => state.authors.find(a => a.id === id).follow), frequency, plan.displayName);
     state.revision++;
     return state;
   }
@@ -90,5 +93,12 @@
     if (input.fail) throw Error('提交失败，关注状态未改变。');
     const state = structuredClone(input); state.authors.find(a => a.id === resolve(state, id)).follow = enabled; state.revision++; return state;
   }
-  return { create, normalize, observe, preview, apply, resolve, follow, recommendedInterval };
+  function setFrequency(input, id, frequency) {
+    if (input.fail) throw Error('保存失败，检查频率未改变。');
+    if (!['daily', 'weekly', 'monthly'].includes(frequency)) throw Error('请选择有效的检查频率。');
+    const state = structuredClone(input);
+    state.authors.find(a => a.id === resolve(state, id)).frequency = frequency;
+    state.revision++; return state;
+  }
+  return { create, normalize, observe, preview, apply, resolve, follow, recommendedFrequency, setFrequency };
 });

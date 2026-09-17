@@ -45,7 +45,7 @@ test('取消失败过期、蒙层焦点、320px与同名作品自动复用', () 
   await pc.locator('.modal-backdrop').click({ position: { x: 3, y: 3 } });
   assert.match(await pc.locator('.hero').innerText(), /3 部作品 · 3 个来源版本/);
   await scenario('stale'); await action(pc, 'merge-select').click(); await pc.locator('[data-select="en"]').check(); await action(pc, 'merge-preview').click(); await action(pc, 'commit').click();
-  assert.match(await pc.getByRole('alert').innerText(), /过期/); await action(pc, 'refresh-preview').click(); assert.equal(await pc.locator('#merge-follow').isChecked(), false);
+  assert.match(await pc.getByRole('alert').innerText(), /过期/); await action(pc, 'refresh-preview').click(); assert.equal(await pc.locator('#merge-follow').count(), 0);
   await action(pc, 'commit').click(); await page.locator('#add-same').click(); await pc.getByText('已加入同名作品', { exact: false }).waitFor();
   assert.match(await pc.locator('.hero').innerText(), /4 部作品 · 5 个来源版本/);
   await page.locator('#theme').selectOption('light'); assert.equal(await phone.locator('body').getAttribute('class'), 'device theme-light');
@@ -78,4 +78,40 @@ test('候选搜索不丢选择，外部新增保持当前合并会话并刷新�
   await action(pc, 'merge-select').click(); await pc.locator('[data-select="tw"]').check(); await action(pc, 'merge-preview').click();
   await pc.locator('#retain').selectOption('冈本伦'); await action(pc, 'commit').click(); assert.equal(await pc.getByTestId('author-name').innerText(), '冈本伦');
   assert.match(await pc.locator('.hero').innerText(), /Okamoto Lynn/);
+}));
+test('作者设置位于双端右上角且页面与合并窗移除指定说明', () => setup(async (page, pc, phone) => {
+  await page.locator('#narrow').check();
+  for (const f of [pc, phone]) {
+    await f.getByTestId('signature').click();
+    assert.equal(await f.getByRole('button', { name: '作者设置', exact: true }).count(), 1);
+    assert.doesNotMatch(await f.locator('.content').innerText(), /相同名称自动归到这里|一个作者共用一次关注|尚无其他名字|合并不同名字|已确认同一作品/);
+    assert.equal(await f.locator('[data-testid="author-aliases"]').count(), 0);
+    const gear = await f.getByRole('button', { name: '作者设置', exact: true }).boundingBox();
+    const bar = await f.locator('.bar').boundingBox(); assert.ok(gear.x > bar.x + bar.width / 2); assert.ok(gear.y < bar.y + bar.height);
+    await f.getByRole('button', { name: '添加别名', exact: true }).click(); await f.locator('[data-select="en"]').check(); await action(f, 'merge-preview').click();
+    assert.equal(await f.locator('#merge-follow, #interval').count(), 0);
+    assert.doesNotMatch(await f.getByRole('dialog').innerText(), /合并后关注这位作者|检查频率|当前所选/);
+    await f.getByRole('button', { name: '关闭', exact: true }).click();
+    assert.equal(await f.locator('body').evaluate(e => e.scrollWidth > innerWidth), false);
+  }
+}));
+test('作者设置三频率保存取消失败与作者设备隔离，添加别名沿用发起者设置', () => setup(async (page, pc, phone) => {
+  await pc.getByTestId('signature').click();
+  const settings = f => f.getByRole('button', { name: '作者设置', exact: true });
+  for (const value of ['weekly', 'monthly', 'daily', 'weekly']) {
+    await settings(pc).click(); await pc.getByLabel('检查频率').selectOption(value); await action(pc, 'settings-save').click();
+    assert.equal(await settings(pc).evaluate(e => e === document.activeElement), true);
+    assert.equal(await pc.getByRole('status').innerText(), '检查频率已保存');
+    await settings(pc).click(); assert.equal(await pc.getByLabel('检查频率').inputValue(), value); await pc.getByRole('button', { name: '取消', exact: true }).click();
+  }
+  await settings(pc).click(); await pc.getByLabel('检查频率').selectOption('monthly'); await pc.getByRole('button', { name: '取消', exact: true }).click();
+  await settings(pc).click(); assert.equal(await pc.getByLabel('检查频率').inputValue(), 'weekly'); await pc.getByRole('button', { name: '关闭', exact: true }).click();
+  await pc.getByTestId('nav-authors').click(); await pc.locator('[data-author="en"]').click(); assert.equal(await pc.getByTestId('follow').innerText(), '关注作者');
+  await settings(pc).click(); assert.equal(await pc.getByLabel('检查频率').inputValue(), 'daily'); await pc.getByLabel('检查频率').selectOption('monthly'); await action(pc, 'settings-save').click(); assert.equal(await pc.getByTestId('follow').innerText(), '关注作者');
+  await action(pc, 'merge-select').click(); await pc.locator('[data-select="a"]').check(); await action(pc, 'merge-preview').click(); await pc.locator('#retain').selectOption('冈本伦'); await action(pc, 'commit').click();
+  await settings(pc).click(); assert.equal(await pc.getByLabel('检查频率').inputValue(), 'monthly'); await pc.getByRole('button', { name: '关闭', exact: true }).click(); assert.equal(await pc.getByTestId('follow').innerText(), '已关注');
+  await pc.locator('[data-version="md"]').click(); await pc.getByTestId('signature').click(); await settings(pc).click(); assert.equal(await pc.getByLabel('检查频率').inputValue(), 'monthly'); await pc.getByRole('button', { name: '关闭', exact: true }).click();
+  await phone.getByTestId('signature').click(); await settings(phone).click(); assert.equal(await phone.getByLabel('检查频率').inputValue(), 'daily');
+  await page.locator('#scenario').selectOption('submit-error'); await page.locator('#apply-scenario').click(); await pc.getByTestId('signature').click(); await settings(pc).click(); await pc.getByLabel('检查频率').selectOption('monthly'); await action(pc, 'settings-save').click(); assert.match(await pc.getByRole('alert').innerText(), /保存失败/);
+  await pc.getByRole('button', { name: '取消', exact: true }).click(); assert.equal(await settings(pc).evaluate(e => e === document.activeElement), true); await settings(pc).click(); assert.equal(await pc.getByLabel('检查频率').inputValue(), 'daily');
 }));
