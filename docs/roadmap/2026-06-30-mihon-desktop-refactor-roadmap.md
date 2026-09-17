@@ -299,6 +299,8 @@
 [`性能报告`](./2026-09-02-desktop-download-directory-and-partial-reading-performance-report.md)。non-reader upstream core 与
 作者归档计划继续保持暂停；下表保留其余 Phase R backlog。
 
+2026-09-17登记待执行专项：[跨插件唯一作者Roadmap](2026-09-17-global-author-identity-roadmap.md)。其最终交互已确认，生产实现尚未启动；仅替代同名身份与相关作者交互的旧设计，不恢复旧作者归档全部backlog，不切换本计划active-child-plan。
+
 书架交互对齐 child plan 在 2026-09-08 复审后重开，已于 2026-09-09 完成 5 个补修行为批次和
 LI-09 双平台发布验收；macOS 使用同版本隔离 checkout。完整迁移配置/搜索端口仍归 MG-01，
 自动更新执行器/调度差异仍归 LU-01，均未因书架入口完成而关闭。
