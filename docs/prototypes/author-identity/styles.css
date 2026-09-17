@@ -5,4 +5,11 @@
 
 .author-settings { margin-left: auto; flex: none; }
 
-.alias-links { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+/* Original MangaContentInfo: titleSmall, PersonOutline 16dp, gap 4dp, secondary alpha. */
+.creator-row { display: flex; align-items: center; gap: 4px; opacity: .78; min-width: 0; }
+.creator-icon { width: 16px; height: 16px; flex: 0 0 16px; }
+.hero .creator-name { font-size: 14px; font-weight: 500; line-height: 20px; letter-spacing: .1px; color: var(--on-surface); margin: 0; padding: 0; border: 0; border-radius: 0; min-height: 0; min-width: 0; text-align: left; overflow-wrap: anywhere; background: transparent; }
+.creator-name:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.hero .manga-title { margin-bottom: 2px; }
+.alias-links { display: flex; flex-direction: column; gap: 0; }
+.author-hero > div { width: 100%; }

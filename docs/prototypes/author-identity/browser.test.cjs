@@ -41,7 +41,7 @@ test('别名使用署名链接样式，确认切换显示名，取消和旧名�
     const aliases = f.getByTestId('author-aliases');
     assert.equal(await aliases.getByRole('button').count(), 2);
     const english = aliases.getByRole('button', { name: 'Okamoto Lynn', exact: true });
-    assert.equal(await english.getAttribute('class'), 'link');
+    assert.equal(await english.evaluate(e => getComputedStyle(e).fontSize), '14px');
     await english.click();
     assert.match(await f.getByRole('dialog').innerText(), /要把Okamoto Lynn设为该作者的显示名称吗/);
     assert.equal(await f.getByRole('dialog').locator('input, select').count(), 0);
@@ -59,6 +59,32 @@ test('别名使用署名链接样式，确认切换显示名，取消和旧名�
     await aliases.getByRole('button', { name: '冈本伦', exact: true }).click();
     await f.getByRole('button', { name: '确定', exact: true }).click();
     assert.equal(await f.getByTestId('author-name').innerText(), '冈本伦');
+    assert.equal(await f.locator('body').evaluate(e => e.scrollWidth > innerWidth), false);
+  }
+}));
+
+test('双端署名与主名别名遵循原版小字号排版且窄屏不溢出', () => setup(async (page, pc, phone) => {
+  await page.locator('#narrow').check();
+  const typography = locator => locator.evaluate(e => {
+    const s = getComputedStyle(e);
+    return [s.fontSize, s.fontWeight, s.lineHeight, s.letterSpacing, s.padding, s.borderWidth, s.color];
+  });
+  for (const f of [pc, phone]) {
+    const signature = f.getByTestId('signature');
+    const expected = await typography(signature);
+    assert.deepEqual(expected.slice(0, 6), ['14px', '500', '20px', '0.1px', '0px', '0px']);
+    const row = signature.locator('..');
+    assert.equal(await row.evaluate(e => getComputedStyle(e).opacity), '0.78');
+    assert.equal(await row.locator('svg').evaluate(e => e.getBoundingClientRect().width), 16);
+    await signature.click();
+    await action(f, 'merge-select').click();
+    await f.locator('[data-select="en"]').check(); await f.locator('[data-select="tw"]').check(); await action(f, 'add').click();
+    const names = [f.getByTestId('author-name'), ...await f.getByTestId('author-aliases').getByRole('button').all()];
+    for (const name of names) assert.deepEqual(await typography(name), expected);
+    const boxes = await Promise.all(names.map(name => name.boundingBox()));
+    assert.ok(boxes.every(box => Math.abs(box.x - boxes[0].x) < 1));
+    assert.ok(boxes[1].y >= boxes[0].y + boxes[0].height);
+    assert.ok(boxes[2].y >= boxes[1].y + boxes[1].height);
     assert.equal(await f.locator('body').evaluate(e => e.scrollWidth > innerWidth), false);
   }
 }));
