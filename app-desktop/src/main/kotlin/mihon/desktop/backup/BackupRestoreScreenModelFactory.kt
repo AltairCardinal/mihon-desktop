@@ -56,7 +56,7 @@ class BackupRestoreScreenModelFactory(
                     ?: error("empty backup")
                 BackupWorkflow.preview(backup)
             },
-            restore = { file, onProgress ->
+            restore = { file, appSettings, onProgress ->
                 val backup = withContext(Dispatchers.IO) { DesktopBackupCreator.readBackupFile(file) }
                     ?: return@BackupRestoreScreenModel TaskState.Failure(AppError.MalformedData())
                 val restorer = DesktopBackupRestorer(
@@ -77,7 +77,7 @@ class BackupRestoreScreenModelFactory(
                     backupRestoreSync = backupRestoreSync,
                 )
                 BackupWorkflow.runRestore {
-                    withContext(Dispatchers.IO) { restorer.restore(backup, onProgress) }
+                    withContext(Dispatchers.IO) { restorer.restore(backup, appSettings, onProgress) }
                 }
             },
             scope = scope,

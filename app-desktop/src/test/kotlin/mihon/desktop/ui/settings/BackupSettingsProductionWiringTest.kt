@@ -50,6 +50,48 @@ import kotlin.reflect.KClass
 @org.junit.jupiter.api.parallel.Isolated
 class BackupSettingsProductionWiringTest {
     @Test
+    fun `restore confirmation can exclude app settings from actual restore`() = runBlocking<Unit> {
+        val node = java.util.prefs.Preferences.userRoot().node("/mihon-test/ga04-ui-${System.nanoTime()}")
+        val directory = java.nio.file.Files.createTempDirectory("ga04-backup-ui").toFile()
+        val store = tachiyomi.core.common.preference.DesktopPreferenceStore(node)
+        val key = tachiyomi.domain.creator.service.CreatorDiscoveryPreferences.FREQUENCY_KEY
+        store.getString(key).set("weekly")
+        val backup = mihon.desktop.backup.DesktopBackupCreator.writeBackupFile(
+            mihon.desktop.backup.models.Backup(backupManga = emptyList(), backupPreferences = listOf(
+                mihon.desktop.backup.models.BackupPreference(key, mihon.desktop.backup.models.StringPreferenceValue("monthly")),
+            )), directory,
+        )
+        val realFactory = BackupRestoreScreenModelFactory(
+            mihon.desktop.domain.fakes.FakeMangaRepository(), mihon.desktop.domain.fakes.FakeChapterRepository(),
+            mihon.desktop.domain.fakes.FakeCategoryRepository(), mihon.desktop.domain.fakes.FakeHistoryRepository(),
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), store, mockk(relaxed = true),
+        )
+        val model = realFactory.create(this)
+        val factory = mockk<BackupRestoreScreenModelFactory> { every { create() } returns model }
+        val scene = scene(factory, RecordingPicker(DesktopFilePickerResult.Selected(backup)))
+        try {
+            render(scene)
+            click(scene, MR.strings.file_select_backup.localized())
+            kotlinx.coroutines.withTimeout(10_000) {
+                while (model.state.value !is BackupRestoreUiState.Preview) { yield(); kotlinx.coroutines.delay(5) }
+            }
+            render(scene)
+            click(scene, MR.strings.app_settings.localized())
+            render(scene)
+            click(scene, MR.strings.action_restore.localized())
+            kotlinx.coroutines.withTimeout(10_000) {
+                while (model.state.value !is BackupRestoreUiState.Completed) { yield(); kotlinx.coroutines.delay(5) }
+            }
+            assertEquals("weekly", store.getString(key).get())
+        } finally {
+            scene.close()
+            model.onDispose()
+            node.removeNode()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `Swing adapter consumes directory and backup file request configuration`() {
         val directory = createDesktopFileChooser(DesktopFilePickerRequest.Directory("Choose directory"))
         assertEquals("Choose directory", directory.dialogTitle)

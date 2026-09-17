@@ -25,6 +25,7 @@ import tachiyomi.domain.track.model.Track
 import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import mihon.desktop.backup.models.*
 import tachiyomi.data.Database
 import tachiyomi.data.DateColumnAdapter
@@ -48,6 +49,69 @@ import eu.kanade.tachiyomi.data.backup.models.BackupCreatorIdentity
  * These tests define the expected contract before implementation exists.
  */
 class DesktopBackupRestorerTest {
+
+    @Test
+    fun `actual desktop creator and restorer transfer shared complete identity graph`() = runTest {
+        openDatabase(File(tempDir, "ga04-source.db")).use { source ->
+            openDatabase(File(tempDir, "ga04-target.db")).use { target ->
+                tachiyomi.data.creator.verifyCreatorIdentityBackup(source.handler, target.handler) { exporter, importer ->
+                    val backup = DesktopBackupCreator.createFromDatabase(
+                        FakeMangaRepository(), FakeChapterRepository(), FakeCategoryRepository(), FakeHistoryRepository(),
+                        trackRepository = mockk(relaxed = true),
+                        preferenceStore = tachiyomi.core.common.preference.InMemoryPreferenceStore(),
+                        extensionRepoRepository = mockk(relaxed = true), authorArchiveBackupContributor = exporter,
+                    )
+                    val file = DesktopBackupCreator.writeBackupFile(backup, tempDir)
+                    val decoded = checkNotNull(DesktopBackupCreator.readBackupFile(file))
+                    val factory = BackupRestoreScreenModelFactory(
+                        FakeMangaRepository(), FakeChapterRepository(), FakeCategoryRepository(), FakeHistoryRepository(),
+                        mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
+                        tachiyomi.core.common.preference.InMemoryPreferenceStore(), mockk(relaxed = true), importer,
+                    )
+                    val model = factory.create(this@runTest)
+                    try {
+                        model.select(file)
+                        val preview = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                            kotlinx.coroutines.withTimeout(10_000) { model.state.first {
+                                it is mihon.desktop.ui.settings.BackupRestoreUiState.Preview ||
+                                    it is mihon.desktop.ui.settings.BackupRestoreUiState.Failure
+                            } }
+                        }
+                        check(preview is mihon.desktop.ui.settings.BackupRestoreUiState.Preview) { preview.toString() }
+                        model.confirmRestore()
+                        val complete = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                            kotlinx.coroutines.withTimeout(10_000) { model.state.first {
+                                it is mihon.desktop.ui.settings.BackupRestoreUiState.Completed ||
+                                    it is mihon.desktop.ui.settings.BackupRestoreUiState.Failure ||
+                                    it is mihon.desktop.ui.settings.BackupRestoreUiState.PartialSuccess
+                            } }
+                        }
+                        check(complete is mihon.desktop.ui.settings.BackupRestoreUiState.Completed) { complete.toString() }
+                    } finally { model.onDispose() }
+                    checkNotNull(decoded.backupAuthorArchive)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `creator frequency uses shared backup compatibility contract`() = runTest {
+        val node = Preferences.userRoot().node("/mihon-test/ga04-${System.nanoTime()}")
+        try {
+            val store = DesktopPreferenceStore(node)
+            val restorer = DesktopBackupRestorer(
+                FakeMangaRepository(), FakeChapterRepository(), FakeCategoryRepository(), FakeHistoryRepository(),
+                preferenceStore = store,
+            )
+            tachiyomi.data.creator.verifyCreatorFrequencyBackup(store) { values ->
+                restorer.restore(Backup(backupManga = emptyList(), backupPreferences = values.map {
+                    BackupPreference(it.first, StringPreferenceValue(it.second))
+                })).hasErrors
+            }
+        } finally {
+            node.removeNode()
+        }
+    }
 
     @Test
     fun `restore applies field 107 after manga restore and reports progress`() = runTest {

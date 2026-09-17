@@ -18,7 +18,7 @@ import java.io.File
 sealed interface BackupRestoreUiState {
     data object Empty : BackupRestoreUiState
     data class Loading(val fileName: String) : BackupRestoreUiState
-    data class Preview(val file: File, val summary: BackupPreview) : BackupRestoreUiState
+    data class Preview(val file: File, val summary: BackupPreview, val appSettings: Boolean = true) : BackupRestoreUiState
     data class Restoring(val fileName: String, val completed: Int, val total: Int) : BackupRestoreUiState {
         val progress: Float get() = if (total == 0) 1f else completed.toFloat() / total
     }
@@ -40,9 +40,15 @@ sealed interface BackupRestoreFailureReason {
 
 class BackupRestoreScreenModel(
     private val loadPreview: suspend (File) -> BackupPreview,
-    private val restore: suspend (File, suspend (RestoreProgress) -> Unit) -> TaskState<DesktopBackupRestorer.RestoreResult>,
+    private val restore: suspend (File, Boolean, suspend (RestoreProgress) -> Unit) -> TaskState<DesktopBackupRestorer.RestoreResult>,
     scope: CoroutineScope? = null,
 ) : ScreenModel {
+    constructor(
+        loadPreview: suspend (File) -> BackupPreview,
+        restore: suspend (File, suspend (RestoreProgress) -> Unit) -> TaskState<DesktopBackupRestorer.RestoreResult>,
+        scope: CoroutineScope? = null,
+    ) : this(loadPreview, { file, _, progress -> restore(file, progress) }, scope)
+
     constructor(
         scope: CoroutineScope,
         loadPreview: suspend (File) -> BackupPreview,
@@ -62,11 +68,13 @@ class BackupRestoreScreenModel(
 
     private var selectedFile: File? = null
     private var selectedPreview: BackupPreview? = null
+    private var appSettings = true
     private var job: Job? = null
 
     fun select(file: File) {
         job?.cancel()
         selectedFile = file
+        appSettings = true
         mutableState.value = BackupRestoreUiState.Loading(file.name)
         job = scope.launch {
             mutableState.value = try {
@@ -83,6 +91,12 @@ class BackupRestoreScreenModel(
         }
     }
 
+    fun setAppSettings(value: Boolean) {
+        val preview = mutableState.value as? BackupRestoreUiState.Preview ?: return
+        appSettings = value
+        mutableState.value = preview.copy(appSettings = value)
+    }
+
     fun confirmRestore() = startRestore()
 
     fun retryRestore() = startRestore()
@@ -94,7 +108,7 @@ class BackupRestoreScreenModel(
         mutableState.value = BackupRestoreUiState.Restoring(file.name, 0, total)
         job = scope.launch {
             val runningJob = coroutineContext[Job]
-            val result = restore(file) { progress ->
+            val result = restore(file, appSettings) { progress ->
                 if (runningJob?.isActive == true && mutableState.value is BackupRestoreUiState.Restoring) {
                     mutableState.value = BackupRestoreUiState.Restoring(file.name, progress.completed, progress.total)
                 }
@@ -122,7 +136,8 @@ class BackupRestoreScreenModel(
 }
 
 private fun BackupPreview.isEmpty(): Boolean =
-    mangaCount + chapterCount + categoryCount + trackingCount + preferenceCount + sourceCount + extensionRepoCount == 0
+    !hasAuthorArchive &&
+        mangaCount + chapterCount + categoryCount + trackingCount + preferenceCount + sourceCount + extensionRepoCount == 0
 
 private fun Throwable.toFailureReason(): BackupRestoreFailureReason {
     val detail = message.orEmpty().lowercase()

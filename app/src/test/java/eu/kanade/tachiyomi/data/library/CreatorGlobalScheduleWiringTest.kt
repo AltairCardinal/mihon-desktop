@@ -97,6 +97,10 @@ class CreatorGlobalScheduleWiringTest {
             Injekt.addSingleton<SourceManager>(testSources(listOf(source)))
             val preferences = Injekt.get<CreatorDiscoveryPreferences>()
             preferences.frequency().set("weekly")
+            tachiyomi.data.creator.verifyCreatorBackupReadiness(
+                Injekt.get<DatabaseHandler>(),
+                Injekt.get<tachiyomi.data.backup.AuthorArchiveBackupContributor>(),
+            )
             val repository = Injekt.get<CreatorArchiveRepository>()
             val creator = Injekt.get<CreatorRepository>().upsertCreator("DI author")
             val now = System.currentTimeMillis()

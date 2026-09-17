@@ -178,7 +178,10 @@ class DomainModule : InjektModule {
         addFactory { tachiyomi.domain.creator.interactor.ManageCreatorIdentity(get<CreatorArchiveRepository>()) }
         addSingletonFactory<CreatorLibraryIndexWriter> { get<CreatorRepositoryImpl>() }
         addSingletonFactory<tachiyomi.data.backup.AuthorArchiveBackupContributor> {
-            tachiyomi.data.backup.SqlDelightAuthorArchiveBackupContributor(get())
+            tachiyomi.data.backup.SqlDelightAuthorArchiveBackupContributor(
+                get(),
+                awaitIdentityReady = get<CreatorRepositoryImpl>()::awaitIdentityReady,
+            )
         }
         addSingletonFactory { MangaRepositoryImpl(get(), get<CreatorLibraryIndexWriter>()) }
         addSingletonFactory<MangaRepository> { get<MangaRepositoryImpl>() }

@@ -1938,4 +1938,5 @@
     <string name="creator_frequency_weekly">Weekly</string>
     <string name="creator_frequency_monthly">Monthly</string>
     <string name="creator_settings_saved">Author settings saved</string>
+    <string name="desktop_backup_preview_authors">Author archive: %1$d authors</string>
 </resources>

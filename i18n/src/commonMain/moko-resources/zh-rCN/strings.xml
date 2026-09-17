@@ -1732,4 +1732,5 @@
     <string name="creator_frequency_weekly">每周</string>
     <string name="creator_frequency_monthly">每月</string>
     <string name="creator_settings_saved">作者设置已保存</string>
+    <string name="desktop_backup_preview_authors">作者档案：%1$d 位作者</string>
 </resources>

@@ -501,7 +501,9 @@ internal fun initDataLayer(
         indexWriter = creatorRepositoryImpl,
         extractCreators = tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga(),
     )
-    val authorArchiveBackupContributor = tachiyomi.data.backup.SqlDelightAuthorArchiveBackupContributor(handler)
+    val authorArchiveBackupContributor = tachiyomi.data.backup.SqlDelightAuthorArchiveBackupContributor(
+        handler, awaitIdentityReady = creatorRepositoryImpl::awaitIdentityReady,
+    )
     val extensionRepoRepository: ExtensionRepoRepository = ExtensionRepoRepositoryImpl(handler)
     val trackRepository: TrackRepository = TrackRepositoryImpl(handler)
     Injekt.addSingleton(mangaRepository)

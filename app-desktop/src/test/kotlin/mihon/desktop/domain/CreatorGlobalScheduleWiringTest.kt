@@ -67,6 +67,9 @@ class CreatorGlobalScheduleWiringTest {
             preferences.frequency().set("weekly")
             Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().enabledLanguages.set(setOf("en"))
             check(Injekt.get<tachiyomi.domain.creator.service.CreatorDiscoverySourcePort>().enabledSourcesSnapshot().any { it.sourceId == sourceId })
+            tachiyomi.data.creator.verifyCreatorBackupReadiness(
+                context.handler, Injekt.get<tachiyomi.data.backup.AuthorArchiveBackupContributor>(),
+            )
             val repository = Injekt.get<tachiyomi.domain.creator.repository.CreatorArchiveRepository>()
             val creator = Injekt.get<tachiyomi.domain.creator.repository.CreatorRepository>().upsertCreator("Desktop DI author")
             repository.upsertWatchPolicy(tachiyomi.domain.creator.model.ArchiveWatchPolicy(creator.id, true, 60_000, setOf(sourceId), emptySet()), System.currentTimeMillis())

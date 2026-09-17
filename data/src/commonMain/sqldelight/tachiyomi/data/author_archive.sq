@@ -842,9 +842,6 @@ VALUES (
 )
 ON CONFLICT(portable_key)
 DO UPDATE SET
-    display_name = excluded.display_name,
-    normalized_name = excluded.normalized_name,
-    sort_name = excluded.sort_name,
     needs_review = author_archive_creators.needs_review OR excluded.needs_review,
     last_modified_at = max(author_archive_creators.last_modified_at, excluded.last_modified_at);
 

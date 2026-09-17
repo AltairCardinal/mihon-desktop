@@ -14,10 +14,12 @@ import eu.kanade.tachiyomi.data.backup.models.StringPreferenceValue
 import eu.kanade.tachiyomi.data.backup.models.StringSetPreferenceValue
 import eu.kanade.tachiyomi.data.library.LibraryUpdateJob
 import eu.kanade.tachiyomi.source.sourcePreferences
+import kotlinx.coroutines.CancellationException
 import tachiyomi.core.common.preference.AndroidPreferenceStore
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.plusAssign
+import tachiyomi.data.backup.validateCreatorPreferenceBackup
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.download.service.DownloadPreferences
@@ -33,15 +35,17 @@ class PreferenceRestorer(
     suspend fun restoreApp(
         preferences: List<BackupPreference>,
         backupCategories: List<BackupCategory>?,
-    ) {
-        restorePreferences(
+    ): List<String> {
+        val issues = restorePreferences(
             preferences,
             preferenceStore,
             backupCategories,
+            appSettings = true,
         )
 
         LibraryUpdateJob.setupTask(context)
         BackupCreateJob.setupTask(context)
+        return issues
     }
 
     suspend fun restoreSource(preferences: List<BackupSourcePreferences>) {
@@ -55,7 +59,9 @@ class PreferenceRestorer(
         toRestore: List<BackupPreference>,
         preferenceStore: PreferenceStore,
         backupCategories: List<BackupCategory>? = null,
-    ) {
+        appSettings: Boolean = false,
+    ): List<String> {
+        val issues = mutableListOf<String>()
         val allCategories = if (backupCategories != null) getCategories.await() else emptyList()
         val categoriesByName = allCategories.associateBy { it.name }
         val backupCategoriesById = backupCategories?.associateBy { it.id.toString() }.orEmpty()
@@ -63,6 +69,7 @@ class PreferenceRestorer(
         toRestore.forEach { (key, value) ->
             if (Preference.isAppState(key)) return@forEach
             try {
+                if (appSettings) validateCreatorPreferenceBackup(BackupPreference(key, value))
                 when (value) {
                     is IntPreferenceValue -> {
                         if (prefs[key] is Int?) {
@@ -109,10 +116,14 @@ class PreferenceRestorer(
                         }
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                if (appSettings) issues += "App setting <$key>: ${e.message}"
                 Log.e("PreferenceRestorer", "Failed to restore preference <$key>", e)
             }
         }
+        return issues
     }
 
     private fun restoreCategoriesPreference(

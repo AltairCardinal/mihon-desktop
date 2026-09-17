@@ -2186,6 +2186,11 @@ class CreatorRepositoryImpl(
         }
     }
 
+    suspend fun awaitIdentityReady() {
+        bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
+    }
+
     private suspend fun ensureExactIdentityInvariant() {
         if (exactIdentityReady) return
         exactIdentityReadinessMutex.withLock {
