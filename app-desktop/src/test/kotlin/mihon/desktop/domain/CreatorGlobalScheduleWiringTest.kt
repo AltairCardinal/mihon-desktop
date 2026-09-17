@@ -47,6 +47,10 @@ class CreatorGlobalScheduleWiringTest {
         } finally { scheduler?.stopAndJoin(); driver.close(); node.removeNode() }
     }
     @Test fun `actual Desktop modules share global preference in service repository and UI`() = runBlocking {
+        val previousDownloadPreferences = runCatching {
+            Injekt.get<mihon.desktop.download.DesktopDownloadPreferences>()
+        }.getOrNull()
+        val previousInjekt = Injekt
         val node = Preferences.userRoot().node("/mihon-tests/ga03-di-${UUID.randomUUID()}")
         val store = tachiyomi.core.common.preference.DesktopPreferenceStore(node)
         val sourceId = 9901L
@@ -60,9 +64,11 @@ class CreatorGlobalScheduleWiringTest {
             )
             entries.forEach { (name, bytes) -> zip.putNextEntry(java.util.zip.ZipEntry(name)); zip.write(bytes); zip.closeEntry() }
         }
-        val context = mihon.desktop.di.initDesktopDIForTest(directory.toFile(), store,
-            trackerConnectivity = mihon.desktop.tracking.DesktopNetworkConnectivity { true })
+        var context: mihon.desktop.di.DesktopTestDIContext? = null
+        Injekt = uy.kohesive.injekt.api.InjektScope(uy.kohesive.injekt.registry.default.DefaultRegistrar())
         try {
+            context = mihon.desktop.di.initDesktopDIForTest(directory.toFile(), store,
+                trackerConnectivity = mihon.desktop.tracking.DesktopNetworkConnectivity { true })
             val preferences = Injekt.get<tachiyomi.domain.creator.service.CreatorDiscoveryPreferences>()
             preferences.frequency().set("weekly")
             Injekt.get<mihon.desktop.settings.DesktopAppPreferences>().enabledLanguages.set(setOf("en"))
@@ -82,7 +88,18 @@ class CreatorGlobalScheduleWiringTest {
             check(repository.getDueWatchSources(success + 8 * 86_400_000L, 10).size == 1)
             val dependencies = mihon.desktop.DesktopUiDependencies.fromInjekt()
             check(dependencies.creatorDiscoveryPreferences === preferences)
-        } finally { context.closeAndJoin(); node.removeNode() }
+        } finally {
+            try {
+                context?.closeAndJoin()
+            } finally {
+                Injekt = previousInjekt
+                node.removeNode()
+            }
+        }
+        org.junit.jupiter.api.Assertions.assertSame(
+            previousDownloadPreferences,
+            runCatching { Injekt.get<mihon.desktop.download.DesktopDownloadPreferences>() }.getOrNull(),
+        )
     }
 
 }

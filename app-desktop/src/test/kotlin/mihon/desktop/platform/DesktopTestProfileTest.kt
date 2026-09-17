@@ -2,6 +2,10 @@ package mihon.desktop.platform
 
 import android.content.DesktopSharedPreferences
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import mihon.desktop.test.TestMode
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -22,6 +26,11 @@ class DesktopTestProfileTest {
     @Test
     fun `real main bootstraps isolated production DI and Test Mode server`(@TempDir dir: File) {
         probe(dir, File(dir, "entry-profile"), "entry")
+    }
+
+    @Test
+    fun `fixed author sync fixture uses isolated real main and production inbox`(@TempDir directory: File) {
+        probe(directory, File(directory, "profile"), "authors")
     }
 
     @Test
@@ -55,7 +64,7 @@ class DesktopTestProfileTest {
         val arguments = File(dir, "probe-$mode.args")
         val output = File(dir, "probe-$mode.log")
         fun quote(value: String) = "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
-        val options = if (mode == "entry") {
+        val options = if (mode == "entry" || mode == "authors") {
             // If main forgets bootstrap, refuse preference construction rather than touching a user's registry.
             listOf(
                 "-Djava.util.prefs.PreferencesFactory=${IsolatedDesktopPreferencesFactory::class.java.name}",
@@ -91,8 +100,8 @@ object DesktopTestProfileProbe {
     fun main(args: Array<String>) {
         val profile = File(args[0]).canonicalFile
         val mode = args[1]
-        if (mode == "entry") {
-            verifyRealEntry(profile)
+        if (mode == "entry" || mode == "authors") {
+            verifyRealEntry(profile, mode == "authors")
             return
         }
         val originalHome = System.getProperty("user.home")
@@ -176,7 +185,7 @@ object DesktopTestProfileProbe {
         if (mode == "read") check(File(profile, "services.txt").readLines(Charsets.UTF_8) == services)
     }
 
-    private fun verifyRealEntry(profile: File) {
+    private fun verifyRealEntry(profile: File, authors: Boolean = false) {
         val port = ServerSocket(0).use { it.localPort }
         val failure = AtomicReference<Throwable?>()
         val application = Thread {
@@ -214,6 +223,45 @@ object DesktopTestProfileProbe {
             check(paths.databaseFile.isFile && paths.databaseFile.toPath().startsWith(profile.toPath()))
             check(paths.instanceStateFile.isFile && paths.instanceStateFile.toPath().startsWith(profile.toPath()))
             check(Preferences.userRoot() is IsolatedDesktopPreferences)
+            if (authors) {
+                fun action(name: String, body: String, expectedCode: Int = 200): String {
+                    val connection = URI("http://127.0.0.1:$port/test/action/$name").toURL()
+                        .openConnection(Proxy.NO_PROXY) as HttpURLConnection
+                    try {
+                        connection.requestMethod = "POST"
+                        connection.doOutput = true
+                        connection.setRequestProperty("Content-Type", "application/json")
+                        connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                        val code = connection.responseCode
+                        val result = (if (code == 200) connection.inputStream else connection.errorStream)
+                            .bufferedReader(Charsets.UTF_8).use { it.readText() }
+                        check(code == expectedCode) { "author runtime action failed $name: $code $result" }
+                        return result
+                    } finally {
+                        connection.disconnect()
+                    }
+                }
+                action("author_sync_fixture", """{"step":"arbitrary"}""", 409)
+                val marker = profile.resolve(".mihon-test-profile")
+                marker.writeText("invalid", Charsets.UTF_8)
+                action("author_sync_fixture", """{"step":"add"}""", 409)
+                marker.writeText("mihon-desktop-test-profile-v1\n", Charsets.UTF_8)
+                val initial = Json.parseToJsonElement(action("author_sync_fixture", """{"step":"add"}"""))
+                    .jsonObject.getValue("authors").jsonObject.getValue("identities").jsonArray
+                val target = initial.single { it.jsonObject.getValue("displayName").jsonPrimitive.content == "GA06 验收作者" }.jsonObject
+                val alias = initial.single { it.jsonObject.getValue("displayName").jsonPrimitive.content == "GA06 验收别名" }.jsonObject
+                val targetId = target.getValue("id").jsonPrimitive.content
+                val aliasId = alias.getValue("id").jsonPrimitive.content
+                action(
+                    "author_add_aliases",
+                    """{"creatorId":$targetId,"revision":${target.getValue("revision")},"selectedRevisions":{"$aliasId":${alias.getValue("revision")}},"idempotencyKey":"fixture-merge"}""",
+                )
+                listOf("remove", "confirm_remove", "replay", "refollow").forEach { step ->
+                    action("author_sync_fixture", """{"step":"$step"}""")
+                }
+                action("author_unfollow", """{"creatorId":$targetId}""")
+                action("author_sync_fixture", """{"step":"verify_local_cancel"}""")
+            }
         } finally {
             TestMode.stop()
             application.join(5_000)

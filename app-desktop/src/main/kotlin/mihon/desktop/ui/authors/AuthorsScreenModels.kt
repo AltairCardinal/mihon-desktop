@@ -60,9 +60,7 @@ internal object AuthorsScreenModelFactory {
         requireNotNull(dependencies.creatorLibraryIndexer),
         dependencies.creatorDiscoveryPreferences,
         onSettingsSaved = {
-            if (requireNotNull(dependencies.creatorArchiveRepository).getDueWatchSources(System.currentTimeMillis(), 1).isNotEmpty()) {
-                dependencies.creatorDiscoveryScheduler?.runNow()
-            }
+            dependencies.creatorDiscoveryScheduler?.runIfDue()
         },
     )
 

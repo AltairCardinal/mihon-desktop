@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.core.content.ContextCompat
 import eu.kanade.domain.DomainModule
 import eu.kanade.tachiyomi.di.AppModule
+import eu.kanade.tachiyomi.di.PreferenceModule
 import eu.kanade.tachiyomi.network.AndroidNetworkResponseAdapter
 import io.mockk.every
 import io.mockk.mockk
@@ -12,6 +13,8 @@ import io.mockk.unmockkStatic
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
+import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
 import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
@@ -92,6 +95,8 @@ class SourceSharedQueryWiringTest {
         val previous = Injekt
         Injekt = InjektScope(DefaultRegistrar())
         return try {
+            Injekt.importModule(PreferenceModule(mockk(relaxed = true)))
+            Injekt.addSingleton<PreferenceStore>(InMemoryPreferenceStore())
             block()
         } finally {
             Injekt = previous

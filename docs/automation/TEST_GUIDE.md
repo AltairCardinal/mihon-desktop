@@ -107,6 +107,11 @@ app-desktop/artifacts/windows/Mihon-Desktop-0.STAGE.FEATURE.BUILD.GIT_HASH-windo
 Windows APPDATA/注册表，后者不保证在 macOS 发布运行时可用。
 
 - 首次使用不存在或空目录；程序写入 `.mihon-test-profile` 标记，后续可复用以验证冷启动持久化。
+- 作者身份正式运行验收可使用 `authors_state`、`author_resolve`、`author_add_aliases`、
+  `author_set_display_name`、`author_set_frequency`，参数见 `API_REFERENCE.md` 的作者身份验收动作。
+  `author_resolve` 仅解析现有漫画的真实署名。固定离线 `author_sync_fixture` 必须在显式隔离
+  profile 中运行，不能对普通用户配置执行；它验证生产 inbox/projector/journal，不能代替真实
+  远端同步验收。重启复验继续使用同一 profile，并重新读取当前 revision 后再修改。
   非空且无标记、根目录、普通 home、符号链接路径被拒绝。不要将日常数据目录伪装成测试目录。
 - 启动入口在 crash handler、实例选举和 DI 之前选择 profile。数据库、缓存、日志、扩展、下载默认目录
   及历史 `user.home` 路径均隔离；Java Preferences 全局切换到该 profile 的可持久化后端，涵盖旧偏好和扩展设置。

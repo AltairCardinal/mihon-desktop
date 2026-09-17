@@ -183,6 +183,32 @@ probe/open/copy 且图片网络为 0；缺失页才允许一个物理图片请�
 
 关闭阅读器并触发 UI 导航返回。
 
+## 作者身份验收动作
+
+以下动作沿用 `POST /test/action/{action}`，返回 `authors` 快照；`identities` 含根 `id`、
+`revision`、`displayName` 和完整精确 `names`，`frequency` 为 `daily`、`weekly` 或 `monthly`。
+参数和状态变化均经过 production repository/use case，不提供任意 SQL 或事件注入。
+
+| action | JSON 参数 | 行为 |
+|---|---|---|
+| `authors_state` | `{}` | 刷新作者身份、关注和全局频率 |
+| `author_resolve` | `mangaId`、`name` | 从现有漫画的真实署名提取结果中选取精确名字，经既有身份用例解析；本次响应的 `resolvedCreatorId` 返回根 ID |
+| `author_add_aliases` | `creatorId`、`revision`、`selectedRevisions`、`idempotencyKey` | 使用当前身份版本合并选中的已有作者；`selectedRevisions` 是 ID 到 revision 的 JSON 对象 |
+| `author_set_display_name` | `creatorId`、`revision`、`name`、`idempotencyKey` | 将已接受名称设为主名 |
+| `author_set_frequency` | `frequency` | 保存全局频率，并复用实际设置保存后的调度 |
+| `author_sync_fixture` | `step` | 仅在启动时显式选择并验证过的 `--test-profile` 中执行固定离线同步验收 |
+
+版本过期、未经隔离的 fixture 调用或不满足操作条件返回 `409`；缺少必要参数或非法频率返回 `400`。
+`author_resolve` 不创建漫画，不接受该漫画署名之外的名字；署名不匹配返回 `404`。
+
+同步 fixture 只使用保留名称 `GA06 验收作者`、`GA06 验收别名`、固定旧键和空间
+`ga06-author-acceptance`。建议新建空测试 profile，按 `add` → 本地添加别名 → `remove` →
+`confirm_remove` → `replay` → `refollow` 顺序执行；最后通过 `author_unfollow` 取消后调用
+`verify_local_cancel` 检查真实 journal 的 REMOVE。`confirm_remove` 使用实际接收端取消确认接口，
+重复 ADD 不得恢复关注，真正新 ADD 可以重新关注。每步要求上一步状态，失败返回 `409`。
+固定 fixture 校验真实 profile marker，拒绝其他活动同步空间；不接受外部事件 JSON、密钥、
+远端 URL 或自定义空间。它不连接同步服务，也不证明跨设备在线同步或别名在线传播。
+
 ## Utilities
 
 ### `POST /reset`

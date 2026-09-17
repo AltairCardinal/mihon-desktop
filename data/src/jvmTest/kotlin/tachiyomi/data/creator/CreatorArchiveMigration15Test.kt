@@ -34,7 +34,7 @@ class CreatorArchiveMigration15Test {
         val migrated = legacyDriver()
         DatabaseMigration.migrateAtomically(migrated, 15, CreatorArchiveV2Contract.TARGET_SCHEMA_VERSION)
 
-        archiveTables(fresh).size shouldBe 20
+        archiveTables(fresh).shouldContainExactlyInAnyOrder(CreatorArchivePhysicalSchema.tables.map { it.name })
         archiveTables(migrated).size shouldBe 20
         queryLong(fresh, "SELECT COUNT(*) FROM author_archive_legacy_import_state") shouldBe 0L
         queryLong(migrated, "SELECT COUNT(*) FROM author_archive_legacy_import_state") shouldBe 0L
@@ -51,7 +51,7 @@ class CreatorArchiveMigration15Test {
 
         queryLong(driver, "PRAGMA user_version") shouldBe 16L
         archiveTables(driver).shouldContainExactlyInAnyOrder(
-            CreatorArchivePhysicalSchema.tables.map { it.name },
+            CreatorArchivePhysicalSchema.version16Tables.map { it.name },
         )
         queryLong(driver, "SELECT COUNT(*) FROM author_archive_creators") shouldBe 2L
         queryLong(driver, "SELECT COUNT(DISTINCT portable_key) FROM author_archive_creators") shouldBe 2L

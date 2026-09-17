@@ -114,6 +114,9 @@ class CreatorDiscoveryScheduler(
     /** Re-evaluates due author work now (deduplicated). Also used by library update completion. */
     fun runNow(): Job = schedule(CreatorDiscoveryRunScope.Due, null)
 
+    /** Settings changes use the same due-work query as periodic scheduling. */
+    suspend fun runIfDue(): Job? = if (hasDueWork()) runNow() else null
+
     /** Manual per-author check for the author detail screen; merges into a running occurrence. */
     fun runForCreator(creatorId: Long): Job = schedule(CreatorDiscoveryRunScope.Creator, creatorId)
 

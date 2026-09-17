@@ -96,6 +96,7 @@ class DILayerSplitContractTest {
     fun `initDataLayer and initDomainLayer are callable without network or UI layers`(
         @TempDir tempDir: File,
     ) {
+        initDesktopConfigurationForTest(tempDir, tachiyomi.core.common.preference.InMemoryPreferenceStore())
         val handler = initDataLayer(tempDir)
         assertNotNull(handler)
         initDomainLayer(handler)
@@ -106,6 +107,7 @@ class DILayerSplitContractTest {
     fun `manga detail category dependencies resolve after data and domain init`(
         @TempDir tempDir: File,
     ) {
+        initDesktopConfigurationForTest(tempDir, tachiyomi.core.common.preference.InMemoryPreferenceStore())
         val handler = initDataLayer(tempDir)
         initDomainLayer(handler)
 
@@ -128,6 +130,7 @@ class DILayerSplitContractTest {
     fun `desktop production repository imports rollback legacy rows before first author read`(
         @TempDir tempDir: File,
     ) {
+        initDesktopConfigurationForTest(tempDir, tachiyomi.core.common.preference.InMemoryPreferenceStore())
         initDataLayer(tempDir)
         DriverManager.getConnection("jdbc:sqlite:${File(tempDir, "mihon.db").absolutePath}").use { connection ->
             connection.createStatement().use { statement ->

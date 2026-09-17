@@ -3,7 +3,22 @@
 日期：2026-09-17。用户要求：完成GA-02后暂停roadmap实施并交接；不得自动启动GA-03。
 交接时状态：PAUSED。GA-01与GA-02均已通过独立审查/复审及批次验证；GA-02随本交接同批提交后按用户要求暂停。
 
-恢复记录（2026-09-17）：用户已明确要求从本交接继续执行，原暂停已解除。GA-03已完成全局设置、真实后台调度、取消关注边界及双端交互，通过独立限定复审与97项相关用例，提交`de65a9bc91`。GA-04已通过完整名称v5备份、双端恢复范围和限定修复复审，提交`e852c0d07e`。GA-05已通过关注同步旧键消费兼容、93项相关用例及限定复审，随本批提交完成；接下来为GA-06正式运行验收。当前进度与验收仍只以实施roadmap为准，以下为原暂停时的交接基线。
+恢复记录（更新至2026-09-18）：用户已明确要求从本交接继续执行，原暂停已解除。GA-03已完成全局设置、真实后台调度、取消关注边界及双端交互，通过独立限定复审与97项相关用例，提交`de65a9bc91`。GA-04已通过完整名称v5备份、双端恢复范围和限定修复复审，提交`e852c0d07e`。GA-05已通过关注同步旧键消费兼容、93项相关用例及限定复审，提交`f6e6b534df`。
+
+**当前恢复入口：GA-06 真机最终验收。** 代码首审和唯一限定修复复审APPROVED。全量暴露的测试隔离、旧历史schema夹具和DI前置均已定向修复；完整Desktop `ga06-desktop-complete`通过3117项（0失败，3项平台/模式条件跳过，无重试）。domain双端、data双端、Android应用、test-desktop、格式与finalParityAudit证据见roadmap：部分平台全量曾失败，失败路径已有定向绿灯，不能改写为首次全绿。
+
+Windows/macOS正式版本均为`0.11.19.45.f6e6b53`；Android正式签名APK为`0.19.4-aex.8`/code26，遥测与更新器关闭，尚未安装。双桌面正式运行时的固定关注序列、别名/主名/三频率、重启及新备份空库恢复均通过。Windows schema25用户库的隔离副本已升级27，711漫画/2922章节/10来源作品及原关系、角色、关注保留；真实漫画柜搜索《平行天堂》、打开对应记录、署名解析和重启仍唯一均通过。所有本次验收应用进程已停止，未动原桌面用户库。
+
+用户明确把Android真机安装/调试留到最后，待用户自行启动后继续，不主动连接、唤醒或安装。GA-06保持未勾选：真机旧版升级、署名直达、交互/主题/缩放及后台验收尚待完成。新产物可以供后续验收，不能因已构建而记真机通过。
+
+额外旧备份验证发现既有跨平台边界：Android原生备份在Windows隔离空库恢复为PARTIAL_FAILURE，66项`sourcePreferences`失败；Android键为`source_<ID>`，Desktop旧逻辑只接受纯数字。GA-04之前已有该逻辑，不是本批回归。漫画1157/章节41338/ACTIVE作者699落库，但未逐项比对原备份，不声称作者档案或关注完全等价；源偏好明确未恢复。本轮不扩张产品修复范围，后续须单独TDD和发布复验。
+
+发布产物：
+- [Windows EXE](<D:/Shell/Github/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.45.f6e6b53-unpacked/Mihon Desktop.exe>)。
+- [macOS x64 ZIP](D:/Shell/Github/mihon/app-desktop/artifacts/macos/Mihon-Desktop-0.11.19.45.f6e6b53-macos-x64.zip)，远端应用`/Users/altair/Applications/Mihon-Global-Author-Acceptance.app`，原远端仓库/应用未覆盖。
+- [Android签名APK](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.8-rc1/Mihon-Fork-0.19.4-aex.8-rc1-universal.apk)。
+
+用户快照、原生备份与本机运行证据仍位于仓库外`D:/Codex/home/tmp/mihon-ga06-20260917/`，不得提交。Mac仅保存固定脱敏验收数据于`/Users/altair/ga06-20260918/evidence`，没有传输用户库。当前验收状态以实施roadmap GA-06小节为准，以下为原暂停交接基线。
 
 ## 进度与提交
 

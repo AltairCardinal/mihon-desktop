@@ -25,9 +25,9 @@ data class ArchiveTableContract(
 )
 
 object CreatorArchivePhysicalSchema {
-    val tables = listOf(
+    /** Frozen archive introduced by migration 15; later identity tables must not appear in v16 fixtures. */
+    val version16Tables = listOf(
         table("author_archive_creators", "portable_key", ArchiveDeletionPolicy.SOFT_DELETE),
-        table("author_archive_identity_names", "name_text", ArchiveDeletionPolicy.RETAIN_HISTORY),
         table("author_archive_aliases", "creator_id,normalized_alias", ArchiveDeletionPolicy.CASCADE),
         table("author_archive_manga_links", "manga_id,creator_id", ArchiveDeletionPolicy.CASCADE),
         table("author_archive_source_works", "source_id,stable_source_url", ArchiveDeletionPolicy.SET_NULL_OR_RETAIN),
@@ -51,6 +51,18 @@ object CreatorArchivePhysicalSchema {
             "entity_type,legacy_key",
             ArchiveDeletionPolicy.RETAIN_HISTORY,
         ),
+    )
+
+    /** Complete current archive, including durable identity recovery and command records. */
+    val tables = version16Tables + listOf(
+        table("author_archive_identity_names", "name_text", ArchiveDeletionPolicy.RETAIN_HISTORY),
+        table("author_archive_identity_migrations", "migration_key", ArchiveDeletionPolicy.RETAIN_HISTORY),
+        table(
+            "author_archive_identity_migration_components",
+            "migration_key,component_key",
+            ArchiveDeletionPolicy.RETAIN_HISTORY,
+        ),
+        table("author_archive_identity_commands", "command_key", ArchiveDeletionPolicy.RETAIN_HISTORY),
     )
 
     private fun table(

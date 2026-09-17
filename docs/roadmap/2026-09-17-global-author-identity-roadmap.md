@@ -194,6 +194,36 @@
 
 **完成条件**：A1–A8有证据，所有必需平台产物路径/版本/结果明确，无阻塞缺口才勾选。某平台不可访问时记录真实阻塞，不能以另一平台通过关闭。预计6–10小时，墙钟另受构建队列、macOS连接和真机/图源可用性影响。
 
+**执行记录（GA-06进行中，未完成）**：
+- 前置GA-05已提交`f6e6b534df`，独立限定复审通过。延续实施/审查两角色；原实施会话不可用后按既有diff和协调器终态恢复实施者，不重做前五批。尚未运行最终全量或安装本轮产物。
+- macOS隔离仓库`/Users/altair/Github/mihon-global-author-release`基于GA-05提交，原仓库既有改动未动；x86_64、JDK21、Android36 SDK及本机代理入口已核对。正式构建待最终diff稳定，并使用独立dist/deploy路径。
+- Windows用户库只读快照保存在仓库外，SQLite完整性通过、schema25；迁移前711漫画/2922章节/13作者/13漫画作者关系/10来源作品/13来源作品角色/1关注，观察到1组ACTIVE精确同名多根。快照不纳入仓库或测试fixture；正式runtime升级后需核对收敛及数据保留。
+- Android目标fork仍为aex.7/code25，漫画柜扩展已安装。无凭据锁通过正常系统唤醒解除；一次USB中断后用户重新连接。已在原应用创建完整默认备份（不含敏感设置），设备Download与仓库外`D:/Codex/home/tmp/mihon-ga06-20260917/android-preupgrade.tachibk`各保留一份，1,566,913字节，gzip完整性通过；未称已完成恢复验证。拟正式版本aex.8/code26，遥测/更新器继续关闭。
+- 2026-09-18原版真机基线：漫画柜《平行天堂》→点击“冈本伦”实际出现三个同名选项的身份选择框，已取证后取消，未选择/创建身份。临时USB保持唤醒设置已恢复原值0，未安装本轮APK。
+- 新增测试模式身份/主名/周期/真实漫画署名动作及受限同步fixture，复用真实DI、身份用例、设置调度与inbox/projector/journal；固定fixture仅隔离profile可用。`ga06-http-red`、`ga06-sync-red`、`ga06-resolve-red`为入口缺失的行为红灯，后续focused闭环；中间陈旧revision夹具已按产品规则重读。`ga06-focused` PASSED/exit0/50s，主代理与独立审查核XML：profile5、身份HTTP1、原controller2，共8项零失败/错误/跳过；app spotlessCheck和diff检查通过。
+- GA-06代码首审APPROVED，无代码阻塞；不是发布完成。独立审查核profile/marker/数据库根及其他同步空间的写前防护、真实旧键因果路径、Android版本/签名限制。首审预算已使用，必要限定修复复审尚未使用。
+- 早期启动失败：执行工具在CreateProcess前拒绝`start`与代理组合，仅返回`blocked by policy`，无具体原因。用户明确确认后的原样唯一重试仍被拒绝，当时无PID/状态JSON/日志；未改壳、权限或入口绕过。随后用户明确指定改用`run`，启动已成功，旧策略阻塞解除。
+- 全量命令改为：`python scripts/gradle-coordinator.py run --key ga06-final -- .\gradlew.bat :domain:jvmTest :domain:testReleaseUnitTest :data:jvmTest :data:testReleaseUnitTest :app:testReleaseUnitTest :app-desktop:jvmTest -PincludeIntegrationTests=true :test-desktop:test :app-desktop:finalParityAudit spotlessCheck --console=plain`。会话UTF-8/SDK/临时代理前置见AGENTS。该次42秒后因唯一i18n base/strings.xml工作树CRLF失败；转LF后与HEAD/index字节一致、Git无差异。七项主要测试尚未执行，test-desktop为UP-TO-DATE。`ga06-final-remaining`继续未执行目标与未完成格式，未重复已通过验证；已发现契约/DI/迁移等失败，待按实际证据限定修复，不能记全量通过。
+- `ga06-final-remaining`因HTTP测试清理Preferences后未恢复全局Injekt，产生`Node has been removed`下载级联失败，已仅停止协调器进程树（CANCELLED/130）；data/Desktop中断、Android与audit未到达，不能作通过证据。`ga06-isolation-red`正确复现退出后binding泄漏；新隔离scope和finally恢复后断言通过。
+- 干净诊断还确认旧schema目录/历史v16混用、DI分层夹具缺config前置、作者设置factory直连repository违反架构及机器清单陈旧引用。限定修复未改迁移SQL或放宽guard：冻结v16原20表、当前完整24表，复用scheduler.hasDueWork，真实config前置，按实际符号更新清单。`ga06-review-fixes` PASSED/exit0/96s，domain13/data9/Desktop66共88项零失败/错误/跳过，domain/data格式与diff检查通过；下载用例实际先于HTTP运行，隔离证明来自HTTP退出后binding断言，不宣称执行顺序证据。唯一限定修复复审APPROVED：独立核对finally恢复、production到期查询、schema目录及机器清单，未放宽守卫；用户已明确批准追加一次Desktop全量及此前未完成验证，由原实施者串行执行。
+- 获批追加`ga06-final-approved`于2026-09-18 01:04实际运行，01:07仅停止该协调器进程树（CANCELLED/130）。新output确认另一处同类型污染：GA-03的`CreatorGlobalScheduleWiringTest`直接初始化全局DI并删除Preferences，没有恢复原Injekt，下载类随后出现`Node has been removed`；此前HTTP隔离修复仍有效，但没有覆盖这处独立入口。另发现`ExtensionRepoRepositoryPersistenceTest`历史v18迁移测试失败，正在限定诊断。由原实施者补该设置测试红绿与真实先后顺序回归，并检查本任务新增用例有无同类遗漏；本轮domain Android完整414项零失败/错误/跳过；data JVM/Desktop中断，data Android/app Android/audit未到。后续`ga06-ga03-isolation-red`以退出后binding断言正确复现，隔离scope/finally修复后`ga06-ga03-isolation-ordered`按显式类排序实际执行设置2→下载目录4→恢复19→重试15，共40项全绿；整命令因独立v18夹具仍失败而exit1，不称整绿。v18夹具已补齐该历史版本真实旧表，仅剥离18后新增对象，再执行原完整升级与读回断言；`ga06-v18-fixture-green` PASSED/25s，5项及data格式通过。仅修改2个测试文件，无production/迁移SQL变化；主代理核diff及XML，本任务范围同类扫描无第三处遗漏。用户已明确批准完成剩余验证阶段：先data/Android/audit后单独Desktop全量，已通过模块复用，新失败仅必要定向修复复验；预算20–60分钟，不扩审查轮次。
+- `ga06-format-final` app spotlessCheck通过（19s，UP-TO-DATE），Desktop无Spotless任务，三个文件仅人工机械整理导入，无行为变化。macOS隔离仓库已同步21个当前差异文件并逐SHA-256一致，未传用户数据，尚未构建；最终版本分配须协调两平台脚本，避免重复递增。GA-06保持未勾选、当前diff未提交，三平台正式验收待完成。
+
+后续验证（2026-09-18）：`ga06-remaining-platforms`完整运行18分38秒，exit1。data JVM45 suites/425项，仅历史v16夹具1失败，含1万/10万事件规模用例通过；data Android24 suites/233项全绿；finalParityAudit完成且NON_TERMINAL_IDS为空。app Android99 suites/475条执行记录（含既有自动重试），三个缺偏好模块前置的DI用例各失败三次，关注用例首轮超时后重试通过，不称该全量干净通过。原始168份XML已存忽略目录归档。仅修v16历史夹具及两处Android测试的真实PreferenceModule前置，无production/迁移SQL修改；`ga06-platform-fixes` PASSED/37s，data1+Android14共15项零失败/错误/跳过/重复执行，data/app格式通过。原有正确用例与本次受影响路径复验组成平台证据，不重复已通过规模测试。`ga06-desktop-complete`按默认执行配置单独进行完整Desktop集成测试，未使用诊断阶段的类排序或并行覆盖。
+
+**当前收口证据（2026-09-18，GA-06仍待真机）**：
+- 已验证的源码、测试、正式版本与记录随本批提交保存，GA-06因用户明确后置真机而保持未勾选。产物版本后缀取构建时前置HEAD `f6e6b53`，实际包含本批已审查diff；不是该旧提交的干净构建，不为填自身提交hash另造状态提交。
+- `ga06-desktop-complete` PASSED/4分1秒，412 suites/3117项，0失败/错误、3项条件跳过（Mac JXA、非headless Windows原生隐私、非release自定义周期），无重试；16个重名来自参数化显示名，不是重复重试。完整XML已归档忽略目录。前述平台失败定向关闭，已有通过证据复用。
+- `ga06-windows-build` PASSED/90秒，官方脚本build-only唯一递增44→45，正式扩展runtime安装验收通过。日志唯一`Final unpacked EXE:`为`D:/Shell/Github/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.45.f6e6b53-unpacked/Mihon Desktop.exe`，文件已核实。完整ZIP SHA-256 `e34d8864455b0ca764fa9b668a9c5912ba557635afd36201b7197c79a4017835`。
+- `ga06-macos-build-lf` PASSED/2分40秒，同版本45，独立app部署到`/Users/altair/Applications/Mihon-Global-Author-Acceptance.app`。初次Windows管道把CR附在mode参数导致立即失败，未分配版本；改UTF-8/LF临时启动文件后成功，未重复版本递增。用系统ditto归档并传回`app-desktop/artifacts/macos/Mihon-Desktop-0.11.19.45.f6e6b53-macos-x64.zip`，194339709字节，双端SHA-256一致：`7ead6097f2ca2bbb42b2abdf873cc9d61015c30a59afb3a4e1bcf34410e94a5a`。
+- `ga06-android-release` PASSED/2分17秒，R8开启、telemetry/updater关闭；既有证书v2/v3签名校验通过。APK为`app/artifacts/android/0.19.4-aex.8-rc1/Mihon-Fork-0.19.4-aex.8-rc1-universal.apk`，67940235字节，SHA-256 `5ee9e6a3d30770c640257318eba4fae78f03500e115830d6e8a51d5ce18f97fe`；未安装或操作真机。
+- Windows与macOS均使用上述真实发布产物和独立test-profile执行：固定旧键ADD→添加别名→切主名→daily/weekly/monthly→接收取消确认→旧ADD重放不复活→新ADD可关注→本地取消journal→重新关注→原生新备份。各自重启后状态保持，并在各自新空profile恢复为同一根/两名称/正确主名/关注true/monthly。Windows私有证据在`D:/Codex/home/tmp/mihon-ga06-20260917/`，Mac固定脱敏证据在`/Users/altair/ga06-20260918/evidence`；没有用户库传输、真实同步服务或系统桌面截图。该证据是headless production运行链，不冒充人工UI点击或Android真机。
+- Windows真实schema25隔离副本升级27：711漫画/2922章节/10来源作品保留；按最终根映射核原13条漫画关系和13条来源作品角色关系全部保留，角色与启用关注未丢；原ACTIVE姓名均唯一登记。真实漫画柜搜索返回《平行天堂》`/comic/23333/`，选择后复用既有漫画89，署名精确解析根13，重启后仍同根。升级后原生备份创建成功，原用户库未修改。
+- 额外原Android备份→Windows空profile返回PARTIAL_FAILURE。66个失败单位全部为`sourcePreferences`；Android使用`source_<ID>`，Desktop在`DesktopBackupRestorer`直接转Long，GA-04前已存在，非本任务回归。1157漫画/41338章节/699 ACTIVE作者落库且无相应失败单位，但未逐项比对源备份，不能声称完整恢复；图源偏好未恢复。记录为独立既有兼容问题，本轮未做产品修复或将该额外检查标为成功。
+- 本批超过8文件/400行，新增受限测试模式、跨模块接线验证、历史夹具修复和正式版本/证据是同一收口批次；没有拆分成无法独立验收的微提交。所有本次正式验收进程已关闭，用户数据/备份、运行脚本/日志及构建产物均不入源码提交。真机门槛仍开放，checkbox不勾选。
+
+用户最新设备安排（2026-09-18）：Android真机先拔走，安装/调试留到最后，由用户自行启动后再验收。先完成不依赖设备的Android单测与APK构建、Windows/macOS验收；不主动唤醒/操作设备，现有原生备份保留。该安排不是已通过真机验收。
+
 ## 5. 实施流程、预算与失败处理
 
 以上估算合计50–80有效工程小时，是范围估算，不是耗时承诺。2026-09-17用户已授权实现本roadmap并标记完成任务；初始执行使用GPT-5.6 Sol medium、独立验收使用GPT-6 Astra medium；用户后续明确撤销模型指定，新增子代理使用默认继承配置并遵循AGENTS调度规则。保持实施与独立验收两个角色串行交付，每批1轮审查及必要时1轮修复复审，最终全量组合1次；GA-01已另获追加1次限定修复审查授权，见该批证据。构建等待与外部环境故障另列，不重复进行历史站点身份调查。

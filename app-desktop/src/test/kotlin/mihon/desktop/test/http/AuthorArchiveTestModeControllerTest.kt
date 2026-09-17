@@ -31,6 +31,9 @@ class AuthorArchiveTestModeControllerTest {
         coEvery { repository.unfollowCreator(7, syncContext = SyncMutationContext.User) } returns Unit
         val archive = mockk<CreatorArchiveRepository>()
         coEvery { archive.getDiscoveries(200) } returns emptyList()
+        coEvery { archive.getIdentitySnapshot(7) } returns tachiyomi.domain.creator.model.CreatorIdentitySnapshot(
+            7, 0, "Author", listOf("Author"), null, false,
+        )
         val scheduler = mockk<CreatorDiscoveryScheduler>()
         every { scheduler.state } returns MutableStateFlow(CreatorDiscoveryTaskState())
         val controller = AuthorArchiveTestModeController(repository, archive, scheduler)
@@ -55,6 +58,9 @@ class AuthorArchiveTestModeControllerTest {
         coEvery { repository.getFollowedCreators() } returns emptyList()
         val archive = mockk<CreatorArchiveRepository>()
         coEvery { archive.getDiscoveries(200) } returns emptyList()
+        coEvery { archive.getIdentitySnapshot(7) } returns tachiyomi.domain.creator.model.CreatorIdentitySnapshot(
+            7, 0, "Author", listOf("Author"), null, false,
+        )
         val scheduler = mockk<CreatorDiscoveryScheduler>()
         every { scheduler.state } returns MutableStateFlow(CreatorDiscoveryTaskState())
         val controller = AuthorArchiveTestModeController(repository, archive, scheduler)

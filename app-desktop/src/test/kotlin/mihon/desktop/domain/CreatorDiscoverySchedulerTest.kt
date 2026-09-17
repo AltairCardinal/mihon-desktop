@@ -40,6 +40,24 @@ class CreatorDiscoverySchedulerTest {
     @TempDir lateinit var directory: Path
 
     @Test
+    fun `settings reevaluation only schedules when the shared due query finds work`() = runTest {
+        var due = false
+        var calls = 0
+        val scheduler = scheduler(
+            hasDueWork = { due },
+            discoverDue = { calls++; result(completedSources = 1, totalSources = 1) },
+        )
+        assertEquals(null, scheduler.runIfDue())
+        assertEquals(null, scheduler.taskSnapshot())
+        assertEquals(0, calls)
+        due = true
+        scheduler.runIfDue()!!.join()
+        assertEquals(1, calls)
+        assertEquals(TaskStatus.Completed, scheduler.taskSnapshot()?.status)
+        scheduler.stopAndJoin()
+    }
+
+    @Test
     fun `runNow registers a network constrained task and completes on full success`() = runTest {
         val scheduler = scheduler(
             discoverDue = { result(completedSources = 2, totalSources = 2) },
