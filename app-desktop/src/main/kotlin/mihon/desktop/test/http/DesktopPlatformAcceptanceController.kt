@@ -46,6 +46,17 @@ internal class DesktopPlatformAcceptanceController(
     private val expectedTokenBytes = expectedToken.toByteArray()
     private val consumed = AtomicBoolean()
 
+    fun openWebsite(providedToken: String?, url: String): Result<Unit> = runCatching {
+        check(tokenFailure(providedToken) == null) { "Website acceptance authorization rejected" }
+        val uri = java.net.URI(url)
+        require(uri.scheme == "http" && uri.host in setOf("127.0.0.1", "[::1]") &&
+            uri.port in 1..65535 && uri.userInfo == null && uri.fragment == null) { "Website acceptance requires a loopback HTTP target" }
+        check(consumed.compareAndSet(false, true)) { "Website acceptance authorization already consumed" }
+        DesktopExternalActionPolicy.allowSingleWebsiteAcceptance(uri) {
+            mihon.desktop.platform.DesktopUrlOpener.open(url).getOrThrow()
+        }
+    }
+
     suspend fun share(providedToken: String?, kind: PlatformShareKind): PlatformShareAcceptanceResult {
         val failure = tokenFailure(providedToken)
         if (failure != null) return rejected(kind, failure)

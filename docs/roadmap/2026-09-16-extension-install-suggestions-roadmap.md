@@ -1,9 +1,9 @@
 # 收藏缺失插件「建议安装」完整实施 Roadmap
 
 - 日期：2026-09-16
-- 状态：IN_PROGRESS；已获准实施，EIS-01 至 EIS-04 已完成，EIS-05 待实施，完成状态以第 4 节批次勾选为准。
+- 状态：COMPLETE（2026-09-17）；EIS-01 至 EIS-05 全部完成。完整测试、独立审查和三端正式运行证据见第 9 节，checkoff 与最终修复纳入同一功能提交。
 - 类型：产品 child plan；进度从第 4 节第一个未勾选批次推导，不另设活动任务字段。
-- 父路线：[Android / macOS / Windows 正式 Roadmap](2026-06-30-mihon-desktop-refactor-roadmap.md)。本稿登记为待执行专项，不切换父计划当前执行指针，不恢复其他专项。
+- 父路线：[Android / macOS / Windows 正式 Roadmap](2026-06-30-mihon-desktop-refactor-roadmap.md)。本专项已完成并同步父计划登记；不切换父计划执行指针，不恢复其他专项。
 - 产品依据：[需求与技术可行性](../2026-09-16-extension-install-suggestions-requirements.md)；已通过的 [HTML DEMO](../prototypes/multi-device-sync/index.html)，交互提交 `2289a939f`。
 - 唯一专项进度权威：本文件的批次清单与完成证据。若涉及已有 capability，机器状态仍以 `app-desktop/src/test/resources/parity/parity-manifest.json` 为准；本轮不修改其状态。
 
@@ -80,7 +80,7 @@
 - [x] EIS-02：双端建议分栏与完整单项操作、本地偏好及数据隔离。
 - [x] EIS-03：共享批次编排、安装入口去重与 Desktop 全部安装闭环。
 - [x] EIS-04：Android 全部安装、系统交互与生命周期闭环。
-- [ ] EIS-05：跨端集成收口、正式产物与真实运行验收。
+- [x] EIS-05：跨端集成收口、正式产物与真实运行验收。
 
 依赖为 EIS-01 → EIS-02 → EIS-03 → EIS-04 → EIS-05。EIS-01 的共享契约同时服务两端；EIS-03 的安装仲裁必须完成独立检查后 EIS-04 才消费它。两端共享 ScreenModel/安装边界多，默认串行交付，不为追求并行制造冲突。
 
@@ -194,7 +194,7 @@ EIS-01 是有真实消费方的内部能力，EIS-02 是可用的单项建议功
 
 行为变化严格先红、再最小绿、再重构复验；UI wiring 不能只有 domain 测试。测试扫描源码或在测试中复制实现逻辑不算证据。已有测试仅在覆盖当前真实路径且 wiring 损坏会失败时复用。
 
-Windows 环境与串行 Gradle 示例（计划命令，尚未执行）：
+Windows 环境与串行 Gradle 命令模板（实际执行及有效证据见第 9 节）：
 
 ```powershell
 $ErrorActionPreference = 'Stop'
@@ -209,7 +209,7 @@ python scripts/gradle-coordinator.py run --key eis-focused -- gradlew.bat :domai
 python scripts/gradle-coordinator.py run --key eis-platform -- gradlew.bat :app:testReleaseUnitTest --tests '<实际Android测试类>' :app-desktop:jvmTest --tests '<实际Desktop测试类>' --max-workers=2
 
 # EIS-05 唯一完整集合；包含受影响共享模块的两目标，不能只测 app。
-python scripts/gradle-coordinator.py run --key eis-final -- gradlew.bat :domain:jvmTest :domain:testReleaseUnitTest :data:jvmTest :data:testReleaseUnitTest :app:testReleaseUnitTest :app-desktop:jvmTest :test-desktop:test spotlessCheck --max-workers=2
+python scripts/gradle-coordinator.py run --key eis-final -- gradlew.bat :domain:jvmTest :domain:testReleaseUnitTest :data:jvmTest :data:testReleaseUnitTest :app:testReleaseUnitTest :app-desktop:jvmTest :test-desktop:test spotlessCheck -PincludeIntegrationTests=true --max-workers=2
 ```
 
 需要访问境外依赖时先设会话 HTTP_PROXY/HTTPS_PROXY，Gradle JVM 按现有规则另传正确引用的代理参数；SDK 先核验实际 android.jar/aapt2/adb 文件。设备 instrumentation 命令依当前 release runner、包身份及连接设备确定，在 EIS-04 开始前写入本节实际证据，不凭历史硬编码安装。
@@ -380,6 +380,58 @@ python scripts/gradle-coordinator.py run --key eis-final -- gradlew.bat :domain:
 - PI prepare PID9978/session1233159300；仅 kill 该 PID 后同一 task263/Activity record 保留，真实 SessionInfo 返回准确包名及自身 installer，原设备 red 留存。最初 probe 因前次已删除测试包的旧卸载窗口置顶/未等待前台而未到 prepare；正常关闭后夹具明确 awaitForeground，未改产品行为。`eis04-api36-pi-session-green.log` OK(1)/5.501s：新 APK 原 session1233159300 初始化即 busy，原窗口确认后真实 callback→库存自动 published→预留释放；markers 为 PID9978→10876/noReplay=true，未主动调用刷新、未重建 session。设备生命周期门槛已闭合，最终批次检查见下。
 - 一次 Shizuku runner 在 case 前出现 NotificationManager 以 com.android.chrome 身份发送通知异常，重启后后续必需设备用例未再出现；仅保留未归因观察，不宣称修复、不作为 Shizuku 行为红。
 
-**最终验收（2026-09-17）**：`eis04-focused-final` PASSED / exit 0（4m12s），原始 XML 19 suites / 219 项：domain JVM 15、domain Android 15、app 186、Desktop 3，failure/error/skipped 均为 0；包含最终 Android instrumentation 编译。原始 XML 归档 `.gradle-coordinator/eis04-focused-final-xml/`，按目标目录隔离。`eis04-readonly-format` PASSED / exit 0（28s），仅用忽略目录中的 init 限定本批文件 target，保留原 ktlint 1.8.0 / 120 字符规则，不传 `spotlessIdeHook`；Check 实际执行或 UP-TO-DATE，无 SKIPPED。前面的 IdeHook 仅排版，不计只读检查；临时排版规则未进入仓库。Desktop 沿用编译/行为测试及 diff-check，无 Spotless 插件。最终 `git diff --check` 通过。
+**最终验收（2026-09-17）**：`eis04-focused-final` PASSED / exit 0（4m12s），原始 XML 19 suites / 219 项：domain JVM 15、domain Android 15、app 186、Desktop 3，failure/error/skipped 均为 0；包含最终 Android instrumentation 编译。原始 XML 归档 `.gradle-coordinator/eis04-focused-final-xml/`，按目标目录隔离。`eis04-readonly-format` PASSED / exit 0（28s），仅用忽略目录中的 init 限定本批文件 target，保留原 ktlint 1.8.0 / 120 字符规则，不传 `spotlessIdeHook`；当时 Check 报实际执行或 UP-TO-DATE、无 SKIPPED；EIS-05 后续发现绝对路径字符串 target 可能为空匹配，因此不再单凭这份历史 scoped 记录断言覆盖，最终以 EIS-05 原规则无 scope 全量 spotlessCheck 通过为有效覆盖。前面的 IdeHook 仅排版，不计只读检查；临时排版规则未进入仓库。Desktop 沿用编译/行为测试及 diff-check，无 Spotless 插件。最终 `git diff --check` 通过。
 
 主代理已独立核对关键协议、修复影响路径、219 项原始 XML 和真实设备证据；主代理接管切片也由实施代理独立审查。所有本批阻塞关闭，checkoff 与 production、测试、维护文档纳入同一功能提交，hash 随回执提供。API36 验收身份临时未知来源许可通过系统设置恢复关闭，Shizuku 授权已正常 Deny；没有更改既有 fork 或物理设备。EIS-05 仍未完成：完整 Android/Desktop（含 integration）验证、Test Mode 与正式三平台产物在下一批执行；本批 debug APK 不作为正式交付。
+
+
+### EIS-05 已完成（完整测试、正式三平台运行及定向修复均已验收）
+
+复用同一实施代理承担 Test Mode、Windows/Android 发布与唯一 Windows Gradle/ADB；主代理独立审查并负责 Mac 隔离构建，另外接管单个既有 Android instrumentation 文件的正式操作验收切片，由实施代理独立核对后执行。没有新增代理、测试服务或同步协议。
+
+运行维护约定：
+
+- Desktop 复验入口为 `python scripts/validate-extension-suggestions-runtime.py --executable <实际正式可执行文件> --output <新的隔离证据目录>`；macOS 使用 `python3` 和 app 内 `Contents/MacOS/Mihon Desktop`。只使用已核对身份的正式产物，保留仓库内受控 fixture；输出目录不得复用普通用户配置。
+- macOS 经 SSH 直接运行 GUI launcher 曾因 headless 会话失败；改用 NSWorkspace 后以真实应用 PID 与 libproc 启动身份跟踪。大小写别名以 samefile 核对文件身份，不按路径字符串误判。LaunchServices 无法提供子进程退出码，证据明确标记 `exitStatusAvailable=false`；以原进程身份消失证明退出，不能伪造 exit 0。启动身份无法确认时保留失败及清理状态，不终止不明进程。
+- Android 正式验收使用 `-I scripts/android-fork-release.init.gradle '-Pmihon.testBuildType=release'` 构建 host 与独立 instrumentation APK，再用既有签名脚本签名。PowerShell 中该 `-P` 参数须整体引用。host 的精确跨 APK ABI 保留规则适用于普通 release；新增验收调用时核对实际编译后的方法、字段及外部类型，不因测试失败关闭 host 的 R8。
+- Android 界面 prepare/verify 必须由真实操作建立前置、以不同 PID 验证；失败后先检查私有 receipt，恢复前置后再运行，不能手工伪造成功状态。安装方式在修改前落盘保存，清包、SQL/仓库、偏好及服务器清理分别保留失败证据；仅清理摘要、包名、源 ID 与 URL 等完整身份均确认的本任务 fixture。
+- Android 界面验收通过真实 accessibility 和触摸操作定位；网站返回会保留列表偏移，批次 Flow 终态也可能早于 Compose 节点更新。先确认插件页已选中，再在纵向容器中找回标题或批次操作；行操作按准确名称和同一行范围定位，在当前自有建议视口内有界双向滚动。禁止依赖固定屏幕坐标、夹具数组顺序，或用直接业务调用替代应验收的点击。
+- Android 插件广播的异步加载结果必须服从同包最新事件：Receiver 为当前加载保存一次性身份，卸载或更新请求使旧身份失效，核验与 listener 通知和卸载失效操作共用锁；真实加载在锁外执行，不取消其它包的加载。完成或失败仅清除自己的身份，避免旧任务误删新请求及累计历史包。旧结果不得重新加入已卸载的插件或覆盖更新后的状态。
+
+- Test Mode 追加既有 `extension_` action：建议状态/实际关联源与收藏计数、来源身份选择、本地折叠/忽略/撤销、单项安装、网站选择、固定清单请求/显式替代/确认/撤销、批次继续/重试/停止。所有业务调用既有 ScreenModel/panel/batch。确认 ID 不接受调用方任意产物；捕获 batch ID，由共享 controller 原锁内执行 expectedBatchId 比较，防旧 HTTP 确认消费新 UI 批次。
+- 浏览器默认 Test Mode 保护保留。仅既有 platform-acceptance token 请求头可授权一次完整 URI 匹配的 loopback HTTP 网站，必须有显式端口、无用户信息或 fragment；token 与 share 共用一次性 CAS，不进入 action 参数、快照或文档。ThreadLocal 许可同步消费并在异常时清理，其他外部动作保持禁用。实际浏览器 GET 留给正式运行验收，不把 AWT mock 当 OS 证据。
+- `extension_suggestion_show` 复用既有 TestNavigationController 请求 Browse→插件，只有实际扩展内容分支挂载后才确认显示，未挂载不确认；不以 HTTP 预设 currentScreen 或 DI 快照冒充窗口显示。
+- 有效红包括 HTTP 缺 action、身份操作/固定确认、来源变更选择、旧确认误启动新批次，以及实际 Browse 消费缺失；共享 generation 红为三个路径均错误放行，修复后 JVM/Android 各 10 项通过。`eis05-testmode-green` PASSED，5 类 23 项全零；`eis05-browse-navigation-green` PASSED，Rendered 9＋TestMode 10＋Website 2 共 21 项全零。单项动作夹具原先等待随后立即清除的瞬时 Installed/raw state，已改为真实 service 调用屏障，仅证明分派；真正安装成功仍由正式库存/loader 核验。`eis05-format-instrumentation` PASSED（1m37），Android instrumentation 编译有效；该轮 scoped target 后来发现绝对路径字符串未匹配实际文件，不作为格式证据。目标已改为明确 FileCollection，最终以实际匹配的检查及未限定全量 spotlessCheck 为准，不扩大历史 scoped 证据。
+- 组合编辑/验证命令一次在 CreateProcess 前被策略拒绝，未执行；按已有授权使用正常文件编辑工具与独立可读协调器 run 后成功，不改安全配置、不隐藏命令。
+- 共用验收脚本 `scripts/validate-extension-suggestions-runtime.py` 使用 Python 3.9 标准库、既有 `--test-profile=<absolute>` marker/隔离 PreferencesFactory、真实窗口/HTTP 接口和两份仓库受控 JAR/APK。仅在自己的已退出隔离 profile 中向应用生成的真实 SQL 写 owned 收藏与 loopback 仓库；先核四产物摘要。实际 source IDs/语言为 2919241217/en、2919241218/zh、11403285/en，与 Android probe 一致。浏览器访问使用独有路径 GET；批次故障/停止用同一本地 HTTP fixture，不替换真实校验或 loader。脚本保存自己的 PID/profile 和失败清理证据，不清普通配置，未终态句柄不得丢弃。语法/fixture 哈希预检通过；随后 Windows/macOS 正式 runtime 均已通过，最终证据见下。
+- 正式 Android 版本配置及签名前置 badging 已递增至 26 / 0.19.4-aex.8；安装前核对 API36 为 25/aex.7、API26 为 19/aex.1，随后均原位升级至 code26。R8/非 debug/既有 fork 证书约束保留。正式 instrumentation 须显式 `eisForkReleaseAcceptance=true`、严格 fork 包名、非 debuggable 与专用模拟器；默认仍仅验收 debug 身份，进程恢复 receipt 入口不放宽。
+- 构建前 Desktop AppVersion 为 0.11.19.39；源码冻结后两主机从同一输入由正式 build-only 各增一次至 0.11.19.40.a9e561a，没有把 Windows 已加 BUILD 的文件再送 Mac 重加。最终唯一完整集合包含 `-PincludeIntegrationTests=true`，保留 live-network/network-survey/既有全站普查排除边界；实际结果与限定修复见下。
+
+- 唯一完整集合 `eis05-final-full` 的 domain JVM 506 / Android 440、data JVM 357 / Android 225 均全零；test-desktop 52 项来自本轮有效 Gradle cache。Desktop 3115 项发现能力清单 19 处源码行号漂移及旧 LibraryScreenModel fixture 在 SQL/主 dispatcher 清理后的悬挂协程；另有 3 个既有条件跳过（macOS 专属、headless 窗口、非 release BuildInfo），不计通过。app 旧 Wiring 测试在新 Busy 契约下等待未释放的 NonCancellable 闸门，保存线程、日志、已完成模块 XML 与 app binary 后，仅停止协调器归属进程树，整轮记 CANCELLED，未完成的 app 旧 XML 不作本轮证据。
+- 限定修复仅更新 manifest 的 roleEvidence.line，并让 Desktop fixture cancelAndJoin 自有 model 后才关闭 SQL；Android Wiring 断言清理期间 Busy、不替换 owner、真实释放后重试，finally 必释放闸门。`eis05-final-repair-focused` PASSED / 54s：Wiring 14＋Desktop parity 34 / SyncPanel 2 / LibraryHttp 5 / Enhanced 9，共 64 项全零。未改生产逻辑，替换对应类后 Desktop 等价完整证据为 3115 项、零失败/错误、3 条件跳过。
+- `eis05-final-app-resume` 补齐被中断 app 与 instrumentation 编译、原规则无 scope/IdeHook 的全量 spotlessCheck，PASSED / 6m08s；原始 548 次执行含 Category 首次 UncaughtExceptionsBeforeTest 后重试通过。完整 cause 定位到 AppModule fixture 只 cancel 未等 manager scope 结束便还原 Injekt；改为 cancelAndJoin 后 `eis05-final-app-cleanup` PASSED / 46s，AppModule 1＋Category 2 全零。合并有效 app 为 547 项全零，不把重试失败隐去或增加一次全量重跑。原始 XML 分别归档 final-full-xml / final-repair-focused-xml / final-app-resume-xml / final-app-cleanup-xml。
+- Windows 正式 `eis05-windows-release` build-only 已通过，脚本分配 BUILD 39→40，版本 0.11.19.40.a9e561a；真实 production APK 安装/加载的既有构建验收通过。建议专项 runtime 首轮完成真实 Browse、三个浏览器 GET、折叠/忽略重启后，因 fixture 目录把 Android APK applicationId 用作 JAR 包前缀而被真实校验拒绝；JAR 实际提供者身份为 aex00.external.v16 / v15，Android 为对应 .controlled，源 ID/签名一致。仅修目录夹具，不放宽生产校验；随后 eis05-windows-runtime-fixed 全流程通过。
+- Android `eis05-android-release-fixed` 正式 R8/资源压缩及 release instrumentation 构建 PASSED / 4m56s，原 fork 签名后仅 -r 将专用 API36 25/API26 19 升级至 26/aex.8，无清数据。首轮设备测试准确暴露跨 APK 的 BasePreferences.extensionInstaller 成员被 host R8 内联删除，未进入安装行为，不当作批次失败。已按编译后 instrumentation 实际 Methodref/Fieldref 补普通 release 的精确 ABI 保留规则：78 个项目方法、两个原 DEX 缺失字段，以及实际跨 APK 调用的七个外部类型边界；保留 R8 优化，不使用包通配或测试专用未压缩 host。`eis05-android-release-external-api` PASSED / 2m41s，该阶段 host SHA256 为 402aa270c4c09fe9aae0511fdc16f89a587dda5cdc0ed0d6f6c2b03d1a99bc5c。该阶段 UI verify 尚未完成；现已由下文最终修复、设备验收及收口记录替代。
+
+- Desktop 最终正式运行：Windows `eis05-windows-runtime-fixed/result.json` 与 Mac `eis05-macos-runtime-result.json` 均 success=true，各 8 次归属明确的真实 GUI 启动、3 个 OS 浏览器网站 GET，无遗留进程或 cleanupErrors；覆盖折叠/忽略重启、隔离 profile、部分失败/显式重试、真实安装和 loader、重启不回放、单项安装、跨普通入口去重及停止。Mac 使用 LaunchServices/NSWorkspace 真实应用 PID与libproc微秒身份；异常只按完整可执行文件身份、唯一profile/port/token收回自有进程，无法确认不发送终止，Windows仍用本次Popen。Mac为x64，未声称arm64运行验收。
+- Receiver 定向修复前，等价完整测试独立汇总为 5,242 项：5,239 通过、3 个既有条件跳过、零剩余失败/错误。原始完整轮 CANCELLED、app 首轮重试失败与限定替换证据均如实保留；没有第二次完整集合。后续新增四项见下方最终修复证据。
+
+- 正式 Android 设备夹具收口：巨型 runBatch 协程曾在真实 ART 出现 native abort（原 74,342 code units / 772 registers），仅拆出 UI/清理 helper 后为 45,222 / 561，保留真实调用、断言和 finally，不推断通用 ART 大小限制。API26 系统按钮仅修为严格包名、可点、可用条件下的大小写无关等值匹配。`eis05-android-fixture-split` PASSED / 3m10s；API26 Legacy 完整 OK(1)，API36 PRIVATE 与 PackageInstaller 取消/明确继续各 STATUS_CODE 0，但之后 AVD/runner 消失，组尾缺失不当作完整组终态，后续发现的精确 owned SQL/repo 残留已核身份清除。原因未证实，未 wipe 或加载旧 snapshot。
+- API36 正式 Shizuku `eis05-api36-release-shizuku-clean.log` 完整 OK(1) / 28.994s，真实 R8 host→Shell 协议→双包安装及 finally。临时 fork 授权已通过正常 Shizuku 管理 UI 恢复原关闭状态；未知来源原 allow 未更改。首次旧夹具 native abort 前未保存原 installer/isSet，无法倒推确认该最初值已恢复；后续增加修改前持久 receipt、异常重入恢复及各清理步骤独立 finally，保护此后的精确原状态，不能用新 receipt 补称历史恢复。
+- 正式 UI 定位修正已独立复核：`eis05-ui-viewport-snapshot` 编译通过；`eis05-api36-ui-prepare-snapshot.log` 完整 OK(1) / 73.097s，PID10917，三个真实网站请求及忽略/折叠齐全。诊断确认 accessibility 的标题与祖先边界会短暂不一致，无法确认视口时不触摸，重新获取后成功；不放宽实际容器和屏幕边界。
+- 历史间歇失败：真实 force-stop 后 `eis05-api36-ui-verify-snapshot.log` PID11204 失败于 15s 等待；随后清理发现内存仍有 v16、受控私有文件已不存在。当时未确认具体事件顺序，没有把“活跃事务先后顺序”或晚到广播当成已证实原因。原日志、PID logcat 与只读磁盘/SQL 状态已保存；精确 owned 收藏 44–46 和 loopback 仓库 36493 的残留已核身份清除并复查零条，偏好恢复已核验。随后仅增加命名阶段及真实 Flow 观察定位，没有人工刷新或重跑全量。
+- 命名阶段/只读 Flow 诊断版 `eis05-ui-inventory-abi` 编译通过（3m49s）；`eis05-api36-ui-prepare-inventory.log` 完整 OK(1)/7.833s，显式 force-stop 后 `eis05-api36-ui-verify-inventory.log` 完整 OK(1)/5.985s，PID11853→12151。真实三网站请求、折叠忽略重启、v16 单项安装、卸载后重新建议、固定双项部分失败、普通入口 Busy/仅一次 GET、真实 Retry failed→Install selected(1)、双项成功及建议消失均通过。`eis05-api36-release-ui-final-markers.log` 保存顺序；`eis05-api36-final-cleanup.json` 核验专用 AVD、自有 SQL/仓库 0/0、系统包空、两私有文件不存在、两个 receipt 空及 UI 偏好恢复 unset；原未知来源 allow 保留。此轮通过不解释 PID11204 的间歇失败，当前仅追加真实 Receiver 异步加载与卸载顺序的可控 focused 复现，不重复设备试运气。
+- 卸载后旧加载回写已通过真实 `ExtensionInstallReceiver.onReceive` 与 Deferred 加载屏障取得准确行为红：`eis05-receiver-order-red` 的 ADDED/REPLACED 两种场景都在 `removed` 之后错误发出 `installed/updated` 和 `changed`。两项因既有重试策略共执行六次，均准确失败，不计六个独立场景。按上述一次性身份修复后，`eis05-receiver-order-green` PASSED / 1m03s，Receiver 4＋Manager 29＋Wiring 14 共 47 项、失败/错误/跳过均零；另两项覆盖同包替换时旧清理不删新请求及不同包独立。主代理已独立核对实际 diff、红绿原始 XML、锁边界与清理；PID11204 未逐事件追踪，保留“与此竞态一致”的因果限制。新增四项后等价完整证据为 5,246 项（5,243 通过、3 条件跳过），未重复完整集合。此修复已纳入下文最终正式 R8 产物并完成受影响设备回归。
+- Receiver 修复后 `eis05-android-receiver-release` R8 构建 PASSED / 2m47s，中间 host SHA `49c60b62c44de5c4642acefaaf61d93b7cb075e1cf0021970de11020a1ef68d8`。prepare 完整通过，但 verify 在真实卸载后页面重组时崩溃；R8 mapping 将 `SourceIcon:106` 精确映射到 `ExtensionManager.getAppIconForSource:199` 对已消失包元数据的强制解引用。旧 Source 暂时仍在页面上是合法窗口，沿用现有空图标/默认图反馈即可，不改 UI 架构。
+- `eis05-source-icon-red` 两项分别覆盖包信息空和 applicationInfo 空，均准确 NPE（含既有重试共六次）；最小修改只在缺元数据时返回 null，不写空缓存，保留正常 loadIcon/cache。`eis05-source-icon-green` PASSED / 1m01s，Receiver 4＋Manager 31＋Wiring 14 共 49 项、失败/错误/跳过均零，主代理独立审查通过。精确 owned 仓库 41971 和三条收藏清理后 0/0，UI 偏好按崩溃前 receipt 的原 isSet=false 恢复；安装器原值由持久 receipt 在下次验收恢复。最终等价完整证据为 5,248 项（5,245 通过、3 既有条件跳过），仍只有一次完整集合；新 Android host 与受影响设备回归正在执行，中间产物不当作最终验收。
+
+- 三端稳定交付路径（不含 instrumentation 安装包）：Windows [Final unpacked EXE](D:/Shell/Github/mihon-eis/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.40.a9e561a-unpacked/Mihon%20Desktop.exe)，SHA256 `05142991769a68175bfb0b00b838a7bd84aafc5a3aa55afc12d6ab88f669f1d0`；macOS x64 [ZIP](D:/Shell/Github/mihon-eis/app-desktop/artifacts/macos/Mihon-Desktop-0.11.19.40.a9e561a-macos-x64.zip)，SHA256 `98deab8a6e49c16136426a8f7f8fab4fd2208b57d6bcbad8b2e5def767a7814e`，实际验收 app 位于 `/Users/altair/Github/mihon-eis/app-desktop/artifacts/macos/Mihon-Desktop-0.11.19.40.a9e561a.app`；Android [正式 APK](D:/Shell/Github/mihon-eis/app/artifacts/android/mihon-desktop-fork-0.19.4-aex.8-eis-release.apk)，SHA256 `16d26af5479dd338967ca4fe1ce8015a6e851280a561984c01c8946b90db04f1`。Android 原 fork 证书 SHA256 `bd8e3af75921fc4356deacabd44a3d491fda8439ffbc7d073c363974a648cae3`，code26 / aex.8，实际非 debuggable、R8、v2/v3 签名均复核；仅专用 API26/API36 模拟器验收，未操作或声称实体手机通过。Desktop 同源同版本 BUILD40，Mac 未验收 arm64。
+
+
+**EIS-05 最终收口（2026-09-17）**：`eis05-android-icon-release` 正式 R8 构建 PASSED / 2m52s，最终 host SHA256 `16d26af5479dd338967ca4fe1ce8015a6e851280a561984c01c8946b90db04f1`，code26 / aex.8，原 fork 证书与 v2/v3 验签通过、非 debuggable。两专用模拟器实际安装文件摘要均与交付 APK 相同（`eis05-final-android-device-hashes.json`）。本最终产物包含 Receiver 过期回写和图标空元数据两项修复，旧 402aa / 49c60 产物仅为历史证据。
+
+- API36 `eis05-api36-ui-prepare-icon.log` 完整 OK(1)/51.552s，显式 force-stop 后 `eis05-api36-ui-verify-icon.log` 完整 OK(1)/51.034s；PID13863→14149。三个真实网站请求、忽略/折叠跨进程、实际单装/卸载重新建议、固定双项部分失败、普通入口 Busy/单次 GET、真实 Retry failed→Install selected(1)、成功排除均通过；完整 markers 见 `eis05-api36-ui-icon-final-markers.log`。
+- API36 `eis05-api36-packageinstaller-icon.log` 完整 OK(1)/47.013s；`eis05-api36-shizuku-icon.log` 完整 OK(1)/46.35s。API26 `eis05-api26-legacy-icon.log` 完整 OK(1)/95.216s。复验仅针对本次 Android 修复，不重跑无变化 Desktop 构建或完整测试集合。
+- `eis05-api36-final-icon-cleanup.json` / `eis05-api26-final-icon-cleanup.json` 独立核验 AVD 身份、自有 SQL/仓库 0/0、系统包空、两私有文件不存在、receipt 空或未创建、UI 两偏好恢复 unset。当前安装器分别 PACKAGEINSTALLER/LEGACY，原 unknown-sources allow 保留，Shizuku 临时 fork 授权已正常 UI 恢复关闭；最初旧夹具未保存 installer 原值的历史限制仍如上，不伪造恢复证据。API26 仅关闭本次归属的 AVD，API36 保留，无运行中的 Gradle 或验收 runner。
+- 主代理独立审查最终 production/测试差异并核对原始 XML、正式运行/签名日志与三端文件实际摘要。最终有效测试 5,248 项：5,245 通过、3 个既有条件跳过、零剩余失败/错误；原失败、重试和取消记录均保留。原规则全量格式检查及最新受影响文件检查通过，最终差异检查通过。
+- 本批超过估算文件数/行数，仍为一个内聚交付：同一建议能力的 Test Mode 接线、真实三平台运行脚本、Android 发布 ABI 与实际验收暴露的卸载竞态修复须一起交付。没有新增产品导航、同步协议或独立服务；维护约定、测试与本 checkoff 纳入同一 EIS-05 提交，不单独提交状态推进。

@@ -517,6 +517,8 @@ class ExtensionSuggestionRenderedTest {
 
     @Test
     fun `actual Browse extension entry opens website repositories and migration and keeps diagnosis visible`() = runBlocking {
+        val testModeBefore = mihon.desktop.test.state.applicationState.testMode
+        mihon.desktop.test.state.applicationState.testMode = true
         val source = ExtensionSourceDescriptor(71, "ja", "My source", "https://source.example")
         val artifact = ExtensionArtifact("Suggested Reader", "pkg.reader", "1.6.1", 1, "ja", false,
             listOf(source), RepositoryIdentity("https://repo.example", "Repository", "key"),
@@ -552,6 +554,12 @@ class ExtensionSuggestionRenderedTest {
         every { DesktopUrlOpener.open(any(), any()) } returns Result.success(Unit)
         try {
             model.refresh().join()
+            val testController = mihon.desktop.test.http.SourceExtensionTestModeController(model)
+            assertTrue(testController.execute("extension_suggestion_show").success)
+            val beforeMount = kotlinx.serialization.json.Json.encodeToJsonElement(
+                mihon.desktop.test.http.SourceExtensionTestSnapshot.serializer(), testController.snapshot(),
+            ) as kotlinx.serialization.json.JsonObject
+            Assertions.assertEquals(kotlinx.serialization.json.JsonNull, beforeMount.getValue("displayedRequestId"))
             scene.setContent { MaterialTheme {
                 CompositionLocalProvider(
                     LocalDesktopUiDependencies provides dependencies,
@@ -563,9 +571,11 @@ class ExtensionSuggestionRenderedTest {
                     }
                 }
             } }
-            renderUntil(scene, "Extensions")
-            click(scene, "Extensions")
             renderUntil(scene, "Suggested Reader")
+            val displayed = kotlinx.serialization.json.Json.encodeToJsonElement(
+                mihon.desktop.test.http.SourceExtensionTestSnapshot.serializer(), testController.snapshot(),
+            ) as kotlinx.serialization.json.JsonObject
+            assertTrue(displayed.getValue("displayedRequestId") != kotlinx.serialization.json.JsonNull)
             click(scene, "Open website")
             io.mockk.verify(exactly = 1) {
                 DesktopUrlOpener.open("https://source.example", any())
@@ -596,6 +606,8 @@ class ExtensionSuggestionRenderedTest {
             model.closeAndJoin()
             io.mockk.unmockkObject(DesktopUrlOpener)
             preferenceRoot.removeNode()
+            mihon.desktop.test.state.applicationState.testMode = testModeBefore
+            mihon.desktop.test.navigation.TestNavigationController.reset()
         }
     }
 

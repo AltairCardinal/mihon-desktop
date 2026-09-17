@@ -456,7 +456,7 @@ class ExtensionV16LifecycleInstrumentationTest {
     internal suspend fun awaitInstallerButton(labels: Set<String>): AccessibilityNodeInfo =
         awaitNode { node ->
             node.packageName?.toString()?.endsWith("packageinstaller") == true &&
-                node.text?.toString() in labels && node.isEnabled && node.isClickable
+                labels.any { it.equals(node.text?.toString(), ignoreCase = true) } && node.isEnabled && node.isClickable
         }
 
     private suspend fun awaitNode(predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo = withTimeout(

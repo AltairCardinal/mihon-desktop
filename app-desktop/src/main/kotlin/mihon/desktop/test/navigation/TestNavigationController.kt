@@ -31,6 +31,21 @@ import java.util.concurrent.atomic.AtomicLong
  * HTTP API sets the target navigation, and the UI observes and executes it.
  */
 object TestNavigationController {
+    private val nextExtensionRequestId = AtomicLong()
+    private val _pendingExtensions = MutableStateFlow<Long?>(null)
+    val pendingExtensions = _pendingExtensions.asStateFlow()
+    private val _displayedExtensions = MutableStateFlow<Long?>(null)
+    val displayedExtensions = _displayedExtensions.asStateFlow()
+
+    fun requestExtensions(): Long {
+        check(mihon.desktop.test.state.applicationState.testMode)
+        navigateToTab("Browse")
+        return nextExtensionRequestId.incrementAndGet().also { _pendingExtensions.value = it }
+    }
+
+    fun acknowledgeExtensionsDisplayed(requestId: Long) {
+        if (_pendingExtensions.compareAndSet(requestId, null)) _displayedExtensions.value = requestId
+    }
 
     // Test Mode fixture chapters are intentionally absent from the production database.
     private val syntheticReaderProgressTracker = ReaderProgressTracker(
@@ -293,6 +308,8 @@ object TestNavigationController {
      * Reset navigation history.
      */
     fun reset() {
+        _pendingExtensions.value = null
+        _displayedExtensions.value = null
         _pendingTabNavigation.value = null
         _pendingScreenRequest.value = null
         _pendingMangaId.value = null

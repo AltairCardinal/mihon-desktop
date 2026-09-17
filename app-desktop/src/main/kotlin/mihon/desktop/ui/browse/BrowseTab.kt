@@ -179,8 +179,19 @@ class BrowseSourceListScreen : Screen {
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         var selectedSection by rememberSaveable { mutableIntStateOf(BROWSE_SOURCES_SECTION) }
+        val extensionRequest by mihon.desktop.test.navigation.TestNavigationController.pendingExtensions.collectAsState()
+        LaunchedEffect(extensionRequest) {
+            if (mihon.desktop.test.state.applicationState.testMode && extensionRequest != null) {
+                selectedSection = BROWSE_EXTENSIONS_SECTION
+            }
+        }
 
         if (selectedSection == BROWSE_EXTENSIONS_SECTION) {
+            LaunchedEffect(extensionRequest) {
+                if (mihon.desktop.test.state.applicationState.testMode) {
+                    extensionRequest?.let(mihon.desktop.test.navigation.TestNavigationController::acknowledgeExtensionsDisplayed)
+                }
+            }
             ExtensionListContent(
                 model = LocalExtensionScreenModel.current(),
                 title = MR.strings.browse.localized(),

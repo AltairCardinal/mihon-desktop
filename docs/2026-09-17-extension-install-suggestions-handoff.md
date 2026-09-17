@@ -1,15 +1,15 @@
 # 收藏缺失插件建议安装：实施交接
 
-更新时间：2026-09-17。本文由用户明确要求在重试失败后生成，用于接续工作，不代表功能验收完成。
+更新时间：2026-09-17。本文最初按用户要求记录重试失败的接续点；现保留历史与最终收口状态，完成证据以专项 roadmap 为准。
 
-**最新恢复状态（EIS-04 已完成，EIS-05 待实施）**：EIS-03 提交为 `e4d5bedde19513500820f6e636505659a4433531`；EIS-04 的 Android 批次 UI/DI、系统确认/卸载/回滚归属、Shizuku 两阶段协议及进程恢复已实现并通过同批独立审查。最终 `eis04-focused-final` PASSED，19 suites / 219 项全零失败/错误/跳过，Android instrumentation 编译通过；`eis04-readonly-format` 在原规则、无 IdeHook 下通过，diff-check 通过。Legacy/PackageInstaller 连续、取消继续、提交后停止，PRIVATE 跨进程，Shizuku 可用/无服务/授权失效，后台恢复、配置重建及原 PI session 进程退出恢复均有真实设备证据。完整证据和维护边界集中在 roadmap 第9节；本批 checkoff 随同功能提交，不另建状态提交。下一步 EIS-05 全量/Test Mode/正式三平台发布，尚未执行。验证使用协调器 `run`＋`--offline`，未修改安全配置。后文旧 EIS-03 阻塞为历史。
+**最终状态：COMPLETE。** EIS-01～05 均已完成，EIS-05 checkoff 与最终修复纳入本次功能提交。有效测试 5,248 项（5,245 通过、3 既有条件跳过）；Windows/macOS 正式 BUILD40 及 Android code26/aex.8 实际运行均通过。最后发现的 Android 旧加载结果回写与卸载后图标空元数据崩溃均严格红绿修复，49 项相关测试及最终正式包设备回归通过。最终 Android SHA256 `16d26af5479dd338967ca4fe1ce8015a6e851280a561984c01c8946b90db04f1`，两台实际安装文件一致。最终 UI PID13863→14149；Legacy、PackageInstaller、Shizuku、私有安装与清理均有完整证据。主代理已完成独立审查与三端文件摘要核对；仅 API26/API36 专用模拟器及 macOS x64，不声称实体手机或 arm64 验收。三端产物链接、历史失败和最初 installer 原值未记录的限制见 roadmap 第 9 节。没有运行中的 Gradle/验收 runner，没有重跑第二轮全量。后文旧阻塞仅作历史归档，不是当前待办。
 
 ## 1. 目标与唯一执行工作区
 
 - 原目标：完整实现 [roadmap](roadmap/2026-09-16-extension-install-suggestions-roadmap.md)，每完成一个批次才勾选；需求依据为 [requirements](2026-09-16-extension-install-suggestions-requirements.md)。不可将目标缩减为仅共享逻辑或 Desktop。
 - **实施目录：`D:/Shell/Github/mihon-eis`**；分支：`codex/extension-install-suggestions`。
-- 原目录 `D:/Shell/Github/mihon` 有其他任务的未提交改动。本次再次只读核对，包含源权限、导航、AndroidManifest、AppModule、ExtensionManager、i18n 等；不得覆盖、清理、回滚或混入本专项。
-- EIS-03 代码、测试及 roadmap 记录已纳入本次功能提交；继续使用实施目录，接续前检查 `git status --short` 和 HEAD。
+- 原目录 `D:/Shell/Github/mihon` 有其他任务的未提交改动，具体文件以该目录当前 `git status` 为准；不得覆盖、清理、回滚或混入本专项。
+- EIS-01 至 EIS-05 的代码、测试与 checkoff 均在专项分支；EIS-05 和本次文档更新同属最终功能提交。查看最终提交使用该目录 `git log -1`，不把原工作区的其他改动混入。
 - 遵守实际 AGENTS.md：中文交流、严格红绿重构、真实 production wiring 测试、重型 Gradle 串行协调、功能提交前独立审查。checkbox 表示实现、审查、验证、提交全部完成。
 
 ## 2. 已完成并提交
@@ -18,8 +18,10 @@
 |---|---|---|
 | EIS-01 | `c1d733810e79acf8a9c4e06f9ca8abca93a2d550` | 共享识别、Android 系统/私有库存、Desktop 最终产物库存、双端 Flow/DI 与真实 SQL 契约；最终 focused 115 项通过，详见 roadmap 第 9 节 |
 | EIS-02 | `6b34ea3a606a233ddd715ef65485cae401a61bef` | 双端建议区、单项安装、来源/网站选择、忽略/撤销/折叠、本地偏好及真实备份/同步隔离；有效 XML 合计 107 项通过，窄屏离屏检查已完成，详见 roadmap |
+| EIS-03 | `e4d5bedde19513500820f6e636505659a4433531` | 共享批次、同包仲裁及 Desktop 全部安装；最终 focused 294 项通过 |
+| EIS-04 | `a9e561ab46c8ecdd976f399719351542efd21c35` | Android 批次、系统回调、生命周期与 Shizuku 协议；最终 focused 219 项及真实系统 instrumentation 证据见 roadmap |
 
-EIS-03 基线为 `e4d5bedde19513500820f6e636505659a4433531`；EIS-04 已验收并随本文作同批功能提交（以 Git 日志为准）。仅 EIS-05 未勾选；没有本专项最终正式发布产物。
+EIS-03 基线为 `e4d5bedde19513500820f6e636505659a4433531`；EIS-04 提交为 `a9e561ab46c8ecdd976f399719351542efd21c35`。EIS-05 已完成并勾选，最终提交与本交接更新相同；正式三端产物及设备证据已闭合，详见 roadmap 第 9 节。
 
 ## 3. 历史重试与当时阻塞（已恢复）
 

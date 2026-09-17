@@ -11,7 +11,8 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkConstructor
 import io.mockk.unmockkConstructor
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -66,7 +67,7 @@ class ExtensionSuggestionAppModuleTest {
             }
             assertEquals(emptyList<Any>(), removed!!.entries)
         } finally {
-            manager?.scope?.cancel()
+            manager?.scope?.coroutineContext?.get(Job)?.cancelAndJoin()
             Injekt = previous
             unmockkConstructor(ExtensionApi::class)
         }

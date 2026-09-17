@@ -20,6 +20,33 @@ import org.junit.jupiter.api.Test
 
 class ExtensionSuggestionBatchControllerTest {
     @Test
+    fun `expected batch identity rejects stale start resume and retry under the owner lock`() = runTest {
+        val acceptedResults = mutableListOf<Boolean>()
+        for (outcome in listOf(
+            SuggestionBatchResult.Installed,
+            SuggestionBatchResult.Failed(AppError.Network()),
+            SuggestionBatchResult.Paused(SuggestionBatchPause.SERVICE),
+        )) {
+            val artifact = ExtensionInstallArbiterTest.artifact()
+            val batch = ExtensionSuggestionBatchController(
+                backgroundScope,
+                ExtensionInstallArbiter(),
+                SuggestionBatchInstallPort { _, _ -> outcome },
+            ) { null }
+            assertTrue(batch.start(listOf(artifact)))
+            runCurrent()
+            val before = batch.state.value
+            val accepted = when (outcome) {
+                SuggestionBatchResult.Installed -> batch.start(listOf(artifact), expectedBatchId = 0)
+                is SuggestionBatchResult.Failed -> batch.retryFailed(listOf(artifact), expectedBatchId = 0)
+                else -> batch.resume(listOf(artifact), expectedBatchId = 0)
+            }
+            acceptedResults += accepted || before != batch.state.value
+        }
+        assertEquals(listOf(false, false, false), acceptedResults)
+    }
+
+    @Test
     fun `stop during commit retains a later interruption without making the batch resumable`() = runTest {
         val arbiter = ExtensionInstallArbiter()
         val finish = CompletableDeferred<Unit>()

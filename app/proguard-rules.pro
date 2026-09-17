@@ -98,3 +98,207 @@
 # Firebase
 -keep class com.google.firebase.installations.** { *; }
 -keep interface com.google.firebase.installations.** { *; }
+
+# Separately compiled release acceptance calls these existing production APIs.
+# Preserve only the referenced member signatures in every release; their bodies
+# remain optimizable and all other members retain ordinary R8 shrinking.
+-keepclassmembers,allowoptimization class eu.kanade.domain.base.BasePreferences {
+    eu.kanade.domain.base.ExtensionInstallerPreference extensionInstaller();
+}
+
+-keepclassmembers,allowoptimization class eu.kanade.domain.base.BasePreferences$ExtensionInstaller {
+    eu.kanade.domain.base.BasePreferences$ExtensionInstaller valueOf(java.lang.String);
+}
+
+-keepclassmembers,allowoptimization class eu.kanade.domain.base.ExtensionInstallerPreference {
+    void delete();
+    eu.kanade.domain.base.BasePreferences$ExtensionInstaller get();
+    boolean isSet();
+    void set(eu.kanade.domain.base.BasePreferences$ExtensionInstaller);
+}
+
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.extension.AndroidExtensionSuggestionBatch {
+    kotlinx.coroutines.flow.StateFlow getState();
+    kotlinx.coroutines.flow.StateFlow getSuggestions();
+    boolean resume(java.util.List);
+    boolean start(java.util.List);
+    void stop();
+}
+
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.extension.ExtensionManager {
+    java.lang.Object findAvailableExtensions(kotlin.coroutines.Continuation);
+    mihon.domain.extension.service.ExtensionInstallArbiter getInstallArbiter();
+    kotlinx.coroutines.flow.StateFlow getInstallErrors();
+    kotlinx.coroutines.flow.StateFlow getInstalledExtensionsFlow();
+    kotlinx.coroutines.flow.StateFlow getInventory();
+    kotlinx.coroutines.flow.StateFlow getUntrustedExtensionsFlow();
+    kotlinx.coroutines.flow.Flow installExtension(eu.kanade.tachiyomi.extension.model.Extension$Available);
+    kotlinx.coroutines.flow.StateFlow isInitialized();
+    void uninstallExtension(eu.kanade.tachiyomi.extension.model.Extension);
+}
+
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.extension.model.Extension {
+    java.lang.String getPkgName();
+}
+
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.extension.model.Extension$Installed {
+    java.lang.String getPkgName();
+    java.util.List getSources();
+    boolean isShared();
+}
+
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.extension.model.ExtensionArtifactMapperKt {
+    eu.kanade.tachiyomi.extension.model.Extension$Available toAvailable(mihon.domain.extension.model.ExtensionArtifact);
+}
+
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.extension.util.ExtensionLoader {
+    android.content.pm.PackageInfo getExtensionPackageInfoFromPkgName(android.content.Context,java.lang.String);
+}
+
+-keepclassmembers,allowoptimization interface eu.kanade.tachiyomi.source.Source {
+    long getId();
+    java.lang.String getLang();
+    java.lang.String getName();
+}
+
+-keepclassmembers,allowoptimization interface eu.kanade.tachiyomi.source.SourceFactory {
+    java.util.List createSources();
+}
+
+-keepclassmembers,allowoptimization class eu.kanade.tachiyomi.util.system.ChildFirstPathClassLoader {
+    <init>(java.lang.String,java.lang.String,java.lang.ClassLoader);
+}
+
+-keepclassmembers,allowoptimization class mihon.domain.extension.model.ExtensionArtifact {
+    java.lang.String getName();
+    java.lang.String getPackageName();
+}
+
+-keepclassmembers,allowoptimization class mihon.domain.extension.service.ExtensionInstallArbiter {
+    boolean isBusy(java.lang.String);
+}
+
+-keepclassmembers,allowoptimization class mihon.domain.extension.suggestion.ExtensionInventory {
+    boolean getInitialized();
+    java.util.Map getRecords();
+}
+
+-keepclassmembers,allowoptimization class mihon.domain.extension.suggestion.ExtensionSuggestion {
+    mihon.domain.extension.model.ExtensionArtifact getArtifact();
+}
+
+-keepclassmembers,allowoptimization class mihon.domain.extension.suggestion.ExtensionSuggestionPanelKt {
+    java.lang.String suggestionIdentityKey(mihon.domain.extension.suggestion.SuggestionIdentity);
+}
+
+-keepclassmembers,allowoptimization class mihon.domain.extension.suggestion.ExtensionSuggestionPreferences {
+    tachiyomi.core.common.preference.Preference getExpanded();
+    tachiyomi.core.common.preference.Preference getIgnored();
+}
+
+-keepclassmembers,allowoptimization class mihon.domain.extension.suggestion.ExtensionSuggestions {
+    java.util.List getSuggestions();
+    boolean isLoading();
+}
+
+-keepclassmembers,allowoptimization class mihon.domain.extension.suggestion.SuggestionBatchItem {
+    mihon.domain.extension.suggestion.SuggestionBatchResult getResult();
+}
+
+-keepclassmembers,allowoptimization class mihon.domain.extension.suggestion.SuggestionBatchState {
+    long getId();
+    java.util.List getItems();
+    mihon.domain.extension.suggestion.SuggestionBatchPause getPauseReason();
+    java.util.List getRemaining();
+    boolean getRunning();
+}
+
+-keepclassmembers,allowoptimization class mihon.domain.extension.suggestion.SuggestionIdentity$Companion {
+    mihon.domain.extension.suggestion.SuggestionIdentity of(mihon.domain.extension.model.ExtensionArtifact);
+}
+
+-keepclassmembers,allowoptimization class mihon.domain.extensionrepo.model.ExtensionRepo {
+    <init>(java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,int,kotlin.jvm.internal.DefaultConstructorMarker);
+}
+
+-keepclassmembers,allowoptimization interface mihon.domain.extensionrepo.repository.ExtensionRepoRepository {
+    java.lang.Object deleteRepo(java.lang.String,kotlin.coroutines.Continuation);
+    java.lang.Object getRepo(java.lang.String,kotlin.coroutines.Continuation);
+    java.lang.Object insertRepo(mihon.domain.extensionrepo.model.ExtensionRepo,kotlin.coroutines.Continuation);
+}
+
+-keepclassmembers,allowoptimization class tachiyomi.core.common.i18n.LocalizeKt {
+    java.lang.String stringResource(android.content.Context,dev.icerock.moko.resources.StringResource);
+    java.lang.String stringResource(android.content.Context,dev.icerock.moko.resources.StringResource,java.lang.Object[]);
+}
+
+-keepclassmembers,allowoptimization interface tachiyomi.core.common.preference.Preference {
+    void delete();
+    java.lang.Object get();
+    boolean isSet();
+    void set(java.lang.Object);
+}
+
+-keepclassmembers,allowoptimization class tachiyomi.data.DatabaseHandler {
+    java.lang.Object await(boolean,kotlin.jvm.functions.Function2,kotlin.coroutines.Continuation);
+}
+
+-keepclassmembers,allowoptimization class tachiyomi.domain.manga.model.Manga {
+    tachiyomi.domain.manga.model.Manga copy$default(tachiyomi.domain.manga.model.Manga,long,long,boolean,long,long,int,long,long,long,long,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.lang.String,java.util.List,long,java.lang.String,eu.kanade.tachiyomi.source.model.UpdateStrategy,boolean,long,java.lang.Long,long,java.lang.String,kotlinx.serialization.json.JsonObject,int,java.lang.Object);
+    long getId();
+    long getSource();
+    java.lang.String getUrl();
+}
+
+-keepclassmembers,allowoptimization class tachiyomi.domain.manga.model.Manga$Companion {
+    tachiyomi.domain.manga.model.Manga create();
+}
+
+-keepclassmembers,allowoptimization interface tachiyomi.domain.manga.repository.MangaRepository {
+    java.lang.Object getMangaByUrlAndSourceId(java.lang.String,long,kotlin.coroutines.Continuation);
+    java.lang.Object insertNetworkManga(java.util.List,kotlin.coroutines.Continuation);
+}
+
+-keepclassmembers,allowoptimization class tachiyomi.i18n.MR$strings {
+    tachiyomi.i18n.MR$strings INSTANCE;
+    dev.icerock.moko.resources.StringResource getBrowse();
+    dev.icerock.moko.resources.StringResource getExt_install();
+    dev.icerock.moko.resources.StringResource getExtension_batch_confirm();
+    dev.icerock.moko.resources.StringResource getExtension_batch_install_count();
+    dev.icerock.moko.resources.StringResource getExtension_batch_retry();
+    dev.icerock.moko.resources.StringResource getExtension_suggestions_expand();
+    dev.icerock.moko.resources.StringResource getExtension_suggestions_ignore();
+    dev.icerock.moko.resources.StringResource getExtension_suggestions_open_website();
+    dev.icerock.moko.resources.StringResource getExtension_suggestions_title();
+    dev.icerock.moko.resources.StringResource getExtension_suggestions_website();
+    dev.icerock.moko.resources.StringResource getLabel_extensions();
+}
+
+-keepclassmembers,allowoptimization class mihon.domain.extension.suggestion.SuggestionIdentity {
+    mihon.domain.extension.suggestion.SuggestionIdentity$Companion Companion;
+}
+
+# The same external APK observes foreground lifecycle and removes only its owned SQL rows.
+-keep,allowoptimization class androidx.lifecycle.ProcessLifecycleOwner {
+    androidx.lifecycle.ProcessLifecycleOwner$Companion Companion;
+}
+-keep,allowoptimization class androidx.lifecycle.ProcessLifecycleOwner$Companion {
+    androidx.lifecycle.LifecycleOwner get();
+}
+-keep,allowoptimization interface androidx.lifecycle.LifecycleOwner {
+    androidx.lifecycle.Lifecycle getLifecycle();
+}
+-keep,allowoptimization class androidx.lifecycle.Lifecycle {
+    androidx.lifecycle.Lifecycle$State getCurrentState();
+}
+-keep,allowoptimization class androidx.lifecycle.Lifecycle$State {
+    androidx.lifecycle.Lifecycle$State STARTED;
+    boolean isAtLeast(androidx.lifecycle.Lifecycle$State);
+}
+-keep,allowoptimization interface app.cash.sqldelight.db.SqlDriver {
+    app.cash.sqldelight.db.QueryResult execute(java.lang.Integer,java.lang.String,int,kotlin.jvm.functions.Function1);
+}
+-keep,allowoptimization interface app.cash.sqldelight.db.SqlPreparedStatement {
+    void bindLong(int,java.lang.Long);
+    void bindString(int,java.lang.String);
+}

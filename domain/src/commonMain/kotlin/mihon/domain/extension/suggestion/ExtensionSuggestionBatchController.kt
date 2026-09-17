@@ -90,7 +90,8 @@ class ExtensionSuggestionBatchController(
     private var reservations = emptyList<ExtensionInstallLease>()
     private var current: ExtensionInstallLease? = null
 
-    fun start(confirmed: List<ExtensionArtifact>): Boolean = synchronized(lock) {
+    fun start(confirmed: List<ExtensionArtifact>, expectedBatchId: Long? = null): Boolean = synchronized(lock) {
+        if (expectedBatchId != null && expectedBatchId != mutableState.value.id) return@synchronized false
         if (mutableState.value.running || mutableState.value.remaining.isNotEmpty() ||
             confirmed.isEmpty()
         ) {
@@ -127,11 +128,13 @@ class ExtensionSuggestionBatchController(
         true
     }
 
-    fun resume(confirmedRemaining: List<ExtensionArtifact>): Boolean = synchronized(lock) {
+    fun resume(confirmedRemaining: List<ExtensionArtifact>, expectedBatchId: Long? = null) = synchronized(lock) {
+        if (expectedBatchId != null && expectedBatchId != mutableState.value.id) return@synchronized false
         restart(confirmedRemaining, mutableState.value.remaining)
     }
 
-    fun retryFailed(confirmedFailed: List<ExtensionArtifact>): Boolean = synchronized(lock) {
+    fun retryFailed(confirmedFailed: List<ExtensionArtifact>, expectedBatchId: Long? = null) = synchronized(lock) {
+        if (expectedBatchId != null && expectedBatchId != mutableState.value.id) return@synchronized false
         if (mutableState.value.remaining.isNotEmpty()) return@synchronized false
         restart(
             confirmedFailed,

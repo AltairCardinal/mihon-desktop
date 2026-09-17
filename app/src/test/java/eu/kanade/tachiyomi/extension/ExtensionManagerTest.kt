@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.extension
 
 import android.content.Context
+import android.content.pm.PackageInfo
 import androidx.core.app.NotificationManagerCompat
 import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
@@ -45,6 +46,7 @@ import mihon.domain.extension.suggestion.ExtensionInventory
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
@@ -59,6 +61,37 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class ExtensionManagerTest {
+    @Test
+    fun `source icon falls back when an uninstalled package still has a source row`() = missingSourceIcon(null)
+
+    @Test
+    fun `source icon falls back when package metadata has no application info`() =
+        missingSourceIcon(PackageInfo().apply { applicationInfo = null })
+
+    private fun missingSourceIcon(packageInfo: PackageInfo?) = runTest {
+        val source = mockk<eu.kanade.tachiyomi.source.Source> { every { id } returns 77L }
+        val extension = installed().copy(sources = listOf(source))
+        val manager = ExtensionManager(
+            context = mockk(relaxed = true),
+            preferences = preferences(),
+            trustExtension = mockk(relaxed = true),
+            installedExtensionsLoader = { listOf(LoadResult.Success(extension)) },
+            installerFactory = { mockk(relaxed = true) },
+            installReceiverRegistrar = {},
+            inventoryProvider = { ExtensionInventory(initialized = true) },
+            scope = backgroundScope,
+        )
+        runCurrent()
+        assertEquals(PACKAGE, manager.getExtensionPackage(77L))
+        mockkObject(ExtensionLoader)
+        try {
+            every { ExtensionLoader.getExtensionPackageInfoFromPkgName(any(), PACKAGE) } returns packageInfo
+            assertNull(manager.getAppIconForSource(77L))
+        } finally {
+            unmockkObject(ExtensionLoader)
+        }
+    }
+
     @Test
     fun `restored installation window retains package until actual result inventory is published`() = runTest {
         withNotificationEnvironment(expectNotification = false) {

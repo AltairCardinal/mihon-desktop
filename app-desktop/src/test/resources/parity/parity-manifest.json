@@ -769,7 +769,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt",
           "symbol": "rememberScreenModel { DesktopSourcesScreenModel",
-          "line": 204
+          "line": 216
         }
       ],
       "FIXTURE": [
@@ -1217,7 +1217,7 @@
         {
           "path": "app/src/main/java/eu/kanade/domain/DomainModule.kt",
           "symbol": "override fun InjektRegistrar.registerInjectables",
-          "line": 139
+          "line": 146
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -1225,7 +1225,7 @@
           "kind": "PLATFORM_ADAPTER",
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "fun initDesktopDI",
-          "line": 203
+          "line": 204
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -4216,7 +4216,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 1032
+          "line": 1039
         }
       ],
       "FIXTURE": [
@@ -25368,7 +25368,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/extension/api/ExtensionApi.kt",
           "symbol": "private val catalogService",
-          "line": 36
+          "line": 37
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -25389,7 +25389,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt",
           "symbol": "private val catalogService",
-          "line": 56
+          "line": 62
         }
       ],
       "FIXTURE": [
@@ -26020,7 +26020,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstaller.kt",
           "symbol": "private val coordinator = ExtensionInstallCoordinator",
-          "line": 141
+          "line": 204
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -26028,7 +26028,7 @@
           "kind": "SHARED",
           "path": "domain/src/commonMain/kotlin/mihon/domain/extension/service/ExtensionInstallCoordinator.kt",
           "symbol": "class ExtensionInstallCoordinator",
-          "line": 30
+          "line": 31
         },
         {
           "kind": "PLATFORM_ADAPTER",
@@ -26041,7 +26041,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt",
           "symbol": "private val installCoordinator = ExtensionInstallCoordinator",
-          "line": 49
+          "line": 50
         }
       ],
       "FIXTURE": [
@@ -26306,7 +26306,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt",
           "symbol": "private suspend fun loadExtension",
-          "line": 227
+          "line": 280
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -26338,7 +26338,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionManager.kt",
           "symbol": "loader.loadExtensions",
-          "line": 56
+          "line": 59
         }
       ],
       "FIXTURE": [
@@ -26719,7 +26719,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionInstaller.kt",
           "symbol": "private val trustPolicy",
-          "line": 672
+          "line": 848
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -26734,7 +26734,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionApi.kt",
           "symbol": "private val trustPolicy",
-          "line": 57
+          "line": 63
         }
       ],
       "FIXTURE": [
@@ -27361,7 +27361,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/extension/DesktopExtensionPresentationPort.kt",
           "symbol": "desktopExtensionPresentationStore =",
-          "line": 219
+          "line": 236
         }
       ],
       "FIXTURE": [
@@ -33150,7 +33150,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "filterChaptersForDownload.await(manga, chapters)",
-          "line": 1075
+          "line": 1082
         }
       ],
       "FIXTURE": [
@@ -53665,7 +53665,7 @@
         {
           "path": "app/build.gradle.kts",
           "symbol": "implementation(projects.domain)",
-          "line": 239
+          "line": 240
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -54293,7 +54293,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt",
           "symbol": "suspend fun loadExtensions",
-          "line": 119
+          "line": 176
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -54314,12 +54314,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.initialize",
-          "line": 232
+          "line": 233
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.startApp",
-          "line": 234
+          "line": 235
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt",

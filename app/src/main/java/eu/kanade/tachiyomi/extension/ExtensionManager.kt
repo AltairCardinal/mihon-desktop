@@ -196,8 +196,9 @@ class ExtensionManager internal constructor(
         val pkgName = getExtensionPackage(sourceId) ?: return null
 
         return iconMap[pkgName] ?: iconMap.getOrPut(pkgName) {
-            ExtensionLoader.getExtensionPackageInfoFromPkgName(context, pkgName)!!.applicationInfo!!
-                .loadIcon(context.packageManager)
+            val applicationInfo = ExtensionLoader.getExtensionPackageInfoFromPkgName(context, pkgName)
+                ?.applicationInfo ?: return null
+            applicationInfo.loadIcon(context.packageManager)
         }
     }
 
