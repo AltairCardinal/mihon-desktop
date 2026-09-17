@@ -52,12 +52,309 @@ import tachiyomi.domain.creator.service.CreatorLibraryIndexer
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import java.nio.file.Path
+import tachiyomi.domain.creator.model.LanguageProjectionContract
+import tachiyomi.domain.creator.model.CanonicalWorkArchiveGroup
+import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
+import tachiyomi.domain.creator.model.ArchiveLanguageSubject
+import tachiyomi.domain.creator.service.ChapterVariantType
+import tachiyomi.domain.creator.model.LanguageEvidenceKind
+import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.model.LanguageDimension
+import tachiyomi.domain.creator.model.WorkDecisionState
+import tachiyomi.domain.creator.model.LanguageCertainty
+import tachiyomi.data.UpdateStrategyColumnAdapter
+import tachiyomi.data.StringListColumnAdapter
+import tachiyomi.data.JvmDatabaseHandler
+import tachiyomi.data.DateColumnAdapter
+import tachiyomi.data.Database
+import tachiyomi.data.History
+import tachiyomi.data.Mangas
+
 
 @OptIn(ExperimentalComposeUiApi::class)
 class AuthorsProductionWiringTest {
 
     @TempDir
     lateinit var directory: Path
+
+    @Test
+    fun `desktop archive state applies shared work search and source contract`() {
+        tachiyomi.data.creator.verifyCreatorWorkFilterProjection { archive, filter ->
+            AuthorDetailState(workArchive = archive, workFilter = filter).visibleWorkArchive
+        }
+    }
+
+    @Test
+    fun `author list finds aliases as well as primary names`() {
+        val creator = Creator(7, "Primary", "primary", null, listOf("Alias"), 0, 0)
+        org.junit.jupiter.api.Assertions.assertEquals(listOf(creator),
+            AuthorsRootState(creators = listOf(creator), query = "alias").filteredCreators)
+    }
+
+    @Test
+    fun `narrow author page wraps names and source buttons in both themes`() =
+        verifyNarrowArchive(tachiyomi.domain.creator.model.WorkDecisionState.CONFIRMED)
+
+    @Test
+    fun `pending and rejected versions keep cover title source hierarchy and exact navigation`() {
+        verifyNarrowArchive(null)
+        verifyNarrowArchive(tachiyomi.domain.creator.model.WorkDecisionState.REJECTED)
+    }
+
+    private fun verifyNarrowArchive(decision: tachiyomi.domain.creator.model.WorkDecisionState?) = runBlocking {
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY)
+        Database.Schema.create(driver)
+        val handler = JvmDatabaseHandler(Database(driver,
+            historyAdapter = History.Adapter(DateColumnAdapter),
+            mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter)), driver)
+        val repository = tachiyomi.data.creator.CreatorRepositoryImpl(handler)
+        val coverFile = directory.resolve("cover.png").toFile()
+        val coverImage = java.awt.image.BufferedImage(128, 176, java.awt.image.BufferedImage.TYPE_INT_RGB)
+        val graphics = coverImage.createGraphics()
+        graphics.color = java.awt.Color(0x245A85)
+        graphics.fillRect(0, 0, 128, 176)
+        graphics.color = java.awt.Color.WHITE
+        graphics.drawString("PARADISE", 12, 35)
+        graphics.dispose()
+        javax.imageio.ImageIO.write(coverImage, "png", coverFile)
+        val coverServer = mockwebserver3.MockWebServer()
+        repeat(4) {
+            coverServer.enqueue(mockwebserver3.MockResponse.Builder()
+                .addHeader("Content-Type", "image/png")
+                .body(okio.Buffer().write(coverFile.readBytes())).build())
+        }
+        coverServer.start()
+        val target = repository.upsertCreator("冈本伦")
+        repository.addManualCreatorAlias(target.id, "Okamoto Lynn with a long alternative name")
+        repository.addManualCreatorAlias(target.id, "岡本倫")
+        val archive = CreatorArchive(repository, repository)
+        val work = archive.createWork("平行天堂 Parallel Paradise", target.id, null)
+        val mangaRepository = tachiyomi.data.manga.MangaRepositoryImpl(handler, NoopCreatorLibraryIndexWriter)
+        val mangas = mangaRepository.insertNetworkManga((1L..3L).map { source ->
+            Manga.create().copy(source = source, url = "/version", title = "Version $source", favorite = false)
+        })
+        mangas.forEach { manga ->
+            repository.upsertSourceWork(manga.source, manga.url, manga.id, manga.title, "冈本伦", null, coverServer.url("/cover.png").toString(), null)
+            val key = tachiyomi.domain.creator.model.SourceWorkNaturalKey(manga.source, manga.url)
+            repository.upsertSourceWorkCreator(key, target.id, CreatorRole.AUTHOR, 0,
+                tachiyomi.domain.creator.model.CreatorRelationOrigin.AUTOMATIC,
+                tachiyomi.domain.creator.model.CreatorRelationVerification.VERIFIED, "冈本伦", 1.0, "fixture")
+            if (decision != null) archive.decide(key, work.id, decision,
+                null, 1.0, "fixture", manga.source, "version-${manga.source}")
+        }
+        val grouped = decision == tachiyomi.domain.creator.model.WorkDecisionState.CONFIRMED
+        val currentArchive = repository.getCreatorWorkArchive(target.id)
+        val firstVersion = (currentArchive.pending + currentArchive.rejected).firstOrNull()
+        val rowKey = if (grouped) work.id.toString() else "version-${checkNotNull(firstVersion).sourceWorkId}"
+        val totalWorks = if (grouped) 1 else 3
+        val sources = mockk<tachiyomi.domain.source.service.SourceManager> {
+            every { get(any<Long>()) } returns null
+            every { getOrStub(any()) } answers {
+                val sourceId = firstArg<Long>()
+                mockk { every { id } returns sourceId; every { name } returns "Source $sourceId long edition" }
+            }
+        }
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { getCreators } returns GetCreators(repository)
+            every { getCreatorDetails } returns GetCreatorDetails(repository)
+            every { setCreatorFollow } returns SetCreatorFollow(repository)
+            every { creatorArchive } returns archive
+            every { manageCreatorIdentity } returns ManageCreatorIdentity(repository)
+            every { creatorDiscoveryScheduler } returns null
+            every { sourceManager } returns sources
+            every { saveSourceMangaForDetails } returns mockk()
+        }
+        fun sourceLabel(id: Int) = "Source $id long edition · ${MR.strings.desktop_ui_source_missing.localized()}"
+        try {
+            for (dark in listOf(false, true)) {
+                val scene = ImageComposeScene(320, if (grouped) 1100 else 2200, coroutineContext = coroutineContext) {}
+                var mountedNavigator: Navigator? = null
+                try {
+                    scene.setContent {
+                        androidx.compose.material3.MaterialTheme(colorScheme = if (dark)
+                            androidx.compose.material3.darkColorScheme() else androidx.compose.material3.lightColorScheme()) {
+                            CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                                Navigator(AuthorDetailScreen(target.id)) { nav ->
+                                    mountedNavigator = nav
+                                    cafe.adriel.voyager.navigator.CurrentScreen()
+                                }
+                            }
+                        }
+                    }
+                    withTimeout(5000) {
+                        while (sourceLabel(1) !in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) }
+                    }
+                    val cover = nodes(scene).single { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-cover-$rowKey" }
+                    val title = nodes(scene).single { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-$rowKey" }
+                    assertTrue(kotlin.math.abs(cover.boundsInRoot.top - title.boundsInRoot.top) < 1f)
+                    val buttons = nodes(scene).filter { it.config.getOrElse(SemanticsProperties.TestTag) { "" }.startsWith("creator-version-") }
+                    assertTrue(buttons.size == 3)
+                    assertTrue(buttons.first().boundsInRoot.top >= title.boundsInRoot.bottom)
+                    val menus = nodes(scene).filter {
+                        it.config.contains(SemanticsActions.OnClick) &&
+                            it.config.getOrElse(SemanticsProperties.ContentDescription) { emptyList() }
+                                .contains(MR.strings.action_edit.localized())
+                    }
+                    assertTrue(menus.size == 3)
+                    assertTrue(menus.all { it.boundsInRoot.width >= 24 && it.boundsInRoot.left >= 0 && it.boundsInRoot.right <= 320 })
+                    assertTrue(buttons.map { it.boundsInRoot.top }.distinct().size > 1)
+                    assertTrue(buttons.all { it.boundsInRoot.left >= 0 && it.boundsInRoot.right <= 320 })
+                    val output = java.nio.file.Paths.get("build/ga02/author-${decision?.name?.lowercase() ?: "pending"}-320-${if (dark) "dark" else "light"}.png")
+                    java.nio.file.Files.createDirectories(output.parent)
+                    var rendered = byteArrayOf()
+                    try { withTimeout(5000) {
+                        while (true) {
+                            rendered = checkNotNull(scene.render().encodeToData()).bytes
+                            val pixels = javax.imageio.ImageIO.read(rendered.inputStream())
+                            val x = cover.boundsInRoot.center.x.toInt()
+                            val y = cover.boundsInRoot.center.y.toInt()
+                            if (pixels.getRGB(x, y) and 0xffffff == 0x245A85) break
+                            kotlinx.coroutines.delay(20)
+                        }
+                    }
+                    } finally { java.nio.file.Files.write(output, rendered) }
+                    if (!grouped) {
+                        menus.first().config[SemanticsActions.OnClick].action?.invoke()
+                        val review = mountedNavigator!!.lastItem as WorkCompareScreen
+                        org.junit.jupiter.api.Assertions.assertEquals(checkNotNull(firstVersion).sourceWorkId, review.workId)
+                        org.junit.jupiter.api.Assertions.assertEquals(target.id, review.creatorId)
+                        mountedNavigator!!.pop()
+                    }
+                    val search = nodes(scene).single { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-search" }
+                    search.config[SemanticsActions.SetText].action?.invoke(AnnotatedString("missing work"))
+                    withTimeout(5000) { while (sourceLabel(3) in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) } }
+                    assertTrue(MR.strings.creator_work_version_count.localized(Locale.getDefault(), totalWorks, 3) in texts(scene))
+                    search.config[SemanticsActions.SetText].action?.invoke(AnnotatedString(""))
+                    withTimeout(5000) { while (sourceLabel(3) !in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) } }
+                    clickableTextNode(scene, MR.strings.creator_work_sources_all.localized()).config[SemanticsActions.OnClick].action?.invoke()
+                    scene.render()
+                    clickableTextNode(scene, "Source 2 long edition").config[SemanticsActions.OnClick].action?.invoke()
+                    withTimeout(5000) { while (sourceLabel(3) in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) } }
+                    assertTrue(MR.strings.creator_work_version_count.localized(Locale.getDefault(), totalWorks, 3) in texts(scene))
+                    clickableTextNode(scene, sourceLabel(2)).config[SemanticsActions.OnClick].action?.invoke()
+                    withTimeout(5000) {
+                        while (mountedNavigator?.lastItem !is mihon.desktop.ui.library.MangaDetailScreen) kotlinx.coroutines.delay(10)
+                    }
+                    org.junit.jupiter.api.Assertions.assertEquals(mangas[1].id,
+                        (mountedNavigator!!.lastItem as mihon.desktop.ui.library.MangaDetailScreen).mangaId)
+                } finally { scene.close() }
+            }
+        } finally { handler.close(); coverServer.close() }
+    }
+
+    @Test
+    fun `actual desktop detail editor obeys shared identity contract`() = runBlocking {
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY)
+        Database.Schema.create(driver)
+        val database = Database(driver,
+            historyAdapter = History.Adapter(DateColumnAdapter),
+            mangasAdapter = Mangas.Adapter(StringListColumnAdapter,
+                UpdateStrategyColumnAdapter))
+        val handler = JvmDatabaseHandler(database, driver)
+        var model: AuthorDetailScreenModel? = null
+        try {
+            tachiyomi.data.creator.verifyCreatorIdentityEditor(handler) { repository, manager, id ->
+                val dependencies = mockk<DesktopUiDependencies> {
+                    every { getCreators } returns GetCreators(repository)
+                    every { getCreatorDetails } returns GetCreatorDetails(repository)
+                    every { setCreatorFollow } returns SetCreatorFollow(repository)
+                    every { creatorArchive } returns CreatorArchive(repository, repository)
+                    every { manageCreatorIdentity } returns manager
+                    every { creatorDiscoveryScheduler } returns null
+                    every { saveSourceMangaForDetails } returns mockk()
+                }
+                AuthorsScreenModelFactory.detail(id, false, dependencies).also { model = it }.identityEditor
+            }
+        } finally { model?.onDispose(); handler.close() }
+    }
+
+    @Test
+    fun `mounted author adds selected alias and confirms owned display name through real SQL`() = runBlocking {
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
+        )
+        Database.Schema.create(driver)
+        val database = Database(driver,
+            historyAdapter = History.Adapter(DateColumnAdapter),
+            mangasAdapter = Mangas.Adapter(StringListColumnAdapter,
+                UpdateStrategyColumnAdapter))
+        val handler = JvmDatabaseHandler(database, driver)
+        var failNext = false
+        var attempts = 0
+        val repository = tachiyomi.data.creator.CreatorRepositoryImpl(handler, identityMutationHook = {
+            attempts++
+            if (failNext) { failNext = false; error("write failed") }
+        })
+        val target = repository.upsertCreator("Primary")
+        repository.upsertCreator("Other")
+        attempts = 0
+        failNext = true
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { getCreators } returns GetCreators(repository)
+            every { getCreatorDetails } returns GetCreatorDetails(repository)
+            every { setCreatorFollow } returns SetCreatorFollow(repository)
+            every { creatorArchive } returns CreatorArchive(repository, repository)
+            every { creatorArchiveRepository } returns repository
+            every { manageCreatorIdentity } returns ManageCreatorIdentity(repository)
+            every { creatorDiscoveryScheduler } returns null
+            every { sourceManager } returns mockk(relaxed = true)
+            every { saveSourceMangaForDetails } returns mockk()
+        }
+        val scene = ImageComposeScene(600, 800, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(AuthorDetailScreen(target.id))
+                }
+            }
+            withTimeout(5000) { while (MR.strings.desktop_ui_add_author_alias.localized() !in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) } }
+            clickableTextNode(scene, MR.strings.desktop_ui_add_author_alias.localized())
+                .config[SemanticsActions.OnClick].action?.invoke()
+            withTimeout(5000) { while ("Other" !in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) } }
+            clickableTextNode(scene, "Other").config[SemanticsActions.OnClick].action?.invoke()
+            clickableTextNode(scene, MR.strings.action_add.localized()).config[SemanticsActions.OnClick].action?.invoke()
+            withTimeout(5000) { while ("write failed" !in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) } }
+            assertTrue(repository.getIdentitySnapshot(target.id).aliases.isEmpty())
+            assertTrue("Other" in texts(scene))
+            val submit = clickableTextNode(scene, MR.strings.action_add.localized()).config[SemanticsActions.OnClick].action
+            submit?.invoke()
+            submit?.invoke()
+            withTimeout(5000) {
+                while (repository.getIdentitySnapshot(target.id).aliases != listOf("Other")) { scene.render(); kotlinx.coroutines.delay(10) }
+            }
+            org.junit.jupiter.api.Assertions.assertEquals(2, attempts)
+            withTimeout(5000) {
+                while (!clickableTextNode(scene, MR.strings.desktop_ui_add_author_alias.localized())
+                    .config.getOrElse(SemanticsProperties.Focused) { false }) { scene.render(); kotlinx.coroutines.delay(10) }
+            }
+            clickableTextNode(scene, "Other").config[SemanticsActions.OnClick].action?.invoke()
+            withTimeout(5000) { while (MR.strings.action_cancel.localized() !in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) } }
+            clickableTextNode(scene, MR.strings.action_cancel.localized()).config[SemanticsActions.OnClick].action?.invoke()
+            withTimeout(5000) {
+                while (!clickableTextNode(scene, "Other").config.getOrElse(SemanticsProperties.Focused) { false }) {
+                    scene.render(); kotlinx.coroutines.delay(10)
+                }
+            }
+            clickableTextNode(scene, "Other").config[SemanticsActions.OnClick].action?.invoke()
+            withTimeout(5000) { while (MR.strings.action_ok.localized() !in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) } }
+            clickableTextNode(scene, MR.strings.action_ok.localized()).config[SemanticsActions.OnClick].action?.invoke()
+            withTimeout(5000) {
+                while (repository.getIdentitySnapshot(target.id).displayName != "Other") { scene.render(); kotlinx.coroutines.delay(10) }
+            }
+            assertTrue(repository.getIdentitySnapshot(target.id).aliases == listOf("Primary"))
+            withTimeout(5000) {
+                while (nodes(scene).none { node ->
+                    node.config.getOrElse(SemanticsProperties.Focused) { false } &&
+                        node.config.getOrElse(SemanticsProperties.Text) { emptyList() }.any { it.text == "Other" }
+                }) { scene.render(); kotlinx.coroutines.delay(10) }
+            }
+        } finally {
+            scene.close()
+            handler.close()
+        }
+    }
 
     @Test
     fun `mounted work comparison confirms a suggested source version through production repositories`() = runBlocking {
@@ -127,8 +424,8 @@ class AuthorsProductionWiringTest {
             withTimeout(5_000) {
                 while (action !in texts(scene)) scene.render()
             }
-            assertTrue(
-                MR.strings.desktop_ui_chapter_variant_summary.localized(
+            withTimeout(5000) {
+                while (!(                MR.strings.desktop_ui_chapter_variant_summary.localized(
                     Locale.getDefault(),
                     0,
                     1,
@@ -138,15 +435,15 @@ class AuthorsProductionWiringTest {
                     0,
                     0,
                     0,
-                ) in texts(scene),
-            )
+                ) in texts(scene))) { scene.render(); kotlinx.coroutines.delay(10) }
+            }
             clickableTextNode(scene, action).config[SemanticsActions.OnClick].action?.invoke()
 
             coVerifyOrder {
                 archiveRepository.appendUserWorkDecisionIfCurrent(
-                    tachiyomi.domain.creator.model.SourceWorkNaturalKey(10L, "/pending"),
+                    SourceWorkNaturalKey(10L, "/pending"),
                     80L,
-                    tachiyomi.domain.creator.model.WorkDecisionState.CONFIRMED,
+                    WorkDecisionState.CONFIRMED,
                     null,
                     any(),
                     any(),
@@ -157,8 +454,8 @@ class AuthorsProductionWiringTest {
             coVerify(exactly = 0) { creatorRepository.createCanonicalWork(any(), any(), any()) }
             coVerify {
                 archiveRepository.replaceChapterVariants(
-                    tachiyomi.domain.creator.model.SourceWorkNaturalKey(10L, "/pending"),
-                    match { it.single().type == tachiyomi.domain.creator.service.ChapterVariantType.SPLIT },
+                    SourceWorkNaturalKey(10L, "/pending"),
+                    match { it.single().type == ChapterVariantType.SPLIT },
                     any(),
                 )
             }
@@ -172,10 +469,10 @@ class AuthorsProductionWiringTest {
                 .config[SemanticsActions.OnClick].action?.invoke()
             coVerify(timeout = 5_000) {
                 archiveRepository.setManualLanguage(
-                    tachiyomi.domain.creator.model.ArchiveLanguageSubject.SourceWork(
-                        tachiyomi.domain.creator.model.SourceWorkNaturalKey(10L, "/pending"),
+                    ArchiveLanguageSubject.SourceWork(
+                        SourceWorkNaturalKey(10L, "/pending"),
                     ),
-                    tachiyomi.domain.creator.model.LanguageDimension.READING,
+                    LanguageDimension.READING,
                     "ja",
                     any(),
                 )
@@ -187,7 +484,7 @@ class AuthorsProductionWiringTest {
 
 
     @Test
-    fun `mounted author detail confirms manual alias removal through typed repository`() = runBlocking {
+    fun `mounted author explains unsupported split without changing identity`() = runBlocking {
         val creator = Creator(
             id = 7L,
             displayName = "Jane Doe",
@@ -225,7 +522,6 @@ class AuthorsProductionWiringTest {
             every { manageCreatorIdentity } returns ManageCreatorIdentity(archiveRepository)
             every { creatorDiscoveryScheduler } returns null
         }
-        val removeLabel = MR.strings.desktop_ui_remove_named_author_alias.localized(Locale.getDefault(), "J. Doe")
         val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
         try {
             scene.setContent {
@@ -233,33 +529,17 @@ class AuthorsProductionWiringTest {
                     Navigator(AuthorDetailScreen(creatorId = 7L))
                 }
             }
-            withTimeout(5_000) {
-                while (removeLabel !in texts(scene)) {
-                    scene.render()
+            withTimeout(5000) {
+                while (MR.strings.desktop_ui_split_author_identity.localized() !in texts(scene)) {
+                    scene.render(); kotlinx.coroutines.delay(10)
                 }
             }
-            assertTrue("Pending grouped work" in texts(scene))
-
-            clickableTextNode(scene, removeLabel).config[SemanticsActions.OnClick].action?.invoke()
-            scene.render()
-            assertTrue(
-                MR.strings.desktop_ui_remove_author_alias_summary.localized(Locale.getDefault(), "J. Doe") in
-                    texts(scene),
-            )
-
-            clickableTextNode(scene, MR.strings.action_remove.localized())
+            clickableTextNode(scene, MR.strings.desktop_ui_split_author_identity.localized())
                 .config[SemanticsActions.OnClick].action?.invoke()
-            coVerify(timeout = 5_000, exactly = 1) {
-                archiveRepository.removeManualCreatorAlias(7L, "J. Doe")
-            }
-            withTimeout(5_000) {
-                while (removeLabel in texts(scene)) {
-                    scene.render()
-                }
-            }
-        } finally {
-            scene.close()
-        }
+            scene.render()
+            assertTrue(MR.strings.creator_split_unavailable.localized() in texts(scene))
+            coVerify(exactly = 0) { archiveRepository.removeManualCreatorAlias(any(), any()) }
+        } finally { scene.close() }
     }
 
     @Test
@@ -396,16 +676,16 @@ class AuthorsProductionWiringTest {
     private fun pendingArchive(title: String): CreatorWorkArchive = CreatorWorkArchive(
         works = emptyList(),
         pending = listOf(
-            tachiyomi.domain.creator.model.SourceWorkArchiveVersion(
+            SourceWorkArchiveVersion(
                 sourceWorkId = 30L,
-                naturalKey = tachiyomi.domain.creator.model.SourceWorkNaturalKey(10L, "/pending"),
+                naturalKey = SourceWorkNaturalKey(10L, "/pending"),
                 mangaId = null,
                 title = title,
-                readingLanguage = tachiyomi.domain.creator.model.LanguageProjectionContract(
-                    dimension = tachiyomi.domain.creator.model.LanguageDimension.READING,
+                readingLanguage = LanguageProjectionContract(
+                    dimension = LanguageDimension.READING,
                     tag = "und",
-                    certainty = tachiyomi.domain.creator.model.LanguageCertainty.UNKNOWN,
-                    evidenceKind = tachiyomi.domain.creator.model.LanguageEvidenceKind.UNKNOWN,
+                    certainty = LanguageCertainty.UNKNOWN,
+                    evidenceKind = LanguageEvidenceKind.UNKNOWN,
                 ),
                 chapterCount = 0L,
                 inLibrary = false,
@@ -421,13 +701,13 @@ class AuthorsProductionWiringTest {
         val candidate = pendingArchive("Shared work").pending.single()
         val libraryVersion = candidate.copy(
             sourceWorkId = 31L,
-            naturalKey = tachiyomi.domain.creator.model.SourceWorkNaturalKey(11L, "/library-version"),
+            naturalKey = SourceWorkNaturalKey(11L, "/library-version"),
             mangaId = 11L,
             inLibrary = true,
         )
         return CreatorWorkArchive(
             works = listOf(
-                tachiyomi.domain.creator.model.CanonicalWorkArchiveGroup(
+                CanonicalWorkArchiveGroup(
                     workId = 80L,
                     portableKey = "existing-work",
                     title = "Shared work",

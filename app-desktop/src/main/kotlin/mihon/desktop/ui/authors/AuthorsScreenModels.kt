@@ -14,6 +14,9 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import mihon.desktop.domain.CreatorDiscoveryScheduler
@@ -43,6 +46,13 @@ import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.source.service.SourceManager
 import eu.kanade.tachiyomi.source.CatalogueSource
 import mihon.desktop.DesktopUiDependencies
+import tachiyomi.domain.creator.service.OpenCreatorWorkVersion
+import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
+import tachiyomi.domain.creator.service.CreatorIdentityEditor
+import tachiyomi.domain.creator.model.WorkDecisionProjection
+import tachiyomi.domain.creator.model.CreatorWorkArchiveFilter
+
+
 
 internal object AuthorsScreenModelFactory {
     fun root(dependencies: DesktopUiDependencies): AuthorsRootScreenModel = AuthorsRootScreenModel(
@@ -64,6 +74,7 @@ internal object AuthorsScreenModelFactory {
             setCreatorFollow = dependencies.setCreatorFollow,
             discoveryScheduler = dependencies.creatorDiscoveryScheduler,
             creatorArchive = archive,
+            saveSourceMangaForDetails = dependencies.saveSourceMangaForDetails,
             identityActions = AuthorIdentityActions(
                 requireNotNull(dependencies.manageCreatorIdentity),
             ),
@@ -90,7 +101,9 @@ data class AuthorsRootState(
     val error: String? = null,
 ) {
     val filteredCreators: List<Creator>
-        get() = creators.filter { it.displayName.contains(query, ignoreCase = true) }
+        get() = creators.filter { creator ->
+            (listOf(creator.displayName) + creator.aliases).any { it.contains(query, ignoreCase = true) }
+        }
 }
 
 class AuthorsRootScreenModel(
@@ -130,6 +143,7 @@ data class AuthorDetailState(
     val checkpoints: List<SourceCheckpoint> = emptyList(),
     val workArchive: CreatorWorkArchive = CreatorWorkArchive(emptyList(), emptyList(), emptyList()),
     val languageFilter: LanguageArchiveFilter = LanguageArchiveFilter.ALL,
+    val workFilter: CreatorWorkArchiveFilter = CreatorWorkArchiveFilter(),
     val loading: Boolean = true,
     val actionRunning: Boolean = false,
     val followFeedback: Boolean? = null,
@@ -143,14 +157,14 @@ data class AuthorDetailState(
         )
 
     val visibleWorkArchive: CreatorWorkArchive
-        get() = CreatorWorkArchive(
+        get() = workFilter.apply(CreatorWorkArchive(
             works = workArchive.works.mapNotNull { work ->
                 work.copy(versions = work.versions.filter { languageFilter.accepts(it.readingLanguage.certainty) })
                     .takeIf { it.versions.isNotEmpty() }
             },
             pending = workArchive.pending.filter { languageFilter.accepts(it.readingLanguage.certainty) },
             rejected = workArchive.rejected.filter { languageFilter.accepts(it.readingLanguage.certainty) },
-        )
+        ))
 }
 
 sealed interface AuthorDetailEffect {
@@ -160,6 +174,7 @@ sealed interface AuthorDetailEffect {
     data object IdentityMerged : AuthorDetailEffect
 }
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 internal class AuthorDetailScreenModel(
     private val creatorId: Long,
     private val collectOnOpen: Boolean,
@@ -169,6 +184,7 @@ internal class AuthorDetailScreenModel(
     private val discoveryScheduler: CreatorDiscoveryScheduler?,
     private val creatorArchive: CreatorArchive?,
     private val identityActions: AuthorIdentityActions,
+    private val saveSourceMangaForDetails: SaveSourceMangaForDetails? = null,
 ) : ScreenModel {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val mutableState = MutableStateFlow(AuthorDetailState())
@@ -176,13 +192,26 @@ internal class AuthorDetailScreenModel(
     private val mutableEffects = MutableSharedFlow<AuthorDetailEffect>(extraBufferCapacity = 4)
     val effects = mutableEffects.asSharedFlow()
 
+    val identityEditor = CreatorIdentityEditor(
+        creatorId, identityActions.manageCreatorIdentity, scope,
+    )
+    private val activeCreatorId: Long get() = identityEditor.state.value.identity?.id ?: creatorId
+
     init {
+        scope.launch {
+            identityEditor.state.map { it.identity }.distinctUntilChanged().collect { snapshot ->
+                snapshot?.let { identity ->
+                    mutableState.update { it.copy(followed = identity.followed) }
+                    load()
+                }
+            }
+        }
         scope.launch {
             getCreators.subscribe().collect { creators -> mutableState.update { it.copy(allCreators = creators) } }
         }
         scope.launch {
             getCreators.subscribeFollowed().collect { followed ->
-                mutableState.update { it.copy(followed = followed.any { watch -> watch.creatorId == creatorId }) }
+                mutableState.update { it.copy(followed = followed.any { watch -> watch.creatorId == activeCreatorId }) }
             }
         }
         discoveryScheduler?.let { scheduler ->
@@ -195,7 +224,8 @@ internal class AuthorDetailScreenModel(
                 }
             }
             scope.launch {
-                archive.observeCheckpoints(creatorId).collect { checkpoints ->
+                identityEditor.state.map { it.identity?.id ?: creatorId }.distinctUntilChanged()
+                    .flatMapLatest { archive.observeCheckpoints(it) }.collect { checkpoints ->
                     mutableState.update { it.copy(checkpoints = checkpoints) }
                 }
             }
@@ -211,7 +241,7 @@ internal class AuthorDetailScreenModel(
         if (mutableState.value.actionRunning) return
         scope.launch {
             runAction {
-                discoveryScheduler?.runForCreator(creatorId)?.join()
+                discoveryScheduler?.runForCreator(activeCreatorId)?.join()
                 load()
             }
         }
@@ -222,7 +252,7 @@ internal class AuthorDetailScreenModel(
     fun toggleFollow() = scope.launch {
         val target = !mutableState.value.followed
         runAction {
-            setCreatorFollow.await(creatorId, target)
+            setCreatorFollow.await(activeCreatorId, target)
             mutableState.update { it.copy(followFeedback = target) }
         }
     }
@@ -249,9 +279,23 @@ internal class AuthorDetailScreenModel(
         }
     }
 
-    fun openCandidate(candidate: DiscoveryCandidate) {
-        mutableEffects.tryEmit(AuthorDetailEffect.OpenWorkCompare(candidate.id, creatorId))
+    fun openVersion(version: SourceWorkArchiveVersion) = scope.launch {
+        runAction {
+            val opener = OpenCreatorWorkVersion { listed ->
+                requireNotNull(saveSourceMangaForDetails).awaitListedForDetails(
+                    authorArchiveVersionSourceManga(listed), listed.naturalKey.sourceId,
+                ).manga.id
+            }
+            mutableEffects.emit(AuthorDetailEffect.OpenManga(opener.await(version)))
+        }
     }
+
+    fun openCandidate(candidate: DiscoveryCandidate) {
+        mutableEffects.tryEmit(AuthorDetailEffect.OpenWorkCompare(candidate.id, activeCreatorId))
+    }
+
+    fun searchWorks(query: String) = mutableState.update { it.copy(workFilter = it.workFilter.copy(query = query)) }
+    fun filterSource(sourceId: Long?) = mutableState.update { it.copy(workFilter = it.workFilter.copy(sourceId = sourceId)) }
 
     fun setLanguageFilter(filter: LanguageArchiveFilter) = mutableState.update { it.copy(languageFilter = filter) }
 
@@ -260,11 +304,13 @@ internal class AuthorDetailScreenModel(
     override fun onDispose() = scope.cancel()
 
     private suspend fun load() {
+        val requestedId = activeCreatorId
         runCatching {
-            val details = getCreatorDetails.await(creatorId)
-            val aliases = identityActions.getManualAliases(creatorId)
+            val details = getCreatorDetails.await(requestedId)
+            val aliases = identityActions.getManualAliases(requestedId)
             details to aliases
         }.onSuccess { (details, aliases) ->
+            if (activeCreatorId != requestedId) return@onSuccess
             mutableState.update { it.copy(details = details, manualAliases = aliases, loading = false, error = null) }
         }.onFailure { error ->
             mutableState.update { it.copy(loading = false, error = error.message ?: error::class.simpleName) }
@@ -280,7 +326,7 @@ internal class AuthorDetailScreenModel(
 }
 
 data class WorkComparisonSuggestion(
-    val version: tachiyomi.domain.creator.model.SourceWorkArchiveVersion,
+    val version: SourceWorkArchiveVersion,
     val canonicalWorkId: Long?,
     val score: WorkMatchScore,
 ) {
@@ -289,9 +335,9 @@ data class WorkComparisonSuggestion(
 }
 
 data class WorkCompareState(
-    val version: tachiyomi.domain.creator.model.SourceWorkArchiveVersion? = null,
+    val version: SourceWorkArchiveVersion? = null,
     val suggestions: List<WorkComparisonSuggestion> = emptyList(),
-    val currentDecision: tachiyomi.domain.creator.model.WorkDecisionProjection? = null,
+    val currentDecision: WorkDecisionProjection? = null,
     val chapterSummary: ChapterVariantSummary? = null,
     val chapterError: String? = null,
     val loading: Boolean = true,
@@ -449,7 +495,7 @@ internal class WorkCompareScreenModel(
     }
 
     private suspend fun loadChapterSummary(
-        version: tachiyomi.domain.creator.model.SourceWorkArchiveVersion,
+        version: SourceWorkArchiveVersion,
     ): ChapterVariantSummary {
         val cached = creatorArchive.getChapterVariants(version.naturalKey)
         if (cached.isNotEmpty()) {
@@ -481,9 +527,9 @@ internal class WorkCompareScreenModel(
     }
 }
 
-internal fun authorArchiveVersionSourceManga(version: tachiyomi.domain.creator.model.SourceWorkArchiveVersion): SManga =
+internal fun authorArchiveVersionSourceManga(version: SourceWorkArchiveVersion): SManga =
     SManga.create().apply {
         url = version.naturalKey.stableSourceUrl
         title = version.title
-        thumbnail_url = null
+        thumbnail_url = version.thumbnailUrl
     }

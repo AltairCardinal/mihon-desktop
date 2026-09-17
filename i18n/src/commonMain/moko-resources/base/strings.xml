@@ -1919,4 +1919,17 @@
     <string name="installed_apps_permission_private_read_failed">Private extensions could not be loaded. Retry without granting access to the installed app list.</string>
     <string name="installed_apps_permission_settings_required">The system did not grant this permission and may no longer show the request. Allow access to the installed app list in Mihon’s system settings, then return here.</string>
     <string name="installed_apps_permission_open_settings">Open settings</string>
+    <string name="creator_alias_picker_hint">Selected names will share this author and their works.</string>
+    <string name="creator_alias_select_required">Select at least one name.</string>
+    <string name="creator_display_name_confirm">Set %1$s as this author’s display name?</string>
+    <string name="creator_identity_refresh">Refresh details</string>
+    <string name="creator_identity_name_saved">Display name updated</string>
+    <string name="creator_identity_aliases_added">Aliases added</string>
+    <string name="creator_unfollow_confirm">Stop following this author? Works and names will be kept.</string>
+    <string name="creator_split_unavailable">This selection cannot safely separate the author’s names. No changes were made. You can restore an application backup made before the association.</string>
+    <string name="creator_no_representative_work">No archived works yet</string>
+    <string name="creator_work_version_count">%1$d works · %2$d source versions</string>
+    <string name="creator_work_search">Find works</string>
+    <string name="creator_work_sources_all">All sources</string>
+    <string name="creator_work_filter_empty">No matching works. Change the source or clear your search.</string>
 </resources>

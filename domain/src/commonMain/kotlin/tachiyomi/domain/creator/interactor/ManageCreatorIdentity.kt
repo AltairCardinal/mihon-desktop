@@ -1,13 +1,21 @@
 package tachiyomi.domain.creator.interactor
 
+import tachiyomi.domain.creator.model.AddCreatorAliasesRequest
 import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.creator.model.CreatorMentionResolution
+import tachiyomi.domain.creator.model.SetCreatorDisplayNameRequest
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.manga.model.Manga
 
 class ManageCreatorIdentity(
     private val repository: CreatorArchiveRepository,
 ) {
+    fun observe(creatorId: Long) = repository.observeIdentitySnapshot(creatorId)
+    suspend fun snapshot(creatorId: Long) = repository.getIdentitySnapshot(creatorId)
+    suspend fun candidates(creatorId: Long) = repository.getAliasCandidates(creatorId)
+    suspend fun addAliases(request: AddCreatorAliasesRequest) = repository.addCreatorAliases(request)
+    suspend fun setDisplayName(request: SetCreatorDisplayNameRequest) = repository.setCreatorDisplayName(request)
+
     suspend fun addAlias(creatorId: Long, alias: String) = repository.addManualCreatorAlias(creatorId, alias)
 
     suspend fun getManualAliases(creatorId: Long): List<String> = repository.getManualCreatorAliases(creatorId)

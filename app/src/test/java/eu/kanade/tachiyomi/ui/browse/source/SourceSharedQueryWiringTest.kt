@@ -14,12 +14,14 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.chapter.interactor.BatchUpdateChapters
+import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter
 import tachiyomi.domain.creator.repository.CreatorLibraryMangaSource
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.service.CreatorLibraryIndexer
+import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import uy.kohesive.injekt.Injekt
@@ -65,6 +67,8 @@ class SourceSharedQueryWiringTest {
             )
             assertNotNull(Injekt.get<CreatorArchiveBootstrap>())
             assertNotNull(Injekt.get<CreatorLibraryIndexer>())
+            assertNotNull(Injekt.get<ManageCreatorIdentity>())
+            assertNotNull(Injekt.get<NetworkToLocalManga>())
         }
     }
 

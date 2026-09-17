@@ -1,13 +1,16 @@
 package tachiyomi.domain.creator.repository
 
 import kotlinx.coroutines.flow.Flow
+import tachiyomi.domain.creator.model.AddCreatorAliasesRequest
 import tachiyomi.domain.creator.model.ArchiveAppendOutcome
 import tachiyomi.domain.creator.model.ArchiveDiscovery
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.ArchiveUpsertOutcome
 import tachiyomi.domain.creator.model.ArchiveWatchPolicy
+import tachiyomi.domain.creator.model.CreatorAliasCandidates
 import tachiyomi.domain.creator.model.CreatorArchiveV2Policy
 import tachiyomi.domain.creator.model.CreatorIdentityOption
+import tachiyomi.domain.creator.model.CreatorIdentitySnapshot
 import tachiyomi.domain.creator.model.CreatorLibraryIndexEntry
 import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.creator.model.CreatorRelationOrigin
@@ -28,6 +31,7 @@ import tachiyomi.domain.creator.model.LeaseAcquireResult
 import tachiyomi.domain.creator.model.NotificationDeliveryState
 import tachiyomi.domain.creator.model.NotificationOutboxItem
 import tachiyomi.domain.creator.model.ReviewDisposition
+import tachiyomi.domain.creator.model.SetCreatorDisplayNameRequest
 import tachiyomi.domain.creator.model.SourceCheckpoint
 import tachiyomi.domain.creator.model.SourceCheckpointUpdate
 import tachiyomi.domain.creator.model.SourceDiscoveryObservation
@@ -73,6 +77,21 @@ interface CreatorLibraryMangaSource {
 }
 
 interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
+
+    suspend fun getIdentitySnapshot(creatorId: Long): CreatorIdentitySnapshot =
+        throw UnsupportedOperationException("Identity editor is not implemented")
+
+    fun observeIdentitySnapshot(creatorId: Long): Flow<CreatorIdentitySnapshot> =
+        throw UnsupportedOperationException("Identity editor is not implemented")
+
+    suspend fun getAliasCandidates(creatorId: Long): CreatorAliasCandidates =
+        throw UnsupportedOperationException("Identity editor is not implemented")
+
+    suspend fun addCreatorAliases(request: AddCreatorAliasesRequest): CreatorIdentitySnapshot =
+        throw UnsupportedOperationException("Identity editor is not implemented")
+
+    suspend fun setCreatorDisplayName(request: SetCreatorDisplayNameRequest): CreatorIdentitySnapshot =
+        throw UnsupportedOperationException("Identity editor is not implemented")
 
     suspend fun resolveCreatorIdByExactName(name: String): Long?
 

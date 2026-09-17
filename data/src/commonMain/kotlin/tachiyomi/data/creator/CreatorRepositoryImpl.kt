@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
 import mihon.data.sync.journal.appendSyncOperation
 import mihon.domain.sync.SyncCategory
 import mihon.domain.sync.SyncEffect
@@ -18,6 +20,8 @@ import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.SyncOrigin
 import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
+import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
+import tachiyomi.domain.creator.model.AddCreatorAliasesRequest
 import tachiyomi.domain.creator.model.ArchiveAppendOutcome
 import tachiyomi.domain.creator.model.ArchiveDiscovery
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
@@ -25,11 +29,15 @@ import tachiyomi.domain.creator.model.ArchiveUpsertOutcome
 import tachiyomi.domain.creator.model.ArchiveWatchPolicy
 import tachiyomi.domain.creator.model.CanonicalWork
 import tachiyomi.domain.creator.model.CanonicalWorkArchiveGroup
+import tachiyomi.domain.creator.model.CanonicalWorkPortableKey
 import tachiyomi.domain.creator.model.Creator
+import tachiyomi.domain.creator.model.CreatorAliasCandidates
 import tachiyomi.domain.creator.model.CreatorArchiveLanguageTag
 import tachiyomi.domain.creator.model.CreatorArchiveSubjectKey
 import tachiyomi.domain.creator.model.CreatorArchiveV2Policy
 import tachiyomi.domain.creator.model.CreatorIdentityOption
+import tachiyomi.domain.creator.model.CreatorIdentityRequestConflict
+import tachiyomi.domain.creator.model.CreatorIdentitySnapshot
 import tachiyomi.domain.creator.model.CreatorLibraryIndexEntry
 import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.creator.model.CreatorPortableKey
@@ -62,6 +70,7 @@ import tachiyomi.domain.creator.model.MangaWorkMatch
 import tachiyomi.domain.creator.model.NotificationDeliveryState
 import tachiyomi.domain.creator.model.NotificationOutboxItem
 import tachiyomi.domain.creator.model.ReviewDisposition
+import tachiyomi.domain.creator.model.SetCreatorDisplayNameRequest
 import tachiyomi.domain.creator.model.SourceCheckpoint
 import tachiyomi.domain.creator.model.SourceCheckpointResult
 import tachiyomi.domain.creator.model.SourceCheckpointUpdate
@@ -69,6 +78,7 @@ import tachiyomi.domain.creator.model.SourceDiscoveryObservation
 import tachiyomi.domain.creator.model.SourceDiscoveryObservationResult
 import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.model.StaleCreatorIdentityException
 import tachiyomi.domain.creator.model.StaleWorkDecisionException
 import tachiyomi.domain.creator.model.WatchBaselineState
 import tachiyomi.domain.creator.model.WatchSourceBaseline
@@ -98,6 +108,134 @@ class CreatorRepositoryImpl(
 ) : CreatorRepository, CreatorArchiveRepository {
     @Volatile
     private var exactIdentityReady = false
+
+    override suspend fun getIdentitySnapshot(creatorId: Long): CreatorIdentitySnapshot {
+        bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
+        return handler.await(inTransaction = true) { identitySnapshot(creatorId) }
+    }
+
+    override fun observeIdentitySnapshot(creatorId: Long): Flow<CreatorIdentitySnapshot> =
+        handler.subscribeToOneOrNull { author_identity_editingQueries.getIdentityEditorRoot(creatorId) }
+            .map {
+                checkNotNull(it) { "作者资料不可用" }
+                getIdentitySnapshot(creatorId)
+            }
+            .onStart {
+                bootstrap.awaitReady()
+                ensureExactIdentityInvariant()
+            }
+
+    override suspend fun getAliasCandidates(creatorId: Long): CreatorAliasCandidates {
+        bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
+        return handler.await(inTransaction = true) {
+            val target = identitySnapshot(creatorId)
+            CreatorAliasCandidates(
+                target,
+                author_archiveQueries.getArchiveCreators(::mapCreator).executeAsList()
+                    .filter { it.id != target.id }.map { identitySnapshot(it.id) },
+            )
+        }
+    }
+
+    override suspend fun addCreatorAliases(request: AddCreatorAliasesRequest): CreatorIdentitySnapshot {
+        bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
+        require(request.selectedRevisions.isNotEmpty() && request.targetId !in request.selectedRevisions)
+        require(request.idempotencyKey.isNotBlank())
+        val fingerprint = JsonArray(
+            listOf(
+                JsonPrimitive("add"),
+                JsonPrimitive(request.targetId),
+                JsonPrimitive(request.targetRevision),
+            ) +
+                request.selectedRevisions.entries.sortedBy { it.key }.flatMap { (id, revision) ->
+                    listOf(JsonPrimitive(id), JsonPrimitive(revision))
+                },
+        ).toString()
+        return handler.await(inTransaction = true) {
+            replayIdentityCommand(request.idempotencyKey, fingerprint)?.let { return@await it }
+            validateIdentityVersion(request.targetId, request.targetRevision)
+            request.selectedRevisions.forEach { (id, revision) -> validateIdentityVersion(id, revision) }
+            val recovery = captureCreatorIdentityRecovery(request.selectedRevisions.keys.toList() + request.targetId)
+            val now = clock()
+            request.selectedRevisions.keys.sorted().forEach { mergeCreatorIdentityGraph(it, request.targetId, now) }
+            identityMutationHook()
+            author_identity_editingQueries.recordIdentityCommand(
+                request.idempotencyKey,
+                fingerprint,
+                request.targetId,
+                recovery,
+                now,
+            )
+            identitySnapshot(request.targetId)
+        }
+    }
+
+    override suspend fun setCreatorDisplayName(request: SetCreatorDisplayNameRequest): CreatorIdentitySnapshot {
+        bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
+        require(request.idempotencyKey.isNotBlank())
+        val fingerprint = JsonArray(
+            listOf(
+                JsonPrimitive("display-name"),
+                JsonPrimitive(request.creatorId),
+                JsonPrimitive(request.revision),
+                JsonPrimitive(request.name),
+            ),
+        ).toString()
+        return handler.await(inTransaction = true) {
+            replayIdentityCommand(request.idempotencyKey, fingerprint)?.let { return@await it }
+            val before = validateIdentityVersion(request.creatorId, request.revision)
+            require(request.name in before.names) { "只能选择该作者已有的别名" }
+            val recovery = captureCreatorIdentityRecovery(listOf(request.creatorId))
+            val now = clock()
+            if (before.displayName != request.name) {
+                author_archiveQueries.updateArchiveCreator(
+                    request.name,
+                    CreatorNameNormalizer.normalize(request.name),
+                    request.name,
+                    now,
+                    request.creatorId,
+                )
+                author_archiveQueries.bumpArchiveCreatorIdentityRevision(now, request.creatorId)
+            }
+            identityMutationHook()
+            author_identity_editingQueries.recordIdentityCommand(
+                request.idempotencyKey,
+                fingerprint,
+                request.creatorId,
+                recovery,
+                now,
+            )
+            identitySnapshot(request.creatorId)
+        }
+    }
+
+    private fun Database.identitySnapshot(creatorId: Long): CreatorIdentitySnapshot {
+        val row = author_identity_editingQueries.getIdentityEditorRoot(creatorId).executeAsOneOrNull()
+            ?: throw StaleCreatorIdentityException()
+        return CreatorIdentitySnapshot(
+            row._id,
+            row.identity_revision,
+            row.display_name,
+            author_archiveQueries.getArchiveIdentityNamesForCreator(row._id).executeAsList(),
+            row.representative_title.takeIf(String::isNotBlank),
+            row.followed == 1L,
+        )
+    }
+
+    private fun Database.validateIdentityVersion(id: Long, revision: Long):
+        CreatorIdentitySnapshot = identitySnapshot(id).also {
+        if (it.id != id || it.revision != revision) throw StaleCreatorIdentityException()
+    }
+
+    private fun Database.replayIdentityCommand(key: String, fingerprint: String): CreatorIdentitySnapshot? {
+        val previous = author_identity_editingQueries.getIdentityCommand(key).executeAsOneOrNull() ?: return null
+        if (previous.request_fingerprint != fingerprint) throw CreatorIdentityRequestConflict()
+        return identitySnapshot(previous.creator_id)
+    }
 
     override suspend fun resolveCreatorIdByExactName(name: String): Long? {
         bootstrap.awaitReady()
@@ -2230,7 +2368,7 @@ class CreatorRepositoryImpl(
             createdAt = now,
             lastModifiedAt = now,
         )
-        val sameRootMentions = tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga().await(manga)
+        val sameRootMentions = ExtractCreatorsFromManga().await(manga)
             .filter {
                 author_archiveQueries.getArchiveCreatorIdByExactName(it.displayName).executeAsOneOrNull() ==
                     effectiveCreatorId
@@ -2851,13 +2989,13 @@ class CreatorRepositoryImpl(
 
     private fun canonicalWorkSubjectKey(portableKey: String): String {
         return CreatorArchiveSubjectKey.canonicalWork(
-            tachiyomi.domain.creator.model.CanonicalWorkPortableKey(portableKey),
+            CanonicalWorkPortableKey(portableKey),
         )
     }
 
     private fun creatorSubjectKey(portableKey: String): String {
         return CreatorArchiveSubjectKey.creator(
-            tachiyomi.domain.creator.model.CreatorPortableKey(portableKey),
+            CreatorPortableKey(portableKey),
         )
     }
 
@@ -3020,6 +3158,7 @@ private fun mapCreatorWorkArchiveRow(
     stableSourceUrl: String,
     mangaId: Long?,
     title: String,
+    thumbnailUrl: String?,
     detailsFetchedAt: Long?,
     lastSeenAt: Long,
     lastCheckResult: String?,
@@ -3123,6 +3262,7 @@ private fun mapCreatorWorkArchiveRow(
             naturalKey = SourceWorkNaturalKey(sourceId, stableSourceUrl),
             mangaId = mangaId,
             title = title,
+            thumbnailUrl = thumbnailUrl,
             readingLanguage = language,
             chapterCount = chapterCount,
             inLibrary = inLibrary != 0L,

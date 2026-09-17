@@ -61,6 +61,16 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
+import tachiyomi.data.UpdateStrategyColumnAdapter
+import tachiyomi.data.StringListColumnAdapter
+import kotlinx.serialization.json.JsonObject
+import tachiyomi.data.JvmDatabaseHandler
+import tachiyomi.data.DateColumnAdapter
+import kotlinx.serialization.json.Json
+import tachiyomi.data.Database
+import tachiyomi.data.History
+import tachiyomi.data.Mangas
+
 
 @OptIn(ExperimentalComposeUiApi::class)
 class MangaDetailLibraryEntryWiringTest {
@@ -373,10 +383,10 @@ class MangaDetailLibraryEntryWiringTest {
 
     private fun verifyCombinedSourceRefresh(manual: Boolean) = runBlocking {
         val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY)
-        tachiyomi.data.Database.Schema.create(driver)
-        val database = tachiyomi.data.Database(driver, historyAdapter = tachiyomi.data.History.Adapter(tachiyomi.data.DateColumnAdapter),
-            mangasAdapter = tachiyomi.data.Mangas.Adapter(tachiyomi.data.StringListColumnAdapter, tachiyomi.data.UpdateStrategyColumnAdapter))
-        val handler = tachiyomi.data.JvmDatabaseHandler(database, driver)
+        Database.Schema.create(driver)
+        val database = Database(driver, historyAdapter = History.Adapter(DateColumnAdapter),
+            mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter))
+        val handler = JvmDatabaseHandler(database, driver)
         val mangaRepository = tachiyomi.data.manga.MangaRepositoryImpl(handler, tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter)
         val manga = mangaRepository.insertNetworkManga(listOf(Manga.create().copy(
             id = 45L,
@@ -387,7 +397,7 @@ class MangaDetailLibraryEntryWiringTest {
         ))).single()
         val chapterRepository = tachiyomi.data.chapter.ChapterRepositoryImpl(handler)
         if (manual) chapterRepository.addAll(listOf(Chapter.create().copy(mangaId = manga.id, url = "/auto-refresh/chapter-1", name = "Auto-loaded chapter", read = true, bookmark = true, lastPageRead = 7)))
-        val memo = kotlinx.serialization.json.Json.parseToJsonElement("""{"token":"Desktop UI"}""") as kotlinx.serialization.json.JsonObject
+        val memo = Json.parseToJsonElement("""{"token":"Desktop UI"}""") as JsonObject
         var calls = 0
         val source = object : Source {
             override val id = 42L
@@ -461,15 +471,15 @@ class MangaDetailLibraryEntryWiringTest {
         val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
             app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
         )
-        tachiyomi.data.Database.Schema.create(driver)
-        val database = tachiyomi.data.Database(
+        Database.Schema.create(driver)
+        val database = Database(
             driver,
-            historyAdapter = tachiyomi.data.History.Adapter(tachiyomi.data.DateColumnAdapter),
-            mangasAdapter = tachiyomi.data.Mangas.Adapter(
-                tachiyomi.data.StringListColumnAdapter, tachiyomi.data.UpdateStrategyColumnAdapter,
+            historyAdapter = History.Adapter(DateColumnAdapter),
+            mangasAdapter = Mangas.Adapter(
+                StringListColumnAdapter, UpdateStrategyColumnAdapter,
             ),
         )
-        val handler = tachiyomi.data.JvmDatabaseHandler(database, driver)
+        val handler = JvmDatabaseHandler(database, driver)
         val mangaRepository = tachiyomi.data.manga.MangaRepositoryImpl(
             handler, tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter,
         )
@@ -520,7 +530,7 @@ class MangaDetailLibraryEntryWiringTest {
                     }
                 }
             }
-            val creatorChip = "${MR.strings.author.localized()} · Jane Doe"
+            val creatorChip = "Jane Doe"
             renderUntil(scene) { nodes(scene).any { it.hasText(creatorChip) } }
             click(scene, creatorChip)
             renderUntil(scene) { nodes(scene).any { it.hasText("fixture identity failure") } }

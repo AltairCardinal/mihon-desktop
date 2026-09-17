@@ -1713,4 +1713,17 @@
     <string name="installed_apps_permission_private_read_failed">私有插件读取失败，请重试。重试私有插件不需要应用列表权限。</string>
     <string name="installed_apps_permission_settings_required">系统未授予此权限，可能已不再显示授权请求。请在 Mihon 的系统设置中允许读取已安装应用列表，然后返回。</string>
     <string name="installed_apps_permission_open_settings">前往设置</string>
+    <string name="creator_alias_picker_hint">添加后，这些名字将共用同一位作者和作品。</string>
+    <string name="creator_alias_select_required">请至少选择一个名字。</string>
+    <string name="creator_display_name_confirm">要把%1$s设为该作者的显示名称吗</string>
+    <string name="creator_identity_refresh">刷新资料</string>
+    <string name="creator_identity_name_saved">显示名称已更新</string>
+    <string name="creator_identity_aliases_added">已添加别名</string>
+    <string name="creator_unfollow_confirm">停止关注该作者吗？作品和名称关系会保留。</string>
+    <string name="creator_split_unavailable">当前选择无法安全地分开作者名称，资料未更改。可使用关联前的应用备份恢复。</string>
+    <string name="creator_no_representative_work">暂无已归档作品</string>
+    <string name="creator_work_version_count">%1$d 部作品 · %2$d 个图源版本</string>
+    <string name="creator_work_search">查找作品</string>
+    <string name="creator_work_sources_all">全部来源</string>
+    <string name="creator_work_filter_empty">没有符合条件的作品。可切换来源或清空搜索。</string>
 </resources>

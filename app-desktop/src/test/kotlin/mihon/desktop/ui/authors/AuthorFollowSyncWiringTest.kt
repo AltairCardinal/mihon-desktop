@@ -43,6 +43,9 @@ class AuthorFollowSyncWiringTest {
             }
         }
         val identity = mockk<AuthorIdentityActions> {
+            every { manageCreatorIdentity } returns mockk {
+                every { observe(7) } returns kotlinx.coroutines.flow.emptyFlow()
+            }
             coEvery { getManualAliases(7) } returns emptyList()
         }
         val model = AuthorDetailScreenModel(

@@ -2,7 +2,6 @@ package mihon.desktop.ui.library
 
 import tachiyomi.i18n.MR
 import java.util.Locale
-
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.DesktopNotificationService
 import mihon.desktop.platform.DesktopShareService
@@ -118,6 +117,8 @@ import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.manga.model.Manga
 import androidx.compose.foundation.layout.size as layoutSize
 
+
+
 @Composable
 internal fun MangaHeader(
     manga: Manga,
@@ -205,22 +206,15 @@ internal fun MangaHeader(
             )
             if (creatorMentions.isNotEmpty()) {
                 FlowRow(
-                    modifier = Modifier.padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.padding(top = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     creatorMentions.forEach { mention ->
-                        FilterChip(
-                            selected = false,
+                        mihon.desktop.ui.authors.CreatorNameLink(
+                            name = mention.displayName,
                             enabled = !creatorIdentityLoading,
                             onClick = { onCreatorClick(mention) },
-                            label = {
-                                Text(
-                                    text = "${creatorRoleLabel(mention.role)} · ${mention.displayName}",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            },
                         )
                     }
                     if (creatorIdentityLoading) {

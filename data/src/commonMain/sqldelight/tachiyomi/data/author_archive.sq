@@ -2972,6 +2972,7 @@ SELECT
     SW.stable_source_url,
     SW.manga_id,
     SW.title,
+    SW.thumbnail_url,
     SW.details_fetched_at,
     SW.last_seen_at,
     SC.result_state AS last_check_result,

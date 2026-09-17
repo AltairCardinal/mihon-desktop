@@ -469,29 +469,20 @@ private fun ColumnScope.MangaContentInfo(
 
     Spacer(modifier = Modifier.height(2.dp))
 
-    Row(
-        modifier = Modifier.secondaryItemAlpha(),
-        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = Icons.Filled.PersonOutline,
-            contentDescription = null,
-            modifier = Modifier.size(16.dp),
-        )
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (creatorMentions.isEmpty()) {
-            Text(
-                text = stringResource(MR.strings.unknown_author),
-                style = MaterialTheme.typography.titleSmall,
-                textAlign = textAlign,
-            )
+            Text(stringResource(MR.strings.unknown_author), style = MaterialTheme.typography.titleSmall)
         } else {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall)) {
-                creatorMentions.forEach { mention ->
-                    SuggestionChip(
-                        onClick = { onCreatorClick(mention) },
-                        label = { Text(mention.displayName) },
-                    )
+            creatorMentions.forEach { mention ->
+                Row(
+                    modifier = Modifier.secondaryItemAlpha().clickableNoIndication(onClick = {
+                        onCreatorClick(mention)
+                    }),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.PersonOutline, null, Modifier.size(16.dp))
+                    Text(mention.displayName, style = MaterialTheme.typography.titleSmall)
                 }
             }
         }

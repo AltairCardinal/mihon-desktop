@@ -1,12 +1,9 @@
 package mihon.desktop.ui.library
 
 import tachiyomi.domain.source.service.toSourceManga
-
 import tachiyomi.i18n.MR
 import java.util.Locale
-
 import mihon.desktop.LocalDesktopUiDependencies
-
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -112,6 +109,10 @@ import tachiyomi.domain.manga.model.Manga
 import mihon.desktop.platform.toDesktopNotification
 import androidx.compose.foundation.layout.size as layoutSize
 
+
+
+
+
 data class MangaDetailScreen(val mangaId: Long) : Screen {
 
     internal fun onTracking(navigator: Navigator, mangaTitle: String, totalChapters: Long) {
@@ -167,7 +168,6 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         var categoryDialogMode by remember { mutableStateOf<MangaCategoryDialogMode?>(null) }
         var showFetchIntervalDialog by remember { mutableStateOf(false) }
         var downloadMenuExpanded by remember { mutableStateOf(false) }
-        var creatorIdentityRequest by remember { mutableStateOf<CreatorMentionResolution.Ambiguous?>(null) }
         var creatorIdentityLoading by remember { mutableStateOf(false) }
         var creatorIdentityError by remember { mutableStateOf<String?>(null) }
 
@@ -800,42 +800,6 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                 )
             }
 
-            val identityManga = manga
-            creatorIdentityRequest?.let { request ->
-                if (identityManga != null) {
-                    CreatorIdentityChooserDialog(
-                        request = request,
-                        onSelect = { creatorId ->
-                            creatorIdentityRequest = null
-                            scope.launch {
-                                creatorIdentityLoading = true
-                                runCatching {
-                                    model.selectCreatorIdentity(identityManga, request.mention, creatorId)
-                                }.onSuccess {
-                                    authorDetailScreenOrNull(request.mention.displayName, creatorId)
-                                        ?.let { navigator.push(it) }
-                                }.onFailure { creatorIdentityError = it.message ?: it::class.simpleName.orEmpty() }
-                                creatorIdentityLoading = false
-                            }
-                        },
-                        onCreateDistinct = {
-                            creatorIdentityRequest = null
-                            scope.launch {
-                                creatorIdentityLoading = true
-                                runCatching {
-                                    model.createDistinctCreatorIdentity(identityManga, request.mention)
-                                }.onSuccess { creatorId ->
-                                    authorDetailScreenOrNull(request.mention.displayName, creatorId)
-                                        ?.let { navigator.push(it) }
-                                }.onFailure { creatorIdentityError = it.message ?: it::class.simpleName.orEmpty() }
-                                creatorIdentityLoading = false
-                            }
-                        },
-                        onDismiss = { creatorIdentityRequest = null },
-                    )
-                }
-            }
-
             creatorIdentityError?.let { error ->
                 AlertDialog(
                     onDismissRequest = { creatorIdentityError = null },
@@ -888,7 +852,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                                         is CreatorMentionResolution.Resolved ->
                                             authorDetailScreenOrNull(mention.displayName, resolution.creatorId)
                                                 ?.let { navigator.push(it) }
-                                        is CreatorMentionResolution.Ambiguous -> creatorIdentityRequest = resolution
+                                        is CreatorMentionResolution.Ambiguous -> creatorIdentityError = "作者资料已变化，请重试"
                                     }
                                 }.onFailure { creatorIdentityError = it.message ?: it::class.simpleName.orEmpty() }
                                 creatorIdentityLoading = false

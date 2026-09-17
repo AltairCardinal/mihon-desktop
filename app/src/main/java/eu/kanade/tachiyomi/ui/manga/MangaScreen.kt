@@ -44,7 +44,6 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.isLocalOrStub
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.browse.author.AndroidAuthorDetailScreen
-import eu.kanade.tachiyomi.ui.browse.author.AndroidCreatorIdentityChooserDialog
 import eu.kanade.tachiyomi.ui.browse.author.AndroidCreatorOpenCoordinator
 import eu.kanade.tachiyomi.ui.browse.author.AndroidMangaCreatorNavigator
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
@@ -111,15 +110,14 @@ class MangaScreen(
         val creatorMentions = remember(successState.manga.author, successState.manga.artist) {
             creatorNavigator.mentions(successState.manga)
         }
-        var creatorIdentityRequest by remember {
-            mutableStateOf<CreatorMentionResolution.Ambiguous?>(null)
-        }
         var creatorIdentityPreparing by remember { mutableStateOf(false) }
         val creatorOpenCoordinator = remember(successState.manga, creatorNavigator) {
             AndroidCreatorOpenCoordinator(
                 resolve = creatorNavigator::resolve,
                 onResolved = { navigator.push(AndroidAuthorDetailScreen(it)) },
-                onAmbiguous = { creatorIdentityRequest = it },
+                onAmbiguous = {
+                    scope.launch { screenModel.snackbarHostState.showSnackbar("作者资料已变化，请重试") }
+                },
                 onFailure = { failure ->
                     screenModel.snackbarHostState.showSnackbar(
                         message = failure.message ?: failure::class.simpleName.orEmpty(),
@@ -216,27 +214,6 @@ class MangaScreen(
             onAllChapterSelected = screenModel::toggleAllSelection,
             onInvertSelection = screenModel::invertSelection,
         )
-
-        creatorIdentityRequest?.let { request ->
-            AndroidCreatorIdentityChooserDialog(
-                request = request,
-                onSelect = { creatorId ->
-                    scope.launch {
-                        creatorNavigator.select(successState.manga, request, creatorId)
-                        creatorIdentityRequest = null
-                        navigator.push(AndroidAuthorDetailScreen(creatorId))
-                    }
-                },
-                onCreateDistinct = {
-                    scope.launch {
-                        val creatorId = creatorNavigator.createDistinct(successState.manga, request)
-                        creatorIdentityRequest = null
-                        navigator.push(AndroidAuthorDetailScreen(creatorId))
-                    }
-                },
-                onDismiss = { creatorIdentityRequest = null },
-            )
-        }
 
         var showScanlatorsDialog by remember { mutableStateOf(false) }
 

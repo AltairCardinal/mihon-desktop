@@ -3,7 +3,7 @@ package tachiyomi.domain.creator.model
 object CreatorArchiveV2Contract {
     const val CURRENT_SCHEMA_VERSION = 15L
     const val TARGET_SCHEMA_VERSION = 16L
-    const val LATEST_SCHEMA_VERSION = 26L
+    const val LATEST_SCHEMA_VERSION = 27L
     const val TARGET_MIGRATION = "15.sqm"
     const val BACKUP_ENVELOPE_FIELD = 107
     const val BACKUP_SECTION_VERSION = 1
@@ -227,6 +227,7 @@ data class SourceWorkArchiveVersion(
     val lastCheckResult: SourceCheckpointResult? = null,
     val consecutiveFailures: Long = 0,
     val lastSuccessAt: Long? = null,
+    val thumbnailUrl: String? = null,
 )
 
 data class CanonicalWorkArchiveGroup(

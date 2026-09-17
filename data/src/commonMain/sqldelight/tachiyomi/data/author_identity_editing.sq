@@ -1,0 +1,43 @@
+CREATE TABLE author_archive_identity_commands(
+    command_key TEXT NOT NULL PRIMARY KEY,
+    request_fingerprint TEXT NOT NULL,
+    creator_id INTEGER NOT NULL,
+    recovery_graph TEXT NOT NULL,
+    completed_at INTEGER NOT NULL,
+    FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE RESTRICT
+);
+
+CREATE TRIGGER author_archive_watch_identity_revision
+AFTER UPDATE OF enabled, period_millis ON author_archive_watches
+WHEN old.enabled != new.enabled OR old.period_millis != new.period_millis
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1 WHERE _id = new.creator_id;
+END;
+CREATE TRIGGER author_archive_watch_insert_identity_revision
+AFTER INSERT ON author_archive_watches
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1 WHERE _id = new.creator_id;
+END;
+
+getIdentityCommand:
+SELECT * FROM author_archive_identity_commands WHERE command_key = :commandKey;
+
+recordIdentityCommand:
+INSERT INTO author_archive_identity_commands(command_key, request_fingerprint, creator_id, recovery_graph, completed_at)
+VALUES (:commandKey, :fingerprint, :creatorId, :recoveryGraph, :completedAt);
+
+getIdentityEditorRoot:
+WITH RECURSIVE identity_path(_id, status, merged_into_creator_id, depth) AS (
+    SELECT _id, status, merged_into_creator_id, 0 FROM author_archive_creators WHERE _id = :creatorId
+    UNION ALL
+    SELECT C._id, C.status, C.merged_into_creator_id, P.depth + 1 FROM author_archive_creators C
+    JOIN identity_path P ON C._id = P.merged_into_creator_id WHERE P.status = 'MERGED' AND P.depth < 100
+)
+SELECT C._id, C.identity_revision, C.display_name,
+    (SELECT count(*) FROM author_archive_identity_names N WHERE N.creator_id = C._id) AS name_count,
+    coalesce((SELECT SW.title FROM author_archive_source_works SW
+        JOIN author_archive_source_work_creators R ON R.source_work_id = SW._id
+        WHERE R.creator_id = C._id ORDER BY SW._id LIMIT 1), '') AS representative_title,
+    coalesce((SELECT enabled FROM author_archive_watches W WHERE W.creator_id = C._id), 0) AS followed
+FROM author_archive_creators C JOIN identity_path P ON C._id = P._id
+WHERE P.status = 'ACTIVE' LIMIT 1;

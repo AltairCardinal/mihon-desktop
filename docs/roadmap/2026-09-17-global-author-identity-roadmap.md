@@ -1,6 +1,6 @@
 # 跨插件唯一作者 · 正式实施 Roadmap
 
-- 日期：2026-09-17；状态：IN PROGRESS；2026-09-17按用户指令启动，当前从第3节首个未勾选批次推进。
+- 日期：2026-09-17；状态：PAUSED；2026-09-17按用户要求完成GA-02后暂停，不启动GA-03。恢复须待用户明确指令；从第3节首个未勾选批次继续。
 - 类型：产品child plan；从第3节第一个未勾选批次推导进度，不再声明active-task。
 - 父路线：[主Roadmap](2026-06-30-mihon-desktop-refactor-roadmap.md)。仅登记待执行专项，不改变父路线active-child-plan，不恢复旧作者归档专项及其无关backlog。
 - 最终产品依据：[功能设计](../2026-09-17-global-author-functional-design.md)；[技术方案](../2026-09-17-creator-identity-reconciliation-proposal.md)；[已确认HTML](../prototypes/author-identity/index.html)，基线提交 `77a610534`。
@@ -36,7 +36,7 @@
 ## 3. 批次清单与依赖
 
 - [x] **GA-01：精确名称唯一内核、历史迁移与所有身份写入入口**（无前置）
-- [ ] **GA-02：添加别名、主名切换及双端最终交互**（依赖GA-01及其独立审查）
+- [x] **GA-02：添加别名、主名切换及双端最终交互**（依赖GA-01及其独立审查）
 - [ ] **GA-03：全局作者设置与真实发现调度**（依赖GA-02）
 - [ ] **GA-04：备份恢复与设置兼容**（依赖GA-01至GA-03）
 - [ ] **GA-05：现有作者关注同步兼容**（依赖GA-01、GA-02、GA-04稳定契约）
@@ -74,7 +74,7 @@
 - 追加修复验收：独立验收者只读审查稳定产物，R1完整17表迁移前恢复图、R2遗留多名称传递合并、R3旧根持续订阅、R4双端真实未收藏SQL入口、R5重复解析revision幂等与自动绑定、R6普通角色替换/合并并集全部通过。恢复资料为组件内审计与受控恢复JSON，不提供通用撤销工具。
 - 最终focused：`ga01-repair-final-focused5.log` PASSED/exit0，数据层87项（repository 46、index 22、legacy 10、schema 1、真实sync runner 8）零失败。`ga01-repair-stable-check.log` PASSED/exit0，Android 6项、Desktop 2项，app/data/domain spotlessCheck通过；独立审查核对XML，主代理核对日志与diff检查。
 - 原规模性能case：10,000漫画/20,000精确名称，首次进度12ms、回填7.821s，重放进度2ms、回填5.151s，满足原500ms/15s门槛。`ga01-repair-performance.log`整轮因当时别名顺序revision用例失败而exit1，只将性能case记通过；该缺陷已修复并纳入最终repository 46项绿灯，未将整轮记为通过。
-- 本批提交包含实现、测试和此处checkoff；可用 `git log --oneline --grep="Unify exact creator identities"` 定位。GA-02前置门禁解除；真机、正式Windows/macOS产物及最终模块/全量验证仍留GA-06，不以JVM入口测试代替发布验收。
+- 本批提交 `e6a75afd3f` 包含实现、测试和checkoff。GA-02前置门禁解除；真机、正式Windows/macOS产物及最终模块/全量验证仍留GA-06，不以JVM入口测试代替发布验收。
 
 ### GA-02 · 最终作者交互与命令接线
 
@@ -90,6 +90,22 @@
 **红灯与验证**：真实repository命令测试+共享状态契约；Screen实例化、Voyager导航类型、DI解析、点击图源到指定mangaId、未收藏漫画署名进入根的集成测试。覆盖多选部分过期、双击、失败原子性、名称归属竞争、关注并集、旧入口、重启、320dp/主题/长别名换行与键盘焦点。HTML只能作为对照，不能作为production wiring证据。
 
 **完成条件**：A3/A4通过；用户可见页面与 `77a610534` 对照一致，旧同名选框不可再达。涉及事务命令扩展必须审查；预计10–16小时，成本集中在双端状态/导航接线和错误路径。
+
+**实施证据（2026-09-17，GA-02复审通过；随本批提交完成后暂停）**：
+- GA-01前置提交 `e6a75afd3f` 已通过独立审查。复用追加修复实施者继续本批，共享命令和窗口状态复用既有repository/merge/recovery，双端保留平台视图适配。主代理维护文档，实施者独占Gradle协调权；本批不运行正式构建或安装真机。
+- `ga02-command-red.log` 的4项真实SQL命令测试先因未实现失败，`ga02-command-green2.log` 四项通过；`ga02-editor-green.log` 累计6项通过，覆盖多选合并、全组过期拒绝、回滚、主名归属、取消、搜索与刷新选择。以上为早期局部证据，最终接线与复审结果见下。
+- 旧按漫画/自由新名拆分无法安全表达完整名称迁移时，入口说明限制且不写入；不新增拆分管理器。正式发布前验证该限制，不以移除其他作者能力简化页面。
+- 第1轮独立审查曾不通过；后续限定修复复审通过，见下。实施者适用证据42个独立case：data编辑12（`ga02-final-focused2`）+过滤1（`ga02-filter-green`）；Desktop既有行为8、页面7、漫画署名1（`ga02-final-focused3`），Follow1（`ga02-follow-layout-red`），新过滤/别名搜索2及原布局复验（`ga02-filter-green`）；Android作者入口/模型7、DI1（`ga02-final-focused3`）、Follow1（`ga02-follow-layout-red`）、过滤1（`ga02-filter-green`）。上述是跨轮次且仍适用的case证据，不表示某个整轮42项全绿；独立审查已核对适用证据。
+- `ga02-wiring-green1`虽然exit0但Android旧Follow首轮失败后重试通过，不计干净整轮；后续Follow修正真实IO的虚拟超时/新增依赖mock后独立通过。`final-focused2/3`和`follow-layout-red`含后来修复的编译或用例失败，只复用其中明确通过的case。早期`ga02-ui-red`为测试夹具无挂起点导致取消，不计行为红灯；作品对照失败已证实为测试mock覆盖，不采用早期加载时机假设。
+- 主代理已查看最新320dp深浅离屏图，真实本地PNG、长别名/来源换行、缺插件标记及更多按钮可达。实际mounted页面测试覆盖添加/主名确认/焦点/失败草稿/双击、作品搜索与来源过滤保持完整计数、准确本地版本导航；Android为真实ScreenModel/SQL/DI及导航事件，尚非Android Compose真机点击验收。`ga02-stable-check`格式Check、diff检查通过，正式运行留GA-06。
+
+
+- 第1轮独立审查：两项阻塞——双端pending/rejected版本仍保留无封面/图源层级不一致的旧呈现；`refreshDisplayName`缺少迟到会话隔离，取消A并打开B后A旧响应可能取消或覆盖B。共享事务、全组版本校验、恢复凭据及幂等处理未发现新增阻塞。已交原实施者按预留1次修复复审处理两项及直接影响，当时保持未勾选；不新增代理或全量测试。
+
+- 唯一限定修复复审：APPROVED，上述两项关闭。主名迟到成功/失败均按会话版本拒绝，pendingSnapshot与幂等键纳入同一原子状态；两端canonical/pending/rejected复用作品行，保留原审核操作及准确导航。实施代理两次容量错误后由主代理收回职责接管限定修复，未更换指定模型或新增代理，独立验收者保持不变。
+- 修复红绿：`ga02-review-name-red`三项按正确原因失败，`ga02-review-name-green`四项通过；`ga02-review-rows-red2`真实挂载页面缺封面节点失败，`ga02-review-rows-green`Desktop两项及Android八项通过。`ga02-review-row-actions`补验真实More→WorkCompare及图源→准确mangaId通过；`ga02-review-check`三个模块spotlessCheck通过，主代理及独立验收者diff检查通过。
+- 本批超过8文件/400行，因共享原子命令、两端窗口状态与真实页面接线构成一个可独立验收的能力闭环，保持同批提交；风险集中于迁移/幂等、窗口并发与双端交互，已分别覆盖测试和独立复审。
+- 本批实现、测试、checkoff与[交接文档](2026-09-17-global-author-identity-handoff.md)同提交，提交说明为 `Add creator alias editing and consistent author pages`。用户于2026-09-17明确要求完成GA-02后暂停，GA-03至GA-06未启动实施，正式构建/真机验收仍未完成。
 
 ### GA-03 · 全局频率与后台任务
 

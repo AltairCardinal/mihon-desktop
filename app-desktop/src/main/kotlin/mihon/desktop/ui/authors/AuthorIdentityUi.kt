@@ -3,6 +3,7 @@ package mihon.desktop.ui.authors
 import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.service.CreatorLibraryIndexState
 
+
 internal sealed interface AuthorIndexPresentation {
     data class Indexing(val processedManga: Int, val totalManga: Int) : AuthorIndexPresentation
     data class Failed(val message: String) : AuthorIndexPresentation
@@ -30,7 +31,7 @@ internal fun authorIndexPresentation(
 }
 
 internal class AuthorIdentityActions(
-    private val manageCreatorIdentity: ManageCreatorIdentity,
+    val manageCreatorIdentity: ManageCreatorIdentity,
 ) {
     suspend fun addAlias(creatorId: Long, alias: String) {
         manageCreatorIdentity.addAlias(creatorId, alias)

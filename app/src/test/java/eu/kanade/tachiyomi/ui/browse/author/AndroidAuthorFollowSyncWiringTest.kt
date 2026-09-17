@@ -7,6 +7,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -60,11 +61,19 @@ class AndroidAuthorFollowSyncWiringTest {
             discovery = mockk(),
             archive = archive,
             sources = mockk(),
+            identity = mockk { every { observe(7) } returns kotlinx.coroutines.flow.emptyFlow() },
+            networkToLocal = mockk(),
         )
         try {
             model.toggleFollow().join()
+            kotlinx.coroutines.withContext(Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(5000) { model.state.first { it.followed } }
+            }
             assertTrue(model.state.value.followed)
             model.toggleFollow().join()
+            kotlinx.coroutines.withContext(Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(5000) { model.state.first { !it.followed } }
+            }
             assertFalse(model.state.value.followed)
             assertEquals(listOf(SyncMutationContext.User, SyncMutationContext.User), contexts)
             assertNull(model.state.value.error)
