@@ -1936,4 +1936,7 @@
     <string name="extension_batch_conflict">Selected extensions provide the same source. Choose one provider before continuing.</string>
     <string name="extension_batch_unavailable">The list changed. Refresh extensions or explicitly select a replacement repository, then review again.</string>
     <string name="extension_batch_use_repository">Use this repository</string>
+    <string name="extension_batch_permission">Restore installation permission before continuing.</string>
+    <string name="extension_batch_foreground">Return to the app and review the remaining installations.</string>
+    <string name="extension_batch_installer_changed">The selected installer changed. Review the remaining installations before continuing.</string>
 </resources>

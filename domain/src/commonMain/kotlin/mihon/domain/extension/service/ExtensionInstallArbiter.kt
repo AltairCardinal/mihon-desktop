@@ -12,6 +12,16 @@ class ExtensionInstallLease internal constructor(
     internal val eligibility: () -> ExtensionInstallInvalidation?,
 )
 
+abstract class ExtensionPackageLease internal constructor(val transactionId: Long, val packageName: String)
+class ExtensionRemovalLease internal constructor(
+    transactionId: Long,
+    packageName: String,
+) : ExtensionPackageLease(transactionId, packageName)
+class ExtensionSystemWindowLease internal constructor(
+    transactionId: Long,
+    packageName: String,
+) : ExtensionPackageLease(transactionId, packageName)
+
 enum class ExtensionInstallInvalidation {
     PRESENT,
     INELIGIBLE,
@@ -41,6 +51,37 @@ class ExtensionInstallArbiter {
     private val active = mutableMapOf<String, Reservation>()
     private var nextId = 0L
 
+    fun reserveSystemWindow(packageName: String): ExtensionSystemWindowLease? =
+        reservePackage(packageName, ::ExtensionSystemWindowLease)
+
+    fun releaseSystemWindow(lease: ExtensionSystemWindowLease): Boolean = releasePackage(lease)
+
+    fun reserveRemoval(packageName: String): ExtensionRemovalLease? = reservePackage(
+        packageName,
+        ::ExtensionRemovalLease,
+    )
+
+    fun releaseRemoval(lease: ExtensionRemovalLease): Boolean = releasePackage(lease)
+
+    private fun <T : ExtensionPackageLease> reservePackage(
+        packageName: String,
+        create: (Long, String) -> T,
+    ): T? = synchronized(lock) {
+        if (packageName in active) return@synchronized null
+        create(++nextId, packageName).also { lease ->
+            active[packageName] = Reservation(null, lease)
+            mutableReservations.value = mutableReservations.value +
+                (packageName to ExtensionInstallReservationState(lease.transactionId, null))
+        }
+    }
+
+    private fun releasePackage(lease: ExtensionPackageLease): Boolean = synchronized(lock) {
+        if (active[lease.packageName]?.packageLease !== lease) return@synchronized false
+        active.remove(lease.packageName)
+        mutableReservations.value = mutableReservations.value - lease.packageName
+        true
+    }
+
     fun progress(lease: ExtensionInstallLease, state: ExtensionInstallState) = synchronized(lock) {
         if (active[lease.artifact.packageName]?.lease !== lease) return@synchronized
         mutableReservations.value = mutableReservations.value + (
@@ -50,23 +91,11 @@ class ExtensionInstallArbiter {
 
     /** Reserve deletion atomically, but perform filesystem/platform work outside the arbiter lock. */
     fun <T> withRemoval(packageName: String, remove: () -> T): T? {
-        val reservation = synchronized(lock) {
-            if (packageName in active) return null
-            Reservation(null).also {
-                active[packageName] = it
-                mutableReservations.value =
-                    mutableReservations.value + (packageName to ExtensionInstallReservationState(++nextId, null))
-            }
-        }
+        val lease = reserveRemoval(packageName) ?: return null
         return try {
             remove()
         } finally {
-            synchronized(lock) {
-                if (active[packageName] === reservation) {
-                    active.remove(packageName)
-                    mutableReservations.value = mutableReservations.value - packageName
-                }
-            }
+            releaseRemoval(lease)
         }
     }
 
@@ -126,7 +155,7 @@ class ExtensionInstallArbiter {
 
     fun isBusy(packageName: String): Boolean = synchronized(lock) { packageName in active }
 
-    private class Reservation(val lease: ExtensionInstallLease?) {
+    private class Reservation(val lease: ExtensionInstallLease?, val packageLease: ExtensionPackageLease? = null) {
         var started = false
         var stopped = false
         var committing = false

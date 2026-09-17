@@ -1,0 +1,18 @@
+// Isolated EIS device acceptance identity; retains production namespace and debug signing.
+// Use only for debug/androidTest builds, never for the official fork release.
+gradle.beforeProject { project ->
+    project.pluginManager.withPlugin('com.android.application') {
+        if (project.path == ':app') {
+            def components = project.extensions.getByName('androidComponents')
+            components.beforeVariants(components.selector().all()) { variant ->
+                if (variant.buildType != 'debug') variant.enable = false
+            }
+            components.finalizeDsl { android ->
+                if (android.defaultConfig.applicationId != 'app.mihon') {
+                    throw new GradleException('EIS acceptance identity requires the expected Mihon application')
+                }
+                android.defaultConfig.applicationId = 'app.mihon.eis'
+            }
+        }
+    }
+}

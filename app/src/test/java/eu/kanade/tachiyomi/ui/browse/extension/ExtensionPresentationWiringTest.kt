@@ -28,6 +28,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
@@ -38,17 +39,27 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import mihon.domain.error.AppError
+import mihon.domain.extension.model.ExtensionCatalogEntry
+import mihon.domain.extension.model.ExtensionCompatibility
 import mihon.domain.extension.presentation.ExtensionPresentationAction
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationStore
 import mihon.domain.extension.service.ExtensionInstallArbiter
+import mihon.domain.extension.suggestion.ExtensionInventory
+import mihon.domain.extension.suggestion.ExtensionSuggestionPreferences
+import mihon.domain.extension.suggestion.ExtensionSuggestions
+import mihon.domain.extension.suggestion.SuggestedSource
+import mihon.domain.extension.suggestion.SuggestionBatchPause
+import mihon.domain.extension.suggestion.SuggestionBatchResult
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.core.common.preference.Preference
 import uy.kohesive.injekt.api.addSingleton
 import java.util.concurrent.CountDownLatch
@@ -57,6 +68,212 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class ExtensionPresentationWiringTest {
     private val modelHost = ScreenModelTestHost()
+
+    @Test
+    fun `batch replacement respects disabled nsfw and requires explicit new repository choice`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val first = available(
+            "Reader",
+            "pkg.replaced",
+            listOf(Extension.Available.Source(73, "en", "Reader source", "https://source.example")),
+        )
+            .copy(versionName = "1.6.1", libVersion = 1.6).toArtifact()
+        fun catalogOf(vararg artifacts: mihon.domain.extension.model.ExtensionArtifact) =
+            mihon.domain.extension.model.ExtensionCatalogResult(
+                artifacts.map {
+                    ExtensionCatalogEntry(it, ExtensionCompatibility.Compatible)
+                },
+                emptyList(),
+                artifacts.map { it.repository }.distinct(),
+            )
+        fun suggestionOf(artifact: mihon.domain.extension.model.ExtensionArtifact) =
+            mihon.domain.extension.suggestion.ExtensionSuggestion(
+                mihon.domain.extension.suggestion.SuggestionIdentity.of(artifact),
+                artifact,
+                artifact.sources.map { SuggestedSource(it, 1) },
+                false,
+            )
+        val catalog = MutableStateFlow<mihon.domain.extension.model.ExtensionCatalogResult?>(catalogOf(first))
+        val suggestions = MutableStateFlow(ExtensionSuggestions(false, listOf(suggestionOf(first))))
+        val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { scope } returns backgroundScope
+            every { installArbiter } returns ExtensionInstallArbiter()
+            every { suggestionCatalog } returns catalog
+            every { inventory } returns MutableStateFlow(ExtensionInventory(true))
+            every { installErrors } returns MutableStateFlow(emptyMap())
+            every { originConfirmations } returns MutableStateFlow(emptyList())
+            every { pendingSystemPauses } returns MutableStateFlow(emptyMap())
+        }
+        io.mockk.coEvery { manager.installReservedObserved(any(), any(), any()) } returns
+            SuggestionBatchResult.Installed
+        val batch = eu.kanade.tachiyomi.extension.AndroidExtensionSuggestionBatch(
+            manager,
+            suggestions,
+            ExtensionSuggestionPreferences(InMemoryPreferenceStore()),
+        ) {
+            BasePreferences.ExtensionInstaller.PRIVATE
+        }
+        val model = screenModel(
+            manager,
+            Extensions(emptyList(), emptyList(), emptyList(), emptyList()),
+            androidExtensionPresentationStore,
+            suggestions,
+            batch,
+            showNsfw = false,
+        )
+        try {
+            kotlinx.coroutines.withContext(Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(5_000) { model.state.first { it.suggestionPanel.total == 1 } }
+            }
+            model.requestSuggestionBatch()
+            val hidden = first.copy(versionName = "1.6.2", versionCode = first.versionCode + 1, isNsfw = true)
+            val replacement = first.copy(
+                repository = first.repository.copy(signingKeyFingerprint = "explicit-new-signer"),
+            )
+            catalog.value = catalogOf(hidden, replacement)
+            assertFalse(model.confirmSuggestionBatch(listOf(first)))
+            val review = checkNotNull(model.state.value.batchConfirmation)
+            assertEquals(listOf(first), review.artifacts)
+            assertEquals(setOf(first.packageName), review.unavailablePackages)
+            assertEquals(listOf(replacement), review.replacements[first.packageName])
+            model.selectBatchReplacement(hidden)
+            assertEquals(review, model.state.value.batchConfirmation)
+            model.selectBatchReplacement(replacement)
+            assertEquals(listOf(replacement), model.state.value.batchConfirmation?.artifacts)
+            suggestions.value = suggestions.value.copy(suggestions = listOf(suggestionOf(replacement)))
+            runCurrent()
+            assertTrue(model.confirmSuggestionBatch(listOf(replacement)))
+            runCurrent()
+            assertEquals(listOf(replacement), batch.state.value.items.map { it.artifact })
+            assertEquals(SuggestionBatchResult.Installed, batch.state.value.items.single().result)
+        } finally {
+            modelHost.close()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `model publishes nonterminal system interruption and clears its resolved state`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val pauses = MutableStateFlow<Map<String, SuggestionBatchPause>>(emptyMap())
+        val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { installArbiter } returns ExtensionInstallArbiter()
+            every { installErrors } returns MutableStateFlow(emptyMap())
+            every { originConfirmations } returns MutableStateFlow(emptyList())
+            every { pendingSystemPauses } returns pauses
+        }
+        val model = screenModel(
+            manager,
+            Extensions(emptyList(), emptyList(), emptyList(), emptyList()),
+            androidExtensionPresentationStore,
+        )
+        try {
+            pauses.value = mapOf("pkg.pending" to mihon.domain.extension.suggestion.SuggestionBatchPause.SERVICE)
+            runCurrent()
+            assertEquals(pauses.value, model.state.value.pendingSystemPauses)
+            assertTrue(model.state.value.installErrors.isEmpty())
+            pauses.value = emptyMap()
+            runCurrent()
+            assertTrue(model.state.value.pendingSystemPauses.isEmpty())
+        } finally {
+            modelHost.close()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `batch review freezes search results and requires fresh version confirmation`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val first = available(
+            "First Reader",
+            "pkg.first",
+            listOf(Extension.Available.Source(71, "en", "First Source", "https://source.example")),
+        )
+            .copy(versionName = "1.6.1", libVersion = 1.6).toArtifact()
+        val second = first.copy(
+            name = "Second Reader",
+            packageName = "pkg.second",
+            sources = listOf(first.sources.single().copy(id = 72, name = "Second Source")),
+        )
+        val catalog = MutableStateFlow<mihon.domain.extension.model.ExtensionCatalogResult?>(
+            mihon.domain.extension.model.ExtensionCatalogResult(
+                listOf(first, second).map {
+                    ExtensionCatalogEntry(it, ExtensionCompatibility.Compatible)
+                },
+                emptyList(),
+                listOf(first.repository),
+            ),
+        )
+        val suggestions = MutableStateFlow(
+            ExtensionSuggestions(
+                false,
+                listOf(first, second).map {
+                    mihon.domain.extension.suggestion.ExtensionSuggestion(
+                        mihon.domain.extension.suggestion.SuggestionIdentity.of(it),
+                        it,
+                        it.sources.map { source -> SuggestedSource(source, 1) },
+                        false,
+                    )
+                },
+            ),
+        )
+        val manager = mockk<ExtensionManager>(relaxed = true) {
+            every { scope } returns backgroundScope
+            every { installArbiter } returns ExtensionInstallArbiter()
+            every { suggestionCatalog } returns catalog
+            every { inventory } returns MutableStateFlow(ExtensionInventory(true))
+            every { installErrors } returns MutableStateFlow(emptyMap())
+            every { originConfirmations } returns MutableStateFlow(emptyList())
+        }
+        io.mockk.coEvery { manager.installReservedObserved(any(), any(), any()) } returns
+            SuggestionBatchResult.Installed
+        val batch = eu.kanade.tachiyomi.extension.AndroidExtensionSuggestionBatch(
+            manager,
+            suggestions,
+            ExtensionSuggestionPreferences(InMemoryPreferenceStore()),
+        ) {
+            BasePreferences.ExtensionInstaller.PRIVATE
+        }
+        val model = screenModel(
+            manager,
+            Extensions(emptyList(), emptyList(), emptyList(), emptyList()),
+            androidExtensionPresentationStore,
+            suggestions,
+            batch,
+        )
+        try {
+            kotlinx.coroutines.withContext(Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(5_000) { model.state.first { it.suggestionPanel.total == 2 } }
+            }
+            model.search("First")
+            kotlinx.coroutines.withContext(Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(5_000) { model.state.first { it.suggestionPanel.rows.size == 1 } }
+            }
+            model.requestSuggestionBatch()
+            assertEquals(listOf(first), model.state.value.batchConfirmation?.artifacts)
+            val updated = first.copy(versionCode = first.versionCode + 1, versionName = "1.6.2")
+            catalog.value = catalog.value!!.copy(
+                entries = listOf(updated, second).map {
+                    ExtensionCatalogEntry(it, ExtensionCompatibility.Compatible)
+                },
+            )
+            assertFalse(model.confirmSuggestionBatch(listOf(first)))
+            assertEquals(listOf(updated), model.state.value.batchConfirmation?.artifacts)
+            assertTrue(model.confirmSuggestionBatch(listOf(updated)))
+            runCurrent()
+            assertEquals(listOf(updated), batch.state.value.items.map { it.artifact })
+            io.mockk.coVerify(exactly = 0) {
+                manager.installReservedObserved(
+                    match { it.artifact.packageName == second.packageName },
+                    any(),
+                    any(),
+                )
+            }
+        } finally {
+            modelHost.close()
+            Dispatchers.resetMain()
+        }
+    }
 
     @Test
     fun `synchronous install failure is visible and releases screen ownership for retry`() = runTest {
@@ -117,7 +334,7 @@ class ExtensionPresentationWiringTest {
             uy.kohesive.injekt.api.InjektScope(uy.kohesive.injekt.registry.default.DefaultRegistrar())
         uy.kohesive.injekt.Injekt.addSingleton(
             eu.kanade.tachiyomi.core.security.SecurityPreferences(
-                tachiyomi.core.common.preference.InMemoryPreferenceStore(),
+                InMemoryPreferenceStore(),
             ),
         )
         io.mockk.mockkStatic(androidx.core.app.NotificationManagerCompat::class)
@@ -143,7 +360,7 @@ class ExtensionPresentationWiringTest {
             availableExtensionsProvider = { listOf(extension) },
             installerFactory = { installer },
             installReceiverRegistrar = {},
-            inventoryProvider = { mihon.domain.extension.suggestion.ExtensionInventory(true) },
+            inventoryProvider = { ExtensionInventory(true) },
             scope = backgroundScope,
         )
         val first = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -196,13 +413,13 @@ class ExtensionPresentationWiringTest {
             .copy(versionName = "1.6.1", libVersion = 1.6)
         val artifact = extension.toArtifact()
         val identity = mihon.domain.extension.suggestion.SuggestionIdentity.of(artifact)
-        val suggestions = mihon.domain.extension.suggestion.ExtensionSuggestions(
+        val suggestions = ExtensionSuggestions(
             false,
             listOf(
                 mihon.domain.extension.suggestion.ExtensionSuggestion(
                     identity,
                     artifact,
-                    artifact.sources.map { mihon.domain.extension.suggestion.SuggestedSource(it, 2) },
+                    artifact.sources.map { SuggestedSource(it, 2) },
                     false,
                 ),
             ),
@@ -211,15 +428,15 @@ class ExtensionPresentationWiringTest {
         val calls = java.util.concurrent.atomic.AtomicInteger()
         val manager = mockk<ExtensionManager>(relaxed = true) {
             every { installArbiter } returns ExtensionInstallArbiter()
-            every { inventory } returns MutableStateFlow(mihon.domain.extension.suggestion.ExtensionInventory(true))
+            every { inventory } returns MutableStateFlow(ExtensionInventory(true))
             every {
                 suggestionCatalog
             } returns MutableStateFlow(
                 mihon.domain.extension.model.ExtensionCatalogResult(
                     listOf(
-                        mihon.domain.extension.model.ExtensionCatalogEntry(
+                        ExtensionCatalogEntry(
                             artifact,
-                            mihon.domain.extension.model.ExtensionCompatibility.Compatible,
+                            ExtensionCompatibility.Compatible,
                         ),
                     ),
                     emptyList(),
@@ -793,9 +1010,14 @@ class ExtensionPresentationWiringTest {
         manager: ExtensionManager,
         extensions: Extensions,
         actionStore: ExtensionPresentationStore<Extension>,
-        suggestions: kotlinx.coroutines.flow.Flow<mihon.domain.extension.suggestion.ExtensionSuggestions>? = null,
+        suggestions: Flow<ExtensionSuggestions>? = null,
+        batch: eu.kanade.tachiyomi.extension.AndroidExtensionSuggestionBatch? = null,
+        showNsfw: Boolean = true,
     ): ExtensionsScreenModel {
-        val preferences = mockk<SourcePreferences> { every { extensionUpdatesCount() } returns preference(0) }
+        val preferences = mockk<SourcePreferences> {
+            every { extensionUpdatesCount() } returns preference(0)
+            every { showNsfwSource() } returns preference(showNsfw)
+        }
         val basePreferences = mockk<BasePreferences> {
             every { extensionInstaller() } returns mockk {
                 every { changes() } returns flowOf(BasePreferences.ExtensionInstaller.PACKAGEINSTALLER)
@@ -811,6 +1033,7 @@ class ExtensionPresentationWiringTest {
                 mockk(relaxed = true),
                 actionStore,
                 suggestions,
+                suggestionBatch = batch,
             )
         }
     }

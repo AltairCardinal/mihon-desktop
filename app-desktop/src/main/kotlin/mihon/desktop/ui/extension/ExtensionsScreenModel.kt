@@ -136,6 +136,7 @@ class ExtensionsScreenModel(
             .filter { it.artifact.packageName == artifact.packageName && it.compatibility == mihon.domain.extension.model.ExtensionCompatibility.Compatible }
             .map { it.artifact }.groupBy { SuggestionIdentity.of(it) }
             .values.map { versions -> versions.maxBy { it.versionCode } }
+            .filter { options.value.showNsfw || !it.isNsfw }
 
     fun isCurrentBatchArtifact(artifact: ExtensionArtifact) = artifact in batchReplacementCandidates(artifact)
 

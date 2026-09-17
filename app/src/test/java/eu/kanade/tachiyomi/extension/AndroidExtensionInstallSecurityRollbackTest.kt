@@ -60,6 +60,54 @@ import java.util.Properties
 
 class AndroidExtensionInstallSecurityRollbackTest {
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = ["success", "cancel", "false-success"])
+    fun `default gateway requires real removal and observed absence before deleting trust`(
+        outcome: String,
+        @TempDir directory: Path,
+    ) = runTest {
+        val files = directory.resolve("files").toFile().apply(File::mkdirs)
+        val cache = directory.resolve("cache").toFile().apply(File::mkdirs)
+        val metadata = files.resolve("extension-install-metadata/system-$PACKAGE_NAME.properties").apply {
+            parentFile.mkdirs()
+            writeText("original-trust")
+        }
+        var installed = true
+        val platform = mockk<PackageInstaller>(relaxed = true)
+        val pm = mockk<PackageManager>(relaxed = true) {
+            every { packageInstaller } returns platform
+            every { getApplicationInfo(PACKAGE_NAME, any<Int>()) } answers {
+                if (installed) ApplicationInfo() else throw PackageManager.NameNotFoundException()
+            }
+        }
+        val context = gatewayContext(files, cache, pm)
+        every { context.packageName } returns "app.mihon.eis.dev"
+        val started = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val result = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val gateway = defaultGateway(context, removeSystemPackage = {
+            assertEquals(PACKAGE_NAME, it)
+            started.complete(Unit)
+            result.await()
+            if (outcome == "cancel") throw java.io.IOException("Uninstall cancelled")
+            if (outcome == "success") installed = false
+        })
+        withUninstallCallbacks(context, platform) {
+            val terminal = backgroundScope.async { runCatching { gateway.removeSystem(PACKAGE_NAME) } }
+            runCurrent()
+            assertTrue(started.isCompleted, "Production removal must use the original result bridge")
+            advanceTimeBy(5 * 60_000)
+            runCurrent()
+            assertFalse(terminal.isCompleted)
+            assertEquals("original-trust", metadata.readText())
+            result.complete(Unit)
+            runCurrent()
+            assertEquals(outcome == "success", terminal.await().isSuccess)
+            assertEquals(outcome != "success", metadata.exists())
+            if (metadata.exists()) assertEquals("original-trust", metadata.readText())
+            verify(exactly = 0) { platform.uninstall(any<String>(), any()) }
+        }
+    }
+
     @Test
     fun `legacy origin refusal and changed bytes never commit`(@TempDir directory: Path) = runTest {
         for (change in listOf("cancel", "candidate", "installed", "repository", "signer", "digest")) {
@@ -763,12 +811,15 @@ class AndroidExtensionInstallSecurityRollbackTest {
     }
 
     @Test
-    fun `coordinator system rollback times out and unregisters the default gateway receiver`(@TempDir directory: Path) =
+    fun `coordinator system rollback keeps ownership until actual removal completes`(@TempDir directory: Path) =
         runTest {
             val filesDirectory = directory.resolve("files").toFile().apply(File::mkdirs)
             val cacheDirectory = directory.resolve("cache").toFile().apply(File::mkdirs)
             val installedSystem = directory.resolve("installed-system.apk").toFile()
             var installed = false
+            val removalRequested = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val removalResult = kotlinx.coroutines.CompletableDeferred<Unit>()
+            var reloads = 0
             val packageInstaller = mockk<PackageInstaller>(relaxed = true)
             val packageManager = mockk<PackageManager>(relaxed = true)
             every { packageManager.getPackageInfo(PACKAGE_NAME, any<Int>()) } answers {
@@ -786,6 +837,11 @@ class AndroidExtensionInstallSecurityRollbackTest {
             every { context.packageName } returns "eu.kanade.tachiyomi"
             val gateway = DefaultAndroidInstallGateway(
                 context = context,
+                removeSystemPackage = {
+                    removalRequested.complete(Unit)
+                    removalResult.await()
+                    installed = false
+                },
                 installSystem = { _, file, _ ->
                     file.copyTo(installedSystem, overwrite = true)
                     installed = true
@@ -808,20 +864,27 @@ class AndroidExtensionInstallSecurityRollbackTest {
                             AndroidInstallPort(
                                 gateway = gateway,
                                 client = OkHttpClient(),
-                                runtimeReloader = { error("reload failed") },
+                                runtimeReloader = { if (++reloads == 1) error("reload failed") },
                             ),
                             this,
                         ).install(ExtensionInstallRequest(artifact(server))).last()
                     }
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                        kotlinx.coroutines.withTimeout(5_000) { removalRequested.await() }
+                    }
+                    advanceTimeBy(5 * 60_000)
                     runCurrent()
-                    advanceTimeBy(SYSTEM_UNINSTALL_TIMEOUT_MILLIS)
+                    assertFalse(terminal.isCompleted, "Elapsed time cannot complete the original removal window")
+                    assertTrue(installed)
+                    removalResult.complete(Unit)
                     runCurrent()
-
-                    assertTrue(terminal.isCompleted, "coordinator rollback must finish after bounded platform wait")
                     val failure = terminal.await()
                     assertInstanceOf(ExtensionInstallState.Failed::class.java, failure)
-                    assertInstanceOf(AppError.Storage::class.java, (failure as ExtensionInstallState.Failed).error)
-                    verify(exactly = 1) { context.unregisterReceiver(any()) }
+                    assertEquals("reload failed", (failure as ExtensionInstallState.Failed).error.cause?.message)
+                    assertFalse(installed)
+                    // Restoring an originally absent package verifies absence instead of reloading a missing source.
+                    assertEquals(1, reloads)
+                    verify(exactly = 0) { packageInstaller.uninstall(any<String>(), any()) }
                 }
             }
         }
@@ -854,7 +917,7 @@ class AndroidExtensionInstallSecurityRollbackTest {
                     writeText("candidate-system-trust")
                 }
             var installed = true
-            var receiver: BroadcastReceiver? = null
+            var removals = 0
             var failMetadataDelete = true
             val packageInstaller = mockk<PackageInstaller>(relaxed = true)
             val packageManager = mockk<PackageManager>(relaxed = true)
@@ -866,6 +929,10 @@ class AndroidExtensionInstallSecurityRollbackTest {
             every { context.packageName } returns "eu.kanade.tachiyomi"
             val gateway = defaultGateway(
                 context,
+                removeSystemPackage = {
+                    installed = false
+                    removals++
+                },
                 deleteFile = { file ->
                     if (file == metadataFile && failMetadataDelete) {
                         failMetadataDelete = false
@@ -876,29 +943,12 @@ class AndroidExtensionInstallSecurityRollbackTest {
                 },
             )
 
-            withUninstallCallbacks(
-                context = context,
-                packageInstaller = packageInstaller,
-                onRegistered = { receiver = it },
-                onUninstall = {
-                    installed = false
-                    receiver?.onReceive(
-                        context,
-                        mockk {
-                            every {
-                                getIntExtra(PackageInstaller.EXTRA_STATUS, any())
-                            } returns PackageInstaller.STATUS_SUCCESS
-                        },
-                    )
-                },
-            ) {
-                val firstFailure = runCatching { gateway.removeSystem(PACKAGE_NAME) }.exceptionOrNull()
-                gateway.removeSystem(PACKAGE_NAME)
-
-                assertInstanceOf(AppError.Storage::class.java, firstFailure.installError())
-                assertFalse(metadataFile.exists())
-                verify(exactly = 1) { packageInstaller.uninstall(PACKAGE_NAME, any()) }
-            }
+            val firstFailure = runCatching { gateway.removeSystem(PACKAGE_NAME) }.exceptionOrNull()
+            gateway.removeSystem(PACKAGE_NAME)
+            assertInstanceOf(AppError.Storage::class.java, firstFailure.installError())
+            assertFalse(metadataFile.exists())
+            assertEquals(1, removals)
+            verify(exactly = 0) { packageInstaller.uninstall(any<String>(), any()) }
         }
 
     @Test
@@ -1186,6 +1236,7 @@ class AndroidExtensionInstallSecurityRollbackTest {
         },
         deleteFile: (File) -> Boolean = { !it.exists() || it.delete() },
         trustInput: (File) -> InputStream = File::inputStream,
+        removeSystemPackage: suspend (String) -> Unit = { error("Unexpected system removal") },
     ) = DefaultAndroidInstallGateway(
         context = context,
         installSystem = { _, _, _ -> },
@@ -1203,6 +1254,7 @@ class AndroidExtensionInstallSecurityRollbackTest {
         atomicReplace = atomicReplace,
         deleteFile = deleteFile,
         trustInput = trustInput,
+        removeSystemPackage = removeSystemPackage,
     )
 
     private suspend fun withUninstallCallbacks(

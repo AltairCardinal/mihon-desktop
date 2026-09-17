@@ -15,9 +15,11 @@ import eu.kanade.tachiyomi.extension.util.ExtensionInstaller.Companion.EXTRA_TRA
 import eu.kanade.tachiyomi.util.system.getSerializableExtraCompat
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import logcat.LogPriority
+import mihon.domain.extension.suggestion.SuggestionBatchPause
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.i18n.MR
+import uy.kohesive.injekt.api.get
 
 class ExtensionInstallService : Service() {
 
@@ -44,6 +46,18 @@ class ExtensionInstallService : Service() {
             return START_NOT_STICKY
         }
 
+        val existing = installer
+        if ((
+                existing is PackageInstallerInstaller &&
+                    installerUsed != BasePreferences.ExtensionInstaller.PACKAGEINSTALLER
+                ) ||
+
+            (existing is ShizukuInstaller && installerUsed != BasePreferences.ExtensionInstaller.SHIZUKU)
+        ) {
+            uy.kohesive.injekt.Injekt.get<eu.kanade.tachiyomi.extension.ExtensionManager>()
+                .pauseInstall(transactionId, SuggestionBatchPause.INSTALLER_CHANGED)
+            return START_NOT_STICKY
+        }
         if (installer == null) {
             installer = when (installerUsed) {
                 BasePreferences.ExtensionInstaller.PACKAGEINSTALLER -> PackageInstallerInstaller(this)

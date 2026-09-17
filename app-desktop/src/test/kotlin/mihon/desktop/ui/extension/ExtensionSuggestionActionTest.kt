@@ -31,6 +31,43 @@ import tachiyomi.domain.source.model.Source
 import tachiyomi.domain.source.repository.SourceRepository
 class ExtensionSuggestionActionTest {
     @Test
+    fun `batch replacements respect current content setting without falling back to an older version`(
+        @org.junit.jupiter.api.io.TempDir directory: java.nio.file.Path,
+    ) = runTest {
+        val original = ExtensionArtifact("Reader", "pkg.content", "1.6.1", 1, "ja", false,
+            listOf(ExtensionSourceDescriptor(71, "ja", "Source", "https://source.example")),
+            RepositoryIdentity("https://repo.example", "Repo", "key"), "https://repo.example/a.jar", "", null)
+        val current = original.copy(versionCode = 2, versionName = "1.6.2", isNsfw = true)
+        val alternative = original.copy(repository = RepositoryIdentity("https://alternative.example", "Alternative", "other-key"))
+        val catalog = ExtensionCatalogResult(listOf(original, current, alternative).map {
+            ExtensionCatalogEntry(it, ExtensionCompatibility.Compatible)
+        }, emptyList())
+        val api = io.mockk.spyk(DesktopExtensionApi(okhttp3.OkHttpClient(), kotlinx.serialization.json.Json,
+            mihon.desktop.domain.fakes.FakeExtensionRepoRepository()))
+        coEvery { api.refreshCatalog() } returns catalog
+        val service = mockk<mihon.desktop.extension.DesktopExtensionPresentationService> {
+            every { installedExtensions } returns MutableStateFlow(emptyList())
+            every { extensionsDirectory } returns directory.toFile()
+        }
+        val model = ExtensionsScreenModel(DesktopExtensionPresentationPort(api, service,
+            inventory = flowOf(ExtensionInventory(true))), backgroundScope, ExtensionPresentationOptions(false, setOf("en")))
+        try {
+            model.refresh().join(); runCurrent()
+            assertEquals(listOf(alternative), model.batchReplacementCandidates(original))
+            assertFalse(model.isCurrentBatchArtifact(current))
+            assertFalse(model.isCurrentBatchArtifact(original))
+            model.setOptions(ExtensionPresentationOptions(true, setOf("en")))
+            assertEquals(setOf(current, alternative), model.batchReplacementCandidates(original).toSet())
+            assertEquals(listOf(current), model.updatedBatchSnapshot(listOf(original)))
+            model.setOptions(ExtensionPresentationOptions(false, setOf("en")))
+            assertEquals(listOf(alternative), model.batchReplacementCandidates(original))
+            io.mockk.verify(exactly = 0) { service.installExtensionStates(any(), any()) }
+        } finally {
+            model.closeAndJoin()
+        }
+    }
+
+    @Test
     fun `confirmed suggestion batch uses production API reservation and normal action cannot replace it`() = runTest {
         val artifact = ExtensionArtifact("Reader", "pkg.batch", "1.6.1", 1, "ja", false,
             listOf(ExtensionSourceDescriptor(71, "ja", "Source", "https://source.example")),

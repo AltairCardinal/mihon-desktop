@@ -1,7 +1,7 @@
 # 收藏缺失插件「建议安装」完整实施 Roadmap
 
 - 日期：2026-09-16
-- 状态：IN_PROGRESS；已获准实施，EIS-01、EIS-02、EIS-03 已完成，EIS-04 待实施，完成状态以第 4 节批次勾选为准。
+- 状态：IN_PROGRESS；已获准实施，EIS-01 至 EIS-04 已完成，EIS-05 待实施，完成状态以第 4 节批次勾选为准。
 - 类型：产品 child plan；进度从第 4 节第一个未勾选批次推导，不另设活动任务字段。
 - 父路线：[Android / macOS / Windows 正式 Roadmap](2026-06-30-mihon-desktop-refactor-roadmap.md)。本稿登记为待执行专项，不切换父计划当前执行指针，不恢复其他专项。
 - 产品依据：[需求与技术可行性](../2026-09-16-extension-install-suggestions-requirements.md)；已通过的 [HTML DEMO](../prototypes/multi-device-sync/index.html)，交互提交 `2289a939f`。
@@ -79,7 +79,7 @@
 - [x] EIS-01：共享建议识别、安装存在性与双端 production 接线。
 - [x] EIS-02：双端建议分栏与完整单项操作、本地偏好及数据隔离。
 - [x] EIS-03：共享批次编排、安装入口去重与 Desktop 全部安装闭环。
-- [ ] EIS-04：Android 全部安装、系统交互与生命周期闭环。
+- [x] EIS-04：Android 全部安装、系统交互与生命周期闭环。
 - [ ] EIS-05：跨端集成收口、正式产物与真实运行验收。
 
 依赖为 EIS-01 → EIS-02 → EIS-03 → EIS-04 → EIS-05。EIS-01 的共享契约同时服务两端；EIS-03 的安装仲裁必须完成独立检查后 EIS-04 才消费它。两端共享 ScreenModel/安装边界多，默认串行交付，不为追求并行制造冲突。
@@ -347,3 +347,39 @@ python scripts/gradle-coordinator.py run --key eis-final -- gradlew.bat :domain:
 
 - EIS-03 最终验收（2026-09-17）：`eis03-repair-final` PASSED / exit 0，33s，四个直接受影响整类 77 项通过。首轮 `eis03-focused-final` 留存且未受后续修改影响的 XML，结合最终四类替换后的联合证据为 27 suites / 294 项（domain JVM 36、domain Android 13、app 58、Desktop 187），failure/error/skipped 均为 0；不是将失败轮整轮计为通过。原始证据保留 `.gradle-coordinator/eis03-final-*-TEST-*.xml` 和 `eis03-repair-final-TEST-*.xml`。受影响格式与最终 `git diff --check` 通过。主代理独立核对实际源码、原始 XML、协调器终态及真实签名 HTTP→coordinator→目录→loader 闭环，所有本批审查项关闭；接管代码也已由原实施代理独立核查。实现、测试、文档与 checkoff 纳入同一 EIS-03 功能提交，hash 随回执提供，不另建状态提交。
 - 下一批为 EIS-04：Android 系统批次、取消/权限/重建/晚回调，以及系统卸载等待窗口的异步预留必须闭合；本批未执行全量或正式发布构建，不代表 EIS-04/05 完成。
+
+### EIS-04 已完成（实现、独立审查、验证与本批功能提交）
+
+**范围与协作**：沿用同一实施代理/唯一 Gradle 与 ADB 协调者、同批独立审查；主代理接管纯 Compose 组件、PackageInstaller 前台切片及 Shizuku 协议，实施代理独立检查后接回，未增加代理或另建报告。变更跨共享仲裁、Android 应用批次/DI/UI、平台 Service/Activity/AIDL 与真实测试，超过估算文件数仍属一个安装生命周期闭环；风险集中在终态归属、清理时序与进程恢复，未改同步协议或正式发布身份。
+
+**实现及维护边界**：
+- Android 既有插件页提供固定清单确认、逐项结果、暂停/明确继续、失败重试及停止；成功建议消失后结果仍可见。应用级事务不依赖页面，进程重启不回放。替代候选在完整身份选最新版本之后遵循 NSFW，不回退旧 SFW；Desktop 同一候选过滤缺口以一行修复纳入一致性收口。
+- reserved 入口保留完整 catalog artifact 作资格/来源校验，仅实际 Android 下载选择 apkUrl；提交前再次检查目录、收藏、忽略、库存及安装器。批次结果先冻结，再等待真实 onFinished 与本次库存发布后释放同包 owner，普通安装释放语义保留。
+- 系统结果的 step 与暂停原因由同一 deferred 原子确定；非终态提示不得完成事务。可靠中断门绑定原 owner 与用户确认 generation：已提交当前项的真实成功保留，剩余项须重确认，迟到旧通知不能污染新确认。Service 不把新安装器请求交给旧实例，不自动更换安装器；Shizuku 缺包偏好不再自动退回默认，MIUI 原策略保留。
+- PackageInstaller 后台、缺少确认 payload 或 launch 异常经 APP_FOREGROUND 暂停，但 abandon 请求不等于完成；保留 sessionId＋UUID 至真实 onFinished，显式取消同样等清理，实际成功不被覆盖。abandon 异常且无终态时不猜测结果、不释放 owner。
+- Shizuku 协议 version 3：prepare 固定 sessionId/UUID，commit 最多一次，唯一 PendingIntent identity 与 receiver 双 ID 校验；断连/授权失效后只查询/收敛原 session，不重放。查询不赋予 commit 权限；准备失败清理 session/FD 并保留原 cause。session 缺失只有原活跃事务的完整 APK 字段、签名集合、摘要及相对基线变化均核实后才认成功，未知保持等待。旧 install RPC 已移除。
+- 卸载及回滚复用真实 Activity 结果桥：普通卸载持 removal lease，回滚持原 install owner＋独立 UUID；RESULT_OK 后仍确认系统包不存在，才删除信任。配置重建不重发、不提前删除 URI；旧结果不能解除新 owner。旧实现实际是 PackageInstaller.uninstall＋广播超时，现不以超时/广播猜测确认结束。
+- 恢复原安装窗口只恢复 UUID/包名互斥，结果后等库存发布再释放，不恢复批次或安装请求。PackageInstaller 进程退出的原 session 确认仍存活，新增启动接管：仅自身初始 mySessions，先注册 main Handler callback 再读取权威快照并完成回查；同包多个 session 共用 lease 至全部终态，未知包名使库存保持不确定。构造无副作用，Manager 字段赋值后同步 start，再初始化库存；动态新会话继续由原 adapter 管理，不 commit/abandon 被接管会话。
+
+**有效红绿与集成证据**（原始 XML 保存在 `.gradle-coordinator/<key>-xml/`，失败轮只引用明确通过的 case）：
+- Activity 重发、配置变化删 URI、无关 UUID 结束窗口以及 removal 占位均取得准确红；`eis04-result-cluster-green-fixed` PASSED，Activity 8＋Manager 19＋Session 32＋Shizuku 2 共 61 项全零。UI `eis04-reserved-ui-red` 四场景缺失红→`eis04-reserved-ui-green` PASSED；实际 Screen/Tab、model、SQL/DI 后续纳入 wiring。
+- 前台限制 `eis04-di-foreground-red` 有效红，`eis04-screen-foreground-red` 补缺 payload/取消清理红；`eis04-platform-green-screen-red` 中 Foreground 6＋Session 32 全绿。旧两分钟超时错误收敛已取红并移除，`eis04-pending-system-green-fixed` PASSED，Session 35 全绿；显式取消仍等待真实清理。
+- `eis04-observed-wiring-green-fixed` PASSED，Manager 25＋Shizuku 22＋Wiring 15＋Batch 8＋Session 定向 1 共 71 项全零；`eis04-generation-nsfw-red` 旧 generation 污染有效红→`eis04-generation-nsfw-green` PASSED，Android Batch 8＋Wiring 16＋Desktop Action 3 共 27 项全零。Shizuku 22 包括协议、过滤器、权限/服务及五项独立安全审查修复。
+- 回滚真实窗口/gateway/manager 契约红后，`eis04-rollback-window-repair` PASSED（32s），SecurityRollback 34＋Manager 26 全零；联合当时未变 Session 37＋Activity 9 为 106 项。严格 mock 缺新方法与原 expectedAbsent reload 次数修正仅为夹具适配。
+- 首次 PRIVATE 设备准确暴露第一项成功后库存尚刷新导致下一项 INVENTORY_UNKNOWN；`eis04-inventory-barrier-red` 有界扫描屏障重现，修复后 `eis04-inventory-barrier-green` PASSED，Manager 27 全零，设备也已转绿。缺 Shizuku 包自动退回安装器的真实失败经偏好红绿修复；`eis04-installer-preference-green-fixed` PASSED（33s），真实 AndroidPreferenceStore 重建 2 项全零。
+- 恢复窗口 `eis04-window-owner-red` 为四个独立行为红；真实 Legacy startActivity 包名 extra 经 `eis04-legacy-intent-red-fixed` 准确失败后补齐。`eis04-window-owner-green` PASSED（1m02），Session 38＋Manager 29＋Activity 10 共 77 项全零，另 Arbiter 6 全绿。
+- 原 PI session 设备 red：`eis04-api36-pi-session-red.log` 初始化完成但准确包未 busy；adapter 初始三个契约红→绿。审查补同包双 session/显式 Handler/未知包名红，接线再取得 Manager 已 ready 但未知库存未标记的准确红；`eis04-session-recovery-final-green` PASSED，恢复 7＋Manager 29 全零。中间 runCurrent 导入、Looper/Handler/Companion mock、Uri、旧 InMemory store Local-copy 等错误均为夹具失败，不计行为红。
+
+**实际设备证据**：仅专用 API36 `emulator-5580`、API26 `emulator-5582`，所有 ADB 显式序列号，不操作物理设备。使用 `-I scripts/eis-android-acceptance.init.gradle` 构建的 `app.mihon.eis.dev` / `.test` 独立 debug 身份，保留 namespace/production wiring/debug 签名，非 debug variant 被拒绝；现有 fork 不降级、不 clear。受控 APK 安装前核对碰撞与摘要，只清精确 owned 包/SQL 收藏/loopback 仓库。
+- `eis04-device-build` PASSED（1m49），后续增量构建均由协调器串行；验收 APK 不作为 EIS-05 正式交付。
+- `eis04-api36-private-green.log` OK(1)：真实目录/收藏/DI→双包私有 loader；`eis04-api36-system-batches.log` OK(6)：Legacy、PackageInstaller 各连续、取消后显式 resume、提交后 stop 保留当前真实成功。
+- 私有跨进程 runner 明确 `-e aex04RestartPhase prepare` / `verify`；两份日志 OK(1)，markers 为 PREPARED pid5741→VERIFIED pid5828/crossProcess=true，真实 loader/updater/阅读状态保持。
+- `eis04-api36-shizuku-retry.log` OK(1)：正常 Allow all the time 后双包真实 Shell prepare/commit/回调；正常撤销本验收包授权并 Deny 后 `eis04-api36-shizuku-revoked.log` OK(1)：PERMISSION、remaining 保留、不切换、不落包。`eis04-api26-shizuku-unavailable-green.log` OK(1)：无服务真实 SERVICE，不回退。
+- `eis04-api36-lifecycle.log` 后台 case STATUS_CODE 0：真实 HOME→APP_FOREGROUND→回前台无自动推进→显式 resume；该调用另一个重建夹具失败不称整轮绿。修复夹具后 `eis04-api36-recreation-fixed.log` OK(1)，新增恢复接线后再次 `eis04-api36-owner-recreation.log` OK(1)/10.432s，安装/卸载同 UUID 重建均通过。
+- Legacy 原进程 PID8290 kill 后原 OS 确认继续，`eis04-api36-window-verify.log` OK(1)：生产启动自动库存收敛、完整 APK 摘要、第二项未安装、batch 不回放。instrumentation 退出令原 Activity finishing，此证据只与真实 recreate/JVM exact-owner 组合说明，不单独声称 saved-owner 设备恢复。
+- PI prepare PID9978/session1233159300；仅 kill 该 PID 后同一 task263/Activity record 保留，真实 SessionInfo 返回准确包名及自身 installer，原设备 red 留存。最初 probe 因前次已删除测试包的旧卸载窗口置顶/未等待前台而未到 prepare；正常关闭后夹具明确 awaitForeground，未改产品行为。`eis04-api36-pi-session-green.log` OK(1)/5.501s：新 APK 原 session1233159300 初始化即 busy，原窗口确认后真实 callback→库存自动 published→预留释放；markers 为 PID9978→10876/noReplay=true，未主动调用刷新、未重建 session。设备生命周期门槛已闭合，最终批次检查见下。
+- 一次 Shizuku runner 在 case 前出现 NotificationManager 以 com.android.chrome 身份发送通知异常，重启后后续必需设备用例未再出现；仅保留未归因观察，不宣称修复、不作为 Shizuku 行为红。
+
+**最终验收（2026-09-17）**：`eis04-focused-final` PASSED / exit 0（4m12s），原始 XML 19 suites / 219 项：domain JVM 15、domain Android 15、app 186、Desktop 3，failure/error/skipped 均为 0；包含最终 Android instrumentation 编译。原始 XML 归档 `.gradle-coordinator/eis04-focused-final-xml/`，按目标目录隔离。`eis04-readonly-format` PASSED / exit 0（28s），仅用忽略目录中的 init 限定本批文件 target，保留原 ktlint 1.8.0 / 120 字符规则，不传 `spotlessIdeHook`；Check 实际执行或 UP-TO-DATE，无 SKIPPED。前面的 IdeHook 仅排版，不计只读检查；临时排版规则未进入仓库。Desktop 沿用编译/行为测试及 diff-check，无 Spotless 插件。最终 `git diff --check` 通过。
+
+主代理已独立核对关键协议、修复影响路径、219 项原始 XML 和真实设备证据；主代理接管切片也由实施代理独立审查。所有本批阻塞关闭，checkoff 与 production、测试、维护文档纳入同一功能提交，hash 随回执提供。API36 验收身份临时未知来源许可通过系统设置恢复关闭，Shizuku 授权已正常 Deny；没有更改既有 fork 或物理设备。EIS-05 仍未完成：完整 Android/Desktop（含 integration）验证、Test Mode 与正式三平台产物在下一批执行；本批 debug APK 不作为正式交付。

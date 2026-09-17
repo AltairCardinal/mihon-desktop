@@ -59,6 +59,7 @@ import mihon.domain.extension.service.ExtensionUpdatePolicy
 import mihon.domain.extension.service.PreparedExtensionInstallToken
 import mihon.domain.extension.service.SharedExtensionUpdatePolicy
 import mihon.domain.extension.service.TrustMismatch
+import mihon.domain.extension.suggestion.SuggestionBatchPause
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import tachiyomi.core.common.util.system.logcat
@@ -103,6 +104,44 @@ internal class ExtensionInstaller private constructor(
     private val activeJobs = ConcurrentHashMap<String, ActiveInstallJob>()
     private val mutableInstallErrors = MutableStateFlow<Map<String, AppError>>(emptyMap())
     val installErrors = mutableInstallErrors.asStateFlow()
+    private val mutablePendingSystemPauses = MutableStateFlow<Map<String, SuggestionBatchPause>>(emptyMap())
+    val pendingSystemPauses = mutablePendingSystemPauses.asStateFlow()
+
+    private val pendingPauseOwners = mutableMapOf<String, String>()
+
+    fun reportPendingInstallPause(transactionId: String, reason: SuggestionBatchPause?) {
+        val observer = synchronized(installErrorLock) {
+            val result = platformResults[transactionId] ?: return
+            if (result.isCompleted) return
+            val parentId =
+                systemAttemptsByParent.entries.firstOrNull { it.value == transactionId }?.key ?: transactionId
+            val owner = activeTransactions.entries.firstOrNull { it.value.transactionId == parentId } ?: return
+            if (reason == null) {
+                clearPendingPause(transactionId)
+                null
+            } else {
+                pendingPauseOwners[owner.key] = transactionId
+                mutablePendingSystemPauses.update { it + (owner.key to reason) }
+                owner.value.onSystemInterruption
+            }
+        }
+        // The immutable owner callback is synchronous, but never runs under the installation lock.
+        if (reason != null) observer?.invoke(reason)
+    }
+
+    // Called under installErrorLock, shared with result completion and ownership cleanup.
+    private fun clearPendingPause(transactionId: String) {
+        val packages = pendingPauseOwners.filterValues { it == transactionId }.keys
+        packages.forEach(pendingPauseOwners::remove)
+        mutablePendingSystemPauses.update { it - packages }
+    }
+
+    private fun completePlatformResult(transactionId: String, result: AndroidPlatformInstallResult) =
+        synchronized(installErrorLock) {
+            val completed = platformResults[transactionId]?.complete(result) == true
+            if (completed) clearPendingPause(transactionId)
+            completed
+        }
     private val mutableOriginConfirmations = MutableStateFlow<List<ExtensionOriginConfirmation>>(emptyList())
     val originConfirmations = mutableOriginConfirmations.asStateFlow()
     private val originAnswers = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
@@ -129,7 +168,7 @@ internal class ExtensionInstaller private constructor(
     private val installErrorLock = Any()
     private val activeTransactions = ConcurrentHashMap<String, ActiveTransaction>()
     private val activeSteps = ConcurrentHashMap<String, MutableStateFlow<InstallStep>>()
-    private val platformResults = ConcurrentHashMap<String, CompletableDeferred<InstallStep>>()
+    private val platformResults = ConcurrentHashMap<String, CompletableDeferred<AndroidPlatformInstallResult>>()
     private val transactionLifecycles = ConcurrentHashMap<String, TransactionLifecycle>()
     private val completedTransactions = ConcurrentHashMap<String, Long>()
     private val cancelledTransactions = ConcurrentHashMap.newKeySet<String>()
@@ -138,21 +177,34 @@ internal class ExtensionInstaller private constructor(
     private val httpClient: OkHttpClient by lazy { Injekt.get<NetworkHelper>().client }
     private val selectsAndroidInstaller = installPort == null
     private fun selectedInstaller() = installerProvider?.invoke() ?: extensionInstaller.get()
+    private val androidGateway by lazy {
+        gateway ?: DefaultAndroidInstallGateway(
+            context = context,
+            installSystem = ::installSystemAttempt,
+            removeSystemPackage = ::removeSystemAttempt,
+            commitPlanProvider = { packageName ->
+                val installer = activeTransactions[packageName]?.installer ?: selectedInstaller()
+                if (installer == BasePreferences.ExtensionInstaller.PRIVATE) {
+                    AndroidCommitPlan(AndroidInstallLocation.PRIVATE)
+                } else {
+                    AndroidCommitPlan(AndroidInstallLocation.SYSTEM, installer)
+                }
+            },
+        )
+    }
+    private data class RecoveryIdentity(
+        val result: CompletableDeferred<AndroidPlatformInstallResult>,
+        val candidate: File,
+        val apk: AndroidApk,
+        val digest: String,
+        val baselineDigest: String?,
+    )
+    private val recoveryIdentities = ConcurrentHashMap<String, RecoveryIdentity>()
+
     private val coordinator = ExtensionInstallCoordinator(
         LifecycleInstallPort(
             installPort ?: AndroidInstallPort(
-                gateway = gateway ?: DefaultAndroidInstallGateway(
-                    context = context,
-                    installSystem = ::installSystemAttempt,
-                    commitPlanProvider = { packageName ->
-                        val installer = activeTransactions[packageName]?.installer ?: selectedInstaller()
-                        if (installer == BasePreferences.ExtensionInstaller.PRIVATE) {
-                            AndroidCommitPlan(AndroidInstallLocation.PRIVATE)
-                        } else {
-                            AndroidCommitPlan(AndroidInstallLocation.SYSTEM, installer)
-                        }
-                    },
-                ),
+                gateway = androidGateway,
                 client = client ?: httpClient,
                 runtimeReloader = runtimeReloader,
                 confirmLegacyOrigin = ::confirmLegacyOrigin,
@@ -164,11 +216,27 @@ internal class ExtensionInstaller private constructor(
         scope,
     )
 
+    internal fun downloadAndInstallObserved(
+        url: String,
+        extension: Extension.Available,
+        beforeCommit: () -> Unit,
+        onFinished: () -> Unit,
+        onSystemInterruption: (SuggestionBatchPause) -> Unit,
+    ): Flow<InstallStep> = downloadAndInstallInternal(url, extension, beforeCommit, onFinished, onSystemInterruption)
+
     fun downloadAndInstall(
         url: String,
         extension: Extension.Available,
         beforeCommit: (() -> Unit)? = null,
         onFinished: () -> Unit = {},
+    ): Flow<InstallStep> = downloadAndInstallInternal(url, extension, beforeCommit, onFinished, null)
+
+    private fun downloadAndInstallInternal(
+        url: String,
+        extension: Extension.Available,
+        beforeCommit: (() -> Unit)?,
+        onFinished: () -> Unit,
+        onSystemInterruption: ((SuggestionBatchPause) -> Unit)?,
     ): Flow<InstallStep> {
         cancelActiveInstall(extension.pkgName)
 
@@ -179,6 +247,7 @@ internal class ExtensionInstaller private constructor(
             transactionId,
             step,
             if (selectsAndroidInstaller) selectedInstaller() else null,
+            onSystemInterruption,
         )
         transactionLifecycles[transactionId] = lifecycle
         activeSteps[transactionId] = step
@@ -275,13 +344,97 @@ internal class ExtensionInstaller private constructor(
         }
     }
 
+    private data class SystemRemoval(
+        val packageName: String,
+        val owner: ActiveTransaction,
+        val result: CompletableDeferred<Int> = CompletableDeferred(),
+    )
+    private val systemRemovals = ConcurrentHashMap<String, SystemRemoval>()
+
+    internal suspend fun removeSystemAttempt(packageName: String) {
+        val owner =
+            checkNotNull(activeTransactions[packageName]) { "System rollback requires its original installation owner" }
+        val id = UUID.randomUUID().toString()
+        val removal = SystemRemoval(packageName, owner)
+        systemRemovals[id] = removal
+        try {
+            storage {
+                context.startActivity(
+                    Intent(context, ExtensionInstallActivity::class.java)
+                        .setAction(Intent.ACTION_UNINSTALL_PACKAGE)
+                        .setDataAndType("package:$packageName".toUri(), null)
+                        .putExtra(EXTRA_TRANSACTION_ID, id)
+                        .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+            val result = withContext(NonCancellable) { removal.result.await() }
+            if (result !=
+                android.app.Activity.RESULT_OK
+            ) {
+                failStorage("System extension removal was cancelled or failed")
+            }
+        } finally {
+            systemRemovals.remove(id, removal)
+        }
+    }
+
+    internal fun hasSystemRemoval(transactionId: String): Boolean = systemRemovals.containsKey(transactionId)
+
+    internal fun restoreSystemRemoval(transactionId: String, packageName: String): Boolean? =
+        systemRemovals[transactionId]?.let {
+            it.packageName == packageName && activeTransactions[packageName] === it.owner && !it.result.isCompleted
+        }
+
+    internal fun completeSystemRemoval(transactionId: String, resultCode: Int): Boolean {
+        val removal = systemRemovals[transactionId] ?: return false
+        if (activeTransactions[removal.packageName] !== removal.owner) return false
+        return removal.result.complete(resultCode)
+    }
+
+    internal suspend fun verifyInstalledTransaction(transactionId: String): Boolean = withContext(Dispatchers.IO) {
+        val identity = recoveryIdentities[transactionId] ?: return@withContext false
+        fun active() = platformResults[transactionId] === identity.result && !identity.result.isCompleted
+        if (!active()) return@withContext false
+        try {
+            val installed = androidGateway.topology(identity.apk.packageName).systemPackage
+                ?: return@withContext false
+            val apk = androidGateway.inspect(installed.apk) ?: return@withContext false
+            active() && identity.digest != identity.baselineDigest &&
+                apkIdentityMatches(apk, identity.apk) &&
+                installed.versionName == apk.versionName && installed.versionCode == apk.versionCode &&
+                installed.signers == apk.signers && installed.libVersion == apk.libVersion &&
+                sha256(identity.candidate) == identity.digest && sha256(installed.apk) == identity.digest
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun recoveryIdentity(
+        file: File,
+        result: CompletableDeferred<AndroidPlatformInstallResult>,
+    ): RecoveryIdentity? =
+        runCatching {
+            val apk = androidGateway.inspect(file) ?: return null
+            if (!apk.isExtension) return null
+            val baseline = androidGateway.topology(apk.packageName).systemPackage
+            RecoveryIdentity(
+                result,
+                file,
+                apk.copy(signers = apk.signers.toSet()),
+                sha256(file),
+                baseline?.let { sha256(it.apk) },
+            )
+        }.getOrNull()
+
     private suspend fun installPrepared(
         transactionId: String,
         file: File,
         installer: BasePreferences.ExtensionInstaller,
     ) {
         val lifecycle = transactionLifecycles.computeIfAbsent(transactionId) { TransactionLifecycle() }
-        val result = CompletableDeferred<InstallStep>()
+        val result = CompletableDeferred<AndroidPlatformInstallResult>()
         var deliveryFile: File? = null
         try {
             synchronized(lifecycle) {
@@ -289,6 +442,7 @@ internal class ExtensionInstaller private constructor(
                     throw CancellationException("Extension install cancelled")
                 }
                 platformResults[transactionId] = result
+                recoveryIdentity(file, result)?.let { recoveryIdentities[transactionId] = it }
                 // Platform installers consume their URI. Keep the coordinator's verified APK
                 // available for post-commit trust persistence, runtime verification and rollback.
                 val delivery = storage { File.createTempFile("delivery-", ".apk", file.parentFile) }
@@ -302,21 +456,29 @@ internal class ExtensionInstaller private constructor(
             } finally {
                 lifecycle.markFinishing()
             }
-            when (platformStep) {
+            when (platformStep.step) {
                 InstallStep.Installed -> Unit
                 InstallStep.Idle -> throw CancellationException("Extension install cancelled")
                 else -> throw ExtensionInstallFailure(
-                    AppError.Unknown(IllegalStateException("Android package installer failed")),
+                    AppError.Unknown(
+                        platformStep.pauseReason?.let(::AndroidInstallPaused)
+                            ?: IllegalStateException("Android package installer failed"),
+                    ),
                 )
             }
-        } catch (error: TimeoutCancellationException) {
-            awaitPlatformCleanup(transactionId)
-            throw ExtensionInstallFailure(AppError.Unknown(IllegalStateException("Android package install timed out")))
         } catch (error: CancellationException) {
             awaitPlatformCleanup(transactionId)
             throw error
         } finally {
-            platformResults.remove(transactionId, result)
+            synchronized(installErrorLock) {
+                if (platformResults.remove(transactionId, result)) clearPendingPause(transactionId)
+            }
+            recoveryIdentities.computeIfPresent(transactionId) {
+                    _,
+                    identity,
+                ->
+                identity.takeUnless { it.result === result }
+            }
             deliveryFile?.let {
                 if (it.exists() && !it.delete()) {
                     // The owning transaction will report/retry directory cleanup if this remains.
@@ -326,8 +488,10 @@ internal class ExtensionInstaller private constructor(
         }
     }
 
-    private suspend fun awaitPlatformResult(result: CompletableDeferred<InstallStep>): InstallStep =
-        withTimeout(INSTALL_TIMEOUT_MILLIS) { result.await() }
+    private suspend fun awaitPlatformResult(
+        result: CompletableDeferred<AndroidPlatformInstallResult>,
+    ): AndroidPlatformInstallResult =
+        result.await()
 
     private suspend fun awaitPlatformCleanup(transactionId: String) {
         val acknowledgement = Installer.cancelInstallQueue(context, transactionId)
@@ -346,6 +510,7 @@ internal class ExtensionInstaller private constructor(
                 val intent = Intent(context, ExtensionInstallActivity::class.java)
                     .setDataAndType(tempFile.getUriCompat(context), APK_MIME)
                     .putExtra(EXTRA_TRANSACTION_ID, transactionId)
+                    .putExtra(EXTRA_PACKAGE_NAME, pendingSystemPackage(transactionId))
                     .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 context.startActivity(intent)
             }
@@ -372,6 +537,13 @@ internal class ExtensionInstaller private constructor(
         clearInstallError(pkgName)
         val active = activeTransactions[pkgName] ?: return
         requestCancellation(pkgName, active)
+    }
+
+    internal fun pendingSystemPackage(transactionId: String): String? = synchronized(installErrorLock) {
+        if (platformResults[transactionId]?.isCompleted != false) return@synchronized null
+        val parent = systemAttemptsByParent.entries.firstOrNull { it.value == transactionId }?.key
+            ?: return@synchronized null
+        activeTransactions.entries.firstOrNull { it.value.transactionId == parent }?.key
     }
 
     internal fun isInstallTransactionActive(pkgName: String): Boolean = activeTransactions.containsKey(pkgName)
@@ -401,7 +573,7 @@ internal class ExtensionInstaller private constructor(
             val acknowledgement = Installer.cancelInstallQueue(context, systemAttempt)
             scope.launch {
                 acknowledgement.await()
-                systemTarget.platformResult?.complete(InstallStep.Idle)
+                completePlatformResult(systemAttempt, AndroidPlatformInstallResult(InstallStep.Idle))
             }
             return
         }
@@ -439,20 +611,31 @@ internal class ExtensionInstaller private constructor(
         val acknowledgement = Installer.cancelInstallQueue(context, active.transactionId)
         scope.launch {
             acknowledgement.await()
-            cancellationTarget.platformResult?.complete(InstallStep.Idle)
+            completePlatformResult(cancellationId, AndroidPlatformInstallResult(InstallStep.Idle))
         }
     }
 
-    fun uninstallApk(pkgName: String) {
+    /** True means the system result bridge owns the outstanding confirmation. */
+    fun uninstallApk(pkgName: String, transactionId: String): Boolean {
         clearInstallError(pkgName)
         if (context.isPackageInstalled(pkgName)) {
             @Suppress("DEPRECATION")
-            val intent = Intent(Intent.ACTION_UNINSTALL_PACKAGE, "package:$pkgName".toUri())
+            val intent = Intent(context, ExtensionInstallActivity::class.java)
+                .setAction(Intent.ACTION_UNINSTALL_PACKAGE)
+                .setData("package:$pkgName".toUri())
+                .putExtra(EXTRA_TRANSACTION_ID, transactionId)
                 .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
-        } else {
-            ExtensionLoader.uninstallPrivateExtension(context, pkgName)
-            ExtensionInstallReceiver.notifyRemoved(context, pkgName)
+            return true
+        }
+        ExtensionLoader.uninstallPrivateExtension(context, pkgName)
+        ExtensionInstallReceiver.notifyRemoved(context, pkgName)
+        return false
+    }
+
+    fun pauseInstall(transactionId: String, reason: SuggestionBatchPause) {
+        if (completePlatformResult(transactionId, AndroidPlatformInstallResult(InstallStep.Error, reason))) {
+            completedTransactions.putIfAbsent(transactionId, System.nanoTime())
         }
     }
 
@@ -460,7 +643,7 @@ internal class ExtensionInstaller private constructor(
         pruneCompletedTransactions()
         if (step.isCompleted()) {
             if (completedTransactions.putIfAbsent(transactionId, System.nanoTime()) != null) return
-            platformResults[transactionId]?.complete(step)
+            completePlatformResult(transactionId, AndroidPlatformInstallResult(step))
         } else if (!completedTransactions.containsKey(transactionId)) {
             activeSteps[transactionId]?.value = step
         }
@@ -533,6 +716,7 @@ internal class ExtensionInstaller private constructor(
         val transactionId: String,
         val step: MutableStateFlow<InstallStep>,
         val installer: BasePreferences.ExtensionInstaller?,
+        val onSystemInterruption: ((SuggestionBatchPause) -> Unit)?,
     )
 
     private data class ActiveInstallJob(
@@ -542,7 +726,7 @@ internal class ExtensionInstaller private constructor(
 
     private data class CancellationTarget(
         val phase: TransactionPhase,
-        val platformResult: CompletableDeferred<InstallStep>?,
+        val platformResult: CompletableDeferred<AndroidPlatformInstallResult>?,
     )
 
     private class TransactionLifecycle {
@@ -588,10 +772,10 @@ internal class ExtensionInstaller private constructor(
 
     companion object {
         const val APK_MIME = "application/vnd.android.package-archive"
+        const val EXTRA_PACKAGE_NAME = "ExtensionInstaller.extra.PACKAGE_NAME"
         const val EXTRA_TRANSACTION_ID = "ExtensionInstaller.extra.TRANSACTION_ID"
 
         private const val EXTENSION_FEATURE = "tachiyomi.extension"
-        private const val INSTALL_TIMEOUT_MILLIS = 2 * 60 * 1000L
         private const val COMPLETED_TRANSACTION_TTL_NANOS = 5L * 60L * 1_000_000_000L
 
         @Suppress("DEPRECATION")
@@ -987,7 +1171,7 @@ internal class AndroidInstallPort(
         }
         val currentApk = gateway.inspect(current.apk) ?: return false
         val expectedApk = gateway.inspect(expected.apk) ?: return false
-        return currentApk.isExtension && expectedApk.isExtension &&
+        return apkIdentityMatches(currentApk, expectedApk) &&
             currentApk.packageName == packageName && expectedApk.packageName == packageName &&
             currentApk.versionName == current.versionName && expectedApk.versionName == expected.versionName &&
             currentApk.versionCode == current.versionCode && expectedApk.versionCode == expected.versionCode &&
@@ -1067,6 +1251,9 @@ internal class DefaultAndroidInstallGateway(
     },
     private val deleteFile: (File) -> Boolean = { file -> !file.exists() || file.delete() },
     private val trustInput: (File) -> InputStream = File::inputStream,
+    private val removeSystemPackage: suspend (String) -> Unit = {
+        failStorage("System removal requires its original activity result bridge")
+    },
 ) : AndroidInstallGateway {
     override val transactionRoot: File get() = File(context.cacheDir, "extension-installs")
     override fun commitPlan(packageName: String): AndroidCommitPlan = commitPlanProvider(packageName)
@@ -1168,30 +1355,12 @@ internal class DefaultAndroidInstallGateway(
 
     override suspend fun removeSystem(packageName: String) {
         if (context.isPackageInstalled(packageName)) {
-            val action = "${context.packageName}.EXTENSION_ROLLBACK.${UUID.randomUUID()}"
-            val result = CompletableDeferred<Int>()
-            val receiver = object : BroadcastReceiver() {
-                override fun onReceive(context: Context, intent: Intent) {
-                    result.complete(intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE))
-                }
-            }
-            ContextCompat.registerReceiver(context, receiver, IntentFilter(action), ContextCompat.RECEIVER_NOT_EXPORTED)
-            try {
-                val sender = PendingIntent.getBroadcast(
-                    context,
-                    packageName.hashCode(),
-                    Intent(action).setPackage(context.packageName),
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
-                ).intentSender
-                context.packageManager.packageInstaller.uninstall(packageName, sender)
-                val status = try {
-                    withTimeout(SYSTEM_UNINSTALL_TIMEOUT_MILLIS) { result.await() }
-                } catch (_: TimeoutCancellationException) {
-                    failStorage("Timed out removing system extension")
-                }
-                if (status != PackageInstaller.STATUS_SUCCESS) failStorage("Failed to remove system extension")
-            } finally {
-                context.unregisterReceiver(receiver)
+            removeSystemPackage(packageName)
+            if (context.isPackageInstalled(
+                    packageName,
+                )
+            ) {
+                failStorage("System extension is still installed after removal")
             }
         }
         if (!deleteTrust(packageName, AndroidInstallLocation.SYSTEM)) {
@@ -1284,8 +1453,6 @@ internal class DefaultAndroidInstallGateway(
     }
 }
 
-private const val SYSTEM_UNINSTALL_TIMEOUT_MILLIS = 2 * 60 * 1000L
-
 private inline fun <T> storage(block: () -> T): T = try {
     block()
 } catch (failure: ExtensionInstallFailure) {
@@ -1346,4 +1513,28 @@ private fun androidExtensionTrustFile(
     throw failure
 } catch (failure: Throwable) {
     throw ExtensionInstallFailure(AppError.Storage(failure))
+}
+
+internal class AndroidInstallPaused(val reason: SuggestionBatchPause) :
+    RuntimeException("Android installation needs user action")
+
+internal data class AndroidPlatformInstallResult(
+    val step: InstallStep,
+    val pauseReason: SuggestionBatchPause? = null,
+)
+
+private fun apkIdentityMatches(current: AndroidApk, expected: AndroidApk): Boolean =
+    current.isExtension && expected.isExtension && current == expected
+
+private fun sha256(file: File): String {
+    val digest = java.security.MessageDigest.getInstance("SHA-256")
+    file.inputStream().use { input ->
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            digest.update(buffer, 0, count)
+        }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it) }
 }

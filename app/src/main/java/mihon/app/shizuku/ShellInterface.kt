@@ -47,32 +47,108 @@ import android.content.IntentSender
 import android.content.pm.PackageInstaller
 import android.content.res.AssetFileDescriptor
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.os.UserHandle
 import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.extension.installer.ACTION_INSTALL_RESULT
 import rikka.shizuku.SystemServiceHelper
 import java.io.OutputStream
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.system.exitProcess
 
-class ShellInterface : IShellInterface.Stub() {
+class ShellInterface internal constructor(
+    private val userId: Int,
+    suppliedContext: Context?,
+    private val installerServiceProvider: (() -> Any)? = null,
+) : IShellInterface.Stub() {
+    constructor() : this(UserHandle::class.java.getMethod("myUserId").invoke(null) as Int, null)
 
-    private val context = createContext()
-    private val userId = UserHandle::class.java
-        .getMethod("myUserId")
-        .invoke(null) as Int
+    private val context = suppliedContext ?: createContext()
     private val packageName = BuildConfig.APPLICATION_ID
+    private val sessions = ConcurrentHashMap<Int, PreparedSession>()
+    private val packageInstaller by lazy { context.packageManager.packageInstaller }
+    private val sessionCallback = object : PackageInstaller.SessionCallback() {
+        override fun onCreated(sessionId: Int) = Unit
+        override fun onBadgingChanged(sessionId: Int) = Unit
+        override fun onActiveChanged(sessionId: Int, active: Boolean) = Unit
+        override fun onProgressChanged(sessionId: Int, progress: Float) = Unit
+        override fun onFinished(sessionId: Int, success: Boolean) {
+            val record = sessions[sessionId] ?: return
+            if (!record.finished.compareAndSet(null, success)) return
+            context.sendBroadcast(
+                shizukuResultIntent(packageName, record.transactionId)
+                    .putExtra(PackageInstaller.EXTRA_SESSION_ID, sessionId)
+                    .putExtra(
+                        PackageInstaller.EXTRA_STATUS,
+                        if (success) {
+                            PackageInstaller.STATUS_SUCCESS
+                        } else {
+                            PackageInstaller.STATUS_FAILURE
+                        },
+                    ),
+
+            )
+        }
+    }
+
+    init {
+        packageInstaller.registerSessionCallback(sessionCallback, Handler(Looper.getMainLooper()))
+    }
+
+    @Synchronized
+    override fun sessionState(sessionId: Int, transactionId: String): Int {
+        val existing = sessions[sessionId]
+        if (existing != null) {
+            check(existing.transactionId == transactionId) { "Foreign Shizuku install transaction" }
+            existing.finished.get()?.let {
+                return if (it) {
+                    ShizukuSessionState.SUCCEEDED
+                } else {
+                    ShizukuSessionState.FAILED
+                }
+            }
+        }
+        val info = packageInstaller.getSessionInfo(sessionId) ?: return ShizukuSessionState.MISSING
+        if (info.installerPackageName != packageName) return ShizukuSessionState.UNKNOWN
+        sessions.putIfAbsent(
+            sessionId,
+            PreparedSession(transactionId, AtomicBoolean(info.isSealed), locallyPrepared = false),
+        )
+        return if (info.isSealed) ShizukuSessionState.SUBMITTED else ShizukuSessionState.PREPARED
+    }
+
+    @Synchronized
+    override fun abandon(sessionId: Int, transactionId: String) {
+        check(sessionState(sessionId, transactionId) == ShizukuSessionState.PREPARED) {
+            "Only an original unsubmitted Shizuku session can be abandoned during recovery"
+        }
+        packageInstaller.abandonSession(sessionId)
+    }
 
     @SuppressLint("PrivateApi")
-    override fun install(apk: AssetFileDescriptor) {
+    private fun packageInstallerService(): Any {
+        installerServiceProvider?.let { return it() }
         val pmInterface = Class.forName($$"android.content.pm.IPackageManager$Stub")
             .getMethod("asInterface", IBinder::class.java)
             .invoke(null, SystemServiceHelper.getSystemService("package"))
 
-        val packageInstaller = Class.forName("android.content.pm.IPackageManager")
+        return Class.forName("android.content.pm.IPackageManager")
             .getMethod("getPackageInstaller")
             .invoke(pmInterface)
+    }
+
+    override fun prepare(apk: AssetFileDescriptor, transactionId: String): Int =
+        apk.use { prepareSession(it, transactionId) }
+
+    @SuppressLint("PrivateApi")
+    private fun prepareSession(apk: AssetFileDescriptor, transactionId: String): Int {
+        require(transactionId.isNotBlank())
+        val packageInstaller = packageInstallerService()
 
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
             val installFlags = this::class.java.getField("installFlags")
@@ -107,52 +183,87 @@ class ShellInterface : IShellInterface.Stub() {
             ).invoke(packageInstaller, params, packageName, userId) as Int
         }
 
-        val session = packageInstaller::class.java
-            .getMethod("openSession", Int::class.java)
+        try {
+            val session = packageInstaller::class.java
+                .getMethod("openSession", Int::class.java)
+                .invoke(packageInstaller, sessionId)
+            AutoCloseable { session::class.java.getMethod("close").invoke(session) }.use {
+                session::class.java.getMethod(
+                    "openWrite",
+                    String::class.java,
+                    Long::class.java,
+                    Long::class.java,
+                )
+                    .invoke(session, "extension", 0L, apk.length)
+                    .let { it as ParcelFileDescriptor }
+                    .let { fd ->
+                        val revocable = Class.forName("android.os.SystemProperties")
+                            .getMethod("getBoolean", String::class.java, Boolean::class.java)
+                            .invoke(null, "fw.revocable_fd", false) as Boolean
+
+                        if (revocable) {
+                            ParcelFileDescriptor.AutoCloseOutputStream(fd)
+                        } else {
+                            Class.forName($$"android.os.FileBridge$FileBridgeOutputStream")
+                                .getConstructor(ParcelFileDescriptor::class.java)
+                                .newInstance(fd) as OutputStream
+                        }
+                    }
+                    .use { output -> apk.createInputStream().use { input -> input.copyTo(output) } }
+            }
+            sessions[sessionId] = PreparedSession(transactionId)
+            return sessionId
+        } catch (failure: Exception) {
+            try {
+                context.packageManager.packageInstaller.abandonSession(sessionId)
+            } catch (cleanupFailure: Exception) {
+                failure.addSuppressed(cleanupFailure)
+            }
+            throw failure
+        }
+    }
+
+    @SuppressLint("PrivateApi")
+    @Synchronized
+    override fun commit(sessionId: Int, transactionId: String) {
+        val prepared = checkNotNull(sessions[sessionId]) { "Unknown Shizuku install session" }
+        check(prepared.transactionId == transactionId) { "Foreign Shizuku install transaction" }
+        check(prepared.locallyPrepared) { "Recovered Shizuku sessions cannot be submitted" }
+        check(prepared.submitted.compareAndSet(false, true)) { "Shizuku session was already submitted" }
+        val packageInstaller = packageInstallerService()
+        val session = packageInstaller::class.java.getMethod("openSession", Int::class.java)
             .invoke(packageInstaller, sessionId)
-
-        session::class.java.getMethod(
-            "openWrite",
-            String::class.java,
-            Long::class.java,
-            Long::class.java,
-        )
-            .invoke(session, "extension", 0L, apk.length)
-            .let { it as ParcelFileDescriptor }
-            .let { fd ->
-                val revocable = Class.forName("android.os.SystemProperties")
-                    .getMethod("getBoolean", String::class.java, Boolean::class.java)
-                    .invoke(null, "fw.revocable_fd", false) as Boolean
-
-                if (revocable) {
-                    ParcelFileDescriptor.AutoCloseOutputStream(fd)
-                } else {
-                    Class.forName($$"android.os.FileBridge$FileBridgeOutputStream")
-                        .getConstructor(ParcelFileDescriptor::class.java)
-                        .newInstance(fd) as OutputStream
-                }
-            }
-            .use { output ->
-                apk.createInputStream().use { input -> input.copyTo(output) }
-            }
 
         val statusIntent = PendingIntent.getBroadcast(
             context,
             0,
-            Intent(ACTION_INSTALL_RESULT).setPackage(packageName),
+            shizukuResultIntent(packageName, transactionId)
+                .putExtra(PackageInstaller.EXTRA_SESSION_ID, sessionId),
             PendingIntent.FLAG_MUTABLE,
         )
 
-        if (Build.VERSION.SDK_INT > Build.VERSION_CODES.O) {
-            session::class.java.getMethod("commit", IntentSender::class.java, Boolean::class.java)
-                .invoke(session, statusIntent.intentSender, false)
-        } else {
-            session::class.java.getMethod("commit", IntentSender::class.java)
-                .invoke(session, statusIntent.intentSender)
+        try {
+            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.O) {
+                session::class.java.getMethod("commit", IntentSender::class.java, Boolean::class.java)
+                    .invoke(session, statusIntent.intentSender, false)
+            } else {
+                session::class.java.getMethod("commit", IntentSender::class.java)
+                    .invoke(session, statusIntent.intentSender)
+            }
+        } finally {
+            session::class.java.getMethod("close").invoke(session)
         }
     }
 
+    private data class PreparedSession(
+        val transactionId: String,
+        val submitted: AtomicBoolean = AtomicBoolean(false),
+        val finished: AtomicReference<Boolean?> = AtomicReference(null),
+        val locallyPrepared: Boolean = true,
+    )
+
     override fun destroy() {
+        packageInstaller.unregisterSessionCallback(sessionCallback)
         exitProcess(0)
     }
 
@@ -185,3 +296,17 @@ class ShellInterface : IShellInterface.Stub() {
 // Constant hidden from the SDK
 // https://cs.android.com/android/platform/superproject/main/+/512046e84bcc51cc241bc6599f83ab345e93ab12:frameworks/base/core/java/android/content/pm/PackageManager.java;l=1682-1689
 private const val REPLACE_EXISTING_INSTALL_FLAG = 0x00000002
+
+internal object ShizukuSessionState {
+    const val UNKNOWN = -1
+    const val MISSING = 0
+    const val PREPARED = 1
+    const val SUBMITTED = 2
+    const val SUCCEEDED = 3
+    const val FAILED = 4
+}
+
+internal fun shizukuResultIntent(packageName: String, transactionId: String): Intent =
+    Intent(ACTION_INSTALL_RESULT).setPackage(packageName)
+        .setData(android.net.Uri.parse("mihon-shizuku-result://install/${android.net.Uri.encode(transactionId)}"))
+        .putExtra(eu.kanade.tachiyomi.extension.util.ExtensionInstaller.EXTRA_TRANSACTION_ID, transactionId)

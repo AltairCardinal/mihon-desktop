@@ -92,6 +92,12 @@ fun ExtensionScreen(
     onSuggestionWebsite: (mihon.domain.extension.model.ExtensionSourceDescriptor) -> Unit = {},
     onSuggestionMigration: (Long) -> Unit = {},
     onSuggestionDiagnose: () -> Unit = {},
+    onRequestBatchStart: () -> Unit = {},
+    onRequestBatchResume: () -> Unit = {},
+    onRequestBatchRetry: () -> Unit = {},
+    onStopBatch: () -> Unit = {},
+    batchPauseExplanation: String? = null,
+    onResolveBatchPause: (() -> Unit)? = null,
 ) {
     val navigator = LocalNavigator.currentOrThrow
 
@@ -104,7 +110,7 @@ fun ExtensionScreen(
             state.isLoading -> LoadingScreen(Modifier.padding(contentPadding))
             state.isEmpty && state.repositoryFailures.isEmpty() && !state.suggestionPanel.loading &&
                 state.suggestionPanel.total == 0 && state.suggestionPanel.unmatched.isEmpty() &&
-                !state.suggestionPanel.canUndo -> {
+                !state.suggestionPanel.canUndo && state.suggestionBatch.items.isEmpty() -> {
                 val msg = if (!searchQuery.isNullOrEmpty()) {
                     MR.strings.no_results_found
                 } else {
@@ -140,6 +146,12 @@ fun ExtensionScreen(
                     onSuggestionWebsite = onSuggestionWebsite,
                     onSuggestionMigration = onSuggestionMigration,
                     onSuggestionDiagnose = onSuggestionDiagnose,
+                    onRequestBatchStart = onRequestBatchStart,
+                    onRequestBatchResume = onRequestBatchResume,
+                    onRequestBatchRetry = onRequestBatchRetry,
+                    onStopBatch = onStopBatch,
+                    batchPauseExplanation = batchPauseExplanation,
+                    onResolveBatchPause = onResolveBatchPause,
                     onRefresh = onRefresh,
                 )
             }
@@ -166,6 +178,12 @@ private fun ExtensionContent(
     onSuggestionWebsite: (mihon.domain.extension.model.ExtensionSourceDescriptor) -> Unit = {},
     onSuggestionMigration: (Long) -> Unit = {},
     onSuggestionDiagnose: () -> Unit = {},
+    onRequestBatchStart: () -> Unit = {},
+    onRequestBatchResume: () -> Unit = {},
+    onRequestBatchRetry: () -> Unit = {},
+    onStopBatch: () -> Unit = {},
+    batchPauseExplanation: String? = null,
+    onResolveBatchPause: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val navigator = LocalNavigator.currentOrThrow
@@ -201,6 +219,19 @@ private fun ExtensionContent(
         }
 
         fun suggestionItem() {
+            item(key = "extension-suggestion-batch") {
+                ExtensionSuggestionBatchSection(
+                    state.suggestionBatch,
+                    canStart = state.suggestionPanel.rows.any { it.canInstall },
+                    matchingSearch = !state.searchQuery.isNullOrBlank(),
+                    onRequestStart = onRequestBatchStart,
+                    onRequestResume = onRequestBatchResume,
+                    onRequestRetry = onRequestBatchRetry,
+                    onStop = onStopBatch,
+                    pauseExplanation = batchPauseExplanation,
+                    onResolvePause = onResolveBatchPause,
+                )
+            }
             item(key = "extension-suggestions") {
                 ExtensionSuggestionSection(
                     state.suggestionPanel, suggestionController,

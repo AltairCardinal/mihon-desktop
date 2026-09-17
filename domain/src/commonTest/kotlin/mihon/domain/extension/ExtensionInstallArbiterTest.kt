@@ -21,6 +21,42 @@ import java.util.concurrent.TimeUnit
 
 class ExtensionInstallArbiterTest {
     @Test
+    fun `restored system window excludes install and removal until its exact owner finishes`() {
+        val arbiter = ExtensionInstallArbiter()
+        val artifact = artifact()
+        val window = requireNotNull(arbiter.reserveSystemWindow(artifact.packageName))
+        assertNull(arbiter.reserve(artifact))
+        assertNull(arbiter.reserveRemoval(artifact.packageName))
+        assertFalse(ExtensionInstallArbiter().releaseSystemWindow(window))
+        assertTrue(arbiter.releaseSystemWindow(window))
+        val install = requireNotNull(arbiter.reserve(artifact))
+        assertTrue(install.transactionId > window.transactionId)
+        assertFalse(arbiter.releaseSystemWindow(window))
+        assertTrue(arbiter.owns(install, artifact))
+    }
+
+    @Test
+    fun `asynchronous removal owns package until exact original owner completes`() {
+        val arbiter = ExtensionInstallArbiter()
+        val other = ExtensionInstallArbiter()
+        val artifact = artifact()
+        val removal = requireNotNull(arbiter.reserveRemoval(artifact.packageName))
+        assertNull(arbiter.reserve(artifact))
+        assertNull(arbiter.reserveRemoval(artifact.packageName))
+        assertFalse(other.releaseRemoval(removal))
+        assertTrue(arbiter.isBusy(artifact.packageName))
+        assertTrue(arbiter.releaseRemoval(removal))
+        val next = requireNotNull(arbiter.reserveRemoval(artifact.packageName))
+        assertTrue(next.transactionId > removal.transactionId)
+        assertFalse(arbiter.releaseRemoval(removal))
+        assertTrue(arbiter.isBusy(artifact.packageName))
+        assertTrue(arbiter.releaseRemoval(next))
+        val install = requireNotNull(arbiter.reserve(artifact))
+        assertTrue(install.transactionId > next.transactionId)
+        assertNull(arbiter.reserveRemoval(artifact.packageName))
+    }
+
+    @Test
     fun `all views observe the owning progress and uninstall cannot race an install reservation`() {
         val arbiter = ExtensionInstallArbiter()
         val artifact = artifact()

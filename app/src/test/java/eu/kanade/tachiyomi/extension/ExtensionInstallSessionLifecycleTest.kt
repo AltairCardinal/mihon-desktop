@@ -11,6 +11,7 @@ import android.net.Uri
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.IntentSanitizer
+import androidx.core.util.Predicate
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.hippo.unifile.UniFile
 import eu.kanade.domain.base.BasePreferences
@@ -23,7 +24,9 @@ import eu.kanade.tachiyomi.extension.util.AndroidApk
 import eu.kanade.tachiyomi.extension.util.AndroidCommitPlan
 import eu.kanade.tachiyomi.extension.util.AndroidInstallGateway
 import eu.kanade.tachiyomi.extension.util.AndroidInstallLocation
+import eu.kanade.tachiyomi.extension.util.AndroidInstallPaused
 import eu.kanade.tachiyomi.extension.util.AndroidInstallPort
+import eu.kanade.tachiyomi.extension.util.AndroidPlatformInstallResult
 import eu.kanade.tachiyomi.extension.util.DefaultAndroidInstallGateway
 import eu.kanade.tachiyomi.extension.util.ExtensionInstaller
 import eu.kanade.tachiyomi.util.lang.Hash
@@ -61,7 +64,9 @@ import mihon.domain.extension.service.ExtensionInstallFailure
 import mihon.domain.extension.service.ExtensionInstallPort
 import mihon.domain.extension.service.ExtensionInstallRequest
 import mihon.domain.extension.service.ExtensionInstallRollbackToken
+import mihon.domain.extension.service.ExtensionInstallState
 import mihon.domain.extension.service.PreparedExtensionInstallToken
+import mihon.domain.extension.suggestion.SuggestionBatchPause
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
@@ -85,6 +90,7 @@ import java.util.Properties
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
@@ -94,6 +100,422 @@ import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 
 @OptIn(ExperimentalAtomicApi::class)
 class ExtensionInstallSessionLifecycleTest {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = [-1, 0])
+    fun `rollback system removal waits for original activity result while parent remains owned`(resultCode: Int) =
+        runTest {
+            every { anyConstructed<Intent>().setAction(any()) } answers { self as Intent }
+            every { anyConstructed<Intent>().setFlags(any()) } answers { self as Intent }
+            val launched = mutableListOf<Intent>()
+            val context = mockk<Context>(relaxed = true) {
+                every { packageName } returns "app.mihon.eis.dev"
+                every { startActivity(any()) } answers {
+                    launched += firstArg<Intent>()
+                    Unit
+                }
+            }
+            lateinit var installer: ExtensionInstaller
+            val port = object : ExtensionInstallPort {
+                override suspend fun prepare(request: ExtensionInstallRequest) =
+                    PreparedExtensionInstallToken(
+                        checkNotNull(activeTransactionIds(installer)[request.artifact.packageName]),
+                    )
+                override suspend fun validate(token: PreparedExtensionInstallToken) =
+                    ExtensionInstallRollbackToken(token.value)
+                override suspend fun commit(token: PreparedExtensionInstallToken) {
+                    error("Post-commit verification failed")
+                }
+                override suspend fun reload(packageName: String) = Unit
+                override suspend fun rollback(token: ExtensionInstallRollbackToken) {
+                    installer.removeSystemAttempt("extension.rollback.window")
+                }
+                override suspend fun cleanup(token: PreparedExtensionInstallToken) = Unit
+            }
+            installer = ExtensionInstaller(context, scope = backgroundScope, installPort = port)
+            val extension = availableExtension("extension.rollback.window")
+            mockkStatic(Uri::class)
+            every { Uri.parse(any()) } returns mockk()
+            try {
+                val states = installer.downloadAndInstall("https://repo.example/extension.apk", extension)
+                val terminal = backgroundScope.async { states.first(InstallStep::isCompleted) }
+                runCurrent()
+                assertEquals(
+                    1,
+                    launched.size,
+                    installer.installErrors.value[extension.pkgName]?.cause?.stackTraceToString(),
+                )
+                val intent = launched.single()
+                verify(exactly = 1) { anyConstructed<Intent>().setAction(Intent.ACTION_UNINSTALL_PACKAGE) }
+                val id = checkNotNull(intent.getStringExtra(ExtensionInstaller.EXTRA_TRANSACTION_ID))
+                assertTrue(installer.restoreSystemRemoval(id, extension.pkgName) == true)
+                assertFalse(installer.restoreSystemRemoval(id, "wrong.package") == true)
+                assertFalse(installer.completeSystemRemoval("foreign-result", android.app.Activity.RESULT_OK))
+                advanceTimeBy(5 * 60_000)
+                runCurrent()
+                assertFalse(terminal.isCompleted)
+                assertTrue(installer.isInstallTransactionActive(extension.pkgName))
+                assertTrue(installer.completeSystemRemoval(id, resultCode))
+                runCurrent()
+                assertEquals(InstallStep.Error, terminal.await())
+                assertFalse(installer.completeSystemRemoval(id, android.app.Activity.RESULT_OK))
+                assertTrue(activeTransactionIds(installer).isEmpty())
+            } finally {
+                capturedStringExtras[ExtensionInstaller.EXTRA_TRANSACTION_ID]?.let {
+                    installer.completeSystemRemoval(it, android.app.Activity.RESULT_CANCELED)
+                }
+                runCurrent()
+                unmockkStatic(Uri::class)
+            }
+        }
+
+    @Test
+    fun `legacy delivery carries original active package identity for restored system window`() = runTest {
+        every { anyConstructed<Intent>().setFlags(any()) } answers { self as Intent }
+        val context = mockk<Context>(relaxed = true) { every { packageName } returns "app.mihon.eis.dev" }
+        lateinit var installer: ExtensionInstaller
+        val port = object : ExtensionInstallPort {
+            override suspend fun prepare(request: ExtensionInstallRequest) =
+                PreparedExtensionInstallToken(
+                    checkNotNull(activeTransactionIds(installer)[request.artifact.packageName]),
+                )
+            override suspend fun validate(token: PreparedExtensionInstallToken) =
+                ExtensionInstallRollbackToken(token.value)
+            override suspend fun commit(token: PreparedExtensionInstallToken) {
+                installer.installSystemAttempt(token.value, transactionApk(), BasePreferences.ExtensionInstaller.LEGACY)
+            }
+            override suspend fun reload(packageName: String) = Unit
+            override suspend fun rollback(token: ExtensionInstallRollbackToken) = Unit
+            override suspend fun cleanup(token: PreparedExtensionInstallToken) = Unit
+        }
+        installer = ExtensionInstaller(context, scope = backgroundScope, installPort = port)
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
+        val extension = availableExtension("extension.original.window")
+        try {
+            val terminal = backgroundScope.async {
+                installer.downloadAndInstall(
+                    "https://repo.example/extension.apk",
+                    extension,
+                ).first(InstallStep::isCompleted)
+            }
+            runCurrent()
+            assertTrue(
+                platformResults(installer).isNotEmpty(),
+                installer.installErrors.value[extension.pkgName]?.cause?.stackTraceToString(),
+            )
+            val id = platformResults(installer).keys.single()
+            try {
+                verify(exactly = 1) { context.startActivity(any()) }
+                assertEquals(extension.pkgName, installer.pendingSystemPackage(id))
+                assertEquals(extension.pkgName, capturedStringExtras[ExtensionInstaller.EXTRA_PACKAGE_NAME])
+                assertEquals(id, capturedStringExtras[ExtensionInstaller.EXTRA_TRANSACTION_ID])
+                assertEquals(null, installer.pendingSystemPackage("foreign"))
+            } finally {
+                installer.updateInstallStep(id, InstallStep.Idle)
+                runCurrent()
+            }
+            assertEquals(InstallStep.Idle, terminal.await())
+            assertEquals(null, installer.pendingSystemPackage(id))
+        } finally {
+            unmockkStatic(FileProvider::class)
+        }
+    }
+
+    @Test
+    fun `pending system interruption belongs to active attempt without completing or leaking into retry`() = runTest {
+        val context = mockk<Context>(relaxed = true) {
+            every { packageName } returns "app.mihon.eis.dev"
+        }
+        lateinit var installer: ExtensionInstaller
+        val port = object : ExtensionInstallPort {
+            override suspend fun prepare(request: ExtensionInstallRequest) =
+                PreparedExtensionInstallToken(
+                    checkNotNull(activeTransactionIds(installer)[request.artifact.packageName]),
+                )
+            override suspend fun validate(token: PreparedExtensionInstallToken) =
+                ExtensionInstallRollbackToken(token.value)
+            override suspend fun commit(token: PreparedExtensionInstallToken) {
+                installer.installSystemAttempt(
+                    token.value,
+                    transactionApk(),
+                    BasePreferences.ExtensionInstaller.SHIZUKU,
+                )
+            }
+            override suspend fun reload(packageName: String) = Unit
+            override suspend fun rollback(token: ExtensionInstallRollbackToken) = Unit
+            override suspend fun cleanup(token: PreparedExtensionInstallToken) = Unit
+        }
+        installer = ExtensionInstaller(context, scope = backgroundScope, installPort = port)
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
+        every { ContextCompat.startForegroundService(context, any()) } returns mockk()
+        val extension = availableExtension("extension.pending.system")
+        try {
+            val interruptions = mutableListOf<SuggestionBatchPause>()
+            val first = installer.downloadAndInstallObserved(
+                "https://repo.example/extension.apk",
+                extension,
+                beforeCommit = {},
+                onFinished = {},
+                onSystemInterruption = interruptions::add,
+            )
+            val terminal = backgroundScope.async { first.first(InstallStep::isCompleted) }
+            runCurrent()
+            val id = platformResults(installer).keys.single()
+            installer.reportPendingInstallPause(
+                "foreign-id",
+                mihon.domain.extension.suggestion.SuggestionBatchPause.SERVICE,
+            )
+            assertTrue(installer.pendingSystemPauses.value.isEmpty())
+            installer.reportPendingInstallPause(id, SuggestionBatchPause.SERVICE)
+            assertEquals(
+                mapOf(extension.pkgName to SuggestionBatchPause.SERVICE),
+                installer.pendingSystemPauses.value,
+            )
+            assertEquals(listOf(SuggestionBatchPause.SERVICE), interruptions)
+            assertFalse(terminal.isCompleted)
+            assertFalse(platformResults(installer).getValue(id).isCompleted)
+            installer.reportPendingInstallPause(id, null)
+            assertTrue(installer.pendingSystemPauses.value.isEmpty())
+            installer.reportPendingInstallPause(id, SuggestionBatchPause.PERMISSION)
+            installer.updateInstallStep(id, InstallStep.Installed)
+            assertTrue(installer.pendingSystemPauses.value.isEmpty())
+            runCurrent()
+            assertEquals(InstallStep.Installed, terminal.await())
+            val second = installer.downloadAndInstall("https://repo.example/extension.apk", extension)
+            val retry = backgroundScope.async { second.first(InstallStep::isCompleted) }
+            runCurrent()
+            val next = platformResults(installer).keys.single()
+            installer.reportPendingInstallPause(next, SuggestionBatchPause.SERVICE)
+            installer.reportPendingInstallPause(id, null)
+            installer.reportPendingInstallPause(id, SuggestionBatchPause.PERMISSION)
+            installer.updateInstallStep(id, InstallStep.Error)
+            assertEquals(
+                mapOf(extension.pkgName to SuggestionBatchPause.SERVICE),
+                installer.pendingSystemPauses.value,
+            )
+            installer.updateInstallStep(next, InstallStep.Installed)
+            runCurrent()
+            assertEquals(InstallStep.Installed, retry.await())
+            assertTrue(installer.pendingSystemPauses.value.isEmpty())
+        } finally {
+            unmockkStatic(FileProvider::class)
+        }
+    }
+
+    @Test
+    fun `active recovery verifies complete system APK against frozen candidate and baseline`() = runTest {
+        val context = mockk<Context>(relaxed = true) {
+            every { packageName } returns "app.mihon.eis.dev"
+        }
+        val candidate = transactionApk()
+        val installed = lifecycleFixtureDirectory.resolve("installed.apk").toFile().apply {
+            writeText("previous-bytes")
+        }
+        val expected = AndroidApk("pkg.recover", "1.6.1", 16, setOf("controlled-signer"), true, 1.6)
+        var inspected = expected.copy(versionCode = 15)
+        var metadata = eu.kanade.tachiyomi.extension.util.AndroidInstalledPackage(
+            installed,
+            "1.6.1",
+            15,
+            expected.signers,
+            null,
+            1.6,
+        )
+        val gateway = mockk<AndroidInstallGateway> {
+            every { inspect(candidate) } returns expected
+            every { inspect(installed) } answers { inspected }
+            every { topology(expected.packageName) } answers {
+                eu.kanade.tachiyomi.extension.util.AndroidInstallTopology(
+                    null,
+                    metadata,
+                    eu.kanade.tachiyomi.extension.util.AndroidLoaderOrigin.SYSTEM,
+                )
+            }
+        }
+        val installer = ExtensionInstaller(
+            context,
+            runtimeReloader = {},
+            scope = backgroundScope,
+            gateway = gateway,
+            client = OkHttpClient(),
+            installerProvider = { BasePreferences.ExtensionInstaller.SHIZUKU },
+        )
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
+        every { ContextCompat.startForegroundService(context, any()) } returns mockk()
+        try {
+            val outcome = backgroundScope.async {
+                runCatching {
+                    installer.installSystemAttempt(
+                        "recover-parent",
+                        candidate,
+                        BasePreferences.ExtensionInstaller.SHIZUKU,
+                    )
+                }
+            }
+            runCurrent()
+            val id = platformResults(installer).keys.single()
+            assertFalse(installer.verifyInstalledTransaction("other-transaction"))
+            assertFalse(installer.verifyInstalledTransaction(id))
+            inspected = expected
+            metadata = metadata.copy(versionCode = 16)
+            assertFalse(
+                installer.verifyInstalledTransaction(id),
+                "Matching versions cannot replace APK digest verification",
+            )
+            candidate.copyTo(installed, overwrite = true)
+            assertTrue(installer.verifyInstalledTransaction(id))
+            inspected = expected.copy(signers = setOf("other-signer"))
+            assertFalse(installer.verifyInstalledTransaction(id))
+            inspected = expected.copy(packageName = "other.package")
+            assertFalse(installer.verifyInstalledTransaction(id))
+            inspected = expected.copy(isExtension = false)
+            assertFalse(installer.verifyInstalledTransaction(id))
+            inspected = expected
+            candidate.appendText("tampered-after-freeze")
+            assertFalse(installer.verifyInstalledTransaction(id))
+            installer.updateInstallStep(id, InstallStep.Installed)
+            runCurrent()
+            assertTrue(outcome.await().isSuccess)
+            assertFalse(installer.verifyInstalledTransaction(id))
+        } finally {
+            unmockkStatic(FileProvider::class)
+        }
+    }
+
+    @Test
+    fun `handed off system transaction accepts real success beyond the old timeout without replay`() = runTest {
+        val context = mockk<Context>(relaxed = true) {
+            every { packageName } returns "app.mihon.eis.dev"
+        }
+        val installer = ExtensionInstaller(context, scope = backgroundScope, installPort = mockk(relaxed = true))
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
+        every { ContextCompat.startForegroundService(context, any()) } returns mockk()
+        try {
+            val outcome = backgroundScope.async {
+                runCatching {
+                    installer.installSystemAttempt(
+                        "delayed-parent",
+                        transactionApk(),
+                        BasePreferences.ExtensionInstaller.SHIZUKU,
+                    )
+                }
+            }
+            runCurrent()
+            val id = platformResults(installer).keys.single()
+            advanceTimeBy(5 * 60_000)
+            runCurrent()
+            assertFalse(
+                outcome.isCompleted,
+                "Elapsed time is not evidence that the committed system transaction failed",
+            )
+            assertTrue(platformResults(installer).containsKey(id))
+            installer.updateInstallStep(id, InstallStep.Installed)
+            runCurrent()
+            assertTrue(outcome.await().isSuccess)
+            assertTrue(platformResults(installer).isEmpty())
+            verify(exactly = 1) { ContextCompat.startForegroundService(context, any()) }
+        } finally {
+            unmockkStatic(FileProvider::class)
+        }
+    }
+
+    @Test
+    fun `real terminal and pause race publishes one immutable result through cleanup`() =
+        kotlinx.coroutines.runBlocking {
+            val context = mockk<Context>(relaxed = true) {
+                every { packageName } returns "app.mihon.eis.dev"
+            }
+            val installer = ExtensionInstaller(context, installPort = mockk(relaxed = true))
+            mockkStatic(FileProvider::class)
+            every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
+            every { ContextCompat.startForegroundService(context, any()) } returns mockk()
+            val threads = Executors.newFixedThreadPool(2)
+            try {
+                val outcome = async {
+                    runCatching {
+                        installer.installSystemAttempt(
+                            "race-parent",
+                            transactionApk(),
+                            BasePreferences.ExtensionInstaller.PACKAGEINSTALLER,
+                        )
+                    }
+                }
+                val (id, deferred) = kotlinx.coroutines.withTimeout(5_000) {
+                    while (platformResults(installer).isEmpty()) kotlinx.coroutines.delay(10)
+                    platformResults(installer).entries.single().let { it.key to it.value }
+                }
+                val barrier = java.util.concurrent.CyclicBarrier(2)
+                val terminal = threads.submit {
+                    barrier.await(3, TimeUnit.SECONDS)
+                    installer.updateInstallStep(id, InstallStep.Installed)
+                }
+                val paused = threads.submit {
+                    barrier.await(3, TimeUnit.SECONDS)
+                    installer.pauseInstall(id, SuggestionBatchPause.SERVICE)
+                }
+                terminal.get(5, TimeUnit.SECONDS)
+                paused.get(5, TimeUnit.SECONDS)
+                val result = deferred.await()
+                val actual = outcome.await()
+                if (result.step == InstallStep.Installed) {
+                    assertTrue(actual.isSuccess)
+                    assertEquals(null, result.pauseReason)
+                } else {
+                    val failure = assertInstanceOf(ExtensionInstallFailure::class.java, actual.exceptionOrNull())
+                    val cause = assertInstanceOf(AndroidInstallPaused::class.java, failure.error.cause)
+                    assertEquals(result.pauseReason, cause.reason)
+                }
+                installer.pauseInstall(id, SuggestionBatchPause.PERMISSION)
+                installer.updateInstallStep(id, InstallStep.Error)
+                assertEquals(result, deferred.await())
+                assertTrue(platformResults(installer).isEmpty())
+            } finally {
+                threads.shutdownNow()
+                unmockkStatic(FileProvider::class)
+            }
+        }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(
+        value = SuggestionBatchPause::class,
+        names = ["PERMISSION", "SERVICE", "APP_FOREGROUND"],
+    )
+    fun `platform interruption retains typed cause through real result and cleanup`(
+        reason: SuggestionBatchPause,
+    ) = kotlinx.coroutines.runBlocking {
+        val context = mockk<Context>(relaxed = true) {
+            every { packageName } returns "app.mihon.eis.dev"
+        }
+        val installer = ExtensionInstaller(context, installPort = mockk(relaxed = true))
+        mockkStatic(FileProvider::class)
+        every { FileProvider.getUriForFile(any(), any(), any()) } returns mockk()
+        every { ContextCompat.startForegroundService(context, any()) } returns mockk()
+        try {
+            val result = async {
+                runCatching {
+                    installer.installSystemAttempt(
+                        "parent",
+                        transactionApk(),
+                        BasePreferences.ExtensionInstaller.PACKAGEINSTALLER,
+                    )
+                }.exceptionOrNull()
+            }
+            val id = kotlinx.coroutines.withTimeout(5_000) {
+                while (platformResults(installer).isEmpty()) kotlinx.coroutines.delay(10)
+                platformResults(installer).keys.single()
+            }
+            installer.pauseInstall(id, reason)
+            val error = assertInstanceOf(ExtensionInstallFailure::class.java, result.await())
+            val unknown = assertInstanceOf(AppError.Unknown::class.java, error.error)
+            assertEquals(reason, (unknown.cause as? AndroidInstallPaused)?.reason)
+            assertTrue(platformResults(installer).isEmpty())
+        } finally {
+            unmockkStatic(FileProvider::class)
+        }
+    }
 
     @TempDir
     lateinit var lifecycleFixtureDirectory: Path
@@ -296,7 +718,7 @@ class ExtensionInstallSessionLifecycleTest {
                 }
 
                 val terminal = states.await().last()
-                assertInstanceOf(mihon.domain.extension.service.ExtensionInstallState.Failed::class.java, terminal)
+                assertInstanceOf(ExtensionInstallState.Failed::class.java, terminal)
                 assertEquals(2, committedAttempts.size)
                 assertNotEquals(parentTransaction, committedAttempts[0])
                 assertNotEquals(parentTransaction, committedAttempts[1])
@@ -783,14 +1205,14 @@ class ExtensionInstallSessionLifecycleTest {
         every {
             anyConstructed<IntentSanitizer.Builder>().allowExtra(
                 any<String>(),
-                any<androidx.core.util.Predicate<Any>>(),
+                any<Predicate<Any>>(),
             )
         } answers { self as IntentSanitizer.Builder }
         every { anyConstructed<IntentSanitizer.Builder>().allowAnyComponent() } answers {
             self as IntentSanitizer.Builder
         }
         every {
-            anyConstructed<IntentSanitizer.Builder>().allowPackage(any<androidx.core.util.Predicate<String>>())
+            anyConstructed<IntentSanitizer.Builder>().allowPackage(any<Predicate<String>>())
         } answers {
             self as IntentSanitizer.Builder
         }
@@ -933,7 +1355,7 @@ class ExtensionInstallSessionLifecycleTest {
     }
 
     @Test
-    fun `platform timeout waits for package cleanup before failing the transaction`() = runTest {
+    fun `elapsed time preserves session and explicit cancellation still waits for package cleanup`() = runTest {
         val harness = packageInstallerHarness()
         val context = mockk<Context>(relaxed = true) {
             every { packageName } returns "eu.kanade.tachiyomi"
@@ -973,12 +1395,16 @@ class ExtensionInstallSessionLifecycleTest {
                     "cancelIntents=${cancelIntents.size} active=" +
                     harness.isActive(TRANSACTION_ONE, SESSION_ONE),
             )
+            verify(exactly = 0) { harness.packageInstaller.abandonSession(SESSION_ONE) }
+            waiting.cancel()
+            runCurrent()
+            assertFalse(waiting.isCompleted, "Explicit cancellation must await the actual platform cleanup")
             verify(exactly = 1) { harness.packageInstaller.abandonSession(SESSION_ONE) }
             harness.installer.onDestroy()
             runCurrent()
 
             assertTrue(waiting.isCompleted)
-            assertInstanceOf(ExtensionInstallFailure::class.java, waiting.await())
+            assertTrue(waiting.isCancelled)
             verify(exactly = 1) { harness.packageInstaller.abandonSession(SESSION_ONE) }
             assertTrue(platformResults(installer).isEmpty())
         } finally {
@@ -1875,9 +2301,12 @@ class ExtensionInstallSessionLifecycleTest {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun platformResults(installer: ExtensionInstaller): Map<String, CompletableDeferred<InstallStep>> =
+    private fun platformResults(installer: ExtensionInstaller): Map<
+        String,
+        CompletableDeferred<AndroidPlatformInstallResult>,
+        > =
         ExtensionInstaller::class.java.getDeclaredField("platformResults").apply { isAccessible = true }
-            .get(installer) as Map<String, CompletableDeferred<InstallStep>>
+            .get(installer) as Map<String, CompletableDeferred<AndroidPlatformInstallResult>>
 
     @Suppress("UNCHECKED_CAST")
     private fun cancelledTransactionIds(installer: ExtensionInstaller): Set<String> =
@@ -1974,7 +2403,7 @@ class ExtensionInstallSessionLifecycleTest {
         every {
             ContextCompat.registerReceiver(service, capture(receiver), any(), ContextCompat.RECEIVER_NOT_EXPORTED)
         } returns null
-        val installer = PackageInstallerInstaller(service)
+        val installer = PackageInstallerInstaller(service, isForeground = { true })
         Installer::class.java.getDeclaredField("extensionManager\$delegate").apply {
             isAccessible = true
             set(installer, lazyOf(manager))
@@ -2069,8 +2498,11 @@ class ExtensionInstallSessionLifecycleTest {
     private class BlockingPlatformResults(
         private val registrationStarted: CountDownLatch,
         private val allowRegistration: CountDownLatch,
-    ) : ConcurrentHashMap<String, CompletableDeferred<InstallStep>>() {
-        override fun put(key: String, value: CompletableDeferred<InstallStep>): CompletableDeferred<InstallStep>? {
+    ) : ConcurrentHashMap<String, CompletableDeferred<AndroidPlatformInstallResult>>() {
+        override fun put(
+            key: String,
+            value: CompletableDeferred<AndroidPlatformInstallResult>,
+        ): CompletableDeferred<AndroidPlatformInstallResult>? {
             registrationStarted.countDown()
             check(allowRegistration.await(10, TimeUnit.SECONDS))
             return super.put(key, value)

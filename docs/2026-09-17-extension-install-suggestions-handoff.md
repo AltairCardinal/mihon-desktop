@@ -2,7 +2,7 @@
 
 更新时间：2026-09-17。本文由用户明确要求在重试失败后生成，用于接续工作，不代表功能验收完成。
 
-**最新恢复状态（EIS-03 验收完成）**：EIS-03 共享仲裁/批次、Desktop 完整结果/暂停恢复/失败重试、真实 Browse→本地 HTTP→默认签名校验→production coordinator→临时插件目录→真实 loader 闭环均已完成。最终 `eis03-repair-final` PASSED / exit 0（33s）；首轮未受影响 XML 与最后四整类替换联合为 27 suites / 294 项，failure/error/skipped 均为 0（domain JVM 36、domain Android 13、app 58、Desktop 187）。格式及 diff-check 通过，主代理独立验收全部关闭。本文随同 EIS-03 功能提交更新，提交可由 `git log` 定位；下一批是 EIS-04，最终发布仍未完成。后文第 3、5 节保留历史失败和恢复过程，不代表当前阻塞。验证使用协调器 `foreground` + Gradle `--offline`，没有修改安全配置或恢复旧联网后台启动命令。
+**最新恢复状态（EIS-04 已完成，EIS-05 待实施）**：EIS-03 提交为 `e4d5bedde19513500820f6e636505659a4433531`；EIS-04 的 Android 批次 UI/DI、系统确认/卸载/回滚归属、Shizuku 两阶段协议及进程恢复已实现并通过同批独立审查。最终 `eis04-focused-final` PASSED，19 suites / 219 项全零失败/错误/跳过，Android instrumentation 编译通过；`eis04-readonly-format` 在原规则、无 IdeHook 下通过，diff-check 通过。Legacy/PackageInstaller 连续、取消继续、提交后停止，PRIVATE 跨进程，Shizuku 可用/无服务/授权失效，后台恢复、配置重建及原 PI session 进程退出恢复均有真实设备证据。完整证据和维护边界集中在 roadmap 第9节；本批 checkoff 随同功能提交，不另建状态提交。下一步 EIS-05 全量/Test Mode/正式三平台发布，尚未执行。验证使用协调器 `run`＋`--offline`，未修改安全配置。后文旧 EIS-03 阻塞为历史。
 
 ## 1. 目标与唯一执行工作区
 
@@ -19,7 +19,7 @@
 | EIS-01 | `c1d733810e79acf8a9c4e06f9ca8abca93a2d550` | 共享识别、Android 系统/私有库存、Desktop 最终产物库存、双端 Flow/DI 与真实 SQL 契约；最终 focused 115 项通过，详见 roadmap 第 9 节 |
 | EIS-02 | `6b34ea3a606a233ddd715ef65485cae401a61bef` | 双端建议区、单项安装、来源/网站选择、忽略/撤销/折叠、本地偏好及真实备份/同步隔离；有效 XML 合计 107 项通过，窄屏离屏检查已完成，详见 roadmap |
 
-当前功能基线推进至 EIS-03（本次功能提交）。EIS-04、05 保持未勾选；没有本专项最终发布产物。
+EIS-03 基线为 `e4d5bedde19513500820f6e636505659a4433531`；EIS-04 已验收并随本文作同批功能提交（以 Git 日志为准）。仅 EIS-05 未勾选；没有本专项最终正式发布产物。
 
 ## 3. 历史重试与当时阻塞（已恢复）
 

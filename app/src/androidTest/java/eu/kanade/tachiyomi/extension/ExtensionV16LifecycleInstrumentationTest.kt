@@ -99,6 +99,7 @@ class ExtensionV16LifecycleInstrumentationTest {
         additionalApks: Map<String, ByteArray> = emptyMap(),
         transformDownload: (ByteArray) -> ByteArray = { it },
         installThroughCatalogUi: (suspend (String) -> Unit)? = null,
+        beforeSystemConfirmation: suspend () -> Unit = {},
         onInstalled: suspend (Extension.Installed, String) -> Unit = { _, _ -> },
     ) = runBlocking {
         checkEmulator()
@@ -113,8 +114,10 @@ class ExtensionV16LifecycleInstrumentationTest {
         val installerPreference = Injekt.get<BasePreferences>().extensionInstaller()
         val previousInstaller = installerPreference.get()
         val wasInstallerSet = installerPreference.isSet()
-        val systemInstall = installer == BasePreferences.ExtensionInstaller.PACKAGEINSTALLER
-        if (systemInstall) {
+        val systemInstall = installer != BasePreferences.ExtensionInstaller.PRIVATE
+        val needsConfirmation = installer == BasePreferences.ExtensionInstaller.PACKAGEINSTALLER ||
+            installer == BasePreferences.ExtensionInstaller.LEGACY
+        if (needsConfirmation) {
             check(context.packageManager.canRequestPackageInstalls()) {
                 "Enable unknown-app installation through Settings before instrumentation; restore it after the runner exits"
             }
@@ -205,7 +208,10 @@ class ExtensionV16LifecycleInstrumentationTest {
                     } else {
                         coroutineScope {
                             val result = async { manager.installExtension(available).first(InstallStep::isCompleted) }
-                            if (systemInstall) clickInstallerButton(if (cancel) setOf("Cancel") else setOf("Install"))
+                            if (needsConfirmation) {
+                                beforeSystemConfirmation()
+                                clickInstallerButton(if (cancel) setOf("Cancel") else setOf("Install"))
+                            }
                             result.await()
                         }
                     }
@@ -443,12 +449,15 @@ class ExtensionV16LifecycleInstrumentationTest {
     }
 
     internal suspend fun clickInstallerButton(labels: Set<String>) {
-        val button = awaitNode { node ->
+        val button = awaitInstallerButton(labels)
+        check(button.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+    }
+
+    internal suspend fun awaitInstallerButton(labels: Set<String>): AccessibilityNodeInfo =
+        awaitNode { node ->
             node.packageName?.toString()?.endsWith("packageinstaller") == true &&
                 node.text?.toString() in labels && node.isEnabled && node.isClickable
         }
-        check(button.performAction(AccessibilityNodeInfo.ACTION_CLICK))
-    }
 
     private suspend fun awaitNode(predicate: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo = withTimeout(
         25_000,

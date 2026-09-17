@@ -33,6 +33,7 @@ enum class SuggestionBatchPause {
     PERMISSION,
     SERVICE,
     CONFIRMATION_CANCELLED,
+    APP_FOREGROUND,
 }
 
 data class SuggestionBatchItem(

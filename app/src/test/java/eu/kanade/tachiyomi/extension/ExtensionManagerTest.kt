@@ -5,9 +5,12 @@ import androidx.core.app.NotificationManagerCompat
 import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
+import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.extension.model.LoadResult
+import eu.kanade.tachiyomi.extension.model.toArtifact
+import eu.kanade.tachiyomi.extension.util.AndroidInstallPaused
 import eu.kanade.tachiyomi.extension.util.ExtensionInstallReceiver
 import eu.kanade.tachiyomi.extension.util.ExtensionInstaller
 import eu.kanade.tachiyomi.extension.util.ExtensionLoader
@@ -37,6 +40,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import mihon.domain.error.AppError
 import mihon.domain.extension.model.RepositoryCatalogFailure
 import mihon.domain.extension.model.RepositoryIdentity
+import mihon.domain.extension.service.ExtensionInstallInvalidated
+import mihon.domain.extension.suggestion.ExtensionInventory
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -54,6 +59,404 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class ExtensionManagerTest {
+    @Test
+    fun `restored installation window retains package until actual result inventory is published`() = runTest {
+        withNotificationEnvironment(expectNotification = false) {
+            val refreshAllowed = CompletableDeferred<Unit>()
+            var scans = 0
+            val installer =
+                mockk<ExtensionInstaller>(relaxed = true) { every { pendingSystemPackage(any()) } returns null }
+            val manager = ExtensionManager(
+                context = mockk(relaxed = true),
+                preferences = preferences(),
+                trustExtension = mockk(relaxed = true),
+                installedExtensionsLoader = { emptyList() },
+                installerFactory = { installer },
+                installReceiverRegistrar = {},
+
+                scope = backgroundScope,
+                inventoryProvider = {
+                    if (++scans > 1) refreshAllowed.await()
+                    ExtensionInventory(initialized = true)
+                },
+            )
+            runCurrent()
+            assertTrue(manager.restoreInstallWindow("original-window", PACKAGE))
+            assertTrue(manager.restoreInstallWindow("original-window", PACKAGE))
+            assertFalse(manager.restoreInstallWindow("original-window", "wrong.package"))
+            assertFalse(manager.restoreInstallWindow("second-window", PACKAGE))
+            assertTrue(manager.installArbiter.isBusy(PACKAGE))
+            manager.completeInstallWindow("foreign-result", InstallStep.Installed)
+            assertTrue(manager.installArbiter.isBusy(PACKAGE))
+            manager.completeInstallWindow("original-window", InstallStep.Installed)
+            runCurrent()
+            assertFalse(manager.restoreInstallWindow("original-window", PACKAGE))
+            assertTrue(manager.installArbiter.isBusy(PACKAGE))
+            refreshAllowed.complete(Unit)
+            runCurrent()
+            assertFalse(manager.installArbiter.isBusy(PACKAGE))
+            val next = checkNotNull(manager.installArbiter.reserve(available().toArtifact()))
+            manager.completeInstallWindow("original-window", InstallStep.Idle)
+            assertTrue(manager.installArbiter.owns(next, next.artifact))
+            verify(exactly = 0) { installer.updateInstallStep("original-window", any()) }
+            manager.installArbiter.release(next)
+        }
+    }
+
+    @Test
+    fun `same process restored installation reuses its live platform transaction`() = runBlocking {
+        val installer = mockk<ExtensionInstaller>(relaxed = true) {
+            every { pendingSystemPackage("live-window") } returns PACKAGE
+        }
+        val manager = manager(initial = emptyList(), installer = installer)
+        val lease = checkNotNull(manager.installArbiter.reserve(available().toArtifact()))
+        assertTrue(manager.restoreInstallWindow("live-window", PACKAGE))
+        assertFalse(manager.restoreInstallWindow("live-window", "wrong.package"))
+        manager.completeInstallWindow("live-window", InstallStep.Installed)
+        verify(exactly = 1) { installer.updateInstallStep("live-window", InstallStep.Installed) }
+        assertTrue(manager.installArbiter.owns(lease, lease.artifact))
+        assertFalse(manager.restoreInstallWindow("live-window", PACKAGE))
+        manager.installArbiter.release(lease)
+        Unit
+    }
+
+    @Test
+    fun `rollback removal restoration and result retain original installation owner`() = runBlocking {
+        val installer = mockk<ExtensionInstaller>(relaxed = true) {
+            every { hasSystemRemoval("rollback-owned") } returns true
+            every { restoreSystemRemoval("rollback-owned", PACKAGE) } returns true
+            every { restoreSystemRemoval("rollback-owned", "wrong.package") } returns false
+            every { completeSystemRemoval("rollback-owned", android.app.Activity.RESULT_OK) } returns true
+        }
+        val manager = manager(initial = emptyList(), installer = installer)
+        manager.isInitialized.await { it }
+        val lease = checkNotNull(manager.installArbiter.reserve(available().toArtifact()))
+        assertTrue(manager.restoreUninstall("rollback-owned", PACKAGE))
+        assertFalse(manager.restoreUninstall("rollback-owned", "wrong.package"))
+        manager.completeUninstall("rollback-owned", android.app.Activity.RESULT_OK)
+        verify(exactly = 1) { installer.completeSystemRemoval("rollback-owned", android.app.Activity.RESULT_OK) }
+        assertTrue(manager.installArbiter.isBusy(PACKAGE))
+        assertFalse(manager.restoreUninstall("rollback-owned", PACKAGE))
+        manager.installArbiter.release(lease)
+        Unit
+    }
+
+    @Test
+    fun `reserved observed entry preserves system interruption before successful result and cleanup`() = runBlocking {
+        val notices = mutableListOf<mihon.domain.extension.suggestion.SuggestionBatchPause>()
+        val installer = mockk<ExtensionInstaller>(relaxed = true) {
+            every { downloadAndInstall(any(), any(), any(), any()) } answers {
+                val finished = arg<() -> Unit>(3)
+                kotlinx.coroutines.flow.flow {
+                    try {
+                        emit(InstallStep.Installed)
+                    } finally {
+                        finished()
+                    }
+                }
+            }
+            every { downloadAndInstallObserved(any(), any(), any(), any(), any()) } answers {
+                val finished = arg<() -> Unit>(3)
+                val interrupted = arg<(mihon.domain.extension.suggestion.SuggestionBatchPause) -> Unit>(4)
+                kotlinx.coroutines.flow.flow {
+                    interrupted(mihon.domain.extension.suggestion.SuggestionBatchPause.SERVICE)
+                    try {
+                        emit(InstallStep.Installed)
+                    } finally {
+                        finished()
+                    }
+                }
+            }
+        }
+        val manager = manager(initial = emptyList(), installer = installer)
+        manager.isInitialized.await { it }
+        val lease = checkNotNull(manager.installArbiter.reserve(available().toArtifact()))
+        val result = manager.installReservedObserved(lease, { _, _ -> }) {
+            assertTrue(manager.installArbiter.isBusy(PACKAGE))
+            notices += it
+        }
+        assertEquals(mihon.domain.extension.suggestion.SuggestionBatchResult.Installed, result)
+        assertEquals(listOf(mihon.domain.extension.suggestion.SuggestionBatchPause.SERVICE), notices)
+        assertFalse(manager.installArbiter.isBusy(PACKAGE))
+    }
+
+    @Test
+    fun `reserved guard invalidation remains reconfirmation instead of ordinary install failure`() = runBlocking {
+        val reason = mihon.domain.extension.service.ExtensionInstallInvalidation.CATALOG_CHANGED
+        val installer = mockk<ExtensionInstaller>(relaxed = true) {
+            every { installErrors } returns kotlinx.coroutines.flow.MutableStateFlow(
+                mapOf(PACKAGE to AppError.Unknown(ExtensionInstallInvalidated(reason))),
+            )
+            every { downloadAndInstall(any(), any(), any(), any()) } answers {
+                val finished = arg<() -> Unit>(3)
+                kotlinx.coroutines.flow.flow {
+                    try {
+                        emit(InstallStep.Error)
+                    } finally {
+                        finished()
+                    }
+                }
+            }
+        }
+        val manager = manager(initial = emptyList(), installer = installer)
+        manager.isInitialized.await { it }
+        val lease = checkNotNull(manager.installArbiter.reserve(available().toArtifact()))
+        assertEquals(
+            mihon.domain.extension.suggestion.SuggestionBatchResult.Invalidated(reason),
+            manager.installReserved(lease) { _, _ -> },
+        )
+        assertFalse(manager.installArbiter.isBusy(PACKAGE))
+    }
+
+    @Test
+    fun `reserved v2 dual artifact downloads Android apk and retains frozen catalog identity`() = runBlocking {
+        val repository = ExtensionRepo("https://repo.example", "Store", null, "", "trusted-fingerprint")
+        val json = """
+            {"name":"Store","badgeLabel":"Store","signingKey":"trusted-fingerprint",
+            "contact":{"website":"https://repo.example"},"extensionList":{"extensions":[{
+            "name":"Example","packageName":"$PACKAGE",
+            "resources":{"apkUrl":"https://repo.example/example.apk",
+            "jarUrl":"https://repo.example/example.jar","iconUrl":"https://repo.example/icon.png"},
+            "extensionLib":"1.6","versionCode":160,"versionName":"1.6.1",
+            "contentWarning":"CONTENT_WARNING_UNSPECIFIED",
+            "sources":[{"id":7,"name":"Source","language":"en","homeUrl":"https://source.example"}]}]}}
+        """.trimIndent()
+        val artifact = mihon.domain.extensionrepo.service.ExtensionStoreCatalogDecoder.decode(
+            json.toByteArray(),
+            "https://repo.example/repo.json",
+            repository,
+        ).entries.single().artifact
+        assertEquals("https://repo.example/example.jar", artifact.downloadUrl)
+        val installer = mockk<ExtensionInstaller>(relaxed = true) {
+            every { downloadAndInstall(any(), any(), any(), any()) } answers {
+                val finished = arg<() -> Unit>(3)
+                kotlinx.coroutines.flow.flow {
+                    try {
+                        emit(InstallStep.Installed)
+                    } finally {
+                        finished()
+                    }
+                }
+            }
+        }
+        val manager = manager(initial = emptyList(), installer = installer)
+        manager.isInitialized.await { it }
+        val lease = checkNotNull(manager.installArbiter.reserve(artifact))
+        assertEquals(
+            mihon.domain.extension.suggestion.SuggestionBatchResult.Installed,
+            manager.installReserved(lease) { _, _ -> },
+        )
+        assertEquals(artifact, lease.artifact)
+        verify(exactly = 1) {
+            installer.downloadAndInstall(
+                "https://repo.example/example.apk",
+                match {
+                    it.pkgName == artifact.packageName && it.versionCode == artifact.versionCode &&
+                        it.repoFingerprint == artifact.repository.signingKeyFingerprint && it.libVersion == 1.6
+                },
+                any(),
+                any(),
+            )
+        }
+    }
+
+    @Test
+    fun `reserved platform permission failure pauses the batch after cleanup`() = runBlocking {
+        val reason = mihon.domain.extension.suggestion.SuggestionBatchPause.PERMISSION
+        lateinit var manager: ExtensionManager
+        val installer = mockk<ExtensionInstaller>(relaxed = true) {
+            every { installErrors } returns kotlinx.coroutines.flow.MutableStateFlow(
+                mapOf(PACKAGE to AppError.Unknown(AndroidInstallPaused(reason))),
+            )
+            every { downloadAndInstall(any(), any(), any(), any()) } answers {
+                val finished = arg<() -> Unit>(3)
+                kotlinx.coroutines.flow.flow {
+                    try {
+                        emit(InstallStep.Error)
+                    } finally {
+                        finished()
+                        assertTrue(
+                            runCatching { manager.installExtension(available()) }.exceptionOrNull() is
+                                mihon.domain.extension.service.ExtensionInstallBusy,
+                            "Batch result must be captured before a new owner can clear its error",
+                        )
+                    }
+                }
+            }
+        }
+        manager = manager(initial = emptyList(), installer = installer)
+        manager.isInitialized.await { it }
+        val lease = checkNotNull(manager.installArbiter.reserve(available().toArtifact()))
+        assertEquals(
+            mihon.domain.extension.suggestion.SuggestionBatchResult.Paused(reason),
+            manager.installReserved(lease) { _, _ -> },
+        )
+        assertFalse(manager.installArbiter.isBusy(PACKAGE))
+    }
+
+    @Test
+    fun `reserved completion waits for its inventory publication before advancing batch`() = runTest {
+        withNotificationEnvironment(expectNotification = false) {
+            val refreshStarted = CompletableDeferred<Unit>()
+            val refreshAllowed = CompletableDeferred<Unit>()
+            var scans = 0
+            val installer = mockk<ExtensionInstaller>(relaxed = true) {
+                every { downloadAndInstall(any(), any(), any(), any()) } answers {
+                    val finished = arg<() -> Unit>(3)
+                    kotlinx.coroutines.flow.flow {
+                        try {
+                            emit(InstallStep.Installed)
+                        } finally {
+                            finished()
+                        }
+                    }
+                }
+            }
+            val manager = ExtensionManager(
+                context = mockk(relaxed = true),
+                preferences = preferences(),
+                trustExtension = mockk(relaxed = true),
+                installedExtensionsLoader = { emptyList() },
+                installerFactory = { installer },
+                installReceiverRegistrar = {},
+                scope = backgroundScope,
+                inventoryProvider = {
+                    if (++scans > 1) {
+                        refreshStarted.complete(Unit)
+                        refreshAllowed.await()
+                    }
+                    ExtensionInventory(initialized = true)
+                },
+            )
+            runCurrent()
+            assertTrue(manager.inventory.value.initialized)
+            val lease = checkNotNull(manager.installArbiter.reserve(available().toArtifact()))
+            val result = async { manager.installReserved(lease) { _, _ -> } }
+            try {
+                runCurrent()
+                assertTrue(refreshStarted.isCompleted)
+                assertFalse(manager.inventory.value.initialized)
+                assertFalse(result.isCompleted, "A following batch item must not see our own unfinished inventory scan")
+                assertTrue(manager.installArbiter.isBusy(PACKAGE))
+            } finally {
+                refreshAllowed.complete(Unit)
+                runCurrent()
+            }
+            assertEquals(mihon.domain.extension.suggestion.SuggestionBatchResult.Installed, result.await())
+            assertTrue(manager.inventory.value.initialized)
+            assertFalse(manager.installArbiter.isBusy(PACKAGE))
+        }
+    }
+
+    @Test
+    fun `reserved batch uses exact artifact and awaits cleanup while ordinary entry remains busy`() = runBlocking {
+        val cleanup = CompletableDeferred<Unit>()
+        val emitted = CompletableDeferred<Unit>()
+        val installer = mockk<ExtensionInstaller>(relaxed = true) {
+            every { downloadAndInstall(any(), any(), any(), any()) } answers {
+                val guard = arg<(() -> Unit)?>(2)
+                val finished = arg<() -> Unit>(3)
+                kotlinx.coroutines.flow.flow {
+                    guard?.invoke()
+                    emitted.complete(Unit)
+                    try {
+                        emit(InstallStep.Installed)
+                    } finally {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                            cleanup.await()
+                            finished()
+                        }
+                    }
+                }
+            }
+        }
+        val manager = manager(initial = emptyList(), installer = installer)
+        manager.isInitialized.await { it }
+        val artifact = available().copy(downloadUrl = "https://example.org/frozen.apk", apkName = "frozen.apk")
+        val frozen = artifact.toArtifact()
+        val lease = checkNotNull(manager.installArbiter.reserve(frozen))
+        val progress = mutableListOf<Long>()
+        val install = async { manager.installReserved(lease) { id, _ -> progress += id } }
+        withTimeout(5_000) {
+            kotlinx.coroutines.selects.select<Unit> {
+                emitted.onAwait { }
+                install.onAwait { error("Reserved install returned before platform completion: $it") }
+            }
+        }
+        assertFalse(install.isCompleted)
+        assertTrue(manager.installArbiter.isBusy(PACKAGE))
+        assertTrue(
+            runCatching { manager.installExtension(artifact) }.exceptionOrNull() is
+                mihon.domain.extension.service.ExtensionInstallBusy,
+        )
+        cleanup.complete(Unit)
+        assertEquals(mihon.domain.extension.suggestion.SuggestionBatchResult.Installed, install.await())
+        assertTrue(progress.isNotEmpty())
+        assertTrue(progress.all { it == lease.transactionId })
+        assertFalse(manager.installArbiter.isBusy(PACKAGE))
+        verify(exactly = 1) { installer.downloadAndInstall(frozen.downloadUrl, artifact, any(), any()) }
+    }
+
+    @Test
+    fun `reserved install rejects a foreign owner without consuming a valid owner`() = runBlocking {
+        val installer = mockk<ExtensionInstaller>(relaxed = true)
+        val manager = manager(initial = emptyList(), installer = installer)
+        manager.isInitialized.await { it }
+        val artifact = available().toArtifact()
+        val valid = checkNotNull(manager.installArbiter.reserve(artifact))
+        val foreign = checkNotNull(mihon.domain.extension.service.ExtensionInstallArbiter().reserve(artifact))
+        assertEquals(
+            mihon.domain.extension.suggestion.SuggestionBatchResult.Busy,
+            manager.installReserved(foreign) { _, _ -> },
+        )
+        assertTrue(manager.installArbiter.owns(valid, artifact))
+        verify(exactly = 0) { installer.downloadAndInstall(any(), any(), any(), any()) }
+        manager.installArbiter.release(valid)
+        Unit
+    }
+
+    @Test
+    fun `restored uninstall bridge claims original package without dispatching again`() = runBlocking {
+        val installer = mockk<ExtensionInstaller>(relaxed = true)
+        val manager = manager(initial = listOf(LoadResult.Success(installed())), installer = installer)
+        manager.isInitialized.await { it }
+        assertTrue(manager.restoreUninstall("restored-system-request", PACKAGE))
+        assertTrue(manager.installArbiter.isBusy(PACKAGE))
+        assertTrue(manager.restoreUninstall("restored-system-request", PACKAGE))
+        assertFalse(manager.restoreUninstall("restored-system-request", "different.package"))
+        assertFalse(manager.restoreUninstall("other-request", PACKAGE))
+        verify(exactly = 0) { installer.uninstallApk(any(), any()) }
+        manager.completeUninstall("restored-system-request")
+        assertFalse(manager.installArbiter.isBusy(PACKAGE))
+        assertFalse(manager.restoreUninstall("restored-system-request", PACKAGE))
+        manager.completeUninstall("completion-before-restore")
+        assertFalse(manager.restoreUninstall("completion-before-restore", PACKAGE))
+        assertFalse(manager.installArbiter.isBusy(PACKAGE))
+    }
+
+    @Test
+    fun `system uninstall retains package ownership until matching activity result`() = runBlocking {
+        val request = io.mockk.slot<String>()
+        val installer = mockk<ExtensionInstaller>(relaxed = true) {
+            every { uninstallApk(any(), capture(request)) } returns true
+        }
+        val manager = manager(initial = listOf(LoadResult.Success(installed())), installer = installer)
+        manager.isInitialized.await { it }
+        manager.uninstallExtension(installed())
+        assertTrue(manager.installArbiter.isBusy(PACKAGE))
+        val original = request.captured
+        manager.completeUninstall("unrelated")
+        assertTrue(manager.installArbiter.isBusy(PACKAGE))
+        manager.completeUninstall(original)
+        assertFalse(manager.installArbiter.isBusy(PACKAGE))
+        manager.uninstallExtension(installed())
+        val next = request.captured
+        assertTrue(next != original)
+        manager.completeUninstall(original)
+        assertTrue(manager.installArbiter.isBusy(PACKAGE))
+        manager.completeUninstall(next)
+        assertFalse(manager.installArbiter.isBusy(PACKAGE))
+    }
 
     @Test
     fun `normal install and update entry cannot replace an already reserved package`() = runBlocking {
@@ -154,7 +557,7 @@ class ExtensionManagerTest {
     @Test
     fun `inventory retries a stale initial scan after uninstall and retains failed load presence`() = runTest {
         withNotificationEnvironment {
-            val oldScan = CompletableDeferred<mihon.domain.extension.suggestion.ExtensionInventory>()
+            val oldScan = CompletableDeferred<ExtensionInventory>()
             var scans = 0
             lateinit var listener: ExtensionInstallReceiver.Listener
             val manager = ExtensionManager(
@@ -170,7 +573,7 @@ class ExtensionManagerTest {
                     if (scans == 1) {
                         oldScan.await()
                     } else {
-                        mihon.domain.extension.suggestion.ExtensionInventory(
+                        ExtensionInventory(
                             true,
                             mapOf("pkg.failed" to mihon.domain.extension.suggestion.ExtensionPresence.PRESENT),
                         )
@@ -184,7 +587,7 @@ class ExtensionManagerTest {
                 every { ExtensionLoader.uninstallPrivateExtension(any(), any()) } returns Unit
                 listener.onPackageUninstalled("pkg.removed")
                 oldScan.complete(
-                    mihon.domain.extension.suggestion.ExtensionInventory(
+                    ExtensionInventory(
                         true,
                         mapOf("pkg.removed" to mihon.domain.extension.suggestion.ExtensionPresence.PRESENT),
                     ),
@@ -218,7 +621,7 @@ class ExtensionManagerTest {
                 scope = backgroundScope,
                 inventoryProvider = {
                     scans++
-                    mihon.domain.extension.suggestion.ExtensionInventory(true, hasUnknownArtifacts = scans == 1)
+                    ExtensionInventory(true, hasUnknownArtifacts = scans == 1)
                 },
             )
             runCurrent()
@@ -537,8 +940,10 @@ class ExtensionManagerTest {
                 }
             }
             every { cancelInstall(any()) } returns Unit
-            every { uninstallApk(any()) } returns Unit
+            every { uninstallApk(any(), any()) } returns false
             every { isInstallTransactionActive(any()) } returns false
+            every { hasSystemRemoval(any()) } returns false
+            every { completeSystemRemoval(any(), any()) } returns false
         }
         lateinit var receiver: ExtensionInstallReceiver.Listener
         val manager = manager(
@@ -570,7 +975,7 @@ class ExtensionManagerTest {
         assertTrue(manager.installedExtensionsFlow.value.any { it.pkgName == installed.pkgName })
         verify(exactly = 2) { installer.downloadAndInstall(any(), available, any(), any()) }
         verify { installer.cancelInstall(installed.pkgName) }
-        verify { installer.uninstallApk(installed.pkgName) }
+        verify { installer.uninstallApk(installed.pkgName, any()) }
 
         mockkObject(ExtensionLoader)
         try {
@@ -753,7 +1158,7 @@ class ExtensionManagerTest {
             block()
             if (expectNotification) {
                 verify(atLeast = 1) {
-                    notifications.cancel(eu.kanade.tachiyomi.data.notification.Notifications.ID_UPDATES_TO_EXTS)
+                    notifications.cancel(Notifications.ID_UPDATES_TO_EXTS)
                 }
             } else {
                 verify(exactly = 0) { notifications.cancel(any<Int>()) }
