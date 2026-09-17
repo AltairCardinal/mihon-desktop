@@ -151,8 +151,14 @@ fun Screen.authorsTab(): TabContent {
     val state by model.state.collectAsState()
     return TabContent(
         titleRes = MR.strings.desktop_ui_authors,
-        actions = persistentListOf(),
-        content = { padding, _ ->
+        actions = persistentListOf(creatorSettingsAction(model.settingsEditor)),
+        content = { padding, snackbar ->
+            val settings by model.settingsEditor.state.collectAsState()
+            val savedMessage = stringResource(MR.strings.creator_settings_saved)
+            LaunchedEffect(settings.savedRevision) {
+                if (settings.savedRevision > 0) snackbar.showSnackbar(savedMessage)
+            }
+            CreatorSettingsDialog(model.settingsEditor)
             Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
                 OutlinedTextField(
                     value = state.query,
@@ -188,7 +194,7 @@ fun Screen.authorsTab(): TabContent {
     )
 }
 
-private data class AuthorsState(
+internal data class AuthorsState(
     val creators: List<Creator> = emptyList(),
     val followed: Set<Long> = emptySet(),
     val query: String = "",
@@ -201,7 +207,21 @@ private data class AuthorsState(
     }
 }
 
-private class AndroidAuthorsScreenModel(getCreators: GetCreators = Injekt.get()) : ScreenModel {
+internal class AndroidAuthorsScreenModel(
+    getCreators: GetCreators = Injekt.get(),
+    preferences: tachiyomi.domain.creator.service.CreatorDiscoveryPreferences = Injekt.get(),
+    onSettingsSaved: suspend () -> Unit = {
+        val archive = Injekt.get<tachiyomi.domain.creator.repository.CreatorArchiveRepository>()
+        if (archive.getDueWatchSources(System.currentTimeMillis(), 1).isNotEmpty()) {
+            eu.kanade.tachiyomi.data.library.CreatorDiscoveryJob.enqueue(Injekt.get<android.app.Application>())
+        }
+    },
+) : ScreenModel {
+    val settingsEditor = tachiyomi.domain.creator.service.CreatorSettingsEditor(
+        preferences,
+        screenModelScope,
+        onSettingsSaved,
+    )
     private val mutableState = MutableStateFlow(AuthorsState())
     val state: StateFlow<AuthorsState> = mutableState.asStateFlow()
     init {

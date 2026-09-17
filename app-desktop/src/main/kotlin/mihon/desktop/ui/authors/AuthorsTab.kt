@@ -111,10 +111,21 @@ class AuthorsRootScreen : Screen {
         val model = rememberScreenModel { AuthorsScreenModelFactory.root(dependencies) }
         val state by model.state.collectAsState()
         val indexPresentation = authorIndexPresentation(state.indexState, state.creators.size)
+        val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
+        model.settingsEditor?.let { editor ->
+            val settings by editor.state.collectAsState()
+            androidx.compose.runtime.LaunchedEffect(settings.savedRevision) {
+                if (settings.savedRevision > 0) snackbar.showSnackbar(MR.strings.creator_settings_saved.localized())
+            }
+        }
 
         Scaffold(
+            snackbarHost = { androidx.compose.material3.SnackbarHost(snackbar) },
             topBar = {
-                TopAppBar(title = { Text(MR.strings.desktop_ui_authors.localized()) })
+                TopAppBar(
+                    title = { Text(MR.strings.desktop_ui_authors.localized()) },
+                    actions = { model.settingsEditor?.let { CreatorSettingsButton(it) } },
+                )
             },
         ) { padding ->
             Column(

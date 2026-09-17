@@ -1726,4 +1726,10 @@
     <string name="creator_work_search">查找作品</string>
     <string name="creator_work_sources_all">全部来源</string>
     <string name="creator_work_filter_empty">没有符合条件的作品。可切换来源或清空搜索。</string>
+    <string name="creator_settings_title">作者设置</string>
+    <string name="creator_settings_frequency">检查所有已关注作者</string>
+    <string name="creator_frequency_daily">每天</string>
+    <string name="creator_frequency_weekly">每周</string>
+    <string name="creator_frequency_monthly">每月</string>
+    <string name="creator_settings_saved">作者设置已保存</string>
 </resources>

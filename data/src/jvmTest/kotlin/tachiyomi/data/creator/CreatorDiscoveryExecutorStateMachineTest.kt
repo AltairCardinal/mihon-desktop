@@ -92,6 +92,7 @@ class CreatorDiscoveryExecutorStateMachineTest {
 
             val result = service.discoverDueWatches()
 
+            queryLong("SELECT next_due_at FROM author_archive_watch_sources") shouldBe now.value + 86_400_000L
             result.newCandidateCount shouldBe 0
             result.errorCount shouldBe 0
             result.runState shouldBe DiscoveryRunState.SUCCEEDED
@@ -126,7 +127,7 @@ class CreatorDiscoveryExecutorStateMachineTest {
             val service = service(port, now)
 
             service.discoverDueWatches()
-            now.advance(60_000L)
+            now.advance(86_400_000L)
             val second = service.discoverDueWatches()
 
             second.newCandidateCount shouldBe 0
@@ -152,7 +153,7 @@ class CreatorDiscoveryExecutorStateMachineTest {
             service.discoverDueWatches()
 
             port.put(10L, work("/b", "Work B", "ONE"))
-            now.advance(60_000L)
+            now.advance(86_400_000L)
             val result = service.discoverDueWatches()
 
             result.sourceResults.single().failure shouldBe null
@@ -180,7 +181,7 @@ class CreatorDiscoveryExecutorStateMachineTest {
             service.discoverDueWatches()
 
             port.put(10L, work("/a", "Work A (updated)", "ONE", thumbnailUrl = "https://example.invalid/new.jpg"))
-            now.advance(60_000L)
+            now.advance(86_400_000L)
             val result = service.discoverDueWatches()
 
             result.newCandidateCount shouldBe 0
@@ -207,7 +208,7 @@ class CreatorDiscoveryExecutorStateMachineTest {
             queryLong("SELECT COUNT(*) FROM author_archive_discoveries") shouldBe 0L
 
             port.put(10L, work("/c", "Work C", "ONE, TWO"))
-            now.advance(60_000L)
+            now.advance(86_400_000L)
             service.discoverDueWatches()
             service.discoverDueWatches()
 
@@ -231,13 +232,13 @@ class CreatorDiscoveryExecutorStateMachineTest {
             val service = service(port, now)
             service.discoverDueWatches()
             port.put(10L, work("/b", "Work B", "ONE"))
-            now.advance(60_000L)
+            now.advance(86_400_000L)
             service.discoverDueWatches()
             val discovery = repository.getUnreadDiscoveries(10L).single()
             repository.setDiscoveryReview(discovery.id, ReviewDisposition.IGNORED, now.value)
             repository.markDiscoverySeen(discovery.id, now.value)
 
-            now.advance(60_000L)
+            now.advance(86_400_000L)
             val result = service.discoverDueWatches()
 
             result.newCandidateCount shouldBe 0
@@ -284,7 +285,7 @@ class CreatorDiscoveryExecutorStateMachineTest {
             queryLong("SELECT next_due_at FROM author_archive_watch_sources WHERE source_id = 20") shouldBe
                 CreatorDiscoveryBackoff.backoffUntilMillis(1_000L, 1)
             queryLong("SELECT next_due_at FROM author_archive_watch_sources WHERE source_id = 10") shouldBe
-                61_000L
+                86_401_000L
             queryStrings("SELECT state FROM author_archive_runs").shouldContainExactly("PARTIAL")
         }
     }
@@ -463,7 +464,7 @@ class CreatorDiscoveryExecutorStateMachineTest {
             // A new work appears and the process crashes after committing source 10's discovery.
             port.put(10L, work("/b", "Work B", "ONE"))
             port.put(20L, work("/y", "Work Y", "ONE", sourceId = 20L))
-            now.advance(60_000L)
+            now.advance(86_400_000L)
             repository.upsertSourceWork(
                 sourceId = 10L,
                 stableSourceUrl = "/b",
@@ -706,6 +707,166 @@ class CreatorDiscoveryExecutorStateMachineTest {
 
     // ── helpers ────────────────────────────────────────────────────────────────────────────────
 
+    @Test
+    fun `unfollow during details blocks observation checkpoint and new notification`() = runBlocking {
+        val now = MutableClock(1_000L)
+        val id = seedWatch(now)
+        val port = ScriptedDiscoveryPort().apply { put(10L, work("/a", "A", "ONE")) }
+        val service = service(port, now)
+        service.discoverDueWatches()
+        val checkpoint = repository.getSourceCheckpoints(id).single()
+        port.put(10L, work("/b", "B", "ONE"))
+        port.beforeDetails = { key -> if (key.stableSourceUrl == "/b") repository.unfollowCreator(id) }
+        now.advance(86_400_000)
+        service.discoverDueWatches()
+        repository.getPendingNotificationOutbox(now.value, 10) shouldBe emptyList()
+        queryLong("SELECT COUNT(*) FROM author_archive_source_works WHERE stable_source_url = '/b'") shouldBe 0L
+        repository.getSourceCheckpoints(id).single() shouldBe checkpoint
+        Unit
+    }
+
+    @Test
+    fun `unfollow before notification delivery prevents existing pending notification`() = runBlocking {
+        val now = MutableClock(1_000L)
+        val id = seedWatch(now)
+        val port = ScriptedDiscoveryPort().apply { put(10L, work("/a", "A", "ONE")) }
+        val service = service(port, now)
+        service.discoverDueWatches()
+        port.put(10L, work("/b", "B", "ONE"))
+        now.advance(86_400_000)
+        service.discoverDueWatches()
+        repository.getPendingNotificationOutbox(now.value, 10).size shouldBe 1
+        val delegate = tachiyomi.domain.creator.service.RepositoryCreatorDiscoveryOutboxStore(repository)
+        val store = object : tachiyomi.domain.creator.service.CreatorDiscoveryOutboxStore by delegate {
+            override suspend fun pending(
+                now: Long,
+                limit: Long,
+            ): List<tachiyomi.domain.creator.model.NotificationOutboxItem> {
+                val taken = delegate.pending(now, limit)
+                repository.unfollowCreator(id)
+                return taken
+            }
+        }
+        var delivered = 0
+        tachiyomi.domain.creator.service.CreatorDiscoveryOutboxWorker(
+            store,
+            tachiyomi.domain.creator.service.CreatorDiscoveryNotificationPort {
+                delivered++
+                tachiyomi.domain.creator.service.CreatorDiscoveryDeliveryResult.Delivered
+            },
+            clock = { now.value },
+        ).deliverPending()
+        delivered shouldBe 0
+        repository.followCreator(id)
+        repository.getPendingNotificationOutbox(now.value, 10) shouldBe emptyList()
+        repository.getDiscoveries(10).size shouldBe 1
+        Unit
+    }
+
+    @Test
+    fun `manual unfollowed author still archives work without checkpoint or notification`() = runBlocking {
+        val now = MutableClock(1_000L)
+        val id = seedWatch(now)
+        repository.unfollowCreator(id)
+        val port = ScriptedDiscoveryPort().apply { put(10L, work("/manual", "Manual", "ONE")) }
+        service(port, now).discoverCreator(id)
+        queryLong("SELECT COUNT(*) FROM author_archive_source_works") shouldBe 1L
+        repository.getSourceCheckpoints(id) shouldBe emptyList()
+        repository.getPendingNotificationOutbox(now.value, 10) shouldBe emptyList()
+        Unit
+    }
+
+    @Test
+    fun `a never successful restored source does not wait for its legacy future deadline`() = runBlocking {
+        val now = MutableClock(1_000L)
+        seedWatch(now)
+        driver.execute(null, "UPDATE author_archive_watch_sources SET next_due_at = 999999999", 0)
+        repository.getDueWatchSources(now.value, 10).size shouldBe 1
+        Unit
+    }
+
+    @Test
+    fun `late delivered result after unfollow keeps cancellation and continues other authors`() = runBlocking {
+        verifyDeliveryCancellation(tachiyomi.domain.creator.service.CreatorDiscoveryDeliveryResult.Delivered, false)
+    }
+
+    @Test
+    fun `late retry result after unfollow keeps cancellation and continues other authors`() = runBlocking {
+        verifyDeliveryCancellation(
+            tachiyomi.domain.creator.service.CreatorDiscoveryDeliveryResult.Retry("offline"),
+            false,
+        )
+    }
+
+    @Test
+    fun `cancellation before retry becomes pending prevents sending and continues other authors`() = runBlocking {
+        verifyDeliveryCancellation(tachiyomi.domain.creator.service.CreatorDiscoveryDeliveryResult.Delivered, true)
+    }
+
+    private suspend fun verifyDeliveryCancellation(
+        lateResult: tachiyomi.domain.creator.service.CreatorDiscoveryDeliveryResult,
+        cancelBeforePending: Boolean,
+    ) {
+        val now = MutableClock(1_000L)
+        val first = seedWatch(now)
+        val second = seedWatch(now, "TWO")
+        val port = ScriptedDiscoveryPort().apply {
+            put(10L, work("/a", "A", "ONE"))
+            put(10L, work("/x", "X", "TWO"))
+        }
+        val service = service(port, now)
+        service.discoverDueWatches()
+        port.put(10L, work("/b", "B", "ONE"))
+        port.put(10L, work("/y", "Y", "TWO"))
+        now.advance(86_400_000)
+        service.discoverDueWatches()
+        val firstNotice = repository.getPendingNotificationOutbox(now.value, 10).first {
+            repository.getDiscovery(it.discoveryId)!!.creatorId == first
+        }
+        if (cancelBeforePending) {
+            repository.updateNotificationDelivery(
+                firstNotice.id,
+                tachiyomi.domain.creator.model.NotificationDeliveryState.FAILED,
+                "offline",
+                now.value,
+                now.value,
+            )
+        }
+        val delegate = tachiyomi.domain.creator.service.RepositoryCreatorDiscoveryOutboxStore(repository)
+        val store = object : tachiyomi.domain.creator.service.CreatorDiscoveryOutboxStore by delegate {
+            override suspend fun update(update: tachiyomi.domain.creator.service.DeliveryUpdate) {
+                if (cancelBeforePending && update.outboxId == firstNotice.id &&
+                    update.state == tachiyomi.domain.creator.model.NotificationDeliveryState.PENDING
+                ) {
+                    repository.upsertWatchPolicy(
+                        requireNotNull(repository.getWatchPolicy(first)).copy(enabled = false),
+                        now.value,
+                    )
+                }
+                delegate.update(update)
+            }
+        }
+        val delivered = mutableListOf<Long>()
+        tachiyomi.domain.creator.service.CreatorDiscoveryOutboxWorker(
+            store,
+            tachiyomi.domain.creator.service.CreatorDiscoveryNotificationPort {
+                delivered += it.creatorId
+                if (it.creatorId == first) {
+                    repository.unfollowCreator(first)
+                    lateResult
+                } else {
+                    tachiyomi.domain.creator.service.CreatorDiscoveryDeliveryResult.Delivered
+                }
+            },
+            clock = { now.value },
+        ).deliverPending()
+        delivered.shouldContainExactly(if (cancelBeforePending) listOf(second) else listOf(first, second))
+        repository.getDiscovery(firstNotice.discoveryId)!!.state.deliveryState shouldBe
+            tachiyomi.domain.creator.model.NotificationDeliveryState.CANCELLED
+        repository.followCreator(first)
+        repository.getPendingNotificationOutbox(now.value, 10) shouldBe emptyList()
+    }
+
     private suspend fun seedWatch(
         now: MutableClock,
         creatorName: String = "ONE",
@@ -830,6 +991,7 @@ class CreatorDiscoveryExecutorStateMachineTest {
 private class ScriptedDiscoveryPort : CreatorDiscoverySourcePort {
     private val sources = linkedMapOf<Long, MutableList<CreatorSourceWorkSnapshot>>()
     private val failures = mutableMapOf<Long, CreatorSourceFailure>()
+    var beforeDetails: suspend (SourceWorkNaturalKey) -> Unit = {}
     var hasNextPage: Boolean = false
     var cancelOnSearchFor: Long? = null
     val requestedPages = mutableListOf<Pair<Long, Int>>()
@@ -870,6 +1032,7 @@ private class ScriptedDiscoveryPort : CreatorDiscoverySourcePort {
     }
 
     override suspend fun loadDetails(key: SourceWorkNaturalKey): CreatorSourceDetailsResult {
+        beforeDetails(key)
         val work = sources[key.sourceId]?.firstOrNull { it.key == key }
             ?: return CreatorSourceDetailsResult.Failure(CreatorSourceFailure.MissingSource)
         return CreatorSourceDetailsResult.Content(

@@ -58,6 +58,12 @@ internal object AuthorsScreenModelFactory {
     fun root(dependencies: DesktopUiDependencies): AuthorsRootScreenModel = AuthorsRootScreenModel(
         dependencies.getCreators,
         requireNotNull(dependencies.creatorLibraryIndexer),
+        dependencies.creatorDiscoveryPreferences,
+        onSettingsSaved = {
+            if (requireNotNull(dependencies.creatorArchiveRepository).getDueWatchSources(System.currentTimeMillis(), 1).isNotEmpty()) {
+                dependencies.creatorDiscoveryScheduler?.runNow()
+            }
+        },
     )
 
     fun detail(
@@ -109,8 +115,11 @@ data class AuthorsRootState(
 class AuthorsRootScreenModel(
     getCreators: GetCreators,
     private val indexer: CreatorLibraryIndexer,
+    preferences: tachiyomi.domain.creator.service.CreatorDiscoveryPreferences? = null,
+    onSettingsSaved: suspend () -> Unit = {},
 ) : ScreenModel {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    val settingsEditor = preferences?.let { tachiyomi.domain.creator.service.CreatorSettingsEditor(it, scope, onSettingsSaved) }
     private val mutableState = MutableStateFlow(AuthorsRootState(indexState = indexer.state.value))
     val state: StateFlow<AuthorsRootState> = mutableState.asStateFlow()
 

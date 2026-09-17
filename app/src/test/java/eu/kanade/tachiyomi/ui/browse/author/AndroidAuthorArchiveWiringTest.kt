@@ -11,9 +11,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import tachiyomi.data.AndroidDatabaseHandler
 import tachiyomi.data.Database
@@ -39,6 +41,20 @@ import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 
 class AndroidAuthorArchiveWiringTest {
+    private lateinit var jdbcDriver: java.sql.Driver
+
+    @BeforeEach
+    fun registerJdbcDriver() {
+        // Mixed JVM/Robolectric suites cannot rely on DriverManager's one-time service discovery.
+        jdbcDriver = Class.forName("org.sqlite.JDBC").getDeclaredConstructor().newInstance() as java.sql.Driver
+        java.sql.DriverManager.registerDriver(jdbcDriver)
+    }
+
+    @AfterEach
+    fun releaseJdbcDriver() {
+        java.sql.DriverManager.deregisterDriver(jdbcDriver)
+    }
+
     @Test
     fun `Android archive state applies shared work search and source contract`() {
         tachiyomi.data.creator.verifyCreatorWorkFilterProjection { archive, filter ->

@@ -1,6 +1,6 @@
 # 跨插件唯一作者 · 正式实施 Roadmap
 
-- 日期：2026-09-17；状态：PAUSED；2026-09-17按用户要求完成GA-02后暂停，不启动GA-03。恢复须待用户明确指令；从第3节首个未勾选批次继续。
+- 日期：2026-09-17；状态：IN_PROGRESS；用户已明确从交接恢复执行，从第3节首个未勾选批次GA-03继续。GA-01/02的已完成证据保留，后续批次按依赖串行验收。
 - 类型：产品child plan；从第3节第一个未勾选批次推导进度，不再声明active-task。
 - 父路线：[主Roadmap](2026-06-30-mihon-desktop-refactor-roadmap.md)。仅登记待执行专项，不改变父路线active-child-plan，不恢复旧作者归档专项及其无关backlog。
 - 最终产品依据：[功能设计](../2026-09-17-global-author-functional-design.md)；[技术方案](../2026-09-17-creator-identity-reconciliation-proposal.md)；[已确认HTML](../prototypes/author-identity/index.html)，基线提交 `77a610534`。
@@ -37,7 +37,7 @@
 
 - [x] **GA-01：精确名称唯一内核、历史迁移与所有身份写入入口**（无前置）
 - [x] **GA-02：添加别名、主名切换及双端最终交互**（依赖GA-01及其独立审查）
-- [ ] **GA-03：全局作者设置与真实发现调度**（依赖GA-02）
+- [x] **GA-03：全局作者设置与真实发现调度**（依赖GA-02）
 - [ ] **GA-04：备份恢复与设置兼容**（依赖GA-01至GA-03）
 - [ ] **GA-05：现有作者关注同步兼容**（依赖GA-01、GA-02、GA-04稳定契约）
 - [ ] **GA-06：双端集成、迁移回归与正式发布验收**（依赖GA-01至GA-05）
@@ -120,6 +120,18 @@
 **红灯与验证**：共享参数化时间测试+旧配置fixture；扩展现有调度测试，并验证production job/scheduler实际调用新计算器。覆盖31日、闰年、时区切换、DST、失败退避、离线恢复、重复触发、取消关注抑制新通知、设置持久化/未来作者及名称操作不改频率。
 
 **完成条件**：A5通过，真实平台后台触发至少各一次；不以sleep模拟或独立计算器绿灯替代接线。预计8–12小时，主要成本是时间边界与两平台任务生命周期。
+
+**实施与审查记录（2026-09-17，GA-03通过限定复审，随本批提交完成）**：
+- 用户明确恢复交接后由实施子代理承担GA-03代码与验证，主代理维护文档与验收，独立审查者只读审查；Gradle由实施者独占协调。全局偏好、日历到期、双端列表设置及后台接线属于同一能力批次，超过8文件/400行仍保持同批；主要风险是失败退避、关注取消与后台竞争。
+- 有效红灯：`ga03-default-red2`证明旧60秒作者周期仍参与成功检查点；`ga03-calendar-red`覆盖月末/时区；`ga03-editor-red2`覆盖设置草稿；`ga03-platform-red4`暴露Android实际DI/Job缺口；`ga03-ui-red`真实Desktop列表缺齿轮；`ga03-unfollow-red2`证明取消后仍提交/通知；`ga03-never-red`证明从未成功来源遗留future deadline未立即到期。编译/夹具失败不计行为红灯；临时禁用重算未计入证据。
+- `ga03-initial-green2`、`ga03-wiring-green`、`ga03-unfollow-green`是已取得的局部绿灯。`ga03-batch`因Desktop新DI/调度用例失败而未通过，Android旧入口SQLite驱动加载失败后自动重试也不计干净整轮；其Android实际Compose设置用例已通过。最终适用证据待限定修复后记录。
+- 首轮独立审查不通过：取消关注将通知置为CANCELLED后，已取出的交付结果或FAILED重置PENDING仍可能要求非法终态转换，导致整批异常。要求真实Repository/Worker覆盖交付中取消后成功/重试、FAILED重置前取消、后续其他作者继续处理；另需关闭Desktop实际DI验证失败。原实施者负责限定修复，预留唯一修复复审，未启动GA-04。
+
+- 限定修复：`ga03-review-race-red`三个真实Repository/Worker用例分别因CANCELLED→DELIVERED/FAILED/PENDING非法转换失败；取消终态优先忽略迟到写回，FAILED重置后再次检查递送目标，后续作者继续。`ga03-review-fix-green`数据状态机26项及domain outbox通过，但Desktop夹具仍失败，不记整轮绿灯。
+- Desktop实际DI失败已定位为测试替换缓存SourceManager及测试源ID/非原子计数问题；改用现有本地测试扩展加载入口及原子计数，不改变生产来源约束。`ga03-final-focused` PASSED/exit0/53s，主代理核对XML：data48（状态机26、仓库22）、domain9（日历3、设置2、outbox4）、Desktop29（调度16、真实DI/平台2、作者页面11）、Android3（实际DI/Job2、实际Compose设置1），均零失败/错误/跳过；app/data/domain spotlessCheck通过。最终限定复审及旧Android入口补验结果见下。
+
+- `ga03-android-mixed` PASSED/exit0/45s，Android新Robolectric后台2项、实际Compose1项与旧plain JVM入口8项按此顺序混跑，XML零失败/错误/跳过/重试，app格式检查通过。旧夹具沿用项目既有模式注册并仅释放自己的JDBC driver；最初类加载器身份未保留，不把原因推断写成已证实事实。相关混跑问题已关闭，GA-06仍按最终diff执行全量。
+- 唯一限定复审：APPROVED。独立审查者核对三项正确红灯、取消终态修复及后续作者继续处理、真实Desktop DI与混跑XML/格式证据；未重复Gradle。主代理核对97个独立用例（48+9+29+11）及diff检查。实现、测试、文档/checkoff同批提交；没有全量测试、正式构建或用户库安装，不以本批JVM平台调用替代GA-06发布验收。下一依赖GA-04解除。
 
 ### GA-04 · 新旧备份及恢复
 

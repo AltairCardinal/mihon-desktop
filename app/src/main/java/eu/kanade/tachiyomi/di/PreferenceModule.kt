@@ -29,6 +29,7 @@ class PreferenceModule(val app: Application) : InjektModule {
         addSingletonFactory<PreferenceStore> {
             AndroidPreferenceStore(app)
         }
+        addSingletonFactory { tachiyomi.domain.creator.service.CreatorDiscoveryPreferences(get()) }
         addSingletonFactory {
             NetworkPreferences(
                 preferenceStore = get(),

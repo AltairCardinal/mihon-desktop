@@ -53,6 +53,7 @@ class CreatorDiscoveryService(
     private val creatorRepository: CreatorRepository,
     private val sourceMangaSearchService: SourceMangaSearchService = SourceMangaSearchService(),
     private val clock: () -> Long = { System.currentTimeMillis() },
+    private val schedule: CreatorDiscoverySchedule = CreatorDiscoverySchedule(),
 ) {
     private var sourcePort: CreatorDiscoverySourcePort? = null
     private var archiveRepository: CreatorArchiveRepository? = creatorRepository as? CreatorArchiveRepository
@@ -66,7 +67,8 @@ class CreatorDiscoveryService(
         bounds: CreatorDiscoveryBounds = CreatorDiscoveryBounds(),
         clock: () -> Long = { System.currentTimeMillis() },
         backoffJitterMillis: () -> Long = { 0L },
-    ) : this(creatorRepository, SourceMangaSearchService(), clock) {
+        schedule: CreatorDiscoverySchedule = CreatorDiscoverySchedule(),
+    ) : this(creatorRepository, SourceMangaSearchService(), clock, schedule) {
         this.archiveRepository = archiveRepository
         this.sourcePort = sourcePort
         this.bounds = bounds
@@ -126,7 +128,7 @@ class CreatorDiscoveryService(
         // Resume interrupted runs first so a crashed run is re-driven before new due work.
         archive.getRecoverableDiscoveryRuns().forEach { run ->
             val creator = creatorRepository.getCreator(run.creatorId) ?: return@forEach
-            val policy = archive.getWatchPolicy(run.creatorId) ?: return@forEach
+            val policy = archive.getWatchPolicy(run.creatorId)?.takeIf { it.enabled } ?: return@forEach
             results += runCreatorScan(
                 creator = creator,
                 policy = policy,
@@ -141,7 +143,7 @@ class CreatorDiscoveryService(
         val due = archive.getDueWatchSources(now, DUE_WATCH_ROW_LIMIT)
         due.groupBy(DueWatchSource::creatorId).forEach { (creatorId, sources) ->
             val creator = creatorRepository.getCreator(creatorId) ?: return@forEach
-            val policy = archive.getWatchPolicy(creatorId) ?: return@forEach
+            val policy = archive.getWatchPolicy(creatorId)?.takeIf { it.enabled } ?: return@forEach
             results += runCreatorScan(
                 creator = creator,
                 policy = policy,
@@ -508,7 +510,7 @@ class CreatorDiscoveryService(
         } else {
             CreatorDiscoveryBackoff.backoffUntilMillis(now, consecutiveFailures, backoffJitterMillis())
         }
-        val nextDueAt = if (success) now + policy.periodMillis else backoffUntil
+        val nextDueAt = if (success) schedule.nextDue(now) else backoffUntil
         val completedBaseline = success && baseline.baselineState == WatchBaselineState.NEEDS_BASELINE
         val baselineState = if (completedBaseline) WatchBaselineState.BASELINED else baseline.baselineState
         val baselineGeneration = if (completedBaseline) baseline.baselineGeneration + 1 else baseline.baselineGeneration
@@ -702,6 +704,7 @@ class CreatorDiscoveryService(
                     originalLanguageAssertion = originalLanguageAssertion,
                     originalLanguageIdempotencyKey = originalLanguageAssertion?.idempotencyKey(details.work.key),
                     notificationsEnabled = commitEvents && policyDecision.notify,
+                    requiresActiveWatch = commitEvents,
                     baselineState = baseline.baselineState,
                     discoveryReason = "verified creator relation",
                     baselineGeneration = baseline.baselineGeneration,

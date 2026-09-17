@@ -1932,4 +1932,10 @@
     <string name="creator_work_search">Find works</string>
     <string name="creator_work_sources_all">All sources</string>
     <string name="creator_work_filter_empty">No matching works. Change the source or clear your search.</string>
+    <string name="creator_settings_title">Author settings</string>
+    <string name="creator_settings_frequency">Check all followed authors</string>
+    <string name="creator_frequency_daily">Daily</string>
+    <string name="creator_frequency_weekly">Weekly</string>
+    <string name="creator_frequency_monthly">Monthly</string>
+    <string name="creator_settings_saved">Author settings saved</string>
 </resources>

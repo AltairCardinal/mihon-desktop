@@ -92,6 +92,7 @@ import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.repository.ReadyCreatorArchiveBootstrap
 import tachiyomi.domain.creator.service.ChapterVariantRecord
 import tachiyomi.domain.creator.service.ChapterVariantType
+import tachiyomi.domain.creator.service.CreatorDiscoverySchedule
 import tachiyomi.domain.creator.service.CreatorNameNormalizer
 import tachiyomi.domain.creator.service.CreatorSourceWorkKey
 import tachiyomi.domain.manga.model.Manga
@@ -105,6 +106,7 @@ class CreatorRepositoryImpl(
     private val portableKeyFactory: () -> String = { Uuid.random().toHexDashString() },
     private val bootstrap: CreatorArchiveBootstrap = ReadyCreatorArchiveBootstrap,
     private val identityMutationHook: () -> Unit = {},
+    private val discoverySchedule: CreatorDiscoverySchedule = CreatorDiscoverySchedule(),
 ) : CreatorRepository, CreatorArchiveRepository {
     @Volatile
     private var exactIdentityReady = false
@@ -344,6 +346,7 @@ class CreatorRepositoryImpl(
                 periodMillis = policy.periodMillis,
                 now = now,
             )
+            if (!policy.enabled) author_archiveQueries.cancelArchiveCreatorNotifications(rootCreatorId)
             val watchId = author_archiveQueries.getArchiveWatchIdByCreator(rootCreatorId).executeAsOne()
             val existingSources = author_archiveQueries.getArchiveWatchSourceIds(watchId).executeAsList().toSet()
             (existingSources - policy.sourceIds).forEach { sourceId ->
@@ -376,8 +379,17 @@ class CreatorRepositoryImpl(
     override suspend fun getDueWatchSources(now: Long, limit: Long): List<DueWatchSource> {
         bootstrap.awaitReady()
         require(limit > 0) { "Due watch limit must be positive" }
-        return handler.awaitList {
-            author_archiveQueries.getArchiveDueWatchSources(now, limit, ::mapDueWatchSource)
+        return handler.await(inTransaction = true) {
+            // Only successful, idle sources are recalculated. A failed source owns its retry
+            // deadline independently of the global calendar, even if it has an older success.
+            author_archiveQueries.getArchiveSourceSchedules(now).executeAsList().forEach { source ->
+                author_archiveQueries.updateArchiveSourceCalendarDue(
+                    source.last_success_at?.let(discoverySchedule::nextDue),
+                    source.watch_id,
+                    source.source_id,
+                )
+            }
+            author_archiveQueries.getArchiveDueWatchSources(now, limit, ::mapDueWatchSource).executeAsList()
         }
     }
 
@@ -495,6 +507,11 @@ class CreatorRepositoryImpl(
         require(update.consecutiveFailures >= 0) { "Consecutive failures must not be negative" }
         require(update.baselineGeneration >= 0) { "Baseline generation must not be negative" }
         handler.await(inTransaction = true) {
+            if (author_archiveQueries.getArchiveWatchLease(update.creatorId).executeAsOneOrNull()?.enabled !=
+                true
+            ) {
+                return@await
+            }
             val currentBaseline = author_archiveQueries
                 .getArchiveWatchSourceState(update.sourceId, update.creatorId)
                 .executeAsOne()
@@ -583,6 +600,14 @@ class CreatorRepositoryImpl(
             "Language assertion idempotency key must not be blank"
         }
         return handler.await(inTransaction = true) {
+            if (observation.requiresActiveWatch &&
+                author_archiveQueries.getArchiveWatchLease(observation.creatorId).executeAsOneOrNull()?.enabled != true
+            ) {
+                return@await SourceDiscoveryObservationResult(
+                    ArchiveUpsertOutcome.Unchanged(observation.sourceWork),
+                    null,
+                )
+            }
             val work = upsertSourceWorkRecord(
                 sourceId = observation.sourceWork.sourceId,
                 stableSourceUrl = observation.sourceWork.stableSourceUrl,
@@ -896,7 +921,8 @@ class CreatorRepositoryImpl(
             val current = NotificationDeliveryState.valueOf(
                 author_archiveQueries.getArchiveNotificationOutboxState(outboxId).executeAsOne(),
             )
-            if (current == state) return@await
+            // Cancellation is terminal, including a result already in flight to the OS.
+            if (current == state || current == NotificationDeliveryState.CANCELLED) return@await
             require(CreatorArchiveV2Policy.canTransitionDelivery(current, state)) {
                 "Invalid notification delivery transition: $current -> $state"
             }
@@ -1371,6 +1397,7 @@ class CreatorRepositoryImpl(
         val now = clock()
         handler.await(inTransaction = true) {
             author_archiveQueries.unfollowArchiveCreator(now, rootCreatorId)
+            author_archiveQueries.cancelArchiveCreatorNotifications(rootCreatorId)
             appendFollowOperation(rootCreatorId, followed = false, syncContext, now)
         }
     }

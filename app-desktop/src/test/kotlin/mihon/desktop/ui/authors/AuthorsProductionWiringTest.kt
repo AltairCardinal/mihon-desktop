@@ -557,6 +557,7 @@ class AuthorsProductionWiringTest {
         val dependencies = mockk<DesktopUiDependencies> {
             every { getCreators } returns GetCreators(repository)
             every { creatorLibraryIndexer } returns indexer
+            every { creatorDiscoveryPreferences } returns null
         }
         indexer.start(this)
         withTimeout(5_000) { indexer.state.filterIsInstance<CreatorLibraryIndexState.Failed>().first() }
@@ -665,6 +666,44 @@ class AuthorsProductionWiringTest {
             scene.close()
             scheduler.stop()
         }
+    }
+
+    @Test
+    fun `mounted author list settings keeps draft until save and restores gear focus`() = runBlocking {
+        val node = java.util.prefs.Preferences.userRoot().node("/mihon-tests/ga03-ui-${java.util.UUID.randomUUID()}")
+        val preferences = tachiyomi.domain.creator.service.CreatorDiscoveryPreferences(tachiyomi.core.common.preference.DesktopPreferenceStore(node))
+        val indexer = CreatorLibraryIndexer(FailsOnceLibrarySource(), NoopCreatorLibraryIndexWriter, ExtractCreatorsFromManga())
+        val repository = mockk<CreatorRepository> {
+            every { getCreatorsAsFlow() } returns flowOf(emptyList())
+            every { getFollowedCreatorsAsFlow() } returns flowOf(emptyList())
+        }
+        val archive = mockk<CreatorArchiveRepository> { coEvery { getDueWatchSources(any(), any()) } returns emptyList() }
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { getCreators } returns GetCreators(repository)
+            every { creatorLibraryIndexer } returns indexer
+            every { creatorDiscoveryPreferences } returns preferences
+            every { creatorArchiveRepository } returns archive
+            every { creatorDiscoveryScheduler } returns null
+        }
+        val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+        fun tagged(tag: String) = nodes(scene).single { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == tag }
+        fun click(tag: String) { tagged(tag).config[SemanticsActions.OnClick].action?.invoke(); scene.render() }
+        try {
+            scene.setContent { CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) { Navigator(AuthorsRootScreen()) } }
+            scene.render()
+            click("creator-settings-open")
+            click("creator-frequency-monthly")
+            check(preferences.current() == tachiyomi.domain.creator.service.CreatorCheckFrequency.DAILY)
+            click("creator-settings-cancel")
+            scene.render()
+            click("creator-settings-open")
+            click("creator-frequency-weekly")
+            click("creator-settings-save")
+            repeat(5) { scene.render(); kotlinx.coroutines.yield() }
+            check(preferences.current() == tachiyomi.domain.creator.service.CreatorCheckFrequency.WEEKLY)
+            check(tagged("creator-settings-open").config[SemanticsProperties.Focused])
+            check(MR.strings.creator_settings_saved.localized() in texts(scene))
+        } finally { scene.close(); indexer.stop(); node.removeNode() }
     }
 
     private fun retryNode(scene: ImageComposeScene): SemanticsNode = nodes(scene).single { node ->

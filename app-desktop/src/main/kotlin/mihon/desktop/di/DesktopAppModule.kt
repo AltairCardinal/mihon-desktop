@@ -357,6 +357,9 @@ internal fun initConfigLayer(appDir: File, preferenceStore: DesktopPreferenceSto
 }
 
 private fun registerDesktopSettings(preferenceStore: PreferenceStore) {
+    val creatorPreferences = tachiyomi.domain.creator.service.CreatorDiscoveryPreferences(preferenceStore)
+    Injekt.addSingleton(creatorPreferences)
+    Injekt.addSingleton(tachiyomi.domain.creator.service.CreatorDiscoverySchedule(creatorPreferences::current))
     Injekt.addSingleton(
         if (preferenceStore is DesktopPreferenceStore) {
             DesktopAppPreferences(preferenceStore, preferenceStore.childNode("desktop/app"))
@@ -488,6 +491,7 @@ internal fun initDataLayer(
     val creatorRepositoryImpl = CreatorRepositoryImpl(
         handler = handler,
         bootstrap = creatorArchiveBootstrap,
+        discoverySchedule = Injekt.get(),
     )
     val mangaRepositoryImpl = MangaRepositoryImpl(handler, creatorRepositoryImpl)
     val mangaRepository: MangaRepository = mangaRepositoryImpl
@@ -730,6 +734,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
         creatorRepository = creatorRepository,
         archiveRepository = Injekt.get<CreatorArchiveRepository>(),
         sourcePort = creatorDiscoverySourcePort,
+        schedule = Injekt.get(),
     )
     Injekt.addSingleton(creatorDiscoveryService)
     Injekt.addSingleton(DiscoverCreatorWorks(creatorDiscoveryService, getCreatorDetails))

@@ -3622,3 +3622,29 @@ setArchiveIdentityRecoveryGraph:
 UPDATE author_archive_identity_migration_components
 SET recovery_graph = :recoveryGraph
 WHERE migration_key = :migrationKey AND component_key = :componentKey;
+
+-- Recalculate after preference/time-zone changes, preserving failure-owned retry deadlines.
+getArchiveSourceSchedules:
+SELECT S.watch_id, S.source_id, C.last_success_at
+FROM author_archive_watch_sources S
+JOIN author_archive_watches W ON W._id = S.watch_id
+LEFT JOIN author_archive_source_checkpoints C ON C.watch_id = S.watch_id AND C.source_id = S.source_id
+WHERE W.enabled = 1
+AND (W.lease_expires_at IS NULL OR W.lease_expires_at <= :now)
+AND (C.result_state IS NULL OR C.result_state != 'FAILED');
+
+updateArchiveSourceCalendarDue:
+UPDATE author_archive_watch_sources
+SET next_due_at = :nextDueAt
+WHERE watch_id = :watchId AND source_id = :sourceId
+AND next_due_at IS NOT :nextDueAt;
+
+cancelArchiveCreatorNotifications:
+UPDATE author_archive_notification_outbox
+SET state = 'CANCELLED', next_attempt_at = NULL
+WHERE state IN ('PENDING', 'FAILED')
+AND discovery_id IN (
+    SELECT D._id FROM author_archive_discoveries D
+    JOIN author_archive_watches W ON W._id = D.watch_id
+    WHERE W.creator_id = :creatorId
+);

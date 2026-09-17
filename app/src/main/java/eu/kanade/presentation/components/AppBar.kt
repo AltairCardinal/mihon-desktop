@@ -208,6 +208,7 @@ fun AppBarActions(
             IconButton(
                 onClick = it.onClick,
                 enabled = it.enabled,
+                modifier = it.modifier,
             ) {
                 Icon(
                     imageVector = it.icon,
@@ -424,6 +425,7 @@ sealed interface AppBar {
         val iconTint: Color? = null,
         val onClick: () -> Unit,
         val enabled: Boolean = true,
+        val modifier: Modifier = Modifier,
     ) : AppBarAction
 
     data class OverflowAction(
