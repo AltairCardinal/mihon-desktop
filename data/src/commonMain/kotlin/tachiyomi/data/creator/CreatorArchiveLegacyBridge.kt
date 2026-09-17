@@ -74,7 +74,7 @@ class CreatorArchiveLegacyBridge(
                     archiveId = insertLegacyCreator(legacy)
                     imported += 1
                 } else if (previous != null && needsApply) {
-                    addLegacyAliases(archiveId, legacy, clock())
+                    archiveId = addLegacyAliases(archiveId, legacy, clock())
                     author_archiveQueries.markArchiveCreatorNeedsReview(legacy.lastModifiedAt, archiveId)
                     imported += 1
                 } else {
@@ -84,6 +84,10 @@ class CreatorArchiveLegacyBridge(
                 author_archiveQueries.upsertLegacyImportFingerprint(CREATOR_ENTITY, key, fingerprint, clock())
             }
 
+            creatorIds.keys.toList().forEach { legacyId ->
+                creatorIds[legacyId] = author_archiveQueries.resolveArchiveCreatorRootId(creatorIds.getValue(legacyId))
+                    .executeAsOne()
+            }
             val legacyRelations = creatorsQueries
                 .legacyMangaCreatorsForArchiveBridge(::LegacyMangaRelation)
                 .executeAsList()
@@ -425,28 +429,44 @@ class CreatorArchiveLegacyBridge(
             lastModifiedAt = maxOf(legacy.lastModifiedAt, now),
         )
         val id = author_archiveQueries.selectArchiveLastInsertedRowId().executeAsOne()
-        addLegacyAliases(id, legacy, now)
-        return id
+        return addLegacyAliases(id, legacy, now)
     }
 
-    private fun Database.addLegacyAliases(creatorId: Long, legacy: LegacyCreator, now: Long) {
-        (listOf(legacy.displayName) + legacy.aliases.split('|'))
+    private fun Database.addLegacyAliases(creatorId: Long, legacy: LegacyCreator, now: Long): Long {
+        val names = (listOf(legacy.displayName) + legacy.aliases.split('|'))
             .map(String::trim)
             .filter(String::isNotBlank)
-            .distinctBy(CreatorNameNormalizer::normalize)
-            .forEachIndexed { index, alias ->
-                author_archiveQueries.upsertArchiveAlias(
-                    creatorId = creatorId,
-                    rawAlias = alias,
-                    normalizedAlias = CreatorNameNormalizer.normalize(alias),
-                    source = if (index == 0) "LEGACY_PRIMARY" else "LEGACY_ALIAS",
-                    evidence = "legacy rollback bridge",
-                    confidence = 1.0,
-                    isManual = false,
-                    createdAt = legacy.createdAt,
-                    lastModifiedAt = now,
-                )
-            }
+            .distinct()
+        val owners = (
+            names.mapNotNull {
+                author_archiveQueries.getArchiveCreatorIdByExactName(it).executeAsOneOrNull()
+            } + creatorId
+            ).distinct()
+        val rootId = owners.minBy {
+            author_archiveQueries.getArchiveCreatorIdentityRecord(it).executeAsOne().portable_key
+        }
+        owners.filter { it != rootId }.forEach { mergeCreatorIdentityGraph(it, rootId, now) }
+        names.forEachIndexed { index, alias ->
+            author_archiveQueries.upsertArchiveAlias(
+                creatorId = rootId,
+                rawAlias = alias,
+                normalizedAlias = CreatorNameNormalizer.normalize(alias),
+                source = if (index == 0) "LEGACY_PRIMARY" else "LEGACY_ALIAS",
+                evidence = "legacy rollback bridge",
+                confidence = 1.0,
+                isManual = false,
+                createdAt = legacy.createdAt,
+                lastModifiedAt = now,
+            )
+            author_archiveQueries.registerArchiveIdentityNameIfAbsent(
+                nameText = alias,
+                creatorId = rootId,
+                origin = if (index == 0) "LEGACY_PRIMARY" else "LEGACY_ALIAS",
+                createdAt = legacy.createdAt,
+                lastModifiedAt = now,
+            )
+        }
+        return rootId
     }
 
     private fun Database.insertLegacyCandidate(candidate: LegacyCandidate): Long {

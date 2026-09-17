@@ -70,48 +70,27 @@ class MangaDetailScreenModelTest {
     }
 
     @Test
-    fun `unique identity is bound and returned without chooser`() = runTest {
-        val repository = mockk<CreatorArchiveRepository>()
-        val manga = Manga.create().copy(id = 1L, source = 10L, url = "/one", author = "ONE", favorite = true)
-        val model = MangaDetailScreenModel(mangaId = 1L, manageCreatorIdentity = ManageCreatorIdentity(repository))
-        val mention = model.creatorMentions(manga).single()
-        val option = CreatorIdentityOption(
-            id = 7L,
-            portableKey = CreatorPortableKey("creator-seven"),
-            displayName = "ONE",
-            aliases = listOf("ONE"),
-            needsReview = false,
-            currentlyBound = false,
+    fun `uncollected Desktop creator entry resolves real SQL identity and retries rolled back failure`() = runTest {
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
         )
-        coEvery { repository.getCreatorIdentityOptions(1L, mention) } returns listOf(option)
-        coEvery { repository.bindMangaCreatorIdentity(manga, mention, 7L) } returns Unit
-
-        val result = model.resolveCreatorMention(manga, mention)
-
-        assertEquals(CreatorMentionResolution.Resolved(7L), result)
-        coVerify(exactly = 1) { repository.bindMangaCreatorIdentity(manga, mention, 7L) }
-    }
-
-    @Test
-    fun `ambiguous same name requires explicit choice before binding`() = runTest {
-        val repository = mockk<CreatorArchiveRepository>()
-        val manga = Manga.create().copy(id = 1L, source = 10L, url = "/same", author = "Same", favorite = true)
-        val model = MangaDetailScreenModel(mangaId = 1L, manageCreatorIdentity = ManageCreatorIdentity(repository))
-        val mention = model.creatorMentions(manga).single()
-        val options = listOf(
-            CreatorIdentityOption(1L, CreatorPortableKey("a"), "Same A", emptyList(), false, false),
-            CreatorIdentityOption(2L, CreatorPortableKey("b"), "Same B", emptyList(), false, false),
+        tachiyomi.data.Database.Schema.create(driver)
+        val database = tachiyomi.data.Database(
+            driver,
+            historyAdapter = tachiyomi.data.History.Adapter(tachiyomi.data.DateColumnAdapter),
+            mangasAdapter = tachiyomi.data.Mangas.Adapter(
+                tachiyomi.data.StringListColumnAdapter, tachiyomi.data.UpdateStrategyColumnAdapter,
+            ),
         )
-        coEvery { repository.getCreatorIdentityOptions(1L, mention) } returns options
-        coEvery { repository.bindMangaCreatorIdentity(manga, mention, 2L) } returns Unit
-
-        val result = model.resolveCreatorMention(manga, mention)
-
-        assertEquals(CreatorMentionResolution.Ambiguous(mention, options), result)
-        coVerify(exactly = 0) { repository.bindMangaCreatorIdentity(any(), any(), any()) }
-
-        model.selectCreatorIdentity(manga, mention, creatorId = 2L)
-        coVerify(exactly = 1) { repository.bindMangaCreatorIdentity(manga, mention, 2L) }
+        val handler = tachiyomi.data.JvmDatabaseHandler(database, driver)
+        try {
+            tachiyomi.data.creator.verifyExactCreatorEntry(handler) { manager, manga, mention ->
+                MangaDetailScreenModel(mangaId = manga.id, manageCreatorIdentity = manager)
+                    .resolveCreatorMention(manga, mention)
+            }
+        } finally {
+            handler.close()
+        }
     }
 
     @Test

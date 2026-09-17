@@ -1,0 +1,109 @@
+ALTER TABLE author_archive_creators
+ADD COLUMN identity_revision INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE author_archive_identity_names(
+    name_text TEXT COLLATE BINARY NOT NULL PRIMARY KEY,
+    creator_id INTEGER NOT NULL,
+    origin TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_author_archive_identity_names_creator
+ON author_archive_identity_names(creator_id);
+
+CREATE TABLE author_archive_identity_migrations(
+    migration_key TEXT NOT NULL PRIMARY KEY,
+    state TEXT NOT NULL CHECK(state IN ('RUNNING', 'COMPLETED', 'FAILED')),
+    last_error TEXT,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE author_archive_identity_migration_components(
+    migration_key TEXT NOT NULL,
+    component_key TEXT NOT NULL,
+    target_creator_id INTEGER NOT NULL,
+    source_creator_ids TEXT NOT NULL,
+    accepted_names TEXT NOT NULL,
+    recovery_graph TEXT,
+    state TEXT NOT NULL CHECK(state IN ('PREPARED', 'RUNNING', 'COMPLETED')),
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY(migration_key, component_key)
+);
+
+
+CREATE TRIGGER author_archive_identity_names_insert_revision
+AFTER INSERT ON author_archive_identity_names
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1 WHERE _id = new.creator_id;
+END;
+CREATE TRIGGER author_archive_identity_names_delete_revision
+AFTER DELETE ON author_archive_identity_names
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1 WHERE _id = old.creator_id;
+END;
+CREATE TRIGGER author_archive_identity_names_update_revision
+AFTER UPDATE OF creator_id, name_text ON author_archive_identity_names
+WHEN old.creator_id != new.creator_id OR old.name_text != new.name_text
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1
+    WHERE _id IN (old.creator_id, new.creator_id);
+END;
+CREATE TRIGGER author_archive_manga_links_insert_revision
+AFTER INSERT ON author_archive_manga_links
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1 WHERE _id = new.creator_id;
+END;
+CREATE TRIGGER author_archive_manga_links_delete_revision
+AFTER DELETE ON author_archive_manga_links
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1 WHERE _id = old.creator_id;
+END;
+CREATE TRIGGER author_archive_manga_links_update_revision
+AFTER UPDATE OF creator_id, role, creator_order, origin, source_text, confidence, evidence ON author_archive_manga_links
+WHEN old.creator_id != new.creator_id OR old.role != new.role OR old.creator_order != new.creator_order OR
+     old.origin != new.origin OR old.source_text IS NOT new.source_text OR old.confidence != new.confidence OR
+     old.evidence != new.evidence
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1
+    WHERE _id IN (old.creator_id, new.creator_id);
+END;
+CREATE TRIGGER author_archive_source_work_creators_insert_revision
+AFTER INSERT ON author_archive_source_work_creators
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1 WHERE _id = new.creator_id;
+END;
+CREATE TRIGGER author_archive_source_work_creators_delete_revision
+AFTER DELETE ON author_archive_source_work_creators
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1 WHERE _id = old.creator_id;
+END;
+CREATE TRIGGER author_archive_source_work_creators_update_revision
+AFTER UPDATE OF creator_id, role, creator_order, origin, verification, source_text, confidence, evidence
+ON author_archive_source_work_creators
+WHEN old.creator_id != new.creator_id OR old.role != new.role OR old.creator_order != new.creator_order OR
+     old.origin != new.origin OR old.verification != new.verification OR old.source_text IS NOT new.source_text OR
+     old.confidence != new.confidence OR old.evidence != new.evidence
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1
+    WHERE _id IN (old.creator_id, new.creator_id);
+END;
+CREATE TRIGGER author_archive_canonical_creators_insert_revision
+AFTER INSERT ON author_archive_canonical_creators
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1 WHERE _id = new.creator_id;
+END;
+CREATE TRIGGER author_archive_canonical_creators_delete_revision
+AFTER DELETE ON author_archive_canonical_creators
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1 WHERE _id = old.creator_id;
+END;
+CREATE TRIGGER author_archive_canonical_creators_update_revision
+AFTER UPDATE OF creator_id, role, creator_order, origin, evidence ON author_archive_canonical_creators
+WHEN old.creator_id != new.creator_id OR old.role != new.role OR old.creator_order != new.creator_order OR
+     old.origin != new.origin OR old.evidence != new.evidence
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1
+    WHERE _id IN (old.creator_id, new.creator_id);
+END;

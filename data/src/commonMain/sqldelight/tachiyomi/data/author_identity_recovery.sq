@@ -1,0 +1,89 @@
+captureIdentityRecoveryCreators:
+WITH RECURSIVE related_creators(_id) AS (
+    SELECT _id FROM author_archive_creators WHERE _id IN :creatorIds
+    UNION
+    SELECT C._id FROM author_archive_creators C
+    JOIN related_creators R ON C.merged_into_creator_id = R._id
+)
+SELECT C.* FROM author_archive_creators C JOIN related_creators R ON C._id = R._id
+ORDER BY C._id;
+
+captureIdentityRecoveryIdentityNames:
+SELECT * FROM author_archive_identity_names
+WHERE creator_id IN :creatorIds
+ORDER BY name_text;
+
+captureIdentityRecoveryAliases:
+SELECT * FROM author_archive_aliases
+WHERE creator_id IN :creatorIds
+ORDER BY _id;
+
+captureIdentityRecoveryMangaLinks:
+SELECT * FROM author_archive_manga_links
+WHERE creator_id IN :creatorIds
+ORDER BY _id;
+
+captureIdentityRecoverySourceWorks:
+SELECT * FROM author_archive_source_works
+WHERE _id IN (SELECT source_work_id FROM author_archive_source_work_creators WHERE creator_id IN :creatorIds) OR _id IN (SELECT source_work_id FROM author_archive_discoveries WHERE watch_id IN (SELECT _id FROM author_archive_watches WHERE creator_id IN :creatorIds))
+ORDER BY _id;
+
+captureIdentityRecoverySourceWorkCreators:
+SELECT * FROM author_archive_source_work_creators
+WHERE creator_id IN :creatorIds
+ORDER BY _id;
+
+captureIdentityRecoveryCanonicalWorks:
+SELECT * FROM author_archive_canonical_works
+WHERE _id IN (SELECT work_id FROM author_archive_canonical_creators WHERE creator_id IN :creatorIds)
+ORDER BY _id;
+
+captureIdentityRecoveryCanonicalCreators:
+SELECT * FROM author_archive_canonical_creators
+WHERE creator_id IN :creatorIds
+ORDER BY _id;
+
+captureIdentityRecoveryWatches:
+SELECT * FROM author_archive_watches
+WHERE creator_id IN :creatorIds
+ORDER BY _id;
+
+captureIdentityRecoveryWatchSources:
+SELECT * FROM author_archive_watch_sources
+WHERE watch_id IN (SELECT _id FROM author_archive_watches WHERE creator_id IN :creatorIds)
+ORDER BY _id;
+
+captureIdentityRecoveryWatchResultPolicies:
+SELECT * FROM author_archive_watch_result_policies
+WHERE watch_id IN (SELECT _id FROM author_archive_watches WHERE creator_id IN :creatorIds)
+ORDER BY _id;
+
+captureIdentityRecoveryWatchLanguages:
+SELECT * FROM author_archive_watch_languages
+WHERE policy_id IN (SELECT _id FROM author_archive_watch_result_policies WHERE watch_id IN (SELECT _id FROM author_archive_watches WHERE creator_id IN :creatorIds))
+ORDER BY _id;
+
+captureIdentityRecoveryRuns:
+SELECT * FROM author_archive_runs
+WHERE watch_id IN (SELECT _id FROM author_archive_watches WHERE creator_id IN :creatorIds)
+ORDER BY _id;
+
+captureIdentityRecoverySourceCheckpoints:
+SELECT * FROM author_archive_source_checkpoints
+WHERE watch_id IN (SELECT _id FROM author_archive_watches WHERE creator_id IN :creatorIds)
+ORDER BY _id;
+
+captureIdentityRecoveryDiscoveries:
+SELECT * FROM author_archive_discoveries
+WHERE watch_id IN (SELECT _id FROM author_archive_watches WHERE creator_id IN :creatorIds)
+ORDER BY _id;
+
+captureIdentityRecoveryNotificationOutbox:
+SELECT * FROM author_archive_notification_outbox
+WHERE discovery_id IN (SELECT _id FROM author_archive_discoveries WHERE watch_id IN (SELECT _id FROM author_archive_watches WHERE creator_id IN :creatorIds))
+ORDER BY _id;
+
+captureIdentityRecoveryLanguageAssertions:
+SELECT * FROM author_archive_language_assertions
+WHERE subject_type = 'CREATOR' AND subject_key IN (SELECT 'creator:' || portable_key FROM author_archive_creators WHERE _id IN :creatorIds)
+ORDER BY _id;

@@ -9,6 +9,7 @@ CREATE TABLE author_archive_creators(
     status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'MERGED', 'DELETED')),
     merged_into_creator_id INTEGER,
     needs_review INTEGER AS Boolean NOT NULL DEFAULT 0,
+    identity_revision INTEGER NOT NULL DEFAULT 0,
     legacy_creator_id INTEGER UNIQUE,
     created_at INTEGER NOT NULL,
     last_modified_at INTEGER NOT NULL,
@@ -25,6 +26,37 @@ CREATE INDEX idx_author_archive_creators_status
 ON author_archive_creators(status);
 CREATE INDEX idx_author_archive_creators_merged_into
 ON author_archive_creators(merged_into_creator_id);
+
+CREATE TABLE author_archive_identity_names(
+    name_text TEXT COLLATE BINARY NOT NULL PRIMARY KEY,
+    creator_id INTEGER NOT NULL,
+    origin TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_modified_at INTEGER NOT NULL,
+    FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_author_archive_identity_names_creator
+ON author_archive_identity_names(creator_id);
+
+CREATE TABLE author_archive_identity_migrations(
+    migration_key TEXT NOT NULL PRIMARY KEY,
+    state TEXT NOT NULL CHECK(state IN ('RUNNING', 'COMPLETED', 'FAILED')),
+    last_error TEXT,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE author_archive_identity_migration_components(
+    migration_key TEXT NOT NULL,
+    component_key TEXT NOT NULL,
+    target_creator_id INTEGER NOT NULL,
+    source_creator_ids TEXT NOT NULL,
+    accepted_names TEXT NOT NULL,
+    recovery_graph TEXT,
+    state TEXT NOT NULL CHECK(state IN ('PREPARED', 'RUNNING', 'COMPLETED')),
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY(migration_key, component_key)
+);
 
 CREATE TABLE author_archive_aliases(
     _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -271,6 +303,82 @@ CREATE TABLE author_archive_canonical_creators(
 CREATE INDEX idx_author_archive_canonical_creators_creator
 ON author_archive_canonical_creators(creator_id);
 
+
+CREATE TRIGGER author_archive_identity_names_insert_revision
+AFTER INSERT ON author_archive_identity_names
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1 WHERE _id = new.creator_id;
+END;
+CREATE TRIGGER author_archive_identity_names_delete_revision
+AFTER DELETE ON author_archive_identity_names
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1 WHERE _id = old.creator_id;
+END;
+CREATE TRIGGER author_archive_identity_names_update_revision
+AFTER UPDATE OF creator_id, name_text ON author_archive_identity_names
+WHEN old.creator_id != new.creator_id OR old.name_text != new.name_text
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1
+    WHERE _id IN (old.creator_id, new.creator_id);
+END;
+CREATE TRIGGER author_archive_manga_links_insert_revision
+AFTER INSERT ON author_archive_manga_links
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1 WHERE _id = new.creator_id;
+END;
+CREATE TRIGGER author_archive_manga_links_delete_revision
+AFTER DELETE ON author_archive_manga_links
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1 WHERE _id = old.creator_id;
+END;
+CREATE TRIGGER author_archive_manga_links_update_revision
+AFTER UPDATE OF creator_id, role, creator_order, origin, source_text, confidence, evidence ON author_archive_manga_links
+WHEN old.creator_id != new.creator_id OR old.role != new.role OR old.creator_order != new.creator_order OR
+     old.origin != new.origin OR old.source_text IS NOT new.source_text OR old.confidence != new.confidence OR
+     old.evidence != new.evidence
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1
+    WHERE _id IN (old.creator_id, new.creator_id);
+END;
+CREATE TRIGGER author_archive_source_work_creators_insert_revision
+AFTER INSERT ON author_archive_source_work_creators
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1 WHERE _id = new.creator_id;
+END;
+CREATE TRIGGER author_archive_source_work_creators_delete_revision
+AFTER DELETE ON author_archive_source_work_creators
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1 WHERE _id = old.creator_id;
+END;
+CREATE TRIGGER author_archive_source_work_creators_update_revision
+AFTER UPDATE OF creator_id, role, creator_order, origin, verification, source_text, confidence, evidence
+ON author_archive_source_work_creators
+WHEN old.creator_id != new.creator_id OR old.role != new.role OR old.creator_order != new.creator_order OR
+     old.origin != new.origin OR old.verification != new.verification OR old.source_text IS NOT new.source_text OR
+     old.confidence != new.confidence OR old.evidence != new.evidence
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1
+    WHERE _id IN (old.creator_id, new.creator_id);
+END;
+CREATE TRIGGER author_archive_canonical_creators_insert_revision
+AFTER INSERT ON author_archive_canonical_creators
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1 WHERE _id = new.creator_id;
+END;
+CREATE TRIGGER author_archive_canonical_creators_delete_revision
+AFTER DELETE ON author_archive_canonical_creators
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1 WHERE _id = old.creator_id;
+END;
+CREATE TRIGGER author_archive_canonical_creators_update_revision
+AFTER UPDATE OF creator_id, role, creator_order, origin, evidence ON author_archive_canonical_creators
+WHEN old.creator_id != new.creator_id OR old.role != new.role OR old.creator_order != new.creator_order OR
+     old.origin != new.origin OR old.evidence != new.evidence
+BEGIN
+    UPDATE author_archive_creators SET identity_revision = identity_revision + 1
+    WHERE _id IN (old.creator_id, new.creator_id);
+END;
+
 CREATE TABLE author_archive_canonical_versions(
     _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     work_id INTEGER NOT NULL,
@@ -413,10 +521,10 @@ SELECT
     coalesce((
         SELECT group_concat(ORDERED_ALIAS.encoded_alias, ',')
         FROM (
-            SELECT hex(A.raw_alias) AS encoded_alias
-            FROM author_archive_aliases A
-            WHERE A.creator_id = C._id
-            ORDER BY A.is_manual DESC, A._id
+            SELECT hex(N.name_text) AS encoded_alias
+            FROM author_archive_identity_names N
+            WHERE N.creator_id = C._id
+            ORDER BY N.name_text COLLATE BINARY
         ) ORDERED_ALIAS
     ), '') AS aliases,
     C.created_at,
@@ -434,10 +542,10 @@ SELECT
     coalesce((
         SELECT group_concat(ORDERED_ALIAS.encoded_alias, ',')
         FROM (
-            SELECT hex(A.raw_alias) AS encoded_alias
-            FROM author_archive_aliases A
-            WHERE A.creator_id = C._id
-            ORDER BY A.is_manual DESC, A._id
+            SELECT hex(N.name_text) AS encoded_alias
+            FROM author_archive_identity_names N
+            WHERE N.creator_id = C._id
+            ORDER BY N.name_text COLLATE BINARY
         ) ORDERED_ALIAS
     ), '') AS aliases,
     C.created_at,
@@ -461,10 +569,10 @@ SELECT
     coalesce((
         SELECT group_concat(ORDERED_ALIAS.encoded_alias, ',')
         FROM (
-            SELECT hex(A.raw_alias) AS encoded_alias
-            FROM author_archive_aliases A
-            WHERE A.creator_id = C._id
-            ORDER BY A.is_manual DESC, A._id
+            SELECT hex(N.name_text) AS encoded_alias
+            FROM author_archive_identity_names N
+            WHERE N.creator_id = C._id
+            ORDER BY N.name_text COLLATE BINARY
         ) ORDERED_ALIAS
     ), '') AS aliases,
     C.created_at,
@@ -474,14 +582,100 @@ WHERE C.status = 'ACTIVE'
 ORDER BY C.sort_name COLLATE NOCASE, C.display_name COLLATE NOCASE, C._id;
 
 getArchiveCreatorIdByLegacyId:
-SELECT _id
-FROM author_archive_creators
-WHERE legacy_creator_id = :legacyCreatorId;
+WITH RECURSIVE identity_path(_id, status, merged_into_creator_id, depth) AS (
+    SELECT _id, status, merged_into_creator_id, 0 FROM author_archive_creators
+    WHERE legacy_creator_id = :legacyCreatorId
+    UNION ALL
+    SELECT C._id, C.status, C.merged_into_creator_id, P.depth + 1
+    FROM author_archive_creators C JOIN identity_path P ON C._id = P.merged_into_creator_id
+    WHERE P.status = 'MERGED' AND P.depth < 100
+)
+SELECT _id FROM identity_path WHERE status = 'ACTIVE' ORDER BY depth DESC LIMIT 1;
+
+attachArchiveLegacyCreatorId:
+UPDATE author_archive_creators
+SET legacy_creator_id = coalesce(legacy_creator_id, :legacyCreatorId),
+    last_modified_at = max(last_modified_at, :lastModifiedAt)
+WHERE _id = :creatorId
+AND (legacy_creator_id IS NULL OR legacy_creator_id = :legacyCreatorId);
 
 getArchiveCreatorIdByPortableKey:
 SELECT _id
 FROM author_archive_creators
 WHERE portable_key = :portableKey;
+
+getArchiveCreatorIdByExactName:
+SELECT N.creator_id
+FROM author_archive_identity_names N
+JOIN author_archive_creators C ON C._id = N.creator_id
+WHERE N.name_text = :nameText COLLATE BINARY
+AND C.status = 'ACTIVE';
+
+getArchiveIdentityNames:
+SELECT name_text, creator_id, origin, created_at, last_modified_at
+FROM author_archive_identity_names
+ORDER BY name_text COLLATE BINARY;
+
+getArchiveIdentityNamesForCreator:
+SELECT name_text
+FROM author_archive_identity_names
+WHERE creator_id = :creatorId
+ORDER BY name_text COLLATE BINARY;
+
+registerArchiveIdentityName:
+INSERT INTO author_archive_identity_names(name_text, creator_id, origin, created_at, last_modified_at)
+VALUES (:nameText, :creatorId, :origin, :createdAt, :lastModifiedAt);
+
+registerArchiveIdentityNameIfAbsent:
+INSERT OR IGNORE INTO author_archive_identity_names(name_text, creator_id, origin, created_at, last_modified_at)
+VALUES (:nameText, :creatorId, :origin, :createdAt, :lastModifiedAt);
+
+moveArchiveIdentityNames:
+UPDATE author_archive_identity_names
+SET creator_id = :targetCreatorId,
+    last_modified_at = max(last_modified_at, :lastModifiedAt)
+WHERE creator_id = :sourceCreatorId;
+
+deleteArchiveIdentityName:
+DELETE FROM author_archive_identity_names
+WHERE name_text = :nameText COLLATE BINARY
+AND creator_id = :creatorId;
+
+bumpArchiveCreatorIdentityRevision:
+UPDATE author_archive_creators
+SET identity_revision = identity_revision + 1,
+    last_modified_at = max(last_modified_at, :lastModifiedAt)
+WHERE _id = :creatorId;
+
+getArchiveIdentityMigrationState:
+SELECT state
+FROM author_archive_identity_migrations
+WHERE migration_key = :migrationKey;
+
+getArchiveIdentityMigrationComponentState:
+SELECT state
+FROM author_archive_identity_migration_components
+WHERE migration_key = :migrationKey AND component_key = :componentKey;
+
+upsertArchiveIdentityMigrationComponent:
+INSERT INTO author_archive_identity_migration_components(
+    migration_key, component_key, target_creator_id, source_creator_ids, accepted_names, state, updated_at
+)
+VALUES (:migrationKey, :componentKey, :targetCreatorId, :sourceCreatorIds, :acceptedNames, :state, :updatedAt)
+ON CONFLICT(migration_key, component_key) DO UPDATE SET
+    target_creator_id = excluded.target_creator_id,
+    source_creator_ids = excluded.source_creator_ids,
+    accepted_names = excluded.accepted_names,
+    state = excluded.state,
+    updated_at = excluded.updated_at;
+
+upsertArchiveIdentityMigration:
+INSERT INTO author_archive_identity_migrations(migration_key, state, last_error, updated_at)
+VALUES (:migrationKey, :state, :lastError, :updatedAt)
+ON CONFLICT(migration_key) DO UPDATE SET
+    state = excluded.state,
+    last_error = excluded.last_error,
+    updated_at = excluded.updated_at;
 
 insertArchiveCreator:
 INSERT INTO author_archive_creators(
@@ -571,6 +765,28 @@ SELECT portable_key, display_name, normalized_name, sort_name, needs_review, sta
 FROM author_archive_creators
 WHERE _id = :id;
 
+resolveArchiveCreatorRootId:
+WITH RECURSIVE identity_path(_id, status, merged_into_creator_id, depth) AS (
+    SELECT _id, status, merged_into_creator_id, 0
+    FROM author_archive_creators
+    WHERE _id = :creatorId
+    UNION ALL
+    SELECT C._id, C.status, C.merged_into_creator_id, P.depth + 1
+    FROM author_archive_creators C
+    JOIN identity_path P ON C._id = P.merged_into_creator_id
+    WHERE P.status = 'MERGED' AND P.depth < 100
+)
+SELECT _id
+FROM identity_path
+WHERE status = 'ACTIVE'
+ORDER BY depth DESC
+LIMIT 1;
+
+getArchiveCreatorRedirects:
+SELECT _id, status, merged_into_creator_id
+FROM author_archive_creators
+ORDER BY _id;
+
 getArchiveCreatorsForBackup:
 SELECT
     C.portable_key,
@@ -653,9 +869,9 @@ getArchiveBoundCreatorIdsByAlias:
 SELECT C._id
 FROM author_archive_manga_links ML
 JOIN author_archive_creators C ON C._id = ML.creator_id
-JOIN author_archive_aliases A ON A.creator_id = C._id
+JOIN author_archive_identity_names N ON N.creator_id = C._id
 WHERE ML.manga_id = :mangaId
-AND A.normalized_alias = :normalizedAlias
+AND N.name_text = :nameText COLLATE BINARY
 AND C.status = 'ACTIVE'
 ORDER BY
     CASE ML.origin WHEN 'USER' THEN 0 WHEN 'RESTORE' THEN 1 ELSE 2 END,
@@ -669,10 +885,10 @@ SELECT
     coalesce((
         SELECT group_concat(ORDERED_ALIAS.encoded_alias, ',')
         FROM (
-            SELECT hex(AL.raw_alias) AS encoded_alias
-            FROM author_archive_aliases AL
-            WHERE AL.creator_id = C._id
-            ORDER BY AL.is_manual DESC, AL._id
+            SELECT hex(N.name_text) AS encoded_alias
+            FROM author_archive_identity_names N
+            WHERE N.creator_id = C._id
+            ORDER BY N.name_text COLLATE BINARY
         ) ORDERED_ALIAS
     ), '') AS aliases,
     C.needs_review,
@@ -686,9 +902,9 @@ FROM author_archive_creators C
 WHERE C.status = 'ACTIVE'
 AND EXISTS(
     SELECT 1
-    FROM author_archive_aliases MATCHED_ALIAS
-    WHERE MATCHED_ALIAS.creator_id = C._id
-    AND MATCHED_ALIAS.normalized_alias = :normalizedAlias
+    FROM author_archive_identity_names MATCHED_NAME
+    WHERE MATCHED_NAME.creator_id = C._id
+    AND MATCHED_NAME.name_text = :nameText COLLATE BINARY
 )
 ORDER BY currently_bound DESC, C.needs_review, C._id;
 
@@ -833,6 +1049,12 @@ FROM author_archive_manga_links
 WHERE creator_id = :creatorId
 ORDER BY manga_id, creator_order;
 
+getArchiveMangaRelationsForIdentityMerge:
+SELECT manga_id, role, creator_order, origin, source_text, confidence, evidence, created_at, last_modified_at
+FROM author_archive_manga_links
+WHERE creator_id = :creatorId
+ORDER BY manga_id, creator_order;
+
 getArchiveMangaTitlesForCreator:
 SELECT DISTINCT ML.manga_id, M.title
 FROM author_archive_manga_links ML
@@ -856,6 +1078,18 @@ deleteArchiveMangaLink:
 DELETE FROM author_archive_manga_links
 WHERE manga_id = :mangaId
 AND creator_id = :creatorId;
+
+unionArchiveMangaLinkRole:
+UPDATE author_archive_manga_links
+SET role = CASE
+    WHEN role = :incomingRole THEN role
+    WHEN role = 'BOTH' OR :incomingRole = 'BOTH' THEN 'BOTH'
+    WHEN (role = 'AUTHOR' AND :incomingRole = 'ARTIST') OR
+         (role = 'ARTIST' AND :incomingRole = 'AUTHOR') THEN 'BOTH'
+    WHEN role = 'UNKNOWN' THEN :incomingRole
+    ELSE role
+END
+WHERE manga_id = :mangaId AND creator_id = :creatorId;
 
 deleteAutomaticArchiveMangaLink:
 DELETE FROM author_archive_manga_links
@@ -1146,6 +1380,13 @@ FROM author_archive_source_work_creators
 WHERE creator_id = :creatorId
 ORDER BY source_work_id, creator_order;
 
+getArchiveSourceWorkRelationsForIdentityMerge:
+SELECT source_work_id, role, creator_order, origin, verification, source_text, confidence, evidence,
+       created_at, last_modified_at
+FROM author_archive_source_work_creators
+WHERE creator_id = :creatorId
+ORDER BY source_work_id, creator_order;
+
 getArchiveSourceWorkCreator:
 SELECT role, creator_order, origin, verification, source_text, confidence, evidence
 FROM author_archive_source_work_creators
@@ -1162,6 +1403,18 @@ deleteArchiveSourceWorkCreator:
 DELETE FROM author_archive_source_work_creators
 WHERE source_work_id = :sourceWorkId
 AND creator_id = :creatorId;
+
+unionArchiveSourceWorkCreatorRole:
+UPDATE author_archive_source_work_creators
+SET role = CASE
+    WHEN role = :incomingRole THEN role
+    WHEN role = 'BOTH' OR :incomingRole = 'BOTH' THEN 'BOTH'
+    WHEN (role = 'AUTHOR' AND :incomingRole = 'ARTIST') OR
+         (role = 'ARTIST' AND :incomingRole = 'AUTHOR') THEN 'BOTH'
+    WHEN role = 'UNKNOWN' THEN :incomingRole
+    ELSE role
+END
+WHERE source_work_id = :sourceWorkId AND creator_id = :creatorId;
 
 deleteAutomaticArchiveSourceWorkCreator:
 DELETE FROM author_archive_source_work_creators
@@ -2534,8 +2787,7 @@ VALUES (:workId, :creatorId, :role, :creatorOrder, :origin, :evidence)
 ON CONFLICT(work_id, creator_id)
 DO UPDATE SET
     role = CASE
-        WHEN author_archive_canonical_creators.origin IN ('USER', 'RESTORE')
-        AND excluded.origin != 'USER'
+        WHEN author_archive_canonical_creators.origin IN ('USER', 'RESTORE') AND excluded.origin != 'USER'
             THEN author_archive_canonical_creators.role
         ELSE excluded.role
     END,
@@ -2582,6 +2834,18 @@ deleteArchiveCanonicalCreator:
 DELETE FROM author_archive_canonical_creators
 WHERE work_id = :workId
 AND creator_id = :creatorId;
+
+unionArchiveCanonicalCreatorRole:
+UPDATE author_archive_canonical_creators
+SET role = CASE
+    WHEN role = :incomingRole THEN role
+    WHEN role = 'BOTH' OR :incomingRole = 'BOTH' THEN 'BOTH'
+    WHEN (role = 'AUTHOR' AND :incomingRole = 'ARTIST') OR
+         (role = 'ARTIST' AND :incomingRole = 'AUTHOR') THEN 'BOTH'
+    WHEN role = 'UNKNOWN' THEN :incomingRole
+    ELSE role
+END
+WHERE work_id = :workId AND creator_id = :creatorId;
 
 getArchiveCanonicalWork:
 SELECT
@@ -3352,3 +3616,8 @@ JOIN author_archive_watch_result_policies P ON P._id = L.policy_id
 JOIN author_archive_watches W ON W._id = P.watch_id
 JOIN author_archive_creators C ON C._id = W.creator_id
 ORDER BY C.portable_key, L.language_tag;
+
+setArchiveIdentityRecoveryGraph:
+UPDATE author_archive_identity_migration_components
+SET recovery_graph = :recoveryGraph
+WHERE migration_key = :migrationKey AND component_key = :componentKey;

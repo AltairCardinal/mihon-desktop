@@ -1,10 +1,10 @@
 # 跨插件唯一作者 · 正式实施 Roadmap
 
-- 日期：2026-09-17；状态：PLANNED，尚未启动production实现。
+- 日期：2026-09-17；状态：IN PROGRESS；2026-09-17按用户指令启动，当前从第3节首个未勾选批次推进。
 - 类型：产品child plan；从第3节第一个未勾选批次推导进度，不再声明active-task。
 - 父路线：[主Roadmap](2026-06-30-mihon-desktop-refactor-roadmap.md)。仅登记待执行专项，不改变父路线active-child-plan，不恢复旧作者归档专项及其无关backlog。
 - 最终产品依据：[功能设计](../2026-09-17-global-author-functional-design.md)；[技术方案](../2026-09-17-creator-identity-reconciliation-proposal.md)；[已确认HTML](../prototypes/author-identity/index.html)，基线提交 `77a610534`。
-- 本文件记录批次进度与提交/审查/验证证据；已有capability的机器状态仍以 `app-desktop/src/test/resources/parity/parity-manifest.json` 为准。本轮不更新任何production capability状态。
+- 本文件记录批次进度与提交/审查/验证证据；已有capability的机器状态仍以 `app-desktop/src/test/resources/parity/parity-manifest.json` 为准。capability状态仅在对应production验收证据成立后更新。
 
 ## 1. 目标、范围与交付门槛
 
@@ -35,7 +35,7 @@
 
 ## 3. 批次清单与依赖
 
-- [ ] **GA-01：精确名称唯一内核、历史迁移与所有身份写入入口**（无前置）
+- [x] **GA-01：精确名称唯一内核、历史迁移与所有身份写入入口**（无前置）
 - [ ] **GA-02：添加别名、主名切换及双端最终交互**（依赖GA-01及其独立审查）
 - [ ] **GA-03：全局作者设置与真实发现调度**（依赖GA-02）
 - [ ] **GA-04：备份恢复与设置兼容**（依赖GA-01至GA-03）
@@ -62,6 +62,19 @@
 **红灯与验证**：扩展真实SQL repository、迁移fixture和 `MangaRepositoryCreatorIndexIntegrationTest`；共享契约覆盖三根历史、名称传递交集、跨源缺ID、大小写/繁简/标点、多token多角色、重复索引、并发创建及事务注入失败。重启恢复后检查关系总量、旧键、关注及无孤立记录。Android/Desktop真实resolve接线损坏必须导致测试失败。
 
 **完成条件**：功能设计A1/A2全部通过；schema与事务独立审查通过后才允许GA-02依赖。预计12–18有效工程小时，主要成本是迁移fixture、旧写入口审计与并发回滚验证。本批可能超过估算行数，但唯一约束与全部写入接线必须保持为同一可验收闭环。
+
+**实施证据（2026-09-17，GA-01验收通过；随本批提交完成，不代表正式发布）**：
+- 初始红灯：`.gradle-coordinator/ga01-red.log`中4项数据契约按预期失败；`ga01-domain-red.log`中2项精确分词契约按预期失败。后续focused及双端既有wiring曾通过，但不能覆盖独立审查发现的缺口。
+- 第1轮独立审查：GPT-6 Astra medium判定不通过。阻塞包括重复全库扫描及缺少分组恢复资料、备份/遗留写入归根未迁移完整关系、发现仍用搜索归一化、角色并集/原始别名保留、旧根导航、双端真实resolve与准备/重试反馈、revision写入覆盖。
+- 模块验证`ga01-modules`经协调器停止，结果CANCELLED/130，不算完整测试通过；修复阶段只做受影响focused、wiring及格式验证，不重复该全量。
+- 修复复审：GPT-6 Astra medium仍判定不通过。未关闭：迁移前完整作品/角色/关注恢复图；legacy多个已占用名称的传递合并；旧根作品订阅重定向；双端真实未收藏漫画SQL解析接线；重复resolve/bind的revision幂等性；区分合并角色并集与元数据角色替换。一次readiness/每组事务、发现精确匹配、原始变体及标点、单次旧根读取等已有改进，但不能代替整个批次验收。原规模性能验证未完成，逐mention SQL的吞吐仍须定向核验。
+- 独立补验：`python scripts/gradle-coordinator.py run --key ga01-acceptance-sync-format -- .\gradlew.bat :data:jvmTest --tests mihon.data.sync.JvmSyncRemoteProjectionContractTest :app:spotlessCheck :data:spotlessCheck :domain:spotlessCheck`，PASSED/exit0/20s；日志`.gradle-coordinator/ga01-acceptance-sync-format.log`。此前`ga01-review-data-recheck`的抽象契约过滤没有执行同步case，不算同步证据；`format5`仅为Apply，格式Check由此处补齐。
+- 已使用1轮审查及1轮修复复审；用户随后批准追加约2–3.5小时，限定修复上述6项、补定向性能证据及1次独立审查。用户同时撤销原模型指定，后续遵循AGENTS默认继承及调度规则：因原实施者存在已确认语义理解偏差，更换实施者接管现有diff，复用独立验收者，保持两个工作角色。追加修复现已通过，证据见下；不重跑模块全量。schema、共享repository及legacy/backup/sync直接写入属于同一唯一身份闭环，超过8文件/400行仍作为一个内聚批次；主要风险为旧库迁移、关系完整性与性能。
+
+- 追加修复验收：独立验收者只读审查稳定产物，R1完整17表迁移前恢复图、R2遗留多名称传递合并、R3旧根持续订阅、R4双端真实未收藏SQL入口、R5重复解析revision幂等与自动绑定、R6普通角色替换/合并并集全部通过。恢复资料为组件内审计与受控恢复JSON，不提供通用撤销工具。
+- 最终focused：`ga01-repair-final-focused5.log` PASSED/exit0，数据层87项（repository 46、index 22、legacy 10、schema 1、真实sync runner 8）零失败。`ga01-repair-stable-check.log` PASSED/exit0，Android 6项、Desktop 2项，app/data/domain spotlessCheck通过；独立审查核对XML，主代理核对日志与diff检查。
+- 原规模性能case：10,000漫画/20,000精确名称，首次进度12ms、回填7.821s，重放进度2ms、回填5.151s，满足原500ms/15s门槛。`ga01-repair-performance.log`整轮因当时别名顺序revision用例失败而exit1，只将性能case记通过；该缺陷已修复并纳入最终repository 46项绿灯，未将整轮记为通过。
+- 本批提交包含实现、测试和此处checkoff；可用 `git log --oneline --grep="Unify exact creator identities"` 定位。GA-02前置门禁解除；真机、正式Windows/macOS产物及最终模块/全量验证仍留GA-06，不以JVM入口测试代替发布验收。
 
 ### GA-02 · 最终作者交互与命令接线
 
@@ -127,7 +140,7 @@
 1. 汇总前五批提交、审查和测试证据，确认所有写入口、备份、同步与调度都走共享核心；检查manifest适用项，不能用报告覆盖机器状态。
 2. 对脱敏迁移fixture做完整升级→作者直达→添加别名→切主名→全局设置→检查→备份恢复→旧键关注同步→重启链路，核对作品/角色/关注数量及无同名多根。
 3. 同一最终diff运行相关模块全套、Android/Desktop全量、格式、Test Mode。Gradle由协调器串行执行；不在每个微任务重复完整发布构建。
-4. Windows/macOS使用 `scripts/build-desktop.sh`；只有同一diff已有等价完整测试证据时才允许build-only。Windows验收最终发布目录EXE，报告引用构建日志 `Final unpacked EXE:` 的实际存在路径。Android使用仓库release参数构建并在已核对包名/配置/备份的真机验收，不混用模拟器结果。
+4. Windows/macOS使用 `scripts/build-desktop.sh`；只有同一diff已有等价完整测试证据时才允许build-only。Windows验收最终发布目录EXE，报告引用构建日志 `Final unpacked EXE:` 的实际存在路径。Android使用现有fork release身份配置构建（用户确认保持telemetry/updater关闭），并在已核对包名/配置/备份的真机验收，不混用模拟器结果。
 5. Android漫画柜《平行天堂》点击署名直达唯一作者；对照Windows同源同作品。站点不可用时记录网络与本地链路各自结果，离线fixture不能代替真实图源复现项；用户库测试先保留可恢复备份，不清空原数据。
 6. 视觉与交互核对最终基线：列表无头像，主名/别名区分，横向图源按钮，封面顶对齐，主题/窄屏/键盘/系统字体缩放。运行中退后台/重启后仍正确；原有通知、发现筛选、阅读/下载回归。
 
@@ -135,7 +148,7 @@
 
 ## 5. 实施流程、预算与失败处理
 
-以上估算合计50–80有效工程小时，是范围估算，不是本轮执行承诺或自动授权。构建等待与外部环境故障另列，不重复进行历史站点身份调查。本轮只产出最终设计和roadmap，不启动任何批次。
+以上估算合计50–80有效工程小时，是范围估算，不是耗时承诺。2026-09-17用户已授权实现本roadmap并标记完成任务；初始执行使用GPT-5.6 Sol medium、独立验收使用GPT-6 Astra medium；用户后续明确撤销模型指定，新增子代理使用默认继承配置并遵循AGENTS调度规则。保持实施与独立验收两个角色串行交付，每批1轮审查及必要时1轮修复复审，最终全量组合1次；GA-01已另获追加1次限定修复审查授权，见该批证据。构建等待与外部环境故障另列，不重复进行历史站点身份调查。
 
 启动后遵循仓库委派要求：主代理先定义验收并将GA-01主要实现交实施子代理；主代理负责接口、集成和独立验收。默认最多2个子代理（实施者+独立审查者），复用原代理串行交付相近批次，不并行写schema/repository。高风险迁移、事务、备份和同步边界在下游依赖前审查；每批预算1轮独立审查，必要修复复审最多1轮，新增轮次/显著成本按仓库规则说明并申请。低风险纯视图调整可在对应批次自查，不另开审查项目。
 
@@ -145,7 +158,7 @@
 
 执行中每批在本文件对应小节追加简短证据：提交hash、实现范围、红灯原因、实际验证命令/结果、独立审查结论、未解决风险和下一依赖。未执行测试明确写未运行；暂不填虚构类名/日志/产物。子代理按仓库要求返回status/diff/tests/commit/process/next。没有单独任务快照或巨型diff包。
 
-## 6. 本轮文档验收
+## 6. 实施验证入口与前置状态
 
 实施时的验证命令模板（当前未运行；测试过滤按实际修改的既有类/新增契约更新）：
 
@@ -158,6 +171,6 @@ python scripts/gradle-coordinator.py run --key ga02-android -- ./gradlew.bat :ap
 python scripts/gradle-coordinator.py run --key ga06-final -- ./gradlew.bat spotlessCheck testReleaseUnitTest
 ```
 
-正式Desktop构建在可运行仓库脚本的shell执行 `./scripts/build-desktop.sh`，macOS同样使用该脚本；Android发布使用 `assembleRelease -Pinclude-telemetry -Penable-updater` 并通过同一Gradle协调器。开始前设置Windows/Python UTF-8与SDK环境，核对当时实际可用task；以上不是对尚未生成的测试类或产物作出通过声明。
+正式Desktop构建在可运行仓库脚本的shell执行 `./scripts/build-desktop.sh`，macOS同样使用该脚本；Android发布使用 `-I scripts/android-fork-release.init.gradle assembleRelease` 并通过同一Gradle协调器；2026-09-17用户明确确认保持telemetry/updater关闭，不传 `-Pinclude-telemetry` 或 `-Penable-updater`。沿用fork包名与已有签名，正式收口时同步分配可升级版本并更新签名脚本版本校验。开始前设置Windows/Python UTF-8与SDK环境，核对当时实际可用task；以上不是对尚未生成的测试类或产物作出通过声明。
 
-本轮仅冻结设计与登记计划，生产批次全部未勾选。文档核验包括本地链接存在、基线提交存在、批次依赖无环、A1–A8映射完整、旧交互冲突清理和diff空白检查；不运行Gradle、不重新构建应用、不更改当前父计划或manifest。
+启动前置（2026-09-17）：Android SDK的android-36/android.jar、build-tools/36.0.0/aapt2.exe及platform-tools/adb.exe存在；用户随后连接真机；只读确认PCE-W30/API31、目标app.mihon.desktop.fork版本0.19.4-aex.7（versionCode 25），另有app.mihon及app.mihon.dev，最终验收须核对目标身份并先备份；尚未安装或验收本轮产物。mbp-lan只读连接成功（macOS 14.8.4、JDK21.0.10可用、约29GiB可用磁盘）；后续须使用隔离工作树及应用目录，保护远端既有改动与实例。工作区已有未跟踪testfile/，不纳入本任务。上述仅为环境前置，不表示任何批次通过；实际测试与发布结果随批次记录。

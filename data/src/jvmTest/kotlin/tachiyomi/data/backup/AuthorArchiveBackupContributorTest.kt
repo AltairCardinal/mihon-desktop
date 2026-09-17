@@ -16,7 +16,7 @@ import tachiyomi.data.UpdateStrategyColumnAdapter
 class AuthorArchiveBackupContributorTest {
 
     @Test
-    fun `round trip preserves same-name identities merge redirect and natural-key bindings`() {
+    fun `round trip converges same-name identities and preserves redirect and natural-key bindings`() {
         runBlocking {
             val source = fixture()
             source.seedManga(1L, 10L, "/one")
@@ -33,6 +33,8 @@ class AuthorArchiveBackupContributorTest {
 
             target.long("SELECT COUNT(*) FROM author_archive_creators") shouldBe 3L
             target.long("SELECT COUNT(*) FROM author_archive_creators WHERE normalized_name = 'same'") shouldBe 3L
+            target.long("SELECT COUNT(*) FROM author_archive_creators WHERE status = 'ACTIVE'") shouldBe 1L
+            target.long("SELECT COUNT(*) FROM author_archive_identity_names") shouldBe 5L
             target.long("SELECT COUNT(*) FROM author_archive_aliases") shouldBe 3L
             target.long("SELECT COUNT(*) FROM author_archive_source_works") shouldBe 2L
             target.long("SELECT COUNT(*) FROM author_archive_source_work_creators") shouldBe 2L
@@ -78,7 +80,8 @@ class AuthorArchiveBackupContributorTest {
             ) shouldBe 101L
             target.long(
                 "SELECT manga_id FROM author_archive_manga_links ML " +
-                    "JOIN author_archive_creators C ON C._id = ML.creator_id WHERE C.portable_key = 'creator-b'",
+                    "JOIN author_archive_creators C ON C._id = ML.creator_id WHERE C.portable_key = 'creator-a' " +
+                    "ORDER BY manga_id DESC LIMIT 1",
             ) shouldBe 102L
         }
     }

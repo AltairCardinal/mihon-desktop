@@ -20,18 +20,8 @@ class ManageCreatorIdentity(
     suspend fun split(sourceCreatorId: Long, mangaIds: Set<Long>, newDisplayName: String): Long =
         repository.splitCreatorIdentity(sourceCreatorId, mangaIds, newDisplayName)
 
-    suspend fun resolve(manga: Manga, mention: CreatorMention): CreatorMentionResolution {
-        val options = repository.getCreatorIdentityOptions(manga.id, mention)
-        return when (options.size) {
-            0 -> CreatorMentionResolution.Resolved(repository.createAndBindMangaCreatorIdentity(manga, mention))
-            1 -> {
-                val creatorId = options.single().id
-                repository.bindMangaCreatorIdentity(manga, mention, creatorId)
-                CreatorMentionResolution.Resolved(creatorId)
-            }
-            else -> CreatorMentionResolution.Ambiguous(mention, options)
-        }
-    }
+    suspend fun resolve(manga: Manga, mention: CreatorMention): CreatorMentionResolution =
+        CreatorMentionResolution.Resolved(repository.createAndBindMangaCreatorIdentity(manga, mention))
 
     suspend fun select(manga: Manga, mention: CreatorMention, creatorId: Long) =
         repository.bindMangaCreatorIdentity(manga, mention, creatorId)

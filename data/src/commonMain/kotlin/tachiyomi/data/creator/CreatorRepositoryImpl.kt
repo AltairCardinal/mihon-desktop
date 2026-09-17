@@ -1,8 +1,12 @@
 package tachiyomi.data.creator
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import mihon.data.sync.journal.appendSyncOperation
 import mihon.domain.sync.SyncCategory
 import mihon.domain.sync.SyncEffect
@@ -90,22 +94,52 @@ class CreatorRepositoryImpl(
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val portableKeyFactory: () -> String = { Uuid.random().toHexDashString() },
     private val bootstrap: CreatorArchiveBootstrap = ReadyCreatorArchiveBootstrap,
+    private val identityMutationHook: () -> Unit = {},
 ) : CreatorRepository, CreatorArchiveRepository {
+    @Volatile
+    private var exactIdentityReady = false
+
+    override suspend fun resolveCreatorIdByExactName(name: String): Long? {
+        bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
+        val exactName = name.trim()
+        if (exactName.isBlank()) return null
+        return handler.awaitOneOrNull { author_archiveQueries.getArchiveCreatorIdByExactName(exactName) }
+    }
+
+    override fun observeCreatorIdByExactName(name: String): Flow<Long?> {
+        val exactName = name.trim()
+        return handler.subscribeToOneOrNull { author_archiveQueries.getArchiveCreatorIdByExactName(exactName) }
+            .onStart {
+                bootstrap.awaitReady()
+                ensureExactIdentityInvariant()
+            }
+    }
 
     override suspend fun getCreatorWorkArchive(creatorId: Long): CreatorWorkArchive {
         bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
+        val rootId = resolveActiveCreatorRootId(creatorId) ?: creatorId
         return handler.awaitList {
-            author_archiveQueries.getCreatorWorkArchiveRows(creatorId, ::mapCreatorWorkArchiveRow)
+            author_archiveQueries.getCreatorWorkArchiveRows(rootId, ::mapCreatorWorkArchiveRow)
         }
             .toCreatorWorkArchive()
     }
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     override fun observeCreatorWorkArchive(creatorId: Long): Flow<CreatorWorkArchive> =
-        handler.subscribeToList {
-            author_archiveQueries.getCreatorWorkArchiveRows(creatorId, ::mapCreatorWorkArchiveRow)
-        }
-            .map(List<CreatorWorkArchiveRow>::toCreatorWorkArchive)
-            .onStart { bootstrap.awaitReady() }
+        handler.subscribeToOneOrNull { author_archiveQueries.resolveArchiveCreatorRootId(creatorId) }
+            .distinctUntilChanged()
+            .flatMapLatest { rootId ->
+                checkNotNull(rootId) { "Creator identity has no active root: $creatorId" }
+                handler.subscribeToList {
+                    author_archiveQueries.getCreatorWorkArchiveRows(rootId, ::mapCreatorWorkArchiveRow)
+                }.map(List<CreatorWorkArchiveRow>::toCreatorWorkArchive)
+            }
+            .onStart {
+                bootstrap.awaitReady()
+                ensureExactIdentityInvariant()
+            }
 
     override suspend fun replaceChapterVariants(
         sourceWork: SourceWorkNaturalKey,
@@ -156,6 +190,9 @@ class CreatorRepositoryImpl(
     }
     override suspend fun upsertWatchPolicy(policy: ArchiveWatchPolicy, now: Long) {
         bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
+        val rootCreatorId = resolveActiveCreatorRootId(policy.creatorId)
+            ?: error("Creator identity does not exist: ${policy.creatorId}")
         require(policy.periodMillis > 0) { "Watch period must be positive" }
         require(policy.sourceIds.all { it >= 0 }) { "Source IDs must not be negative" }
         val languageTags = policy.readingLanguageTags
@@ -164,12 +201,12 @@ class CreatorRepositoryImpl(
             .toSet()
         handler.await(inTransaction = true) {
             author_archiveQueries.upsertArchiveWatchPolicyCommand(
-                creatorId = policy.creatorId,
+                creatorId = rootCreatorId,
                 enabled = policy.enabled,
                 periodMillis = policy.periodMillis,
                 now = now,
             )
-            val watchId = author_archiveQueries.getArchiveWatchIdByCreator(policy.creatorId).executeAsOne()
+            val watchId = author_archiveQueries.getArchiveWatchIdByCreator(rootCreatorId).executeAsOne()
             val existingSources = author_archiveQueries.getArchiveWatchSourceIds(watchId).executeAsList().toSet()
             (existingSources - policy.sourceIds).forEach { sourceId ->
                 author_archiveQueries.deleteArchiveWatchSource(watchId, sourceId)
@@ -208,8 +245,10 @@ class CreatorRepositoryImpl(
 
     override suspend fun getWatchPolicy(creatorId: Long): ArchiveWatchPolicy? {
         bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
+        val rootCreatorId = resolveActiveCreatorRootId(creatorId) ?: return null
         return handler.awaitOneOrNull {
-            author_archiveQueries.getArchiveWatchPolicyByCreator(creatorId) {
+            author_archiveQueries.getArchiveWatchPolicyByCreator(rootCreatorId) {
                     id,
                     enabled,
                     period,
@@ -735,65 +774,81 @@ class CreatorRepositoryImpl(
 
     override suspend fun upsertCreator(displayName: String, aliases: List<String>): Creator {
         bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
         val trimmedName = displayName.trim()
         val normalizedName = CreatorNameNormalizer.normalize(trimmedName)
-        require(normalizedName.isNotBlank()) { "Creator name must not be blank" }
+        require(trimmedName.isNotBlank()) { "Creator name must not be blank" }
         val now = clock()
-        return handler.await(inTransaction = true) {
-            val matches = author_archiveQueries
-                .getArchiveCreatorsByAlias(normalizedName, ::mapCreator)
-                .executeAsList()
-            check(matches.size <= 1) {
-                "Ambiguous creator identity for normalized alias '$normalizedName'; " +
-                    "explicit identity selection is required"
-            }
-            val creatorId = matches.singleOrNull()?.id ?: run {
-                author_archiveQueries.insertArchiveCreator(
-                    portableKey = portableKeyFactory(),
+        return exactIdentityMutationMutex.withLock {
+            handler.await(inTransaction = true) {
+                val creatorId = resolveOrCreateExactIdentity(
+                    displayName = trimmedName,
+                    normalizedName = normalizedName,
+                    needsReview = false,
+                    now = now,
+                    aliasSource = "PRIMARY",
+                    aliasEvidence = "creator display name",
+                    aliasManual = false,
+                )
+                author_archiveQueries.updateArchiveCreator(
                     displayName = trimmedName,
                     normalizedName = normalizedName,
                     sortName = trimmedName,
-                    createdAt = now,
                     lastModifiedAt = now,
+                    id = creatorId,
                 )
-                author_archiveQueries.selectArchiveLastInsertedRowId().executeAsOne()
+                (listOf(trimmedName) + aliases)
+                    .map(String::trim)
+                    .filter(String::isNotBlank)
+                    .distinct()
+                    .forEachIndexed { index, alias ->
+                        val exactAlias = alias.trim()
+                        val occupiedBy = author_archiveQueries
+                            .getArchiveCreatorIdByExactName(exactAlias)
+                            .executeAsOneOrNull()
+                        if (occupiedBy != null && occupiedBy != creatorId) {
+                            mergeCreatorIdentitiesRecord(occupiedBy, creatorId, now)
+                        }
+                        author_archiveQueries.upsertArchiveAlias(
+                            creatorId = creatorId,
+                            rawAlias = alias,
+                            normalizedAlias = CreatorNameNormalizer.normalize(alias),
+                            source = if (index == 0) "PRIMARY" else "LEGACY_COMPAT",
+                            evidence = if (index == 0) {
+                                "creator display name"
+                            } else {
+                                "CreatorRepository.upsertCreator alias"
+                            },
+                            confidence = 1.0,
+                            isManual = false,
+                            createdAt = now,
+                            lastModifiedAt = now,
+                        )
+                        registerExactName(
+                            exactAlias,
+                            creatorId,
+                            if (index == 0) "PRIMARY" else "LEGACY_COMPAT",
+                            now,
+                        )
+                    }
+                author_archiveQueries.getArchiveCreator(creatorId, ::mapCreator).executeAsOne()
             }
-            author_archiveQueries.updateArchiveCreator(
-                displayName = trimmedName,
-                normalizedName = normalizedName,
-                sortName = trimmedName,
-                lastModifiedAt = now,
-                id = creatorId,
-            )
-            (listOf(trimmedName) + aliases)
-                .map(String::trim)
-                .filter(String::isNotBlank)
-                .distinctBy(CreatorNameNormalizer::normalize)
-                .forEachIndexed { index, alias ->
-                    author_archiveQueries.upsertArchiveAlias(
-                        creatorId = creatorId,
-                        rawAlias = alias,
-                        normalizedAlias = CreatorNameNormalizer.normalize(alias),
-                        source = if (index == 0) "PRIMARY" else "LEGACY_COMPAT",
-                        evidence = if (index == 0) "creator display name" else "CreatorRepository.upsertCreator alias",
-                        confidence = 1.0,
-                        isManual = false,
-                        createdAt = now,
-                        lastModifiedAt = now,
-                    )
-                }
-            author_archiveQueries.getArchiveCreator(creatorId, ::mapCreator).executeAsOne()
         }
     }
 
     override suspend fun getCreator(id: Long): Creator? {
         bootstrap.awaitReady()
-        return handler.awaitOneOrNull { author_archiveQueries.getArchiveCreator(id, ::mapCreator) }
+        ensureExactIdentityInvariant()
+        val rootId = resolveActiveCreatorRootId(id) ?: return null
+        return handler.awaitOneOrNull { author_archiveQueries.getArchiveCreator(rootId, ::mapCreator) }
     }
 
     override fun getCreatorsAsFlow(): Flow<List<Creator>> {
         return handler.subscribeToList { author_archiveQueries.getArchiveCreators(::mapCreator) }
-            .onStart { bootstrap.awaitReady() }
+            .onStart {
+                bootstrap.awaitReady()
+                ensureExactIdentityInvariant()
+            }
     }
 
     override suspend fun indexLibraryManga(manga: Manga, mentions: List<CreatorMention>) {
@@ -802,6 +857,7 @@ class CreatorRepositoryImpl(
 
     override suspend fun indexLibraryMangaBatch(entries: List<CreatorLibraryIndexEntry>) {
         bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
         if (entries.isEmpty()) return
         handler.await(inTransaction = true) {
             val now = clock()
@@ -833,10 +889,11 @@ class CreatorRepositoryImpl(
         mention: CreatorMention,
     ): List<CreatorIdentityOption> {
         bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
         return handler.awaitList {
             author_archiveQueries.getArchiveCreatorIdentityOptions(
                 mangaId = mangaId,
-                normalizedAlias = mention.normalizedName,
+                nameText = mention.displayName.trim(),
                 mapper = ::mapCreatorIdentityOption,
             )
         }
@@ -848,8 +905,9 @@ class CreatorRepositoryImpl(
         creatorId: Long,
     ) {
         bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
         handler.await(inTransaction = true) {
-            bindMangaCreatorIdentity(manga, mention, creatorId, clock())
+            bindMangaCreatorIdentity(manga, mention, creatorId, clock(), "USER")
         }
     }
 
@@ -858,16 +916,17 @@ class CreatorRepositoryImpl(
         mention: CreatorMention,
     ): Long {
         bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
         return handler.await(inTransaction = true) {
             val now = clock()
-            val creatorId = createCreatorIdentity(
+            val creatorId = resolveOrCreateExactIdentity(
                 displayName = mention.displayName,
                 normalizedName = mention.normalizedName,
                 needsReview = false,
                 now = now,
-                aliasSource = "USER",
-                aliasEvidence = "explicit manga identity creation",
-                aliasManual = true,
+                aliasSource = "BIBLIOGRAPHY",
+                aliasEvidence = "NAME_EXACT",
+                aliasManual = false,
             )
             bindMangaCreatorIdentity(manga, mention, creatorId, now)
             creatorId
@@ -876,14 +935,19 @@ class CreatorRepositoryImpl(
 
     override suspend fun addManualCreatorAlias(creatorId: Long, alias: String) {
         bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
         val rawAlias = alias.trim()
         val normalizedAlias = CreatorNameNormalizer.normalize(rawAlias)
-        require(normalizedAlias.isNotBlank()) { "Creator alias must not be blank" }
+        require(rawAlias.isNotBlank()) { "Creator alias must not be blank" }
         handler.await(inTransaction = true) {
             val creator = author_archiveQueries.getArchiveCreatorIdentityRecord(creatorId).executeAsOneOrNull()
                 ?: error("Creator identity does not exist: $creatorId")
             check(creator.status == "ACTIVE") { "Creator identity is not active: $creatorId" }
             val now = clock()
+            val occupiedBy = author_archiveQueries.getArchiveCreatorIdByExactName(rawAlias).executeAsOneOrNull()
+            if (occupiedBy != null && occupiedBy != creatorId) {
+                mergeCreatorIdentitiesRecord(occupiedBy, creatorId, now)
+            }
             author_archiveQueries.upsertArchiveAlias(
                 creatorId = creatorId,
                 rawAlias = rawAlias,
@@ -895,6 +959,7 @@ class CreatorRepositoryImpl(
                 createdAt = now,
                 lastModifiedAt = now,
             )
+            registerExactName(rawAlias, creatorId, "USER_ALIAS", now)
         }
     }
 
@@ -908,83 +973,29 @@ class CreatorRepositoryImpl(
         val normalizedAlias = CreatorNameNormalizer.normalize(alias)
         require(normalizedAlias.isNotBlank()) { "Creator alias must not be blank" }
         handler.await(inTransaction = true) {
-            requireActiveIdentity(creatorId)
+            val creator = requireActiveIdentity(creatorId)
             author_archiveQueries.deleteArchiveManualAlias(creatorId, normalizedAlias)
+            val exactName = alias.trim()
+            val stillAccepted = creator.display_name == exactName ||
+                author_archiveQueries.getArchiveAliasesForCreatorIdentity(creatorId)
+                    .executeAsList().any { it.raw_alias == exactName }
+            if (!stillAccepted) {
+                author_archiveQueries.deleteArchiveIdentityName(exactName, creatorId)
+            }
         }
     }
 
     override suspend fun mergeCreatorIdentities(sourceCreatorId: Long, targetCreatorId: Long) {
+        mergeCreatorIdentities(setOf(sourceCreatorId), targetCreatorId)
+    }
+
+    override suspend fun mergeCreatorIdentities(sourceCreatorIds: Set<Long>, targetCreatorId: Long) {
         bootstrap.awaitReady()
-        require(sourceCreatorId != targetCreatorId) { "Cannot merge an identity into itself" }
+        ensureExactIdentityInvariant()
+        require(targetCreatorId !in sourceCreatorIds) { "Cannot merge an identity into itself" }
         handler.await(inTransaction = true) {
-            val source = requireActiveIdentity(sourceCreatorId)
-            val target = requireActiveIdentity(targetCreatorId)
             val now = clock()
-
-            author_archiveQueries.getArchiveAliasesForCreatorIdentity(
-                sourceCreatorId,
-            ).executeAsList().forEach { alias ->
-                author_archiveQueries.upsertArchiveAlias(
-                    creatorId = targetCreatorId,
-                    rawAlias = alias.raw_alias,
-                    normalizedAlias = alias.normalized_alias,
-                    source = alias.source,
-                    evidence = alias.evidence,
-                    confidence = alias.confidence,
-                    isManual = alias.is_manual,
-                    createdAt = alias.created_at,
-                    lastModifiedAt = maxOf(alias.last_modified_at, now),
-                )
-            }
-
-            author_archiveQueries.getArchiveMangaCreatorsForCreator(sourceCreatorId, ::mapMergeMangaRelation)
-                .executeAsList()
-                .forEach { relation ->
-                    val full = author_archiveQueries
-                        .getArchiveMangaLinksForIndex(relation.mangaId, ::mapIndexedRelation)
-                        .executeAsList()
-                        .single { it.creatorId == sourceCreatorId }
-                    upsertMangaRelation(relation.mangaId, targetCreatorId, full, now)
-                    author_archiveQueries.deleteArchiveMangaLink(relation.mangaId, sourceCreatorId)
-                }
-
-            author_archiveQueries
-                .getArchiveSourceWorkCreatorsForCreator(sourceCreatorId, ::mapMergeSourceRelation)
-                .executeAsList()
-                .forEach { relation ->
-                    val full = author_archiveQueries
-                        .getArchiveSourceWorkCreatorsForIndex(relation.sourceWorkId, ::mapIndexedSourceRelation)
-                        .executeAsList()
-                        .single { it.creatorId == sourceCreatorId }
-                    upsertSourceWorkRelation(relation.sourceWorkId, targetCreatorId, full, now)
-                    author_archiveQueries.deleteArchiveSourceWorkCreator(relation.sourceWorkId, sourceCreatorId)
-                }
-
-            author_archiveQueries.getArchiveCanonicalCreatorsForCreator(
-                sourceCreatorId,
-            ).executeAsList().forEach { relation ->
-                author_archiveQueries.upsertArchiveCanonicalCreator(
-                    workId = relation.work_id,
-                    creatorId = targetCreatorId,
-                    role = relation.role,
-                    creatorOrder = relation.creator_order,
-                    origin = relation.origin,
-                    evidence = relation.evidence,
-                )
-                author_archiveQueries.deleteArchiveCanonicalCreator(relation.work_id, sourceCreatorId)
-            }
-
-            mergeWatchArchive(sourceCreatorId, targetCreatorId, now)
-            author_archiveQueries.remapArchiveCreatorLanguageAssertions(
-                sourceSubjectKey = creatorSubjectKey(source.portable_key),
-                targetSubjectKey = creatorSubjectKey(target.portable_key),
-            )
-            author_archiveQueries.markArchiveCreatorMerged(
-                targetCreatorId = targetCreatorId,
-                lastModifiedAt = now,
-                sourceCreatorId = sourceCreatorId,
-            )
-            check(source.status == "ACTIVE")
+            sourceCreatorIds.sorted().forEach { mergeCreatorIdentitiesRecord(it, targetCreatorId, now) }
         }
     }
 
@@ -1000,9 +1011,13 @@ class CreatorRepositoryImpl(
         }
         val displayName = newDisplayName.trim()
         val normalizedName = CreatorNameNormalizer.normalize(displayName)
-        require(normalizedName.isNotBlank()) { "Split identity name must not be blank" }
+        require(displayName.isNotBlank()) { "Split identity name must not be blank" }
+        ensureExactIdentityInvariant()
         return handler.await(inTransaction = true) {
             requireActiveIdentity(sourceCreatorId)
+            check(author_archiveQueries.getArchiveCreatorIdByExactName(displayName).executeAsOneOrNull() == null) {
+                "Exact creator name is already registered: $displayName"
+            }
             val now = clock()
             val targetCreatorId = createCreatorIdentity(
                 displayName = displayName,
@@ -1105,6 +1120,12 @@ class CreatorRepositoryImpl(
         bootstrap.awaitReady()
         val now = clock()
         handler.await {
+            val before = author_archiveQueries.getArchiveMangaLink(mangaId, creatorId).executeAsOneOrNull()
+            if (before != null && before.role == role.name && before.origin == "USER" &&
+                before.source_text == sourceText && before.confidence == confidence && before.evidence == evidence
+            ) {
+                return@await
+            }
             author_archiveQueries.upsertArchiveMangaLink(
                 mangaId = mangaId,
                 creatorId = creatorId,
@@ -1154,15 +1175,18 @@ class CreatorRepositoryImpl(
         syncContext: SyncMutationContext,
     ): CreatorWatch {
         bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
+        val rootCreatorId = resolveActiveCreatorRootId(creatorId)
+            ?: error("Creator identity does not exist: $creatorId")
         val now = clock()
         return handler.await(inTransaction = true) {
             author_archiveQueries.upsertArchiveWatch(
-                creatorId = creatorId,
+                creatorId = rootCreatorId,
                 periodMillis = DEFAULT_WATCH_PERIOD_MILLIS,
                 createdAt = now,
                 lastModifiedAt = now,
             )
-            val watchId = author_archiveQueries.getArchiveWatchIdByCreator(creatorId).executeAsOne()
+            val watchId = author_archiveQueries.getArchiveWatchIdByCreator(rootCreatorId).executeAsOne()
             val existingSourceIds = author_archiveQueries.getArchiveWatchSourceIds(watchId).executeAsList()
             val requestedSourceIds = sourceIds?.distinct() ?: existingSourceIds
             (existingSourceIds - requestedSourceIds.toSet()).forEach { sourceId ->
@@ -1196,18 +1220,20 @@ class CreatorRepositoryImpl(
             }
             val watch = author_archiveQueries.getArchiveFollowedCreators(::mapCreatorWatch)
                 .executeAsList()
-                .first { it.creatorId == creatorId }
-            appendFollowOperation(creatorId, followed = true, syncContext, now)
+                .first { it.creatorId == rootCreatorId }
+            appendFollowOperation(rootCreatorId, followed = true, syncContext, now)
             watch
         }
     }
 
     override suspend fun unfollowCreator(creatorId: Long, syncContext: SyncMutationContext) {
         bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
+        val rootCreatorId = resolveActiveCreatorRootId(creatorId) ?: return
         val now = clock()
         handler.await(inTransaction = true) {
-            author_archiveQueries.unfollowArchiveCreator(now, creatorId)
-            appendFollowOperation(creatorId, followed = false, syncContext, now)
+            author_archiveQueries.unfollowArchiveCreator(now, rootCreatorId)
+            appendFollowOperation(rootCreatorId, followed = false, syncContext, now)
         }
     }
 
@@ -1247,12 +1273,14 @@ class CreatorRepositoryImpl(
 
     override suspend fun updateWatchCheckResult(creatorId: Long, checkedAt: Long, success: Boolean, error: String?) {
         bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
+        val rootCreatorId = resolveActiveCreatorRootId(creatorId) ?: return
         handler.await {
             author_archiveQueries.updateArchiveWatchCheckResult(
                 checkedAt = checkedAt,
                 success = success,
                 error = error,
-                creatorId = creatorId,
+                creatorId = rootCreatorId,
             )
         }
     }
@@ -1832,74 +1860,82 @@ class CreatorRepositoryImpl(
         entries: List<CreatorLibraryIndexEntry>,
         now: Long,
     ) {
-        if (entries.isEmpty()) return
-        author_archiveQueries.createArchiveIndexWorkBuffer()
-        author_archiveQueries.createArchiveIndexMentionBuffer()
-        author_archiveQueries.clearArchiveIndexMentionBuffer()
-        author_archiveQueries.clearArchiveIndexWorkBuffer()
-        val workPayload = mutableListOf<String>()
-        val mentionPayload = mutableListOf<String>()
         entries.forEach { entry ->
             val manga = entry.manga
             val title = manga.title.ifBlank { "Untitled ${manga.id}" }
-            val normalizedTitle = CreatorNameNormalizer.normalize(title)
-            val mentions = entry.mentions.distinctBy(CreatorMention::normalizedName)
-            if (mentions.isEmpty()) {
-                workPayload += archiveIndexPayloadRow(
-                    manga.id.toString(),
-                    normalizedTitle,
-                    manga.archiveStableUrl(),
-                    now.toString(),
-                )
-            }
-            mentions.forEach { mention ->
-                mentionPayload += archiveIndexPayloadRow(
-                    manga.id.toString(),
-                    normalizedTitle,
-                    manga.archiveStableUrl(),
-                    mention.displayName.trim(),
-                    mention.normalizedName,
-                    mention.role.name,
-                    mention.order.toString(),
-                    mention.sourceTexts.distinct().joinToString(" | "),
-                    portableKeyFactory(),
-                    now.toString(),
-                )
-            }
-        }
-        if (workPayload.isNotEmpty()) {
-            author_archiveQueries.insertArchiveIndexWorkPayload(workPayload.joinToString(RECORD_SEPARATOR.toString()))
-        }
-        if (mentionPayload.isNotEmpty()) {
-            author_archiveQueries.insertArchiveIndexMentionPayload(
-                mentionPayload.joinToString(RECORD_SEPARATOR.toString()),
+            val sourceWork = upsertSourceWorkRecord(
+                sourceId = manga.source,
+                stableSourceUrl = manga.archiveStableUrl(),
+                mangaId = manga.id,
+                title = title,
+                authorText = manga.author,
+                artistText = manga.artist,
+                thumbnailUrl = manga.thumbnailUrl,
+                detailsFetchedAt = manga.lastModifiedAt.takeIf { it > 0L },
+                reviewState = null,
+                now = now,
             )
-        }
-        author_archiveQueries.resolveArchiveIndexUniqueCurrentBindings()
-        author_archiveQueries.resolveArchiveIndexProtectedCurrentBindings()
-        author_archiveQueries.markArchiveIndexAmbiguousExistingCreators()
-        author_archiveQueries.markArchiveIndexNewIdentities()
-        author_archiveQueries.markArchiveIndexNewIdentityReviews()
-        author_archiveQueries.insertArchiveIndexCreators()
-        author_archiveQueries.resolveArchiveIndexNewCreatorIds()
-        author_archiveQueries.insertArchiveIndexAliases()
-        author_archiveQueries.detachStaleArchiveIndexSourceWorks()
-        author_archiveQueries.upsertArchiveIndexSourceWorks()
-        author_archiveQueries.upsertArchiveIndexMangaLinks()
-        author_archiveQueries.upsertArchiveIndexSourceWorkCreators()
-        author_archiveQueries.deleteStaleArchiveIndexMangaLinks()
-        author_archiveQueries.deleteStaleArchiveIndexSourceWorkCreators()
-        author_archiveQueries.clearArchiveIndexMentionBuffer()
-        author_archiveQueries.clearArchiveIndexWorkBuffer()
-    }
-
-    private fun archiveIndexPayloadRow(vararg fields: String): String {
-        return fields.joinToString(LIST_SEPARATOR.toString()) { field ->
-            field
-                .replace("%", "%25")
-                .replace("\u0000", "%00")
-                .replace(RECORD_SEPARATOR.toString(), "%1E")
-                .replace(LIST_SEPARATOR.toString(), "%1F")
+            val resolvedMentions = entry.mentions
+                .distinctBy { it.displayName.trim() }
+                .map { mention ->
+                    val exactName = mention.displayName.trim()
+                    val creatorId = resolveOrCreateExactIdentity(
+                        displayName = exactName,
+                        normalizedName = mention.normalizedName,
+                        needsReview = false,
+                        now = now,
+                        aliasSource = "BIBLIOGRAPHY",
+                        aliasEvidence = "library-index:name-exact",
+                        aliasManual = false,
+                    )
+                    creatorId to mention
+                }
+                .groupBy({ it.first }, { it.second })
+            val desiredCreatorIds = resolvedMentions.map { (creatorId, mentions) ->
+                val role = mentions.map { it.role.name }.reduce(::unionCreatorRole)
+                val sourceText = mentions.flatMap { it.sourceTexts }.distinct().joinToString(" | ")
+                val order = mentions.minOf { it.order }
+                author_archiveQueries.upsertArchiveMangaLink(
+                    mangaId = manga.id,
+                    creatorId = creatorId,
+                    role = role,
+                    creatorOrder = order,
+                    origin = "AUTOMATIC",
+                    sourceText = sourceText,
+                    confidence = 1.0,
+                    evidence = "library-index:name-exact",
+                    createdAt = now,
+                    lastModifiedAt = now,
+                )
+                author_archiveQueries.upsertArchiveSourceWorkCreator(
+                    sourceWorkId = sourceWork.sourceWorkId,
+                    creatorId = creatorId,
+                    role = role,
+                    creatorOrder = order,
+                    origin = "AUTOMATIC",
+                    verification = "VERIFIED",
+                    sourceText = sourceText,
+                    confidence = 1.0,
+                    evidence = "library-index:name-exact",
+                    createdAt = now,
+                    lastModifiedAt = now,
+                )
+                creatorId
+            }
+                .toSet()
+            author_archiveQueries.getArchiveMangaLinksForIndex(manga.id, ::mapIndexedRelation)
+                .executeAsList()
+                .filter { it.origin in AUTOMATIC_RELATION_ORIGINS && it.creatorId !in desiredCreatorIds }
+                .forEach { author_archiveQueries.deleteAutomaticArchiveMangaLink(manga.id, it.creatorId) }
+            author_archiveQueries.getArchiveSourceWorkCreatorsForIndex(
+                sourceWork.sourceWorkId,
+                ::mapIndexedSourceRelation,
+            )
+                .executeAsList()
+                .filter { it.origin in AUTOMATIC_RELATION_ORIGINS && it.creatorId !in desiredCreatorIds }
+                .forEach {
+                    author_archiveQueries.deleteAutomaticArchiveSourceWorkCreator(sourceWork.sourceWorkId, it.creatorId)
+                }
         }
     }
 
@@ -1928,8 +1964,29 @@ class CreatorRepositoryImpl(
         aliasEvidence: String,
         aliasManual: Boolean,
     ): Long {
+        return resolveOrCreateExactIdentity(
+            displayName,
+            normalizedName,
+            needsReview,
+            now,
+            aliasSource,
+            aliasEvidence,
+            aliasManual,
+        )
+    }
+
+    private fun Database.resolveOrCreateExactIdentity(
+        displayName: String,
+        normalizedName: String,
+        needsReview: Boolean,
+        now: Long,
+        aliasSource: String,
+        aliasEvidence: String,
+        aliasManual: Boolean,
+    ): Long {
         val trimmedName = displayName.trim()
-        require(normalizedName.isNotBlank()) { "Creator identity name must not be blank" }
+        require(trimmedName.isNotBlank()) { "Creator identity name must not be blank" }
+        author_archiveQueries.getArchiveCreatorIdByExactName(trimmedName).executeAsOneOrNull()?.let { return it }
         author_archiveQueries.insertArchiveCreatorForReview(
             portableKey = portableKeyFactory(),
             displayName = trimmedName,
@@ -1951,7 +2008,182 @@ class CreatorRepositoryImpl(
             createdAt = now,
             lastModifiedAt = now,
         )
+        registerExactName(trimmedName, creatorId, aliasSource, now)
+        identityMutationHook()
         return creatorId
+    }
+
+    private fun Database.registerExactName(name: String, creatorId: Long, origin: String, now: Long) {
+        val existing = author_archiveQueries.getArchiveCreatorIdByExactName(name).executeAsOneOrNull()
+        check(existing == null || existing == creatorId) { "Exact creator name is already registered: $name" }
+        if (existing == null) {
+            author_archiveQueries.registerArchiveIdentityName(name, creatorId, origin, now, now)
+        }
+    }
+
+    private suspend fun ensureExactIdentityInvariant() {
+        if (exactIdentityReady) return
+        exactIdentityReadinessMutex.withLock {
+            if (exactIdentityReady) return@withLock
+            if (handler.awaitOneOrNull {
+                    author_archiveQueries.getArchiveIdentityMigrationState(EXACT_IDENTITY_MIGRATION)
+                } == "COMPLETED"
+            ) {
+                exactIdentityReady = true
+                return@withLock
+            }
+            val components = handler.await(inTransaction = true) {
+                val redirects = author_archiveQueries.getArchiveCreatorRedirects()
+                    .executeAsList()
+                    .associateBy { it._id }
+                redirects.values.filter { it.status == "MERGED" }.forEach { start ->
+                    val visited = mutableSetOf<Long>()
+                    var current = start
+                    while (current.status == "MERGED") {
+                        check(visited.add(current._id)) { "Creator identity redirect cycle at ${current._id}" }
+                        val targetId = current.merged_into_creator_id
+                            ?: error("Merged creator identity has no target: ${current._id}")
+                        current = redirects[targetId]
+                            ?: error("Creator identity redirect target is missing: ${current._id} -> $targetId")
+                    }
+                    check(current.status == "ACTIVE") {
+                        "Creator identity redirect does not terminate at an active root: ${start._id}"
+                    }
+                }
+                val creators = author_archiveQueries.getArchiveCreators(::mapCreator).executeAsList()
+                val parent = creators.associate { it.id to it.id }.toMutableMap()
+                fun root(id: Long): Long {
+                    var current = id
+                    while (parent.getValue(current) != current) current = parent.getValue(current)
+                    var path = id
+                    while (parent.getValue(path) != path) {
+                        val next = parent.getValue(path)
+                        parent[path] = current
+                        path = next
+                    }
+                    return current
+                }
+                fun union(left: Long, right: Long) {
+                    val leftRoot = root(left)
+                    val rightRoot = root(right)
+                    if (leftRoot != rightRoot) parent[rightRoot] = leftRoot
+                }
+                val ownerByName = mutableMapOf<String, Long>()
+                val acceptedNames = creators.associate { creator ->
+                    creator.id to (
+                        listOf(creator.displayName) +
+                            author_archiveQueries.getArchiveAliasesForCreatorIdentity(creator.id)
+                                .executeAsList().map { it.raw_alias } +
+                            author_archiveQueries.getArchiveIdentityNamesForCreator(creator.id).executeAsList()
+                        ).map(String::trim).filter(String::isNotBlank).distinct()
+                }
+                creators.forEach { creator ->
+                    acceptedNames.getValue(creator.id).forEach { name ->
+                        ownerByName.putIfAbsent(name, creator.id)?.let { union(it, creator.id) }
+                    }
+                }
+                creators.groupBy { root(it.id) }.values.map { component ->
+                    val target = component.minBy { creator ->
+                        author_archiveQueries.getArchiveCreatorIdentityRecord(creator.id).executeAsOne().portable_key
+                    }
+                    ExactIdentityMigrationComponent(
+                        key = component.map { it.id }.sorted().joinToString(","),
+                        targetId = target.id,
+                        sourceIds = component.map { it.id }.filter { it != target.id }.sorted(),
+                        acceptedNames = component.flatMap { acceptedNames.getValue(it.id) }.distinct().sorted(),
+                    )
+                }.filterNot { component ->
+                    component.sourceIds.isEmpty() && component.acceptedNames.all { name ->
+                        author_archiveQueries.getArchiveCreatorIdByExactName(name).executeAsOneOrNull() ==
+                            component.targetId
+                    }
+                }
+            }
+            handler.await(inTransaction = true) {
+                author_archiveQueries.upsertArchiveIdentityMigration(
+                    EXACT_IDENTITY_MIGRATION,
+                    "RUNNING",
+                    null,
+                    clock(),
+                )
+            }
+            components.forEach { component ->
+                val state = handler.awaitOneOrNull {
+                    author_archiveQueries.getArchiveIdentityMigrationComponentState(
+                        EXACT_IDENTITY_MIGRATION,
+                        component.key,
+                    )
+                }
+                if (state == "COMPLETED") return@forEach
+                handler.await(inTransaction = true) {
+                    author_archiveQueries.upsertArchiveIdentityMigrationComponent(
+                        EXACT_IDENTITY_MIGRATION,
+                        component.key,
+                        component.targetId,
+                        component.sourceIds.joinToString(","),
+                        component.acceptedNames.joinToString("\u001f"),
+                        "PREPARED",
+                        clock(),
+                    )
+                }
+                handler.await(inTransaction = true) {
+                    val now = clock()
+                    author_archiveQueries.upsertArchiveIdentityMigrationComponent(
+                        EXACT_IDENTITY_MIGRATION,
+                        component.key,
+                        component.targetId,
+                        component.sourceIds.joinToString(","),
+                        component.acceptedNames.joinToString("\u001f"),
+                        "RUNNING",
+                        now,
+                    )
+                    val recovery = captureCreatorIdentityRecovery(component.sourceIds + component.targetId)
+                    author_archiveQueries.setArchiveIdentityRecoveryGraph(
+                        recovery,
+                        EXACT_IDENTITY_MIGRATION,
+                        component.key,
+                    )
+                    component.sourceIds.forEach { mergeCreatorIdentitiesRecord(it, component.targetId, now) }
+                    identityMutationHook()
+                    component.acceptedNames.forEach {
+                        registerExactName(it, component.targetId, "HISTORICAL_MIGRATION", now)
+                    }
+                    author_archiveQueries.upsertArchiveIdentityMigrationComponent(
+                        EXACT_IDENTITY_MIGRATION,
+                        component.key,
+                        component.targetId,
+                        component.sourceIds.joinToString(","),
+                        component.acceptedNames.joinToString("\u001f"),
+                        "COMPLETED",
+                        now,
+                    )
+                }
+            }
+            handler.await(inTransaction = true) {
+                author_archiveQueries.upsertArchiveIdentityMigration(
+                    EXACT_IDENTITY_MIGRATION,
+                    "COMPLETED",
+                    null,
+                    clock(),
+                )
+            }
+            exactIdentityReady = true
+        }
+    }
+
+    private suspend fun resolveActiveCreatorRootId(creatorId: Long): Long? = handler.awaitOneOrNull {
+        author_archiveQueries.resolveArchiveCreatorRootId(creatorId)
+    }
+
+    private fun Database.mergeCreatorIdentitiesRecord(sourceCreatorId: Long, targetCreatorId: Long, now: Long) {
+        mergeCreatorIdentityGraph(sourceCreatorId, targetCreatorId, now)
+    }
+
+    private fun unionCreatorRole(current: String?, incoming: String): String = when {
+        current == null || current == "UNKNOWN" -> incoming
+        incoming == "UNKNOWN" || current == incoming -> current
+        current == "BOTH" || incoming == "BOTH" -> "BOTH"
+        else -> "BOTH"
     }
 
     private fun Database.bindMangaCreatorIdentity(
@@ -1959,8 +2191,13 @@ class CreatorRepositoryImpl(
         mention: CreatorMention,
         creatorId: Long,
         now: Long,
+        origin: String = "AUTOMATIC",
     ) {
-        requireActiveIdentity(creatorId)
+        val exactName = mention.displayName.trim()
+        val effectiveCreatorId = author_archiveQueries.getArchiveCreatorIdByExactName(exactName)
+            .executeAsOneOrNull()
+            ?: creatorId.also { registerExactName(exactName, it, "BIBLIOGRAPHY", now) }
+        requireActiveIdentity(effectiveCreatorId)
         val sourceWork = upsertSourceWorkRecord(
             sourceId = manga.source,
             stableSourceUrl = manga.archiveStableUrl(),
@@ -1973,8 +2210,8 @@ class CreatorRepositoryImpl(
             reviewState = null,
             now = now,
         )
-        author_archiveQueries.getArchiveBoundCreatorIdsByAlias(manga.id, mention.normalizedName).executeAsList()
-            .filter { it != creatorId }
+        author_archiveQueries.getArchiveBoundCreatorIdsByAlias(manga.id, exactName).executeAsList()
+            .filter { it != effectiveCreatorId }
             .forEach { previousCreatorId ->
                 author_archiveQueries.deleteArchiveMangaLink(manga.id, previousCreatorId)
                 author_archiveQueries.deleteArchiveSourceWorkCreator(
@@ -1983,39 +2220,45 @@ class CreatorRepositoryImpl(
                 )
             }
         author_archiveQueries.upsertArchiveAlias(
-            creatorId = creatorId,
+            creatorId = effectiveCreatorId,
             rawAlias = mention.displayName,
             normalizedAlias = mention.normalizedName,
             source = "BIBLIOGRAPHY",
-            evidence = "explicit manga identity binding",
+            evidence = "NAME_EXACT",
             confidence = 1.0,
             isManual = false,
             createdAt = now,
             lastModifiedAt = now,
         )
-        val sourceText = mention.sourceTexts.joinToString(" | ")
+        val sameRootMentions = tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga().await(manga)
+            .filter {
+                author_archiveQueries.getArchiveCreatorIdByExactName(it.displayName).executeAsOneOrNull() ==
+                    effectiveCreatorId
+            }.ifEmpty { listOf(mention) }
+        val role = sameRootMentions.map { it.role.name }.reduce(::unionCreatorRole)
+        val sourceText = sameRootMentions.flatMap { it.sourceTexts }.distinct().joinToString(" | ")
         author_archiveQueries.upsertArchiveMangaLink(
             mangaId = manga.id,
-            creatorId = creatorId,
-            role = mention.role.name,
-            creatorOrder = mention.order,
-            origin = "USER",
+            creatorId = effectiveCreatorId,
+            role = role,
+            creatorOrder = sameRootMentions.minOf { it.order },
+            origin = origin,
             sourceText = sourceText,
             confidence = 1.0,
-            evidence = "explicit manga identity binding",
+            evidence = "NAME_EXACT",
             createdAt = now,
             lastModifiedAt = now,
         )
         author_archiveQueries.upsertArchiveSourceWorkCreator(
             sourceWorkId = sourceWork.sourceWorkId,
-            creatorId = creatorId,
-            role = mention.role.name,
-            creatorOrder = mention.order,
-            origin = "USER",
+            creatorId = effectiveCreatorId,
+            role = role,
+            creatorOrder = sameRootMentions.minOf { it.order },
+            origin = origin,
             verification = "VERIFIED",
             sourceText = sourceText,
             confidence = 1.0,
-            evidence = "explicit manga identity binding",
+            evidence = "NAME_EXACT",
             createdAt = now,
             lastModifiedAt = now,
         )
@@ -2346,9 +2589,7 @@ class CreatorRepositoryImpl(
         displayName = displayName,
         normalizedName = normalizedName,
         sortName = sortName,
-        aliases = decodeHexStrings(aliases).filter {
-            CreatorNameNormalizer.normalize(it) != normalizedName
-        },
+        aliases = decodeHexStrings(aliases).filter { it != displayName },
         createdAt = createdAt,
         lastModifiedAt = lastModifiedAt,
     )
@@ -2722,13 +2963,23 @@ class CreatorRepositoryImpl(
         val assertedAt: Long,
     )
 
+    private data class ExactIdentityMigrationComponent(
+        val key: String,
+        val targetId: Long,
+        val sourceIds: List<Long>,
+        val acceptedNames: List<String>,
+    )
+
     private companion object {
+        const val EXACT_IDENTITY_MIGRATION = "global-exact-name-v1"
         const val DEFAULT_WATCH_PERIOD_MILLIS = 86_400_000L
         const val LEGACY_COMPAT_ALGORITHM_VERSION = "creator-archive-v2-compat-1"
         const val RECORD_SEPARATOR = '\u001E'
         const val LIST_SEPARATOR = '\u001F'
         const val INDEX_EVIDENCE = "library bibliography parser v1"
         val AUTOMATIC_RELATION_ORIGINS = setOf("AUTOMATIC", "MIGRATION")
+        val exactIdentityReadinessMutex = Mutex()
+        val exactIdentityMutationMutex = Mutex()
     }
 }
 

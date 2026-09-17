@@ -73,6 +73,18 @@ class CreatorLibraryIndexRepositoryTest {
     }
 
     @Test
+    fun `ordinary metadata refresh replaces BOTH with AUTHOR for manga and source work`() = runBlocking<Unit> {
+        val original = manga(id = 1L, author = "ONE", artist = "ONE")
+        seedManga(original)
+        repository.indexLibraryManga(original, extract.await(original))
+        queryLong("SELECT COUNT(*) FROM author_archive_manga_links WHERE role = 'BOTH'") shouldBe 1L
+        val refreshed = original.copy(artist = null)
+        repository.indexLibraryManga(refreshed, extract.await(refreshed))
+        queryLong("SELECT COUNT(*) FROM author_archive_manga_links WHERE role = 'AUTHOR'") shouldBe 1L
+        queryLong("SELECT COUNT(*) FROM author_archive_source_work_creators WHERE role = 'AUTHOR'") shouldBe 1L
+    }
+
+    @Test
     fun `library backfill splits people folds overlap and is idempotent`() {
         runBlocking {
             val manga = manga(
@@ -127,29 +139,67 @@ class CreatorLibraryIndexRepositoryTest {
     }
 
     @Test
-    fun `ambiguous same name creates one review identity and never silently picks an existing person`() {
+    fun `historical exact same name roots converge before indexing`() {
         runBlocking {
             seedIdentity(1L, "identity-a", "Same")
             seedIdentity(2L, "identity-b", "Same")
-            val manga = manga(id = 3L, author = "Ｓａｍｅ", artist = null)
+            val manga = manga(id = 3L, author = "Same", artist = null)
             seedManga(manga)
 
             repository.indexLibraryManga(manga, extract.await(manga))
             repository.indexLibraryManga(manga, extract.await(manga))
 
             val boundId = queryLong("SELECT creator_id FROM author_archive_manga_links WHERE manga_id = 3")
-            (boundId > 2L) shouldBe true
-            queryLong("SELECT needs_review FROM author_archive_creators WHERE _id = $boundId") shouldBe 1L
-            queryLong("SELECT COUNT(*) FROM author_archive_creators") shouldBe 3L
+            queryLong("SELECT COUNT(*) FROM author_archive_creators WHERE status = 'ACTIVE'") shouldBe 1L
+            queryLong("SELECT COUNT(*) FROM author_archive_creators WHERE status = 'MERGED'") shouldBe 1L
+            queryLong("SELECT COUNT(*) FROM author_archive_identity_names WHERE name_text = 'Same'") shouldBe 1L
 
             val options = repository.getCreatorIdentityOptions(3L, extract.await(manga).single())
-            options.size shouldBe 3
-            options.single { it.currentlyBound }.id shouldBe boundId
+            options.single().id shouldBe boundId
         }
     }
 
     @Test
-    fun `same normalized name on different manga stays as distinct reviewable identities`() {
+    fun `transitive historical names converge idempotently and survive repository restart`() = runBlocking<Unit> {
+        seedIdentity(1L, "identity-c", "First")
+        seedIdentity(2L, "identity-a", "Second")
+        seedIdentity(3L, "identity-b", "Third")
+        executeSql(
+            "INSERT INTO author_archive_aliases(creator_id, raw_alias, normalized_alias, source, evidence, " +
+                "confidence, is_manual, created_at, last_modified_at) VALUES " +
+                "(1, 'Bridge A', 'bridge a', 'USER', 'fixture', 1, 1, 1, 1), " +
+                "(2, 'Bridge A', 'bridge a', 'USER', 'fixture', 1, 1, 1, 1), " +
+                "(2, 'Bridge B', 'bridge b', 'USER', 'fixture', 1, 1, 1, 1), " +
+                "(3, 'Bridge B', 'bridge b', 'USER', 'fixture', 1, 1, 1, 1)",
+        )
+
+        repository.getCreatorsAsFlow().first().single().id shouldBe 2L
+        val restarted = CreatorRepositoryImpl(handler, clock = { 200L }, portableKeyFactory = sequentialKeys())
+        restarted.resolveCreatorIdByExactName("First") shouldBe 2L
+        restarted.resolveCreatorIdByExactName("Third") shouldBe 2L
+
+        queryLong("SELECT COUNT(*) FROM author_archive_creators WHERE status = 'ACTIVE'") shouldBe 1L
+        queryLong("SELECT COUNT(*) FROM author_archive_creators WHERE status = 'MERGED'") shouldBe 2L
+        queryLong("SELECT COUNT(*) FROM author_archive_identity_names") shouldBe 5L
+        queryStrings("SELECT state FROM author_archive_identity_migrations")
+            .shouldContainExactly("COMPLETED")
+    }
+
+    @Test
+    fun `corrupt redirect cycle fails closed before creator access`() {
+        seedIdentity(1L, "identity-a", "First")
+        seedIdentity(2L, "identity-b", "Second")
+        executeSql("UPDATE author_archive_creators SET status = 'MERGED', merged_into_creator_id = 2 WHERE _id = 1")
+        executeSql("UPDATE author_archive_creators SET status = 'MERGED', merged_into_creator_id = 1 WHERE _id = 2")
+
+        shouldThrow<IllegalStateException> { runBlocking { repository.getCreatorsAsFlow().first() } }
+
+        queryLong("SELECT COUNT(*) FROM author_archive_identity_names") shouldBe 0L
+        queryLong("SELECT COUNT(*) FROM author_archive_identity_migrations") shouldBe 0L
+    }
+
+    @Test
+    fun `exact comparison keeps width and case variants distinct`() {
         runBlocking {
             val first = manga(id = 30L, author = "Same", artist = null)
             val second = manga(id = 31L, author = "Ｓａｍｅ", artist = null)
@@ -165,9 +215,25 @@ class CreatorLibraryIndexRepositoryTest {
             queryLong(
                 "SELECT COUNT(DISTINCT creator_id) FROM author_archive_manga_links WHERE manga_id IN (30, 31)",
             ) shouldBe 2L
-            queryLong(
-                "SELECT COUNT(*) FROM author_archive_creators WHERE normalized_name = 'same' AND needs_review = 1",
-            ) shouldBe 2L
+            queryStrings("SELECT name_text FROM author_archive_identity_names ORDER BY name_text")
+                .shouldContainExactly("Same", "Ｓａｍｅ")
+        }
+    }
+
+    @Test
+    fun `same exact name across sources reuses one root`() {
+        runBlocking {
+            val first = manga(id = 33L, author = "冈本伦", artist = null).copy(source = 1L, url = "/a")
+            val second = manga(id = 34L, author = "冈本伦", artist = null).copy(source = 9L, url = "/b")
+            seedManga(first)
+            seedManga(second)
+
+            repository.indexLibraryManga(first, extract.await(first))
+            repository.indexLibraryManga(second, extract.await(second))
+
+            queryLong("SELECT COUNT(*) FROM author_archive_creators WHERE status = 'ACTIVE'") shouldBe 1L
+            queryLong("SELECT COUNT(DISTINCT creator_id) FROM author_archive_manga_links") shouldBe 1L
+            queryLong("SELECT COUNT(*) FROM author_archive_manga_links") shouldBe 2L
         }
     }
 
@@ -211,7 +277,7 @@ class CreatorLibraryIndexRepositoryTest {
     }
 
     @Test
-    fun `explicit identity selection replaces prior user and restore bindings for the same mention`() {
+    fun `exact name owner cannot be reassigned by an obsolete identity selection`() {
         runBlocking {
             seedIdentity(1L, "identity-a", "Same")
             seedIdentity(2L, "identity-b", "Same")
@@ -233,12 +299,12 @@ class CreatorLibraryIndexRepositoryTest {
             queryStrings(
                 "SELECT creator_id || ':' || origin FROM author_archive_manga_links " +
                     "WHERE manga_id IN (34, 35) ORDER BY manga_id",
-            ).shouldContainExactly("2:USER", "2:USER")
+            ).shouldContainExactly("1:USER", "1:USER")
             queryStrings(
                 "SELECT SWC.creator_id || ':' || SWC.origin FROM author_archive_source_work_creators SWC " +
                     "JOIN author_archive_source_works SW ON SW._id = SWC.source_work_id " +
                     "WHERE SW.manga_id IN (34, 35) ORDER BY SW.manga_id",
-            ).shouldContainExactly("2:USER", "2:USER")
+            ).shouldContainExactly("1:USER", "1:USER")
         }
     }
 
@@ -307,7 +373,7 @@ class CreatorLibraryIndexRepositoryTest {
 
             repository.mergeCreatorIdentities(sourceCreatorId = sourceId, targetCreatorId = targetId)
 
-            repository.getCreator(sourceId) shouldBe null
+            repository.getCreator(sourceId)!!.id shouldBe targetId
             repository.getMangaCreatorsForCreator(targetId).map { it.mangaId }.sorted()
                 .shouldContainExactly(5L, 6L)
             repository.getFollowedCreatorsAsFlow().first().single().let { watch ->
@@ -324,6 +390,51 @@ class CreatorLibraryIndexRepositoryTest {
                     "WHERE _id = $sourceId AND status = 'MERGED' AND merged_into_creator_id = $targetId",
             ) shouldBe 1L
         }
+    }
+
+    @Test
+    fun `merge preserves author and artist role union on the same work`() = runBlocking<Unit> {
+        val work = manga(id = 61L, author = "Author Name", artist = "Artist Name")
+        seedManga(work)
+        val mentions = extract.await(work)
+        val authorId = repository.createAndBindMangaCreatorIdentity(work, mentions[0])
+        val artistId = repository.createAndBindMangaCreatorIdentity(work, mentions[1])
+        driver.execute(
+            null,
+            "INSERT INTO author_archive_canonical_works(portable_key, primary_title, normalized_title, status, " +
+                "created_at, last_modified_at) VALUES " +
+                "('role-union-work', 'Role union', 'role union', 'ACTIVE', 1, 1)",
+            0,
+        )
+        val canonicalWorkId = queryLong(
+            "SELECT _id FROM author_archive_canonical_works WHERE portable_key = 'role-union-work'",
+        )
+        driver.execute(
+            null,
+            "INSERT INTO author_archive_canonical_creators(work_id, creator_id, role, creator_order, origin, " +
+                "evidence) VALUES ($canonicalWorkId, $authorId, 'AUTHOR', 0, 'USER', 'author'), " +
+                "($canonicalWorkId, $artistId, 'ARTIST', 1, 'RESTORE', 'artist')",
+            0,
+        )
+
+        repository.mergeCreatorIdentities(artistId, authorId)
+
+        queryStrings("SELECT role FROM author_archive_manga_links WHERE manga_id = 61")
+            .shouldContainExactly("BOTH")
+        queryStrings(
+            "SELECT role FROM author_archive_source_work_creators " +
+                "WHERE source_work_id = (SELECT _id FROM author_archive_source_works WHERE manga_id = 61)",
+        ).shouldContainExactly("BOTH")
+        queryStrings("SELECT role FROM author_archive_canonical_creators WHERE work_id = $canonicalWorkId")
+            .shouldContainExactly("BOTH")
+        queryStrings("SELECT author || ':' || artist FROM mangas WHERE _id = 61")
+            .shouldContainExactly("Author Name:Artist Name")
+        queryStrings("SELECT author_text || ':' || artist_text FROM author_archive_source_works WHERE manga_id = 61")
+            .shouldContainExactly("Author Name:Artist Name")
+        queryStrings(
+            "SELECT origin || ':' || evidence FROM author_archive_canonical_creators WHERE work_id = $canonicalWorkId",
+        )
+            .shouldContainExactly("USER:author")
     }
 
     @Test
@@ -416,7 +527,7 @@ class CreatorLibraryIndexRepositoryTest {
     }
 
     @Test
-    fun `split moves selected bindings to a distinct same name identity and copies follow policy`() {
+    fun `split rejects recreating an exact name already owned by the source root`() {
         runBlocking {
             val first = manga(id = 7L, author = "Same", artist = null)
             val second = manga(id = 8L, author = "Same", artist = null)
@@ -425,28 +536,17 @@ class CreatorLibraryIndexRepositoryTest {
             repository.indexLibraryManga(first, extract.await(first))
             repository.indexLibraryManga(second, extract.await(second))
             val originalId = queryLong("SELECT creator_id FROM author_archive_manga_links WHERE manga_id = 7")
-            val duplicateId = queryLong("SELECT creator_id FROM author_archive_manga_links WHERE manga_id = 8")
-            repository.mergeCreatorIdentities(sourceCreatorId = duplicateId, targetCreatorId = originalId)
             repository.followCreator(originalId, sourceIds = listOf(9L), languageTags = listOf("ja"))
 
-            val splitId = repository.splitCreatorIdentity(
-                sourceCreatorId = originalId,
-                mangaIds = setOf(8L),
-                newDisplayName = "Same",
-            )
-
-            (splitId != originalId) shouldBe true
+            shouldThrow<IllegalStateException> {
+                repository.splitCreatorIdentity(
+                    sourceCreatorId = originalId,
+                    mangaIds = setOf(8L),
+                    newDisplayName = "Same",
+                )
+            }
             queryLong("SELECT creator_id FROM author_archive_manga_links WHERE manga_id = 7") shouldBe originalId
-            queryLong("SELECT creator_id FROM author_archive_manga_links WHERE manga_id = 8") shouldBe splitId
-            queryLong(
-                "SELECT COUNT(*) FROM author_archive_source_work_creators WHERE creator_id = $splitId",
-            ) shouldBe 1L
-            repository.getFollowedCreatorsAsFlow().first().map { it.creatorId }.sorted()
-                .shouldContainExactly(originalId, splitId)
-            queryLong(
-                "SELECT COUNT(*) FROM author_archive_aliases " +
-                    "WHERE normalized_alias = 'same' AND creator_id IN ($originalId, $splitId)",
-            ) shouldBe 2L
+            queryLong("SELECT creator_id FROM author_archive_manga_links WHERE manga_id = 8") shouldBe originalId
         }
     }
 

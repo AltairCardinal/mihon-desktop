@@ -34,11 +34,12 @@ class ExtractCreatorsFromManga {
         CreatorNameNormalizer.tokenizeNames(sourceValue).forEach { token ->
             val displayName = token.rawToken
             val normalizedName = CreatorNameNormalizer.normalize(displayName)
-            if (normalizedName.isBlank()) return@forEach
-            val existing = mentions[normalizedName]
+            val exactName = displayName.trim()
+            if (exactName.isBlank()) return@forEach
+            val existing = mentions[exactName]
             if (existing == null) {
-                mentions[normalizedName] = MutableMention(
-                    displayName = displayName,
+                mentions[exactName] = MutableMention(
+                    displayName = exactName,
                     normalizedName = normalizedName,
                     role = role,
                     evidence = mutableListOf(

@@ -1,6 +1,6 @@
 # 同名自动统一、异名合并 · 功能与交互设计
 
-日期：2026-09-17。状态：FINAL DESIGN / 待实施。用户已确认当前交互为最终设计；冻结原型提交为 `77a610534`（含其祖先提交）。正式应用尚未实现本次规则，不能将设计确认视为真机问题已经修复。本文替代此前同名先确认、逐来源关联、合并预览、自由输入改名及每作者周期等设计。
+日期：2026-09-17。状态：FINAL DESIGN / 实施中，未完成发布验收。用户已确认当前交互为最终设计；冻结原型提交为 `77a610534`（含其祖先提交）。正式实现进度以roadmap为准，不能将设计确认或中间测试通过视为真机问题已经修复。本文替代此前同名先确认、逐来源关联、合并预览、自由输入改名及每作者周期等设计。
 
 [实施 Roadmap](roadmap/2026-09-17-global-author-identity-roadmap.md) · [技术方案](2026-09-17-creator-identity-reconciliation-proposal.md) · [打开双端原型](prototypes/author-identity/index.html) · [操作与验证说明](prototypes/author-identity/README.md)
 

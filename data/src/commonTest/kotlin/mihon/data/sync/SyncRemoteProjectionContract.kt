@@ -119,7 +119,7 @@ abstract class SyncRemoteProjectionContract {
     }
 
     @Test
-    fun `same named authors retain separate portable keys and local watch policy`() = runBlocking {
+    fun `same named author keys resolve to one local root and watch policy`() = runBlocking {
         open().use { s ->
             s.prepare()
             val a = authorKey("remote-a")
@@ -130,7 +130,7 @@ abstract class SyncRemoteProjectionContract {
             val aId = s.authorId("remote-a")
             val bId = s.authorId("remote-b")
             assertTrue(aId != bId)
-            assertEquals(setOf(aId, bId), s.creators.getFollowedCreators().map { it.creatorId }.toSet())
+            assertEquals(setOf(aId), s.creators.getFollowedCreators().map { it.creatorId }.toSet())
             val policy = ArchiveWatchPolicy(aId, true, 123456, setOf(42), setOf("ja"), true, true, true, false)
             s.creators.upsertWatchPolicy(policy, 50)
             s.writer.applyMembership(a, false, unavailableDescription)

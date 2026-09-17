@@ -30,6 +30,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.components.TabContent
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -73,6 +74,29 @@ class AndroidMangaCreatorNavigator(
 
     suspend fun createDistinct(manga: Manga, request: CreatorMentionResolution.Ambiguous): Long =
         manageCreatorIdentity.createDistinct(manga, request.mention)
+}
+
+internal class AndroidCreatorOpenCoordinator(
+    private val resolve: suspend (Manga, CreatorMention) -> CreatorMentionResolution,
+    private val onResolved: (Long) -> Unit,
+    private val onAmbiguous: (CreatorMentionResolution.Ambiguous) -> Unit,
+    private val onFailure: suspend (Throwable) -> Boolean,
+) {
+    suspend fun open(manga: Manga, mention: CreatorMention) {
+        while (true) {
+            val resolution = try {
+                resolve(manga, mention)
+            } catch (failure: Throwable) {
+                if (failure is CancellationException) throw failure
+                if (onFailure(failure)) continue else return
+            }
+            when (resolution) {
+                is CreatorMentionResolution.Resolved -> onResolved(resolution.creatorId)
+                is CreatorMentionResolution.Ambiguous -> onAmbiguous(resolution)
+            }
+            return
+        }
+    }
 }
 
 @Composable

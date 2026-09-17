@@ -9,6 +9,7 @@ import tachiyomi.data.Chapters
 import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.Mangas
+import tachiyomi.data.creator.mergeCreatorIdentityGraph
 import tachiyomi.data.manga.MangaMapper
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
@@ -203,6 +204,9 @@ class SyncRemoteProjectionWriter(
         val description = description(key, describe)
         val normalized = CreatorNameNormalizer.normalize(description.title).ifBlank { description.title }
         val now = clock()
+        val exactOwner = author_archiveQueries
+            .getArchiveCreatorIdByExactName(description.title.trim())
+            .executeAsOneOrNull()
         author_archiveQueries.insertArchiveCreator(
             requireNotNull(key.portableKey),
             description.title,
@@ -217,7 +221,18 @@ class SyncRemoteProjectionWriter(
             evidence = "remote identity display name", confidence = 1.0, isManual = false,
             createdAt = now, lastModifiedAt = now,
         )
-        return id
+        if (exactOwner != null && exactOwner != id) {
+            mergeCreatorIdentityGraph(id, exactOwner, now)
+            return exactOwner
+        }
+        author_archiveQueries.registerArchiveIdentityNameIfAbsent(
+            description.title.trim(),
+            id,
+            "SYNC_DESCRIPTOR",
+            now,
+            now,
+        )
+        return author_archiveQueries.getArchiveCreatorIdByExactName(description.title.trim()).executeAsOne()
     }
 
     private fun description(

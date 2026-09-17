@@ -12,6 +12,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupCreatorAlias
 import eu.kanade.tachiyomi.data.backup.models.BackupCreatorIdentity
 import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.creator.mergeCreatorIdentityGraph
 import tachiyomi.data.creator.reconcileArchiveCanonicalVersion
 import tachiyomi.domain.creator.model.CreatorArchiveLanguageTag
 import tachiyomi.domain.creator.model.CreatorRelationOrigin
@@ -29,7 +30,8 @@ import tachiyomi.domain.creator.service.CreatorSourceWorkKey
  * Creates and restores the identity/alias/binding slice of backup field 107.
  *
  * Restore validates the complete section before opening one database transaction. Identity matching
- * uses only portable keys; equal normalized aliases are deliberately allowed across identities.
+ * preserves portable keys and converges occupied exact names through the shared identity graph merger.
+ * Search-normalized aliases never establish identity equality.
  */
 interface AuthorArchiveBackupContributor {
     suspend fun createSection(): BackupAuthorArchiveSection?
@@ -192,9 +194,30 @@ class SqlDelightAuthorArchiveBackupContributor(
                 creator.portableKey to author_archiveQueries
                     .getArchiveCreatorIdByPortableKey(creator.portableKey)
                     .executeAsOne()
-            }
+            }.toMutableMap()
             validated.creators.forEach { creator ->
-                val creatorId = creatorIds.getValue(creator.portableKey)
+                var creatorId = resolveActiveCreatorRoot(creatorIds.getValue(creator.portableKey))
+                creatorIds[creator.portableKey] = creatorId
+                val exactNames = (listOf(creator.displayName) + creator.aliases.map { it.rawAlias })
+                    .map(String::trim)
+                    .filter(String::isNotBlank)
+                    .distinct()
+                exactNames.forEach { name ->
+                    val owner = author_archiveQueries.getArchiveCreatorIdByExactName(name).executeAsOneOrNull()
+                    if (owner != null && owner != creatorId) {
+                        mergeCreatorIdentityGraph(creatorId, owner, now)
+                        creatorIds.entries.filter { it.value == creatorId }.forEach { it.setValue(owner) }
+                        creatorId = owner
+                        creatorIds[creator.portableKey] = owner
+                    }
+                    author_archiveQueries.registerArchiveIdentityNameIfAbsent(
+                        name,
+                        creatorId,
+                        "RESTORE",
+                        now,
+                        now,
+                    )
+                }
                 creator.aliases.forEach { alias ->
                     author_archiveQueries.upsertArchiveAlias(
                         creatorId = creatorId,
@@ -293,14 +316,21 @@ class SqlDelightAuthorArchiveBackupContributor(
                 )
             }
             validated.creators.filter { it.status == STATUS_MERGED }.forEach { creator ->
-                author_archiveQueries.markArchiveCreatorMergedFromBackup(
-                    targetCreatorId = creatorIds.getValue(checkNotNull(creator.mergedIntoPortableKey)),
-                    lastModifiedAt = now,
-                    sourceCreatorId = creatorIds.getValue(creator.portableKey),
+                val targetId = resolveActiveCreatorRoot(
+                    creatorIds.getValue(checkNotNull(creator.mergedIntoPortableKey)),
                 )
+                val sourceId = resolveActiveCreatorRoot(creatorIds.getValue(creator.portableKey))
+                if (sourceId != targetId) {
+                    mergeCreatorIdentityGraph(sourceId, targetId, now)
+                    creatorIds.entries.filter { it.value == sourceId }.forEach { it.setValue(targetId) }
+                }
             }
         }
     }
+
+    private fun Database.resolveActiveCreatorRoot(creatorId: Long): Long =
+        author_archiveQueries.resolveArchiveCreatorRootId(creatorId).executeAsOneOrNull()
+            ?: error("Creator identity redirect does not terminate at an active root: $creatorId")
 
     private fun Database.restoreWatch(watch: BackupAuthorWatch, creatorId: Long, now: Long) {
         author_archiveQueries.upsertArchiveWatchPolicyCommand(

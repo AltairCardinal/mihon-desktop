@@ -74,6 +74,10 @@ interface CreatorLibraryMangaSource {
 
 interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
 
+    suspend fun resolveCreatorIdByExactName(name: String): Long?
+
+    fun observeCreatorIdByExactName(name: String): Flow<Long?>
+
     suspend fun getCreatorWorkArchive(creatorId: Long): CreatorWorkArchive
 
     fun observeCreatorWorkArchive(creatorId: Long): Flow<CreatorWorkArchive>
@@ -261,6 +265,8 @@ interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
     suspend fun removeManualCreatorAlias(creatorId: Long, alias: String)
 
     suspend fun mergeCreatorIdentities(sourceCreatorId: Long, targetCreatorId: Long)
+
+    suspend fun mergeCreatorIdentities(sourceCreatorIds: Set<Long>, targetCreatorId: Long)
 
     suspend fun splitCreatorIdentity(
         sourceCreatorId: Long,
