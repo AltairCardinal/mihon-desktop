@@ -11,5 +11,10 @@
 .hero .creator-name { font-size: 14px; font-weight: 500; line-height: 20px; letter-spacing: .1px; color: var(--on-surface); margin: 0; padding: 0; border: 0; border-radius: 0; min-height: 0; min-width: 0; text-align: left; overflow-wrap: anywhere; background: transparent; }
 .creator-name:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .hero .manga-title { margin-bottom: 2px; }
-.alias-links { display: flex; flex-direction: column; gap: 0; }
+.alias-links { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.alias-links .creator-row { max-width: 100%; }
 .author-hero > div { width: 100%; }
+.work-row { align-items: flex-start; }
+.work-row strong { overflow-wrap: anywhere; }
+.work-sources { display: flex; flex-wrap: wrap; gap: 8px; }
+.source-button { font-size: 12px; min-height: 32px; padding: 6px 10px; color: var(--primary); max-width: 100%; overflow-wrap: anywhere; }

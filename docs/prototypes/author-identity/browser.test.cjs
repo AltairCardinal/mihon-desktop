@@ -63,7 +63,7 @@ test('别名使用署名链接样式，确认切换显示名，取消和旧名�
   }
 }));
 
-test('双端署名与主名别名遵循原版小字号排版且窄屏不溢出', () => setup(async (page, pc, phone) => {
+test('双端主名标题、横向别名图源及封面顶部对齐，作者列表无头像', () => setup(async (page, pc, phone) => {
   await page.locator('#narrow').check();
   const typography = locator => locator.evaluate(e => {
     const s = getComputedStyle(e);
@@ -71,6 +71,7 @@ test('双端署名与主名别名遵循原版小字号排版且窄屏不溢出',
   });
   for (const f of [pc, phone]) {
     const signature = f.getByTestId('signature');
+    const titleStyle = await typography(f.locator('.manga-title'));
     const expected = await typography(signature);
     assert.deepEqual(expected.slice(0, 6), ['14px', '500', '20px', '0.1px', '0px', '0px']);
     const row = signature.locator('..');
@@ -79,13 +80,33 @@ test('双端署名与主名别名遵循原版小字号排版且窄屏不溢出',
     await signature.click();
     await action(f, 'merge-select').click();
     await f.locator('[data-select="en"]').check(); await f.locator('[data-select="tw"]').check(); await action(f, 'add').click();
-    const names = [f.getByTestId('author-name'), ...await f.getByTestId('author-aliases').getByRole('button').all()];
+    assert.deepEqual(await typography(f.getByTestId('author-name')), titleStyle);
+    assert.equal(await f.getByTestId('author-name').locator('..').locator(':scope > svg').count(), 0);
+    assert.equal(await f.getByTestId('author-name').locator('..').evaluate(e => getComputedStyle(e).opacity), '1');
+    const names = await f.getByTestId('author-aliases').getByRole('button').all();
     for (const name of names) assert.deepEqual(await typography(name), expected);
     const boxes = await Promise.all(names.map(name => name.boundingBox()));
-    assert.ok(boxes.every(box => Math.abs(box.x - boxes[0].x) < 1));
-    assert.ok(boxes[1].y >= boxes[0].y + boxes[0].height);
-    assert.ok(boxes[2].y >= boxes[1].y + boxes[1].height);
+    assert.ok(Math.abs(boxes[1].y - boxes[0].y) < 1);
+    assert.ok(boxes[1].x > boxes[0].x + boxes[0].width);
+    assert.equal(await f.getByRole('button', { name: '查看漫画', exact: true }).count(), 0);
+    const work = f.locator('.work-row').first();
+    const cover = await work.locator('.cover').boundingBox(), title = await work.locator('strong').boundingBox();
+    assert.ok(Math.abs(cover.y - title.y) < 1);
+    const sources = work.getByRole('button');
+    assert.deepEqual(await sources.allTextContents(), ['漫画柜', 'MangaDex']);
+    const sourceBoxes = await Promise.all((await sources.all()).map(source => source.boundingBox()));
+    assert.ok(Math.abs(sourceBoxes[0].y - sourceBoxes[1].y) < 1);
+    assert.ok(sourceBoxes[1].x > sourceBoxes[0].x + sourceBoxes[0].width);
     assert.equal(await f.locator('body').evaluate(e => e.scrollWidth > innerWidth), false);
+    await sources.getByText('MangaDex', { exact: true }).click();
+    assert.equal(await f.locator('.manga-title').innerText(), 'Parallel Paradise');
+    assert.equal(await f.locator('.hero .pill').innerText(), 'MangaDex');
+    await f.getByTestId('signature').click();
+    assert.equal(await f.getByTestId('author-name').innerText(), '冈本伦');
+    if (f === pc) await f.getByTestId('nav-authors').click();
+    else { await f.getByTestId('nav-browse').click(); await action(f, 'authors').click(); }
+    assert.equal(await f.locator('[data-author]').count(), 1);
+    assert.equal(await f.locator('[data-author] .avatar, [data-author] img').count(), 0);
   }
 }));
 
