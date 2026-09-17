@@ -18,7 +18,7 @@
     const a = current(), all = versions(a.id), shown = all.filter(v => (filter === '全部来源' || v.source === filter) && v.title.toLowerCase().includes(query.toLowerCase()));
     const groups = new Map(); shown.forEach(v => { if (!groups.has(v.work)) groups.set(v.work, []); groups.get(v.work).push(v); });
     const sources = ['全部来源', ...new Set(all.map(v => v.source))];
-    return `<div class="hero"><span class="avatar">${V.icon('authors')}</span><div><h2 data-testid="author-name">${esc(a.name)}</h2>${button('rename', '修改名称', 'link')}${a.aliases.length ? `<span class="muted" data-testid="author-aliases">别名：${a.aliases.map(esc).join(' · ')}</span>` : ''}<p class="muted">${new Set(all.map(v => v.work)).size} 部作品 · ${all.length} 个来源版本</p></div></div><div class="actions">${button('follow', a.follow ? '已关注' : '关注作者', a.follow ? '' : 'primary', 'data-testid="follow"')}${button('merge-select', '添加别名')}</div>${state.unavailable ? '<p class="note warning">漫画柜插件不可用，已有作者、作品和关注不受影响。</p>' : ''}<h3 class="section-title">作品 <span class="text-count">${groups.size}</span></h3><div class="filters"><label>来源 <select id="source-filter">${sources.map(s => `<option ${s === filter ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></label><label>查找作品 <input id="work-search" value="${esc(query)}" placeholder="作品名" size="12"></label></div>${groups.size ? [...groups.values()].map(group => `<div class="row"><div class="cover small">${esc(group[0].title)}</div><div class="grow"><strong>${esc(group[0].title)}</strong>${group.map(v => `<div class="version"><span class="source-label">${esc(v.source)}${state.unavailable && v.source === '漫画柜' ? ' · 不可用' : ''}</span> ${button('manga', '查看漫画', '', `data-version="${v.id}"`)}</div>`).join('')}</div></div>`).join('') : '<p class="empty muted">没有符合条件的作品。可切换来源或清空搜索。</p>'}`;
+    return `<div class="hero"><span class="avatar">${V.icon('authors')}</span><div><h2 data-testid="author-name" tabindex="-1">${esc(a.name)}</h2>${a.aliases.length ? `<div class="alias-links" data-testid="author-aliases">${a.aliases.map(name => button('alias-name', esc(name), 'link', `data-alias="${esc(name)}"`)).join('')}</div>` : ''}<p class="muted">${new Set(all.map(v => v.work)).size} 部作品 · ${all.length} 个来源版本</p></div></div><div class="actions">${button('follow', a.follow ? '已关注' : '关注作者', a.follow ? '' : 'primary', 'data-testid="follow"')}${button('merge-select', '添加别名')}</div>${state.unavailable ? '<p class="note warning">漫画柜插件不可用，已有作者、作品和关注不受影响。</p>' : ''}<h3 class="section-title">作品 <span class="text-count">${groups.size}</span></h3><div class="filters"><label>来源 <select id="source-filter">${sources.map(s => `<option ${s === filter ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></label><label>查找作品 <input id="work-search" value="${esc(query)}" placeholder="作品名" size="12"></label></div>${groups.size ? [...groups.values()].map(group => `<div class="row"><div class="cover small">${esc(group[0].title)}</div><div class="grow"><strong>${esc(group[0].title)}</strong>${group.map(v => `<div class="version"><span class="source-label">${esc(v.source)}${state.unavailable && v.source === '漫画柜' ? ' · 不可用' : ''}</span> ${button('manga', '查看漫画', '', `data-version="${v.id}"`)}</div>`).join('')}</div></div>`).join('') : '<p class="empty muted">没有符合条件的作品。可切换来源或清空搜索。</p>'}`;
   }
   function render() {
     const nav = page === 'authors' || page === 'author' ? (platform === 'android' ? 'browse' : 'authors') : page === 'manga' ? 'library' : page;
@@ -37,10 +37,9 @@
       body = `<p>当前：${esc(current().name)}。选择要并入同一作者的其他名字。</p><p class="muted">仅文本完全相同才自动复用；繁简、大小写和音译不会自动转换。</p><label>搜索名字或别名<input id="candidate-search" value="${esc(candidateQuery)}" placeholder="输入名字"></label><p class="muted">已选择 ${selected.length - 1} 个其他作者。${selected.length < 2 ? '至少勾选一位其他作者才能继续。' : '搜索不会取消已选项。'}</p>${candidates.map(a => `<label class="note inline-label"><input type="checkbox" data-select="${a.id}" ${selected.includes(a.id) ? 'checked' : ''}><span><strong>${esc(a.name)}</strong>${a.aliases.length ? '<br>别名：' + a.aliases.map(esc).join('、') : ''}<br>${esc(workNames(a.id))}<br>${a.follow ? '已关注' : '未关注'}</span></label>`).join('') || `<p class="empty">${allCandidates.length ? '没有匹配的名字，清空搜索可查看全部。' : '没有可合并的其他名字。'}</p>`}`;
       actions += button('add', '添加', 'primary', selected.length < 2 ? 'disabled' : '');
     } else if (modal === 'rename') {
-      title = '修改名称';
-      const names = [current().name, ...current().aliases];
-      body = `<label>已有名字<select id="existing-name">${names.map(n => `<option value="${esc(n)}" ${n === renameDraft ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label><label>主显示名称<input id="rename-input" value="${esc(renameDraft)}"></label><p class="muted">可以选择已有名字或输入新名字，原主名会保留为别名。</p>`;
-      actions += button('rename-save', '保存', 'primary');
+      title = '设置显示名称';
+      body = `<p>要把${esc(renameDraft)}设为该作者的显示名称吗</p>`;
+      actions += button('rename-save', '确定', 'primary');
     } else if (modal === 'settings') {
       title = '作者设置';
       body = `<p class="muted">应用于全部作者</p><label>检查频率<select id="frequency"><option value="daily" ${settingsFrequency === 'daily' ? 'selected' : ''}>每天</option><option value="weekly" ${settingsFrequency === 'weekly' ? 'selected' : ''}>每周</option><option value="monthly" ${settingsFrequency === 'monthly' ? 'selected' : ''}>每月</option></select></label>`;
@@ -72,9 +71,9 @@
     else if (a === 'add') {
       try { state = M.apply(state, { ...M.preview(state, { selected, target }), revision: sessionRevision }); author = M.resolve(state, target); notice = '别名已添加'; close(); page = 'author'; render(); app.querySelector('[data-action="merge-select"]').focus(); }
       catch (e) { error = e.message; drawModal(); }
-    } else if (a === 'rename') { renameDraft = current().name; open('rename'); }
+    } else if (a === 'alias-name') { renameDraft = b.dataset.alias; if (current().aliases.includes(renameDraft)) open('rename'); }
     else if (a === 'rename-save') {
-      try { state = M.rename(state, current().id, renameDraft); notice = '名称已保存'; close(); render(); app.querySelector('[data-action="rename"]').focus(); }
+      try { state = M.rename(state, current().id, renameDraft); notice = '显示名称已更新'; close(); render(); app.querySelector('[data-testid="author-name"]').focus(); }
       catch (e) { error = e.message; drawModal(); }
     } else if (a === 'follow' || a === 'unfollow-confirm') {
       if (a === 'follow' && current().follow) { open('unfollow'); return; }
@@ -88,7 +87,6 @@
   });
   document.addEventListener('focusin', event => { if (overlay.contains(event.target)) modalFocus = event.target; });
   document.addEventListener('input', event => {
-    if (event.target.id === 'rename-input') { renameDraft = event.target.value; return; }
     if (event.target.id !== 'candidate-search') return;
     const caret = event.target.selectionStart; candidateQuery = event.target.value; drawModal();
     const input = overlay.querySelector('#candidate-search'); input.focus(); input.setSelectionRange(caret, caret);
@@ -96,7 +94,6 @@
   document.addEventListener('change', event => {
     const e = event.target;
     if (e.dataset.select) { selected = e.checked ? [...selected, e.dataset.select] : selected.filter(s => s !== e.dataset.select); drawModal(); overlay.querySelector(`[data-select="${e.dataset.select}"]`).focus(); }
-    else if (e.id === 'existing-name') { renameDraft = e.value; document.getElementById('rename-input').value = renameDraft; }
     else if (e.id === 'frequency') settingsFrequency = e.value;
     else if (e.id === 'source-filter') { filter = e.value; render(); document.getElementById('source-filter').focus(); }
     else if (e.id === 'work-search') { query = e.value; render(); document.getElementById('work-search').focus(); }

@@ -30,20 +30,45 @@ test('直接添加无需预览且全局设置只在双端作者列表右上角',
   await pc.getByTestId('nav-authors').click(); await phone.getByTestId('nav-browse').click(); await action(phone, 'authors').click();
   for (const f of [pc, phone]) { const gear = f.getByRole('button', { name: '作者设置', exact: true }); const g = await gear.boundingBox(), b = await f.locator('.bar').boundingBox(); assert.ok(g.x > b.x + b.width / 2); }
 }));
-test('修改主名取消空白占用、新名和已有别名选择，原名字继续复用', () => setup(async (page, pc) => {
-  await pc.getByTestId('signature').click(); await action(pc, 'rename').click(); await pc.getByLabel('主显示名称').fill('新主名'); await pc.getByRole('button', { name: '取消', exact: true }).click(); assert.equal(await pc.getByTestId('author-name').innerText(), '冈本伦');
-  await action(pc, 'rename').click(); await pc.getByLabel('主显示名称').fill('  '); await action(pc, 'rename-save').click(); assert.match(await pc.getByRole('alert').innerText(), /非空/);
-  await pc.getByLabel('主显示名称').fill('Okamoto Lynn'); await action(pc, 'rename-save').click(); assert.match(await pc.getByRole('alert').innerText(), /添加别名/);
-  await pc.getByLabel('主显示名称').fill('新主名'); await action(pc, 'rename-save').click(); assert.equal(await pc.getByTestId('author-name').innerText(), '新主名'); assert.match(await pc.getByTestId('author-aliases').innerText(), /冈本伦/);
-  await action(pc, 'rename').click(); await pc.getByLabel('已有名字').selectOption('冈本伦'); await action(pc, 'rename-save').click(); assert.equal(await pc.getByTestId('author-name').innerText(), '冈本伦');
-  await page.locator('#add-same').click(); await pc.getByText('已加入同名作品', { exact: false }).waitFor(); assert.match(await pc.locator('.hero').innerText(), /4 部作品/);
+test('别名使用署名链接样式，确认切换显示名，取消和旧名入口不变', () => setup(async (page, pc, phone) => {
+  await page.locator('#narrow').check();
+  for (const f of [pc, phone]) {
+    await f.getByTestId('signature').click();
+    assert.equal(await f.getByRole('button', { name: '修改名称', exact: true }).count(), 0);
+    assert.equal(await f.getByTestId('author-aliases').count(), 0);
+    await action(f, 'merge-select').click();
+    await f.locator('[data-select="en"]').check(); await f.locator('[data-select="tw"]').check(); await action(f, 'add').click();
+    const aliases = f.getByTestId('author-aliases');
+    assert.equal(await aliases.getByRole('button').count(), 2);
+    const english = aliases.getByRole('button', { name: 'Okamoto Lynn', exact: true });
+    assert.equal(await english.getAttribute('class'), 'link');
+    await english.click();
+    assert.match(await f.getByRole('dialog').innerText(), /要把Okamoto Lynn设为该作者的显示名称吗/);
+    assert.equal(await f.getByRole('dialog').locator('input, select').count(), 0);
+    await f.getByRole('button', { name: '取消', exact: true }).click();
+    assert.equal(await f.getByTestId('author-name').innerText(), '冈本伦');
+    assert.equal(await english.evaluate(e => e === document.activeElement), true);
+    await english.click(); await f.getByRole('button', { name: '确定', exact: true }).click();
+    assert.equal(await f.getByTestId('author-name').innerText(), 'Okamoto Lynn');
+    assert.equal(await f.getByTestId('author-name').evaluate(e => e === document.activeElement), true);
+    assert.equal(await aliases.getByRole('button', { name: '冈本伦', exact: true }).count(), 1);
+    assert.equal(await aliases.getByRole('button', { name: '岡本倫', exact: true }).count(), 1);
+    assert.equal(await f.getByTestId('follow').innerText(), '已关注');
+    await f.locator('[data-version="v0"]').click(); await f.getByTestId('signature').click();
+    assert.equal(await f.getByTestId('author-name').innerText(), 'Okamoto Lynn');
+    await aliases.getByRole('button', { name: '冈本伦', exact: true }).click();
+    await f.getByRole('button', { name: '确定', exact: true }).click();
+    assert.equal(await f.getByTestId('author-name').innerText(), '冈本伦');
+    assert.equal(await f.locator('body').evaluate(e => e.scrollWidth > innerWidth), false);
+  }
 }));
+
 test('全局三频率保存取消失败、跨作者操作及另一设备隔离', () => setup(async (page, pc, phone) => {
   const settings = f => f.getByRole('button', { name: '作者设置', exact: true });
   await pc.getByTestId('nav-authors').click();
   for (const frequency of ['weekly', 'monthly', 'daily', 'monthly']) { await settings(pc).click(); await pc.getByLabel('检查频率').selectOption(frequency); await action(pc, 'settings-save').click(); assert.equal(await settings(pc).evaluate(e => e === document.activeElement), true); await settings(pc).click(); assert.equal(await pc.getByLabel('检查频率').inputValue(), frequency); await pc.getByRole('button', { name: '取消', exact: true }).click(); }
   await settings(pc).click(); await pc.getByLabel('检查频率').selectOption('weekly'); await pc.getByRole('button', { name: '取消', exact: true }).click();
-  await pc.locator('[data-author="en"]').click(); await action(pc, 'merge-select').click(); await pc.locator('[data-select="a"]').check(); await action(pc, 'add').click(); await action(pc, 'rename').click(); await pc.getByLabel('主显示名称').fill('新名字'); await action(pc, 'rename-save').click();
+  await pc.locator('[data-author="en"]').click(); await action(pc, 'merge-select').click(); await pc.locator('[data-select="a"]').check(); await action(pc, 'add').click(); await pc.getByTestId('author-aliases').getByRole('button', { name: '冈本伦', exact: true }).click(); await pc.getByRole('button', { name: '确定', exact: true }).click();
   await pc.getByTestId('nav-authors').click(); await settings(pc).click(); assert.equal(await pc.getByLabel('检查频率').inputValue(), 'monthly'); await pc.getByRole('button', { name: '关闭', exact: true }).click();
   await phone.getByTestId('nav-browse').click(); await action(phone, 'authors').click(); await settings(phone).click(); assert.equal(await phone.getByLabel('检查频率').inputValue(), 'daily');
   await page.locator('#scenario').selectOption('submit-error'); await page.locator('#apply-scenario').click(); await pc.getByTestId('nav-authors').click(); await settings(pc).click(); await pc.getByLabel('检查频率').selectOption('weekly'); await action(pc, 'settings-save').click(); assert.match(await pc.getByRole('alert').innerText(), /保存失败/); await pc.getByRole('button', { name: '取消', exact: true }).click(); await settings(pc).click(); assert.equal(await pc.getByLabel('检查频率').inputValue(), 'daily');

@@ -4,3 +4,5 @@
 .review-heading { color: #e3e2e6; }.review-heading .eyebrow { color: #b0c6ff; }
 
 .author-settings { margin-left: auto; flex: none; }
+
+.alias-links { display: flex; flex-wrap: wrap; gap: 4px 12px; }
