@@ -39,7 +39,7 @@
 - [x] **GA-02：添加别名、主名切换及双端最终交互**（依赖GA-01及其独立审查）
 - [x] **GA-03：全局作者设置与真实发现调度**（依赖GA-02）
 - [x] **GA-04：备份恢复与设置兼容**（依赖GA-01至GA-03）
-- [ ] **GA-05：现有作者关注同步兼容**（依赖GA-01、GA-02、GA-04稳定契约）
+- [x] **GA-05：现有作者关注同步兼容**（依赖GA-01、GA-02、GA-04稳定契约）
 - [ ] **GA-06：双端集成、迁移回归与正式发布验收**（依赖GA-01至GA-05）
 
 默认串行，原因是共享repository、schema、身份映射和测试fixtures存在写入冲突。Android/Desktop作为每个用户能力的共同交付面，不拆成两个语义分叉项目。每批原则上一份包含实现、测试和必要证据的提交；超过8文件/400行时说明内聚性与风险，不拆成不可独立验收的schema/模型/视图微任务。
@@ -170,6 +170,15 @@
 **红灯与验证**：复用 `data/src/commonTest/kotlin/mihon/data/sync/SyncCreatorJournalContract.kt` 及Android/JVM runners；真实journal到projection覆盖跨设备同名不同key、本地合并后旧key、乱序重复、取消/重新关注、缺名字、环、旧descriptor、同步关闭/重开。验证名称/主名本地操作没有意外远端合并副作用。
 
 **完成条件**：A7通过；跨模块协议/因果投影独立审查通过。无法证明安全时保持未完成且阻止GA-06发布，不以禁用本地同名统一绕过。预计8–14小时。
+
+**实施与审查记录（2026-09-17，GA-05通过限定复审，随本批提交完成）**：
+- 沿用GA-04原实施者和独立审查者，真实journal→sealed outbox→inbox→projection共享契约验证既有FOLLOWING；descriptor字段足够，不新增在线别名、主名或频率协议。旧inbox夹具改用异名及真实Repository合并，避免同名已自动归根后手工反向MERGED制造环。
+- `ga05-replay-red2`正确行为红灯：跨键同名归根后本地明确取消，已消费旧键ADD的dirty重投影恢复关注。首次`ga05-replay-red`为夹具编译失败，不计行为红灯。`ga05-replay-green`focused通过。
+- `ga05-batch` PASSED/exit0/45s，主代理核对双端XML：每端journal14、inbox17、projection8，共78项零失败/错误/跳过；data spotlessCheck及diff检查通过。此前`ga05-contract`的坏身份夹具错误已修，不称整轮通过。
+- 首轮独立审查NOT APPROVED，唯一阻塞：整个heads变化不能证明新ADD。已消费旧ADD、本地取消后，旧键收到并发REMOVE时，add-wins仍返回true且heads变化，会错误恢复关注。原实施者执行限定修复，必须以未消费且参与当前有效决定的ADD判断，补双端真实并发REMOVE不复活及新ADD可重关注测试，再进行唯一限定复审；未解除GA-06依赖。
+- 限定修复：`ga05-review-red`双端各1项正确失败于新增并发REMOVE不应重放已消费ADD；提取原归约器effective heads的USER优先规则供投影共用，仅未消费有效ADD可应用关注。`ga05-review-green` PASSED/exit0/62s，主代理核XML：domain协议13，双端各journal15/inbox17/projection8，共93项零失败/错误/跳过；domain/data spotlessCheck与diff检查通过。覆盖真正新ADD及新接收端相反到达顺序，保持原add-wins和取消确认语义；唯一限定复审待结论。
+- 唯一限定复审APPROVED：独立审查者核对有效ADD消费判断、共享选择规则与真实journal分支，复核双端正确红灯、93项XML及格式证据，唯一阻塞关闭。主代理核对同一证据并同批提交实现/测试/文档/checkoff。GA-04前置提交为`e852c0d07e`；GA-06依赖解除，正式运行验收尚未执行。
+- 本批含必要维护文档共9个文件；消费判断、共享归约选择与双端因果契约是同一可交付兼容修复，保持同批。主要风险为取消/重关注因果，已由真实分支红绿和独立复审覆盖。
 
 ### GA-06 · 集成与正式运行验收
 
