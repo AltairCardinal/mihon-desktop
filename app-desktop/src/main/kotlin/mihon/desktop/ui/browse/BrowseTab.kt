@@ -67,7 +67,6 @@ import eu.kanade.tachiyomi.source.Source
 import mihon.desktop.ui.extension.ExtensionListContent
 import mihon.desktop.ui.extension.pushExtensionDetails
 import mihon.desktop.ui.extension.pushExtensionRepository
-import mihon.desktop.ui.extension.pushSourcePreferences
 import mihon.domain.source.model.SourceScreenContent
 import mihon.domain.source.model.SourceScreenEvent
 import mihon.domain.source.model.SourceScreenState
@@ -187,7 +186,6 @@ class BrowseSourceListScreen : Screen {
                 showBackButton = false,
                 onRepositories = navigator::pushExtensionRepository,
                 onOpen = navigator::pushExtensionDetails,
-                onSettings = navigator::pushSourcePreferences,
                 primaryNavigation = {
                     BrowseSectionTabs(
                         selectedSection = selectedSection,

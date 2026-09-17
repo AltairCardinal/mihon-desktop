@@ -67,7 +67,6 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import kotlinx.coroutines.launch
-import eu.kanade.tachiyomi.source.ConfigurableSource
 import mihon.desktop.extension.ApkConversionException
 import mihon.desktop.extension.ApkConversionStage
 import mihon.desktop.extension.DesktopAvailableExtension
@@ -95,7 +94,6 @@ data class ExtensionListScreen(val initialTab: Int = 0) : Screen {
             onBack = navigator::pop,
             onRepositories = navigator::pushExtensionRepository,
             onOpen = navigator::pushExtensionDetails,
-            onSettings = navigator::pushSourcePreferences,
             initialTab = initialTab,
         )
     }
@@ -131,7 +129,6 @@ internal fun ExtensionListContent(
     onBack: () -> Unit = {},
     onRepositories: (() -> Unit)? = null,
     onOpen: (InstalledExtension) -> Unit = {},
-    onSettings: (Long, String) -> Unit = { _, _ -> },
     title: String? = null,
     showBackButton: Boolean = true,
     primaryNavigation: (@Composable () -> Unit)? = null,
@@ -366,7 +363,6 @@ internal fun ExtensionListContent(
                     extensions = ui.installed,
                     onUninstall = { pendingRemoval = it },
                     onOpen = onOpen,
-                    onSettings = onSettings,
                     emptyCopy = copy,
                     modifier = Modifier.weight(1f),
                 )
@@ -429,7 +425,6 @@ private fun InstalledTab(
     extensions: List<DesktopExtensionItem>,
     onUninstall: (DesktopExtensionItem) -> Unit,
     onOpen: (InstalledExtension) -> Unit,
-    onSettings: (sourceId: Long, sourceName: String) -> Unit,
     emptyCopy: ExtensionListCopy,
     modifier: Modifier = Modifier,
 ) {
@@ -448,7 +443,6 @@ private fun InstalledTab(
                     compatibility = item.compatibility,
                     onUninstall = { onUninstall(item) },
                     onOpen = { onOpen(ext) },
-                    onSettings = onSettings,
                 )
             }
         }
@@ -545,7 +539,6 @@ private fun ExtensionCard(
     compatibility: ExtensionCompatibility?,
     onUninstall: () -> Unit,
     onOpen: () -> Unit,
-    onSettings: (sourceId: Long, sourceName: String) -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
         Row(
@@ -576,11 +569,8 @@ private fun ExtensionCard(
                     color = MaterialTheme.colorScheme.outline,
                 )
             }
-            // Show settings icon for each configurable source
-            extension.sources.filter { it is ConfigurableSource }.forEach { source ->
-                IconButton(onClick = { onSettings(source.id, source.name) }) {
-                    Icon(Icons.Default.Settings, contentDescription = MR.strings.desktop_extension_source_settings.localized(Locale.getDefault(), source.name))
-                }
+            IconButton(onClick = onOpen) {
+                Icon(Icons.Default.Settings, contentDescription = MR.strings.action_settings.localized())
             }
             IconButton(onClick = onUninstall) {
                 Icon(Icons.Default.Delete, contentDescription = MR.strings.ext_uninstall.localized(), tint = MaterialTheme.colorScheme.error)

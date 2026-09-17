@@ -749,7 +749,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/ui/browse/source/SourcesScreenModel.kt",
           "symbol": "private val sourceReducer: SourceScreenReducer = SourceScreenReducer()",
-          "line": 37
+          "line": 40
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -769,7 +769,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/ui/browse/BrowseTab.kt",
           "symbol": "rememberScreenModel { DesktopSourcesScreenModel",
-          "line": 204
+          "line": 202
         }
       ],
       "FIXTURE": [
@@ -26306,7 +26306,7 @@
         {
           "path": "app/src/main/java/eu/kanade/tachiyomi/extension/util/ExtensionLoader.kt",
           "symbol": "private suspend fun loadExtension",
-          "line": 227
+          "line": 231
         }
       ],
       "SHARED_OR_ADAPTER": [
