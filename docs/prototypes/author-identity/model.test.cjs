@@ -1,6 +1,23 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const M = require('./model.js');
+test('默认同作品多源可见，新作按作品去重、查看后不重复提醒且仅提醒关注作者', () => {
+  let s = M.create();
+  assert.equal(s.versions.filter(v => v.author === 'a' && v.work === 'w0').length, 2);
+  assert.deepEqual(M.unseenWorks(s, 'a'), []);
+  const observation = { id: 'discovery', work: 'discovery', name: '冈本伦', title: '新作' };
+  s = M.observe(s, observation);
+  s = M.observe(s, { ...observation, id: 'discovery-other' });
+  assert.deepEqual(M.unseenWorks(s, 'a'), ['discovery']);
+  s = M.markSeen(s, 'discovery'); s = M.observe(s, observation);
+  assert.deepEqual(M.unseenWorks(s, 'a'), []);
+  s = M.observe(s, { ...observation, id: 'old-other', work: 'w0' });
+  assert.deepEqual(M.unseenWorks(s, 'a'), []);
+  s = M.follow(s, 'a', false);
+  s = M.observe(s, { ...observation, id: 'unfollowed', work: 'unfollowed' });
+  s = M.follow(s, 'a', true);
+  assert.deepEqual(M.unseenWorks(s, 'a'), []);
+});
 test('日期优先可信上架字段，未知或异常日期使用不可后移的首次发现日期', () => {
   let s = M.create();
   assert.deepEqual(M.workDate(s, 'w0'), { date: '2017-03-18', label: '上架', source: '漫画柜' });

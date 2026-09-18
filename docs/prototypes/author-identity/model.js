@@ -39,7 +39,7 @@
   }
   function create() {
     const state = normalize({
-      today: '2026-09-18', workDates: {},
+      today: '2026-09-18', workDates: {}, discoveries: [],
       // Demonstration evidence only, not a rating of the real plugins with these display names.
       dateSources: {
         cabinet: { listing: 'trusted', chapters: 'trusted' },
@@ -65,6 +65,7 @@
       { sourceKey: 'text', favorite: true, chapterCount: null, listedAt: null, latestChapterAt: null },
     ];
     state.versions.forEach((v, i) => Object.assign(v, fixtures[i], { firstSeenAt: '2026-09-18' }));
+    state.versions.push({ id: 'v0-other', work: 'w0', title: '平行天堂', source: '备用图源（演示）', author: 'a', signature: '冈本伦', sourceKey: 'text', favorite: false, chapterCount: 286, listedAt: null, latestChapterAt: null, firstSeenAt: state.today });
     updateWorkDates(state);
     return state;
   }
@@ -111,6 +112,7 @@
   function observe(input, observation) {
     if (!observation.name || !observation.name.trim()) return structuredClone(input);
     const state = structuredClone(input);
+    const knownWork = state.versions.some(v => v.work === observation.work);
     let author = state.authors.find(a => names(a).includes(observation.name));
     if (!author) {
       author = { id: 'name-' + observation.name, name: observation.name, aliases: [], follow: false };
@@ -121,8 +123,18 @@
     const version = { favorite: false, chapterCount: null, ...previous, ...observation, author: author.id, signature: observation.name,
       firstSeenAt: previous?.firstSeenAt || state.today, favorite: previous?.favorite ?? false };
     if (index < 0) state.versions.push(version); else state.versions[index] = version;
+    if (!knownWork && author.follow && observation.work) state.discoveries.push(observation.work);
     updateWorkDates(state);
     state.revision++;
+    return state;
+  }
+  function unseenWorks(state, id) {
+    const author = state.authors.find(a => a.id === resolve(state, id));
+    return author?.follow ? [...new Set(state.discoveries.filter(work => state.versions.some(v => v.author === author.id && v.work === work)))] : [];
+  }
+  function markSeen(input, work) {
+    const state = structuredClone(input);
+    state.discoveries = state.discoveries.filter(id => id !== work);
     return state;
   }
   function preview(state, options = {}) {
@@ -163,5 +175,5 @@
     const allNames = [...new Set([...names(author), name])];
     author.name = name; author.aliases = allNames.filter(n => n !== name); state.revision++; return state;
   }
-  return { create, normalize, observe, preview, apply, resolve, follow, setFrequency, rename, workDate, latestDate, assessChapterDates, refreshDates };
+  return { create, normalize, observe, preview, apply, resolve, follow, setFrequency, rename, workDate, latestDate, assessChapterDates, refreshDates, unseenWorks, markSeen };
 });

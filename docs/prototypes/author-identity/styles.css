@@ -30,13 +30,13 @@
 .author-card-heading strong { font-size: 17px; overflow-wrap: anywhere; }
 .representative-shelf { display: flex; gap: 10px; margin-top: 12px; }
 .representative-work { display: flex; flex-direction: column; width: 72px; max-width: calc((100% - 20px) / 3); min-width: 0; gap: 5px; }
-.representative-cover { display: flex; align-items: flex-end; flex: none; width: 100%; aspect-ratio: 2 / 3; padding: 6px; border-radius: 5px; color: white; background: radial-gradient(circle at 90% 5%, #ffffff22 0 27%, transparent 28%), linear-gradient(155deg, #416276, #202e41); box-shadow: 0 3px 8px #0003; }
-.representative-work:nth-child(2) .representative-cover { background: radial-gradient(circle at 80% 15%, #ffffff22 0 25%, transparent 26%), linear-gradient(155deg, #977447, #4d372e); }
-.representative-work:nth-child(3) .representative-cover { background: radial-gradient(circle at 85% 10%, #ffffff22 0 25%, transparent 26%), linear-gradient(155deg, #59796d, #263c39); }
+.representative-cover { display: flex; align-items: flex-end; flex: none; width: 100%; aspect-ratio: 2 / 3; padding: 6px; border-radius: 5px; color: white; isolation: isolate; box-shadow: 0 3px 8px #0003; }
+.representative-work:nth-child(2) .representative-cover::before { background: radial-gradient(circle at 80% 15%, #ffffff22 0 25%, transparent 26%), linear-gradient(155deg, #977447, #4d372e); }
+.representative-work:nth-child(3) .representative-cover::before { background: radial-gradient(circle at 85% 10%, #ffffff22 0 25%, transparent 26%), linear-gradient(155deg, #59796d, #263c39); }
 .representative-cover > span { font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
 .representative-title { font-size: 11px; line-height: 16px; color: var(--outline); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; text-align: left; }
 .representative-cover, .work-cover-wrap { position: relative; }
-.representative-cover > .collected-badge, .collected-badge { position: absolute; top: 4px; left: 4px; padding: 2px 4px; border-radius: 3px; background: var(--primary); color: var(--on-primary); font-size: 10px; font-weight: 600; line-height: 14px; letter-spacing: 0; white-space: nowrap; z-index: 1; }
+.representative-cover > .collected-badge, .collected-badge { position: absolute; top: 4px; left: 4px; display: inline-flex; align-items: center; justify-content: center; padding: 1px 3px; border-radius: 4px; background: var(--secondary); color: var(--on-secondary); font-size: 12px; font-weight: 500; line-height: 16px; height: 18px; letter-spacing: 0; white-space: nowrap; z-index: 1; }
 .works-toolbar { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .display-button { color: var(--primary); border: 0; font-size: 12px; padding: 8px; }
 .work-item { width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--outline-variant); border-radius: 4px; }
@@ -59,3 +59,21 @@
 .display-choices { display: flex; flex-direction: column; gap: 8px; }
 .display-choices button { text-align: left; }
 .display-choices button[aria-pressed="true"] { background: var(--secondary-container); color: var(--primary); }
+.discovery-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; margin-bottom: 16px; border-radius: 12px; background: var(--secondary-container); color: var(--on-surface); }
+.discovery-banner > span { min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
+.discovery-banner button { flex: none; color: var(--primary); border: 0; }
+.discovery-names { display: block; margin-top: 4px; font-size: 12px; opacity: .78; }
+.new-count, .new-work-badge { display: inline-block; padding: 3px 6px; border-radius: 6px; background: var(--secondary-container); color: var(--primary); font-size: 11px; font-weight: 500; line-height: 16px; }
+.new-count { flex: none; }
+.new-work-badge { margin-top: 5px; }
+.version-choice:nth-child(even) .cover { background: linear-gradient(145deg, #476f79, #20334e); }
+
+/* BrowseBadges.InLibraryBadge / Badge: CollectionsBookmark, bodySmall, secondary colors.
+   CommonMangaItemDefaults.BrowseFavoriteCoverAlpha = 0.34; list badge follows title. */
+.theme-light { --secondary: #575e71; --on-secondary: #ffffff; }
+.theme-dark { --secondary: #bfc6dc; --on-secondary: #293041; }
+.collected-badge svg { width: 12px; height: 12px; display: block; }
+.representative-cover::before { content: ''; position: absolute; inset: 0; border-radius: inherit; z-index: -1; background: radial-gradient(circle at 90% 5%, #ffffff22 0 27%, transparent 28%), linear-gradient(155deg, #416276, #202e41); }
+.representative-cover:has(.collected-badge)::before, .representative-cover:has(.collected-badge) > span:first-child { opacity: .34; }
+.work-item:has(.collected-badge) .cover, .version-choice:has(.collected-badge) .cover { opacity: .34; }
+.work-item > .collected-badge { position: static; flex: none; align-self: center; }

@@ -2,6 +2,7 @@
   const el = id => document.getElementById(id);
   const send = message => el('preview-' + el('target').value).contentWindow.postMessage({ channel: 'author-demo', ...message }, '*');
   el('apply-scenario').onclick = () => send({ scenario: el('scenario').value });
+  el('discover-new').onclick = () => send({ discoverNew: true });
   el('add-same').onclick = () => send({ add: 'same' });
   el('add-alias').onclick = () => send({ add: 'alias' });
   el('refresh-dates').onclick = () => send({ refreshDates: true });

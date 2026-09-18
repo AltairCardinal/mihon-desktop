@@ -18,6 +18,56 @@ async function setup(run) {
   } finally { await browser.close(); }
 }
 const action = (f, a) => f.locator(`[data-action="${a}"]`);
+test('默认多图源与发现新作提醒、查看消除、重复检查及双端隔离', () => setup(async (page, pc, phone) => {
+  await page.locator('#narrow').check();
+  for (const [target, f] of [['windows', pc], ['android', phone]]) {
+    await page.locator('#target').selectOption(target);
+    await f.getByTestId('signature').click();
+    await f.locator('[data-action="work"][data-work="w0"]').click();
+    assert.equal(await f.locator('.version-choice').count(), 2);
+    assert.match(await f.locator('[data-version="v0-other"]').innerText(), /286 章.*未收藏/s);
+    await action(f, 'cancel').last().click();
+    await page.locator('#discover-new').click();
+    await action(f, 'view-new').waitFor();
+    assert.match(await f.locator('.discovery-banner').innerText(), /发现 1 部新作/);
+    if (f === pc) assert.equal(await phone.locator('.discovery-banner').count(), 0);
+    if (f === pc) await f.getByTestId('nav-authors').click();
+    else { await f.getByTestId('nav-browse').click(); await action(f, 'authors').click(); }
+    assert.equal(await f.locator('[data-author="a"] .new-count').innerText(), '1 部新作');
+    await action(f, 'view-new').click();
+    assert.equal(await f.locator('.work-item').first().getAttribute('data-work'), 'discovered-work');
+    assert.equal(await f.locator('.new-work-badge').count(), 1);
+    await f.locator('[data-work="discovered-work"][data-action="work"]').click();
+    assert.equal(await f.locator('.version-choice').count(), 2);
+    await action(f, 'cancel').last().click();
+    assert.equal(await f.locator('.new-work-badge').count(), 1);
+    await f.locator('[data-work="discovered-work"][data-action="work"]').click();
+    await f.locator('[data-version="discovered-other"]').click();
+    assert.equal(await f.locator('.discovery-banner').count(), 0);
+    await action(f, 'back').click();
+    assert.equal(await f.locator('.new-work-badge').count(), 0);
+    await page.locator('#discover-new').click();
+    assert.equal(await f.locator('.discovery-banner').count(), 0);
+    assert.equal(await f.locator('body').evaluate(e => e.scrollWidth > innerWidth), false);
+  }
+}));
+test('弹窗期间发现新作不抢焦点，关闭后呈现提醒并跨网格保留未查看状态', () => setup(async (page, pc) => {
+  await pc.getByTestId('signature').click();
+  await action(pc, 'display').click();
+  const first = pc.getByRole('button', { name: '关闭', exact: true });
+  await first.focus();
+  // Dispatch the external scenario without a physical click moving focus out of the iframe.
+  await page.locator('#discover-new').evaluate(e => e.click());
+  assert.equal(await pc.getByRole('dialog').locator('h2').innerText(), '显示方式');
+  assert.equal(await first.evaluate(e => e === document.activeElement), true);
+  await first.press('Escape');
+  assert.equal(await action(pc, 'display').evaluate(e => e === document.activeElement), true);
+  assert.equal(await pc.locator('.discovery-banner').count(), 1);
+  for (const mode of ['comfortable', 'compact']) {
+    await action(pc, 'display').click(); await pc.locator(`[data-display="${mode}"]`).click();
+    assert.equal(await pc.locator('.new-work-badge').count(), 1);
+  }
+}));
 test('作品日期与首次发现明确区分，刷新不推迟，单源未知信息不编造', () => setup(async (page, pc, phone) => {
   await page.locator('#narrow').check();
   for (const [target, f] of [['windows', pc], ['android', phone]]) {
@@ -31,7 +81,7 @@ test('作品日期与首次发现明确区分，刷新不推迟，单源未知�
     await page.locator('#refresh-dates').click();
     assert.equal(await firstSeen.innerText(), '首次发现 2026-09-18');
     await f.locator('[data-action="work"][data-work="w0"]').click();
-    assert.equal(await f.getByRole('dialog').locator('[data-version]').count(), 1);
+    assert.equal(await f.getByRole('dialog').locator('[data-version]').count(), 2);
     assert.match(await f.locator('[data-version="v0"]').innerText(), /日期待核实/);
     await f.getByRole('button', { name: '取消', exact: true }).click();
     await action(f, 'merge-select').click(); await f.locator('[data-select="tw"]').check(); await action(f, 'add').click();
@@ -56,7 +106,7 @@ test('收藏徽标、书架显示方式及逐版本来源选择在双端独立�
     const work = f.locator('[data-action="work"][data-work="w0"]');
     assert.equal(await work.locator('.collected-badge').count(), 1);
     await work.click();
-    assert.equal(await f.getByRole('dialog').locator('[data-version]').count(), 2);
+    assert.equal(await f.getByRole('dialog').locator('[data-version]').count(), 3);
     const local = f.locator('[data-version="v0"]'), other = f.locator('[data-version="md"]');
     assert.match(await local.innerText(), /300 章/); assert.match(await local.innerText(), /已收藏/);
     assert.match(await other.innerText(), /未收藏/);
@@ -145,7 +195,7 @@ test('关注与全部子页、空状态、返回及横向来源筛选遵循双�
     assert.doesNotMatch(await f.locator('main').innerText(), /CONFIRMED|PROBABLE|UNKNOWN|CONFLICT/);
     assert.equal(await f.locator('#source-filter').count(), 0);
     const chips = f.getByRole('group', { name: '来源筛选' });
-    assert.deepEqual(await chips.getByRole('button').allTextContents(), ['全部来源', '漫画柜', '文字图源（演示）']);
+    assert.deepEqual(await chips.getByRole('button').allTextContents(), ['全部来源', '漫画柜', '文字图源（演示）', '备用图源（演示）']);
     const geometry = await chips.getByRole('button').evaluateAll(items => items.map(e => ({ y: e.getBoundingClientRect().y, radius: getComputedStyle(e).borderRadius, height: e.getBoundingClientRect().height })));
     assert.ok(geometry.every(item => item.y === geometry[0].y && item.radius === '8px' && item.height === 32));
     await chips.getByRole('button', { name: '文字图源（演示）', exact: true }).click();
@@ -175,7 +225,7 @@ test('直接添加无需预览且全局设置只在双端作者列表右上角',
     await f.getByTestId('signature').click(); assert.equal(await f.getByRole('button', { name: '作者设置', exact: true }).count(), 0);
     await action(f, 'merge-select').click(); assert.equal(await f.getByRole('button', { name: '添加', exact: true }).count(), 1);
     await f.locator('[data-select="en"]').check(); await f.getByRole('button', { name: '添加', exact: true }).click();
-    assert.equal(await f.getByRole('dialog').count(), 0); assert.match(await f.locator('.hero').innerText(), /3 部作品 · 4 个来源版本/);
+    assert.equal(await f.getByRole('dialog').count(), 0); assert.match(await f.locator('.hero').innerText(), /3 部作品 · 5 个来源版本/);
     assert.equal(await f.locator('body').evaluate(e => e.scrollWidth > innerWidth), false);
   }
   await pc.getByTestId('nav-authors').click(); await phone.getByTestId('nav-browse').click(); await action(phone, 'authors').click();
@@ -245,7 +295,7 @@ test('双端主名标题、横向别名图源及封面顶部对齐，作者列�
     assert.ok(Math.abs(cover.y - title.y) < 1);
     await work.click();
     const sources = f.getByRole('dialog').locator('[data-version]');
-    assert.equal(await sources.count(), 2);
+    assert.equal(await sources.count(), 3);
     assert.equal(await f.locator('body').evaluate(e => e.scrollWidth > innerWidth), false);
     await f.locator('[data-version="md"]').click();
     assert.equal(await f.locator('.manga-title').innerText(), 'Parallel Paradise');
@@ -277,4 +327,31 @@ test('直接添加失败保留选择、过期在当前窗刷新、搜索与键�
   await scenario('stale'); const first = pc.getByRole('button', { name: '关闭', exact: true }); await first.focus(); await first.press('Shift+Tab'); assert.equal(await action(pc, 'add').evaluate(e => e === document.activeElement), true); await action(pc, 'add').press('Tab'); assert.equal(await first.evaluate(e => e === document.activeElement), true); await action(pc, 'add').click(); assert.match(await pc.getByRole('alert').innerText(), /资料已更新/); assert.equal(await pc.getByRole('dialog').getAttribute('aria-labelledby'), 'dialog-title');
   await action(pc, 'refresh-candidates').click(); await pc.getByLabel('搜索名字或别名').fill('不存在'); assert.match(await pc.getByRole('dialog').innerText(), /没有匹配/); await pc.getByLabel('搜索名字或别名').fill(''); assert.equal(await pc.locator('[data-select="en"]').isChecked(), true);
   await action(pc, 'add').click(); assert.equal(await pc.getByRole('dialog').count(), 0);
+}));
+
+test('收藏采用原版书签图标与封面透明度，网格左上角而列表行尾', () => setup(async (page, pc, phone) => {
+  await page.locator('#narrow').check();
+  for (const f of [pc, phone]) {
+    if (f === pc) await f.getByTestId('nav-authors').click();
+    else { await f.getByTestId('nav-browse').click(); await action(f, 'authors').click(); }
+    const badge = f.locator('[data-author="a"] .collected-badge');
+    assert.equal(await badge.innerText(), '');
+    assert.equal(await badge.getAttribute('aria-label'), '已收藏');
+    assert.equal(await badge.locator('svg').count(), 1);
+    assert.equal(await badge.locator('svg').evaluate(e => e.getBoundingClientRect().width), 12);
+    assert.equal(await f.locator('[data-author="a"] .representative-cover').first().evaluate(e => getComputedStyle(e, '::before').opacity), '0.34');
+    await f.locator('[data-author="a"]').click();
+    const work = f.locator('[data-action="work"][data-work="w0"]');
+    assert.equal(await work.locator('.cover').evaluate(e => getComputedStyle(e).opacity), '0.34');
+    assert.equal(await work.locator(':scope > .collected-badge').count(), 1);
+    for (const mode of ['comfortable', 'compact']) {
+      await action(f, 'display').click(); await f.locator(`[data-display="${mode}"]`).click();
+      assert.equal(await work.locator('.work-cover-wrap > .collected-badge').count(), 1);
+      assert.equal(await work.locator('.cover').evaluate(e => getComputedStyle(e).opacity), '0.34');
+    }
+    await work.click();
+    assert.equal(await f.locator('[data-version="v0"] .cover').evaluate(e => getComputedStyle(e).opacity), '0.34');
+    assert.equal(await f.locator('[data-version="v0-other"] .cover').evaluate(e => getComputedStyle(e).opacity), '1');
+    assert.equal(await f.getByRole('dialog').evaluate(e => e.scrollWidth > e.clientWidth), false);
+  }
 }));
