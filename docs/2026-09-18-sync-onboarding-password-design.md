@@ -132,7 +132,7 @@ GitHub App 的安装与用户授权不是同一个步骤。官方说明应用创
 
 未加密模式复用同一操作日志、合并、批次校验、幂等及待确认规则；内容不额外加密并不允许放弃协议校验。账号令牌仍须使用本机安全存储，密码只影响同步内容保护，不替代 GitHub 授权。
 
-现有 [SyncRecovery.kt](../domain/src/commonMain/kotlin/mihon/domain/sync/crypto/SyncRecovery.kt) 以恢复资料交付随机数据密钥，[SyncPanelContent.kt](../presentation-sync/src/commonMain/kotlin/mihon/presentation/sync/SyncPanelContent.kt) 已有保存/导入恢复资料入口。两者均不会因为改名而自动支持密码；本轮不修改这些生产实现。旧加密空间不含密码包装元数据，不能任取一个密码解锁。后续迁移须由已有可解锁设备明确执行，不能覆盖旧空间或把旧数据默认视为明文。
+现有 [SyncRecovery.kt](../domain/src/commonMain/kotlin/mihon/domain/sync/crypto/SyncRecovery.kt) 以恢复资料交付随机数据密钥，[SyncPanelContent.kt](../presentation-sync/src/commonMain/kotlin/mihon/presentation/sync/SyncPanelContent.kt) 已有保存/导入恢复资料入口。两者均不会因为改名而自动支持密码。用户已确认无需兼容：生产迭代只支持新空间格式，不保留旧恢复资料导入／导出入口，不实施旧数据迁移。旧加密空间不含密码包装元数据，遇到旧格式明确拒绝连接与交换，不能覆盖旧空间或把旧数据默认视为明文。
 
 ### 7.3 复用与本轮范围
 
@@ -190,33 +190,33 @@ HTML 沿用 `preview.js` 双端容器、`app.js` 书架面板、`sync-interactio
 
 重新授权同一账号复用当前合法绑定；若账号改变，必须重新查找并隔离旧账号的连接与未上传操作，不能直接把旧队列写入新空间。这里只调整新配置的接入，不重做断开、批量处理和操作日志规则。
 
-旧恢复资料格式的兼容属于实施前必须冻结的约束：已连接旧空间不可失效或被覆盖；不能将旧空间误判为无密码。是否保留只针对旧空间的兼容解锁入口，或另行安排迁移，须在 roadmap 的前置任务列出具体方案供审核。本轮不预先引入新的恢复资料流程、改密、找回密码或数据迁移能力。
+用户于 2026-09-18 明确确认“无需兼容”。本轮不要求旧连接继续同步，也不提供旧恢复资料兼容入口或迁移；启动时遇到旧绑定、发现时遇到旧空间均提示格式不支持并停止该连接的交换。保留已有本机书架和远端文件，不自动删除、覆盖或将旧队列发布到新空间。此决定取代此前关于保护旧连接可用及兼容例外待审核的要求。
 
-GitHub 真实权限、并发创建、重启持久恢复、加密算法和旧协议兼容是生产验收项。DEMO 中固定密码与定时状态转换仅证明交互可审阅；本次文档核对不修复无关原型模型问题，不把它们扩成实施任务。
+GitHub 真实权限、并发创建、重启持久恢复、加密算法和旧协议拒绝处理是生产验收项。DEMO 中固定密码与定时状态转换仅证明交互可审阅；本次文档核对不修复无关原型模型问题，不把它们扩成实施任务。
 
 ## 10. P1 契约候选与审核门槛（2026-09-18）
 
-状态：已核对生产入口，以下是具体候选，**不是已批准或已实现协议**。实际 GitHub 权限、发现范围及请求契约见 roadmap 第 6 节；旧格式例外未获批准，P1 未通过，不能据此进入 P2／P3。
+状态：已核对生产入口，以下是具体候选，**不是已批准或已实现协议**。实际 GitHub 权限、发现范围及请求契约见 roadmap 第 6 节；用户已确认不兼容旧格式，兼容决策门已关闭；实际权限与发现范围尚未确认，P1 未通过，不能据此进入 P2／P3。
 
 ### 10.1 当前代码事实
 
 - [SyncRecoveryCodec](../domain/src/commonMain/kotlin/mihon/domain/sync/crypto/SyncRecovery.kt) 的 v1 恢复资料包含 32 字节随机数据密钥的原文 `rawKeyset`，并绑定空间及 generation；不是密码包装密钥。
-- [SyncRuntime](../data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRuntime.kt) 在 `connect` 中先导入恢复密钥、读取真实快照，再通过安全存储 CAS 保存材料及 actor 身份，最后执行现有基线合并。现存安全存储记录必须继续可读，不清空或替换旧密钥。
+- [SyncRuntime](../data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRuntime.kt) 在 `connect` 中先导入恢复密钥、读取真实快照，再通过安全存储 CAS 保存材料及 actor 身份，最后执行现有基线合并。这是当前实现事实，不是新版本的旧格式兼容要求；新流程不自动清空或替换已有密钥。
 - [GitHubSyncTransport](../data/src/commonMain/kotlin/mihon/data/sync/transport/GitHubGitDatabaseClient.kt) 同时加密 batch、index、head 和 bootstrap；bootstrap 位于 `.mihon-sync/index/bootstrap/0/bootstrap.bin`，没有可在解密前读取身份与模式的公共空间描述符。旧目录只说明“疑似旧格式”，不能证明密钥正确或空间完整。
 - [SyncTransportPort／SyncPreparedUpload](../domain/src/commonMain/kotlin/mihon/domain/sync/transport/SyncTransport.kt) 硬编码密文类型。无密码模式须覆盖索引、head、持久重试产物与快照校验，不能只关闭 batch 加密，或暗中生成需要恢复的密钥。沿用现有操作日志、链校验及非强制 Git 发布。
 
-### 10.2 需要审核：仅旧空间保留恢复资料兼容入口
+### 10.2 已确认：无需兼容旧格式
 
-建议旧空间保留现有导入／导出能力，新空间全部遵循无恢复资料的新流程，不迁移或重写旧空间。
+用户于 2026-09-18 明确决定“无需兼容”，撤销此前兼容导入／导出的候选方案。新版本只支持本轮新空间格式，不要求保留旧格式交换能力，不新增恢复资料入口或迁移功能。
 
-| 情形 | 候选行为 |
+| 情形 | 实施要求 |
 | --- | --- |
-| 已连接旧空间且本机材料可用 | 原 v1 交换继续；设置显示“旧版加密空间”并保留原有导出入口，不能显示“未设置密码” |
-| 新设备发现旧目录，或旧连接丢失本机密钥 | 提示“此空间使用旧版加密，请导入原有恢复资料”；仅提供兼容导入、返回及关闭，无密码框、跳过或覆盖初始化 |
-| 导入资料 | 用资料中的身份与密钥验证完整远端快照；验证成功才存储材料并自动合并 |
-| 资料错误／远端损坏／没有资料 | 明确失败或无法解锁，保留原数据；不初始化、不生成替代密钥，不声称重新登录能恢复 |
+| 启动时存在旧格式绑定 | 显示“此同步空间使用不受支持的旧格式”，停止该连接的上传与接收；不能显示同步正常或密码保护未开启 |
+| 配置时发现旧格式／疑似旧索引 | 返回不支持或数据异常，不出现密码解锁或恢复资料导入，不视为空库或无密码空间 |
+| 本机书架、旧队列及远端文件 | 保留本机数据和远端文件，不自动迁移、删除、覆盖，也不把旧队列重新绑定到新空间 |
+| 新格式配置 | 使用可选密码或密码解锁流程，不提供恢复资料导入／导出 |
 
-这是第 1 节移除恢复资料规则的受限例外，**尚未批准，不得默认实现**。保留导出避免升级后已解锁设备失去原有恢复能力。如果不接受此例外，只能让未连接设备遇旧空间时停在兼容性说明，或另行批准迁移；不能由实施者擅自决定。旧格式没有密码包装元数据，任意新密码都无法解锁。
+“不兼容”不构成删除旧数据或重建远端仓库的授权。本决定解除兼容例外审核门槛，不替代实际 GitHub 权限与发现范围核验。
 
 ### 10.3 空间封装候选
 
@@ -227,9 +227,9 @@ GitHub 真实权限、并发创建、重启持久恢复、加密算法和旧协�
 | 无密码 | `mode: "none"`，禁止出现 KDF／包装字段 |
 | 密码 | `mode: "password"`、`kdf: "PBKDF2-HMAC-SHA256"`、`iterations: 600000`、`saltHex`（32 个小写十六进制字符）、`aead: "AES-256-GCM"`、`wrappedKeyHex`（120 个小写十六进制字符） |
 
-未知版本／模式返回 `Unsupported`，缺损结构返回 `Malformed`。描述符缺席且存在旧索引仅返回 `LegacyCandidate`；已绑定 v2 的描述符丢失必须报数据异常。任意未知 `.mihon-sync/` 残留都阻止初始化。描述符和 bootstrap 在同一 Git tree／commit 中发布，避免半初始化空间。
+未知版本／模式返回 `Unsupported`，缺损结构返回 `Malformed`。描述符缺席且存在旧索引返回 `UnsupportedLegacy`；已绑定 v2 的描述符丢失必须报数据异常。任意未知 `.mihon-sync/` 残留都阻止初始化。描述符和 bootstrap 在同一 Git tree／commit 中发布，避免半初始化空间。
 
-v2 batch、index、head、bootstrap 使用统一显式模式封装，带空间封装版本、模式和载荷字节；不得先解密失败再尝试明文。明文仍校验 SHA-256、身份、路径、序号、索引链及快照历史；SHA-256 不等于密钥认证。密码载荷复用现有 AEAD，并将空间封装版本和模式加入 AAD；旧 v1 的 AAD 原样保留。
+v2 batch、index、head、bootstrap 使用统一显式模式封装，带空间封装版本、模式和载荷字节；不得先解密失败再尝试明文。明文仍校验 SHA-256、身份、路径、序号、索引链及快照历史；SHA-256 不等于密钥认证。密码载荷复用现有 AEAD，并将空间封装版本和模式加入 AAD；不要求实现旧 v1 的读写兼容。
 
 v2 AAD 字段按顺序为域标识、空间封装版本、事件版本、模式、空间 ID、generation；包装域 `mihon-sync-wrap-v2` 再追加 KDF、迭代数、盐、AEAD 名称，载荷域 `mihon-sync-payload-v2` 再追加载荷身份及路径。字段用 UTF-8 字节长度前缀及 NUL 分隔，不能依赖 JSON 属性顺序。既有设备将模式及描述符摘要绑定到本机安全材料，远端变更拒绝交换；新设备的首次描述符依赖 GitHub 授权信任，不宣称可验证此前历史。
 
@@ -247,17 +247,17 @@ v2 AAD 字段按顺序为域标识、空间封装版本、事件版本、模式�
 
 接口为职责约定，复用现有 runtime，不建立第二套控制器：
 
-- `inspect(repository, head): SpaceInspection` → `V2(descriptor, digest)`／`LegacyCandidate`／`EmptyOwnedAttempt`／`NotSync`／`Unsupported`／`Malformed`，读取同一不可变 Git head；访问失败单独返回。
+- `inspect(repository, head): SpaceInspection` → `V2(descriptor, digest)`／`UnsupportedLegacy`／`EmptyOwnedAttempt`／`NotSync`／`Unsupported`／`Malformed`，读取同一不可变 Git head；访问失败单独返回。
 - `discover(account): DiscoveryResult` → `Found`／`Absent`／`MultipleCandidates`／`VisibilityUnknown`／`AuthorizationRequired`／`Incompatible`／`RetryableFailure`。只有完整分页和可信可见范围才允许 `Absent`；selected 安装的空集不代表账号没有空间，也不自动扩大 all-repositories 授权。仓库命名与碰撞细节尚未冻结，须与 roadmap 第 6 节可见范围门槛一并闭合。
 - `createOrResume(account, attemptId, protectionChoice)` → 先重新发现，未知建库结果先重新读取；尝试绑定账号、repo、space 与模式。不能占用无本机尝试证据的空库；并发输家服从远端赢家模式。
-- `unlock(descriptor, password)`／`connectVerified(repository, descriptor, material)` → 先验证材料与真实快照，再复用安全存储 CAS 及基线合并。账号／空间／尝试身份贯穿异步回执，过期结果丢弃；旧格式仅按获批 adapter 兼容。
+- `unlock(descriptor, password)`／`connectVerified(repository, descriptor, material)` → 先验证材料与真实快照，再复用安全存储 CAS 及基线合并。账号／空间／尝试身份贯穿异步回执，过期结果丢弃；旧格式在进入解锁及连接之前拒绝，不进入兼容 adapter。
 
 | fixture 组 | 必需输入及断言 |
 | --- | --- |
 | 空间识别 | none／password、真实旧 bootstrap、未知版本／模式、缺包装、重复键、超限及描述符丢失；拒绝降级 |
 | 密码向量 | 固定合成盐／密钥／nonce 的跨端预期结果，空／空格／中文／emoji／组合字符、上限边界、坏参数、密码错误、包装及 AAD 篡改；随机数注入仅供测试 |
-| 完整交换 | 两模式真实 codec → batch／index／head／bootstrap → transport → 重开；路径交换、断链、重放、持久重试模式错配失败；保留旧格式向量 |
+| 完整交换 | 两模式真实 codec → batch／index／head／bootstrap → transport → 重开；路径交换、断链、重放、持久重试模式错配失败；旧格式向量仅用于拒绝与零写入验证 |
 | HTTP／发现 | 分页完整／截断、selected 安装、同名非同步、多候选、401／403／404可见性不明／429／500、畸形响应、私库创建及响应丢失、初始化中断和并发冲突 |
-| 本机材料／生命周期 | 旧安全存储重开、新模式重开、密码错误零写入、账号回执隔离、敏感内容不进入可观察输出，必须通过 production wiring |
+| 本机材料／生命周期 | 旧绑定重开后拒绝交换且保留数据、新模式重开、密码错误零写入、账号回执隔离、敏感内容不进入可观察输出，必须通过 production wiring |
 
 以上是待实施的 fixture 清单，尚未创建或运行。P1 门槛解除后先编写正确原因失败的 focused 测试，再实施 P2／P3；源码扫描不作为行为验收。
