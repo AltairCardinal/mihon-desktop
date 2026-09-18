@@ -18,6 +18,97 @@ async function setup(run) {
   } finally { await browser.close(); }
 }
 const action = (f, a) => f.locator(`[data-action="${a}"]`);
+test('B布局展示最多三部去重作品，单作品不补位，封面点击进入作者', () => setup(async (page, pc, phone) => {
+  await page.locator('#narrow').check();
+  for (const f of [pc, phone]) {
+    if (f === pc) await f.getByTestId('nav-authors').click();
+    else { await f.getByTestId('nav-browse').click(); await action(f, 'authors').click(); }
+    const row = f.locator('[data-author="a"]');
+    assert.equal(await row.locator('.representative-work').count(), 3);
+    const covers = await row.locator('.representative-cover').evaluateAll(items => items.map(e => e.getBoundingClientRect().toJSON()));
+    assert.ok(covers.every(box => Math.abs(box.y - covers[0].y) < 1));
+    assert.ok(covers[1].x >= covers[0].x + covers[0].width);
+    assert.deepEqual(await row.locator('.representative-title').allTextContents(), ['平行天堂', '极黑的布伦希尔德', '变异体少女']);
+    assert.ok(await row.locator('strong').evaluate(e => e.getBoundingClientRect().y) < covers[0].y);
+    await row.locator('.representative-cover').first().click();
+    assert.equal(await f.locator('.bar h1').innerText(), '作者详情');
+    await action(f, 'merge-select').click(); await f.locator('[data-select="en"]').check(); await action(f, 'add').click();
+    await action(f, 'back').click();
+    assert.equal(await row.locator('.representative-work').count(), 3);
+    assert.deepEqual(await row.locator('.representative-work').evaluateAll(items => items.map(e => e.dataset.work)), ['w0', 'w1', 'w2']);
+    await f.getByRole('tab', { name: '全部', exact: true }).click();
+    assert.equal(await f.locator('[data-author="tw"] .representative-work').count(), 1);
+    assert.equal(await f.locator('body').evaluate(e => e.scrollWidth > innerWidth), false);
+  }
+}));
+
+test('作者子页键盘切换、返回滚动恢复及固定顶部栏', () => setup(async (page, pc, phone) => {
+  await page.locator('#preview-windows, #preview-android').evaluateAll(frames => frames.forEach(frame => { frame.style.height = '350px'; }));
+  for (const f of [pc, phone]) {
+    const enterAuthors = async () => {
+      if (f === pc) await f.getByTestId('nav-authors').click();
+      else { await f.getByTestId('nav-browse').click(); await action(f, 'authors').click(); }
+    };
+    await enterAuthors();
+    const following = f.getByRole('tab', { name: '关注', exact: true }), all = f.getByRole('tab', { name: '全部', exact: true });
+    await following.focus(); await following.press('ArrowRight');
+    assert.equal(await all.getAttribute('aria-selected'), 'true');
+    assert.equal(await all.evaluate(e => e === document.activeElement), true);
+    assert.equal(await all.getAttribute('aria-controls'), 'author-list');
+    await all.press('ArrowLeft'); assert.equal(await following.getAttribute('aria-selected'), 'true');
+    await following.press('ArrowRight');
+    await f.locator('[data-author="tw"]').scrollIntoViewIfNeeded();
+    const scroll = await f.locator('main').evaluate(e => e.scrollTop);
+    assert.ok(scroll > 0);
+    await f.locator('[data-author="tw"]').click();
+    const top = (await f.locator('.bar').boundingBox()).y;
+    await f.locator('main').evaluate(e => { e.scrollTop = e.scrollHeight; });
+    assert.ok(await f.locator('main').evaluate(e => e.scrollTop > 0));
+    assert.equal((await f.locator('.bar').boundingBox()).y, top);
+    await action(f, 'back').click();
+    assert.equal(await all.getAttribute('aria-selected'), 'true');
+    assert.equal(await f.locator('main').evaluate(e => e.scrollTop), scroll);
+    await enterAuthors();
+    assert.equal(await following.getAttribute('aria-selected'), 'true');
+  }
+}));
+test('关注与全部子页、空状态、返回及横向来源筛选遵循双端交互', () => setup(async (page, pc, phone) => {
+  await page.locator('#narrow').check();
+  for (const f of [pc, phone]) {
+    if (f === pc) await f.getByTestId('nav-authors').click();
+    else { await f.getByTestId('nav-browse').click(); await action(f, 'authors').click(); }
+    assert.equal(await f.getByRole('tab', { name: '关注', exact: true }).getAttribute('aria-selected'), 'true');
+    assert.equal(await f.locator('[data-author]').count(), 1);
+    await f.locator('[data-author="a"]').click();
+    assert.equal(await f.locator('.bar h1').innerText(), '作者详情');
+    assert.equal(await f.getByRole('button', { name: '返回', exact: true }).isVisible(), true);
+    assert.doesNotMatch(await f.locator('main').innerText(), /CONFIRMED|PROBABLE|UNKNOWN|CONFLICT/);
+    assert.equal(await f.locator('#source-filter').count(), 0);
+    const chips = f.getByRole('group', { name: '来源筛选' });
+    assert.deepEqual(await chips.getByRole('button').allTextContents(), ['全部来源', '漫画柜', '文字图源（演示）']);
+    const geometry = await chips.getByRole('button').evaluateAll(items => items.map(e => ({ y: e.getBoundingClientRect().y, radius: getComputedStyle(e).borderRadius, height: e.getBoundingClientRect().height })));
+    assert.ok(geometry.every(item => item.y === geometry[0].y && item.radius === '8px' && item.height === 32));
+    await chips.getByRole('button', { name: '文字图源（演示）', exact: true }).click();
+    assert.equal(await f.locator('.work-row').count(), 1);
+    assert.equal(await f.locator('.work-row strong').innerText(), '极黑的布伦希尔德');
+    assert.equal(await chips.getByRole('button', { name: '文字图源（演示）', exact: true }).getAttribute('aria-pressed'), 'true');
+    assert.equal(await f.locator('body').evaluate(e => e.scrollWidth > innerWidth), false);
+    await chips.getByRole('button', { name: '全部来源', exact: true }).click();
+    await f.getByTestId('follow').click(); await action(f, 'unfollow-confirm').click();
+    await action(f, 'back').click();
+    assert.equal(await f.locator('.bar h1').innerText(), '作者');
+    assert.equal(await f.locator('[data-author]').count(), 0);
+    assert.equal(await f.getByText('关注作者以获取他们的新作提示', { exact: true }).isVisible(), true);
+    await f.getByRole('button', { name: '查看全部作者', exact: true }).click();
+    assert.equal(await f.getByRole('tab', { name: '全部', exact: true }).getAttribute('aria-selected'), 'true');
+    assert.equal(await f.locator('[data-author]').count(), 3);
+    await f.locator('[data-author="en"]').click(); await f.getByTestId('follow').click(); await action(f, 'back').click();
+    assert.equal(await f.getByRole('tab', { name: '全部', exact: true }).getAttribute('aria-selected'), 'true');
+    await f.getByRole('tab', { name: '关注', exact: true }).click();
+    assert.deepEqual(await f.locator('[data-author]').evaluateAll(items => items.map(e => e.dataset.author)), ['en']);
+    if (f === pc) { await phone.getByTestId('signature').click(); assert.equal(await phone.getByTestId('follow').innerText(), '已关注'); }
+  }
+}));
 test('直接添加无需预览且全局设置只在双端作者列表右上角', () => setup(async (page, pc, phone) => {
   await page.locator('#narrow').check();
   for (const f of [pc, phone]) {
@@ -115,6 +206,7 @@ test('全局三频率保存取消失败、跨作者操作及另一设备隔离',
   await pc.getByTestId('nav-authors').click();
   for (const frequency of ['weekly', 'monthly', 'daily', 'monthly']) { await settings(pc).click(); await pc.getByLabel('检查频率').selectOption(frequency); await action(pc, 'settings-save').click(); assert.equal(await settings(pc).evaluate(e => e === document.activeElement), true); await settings(pc).click(); assert.equal(await pc.getByLabel('检查频率').inputValue(), frequency); await pc.getByRole('button', { name: '取消', exact: true }).click(); }
   await settings(pc).click(); await pc.getByLabel('检查频率').selectOption('weekly'); await pc.getByRole('button', { name: '取消', exact: true }).click();
+  await pc.getByRole('tab', { name: '全部', exact: true }).click();
   await pc.locator('[data-author="en"]').click(); await action(pc, 'merge-select').click(); await pc.locator('[data-select="a"]').check(); await action(pc, 'add').click(); await pc.getByTestId('author-aliases').getByRole('button', { name: '冈本伦', exact: true }).click(); await pc.getByRole('button', { name: '确定', exact: true }).click();
   await pc.getByTestId('nav-authors').click(); await settings(pc).click(); assert.equal(await pc.getByLabel('检查频率').inputValue(), 'monthly'); await pc.getByRole('button', { name: '关闭', exact: true }).click();
   await phone.getByTestId('nav-browse').click(); await action(phone, 'authors').click(); await settings(phone).click(); assert.equal(await phone.getByLabel('检查频率').inputValue(), 'daily');

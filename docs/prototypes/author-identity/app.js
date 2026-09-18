@@ -3,6 +3,9 @@
   const platform = new URLSearchParams(location.search).get('platform') === 'android' ? 'android' : 'windows';
   const spec = V.platformSpec(platform), app = document.getElementById('app'), overlay = document.getElementById('overlay');
   let state = M.create(), page = 'manga', manga = 'v0', author = 'a', filter = '全部来源', query = '', notice = '', scenario = 'history';
+  let authorScroll = { following: 0, all: 0 };
+  const rememberAuthorScroll = () => { if (page === 'authors') authorScroll[authorTab] = app.querySelector('main')?.scrollTop || 0; };
+  let authorTab = 'following', detailReturn = 'manga', mangaReturn = 'authors';
   let modal = null, opener = null, selected = [], target = 'a', settingsFrequency = 'daily', error = '', candidateQuery = '', renameDraft = '', sessionRevision = 0, modalFocus = null;
   const esc = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const button = (action, text, cls = '', extra = '') => `<button data-action="${action}" class="${cls}" ${extra}>${text}</button>`;
@@ -10,7 +13,16 @@
   const current = () => state.authors.find(a => a.id === M.resolve(state, author)) || state.authors[0];
   const versions = id => state.versions.filter(v => v.author === M.resolve(state, id));
   const workNames = id => versions(id).map(v => v.title).join('、');
-  const authorRow = a => `<button class="row row-button" data-author="${a.id}"><span class="grow"><strong>${esc(a.name)}</strong><span class="muted">${esc(workNames(a.id))}</span><p class="muted">${a.follow ? '已关注' : '未关注'}</p></span>${V.icon('chevron')}</button>`;
+  const authorRow = a => {
+    // Local design fixtures have no reading/popularity signals: retain first-seen work order.
+    const works = [...new Map(versions(a.id).map(v => [v.work, null])).keys()]
+      .map(id => versions(a.id).find(v => v.work === id));
+    return `<button class="row row-button author-card" data-author="${a.id}" aria-label="${esc(a.name)}，${works.length}部作品，${a.follow ? '已关注' : '未关注'}"><span class="author-card-heading"><span class="grow"><strong>${esc(a.name)}</strong><span class="muted">${works.length} 部作品 · ${a.follow ? '已关注' : '未关注'}</span></span>${V.icon('chevron')}</span>${works.length ? `<span class="representative-shelf">${works.slice(0, 3).map(v => `<span class="representative-work" data-work="${esc(v.work)}"><span class="representative-cover" aria-label="${esc(v.title)}示意封面"><span>${esc(v.title)}</span></span><span class="representative-title">${esc(v.title)}</span></span>`).join('')}</span>` : '<span class="muted">暂无作品</span>'}</button>`;
+  };
+  function authorsView() {
+    const shown = state.authors.filter(a => authorTab === 'all' || a.follow);
+    return `<div class="tabs author-tabs" role="tablist" aria-label="作者列表">${button('following-authors', '关注', authorTab === 'following' ? 'selected' : '', `role="tab" tabindex="${authorTab === 'following' ? 0 : -1}" aria-selected="${authorTab === 'following'}" aria-controls="author-list"`)}${button('all-authors', '全部', authorTab === 'all' ? 'selected' : '', `role="tab" tabindex="${authorTab === 'all' ? 0 : -1}" aria-selected="${authorTab === 'all'}" aria-controls="author-list"`)}</div><section id="author-list" role="tabpanel" aria-label="${authorTab === 'following' ? '关注' : '全部'}">${shown.length ? shown.map(authorRow).join('') : `<div class="empty"><p>${authorTab === 'following' ? '关注作者以获取他们的新作提示' : '暂无作者'}</p>${authorTab === 'following' ? button('all-authors', '查看全部作者', 'primary') : ''}</div>`}</section>`;
+  }
   function mangaView() {
     const v = state.versions.find(v => v.id === manga) || state.versions[0];
     return `<div class="hero"><div class="cover" aria-label="示意封面">${esc(v.title)}</div><div><span class="pill">${esc(v.source)}</span><h2 class="manga-title">${esc(v.title)}</h2>${creatorRow(button('signature', esc(v.signature), 'creator-name', 'data-testid="signature"'))}<p class="muted">连载中 · 漫画</p></div></div><p class="note">相同名字自动使用同一个作者页，不区分插件或来源。点击署名查看作者。</p><h3 class="section-title">作品简介</h3><p>这是用于作者名字交互审阅的本地作品样本。封面为示意，不加载漫画图片或章节。</p>${state.unavailable ? '<p class="note warning">漫画柜来源不可用。作者、已有作品和关注仍保留。</p>' : ''}<h3 class="section-title">章节</h3><p class="muted">本原型仅演示漫画与作者之间的导航，不提供阅读或下载。</p>`;
@@ -19,13 +31,14 @@
     const a = current(), all = versions(a.id), shown = all.filter(v => (filter === '全部来源' || v.source === filter) && v.title.toLowerCase().includes(query.toLowerCase()));
     const groups = new Map(); shown.forEach(v => { if (!groups.has(v.work)) groups.set(v.work, []); groups.get(v.work).push(v); });
     const sources = ['全部来源', ...new Set(all.map(v => v.source))];
-    return `<div class="hero author-hero"><div><h2 class="manga-title" data-testid="author-name" tabindex="-1">${esc(a.name)}</h2>${a.aliases.length ? `<div class="alias-links" data-testid="author-aliases">${a.aliases.map(name => creatorRow(button('alias-name', esc(name), 'creator-name', `data-alias="${esc(name)}"`))).join('')}</div>` : ''}<p class="muted">${new Set(all.map(v => v.work)).size} 部作品 · ${all.length} 个来源版本</p></div></div><div class="actions">${button('follow', a.follow ? '已关注' : '关注作者', a.follow ? '' : 'primary', 'data-testid="follow"')}${button('merge-select', '添加别名')}</div>${state.unavailable ? '<p class="note warning">漫画柜插件不可用，已有作者、作品和关注不受影响。</p>' : ''}<h3 class="section-title">作品 <span class="text-count">${groups.size}</span></h3><div class="filters"><label>来源 <select id="source-filter">${sources.map(s => `<option ${s === filter ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></label><label>查找作品 <input id="work-search" value="${esc(query)}" placeholder="作品名" size="12"></label></div>${groups.size ? [...groups.values()].map(group => `<div class="row work-row"><div class="cover small">${esc(group[0].title)}</div><div class="grow"><strong>${esc(group[0].title)}</strong><div class="work-sources">${group.map(v => button('manga', esc(v.source) + (state.unavailable && v.source === '漫画柜' ? ' · 不可用' : ''), 'source-button', `data-version="${v.id}"`)).join('')}</div></div></div>`).join('') : '<p class="empty muted">没有符合条件的作品。可切换来源或清空搜索。</p>'}`;
+    return `<div class="hero author-hero"><div><h2 class="manga-title" data-testid="author-name" tabindex="-1">${esc(a.name)}</h2>${a.aliases.length ? `<div class="alias-links" data-testid="author-aliases">${a.aliases.map(name => creatorRow(button('alias-name', esc(name), 'creator-name', `data-alias="${esc(name)}"`))).join('')}</div>` : ''}<p class="muted">${new Set(all.map(v => v.work)).size} 部作品 · ${all.length} 个来源版本</p></div></div><div class="actions">${button('follow', a.follow ? '已关注' : '关注作者', a.follow ? '' : 'primary', 'data-testid="follow"')}${button('merge-select', '添加别名')}</div>${state.unavailable ? '<p class="note warning">漫画柜插件不可用，已有作者、作品和关注不受影响。</p>' : ''}<h3 class="section-title">作品 <span class="text-count">${groups.size}</span></h3><div class="source-filters" role="group" aria-label="来源筛选">${sources.map(s => button('filter-source', esc(s), 'filter-chip', `data-source="${esc(s)}" aria-label="${esc(s)}" aria-pressed="${s === filter}"`)).join('')}</div><div class="filters"><label>查找作品 <input id="work-search" value="${esc(query)}" placeholder="作品名" size="12"></label></div>${groups.size ? [...groups.values()].map(group => `<div class="row work-row"><div class="cover small">${esc(group[0].title)}</div><div class="grow"><strong>${esc(group[0].title)}</strong><div class="work-sources">${group.map(v => button('manga', esc(v.source) + (state.unavailable && v.source === '漫画柜' ? ' · 不可用' : ''), 'source-button', `data-version="${v.id}"`)).join('')}</div></div></div>`).join('') : '<p class="empty muted">没有符合条件的作品。可切换来源或清空搜索。</p>'}`;
   }
   function render() {
     const nav = page === 'authors' || page === 'author' ? (platform === 'android' ? 'browse' : 'authors') : page === 'manga' ? 'library' : page;
     const title = page === 'manga' ? '漫画详情' : page === 'author' ? '作者详情' : page === 'authors' ? '作者' : page === 'browse' ? '浏览' : spec.nav.find(n => n.route === page)?.label || 'Mihon';
-    const inner = page === 'manga' ? mangaView() : page === 'author' ? detailView() : page === 'authors' ? `<p class="muted">相同名字共用作者；不同名字可手动合并。来源不决定人物身份。</p>${state.authors.map(authorRow).join('')}` : page === 'browse' ? '<p class="note">请选择作者页签继续本次交互审阅。</p>' : `<div class="empty"><p>本页不在作者名字原型范围内。</p>${button('home', '返回《平行天堂》')}</div>`;
+    const inner = page === 'manga' ? mangaView() : page === 'author' ? detailView() : page === 'authors' ? authorsView() : page === 'browse' ? '<p class="note">请选择作者页签继续本次交互审阅。</p>' : `<div class="empty"><p>本页不在作者名字原型范围内。</p>${button('home', '返回《平行天堂》')}</div>`;
     app.innerHTML = `${platform === 'windows' ? '<div class="desktop-windowbar"><span>Mihon Desktop</span><span>—　□　×</span></div>' : '<div class="android-statusbar"><span>9:41</span><span>● ▰</span></div>'}<div class="bar">${button('back', V.icon('back'), 'icon-button', 'aria-label="返回"')}<h1>${title}</h1>${page === 'authors' ? button('settings', V.icon('settings'), 'icon-button author-settings', 'aria-label="作者设置"') : ''}</div>${platform === 'android' && ['browse', 'authors'].includes(page) ? `<div class="tabs">${spec.browseTabs.map(t => button(t === '作者' ? 'authors' : 'browse-boundary', t, t === '作者' && page === 'authors' ? 'selected' : '')).join('')}</div>` : ''}<main class="content">${notice ? `<p class="feedback" role="status">${esc(notice)}</p>` : ''}${inner}</main>${V.renderNav(spec, nav)}`;
+    if (page === 'authors') app.querySelector('main').scrollTop = authorScroll[authorTab];
   }
   function open(kind, preserve = false) { if (!preserve) opener = document.activeElement; modal = kind; error = ''; app.inert = true; drawModal(); }
   function close() { modal = null; overlay.innerHTML = ''; app.inert = false; error = ''; if (opener?.isConnected) opener.focus(); else app.querySelector('button')?.focus(); }
@@ -54,8 +67,8 @@
   document.addEventListener('click', event => {
     if (event.target.classList.contains('modal-backdrop')) { close(); return; }
     const b = event.target.closest('button'); if (!b) return;
-    if (b.dataset.author) { author = M.resolve(state, b.dataset.author); page = 'author'; notice = ''; render(); return; }
-    if (b.dataset.route) { page = b.dataset.route; notice = ''; render(); return; }
+    if (b.dataset.author) { rememberAuthorScroll(); detailReturn = 'authors'; filter = '全部来源'; query = ''; author = M.resolve(state, b.dataset.author); page = 'author'; notice = ''; render(); return; }
+    if (b.dataset.route) { rememberAuthorScroll(); if (b.dataset.route === 'authors') authorTab = 'following'; page = b.dataset.route; notice = ''; render(); return; }
     const a = b.dataset.action;
     if (a === 'cancel') close();
     else if (a === 'settings') { settingsFrequency = state.frequency; open('settings'); }
@@ -63,7 +76,7 @@
       try { state = M.setFrequency(state, settingsFrequency); notice = '检查频率已保存'; close(); render(); app.querySelector('[data-action="settings"]').focus(); }
       catch (e) { error = e.message; drawModal(); }
     }
-    else if (a === 'signature') { author = state.versions.find(v => v.id === manga).author; page = 'author'; render(); }
+    else if (a === 'signature') { detailReturn = 'manga'; filter = '全部来源'; query = ''; author = state.versions.find(v => v.id === manga).author; page = 'author'; render(); }
     else if (a === 'merge-select') {
       selected = [current().id]; target = current().id; candidateQuery = ''; sessionRevision = state.revision; open('merge-select');
       if (scenario === 'stale') { state.authors.find(v => v.id === current().id).follow = false; state.revision++; }
@@ -80,10 +93,12 @@
       if (a === 'follow' && current().follow) { open('unfollow'); return; }
       try { state = M.follow(state, current().id, a === 'follow'); if (modal) close(); notice = ''; render(); app.querySelector('[data-testid="follow"]').focus(); }
       catch (e) { if (modal) { error = e.message; drawModal(); } else { notice = e.message; render(); } }
-    } else if (a === 'manga') { manga = b.dataset.version; page = 'manga'; notice = ''; render(); }
-    else if (a === 'authors') { page = 'authors'; notice = ''; render(); }
+    } else if (a === 'manga') { mangaReturn = 'author'; manga = b.dataset.version; page = 'manga'; notice = ''; render(); }
+    else if (a === 'following-authors' || a === 'all-authors') { rememberAuthorScroll(); authorTab = a === 'following-authors' ? 'following' : 'all'; notice = ''; render(); app.querySelector(`[data-action="${a}"]`).focus(); }
+    else if (a === 'filter-source') { const offset = app.querySelector('.source-filters').scrollLeft; filter = b.dataset.source; render(); const chips = app.querySelector('.source-filters'); chips.scrollLeft = offset; [...chips.querySelectorAll('button')].find(item => item.dataset.source === filter)?.focus({ preventScroll: true }); }
+    else if (a === 'authors') { authorTab = 'following'; page = 'authors'; notice = ''; render(); }
     else if (a === 'home') { manga = 'v0'; page = 'manga'; notice = ''; render(); }
-    else if (a === 'back') { page = page === 'author' ? 'manga' : page === 'manga' ? 'authors' : 'manga'; notice = ''; render(); }
+    else if (a === 'back') { page = page === 'author' ? detailReturn : page === 'manga' ? mangaReturn : 'manga'; notice = ''; render(); }
     else if (a === 'browse-boundary') { notice = '本页签不在作者交互原型范围内，请进入作者页签。'; render(); }
   });
   document.addEventListener('focusin', event => { if (overlay.contains(event.target)) modalFocus = event.target; });
@@ -96,10 +111,12 @@
     const e = event.target;
     if (e.dataset.select) { selected = e.checked ? [...selected, e.dataset.select] : selected.filter(s => s !== e.dataset.select); drawModal(); overlay.querySelector(`[data-select="${e.dataset.select}"]`).focus(); }
     else if (e.id === 'frequency') settingsFrequency = e.value;
-    else if (e.id === 'source-filter') { filter = e.value; render(); document.getElementById('source-filter').focus(); }
     else if (e.id === 'work-search') { query = e.value; render(); document.getElementById('work-search').focus(); }
   });
   document.addEventListener('keydown', event => {
+    if (!modal && event.target.matches('.author-tabs [role=tab]') && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+      event.preventDefault(); rememberAuthorScroll(); authorTab = event.key === 'Home' ? 'following' : event.key === 'End' ? 'all' : authorTab === 'following' ? 'all' : 'following'; render(); app.querySelector('.author-tabs [aria-selected="true"]').focus({ preventScroll: true }); return;
+    }
     if (!modal) return;
     if (event.key === 'Escape') { event.preventDefault(); close(); }
     if (event.key === 'Tab') {
@@ -119,7 +136,7 @@
       author = state.versions.find(v => v.id === (alias ? 'future-alias' : 'future-same')).author; page = 'author'; notice = alias ? '已加入别名作品；重复加入不增加条目。' : '已加入同名作品；未提供来源作者编号仍自动复用。'; render(); return;
     }
     if (!event.data.scenario) return;
-    close(); state = M.create(); scenario = event.data.scenario; author = 'a'; manga = 'v0'; page = 'manga'; filter = '全部来源'; query = ''; notice = ''; selected = [];
+    close(); authorScroll = { following: 0, all: 0 }; authorTab = 'following'; detailReturn = 'manga'; mangaReturn = 'authors'; state = M.create(); scenario = event.data.scenario; author = 'a'; manga = 'v0'; page = 'manga'; filter = '全部来源'; query = ''; notice = ''; selected = [];
     if (scenario === 'empty') state = M.apply(state, M.preview(state, { selected: state.authors.map(a => a.id), target: 'a' }));
     state.fail = scenario === 'submit-error'; state.unavailable = scenario === 'unavailable'; render();
   });
