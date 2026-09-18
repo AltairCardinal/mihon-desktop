@@ -3,6 +3,39 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_CORE_PATH);
 
+test('建议区通栏：平板横排、手机换行、与插件列表共用页面滚动', async () => {
+  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  try {
+    for (const width of [1280, 320]) {
+      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      await page.goto('file://' + path.resolve(__dirname, 'extension-layout.html').replace(/\\/g, '/'));
+      await page.evaluate(() => {
+        const app = window.__mihonSyncDemo;
+        app.state.ui.platform = 'android'; app.state.selectedDevice = 'phone-a';
+        app.extensions.scene('sample');
+      });
+      const section = page.locator('.ext-suggestions');
+      assert.equal(await section.evaluate(el => getComputedStyle(el).borderTopWidth), '0px', '使用列表分区而非独立卡片');
+      assert.equal(await page.locator('.ext-suggestion-scroll').evaluate(el => getComputedStyle(el).maxHeight), 'none', '建议不限制在小块滚动区');
+      const row = page.getByTestId('ext-row-aurora');
+      const available = page.getByTestId('ext-available-aurora');
+      const a = await row.boundingBox(); const b = await available.boundingBox();
+      assert.ok(Math.abs(a.x - b.x) < 1 && Math.abs(a.width - b.width) < 1, '条目左右边界一致');
+      const copy = await row.locator('.ext-copy').boundingBox();
+      const actions = await row.locator('.ext-actions').boundingBox();
+      if (width > 600) assert.ok(actions.x >= copy.x + copy.width - 1 && actions.y < copy.y + copy.height, '平板操作在同一行右侧');
+      else assert.ok(actions.y >= copy.y + copy.height, '窄屏操作自然换行');
+      await page.getByTestId('ext-missing-row').waitFor();
+      const missing = await page.getByTestId('ext-missing-row').boundingBox();
+      assert.ok(Math.abs(missing.width - a.width) < 1, '未匹配项同样通栏');
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '无横向溢出');
+      await page.getByTestId('ext-missing').click();
+      await page.getByRole('dialog', { name: '未匹配的图源' }).waitFor();
+      await page.close();
+    }
+  } finally { await browser.close(); }
+});
+
 test('建议安装：真实双端入口、持久折叠、忽略隔离、Android 逐项确认', async () => {
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   try {

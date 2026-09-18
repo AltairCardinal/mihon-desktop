@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mihon · 建议安装通栏布局审阅</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body class="extension-layout-review">
+  <p class="prototype-notice">Android 宽屏布局审阅 · 建议与未匹配项通栏排列，整页统一滚动。缩窄窗口可查看按钮换行。安装与网站均为本地模拟。<a href="./index.html">双端并列预览</a></p>
+  <div id="app" class="app-shell"></div>
+  <script src="./sync-model.js"></script>
+  <script src="./ui-view.js"></script>
+  <script src="./sync-interactions.js"></script>
+  <script src="./extension-suggestions.js"></script>
+  <script src="./app.js"></script>
+  <script>
+    const app = window.__mihonSyncDemo;
+    app.state.ui.platform = 'android';
+    app.state.selectedDevice = 'phone-a';
+    app.state.ui.theme = 'dark';
+    app.extensions.scene('sample');
+    app.extensions.local().expanded = true;
+    app.render(false);
+  </script>
+</body>
+</html>
