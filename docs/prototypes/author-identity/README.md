@@ -2,6 +2,10 @@
 
 直接打开 [index.html](index.html)，无需服务或账号。双端使用独立页面内存，刷新恢复样本，没有真实网络、插件、备份或跨设备同步。此原型不能证明正式应用修复状态；设计见[功能设计](../../2026-09-17-global-author-functional-design.md)与[技术方案](../../2026-09-17-creator-identity-reconciliation-proposal.md)。
 
+## 当前迭代开发依据
+
+本轮统一采用[完整迭代设计](../../2026-09-18-author-experience-iteration-design.md)及[开发Roadmap](../../roadmap/2026-09-18-author-experience-iteration-roadmap.md)，DEMO冻结提交为 `7773095f5e`。它们整合下方历史迭代并补齐正式持久化/日期质量/代表作规则；冲突以新设计为准。Roadmap尚未启动，不改变旧唯一作者计划的完成状态。
+
 ## 最终交互基线
 
 用户于2026-09-17确认当前交互为最终设计，冻结提交 `77a610534`。正式实现遵循[完整功能设计](../../2026-09-17-global-author-functional-design.md)及[实施Roadmap](../../roadmap/2026-09-17-global-author-identity-roadmap.md)。本原型是界面与操作路径依据，不证明数据库迁移、后台调度、备份或同步已经实现；应用外控制和样本说明不进入正式产品。后续页面语义变化须更新设计，不自动沿用下方历史迭代中的旧样式。
