@@ -27,6 +27,14 @@ ON author_archive_creators(status);
 CREATE INDEX idx_author_archive_creators_merged_into
 ON author_archive_creators(merged_into_creator_id);
 
+-- Device-local rebuildable presentation state; backup and sync queries explicitly exclude it.
+CREATE TABLE author_archive_representative_work_cache(
+    creator_id INTEGER NOT NULL PRIMARY KEY,
+    strategy_version INTEGER NOT NULL,
+    payload TEXT NOT NULL CHECK(length(payload) <= 8192),
+    FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE CASCADE
+);
+
 CREATE TABLE author_archive_identity_names(
     name_text TEXT COLLATE BINARY NOT NULL PRIMARY KEY,
     creator_id INTEGER NOT NULL,
@@ -3105,6 +3113,171 @@ LEFT JOIN author_archive_language_assertions OLA ON OLA._id = (
 )
 WHERE SWC.creator_id = :creatorId
 ORDER BY coalesce(CW.primary_title, SW.title), SW.source_id, SW.stable_source_url;
+
+getCreatorCardProjectionRows:
+WITH page_creators AS (
+    SELECT
+        C._id AS creator_id,
+        C.display_name,
+        C.normalized_name,
+        C.sort_name,
+        coalesce((
+            SELECT group_concat(ORDERED_ALIAS.encoded_alias, ',')
+            FROM (
+                SELECT hex(N.name_text) AS encoded_alias
+                FROM author_archive_identity_names N
+                WHERE N.creator_id = C._id
+                ORDER BY N.name_text COLLATE BINARY
+            ) ORDERED_ALIAS
+        ), '') AS aliases,
+        C.created_at,
+        C.last_modified_at,
+        coalesce(W.enabled, 0) AS followed
+    FROM author_archive_creators C
+    LEFT JOIN author_archive_watches W ON W.creator_id = C._id
+    WHERE C.status = 'ACTIVE'
+    AND (:followedOnly = 0 OR W.enabled = 1)
+    AND (
+        :nameQuery = ''
+        OR instr(lower(C.display_name), lower(:nameQuery)) > 0
+        OR EXISTS (
+            SELECT 1
+            FROM author_archive_identity_names SEARCH_NAME
+            WHERE SEARCH_NAME.creator_id = C._id
+            AND instr(lower(SEARCH_NAME.name_text), lower(:nameQuery)) > 0
+        )
+    )
+    ORDER BY C.sort_name COLLATE NOCASE, C.display_name COLLATE NOCASE, C._id
+    LIMIT :pageLimit OFFSET :offset
+), related_source_works AS (
+    SELECT
+        P.creator_id,
+        SW._id AS source_work_id,
+        SW.source_id,
+        SW.stable_source_url,
+        SW.manga_id,
+        SW.title,
+        coalesce(CW.primary_title, SW.title) AS candidate_title,
+        CASE
+            WHEN CW.portable_key IS NOT NULL THEN 'canonical:' || CW.portable_key
+            ELSE 'source:' || SW.source_id || ':' || SW.stable_source_url
+        END AS work_key,
+        SW.details_fetched_at,
+        SW.last_seen_at,
+        coalesce(M.thumbnail_url, SW.thumbnail_url) AS cover_url,
+        coalesce(M.cover_last_modified, SW.details_fetched_at, SW.last_seen_at, 0) AS cover_last_modified,
+        coalesce(M.favorite, 0) AS in_library,
+        SRC.lang AS source_language,
+        SWC.verification AS relation_verification,
+        WD.state AS decision_state
+    FROM page_creators P
+    JOIN author_archive_source_work_creators SWC ON SWC.creator_id = P.creator_id
+    JOIN author_archive_source_works SW ON SW._id = SWC.source_work_id
+    LEFT JOIN author_archive_canonical_versions CV ON CV.source_work_id = SW._id
+    LEFT JOIN author_archive_canonical_works CW ON CW._id = CV.work_id AND CW.status = 'ACTIVE'
+    LEFT JOIN author_archive_work_decisions WD ON WD._id = (
+        SELECT CURRENT_WD._id
+        FROM author_archive_work_decisions CURRENT_WD
+        WHERE CURRENT_WD.source_work_id = SW._id
+        AND (CV.work_id IS NULL OR CURRENT_WD.work_id = CV.work_id)
+        ORDER BY
+            CASE CURRENT_WD.actor WHEN 'USER' THEN 3 WHEN 'RESTORE' THEN 2 ELSE 1 END DESC,
+            CASE WHEN CURRENT_WD.actor = 'RESTORE' THEN CURRENT_WD._id END ASC,
+            CASE WHEN CURRENT_WD.actor != 'RESTORE' THEN CURRENT_WD.decided_at END DESC,
+            CASE WHEN CURRENT_WD.actor != 'RESTORE' THEN CURRENT_WD._id END DESC
+        LIMIT 1
+    )
+    LEFT JOIN mangas M ON M._id = SW.manga_id
+    LEFT JOIN sources SRC ON SRC._id = SW.source_id
+    WHERE SWC.verification IN ('VERIFIED', 'POSSIBLE')
+), page_history AS (
+    SELECT CH.manga_id, max(H.last_read) AS last_read_at
+    FROM (
+        SELECT DISTINCT manga_id
+        FROM related_source_works
+        WHERE manga_id IS NOT NULL AND relation_verification = 'VERIFIED'
+    ) PAGE_MANGA
+    JOIN chapters CH ON CH.manga_id = PAGE_MANGA.manga_id
+    JOIN history H ON H.chapter_id = CH._id
+    WHERE H.last_read > 0
+    GROUP BY CH.manga_id
+), card_work_candidates AS (
+    SELECT
+        RSW.creator_id,
+        RSW.source_work_id,
+        RSW.source_id,
+        RSW.stable_source_url,
+        RSW.manga_id,
+        RSW.candidate_title,
+        RSW.work_key,
+        RSW.cover_url,
+        RSW.cover_last_modified,
+        RSW.in_library,
+        RSW.source_language,
+        PH.last_read_at,
+        RSW.relation_verification,
+        RSW.decision_state
+    FROM related_source_works RSW
+    LEFT JOIN page_history PH ON PH.manga_id = RSW.manga_id
+    WHERE coalesce(RSW.decision_state, '') != 'REJECTED'
+), card_work_counts AS (
+    SELECT creator_id, count(DISTINCT work_key) AS unique_work_count
+    FROM card_work_candidates
+    WHERE relation_verification = 'VERIFIED'
+    GROUP BY creator_id
+)
+SELECT
+    P.creator_id,
+    P.display_name,
+    P.normalized_name,
+    P.sort_name,
+    P.aliases,
+    P.created_at,
+    P.last_modified_at,
+    P.followed,
+    coalesce(CWC.unique_work_count, 0) AS unique_work_count,
+    CAND.source_work_id,
+    CAND.source_id,
+    CAND.stable_source_url,
+    CAND.manga_id,
+    CAND.candidate_title,
+    CAND.work_key,
+    CAND.cover_url,
+    CAND.cover_last_modified,
+    CAND.in_library,
+    CAND.last_read_at,
+    CAND.relation_verification,
+    CAND.decision_state,
+    CAND.source_language
+FROM page_creators P
+LEFT JOIN card_work_counts CWC ON CWC.creator_id = P.creator_id
+LEFT JOIN card_work_candidates CAND ON CAND.creator_id = P.creator_id
+ORDER BY P.sort_name COLLATE NOCASE, P.display_name COLLATE NOCASE, P.creator_id,
+    CAND.candidate_title COLLATE NOCASE, CAND.source_id, CAND.stable_source_url;
+
+getRepresentativeWorkCaches:
+SELECT creator_id, strategy_version, payload
+FROM author_archive_representative_work_cache
+WHERE creator_id IN :creatorIds;
+
+upsertRepresentativeWorkCache:
+INSERT INTO author_archive_representative_work_cache(creator_id, strategy_version, payload)
+SELECT :creatorId, :strategyVersion, :payload
+WHERE EXISTS (
+    SELECT 1
+    FROM author_archive_creators
+    WHERE _id = :creatorId
+      AND status = 'ACTIVE'
+      AND merged_into_creator_id IS NULL
+)
+ON CONFLICT(creator_id) DO UPDATE SET
+    strategy_version = excluded.strategy_version,
+    payload = excluded.payload
+WHERE strategy_version != excluded.strategy_version OR payload != excluded.payload;
+
+deleteRepresentativeWorkCaches:
+DELETE FROM author_archive_representative_work_cache
+WHERE creator_id IN :creatorIds;
 
 getArchiveWorkDecisionsForBinding:
 SELECT work_id, state, actor, evidence, decided_at

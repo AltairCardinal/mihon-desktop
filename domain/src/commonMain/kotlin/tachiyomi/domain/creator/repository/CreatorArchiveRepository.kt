@@ -9,6 +9,7 @@ import tachiyomi.domain.creator.model.ArchiveUpsertOutcome
 import tachiyomi.domain.creator.model.ArchiveWatchPolicy
 import tachiyomi.domain.creator.model.CreatorAliasCandidates
 import tachiyomi.domain.creator.model.CreatorArchiveV2Policy
+import tachiyomi.domain.creator.model.CreatorCardProjectionPage
 import tachiyomi.domain.creator.model.CreatorIdentityOption
 import tachiyomi.domain.creator.model.CreatorIdentitySnapshot
 import tachiyomi.domain.creator.model.CreatorLibraryIndexEntry
@@ -77,6 +78,15 @@ interface CreatorLibraryMangaSource {
 }
 
 interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
+
+    suspend fun getCreatorCardProjectionPage(
+        offset: Int,
+        limit: Int,
+        followedOnly: Boolean,
+        preferredLanguages: Set<String> = emptySet(),
+        customCoverExists: (Long) -> Boolean = { false },
+        query: String = "",
+    ): CreatorCardProjectionPage = throw UnsupportedOperationException("Creator card projection is not implemented")
 
     suspend fun getIdentitySnapshot(creatorId: Long): CreatorIdentitySnapshot =
         throw UnsupportedOperationException("Identity editor is not implemented")

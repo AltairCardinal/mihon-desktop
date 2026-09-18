@@ -1,10 +1,10 @@
 # 作者页体验迭代 · 开发Roadmap
 
-日期：2026-09-18。状态：PLANNED，尚未启动生产开发。
+日期：2026-09-18。状态：IN_PROGRESS。
 
 - 需求权威：[完整设计](../2026-09-18-author-experience-iteration-design.md)。交互基线：[DEMO](../prototypes/author-identity/index.html)，提交 `7773095f5e`。
 - 本计划为产品child plan，从首个未勾选批次推导进度，不声明active-task。旧[唯一作者Roadmap](2026-09-17-global-author-identity-roadmap.md)保持原完成状态，不重置GA任务。
-- 当前仅编写计划，不切换任何父计划active-child-plan，不执行构建/安装/部署。启动时核对父计划唯一入口后再切换，不能同时宣称多个子计划执行中。
+- 本计划已进入生产实施，父级唯一 `active-child-plan` 指向本计划。AX-01至AX-05期间不执行正式构建/安装/部署；AX-06按下文收口验收。各批依赖与提交边界按本计划执行。
 - checkbox仅在实现、相关测试、必要独立审查和提交均完成后勾选；历史DEMO测试不替代本计划production证据。
 
 ## 1. 开发边界与前置
@@ -28,15 +28,15 @@
 
 总估算44–68工程小时，不含外部真实图源跨日采样等待；日期测试使用可注入时钟和本地HTTP fixture，无需等待24小时跑测试。真实来源没有充分证据时保持unknown，不以工期为由写入白名单。
 
-默认串行，避免共享ScreenModel、schema与测试资源写入冲突；有额外授权/明确边界时才并行无依赖工作。未来启动实施时，首个AX-01任务簇交实施子代理负责主要实现与验证，主代理负责接口、整合与验收；后续相近任务复用同一实施者。主代理不重复实现已委派部分。
+默认串行，避免共享ScreenModel、schema与测试资源写入冲突；有额外授权/明确边界时才并行无依赖工作。首个AX-01任务簇已由实施子代理负责主要实现与验证，主代理负责接口、整合与验收；后续相近任务复用同一实施者。主代理不重复实现已委派部分。
 
-每次执行先声明实际范围和预算，默认最多2个子代理（实施与必要独立审查），1轮审查及最多1次限定修复复审。多个高风险里程碑的审查须作为各自明确执行批次安排；若要求一次完成全部而会超过本次授权审查预算，先说明额外成本确认安排，不默许无限复审。当前纯文档阶段不启动子代理。
+每次执行先声明实际范围和预算，默认最多2个子代理（实施与必要独立审查），1轮审查及最多1次限定修复复审。多个高风险里程碑的审查须作为各自明确执行批次安排；若要求一次完成全部而会超过本次授权审查预算，先说明额外成本确认安排，不默许无限复审。AX-01使用1名实施子代理，主代理完成独立整合验收；AX-03与AX-05的审查在各自批次单独安排。
 
 ## 3. 实施批次
 
 ### AX-01 · 作者导航、关注子页与代表作卡片
 
-- [ ] AX-01：交付双端作者列表及详情外壳，A01–A04/A15相关项通过。
+- [x] AX-01：交付双端作者列表及详情外壳，A01–A04/A15相关项通过。
 
 **用户结果**：进入作者默认关注，可切全部；无关注有引导。作者卡片无头像，以最多3部作品辨认；进入详情有标准返回栏，返回保留子页和滚动。
 
@@ -53,6 +53,21 @@
 **红绿验证**：共享selector行为测试先失败；真实SQL多版本、阅读和收藏数据驱动投影测试；双端mounted UI/ScreenModel测试验证默认页、空态、返回、代表作去重、稳定性、晋级和名称回归；新增导航/DI须实例化与接线测试。用查询次数随页数增长的测试防N+1，不用源码扫描。
 
 **边界/完成证据**：不改任务调度，不新增远端请求。提交production＋测试＋本项证据；深浅主题、320dp和长名截图/离屏证据，记录所运行focused与格式检查。通常跨多模块超过8文件仍保持本能力为一批，不按文件拆任务。
+
+**内聚性与风险**：实际改动跨 Android、Desktop、domain、data/SQL、i18n 与集成测试，并超过8文件/400行；这些改动共同完成同一作者列表能力，拆开会留下未接线的投影、缓存或平台入口。v27→v28只新增最多3项选择的本地可重建缓存，作者删除时级联清理；独立测试验证缓存迁移、合并/重开稳定性以及不进入备份和远端同步。
+
+**执行证据**：
+
+| 范围 | 命令/记录 | 结果 |
+|---|---|---|
+| Android mounted 作者流程 | `:app:testReleaseUnitTest --tests eu.kanade.tachiyomi.ui.browse.author.AndroidCreatorSettingsUiTest`；协调器 `ax01-postformat-android1` | exit 0；默认关注、空态、搜索/分页、重试、返回保留和320dp卡片布局通过 |
+| Repository / migration | `:data:jvmTest --tests tachiyomi.data.creator.CreatorCardProjectionTest --tests tachiyomi.data.creator.CreatorArchiveMigration15Test`；`ax01-postformat-data1` | exit 0；SQLite投影、页边界、稳定缓存、v27→v28迁移与重开通过 |
+| Domain契约 / selector | `:domain:jvmTest --tests tachiyomi.domain.creator.CreatorArchiveV2ContractTest --tests tachiyomi.domain.creator.service.CreatorRepresentativeWorkSelectorTest`；`ax01-postformat-domain1` | exit 0；缓存表删除策略及代表作筛选/稳定性通过 |
+| Desktop mounted与架构接线 | `:app-desktop:jvmTest --tests mihon.desktop.ui.authors.AuthorsProductionWiringTest --tests mihon.desktop.architecture.DesktopArchitectureGuardTest`；`ax01-authors-interactor-desktop-green1`；另以真实SQLite仓库运行 `AuthorCardProductionWiringTest`，`ax01-desktop-author-card-reentry-green1` | exit 0；Following默认、代表作卡片、失败重试、导航回返和interactor wiring通过 |
+| 备份 / 同步边界 | `AuthorArchiveBackupContributorTest`：`ax01-backup-cache-exclusion-green1`；`JvmSyncRemoteProjectionContractTest`：`ax01-sync-cache-local-green1` | 均exit 0；本地选择缓存不写入备份或同步 |
+| 格式 / diff | `spotlessCheck`：`ax01-final-spotlesscheck4`；`git diff --check` | 均exit 0 |
+
+TDD红绿记录：`ax01-android-author-card-layout-red2` exit 1，真实320dp mounted场景确认代表作栏与作者标题重叠；修复纵向卡片结构后 `ax01-android-author-card-layout-green1` exit 0。首轮viewport断言按300–320dp编写，但实际列表因左右inset为288dp；将断言改为相对真实列表及屏幕边界，没有放宽生产布局。最终截图 `app-desktop/build/ax01/author-card-320-light.png` 与 `app-desktop/build/ax01/author-card-320-dark.png` 均存在并已检查。格式修复中发现的长行和导入顺序已修正，最终全局Spotless通过；一次把过滤参数放在多个Gradle test task之后的验证命令启动了宽测试，经协调器取消（exit 130），随后Android、data、domain各用独立过滤命令复验并通过。
 
 ### AX-02 · 作者作品三视图、收藏和多源选择
 

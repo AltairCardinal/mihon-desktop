@@ -4,7 +4,9 @@ import kotlinx.coroutines.flow.Flow
 import tachiyomi.domain.creator.model.ArchiveDiscovery
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.CanonicalWork
+import tachiyomi.domain.creator.model.CreatorCardProjectionPage
 import tachiyomi.domain.creator.model.CreatorWorkArchive
+import tachiyomi.domain.creator.model.DueWatchSource
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.ReviewDisposition
 import tachiyomi.domain.creator.model.SourceCheckpoint
@@ -33,6 +35,25 @@ class CreatorArchive(
         archive.setDiscoveryReview(discoveryId, disposition, now)
 
     suspend fun get(creatorId: Long): CreatorWorkArchive = archive.getCreatorWorkArchive(creatorId)
+
+    suspend fun getCreatorCardProjectionPage(
+        offset: Int,
+        limit: Int,
+        followedOnly: Boolean,
+        preferredLanguages: Set<String> = emptySet(),
+        customCoverExists: (Long) -> Boolean = { false },
+        query: String = "",
+    ): CreatorCardProjectionPage = archive.getCreatorCardProjectionPage(
+        offset = offset,
+        limit = limit,
+        followedOnly = followedOnly,
+        preferredLanguages = preferredLanguages,
+        customCoverExists = customCoverExists,
+        query = query,
+    )
+
+    suspend fun getDueWatchSources(now: Long, limit: Long): List<DueWatchSource> =
+        archive.getDueWatchSources(now, limit)
 
     suspend fun createWork(title: String, creatorId: Long, originalLanguage: String?): CanonicalWork =
         creators.createCanonicalWork(title, creatorId, originalLanguage)

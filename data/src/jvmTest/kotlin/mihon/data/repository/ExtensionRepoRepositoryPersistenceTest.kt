@@ -220,12 +220,15 @@ class ExtensionRepoRepositoryPersistenceTest {
 
     private fun createVersion18Fixture(driver: JdbcSqliteDriver) {
         // v18 already contained the full author archive. Keep that history while removing only
-        // additions from migrations 18..26, so this test still exercises the complete upgrade.
+        // additions from later migrations, so this test still exercises the complete upgrade.
         Database.Schema.create(driver)
         val laterObjects = driver.executeQuery(
             null,
             """SELECT type, name FROM sqlite_master
-                WHERE (type = 'table' AND (name GLOB 'sync_*' OR name GLOB 'author_archive_identity_*'))
+                WHERE (type = 'table' AND (
+                    name GLOB 'sync_*' OR name GLOB 'author_archive_identity_*' OR
+                    name = 'author_archive_representative_work_cache'
+                ))
                    OR (type = 'trigger' AND name GLOB 'author_archive_*_revision')
                 ORDER BY CASE type WHEN 'trigger' THEN 0 ELSE 1 END""",
             { cursor ->

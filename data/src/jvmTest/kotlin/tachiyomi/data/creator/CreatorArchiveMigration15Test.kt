@@ -10,8 +10,83 @@ import tachiyomi.data.Database
 import tachiyomi.data.DatabaseMigration
 import tachiyomi.domain.creator.model.CreatorArchivePhysicalSchema
 import tachiyomi.domain.creator.model.CreatorArchiveV2Contract
+import java.nio.file.Files
 
 class CreatorArchiveMigration15Test {
+
+    @Test
+    fun `v27 migration creates local representative cache and preserves archive facts after reopen`() {
+        val path = Files.createTempFile("creator-cache-migration-", ".db")
+        val url = "jdbc:sqlite:${path.toAbsolutePath()}"
+        var driver = JdbcSqliteDriver(url)
+        try {
+            Database.Schema.create(driver)
+            driver.execute(null, "PRAGMA foreign_keys = ON", 0)
+            driver.execute(null, "DROP TABLE author_archive_representative_work_cache", 0)
+            driver.execute(null, "PRAGMA user_version = 27", 0)
+            seedV27ArchiveFacts(driver)
+
+            queryLong(driver, "PRAGMA user_version") shouldBe 27L
+            val creatorCount = queryLong(driver, "SELECT COUNT(*) FROM author_archive_creators")
+            val aliasCount = queryLong(driver, "SELECT COUNT(*) FROM author_archive_aliases")
+            val sourceWorkCount = queryLong(driver, "SELECT COUNT(*) FROM author_archive_source_works")
+            val relationCount = queryLong(driver, "SELECT COUNT(*) FROM author_archive_source_work_creators")
+            creatorCount shouldBe 1L
+            aliasCount shouldBe 1L
+            sourceWorkCount shouldBe 1L
+            relationCount shouldBe 1L
+
+            DatabaseMigration.migrateAtomically(driver, 27, 28)
+
+            queryLong(driver, "PRAGMA user_version") shouldBe 28L
+            Database.Schema.version shouldBe CreatorArchiveV2Contract.LATEST_SCHEMA_VERSION
+            queryLong(
+                driver,
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' " +
+                    "AND name = 'author_archive_representative_work_cache'",
+            ) shouldBe 1L
+            queryLong(driver, "SELECT COUNT(*) FROM author_archive_creators") shouldBe creatorCount
+            queryLong(driver, "SELECT COUNT(*) FROM author_archive_aliases") shouldBe aliasCount
+            queryLong(driver, "SELECT COUNT(*) FROM author_archive_source_works") shouldBe sourceWorkCount
+            queryLong(driver, "SELECT COUNT(*) FROM author_archive_source_work_creators") shouldBe relationCount
+            queryString(
+                driver,
+                "SELECT title FROM author_archive_source_works WHERE stable_source_url = '/kept-work'",
+            ) shouldBe "Kept work"
+            foreignKeyViolations(driver) shouldBe emptyList()
+
+            val activeCreatorId = queryLong(
+                driver,
+                "SELECT _id FROM author_archive_creators WHERE status = 'ACTIVE' ORDER BY _id LIMIT 1",
+            )
+            driver.execute(
+                null,
+                "INSERT INTO author_archive_representative_work_cache(creator_id, strategy_version, payload) " +
+                    "VALUES (?, 1, '{\"selected\":[{\"workKey\":\"migration\",\"sourceId\":1," +
+                    "\"stableSourceUrl\":\"/migration\"}] }')",
+                1,
+            ) {
+                bindLong(0, activeCreatorId)
+            }
+
+            driver.close()
+            driver = JdbcSqliteDriver(url)
+            driver.execute(null, "PRAGMA foreign_keys = ON", 0)
+            queryLong(driver, "PRAGMA user_version") shouldBe 28L
+            queryLong(driver, "SELECT COUNT(*) FROM author_archive_representative_work_cache") shouldBe 1L
+            queryLong(driver, "SELECT COUNT(*) FROM author_archive_creators") shouldBe creatorCount
+            queryLong(driver, "SELECT COUNT(*) FROM author_archive_aliases") shouldBe aliasCount
+            queryLong(driver, "SELECT COUNT(*) FROM author_archive_source_works") shouldBe sourceWorkCount
+            queryLong(driver, "SELECT COUNT(*) FROM author_archive_source_work_creators") shouldBe relationCount
+            queryString(
+                driver,
+                "SELECT title FROM author_archive_source_works WHERE stable_source_url = '/kept-work'",
+            ) shouldBe "Kept work"
+        } finally {
+            runCatching { driver.close() }
+            Files.deleteIfExists(path)
+        }
+    }
 
     @Test
     fun `fresh schema is latest and contains the complete frozen archive`() {
@@ -372,8 +447,8 @@ class CreatorArchiveMigration15Test {
         driver.close()
     }
 
-    private fun legacyDriver(): JdbcSqliteDriver {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+    private fun legacyDriver(url: String = JdbcSqliteDriver.IN_MEMORY): JdbcSqliteDriver {
+        val driver = JdbcSqliteDriver(url)
         val fixture = requireNotNull(javaClass.getResource("/creator/creator-schema-v15.sql")).readText()
         fixture.split(';')
             .map(String::trim)
@@ -393,6 +468,37 @@ class CreatorArchiveMigration15Test {
         )
         driver.execute(null, "CREATE TABLE chapters(_id INTEGER NOT NULL PRIMARY KEY, manga_id INTEGER NOT NULL)", 0)
         return driver
+    }
+
+    private fun seedV27ArchiveFacts(driver: SqlDriver) {
+        driver.execute(
+            null,
+            "INSERT INTO author_archive_creators(_id, portable_key, display_name, normalized_name, sort_name, " +
+                "status, needs_review, created_at, last_modified_at) " +
+                "VALUES (1, 'creator:cache-migration', 'Cache migration author', 'cache migration author', " +
+                "'Cache migration author', 'ACTIVE', 0, 1, 1)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO author_archive_aliases(creator_id, raw_alias, normalized_alias, source, evidence, " +
+                "confidence, is_manual, created_at, last_modified_at) " +
+                "VALUES (1, 'Kept alias', 'kept alias', 'USER', 'migration fixture', 1, 1, 1, 1)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO author_archive_source_works(_id, source_id, stable_source_url, title, normalized_title, " +
+                "first_seen_at, last_seen_at) VALUES (1, 91, '/kept-work', 'Kept work', 'kept work', 2, 3)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO author_archive_source_work_creators(source_work_id, creator_id, role, creator_order, " +
+                "origin, verification, source_text, confidence, evidence, created_at, last_modified_at) " +
+                "VALUES (1, 1, 'AUTHOR', 0, 'USER', 'VERIFIED', 'Cache migration author', 1, 'kept fact', 2, 3)",
+            0,
+        )
     }
 
     private fun seedLegacyArchive(driver: SqlDriver) {

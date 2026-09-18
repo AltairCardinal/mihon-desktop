@@ -13,13 +13,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -27,7 +36,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.model.ScreenModel
 import cafe.adriel.voyager.core.model.rememberScreenModel
@@ -35,9 +48,13 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.components.TabContent
+import eu.kanade.presentation.manga.components.MangaCover
+import eu.kanade.tachiyomi.data.cache.CoverCache
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -57,6 +74,8 @@ import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.Creator
+import tachiyomi.domain.creator.model.CreatorCardProjection
+import tachiyomi.domain.creator.model.CreatorCardWorkCandidate
 import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.creator.model.CreatorWorkArchive
@@ -155,8 +174,45 @@ fun Screen.authorsTab(): TabContent {
         content = { padding, snackbar ->
             val settings by model.settingsEditor.state.collectAsState()
             val savedMessage = stringResource(MR.strings.creator_settings_saved)
+            val followedPosition = remember(model) { model.scrollPosition(followedOnly = true) }
+            val allAuthorsPosition = remember(model) { model.scrollPosition(followedOnly = false) }
+            val followedListState = rememberLazyListState(
+                initialFirstVisibleItemIndex = followedPosition.index,
+                initialFirstVisibleItemScrollOffset = followedPosition.offset,
+            )
+            val allAuthorsListState = rememberLazyListState(
+                initialFirstVisibleItemIndex = allAuthorsPosition.index,
+                initialFirstVisibleItemScrollOffset = allAuthorsPosition.offset,
+            )
+            val listState = if (state.followedOnly) followedListState else allAuthorsListState
+            var lastObservedQuery by remember { mutableStateOf(state.query) }
             LaunchedEffect(settings.savedRevision) {
                 if (settings.savedRevision > 0) snackbar.showSnackbar(savedMessage)
+            }
+            LaunchedEffect(state.query) {
+                if (state.query == lastObservedQuery) return@LaunchedEffect
+                if (state.followedOnly) {
+                    followedListState.scrollToItem(0)
+                } else {
+                    allAuthorsListState.scrollToItem(0)
+                }
+                model.resetScrollPosition(state.followedOnly)
+                lastObservedQuery = state.query
+            }
+            LaunchedEffect(listState, state.followedOnly) {
+                snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+                    .distinctUntilChanged()
+                    .collect { (index, offset) -> model.saveScrollPosition(state.followedOnly, index, offset) }
+            }
+            LaunchedEffect(state.cards.size, state.hasMore, state.loadingMore) {
+                if (state.cards.isEmpty() || !state.hasMore || state.loadingMore) return@LaunchedEffect
+                snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+                    .distinctUntilChanged()
+                    .collect { lastVisible ->
+                        if (lastVisible != null && lastVisible >= state.cards.lastIndex - 4) {
+                            model.loadNextPage()
+                        }
+                    }
             }
             CreatorSettingsDialog(model.settingsEditor)
             Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
@@ -166,27 +222,67 @@ fun Screen.authorsTab(): TabContent {
                     label = { Text(stringResource(MR.strings.desktop_ui_search_authors)) },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                if (state.loading) CircularProgressIndicator()
-
-                state.error?.let { Text(it) }
-                if (!state.loading &&
-                    state.visible.isEmpty()
-                ) {
-                    Text(stringResource(MR.strings.desktop_ui_no_authors_indexed_yet))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        modifier = Modifier.testTag("creator-tab-following"),
+                        selected = state.followedOnly,
+                        onClick = model::showFollowing,
+                        label = { Text(stringResource(MR.strings.desktop_ui_followed)) },
+                    )
+                    FilterChip(
+                        modifier = Modifier.testTag("creator-tab-all"),
+                        selected = !state.followedOnly,
+                        onClick = model::showAllAuthors,
+                        label = { Text(stringResource(MR.strings.desktop_ui_all_authors)) },
+                    )
                 }
-                LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
-                    items(state.visible, key = Creator::id) { creator ->
-                        Row(
-                            Modifier.fillMaxWidth().clickable { navigator.push(AndroidAuthorDetailScreen(creator.id)) }
-                                .padding(vertical = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Column {
-                                Text(creator.displayName)
-                                Text(creator.aliases.joinToString())
-                            }
-                            if (creator.id in state.followed) Text(stringResource(MR.strings.desktop_ui_followed))
+                if (state.loading && state.cards.isEmpty()) CircularProgressIndicator()
+
+                if (state.loading &&
+                    state.cards.isNotEmpty()
+                ) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                state.error?.let { error ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(error, modifier = Modifier.weight(1f))
+                        TextButton(onClick = model::retry) {
+                            Text(stringResource(MR.strings.action_retry))
                         }
+                    }
+                }
+                if (state.cards.isNotEmpty()) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize().testTag("creator-author-list"),
+                        contentPadding = PaddingValues(vertical = 8.dp),
+                    ) {
+                        items(state.cards, key = { it.creator.id }) { card ->
+                            CreatorCardRow(card) {
+                                model.saveScrollPosition(
+                                    state.followedOnly,
+                                    listState.firstVisibleItemIndex,
+                                    listState.firstVisibleItemScrollOffset,
+                                )
+                                navigator.push(AndroidAuthorDetailScreen(card.creator.id))
+                            }
+                        }
+                        if (state.loadingMore) {
+                            item(key = "creator-loading-more") { CircularProgressIndicator() }
+                        }
+                    }
+                } else if (!state.loading && state.error == null) {
+                    if (state.query.isNotBlank()) {
+                        Text(stringResource(MR.strings.no_results_found))
+                    } else if (state.followedOnly) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(stringResource(MR.strings.creator_following_empty))
+                            TextButton(onClick = model::showAllAuthors) {
+                                Text(stringResource(MR.strings.creator_following_empty_action))
+                            }
+                        }
+                    } else {
+                        Text(stringResource(MR.strings.desktop_ui_no_authors_indexed_yet))
                     }
                 }
             }
@@ -195,24 +291,25 @@ fun Screen.authorsTab(): TabContent {
 }
 
 internal data class AuthorsState(
-    val creators: List<Creator> = emptyList(),
-    val followed: Set<Long> = emptySet(),
+    val cards: List<CreatorCardProjection> = emptyList(),
     val query: String = "",
+    val followedOnly: Boolean = true,
+    val hasMore: Boolean = false,
     val loading: Boolean = true,
+    val loadingMore: Boolean = false,
     val error: String? = null,
-) {
-    val visible get() = creators.filter {
-        it.displayName.contains(query, true) ||
-            it.aliases.any { alias -> alias.contains(query, true) }
-    }
-}
+)
+
+internal data class CreatorListScrollPosition(val index: Int = 0, val offset: Int = 0)
 
 internal class AndroidAuthorsScreenModel(
-    getCreators: GetCreators = Injekt.get(),
+    private val creatorArchive: CreatorArchive = Injekt.get(),
+    private val getCreators: GetCreators = Injekt.get(),
+    private val sourcePreferences: SourcePreferences = Injekt.get(),
+    private val coverCache: CoverCache = Injekt.get(),
     preferences: tachiyomi.domain.creator.service.CreatorDiscoveryPreferences = Injekt.get(),
     onSettingsSaved: suspend () -> Unit = {
-        val archive = Injekt.get<tachiyomi.domain.creator.repository.CreatorArchiveRepository>()
-        if (archive.getDueWatchSources(System.currentTimeMillis(), 1).isNotEmpty()) {
+        if (creatorArchive.getDueWatchSources(System.currentTimeMillis(), 1).isNotEmpty()) {
             eu.kanade.tachiyomi.data.library.CreatorDiscoveryJob.enqueue(Injekt.get<android.app.Application>())
         }
     },
@@ -224,29 +321,206 @@ internal class AndroidAuthorsScreenModel(
     )
     private val mutableState = MutableStateFlow(AuthorsState())
     val state: StateFlow<AuthorsState> = mutableState.asStateFlow()
+    private var pageGeneration = 0L
+    private var pageJob: Job? = null
+    private var followedScrollPosition = CreatorListScrollPosition()
+    private var allAuthorsScrollPosition = CreatorListScrollPosition()
+
     init {
+        loadFirstPage()
         screenModelScope.launch {
-            combine(getCreators.subscribe(), getCreators.subscribeFollowed()) { creators, followed ->
-                creators to
-                    followed
-            }
-                .collect { (creators, followed) ->
-                    mutableState.update {
-                        it.copy(
-                            creators = creators,
-                            followed = followed.mapTo(mutableSetOf()) { row ->
-                                row.creatorId
-                            },
-                            loading = false,
-                        )
-                    }
+            var previousSnapshot: Pair<List<Creator>, Set<Long>>? = null
+            combine(
+                getCreators.subscribe(),
+                getCreators.subscribeFollowed().map { rows -> rows.mapTo(mutableSetOf()) { it.creatorId } },
+            ) { creators, followedIds -> creators to followedIds }
+                .distinctUntilChanged()
+                .collect { snapshot ->
+                    if (previousSnapshot != null && previousSnapshot != snapshot) refreshLoadedPages()
+                    previousSnapshot = snapshot
                 }
         }
     }
-    fun search(query: String) = mutableState.update { it.copy(query = query) }
+
+    fun search(query: String) {
+        if (query == state.value.query) return
+        mutableState.update { it.copy(query = query) }
+        loadFirstPage()
+    }
+
+    fun showFollowing() = showTab(followedOnly = true)
+
+    fun showAllAuthors() = showTab(followedOnly = false)
+
+    fun scrollPosition(followedOnly: Boolean): CreatorListScrollPosition =
+        if (followedOnly) followedScrollPosition else allAuthorsScrollPosition
+
+    fun saveScrollPosition(followedOnly: Boolean, index: Int, offset: Int) {
+        val position = CreatorListScrollPosition(index.coerceAtLeast(0), offset.coerceAtLeast(0))
+        if (followedOnly) followedScrollPosition = position else allAuthorsScrollPosition = position
+    }
+
+    fun resetScrollPosition(followedOnly: Boolean) {
+        saveScrollPosition(followedOnly, 0, 0)
+    }
+
+    private fun showTab(followedOnly: Boolean) {
+        if (followedOnly == state.value.followedOnly) return
+        mutableState.update { it.copy(followedOnly = followedOnly) }
+        loadFirstPage()
+    }
+
+    fun loadNextPage() {
+        val current = state.value
+        if (current.loading || current.loadingMore || !current.hasMore) return
+        val generation = pageGeneration
+        val offset = current.cards.size
+        mutableState.update { it.copy(loadingMore = true, error = null) }
+        pageJob = screenModelScope.launch {
+            try {
+                val page = getPage(
+                    offset = offset,
+                    followedOnly = current.followedOnly,
+                    query = current.query,
+                )
+                if (generation == pageGeneration) {
+                    mutableState.update { latest ->
+                        if (latest.query != current.query || latest.followedOnly != current.followedOnly) {
+                            latest
+                        } else {
+                            latest.copy(
+                                cards = (latest.cards + page.creators).distinctBy { it.creator.id },
+                                hasMore = page.hasMore,
+                                loading = false,
+                                loadingMore = false,
+                            )
+                        }
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                if (generation == pageGeneration) {
+                    mutableState.update { it.copy(loading = false, loadingMore = false, error = failure.message) }
+                }
+            }
+        }
+    }
+
+    fun retry() = refreshLoadedPages()
+
+    private fun loadFirstPage() {
+        requestPages(targetCount = 0, preserveCards = false)
+    }
+
+    private fun refreshLoadedPages() {
+        requestPages(targetCount = state.value.cards.size, preserveCards = true)
+    }
+
+    private fun requestPages(targetCount: Int, preserveCards: Boolean) {
+        pageJob?.cancel()
+        val generation = ++pageGeneration
+        val current = state.value
+        mutableState.update {
+            it.copy(
+                cards = if (preserveCards) it.cards else emptyList(),
+                hasMore = if (preserveCards) it.hasMore else false,
+                loading = true,
+                loadingMore = false,
+                error = null,
+            )
+        }
+        pageJob = screenModelScope.launch {
+            try {
+                val cards = mutableListOf<CreatorCardProjection>()
+                var hasMore: Boolean
+                do {
+                    val page = getPage(offset = cards.size, followedOnly = current.followedOnly, query = current.query)
+                    cards += page.creators
+                    hasMore = page.hasMore
+                } while (hasMore && cards.size < targetCount.coerceAtLeast(1))
+
+                if (generation == pageGeneration) {
+                    mutableState.update {
+                        it.copy(cards = cards, hasMore = hasMore, loading = false, loadingMore = false)
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                if (generation == pageGeneration) {
+                    mutableState.update { it.copy(loading = false, loadingMore = false, error = failure.message) }
+                }
+            }
+        }
+    }
+
+    private suspend fun getPage(offset: Int, followedOnly: Boolean, query: String) =
+        creatorArchive.getCreatorCardProjectionPage(
+            offset = offset,
+            limit = CREATOR_CARD_PAGE_SIZE,
+            followedOnly = followedOnly,
+            preferredLanguages = sourcePreferences.enabledLanguages().get(),
+            customCoverExists = { mangaId -> coverCache.getCustomCoverFile(mangaId).exists() },
+            query = query,
+        )
 }
 
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+private const val CREATOR_CARD_PAGE_SIZE = 50
+
+@Composable
+private fun CreatorCardRow(card: CreatorCardProjection, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("creator-card-${card.creator.id}")
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Column(Modifier.fillMaxWidth().testTag("creator-card-${card.creator.id}-heading")) {
+            Text(card.creator.displayName)
+            Text(stringResource(MR.strings.creator_unique_work_count, card.uniqueWorkCount))
+            if (card.followed) {
+                Text(
+                    stringResource(MR.strings.desktop_ui_followed),
+                    modifier = Modifier.testTag("creator-card-${card.creator.id}-followed"),
+                )
+            }
+            if (card.creator.aliases.isNotEmpty()) Text(card.creator.aliases.joinToString())
+        }
+        val representativeWorks = card.representativeWorks.take(3)
+        if (representativeWorks.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("creator-card-${card.creator.id}-representative-shelf"),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                representativeWorks.forEachIndexed { index, work ->
+                    Column(Modifier.width(52.dp).testTag("creator-card-${card.creator.id}-work-$index")) {
+                        MangaCover.Book(
+                            data = work.toMangaCover(),
+                            modifier = Modifier.width(48.dp),
+                        )
+                        Text(work.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun CreatorCardWorkCandidate.toMangaCover() =
+    tachiyomi.domain.manga.model.MangaCover(
+        mangaId = coverRequest.mangaId ?: -coverRequest.sourceWorkId,
+        sourceId = coverRequest.sourceId,
+        isMangaFavorite = inLibrary,
+        url = coverRequest.url,
+        lastModified = coverRequest.lastModifiedAt,
+    )
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
     @Composable override fun Content() {
         val model = rememberScreenModel { AndroidAuthorDetailScreenModel(creatorId) }
@@ -272,72 +546,86 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
             )
         }
 
-        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (state.loading) CircularProgressIndicator()
-            CreatorIdentityHeader(model.identityEditor, state.details.creator?.displayName.orEmpty())
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { if (state.followed) confirmUnfollow = true else model.toggleFollow() }) {
-                    Text(
-                        stringResource(
-                            if (state.followed) MR.strings.desktop_ui_unfollow else MR.strings.desktop_ui_follow,
-                        ),
-                    )
-                }
-                Button(onClick = model::scan, enabled = !state.running) {
-                    Text(stringResource(MR.strings.desktop_ui_check_new_works))
-                }
-            }
-            Text(
-                stringResource(
-                    MR.strings.creator_work_version_count,
-                    state.archive.works.size + state.archive.pending.size + state.archive.rejected.size,
-                    state.archive.works.sumOf { it.versions.size } + state.archive.pending.size +
-                        state.archive.rejected.size,
-                ),
-            )
-            state.error?.let { Text(it) }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LanguageCertainty.entries.forEach { certainty ->
-                    FilterChip(selected = state.language == certainty, onClick = {
-                        model.filter(certainty)
-                    }, label = { Text(certainty.name) })
-                }
-            }
-            CreatorWorkFilters(
-                state.workFilter.query,
-                state.workFilter.sourceId,
-                (state.archive.works.flatMap { it.versions } + state.archive.pending + state.archive.rejected)
-                    .associate { it.naturalKey.sourceId to model.sourceName(it) },
-                model::searchWorks,
-                model::filterSource,
-            )
-            if (state.visibleArchive.works.isEmpty() && state.visibleArchive.pending.isEmpty() &&
-                state.visibleArchive.rejected.isEmpty()
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(state.details.creator?.displayName ?: stringResource(MR.strings.desktop_ui_authors))
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { navigator.pop() }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(MR.strings.action_bar_up_description),
+                            )
+                        }
+                    },
+                )
+            },
+        ) { padding ->
+            Column(
+                Modifier.fillMaxSize().padding(padding).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(stringResource(MR.strings.creator_work_filter_empty))
-            }
-            LazyColumn {
-                state.visibleArchive.works.forEach { work ->
-                    item(key = "work-${work.workId}") {
-                        CreatorArchiveWorkRow(work.title, work.versions.firstOrNull()?.thumbnailUrl) {
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                work.versions.forEach { version -> CreatorVersionButton(version, model) }
+                if (state.loading) CircularProgressIndicator()
+                CreatorIdentityHeader(model.identityEditor, state.details.creator?.displayName.orEmpty())
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { if (state.followed) confirmUnfollow = true else model.toggleFollow() }) {
+                        Text(
+                            stringResource(
+                                if (state.followed) MR.strings.desktop_ui_unfollow else MR.strings.desktop_ui_follow,
+                            ),
+                        )
+                    }
+                    Button(onClick = model::scan, enabled = !state.running) {
+                        Text(stringResource(MR.strings.desktop_ui_check_new_works))
+                    }
+                }
+                Text(
+                    stringResource(
+                        MR.strings.creator_work_version_count,
+                        state.archive.works.size + state.archive.pending.size + state.archive.rejected.size,
+                        state.archive.works.sumOf { it.versions.size } + state.archive.pending.size +
+                            state.archive.rejected.size,
+                    ),
+                )
+                state.error?.let { Text(it) }
+                CreatorWorkFilters(
+                    state.workFilter.query,
+                    state.workFilter.sourceId,
+                    (state.archive.works.flatMap { it.versions } + state.archive.pending + state.archive.rejected)
+                        .associate { it.naturalKey.sourceId to model.sourceName(it) },
+                    model::searchWorks,
+                    model::filterSource,
+                )
+                if (state.visibleArchive.works.isEmpty() && state.visibleArchive.pending.isEmpty() &&
+                    state.visibleArchive.rejected.isEmpty()
+                ) {
+                    Text(stringResource(MR.strings.creator_work_filter_empty))
+                }
+                LazyColumn {
+                    state.visibleArchive.works.forEach { work ->
+                        item(key = "work-${work.workId}") {
+                            CreatorArchiveWorkRow(work.title, work.versions.firstOrNull()?.thumbnailUrl) {
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    work.versions.forEach { version -> CreatorVersionButton(version, model) }
+                                }
                             }
                         }
                     }
-                }
-                items(state.visibleArchive.pending, key = { "pending-${it.sourceWorkId}" }) { version ->
-                    CreatorArchiveWorkRow(version.title, version.thumbnailUrl) {
-                        CreatorVersionButton(version, model)
-                        TextButton(onClick = { model.openReview(version) }) {
-                            Text(stringResource(MR.strings.desktop_ui_pending_work_suggestions))
+                    items(state.visibleArchive.pending, key = { "pending-${it.sourceWorkId}" }) { version ->
+                        CreatorArchiveWorkRow(version.title, version.thumbnailUrl) {
+                            CreatorVersionButton(version, model)
+                            TextButton(onClick = { model.openReview(version) }) {
+                                Text(stringResource(MR.strings.desktop_ui_pending_work_suggestions))
+                            }
                         }
                     }
-                }
-                items(state.visibleArchive.rejected, key = { "rejected-${it.sourceWorkId}" }) { version ->
-                    CreatorArchiveWorkRow(version.title, version.thumbnailUrl) {
-                        CreatorVersionButton(version, model)
-                        Text(stringResource(MR.strings.desktop_ui_separated_work_versions))
+                    items(state.visibleArchive.rejected, key = { "rejected-${it.sourceWorkId}" }) { version ->
+                        CreatorArchiveWorkRow(version.title, version.thumbnailUrl) {
+                            CreatorVersionButton(version, model)
+                            Text(stringResource(MR.strings.desktop_ui_separated_work_versions))
+                        }
                     }
                 }
             }

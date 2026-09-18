@@ -1,0 +1,6 @@
+CREATE TABLE author_archive_representative_work_cache(
+    creator_id INTEGER NOT NULL PRIMARY KEY,
+    strategy_version INTEGER NOT NULL,
+    payload TEXT NOT NULL CHECK(length(payload) <= 8192),
+    FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE CASCADE
+);

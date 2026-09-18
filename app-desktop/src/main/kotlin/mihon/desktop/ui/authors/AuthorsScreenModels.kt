@@ -3,16 +3,17 @@ package mihon.desktop.ui.authors
 import cafe.adriel.voyager.core.model.ScreenModel
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -27,6 +28,7 @@ import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.model.Creator
+import tachiyomi.domain.creator.model.CreatorCardProjection
 import tachiyomi.domain.creator.model.CreatorWorkArchive
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.DiscoveryCandidate
@@ -56,9 +58,13 @@ import tachiyomi.domain.creator.model.CreatorWorkArchiveFilter
 
 internal object AuthorsScreenModelFactory {
     fun root(dependencies: DesktopUiDependencies): AuthorsRootScreenModel = AuthorsRootScreenModel(
-        dependencies.getCreators,
-        requireNotNull(dependencies.creatorLibraryIndexer),
-        dependencies.creatorDiscoveryPreferences,
+        getCreators = dependencies.getCreators,
+        creatorArchive = requireNotNull(dependencies.creatorArchive),
+        indexer = requireNotNull(dependencies.creatorLibraryIndexer),
+        preferences = dependencies.creatorDiscoveryPreferences,
+        preferredLanguages = dependencies.appPreferences.enabledLanguages::get,
+        preferredLanguageChanges = dependencies.appPreferences.enabledLanguages.changes(),
+        customCoverExists = dependencies.customCoverStore::customCoverExists,
         onSettingsSaved = {
             dependencies.creatorDiscoveryScheduler?.runIfDue()
         },
@@ -97,49 +103,224 @@ internal object AuthorsScreenModelFactory {
 }
 
 data class AuthorsRootState(
-    val creators: List<Creator> = emptyList(),
-    val followedIds: Set<Long> = emptySet(),
+    val cards: List<CreatorCardProjection> = emptyList(),
     val query: String = "",
+    val queryResetRevision: Long = 0,
+    val followedOnly: Boolean = true,
+    val hasMore: Boolean = false,
     val indexState: CreatorLibraryIndexState = CreatorLibraryIndexState.Idle,
     val loading: Boolean = true,
+    val loadingMore: Boolean = false,
     val error: String? = null,
-) {
-    val filteredCreators: List<Creator>
-        get() = creators.filter { creator ->
-            (listOf(creator.displayName) + creator.aliases).any { it.contains(query, ignoreCase = true) }
-        }
-}
+)
+
+internal data class CreatorListScrollPosition(
+    val index: Int = 0,
+    val offset: Int = 0,
+    val lastVisibleIndex: Int = index,
+)
 
 class AuthorsRootScreenModel(
-    getCreators: GetCreators,
+    private val getCreators: GetCreators,
+    private val creatorArchive: CreatorArchive,
     private val indexer: CreatorLibraryIndexer,
     preferences: tachiyomi.domain.creator.service.CreatorDiscoveryPreferences? = null,
+    private val preferredLanguages: () -> Set<String> = { emptySet() },
+    preferredLanguageChanges: Flow<Set<String>> = kotlinx.coroutines.flow.flowOf(emptySet()),
+    private val customCoverExists: (Long) -> Boolean = { false },
     onSettingsSaved: suspend () -> Unit = {},
 ) : ScreenModel {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val settingsEditor = preferences?.let { tachiyomi.domain.creator.service.CreatorSettingsEditor(it, scope, onSettingsSaved) }
     private val mutableState = MutableStateFlow(AuthorsRootState(indexState = indexer.state.value))
     val state: StateFlow<AuthorsRootState> = mutableState.asStateFlow()
+    private var pageGeneration = 0L
+    private var pageJob: Job? = null
+    private var followedScrollPosition = CreatorListScrollPosition()
+    private var allAuthorsScrollPosition = CreatorListScrollPosition()
+    private var lastTabActivationToken: String? = null
 
     init {
-        scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            combine(getCreators.subscribe(), getCreators.subscribeFollowed(), indexer.state) { creators, followed, index ->
-                Triple(creators, followed.mapTo(mutableSetOf()) { it.creatorId }, index)
-            }.catch { error -> mutableState.update { it.copy(loading = false, error = error.message) } }
-                .collect { (creators, followed, index) ->
-                    mutableState.update {
-                        it.copy(creators = creators, followedIds = followed, indexState = index, loading = false, error = null)
-                    }
-                }
+        loadFirstPage()
+        scope.launch {
+            var previousSnapshot: CreatorListRefreshSnapshot? = null
+            combine(
+                getCreators.subscribe(),
+                getCreators.subscribeFollowed().map { rows -> rows.mapTo(mutableSetOf()) { it.creatorId } },
+                preferredLanguageChanges,
+            ) { creators, followedIds, languages ->
+                CreatorListRefreshSnapshot(creators, followedIds, languages)
+            }.distinctUntilChanged().collect { snapshot ->
+                if (previousSnapshot != null && previousSnapshot != snapshot) refreshLoadedPages()
+                previousSnapshot = snapshot
+            }
+        }
+        scope.launch {
+            indexer.state.collect { index ->
+                mutableState.update { it.copy(indexState = index) }
+            }
         }
     }
 
-    fun setQuery(query: String) = mutableState.update { it.copy(query = query) }
+    fun search(query: String) {
+        val current = state.value
+        if (query == current.query) return
+        resetScrollPosition(current.followedOnly)
+        requestPages(
+            targetCount = 0,
+            preserveCards = false,
+            query = query,
+            queryResetRevision = current.queryResetRevision + 1,
+        )
+    }
+
+    fun showFollowing() = showTab(followedOnly = true)
+
+    fun showAllAuthors() = showTab(followedOnly = false)
+
+    fun onTabActivated(activationToken: String) {
+        if (activationToken == lastTabActivationToken) return
+        lastTabActivationToken = activationToken
+        showFollowing()
+    }
+
+    internal fun scrollPosition(followedOnly: Boolean): CreatorListScrollPosition =
+        if (followedOnly) followedScrollPosition else allAuthorsScrollPosition
+
+    fun saveScrollPosition(followedOnly: Boolean, index: Int, offset: Int, lastVisibleIndex: Int = index) {
+        val boundedIndex = index.coerceAtLeast(0)
+        val position = CreatorListScrollPosition(
+            index = boundedIndex,
+            offset = offset.coerceAtLeast(0),
+            lastVisibleIndex = lastVisibleIndex.coerceAtLeast(boundedIndex),
+        )
+        if (followedOnly) followedScrollPosition = position else allAuthorsScrollPosition = position
+    }
+
+    fun resetScrollPosition(followedOnly: Boolean) {
+        saveScrollPosition(followedOnly, 0, 0)
+    }
+
+    fun loadNextPage() {
+        val current = state.value
+        if (current.loading || current.loadingMore || !current.hasMore) return
+        val generation = pageGeneration
+        mutableState.update { it.copy(loadingMore = true, error = null) }
+        pageJob = scope.launch {
+            try {
+                val page = getPage(
+                    offset = current.cards.size,
+                    followedOnly = current.followedOnly,
+                    query = current.query,
+                )
+                if (generation == pageGeneration) {
+                    mutableState.update { latest ->
+                        if (latest.query != current.query || latest.followedOnly != current.followedOnly) {
+                            latest
+                        } else {
+                            latest.copy(
+                                cards = (latest.cards + page.creators).distinctBy { it.creator.id },
+                                hasMore = page.hasMore,
+                                loading = false,
+                                loadingMore = false,
+                            )
+                        }
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                if (generation == pageGeneration) {
+                    mutableState.update { it.copy(loading = false, loadingMore = false, error = failure.message) }
+                }
+            }
+        }
+    }
+
+    fun retry() = refreshLoadedPages()
 
     fun retryIndex() = indexer.retry()
 
+    private fun showTab(followedOnly: Boolean) {
+        if (followedOnly == state.value.followedOnly) return
+        val restorePosition = if (followedOnly) followedScrollPosition else allAuthorsScrollPosition
+        mutableState.update { it.copy(followedOnly = followedOnly) }
+        requestPages(targetCount = restorePosition.lastVisibleIndex + 1, preserveCards = false)
+    }
+
+    private fun loadFirstPage() {
+        requestPages(targetCount = 0, preserveCards = false)
+    }
+
+    private fun refreshLoadedPages() {
+        requestPages(targetCount = state.value.cards.size, preserveCards = true)
+    }
+
+    private fun requestPages(
+        targetCount: Int,
+        preserveCards: Boolean,
+        query: String = state.value.query,
+        queryResetRevision: Long = state.value.queryResetRevision,
+    ) {
+        pageJob?.cancel()
+        val generation = ++pageGeneration
+        val current = state.value.copy(query = query, queryResetRevision = queryResetRevision)
+        mutableState.update {
+            it.copy(
+                query = query,
+                queryResetRevision = queryResetRevision,
+                cards = if (preserveCards) it.cards else emptyList(),
+                hasMore = if (preserveCards) it.hasMore else false,
+                loading = true,
+                loadingMore = false,
+                error = null,
+            )
+        }
+        pageJob = scope.launch {
+            try {
+                val cards = mutableListOf<CreatorCardProjection>()
+                var hasMore: Boolean
+                do {
+                    val page = getPage(offset = cards.size, followedOnly = current.followedOnly, query = current.query)
+                    cards += page.creators
+                    hasMore = page.hasMore
+                } while (hasMore && cards.size < targetCount.coerceAtLeast(1))
+
+                if (generation == pageGeneration) {
+                    mutableState.update {
+                        it.copy(cards = cards, hasMore = hasMore, loading = false, loadingMore = false, error = null)
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                if (generation == pageGeneration) {
+                    mutableState.update { it.copy(loading = false, loadingMore = false, error = failure.message) }
+                }
+            }
+        }
+    }
+
+    private suspend fun getPage(offset: Int, followedOnly: Boolean, query: String) =
+        creatorArchive.getCreatorCardProjectionPage(
+            offset = offset,
+            limit = CREATOR_CARD_PAGE_SIZE,
+            followedOnly = followedOnly,
+            preferredLanguages = preferredLanguages(),
+            customCoverExists = customCoverExists,
+            query = query,
+        )
+
     override fun onDispose() = scope.cancel()
 }
+
+private data class CreatorListRefreshSnapshot(
+    val creators: List<Creator>,
+    val followedIds: Set<Long>,
+    val preferredLanguages: Set<String>,
+)
+
+private const val CREATOR_CARD_PAGE_SIZE = 50
 
 data class AuthorDetailState(
     val details: CreatorDetails = CreatorDetails(null, emptyList(), emptyList()),

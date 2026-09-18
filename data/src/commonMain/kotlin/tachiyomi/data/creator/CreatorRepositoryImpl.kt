@@ -7,6 +7,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import mihon.data.sync.journal.appendSyncOperation
@@ -35,6 +39,10 @@ import tachiyomi.domain.creator.model.CreatorAliasCandidates
 import tachiyomi.domain.creator.model.CreatorArchiveLanguageTag
 import tachiyomi.domain.creator.model.CreatorArchiveSubjectKey
 import tachiyomi.domain.creator.model.CreatorArchiveV2Policy
+import tachiyomi.domain.creator.model.CreatorCardProjection
+import tachiyomi.domain.creator.model.CreatorCardProjectionPage
+import tachiyomi.domain.creator.model.CreatorCardWorkCandidate
+import tachiyomi.domain.creator.model.CreatorCoverRequest
 import tachiyomi.domain.creator.model.CreatorIdentityOption
 import tachiyomi.domain.creator.model.CreatorIdentityRequestConflict
 import tachiyomi.domain.creator.model.CreatorIdentitySnapshot
@@ -43,7 +51,9 @@ import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.creator.model.CreatorPortableKey
 import tachiyomi.domain.creator.model.CreatorRelationOrigin
 import tachiyomi.domain.creator.model.CreatorRelationVerification
+import tachiyomi.domain.creator.model.CreatorRepresentativeWorkCache
 import tachiyomi.domain.creator.model.CreatorRole
+import tachiyomi.domain.creator.model.CreatorSelectedWorkKey
 import tachiyomi.domain.creator.model.CreatorWatch
 import tachiyomi.domain.creator.model.CreatorWorkArchive
 import tachiyomi.domain.creator.model.DecisionActor
@@ -94,6 +104,7 @@ import tachiyomi.domain.creator.service.ChapterVariantRecord
 import tachiyomi.domain.creator.service.ChapterVariantType
 import tachiyomi.domain.creator.service.CreatorDiscoverySchedule
 import tachiyomi.domain.creator.service.CreatorNameNormalizer
+import tachiyomi.domain.creator.service.CreatorRepresentativeWorkSelector
 import tachiyomi.domain.creator.service.CreatorSourceWorkKey
 import tachiyomi.domain.manga.model.Manga
 import kotlin.uuid.ExperimentalUuidApi
@@ -264,6 +275,166 @@ class CreatorRepositoryImpl(
             author_archiveQueries.getCreatorWorkArchiveRows(rootId, ::mapCreatorWorkArchiveRow)
         }
             .toCreatorWorkArchive()
+    }
+
+    override suspend fun getCreatorCardProjectionPage(
+        offset: Int,
+        limit: Int,
+        followedOnly: Boolean,
+        preferredLanguages: Set<String>,
+        customCoverExists: (Long) -> Boolean,
+        query: String,
+    ): CreatorCardProjectionPage {
+        bootstrap.awaitReady()
+        ensureExactIdentityInvariant()
+        require(offset >= 0) { "Creator card offset must not be negative" }
+        require(limit > 0) { "Creator card page size must be positive" }
+        val pageLimit = limit.coerceAtMost(MAX_CREATOR_CARD_PAGE_SIZE)
+        val customCoverAvailabilityByMangaId = mutableMapOf<Long, Boolean>()
+        val rows = handler.awaitList {
+            author_archiveQueries.getCreatorCardProjectionRows(
+                followedOnly = if (followedOnly) 1L else 0L,
+                pageLimit = (pageLimit + 1L),
+                offset = offset.toLong(),
+                nameQuery = query.trim(),
+            ) {
+                    creatorId,
+                    displayName,
+                    normalizedName,
+                    sortName,
+                    aliases,
+                    createdAt,
+                    lastModifiedAt,
+                    followed,
+                    uniqueWorkCount,
+                    sourceWorkId,
+                    sourceId,
+                    stableSourceUrl,
+                    mangaId,
+                    candidateTitle,
+                    workKey,
+                    coverUrl,
+                    coverLastModified,
+                    inLibrary,
+                    lastReadAt,
+                    relationVerification,
+                    decisionState,
+                    sourceLanguage,
+                ->
+                CreatorCardProjectionRow(
+                    creator = mapCreator(
+                        creatorId,
+                        displayName,
+                        normalizedName,
+                        sortName,
+                        aliases,
+                        createdAt,
+                        lastModifiedAt,
+                    ),
+                    followed = followed != 0L,
+                    uniqueWorkCount = uniqueWorkCount.toInt(),
+                    candidate = sourceWorkId?.let { id ->
+                        val naturalKey = SourceWorkNaturalKey(
+                            sourceId = checkNotNull(sourceId),
+                            stableSourceUrl = checkNotNull(stableSourceUrl),
+                        )
+                        CreatorCardWorkCandidate(
+                            workKey = checkNotNull(workKey),
+                            sourceWorkId = id,
+                            naturalKey = naturalKey,
+                            title = checkNotNull(candidateTitle),
+                            coverRequest = CreatorCoverRequest(
+                                sourceWorkId = id,
+                                mangaId = mangaId,
+                                sourceId = naturalKey.sourceId,
+                                url = coverUrl,
+                                lastModifiedAt = coverLastModified ?: 0L,
+                            ),
+                            inLibrary = inLibrary != 0L,
+                            hasCustomCover = mangaId?.let { id ->
+                                customCoverAvailabilityByMangaId.getOrPut(id) { customCoverExists(id) }
+                            } == true,
+                            lastReadAt = lastReadAt?.time,
+                            relationVerification = CreatorRelationVerification.valueOf(
+                                checkNotNull(relationVerification),
+                            ),
+                            decisionState = decisionState?.let(WorkDecisionState::valueOf),
+                            sourceLanguage = sourceLanguage,
+                        )
+                    },
+                )
+            }
+        }
+        val projections = rows.groupBy { it.creator.id }.values.map { creatorRows ->
+            val first = creatorRows.first()
+            CreatorCardProjectionWithCandidates(
+                projection = CreatorCardProjection(
+                    creator = first.creator,
+                    followed = first.followed,
+                    uniqueWorkCount = first.uniqueWorkCount,
+                ),
+                candidates = creatorRows.mapNotNull(CreatorCardProjectionRow::candidate),
+            )
+        }
+        val hasMore = projections.size > pageLimit
+        val pageCreators = projections.take(pageLimit)
+        val creatorIds = pageCreators.map { it.projection.creator.id }.distinct()
+        val cacheRows = if (creatorIds.isEmpty()) {
+            emptyList()
+        } else {
+            handler.awaitList {
+                author_archiveQueries.getRepresentativeWorkCaches(creatorIds) { creatorId, strategyVersion, payload ->
+                    CreatorRepresentativeWorkCacheRow(creatorId, strategyVersion, payload)
+                }
+            }
+        }
+        val cacheByCreator = cacheRows.associateBy(CreatorRepresentativeWorkCacheRow::creatorId)
+        val cacheUpdates = mutableListOf<CreatorRepresentativeWorkCacheUpdate>()
+        val cacheDeletes = mutableListOf<Long>()
+        val selectedPageCreators = pageCreators.map { projectionWithCandidates ->
+            val projection = projectionWithCandidates.projection
+            val cachedRow = cacheByCreator[projection.creator.id]
+            val previousSelection = cachedRow?.let(CreatorRepresentativeWorkCacheRow::decode)
+            val selection = CreatorRepresentativeWorkSelector.select(
+                candidates = projectionWithCandidates.candidates,
+                previous = previousSelection,
+                preferredLanguages = preferredLanguages,
+            )
+            val payload = CreatorRepresentativeWorkCacheCodec.encode(selection.cache)
+            when {
+                selection.cache.selected.isEmpty() || payload == null -> {
+                    if (cachedRow != null) cacheDeletes += projection.creator.id
+                }
+                previousSelection != selection.cache || cachedRow == null -> {
+                    cacheUpdates += CreatorRepresentativeWorkCacheUpdate(
+                        creatorId = projection.creator.id,
+                        strategyVersion = CreatorRepresentativeWorkSelector.STRATEGY_VERSION.toLong(),
+                        payload = payload,
+                    )
+                }
+            }
+            projection.copy(representativeWorks = selection.representatives)
+        }
+        if (cacheDeletes.isNotEmpty() || cacheUpdates.isNotEmpty()) {
+            handler.await(inTransaction = true) {
+                if (cacheDeletes.isNotEmpty()) {
+                    author_archiveQueries.deleteRepresentativeWorkCaches(cacheDeletes)
+                }
+                cacheUpdates.forEach { update ->
+                    author_archiveQueries.upsertRepresentativeWorkCache(
+                        creatorId = update.creatorId,
+                        strategyVersion = update.strategyVersion,
+                        payload = update.payload,
+                    )
+                }
+            }
+        }
+        return CreatorCardProjectionPage(
+            offset = offset,
+            limit = pageLimit,
+            hasMore = hasMore,
+            creators = selectedPageCreators,
+        )
     }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -3141,6 +3312,7 @@ class CreatorRepositoryImpl(
     )
 
     private companion object {
+        const val MAX_CREATOR_CARD_PAGE_SIZE = 50
         const val EXACT_IDENTITY_MIGRATION = "global-exact-name-v1"
         const val DEFAULT_WATCH_PERIOD_MILLIS = 86_400_000L
         const val LEGACY_COMPAT_ALGORITHM_VERSION = "creator-archive-v2-compat-1"
@@ -3152,6 +3324,93 @@ class CreatorRepositoryImpl(
         val exactIdentityMutationMutex = Mutex()
     }
 }
+
+private data class CreatorRepresentativeWorkCacheRow(
+    val creatorId: Long,
+    val strategyVersion: Long,
+    val payload: String,
+) {
+    fun decode(): CreatorRepresentativeWorkCache? = CreatorRepresentativeWorkCacheCodec.decode(
+        strategyVersion = strategyVersion,
+        payload = payload,
+    )
+}
+
+private data class CreatorRepresentativeWorkCacheUpdate(
+    val creatorId: Long,
+    val strategyVersion: Long,
+    val payload: String,
+)
+
+private object CreatorRepresentativeWorkCacheCodec {
+    private const val MAX_PAYLOAD_CHARACTERS = 8192
+    private val json = Json {
+        ignoreUnknownKeys = false
+        isLenient = false
+    }
+
+    fun decode(strategyVersion: Long, payload: String): CreatorRepresentativeWorkCache? {
+        if (strategyVersion != CreatorRepresentativeWorkSelector.STRATEGY_VERSION.toLong()) return null
+        if (payload.length > MAX_PAYLOAD_CHARACTERS) return null
+        return runCatching {
+            val selected = json.decodeFromString<CreatorRepresentativeWorkCachePayload>(payload).selected
+            require(selected.size in 1..CreatorRepresentativeWorkSelector.MAX_WORKS)
+            require(selected.map(CreatorRepresentativeWorkCacheKey::workKey).distinct().size == selected.size)
+            require(selected.all { it.workKey.isNotBlank() && it.stableSourceUrl.isNotBlank() })
+            CreatorRepresentativeWorkCache(
+                strategyVersion = CreatorRepresentativeWorkSelector.STRATEGY_VERSION,
+                selected = selected.map { item ->
+                    CreatorSelectedWorkKey(
+                        workKey = item.workKey,
+                        naturalKey = SourceWorkNaturalKey(item.sourceId, item.stableSourceUrl),
+                    )
+                },
+            )
+        }.getOrNull()
+    }
+
+    fun encode(cache: CreatorRepresentativeWorkCache): String? {
+        if (cache.strategyVersion != CreatorRepresentativeWorkSelector.STRATEGY_VERSION) return null
+        if (cache.selected.isEmpty() || cache.selected.size > CreatorRepresentativeWorkSelector.MAX_WORKS) return null
+        if (cache.selected.map(CreatorSelectedWorkKey::workKey).distinct().size != cache.selected.size) return null
+        if (cache.selected.any { it.workKey.isBlank() || it.naturalKey.stableSourceUrl.isBlank() }) return null
+        return json.encodeToString(
+            CreatorRepresentativeWorkCachePayload(
+                selected = cache.selected.map { item ->
+                    CreatorRepresentativeWorkCacheKey(
+                        workKey = item.workKey,
+                        sourceId = item.naturalKey.sourceId,
+                        stableSourceUrl = item.naturalKey.stableSourceUrl,
+                    )
+                },
+            ),
+        ).takeIf { it.length <= MAX_PAYLOAD_CHARACTERS }
+    }
+}
+
+@Serializable
+private data class CreatorRepresentativeWorkCachePayload(
+    val selected: List<CreatorRepresentativeWorkCacheKey>,
+)
+
+@Serializable
+private data class CreatorRepresentativeWorkCacheKey(
+    val workKey: String,
+    val sourceId: Long,
+    val stableSourceUrl: String,
+)
+
+private data class CreatorCardProjectionRow(
+    val creator: Creator,
+    val followed: Boolean,
+    val uniqueWorkCount: Int,
+    val candidate: CreatorCardWorkCandidate?,
+)
+
+private data class CreatorCardProjectionWithCandidates(
+    val projection: CreatorCardProjection,
+    val candidates: List<CreatorCardWorkCandidate>,
+)
 
 private data class CreatorWorkArchiveRow(
     val version: SourceWorkArchiveVersion,

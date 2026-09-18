@@ -143,6 +143,56 @@ abstract class SyncRemoteProjectionContract {
     }
 
     @Test
+    fun `representative work cache is persisted locally without entering the sync journal`() = runBlocking {
+        open().use { s ->
+            s.prepare()
+            val creatorId = s.insertAuthor("cache-local")
+            (1L..3L).forEach { sourceWorkId ->
+                val url = "/cache-work-$sourceWorkId"
+                s.driver.execute(
+                    null,
+                    "INSERT INTO author_archive_source_works(" +
+                        "_id, source_id, stable_source_url, title, normalized_title, first_seen_at, last_seen_at" +
+                        ") VALUES (?, ?, ?, ?, ?, 1, 1)",
+                    5,
+                ) {
+                    bindLong(0, sourceWorkId)
+                    bindLong(1, SOURCE)
+                    bindString(2, url)
+                    bindString(3, "Cache work $sourceWorkId")
+                    bindString(4, "cache work $sourceWorkId")
+                }
+                s.driver.execute(
+                    null,
+                    "INSERT INTO author_archive_source_work_creators(" +
+                        "source_work_id, creator_id, role, creator_order, origin, verification, confidence, " +
+                        "evidence, created_at, last_modified_at" +
+                        ") VALUES (?, ?, 'AUTHOR', 0, 'USER', 'VERIFIED', 1, 'cache contract', 1, 1)",
+                    2,
+                ) {
+                    bindLong(0, sourceWorkId)
+                    bindLong(1, creatorId)
+                }
+            }
+
+            val journal = SyncLocalJournal(s.handler)
+            val pendingBefore = journal.pendingEvents("space", 1)
+            val page = s.creators.getCreatorCardProjectionPage(offset = 0, limit = 50, followedOnly = false)
+            val card = page.creators.single()
+            val cached = s.handler.await {
+                author_archiveQueries.getRepresentativeWorkCaches(listOf(creatorId)) { id, version, payload ->
+                    Triple(id, version, payload)
+                }.executeAsList()
+            }
+
+            assertEquals(creatorId, card.creator.id)
+            assertTrue(card.representativeWorks.isNotEmpty())
+            assertEquals(1, cached.size)
+            assertEquals(pendingBefore, journal.pendingEvents("space", 1))
+        }
+    }
+
+    @Test
     fun `author redirects follow identity and deleted or cyclic identities remain unavailable`() = runBlocking {
         open().use { s ->
             s.prepare()

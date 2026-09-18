@@ -22,6 +22,27 @@ import tachiyomi.data.UpdateStrategyColumnAdapter
 class AuthorArchiveBackupContributorTest {
 
     @Test
+    fun `device local representative cache is excluded from portable author backup`() = runBlocking {
+        val source = fixture()
+        source.seedManga(1L, 10L, "/one")
+        source.seedManga(2L, 10L, "/two")
+        source.seedArchive()
+
+        val before = checkNotNull(source.contributor.createSection())
+        source.driver.execute(
+            null,
+            "INSERT INTO author_archive_representative_work_cache(creator_id, strategy_version, payload) " +
+                "VALUES (1, 1, '{\"selected\":[{\"workKey\":\"local-only-cache-sentinel\"}]}')",
+            0,
+        )
+        val after = checkNotNull(source.contributor.createSection())
+
+        after shouldBe before
+        BackupCodec.encode(BackupAuthorArchiveSection.serializer(), after).decodeToString()
+            .contains("local-only-cache-sentinel") shouldBe false
+    }
+
+    @Test
     fun `round trip converges same-name identities and preserves redirect and natural-key bindings`() {
         runBlocking {
             val source = fixture()

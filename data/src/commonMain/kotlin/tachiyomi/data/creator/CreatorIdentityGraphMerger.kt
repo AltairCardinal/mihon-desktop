@@ -96,6 +96,7 @@ internal fun Database.mergeCreatorIdentityGraph(sourceCreatorId: Long, targetCre
     )
     author_archiveQueries.markArchiveCreatorMerged(targetCreatorId, now, sourceCreatorId)
     author_archiveQueries.bumpArchiveCreatorIdentityRevision(now, targetCreatorId)
+    author_archiveQueries.deleteRepresentativeWorkCaches(listOf(sourceCreatorId))
 }
 
 private fun Database.mergeCreatorWatchGraph(sourceCreatorId: Long, targetCreatorId: Long, now: Long) {

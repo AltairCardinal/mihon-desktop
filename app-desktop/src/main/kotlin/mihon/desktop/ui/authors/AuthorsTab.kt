@@ -60,9 +60,11 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.Tab
+import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
 import mihon.desktop.domain.CreatorDiscoveryRunScope
 import mihon.desktop.ui.library.MangaDetailScreen
 import mihon.domain.task.TaskStatus
@@ -73,6 +75,7 @@ import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.service.CreatorLibraryIndexState
 import tachiyomi.domain.source.service.SourceManager
 import java.util.Locale
+import java.util.UUID
 import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
 
 
@@ -95,13 +98,26 @@ object AuthorsTab : Tab {
 
     @Composable
     override fun Content() {
-        Navigator(AuthorsRootScreen()) {
-            CurrentScreen()
+        val tabNavigator = LocalTabNavigator.current
+        val selectedTab = tabNavigator.current
+        var wasSelected by remember(tabNavigator) { mutableStateOf(selectedTab == AuthorsTab) }
+        var activationToken by remember(tabNavigator) { mutableStateOf(UUID.randomUUID().toString()) }
+
+        LaunchedEffect(selectedTab) {
+            val isSelected = selectedTab == AuthorsTab
+            if (isSelected && !wasSelected) activationToken = UUID.randomUUID().toString()
+            wasSelected = isSelected
+        }
+
+        androidx.compose.runtime.key(activationToken) {
+            Navigator(AuthorsRootScreen(activationToken)) {
+                CurrentScreen()
+            }
         }
     }
 }
 
-class AuthorsRootScreen : Screen {
+class AuthorsRootScreen(private val tabActivationToken: String = "initial") : Screen {
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
@@ -110,8 +126,95 @@ class AuthorsRootScreen : Screen {
         val dependencies = LocalDesktopUiDependencies.current
         val model = rememberScreenModel { AuthorsScreenModelFactory.root(dependencies) }
         val state by model.state.collectAsState()
-        val indexPresentation = authorIndexPresentation(state.indexState, state.creators.size)
+        val indexPresentation = authorIndexPresentation(state.indexState, state.cards.size)
         val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
+
+        LaunchedEffect(tabActivationToken) { model.onTabActivated(tabActivationToken) }
+
+        val followedPosition = model.scrollPosition(followedOnly = true)
+        val allAuthorsPosition = model.scrollPosition(followedOnly = false)
+        val followedListState = androidx.compose.runtime.key(state.queryResetRevision) {
+            androidx.compose.foundation.lazy.rememberLazyListState(
+                initialFirstVisibleItemIndex = followedPosition.index,
+                initialFirstVisibleItemScrollOffset = followedPosition.offset,
+            )
+        }
+        val allAuthorsListState = androidx.compose.runtime.key(state.queryResetRevision) {
+            androidx.compose.foundation.lazy.rememberLazyListState(
+                initialFirstVisibleItemIndex = allAuthorsPosition.index,
+                initialFirstVisibleItemScrollOffset = allAuthorsPosition.offset,
+            )
+        }
+        val listState = if (state.followedOnly) followedListState else allAuthorsListState
+
+        fun saveActiveScrollPosition() {
+            val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return
+            model.saveScrollPosition(
+                followedOnly = state.followedOnly,
+                index = listState.firstVisibleItemIndex,
+                offset = listState.firstVisibleItemScrollOffset,
+                lastVisibleIndex = lastVisibleIndex,
+            )
+        }
+
+        LaunchedEffect(followedListState) {
+            androidx.compose.runtime.snapshotFlow {
+                followedListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { lastVisibleIndex ->
+                    Triple(
+                        followedListState.firstVisibleItemIndex,
+                        followedListState.firstVisibleItemScrollOffset,
+                        lastVisibleIndex,
+                    )
+                }
+            }.distinctUntilChanged().collect { position ->
+                position?.let { (index, offset, lastVisibleIndex) ->
+                    model.saveScrollPosition(
+                        followedOnly = true,
+                        index = index,
+                        offset = offset,
+                        lastVisibleIndex = lastVisibleIndex,
+                    )
+                }
+            }
+        }
+        LaunchedEffect(allAuthorsListState) {
+            androidx.compose.runtime.snapshotFlow {
+                allAuthorsListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { lastVisibleIndex ->
+                    Triple(
+                        allAuthorsListState.firstVisibleItemIndex,
+                        allAuthorsListState.firstVisibleItemScrollOffset,
+                        lastVisibleIndex,
+                    )
+                }
+            }.distinctUntilChanged().collect { position ->
+                position?.let { (index, offset, lastVisibleIndex) ->
+                    model.saveScrollPosition(
+                        followedOnly = false,
+                        index = index,
+                        offset = offset,
+                        lastVisibleIndex = lastVisibleIndex,
+                    )
+                }
+            }
+        }
+        LaunchedEffect(
+            listState,
+            state.cards.size,
+            state.hasMore,
+            state.loadingMore,
+            state.query,
+            state.followedOnly,
+        ) {
+            if (state.cards.isEmpty() || !state.hasMore) return@LaunchedEffect
+            androidx.compose.runtime.snapshotFlow {
+                listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            }.collect { lastVisibleIndex ->
+                if (lastVisibleIndex >= state.cards.size - CREATOR_CARD_PREFETCH_DISTANCE) {
+                    model.loadNextPage()
+                }
+            }
+        }
+
         model.settingsEditor?.let { editor ->
             val settings by editor.state.collectAsState()
             androidx.compose.runtime.LaunchedEffect(settings.savedRevision) {
@@ -133,19 +236,51 @@ class AuthorsRootScreen : Screen {
                     .fillMaxSize()
                     .padding(padding),
             ) {
-                if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                state.error?.let { message ->
-                    Text(message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(
+                        selected = state.followedOnly,
+                        onClick = {
+                            saveActiveScrollPosition()
+                            model.showFollowing()
+                        },
+                        label = { Text(MR.strings.desktop_ui_followed.localized()) },
+                        modifier = Modifier.testTag("creator-tab-following"),
+                    )
+                    FilterChip(
+                        selected = !state.followedOnly,
+                        onClick = {
+                            saveActiveScrollPosition()
+                            model.showAllAuthors()
+                        },
+                        label = { Text(MR.strings.desktop_ui_all_authors.localized()) },
+                        modifier = Modifier.testTag("creator-tab-all"),
+                    )
                 }
+
                 OutlinedTextField(
                     value = state.query,
-                    onValueChange = model::setQuery,
+                    onValueChange = model::search,
                     placeholder = { Text(MR.strings.desktop_ui_search_authors.localized()) },
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
                 )
+
+                if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                state.error?.let { message ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(message, color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
+                        Button(onClick = model::retry) { Text(MR.strings.action_retry.localized()) }
+                    }
+                }
 
                 when (val presentation = indexPresentation) {
                     is AuthorIndexPresentation.Indexing -> {
@@ -197,55 +332,45 @@ class AuthorsRootScreen : Screen {
                     else -> Unit
                 }
 
-                if (state.creators.isEmpty()) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            when (indexPresentation) {
-                                AuthorIndexPresentation.EmptyLibrary ->
-                                    MR.strings.desktop_ui_author_index_empty_library.localized()
-                                AuthorIndexPresentation.NoAuthorMetadata ->
-                                    MR.strings.desktop_ui_author_index_no_metadata.localized()
-                                is AuthorIndexPresentation.Failed,
-                                is AuthorIndexPresentation.Indexing,
-                                AuthorIndexPresentation.Content,
-                                -> MR.strings.desktop_ui_no_authors_indexed_yet.localized()
-                            },
-                        )
-                    }
-                } else if (state.filteredCreators.isEmpty()) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(MR.strings.no_results_found.localized())
-                    }
-                } else {
+                if (state.cards.isNotEmpty()) {
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
+                        state = listState,
+                        modifier = Modifier.weight(1f).fillMaxWidth().testTag("creator-author-list"),
                         contentPadding = PaddingValues(vertical = 4.dp),
                     ) {
-                        if (state.followedIds.isNotEmpty()) {
-                            item {
-                                Text(
-                                    text = MR.strings.desktop_ui_followed.localized(),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                )
+                        items(state.cards, key = { it.creator.id }) { card ->
+                            CreatorCardRow(card, dependencies.customCoverStore) {
+                                saveActiveScrollPosition()
+                                navigator.push(AuthorDetailScreen(card.creator.id))
                             }
-                            items(state.filteredCreators.filter { it.id in state.followedIds }, key = { "followed-${it.id}" }) {
-                                AuthorListItem(it, followed = true) { navigator.push(AuthorDetailScreen(it.id)) }
-                            }
-                            item { HorizontalDivider() }
                         }
-
-                        item {
-                            Text(
-                                text = MR.strings.desktop_ui_all_authors.localized(),
-                                style = MaterialTheme.typography.titleSmall,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            )
-                        }
-                        items(state.filteredCreators, key = { it.id }) {
-                            AuthorListItem(it, followed = it.id in state.followedIds) {
-                                navigator.push(AuthorDetailScreen(it.id))
+                        if (state.loadingMore) {
+                            item(key = "creator-loading-more") {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(16.dp))
                             }
+                        }
+                    }
+                } else if (!state.loading && state.error == null) {
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        when {
+                            state.query.isNotBlank() -> Text(MR.strings.no_results_found.localized())
+                            indexPresentation == AuthorIndexPresentation.EmptyLibrary ->
+                                Text(MR.strings.desktop_ui_author_index_empty_library.localized())
+                            indexPresentation is AuthorIndexPresentation.Failed -> Unit
+                            state.followedOnly -> {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text(MR.strings.creator_following_empty.localized())
+                                    TextButton(onClick = model::showAllAuthors) {
+                                        Text(MR.strings.creator_following_empty_action.localized())
+                                    }
+                                }
+                            }
+                            indexPresentation == AuthorIndexPresentation.NoAuthorMetadata ->
+                                Text(MR.strings.desktop_ui_author_index_no_metadata.localized())
+                            else -> Text(MR.strings.desktop_ui_no_authors_indexed_yet.localized())
                         }
                     }
                 }
@@ -499,28 +624,6 @@ data class AuthorDetailScreen(
                 }
 
                 HorizontalDivider()
-
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    val summary = state.languageSummary
-                    listOf(
-                        LanguageArchiveFilter.ALL to MR.strings.all.localized(),
-                        LanguageArchiveFilter.CONFIRMED to
-                            MR.strings.desktop_ui_language_confirmed_count.localized(Locale.getDefault(), summary.confirmed),
-                        LanguageArchiveFilter.PROBABLE to
-                            MR.strings.desktop_ui_language_possible_count.localized(Locale.getDefault(), summary.probable),
-                        LanguageArchiveFilter.NEEDS_REVIEW to
-                            MR.strings.desktop_ui_language_needs_review_count.localized(Locale.getDefault(), summary.needsReview),
-                    ).forEach { (filter, label) ->
-                        FilterChip(
-                            selected = state.languageFilter == filter,
-                            onClick = { model.setLanguageFilter(filter) },
-                            label = { Text(label) },
-                        )
-                    }
-                }
 
                 CreatorWorkFilters(
                     state.workFilter.query, state.workFilter.sourceId,
@@ -958,15 +1061,84 @@ data class WorkCompareScreen(val workId: Long, val creatorId: Long = -1L) : Scre
     }
 }
 
+private const val CREATOR_CARD_PREFETCH_DISTANCE = 5
+
 @Composable
-private fun AuthorListItem(creator: Creator, followed: Boolean, onClick: () -> Unit) {
-    ListItem(
-        headlineContent = { Text(creator.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        supportingContent = {
-            Text(if (followed) MR.strings.desktop_ui_followed.localized() else MR.strings.not_selected.localized())
-        },
+private fun CreatorCardRow(
+    card: tachiyomi.domain.creator.model.CreatorCardProjection,
+    customCoverStore: mihon.desktop.domain.DesktopCustomCoverStore,
+    onClick: () -> Unit,
+) {
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-    )
+            .testTag("creator-card-${card.creator.id}")
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            Text(card.creator.displayName)
+            Text(
+                MR.strings.creator_unique_work_count.localized(Locale.getDefault(), card.uniqueWorkCount),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (card.followed) {
+                Text(MR.strings.desktop_ui_followed.localized(), modifier = Modifier.testTag("creator-card-${card.creator.id}-followed"))
+            }
+            if (card.creator.aliases.isNotEmpty()) {
+                Text(card.creator.aliases.joinToString(), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        if (card.representativeWorks.isEmpty()) {
+            Text(
+                MR.strings.creator_no_representative_work.localized(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                card.representativeWorks.take(3).forEach { work ->
+                    CreatorRepresentativeWorkItem(work, customCoverStore)
+                }
+            }
+        }
+    }
+    HorizontalDivider()
+}
+
+@Composable
+private fun CreatorRepresentativeWorkItem(
+    work: tachiyomi.domain.creator.model.CreatorCardWorkCandidate,
+    customCoverStore: mihon.desktop.domain.DesktopCustomCoverStore,
+) {
+    val request = work.coverRequest
+    val coverId = request.mangaId ?: -request.sourceWorkId
+    val coverModel = request.mangaId?.let { customCoverStore.resolveModel(it, request.url) } ?: request.url
+    val imageRequest = mihon.desktop.ui.library.rememberMangaCoverRequestState(
+        mangaId = coverId,
+        sourceId = request.sourceId,
+        coverModel = coverModel,
+        coverVersion = request.lastModifiedAt,
+    ).request
+    val fallbackPainter = rememberVectorPainter(Icons.AutoMirrored.Filled.MenuBook)
+    Column(
+        modifier = Modifier.width(72.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        coil3.compose.AsyncImage(
+            model = imageRequest,
+            contentDescription = work.title,
+            placeholder = fallbackPainter,
+            error = fallbackPainter,
+            fallback = fallbackPainter,
+            modifier = Modifier.width(64.dp).height(88.dp).testTag("creator-cover-${work.workKey}"),
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+        )
+        Text(work.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+    }
 }

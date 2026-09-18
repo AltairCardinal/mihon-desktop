@@ -1757,7 +1757,10 @@
     <string name="creator_identity_aliases_added">已添加别名</string>
     <string name="creator_unfollow_confirm">停止关注该作者吗？作品和名称关系会保留。</string>
     <string name="creator_split_unavailable">当前选择无法安全地分开作者名称，资料未更改。可使用关联前的应用备份恢复。</string>
-    <string name="creator_no_representative_work">暂无已归档作品</string>
+    <string name="creator_following_empty">关注作者以获取他们的新作提示</string>
+    <string name="creator_following_empty_action">查看全部作者</string>
+    <string name="creator_no_representative_work">暂无作品</string>
+    <string name="creator_unique_work_count">%1$d 部作品</string>
     <string name="creator_work_version_count">%1$d 部作品 · %2$d 个图源版本</string>
     <string name="creator_work_search">查找作品</string>
     <string name="creator_work_sources_all">全部来源</string>

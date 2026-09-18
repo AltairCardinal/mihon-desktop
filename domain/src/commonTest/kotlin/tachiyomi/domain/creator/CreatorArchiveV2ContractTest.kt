@@ -99,9 +99,18 @@ class CreatorArchiveV2ContractTest {
         val tables = CreatorArchivePhysicalSchema.tables
 
         assertEquals(20, CreatorArchivePhysicalSchema.version16Tables.size)
-        assertEquals(24, tables.size)
+        assertEquals(25, tables.size)
         assertEquals(tables.size, tables.map { it.name }.toSet().size)
         assertTrue(tables.all { it.name.startsWith("author_archive_") && it.uniqueKeys.isNotEmpty() })
+        assertTrue(
+            CreatorArchivePhysicalSchema.version16Tables.none {
+                it.name == "author_archive_representative_work_cache"
+            },
+        )
+        assertEquals(
+            ArchiveDeletionPolicy.CASCADE,
+            tables.single { it.name == "author_archive_representative_work_cache" }.deletionPolicy,
+        )
         assertEquals(
             ArchiveDeletionPolicy.SOFT_DELETE,
             tables.single { it.name == "author_archive_creators" }.deletionPolicy,

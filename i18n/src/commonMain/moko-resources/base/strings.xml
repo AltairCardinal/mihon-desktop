@@ -1997,7 +1997,10 @@
     <string name="creator_identity_aliases_added">Aliases added</string>
     <string name="creator_unfollow_confirm">Stop following this author? Works and names will be kept.</string>
     <string name="creator_split_unavailable">This selection cannot safely separate the author’s names. No changes were made. You can restore an application backup made before the association.</string>
-    <string name="creator_no_representative_work">No archived works yet</string>
+    <string name="creator_following_empty">Follow authors to get new work suggestions.</string>
+    <string name="creator_following_empty_action">View all authors</string>
+    <string name="creator_no_representative_work">No works yet</string>
+    <string name="creator_unique_work_count">%1$d works</string>
     <string name="creator_work_version_count">%1$d works · %2$d source versions</string>
     <string name="creator_work_search">Find works</string>
     <string name="creator_work_sources_all">All sources</string>

@@ -14,10 +14,12 @@ import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import mihon.desktop.DesktopUiDependencies
@@ -36,6 +38,8 @@ import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.model.Creator
+import tachiyomi.domain.creator.model.CreatorCardProjection
+import tachiyomi.domain.creator.model.CreatorCardProjectionPage
 import tachiyomi.domain.creator.model.CanonicalWork
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.CreatorWorkArchive
@@ -85,10 +89,8 @@ class AuthorsProductionWiringTest {
     }
 
     @Test
-    fun `author list finds aliases as well as primary names`() {
-        val creator = Creator(7, "Primary", "primary", null, listOf("Alias"), 0, 0)
-        org.junit.jupiter.api.Assertions.assertEquals(listOf(creator),
-            AuthorsRootState(creators = listOf(creator), query = "alias").filteredCreators)
+    fun `authors root defaults to the followed scope`() {
+        assertTrue(AuthorsRootState().followedOnly)
     }
 
     @Test
@@ -550,14 +552,29 @@ class AuthorsProductionWiringTest {
             indexWriter = NoopCreatorLibraryIndexWriter,
             extractCreators = ExtractCreatorsFromManga(),
         )
+        val preferenceNode = java.util.prefs.Preferences.userRoot()
+            .node("/mihon-tests/ax01-authors-index-${java.util.UUID.randomUUID()}")
+        val desktopPreferences = mihon.desktop.settings.DesktopAppPreferences(
+            tachiyomi.core.common.preference.DesktopPreferenceStore(preferenceNode),
+        )
+        val customCoverStore = mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
         val repository = mockk<CreatorRepository> {
             every { getCreatorsAsFlow() } returns flowOf(emptyList())
             every { getFollowedCreatorsAsFlow() } returns flowOf(emptyList())
+        }
+        val archiveRepository = mockk<CreatorArchiveRepository> {
+            coEvery {
+                getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any())
+            } returns tachiyomi.domain.creator.model.CreatorCardProjectionPage(0, 50, false, emptyList())
         }
         val dependencies = mockk<DesktopUiDependencies> {
             every { getCreators } returns GetCreators(repository)
             every { creatorLibraryIndexer } returns indexer
             every { creatorDiscoveryPreferences } returns null
+            every { creatorArchiveRepository } returns archiveRepository
+            every { creatorArchive } returns CreatorArchive(repository, archiveRepository)
+            every { appPreferences } returns desktopPreferences
+            every { this@mockk.customCoverStore } returns customCoverStore
         }
         indexer.start(this)
         withTimeout(5_000) { indexer.state.filterIsInstance<CreatorLibraryIndexState.Failed>().first() }
@@ -576,13 +593,118 @@ class AuthorsProductionWiringTest {
 
             retryNode(scene).config[SemanticsActions.OnClick].action?.invoke()
             withTimeout(5_000) { indexer.state.filterIsInstance<CreatorLibraryIndexState.Empty>().first() }
-            scene.render()
-
-            assertTrue(MR.strings.desktop_ui_author_index_empty_library.localized() in texts(scene))
+            val emptyLibraryText = MR.strings.desktop_ui_author_index_empty_library.localized()
+            withTimeout(5_000) {
+                while (emptyLibraryText !in texts(scene)) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
+            }
             assertTrue(source.countAttempts == 2)
         } finally {
             scene.close()
             indexer.stop()
+            preferenceNode.removeNode()
+        }
+    }
+
+    @Test
+    fun `mounted author cards remain visible when projection refresh fails and retry recovers`() = runBlocking {
+        val creator = Creator(
+            id = 7L,
+            displayName = "Existing Local Author",
+            normalizedName = "existing local author",
+            sortName = null,
+            aliases = emptyList(),
+            createdAt = 1L,
+            lastModifiedAt = 1L,
+        )
+        val creators = MutableStateFlow(listOf(creator))
+        val creatorRepository = mockk<CreatorRepository> {
+            every { getCreatorsAsFlow() } returns creators
+            every { getFollowedCreatorsAsFlow() } returns flowOf(emptyList())
+        }
+        val page = CreatorCardProjectionPage(
+            offset = 0,
+            limit = 50,
+            hasMore = false,
+            creators = listOf(CreatorCardProjection(creator = creator, followed = true, uniqueWorkCount = 0)),
+        )
+        val projectionCalls = AtomicInteger()
+        val archiveRepository = mockk<CreatorArchiveRepository> {
+            coEvery {
+                getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any())
+            } coAnswers {
+                if (projectionCalls.incrementAndGet() == 2) error("projection temporarily unavailable")
+                page
+            }
+        }
+        val indexer = CreatorLibraryIndexer(
+            mangaSource = object : CreatorLibraryMangaSource {
+                override suspend fun countLibraryMangaForCreatorIndex(): Long = 0L
+                override suspend fun getLibraryMangaForCreatorIndex(afterId: Long, limit: Long): List<Manga> = emptyList()
+            },
+            indexWriter = NoopCreatorLibraryIndexWriter,
+            extractCreators = ExtractCreatorsFromManga(),
+        )
+        val preferenceNode = java.util.prefs.Preferences.userRoot()
+            .node("/mihon-tests/ax01-author-projection-retry-${java.util.UUID.randomUUID()}")
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { getCreators } returns GetCreators(creatorRepository)
+            every { creatorLibraryIndexer } returns indexer
+            every { creatorDiscoveryPreferences } returns null
+            every { creatorArchiveRepository } returns archiveRepository
+            every { creatorArchive } returns CreatorArchive(creatorRepository, archiveRepository)
+            every { appPreferences } returns mihon.desktop.settings.DesktopAppPreferences(
+                tachiyomi.core.common.preference.DesktopPreferenceStore(preferenceNode),
+            )
+            every { customCoverStore } returns mihon.desktop.domain.DesktopCustomCoverStore(
+                directory.resolve("projection-retry-covers").toFile(),
+            )
+            every { creatorDiscoveryScheduler } returns null
+        }
+        val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(AuthorsRootScreen())
+                }
+            }
+            withTimeout(5_000) {
+                while (creator.displayName !in texts(scene)) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
+            }
+            kotlinx.coroutines.delay(50)
+
+            creators.value = listOf(creator.copy(lastModifiedAt = 2L))
+            withTimeout(5_000) {
+                while ("projection temporarily unavailable" !in texts(scene)) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
+            }
+
+            assertTrue(creator.displayName in texts(scene), "A failed refresh should keep the previous author card")
+            assertTrue(
+                MR.strings.creator_following_empty.localized() !in texts(scene),
+                "A projection failure should not be shown as an empty followed list",
+            )
+
+            retryNode(scene).config[SemanticsActions.OnClick].action?.invoke()
+            withTimeout(5_000) {
+                while ("projection temporarily unavailable" in texts(scene)) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
+            }
+            assertTrue(creator.displayName in texts(scene), "Retry should retain the successfully reloaded card")
+            check(projectionCalls.get() == 3) { "Expected initial read, failed refresh, and successful retry" }
+        } finally {
+            scene.close()
+            indexer.stop()
+            preferenceNode.removeNode()
         }
     }
 
@@ -678,18 +800,29 @@ class AuthorsProductionWiringTest {
             every { getFollowedCreatorsAsFlow() } returns flowOf(emptyList())
         }
         val archive = mockk<CreatorArchiveRepository> { coEvery { getDueWatchSources(any(), any()) } returns emptyList() }
+        coEvery {
+            archive.getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any())
+        } returns tachiyomi.domain.creator.model.CreatorCardProjectionPage(0, 50, false, emptyList())
+        val desktopPreferences = mihon.desktop.settings.DesktopAppPreferences(
+            tachiyomi.core.common.preference.DesktopPreferenceStore(node),
+        )
         val dependencies = mockk<DesktopUiDependencies> {
             every { getCreators } returns GetCreators(repository)
             every { creatorLibraryIndexer } returns indexer
             every { creatorDiscoveryPreferences } returns preferences
             every { creatorArchiveRepository } returns archive
+            every { creatorArchive } returns CreatorArchive(repository, archive)
+            every { appPreferences } returns desktopPreferences
+            every { customCoverStore } returns mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
             every { creatorDiscoveryScheduler } returns null
         }
         val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
         fun tagged(tag: String) = nodes(scene).single { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == tag }
         fun click(tag: String) { tagged(tag).config[SemanticsActions.OnClick].action?.invoke(); scene.render() }
         try {
-            scene.setContent { CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) { Navigator(AuthorsRootScreen()) } }
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) { Navigator(AuthorsRootScreen()) }
+            }
             scene.render()
             click("creator-settings-open")
             click("creator-frequency-monthly")

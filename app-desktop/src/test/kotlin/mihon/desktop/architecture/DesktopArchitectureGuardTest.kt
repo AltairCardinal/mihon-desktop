@@ -299,6 +299,8 @@ class DesktopArchitectureGuardTest {
                     "tachiyomi.domain.manga.interactor.UpdateLibraryMembership",
                 ),
                 CompiledEdge("mihon.desktop.ui.authors.AuthorsRootScreenModel", "tachiyomi.domain.creator.interactor.GetCreators"),
+                CompiledEdge("mihon.desktop.ui.authors.AuthorsRootScreenModel", "tachiyomi.domain.creator.interactor.CreatorArchive"),
+                CompiledEdge("mihon.desktop.ui.authors.AuthorsScreenModelFactory", "tachiyomi.domain.creator.interactor.CreatorArchive"),
                 CompiledEdge(
                     "mihon.desktop.ui.authors.AuthorDetailScreenModel",
                     "tachiyomi.domain.creator.interactor.GetCreatorDetails",

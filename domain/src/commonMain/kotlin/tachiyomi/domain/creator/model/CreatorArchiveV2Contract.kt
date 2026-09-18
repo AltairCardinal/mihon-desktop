@@ -3,7 +3,7 @@ package tachiyomi.domain.creator.model
 object CreatorArchiveV2Contract {
     const val CURRENT_SCHEMA_VERSION = 15L
     const val TARGET_SCHEMA_VERSION = 16L
-    const val LATEST_SCHEMA_VERSION = 27L
+    const val LATEST_SCHEMA_VERSION = 28L
     const val TARGET_MIGRATION = "15.sqm"
     const val BACKUP_ENVELOPE_FIELD = 107
     const val BACKUP_SECTION_VERSION = 1
@@ -53,7 +53,7 @@ object CreatorArchivePhysicalSchema {
         ),
     )
 
-    /** Complete current archive, including durable identity recovery and command records. */
+    /** Complete current author archive schema, including device-local derived projection state. */
     val tables = version16Tables + listOf(
         table("author_archive_identity_names", "name_text", ArchiveDeletionPolicy.RETAIN_HISTORY),
         table("author_archive_identity_migrations", "migration_key", ArchiveDeletionPolicy.RETAIN_HISTORY),
@@ -63,6 +63,7 @@ object CreatorArchivePhysicalSchema {
             ArchiveDeletionPolicy.RETAIN_HISTORY,
         ),
         table("author_archive_identity_commands", "command_key", ArchiveDeletionPolicy.RETAIN_HISTORY),
+        table("author_archive_representative_work_cache", "creator_id", ArchiveDeletionPolicy.CASCADE),
     )
 
     private fun table(
