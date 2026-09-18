@@ -240,4 +240,10 @@ macOS 在独立 `/Users/altair/github/mihon-sync-onboarding` worktree 通过规�
 - [API 26 x86_64 隔离 Release APK](D:/Shell/Github/mihon/app/artifacts/android/sync-onboarding-20260918-api26/app-x86_64-release.apk)，SHA-256 `379faea466a2ae5cf3d8fb52877f92a37bc3ba9b47132f8712c3c514bd8a1c62`。
 - [对应测试 APK](D:/Shell/Github/mihon/app/artifacts/android/sync-onboarding-20260918-api26/app-release-androidTest.apk)，SHA-256 `7f2bd8375ab282ff73fa88049087a244e6a0877c910654f40cead1ec5a182372`。
 
+面向既有 `0.19.4-aex.10` 用户的 ARM64 分发包改用 fork 正式发布身份：`app.mihon.desktop.fork`、版本码 29、版本名 `0.19.4-aex.11`，并沿用 aex.10 的发布证书 SHA-256 `bd8e3af75921fc4356deacabd44a3d491fda8439ffbc7d073c363974a648cae3`。此前本地测试包使用上游 `app.mihon` 身份、较低版本码及调试证书，不能作为 aex.10 的升级包；该产物不再交付。新包只包含 `arm64-v8a` 原生库，R8 与资源压缩保持开启：
+
+- [Mihon 0.19.4-aex.11 ARM64 APK](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.11/Mihon-Fork-0.19.4-aex.11-arm64-v8a.apk)，SHA-256 `8f313003da6c85791217718b4fbf87128ef563de850e1f0fde5f0a697e5d6a6b`。
+
+本机 Android 工具已验证 APK v2/v3 签名、包名、递增版本码、目标 SDK 36 和唯一 ABI；aex.10 与 aex.11 的证书指纹一致。当前 Windows 能看到手机 USB/ADB 接口，但 `adb devices -l` 尚未列出序列号，因此本轮没有冒充完成真机覆盖安装；用户可直接从系统安装器选择该 APK，或在设备允许 USB 调试并授权本机后补做 `adb install -r`。整个诊断未卸载现有应用、未清除其数据。
+
 本批跨共享 runtime、双端原生入口、测试与发布验收文件，规模超过初始文件数提示，但属于同一配置能力的完整接线与验证，保持一个功能提交；没有为压缩 diff 拆散协议上下文。未执行的真实 GitHub 写入、真机性能及 macOS 最终产物仍按前述边界保留，不能据本地成功勾选 P6。
