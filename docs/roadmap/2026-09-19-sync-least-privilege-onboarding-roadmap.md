@@ -1,8 +1,8 @@
 # 专用仓库最小权限同步配置 Roadmap
 
-日期：2026-09-19。状态：待实施。本轮仅完成设计与计划，不代表功能、App 权限或发布产物已经改变。
+日期：2026-09-19。状态：关键技术预研 Conditional GO，待实施。当前 App 为 private，真实 Contents-only 闭环未验收；不代表功能、App 权限或发布产物已经改变。
 
-设计权威：[最小权限配置设计](../2026-09-19-sync-least-privilege-onboarding-design.md)。历史依据：[前序密码配置 roadmap](2026-09-18-sync-onboarding-password-roadmap.md)。本计划为产品 child plan，从第一个未勾选项推导进度，不声明 active-task，不切换其他专项的父计划 active-child-plan。
+设计权威：[最小权限配置设计](../2026-09-19-sync-least-privilege-onboarding-design.md)。预研证据：[关键技术可行性](../2026-09-19-sync-least-privilege-feasibility.md)。历史依据：[前序密码配置 roadmap](2026-09-18-sync-onboarding-password-roadmap.md)。本计划为产品 child plan，从第一个未勾选项推导进度，不声明 active-task，不切换其他专项的父计划 active-child-plan。
 
 ## 1. 目标与范围
 
@@ -30,6 +30,7 @@
 2. 核验本人私有固定名仓库和用户写权限，取得无提交/无引用证据后返回空库候选；不能仅靠 size=0、README 不存在或默认分支404。已授权但改名的旧空间不抢占明确固定名空目标；已有 v2 连接及多候选保持既有契约。
 3. 实现设计第6节的用户确认意图、仓库 ID 绑定、create-only bootstrap、精确树校验、非强制发布及读取确认。参数/异常脱敏；两端争用不覆盖，赢家密码不被输家材料替换。
 4. 重启按持久阶段恢复，包括 bootstrap 响应丢失、完整空间已发布、绑定已写入而 pending 未保存。旧自动建库 pending 明确终止并提供重查能力，不重放 POST；不破坏已完成 v2 绑定或旧队列。
+5. 将新 pending 升级为独立版本及显式阶段，持久化 repository ID、随机 attempt nonce 和已确认 bootstrap commit/tree；bootstrap 内容绑定本次尝试。不得重解释 v2 `submitted` 布尔或继续使用固定 bootstrap 字符串证明归属。
 
 **红绿重构与验收**：先运行失败的真实共享契约，再实现最小变更并重构。扩展 SyncSpaceDiscoveryContractTest、SyncSpaceTransportContractTest、SyncPanelStorageContract 及相关运行时测试，不在测试中复制状态机。至少覆盖：
 
@@ -70,7 +71,7 @@
 
 **外部权限与真实流程**：
 
-1. 核对 App 可由其他个人账号安装；降至 Contents 写、Metadata 读，移除 Administration。说明此举对旧客户端的影响及需升级版本，不把“仅文档计划”当变更授权。
+1. 当前公开页面已证实 App 为 private；将其改为 public 并用非所属账号核对可安装。随后降至 Contents 写、Metadata 读，移除 Administration。说明两项配置及旧客户端升级影响，不把“仅文档计划”当变更授权，也不要求 Marketplace 上架。
 2. 用授权的隔离个人账号在 GitHub 网页创建固定名空私库，安装时仅勾选它；记录可脱敏复核的注册权限、安装权限及仓库选择结果。
 3. 无 Administration 条件下，完成新空间无密码/有密码两个场景（使用两个隔离账号或明确批准的隔离重置，不能自动删除测试库）；第二设备加入、错误密码、真实交换及重启恢复。新手从无 App 安装开始，不能借用开发者已有全仓库授权。
 4. 核对未安装、已授权但不可见及恢复授权三类反馈；日志仅保留阶段/状态，不保存 token、密码或私库正文。GitHub 创建网页和安装网页均以实际操作为证据，不以 API mock 成功代替。

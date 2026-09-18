@@ -1,8 +1,8 @@
 # 同步首次配置：专用仓库最小权限设计
 
-日期：2026-09-19。状态：设计已记录，尚未实施和完成真实 GitHub 验收。
+日期：2026-09-19。状态：关键技术预研 Conditional GO；尚未实施和完成真实 GitHub 验收。当前 `mihon-desktop` 仍是 private GitHub App，无法向其他账号分发。
 
-实施计划：[本迭代 roadmap](roadmap/2026-09-19-sync-least-privilege-onboarding-roadmap.md)。前序：[自动连接与可选密码设计](2026-09-18-sync-onboarding-password-design.md)及[前序 roadmap](roadmap/2026-09-18-sync-onboarding-password-roadmap.md)。
+技术预研：[可行性报告](2026-09-19-sync-least-privilege-feasibility.md)。实施计划：[本迭代 roadmap](roadmap/2026-09-19-sync-least-privilege-onboarding-roadmap.md)。前序：[自动连接与可选密码设计](2026-09-18-sync-onboarding-password-design.md)及[前序 roadmap](roadmap/2026-09-18-sync-onboarding-password-roadmap.md)。
 
 ## 1. 目的、替代关系与边界
 
@@ -29,7 +29,7 @@
 
 | 项目 | 目标 |
 | --- | --- |
-| App | 所有用户安装同一个允许其他个人账号安装的 `mihon-desktop` |
+| App | 将当前 private 的 `mihon-desktop` 改为 public 后，由所有用户安装同一个 App；不要求 Marketplace |
 | Repository permissions | Contents: Read and write；Metadata: Read-only |
 | Administration | No access；生产初始化及日常交换均不得依赖 |
 | 其他权限 | 不增加账户、组织、Actions、Workflows 等权限 |
