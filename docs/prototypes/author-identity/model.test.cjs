@@ -1,6 +1,38 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const M = require('./model.js');
+test('日期优先可信上架字段，未知或异常日期使用不可后移的首次发现日期', () => {
+  let s = M.create();
+  assert.deepEqual(M.workDate(s, 'w0'), { date: '2017-03-18', label: '上架', source: '漫画柜' });
+  assert.equal(M.workDate(s, 'w2').label, '首次发现');
+  const first = M.workDate(s, 'w2').date;
+  s = M.refreshDates(s); assert.equal(M.workDate(s, 'w2').date, first);
+  s = M.observe(s, { id: 'fresh', work: 'fresh', name: '冈本伦', source: '无日期样本', listedAt: s.today, firstSeenAt: '2099-01-01' });
+  assert.deepEqual(M.workDate(s, 'fresh'), { date: s.today, label: '首次发现', source: null });
+  const original = M.workDate(s, 'fresh').date;
+  s.today = '2026-09-25'; s = M.observe(s, { id: 'fresh', work: 'fresh', name: '冈本伦', source: '无日期样本', listedAt: s.today });
+  assert.equal(M.workDate(s, 'fresh').date, original);
+});
+test('日期可信度按字段独立，后续上架日期不推迟、较早证据可更正且收藏不被刷新覆盖', () => {
+  let s = M.create(); const v = s.versions.find(v => v.id === 'v0');
+  assert.ok(v.favorite); assert.equal(M.latestDate(s, v).date, '2026-09-17');
+  s = M.observe(s, { ...v, name: '冈本伦', listedAt: '2018-01-01', favorite: false });
+  assert.equal(M.workDate(s, 'w0').date, '2017-03-18');
+  assert.equal(s.versions.find(v => v.id === 'v0').favorite, true);
+  s = M.observe(s, { ...v, name: '冈本伦', listedAt: '2017-02-01' });
+  assert.equal(M.workDate(s, 'w0').date, '2017-02-01');
+  assert.equal(M.latestDate(s, s.versions.find(v => v.id === 'v2')).label, '日期待核实');
+  const first = M.workDate(s, 'w0'); s = M.refreshDates(s);
+  assert.deepEqual(M.workDate(s, 'w0'), first);
+  assert.equal(M.latestDate(s, s.versions.find(v => v.id === 'v0')).date, null);
+});
+test('多作品多章节跨日稳定证据才可入日期可信列表，全章随刷新日漂移应降级', () => {
+  const samples = [1, 2, 3].map(id => ({ work: 's' + id, beforeAt: '2026-09-18', afterAt: '2026-09-20', before: ['2025-01-01', '2025-02-01', '2025-03-01'], after: ['2025-01-01', '2025-02-01', '2025-03-01'] }));
+  assert.equal(M.assessChapterDates(samples), 'trusted');
+  assert.equal(M.assessChapterDates(samples.slice(0, 1)), 'unknown');
+  assert.equal(M.assessChapterDates(samples.map(v => ({ ...v, after: ['2026-09-20', '2026-09-20', '2026-09-20'] }))), 'suspect');
+  assert.equal(M.assessChapterDates(samples.map(v => ({ ...v, afterAt: v.beforeAt }))), 'unknown');
+});
 test('全局频率默认每天，全部作者和未来作者共享且不改变关注', () => {
   let s = M.create(); assert.equal(s.frequency, 'daily');
   const follows = s.authors.map(a => a.follow);

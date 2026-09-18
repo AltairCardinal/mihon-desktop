@@ -5,6 +5,7 @@
   let state = M.create(), page = 'manga', manga = 'v0', author = 'a', filter = '全部来源', query = '', notice = '', scenario = 'history';
   let authorScroll = { following: 0, all: 0 };
   const rememberAuthorScroll = () => { if (page === 'authors') authorScroll[authorTab] = app.querySelector('main')?.scrollTop || 0; };
+  let displayMode = 'list', selectedWork = '';
   let authorTab = 'following', detailReturn = 'manga', mangaReturn = 'authors';
   let modal = null, opener = null, selected = [], target = 'a', settingsFrequency = 'daily', error = '', candidateQuery = '', renameDraft = '', sessionRevision = 0, modalFocus = null;
   const esc = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -13,11 +14,18 @@
   const current = () => state.authors.find(a => a.id === M.resolve(state, author)) || state.authors[0];
   const versions = id => state.versions.filter(v => v.author === M.resolve(state, id));
   const workNames = id => versions(id).map(v => v.title).join('、');
+  const collected = work => versions(current().id).some(v => v.work === work && v.favorite);
+  const badge = favorite => favorite ? '<span class="collected-badge">已收藏</span>' : '';
+  const workDate = work => { const d = M.workDate(state, work); return `<span class="work-date"${d.source ? ` title="日期来源：${esc(d.source)}"` : ''}>${esc(d.label)} ${esc(d.date)}</span>`; };
+  const workItem = group => {
+    const v = group[0], siblings = versions(current().id).filter(item => item.work === v.work);
+    return `<button class="row work-row work-item" data-action="work" data-work="${esc(v.work)}"><span class="work-cover-wrap"><span class="cover small">${esc(v.title)}</span>${badge(collected(v.work))}${displayMode === 'compact' ? `<strong class="cover-title">${esc(v.title)}</strong>` : ''}</span><span class="grow">${displayMode !== 'compact' ? `<strong>${esc(v.title)}</strong>` : ''}${workDate(v.work)}<span class="source-summary">${siblings.length} 个来源版本</span></span></button>`;
+  };
   const authorRow = a => {
     // Local design fixtures have no reading/popularity signals: retain first-seen work order.
     const works = [...new Map(versions(a.id).map(v => [v.work, null])).keys()]
       .map(id => versions(a.id).find(v => v.work === id));
-    return `<button class="row row-button author-card" data-author="${a.id}" aria-label="${esc(a.name)}，${works.length}部作品，${a.follow ? '已关注' : '未关注'}"><span class="author-card-heading"><span class="grow"><strong>${esc(a.name)}</strong><span class="muted">${works.length} 部作品 · ${a.follow ? '已关注' : '未关注'}</span></span>${V.icon('chevron')}</span>${works.length ? `<span class="representative-shelf">${works.slice(0, 3).map(v => `<span class="representative-work" data-work="${esc(v.work)}"><span class="representative-cover" aria-label="${esc(v.title)}示意封面"><span>${esc(v.title)}</span></span><span class="representative-title">${esc(v.title)}</span></span>`).join('')}</span>` : '<span class="muted">暂无作品</span>'}</button>`;
+    return `<button class="row row-button author-card" data-author="${a.id}" aria-label="${esc(a.name)}，${works.length}部作品，${a.follow ? '已关注' : '未关注'}"><span class="author-card-heading"><span class="grow"><strong>${esc(a.name)}</strong><span class="muted">${works.length} 部作品 · ${a.follow ? '已关注' : '未关注'}</span></span>${V.icon('chevron')}</span>${works.length ? `<span class="representative-shelf">${works.slice(0, 3).map(v => `<span class="representative-work" data-work="${esc(v.work)}"><span class="representative-cover" aria-label="${esc(v.title)}示意封面"><span>${esc(v.title)}</span>${badge(versions(a.id).some(item => item.work === v.work && item.favorite))}</span><span class="representative-title">${esc(v.title)}</span></span>`).join('')}</span>` : '<span class="muted">暂无作品</span>'}</button>`;
   };
   function authorsView() {
     const shown = state.authors.filter(a => authorTab === 'all' || a.follow);
@@ -31,7 +39,7 @@
     const a = current(), all = versions(a.id), shown = all.filter(v => (filter === '全部来源' || v.source === filter) && v.title.toLowerCase().includes(query.toLowerCase()));
     const groups = new Map(); shown.forEach(v => { if (!groups.has(v.work)) groups.set(v.work, []); groups.get(v.work).push(v); });
     const sources = ['全部来源', ...new Set(all.map(v => v.source))];
-    return `<div class="hero author-hero"><div><h2 class="manga-title" data-testid="author-name" tabindex="-1">${esc(a.name)}</h2>${a.aliases.length ? `<div class="alias-links" data-testid="author-aliases">${a.aliases.map(name => creatorRow(button('alias-name', esc(name), 'creator-name', `data-alias="${esc(name)}"`))).join('')}</div>` : ''}<p class="muted">${new Set(all.map(v => v.work)).size} 部作品 · ${all.length} 个来源版本</p></div></div><div class="actions">${button('follow', a.follow ? '已关注' : '关注作者', a.follow ? '' : 'primary', 'data-testid="follow"')}${button('merge-select', '添加别名')}</div>${state.unavailable ? '<p class="note warning">漫画柜插件不可用，已有作者、作品和关注不受影响。</p>' : ''}<h3 class="section-title">作品 <span class="text-count">${groups.size}</span></h3><div class="source-filters" role="group" aria-label="来源筛选">${sources.map(s => button('filter-source', esc(s), 'filter-chip', `data-source="${esc(s)}" aria-label="${esc(s)}" aria-pressed="${s === filter}"`)).join('')}</div><div class="filters"><label>查找作品 <input id="work-search" value="${esc(query)}" placeholder="作品名" size="12"></label></div>${groups.size ? [...groups.values()].map(group => `<div class="row work-row"><div class="cover small">${esc(group[0].title)}</div><div class="grow"><strong>${esc(group[0].title)}</strong><div class="work-sources">${group.map(v => button('manga', esc(v.source) + (state.unavailable && v.source === '漫画柜' ? ' · 不可用' : ''), 'source-button', `data-version="${v.id}"`)).join('')}</div></div></div>`).join('') : '<p class="empty muted">没有符合条件的作品。可切换来源或清空搜索。</p>'}`;
+    return `<div class="hero author-hero"><div><h2 class="manga-title" data-testid="author-name" tabindex="-1">${esc(a.name)}</h2>${a.aliases.length ? `<div class="alias-links" data-testid="author-aliases">${a.aliases.map(name => creatorRow(button('alias-name', esc(name), 'creator-name', `data-alias="${esc(name)}"`))).join('')}</div>` : ''}<p class="muted">${new Set(all.map(v => v.work)).size} 部作品 · ${all.length} 个来源版本</p></div></div><div class="actions">${button('follow', a.follow ? '已关注' : '关注作者', a.follow ? '' : 'primary', 'data-testid="follow"')}${button('merge-select', '添加别名')}</div>${state.unavailable ? '<p class="note warning">漫画柜插件不可用，已有作者、作品和关注不受影响。</p>' : ''}<div class="works-toolbar"><h3 class="section-title">作品 <span class="text-count">${groups.size}</span></h3>${button('display', '显示方式', 'display-button', 'aria-label="显示方式"')}</div><div class="source-filters" role="group" aria-label="来源筛选">${sources.map(s => button('filter-source', esc(s), 'filter-chip', `data-source="${esc(s)}" aria-label="${esc(s)}" aria-pressed="${s === filter}"`)).join('')}</div><div class="filters"><label>查找作品 <input id="work-search" value="${esc(query)}" placeholder="作品名" size="12"></label></div>${groups.size ? `<div class="work-collection" data-display="${displayMode}">${[...groups.values()].map(workItem).join('')}</div>` : '<p class="empty muted">没有符合条件的作品。可切换来源或清空搜索。</p>'}`;
   }
   function render() {
     const nav = page === 'authors' || page === 'author' ? (platform === 'android' ? 'browse' : 'authors') : page === 'manga' ? 'library' : page;
@@ -44,7 +52,17 @@
   function close() { modal = null; overlay.innerHTML = ''; app.inert = false; error = ''; if (opener?.isConnected) opener.focus(); else app.querySelector('button')?.focus(); }
   function drawModal() {
     let title = '', body = '', actions = button('cancel', '取消');
-    if (modal === 'merge-select') {
+    if (modal === 'sources') {
+      title = '选择漫画源';
+      const items = versions(current().id).filter(v => v.work === selectedWork);
+      body = `<p class="muted">此作品的全部来源版本</p><div class="source-versions">${items.map(v => {
+        const latest = M.latestDate(state, v);
+        return button('manga', `<span class="work-cover-wrap"><span class="cover small">${esc(v.title)}</span>${badge(v.favorite)}</span><span class="grow"><strong>${esc(v.source)}</strong><span class="version-title">${esc(v.title)}</span><span class="version-meta">${v.chapterCount == null ? '章节数未知' : esc(v.chapterCount) + ' 章'} · ${v.favorite ? '已收藏' : '未收藏'}</span><span class="version-meta">${esc(latest.label)}${latest.date ? ' ' + esc(latest.date) : ''}</span>${state.unavailable && v.source === '漫画柜' ? '<span class="version-meta">来源不可用 · 查看本地详情</span>' : ''}</span>`, 'version-choice', `data-version="${v.id}"`);
+      }).join('')}</div>`;
+    } else if (modal === 'display') {
+      title = '显示方式';
+      body = `<div class="display-choices">${[['list', '列表'], ['comfortable', '舒适网格'], ['compact', '紧凑网格']].map(([value, name]) => button('display-select', `${displayMode === value ? '✓ ' : ''}${name}`, '', `data-display="${value}" aria-pressed="${displayMode === value}"`)).join('')}</div>`;
+    } else if (modal === 'merge-select') {
       title = '添加别名';
       const allCandidates = state.authors.filter(a => a.id !== current().id);
       const candidates = allCandidates.filter(a => [a.name, ...a.aliases].some(n => n.toLowerCase().includes(candidateQuery.toLowerCase())));
@@ -71,6 +89,9 @@
     if (b.dataset.route) { rememberAuthorScroll(); if (b.dataset.route === 'authors') authorTab = 'following'; page = b.dataset.route; notice = ''; render(); return; }
     const a = b.dataset.action;
     if (a === 'cancel') close();
+    else if (a === 'work') { selectedWork = b.dataset.work; open('sources'); }
+    else if (a === 'display') open('display');
+    else if (a === 'display-select') { displayMode = b.dataset.display; close(); render(); app.querySelector('[data-action="display"]').focus(); }
     else if (a === 'settings') { settingsFrequency = state.frequency; open('settings'); }
     else if (a === 'settings-save') {
       try { state = M.setFrequency(state, settingsFrequency); notice = '检查频率已保存'; close(); render(); app.querySelector('[data-action="settings"]').focus(); }
@@ -93,7 +114,7 @@
       if (a === 'follow' && current().follow) { open('unfollow'); return; }
       try { state = M.follow(state, current().id, a === 'follow'); if (modal) close(); notice = ''; render(); app.querySelector('[data-testid="follow"]').focus(); }
       catch (e) { if (modal) { error = e.message; drawModal(); } else { notice = e.message; render(); } }
-    } else if (a === 'manga') { mangaReturn = 'author'; manga = b.dataset.version; page = 'manga'; notice = ''; render(); }
+    } else if (a === 'manga') { if (modal) close(); mangaReturn = 'author'; manga = b.dataset.version; page = 'manga'; notice = ''; render(); }
     else if (a === 'following-authors' || a === 'all-authors') { rememberAuthorScroll(); authorTab = a === 'following-authors' ? 'following' : 'all'; notice = ''; render(); app.querySelector(`[data-action="${a}"]`).focus(); }
     else if (a === 'filter-source') { const offset = app.querySelector('.source-filters').scrollLeft; filter = b.dataset.source; render(); const chips = app.querySelector('.source-filters'); chips.scrollLeft = offset; [...chips.querySelectorAll('button')].find(item => item.dataset.source === filter)?.focus({ preventScroll: true }); }
     else if (a === 'authors') { authorTab = 'following'; page = 'authors'; notice = ''; render(); }
@@ -128,6 +149,7 @@
   window.addEventListener('message', event => {
     if (event.source !== parent || event.data?.channel !== 'author-demo') return;
     if (event.data.theme) { document.body.className = 'device theme-' + event.data.theme; return; }
+    if (event.data.refreshDates) { state = M.refreshDates(state); notice = '已模拟次日刷新，首次发现日期保持不变'; if (!modal) render(); else drawModal(); return; }
     if (event.data.add) {
       const alias = event.data.add === 'alias';
       if (alias && !state.authors.some(a => a.aliases.includes('Okamoto Lynn') || a.name === 'Okamoto Lynn' && a.aliases.length)) { if (!modal) { notice = '请先合并 Okamoto Lynn，再演示已合并别名的新作品。'; render(); } return; }

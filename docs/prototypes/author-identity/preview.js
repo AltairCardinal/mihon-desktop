@@ -4,6 +4,7 @@
   el('apply-scenario').onclick = () => send({ scenario: el('scenario').value });
   el('add-same').onclick = () => send({ add: 'same' });
   el('add-alias').onclick = () => send({ add: 'alias' });
+  el('refresh-dates').onclick = () => send({ refreshDates: true });
   el('reset').onclick = () => send({ scenario: 'history' });
   el('theme').onchange = () => {
     document.body.className = 'preview theme-' + el('theme').value;

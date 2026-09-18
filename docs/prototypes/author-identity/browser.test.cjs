@@ -18,6 +18,66 @@ async function setup(run) {
   } finally { await browser.close(); }
 }
 const action = (f, a) => f.locator(`[data-action="${a}"]`);
+test('作品日期与首次发现明确区分，刷新不推迟，单源未知信息不编造', () => setup(async (page, pc, phone) => {
+  await page.locator('#narrow').check();
+  for (const [target, f] of [['windows', pc], ['android', phone]]) {
+    await page.locator('#target').selectOption(target);
+    await f.getByTestId('signature').click();
+    const published = f.locator('[data-action="work"][data-work="w0"] .work-date');
+    const firstSeen = f.locator('[data-action="work"][data-work="w2"] .work-date');
+    assert.equal(await published.innerText(), '上架 2017-03-18');
+    assert.equal(await published.getAttribute('title'), '日期来源：漫画柜');
+    assert.equal(await firstSeen.innerText(), '首次发现 2026-09-18');
+    await page.locator('#refresh-dates').click();
+    assert.equal(await firstSeen.innerText(), '首次发现 2026-09-18');
+    await f.locator('[data-action="work"][data-work="w0"]').click();
+    assert.equal(await f.getByRole('dialog').locator('[data-version]').count(), 1);
+    assert.match(await f.locator('[data-version="v0"]').innerText(), /日期待核实/);
+    await f.getByRole('button', { name: '取消', exact: true }).click();
+    await action(f, 'merge-select').click(); await f.locator('[data-select="tw"]').check(); await action(f, 'add').click();
+    await f.locator('[data-action="work"][data-work="w1"]').click();
+    assert.match(await f.locator('[data-version="tw"]').innerText(), /章节数未知/);
+    assert.doesNotMatch(await f.locator('[data-version="tw"]').innerText(), /0 章/);
+    assert.equal(await f.getByRole('dialog').evaluate(e => e.scrollWidth > e.clientWidth), false);
+    await f.getByRole('button', { name: '取消', exact: true }).click();
+  }
+}));
+test('收藏徽标、书架显示方式及逐版本来源选择在双端独立工作', () => setup(async (page, pc, phone) => {
+  await page.locator('#narrow').check();
+  for (const f of [pc, phone]) {
+    if (f === pc) await f.getByTestId('nav-authors').click();
+    else { await f.getByTestId('nav-browse').click(); await action(f, 'authors').click(); }
+    assert.equal(await f.locator('[data-author="a"] .collected-badge').count(), 1);
+    await f.locator('[data-author="a"]').click();
+    assert.equal(await f.locator('.work-row .collected-badge').count(), 1);
+    await action(f, 'merge-select').click(); await f.locator('[data-select="en"]').check(); await f.locator('[data-select="tw"]').check(); await action(f, 'add').click();
+    assert.equal(await f.locator('.work-row .collected-badge').count(), 2);
+    await f.getByRole('button', { name: 'MangaDex', exact: true }).click();
+    const work = f.locator('[data-action="work"][data-work="w0"]');
+    assert.equal(await work.locator('.collected-badge').count(), 1);
+    await work.click();
+    assert.equal(await f.getByRole('dialog').locator('[data-version]').count(), 2);
+    const local = f.locator('[data-version="v0"]'), other = f.locator('[data-version="md"]');
+    assert.match(await local.innerText(), /300 章/); assert.match(await local.innerText(), /已收藏/);
+    assert.match(await other.innerText(), /未收藏/);
+    assert.equal(await local.locator('.cover').count(), 1);
+    await f.getByRole('button', { name: '关闭', exact: true }).press('Escape');
+    assert.equal(await work.evaluate(e => e === document.activeElement), true);
+    await work.click(); await other.click();
+    assert.equal(await f.locator('.manga-title').innerText(), 'Parallel Paradise');
+    await action(f, 'back').click();
+    for (const mode of ['comfortable', 'compact', 'list']) {
+      await action(f, 'display').click(); await f.locator(`[data-display="${mode}"]`).click();
+      assert.equal(await f.locator('.work-collection').getAttribute('data-display'), mode);
+      assert.equal(await action(f, 'display').evaluate(e => e === document.activeElement), true);
+      assert.equal(await f.locator('body').evaluate(e => e.scrollWidth > innerWidth), false);
+    }
+    await action(f, 'display').click(); await f.locator('[data-display="comfortable"]').click();
+    await action(f, 'back').click(); await f.locator('[data-author="a"]').click();
+    assert.equal(await f.locator('.work-collection').getAttribute('data-display'), 'comfortable');
+    if (f === pc) { await phone.getByTestId('signature').click(); assert.equal(await phone.locator('.work-collection').getAttribute('data-display'), 'list'); }
+  }
+}));
 test('B布局展示最多三部去重作品，单作品不补位，封面点击进入作者', () => setup(async (page, pc, phone) => {
   await page.locator('#narrow').check();
   for (const f of [pc, phone]) {
@@ -145,7 +205,7 @@ test('别名使用署名链接样式，确认切换显示名，取消和旧名�
     assert.equal(await aliases.getByRole('button', { name: '冈本伦', exact: true }).count(), 1);
     assert.equal(await aliases.getByRole('button', { name: '岡本倫', exact: true }).count(), 1);
     assert.equal(await f.getByTestId('follow').innerText(), '已关注');
-    await f.locator('[data-version="v0"]').click(); await f.getByTestId('signature').click();
+    await f.locator('[data-action="work"][data-work="w0"]').click(); await f.locator('[data-version="v0"]').click(); await f.getByTestId('signature').click();
     assert.equal(await f.getByTestId('author-name').innerText(), 'Okamoto Lynn');
     await aliases.getByRole('button', { name: '冈本伦', exact: true }).click();
     await f.getByRole('button', { name: '确定', exact: true }).click();
@@ -183,13 +243,11 @@ test('双端主名标题、横向别名图源及封面顶部对齐，作者列�
     const work = f.locator('.work-row').first();
     const cover = await work.locator('.cover').boundingBox(), title = await work.locator('strong').boundingBox();
     assert.ok(Math.abs(cover.y - title.y) < 1);
-    const sources = work.getByRole('button');
-    assert.deepEqual(await sources.allTextContents(), ['漫画柜', 'MangaDex']);
-    const sourceBoxes = await Promise.all((await sources.all()).map(source => source.boundingBox()));
-    assert.ok(Math.abs(sourceBoxes[0].y - sourceBoxes[1].y) < 1);
-    assert.ok(sourceBoxes[1].x > sourceBoxes[0].x + sourceBoxes[0].width);
+    await work.click();
+    const sources = f.getByRole('dialog').locator('[data-version]');
+    assert.equal(await sources.count(), 2);
     assert.equal(await f.locator('body').evaluate(e => e.scrollWidth > innerWidth), false);
-    await sources.getByText('MangaDex', { exact: true }).click();
+    await f.locator('[data-version="md"]').click();
     assert.equal(await f.locator('.manga-title').innerText(), 'Parallel Paradise');
     assert.equal(await f.locator('.hero .pill').innerText(), 'MangaDex');
     await f.getByTestId('signature').click();

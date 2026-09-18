@@ -38,7 +38,15 @@
     return state;
   }
   function create() {
-    return normalize({
+    const state = normalize({
+      today: '2026-09-18', workDates: {},
+      // Demonstration evidence only, not a rating of the real plugins with these display names.
+      dateSources: {
+        cabinet: { listing: 'trusted', chapters: 'trusted' },
+        text: { listing: 'unknown', chapters: 'unknown' },
+        unreliable: { listing: 'suspect', chapters: 'suspect' },
+        dex: { listing: 'trusted', chapters: 'trusted' },
+      },
       revision: 0, redirects: {}, fail: false, unavailable: false, frequency: 'daily',
       authors: ['a', 'b', 'c', 'en', 'tw'].map((id, i) => ({ id, name: ['冈本伦', '冈本伦', '冈本伦', 'Okamoto Lynn', '岡本倫'][i], aliases: [], follow: i === 1 })),
       versions: [
@@ -49,6 +57,56 @@
         { id: 'tw', work: 'w1', title: '極黑的布倫希爾德', source: '演示来源', author: 'tw', signature: '岡本倫' },
       ],
     });
+    const fixtures = [
+      { sourceKey: 'cabinet', favorite: true, chapterCount: 300, listedAt: '2017-03-18', latestChapterAt: '2026-09-17' },
+      { sourceKey: 'text', favorite: false, chapterCount: 181, listedAt: null, latestChapterAt: null },
+      { sourceKey: 'unreliable', favorite: false, chapterCount: 12, listedAt: '2026-09-18', latestChapterAt: '2026-09-18' },
+      { sourceKey: 'dex', favorite: false, chapterCount: 295, listedAt: '2018-06-10', latestChapterAt: '2026-09-15' },
+      { sourceKey: 'text', favorite: true, chapterCount: null, listedAt: null, latestChapterAt: null },
+    ];
+    state.versions.forEach((v, i) => Object.assign(v, fixtures[i], { firstSeenAt: '2026-09-18' }));
+    updateWorkDates(state);
+    return state;
+  }
+  function validDate(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const instant = new Date(value + 'T00:00:00Z');
+    return Number.isFinite(instant.getTime()) && instant.toISOString().slice(0, 10) === value;
+  }
+  function updateWorkDates(state) {
+    state.workDates ||= {};
+    for (const v of state.versions) {
+      const trusted = state.dateSources?.[v.sourceKey]?.listing === 'trusted';
+      const accepted = trusted && validDate(v.listedAt) && v.listedAt <= v.firstSeenAt;
+      const candidate = accepted ? { date: v.listedAt, label: '上架', source: v.source } : { date: v.firstSeenAt, label: '首次发现', source: null };
+      const old = state.workDates[v.work];
+      if (!old || candidate.date < old.date || candidate.date === old.date && accepted && old.label === '首次发现') state.workDates[v.work] = candidate;
+    }
+  }
+  function workDate(state, work) {
+    return state.workDates[work] || { date: state.today, label: '首次发现', source: null };
+  }
+  function latestDate(state, version) {
+    if (!version.latestChapterAt) return { date: null, label: '日期未提供' };
+    if (state.dateSources?.[version.sourceKey]?.chapters !== 'trusted' || !validDate(version.latestChapterAt) || version.latestChapterAt > state.today) return { date: null, label: '日期待核实' };
+    return { date: version.latestChapterAt, label: '最新章节' };
+  }
+  function assessChapterDates(samples) {
+    const distinct = [...new Map(samples.map(s => [s.work, s])).values()];
+    const comparable = distinct.filter(s => validDate(s.beforeAt) && validDate(s.afterAt) && new Date(s.afterAt) - new Date(s.beforeAt) >= 86400000 && s.before.length >= 3 && s.before.length === s.after.length);
+    if (comparable.some(s => s.after.every(d => d === s.afterAt) && s.before.some((d, i) => d !== s.after[i]))) return 'suspect';
+    const stable = comparable.filter(s => new Set(s.before).size >= 3 && s.before.every((d, i) => validDate(d) && d < s.beforeAt && d === s.after[i]));
+    return stable.length >= 3 ? 'trusted' : 'unknown';
+  }
+  function refreshDates(input) {
+    const state = structuredClone(input);
+    const next = new Date(state.today + 'T00:00:00Z'); next.setUTCDate(next.getUTCDate() + 1); state.today = next.toISOString().slice(0, 10);
+    // Existing chapter IDs all shifting to the fetch date is a negative signal.
+    const sample = [{ work: 'w0', beforeAt: input.today, afterAt: state.today, before: ['2025-01-01', '2025-02-01', '2025-03-01'], after: [state.today, state.today, state.today] }];
+    state.dateSources.cabinet.chapters = assessChapterDates(sample);
+    state.versions = state.versions.map(v => ['cabinet', 'unreliable'].includes(v.sourceKey) ? { ...v, latestChapterAt: v.latestChapterAt ? state.today : null } : v);
+    updateWorkDates(state); state.revision++;
+    return state;
   }
   function observe(input, observation) {
     if (!observation.name || !observation.name.trim()) return structuredClone(input);
@@ -58,9 +116,12 @@
       author = { id: 'name-' + observation.name, name: observation.name, aliases: [], follow: false };
       state.authors.push(author);
     }
-    const version = { ...observation, author: author.id, signature: observation.name };
     const index = state.versions.findIndex(v => v.id === observation.id);
+    const previous = state.versions[index];
+    const version = { favorite: false, chapterCount: null, ...previous, ...observation, author: author.id, signature: observation.name,
+      firstSeenAt: previous?.firstSeenAt || state.today, favorite: previous?.favorite ?? false };
     if (index < 0) state.versions.push(version); else state.versions[index] = version;
+    updateWorkDates(state);
     state.revision++;
     return state;
   }
@@ -102,5 +163,5 @@
     const allNames = [...new Set([...names(author), name])];
     author.name = name; author.aliases = allNames.filter(n => n !== name); state.revision++; return state;
   }
-  return { create, normalize, observe, preview, apply, resolve, follow, setFrequency, rename };
+  return { create, normalize, observe, preview, apply, resolve, follow, setFrequency, rename, workDate, latestDate, assessChapterDates, refreshDates };
 });
