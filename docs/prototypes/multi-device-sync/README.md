@@ -40,6 +40,8 @@ node --test docs/prototypes/multi-device-sync/extension-suggestions.test.cjs
 
 ## 当前交互的审阅路径
 
+本次“自动连接与可选密码”生产接入任务见[本轮 Roadmap](../../roadmap/2026-09-18-sync-onboarding-password-roadmap.md)。范围仅为首次配置及相关恢复／设置入口，既有日常同步功能不重新开发；完整交互核对项 O1–O10 见下方独立设计。
+
 2026-09-18 首次配置修订见独立[自动连接与可选密码设计](../../2026-09-18-sync-onboarding-password-design.md)。本轮将 GitHub 登录后的仓库查找、创建、绑定与首次合并改为自动流程；新空间仅询问是否设置同步密码，替代恢复资料的保存与导入。以下以新流程为当前审阅基线，旧技术方案对应配置段落由独立设计覆盖，生产实现尚需单独接入。
 
 - 上方演示栏 → 选择设备及首次创建场景 → 显示场景 → “连接 GitHub”。点击“复制验证码并打开 GitHub”打开本地授权模拟页，输入 `DEMO-CODE` 并授权；无需在授权页选择仓库，应用自动查找后显示可选密码页。
