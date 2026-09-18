@@ -9,7 +9,14 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import mihon.data.sync.crypto.SyncSpaceCrypto
 import mihon.data.sync.inbox.SyncInboxStore
+import mihon.data.sync.runtime.StoredSyncMaterial
+import mihon.data.sync.runtime.StoredSyncSetup
 import mihon.data.sync.runtime.SyncDecisionScope
 import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelController
@@ -31,7 +38,11 @@ import mihon.domain.sync.auth.GitHubAccessToken
 import mihon.domain.sync.auth.GitHubAuthEndpoints
 import mihon.domain.sync.auth.GitHubAuthFailureReason
 import mihon.domain.sync.crypto.SyncRecoveryCodec
+import mihon.domain.sync.crypto.SyncSpaceDescriptorCodec
+import mihon.domain.sync.crypto.SyncSpaceMaterial
 import mihon.domain.sync.security.SyncSecureStore
+import mihon.domain.sync.transport.SyncInitializationIntent
+import mihon.domain.sync.transport.SyncInitializationStage
 import mihon.domain.sync.transport.SyncRepository
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
@@ -54,6 +65,7 @@ import tachiyomi.data.History
 import tachiyomi.data.Mangas
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 @Timeout(30)
@@ -62,12 +74,12 @@ abstract class SyncPanelStorageContract {
     private val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync-v1")
 
     @Test
-    fun `onboarding creates plain space and automatically finishes actual baseline exchange`() = runBlocking {
+    fun `pre-created empty repository onboarding completes without a password`() = runBlocking {
         createsSpace("")
     }
 
     @Test
-    fun `onboarding creates password space and automatically finishes actual baseline exchange`() = runBlocking {
+    fun `existing empty repository completes setup with a password`() = runBlocking {
         createsSpace("private-test-password")
     }
 
@@ -80,7 +92,8 @@ abstract class SyncPanelStorageContract {
                 assertEquals(SyncSetupStep.NEW_PASSWORD, fixture.panel.state.value.setupStep)
                 fixture.panel.act(SyncPanelAction.SubmitPassword(password))
                 withTimeout(10_000) { fixture.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
-                assertEquals(1, fixture.creationPosts)
+                assertEquals(0, fixture.userRepoPosts)
+                assertEquals(0, fixture.repositorySettingsWrites)
                 assertEquals(
                     if (password.isEmpty()) "none" else "password",
                     fixture.runtime.connection()?.protectionMode,
@@ -101,7 +114,8 @@ abstract class SyncPanelStorageContract {
                 fixture.begin()
                 assertEquals(SyncSetupStep.COMPLETE, fixture.panel.state.value.setupStep)
                 assertEquals("none", fixture.runtime.connection()?.protectionMode)
-                assertEquals(0, fixture.creationPosts)
+                assertEquals(0, fixture.userRepoPosts)
+                assertEquals(0, fixture.repositorySettingsWrites)
             }
         }
     }
@@ -120,7 +134,8 @@ abstract class SyncPanelStorageContract {
                 fixture.panel.act(SyncPanelAction.SubmitPassword("private-test-password"))
                 withTimeout(10_000) { fixture.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
                 assertEquals("password", fixture.runtime.connection()?.protectionMode)
-                assertEquals(0, fixture.creationPosts)
+                assertEquals(0, fixture.userRepoPosts)
+                assertEquals(0, fixture.repositorySettingsWrites)
             }
         }
     }
@@ -147,25 +162,25 @@ abstract class SyncPanelStorageContract {
             SyncOnboardingFixture(storage).use { f ->
                 f.authorize()
                 f.begin()
-                f.creationEntered = java.util.concurrent.CountDownLatch(1)
-                f.creationRelease = java.util.concurrent.CountDownLatch(1)
+                f.bootstrapPutEntered = java.util.concurrent.CountDownLatch(1)
+                f.bootstrapPutRelease = java.util.concurrent.CountDownLatch(1)
                 f.panel.act(SyncPanelAction.SubmitPassword(""))
-                assertTrue(f.creationEntered!!.await(3, java.util.concurrent.TimeUnit.SECONDS))
+                assertTrue(f.bootstrapPutEntered!!.await(3, java.util.concurrent.TimeUnit.SECONDS))
                 f.panel.act(SyncPanelAction.SubmitPassword("second-click"))
                 f.panel.act(SyncPanelAction.Close)
                 f.panel.act(SyncPanelAction.Open)
                 f.panel.act(SyncPanelAction.Navigate(SyncPanelPage.SETTINGS))
-                f.creationRelease!!.countDown()
+                f.bootstrapPutRelease!!.countDown()
                 withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
                 assertEquals(SyncPanelPage.SETTINGS, f.panel.state.value.page)
                 assertNull(f.panel.state.value.notice)
-                assertEquals(1, f.creationPosts)
+                assertEquals(0, f.userRepoPosts)
             }
         }
     }
 
     @Test
-    fun `onboarding paused merge resumes after restart without password or duplicate creation`() = runBlocking {
+    fun `paused onboarding resumes after restart without duplicate initialization`() = runBlocking {
         open().use { storage ->
             storage.favorite("/before-onboarding")
             SyncOnboardingFixture(storage).use { f ->
@@ -175,7 +190,7 @@ abstract class SyncPanelStorageContract {
                 f.panel.act(SyncPanelAction.SubmitPassword("restart-password"))
                 withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.MERGING && !it.setupBusy } }
                 assertEquals(1L, f.panel.state.value.importRemaining)
-                assertTrue(f.secure.values.keys.any { it.startsWith("sync-setup-v2-") })
+                assertTrue(f.secure.values.keys.any { it.startsWith("sync-setup-v3-") })
                 f.runtime.stopPanel()
                 val reopened = f.runtime()
                 try {
@@ -190,9 +205,9 @@ abstract class SyncPanelStorageContract {
                     withTimeout(10_000) { panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
                     assertEquals(0L, panel.state.value.importRemaining)
                     assertTrue(panel.state.value.notice?.setupCompleted == true)
-                    assertEquals(1, f.creationPosts)
+                    assertEquals(0, f.userRepoPosts)
                     assertFalse(f.secure.values.toString().contains("restart-password"))
-                    assertFalse(f.secure.values.keys.any { it.startsWith("sync-setup-v2-") })
+                    assertFalse(f.secure.values.keys.any { it.startsWith("sync-setup-v3-") })
                 } finally {
                     reopened.stopPanel()
                 }
@@ -201,25 +216,145 @@ abstract class SyncPanelStorageContract {
     }
 
     @Test
-    fun `onboarding response lost after create resumes same remote repository without another POST`() = runBlocking {
+    fun `onboarding resumes the same durable bootstrap after a lost response and restart`() = runBlocking {
         open().use { storage ->
             SyncOnboardingFixture(storage).use { f ->
                 f.authorize()
-                f.loseCreationResponse = true
+                f.git.loseNextBootstrapResponse = true
                 f.begin()
                 f.panel.act(SyncPanelAction.SubmitPassword(""))
-                withTimeout(10_000) {
+                withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.ERROR } }
+
+                val pendingBeforeRestart = f.secure.values.entries.single { it.key.startsWith("sync-setup-v3-") }.value
+                assertTrue(pendingBeforeRestart.contains(""""stage":"BOOTSTRAP_SUBMITTING""""))
+                assertEquals(1, f.git.contentsPutBodies.size)
+                assertEquals(0, f.userRepoPosts)
+                assertNull(f.runtime.connection())
+                f.runtime.stopPanel()
+
+                val reopened = f.runtime()
+                try {
+                    val panel = reopened.panel as SyncPanelController
+                    panel.act(SyncPanelAction.Open)
+                    panel.act(SyncPanelAction.BeginSetup)
+                    withTimeout(10_000) {
+                        panel.state.first {
+                            !it.setupBusy && it.setupStep in setOf(SyncSetupStep.COMPLETE, SyncSetupStep.ERROR)
+                        }
+                    }
+
+                    assertEquals(SyncSetupStep.COMPLETE, panel.state.value.setupStep)
+                    assertEquals(1, f.git.contentsPutBodies.size, "restart must reuse the persisted bootstrap intent")
+                    assertEquals(0, f.userRepoPosts)
+                    assertEquals(0, f.repositorySettingsWrites)
+                    assertEquals("none", reopened.connection()?.protectionMode)
+                    assertFalse(f.secure.values.keys.any { it.startsWith("sync-setup-v3-") })
+                } finally {
+                    reopened.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `legacy submitted v2 pending is rechecked without connecting or discarding material`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                val material = f.existing("")
+                val record = legacySetupJson(material)
+                f.secure.values["sync-setup-v2-${f.accountId}"] = record
+                f.authorize()
+                val requestsBefore = f.git.server.requestCount
+                val writesBefore = f.repositoryWrites
+
+                f.begin()
+                val first = withTimeout(10_000) {
                     f.panel.state.first {
-                        it.setupStep == SyncSetupStep.COMPLETE ||
-                            it.setupStep == SyncSetupStep.ERROR
+                        !it.setupBusy && it.setupStep in setOf(SyncSetupStep.ERROR, SyncSetupStep.COMPLETE)
                     }
                 }
-                if (f.panel.state.value.setupStep == SyncSetupStep.ERROR) {
-                    f.panel.act(SyncPanelAction.RetrySetup)
-                    withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
+
+                assertEquals(SyncSetupStep.ERROR, first.setupStep)
+                assertEquals(mihon.data.sync.auth.SyncDiscoveryProblem.CREATION_UNCONFIRMED, first.setupProblem)
+                assertNull(f.runtime.connection())
+                assertEquals(record, f.secure.values["sync-setup-v2-${f.accountId}"])
+                assertTrue(f.git.server.requestCount > requestsBefore, "legacy retry should recheck GitHub read-only")
+                assertEquals(writesBefore, f.repositoryWrites, "legacy retry must not write to GitHub")
+
+                val afterFirstRecheck = f.git.server.requestCount
+                f.panel.act(SyncPanelAction.RetrySetup)
+                val retried = withTimeout(10_000) {
+                    f.panel.state.first { !it.setupBusy && it.setupStep == SyncSetupStep.ERROR }
                 }
-                assertEquals(1, f.creationPosts)
-                assertEquals("none", f.runtime.connection()?.protectionMode)
+
+                assertEquals(mihon.data.sync.auth.SyncDiscoveryProblem.CREATION_UNCONFIRMED, retried.setupProblem)
+                assertTrue(f.git.server.requestCount > afterFirstRecheck)
+                assertEquals(writesBefore, f.repositoryWrites)
+                assertEquals(record, f.secure.values["sync-setup-v2-${f.accountId}"])
+                assertEquals(0, f.userRepoPosts)
+            }
+        }
+    }
+
+    @Test
+    fun `legacy v2 join pending resumes exact connected space and retains queued work`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                val material = f.existing("")
+                f.authorize()
+                f.begin()
+                assertEquals(SyncSetupStep.COMPLETE, f.panel.state.value.setupStep)
+                val existingBinding = requireNotNull(f.runtime.connection())
+                val existingStoredBinding = requireNotNull(
+                    f.runtime.onboarding.storage.connection(
+                        material.descriptor.spaceId,
+                        material.descriptor.generation,
+                    ),
+                )
+                val pendingEventsBefore = mihon.data.sync.journal.SyncLocalJournal(storage.handler)
+                    .pendingEvents(material.descriptor.spaceId, material.descriptor.generation)
+                storage.favorite("/queued-before-legacy-join-recovery")
+                val queueBefore = mihon.data.sync.journal.SyncLocalJournal(storage.handler)
+                    .pendingEvents(material.descriptor.spaceId, material.descriptor.generation)
+                assertTrue(queueBefore.size > pendingEventsBefore.size)
+
+                val record = legacySetupJson(
+                    material,
+                    newSpace = false,
+                    submitted = false,
+                    connected = true,
+                )
+                f.secure.values["sync-setup-v2-${f.accountId}"] = record
+                val requestsBefore = f.git.server.requestCount
+                val writesBefore = f.repositorySettingsWrites
+                f.panel.act(SyncPanelAction.Close)
+                f.panel.act(SyncPanelAction.Open)
+                f.panel.act(SyncPanelAction.BeginSetup)
+                val resumed = withTimeout(10_000) {
+                    f.panel.state.first {
+                        !it.setupBusy && it.setupStep in setOf(SyncSetupStep.ERROR, SyncSetupStep.COMPLETE)
+                    }
+                }
+
+                assertEquals(SyncSetupStep.COMPLETE, resumed.setupStep)
+                assertEquals(existingBinding.spaceId, f.runtime.connection()?.spaceId)
+                assertEquals(existingBinding.generation, f.runtime.connection()?.generation)
+                assertNull(f.secure.values["sync-setup-v2-${f.accountId}"])
+                assertEquals(
+                    existingStoredBinding.actorId,
+                    f.runtime.onboarding.storage.connection(
+                        material.descriptor.spaceId,
+                        material.descriptor.generation,
+                    )?.actorId,
+                )
+                assertTrue(f.git.server.requestCount > requestsBefore, "legacy join recovery must recheck GitHub")
+                assertEquals(writesBefore, f.repositorySettingsWrites)
+                assertEquals(0, f.userRepoPosts)
+                assertTrue(
+                    mihon.data.sync.journal.SyncLocalJournal(storage.handler)
+                        .pendingEvents(material.descriptor.spaceId, material.descriptor.generation).isEmpty(),
+                    "the pre-existing connection must continue syncing its local queue",
+                )
             }
         }
     }
@@ -310,7 +445,7 @@ abstract class SyncPanelStorageContract {
                     queued,
                     mihon.data.sync.journal.SyncLocalJournal(storage.handler).pendingEvents("space", 1),
                 )
-                assertEquals(1, f.creationPosts)
+                assertEquals(0, f.userRepoPosts)
             }
         }
     }
@@ -327,8 +462,8 @@ abstract class SyncPanelStorageContract {
                 f.panel.act(SyncPanelAction.SubmitPassword("crash-window-password"))
                 withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.ERROR } }
                 assertEquals("password", f.runtime.connection()!!.protectionMode)
-                val before = f.secure.values.entries.single { it.key.startsWith("sync-setup-v2-") }.value
-                assertTrue(before.contains("\"connected\":false"))
+                val before = f.secure.values.entries.single { it.key.startsWith("sync-setup-v3-") }.value
+                assertTrue(before.contains("\"stage\":\"SPACE_CONFIRMED\""))
                 f.runtime.stopPanel()
                 f.secure.rejectConnectedSetup = false
                 val reopened = f.runtime()
@@ -339,17 +474,164 @@ abstract class SyncPanelStorageContract {
                     assertEquals(SyncSetupStep.MERGING, panel.state.value.setupStep)
                     assertEquals(requests, f.git.server.requestCount)
                     assertEquals(1L, panel.state.value.importRemaining)
-                    assertEquals(before, f.secure.values.entries.single { it.key.startsWith("sync-setup-v2-") }.value)
+                    assertEquals(before, f.secure.values.entries.single { it.key.startsWith("sync-setup-v3-") }.value)
                     panel.act(SyncPanelAction.ResumeImport)
                     withTimeout(10_000) { panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
-                    assertEquals(1, f.creationPosts)
+                    assertEquals(0, f.userRepoPosts)
+                    assertEquals(0, f.repositorySettingsWrites)
                     assertTrue(panel.state.value.notice?.setupCompleted == true)
                     assertEquals(0L, panel.state.value.importRemaining)
-                    assertFalse(f.secure.values.keys.any { it.startsWith("sync-setup-v2-") })
+                    assertFalse(f.secure.values.keys.any { it.startsWith("sync-setup-v3-") })
                     assertFalse(f.secure.values.toString().contains("crash-window-password"))
                 } finally {
                     reopened.stopPanel()
                 }
+            }
+        }
+    }
+
+    @Test
+    fun `connected onboarding marker completes idempotently after binding commit`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                f.created = true
+                f.authorize()
+                f.begin()
+                f.panel.act(SyncPanelAction.SubmitPassword(""))
+                withTimeout(10_000) { f.panel.state.first { it.setupStep == SyncSetupStep.COMPLETE } }
+
+                val remoteDescriptor = SyncSpaceDescriptorCodec.decode(
+                    requireNotNull(f.git.file(f.repository.branch, SyncSpaceDescriptorCodec.PATH)),
+                ).getOrThrow()
+                val runtimeConnection = requireNotNull(f.runtime.connection()) {
+                    "initial onboarding must create a local database binding"
+                }
+                assertEquals(remoteDescriptor.spaceId, runtimeConnection.spaceId)
+                assertEquals(remoteDescriptor.generation, runtimeConnection.generation)
+                val binding = requireNotNull(
+                    f.runtime.onboarding.storage.connection(remoteDescriptor.spaceId, remoteDescriptor.generation),
+                ) {
+                    "initial onboarding must persist the secure connection binding"
+                }
+                assertEquals(remoteDescriptor, binding.material.material().descriptor)
+                val bootstrap = Json.parseToJsonElement(
+                    requireNotNull(f.git.file("main", ".mihon-sync/bootstrap")).decodeToString(),
+                ).jsonObject
+                val setup = StoredSyncSetup(
+                    accountId = binding.accountId,
+                    accountLogin = binding.accountLogin,
+                    attemptId = UUID.randomUUID().toString(),
+                    attemptNonce = bootstrap.getValue("attemptNonce").jsonPrimitive.content,
+                    newSpace = true,
+                    material = binding.material,
+                    stage = SyncInitializationStage.CONNECTED,
+                    repositoryId = binding.repositoryId,
+                    owner = binding.owner,
+                    repository = binding.repository,
+                    branch = binding.branch,
+                    defaultBranch = "main",
+                    confirmedBootstrapCommitSha = f.git.head("main"),
+                    confirmedBootstrapTreeSha = f.git.treeSha("main"),
+                )
+                f.runtime.onboarding.storage.save(setup, null)
+                val writesBeforeRecovery = f.repositoryWrites
+                val createsBeforeRecovery = f.userRepoPosts
+                f.runtime.stopPanel()
+
+                val reopened = f.runtime()
+                try {
+                    val panel = reopened.panel as SyncPanelController
+                    panel.act(SyncPanelAction.Open)
+                    assertEquals(SyncSetupStep.MERGING, panel.state.value.setupStep)
+                    panel.act(SyncPanelAction.ResumeImport)
+                    val recovered = withTimeout(10_000) {
+                        panel.state.first {
+                            !it.setupBusy && it.setupStep in setOf(SyncSetupStep.COMPLETE, SyncSetupStep.ERROR)
+                        }
+                    }
+
+                    assertEquals(SyncSetupStep.COMPLETE, recovered.setupStep)
+                    assertEquals(writesBeforeRecovery, f.repositoryWrites)
+                    assertEquals(createsBeforeRecovery, f.userRepoPosts)
+                    assertNull(f.runtime.onboarding.storage.pending(f.accountId))
+                } finally {
+                    reopened.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `losing bootstrap attempt joins a verified winner in the same repository`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                val winnerMaterial = SyncSpaceCrypto.create("winning-space", 1, "winner-password")
+                val winnerIntent = SyncInitializationIntent(
+                    accountId = f.accountId,
+                    repositoryId = 99,
+                    defaultBranch = "main",
+                    attemptNonce = "winner-attempt-nonce-0001",
+                    stage = SyncInitializationStage.VERIFIED_EMPTY,
+                )
+                val winnerResult = f.runtime.onboarding.transport("synthetic-token", winnerMaterial).initialize(
+                    f.repository,
+                    winnerMaterial.descriptor.spaceId,
+                    winnerMaterial.descriptor.generation,
+                    winnerIntent,
+                ) {}
+                assertTrue(winnerResult is mihon.domain.sync.transport.SyncInitializationResult.Initialized)
+
+                val loserMaterial = SyncSpaceCrypto.create("losing-space", 1, "loser-password")
+                val loserSetup = StoredSyncSetup(
+                    accountId = f.accountId,
+                    accountLogin = f.accountLogin,
+                    attemptId = "loser-attempt-id-0001",
+                    attemptNonce = "loser-attempt-nonce-0001",
+                    newSpace = true,
+                    material = StoredSyncMaterial.from(loserMaterial),
+                    stage = SyncInitializationStage.BOOTSTRAP_SUBMITTING,
+                    repositoryId = 99,
+                    owner = f.repository.owner,
+                    repository = f.repository.name,
+                    branch = f.repository.branch,
+                    defaultBranch = "main",
+                )
+                f.runtime.onboarding.storage.save(loserSetup, null)
+                f.authorize()
+                storage.favorite("/queued-during-losing-attempt")
+                val requestsBefore = f.git.server.requestCount
+
+                f.panel.act(SyncPanelAction.Open)
+                f.panel.act(SyncPanelAction.BeginSetup)
+                val discoveredWinner = withTimeout(10_000) {
+                    f.panel.state.first {
+                        !it.setupBusy && it.setupStep in setOf(SyncSetupStep.ERROR, SyncSetupStep.UNLOCK)
+                    }
+                }
+                assertEquals(SyncSetupStep.UNLOCK, discoveredWinner.setupStep)
+                assertNull(f.runtime.onboarding.pending())
+                assertFalse(f.secure.values.values.any { "losing-space" in it })
+                assertFalse(f.secure.values.values.any { "loser-attempt-nonce-0001" in it })
+
+                f.panel.act(SyncPanelAction.SubmitPassword("winner-password"))
+                val completed = withTimeout(10_000) {
+                    f.panel.state.first {
+                        !it.setupBusy && it.setupStep in setOf(SyncSetupStep.ERROR, SyncSetupStep.COMPLETE)
+                    }
+                }
+
+                assertEquals(SyncSetupStep.COMPLETE, completed.setupStep)
+                assertEquals(winnerMaterial.descriptor.spaceId, f.runtime.connection()?.spaceId)
+                assertNull(f.runtime.onboarding.pending())
+                assertEquals(1, f.git.contentsPutBodies.size, "the losing attempt must not issue another PUT")
+                assertEquals(0, f.userRepoPosts)
+                assertEquals(0, f.repositorySettingsWrites)
+                assertTrue(f.git.server.requestCount > requestsBefore)
+                assertTrue(
+                    mihon.data.sync.journal.SyncLocalJournal(storage.handler)
+                        .pendingEvents("winning-space", 1).isEmpty(),
+                    "joining the winner must resume the queued local work",
+                )
             }
         }
     }
@@ -367,9 +649,10 @@ abstract class SyncPanelStorageContract {
                     f.panel.act(SyncPanelAction.SubmitPassword(password))
                     assertEquals(problem, f.panel.state.value.passwordProblem)
                     assertEquals(SyncSetupStep.NEW_PASSWORD, f.panel.state.value.setupStep)
-                    assertEquals(0, f.creationPosts)
+                    assertEquals(0, f.userRepoPosts)
+                    assertEquals(0, f.repositorySettingsWrites)
                     assertNull(f.runtime.connection())
-                    assertFalse(f.secure.values.keys.any { it.startsWith("sync-setup-v2-") })
+                    assertFalse(f.secure.values.keys.any { it.startsWith("sync-setup-v3-") })
                 }
             }
         }
@@ -419,7 +702,7 @@ abstract class SyncPanelStorageContract {
                 }
                 assertEquals(SyncSetupStep.COMPLETE, f.panel.state.value.setupStep)
                 assertEquals(0L, f.panel.state.value.queuedTotal)
-                assertEquals(0, f.creationPosts)
+                assertEquals(0, f.userRepoPosts)
             }
         }
     }
@@ -872,4 +1155,29 @@ abstract class SyncPanelStorageContract {
             while (storage.projector.project(spaceId, 1) == 50) Unit
         }
     }
+}
+
+private fun legacySetupJson(
+    material: SyncSpaceMaterial,
+    newSpace: Boolean = true,
+    submitted: Boolean = true,
+    connected: Boolean = false,
+): String {
+    val storedMaterial = Json.encodeToString(StoredSyncMaterial.from(material))
+    return """
+        {
+          "version": 2,
+          "accountId": 1,
+          "accountLogin": "fixture-owner",
+          "attemptId": "legacy-pending-fixture-0001",
+          "newSpace": $newSpace,
+          "material": $storedMaterial,
+          "submitted": $submitted,
+          "repositoryId": 99,
+          "owner": "fixture-owner",
+          "repository": "mihon-sync",
+          "branch": "mihon-sync-v1",
+          "connected": $connected
+        }
+    """.trimIndent()
 }

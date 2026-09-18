@@ -57,6 +57,13 @@ class SyncGitSafetyContractTest {
     private val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync")
     private val secret = SyncSecret.fromBytes(ByteArray(32) { (it + 1).toByte() })
 
+    data class RefPostObservation(
+        val branch: String,
+        val commitSha: String,
+        val treeSha: String,
+        val treeEntries: Map<String, String>,
+    )
+
     @Test
     fun `initialization preserves README and exchanges a real batch`() = runTest {
         GitFixture().use { git ->
@@ -155,11 +162,16 @@ class SyncGitSafetyContractTest {
     }
 
     @Test
-    fun `empty private repository is bootstrapped only after its existence has been confirmed`() = runTest {
+    fun `legacy transport refuses to initialize an empty repository without v3 intent`() = runTest {
         GitFixture(empty = true).use { git ->
             val transport = git.transport()
-            assertTrue(transport.initialize(repository, "space", 1) is SyncInitializationResult.Initialized)
-            assertTrue(transport.readSnapshot(repository, "space", 1).getOrThrow().batches.isEmpty())
+            val result = transport.initialize(repository, "space", 1)
+
+            assertTrue(result is SyncInitializationResult.NeedsExplicitAction)
+            assertTrue(git.contentsPutBodies.isEmpty(), "legacy initialization must not write a fixed bootstrap marker")
+            assertTrue(git.pathWrites.isEmpty())
+            assertFalse(git.hasBranch("mihon-sync"))
+            assertTrue(git.forceFlags.isEmpty())
         }
     }
 
@@ -711,16 +723,29 @@ class SyncGitSafetyContractTest {
         private val subtrees = mutableMapOf<Pair<String, String>, String>()
         private val commits = mutableMapOf<String, Pair<String, List<String>>>()
         private val refs = mutableMapOf<String, String>()
+        val otherRefs = mutableMapOf<String, String>()
         val pathWrites = mutableMapOf<String, MutableList<String>>()
+        val contentsPutBodies = mutableListOf<String>()
+        val refPostObservations = mutableListOf<RefPostObservation>()
+        val refPatchBranches = mutableListOf<String>()
+        var bootstrapCommitCount = 0
         val invalidBaseTrees = mutableListOf<String>()
         val forceFlags = mutableListOf<Boolean>()
         val conflicts = AtomicInteger()
         var corruptNextPublishedPath: String? = null
         var refUpdateBarrier: CountDownLatch? = null
+        var bootstrapPutBarrier: CountDownLatch? = null
         var truncatedFlag: kotlinx.serialization.json.JsonElement = JsonPrimitive(false)
         var nextReadFailure: MockResponse? = null
         var privateRepository = true
+        var repositorySizeOverride: Long? = null
+        var failNextBootstrapBeforeCommit = false
+        var repositorySizeAfterBootstrapFailure: Long? = null
+        var externalFileBeforeNextBootstrapPut: Pair<String, ByteArray>? = null
         var nextRefResponse: MockResponse? = null
+        var loseNextBootstrapResponse = false
+        var loseNextSyncBranchCreateResponse = false
+        private var failNextBootstrapReadback = false
         var failReadAfterPatch = false
         var competingWrites = 0
         var emptyRefStatus = 404
@@ -738,6 +763,14 @@ class SyncGitSafetyContractTest {
                         refUpdateBarrier?.let { barrier ->
                             barrier.countDown()
                             check(barrier.await(5, TimeUnit.SECONDS)) { "initializer did not reach ref update" }
+                        }
+                    }
+                    if (request.method == "PUT" &&
+                        request.url.encodedPath.endsWith("/contents/.mihon-sync/bootstrap")
+                    ) {
+                        bootstrapPutBarrier?.let { barrier ->
+                            barrier.countDown()
+                            check(barrier.await(5, TimeUnit.SECONDS)) { "initializers did not reach bootstrap PUT" }
                         }
                     }
                     return synchronized(this@GitFixture) { route(request) }
@@ -762,6 +795,18 @@ class SyncGitSafetyContractTest {
             refs[branch]?.let(commits::get)?.first?.let(trees::get)?.get(path)?.let(blobs::get)
 
         fun head(branch: String): String = refs.getValue(branch)
+
+        fun hasBranch(branch: String): Boolean = branch in refs
+
+        fun removeAllRefs() {
+            refs.clear()
+            otherRefs.clear()
+        }
+
+        fun treeSha(branch: String): String = commits.getValue(refs.getValue(branch)).first
+
+        fun fileAtRefPost(observation: RefPostObservation, path: String): ByteArray? =
+            observation.treeEntries[path]?.let(blobs::get)
 
         fun removeFile(branch: String, path: String) {
             val parent = refs.getValue(branch)
@@ -805,22 +850,76 @@ class SyncGitSafetyContractTest {
             if (method == "GET" && path.isEmpty()) {
                 return respond(
                     buildJsonObject {
+                        put("id", 99)
                         put("private", privateRepository)
+                        put("archived", false)
+                        put("disabled", false)
+                        put(
+                            "permissions",
+                            buildJsonObject {
+                                put("push", true)
+                                put("admin", false)
+                            },
+                        )
                         put("default_branch", "main")
-                        put("size", if (refs.isEmpty()) 0 else 1)
+                        put("size", repositorySizeOverride ?: if (refs.isEmpty() && otherRefs.isEmpty()) 0 else 1)
                         put("name", repository.name)
                         put("full_name", repository.fullName)
+                        put(
+                            "owner",
+                            buildJsonObject {
+                                put("id", 42)
+                                put("login", repository.owner)
+                                put("type", "User")
+                            },
+                        )
+                    },
+                )
+            }
+            if (method == "GET" && path == "/git/matching-refs/") {
+                if (failNextBootstrapReadback) {
+                    failNextBootstrapReadback = false
+                    return MockResponse(code = 500)
+                }
+                return respond(
+                    buildJsonArray {
+                        refs.keys.forEach { branch -> add(ref(branch, refs.getValue(branch))) }
+                        otherRefs.forEach { (name, sha) ->
+                            add(
+                                buildJsonObject {
+                                    put("ref", name)
+                                    put(
+                                        "object",
+                                        buildJsonObject {
+                                            put("type", "commit")
+                                            put("sha", sha)
+                                        },
+                                    )
+                                },
+                            )
+                        }
                     },
                 )
             }
             if (method == "GET" && path.startsWith("/git/ref/heads/")) {
+                if (failNextBootstrapReadback) {
+                    failNextBootstrapReadback = false
+                    return MockResponse(code = 500)
+                }
                 nextReadFailure?.let {
                     nextReadFailure = null
                     return it
                 }
                 val branch = path.removePrefix("/git/ref/heads/")
                 return refs[branch]?.let { respond(ref(branch, it)) }
-                    ?: error(if (refs.isEmpty()) emptyRefStatus else 404, "Reference does not exist")
+                    ?: error(
+                        if (refs.isEmpty() && otherRefs.isEmpty()) emptyRefStatus else 404,
+                        if (refs.isEmpty() && otherRefs.isEmpty() && emptyRefStatus == 409) {
+                            "Git Repository is empty."
+                        } else {
+                            "Reference does not exist"
+                        },
+                    )
             }
             if (method == "GET" && path.startsWith("/git/commits/")) {
                 val id = path.substringAfterLast('/')
@@ -944,11 +1043,18 @@ class SyncGitSafetyContractTest {
                 if (branch in refs) return error(422, "Reference already exists")
                 val commit = field("sha")
                 if (commit !in commits) return error(422, "Unknown commit")
+                val treeSha = commits.getValue(commit).first
+                refPostObservations += RefPostObservation(branch, commit, treeSha, trees.getValue(treeSha).toMap())
                 refs[branch] = commit
+                if (branch == "mihon-sync" && loseNextSyncBranchCreateResponse) {
+                    loseNextSyncBranchCreateResponse = false
+                    return error(500, "Synthetic lost sync ref creation response")
+                }
                 return respond(ref(branch, commit), 201)
             }
             if (method == "PATCH" && path.startsWith("/git/refs/heads/")) {
                 val branch = path.removePrefix("/git/refs/heads/")
+                refPatchBranches += branch
                 if (competingWrites > 0) {
                     competingWrites--
                     replaceFile(branch, "README.md", "Competing write $competingWrites".encodeToByteArray())
@@ -991,28 +1097,76 @@ class SyncGitSafetyContractTest {
             }
             if (method == "GET" && path.startsWith("/contents")) {
                 val branch = url.queryParameter("ref") ?: "main"
-                if (branch !in refs) return error(404, "This repository is empty")
+                if (branch !in refs) {
+                    val message = if (refs.isEmpty() &&
+                        otherRefs.isEmpty()
+                    ) {
+                        "This repository is empty."
+                    } else {
+                        "Not Found"
+                    }
+                    return error(404, message)
+                }
                 return respond(
                     buildJsonArray {
-                        add(
-                            buildJsonObject {
-                                put("name", "README.md")
-                                put("path", "README.md")
-                                put("type", "file")
-                            },
-                        )
+                        val files = trees.getValue(commits.getValue(refs.getValue(branch)).first)
+                        files.keys.forEach { file ->
+                            add(
+                                buildJsonObject {
+                                    put("name", file.substringAfterLast('/'))
+                                    put("path", file)
+                                    put("type", "file")
+                                },
+                            )
+                        }
                     },
                 )
             }
             if (method == "PUT" && path.startsWith("/contents/")) {
+                contentsPutBodies += request.body?.utf8().orEmpty()
                 val branch = body!!["branch"]?.jsonPrimitive?.content ?: "main"
+                val requestedPath = path.removePrefix("/contents/")
+                if (requestedPath == ".mihon-sync/bootstrap" && body.containsKey("sha")) {
+                    return error(422, "bootstrap creation must omit sha")
+                }
+                if (requestedPath == ".mihon-sync/bootstrap" && failNextBootstrapBeforeCommit) {
+                    failNextBootstrapBeforeCommit = false
+                    repositorySizeAfterBootstrapFailure?.let {
+                        repositorySizeOverride = it
+                        repositorySizeAfterBootstrapFailure = null
+                    }
+                    return error(500, "Synthetic failure before bootstrap commit")
+                }
+                if (requestedPath == ".mihon-sync/bootstrap") {
+                    externalFileBeforeNextBootstrapPut?.let { (externalPath, content) ->
+                        externalFileBeforeNextBootstrapPut = null
+                        val externalParent = refs[branch]
+                        val externalTree = externalParent
+                            ?.let { trees.getValue(commits.getValue(it).first).toMutableMap() }
+                            ?: mutableMapOf()
+                        externalTree[externalPath] = storeBlob(content)
+                        val externalTreeId = sha().also { trees[it] = externalTree }
+                        refs[branch] = sha().also { commits[it] = externalTreeId to listOfNotNull(externalParent) }
+                    }
+                }
                 val oldHead = refs[branch]
-                if (oldHead == null && refs.isNotEmpty()) return error(404, "Branch not found")
+                if (oldHead == null &&
+                    (refs.isNotEmpty() || otherRefs.isNotEmpty())
+                ) {
+                    return error(404, "Branch not found")
+                }
                 val tree = oldHead?.let { trees.getValue(commits.getValue(it).first).toMutableMap() } ?: mutableMapOf()
-                tree[path.removePrefix("/contents/")] = storeBlob(field("content").decodeBase64()!!.toByteArray())
+                if (requestedPath in tree) return error(422, "file already exists")
+                tree[requestedPath] = storeBlob(field("content").decodeBase64()!!.toByteArray())
                 val treeId = sha().also { trees[it] = tree }
                 val commitId = sha().also { commits[it] = treeId to listOfNotNull(oldHead) }
                 refs[branch] = commitId
+                if (requestedPath == ".mihon-sync/bootstrap") bootstrapCommitCount++
+                if (requestedPath == ".mihon-sync/bootstrap" && loseNextBootstrapResponse) {
+                    loseNextBootstrapResponse = false
+                    failNextBootstrapReadback = true
+                    return error(500, "Synthetic lost Contents response")
+                }
                 return respond(buildJsonObject { put("commit", buildJsonObject { put("sha", commitId) }) }, 201)
             }
             return error(404, "Unexpected fixture request: $method $path")

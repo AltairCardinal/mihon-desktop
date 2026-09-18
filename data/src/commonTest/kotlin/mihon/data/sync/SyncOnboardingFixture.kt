@@ -30,7 +30,7 @@ import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import java.util.concurrent.ConcurrentHashMap
 
-/** Real Git object server plus the GitHub identity/install/create HTTP contract, without copying sync logic. */
+/** Real Git object server plus GitHub identity/install discovery HTTP contract, without copying sync logic. */
 internal class SyncOnboardingFixture(
     val storage: SyncRuntimeStorageContract.Storage,
     preferenceStore: PreferenceStore? = null,
@@ -57,15 +57,13 @@ internal class SyncOnboardingFixture(
     }
     var accountId = 1L
     var accountLogin = "fixture-owner"
-    var created = false
+    var created = true
     var repositoryPrivate = true
     var repositoryWrites = 0
-    var description = ""
-    var creationPosts = 0
-    var rejectCreation = false
-    var loseCreationResponse = false
-    var creationEntered: java.util.concurrent.CountDownLatch? = null
-    var creationRelease: java.util.concurrent.CountDownLatch? = null
+    var repositorySettingsWrites = 0
+    var userRepoPosts = 0
+    var bootstrapPutEntered: java.util.concurrent.CountDownLatch? = null
+    var bootstrapPutRelease: java.util.concurrent.CountDownLatch? = null
     val repositoryTokens = java.util.Collections.synchronizedList(mutableListOf<String>())
     val endpoints = GitHubAuthEndpoints(
         git.server.url("/device").toString(),
@@ -83,6 +81,13 @@ internal class SyncOnboardingFixture(
                 if (path.startsWith("/repos/")) {
                     repositoryTokens += request.headers["Authorization"].orEmpty()
                     if (request.method != "GET") repositoryWrites++
+                    if (request.method != "GET" && !path.contains("/git/") && !path.contains("/contents/")) {
+                        repositorySettingsWrites++
+                    }
+                }
+                if (request.method == "PUT" && path.endsWith("/contents/.mihon-sync/bootstrap")) {
+                    bootstrapPutEntered?.countDown()
+                    check(bootstrapPutRelease?.await(5, java.util.concurrent.TimeUnit.SECONDS) != false)
                 }
                 return when {
                     path == "/user" -> response("""{"id":$accountId,"login":"$accountLogin","type":"User"}""")
@@ -90,24 +95,15 @@ internal class SyncOnboardingFixture(
                         """
                         {"installations":[{"id":1,"app_slug":"mihon-desktop",
                         "account":{"id":$accountId,"type":"User"},"suspended_at":null,
-                        "permissions":{"administration":"write","contents":"write"},"repository_selection":"selected"}]}
+                        "permissions":{"contents":"write","metadata":"read"},"repository_selection":"selected"}]}
                         """.trimIndent(),
                     )
                     path == "/user/installations/1/repositories" -> response(
                         """{"repositories":[${if (created) repositoryJson() else ""}]}""",
                     )
                     path == "/user/repos" && request.method == "POST" -> {
-                        creationPosts++
-                        creationEntered?.countDown()
-                        check(creationRelease?.await(5, java.util.concurrent.TimeUnit.SECONDS) != false)
-                        if (rejectCreation) return MockResponse(code = 500, body = "{}")
-                        val body = Json.parseToJsonElement(request.body!!.utf8()).jsonObject
-                        check(body.getValue("name").jsonPrimitive.content == "mihon-sync")
-                        check(body.getValue("private").jsonPrimitive.content == "true")
-                        description = body.getValue("description").jsonPrimitive.content
-                        created = true
-                        if (loseCreationResponse) return MockResponse(code = 500, body = "{}")
-                        MockResponse(code = 201, body = repositoryJson())
+                        userRepoPosts++
+                        MockResponse(code = 405, body = """{"message":"automatic repository creation is disabled"}""")
                     }
                     path == "/repos/${repository.fullName}" ->
                         if (created) response(repositoryJson()) else MockResponse(code = 404, body = "{}")
@@ -157,9 +153,11 @@ internal class SyncOnboardingFixture(
         put("name", repository.name)
         put("full_name", repository.fullName)
         put("private", repositoryPrivate)
+        put("archived", false)
+        put("disabled", false)
         put("size", if (runCatching { git.head("main") }.isSuccess) 1 else 0)
         put("default_branch", "main")
-        put("description", description)
+        put("description", "")
         put("permissions", buildJsonObject { put("push", true) })
         put(
             "owner",
@@ -196,8 +194,8 @@ internal class MemorySyncSecureStore : SyncSecureStore {
     }
     override suspend fun compareAndSet(key: String, expected: String?, value: String?): Boolean = synchronized(values) {
         if (fail || (
-                rejectConnectedSetup && key.startsWith("sync-setup-v2-") && value != null &&
-                    Json.parseToJsonElement(value).jsonObject["connected"]?.jsonPrimitive?.content == "true"
+                rejectConnectedSetup && key.startsWith("sync-setup-v3-") && value != null &&
+                    Json.parseToJsonElement(value).jsonObject["stage"]?.jsonPrimitive?.content == "CONNECTED"
                 )
         ) {
             throw mihon.domain.sync.security.SyncSecureStoreException()

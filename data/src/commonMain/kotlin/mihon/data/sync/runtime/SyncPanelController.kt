@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
 import mihon.data.sync.auth.DiscoveredSyncSpace
+import mihon.data.sync.auth.EmptySyncRepositoryCandidate
 import mihon.data.sync.auth.SyncDiscoveryProblem
 import mihon.data.sync.auth.SyncGitHubAccount
 import mihon.data.sync.auth.SyncSpaceDiscovery
@@ -63,6 +64,7 @@ class SyncPanelController(
     private var setupExchangeCompletion = -1L
     private var setupAccount: SyncGitHubAccount? = null
     private var chosenSpace: DiscoveredSyncSpace? = null
+    private var emptyRepositoryCandidate: EmptySyncRepositoryCandidate? = null
     private var observedCompletion = runtime.coordinator.activity.value.completion
 
     init {
@@ -497,13 +499,31 @@ class SyncPanelController(
         }
         repositoryJob = scope.launch {
             try {
-                val pending = runtime.onboarding.pending()
-                if (pending != null) {
-                    enqueue { if (version == authVersion) runSetup { pending } }
-                } else {
-                    val found = runtime.onboarding.discover()
-                    enqueue {
-                        if (version == authVersion) handleDiscovery(found)
+                when (val pending = runtime.onboarding.pendingForCurrentAccount()) {
+                    is SyncPendingSetup.Current -> enqueue {
+                        if (version == authVersion) runSetup { pending.setup }
+                    }
+                    is SyncPendingSetup.Legacy -> {
+                        val recheck = runtime.onboarding.recheckLegacyPending(pending.setup)
+                        if (pending.setup.newSpace) {
+                            enqueue {
+                                if (version == authVersion) {
+                                    setupFailed(SyncSetupException(SyncDiscoveryProblem.CREATION_UNCONFIRMED))
+                                }
+                            }
+                        } else {
+                            enqueue {
+                                if (version == authVersion) {
+                                    runSetup { runtime.onboarding.migrateLegacyJoin(recheck) }
+                                }
+                            }
+                        }
+                    }
+                    SyncPendingSetup.None -> {
+                        val found = runtime.onboarding.discover()
+                        enqueue {
+                            if (version == authVersion) handleDiscovery(found)
+                        }
                     }
                 }
             } catch (cancelled: CancellationException) {
@@ -521,17 +541,35 @@ class SyncPanelController(
                 it.copy(setupStep = SyncSetupStep.CHOOSE_SPACE, setupBusy = false, spaces = result.spaces)
             }
             is SyncSpaceDiscovery.NoVisibleSpace -> {
-                setupAccount = result.account
+                emptyRepositoryCandidate = null
+                setupFailed(SyncSetupException(SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS))
+            }
+            is SyncSpaceDiscovery.EmptyRepository -> {
+                emptyRepositoryCandidate = result.candidate
+                setupAccount = result.candidate.account
                 chosenSpace = null
                 mutableState.update {
                     it.copy(
                         setupStep = SyncSetupStep.NEW_PASSWORD,
                         setupBusy = false,
-                        setupAccountLogin = result.account.login,
+                        setupAccountLogin = result.candidate.account.login,
+                        setupRepository = result.candidate.repository,
                         spaces = emptyList(),
                     )
                 }
             }
+            is SyncSpaceDiscovery.NeedsInstallation -> setupFailed(
+                SyncSetupException(SyncDiscoveryProblem.NEEDS_INSTALLATION),
+            )
+            is SyncSpaceDiscovery.NeedsRepositoryAccess -> setupFailed(
+                SyncSetupException(SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS),
+            )
+            is SyncSpaceDiscovery.NeedsContentsPermission -> setupFailed(
+                SyncSetupException(SyncDiscoveryProblem.NEEDS_CONTENTS_PERMISSION),
+            )
+            is SyncSpaceDiscovery.InstallationSuspended -> setupFailed(
+                SyncSetupException(SyncDiscoveryProblem.INSTALLATION_SUSPENDED),
+            )
             is SyncSpaceDiscovery.Failed -> setupFailed(SyncSetupException(result.problem))
         }
     }
@@ -579,8 +617,8 @@ class SyncPanelController(
             return
         }
         if (step == SyncSetupStep.NEW_PASSWORD) {
-            val account = setupAccount ?: return
-            runSetup { runtime.onboarding.create(account, password) }
+            val candidate = emptyRepositoryCandidate ?: return
+            runSetup { runtime.onboarding.create(candidate, password) }
         } else {
             val space = chosenSpace ?: return
             runSetup {

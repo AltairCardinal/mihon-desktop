@@ -1,5 +1,6 @@
 package mihon.domain.sync.transport
 
+import kotlinx.serialization.Serializable
 import mihon.domain.sync.SyncBatch
 import mihon.domain.sync.crypto.SyncAeadCiphertext
 import mihon.domain.sync.crypto.SyncEncryptedBatch
@@ -96,6 +97,32 @@ sealed interface SyncInitializationResult {
     data class Failed(val reason: String) : SyncInitializationResult
 }
 
+@Serializable
+enum class SyncInitializationStage {
+    VERIFIED_EMPTY,
+    BOOTSTRAP_SUBMITTING,
+    BOOTSTRAP_CONFIRMED,
+    SPACE_PUBLISHING,
+    SPACE_CONFIRMED,
+    CONNECTED,
+}
+
+data class SyncInitializationIntent(
+    val accountId: Long,
+    val repositoryId: Long,
+    val defaultBranch: String,
+    val attemptNonce: String,
+    val stage: SyncInitializationStage,
+    val bootstrapCommitSha: String? = null,
+    val bootstrapTreeSha: String? = null,
+)
+
+data class SyncInitializationCheckpoint(
+    val stage: SyncInitializationStage,
+    val bootstrapCommitSha: String? = null,
+    val bootstrapTreeSha: String? = null,
+)
+
 interface SyncTransportPort {
     fun prepare(snapshot: SyncSnapshot, encryptedBatch: SyncEncryptedBatch): SyncPreparedUpload
 
@@ -120,6 +147,14 @@ interface SyncTransportPort {
         spaceId: String,
         generation: Long,
     ): SyncInitializationResult
+
+    suspend fun initialize(
+        repository: SyncRepository,
+        spaceId: String,
+        generation: Long,
+        intent: SyncInitializationIntent,
+        saveCheckpoint: suspend (SyncInitializationCheckpoint) -> Unit,
+    ): SyncInitializationResult = initialize(repository, spaceId, generation)
 }
 
 data class SyncUploadResult(

@@ -12,6 +12,7 @@ import mihon.domain.sync.crypto.SyncSpaceDescriptorCodec
 import mihon.domain.sync.crypto.SyncSpaceMaterial
 import mihon.domain.sync.security.SyncSecureStore
 import mihon.domain.sync.security.SyncSecureStoreException
+import mihon.domain.sync.transport.SyncInitializationStage
 import mihon.domain.sync.transport.SyncRepository
 import okio.ByteString.Companion.decodeHex
 import okio.ByteString.Companion.toByteString
@@ -58,6 +59,30 @@ internal data class StoredSyncConnection(
 
 @Serializable
 internal data class StoredSyncSetup(
+    val version: Int = 3,
+    val accountId: Long,
+    val accountLogin: String,
+    val attemptId: String,
+    val attemptNonce: String,
+    val newSpace: Boolean,
+    val material: StoredSyncMaterial,
+    val stage: SyncInitializationStage,
+    val repositoryId: Long,
+    val owner: String,
+    val repository: String,
+    val branch: String,
+    val defaultBranch: String? = null,
+    val confirmedBootstrapCommitSha: String? = null,
+    val confirmedBootstrapTreeSha: String? = null,
+) {
+    fun account() = SyncGitHubAccount(accountId, accountLogin)
+    fun repository() = SyncRepository(owner, repository, branch)
+    override fun toString(): String = "StoredSyncSetup(<redacted>)"
+}
+
+/** Kept separate so v2's submitted flag can never be interpreted as a v3 initialization stage. */
+@Serializable
+internal data class StoredLegacySyncSetup(
     val version: Int = 2,
     val accountId: Long,
     val accountLogin: String,
@@ -74,7 +99,7 @@ internal data class StoredSyncSetup(
     fun account() = SyncGitHubAccount(accountId, accountLogin)
     fun repository() = SyncRepository(owner, repository, branch)
     fun attempt() = SyncCreationAttempt(account(), attemptId, submitted, repositoryId)
-    override fun toString(): String = "StoredSyncSetup(<redacted>)"
+    override fun toString(): String = "StoredLegacySyncSetup(<redacted>)"
 }
 
 /** Versioned records contain only verified data keys, never the user's password or a password-derived KEK. */
@@ -82,33 +107,79 @@ internal class SyncSetupStorage(private val secure: SyncSecureStore) {
     private val json = Json { encodeDefaults = true }
 
     suspend fun pending(accountId: Long): StoredSyncSetup? = secure.read(setupKey(accountId))?.let {
-        decode<StoredSyncSetup>(it).also { value ->
+        decode<StoredSyncSetup>(it, 3).also { value ->
             require(value.accountId == accountId && accountId > 0)
-            require(value.attemptId.matches(Regex("[A-Za-z0-9_-]{16,128}")))
-            require(value.repositoryId == null || value.repositoryId > 0)
-            require(!value.connected || value.repositoryId != null)
+            require(value.attemptId.matches(ATTEMPT_PATTERN) && value.attemptNonce.matches(ATTEMPT_PATTERN))
+            require(value.repositoryId > 0)
+            val material = value.material.material()
             value.repository()
-            value.material.material()
+            require(!value.newSpace || !value.defaultBranch.isNullOrBlank())
+            require(
+                value.stage == SyncInitializationStage.SPACE_CONFIRMED ||
+                    value.stage == SyncInitializationStage.CONNECTED ||
+                    value.newSpace,
+            )
+            val hasCommit = value.confirmedBootstrapCommitSha != null
+            val hasTree = value.confirmedBootstrapTreeSha != null
+            require(hasCommit == hasTree)
+            if (value.stage.ordinal >= SyncInitializationStage.BOOTSTRAP_CONFIRMED.ordinal && value.newSpace) {
+                require(hasCommit && hasTree)
+            }
+            if (hasCommit) {
+                require(value.confirmedBootstrapCommitSha?.matches(GIT_SHA_PATTERN) == true)
+                require(value.confirmedBootstrapTreeSha?.matches(GIT_SHA_PATTERN) == true)
+            }
+            require(material.descriptor.spaceId.isNotBlank())
         }
     }
 
+    suspend fun legacyPending(accountId: Long): StoredLegacySyncSetup? =
+        secure.read(legacySetupKey(accountId))?.let {
+            decode<StoredLegacySyncSetup>(it, 2).also { value ->
+                require(value.accountId == accountId && accountId > 0)
+                require(value.attemptId.matches(ATTEMPT_PATTERN))
+                require(value.repositoryId == null || value.repositoryId > 0)
+                require(!value.connected || value.repositoryId != null)
+                value.repository()
+                value.material.material()
+            }
+        }
+
     suspend fun save(value: StoredSyncSetup, expected: StoredSyncSetup?) {
+        require(value.version == 3)
         val key = setupKey(value.accountId)
         val before = secure.read(key)
-        require(before?.let { decode<StoredSyncSetup>(it) } == expected) { "sync setup changed" }
+        require(before?.let { decode<StoredSyncSetup>(it, 3) } == expected) { "sync setup changed" }
         if (!secure.compareAndSet(key, before, json.encodeToString(value))) throw SyncSecureStoreException()
     }
 
     suspend fun clear(value: StoredSyncSetup) {
         val key = setupKey(value.accountId)
         val before = secure.read(key) ?: return
-        if (decode<StoredSyncSetup>(before).attemptId != value.attemptId) return
+        if (decode<StoredSyncSetup>(before, 3) != value) return
         if (!secure.compareAndSet(key, before, null)) throw SyncSecureStoreException()
+    }
+
+    /** Removes legacy material only after a separate explicit user decision and an exact-value CAS. */
+    suspend fun abandonLegacy(value: StoredLegacySyncSetup) {
+        val key = legacySetupKey(value.accountId)
+        val before = secure.read(key) ?: return
+        if (decode<StoredLegacySyncSetup>(before, 2) != value) return
+        if (!secure.compareAndSet(key, before, null)) throw SyncSecureStoreException()
+    }
+
+    /** Clears a migrated v2 join only after its exact repository binding completed successfully. */
+    suspend fun clearMigratedLegacyJoin(value: StoredLegacySyncSetup, completed: StoredSyncSetup) {
+        require(!value.newSpace && completed.accountId == value.accountId)
+        require(value.repositoryId == completed.repositoryId)
+        require(value.repository() == completed.repository())
+        require(value.material == completed.material)
+        clearLegacy(value)
     }
 
     suspend fun connection(spaceId: String, generation: Long): StoredSyncConnection? =
         secure.read(connectionKey(spaceId, generation))?.let {
-            decode<StoredSyncConnection>(it).also { value ->
+            decode<StoredSyncConnection>(it, 2).also { value ->
                 require(value.accountId > 0 && value.repositoryId > 0)
                 require(value.actorId.matches(Regex("[A-Za-z0-9_-]{1,128}")) && value.epoch > 0)
                 val descriptor = value.material.material().descriptor
@@ -121,16 +192,16 @@ internal class SyncSetupStorage(private val secure: SyncSecureStore) {
         val descriptor = value.material.material().descriptor
         val key = connectionKey(descriptor.spaceId, descriptor.generation)
         val before = secure.read(key)
-        require(before?.let { decode<StoredSyncConnection>(it) } == previous) { "sync binding changed" }
+        require(before?.let { decode<StoredSyncConnection>(it, 2) } == previous) { "sync binding changed" }
         if (!secure.compareAndSet(key, before, json.encodeToString(value))) throw SyncSecureStoreException()
     }
 
-    private inline fun <reified T> decode(value: String): T {
+    private inline fun <reified T> decode(value: String, expectedVersion: Int): T {
         require(value.length <= 64 * 1024) { "sync secure record exceeds limit" }
         val version = runCatching {
             Json.parseToJsonElement(value).jsonObject["version"]?.jsonPrimitive?.intOrNull
         }.getOrNull()
-        if (version != 2) throw UnsupportedSyncSpace()
+        if (version != expectedVersion) throw UnsupportedSyncSpace()
         return try {
             json.decodeFromString<T>(value)
         } catch (_: Exception) {
@@ -138,9 +209,23 @@ internal class SyncSetupStorage(private val secure: SyncSecureStore) {
         }
     }
 
-    private fun setupKey(accountId: Long) = "sync-setup-v2-$accountId"
+    private fun setupKey(accountId: Long) = "sync-setup-v3-$accountId"
+
+    private fun legacySetupKey(accountId: Long) = "sync-setup-v2-$accountId"
+
+    private suspend fun clearLegacy(value: StoredLegacySyncSetup) {
+        val key = legacySetupKey(value.accountId)
+        val before = secure.read(key) ?: return
+        if (decode<StoredLegacySyncSetup>(before, 2) != value) return
+        if (!secure.compareAndSet(key, before, null)) throw SyncSecureStoreException()
+    }
 
     private fun connectionKey(spaceId: String, generation: Long): String =
         "space-" + MessageDigest.getInstance("SHA-256")
             .digest("$generation:$spaceId".toByteArray(Charsets.UTF_8)).toByteString().hex()
+
+    private companion object {
+        val ATTEMPT_PATTERN = Regex("[A-Za-z0-9_-]{16,128}")
+        val GIT_SHA_PATTERN = Regex("[0-9a-f]{40,64}")
+    }
 }

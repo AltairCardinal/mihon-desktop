@@ -17,6 +17,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
+import mihon.data.sync.auth.hasExplicitEmptyRepositoryMessage
 import mihon.data.sync.crypto.SyncAeadEngineFactory
 import mihon.data.sync.http.SyncHttpClient
 import mihon.data.sync.http.SyncHttpException
@@ -38,7 +39,10 @@ import mihon.domain.sync.transport.SyncGitCommit
 import mihon.domain.sync.transport.SyncGitRef
 import mihon.domain.sync.transport.SyncGitTree
 import mihon.domain.sync.transport.SyncGitTreeEntry
+import mihon.domain.sync.transport.SyncInitializationCheckpoint
+import mihon.domain.sync.transport.SyncInitializationIntent
 import mihon.domain.sync.transport.SyncInitializationResult
+import mihon.domain.sync.transport.SyncInitializationStage
 import mihon.domain.sync.transport.SyncPreparedUpload
 import mihon.domain.sync.transport.SyncPublishResult
 import mihon.domain.sync.transport.SyncPublishStatus
@@ -51,6 +55,7 @@ import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import okio.ByteString.Companion.decodeBase64
 import okio.ByteString.Companion.toByteString
+import kotlin.random.Random
 
 private val githubJson = Json {
     ignoreUnknownKeys = true
@@ -423,6 +428,48 @@ class GitHubSyncTransport(
         spaceId: String,
         generation: Long,
     ): SyncInitializationResult {
+        if (spaceMaterial == null) return initializeLegacy(repository, spaceId, generation)
+        val identity = try {
+            getRepositoryIdentity(repository)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            return SyncInitializationResult.Failed("repository lookup failed")
+        }
+        val nonce = ByteArray(32).also { Random.Default.nextBytes(it) }.toByteString().hex()
+        return initialize(
+            repository,
+            spaceId,
+            generation,
+            SyncInitializationIntent(
+                accountId = identity.ownerId,
+                repositoryId = identity.id,
+                defaultBranch = identity.defaultBranch,
+                attemptNonce = nonce,
+                stage = SyncInitializationStage.VERIFIED_EMPTY,
+            ),
+        ) {}
+    }
+
+    override suspend fun initialize(
+        repository: SyncRepository,
+        spaceId: String,
+        generation: Long,
+        intent: SyncInitializationIntent,
+        saveCheckpoint: suspend (SyncInitializationCheckpoint) -> Unit,
+    ): SyncInitializationResult = try {
+        initializeAttempt(repository, spaceId, generation, intent, saveCheckpoint)
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        SyncInitializationResult.Failed("sync initialization could not be confirmed")
+    }
+
+    private suspend fun initializeLegacy(
+        repository: SyncRepository,
+        spaceId: String,
+        generation: Long,
+    ): SyncInitializationResult {
         val info = try {
             getRepositoryInfo(repository)
         } catch (error: CancellationException) {
@@ -434,8 +481,7 @@ class GitHubSyncTransport(
         val existing = try {
             getRef(repository)
         } catch (error: SyncHttpException) {
-            val emptyRepository = spaceMaterial != null && info.size == 0L && error.code == 409
-            if (error.code != 404 && !emptyRepository) return SyncInitializationResult.Failed("branch lookup failed")
+            if (error.code != 404) return SyncInitializationResult.Failed("branch lookup failed")
             null
         }
         if (existing != null) {
@@ -457,41 +503,14 @@ class GitHubSyncTransport(
             val defaultRef = try {
                 getRef(repository, info.defaultBranch)
             } catch (error: SyncHttpException) {
-                val emptyRepository = spaceMaterial != null && info.size == 0L && error.code == 409
-                if ((error.code != 404 && !emptyRepository) || info.size > 0) {
+                if (error.code != 404) {
                     return SyncInitializationResult.Failed("default branch lookup failed")
                 }
                 null
             }
-            val sourceRef = if (defaultRef != null) {
-                defaultRef
-            } else {
-                val bootstrap = getContents(repository, info.defaultBranch)
-                if (bootstrap.code !in 200..299 && bootstrap.code != 404) {
-                    return SyncInitializationResult.Failed("repository bootstrap was rejected")
-                }
-                if (bootstrap.code == 200) {
-                    val body = bootstrap.body.decodeToString()
-                    val contents = runCatching { githubJson.parseToJsonElement(body) }.getOrNull()
-                    if (contents !is JsonArray || contents.isNotEmpty()) {
-                        return SyncInitializationResult.NeedsExplicitAction(
-                            "empty repository contents response is invalid",
-                        )
-                    }
-                }
-                val bootstrapSha = putContentsBootstrap(repository, info.defaultBranch)
-                getRef(repository, info.defaultBranch).also {
-                    require(it.objectSha == bootstrapSha || it.objectSha.isNotBlank()) {
-                        "bootstrap commit could not be read"
-                    }
-                }
-            }
-            if (spaceMaterial != null) {
-                val sourceTree = getTree(repository, getCommit(repository, sourceRef.objectSha).treeSha)
-                if (!isExactBootstrapTree(repository, sourceTree)) {
-                    return SyncInitializationResult.NeedsExplicitAction("initial repository contains unrecognized data")
-                }
-            }
+            val sourceRef = defaultRef ?: return SyncInitializationResult.NeedsExplicitAction(
+                "legacy sync requires an existing default branch",
+            )
             val targetRef = try {
                 createRef(repository, sourceRef.objectSha)
                 getRef(repository)
@@ -516,11 +535,346 @@ class GitHubSyncTransport(
         }
     }
 
+    private suspend fun initializeAttempt(
+        repository: SyncRepository,
+        spaceId: String,
+        generation: Long,
+        intent: SyncInitializationIntent,
+        saveCheckpoint: suspend (SyncInitializationCheckpoint) -> Unit,
+    ): SyncInitializationResult {
+        val material = spaceMaterial ?: return SyncInitializationResult.Failed("space material is unavailable")
+        if (material.descriptor.spaceId != spaceId || material.descriptor.generation != generation) {
+            return SyncInitializationResult.NeedsExplicitAction("initialization space identity does not match")
+        }
+        if (intent.accountId <= 0 || intent.repositoryId <= 0 ||
+            !intent.attemptNonce.matches(Regex("[A-Za-z0-9_-]{16,128}"))
+        ) {
+            return SyncInitializationResult.NeedsExplicitAction("initialization attempt identity is invalid")
+        }
+
+        val identity = getRepositoryIdentity(repository)
+        if (identity.id != intent.repositoryId || identity.ownerId != intent.accountId ||
+            !identity.owner.equals(repository.owner, ignoreCase = true) || identity.name != repository.name
+        ) {
+            return SyncInitializationResult.NeedsExplicitAction("repository identity changed")
+        }
+        if (!identity.private) return SyncInitializationResult.Failed("sync repository must be private")
+        if (identity.archived ||
+            identity.disabled
+        ) {
+            return SyncInitializationResult.Failed("sync repository is unavailable")
+        }
+        if (!identity.writable) return SyncInitializationResult.Failed("sync repository is not writable")
+        if (identity.defaultBranch.isBlank() || identity.defaultBranch != intent.defaultBranch ||
+            identity.defaultBranch == repository.branch
+        ) {
+            return SyncInitializationResult.NeedsExplicitAction("repository default branch changed")
+        }
+        if (intent.stage == SyncInitializationStage.VERIFIED_EMPTY && identity.size != 0L) {
+            return SyncInitializationResult.NeedsExplicitAction("repository is not reported empty")
+        }
+        val attemptBootstrap = encodeAttemptBootstrap(material, intent)
+        var stage = intent.stage
+        val confirmed = if (stage == SyncInitializationStage.VERIFIED_EMPTY ||
+            stage == SyncInitializationStage.BOOTSTRAP_SUBMITTING
+        ) {
+            if (stage == SyncInitializationStage.VERIFIED_EMPTY) {
+                if (!verifyEmptyRepository(repository, identity)) {
+                    return SyncInitializationResult.NeedsExplicitAction(
+                        "repository is no longer verified empty",
+                    )
+                }
+                saveCheckpoint(SyncInitializationCheckpoint(SyncInitializationStage.BOOTSTRAP_SUBMITTING))
+                stage = SyncInitializationStage.BOOTSTRAP_SUBMITTING
+                try {
+                    putAttemptBootstrap(repository, identity.defaultBranch, attemptBootstrap)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    // Contents responses can be lost after the commit is reachable; read back before retrying.
+                }
+            }
+            var value = readAttemptBootstrap(repository, identity.defaultBranch, attemptBootstrap)
+            if (value == null && verifyEmptyRepository(repository, identity)) {
+                try {
+                    putAttemptBootstrap(repository, identity.defaultBranch, attemptBootstrap)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    // A second read determines whether a create-only retry committed despite its response.
+                }
+                value = readAttemptBootstrap(repository, identity.defaultBranch, attemptBootstrap)
+            }
+            if (value == null) {
+                return SyncInitializationResult.NeedsExplicitAction(
+                    "bootstrap ownership could not be confirmed for this attempt",
+                )
+            }
+            saveCheckpoint(
+                SyncInitializationCheckpoint(
+                    SyncInitializationStage.BOOTSTRAP_CONFIRMED,
+                    value.sha,
+                    value.treeSha,
+                ),
+            )
+            stage = SyncInitializationStage.BOOTSTRAP_CONFIRMED
+            value
+        } else {
+            val expectedCommit = intent.bootstrapCommitSha
+                ?: return SyncInitializationResult.NeedsExplicitAction("confirmed bootstrap commit is missing")
+            val expectedTree = intent.bootstrapTreeSha
+                ?: return SyncInitializationResult.NeedsExplicitAction("confirmed bootstrap tree is missing")
+            if (!isGitSha(expectedCommit) || !isGitSha(expectedTree)) {
+                return SyncInitializationResult.NeedsExplicitAction("confirmed bootstrap identity is malformed")
+            }
+            val value = readAttemptBootstrap(repository, identity.defaultBranch, attemptBootstrap)
+                ?: return SyncInitializationResult.NeedsExplicitAction("confirmed bootstrap changed")
+            if (value.sha != expectedCommit || value.treeSha != expectedTree) {
+                return SyncInitializationResult.NeedsExplicitAction("confirmed bootstrap changed")
+            }
+            value
+        }
+
+        if (stage.ordinal < SyncInitializationStage.SPACE_PUBLISHING.ordinal) {
+            saveCheckpoint(
+                SyncInitializationCheckpoint(
+                    SyncInitializationStage.SPACE_PUBLISHING,
+                    confirmed.sha,
+                    confirmed.treeSha,
+                ),
+            )
+            stage = SyncInitializationStage.SPACE_PUBLISHING
+        }
+
+        val target = readRefOrNull(repository, repository.branch)
+        val syncRef = if (target == null) {
+            val publication = initializeOnHead(
+                repository,
+                SyncGitRef("refs/heads/${identity.defaultBranch}", confirmed.sha),
+                spaceId,
+                generation,
+                attemptBootstrap,
+                refPublisher = { commit -> createRef(repository, commit) },
+            )
+            val readback = readRefOrNull(repository, repository.branch) ?: return if (
+                publication is SyncInitializationResult.Initialized || publication is SyncInitializationResult.Adopted
+            ) {
+                SyncInitializationResult.Failed("sync branch creation could not be confirmed")
+            } else {
+                publication
+            }
+            if (readback.objectSha == confirmed.sha) {
+                val recovery = initializeOnHead(
+                    repository,
+                    readback,
+                    spaceId,
+                    generation,
+                    attemptBootstrap,
+                )
+                if (recovery !is SyncInitializationResult.Initialized &&
+                    recovery !is SyncInitializationResult.Adopted
+                ) {
+                    return recovery
+                }
+                readRefOrNull(repository, repository.branch)
+                    ?: return SyncInitializationResult.Failed("sync branch creation could not be confirmed")
+            } else {
+                readback
+            }
+        } else {
+            target
+        }
+
+        if (syncRef.objectSha == confirmed.sha) {
+            val result = initializeOnHead(
+                repository,
+                syncRef,
+                spaceId,
+                generation,
+                attemptBootstrap,
+            )
+            if (result !is SyncInitializationResult.Initialized && result !is SyncInitializationResult.Adopted) {
+                return result
+            }
+        }
+
+        val snapshot = readSnapshot(repository, spaceId, generation).getOrNull()
+            ?: return SyncInitializationResult.NeedsExplicitAction(
+                "sync branch does not contain the current attempt's initialized space",
+            )
+        if (!containsAttemptBootstrap(repository, snapshot, attemptBootstrap) ||
+            !hasAncestor(repository, snapshot.head, confirmed.sha)
+        ) {
+            return SyncInitializationResult.NeedsExplicitAction(
+                "sync branch is not based on the confirmed bootstrap commit",
+            )
+        }
+        if (stage.ordinal < SyncInitializationStage.SPACE_CONFIRMED.ordinal) {
+            saveCheckpoint(
+                SyncInitializationCheckpoint(
+                    SyncInitializationStage.SPACE_CONFIRMED,
+                    confirmed.sha,
+                    confirmed.treeSha,
+                ),
+            )
+        }
+        return if (target == null || syncRef.objectSha == confirmed.sha) {
+            SyncInitializationResult.Initialized(snapshot.head, snapshot.spaceId)
+        } else {
+            SyncInitializationResult.Adopted(snapshot.head, snapshot.spaceId)
+        }
+    }
+
+    private data class RepositoryIdentity(
+        val id: Long,
+        val ownerId: Long,
+        val owner: String,
+        val name: String,
+        val defaultBranch: String,
+        val size: Long,
+        val private: Boolean,
+        val archived: Boolean,
+        val disabled: Boolean,
+        val writable: Boolean,
+    )
+
+    private suspend fun getRepositoryIdentity(repository: SyncRepository): RepositoryIdentity {
+        val json = call(repository, "GET", "").requireSuccess().json()
+        val owner = json.obj("owner")
+        val permissions = json.obj("permissions")
+        return RepositoryIdentity(
+            id = json.long("id")?.takeIf { it > 0 } ?: error("repository id is invalid"),
+            ownerId = owner.long("id")?.takeIf { it > 0 } ?: error("repository owner id is invalid"),
+            owner = owner.string("login"),
+            name = json.string("name"),
+            defaultBranch = json.string("default_branch"),
+            size = json.long("size")?.takeIf { it >= 0 } ?: error("repository size is invalid"),
+            private = json.boolean("private"),
+            archived = json.boolean("archived"),
+            disabled = json.boolean("disabled"),
+            writable = permissions.boolean("push") || permissions.boolean("admin"),
+        ).also {
+            require(owner.string("type") == "User") { "sync repository owner is not a user" }
+            require(json.string("full_name").equals(repository.fullName, ignoreCase = true)) {
+                "sync repository name changed"
+            }
+        }
+    }
+
+    private fun encodeAttemptBootstrap(
+        material: SyncSpaceMaterial,
+        intent: SyncInitializationIntent,
+    ): ByteArray = buildJsonObject {
+        put("protocolVersion", JsonPrimitive(1))
+        put("accountId", JsonPrimitive(intent.accountId))
+        put("repositoryId", JsonPrimitive(intent.repositoryId))
+        put("attemptNonce", JsonPrimitive(intent.attemptNonce))
+        put("spaceId", JsonPrimitive(material.descriptor.spaceId))
+        put("generation", JsonPrimitive(material.descriptor.generation))
+        put(
+            "descriptorSha256",
+            JsonPrimitive(
+                indexEngine.sha256(SyncSpaceDescriptorCodec.encode(material.descriptor)).toByteString().hex(),
+            ),
+        )
+    }.toString().encodeToByteArray()
+
+    private suspend fun verifyEmptyRepository(repository: SyncRepository, identity: RepositoryIdentity): Boolean {
+        val currentIdentity = getRepositoryIdentity(repository)
+        if (currentIdentity != identity || currentIdentity.size != 0L) return false
+
+        val refs = call(repository, "GET", "/git/matching-refs/?per_page=100")
+        val noRefs = when {
+            refs.code == 409 -> refs.hasExplicitEmptyRepositoryMessage()
+            refs.code !in 200..299 -> false
+            refs.headers["link"]?.contains("rel=\"next\"") == true -> false
+            else -> runCatching { githubJson.parseToJsonElement(refs.body.decodeToString()).jsonArray.isEmpty() }
+                .getOrDefault(false)
+        }
+        if (!noRefs) return false
+
+        val defaultRef = call(repository, "GET", "/git/ref/heads/${identity.defaultBranch}")
+        when (defaultRef.code) {
+            200 -> return false
+            404 -> Unit
+            409 -> if (!defaultRef.hasExplicitEmptyRepositoryMessage()) return false
+            else -> return false
+        }
+
+        val contents = call(repository, "GET", "/contents/?ref=${identity.defaultBranch}")
+        return when (contents.code) {
+            200 -> contents.headers["link"]?.contains("rel=\"next\"") != true &&
+                runCatching { githubJson.parseToJsonElement(contents.body.decodeToString()).jsonArray.isEmpty() }
+                    .getOrDefault(false)
+            404 -> contents.hasExplicitEmptyRepositoryMessage()
+            else -> false
+        }
+    }
+
+    private suspend fun putAttemptBootstrap(repository: SyncRepository, branch: String, content: ByteArray) {
+        val payload = buildJsonObject {
+            put("message", JsonPrimitive("Initialize private Mihon sync"))
+            put("content", JsonPrimitive(content.toByteString().base64()))
+            put("branch", JsonPrimitive(branch))
+        }
+        call(repository, "PUT", "/contents/.mihon-sync/bootstrap", payload).requireSuccess()
+    }
+
+    private suspend fun readAttemptBootstrap(
+        repository: SyncRepository,
+        branch: String,
+        content: ByteArray,
+    ): SyncGitCommit? {
+        val response = call(repository, "GET", "/git/ref/heads/$branch")
+        if (response.code == 404) return null
+        if (response.code == 409 && response.hasExplicitEmptyRepositoryMessage()) return null
+        val ref = response.requireSuccess().json()
+        if (ref.string("ref") != "refs/heads/$branch") return null
+        val commit = getCommit(repository, ref.obj("object").string("sha"))
+        val tree = getTree(repository, commit.treeSha)
+        return commit.takeIf { isExactBootstrapTree(repository, tree, content) }
+    }
+
+    private suspend fun readRefOrNull(repository: SyncRepository, branch: String): SyncGitRef? {
+        val response = call(repository, "GET", "/git/ref/heads/$branch")
+        if (response.code == 404) return null
+        val json = response.requireSuccess().json()
+        val name = json.string("ref")
+        if (name != "refs/heads/$branch") return null
+        return SyncGitRef(name, json.obj("object").string("sha"))
+    }
+
+    private suspend fun containsAttemptBootstrap(
+        repository: SyncRepository,
+        snapshot: SyncSnapshot,
+        expectedContent: ByteArray,
+    ): Boolean {
+        val entry = snapshot.tree.entries.singleOrNull { it.path == ".mihon-sync/bootstrap" } ?: return false
+        if (entry.type != "blob" || entry.mode != "100644") return false
+        return getBlob(repository, entry.sha).content.contentEquals(expectedContent)
+    }
+
+    private suspend fun hasAncestor(repository: SyncRepository, descendant: String, ancestor: String): Boolean {
+        val pending = mutableListOf(descendant)
+        val visited = mutableSetOf<String>()
+        while (pending.isNotEmpty() && visited.size < MAX_INITIALIZATION_ANCESTRY) {
+            val sha = pending.removeAt(pending.lastIndex)
+            if (sha == ancestor) return true
+            if (!isGitSha(sha) || !visited.add(sha)) continue
+            getCommit(repository, sha).parents.forEach(pending::add)
+        }
+        return false
+    }
+
+    private fun isGitSha(value: String) = value.matches(Regex("[0-9a-f]{40,64}"))
+
     private suspend fun initializeOnHead(
         repository: SyncRepository,
         baseRef: SyncGitRef,
         spaceId: String,
         generation: Long,
+        expectedBootstrap: ByteArray? = null,
+        refPublisher: (suspend (String) -> Unit)? = null,
     ): SyncInitializationResult {
         return try {
             if (spaceMaterial == null &&
@@ -538,7 +892,9 @@ class GitHubSyncTransport(
             require(!baseTree.truncated && baseTree.entries.size <= maxTreeEntries) {
                 "initialization tree is incomplete"
             }
-            if (spaceMaterial != null && !isExactBootstrapTree(repository, baseTree)) {
+            if (spaceMaterial != null &&
+                (expectedBootstrap == null || !isExactBootstrapTree(repository, baseTree, expectedBootstrap))
+            ) {
                 return SyncInitializationResult.NeedsExplicitAction("initial sync branch contains unrecognized data")
             }
             if (baseTree.entries.any {
@@ -570,7 +926,11 @@ class GitHubSyncTransport(
             val commit = createCommit(repository, tree.sha, baseRef.objectSha)
             var refError: Exception? = null
             try {
-                updateRef(repository, commit.sha)
+                if (refPublisher == null) {
+                    updateRef(repository, commit.sha)
+                } else {
+                    refPublisher(commit.sha)
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -603,8 +963,12 @@ class GitHubSyncTransport(
         }
     }
 
-    /** Recheck immutable initial tree bytes immediately before any v2 branch or space publication. */
-    private suspend fun isExactBootstrapTree(repository: SyncRepository, tree: SyncGitTree): Boolean {
+    /** Require the exact attempt-owned bootstrap and no other content in the initial tree. */
+    private suspend fun isExactBootstrapTree(
+        repository: SyncRepository,
+        tree: SyncGitTree,
+        expectedBootstrap: ByteArray,
+    ): Boolean {
         if (tree.truncated || tree.entries.size > 2 || tree.entries.map { it.path }.toSet().size != tree.entries.size) {
             return false
         }
@@ -616,7 +980,7 @@ class GitHubSyncTransport(
         ) {
             return false
         }
-        return getBlob(repository, bootstrap.sha).content.contentEquals("mihon-sync bootstrap".encodeToByteArray())
+        return getBlob(repository, bootstrap.sha).content.contentEquals(expectedBootstrap)
     }
 
     private suspend fun getRef(repository: SyncRepository, branch: String = repository.branch): SyncGitRef {
@@ -724,7 +1088,6 @@ class GitHubSyncTransport(
     private data class RepositoryInfo(
         val defaultBranch: String,
         val private: Boolean,
-        val size: Long,
     )
 
     private suspend fun getRepositoryInfo(repository: SyncRepository): RepositoryInfo {
@@ -732,21 +1095,7 @@ class GitHubSyncTransport(
         return RepositoryInfo(
             json.string("default_branch"),
             json.boolean("private"),
-            json.long("size") ?: 0,
         )
-    }
-
-    private suspend fun getContents(repository: SyncRepository, branch: String): SyncHttpResponse =
-        call(repository, "GET", "/contents/?ref=$branch")
-
-    private suspend fun putContentsBootstrap(repository: SyncRepository, branch: String): String {
-        val payload = buildJsonObject {
-            put("message", JsonPrimitive("initialize mihon sync"))
-            put("content", JsonPrimitive("bWlob24tc3luYyBib290c3RyYXA="))
-            put("branch", JsonPrimitive(branch))
-        }
-        val json = call(repository, "PUT", "/contents/.mihon-sync/bootstrap", payload).requireSuccess().json()
-        return json.obj("commit").string("sha")
     }
 
     private suspend fun call(
@@ -946,6 +1295,7 @@ class GitHubSyncTransport(
 
     private companion object {
         const val MAX_PUBLISH_ATTEMPTS = 3
+        const val MAX_INITIALIZATION_ANCESTRY = 1_000
     }
 }
 

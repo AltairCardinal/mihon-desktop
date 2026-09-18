@@ -3,10 +3,12 @@ package mihon.data.sync.auth
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
@@ -33,6 +35,15 @@ class GitHubPrivateRepositorySelector(
 
     internal suspend fun objects(path: String, field: String): List<JsonObject> =
         collectPages("$baseUrl$path") { response -> response.json().array(field).map { it.jsonObject } }.flatten()
+
+    internal suspend fun arrays(path: String): List<JsonElement> =
+        collectPages("$baseUrl$path") { response -> response.jsonArray().toList() }.flatten()
+
+    /** A 409 is empty-repository evidence only when GitHub's response body says exactly that. */
+    internal suspend fun matchingRefs(path: String): List<JsonObject> =
+        collectPages("$baseUrl$path", emptyRepositoryConflict = true) { response ->
+            response.jsonArray().map { it.jsonObject }
+        }.flatten()
 
     internal suspend fun requestPath(
         path: String,
@@ -74,6 +85,7 @@ class GitHubPrivateRepositorySelector(
 
     private suspend fun <T> collectPages(
         firstUrl: String,
+        emptyRepositoryConflict: Boolean = false,
         read: (SyncHttpResponse) -> List<T>,
     ): List<List<T>> {
         val pages = mutableListOf<List<T>>()
@@ -83,6 +95,15 @@ class GitHubPrivateRepositorySelector(
             val current = url ?: return pages
             require(visited.add(current)) { "GitHub pagination loop" }
             val response = request(current)
+            if (response.code == 409 && emptyRepositoryConflict) {
+                require(current == firstUrl) { "GitHub pagination changed during empty-repository inspection" }
+                if (response.hasExplicitEmptyRepositoryMessage()) return pages
+                throw SyncHttpException(
+                    response.code,
+                    "GitHub refs response does not confirm an empty repository",
+                    true,
+                )
+            }
             if (response.code !in 200..299) {
                 throw SyncHttpException(
                     response.code,
@@ -150,6 +171,16 @@ private val githubSelectionJson = Json {
 private fun SyncHttpResponse.json(): JsonObject =
     runCatching { githubSelectionJson.parseToJsonElement(body.decodeToString()).jsonObject }
         .getOrElse { throw IllegalStateException("GitHub repository response malformed") }
+
+private fun SyncHttpResponse.jsonArray(): JsonArray =
+    runCatching { githubSelectionJson.parseToJsonElement(body.decodeToString()).jsonArray }
+        .getOrElse { throw IllegalStateException("GitHub repository response malformed") }
+
+internal fun SyncHttpResponse.hasExplicitEmptyRepositoryMessage(): Boolean = runCatching {
+    val message = githubSelectionJson.parseToJsonElement(body.decodeToString()).jsonObject["message"]
+        ?.jsonPrimitive?.contentOrNull
+    message in setOf("Git Repository is empty.", "This repository is empty.")
+}.getOrDefault(false)
 
 private fun JsonObject.array(name: String) = this[name] as? JsonArray
     ?: throw IllegalStateException("GitHub repository response missing field")

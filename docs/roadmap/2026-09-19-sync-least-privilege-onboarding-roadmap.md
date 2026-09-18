@@ -12,7 +12,7 @@
 
 ## 2. 任务与依赖
 
-- [ ] M1：完成最小权限发现与专用空库初始化的共享生产闭环、安全审查。
+- [x] M1：完成最小权限发现与专用空库初始化的共享生产闭环、安全审查。
 - [ ] M2：完成双端引导、准确错误和旧配置退出的产品接线。
 - [ ] M3：完成真实最小权限联调、平台回归与可覆盖升级的分发验收。
 
@@ -44,6 +44,13 @@
 | 生产链路 | 请求记录断言无 POST /user/repos、无修改仓库设置；DI 使用 production HTTP；敏感数据不进入日志 |
 
 批次执行相关 JVM/Android 共享契约、wiring、格式检查；失败仅补受影响 focused 测试。进行安全/数据完整性独立审查，通过后 M2 才能消费接口。交付源码、测试、必要本计划证据及同批提交；未审查/未提交不勾选。
+
+**M1 执行证据（2026-09-19）**：已移除 Administration 硬门槛和自动建库路径，完成只读安装/仓库发现、空库核验、带账户/仓库/nonce 的持久化初始化意图、create-only bootstrap、恢复及旧 pending 安全退出。共改动 12 个文件（约 2,314 行新增、486 行删除）；这些改动共同实现发现、存储和 Git 发布协议，拆开会留下不可编译或未受保护的中间状态。
+
+- 红绿与 focused 验证：`SyncSpaceDiscoveryContractTest`、`SyncSpaceTransportContractTest`、`JvmSyncPanelStorageContractTest`、`SyncGitSafetyContractTest` 均通过；首次 ref 修复先以仅含 bootstrap 的目标树触发新断言失败，再验证修复后的 `SyncSpaceTransportContractTest` 23/23 和 Transport + Git Safety 合同 49/49 通过。`:data:testDebugUnitTest spotlessCheck`、`:data:spotlessCheck` 和 `git diff --check` 通过。
+- 一次早期 `:data:jvmTest` 批次为 502 项中 501 项通过、1 项旧版空库初始化测试失败。失败断言依赖已取消的旧初始化语义；测试现验证没有 v3 用户确认意图时零写入并安全拒绝，相关 focused 测试通过。该修正后没有重跑整个 `:data:jvmTest`。
+- 独立安全复审在首次 ref 发布修复后通过。首次 create-only ref 已指向同一提交中的 bootstrap、descriptor 和初始 index；响应丢失通过读回确认。仍存在 GitHub 多请求之间无法消除的 TOCTOU 窗口，代码不回滚或覆盖外部文件。
+- 所有 GitHub HTTP 证据均来自本地 fixture；真实空库 GET/404/409 响应和账号联调未完成，保留为 M3 门槛。本批没有执行真实 GitHub 写入。
 
 **停止边界**：若实现无法在 Contents-only 下完成 bootstrap，或平台响应无法支持可靠拒绝覆盖，记录具体响应/失败测试和替代方案，暂停相关写入实现；不得恢复 All repositories、Administration 或静默占用库作为兜底。
 
