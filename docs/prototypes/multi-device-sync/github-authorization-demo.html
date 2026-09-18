@@ -44,9 +44,8 @@
       <h1>授权 Mihon</h1>
       <div class="card">
         <h2>已登录为 reader</h2>
-        <label>同步使用的私有仓库<select id="space"><option value="existing">reader/mihon-sync · 已有同步空间</option><option value="empty">reader/mihon-sync-new · 新建私有仓库示例</option></select></label>
-        <div class="permission"><strong>读取和写入这个仓库中的同步数据</strong><p>仅允许访问所选的同步仓库。</p></div>
-        <p>此处用示例仓库演示选择及授权；正式首次设置需要在 GitHub 完成专用私有仓库的创建或选择。</p>
+        <div class="permission"><strong>允许 Mihon 连接你的同步空间</strong><p>授权后，Mihon 将自动查找专用私有同步空间；不存在时会引导创建。</p></div>
+        <p>此处仅模拟设备授权，不代表真实 GitHub 权限或仓库创建已完成。</p>
         <button id="allow">授权 Mihon</button>
         <button id="deny" class="secondary">取消授权</button>
       </div>
@@ -60,7 +59,6 @@
   <script>
     'use strict';
     const params = new URLSearchParams(location.search);
-    if (params.has('reconnect')) document.getElementById('space').disabled = true;
     document.getElementById('code-form').addEventListener('submit', event => {
       event.preventDefault();
       if (document.getElementById('device-code').value.trim().toUpperCase() !== 'DEMO-CODE') {
@@ -68,10 +66,10 @@
       }
       document.getElementById('code-step').hidden = true;
       document.getElementById('grant-step').hidden = false;
-      document.getElementById('space').focus();
+      document.getElementById('allow').focus();
     });
     function finish(allowed) {
-      window.opener?.postMessage({ type: 'mihon-demo-authorization', request: params.get('request'), allowed, space: document.getElementById('space').value }, location.protocol === 'file:' ? '*' : location.origin);
+      window.opener?.postMessage({ type: 'mihon-demo-authorization', request: params.get('request'), allowed }, location.protocol === 'file:' ? '*' : location.origin);
       document.getElementById('grant-step').hidden = true;
       document.getElementById('done-step').hidden = false;
       document.getElementById('done-title').textContent = allowed ? '设备已连接' : '本次授权已取消';
