@@ -11,6 +11,8 @@ import mihon.data.sync.projection.resolveSyncAuthorIdentity
 import mihon.domain.sync.SyncCancellationDecision
 import mihon.domain.sync.SyncCodec
 import mihon.domain.sync.SyncDecodeResult
+import mihon.domain.sync.SyncEffectKind
+import mihon.domain.sync.SyncEffectRef
 import mihon.domain.sync.SyncEventEnvelope
 import mihon.domain.sync.SyncField
 import mihon.domain.sync.SyncObjectDescriptor
@@ -24,6 +26,7 @@ import mihon.domain.sync.SyncReceiver
 import mihon.domain.sync.SyncReceiverDecisionResult
 import mihon.domain.sync.SyncReducer
 import mihon.domain.sync.SyncReduction
+import mihon.domain.sync.effectiveSyncHeads
 import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.Sync_field_state
@@ -166,7 +169,15 @@ class SyncInboxProjector(private val handler: DatabaseHandler, private val write
             SyncField.FAVORITE, SyncField.FOLLOWING -> {
                 val local = writer.localMembership(key)
                 if (projection.value == true) {
-                    if (local != true) {
+                    // Multiple portable author keys can resolve to one local identity. A consumed
+                    // ADD on an old key must not undo a later cancellation on that shared identity.
+                    val consumed = state.applied_heads?.let { Json.decodeFromString<List<SyncEffectRef>>(it) }
+                        .orEmpty().mapTo(mutableSetOf()) { it.stableKey }
+                    val freshFollowing = field != SyncField.FOLLOWING ||
+                        effectiveSyncHeads(projection.heads, projection.metadata).any {
+                            projection.effectsByRef[it]?.kind == SyncEffectKind.ADD && it.stableKey !in consumed
+                        }
+                    if (local != true && freshFollowing) {
                         writer.applyMembership(key, true, descriptionLookup(state.space_id, state.generation))
                     }
                 } else if (projection.value == false && local == true) {

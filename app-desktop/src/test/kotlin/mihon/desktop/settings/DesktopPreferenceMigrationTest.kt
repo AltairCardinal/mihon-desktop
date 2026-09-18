@@ -37,7 +37,7 @@ class DesktopPreferenceMigrationTest {
     )
 
     private val readerCases = listOf(
-        MigrationCase("readingMode", "reader_reading_mode", "WEBTOON", "LTR", ReadingMode.RTL) { s, l -> ReaderPreferences(s, l).readingMode },
+        MigrationCase("readingMode", "reader_reading_mode", "WEBTOON", "LTR", ReadingMode.AUTO) { s, l -> ReaderPreferences(s, l).readingMode },
         MigrationCase("navigationMode", "reader_navigation_mode", "L", "RightAndLeft", NavigationMode.RightAndLeft) { s, l -> ReaderPreferences(s, l).navigationMode },
         MigrationCase("isDualPage", "reader_dual_page", "false", "true", false) { s, l -> ReaderPreferences(s, l).isDualPage },
         MigrationCase("autoSplitPages", "reader_auto_split_pages", "true", "false", false) { s, l -> ReaderPreferences(s, l).autoSplitPages },

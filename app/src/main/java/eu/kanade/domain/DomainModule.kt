@@ -173,14 +173,22 @@ class DomainModule : InjektModule {
         addSingletonFactory { CreatorArchiveLegacyBridge(get()) }
         addSingletonFactory<CreatorArchiveBootstrap> { CreatorArchiveLegacyBootstrap(get()) }
         addSingletonFactory<BackupRestoreSync> { SyncBackupRestorer(get(), get()) }
-        addSingletonFactory { CreatorRepositoryImpl(handler = get(), bootstrap = get()) }
+        addSingletonFactory {
+            tachiyomi.domain.creator.service.CreatorDiscoverySchedule(
+                get<tachiyomi.domain.creator.service.CreatorDiscoveryPreferences>()::current,
+            )
+        }
+        addSingletonFactory { CreatorRepositoryImpl(handler = get(), bootstrap = get(), discoverySchedule = get()) }
         addSingletonFactory<CreatorRepository> { get<CreatorRepositoryImpl>() }
         addSingletonFactory<CreatorArchiveRepository> { get<CreatorRepositoryImpl>() }
         addSingletonFactory { CreatorArchive(get<CreatorRepository>(), get<CreatorArchiveRepository>()) }
         addFactory { ManageCreatorIdentity(get<CreatorArchiveRepository>()) }
         addSingletonFactory<CreatorLibraryIndexWriter> { get<CreatorRepositoryImpl>() }
         addSingletonFactory<tachiyomi.data.backup.AuthorArchiveBackupContributor> {
-            tachiyomi.data.backup.SqlDelightAuthorArchiveBackupContributor(get())
+            tachiyomi.data.backup.SqlDelightAuthorArchiveBackupContributor(
+                get(),
+                awaitIdentityReady = get<CreatorRepositoryImpl>()::awaitIdentityReady,
+            )
         }
         addSingletonFactory { MangaRepositoryImpl(get(), get<CreatorLibraryIndexWriter>()) }
         addSingletonFactory<MangaRepository> { get<MangaRepositoryImpl>() }
@@ -189,7 +197,27 @@ class DomainModule : InjektModule {
             CreatorLibraryIndexer(get(), get(), ExtractCreatorsFromManga())
         }
         addSingletonFactory { SourceMangaSearchService() }
-        addFactory { CreatorDiscoveryService(get(), get()) }
+        addSingletonFactory<tachiyomi.domain.creator.service.CreatorDiscoverySourcePort> {
+            val sources = get<SourceManager>()
+            tachiyomi.domain.creator.service.CatalogueCreatorDiscoverySourceAdapter(
+                enabledSourcesProvider = { sources.getCatalogueSources() },
+                sourceResolver = { sources.get(it) as? eu.kanade.tachiyomi.source.CatalogueSource },
+                sourceMangaSearchService = get(),
+                languageProfileProvider = { source ->
+                    source.lang.takeIf(String::isNotBlank)
+                        ?.let(tachiyomi.domain.creator.service.CreatorSourceReadingLanguageProfile::Single)
+                        ?: tachiyomi.domain.creator.service.CreatorSourceReadingLanguageProfile.Unknown
+                },
+            )
+        }
+        addFactory {
+            CreatorDiscoveryService(
+                creatorRepository = get(),
+                archiveRepository = get(),
+                sourcePort = get(),
+                schedule = get(),
+            )
+        }
         addFactory { GetCreators(get<CreatorRepository>()) }
         addFactory { GetCreatorDetails(get<CreatorRepository>()) }
         addFactory { SetCreatorFollow(get<CreatorRepository>()) }

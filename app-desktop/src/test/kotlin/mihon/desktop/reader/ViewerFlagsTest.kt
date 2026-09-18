@@ -40,8 +40,17 @@ class ViewerFlagsTest {
     }
 
     @Test
-    fun `unknown flags return null`() {
-        assertNull(readingModeFromViewerFlags(99L))
+    fun `mode occupies only low three bits and preserves other viewer settings`() {
+        assertEquals(ReadingMode.LTR, readingModeFromViewerFlags(99L))
+        val flags = viewerFlagsWithReadingMode(99L, ReadingMode.AUTO)
+        assertEquals(7L, flags and 7L)
+        assertEquals(96L, flags and 7L.inv())
+        assertEquals(ReadingMode.AUTO, readingModeFromViewerFlags(flags))
+        assertEquals(96L, viewerFlagsWithReadingMode(flags, ReadingMode.DEFAULT))
+        assertNull(readingModeFromViewerFlags(96L))
+        assertEquals(ReadingMode.RTL, readingModeFromViewerFlags(6L))
+        assertTrue(dualPageFromViewerFlags(6L)!!)
+        assertEquals(ReadingMode.AUTO, readingModeFromViewerFlags(7L))
     }
 
     @Test

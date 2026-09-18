@@ -38,7 +38,11 @@ class RepositoryCreatorDiscoveryOutboxStore(
 ) : CreatorDiscoveryOutboxStore {
     override suspend fun pending(now: Long, limit: Long) = repository.getPendingNotificationOutbox(now, limit)
 
-    override suspend fun discovery(id: Long) = repository.getDiscovery(id)
+    // Keep archived discoveries readable; only delivery rechecks current follow/cancellation state.
+    override suspend fun discovery(id: Long) = repository.getDiscovery(id)?.takeIf {
+        it.state.deliveryState != NotificationDeliveryState.CANCELLED &&
+            repository.getWatchPolicy(it.creatorId)?.enabled == true
+    }
 
     override suspend fun update(update: DeliveryUpdate) {
         repository.updateNotificationDelivery(
@@ -75,6 +79,7 @@ class CreatorDiscoveryOutboxWorker(
             if (item.state == NotificationDeliveryState.FAILED) {
                 store.update(DeliveryUpdate(item.id, NotificationDeliveryState.PENDING, null, null, now))
             }
+            // Re-read after the retry transition; cancellation may have won that race.
             val discovery = store.discovery(item.discoveryId)
             val result = if (discovery == null) {
                 CreatorDiscoveryDeliveryResult.Unavailable("discovery target no longer exists")

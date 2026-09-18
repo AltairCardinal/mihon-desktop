@@ -3,7 +3,7 @@ package tachiyomi.domain.creator.model
 object CreatorArchiveV2Contract {
     const val CURRENT_SCHEMA_VERSION = 15L
     const val TARGET_SCHEMA_VERSION = 16L
-    const val LATEST_SCHEMA_VERSION = 25L
+    const val LATEST_SCHEMA_VERSION = 27L
     const val TARGET_MIGRATION = "15.sqm"
     const val BACKUP_ENVELOPE_FIELD = 107
     const val BACKUP_SECTION_VERSION = 1
@@ -25,7 +25,8 @@ data class ArchiveTableContract(
 )
 
 object CreatorArchivePhysicalSchema {
-    val tables = listOf(
+    /** Frozen archive introduced by migration 15; later identity tables must not appear in v16 fixtures. */
+    val version16Tables = listOf(
         table("author_archive_creators", "portable_key", ArchiveDeletionPolicy.SOFT_DELETE),
         table("author_archive_aliases", "creator_id,normalized_alias", ArchiveDeletionPolicy.CASCADE),
         table("author_archive_manga_links", "manga_id,creator_id", ArchiveDeletionPolicy.CASCADE),
@@ -50,6 +51,18 @@ object CreatorArchivePhysicalSchema {
             "entity_type,legacy_key",
             ArchiveDeletionPolicy.RETAIN_HISTORY,
         ),
+    )
+
+    /** Complete current archive, including durable identity recovery and command records. */
+    val tables = version16Tables + listOf(
+        table("author_archive_identity_names", "name_text", ArchiveDeletionPolicy.RETAIN_HISTORY),
+        table("author_archive_identity_migrations", "migration_key", ArchiveDeletionPolicy.RETAIN_HISTORY),
+        table(
+            "author_archive_identity_migration_components",
+            "migration_key,component_key",
+            ArchiveDeletionPolicy.RETAIN_HISTORY,
+        ),
+        table("author_archive_identity_commands", "command_key", ArchiveDeletionPolicy.RETAIN_HISTORY),
     )
 
     private fun table(
@@ -226,6 +239,7 @@ data class SourceWorkArchiveVersion(
     val lastCheckResult: SourceCheckpointResult? = null,
     val consecutiveFailures: Long = 0,
     val lastSuccessAt: Long? = null,
+    val thumbnailUrl: String? = null,
 )
 
 data class CanonicalWorkArchiveGroup(

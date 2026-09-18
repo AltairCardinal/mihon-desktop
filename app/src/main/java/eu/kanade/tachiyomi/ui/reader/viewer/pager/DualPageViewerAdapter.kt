@@ -13,7 +13,6 @@ import mihon.domain.reader.PageLayout
 import mihon.domain.reader.ReaderChapterBoundary
 import mihon.domain.reader.readerChapterBoundary
 import tachiyomi.core.common.util.system.logcat
-import java.util.IdentityHashMap
 
 /**
  * ViewPager adapter for [DualPageR2LPagerViewer].
@@ -25,7 +24,10 @@ import java.util.IdentityHashMap
  * Pairings are managed by [PairingState] and rebuilt whenever page dimensions
  * are decoded or the user presses "adjust pairing".
  */
-class DualPageViewerAdapter(private val viewer: DualPageR2LPagerViewer) : ViewPagerAdapter() {
+class DualPageViewerAdapter(
+    private val viewer: DualPageR2LPagerViewer,
+    store: DualPagePairingStore = DualPagePairingStore(),
+) : ViewPagerAdapter() {
 
     /** All items in ViewPager order (DisplayPage + ChapterTransition). */
     var items: MutableList<Any> = mutableListOf()
@@ -38,9 +40,7 @@ class DualPageViewerAdapter(private val viewer: DualPageR2LPagerViewer) : ViewPa
 
     private var readerThemedContext = viewer.activity.createReaderThemeContext()
 
-    private data class ChapterPairing(val pages: List<ReaderPage>, val state: PairingState)
-
-    private val chapterPairings = IdentityHashMap<ReaderChapter, ChapterPairing>()
+    private val chapterPairings = store.chapters
     private var chapters: ViewerChapters? = null
 
     /** Keep decode facts and manual pairing while the same chapter page identities remain loaded. */
@@ -56,9 +56,14 @@ class DualPageViewerAdapter(private val viewer: DualPageR2LPagerViewer) : ViewPa
                 continue
             }
             if (chapterPairings[chapter]?.pages != pages) {
-                chapterPairings[chapter] = ChapterPairing(
+                chapterPairings[chapter] = DualPagePairingStore.ChapterPairing(
                     pages,
-                    PairingState(pages.size, isR2L = false, initialLayout = PageLayout.PORTRAIT),
+                    PairingState(
+                        pages.size,
+                        isR2L = false,
+                        initialLayout = PageLayout.PORTRAIT,
+                        forceFirstPageSingle = true,
+                    ),
                 )
             }
         }
@@ -74,13 +79,10 @@ class DualPageViewerAdapter(private val viewer: DualPageR2LPagerViewer) : ViewPa
         rebuildItems()
     }
 
-    fun adjustPairing(currentFirstPageIndex: Int): Int {
-        val chapter = currentChapter ?: return -1
-        chapterPairings[chapter]?.state?.adjustPairing()
-        rebuildItems()
-        return items.indexOfFirst { item ->
-            item is DisplayPage && item.containsPage(chapter.pages?.getOrNull(currentFirstPageIndex))
-        }
+    fun adjustPairing(currentFirstPageIndex: Int) {
+        val chapter = currentChapter ?: return
+        val target = chapterPairings[chapter]?.state?.adjustPairing(currentFirstPageIndex) ?: return
+        rebuildItems(chapter.pages?.getOrNull(target))
     }
 
     fun refresh() {
@@ -109,10 +111,10 @@ class DualPageViewerAdapter(private val viewer: DualPageR2LPagerViewer) : ViewPa
     }
 
     /** Assemble in story order and reverse the entire window once, including its boundaries. */
-    private fun rebuildItems() {
+    private fun rebuildItems(targetPage: ReaderPage? = null) {
         val chapters = chapters ?: return
         val selected = items.getOrNull(viewer.pager.currentItem)
-        val anchor = when (selected) {
+        val anchor = targetPage ?: when (selected) {
             is DisplayPage -> selected.firstPage
             is ChapterTransition -> selected.loadedEntryPage()
             else -> null
@@ -141,15 +143,19 @@ class DualPageViewerAdapter(private val viewer: DualPageR2LPagerViewer) : ViewPa
                 chapterPairings[chapter]?.let { addAll(buildDisplayPages(it.pages, it.state)) }
             }
         }
-        items = logical.asReversed().toMutableList()
-        notifyDataSetChanged()
-        if (anchor != null) viewer.moveToPage(anchor)
+        val replacement = logical.asReversed().toMutableList()
+        if (items == replacement) return
+        val layoutOnly = selected is DisplayPage && selected.firstPage.chapter === currentChapter
+        viewer.replacePairing(anchor, layoutOnly) {
+            items = replacement
+            notifyDataSetChanged()
+        }
     }
 
     private fun buildDisplayPages(pages: List<ReaderPage>, state: PairingState): List<DisplayPage> {
         return state.pairings.map { unit ->
             if (unit.size == 1) {
-                DisplayPage.Single(pages[unit[0]])
+                DisplayPage.Single(pages[unit[0]], coverSlot = unit[0] == 0 && state.isPortrait(0))
             } else {
                 DisplayPage.Double(
                     rightPage = pages[unit[0]],

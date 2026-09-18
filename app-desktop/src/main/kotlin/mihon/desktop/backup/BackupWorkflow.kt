@@ -15,6 +15,8 @@ data class BackupPreview(
     val preferenceCount: Int,
     val sourceCount: Int,
     val extensionRepoCount: Int,
+    val authorCount: Int = 0,
+    val hasAuthorArchive: Boolean = false,
 )
 
 object BackupWorkflow {
@@ -26,6 +28,8 @@ object BackupWorkflow {
         preferenceCount = backup.backupPreferences.size + backup.backupSourcePreferences.sumOf { it.prefs.size },
         sourceCount = backup.backupSources.size,
         extensionRepoCount = backup.backupExtensionRepo.size,
+        authorCount = backup.backupAuthorArchive?.creators?.count { it.status == "ACTIVE" } ?: 0,
+        hasAuthorArchive = backup.backupAuthorArchive != null,
     )
 
     suspend fun <T> runCreate(block: suspend () -> T): TaskState<T> = runTask(block)

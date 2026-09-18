@@ -1,14 +1,22 @@
 package mihon.desktop.test.http
 
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import mihon.desktop.domain.CreatorDiscoveryScheduler
+import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
+import tachiyomi.domain.creator.model.AddCreatorAliasesRequest
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.LanguageDimension
+import tachiyomi.domain.creator.model.SetCreatorDisplayNameRequest
 import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorRepository
+import tachiyomi.domain.creator.service.CreatorCheckFrequency
+import tachiyomi.domain.creator.service.CreatorDiscoveryPreferences
+import tachiyomi.domain.creator.service.CreatorSettingsEditor
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -18,6 +26,17 @@ data class AuthorArchiveTestSnapshot(
     val followedCreators: List<Long>,
     val discoveryIds: List<Long>,
     val discoveryTaskStatus: String,
+    val identities: List<AuthorIdentityTestSnapshot> = emptyList(),
+    val frequency: String = "daily",
+    val resolvedCreatorId: Long? = null,
+)
+
+@Serializable
+data class AuthorIdentityTestSnapshot(
+    val id: Long,
+    val revision: Long,
+    val displayName: String,
+    val names: List<String>,
 )
 
 @Serializable
@@ -42,10 +61,14 @@ class AuthorArchiveTestModeController(
     private val archiveRepository: CreatorArchiveRepository,
     private val scheduler: CreatorDiscoveryScheduler,
     private val now: () -> Long = System::currentTimeMillis,
+    private val preferences: CreatorDiscoveryPreferences? = null,
+    private val syncFixture: (suspend (String) -> Unit)? = null,
+    private val mangaRepository: tachiyomi.domain.manga.repository.MangaRepository? = null,
 ) {
     private val closed = AtomicBoolean(false)
     private val cachedSnapshot = AtomicReference(emptySnapshot())
     private val setCreatorFollow = SetCreatorFollow(creatorRepository)
+    private val identity = ManageCreatorIdentity(archiveRepository)
 
     suspend fun hydrate() = refresh()
 
@@ -53,9 +76,31 @@ class AuthorArchiveTestModeController(
 
     suspend fun execute(action: String, params: Map<String, String>): AuthorArchiveTestActionResult {
         if (closed.get()) return failure(AuthorArchiveTestFailureCode.OWNER_CLOSED)
+        var resolvedCreatorId: Long? = null
         val failure = runCatching {
             when (action) {
                 "authors_state", "author_compare" -> null
+                "author_resolve" -> {
+                    val mangaId = params["mangaId"]?.toLongOrNull()
+                        ?: return failure(AuthorArchiveTestFailureCode.MISSING_PARAMETER)
+                    val name = params["name"]?.takeIf(String::isNotBlank)
+                        ?: return failure(AuthorArchiveTestFailureCode.MISSING_PARAMETER)
+                    val manga = requireNotNull(mangaRepository).getMangaById(mangaId)
+                    val mention = tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga().await(manga)
+                        .firstOrNull { it.displayName == name }
+                        ?: return failure(AuthorArchiveTestFailureCode.ROW_NOT_FOUND)
+                    resolvedCreatorId =
+                        (identity.resolve(manga, mention) as tachiyomi.domain.creator.model.CreatorMentionResolution.Resolved).creatorId
+                    null
+                }
+                "author_sync_fixture" -> {
+                    val step = params["step"] ?: return failure(AuthorArchiveTestFailureCode.MISSING_PARAMETER)
+                    requireNotNull(syncFixture) { "An isolated test profile is required" }.invoke(step)
+                    null
+                }
+                "author_add_aliases" -> addAliases(params)
+                "author_set_display_name" -> setDisplayName(params)
+                "author_set_frequency" -> setFrequency(params)
                 "author_follow" -> creatorAction(params) { setCreatorFollow.await(it, true) }
                 "author_unfollow" -> creatorAction(params) { setCreatorFollow.await(it, false) }
                 "author_manual_scan" -> creatorAction(params) { scheduler.runForCreator(it).join() }
@@ -82,11 +127,48 @@ class AuthorArchiveTestModeController(
             }
         }.getOrElse { AuthorArchiveTestFailureCode.OPERATION_REJECTED }
         refresh()
-        return AuthorArchiveTestActionResult(failure == null, snapshot(), failure)
+        return AuthorArchiveTestActionResult(failure == null, snapshot().copy(resolvedCreatorId = resolvedCreatorId), failure)
     }
 
     fun close() {
         closed.set(true)
+    }
+
+    private suspend fun addAliases(params: Map<String, String>): AuthorArchiveTestFailureCode? {
+        val creatorId = creatorId(params) ?: return AuthorArchiveTestFailureCode.MISSING_PARAMETER
+        val revision = params["revision"]?.toLongOrNull() ?: return AuthorArchiveTestFailureCode.MISSING_PARAMETER
+        val key = params["idempotencyKey"]?.takeIf(String::isNotBlank)
+            ?: return AuthorArchiveTestFailureCode.MISSING_PARAMETER
+        val selected = params["selectedRevisions"]?.let {
+            runCatching { Json.decodeFromString<Map<Long, Long>>(it) }.getOrNull()
+        } ?: return AuthorArchiveTestFailureCode.INVALID_PARAMETER
+        identity.addAliases(AddCreatorAliasesRequest(creatorId, revision, selected, key))
+        return null
+    }
+
+    private suspend fun setDisplayName(params: Map<String, String>): AuthorArchiveTestFailureCode? {
+        val creatorId = creatorId(params) ?: return AuthorArchiveTestFailureCode.MISSING_PARAMETER
+        val revision = params["revision"]?.toLongOrNull() ?: return AuthorArchiveTestFailureCode.MISSING_PARAMETER
+        val name = params["name"]?.takeIf(String::isNotBlank) ?: return AuthorArchiveTestFailureCode.MISSING_PARAMETER
+        val key = params["idempotencyKey"]?.takeIf(String::isNotBlank)
+            ?: return AuthorArchiveTestFailureCode.MISSING_PARAMETER
+        identity.setDisplayName(SetCreatorDisplayNameRequest(creatorId, revision, name, key))
+        return null
+    }
+
+    private suspend fun setFrequency(params: Map<String, String>): AuthorArchiveTestFailureCode? {
+        val frequency = params["frequency"]?.let(CreatorCheckFrequency::parse)
+            ?: return AuthorArchiveTestFailureCode.INVALID_PARAMETER
+        coroutineScope {
+            val editor = CreatorSettingsEditor(requireNotNull(preferences), this) {
+                scheduler.runIfDue()
+            }
+            editor.open()
+            editor.select(frequency)
+            editor.save().join()
+            check(editor.state.value.savedRevision == 1L) { "Author frequency save failed" }
+        }
+        return null
     }
 
     private suspend fun workDecision(
@@ -151,12 +233,19 @@ class AuthorArchiveTestModeController(
 
     private suspend fun refresh() {
         if (closed.get()) return
+        val creators = creatorRepository.getCreatorsAsFlow().first()
+        val identities = creators.map { creator ->
+            val snapshot = identity.snapshot(creator.id)
+            AuthorIdentityTestSnapshot(snapshot.id, snapshot.revision, snapshot.displayName, snapshot.names)
+        }
         cachedSnapshot.set(
             AuthorArchiveTestSnapshot(
-                creators = creatorRepository.getCreatorsAsFlow().first().map { it.id },
+                creators = creators.map { it.id },
                 followedCreators = creatorRepository.getFollowedCreators().map { it.creatorId },
                 discoveryIds = archiveRepository.getDiscoveries(200).map { it.id },
                 discoveryTaskStatus = scheduler.state.value.status.name,
+                identities = identities,
+                frequency = preferences?.current()?.value ?: "daily",
             ),
         )
     }

@@ -1,5 +1,6 @@
 package mihon.data.repository
 
+import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import eu.kanade.tachiyomi.network.NetworkHelper
 import io.mockk.every
@@ -177,20 +178,7 @@ class ExtensionRepoRepositoryPersistenceTest {
     fun `version eighteen repository table migrates before metadata can be reopened`() = runTest {
         val databaseFile = File(directory, "extension-repos-v18.db")
         JdbcSqliteDriver("jdbc:sqlite:${databaseFile.absolutePath}").use { driver ->
-            // Subsequent schema-19 migration also updates these pre-existing tables.
-            driver.execute(null, "CREATE TABLE mangas (_id INTEGER PRIMARY KEY)", 0)
-            driver.execute(null, "CREATE TABLE chapters (_id INTEGER PRIMARY KEY)", 0)
-            driver.execute(
-                null,
-                """CREATE TABLE extension_repos (
-                    base_url TEXT NOT NULL PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    short_name TEXT,
-                    website TEXT NOT NULL,
-                    signing_key_fingerprint TEXT UNIQUE NOT NULL
-                )""",
-                0,
-            )
+            createVersion18Fixture(driver)
             driver.execute(
                 null,
                 """INSERT INTO extension_repos(base_url, name, short_name, website, signing_key_fingerprint)
@@ -227,6 +215,36 @@ class ExtensionRepoRepositoryPersistenceTest {
                 ),
                 fixture.repository.getRepo("https://legacy.example"),
             )
+        }
+    }
+
+    private fun createVersion18Fixture(driver: JdbcSqliteDriver) {
+        // v18 already contained the full author archive. Keep that history while removing only
+        // additions from migrations 18..26, so this test still exercises the complete upgrade.
+        Database.Schema.create(driver)
+        val laterObjects = driver.executeQuery(
+            null,
+            """SELECT type, name FROM sqlite_master
+                WHERE (type = 'table' AND (name GLOB 'sync_*' OR name GLOB 'author_archive_identity_*'))
+                   OR (type = 'trigger' AND name GLOB 'author_archive_*_revision')
+                ORDER BY CASE type WHEN 'trigger' THEN 0 ELSE 1 END""",
+            { cursor ->
+                QueryResult.Value(
+                    buildList {
+                        while (cursor.next().value) {
+                            add(requireNotNull(cursor.getString(0)) to requireNotNull(cursor.getString(1)))
+                        }
+                    },
+                )
+            },
+            0,
+        ).value
+        laterObjects.forEach { (type, name) -> driver.execute(null, "DROP $type $name", 0) }
+        driver.execute(null, "ALTER TABLE author_archive_creators DROP COLUMN identity_revision", 0)
+        driver.execute(null, "ALTER TABLE mangas DROP COLUMN memo", 0)
+        driver.execute(null, "ALTER TABLE chapters DROP COLUMN memo", 0)
+        listOf("index_url", "extension_list_url", "contact_discord").forEach { column ->
+            driver.execute(null, "ALTER TABLE extension_repos DROP COLUMN $column", 0)
         }
     }
 

@@ -173,10 +173,12 @@ internal object ExtensionLoader {
      *
      * @param context The application context.
      */
-    suspend fun loadExtensions(context: Context): List<LoadResult> {
+    suspend fun loadExtensions(context: Context): List<LoadResult> = loadExtensions(context, includeShared = true)
+
+    suspend fun loadExtensions(context: Context, includeShared: Boolean): List<LoadResult> {
         val pkgManager = context.packageManager
 
-        val installedPkgs = installedSharedPackages(context)
+        val installedPkgs = if (includeShared) installedSharedPackages(context) else emptyList()
 
         val sharedExtPkgs = installedPkgs
             .asSequence()

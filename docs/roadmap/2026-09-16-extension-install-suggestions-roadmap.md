@@ -1,7 +1,7 @@
 # 收藏缺失插件「建议安装」完整实施 Roadmap
 
 - 日期：2026-09-16
-- 状态：COMPLETE（2026-09-17）；EIS-01 至 EIS-05 全部完成。完整测试、独立审查和三端正式运行证据见第 9 节，checkoff 与最终修复纳入同一功能提交。
+- 状态：专项分支 COMPLETE（2026-09-17）；主干整合 COMPLETE（2026-09-18，见第 10 节）；EIS-01 至 EIS-05 全部完成。完整测试、独立审查和三端正式运行证据见第 9 节，checkoff 与最终修复纳入同一功能提交。
 - 类型：产品 child plan；进度从第 4 节第一个未勾选批次推导，不另设活动任务字段。
 - 父路线：[Android / macOS / Windows 正式 Roadmap](2026-06-30-mihon-desktop-refactor-roadmap.md)。本专项已完成并同步父计划登记；不切换父计划执行指针，不恢复其他专项。
 - 产品依据：[需求与技术可行性](../2026-09-16-extension-install-suggestions-requirements.md)；已通过的 [HTML DEMO](../prototypes/multi-device-sync/index.html)，交互提交 `2289a939f`。
@@ -435,3 +435,38 @@ python scripts/gradle-coordinator.py run --key eis-final -- gradlew.bat :domain:
 - `eis05-api36-final-icon-cleanup.json` / `eis05-api26-final-icon-cleanup.json` 独立核验 AVD 身份、自有 SQL/仓库 0/0、系统包空、两私有文件不存在、receipt 空或未创建、UI 两偏好恢复 unset。当前安装器分别 PACKAGEINSTALLER/LEGACY，原 unknown-sources allow 保留，Shizuku 临时 fork 授权已正常 UI 恢复关闭；最初旧夹具未保存 installer 原值的历史限制仍如上，不伪造恢复证据。API26 仅关闭本次归属的 AVD，API36 保留，无运行中的 Gradle 或验收 runner。
 - 主代理独立审查最终 production/测试差异并核对原始 XML、正式运行/签名日志与三端文件实际摘要。最终有效测试 5,248 项：5,245 通过、3 个既有条件跳过、零剩余失败/错误；原失败、重试和取消记录均保留。原规则全量格式检查及最新受影响文件检查通过，最终差异检查通过。
 - 本批超过估算文件数/行数，仍为一个内聚交付：同一建议能力的 Test Mode 接线、真实三平台运行脚本、Android 发布 ABI 与实际验收暴露的卸载竞态修复须一起交付。没有新增产品导航、同步协议或独立服务；维护约定、测试与本 checkoff 纳入同一 EIS-05 提交，不单独提交状态推进。
+
+
+## 10. 2026-09-18 主干整合与兼容发布
+
+用户授权将专项分支 `6893d150ba` 合入主干 `c7cab154b5`。此前 EIS-01～05 的完成仅指专项分支；主干提交 `6828bfc618` 的 `0.19.4-aex.8-rc1` APK 不包含本功能。上述第 9 节旧产物保留为历史证据，不能用作本次合并产物。
+
+已证实的兼容问题：全局作者版本已将数据库升级为 27，旧 EIS APK 仅支持 25，两者却使用相同包名、签名和 versionCode 26 / aex.8；覆盖后真实设备日志报告 `Can't downgrade database from version 27 to 25`。本次完整保留作者模型、接线及迁移 25/26，以 schema 27 和更高 Android 版本号发布；不得降低数据库版本、清除用户数据或只移植迁移文件。错误处理进程另有 WorkManager 初始化故障，本次不扩展修改该独立问题。
+
+- [x] 合并代码、解决冲突，保留作者功能及双端建议入口；完成相关行为、DI、备份与迁移验证和独立审查。
+- [x] 执行一次完整 Android/Desktop 测试集合及必要定向修复；完成 Android、Windows/macOS 正式构建和生产运行验收。
+- [x] 提交合并、将主干推进到验证后的提交，核对原工作区用户改动仍保留，登记新产物及限制。
+
+本次预算：复用一名实施子代理，主代理独立审查一轮及必要修复复审一轮；完整测试集合一次，后续只针对具体失败复验。过程日志保存在忽略的 `.gradle-coordinator/`，不创建额外逐任务报告。原工作区三个作者文档、base 字符串文件和 `testfile/` 均不混入本次提交；Mac 旧 EIS 工作区也有未提交内容，另建隔离工作区。
+
+### 最终整合与验收证据
+
+- 初始主干 `c7cab154b5` 与 EIS `6893d150ba` 的 12 处冲突已全部解决。主代理独立审查 Manager/Loader/DI、双端导航、备份及迁移；主干 SQL schema、迁移和作者模型完整保留。权限扫描前后均复查同一 controller，DENIED/UNKNOWN 不把不完整库存误判为缺失，保留已知私有插件。两项正确行为红灯后 `eis-main-focused-green` 143 项通过，局部原规则格式通过；最终完整集合覆盖格式后行为。
+- 完整集合仅一次：`eis-integration-full` PASSED / 22m01s，包含 domain JVM/Android、data JVM/Android、app Android、Desktop、test-desktop、设备测试编译和全量 spotlessCheck。原始 XML 执行数分别为 518 / 446 / 425 / 233 / 586 / 3158 / 52，合计 5418；保留一次作者关注测试首次超时、自动重试通过的历史，不能称首次全绿。Desktop 有 3 项既有条件跳过。
+- 最终夹具修复与限定复验：作者关注测试改用既有 ScreenModelTestHost，避免复用已取消的 Voyager fallback scope，加入真实 Job 存活断言并等待清理；不改变 production 或延长超时。`eis-integration-author-ordered-app` 明确关闭重试，先运行 Archive 8 项、后 Follow 1 项，9 项零失败；该命令仅因新文件 CRLF 未通过格式而 exit1，转 LF 后 `eis-integration-author-format` PASSED / 31s。用此受影响类的有效结果替换原失败/重试类后，完整集合为 5417 项：5414 通过、3 条件跳过；其余已通过结果复用，没有重跑整套测试。原始和限定 XML 分别保存于 `eis-integration-full-xml`、`eis-integration-author-ordered-xml`。
+- `eis-integration-android-release-args` PASSED / 5m25s；包含真正 R8 release、设备测试包及 `finalParityAudit` 的 64-capability gate（1 项通过）。Android code27 / `0.19.4-aex.9`、非 debuggable、原证书 v2/v3 签名均核实。首次调用仅因 PowerShell 拆分未加引号的 `-Pmihon.testBuildType=release` 在配置阶段失败，修正参数后构建，不隐藏该历史。
+- 真正 APK 覆盖升级：在专用 API36 模拟器先安装 GA-06 主干 rc1，读取真实 schema27，再以新正式包 `install -r` 覆盖并冷启动成功。schema 27→27，43 条漫画的 ID/source/url/title、1 条作者身份映射与作者 ID 均逐行一致；PID5508 无致命崩溃，设备 APK SHA 与交付一致。证据 `integration-schema27-before` / `integration-schema27-after`。没有清数据或降级数据库；本轮无连接真机，不声称华为真机复验通过。
+- Android UI 首轮 prepare 通过；verify 的脚本在安装事务仍 busy 时过早请求卸载，日志明确 `before busy=true`，产品正确拒绝，脚本等待建议恢复超时。仅为测试加真实 arbiter 空闲屏障，不改变产品或放宽超时。`eis-integration-instrumentation-wait` 重编仪器测试及格式 PASSED / 3m25s，正式 APK 保持同一 SHA。重新 prepare / 跨进程 verify 分别通过 30.684s / 12.283s，PID6783→7069；日志有事务完成、卸载前 busy=false、卸载后建议恢复、单项、部分失败、真实 UI 重试及跨入口去重。PackageInstaller 连续安装另通过 6.981s。用例最终清理通过，系统受控包和私有 fixture 均不存在，两份测试 receipt 均为空；旧失败日志与归属明确的 receipt 归档保留。
+- Desktop 两端从同一冻结 Git tree `b73369acf45b820c422164f19dd5de4a1b8a62ac` / 前置 HEAD `6893d15` 构建，正式脚本分配 BUILD45→46；后续两处修改仅 Android 测试，未改变交付 production。版本后缀为构建时前置 HEAD，不能据此把产物误认为该旧提交的干净构建。`eis-integration-windows-release-quoted` PASSED / 2m20s，实际 EXE 及生产插件安装冒烟通过；初次 Windows 调用在 Gradle 前因批处理把未引用的 nonProxyHosts 管道当作命令而失败，仅恢复本次版本分配后正确引用参数再构建。macOS 正式隔离构建通过。
+- Windows/macOS 的 `eis-integration-windows-runtime/result.json`、`eis-integration-macos-runtime-result.json` 均 success=true，各 8 次归属明确的真实应用启动、3 个网站 GET，覆盖真实 SQL/loader、折叠与忽略重启、独立 profile、单项/批量、部分失败与重试、停止及跨入口去重。Mac 仅 x64。两处最终测试夹具改动经主代理限定复审，不增加产品范围。
+- 主干在验收期间另新增 `b846ec927a`、`9cf54e3ec3`、`7773095f5e`，仅作者 HTML 原型及文档；最终合并保留它们。原主工作区用户未提交的作者文档和 `testfile/` 继续保留，不混入本功能提交；base 字符串原有逻辑 diff 为空，合并时保留新增文案。旧 Mac 脏工作区未修改，使用 `/Users/altair/Github/mihon-eis-integration` 隔离构建。
+
+### 本次正式产物（取代旧 schema25 EIS 包）
+
+| 平台 | 产物 | SHA-256 |
+|---|---|---|
+| Android universal | [Mihon-Fork-0.19.4-aex.9-universal.apk](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.9/Mihon-Fork-0.19.4-aex.9-universal.apk) | `c8c60e98fcf60dfa2dd5ec4f5c473b7c3b922693d9c643b98ddc21290c39f56b` |
+| Windows 正式未打包 EXE | [Mihon Desktop.exe](D:/Shell/Github/mihon-eis/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.46.6893d15-unpacked/Mihon%20Desktop.exe) | `20e4d4143fd9da1a1246cd4b39f47c363b00b1b5e55f23643707b2a5cca99179` |
+| macOS x64 ZIP | [Mihon Desktop macOS](D:/Shell/Github/mihon-eis/app-desktop/artifacts/macos/Mihon-Desktop-0.11.19.46.6893d15-macos-x64.zip) | `817bfac95d14a44e905e102daf9b08498fe1d134431d769268be7b01918d4197` |
+
+用户验收入口仍为「浏览 → 插件」，Desktop 为已安装页顶部。只对收藏中缺失且能按 source ID 匹配现有仓库目录的插件提供安装建议；不会自动添加仓库或后台安装。未匹配、目录不完整及权限不足有对应解释，不能把所有未知图源都等同于可安装候选。错误处理独立进程的 WorkManager 问题未扩展修复；本次覆盖升级解决的是 schema27→25 不兼容包造成的启动失败。

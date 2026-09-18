@@ -22,11 +22,17 @@ class ReaderNavigationOverlayView(context: Context, attributeSet: AttributeSet) 
 
     private var navigation: ViewerNavigation? = null
 
-    fun setNavigation(navigation: ViewerNavigation, showOnStart: Boolean) {
+    fun setNavigation(navigation: ViewerNavigation, showOnStart: Boolean, allowDisplay: Boolean = true) {
         val firstLaunch = this.navigation == null
         this.navigation = navigation
         invalidate()
 
+        if (!allowDisplay) {
+            viewPropertyAnimator?.cancel()
+            viewPropertyAnimator = null
+            isVisible = false
+            return
+        }
         if (isVisible || (!showOnStart && firstLaunch) || navigation is DisabledNavigation) {
             return
         }

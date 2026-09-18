@@ -172,6 +172,7 @@ class AndroidSyncRuntimeWiringTest {
             val network = mockk<NetworkHelper> { every { this@mockk.client } returns client }
             Injekt.addSingleton(context)
             Injekt.addSingleton<DatabaseHandler>(AndroidDatabaseHandler(database, driver))
+            Injekt.importModule(PreferenceModule(context))
             Injekt.addSingleton<PreferenceStore>(preferences)
             Injekt.addSingleton(network)
             val sources = mockk<SourceManager>()

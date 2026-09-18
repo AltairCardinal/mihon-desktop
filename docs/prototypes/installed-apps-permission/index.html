@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mihon · 插件列表权限交互</title>
+  <link rel="stylesheet" href="../multi-device-sync/styles.css">
+  <link rel="stylesheet" href="./permission.css">
+</head>
+<body>
+  <main id="preview" class="parallel-preview theme-dark">
+    <details class="preview-tools" open>
+      <summary><strong>插件列表权限 · 交互预览</strong></summary>
+      <div class="preview-tool-panel">
+        <div class="tool-group">
+          <label for="permission-scene">Android 场景</label>
+          <select id="permission-scene">
+            <option value="denied">未开放权限</option>
+            <option value="granted">已开放权限</option>
+            <option value="unsupported">设备无需此权限</option>
+            <option value="revoked">在系统设置中撤销权限</option>
+            <option value="settings-unavailable">无法打开权限设置</option>
+            <option value="scan-failed">授权后读取失败</option>
+            <option value="check-failed">权限状态检查失败</option>
+          </select>
+          <button class="m-button" data-testid="show-permission-scene" id="show-scene">显示场景</button>
+          <button class="m-button" data-testid="cold-start" id="cold-start">模拟杀进程后启动</button>
+        </div>
+        <div class="tool-group">
+          <button class="m-button" data-testid="theme-light" data-theme="light">浅色</button>
+          <button class="m-button" data-testid="theme-dark" data-theme="dark">深色</button>
+          <a href="../multi-device-sync/index.html">返回双端同步 DEMO</a>
+          <a href="./README.md">审阅说明</a>
+        </div>
+        <small class="preview-boundary">仅本地模拟：不申请真实权限、不读取设备应用列表、不安装插件。上方控件不属于产品。Android 默认从「浏览 → 图源」开始；Windows 用于对照。</small>
+      </div>
+    </details>
+    <div class="parallel-scroll"><div class="device-pair"></div></div>
+  </main>
+  <script src="../multi-device-sync/sync-model.js"></script>
+  <script src="./preview.js"></script>
+</body>
+</html>

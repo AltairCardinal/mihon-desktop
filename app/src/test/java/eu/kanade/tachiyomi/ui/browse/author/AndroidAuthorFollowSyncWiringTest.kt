@@ -1,12 +1,15 @@
 package eu.kanade.tachiyomi.ui.browse.author
 
 import cafe.adriel.voyager.core.model.screenModelScope
+import eu.kanade.tachiyomi.test.ScreenModelTestHost
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -52,25 +55,43 @@ class AndroidAuthorFollowSyncWiringTest {
         val archive = mockk<CreatorArchive> {
             every { observe(7) } returns flowOf(CreatorWorkArchive(emptyList(), emptyList(), emptyList()))
         }
-        val model = AndroidAuthorDetailScreenModel(
-            creatorId = 7,
-            details = GetCreatorDetails(repository),
-            creators = GetCreators(repository),
-            follow = SetCreatorFollow(repository),
-            discovery = mockk(),
-            archive = archive,
-            sources = mockk(),
-        )
+        val host = ScreenModelTestHost()
+        var modelJob: Job? = null
         try {
+            val model = host.create {
+                AndroidAuthorDetailScreenModel(
+                    creatorId = 7,
+                    details = GetCreatorDetails(repository),
+                    creators = GetCreators(repository),
+                    follow = SetCreatorFollow(repository),
+                    discovery = mockk(),
+                    archive = archive,
+                    sources = mockk(),
+                    identity = mockk { every { observe(7) } returns kotlinx.coroutines.flow.emptyFlow() },
+                    networkToLocal = mockk(),
+                )
+            }
+            modelJob = requireNotNull(model.screenModelScope.coroutineContext[Job])
+            assertTrue(modelJob.isActive)
             model.toggleFollow().join()
+            kotlinx.coroutines.withContext(Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(5000) { model.state.first { it.followed } }
+            }
             assertTrue(model.state.value.followed)
             model.toggleFollow().join()
+            kotlinx.coroutines.withContext(Dispatchers.Default) {
+                kotlinx.coroutines.withTimeout(5000) { model.state.first { !it.followed } }
+            }
             assertFalse(model.state.value.followed)
             assertEquals(listOf(SyncMutationContext.User, SyncMutationContext.User), contexts)
             assertNull(model.state.value.error)
         } finally {
-            model.screenModelScope.cancel()
-            Dispatchers.resetMain()
+            try {
+                host.close()
+                modelJob?.cancelAndJoin()
+            } finally {
+                Dispatchers.resetMain()
+            }
         }
     }
 }

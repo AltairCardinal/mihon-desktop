@@ -49,6 +49,8 @@ import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
 import mihon.domain.extensionrepo.model.ExtensionRepo
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
@@ -191,8 +193,9 @@ class SourceExtensionNavigationContractTest {
         }
     }
 
-    @Test
-    fun `real Extension list clicks preserve details and source settings parameters`() = runBlocking {
+    @ParameterizedTest
+    @ValueSource(ints = [0, 1, 2])
+    fun `extension card and its single settings button both open details`(configurableSourceCount: Int) = runBlocking {
         val source = mockk<ConfigurableSource> {
             every { id } returns 42L
             every { name } returns "Example Source"
@@ -200,7 +203,13 @@ class SourceExtensionNavigationContractTest {
         }
         val extension = InstalledExtension(
             File("C:/extensions/example.jar"),
-            listOf(source),
+            List(configurableSourceCount) { index ->
+                if (index == 0) source else mockk<ConfigurableSource> {
+                    every { id } returns 43L
+                    every { name } returns "Other language"
+                    every { lang } returns "ja"
+                }
+            },
             displayName = "Example Extension",
             language = "en",
         )
@@ -256,10 +265,9 @@ class SourceExtensionNavigationContractTest {
             Assertions.assertEquals(extension.jarFile.absolutePath, (navigator.lastItem as ExtensionDetailsScreen).jarPath)
             navigator.pop()
             scene.render()
-            clickDescription(scene, MR.strings.desktop_extension_source_settings.localized(Locale.getDefault(), source.name))
-            val settings = navigator.lastItem as SourcePreferencesScreen
-            Assertions.assertEquals(source.id, settings.sourceId)
-            Assertions.assertEquals(source.name, settings.sourceName)
+            clickDescription(scene, MR.strings.action_settings.localized())
+            Assertions.assertEquals(extension.jarFile.absolutePath, (navigator.lastItem as ExtensionDetailsScreen).jarPath)
+            Assertions.assertFalse(navigator.items.any { it is SourcePreferencesScreen || it is Tab })
         } finally {
             scene.close()
             model.closeAndJoin()

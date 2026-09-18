@@ -216,7 +216,7 @@ class BackupRestorer(
         preferenceRestorer.restoreApp(
             preferences,
             categories,
-        )
+        ).forEach { errors.add(Date() to it) }
 
         restoreProgress += 1
         notifier.showRestoreProgress(

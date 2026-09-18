@@ -139,6 +139,15 @@ class DualPagerPageHolder(
                 pageContainer.addView(it, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
             }
         }
+        if ((displayPage as? DisplayPage.Single)?.coverSlot == true) {
+            leftSlot = PageSlot(readerThemedContext, alignRight = true).also {
+                pageContainer.addView(it, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+            }
+            pageContainer.addView(
+                View(readerThemedContext),
+                LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f),
+            )
+        }
         loadJob = scope.launch { loadPages() }
     }
 
@@ -286,7 +295,11 @@ class DualPagerPageHolder(
 
         viewer.adapter.updatePageDimensions(page, width, height)
 
-        val slot = if (side == Side.LEFT) leftSlot else rightSlot
+        val slot = if (side == Side.LEFT || (displayPage as? DisplayPage.Single)?.coverSlot == true) {
+            leftSlot
+        } else {
+            rightSlot
+        }
         slot?.setImageDimensions(width, height)
     }
 
@@ -318,14 +331,17 @@ class DualPagerPageHolder(
                             rightSlot!!.addView(holder)
                         }
                         is DisplayPage.Single -> {
-                            // Single: fill the whole container
-                            pageContainer.addView(
-                                holder,
-                                LinearLayout.LayoutParams(
-                                    LayoutParams.MATCH_PARENT,
-                                    LayoutParams.MATCH_PARENT,
-                                ),
-                            )
+                            if (displayPage.coverSlot) {
+                                leftSlot!!.addView(holder)
+                            } else {
+                                pageContainer.addView(
+                                    holder,
+                                    LinearLayout.LayoutParams(
+                                        LayoutParams.MATCH_PARENT,
+                                        LayoutParams.MATCH_PARENT,
+                                    ),
+                                )
+                            }
                         }
                     }
                 }

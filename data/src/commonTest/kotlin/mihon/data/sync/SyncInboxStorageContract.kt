@@ -691,18 +691,15 @@ abstract class SyncInboxStorageContract {
             open(file.absolutePath).use { s ->
                 s.connect(repository)
                 s.writer.prepare()
-                listOf(a, b).forEach { key -> s.writer.applyMembership(key, true) { SyncObjectDescriptor(it, "作者") } }
+                listOf(a, b).forEach { key ->
+                    s.writer.applyMembership(key, true) { SyncObjectDescriptor(it, "作者 ${key.portableKey}") }
+                }
                 val ids = s.handler.await {
                     listOf(a, b).map {
                         author_archiveQueries.getArchiveCreatorIdByPortableKey(it.portableKey!!).executeAsOne()
                     }
                 }
-                s.driver.execute(
-                    null,
-                    "UPDATE author_archive_creators SET status='MERGED', " +
-                        "merged_into_creator_id=${ids[1]} WHERE _id=${ids[0]}",
-                    0,
-                )
+                s.creators.mergeCreatorIdentities(ids[0], ids[1])
                 val add = authorMembership(1, a, SyncEffectKind.ADD)
                 val remove = authorMembership(2, a, SyncEffectKind.REMOVE, add.events.single())
                 s.inbox.ingest(add)

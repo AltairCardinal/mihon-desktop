@@ -51,7 +51,7 @@
       "status": "covered",
       "followUpTasks": [],
       "gapReason": "",
-      "ENTRY": {"state":"covered","productionEdge":"Mounted MangaDetailScreen author chip → ambiguity chooser → typed identity binding → AuthorDetailScreen","runnerTest":"mihon.desktop.ui.library.MangaDetailLibraryEntryWiringTest#real MangaDetailScreen creator chip opens ambiguity chooser binds selection and navigates"},
+      "ENTRY": {"state":"covered","productionEdge":"Mounted uncollected MangaDetailScreen author chip → exact-name identity resolution with SQL failure retry → unique AuthorDetailScreen","runnerTest":"mihon.desktop.ui.library.MangaDetailLibraryEntryWiringTest#real uncollected MangaDetailScreen creator chip retries SQL failure and opens unique author"},
       "EFFECT": {"state":"covered","productionEdge":"DesktopAppModule → DesktopAppRuntime → production CreatorLibraryIndexer → author archive backfill","runnerTest":"mihon.desktop.CreatorLibraryIndexRuntimeServiceTest#desktop runtime service starts production indexer once and stops with runtime"},
       "FEEDBACK": {"state":"covered","productionEdge":"AuthorsRootScreen renders index failure, Retry, and distinct empty-library feedback from the production indexer state","runnerTest":"mihon.desktop.ui.authors.AuthorsProductionWiringTest#mounted authors root renders production failure and retry reaches empty library"},
       "CONFIRMATION": {"state":"not-applicable","productionEdge":"Read-only navigation and projection","runnerTest":""},

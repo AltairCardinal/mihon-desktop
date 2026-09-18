@@ -12,7 +12,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
  */
 sealed class DisplayPage {
 
-    data class Single(val page: ReaderPage) : DisplayPage()
+    data class Single(val page: ReaderPage, val coverSlot: Boolean = false) : DisplayPage()
 
     data class Double(
         val rightPage: ReaderPage,

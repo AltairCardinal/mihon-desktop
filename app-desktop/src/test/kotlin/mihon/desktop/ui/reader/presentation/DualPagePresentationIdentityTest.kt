@@ -366,7 +366,7 @@ class DualPagePresentationIdentityTest {
             scene.render()
             yield()
             assertEquals(setOf(pageId(1), pageId(2)), reports.last().pageIds)
-            assertEquals(pageId(2), reports.last().activePageId)
+            assertEquals(pageId(1), reports.last().activePageId)
         } finally {
             scene.close()
         }

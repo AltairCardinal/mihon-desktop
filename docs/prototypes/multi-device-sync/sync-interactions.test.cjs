@@ -27,7 +27,7 @@ for (const platform of ['windows', 'android']) {
         assert.ok(await frame.locator('.sync-panel-sheet').evaluate(el => el.scrollWidth <= el.clientWidth + 1));
         if (await frame.locator('.ix-page').count()) assert.ok(await frame.locator('.ix-page').evaluate(el => el.scrollWidth <= el.clientWidth + 1));
       }
-      async function authorize(space = 'existing', deny = false) {
+      async function authorize(deny = false) {
         const popupPromise = page.waitForEvent('popup');
         await click('open-github');
         const popup = await popupPromise;
@@ -37,22 +37,18 @@ for (const platform of ['windows', 'android']) {
         await popup.getByRole('button', { name: '继续', exact: true }).click();
         if (deny) await popup.getByRole('button', { name: '取消授权', exact: true }).click();
         else {
-          if (await popup.getByLabel('同步使用的私有仓库').isEnabled()) await popup.getByLabel('同步使用的私有仓库').selectOption(space);
           await popup.getByRole('button', { name: '授权 Mihon', exact: true }).click();
         }
-        await frame.getByTestId(deny ? 'ix-auth-restart' : 'ix-auth-continue').waitFor();
+        if (deny) await frame.getByTestId('ix-auth-restart').waitFor();
         await popup.close();
       }
-      await scene('setup');
+      await scene('setup-existing');
       await click('setup');
       assert.equal(await frame.locator('input[type="password"]').count(), 0);
-      await authorize('empty');
-      await click('auth-continue');
-      await click('key-next');
-      assert.match(await frame.locator('.ix-feedback').innerText(), /先确认/);
-      await frame.locator('[data-ix-field="saved"]').check();
-      await click('key-next');
+      await authorize();
+      await frame.getByTestId('manual-sync').waitFor();
       await fits();
+      await scene('import');
       await click('import-start');
       await click('import-pause');
       await frame.getByTestId('sync-close').click();
@@ -62,16 +58,6 @@ for (const platform of ['windows', 'android']) {
       await frame.getByTestId('ix-import-done').waitFor();
       await click('import-done');
       assert.equal(await frame.locator('[data-conflict], [data-item]').count(), 0);
-      await scene('auth-expired');
-      await click('auth-restart');
-      await authorize('existing', true);
-      await frame.getByTestId('ix-auth-restart').waitFor();
-      await click('auth-restart');
-      await authorize('existing');
-      await click('auth-continue');
-      await frame.getByTestId('ix-field-key').fill('demo-recovery');
-      await click('key-next');
-      await fits();
       await scene('pending-upload');
       const pending = await frame.locator('[data-confirm]').count();
       assert.ok(pending > 0);
@@ -96,15 +82,14 @@ for (const platform of ['windows', 'android']) {
       await click('issue');
       await click('reconnect');
       await authorize();
-      await click('auth-continue');
+      await frame.getByTestId('manual-sync').waitFor();
       assert.equal(await frame.getByTestId('ix-issue').count(), 0);
       await frame.getByTestId('sync-settings').click();
       await click('frequency');
       await frame.locator('[data-minutes="360"]').click();
       assert.match(await frame.getByTestId('ix-frequency').innerText(), /6 小时/);
-      await click('recovery');
-      await click('reveal-key');
-      assert.match(await frame.locator('.ix-key').innerText(), /DEMO-ONLY/);
+      assert.match(await frame.getByRole('dialog').innerText(), /密码保护未开启/);
+      assert.equal(await frame.getByTestId('ix-recovery').count(), 0);
       await fits();
       await scene('network');
       await frame.getByTestId('sync-close').click();

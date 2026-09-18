@@ -11,7 +11,8 @@ import kotlinx.serialization.protobuf.ProtoNumber
  */
 @Serializable
 data class BackupAuthorArchiveSection(
-    @ProtoNumber(1) val version: Int = CURRENT_VERSION,
+    // Legacy protobuf omitted its default version; absence must continue to decode as v4.
+    @ProtoNumber(1) val version: Int = 4,
     @ProtoNumber(2) val creators: List<BackupCreatorIdentity> = emptyList(),
     @ProtoNumber(3) val sourceWorks: List<BackupAuthorSourceWork> = emptyList(),
     @ProtoNumber(4) val watches: List<BackupAuthorWatch> = emptyList(),
@@ -21,7 +22,7 @@ data class BackupAuthorArchiveSection(
     @ProtoNumber(8) val languageDecisions: List<BackupAuthorLanguageDecision> = emptyList(),
 ) {
     companion object {
-        const val CURRENT_VERSION = 4
+        const val CURRENT_VERSION = 5
     }
 }
 
@@ -75,6 +76,7 @@ data class BackupCreatorIdentity(
     @ProtoNumber(6) val mergedIntoPortableKey: String? = null,
     @ProtoNumber(7) val needsReview: Boolean = false,
     @ProtoNumber(8) val aliases: List<BackupCreatorAlias> = emptyList(),
+    @ProtoNumber(9) val names: List<BackupCreatorName> = emptyList(),
 )
 
 @Serializable
@@ -121,4 +123,10 @@ data class BackupAuthorBinding(
     @ProtoNumber(6) val sourceText: String? = null,
     @ProtoNumber(7) val confidence: Double,
     @ProtoNumber(8) val evidence: String,
+)
+
+@Serializable
+data class BackupCreatorName(
+    @ProtoNumber(1) val text: String,
+    @ProtoNumber(2) val origin: String,
 )

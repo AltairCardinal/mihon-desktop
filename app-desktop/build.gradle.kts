@@ -200,8 +200,7 @@ kotlin {
             }
         }
         val jvmTest by getting {
-            kotlin.srcDirs("src/test/kotlin")
-            kotlin.srcDir("../data/src/testFixtures/kotlin")
+            kotlin.srcDirs("src/test/kotlin", "../data/src/testFixtures/kotlin", "../data/src/creatorEntryContract/kotlin")
             resources.srcDir("src/test/resources")
             dependencies {
                 implementation(libs.bundles.test)

@@ -152,6 +152,13 @@ object TestMode {
             creatorRepository = Injekt.get(),
             archiveRepository = Injekt.get(),
             scheduler = Injekt.get(),
+            preferences = Injekt.get(),
+            mangaRepository = Injekt.get(),
+            syncFixture = args.testProfile?.let { profile ->
+                mihon.desktop.test.http.AuthorSyncTestFixture(
+                    profile, Injekt.get(), Injekt.get(), Injekt.get(), Injekt.get(),
+                )::execute
+            },
         )
         AuthorArchiveTestModeBridge.install(authors)
         synchronized(lifecycleLock) {
@@ -244,6 +251,11 @@ object TestMode {
                 "tracking_update",
                 "tracking_cancel",
                 "authors_state",
+                "author_resolve",
+                "author_sync_fixture",
+                "author_add_aliases",
+                "author_set_display_name",
+                "author_set_frequency",
                 "author_follow",
                 "author_unfollow",
                 "author_manual_scan",

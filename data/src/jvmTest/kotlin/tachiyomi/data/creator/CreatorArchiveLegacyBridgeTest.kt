@@ -40,6 +40,30 @@ class CreatorArchiveLegacyBridgeTest {
     }
 
     @Test
+    fun `legacy aliases merge occupied roots after readiness and preserve legacy keys`() = runBlocking<Unit> {
+        val repository = CreatorRepositoryImpl(handler)
+        val first = repository.upsertCreator("First")
+        val second = repository.upsertCreator("Second")
+        seedLegacyCreator(10L, "First")
+        seedLegacyCreator(11L, "Second")
+        bridge.importIncremental()
+        seedLegacyCreator(12L, "Bridge")
+        driver.execute(null, "UPDATE creators SET aliases = 'First|Second' WHERE _id = 12", 0)
+        bridge.importIncremental()
+        val root = repository.resolveCreatorIdByExactName("First")!!
+        repository.resolveCreatorIdByExactName("Second") shouldBe root
+        repository.resolveCreatorIdByExactName("Bridge") shouldBe root
+        repository.getCreator(first.id)!!.id shouldBe root
+        repository.getCreator(second.id)!!.id shouldBe root
+        handler.await {
+            listOf(10L, 11L, 12L).forEach { legacy ->
+                author_archiveQueries.getArchiveCreatorIdByLegacyId(legacy).executeAsOne() shouldBe root
+            }
+        }
+        bridge.importIncremental().imported shouldBe 0
+    }
+
+    @Test
     fun `unchanged legacy fingerprint never recreates a relation removed by a user split`() {
         seedManga(1L)
         seedLegacyCreator(legacyId = 10L, name = "ONE")

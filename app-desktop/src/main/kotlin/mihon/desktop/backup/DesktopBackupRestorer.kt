@@ -59,13 +59,20 @@ class DesktopBackupRestorer(
      * Restores all data from [backup].
      * Returns a [RestoreResult] summarising what was restored and what failed.
      */
-    suspend fun restore(backup: Backup, onProgress: suspend (RestoreProgress) -> Unit = {}): RestoreResult {
+    suspend fun restore(backup: Backup, onProgress: suspend (RestoreProgress) -> Unit = {}): RestoreResult =
+        restore(backup, true, onProgress)
+
+    suspend fun restore(
+        backup: Backup,
+        appSettings: Boolean,
+        onProgress: suspend (RestoreProgress) -> Unit = {},
+    ): RestoreResult {
         val importId = if (backup.backupManga.isNotEmpty() || backup.backupAuthorArchive != null) {
             backupRestoreSync.begin()
         } else null
         var outcome = SyncRestoreOutcome.FAILED
         try {
-            return restoreContents(backup, importId, onProgress).also {
+            return restoreContents(if (appSettings) backup else backup.copy(backupPreferences = emptyList()), importId, onProgress).also {
                 outcome = if (it.hasErrors) SyncRestoreOutcome.PARTIAL else SyncRestoreOutcome.COMPLETED
             }
         } catch (error: CancellationException) {
@@ -316,6 +323,7 @@ class DesktopBackupRestorer(
             currentCoroutineContext().ensureActive()
             try {
                 if (Preference.isAppState(preference.key)) return@forEach
+                if (keyPrefix == "preferences") tachiyomi.data.backup.validateCreatorPreferenceBackup(preference)
                 val target = store ?: error("preference store dependency is missing")
                 when (val value = preference.value) {
                     is IntPreferenceValue -> target.getInt(preference.key).set(value.value)

@@ -137,3 +137,99 @@ checkbox 仅在实现、审查、验证与提交全部完成时勾选。
 - Windows最终EXE另以独立profile启动Test Mode，通过production downloaded-directory route实际打开12页章节，收到真实OPEN_PAGE/DECODE/FIRST_PAGE_PRESENTED；向该实例原生窗口投递实际方向键，呈现记录推进至page5；关闭后productionClosed=true，再通过shutdown正常退出。证据`.gradle-coordinator/dp04-windows-reader-state.json`、`dp04-windows-after-navigation.json`、`dp04-windows-reader-closed.json`。未触碰用户原有运行实例。
 - Windows Test Mode夹具显式`isDualPage=false`，因此上述运行时证据仅覆盖单页打开/输入/关闭，不能因相邻页呈现事件误称双页运行时验收；双页、已读入口和跨章语义以真实production/mounted自动化证据为准，Android补实机跨章。没有新增测试专用产品接口。
 - 边界：未读章节保留进度，显式同步/恢复定位优先；有邻章时直连，等待与失败仍有加载/重试反馈；宽图与奇数尾页可合法单页，模式不会因异步尺寸或邻章窗口更新意外退化。Desktop既有独立封面策略保持。macOS因远端缺少JDK未构建，不宣称本轮macOS产物通过。
+
+
+## 2026-09-17 Android 默认自适应与配对定位对齐
+
+本批次延续 Windows 已验收的逻辑首张语义。Android 的 `DisplayPage.Double.firstPage` 原本已经是右页，
+本轮修复的是重配对定位、模式切换恢复点与进度回写边界，不把它描述成桌面 `max` 取页错误。
+
+- 设置 → 阅读器 → 默认阅读模式 → 默认：按实际阅读容器（扣除固定 inset）的比例自动选择 RTL 单页或双页。
+  新安装全局值为 0；已保存的 RTL、LTR、双页等显式值保持原样。漫画的 0 仍表示“跟随全局设置”，
+  因此全局为手动模式时，漫画选择默认不会强制自动。阅读器设置明确显示继承关系；自动模式显示“默认 · 单页／双页”与说明。
+- 复用 domain `AdaptiveReaderLayout`：首次有效尺寸 ≥1.35 为双页，否则单页；后续 ≥1.35 进入、≤1.25 退出，
+  目标连续稳定 150ms，持续拉伸到同一目标不重置计时。无效尺寸、离开自动模式或 Activity 销毁取消待切换；
+  工具栏、设置面板等 overlay 不改变阅读容器。旋转、分屏和窗口拉伸都通过实际布局尺寸触发。
+- Android 本轮才将竖向封面对齐为左半槽唯一页；真实横向封面／跨页图仍占全宽，其他唯一末页保持原有布局。
+  双页当前页是 RTL 右页，回单页显示该页。重配对同时决定边界和目标，例如 [1,2]→[2,3]→[1,2]；
+  章节尾部不足两张仍可合法单页。domain `adjustReaderPairing` 供两端共用，Desktop 仅等价委托，无新增 Windows 产物。
+- 同章布局重排只更新可见位置，不写阅读进度、完成状态或触发下载；真实翻页仍走既有 shared progress 链。
+  当前位置从异步进度持久化中分离，过期写入不再覆盖新布局位置。未获激活的邻章不能改 requestedPage；
+  ChapterTransition 加载完成进入真实邻章属于导航，仍经过既有激活与 settlement arbiter。
+- 尺寸事实、手动配对边界和当前页由已有 ReaderViewModel 保留，Activity／viewer 重建后复用；
+  页面列表身份改变或离开章节窗口会清理对应配对状态。不保证手动配对边界跨进程终止／重新打开持久化。
+  Android 本轮不改 Desktop bit34 协议；既有高位标志保持，Android 漫画默认继续按原低位继承解释。
+
+自动化覆盖：真实 ReaderActivity 更新入口与容器 resize、两个 Activity 实例复用同一 ViewModel 的定位和配对、
+全局设置动态生效、真实 holder 封面物理槽、连续配对与邻章恢复、progress 数据链及迟到激活竞态；
+共享策略与 Desktop 配对挂载测试保护等价委托。
+
+### 本批次验证与交付
+
+- 内聚性：变更超过 8 文件／400 行，因为共享规则、Android View／Compose 设置入口、Activity 生命周期、
+  ViewModel 当前位置与进度、真实挂载测试必须一起交付。Desktop 只将已验收的纯策略等价委托到共享层。
+- 红证据：`android-default-red`、`android-default-wiring-red`；最终相关回归 `android-default-related`
+  为 domain 44、Android 67、Desktop 54 项全部通过。独立检查关闭了迟到邻章激活写入及过渡页导航被布局保护吞掉的边界。
+- `android-default-full`：domain 477、Android 447 项完整测试全部通过、零跳过，全仓 `spotlessCheck` 通过（4m7s）。
+  本轮只运行一次完整测试；上述 focused 验证与失败夹具修正不作为完整测试重复。
+- `android-default-release`：正式 R8／资源压缩构建通过（3m46s），沿用既有可选 Window 扩展／jsoup 缺失类告警，未新增忽略规则。
+  `android-default-signing.log` 验证原发布证书、包名 `app.mihon.desktop.fork`、versionCode 22／`0.19.4-aex.4`。
+- [正式 APK](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.4-rc1/Mihon-Fork-0.19.4-aex.4-rc1-universal.apk)，
+  SHA-256 `b93b2856753f7b4083f1b0449b260290630a665b5f2362a16c1fa026be41c4b7`。
+  API 36 模拟器 `mihon-aex-api36` 原位升级成功，已安装 base.apk 哈希相同，原书架与下载章节保留。
+- 正式运行验收：九页下载章节竖屏单页，旋转后首页独占左槽；普通双页显示页 2／3、当前页 2，返回竖屏仍显示右页 2。
+  [横屏双页](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.4-rc1/acceptance/landscape-pair.png)、
+  [返回单页](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.4-rc1/acceptance/portrait-right-page.png)。
+  调整后显示页 3／4；再连续点击七次恢复页 2／3，无持续翻页，之后正常翻至页 4。
+- 同为横向的显示尺寸 1800×1200 显示“默认 · 双页”，1400×1200 显示“默认 · 单页”，当前页保持 4：
+  [宽比例](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.4-rc1/acceptance/resize-wide.png)、
+  [窄比例](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.4-rc1/acceptance/resize-narrow.png)。
+  这是真实 APK 显示尺寸变化验收，不冒称 OEM 分屏／自由窗口实测；这些入口的尺寸监听由真实容器挂载测试覆盖。
+  验收后恢复模拟器 1080×1920、自动旋转 1／user_rotation 0。无真机连接，真机及厂商窗口体验留作用户验收。
+
+
+## 2026-09-17：两端区分「默认」与「自动」
+
+本节更新上一批次的命名与持久化契约；上文 aex.4 验收记录保留为历史证据。
+
+- 两端漫画阅读模式「默认」只表示继承全局；「自动」是独立可选的自适应 RTL 模式。
+  全局「默认阅读模式」初始选择「自动」，不提供会递归继承的「默认」选项。
+  删除产品入口中的「跟随全局设置」文案，自动状态显示「自动 · 单页／双页」。
+- 共享 `ReaderModeFlags` 使用低三位：0 为继承，7 为自动，1–6 的既存手动模式不变。
+  Android 旧全局 0、Desktop 旧全局字符串 DEFAULT 分别迁至 7／AUTO；旧 Desktop bit34+RTL 兼容读取为自动。
+  新写入统一用 7 并清 bit34，保留旋转及其他无关位；选择 0 还须清 Desktop 的 bit32/33 单双页覆盖，
+  否则旧 dual-only 数据会绕过全局继承。其他模式保留这些旧布局选项。旧客户端尚不理解新值 7，不保证降级后的自动模式体验。
+- Android 提示依据「漫画原始选择、解析后模式」变化；AUTO 内部单双页重排、同模式重建及 Activity 旋转重建不弹触屏区域或模式提示。
+  手动 AUTO↔RTL，以及默认继承 AUTO→显式 AUTO，即使最终 viewer 类型相同也有提示。
+  提示显示不改变既有阅读区域、配对、当前位置和进度语义。
+- 复用既有设置、持久化、viewer 与共享策略；超过 8 个文件是因为跨端值协议、旧值迁移、设置入口与生命周期提示必须共同交付。
+  focused 覆盖共享 flags 契约、真实 Android 写入/读取及 ViewModel 解析、真实全局设置 Compose 配置、
+  Activity/容器/导航区域提示、Desktop 设置点击与重开、既有配对/当前页/进度回归。
+  完整测试、正式两端产物与运行验收由本批次最终收口补记，定向测试不替代正式产物验收。
+
+
+### 本批次验收与发布
+
+- 红证据为 `reader-auto-naming-red`、`reader-auto-overlay-red`、`reader-inheritance-red`；
+  `reader-auto-related` 通过，独立审查覆盖模式解析、迁移、真实设置入口、导航提示和配对定位链路。
+- `reader-auto-full` 完整执行一次：domain 478、Android 450 项全部通过；Desktop 3097 项中 3 项旧断言失败、2 项跳过。
+  三项失败仅为枚举数量及旧 0xFF 掩码断言，修正测试后 `reader-auto-recheck` 的 40 项全部通过，完整 `spotlessCheck` 通过。
+  生产代码未因补验修改，合并有效证据为 Desktop 3095 项通过／2 项跳过；没有重复完整测试。
+- 完整测试结束后发现并行扩展入口任务覆盖了 Desktop XML 目录，因此全量数量以保留的
+  `.gradle-coordinator/reader-auto-full.log` 为准。补验与发布迁至 `D:/Shell/Github/mihon-reader-auto-release` 隔离 worktree，
+  仅复制本批次文件，排除另一任务的 BrowseTab、ExtensionListScreen、对应测试和网络文档；未覆盖用户改动。
+- Windows：`reader-auto-windows` 使用官方 `build-desktop.sh build-only`，复用同一 production diff 的完整测试与定向补验，
+  构建、正式运行时版本及 production 扩展安装验收通过。
+  [正式 EXE](<D:/Shell/Github/mihon-reader-auto-release/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.42.97c44b4-unpacked/Mihon Desktop.exe>)，
+  ZIP SHA-256 `46a5819b352baa3d92824965c3ab76ce7e8cba0e1280e62bdacecbff39b0d0c5`。
+- Android：`reader-auto-android` 正式 R8／资源压缩构建通过，`reader-auto-signing.log` 验证原签名、code23／`0.19.4-aex.5`。
+  [正式 APK](D:/Shell/Github/mihon-reader-auto-release/app/artifacts/android/0.19.4-aex.5-rc1/Mihon-Fork-0.19.4-aex.5-rc1-universal.apk)，
+  SHA-256 `92b1a866403ce66cdb477b92c02260dd9e3a04a1e216f7dba652989593406a92`；API36 模拟器原位安装成功，安装包哈希相同。
+- 实际 APK 设置同时出现 Default／Auto；Default 显示继承 Auto。手动 Default→Auto 显示触屏区域提示：
+  [手动提示](D:/Shell/Github/mihon-reader-auto-release/app/artifacts/android/0.19.4-aex.5-rc1/acceptance/manual-auto-prompt.png)。
+  横屏显示第4／5页、右页为当前第4页，回竖屏仍第4页；两次均没有触屏提示：
+  [横屏](D:/Shell/Github/mihon-reader-auto-release/app/artifacts/android/0.19.4-aex.5-rc1/acceptance/auto-landscape-no-prompt.png)、
+  [竖屏](D:/Shell/Github/mihon-reader-auto-release/app/artifacts/android/0.19.4-aex.5-rc1/acceptance/auto-portrait-no-prompt.png)。
+  同方向1800×1200为双页、1400×1200为单页，仍第4页且无提示；截图位于同目录 resize-wide／resize-narrow.png。
+  验收后恢复1080×1920、自动旋转1／user_rotation0及漫画Default。无物理手机，未宣称OEM自由窗口实机验收。
+- macOS 本轮只读预检仍报无 Java Runtime，未安装远端工具链，不提供 macOS 新产物。

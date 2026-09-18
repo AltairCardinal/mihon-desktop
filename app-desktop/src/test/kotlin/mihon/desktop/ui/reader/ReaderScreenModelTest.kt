@@ -430,7 +430,7 @@ class ReaderScreenModelTest {
         webtoon.setReadingMode(ReadingMode.LTR)
         assertEquals(ReadingMode.WEBTOON, webtoon.state.value.readingMode)
 
-        val model = ReaderScreenModel()
+        val model = ReaderScreenModel(prefs = testPreferences { readingMode = ReadingMode.RTL })
         model.setForcedSinglePages(setOf(0, 2))
         model.setDualPageMode(false)
         assertTrue(model.state.value.forcedSinglePages.isEmpty())

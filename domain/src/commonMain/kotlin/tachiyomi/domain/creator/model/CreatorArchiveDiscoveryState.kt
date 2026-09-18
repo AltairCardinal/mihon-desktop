@@ -126,6 +126,7 @@ data class SourceDiscoveryObservation(
     val discoveryIdempotencyKey: String,
     val originalLanguageAssertion: LanguageAssertionContract? = null,
     val originalLanguageIdempotencyKey: String? = null,
+    val requiresActiveWatch: Boolean = false,
 )
 
 data class SourceDiscoveryObservationResult(

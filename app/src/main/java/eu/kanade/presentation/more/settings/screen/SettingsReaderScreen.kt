@@ -34,10 +34,17 @@ object SettingsReaderScreen : SearchableSettings {
         return listOf(
             Preference.PreferenceItem.ListPreference(
                 preference = readerPref.defaultReadingMode(),
-                entries = ReadingMode.entries.drop(1)
+                entries = ReadingMode.entries.filter { it != ReadingMode.DEFAULT }
                     .associate { it.flagValue to stringResource(it.stringRes) }
                     .toImmutableMap(),
                 title = stringResource(MR.strings.pref_viewer_type),
+                subtitleProvider = { value, entries ->
+                    if (value == ReadingMode.AUTO.flagValue) {
+                        entries[value] + "\n" + stringResource(MR.strings.desktop_reader_default_summary)
+                    } else {
+                        entries[value]
+                    }
+                },
             ),
             Preference.PreferenceItem.ListPreference(
                 preference = readerPref.doubleTapAnimSpeed(),

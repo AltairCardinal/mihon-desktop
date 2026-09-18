@@ -122,6 +122,7 @@ android {
 
     sourceSets {
         getByName("test").java.srcDir("../data/src/testFixtures/kotlin")
+        getByName("test").java.srcDir("../data/src/creatorEntryContract/kotlin")
         getByName("preview").res.srcDirs("src/debug/res")
         getByName("benchmark").res.srcDirs("src/debug/res")
         getByName("androidTest").apply {

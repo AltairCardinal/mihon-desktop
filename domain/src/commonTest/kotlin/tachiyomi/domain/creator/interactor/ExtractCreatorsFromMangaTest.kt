@@ -42,14 +42,21 @@ class ExtractCreatorsFromMangaTest {
     }
 
     @Test
-    fun `full width and half width aliases share one mention`() {
+    fun `full width and half width names remain exact distinct mentions`() {
         val manga = Manga.create().copy(author = "ＭＵＲＡＴＡ", artist = "Murata")
 
         val mentions = extract.await(manga)
 
-        mentions.size shouldBe 1
-        mentions.single().role shouldBe CreatorRole.BOTH
-        mentions.single().normalizedName shouldBe "murata"
-        mentions.single().evidence.map { it.rawToken }.shouldContainExactly("ＭＵＲＡＴＡ", "Murata")
+        mentions.map { it.displayName }.shouldContainExactly("ＭＵＲＡＴＡ", "Murata")
+        mentions.map { it.role }.shouldContainExactly(CreatorRole.AUTHOR, CreatorRole.ARTIST)
+        mentions.map { it.normalizedName }.shouldContainExactly("murata", "murata")
+    }
+
+    @Test
+    fun `nonblank punctuation name is retained even when search normalization is blank`() {
+        val mentions = extract.await(Manga.create().copy(author = "!!!", artist = null))
+
+        mentions.single().displayName shouldBe "!!!"
+        mentions.single().normalizedName shouldBe ""
     }
 }

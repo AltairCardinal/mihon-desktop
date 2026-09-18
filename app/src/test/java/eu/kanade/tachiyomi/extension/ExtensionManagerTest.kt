@@ -668,6 +668,101 @@ class ExtensionManagerTest {
     }
 
     @Test
+    fun `suggestion inventory stays unknown while shared package permission is denied`() = runTest {
+        var permission = eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionStatus.DENIED
+        val controller = eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionController({ permission })
+        val manager = ExtensionManager(
+            context = mockk(relaxed = true),
+            preferences = preferences(),
+            trustExtension = mockk(relaxed = true),
+            installedAppsPermissionController = controller,
+            installedExtensionsLoader = { emptyList() },
+            inventoryProvider = { ExtensionInventory(initialized = true) },
+            installReceiverRegistrar = {},
+            scope = backgroundScope,
+        )
+        runCurrent()
+        assertTrue(manager.inventory.value.initialized)
+        assertTrue(manager.inventory.value.hasUnknownArtifacts)
+        permission = eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionStatus.GRANTED
+        controller.refresh()
+        assertFalse(manager.inventory.value.hasUnknownArtifacts)
+        permission = eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionStatus.UNKNOWN
+        controller.refresh()
+        assertTrue(manager.inventory.value.hasUnknownArtifacts)
+    }
+
+    @Test
+    fun `suggestion inventory rejects permission lost during scan and retains private extension`() = runTest {
+        var permission = eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionStatus.GRANTED
+        val controller = eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionController({ permission })
+        val privateExtension = installed().copy(isShared = false)
+        val manager = ExtensionManager(
+            context = mockk(relaxed = true),
+            preferences = preferences(),
+            trustExtension = mockk(relaxed = true),
+            installedAppsPermissionController = controller,
+            installedExtensionsLoader = { listOf(LoadResult.Success(privateExtension)) },
+            inventoryProvider = {
+                permission = eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionStatus.DENIED
+                ExtensionInventory(initialized = true)
+            },
+            installReceiverRegistrar = {},
+            scope = backgroundScope,
+        )
+        runCurrent()
+        assertTrue(manager.inventory.value.hasUnknownArtifacts)
+        assertEquals(listOf(privateExtension), manager.installedExtensionsFlow.value)
+        assertEquals(
+            mihon.domain.extension.suggestion.ExtensionPresence.PRESENT,
+            manager.inventory.value.packages[privateExtension.pkgName],
+        )
+    }
+
+    @Test
+    fun `revocation during shared scan cannot erase previously loaded sources`() = runTest {
+        var permission = eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionStatus.GRANTED
+        val controller = eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionController({ permission })
+        val gate = CompletableDeferred<Unit>()
+        var calls = 0
+        val existing = installed().copy(isShared = true)
+        val manager = ExtensionManager(
+            context = mockk(relaxed = true),
+            preferences = preferences(),
+            trustExtension = mockk(relaxed = true),
+            installedAppsPermissionController = controller,
+            installedExtensionsLoader = {
+                calls++
+                when (calls) {
+                    1 -> listOf(LoadResult.Success(existing))
+                    3 -> {
+                        gate.await()
+                        emptyList()
+                    }
+                    else -> emptyList()
+                }
+            },
+            installReceiverRegistrar = {},
+            scope = backgroundScope,
+        )
+        runCurrent()
+        assertEquals(listOf(existing), manager.installedExtensionsFlow.value)
+        permission = eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionStatus.DENIED
+        controller.refresh()
+        permission = eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionStatus.GRANTED
+        val rescan = async { controller.refresh() }
+        runCurrent()
+        permission = eu.kanade.tachiyomi.extension.permission.InstalledAppsPermissionStatus.DENIED
+        val revocation = async { controller.refresh() }
+        runCurrent()
+        gate.complete(Unit)
+        rescan.await()
+        revocation.await()
+        assertEquals(listOf(existing), manager.installedExtensionsFlow.value)
+        assertEquals(permission, controller.state.value.status)
+    }
+
+    @Test
     fun `refresh uses successful owner only and clears removed source metadata`() = runTest {
         withNotificationEnvironment {
             val owner = RepositoryIdentity("https://example.org", "Owner", "key")

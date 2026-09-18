@@ -195,7 +195,7 @@ object ReaderPagePairing {
 class ReaderPairingState(
     val pageCount: Int,
     val isRtl: Boolean,
-    private val options: PagePairingOptions = PagePairingOptions(),
+    private var options: PagePairingOptions = PagePairingOptions(),
     private val initialLayouts: Map<Int, PageLayout> = emptyMap(),
     private val defaultLayout: PageLayout = PageLayout.UNKNOWN,
 ) {
@@ -210,6 +210,16 @@ class ReaderPairingState(
         dimensions[pageIndex] = ReaderPageSize(width, height)
         rebuild()
     }
+
+    fun updateOptions(options: PagePairingOptions) {
+        this.options = options
+        rebuild()
+    }
+
+    fun pageLayout(index: Int): PageLayout =
+        dimensions[index]?.let { classifyPage(it.width, it.height, PageRotation.NONE) }
+            ?: initialLayouts[index]
+            ?: defaultLayout
 
     fun adjustPairing() {
         if (pageCount <= 0) return
@@ -226,11 +236,7 @@ class ReaderPairingState(
 
     private fun buildLogical(): List<IntArray> = ReaderPagePairing.build(
         pageCount = pageCount,
-        layoutAt = { index ->
-            dimensions[index]?.let { classifyPage(it.width, it.height, PageRotation.NONE) }
-                ?: initialLayouts[index]
-                ?: defaultLayout
-        },
+        layoutAt = ::pageLayout,
         offset = offset,
         options = options,
     )

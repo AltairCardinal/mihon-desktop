@@ -58,6 +58,7 @@ kotlin {
             }
         }
         jvmTest {
+            kotlin.srcDir("src/creatorEntryContract/kotlin")
             dependencies {
                 implementation(libs.bundles.test)
                 implementation(kotlinx.coroutines.test)

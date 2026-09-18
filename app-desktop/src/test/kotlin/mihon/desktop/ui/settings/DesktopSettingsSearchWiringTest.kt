@@ -273,15 +273,28 @@ class DesktopSettingsSearchWiringTest {
         }
     }
     @Test
+    fun `reader global default selection writes the production preference`() = runBlocking {
+        withRestoredLocale {
+            Locale.setDefault(Locale.US)
+            withSearchScene(ReaderSettingsScreen()) { scene ->
+                currentReaderPreferences.readingMode = mihon.desktop.reader.ReadingMode.LTR
+                render(scene)
+                click(scene, MR.strings.automatic_background.localized(Locale.US))
+                assertEquals(mihon.desktop.reader.ReadingMode.AUTO, currentReaderPreferences.readingMode)
+            }
+        }
+    }
+
+    @Test
     fun `reader search anchor scrolls highlights once and preserves mode writes`() = runBlocking {
         withRestoredLocale {
             Locale.setDefault(Locale.US)
-            val anchorTitle = MR.strings.desktop_reader_pager_mode.localized(Locale.US)
+            val anchorTitle = MR.strings.right_to_left_viewer.localized(Locale.US)
             withSearchScene(height = 180) { scene ->
                 lateinit var navigator: Navigator
                 scene.setContent { dependencies { Navigator(SettingsSearchScreen()) { nav -> navigator = nav; CurrentScreen() } } }
                 render(scene)
-                currentPreferences.defaultReaderMode.set(mihon.desktop.settings.ReaderDefaultMode.WEBTOON)
+                currentReaderPreferences.readingMode = mihon.desktop.reader.ReadingMode.WEBTOON
                 setText(scene, anchorTitle)
                 render(scene)
                 click(scene, anchorTitle)
@@ -294,7 +307,7 @@ class DesktopSettingsSearchWiringTest {
                     .config[SemanticsProperties.VerticalScrollAxisRange]
                 assertTrue(scroll.value() > 0f)
                 click(scene, anchorTitle)
-                assertEquals(mihon.desktop.settings.ReaderDefaultMode.PAGER, currentPreferences.defaultReaderMode.get())
+                assertEquals(mihon.desktop.reader.ReadingMode.RTL, currentReaderPreferences.readingMode)
             }
             withSearchScene(ReaderSettingsScreen(), height = 180) { scene ->
                 render(scene)

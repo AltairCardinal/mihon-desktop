@@ -131,25 +131,25 @@ data class CreatorIdentityEvidence(
 
 object CreatorIdentityEvidenceEvaluator {
     fun evaluate(aliases: List<String>, work: CreatorSourceWorkSnapshot): CreatorIdentityEvidence {
-        val aliasesByNormalized = aliases
+        val aliasesByExactName = aliases
             .map(String::trim)
             .filter(String::isNotBlank)
-            .associateBy(CreatorNameNormalizer::normalize)
+            .associateBy { it }
 
         work.structuredCreatorMatches.firstOrNull { match ->
-            CreatorNameNormalizer.normalize(match.displayName) in aliasesByNormalized
+            match.displayName.trim() in aliasesByExactName
         }?.let { match ->
             return CreatorIdentityEvidence(
                 verification = CreatorRelationVerification.VERIFIED,
                 role = match.role,
-                matchedAlias = aliasesByNormalized[CreatorNameNormalizer.normalize(match.displayName)],
+                matchedAlias = aliasesByExactName[match.displayName.trim()],
                 confidence = 1.0,
                 evidence = match.evidence,
             )
         }
 
-        val authorAlias = matchingAlias(work.authorText, aliasesByNormalized)
-        val artistAlias = matchingAlias(work.artistText, aliasesByNormalized)
+        val authorAlias = matchingAlias(work.authorText, aliasesByExactName)
+        val artistAlias = matchingAlias(work.artistText, aliasesByExactName)
         if (authorAlias != null || artistAlias != null) {
             return CreatorIdentityEvidence(
                 verification = CreatorRelationVerification.VERIFIED,
@@ -175,9 +175,9 @@ object CreatorIdentityEvidenceEvaluator {
 
     private fun matchingAlias(
         sourceText: String?,
-        aliasesByNormalized: Map<String, String>,
+        aliasesByExactName: Map<String, String>,
     ): String? = CreatorNameNormalizer.splitNames(sourceText).firstNotNullOfOrNull { name ->
-        aliasesByNormalized[CreatorNameNormalizer.normalize(name)]
+        aliasesByExactName[name.trim()]
     }
 }
 

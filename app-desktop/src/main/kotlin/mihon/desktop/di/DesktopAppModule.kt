@@ -358,6 +358,9 @@ internal fun initConfigLayer(appDir: File, preferenceStore: DesktopPreferenceSto
 }
 
 private fun registerDesktopSettings(preferenceStore: PreferenceStore) {
+    val creatorPreferences = tachiyomi.domain.creator.service.CreatorDiscoveryPreferences(preferenceStore)
+    Injekt.addSingleton(creatorPreferences)
+    Injekt.addSingleton(tachiyomi.domain.creator.service.CreatorDiscoverySchedule(creatorPreferences::current))
     Injekt.addSingleton(
         if (preferenceStore is DesktopPreferenceStore) {
             DesktopAppPreferences(preferenceStore, preferenceStore.childNode("desktop/app"))
@@ -489,6 +492,7 @@ internal fun initDataLayer(
     val creatorRepositoryImpl = CreatorRepositoryImpl(
         handler = handler,
         bootstrap = creatorArchiveBootstrap,
+        discoverySchedule = Injekt.get(),
     )
     val mangaRepositoryImpl = MangaRepositoryImpl(handler, creatorRepositoryImpl)
     val mangaRepository: MangaRepository = mangaRepositoryImpl
@@ -498,7 +502,9 @@ internal fun initDataLayer(
         indexWriter = creatorRepositoryImpl,
         extractCreators = tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga(),
     )
-    val authorArchiveBackupContributor = tachiyomi.data.backup.SqlDelightAuthorArchiveBackupContributor(handler)
+    val authorArchiveBackupContributor = tachiyomi.data.backup.SqlDelightAuthorArchiveBackupContributor(
+        handler, awaitIdentityReady = creatorRepositoryImpl::awaitIdentityReady,
+    )
     val extensionRepoRepository: ExtensionRepoRepository = ExtensionRepoRepositoryImpl(handler)
     val trackRepository: TrackRepository = TrackRepositoryImpl(handler)
     Injekt.addSingleton(mangaRepository)
@@ -737,6 +743,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
         creatorRepository = creatorRepository,
         archiveRepository = Injekt.get<CreatorArchiveRepository>(),
         sourcePort = creatorDiscoverySourcePort,
+        schedule = Injekt.get(),
     )
     Injekt.addSingleton(creatorDiscoveryService)
     Injekt.addSingleton(DiscoverCreatorWorks(creatorDiscoveryService, getCreatorDetails))

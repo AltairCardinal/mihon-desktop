@@ -8,7 +8,7 @@
 
 - 此前完成专项：[Android 新版扩展系统完整兼容 Roadmap](./2026-09-12-android-extension-v2-compatibility-roadmap.md)（2026-09-16，COMPLETE）。产品提交 `b3d81b34dc`；rc9正式Android/ARM业务及Windows/macOS限定回归已验收。MangaPlus live仍未验证成功，明确限制和证据以子计划为准。
 
-- 最近完成专项：[收藏缺失插件「建议安装」完整 Roadmap](./2026-09-16-extension-install-suggestions-roadmap.md)（2026-09-17，COMPLETE；EIS-01～05 已完成）。双端建议、单项/批量安装及 Android 系统流程已交付；Windows/macOS x64 正式运行和 Android API26/API36 专用模拟器验收通过。最终有效测试 5,245 通过、3 条件跳过；产物、修复及边界以子计划为准，不恢复其他暂停计划。
+- 最近完成专项：[收藏缺失插件「建议安装」完整 Roadmap](./2026-09-16-extension-install-suggestions-roadmap.md)（2026-09-18，COMPLETE；EIS-01～05 及主干整合已完成）。保留主干作者功能/schema27，交付 Android aex.9 与 Windows/macOS x64 BUILD46；完整集合有效 5,414 通过、3 条件跳过，三端正式运行及 API36 覆盖升级验收通过，真机未连接。新产物、历史失败、定向修复和边界见子计划第 10 节，不恢复其他暂停计划。
 
 ## 0. 产品路线
 
@@ -298,6 +298,8 @@
 锁屏归因的前提下通过最终组合裁决，详情见
 [`性能报告`](./2026-09-02-desktop-download-directory-and-partial-reading-performance-report.md)。non-reader upstream core 与
 作者归档计划继续保持暂停；下表保留其余 Phase R backlog。
+
+2026-09-17登记待执行专项：[跨插件唯一作者Roadmap](2026-09-17-global-author-identity-roadmap.md)。其最终交互已确认，生产实现尚未启动；仅替代同名身份与相关作者交互的旧设计，不恢复旧作者归档全部backlog，不切换本计划active-child-plan。
 
 书架交互对齐 child plan 在 2026-09-08 复审后重开，已于 2026-09-09 完成 5 个补修行为批次和
 LI-09 双平台发布验收；macOS 使用同版本隔离 checkout。完整迁移配置/搜索端口仍归 MG-01，

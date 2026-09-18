@@ -2,6 +2,9 @@ package mihon.desktop.ui.reader
 
 import cafe.adriel.voyager.core.model.ScreenModel
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,10 +22,16 @@ import mihon.desktop.reader.WebtoonSidePadding
 import mihon.desktop.reader.ZoomState
 import mihon.desktop.reader.dualPageFromViewerFlags
 import mihon.desktop.reader.readingModeFromViewerFlags
+import mihon.desktop.reader.viewerFlagsFollowingGlobal
+import mihon.desktop.reader.viewerFlagsWithReadingMode
+import mihon.desktop.reader.viewerFlagsWithDualPage
 import mihon.desktop.ui.reader.presentation.DisplayUnitId
 import mihon.desktop.ui.reader.presentation.VisiblePageSet
 import mihon.desktop.ui.reader.presentation.WebtoonViewportUpdate
+import mihon.desktop.ui.reader.presentation.dualDisplayUnitIndexForSourcePage
+import mihon.desktop.ui.reader.presentation.firstDualPageIndex
 import mihon.domain.reader.ReaderChapterModel
+import mihon.domain.reader.AdaptiveReaderLayout
 import mihon.domain.reader.ReaderChapterState
 import mihon.domain.reader.ReaderChapterTransitionModel
 import mihon.domain.reader.ReaderNavigationCommand
@@ -76,9 +85,16 @@ class ReaderScreenModel(
     private val ownedRuntimeScope: CoroutineScope? = null,
     private val onProductionClosed: () -> Unit = {},
 ) : ScreenModel {
+    private val globalPreferences = prefs
     private val _state = MutableStateFlow(buildInitialState(prefs, initialSessionState))
     val state: StateFlow<ReaderState> = _state.asStateFlow()
     private var lastSettledViewport: SettledViewportIdentity? = null
+    private var viewportSize: Pair<Int, Int>? = null
+    private var adaptiveInitialized = false
+    private var pendingLayout: Boolean? = null
+    private var pendingLayoutJob: Job? = null
+    private var layoutProgressAnchor: ReaderPageId? = null
+    private var manualDualPage = dualPageFromViewerFlags(mangaViewerFlags) ?: dualPageOverride ?: prefs.isDualPage
     private val productionRuntimeLifecycleLock = Any()
     private var retainedCompositionCount = 0
     private var disposeRequested = false
@@ -90,6 +106,8 @@ class ReaderScreenModel(
     ): ReaderState {
         val resolvedMode = when {
             isWebtoon -> ReadingMode.WEBTOON
+            readingModeFromViewerFlags(mangaViewerFlags) == null && prefs.readingMode == ReadingMode.AUTO &&
+                (dualPageFromViewerFlags(mangaViewerFlags) != null || dualPageOverride != null) -> ReadingMode.RTL
             else -> readingModeFromViewerFlags(mangaViewerFlags) ?: prefs.readingMode
         }
         return ReaderState(
@@ -100,8 +118,11 @@ class ReaderScreenModel(
                 reader.context.initialPage,
                 reader.snapshot.activeChapter.pages.size,
             ),
-            readingMode = resolvedMode,
-            dualPageMode = dualPageFromViewerFlags(mangaViewerFlags) ?: dualPageOverride ?: prefs.isDualPage,
+            readingMode = if (resolvedMode == ReadingMode.AUTO) ReadingMode.RTL else resolvedMode,
+            automaticLayout = resolvedMode == ReadingMode.AUTO,
+            followsGlobalReadingMode = !isWebtoon && readingModeFromViewerFlags(mangaViewerFlags) == null &&
+                dualPageFromViewerFlags(mangaViewerFlags) == null && dualPageOverride == null,
+            dualPageMode = resolvedMode != ReadingMode.AUTO && (dualPageFromViewerFlags(mangaViewerFlags) ?: dualPageOverride ?: prefs.isDualPage),
             autoSplitPages = prefs.autoSplitPages,
             autoSpreadMatching = prefs.isAutoSpreadMatching,
             backgroundTheme = prefs.backgroundTheme,
@@ -120,6 +141,9 @@ class ReaderScreenModel(
     }
 
     fun acceptSessionState(reader: DesktopReaderSessionState) {
+        if (_state.value.session.generation != reader.snapshot.generation || _state.value.context.chapterId != reader.context.chapterId) {
+            layoutProgressAnchor = null
+        }
         _state.update { current ->
             val chapterChanged = current.context.chapterId != reader.context.chapterId
             val firstStablePageList = current.session.activeChapter.pages.isEmpty() &&
@@ -163,6 +187,7 @@ class ReaderScreenModel(
     }
 
     fun goToPage(page: Int) {
+        layoutProgressAnchor = null
         _state.update { state ->
             val max = (state.session.activeChapter.pages.size - 1).coerceAtLeast(0)
             state.copy(
@@ -175,6 +200,7 @@ class ReaderScreenModel(
     }
 
     internal fun selectDisplayUnit(displayUnitId: DisplayUnitId) {
+        layoutProgressAnchor = null
         _state.update { state ->
             state.copy(
                 currentDisplayUnitId = displayUnitId,
@@ -210,11 +236,13 @@ class ReaderScreenModel(
             }
             return
         }
+        val layoutOnly = layoutProgressAnchor?.let { it in visiblePages.pageIds } == true
         val activePageId = visiblePages.activePageId ?: visiblePages.pageIds.maxByOrNull(ReaderPageId::sourcePageIndex)
             ?: return
         val current = _state.value
         val pages = current.session.activeChapter.pages
         if (activePageId.chapterId != current.session.activeChapter.id || pages.none { it.id == activePageId }) return
+        layoutProgressAnchor = activePageId.takeIf { layoutOnly }
         _state.update { state ->
             state.copy(
                 currentPage = activePageId.sourcePageIndex,
@@ -228,7 +256,7 @@ class ReaderScreenModel(
             pageIds = visiblePages.pageIds,
             activePageId = activePageId,
         )
-        if (lastSettledViewport != identity) {
+        if (!layoutOnly && lastSettledViewport != identity) {
             lastSettledViewport = identity
             onViewportSettled(visiblePages.pageIds, activePageId)
         }
@@ -290,25 +318,123 @@ class ReaderScreenModel(
 
     // ── Reading mode ──────────────────────────────────────────────────────────
 
-    fun setReadingMode(mode: ReadingMode, prefs: ReaderPreferences? = null) {
-        if (isWebtoon) return
-        _state.update {
-            it.copy(
-                readingMode = mode,
+    fun updateViewportSize(width: Int, height: Int, scope: CoroutineScope) {
+        if (disposeRequested) return
+        if (width <= 0 || height <= 0) {
+            viewportSize = null
+            cancelPendingLayout()
+            return
+        }
+        viewportSize = width to height
+        val current = _state.value
+        if (!current.automaticLayout) return
+        val target = AdaptiveReaderLayout.dualPage(width, height, current.dualPageMode) ?: return
+        if (!adaptiveInitialized) {
+            adaptiveInitialized = true
+            applyAutomaticLayout(target, preserveProgress = false)
+        } else if (target == current.dualPageMode) {
+            cancelPendingLayout()
+        } else if (pendingLayout != target) {
+            cancelPendingLayout()
+            pendingLayout = target
+            pendingLayoutJob = scope.launch {
+                delay(AdaptiveReaderLayout.STABILITY_MILLIS)
+                if (_state.value.automaticLayout && pendingLayout == target) applyAutomaticLayout(target)
+                pendingLayout = null
+                pendingLayoutJob = null
+            }
+        }
+    }
+
+    private fun cancelPendingLayout() {
+        pendingLayoutJob?.cancel()
+        pendingLayoutJob = null
+        pendingLayout = null
+    }
+
+    private fun applyAutomaticLayout(dual: Boolean, preserveProgress: Boolean = true) {
+        if (_state.value.dualPageMode == dual) return
+        changePresentation(preserveProgress) { it.copy(dualPageMode = dual) }
+    }
+
+    /** Resolve display position independently of whether a layout-only settle may report progress. */
+    private fun changePresentation(preserveProgress: Boolean = true, transform: (ReaderState) -> ReaderState) {
+        _state.update { current ->
+            val changed = transform(current)
+            if (changed == current) return@update current
+            val currentPage = if (changed.dualPageMode && changed.session.activeChapter.pages.isNotEmpty()) {
+                val presentation = changed.dualPresentationSnapshot()
+                val index = presentation.dualDisplayUnitIndexForSourcePage(changed.currentPage)
+                if (index >= 0) presentation.firstDualPageIndex(index) else changed.currentPage
+            } else changed.currentPage
+            layoutProgressAnchor = changed.session.activeChapter.pages.getOrNull(currentPage)?.id.takeIf { preserveProgress }
+            changed.copy(
+                currentPage = currentPage,
                 currentDisplayUnitId = null,
                 visiblePageIds = emptySet(),
                 webtoonScrollAnchor = null,
             )
         }
-        if (mode != ReadingMode.WEBTOON) prefs?.readingMode = mode
+    }
+
+    fun adjustSpread() {
+        changePresentation { current ->
+            val adjustment = adjustedSpread(current)
+            current.copy(forcedSinglePages = adjustment.forcedSinglePages, currentPage = adjustment.currentPage)
+        }
+    }
+
+    fun followGlobalReadingMode(prefs: ReaderPreferences) {
+        if (isWebtoon) return
+        manualDualPage = prefs.isDualPage
+        setReadingMode(prefs.readingMode)
+        _state.update { it.copy(followsGlobalReadingMode = true) }
+    }
+
+    fun currentViewerFlags(): Long {
+        val current = _state.value
+        if (current.followsGlobalReadingMode) return viewerFlagsFollowingGlobal(mangaViewerFlags)
+        return viewerFlagsWithReadingMode(
+            viewerFlagsWithDualPage(mangaViewerFlags, manualDualPage),
+            if (current.automaticLayout) ReadingMode.AUTO else current.readingMode,
+        )
+    }
+
+    fun setReadingMode(mode: ReadingMode, prefs: ReaderPreferences? = null) {
+        if (isWebtoon) return
+        if (mode == ReadingMode.DEFAULT) {
+            followGlobalReadingMode(prefs ?: globalPreferences)
+            return
+        }
+        cancelPendingLayout()
+        adaptiveInitialized = false
+        val automatic = mode == ReadingMode.AUTO
+        val dual = if (automatic) {
+            viewportSize?.let { (width, height) -> AdaptiveReaderLayout.dualPage(width, height) } ?: false
+        } else manualDualPage
+        if (automatic && viewportSize != null) adaptiveInitialized = true
+        changePresentation {
+            it.copy(
+                readingMode = if (automatic) ReadingMode.RTL else mode,
+                automaticLayout = automatic,
+                followsGlobalReadingMode = false,
+                dualPageMode = dual,
+                currentDisplayUnitId = null,
+                visiblePageIds = emptySet(),
+                webtoonScrollAnchor = null,
+            )
+        }
     }
 
     // ── Dual-page & spread management ─────────────────────────────────────────
 
     fun setDualPageMode(on: Boolean, prefs: ReaderPreferences? = null) {
-        _state.update { state ->
+        if (_state.value.automaticLayout) return
+        manualDualPage = on
+        changePresentation { state ->
             state.copy(
                 dualPageMode = on,
+                followsGlobalReadingMode = false,
                 forcedSinglePages = if (!on) emptySet() else state.forcedSinglePages,
                 currentDisplayUnitId = null,
                 visiblePageIds = emptySet(),
@@ -334,16 +460,25 @@ class ReaderScreenModel(
         prefs?.isAutoSpreadMatching = on
     }
 
+    private fun changeDualPresentation(transform: (ReaderState) -> ReaderState) {
+        if (_state.value.dualPageMode) {
+            changePresentation(transform = transform)
+        } else {
+            // Single-page metadata updates must retain any pending layout progress protection.
+            _state.update(transform)
+        }
+    }
+
     fun setSpreadPages(pages: Set<Int>) {
-        _state.update { it.copy(spreadPages = pages) }
+        changeDualPresentation { it.copy(spreadPages = pages) }
     }
 
     fun setForcedSinglePages(pages: Set<Int>) {
-        _state.update { it.copy(forcedSinglePages = pages) }
+        changeDualPresentation { it.copy(forcedSinglePages = pages) }
     }
 
     fun setMatchedPairs(pairs: Set<Pair<Int, Int>>) {
-        _state.update { it.copy(matchedPairs = pairs) }
+        changeDualPresentation { it.copy(matchedPairs = pairs) }
     }
 
     fun setVirtualPages(pages: List<mihon.desktop.reader.VirtualPage>?) {
@@ -431,6 +566,7 @@ class ReaderScreenModel(
     }
 
     override fun onDispose() {
+        cancelPendingLayout()
         val closeRuntime = synchronized(productionRuntimeLifecycleLock) {
             disposeRequested = true
             markProductionRuntimeClosedIfReady()

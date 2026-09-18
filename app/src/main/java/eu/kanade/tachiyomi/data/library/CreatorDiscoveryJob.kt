@@ -17,7 +17,6 @@ import tachiyomi.domain.creator.service.CreatorDiscoveryDeliveryResult
 import tachiyomi.domain.creator.service.CreatorDiscoveryOutboxWorker
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
 import tachiyomi.domain.creator.service.RepositoryCreatorDiscoveryOutboxStore
-import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.concurrent.TimeUnit
@@ -25,11 +24,10 @@ import java.util.concurrent.TimeUnit
 /** Android lifecycle adapter for the shared author-discovery executor. */
 class CreatorDiscoveryJob(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     private val discovery: CreatorDiscoveryService = Injekt.get()
-    private val sources: SourceManager = Injekt.get()
     private val archive: CreatorArchiveRepository = Injekt.get()
 
     override suspend fun doWork(): Result = runCatching {
-        val result = discovery.discoverDueWatches(sources.getCatalogueSources())
+        val result = discovery.discoverDueWatches()
         val delivered = CreatorDiscoveryOutboxWorker(
             RepositoryCreatorDiscoveryOutboxStore(archive),
             AndroidCreatorDiscoveryNotifier(applicationContext),

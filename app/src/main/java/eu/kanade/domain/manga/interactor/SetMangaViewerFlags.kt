@@ -1,7 +1,7 @@
 package eu.kanade.domain.manga.interactor
 
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
-import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
+import mihon.domain.reader.ReaderModeFlags
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
 
@@ -14,7 +14,7 @@ class SetMangaViewerFlags(
         mangaRepository.update(
             MangaUpdate(
                 id = id,
-                viewerFlags = manga.viewerFlags.setFlag(flag, ReadingMode.MASK.toLong()),
+                viewerFlags = ReaderModeFlags.write(manga.viewerFlags, flag),
             ),
         )
     }

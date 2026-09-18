@@ -139,6 +139,20 @@ class ReaderViewModel @JvmOverloads constructor(
     },
 ) : ViewModel() {
 
+    val dualPagePairings = eu.kanade.tachiyomi.ui.reader.viewer.pager.DualPagePairingStore()
+    var automaticDualPage: Boolean? = null
+    var currentReaderPage: ReaderPage? = null
+        private set
+
+    /** Changes visible position without recording progress, completion, history, or download effects. */
+    fun onLayoutPageSelected(page: ReaderPage) {
+        if (page.chapter !== getCurrentChapter()) return
+        currentReaderPage = page
+        page.chapter.requestedPage = page.index
+        chapterPageIndex = page.index
+        mutableState.update { it.copy(currentPage = page.index + 1) }
+    }
+
     private val mutableState = MutableStateFlow(State())
     val state = mutableState.asStateFlow()
 
@@ -599,6 +613,7 @@ class ReaderViewModel @JvmOverloads constructor(
             return
         }
 
+        onLayoutPageSelected(page)
         page.chapter.pageLoader?.onPageSelected(page)
 
         val selectedChapter = page.chapter
@@ -717,12 +732,7 @@ class ReaderViewModel @JvmOverloads constructor(
         }
 
         val pageIndex = page.index
-
-        mutableState.update {
-            it.copy(currentPage = pageIndex + 1)
-        }
-        readerChapter.requestedPage = pageIndex
-        chapterPageIndex = pageIndex
+        if (currentReaderPage?.chapter !== readerChapter && page is ReaderPage) onLayoutPageSelected(page)
 
         val session = activation.session
         if (recordProgress && session != null && page.status !is Page.State.Error) {
@@ -885,7 +895,8 @@ class ReaderViewModel @JvmOverloads constructor(
             if (currChapters != null) {
                 // Save current page
                 val currChapter = currChapters.currChapter
-                currChapter.requestedPage = currChapter.chapter.last_page_read
+                currChapter.requestedPage = currentReaderPage?.takeIf { it.chapter === currChapter }?.index
+                    ?: currChapter.requestedPage
 
                 mutableState.update {
                     it.copy(
@@ -921,7 +932,8 @@ class ReaderViewModel @JvmOverloads constructor(
             if (currChapters != null) {
                 // Save current page
                 val currChapter = currChapters.currChapter
-                currChapter.requestedPage = currChapter.chapter.last_page_read
+                currChapter.requestedPage = currentReaderPage?.takeIf { it.chapter === currChapter }?.index
+                    ?: currChapter.requestedPage
 
                 mutableState.update {
                     it.copy(

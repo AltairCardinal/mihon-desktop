@@ -5,8 +5,15 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import tachiyomi.data.Database
@@ -34,6 +41,7 @@ import tachiyomi.domain.creator.model.WorkMatchState
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import tachiyomi.domain.creator.service.ChapterVariantRecord
 import tachiyomi.domain.creator.service.ChapterVariantType
+import java.nio.file.Files
 
 class CreatorRepositoryImplTest {
 
@@ -58,6 +66,304 @@ class CreatorRepositoryImplTest {
         )
         handler = JvmDatabaseHandler(database, driver)
         repository = CreatorRepositoryImpl(handler)
+    }
+
+    @Test
+    fun `archive rejects redirect cycle and resubscription retries repaired graph`() = runBlocking<Unit> {
+        val first = repository.upsertCreator("First")
+        val second = repository.upsertCreator("Second")
+        driver.execute(
+            null,
+            "UPDATE author_archive_creators " +
+                "SET status = 'MERGED', merged_into_creator_id = ${second.id} WHERE _id = ${first.id}",
+            0,
+        )
+        driver.execute(
+            null,
+            "UPDATE author_archive_creators " +
+                "SET status = 'MERGED', merged_into_creator_id = ${first.id} WHERE _id = ${second.id}",
+            0,
+        )
+        shouldThrow<IllegalStateException> { repository.observeCreatorWorkArchive(first.id).first() }
+        driver.execute(
+            null,
+            "UPDATE author_archive_creators " +
+                "SET status = 'ACTIVE', merged_into_creator_id = NULL WHERE _id = ${second.id}",
+            0,
+        )
+        val key = SourceWorkNaturalKey(81L, "/repaired")
+        repository.upsertSourceWork(81L, key.stableSourceUrl, null, "Repaired", "Second", null, null, 1L)
+        repository.upsertSourceWorkCreator(
+            key, second.id, CreatorRole.AUTHOR, 0, CreatorRelationOrigin.USER,
+            CreatorRelationVerification.VERIFIED, "Second", 1.0, "fixture",
+        )
+        repository.observeCreatorWorkArchive(first.id).first().pending.single().naturalKey shouldBe key
+    }
+
+    @Test
+    fun `three relation types replace metadata roles and protect USER and RESTORE authority`() = runBlocking<Unit> {
+        seedManga(601L, 6L, "/authority", "Authority")
+        val creator = repository.upsertCreator("Authority")
+        val key = SourceWorkNaturalKey(6L, "/authority")
+        repository.upsertSourceWork(6L, key.stableSourceUrl, 601L, "Authority", "Authority", null, null, 1L)
+        val canonical = repository.createCanonicalWork("Authority", creator.id, null)
+        handler.await(inTransaction = true) {
+            val sourceId = author_archiveQueries.getArchiveSourceWorkByKey(6L, key.stableSourceUrl).executeAsOne()._id
+            fun write(role: String, origin: String, text: String) {
+                author_archiveQueries.upsertArchiveMangaLink(601L, creator.id, role, 0, origin, text, 1.0, text, 1, 2)
+                author_archiveQueries.upsertArchiveSourceWorkCreator(
+                    sourceId, creator.id, role, 0, origin, "VERIFIED", text, 1.0, text, 1, 2,
+                )
+                author_archiveQueries.upsertArchiveCanonicalCreator(
+                    canonical.id,
+                    creator.id,
+                    role,
+                    0,
+                    if (origin == "AUTOMATIC") "ALGORITHM" else origin,
+                    text,
+                )
+            }
+            fun roles() = listOf(
+                author_archiveQueries.getArchiveMangaLink(601L, creator.id).executeAsOne().role,
+                author_archiveQueries.getArchiveSourceWorkCreator(sourceId, creator.id).executeAsOne().role,
+                author_archiveQueries.getArchiveCanonicalCreatorsForCreator(creator.id).executeAsList().single().role,
+            )
+            // Canonical creation is user-authored; reset the fixture before metadata assertions.
+            author_archiveQueries.deleteArchiveCanonicalCreator(canonical.id, creator.id)
+            write("BOTH", "AUTOMATIC", "metadata")
+            write("AUTHOR", "AUTOMATIC", "refreshed")
+            roles() shouldBe listOf("AUTHOR", "AUTHOR", "AUTHOR")
+            for (authority in listOf("USER", "RESTORE")) {
+                author_archiveQueries.deleteArchiveMangaLink(601L, creator.id)
+                author_archiveQueries.deleteArchiveSourceWorkCreator(sourceId, creator.id)
+                author_archiveQueries.deleteArchiveCanonicalCreator(canonical.id, creator.id)
+                write("ARTIST", authority, "protected raw signature")
+                write("AUTHOR", "AUTOMATIC", "metadata replacement")
+                roles() shouldBe listOf("ARTIST", "ARTIST", "ARTIST")
+                author_archiveQueries.getArchiveMangaLink(601L, creator.id).executeAsOne().source_text shouldBe
+                    "protected raw signature"
+                author_archiveQueries.getArchiveSourceWorkCreator(
+                    sourceId,
+                    creator.id,
+                ).executeAsOne().source_text shouldBe
+                    "protected raw signature"
+                author_archiveQueries.getArchiveCanonicalCreatorsForCreator(
+                    creator.id,
+                ).executeAsList().single().evidence shouldBe
+                    "protected raw signature"
+            }
+        }
+    }
+
+    @Test
+    fun `same root alias tokens keep combined roles during repeated automatic resolution`() = runBlocking<Unit> {
+        seedManga(602L, 6L, "/aliases", "Aliases")
+        val creator = repository.upsertCreator("Writer")
+        repository.addManualCreatorAlias(creator.id, "Artist Alias")
+        val manga = tachiyomi.domain.manga.model.Manga.create().copy(
+            id = 602L,
+            source = 6L,
+            url = "/aliases",
+            title = "Aliases",
+            author = "Writer",
+            artist = "Artist Alias",
+        )
+        val manage = tachiyomi.domain.creator.interactor.ManageCreatorIdentity(repository)
+        val mentions = tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga().await(manga)
+        mentions.forEach { manage.resolve(manga, it) }
+        val revision = queryLong("SELECT identity_revision FROM author_archive_creators")
+        mentions.reversed().forEach { manage.resolve(manga, it) }
+        queryLong("SELECT identity_revision FROM author_archive_creators") shouldBe revision
+        queryString("SELECT role FROM author_archive_manga_links") shouldBe "BOTH"
+        queryString("SELECT role FROM author_archive_source_work_creators") shouldBe "BOTH"
+    }
+
+    @Test
+    fun `migration recovery retains full premerge graph after failure and file reopen`() = runBlocking<Unit> {
+        val path = Files.createTempFile("creator-full-recovery", ".db")
+        val firstDriver = JdbcSqliteDriver("jdbc:sqlite:${path.toAbsolutePath()}")
+        Database.Schema.create(firstDriver)
+        firstDriver.execute(null, "PRAGMA foreign_keys = ON", 0)
+        val firstHandler = JvmDatabaseHandler(databaseFor(firstDriver), firstDriver)
+        fun seed(sql: String) {
+            firstDriver.execute(null, sql, 0)
+        }
+        seed("INSERT INTO author_archive_creators VALUES (1,'a','Same','same','Same','ACTIVE',NULL,1,7,101,1,2)")
+        seed("INSERT INTO author_archive_creators VALUES (2,'b','Same','same','Same','ACTIVE',NULL,0,9,102,3,4)")
+        seed(
+            "INSERT INTO author_archive_creators VALUES " +
+                "(3,'unrelated','Other','other','Other','ACTIVE',NULL,0,0,NULL,1,1)",
+        )
+        seed(
+            "INSERT INTO author_archive_creators VALUES " +
+                "(4,'older-key','Previous','previous','Previous','MERGED',2,0,5,104,1,2)",
+        )
+        seed("INSERT INTO author_archive_identity_names VALUES ('Variant',2,'RESTORE',3,4)")
+        seed("INSERT INTO author_archive_aliases VALUES (1,2,'Same','same','USER','raw alias',0.8,1,3,4)")
+        seed(
+            "INSERT INTO " +
+                "mangas(_id,source,url,title,status,favorite,initialized,viewer,chapter_flags," +
+                "cover_last_modified,date_added) VALUES (1,77,'/raw','Work',0,0,0,0,0,0,0)",
+        )
+        seed("INSERT INTO author_archive_manga_links VALUES (1,1,1,'AUTHOR',0,'USER','Same',1.0,'author evidence',1,2)")
+        seed(
+            "INSERT INTO author_archive_manga_links VALUES " +
+                "(2,1,2,'ARTIST',1,'RESTORE','Variant',0.9,'artist evidence',3,4)",
+        )
+        seed(
+            "INSERT INTO author_archive_source_works VALUES " +
+                "(1,77,'/raw',1,'Work','work','Same','Variant',NULL,1,2,3,201,'ACCEPTED')",
+        )
+        seed(
+            "INSERT INTO author_archive_source_work_creators VALUES " +
+                "(1,1,1,'AUTHOR',0,'USER','VERIFIED','Same',1.0,'a',1,2)",
+        )
+        seed(
+            "INSERT INTO author_archive_source_work_creators VALUES " +
+                "(2,1,2,'ARTIST',1,'RESTORE','POSSIBLE','Variant',0.7,'b',3,4)",
+        )
+        seed("INSERT INTO author_archive_canonical_works VALUES (1,'work-key','Work','work','ACTIVE',301,1,2)")
+        seed("INSERT INTO author_archive_canonical_creators VALUES (1,1,1,'AUTHOR',0,'USER','canonical a')")
+        seed("INSERT INTO author_archive_canonical_creators VALUES (2,1,2,'ARTIST',1,'RESTORE','canonical b')")
+        for (id in 1..2) {
+            seed("INSERT INTO author_archive_watches VALUES ($id,$id,1,86400000,NULL,NULL,10,9,'prior',1,2)")
+            seed("INSERT INTO author_archive_watch_sources VALUES ($id,$id,77,'BASELINED',$id,80,1,2)")
+            seed("INSERT INTO author_archive_watch_result_policies VALUES ($id,$id,1,0,0,1,1,2)")
+            seed("INSERT INTO author_archive_watch_languages VALUES ($id,$id,'${if (id == 1) "ja" else "en"}')")
+            seed("INSERT INTO author_archive_runs VALUES ($id,'run-$id',$id,'FAILED',0,1,1,'code','message',1,2,3)")
+            seed(
+                "INSERT INTO author_archive_source_checkpoints VALUES " +
+                    "($id,$id,77,'cursor-$id','FAILED',2,90,10,9,'code','message')",
+            )
+            seed(
+                "INSERT INTO author_archive_discoveries VALUES " +
+                    "($id,$id,1,'NEW_WORK_CANDIDATE','reason-$id',$id,'UNSEEN','PENDING',1,2)",
+            )
+            seed(
+                "INSERT INTO author_archive_notification_outbox VALUES " +
+                    "($id,$id,'DESKTOP','outbox-$id',2,'FAILED','delivery error',90,1,2,NULL)",
+            )
+        }
+        seed(
+            "INSERT INTO author_archive_language_assertions VALUES " +
+                "(1,'CREATOR','creator:b','ORIGINAL','ja',0.8,'MANUAL','original payload','USER',NULL,0,4,'lang-key')",
+        )
+        val tables = listOf(
+            "creators", "identity_names", "aliases", "manga_links", "source_works", "source_work_creators",
+            "canonical_works", "canonical_creators", "watches", "watch_sources", "watch_result_policies",
+            "watch_languages", "runs", "source_checkpoints", "discoveries",
+            "notification_outbox", "language_assertions",
+        )
+        val expected = tables.associateWith { table ->
+            recoveryRows(firstDriver, "author_archive_$table", if (table == "creators") "WHERE _id IN (1,2,4)" else "")
+        }
+        val interrupted = CreatorRepositoryImpl(
+            firstHandler,
+            identityMutationHook = { error("injected merge failure") },
+        )
+        shouldThrow<IllegalStateException> { interrupted.resolveCreatorIdByExactName("Same") }
+        tables.forEach { table ->
+            recoveryRows(
+                firstDriver,
+                "author_archive_$table",
+                if (table == "creators") "WHERE _id IN (1,2,4)" else "",
+            ) shouldBe expected.getValue(table)
+        }
+        firstHandler.close()
+        val reopened = JdbcSqliteDriver("jdbc:sqlite:${path.toAbsolutePath()}")
+        val reopenedHandler = JvmDatabaseHandler(databaseFor(reopened), reopened)
+        try {
+            CreatorRepositoryImpl(reopenedHandler).resolveCreatorIdByExactName("Same") shouldBe 1L
+            val encoded = reopened.executeQuery(
+                null,
+                "SELECT recovery_graph FROM author_archive_identity_migration_components WHERE " +
+                    "component_key = '1,2' AND state = 'COMPLETED'",
+                { cursor ->
+                    cursor.next()
+                    app.cash.sqldelight.db.QueryResult.Value(cursor.getString(0)!!)
+                },
+                0,
+            ).value
+            val decoded = kotlinx.serialization.json.Json.parseToJsonElement(encoded).jsonObject
+            decoded.getValue("version").jsonPrimitive.content shouldBe "1"
+            val graph = decoded.getValue("tables").jsonObject
+            expected.forEach { (table, rows) ->
+                graph.getValue(table).jsonArray.map { row ->
+                    row.jsonObject.mapValues { (_, value) ->
+                        when (value.jsonPrimitive.content) {
+                            "true" -> "1"
+                            "false" -> "0"
+                            else -> value.jsonPrimitive.contentOrNull
+                        }
+                    }
+                } shouldBe rows
+            }
+            queryLong(reopened, "SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 2L
+            queryLong(reopened, "SELECT COUNT(*) FROM author_archive_creators WHERE status = 'ACTIVE'") shouldBe 2L
+        } finally {
+            reopenedHandler.close()
+            Files.deleteIfExists(path)
+        }
+    }
+
+    private fun recoveryRows(sqlDriver: JdbcSqliteDriver, table: String, where: String): List<Map<String, String?>> {
+        val columns = sqlDriver.executeQuery(null, "PRAGMA table_info($table)", { cursor ->
+            val names = mutableListOf<String>()
+            while (cursor.next().value) names += cursor.getString(1)!!
+            app.cash.sqldelight.db.QueryResult.Value(names)
+        }, 0).value
+        return sqlDriver.executeQuery(null, "SELECT * FROM $table $where ORDER BY ${columns.first()}", { cursor ->
+            val rows = mutableListOf<Map<String, String?>>()
+            while (cursor.next().value) {
+                rows += columns.mapIndexed { index, column -> column to cursor.getString(index) }.toMap()
+            }
+            app.cash.sqldelight.db.QueryResult.Value(rows)
+        }, 0).value
+    }
+
+    @Test
+    fun `repeated real resolve is revision idempotent and automatic binding is replaceable`() = runBlocking<Unit> {
+        seedManga(501L, 5L, "/resolve", "Resolve")
+        val manga = tachiyomi.domain.manga.model.Manga.create().copy(
+            id = 501L,
+            source = 5L,
+            url = "/resolve",
+            title = "Resolve",
+            author = "Exact",
+            favorite = false,
+        )
+        val manage = tachiyomi.domain.creator.interactor.ManageCreatorIdentity(repository)
+        val mention = tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga().await(manga).single()
+        manage.resolve(manga, mention)
+        val before = queryLong("SELECT identity_revision FROM author_archive_creators")
+        manage.resolve(manga, mention)
+        queryLong("SELECT identity_revision FROM author_archive_creators") shouldBe before
+        queryString("SELECT origin FROM author_archive_manga_links") shouldBe "AUTOMATIC"
+    }
+
+    @Test
+    fun `live old root archive subscription follows subsequent merge and root work updates`() = runBlocking<Unit> {
+        val source = repository.upsertCreator("Old")
+        val target = repository.upsertCreator("Current")
+        val emissions = kotlinx.coroutines.channels.Channel<tachiyomi.domain.creator.model.CreatorWorkArchive>(10)
+        val collector = kotlinx.coroutines.CoroutineScope(coroutineContext).launch {
+            repository.observeCreatorWorkArchive(source.id).collect { emissions.send(it) }
+        }
+        try {
+            kotlinx.coroutines.withTimeout(5000) { emissions.receive() }
+            repository.mergeCreatorIdentities(source.id, target.id)
+            val key = SourceWorkNaturalKey(77L, "/live-root")
+            repository.upsertSourceWork(77L, key.stableSourceUrl, null, "Live", "Current", null, null, 1L)
+            repository.upsertSourceWorkCreator(
+                key, target.id, CreatorRole.AUTHOR, 0, CreatorRelationOrigin.USER,
+                CreatorRelationVerification.VERIFIED, "Current", 1.0, "fixture",
+            )
+            kotlinx.coroutines.withTimeout(5000) {
+                while (emissions.receive().pending.none { it.naturalKey == key }) { }
+            }
+        } finally {
+            collector.cancel()
+        }
     }
 
     @Test
@@ -93,6 +399,64 @@ class CreatorRepositoryImplTest {
             runBlocking { gatedRepository.upsertCreator("ONE") }
         }
         queryLong("SELECT COUNT(*) FROM author_archive_creators") shouldBe 0L
+    }
+
+    @Test
+    fun `concurrent exact name creation leaves one root and no orphan`() {
+        runBlocking {
+            val ids = List(20) { async { repository.upsertCreator("冈本伦").id } }.awaitAll()
+
+            ids.distinct().size shouldBe 1
+            queryLong("SELECT COUNT(*) FROM author_archive_creators WHERE status = 'ACTIVE'") shouldBe 1L
+            queryLong("SELECT COUNT(*) FROM author_archive_identity_names WHERE name_text = '冈本伦'") shouldBe 1L
+        }
+    }
+
+    @Test
+    fun `independent database connections serialize an exact-name uniqueness race`() {
+        runBlocking {
+            val path = Files.createTempFile("creator-exact-race", ".db")
+            Files.deleteIfExists(path)
+            val firstDriver = JdbcSqliteDriver("jdbc:sqlite:${path.toAbsolutePath()}")
+            Database.Schema.create(firstDriver)
+            val secondDriver = JdbcSqliteDriver("jdbc:sqlite:${path.toAbsolutePath()}")
+            fun database(driver: JdbcSqliteDriver) = Database(
+                driver = driver,
+                historyAdapter = tachiyomi.data.History.Adapter(last_readAdapter = DateColumnAdapter),
+                mangasAdapter = tachiyomi.data.Mangas.Adapter(
+                    genreAdapter = StringListColumnAdapter,
+                    update_strategyAdapter = UpdateStrategyColumnAdapter,
+                ),
+            )
+            val firstHandler = JvmDatabaseHandler(database(firstDriver), firstDriver)
+            val secondHandler = JvmDatabaseHandler(database(secondDriver), secondDriver)
+            try {
+                val ids = listOf(
+                    async { CreatorRepositoryImpl(firstHandler).upsertCreator("Exact Race").id },
+                    async { CreatorRepositoryImpl(secondHandler).upsertCreator("Exact Race").id },
+                ).awaitAll()
+
+                ids.distinct().size shouldBe 1
+            } finally {
+                firstHandler.close()
+                secondHandler.close()
+                Files.deleteIfExists(path)
+            }
+        }
+    }
+
+    @Test
+    fun `failure after exact name registration rolls back creator alias and registry`() {
+        val failing = CreatorRepositoryImpl(
+            handler = handler,
+            identityMutationHook = { error("injected identity failure") },
+        )
+
+        shouldThrow<IllegalStateException> { runBlocking { failing.upsertCreator("冈本伦") } }
+
+        queryLong("SELECT COUNT(*) FROM author_archive_creators") shouldBe 0L
+        queryLong("SELECT COUNT(*) FROM author_archive_aliases") shouldBe 0L
+        queryLong("SELECT COUNT(*) FROM author_archive_identity_names") shouldBe 0L
     }
 
     @Test
@@ -163,7 +527,7 @@ class CreatorRepositoryImplTest {
     }
 
     @Test
-    fun `ambiguous normalized aliases never silently select or merge an identity`() {
+    fun `historical exact duplicates converge while case variants remain distinct`() {
         driver.execute(
             null,
             "INSERT INTO author_archive_creators(portable_key, display_name, normalized_name, sort_name, status, " +
@@ -181,11 +545,85 @@ class CreatorRepositoryImplTest {
             0,
         )
 
-        shouldThrow<IllegalStateException> {
-            runBlocking { repository.upsertCreator("same") }
-        }
-        queryLong("SELECT COUNT(*) FROM author_archive_creators") shouldBe 2L
+        runBlocking { repository.upsertCreator("same") }
+        queryLong("SELECT COUNT(*) FROM author_archive_creators WHERE status = 'ACTIVE'") shouldBe 2L
+        queryLong("SELECT COUNT(*) FROM author_archive_creators WHERE status = 'MERGED'") shouldBe 1L
         queryLong("SELECT COUNT(*) FROM creators") shouldBe 0L
+    }
+
+    @Test
+    fun `multi-group migration resumes from completed component after an injected interruption`() {
+        driver.execute(
+            null,
+            "INSERT INTO author_archive_creators(portable_key, display_name, normalized_name, sort_name, status, " +
+                "created_at, last_modified_at) VALUES " +
+                "('a-1', 'A', 'a', 'A', 'ACTIVE', 1, 1), ('a-2', 'A', 'a', 'A', 'ACTIVE', 1, 1), " +
+                "('b-1', 'B', 'b', 'B', 'ACTIVE', 1, 1), ('b-2', 'B', 'b', 'B', 'ACTIVE', 1, 1)",
+            0,
+        )
+        var component = 0
+        val interrupted = CreatorRepositoryImpl(
+            handler,
+            identityMutationHook = {
+                component += 1
+                if (component == 2) error("injected component interruption")
+            },
+        )
+
+        shouldThrow<IllegalStateException> { runBlocking { interrupted.resolveCreatorIdByExactName("A") } }
+
+        queryLong(
+            "SELECT COUNT(*) FROM author_archive_identity_migration_components WHERE state = 'COMPLETED'",
+        ) shouldBe 1L
+        queryLong(
+            "SELECT COUNT(*) FROM author_archive_identity_migration_components WHERE state = 'PREPARED'",
+        ) shouldBe 1L
+        queryLong("SELECT COUNT(*) FROM author_archive_creators WHERE status = 'ACTIVE'") shouldBe 3L
+
+        val restarted = CreatorRepositoryImpl(handler)
+        runBlocking { restarted.resolveCreatorIdByExactName("B") }
+
+        queryLong(
+            "SELECT COUNT(*) FROM author_archive_identity_migration_components WHERE state = 'COMPLETED'",
+        ) shouldBe 2L
+        queryLong("SELECT COUNT(*) FROM author_archive_creators WHERE status = 'ACTIVE'") shouldBe 2L
+    }
+
+    @Test
+    fun `prepared migration component survives database close and resumes after reopen`() {
+        val path = Files.createTempFile("creator-migration-restart", ".db")
+        Files.deleteIfExists(path)
+        val firstDriver = JdbcSqliteDriver("jdbc:sqlite:${path.toAbsolutePath()}")
+        Database.Schema.create(firstDriver)
+        firstDriver.execute(
+            null,
+            "INSERT INTO author_archive_creators(portable_key, display_name, normalized_name, sort_name, status, " +
+                "created_at, last_modified_at) VALUES " +
+                "('restart-1', 'Restart', 'restart', 'Restart', 'ACTIVE', 1, 1), " +
+                "('restart-2', 'Restart', 'restart', 'Restart', 'ACTIVE', 1, 1)",
+            0,
+        )
+        val firstHandler = JvmDatabaseHandler(databaseFor(firstDriver), firstDriver)
+        val interrupted = CreatorRepositoryImpl(firstHandler, identityMutationHook = { error("stop") })
+        shouldThrow<IllegalStateException> {
+            runBlocking { interrupted.resolveCreatorIdByExactName("Restart") }
+        }
+        firstHandler.close()
+
+        val reopenedDriver = JdbcSqliteDriver("jdbc:sqlite:${path.toAbsolutePath()}")
+        val reopenedHandler = JvmDatabaseHandler(databaseFor(reopenedDriver), reopenedDriver)
+        try {
+            runBlocking { CreatorRepositoryImpl(reopenedHandler).resolveCreatorIdByExactName("Restart") }
+            queryLong(reopenedDriver, "SELECT COUNT(*) FROM author_archive_creators WHERE status = 'ACTIVE'") shouldBe
+                1L
+            queryLong(
+                reopenedDriver,
+                "SELECT COUNT(*) FROM author_archive_identity_migration_components WHERE state = 'COMPLETED'",
+            ) shouldBe 1L
+        } finally {
+            reopenedHandler.close()
+            Files.deleteIfExists(path)
+        }
     }
 
     @Test
@@ -196,6 +634,104 @@ class CreatorRepositoryImplTest {
 
             repository.getCreator(creator.id)!!.aliases shouldContainExactly listOf(alias)
             repository.getCreatorsAsFlow().first().single().aliases shouldContainExactly listOf(alias)
+        }
+    }
+
+    @Test
+    fun `exact alias registry preserves variants collapsed by search normalization`() {
+        runBlocking {
+            val creator = repository.upsertCreator("Same", aliases = listOf("Ｓａｍｅ", "same!"))
+
+            repository.getCreator(creator.id)!!.aliases.shouldContainExactly("same!", "Ｓａｍｅ")
+            repository.resolveCreatorIdByExactName("Same") shouldBe creator.id
+            repository.resolveCreatorIdByExactName("Ｓａｍｅ") shouldBe creator.id
+            repository.resolveCreatorIdByExactName("same!") shouldBe creator.id
+            repository.resolveCreatorIdByExactName("same") shouldBe null
+        }
+    }
+
+    @Test
+    fun `nonblank punctuation can be an exact identity despite blank search key`() {
+        runBlocking {
+            val creator = repository.upsertCreator("!!!")
+
+            repository.resolveCreatorIdByExactName("!!!") shouldBe creator.id
+            creator.normalizedName shouldBe ""
+        }
+    }
+
+    @Test
+    fun `manual punctuation alias is accepted and remains exactly resolvable`() {
+        runBlocking {
+            val creator = repository.upsertCreator("Primary")
+
+            repository.addManualCreatorAlias(creator.id, "!!!")
+
+            repository.resolveCreatorIdByExactName("!!!") shouldBe creator.id
+            repository.getManualCreatorAliases(creator.id).shouldContainExactly("!!!")
+        }
+    }
+
+    @Test
+    fun `merged creator id opens the active root and its complete work archive`() {
+        runBlocking {
+            val source = repository.upsertCreator("Source")
+            val target = repository.upsertCreator("Target")
+            val work = SourceWorkNaturalKey(77L, "/redirected")
+            repository.upsertSourceWork(77L, work.stableSourceUrl, null, "Redirected", "Source", null, null, 1L)
+            repository.upsertSourceWorkCreator(
+                work,
+                source.id,
+                CreatorRole.AUTHOR,
+                0,
+                CreatorRelationOrigin.USER,
+                CreatorRelationVerification.VERIFIED,
+                "Source",
+                1.0,
+                "fixture",
+            )
+
+            repository.mergeCreatorIdentities(source.id, target.id)
+
+            repository.getCreator(source.id)!!.id shouldBe target.id
+            repository.getCreatorWorkArchive(source.id).pending.single().naturalKey.stableSourceUrl shouldBe
+                "/redirected"
+        }
+    }
+
+    @Test
+    fun `identity readiness is persisted and repeated reads do not rewrite its checkpoint`() {
+        runBlocking {
+            var now = 10L
+            val timed = CreatorRepositoryImpl(handler, clock = { now++ })
+            timed.upsertCreator("Ready")
+            val completedAt = queryLong(
+                "SELECT updated_at FROM author_archive_identity_migrations WHERE migration_key = 'global-exact-name-v1'",
+            )
+
+            repeat(3) { timed.getCreator(1L) }
+
+            queryLong(
+                "SELECT updated_at FROM author_archive_identity_migrations WHERE migration_key = 'global-exact-name-v1'",
+            ) shouldBe completedAt
+        }
+    }
+
+    @Test
+    fun `relationship revision changes only for a semantic graph change`() {
+        runBlocking {
+            seedManga(id = 500L, source = 5L, url = "/revision", title = "Revision")
+            val creator = repository.upsertCreator("Revision Author")
+            val before = queryLong("SELECT identity_revision FROM author_archive_creators WHERE _id = ${creator.id}")
+
+            repository.linkMangaCreator(500L, creator.id, CreatorRole.AUTHOR, "Revision Author", 1.0, "first")
+            val afterChange =
+                queryLong("SELECT identity_revision FROM author_archive_creators WHERE _id = ${creator.id}")
+            repository.linkMangaCreator(500L, creator.id, CreatorRole.AUTHOR, "Revision Author", 1.0, "first")
+
+            (afterChange > before) shouldBe true
+            queryLong("SELECT identity_revision FROM author_archive_creators WHERE _id = ${creator.id}") shouldBe
+                afterChange
         }
     }
 
@@ -343,7 +879,7 @@ class CreatorRepositoryImplTest {
     }
 
     @Test
-    fun `typed source work relation reports outcomes and automatic input cannot overwrite user binding`() {
+    fun `typed source work metadata preserves user authority including roles`() {
         runBlocking {
             val creator = repository.upsertCreator("ONE")
             val key = SourceWorkNaturalKey(7L, "/typed/relation")
@@ -475,7 +1011,7 @@ class CreatorRepositoryImplTest {
     }
 
     @Test
-    fun `work decision projection returns the effective manual decision by natural key`() = runBlocking {
+    fun `work decision projection returns the effective manual decision by natural key`() = runBlocking<Unit> {
         val key = SourceWorkNaturalKey(7L, "/typed/projection")
         repository.upsertSourceWork(7L, key.stableSourceUrl, null, "Projected", null, null, null, 1L)
         val work = repository.createCanonicalWork("Canonical projected work", null, null)
@@ -893,15 +1429,15 @@ class CreatorRepositoryImplTest {
     }
 
     @Test
-    fun `upsertCreator reuses normalized name`() {
+    fun `upsertCreator uses exact name rather than search normalization`() {
         runBlocking {
             val first = repository.upsertCreator(" ONE ")
             val second = repository.upsertCreator("one")
 
-            first.id shouldBe second.id
-            repository.getCreator(first.id) shouldBe second
+            (first.id != second.id) shouldBe true
+            repository.getCreator(first.id) shouldBe first
             second.normalizedName shouldBe "one"
-            repository.getCreatorsAsFlow().first().size shouldBe 1
+            repository.getCreatorsAsFlow().first().size shouldBe 2
         }
     }
 
@@ -1098,6 +1634,22 @@ class CreatorRepositoryImplTest {
         null,
         sql,
         { cursor -> app.cash.sqldelight.db.QueryResult.Value(if (cursor.next().value) cursor.getString(0) else null) },
+        0,
+    ).value
+
+    private fun databaseFor(sqlDriver: JdbcSqliteDriver) = Database(
+        driver = sqlDriver,
+        historyAdapter = tachiyomi.data.History.Adapter(last_readAdapter = DateColumnAdapter),
+        mangasAdapter = tachiyomi.data.Mangas.Adapter(
+            genreAdapter = StringListColumnAdapter,
+            update_strategyAdapter = UpdateStrategyColumnAdapter,
+        ),
+    )
+
+    private fun queryLong(sqlDriver: JdbcSqliteDriver, sql: String): Long = sqlDriver.executeQuery(
+        null,
+        sql,
+        { cursor -> app.cash.sqldelight.db.QueryResult.Value(if (cursor.next().value) cursor.getLong(0)!! else -1L) },
         0,
     ).value
 

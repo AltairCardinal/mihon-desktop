@@ -244,6 +244,12 @@ data class SyncProjection(
     val pending: Boolean = false,
 )
 
+/** USER intent takes precedence over imported baselines in a completed causal frontier. */
+fun effectiveSyncHeads(
+    heads: List<SyncEffectRef>,
+    metadata: Map<SyncEffectRef, SyncEffectMetadata>,
+): List<SyncEffectRef> = heads.filter { metadata[it]?.origin == SyncOrigin.USER }.ifEmpty { heads }
+
 data class SyncEffectMetadata(
     val occurredAt: Long,
     val origin: SyncOrigin,

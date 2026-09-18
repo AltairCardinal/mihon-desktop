@@ -61,6 +61,16 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
+import tachiyomi.data.UpdateStrategyColumnAdapter
+import tachiyomi.data.StringListColumnAdapter
+import kotlinx.serialization.json.JsonObject
+import tachiyomi.data.JvmDatabaseHandler
+import tachiyomi.data.DateColumnAdapter
+import kotlinx.serialization.json.Json
+import tachiyomi.data.Database
+import tachiyomi.data.History
+import tachiyomi.data.Mangas
+
 
 @OptIn(ExperimentalComposeUiApi::class)
 class MangaDetailLibraryEntryWiringTest {
@@ -373,10 +383,10 @@ class MangaDetailLibraryEntryWiringTest {
 
     private fun verifyCombinedSourceRefresh(manual: Boolean) = runBlocking {
         val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY)
-        tachiyomi.data.Database.Schema.create(driver)
-        val database = tachiyomi.data.Database(driver, historyAdapter = tachiyomi.data.History.Adapter(tachiyomi.data.DateColumnAdapter),
-            mangasAdapter = tachiyomi.data.Mangas.Adapter(tachiyomi.data.StringListColumnAdapter, tachiyomi.data.UpdateStrategyColumnAdapter))
-        val handler = tachiyomi.data.JvmDatabaseHandler(database, driver)
+        Database.Schema.create(driver)
+        val database = Database(driver, historyAdapter = History.Adapter(DateColumnAdapter),
+            mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter))
+        val handler = JvmDatabaseHandler(database, driver)
         val mangaRepository = tachiyomi.data.manga.MangaRepositoryImpl(handler, tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter)
         val manga = mangaRepository.insertNetworkManga(listOf(Manga.create().copy(
             id = 45L,
@@ -387,7 +397,7 @@ class MangaDetailLibraryEntryWiringTest {
         ))).single()
         val chapterRepository = tachiyomi.data.chapter.ChapterRepositoryImpl(handler)
         if (manual) chapterRepository.addAll(listOf(Chapter.create().copy(mangaId = manga.id, url = "/auto-refresh/chapter-1", name = "Auto-loaded chapter", read = true, bookmark = true, lastPageRead = 7)))
-        val memo = kotlinx.serialization.json.Json.parseToJsonElement("""{"token":"Desktop UI"}""") as kotlinx.serialization.json.JsonObject
+        val memo = Json.parseToJsonElement("""{"token":"Desktop UI"}""") as JsonObject
         var calls = 0
         val source = object : Source {
             override val id = 42L
@@ -457,32 +467,33 @@ class MangaDetailLibraryEntryWiringTest {
     }
 
     @Test
-    fun `real MangaDetailScreen creator chip opens ambiguity chooser binds selection and navigates`() = runBlocking {
-        val mangaRepository = FakeMangaRepository()
-        val manga = Manga.create().copy(id = 44L, title = "Identity fixture", author = "Jane Doe")
-        mangaRepository.seed(manga)
+    fun `real uncollected MangaDetailScreen creator chip retries SQL failure and opens unique author`() = runBlocking {
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
+        )
+        Database.Schema.create(driver)
+        val database = Database(
+            driver,
+            historyAdapter = History.Adapter(DateColumnAdapter),
+            mangasAdapter = Mangas.Adapter(
+                StringListColumnAdapter, UpdateStrategyColumnAdapter,
+            ),
+        )
+        val handler = JvmDatabaseHandler(database, driver)
+        val mangaRepository = tachiyomi.data.manga.MangaRepositoryImpl(
+            handler, tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter,
+        )
+        val manga = mangaRepository.insertNetworkManga(listOf(Manga.create().copy(
+            source = 42L, url = "/identity", title = "Identity fixture", author = "Jane Doe", favorite = false,
+        ))).single()
         val chapterRepository = FakeChapterRepository()
-        val archiveRepository = mockk<CreatorArchiveRepository> {
-            coEvery { getCreatorIdentityOptions(manga.id, any()) } returns listOf(
-                CreatorIdentityOption(
-                    id = 101L,
-                    portableKey = CreatorPortableKey("jane-alpha"),
-                    displayName = "Jane Alpha",
-                    aliases = listOf("Jane Doe"),
-                    needsReview = false,
-                    currentlyBound = false,
-                ),
-                CreatorIdentityOption(
-                    id = 202L,
-                    portableKey = CreatorPortableKey("jane-beta"),
-                    displayName = "Jane Beta",
-                    aliases = listOf("Jane Doe"),
-                    needsReview = true,
-                    currentlyBound = false,
-                ),
-            )
-            coEvery { bindMangaCreatorIdentity(any(), any(), 101L) } returns Unit
-        }
+        var failOnce = true
+        val archiveRepository = tachiyomi.data.creator.CreatorRepositoryImpl(handler, identityMutationHook = {
+            if (failOnce) {
+                failOnce = false
+                error("fixture identity failure")
+            }
+        })
         val model = MangaDetailScreenModel(
             mangaId = manga.id,
             getMangaWithChapters = GetMangaWithChapters(mangaRepository, chapterRepository),
@@ -519,22 +530,30 @@ class MangaDetailLibraryEntryWiringTest {
                     }
                 }
             }
-            val creatorChip = "${MR.strings.author.localized()} · Jane Doe"
+            val creatorChip = "Jane Doe"
             renderUntil(scene) { nodes(scene).any { it.hasText(creatorChip) } }
             click(scene, creatorChip)
-            renderUntil(scene) {
-                nodes(scene).any { it.hasText(MR.strings.desktop_ui_choose_author_identity.localized()) }
+            renderUntil(scene) { nodes(scene).any { it.hasText("fixture identity failure") } }
+            handler.await {
+                assertTrue(author_archiveQueries.getArchiveCreatorsForBackup().executeAsList().isEmpty())
             }
-
-            invokeClick(scene, "Jane Alpha")
-            coVerify(timeout = 5_000, exactly = 1) {
-                archiveRepository.bindMangaCreatorIdentity(any(), any(), 101L)
-            }
+            click(scene, MR.strings.action_ok.localized())
+            click(scene, creatorChip)
             withTimeout(5_000) {
-                while ((navigator.lastItem as? AuthorDetailScreen)?.creatorId != 101L) delay(10)
+                while (navigator.lastItem !is AuthorDetailScreen) {
+                    scene.render()
+                    delay(10)
+                }
+            }
+            val opened = (navigator.lastItem as AuthorDetailScreen).creatorId
+            assertEquals(archiveRepository.resolveCreatorIdByExactName("Jane Doe"), opened)
+            assertTrue(!mangaRepository.getMangaById(manga.id).favorite)
+            handler.await {
+                assertEquals("AUTOMATIC", author_archiveQueries.getArchiveMangaLink(manga.id, opened).executeAsOne().origin)
             }
         } finally {
             scene.close()
+            handler.close()
         }
     }
 

@@ -934,6 +934,10 @@ class ExtensionSuggestionPlatformInstrumentationTest {
                     }
                 }
             }
+            // Installed inventory can publish before the original transaction finishes its cleanup.
+            namedUiWait("single transaction finished", 15_000) {
+                while (manager.installArbiter.isBusy(installed.pkgName)) delay(50)
+            }
             // Restore only this run's private fixture before exercising a fixed two-item batch.
             println("EIS_RELEASE_SINGLE_UNINSTALL before busy=${manager.installArbiter.isBusy(installed.pkgName)}")
             manager.uninstallExtension(installed)

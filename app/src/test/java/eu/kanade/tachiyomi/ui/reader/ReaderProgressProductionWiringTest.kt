@@ -155,6 +155,12 @@ class ReaderProgressProductionWiringTest {
             assertTrue(event.idempotencyKey.contains(":2:1:"))
             assertEquals(1, current.chapter.last_page_read)
 
+            viewModel.onLayoutPageSelected(requireNotNull(current.pages)[0])
+            assertEquals(1, viewModel.state.value.currentPage)
+            assertEquals(0, current.requestedPage)
+            assertEquals(1, current.chapter.last_page_read)
+            assertTrue(recorded.tryReceive().isFailure)
+
             viewModel.onPageSelected(requireNotNull(current.pages).last())
 
             val completion = awaitRecordedEvent(recorded)

@@ -164,13 +164,13 @@ internal fun ReaderPresentationSnapshot.resolveDualVisiblePages(displayUnitId: D
     return VisiblePageSet(
         displayUnitId = displayUnitId,
         pageIds = pageIds,
-        activePageId = pageIds.maxByOrNull(ReaderPageId::sourcePageIndex),
+        activePageId = pageIds.minByOrNull(ReaderPageId::sourcePageIndex),
         transitionDirection = unit.transitionDirection,
     )
 }
 
 internal fun ReaderPresentationSnapshot.firstDualPageIndex(displayUnitIndex: Int): Int =
-    displayUnits[displayUnitIndex].slots.mapNotNull { it.page?.id?.sourcePageIndex }.minOrNull()
+    resolveDualVisiblePages(displayUnits[displayUnitIndex].id).activePageId?.sourcePageIndex
         ?: error("Dual display unit $displayUnitIndex has no logical page")
 
 internal fun ReaderPresentationSnapshot.dualDisplayUnitIndexForSourcePage(sourcePageIndex: Int): Int =

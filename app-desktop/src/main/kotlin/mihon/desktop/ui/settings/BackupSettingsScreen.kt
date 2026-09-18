@@ -2,6 +2,10 @@ package mihon.desktop.ui.settings
 
 import mihon.desktop.LocalDesktopUiDependencies
 
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.Checkbox
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -94,6 +98,16 @@ data class BackupSettingsScreen(val initialBackup: File? = null) : Screen {
                         Text(MR.strings.desktop_backup_restore_confirm_summary.localized())
                         Spacer(Modifier.height(8.dp))
                         BackupPreviewText(preview.summary)
+                        Row(
+                            modifier = Modifier.toggleable(
+                                value = preview.appSettings, role = Role.Checkbox,
+                                onValueChange = restoreModel::setAppSettings,
+                            ),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(checked = preview.appSettings, onCheckedChange = null)
+                            Text(MR.strings.app_settings.localized())
+                        }
                     }
                 },
                 confirmButton = {
@@ -385,6 +399,7 @@ private fun BackupPreviewText(preview: BackupPreview) {
     Text(MR.strings.desktop_backup_preview_library.localized(locale, preview.mangaCount, preview.chapterCount, preview.categoryCount))
     Text(MR.strings.desktop_backup_preview_services.localized(locale, preview.trackingCount, preview.preferenceCount, preview.sourceCount))
     Text(MR.strings.desktop_backup_preview_repositories.localized(locale, preview.extensionRepoCount))
+    if (preview.hasAuthorArchive) Text(MR.strings.desktop_backup_preview_authors.localized(locale, preview.authorCount))
 }
 
 @Composable

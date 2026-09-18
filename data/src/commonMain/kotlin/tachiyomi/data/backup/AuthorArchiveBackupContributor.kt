@@ -10,8 +10,10 @@ import eu.kanade.tachiyomi.data.backup.models.BackupAuthorWatch
 import eu.kanade.tachiyomi.data.backup.models.BackupAuthorWorkDecision
 import eu.kanade.tachiyomi.data.backup.models.BackupCreatorAlias
 import eu.kanade.tachiyomi.data.backup.models.BackupCreatorIdentity
+import eu.kanade.tachiyomi.data.backup.models.BackupCreatorName
 import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.creator.mergeCreatorIdentityGraph
 import tachiyomi.data.creator.reconcileArchiveCanonicalVersion
 import tachiyomi.domain.creator.model.CreatorArchiveLanguageTag
 import tachiyomi.domain.creator.model.CreatorRelationOrigin
@@ -29,7 +31,8 @@ import tachiyomi.domain.creator.service.CreatorSourceWorkKey
  * Creates and restores the identity/alias/binding slice of backup field 107.
  *
  * Restore validates the complete section before opening one database transaction. Identity matching
- * uses only portable keys; equal normalized aliases are deliberately allowed across identities.
+ * preserves portable keys and converges occupied exact names through the shared identity graph merger.
+ * Search-normalized aliases never establish identity equality.
  */
 interface AuthorArchiveBackupContributor {
     suspend fun createSection(): BackupAuthorArchiveSection?
@@ -40,143 +43,165 @@ interface AuthorArchiveBackupContributor {
 class SqlDelightAuthorArchiveBackupContributor(
     private val handler: DatabaseHandler,
     private val clock: () -> Long = { System.currentTimeMillis() },
+    private val awaitIdentityReady: suspend () -> Unit = {},
 ) : AuthorArchiveBackupContributor {
 
-    override suspend fun createSection(): BackupAuthorArchiveSection? = handler.await(inTransaction = true) {
-        val aliases = author_archiveQueries.getArchiveAliasesForBackup().executeAsList()
-            .groupBy { it.creator_portable_key }
-        val bindings = author_archiveQueries.getArchiveSourceWorkBindingsForBackup().executeAsList()
-            .groupBy { it.source_id to it.stable_source_url }
-        val creators = author_archiveQueries.getArchiveCreatorsForBackup().executeAsList().map { creator ->
-            BackupCreatorIdentity(
-                portableKey = creator.portable_key,
-                displayName = creator.display_name,
-                normalizedName = creator.normalized_name,
-                sortName = creator.sort_name,
-                status = creator.status,
-                mergedIntoPortableKey = creator.merged_into_portable_key,
-                needsReview = creator.needs_review,
-                aliases = aliases[creator.portable_key].orEmpty().map { alias ->
-                    BackupCreatorAlias(
-                        rawAlias = alias.raw_alias,
-                        normalizedAlias = alias.normalized_alias,
-                        source = alias.source,
-                        evidence = alias.evidence,
-                        confidence = alias.confidence,
-                        isManual = alias.is_manual,
-                    )
-                },
-            )
-        }
-        val sourceWorks = author_archiveQueries.getArchiveSourceWorksForBackup().executeAsList().map { work ->
-            BackupAuthorSourceWork(
-                sourceId = work.source_id,
-                stableSourceUrl = CreatorSourceWorkKey.portableUrl(
-                    work.stable_source_url,
-                    work.title,
-                    work.author_text,
-                    work.artist_text,
-                ),
-                title = work.title,
-                authorText = work.author_text,
-                artistText = work.artist_text,
-                thumbnailUrl = work.thumbnail_url,
-                bindings = bindings[work.source_id to work.stable_source_url].orEmpty().map { binding ->
-                    BackupAuthorBinding(
-                        creatorPortableKey = binding.creator_portable_key,
-                        role = binding.role,
-                        order = binding.creator_order,
-                        origin = binding.origin,
-                        verification = binding.verification,
-                        sourceText = binding.source_text,
-                        confidence = binding.confidence,
-                        evidence = binding.evidence,
-                    )
-                },
-            )
-        }.groupBy { it.sourceId to it.stableSourceUrl }
-            .map { (_, versions) ->
-                versions.first().copy(
-                    bindings = versions.flatMap(BackupAuthorSourceWork::bindings)
-                        .groupBy(BackupAuthorBinding::creatorPortableKey)
-                        .values
-                        .map { candidates -> candidates.maxBy { relationOriginRank(it.origin) } },
+    override suspend fun createSection(): BackupAuthorArchiveSection? {
+        awaitIdentityReady()
+        return handler.await(inTransaction = true) {
+            val names = author_archiveQueries.getArchiveIdentityNames().executeAsList().groupBy { it.creator_id }
+            val aliases = author_archiveQueries.getArchiveAliasesForBackup().executeAsList()
+                .groupBy { it.creator_portable_key }
+            val bindings = author_archiveQueries.getArchiveSourceWorkBindingsForBackup().executeAsList()
+                .groupBy { it.source_id to it.stable_source_url }
+            val creators = author_archiveQueries.getArchiveCreatorsForBackup().executeAsList().map { creator ->
+                val creatorId = author_archiveQueries.getArchiveCreatorIdByPortableKey(creator.portable_key)
+                    .executeAsOne()
+                BackupCreatorIdentity(
+                    names = names[creatorId].orEmpty().map { BackupCreatorName(it.name_text, it.origin) },
+                    portableKey = creator.portable_key,
+                    displayName = creator.display_name,
+                    normalizedName = creator.normalized_name,
+                    sortName = creator.sort_name,
+                    status = creator.status,
+                    mergedIntoPortableKey = creator.merged_into_portable_key,
+                    needsReview = creator.needs_review,
+                    aliases = aliases[creator.portable_key].orEmpty().map { alias ->
+                        BackupCreatorAlias(
+                            rawAlias = alias.raw_alias,
+                            normalizedAlias = alias.normalized_alias,
+                            source = alias.source,
+                            evidence = alias.evidence,
+                            confidence = alias.confidence,
+                            isManual = alias.is_manual,
+                        )
+                    },
                 )
             }
-        val watchSources = author_archiveQueries.getArchiveWatchSourcesForBackup().executeAsList()
-            .groupBy({ it.creator_portable_key }, { it.source_id })
-        val watchLanguages = author_archiveQueries.getArchiveWatchLanguagesForBackup().executeAsList()
-            .groupBy({ it.creator_portable_key }, { it.language_tag })
-        val watches = author_archiveQueries.getArchiveWatchPoliciesForBackup().executeAsList().map { watch ->
-            BackupAuthorWatch(
-                creatorPortableKey = watch.creator_portable_key,
-                enabled = watch.enabled,
-                periodMillis = watch.period_millis,
-                sourceIds = watchSources[watch.creator_portable_key].orEmpty(),
-                readingLanguageTags = watchLanguages[watch.creator_portable_key].orEmpty(),
-                includeProbable = watch.include_probable,
-                includeUnknown = watch.include_unknown,
-                notifyProbable = watch.notify_probable,
-                notifyUnknown = watch.notify_unknown,
-            )
-        }
-        val discoveries = author_archiveQueries.getArchiveDiscoveriesForBackup().executeAsList().map { discovery ->
-            BackupAuthorDiscovery(
-                creatorPortableKey = discovery.creator_portable_key,
-                sourceId = discovery.source_id,
-                stableSourceUrl = discovery.stable_source_url,
-                kind = discovery.kind,
-                reason = discovery.reason,
-                baselineGeneration = discovery.baseline_generation,
-                readState = discovery.read_state,
-                reviewDisposition = discovery.review_disposition,
-                firstDiscoveredAt = discovery.first_discovered_at,
-            )
-        }
-        val canonicalWorks = author_archiveQueries.getArchiveCanonicalWorksForBackup().executeAsList().map { work ->
-            BackupAuthorCanonicalWork(work.portable_key, work.primary_title)
-        }
-        val workDecisions = author_archiveQueries.getArchiveWorkDecisionsForBackup().executeAsList().map { decision ->
-            BackupAuthorWorkDecision(
-                sourceId = decision.source_id,
-                stableSourceUrl = decision.stable_source_url,
-                workPortableKey = decision.portable_key,
-                state = decision.state,
-                score = decision.score,
-                evidence = decision.evidence,
-                decidedAt = decision.decided_at,
-            )
-        }
-        val languageDecisions = author_archiveQueries.getArchiveManualLanguageDecisionsForBackup().executeAsList()
-            .map { decision ->
-                BackupAuthorLanguageDecision(
-                    subjectType = decision.subject_type,
-                    subjectKey = decision.subject_key,
-                    dimension = decision.dimension,
-                    languageTag = decision.language_tag,
-                    withdrawn = decision.withdrawn,
-                    assertedAt = decision.asserted_at,
+            val sourceWorks = author_archiveQueries.getArchiveSourceWorksForBackup().executeAsList().map { work ->
+                BackupAuthorSourceWork(
+                    sourceId = work.source_id,
+                    stableSourceUrl = CreatorSourceWorkKey.portableUrl(
+                        work.stable_source_url,
+                        work.title,
+                        work.author_text,
+                        work.artist_text,
+                    ),
+                    title = work.title,
+                    authorText = work.author_text,
+                    artistText = work.artist_text,
+                    thumbnailUrl = work.thumbnail_url,
+                    bindings = bindings[work.source_id to work.stable_source_url].orEmpty().map { binding ->
+                        BackupAuthorBinding(
+                            creatorPortableKey = binding.creator_portable_key,
+                            role = binding.role,
+                            order = binding.creator_order,
+                            origin = binding.origin,
+                            verification = binding.verification,
+                            sourceText = binding.source_text,
+                            confidence = binding.confidence,
+                            evidence = binding.evidence,
+                        )
+                    },
+                )
+            }.groupBy { it.sourceId to it.stableSourceUrl }
+                .map { (_, versions) ->
+                    versions.first().copy(
+                        bindings = versions.flatMap(BackupAuthorSourceWork::bindings)
+                            .groupBy(BackupAuthorBinding::creatorPortableKey)
+                            .values
+                            .map { candidates ->
+                                candidates.maxBy { relationOriginRank(it.origin) }.copy(
+                                    role = candidates.map { it.role }.reduce(::unionRole),
+                                )
+                            },
+                    )
+                }
+            val watchSources = author_archiveQueries.getArchiveWatchSourcesForBackup().executeAsList()
+                .groupBy({ it.creator_portable_key }, { it.source_id })
+            val watchLanguages = author_archiveQueries.getArchiveWatchLanguagesForBackup().executeAsList()
+                .groupBy({ it.creator_portable_key }, { it.language_tag })
+            val watches = author_archiveQueries.getArchiveWatchPoliciesForBackup().executeAsList().map { watch ->
+                BackupAuthorWatch(
+                    creatorPortableKey = watch.creator_portable_key,
+                    enabled = watch.enabled,
+                    periodMillis = watch.period_millis,
+                    sourceIds = watchSources[watch.creator_portable_key].orEmpty(),
+                    readingLanguageTags = watchLanguages[watch.creator_portable_key].orEmpty(),
+                    includeProbable = watch.include_probable,
+                    includeUnknown = watch.include_unknown,
+                    notifyProbable = watch.notify_probable,
+                    notifyUnknown = watch.notify_unknown,
                 )
             }
-        BackupAuthorArchiveSection(
-            creators = creators,
-            sourceWorks = sourceWorks,
-            watches = watches,
-            discoveries = discoveries,
-            canonicalWorks = canonicalWorks,
-            workDecisions = workDecisions,
-            languageDecisions = languageDecisions,
-        ).takeIf {
-            it.creators.isNotEmpty() || it.sourceWorks.isNotEmpty() || it.watches.isNotEmpty() ||
-                it.discoveries.isNotEmpty() || it.canonicalWorks.isNotEmpty() || it.workDecisions.isNotEmpty() ||
-                it.languageDecisions.isNotEmpty()
+            val discoveries = author_archiveQueries.getArchiveDiscoveriesForBackup().executeAsList().map { discovery ->
+                BackupAuthorDiscovery(
+                    creatorPortableKey = discovery.creator_portable_key,
+                    sourceId = discovery.source_id,
+                    stableSourceUrl = discovery.stable_source_url,
+                    kind = discovery.kind,
+                    reason = discovery.reason,
+                    baselineGeneration = discovery.baseline_generation,
+                    readState = discovery.read_state,
+                    reviewDisposition = discovery.review_disposition,
+                    firstDiscoveredAt = discovery.first_discovered_at,
+                )
+            }
+            val canonicalWorks = author_archiveQueries.getArchiveCanonicalWorksForBackup().executeAsList().map { work ->
+                BackupAuthorCanonicalWork(work.portable_key, work.primary_title)
+            }
+            val workDecisions = author_archiveQueries.getArchiveWorkDecisionsForBackup()
+                .executeAsList().map { decision ->
+                    BackupAuthorWorkDecision(
+                        sourceId = decision.source_id,
+                        stableSourceUrl = decision.stable_source_url,
+                        workPortableKey = decision.portable_key,
+                        state = decision.state,
+                        score = decision.score,
+                        evidence = decision.evidence,
+                        decidedAt = decision.decided_at,
+                    )
+                }
+            val languageDecisions = author_archiveQueries.getArchiveManualLanguageDecisionsForBackup().executeAsList()
+                .map { decision ->
+                    BackupAuthorLanguageDecision(
+                        subjectType = decision.subject_type,
+                        subjectKey = decision.subject_key,
+                        dimension = decision.dimension,
+                        languageTag = decision.language_tag,
+                        withdrawn = decision.withdrawn,
+                        assertedAt = decision.asserted_at,
+                    )
+                }
+            BackupAuthorArchiveSection(
+                version = BackupAuthorArchiveSection.CURRENT_VERSION,
+                creators = creators,
+                sourceWorks = sourceWorks,
+                watches = watches,
+                discoveries = discoveries,
+                canonicalWorks = canonicalWorks,
+                workDecisions = workDecisions,
+                languageDecisions = languageDecisions,
+            ).takeIf {
+                it.creators.isNotEmpty() || it.sourceWorks.isNotEmpty() || it.watches.isNotEmpty() ||
+                    it.discoveries.isNotEmpty() || it.canonicalWorks.isNotEmpty() || it.workDecisions.isNotEmpty() ||
+                    it.languageDecisions.isNotEmpty()
+            }
         }
     }
 
     override suspend fun restoreSection(section: BackupAuthorArchiveSection) {
         val validated = validate(section)
+        awaitIdentityReady()
         val now = clock()
         handler.await(inTransaction = true) {
+            val localPrimaries = author_archiveQueries.getArchiveCreatorsForBackup().executeAsList()
+                .filter { it.status == STATUS_ACTIVE }.associate { creator ->
+                    val id = author_archiveQueries.getArchiveCreatorIdByPortableKey(creator.portable_key).executeAsOne()
+                    id to creator.display_name
+                }.filter { (id, name) ->
+                    author_archiveQueries.getArchiveCreatorIdByExactName(name).executeAsOneOrNull() == id
+                }
             validated.creators.forEach { creator ->
                 author_archiveQueries.upsertArchiveCreatorFromBackup(
                     portableKey = creator.portableKey,
@@ -192,9 +217,29 @@ class SqlDelightAuthorArchiveBackupContributor(
                 creator.portableKey to author_archiveQueries
                     .getArchiveCreatorIdByPortableKey(creator.portableKey)
                     .executeAsOne()
-            }
+            }.toMutableMap()
             validated.creators.forEach { creator ->
-                val creatorId = creatorIds.getValue(creator.portableKey)
+                var creatorId = resolveActiveCreatorRoot(creatorIds.getValue(creator.portableKey))
+                creatorIds[creator.portableKey] = creatorId
+                creator.names.forEach { acceptedName ->
+                    val name = acceptedName.text
+                    val owner = author_archiveQueries.getArchiveCreatorIdByExactName(name).executeAsOneOrNull()
+                    if (owner != null && owner != creatorId) {
+                        val target = preferredRestoreRoot(creatorId, owner, localPrimaries.keys)
+                        val source = if (target == creatorId) owner else creatorId
+                        mergeCreatorIdentityGraph(source, target, now)
+                        creatorIds.entries.filter { it.value == source }.forEach { it.setValue(target) }
+                        creatorId = target
+                        creatorIds[creator.portableKey] = target
+                    }
+                    author_archiveQueries.registerArchiveIdentityNameIfAbsent(
+                        name,
+                        creatorId,
+                        acceptedName.origin,
+                        now,
+                        now,
+                    )
+                }
                 creator.aliases.forEach { alias ->
                     author_archiveQueries.upsertArchiveAlias(
                         creatorId = creatorId,
@@ -208,6 +253,24 @@ class SqlDelightAuthorArchiveBackupContributor(
                         lastModifiedAt = now,
                     )
                 }
+            }
+            validated.creators.filter { it.status == STATUS_MERGED }.forEach { creator ->
+                var targetId = resolveActiveCreatorRoot(
+                    creatorIds.getValue(checkNotNull(creator.mergedIntoPortableKey)),
+                )
+                var sourceId = resolveActiveCreatorRoot(creatorIds.getValue(creator.portableKey))
+                if (preferredRestoreRoot(sourceId, targetId, localPrimaries.keys) == sourceId) {
+                    val swap = targetId
+                    targetId = sourceId
+                    sourceId = swap
+                }
+                if (sourceId != targetId) {
+                    mergeCreatorIdentityGraph(sourceId, targetId, now)
+                    creatorIds.entries.filter { it.value == sourceId }.forEach { it.setValue(targetId) }
+                }
+            }
+            creatorIds.keys.toList().forEach { key ->
+                creatorIds[key] = resolveActiveCreatorRoot(creatorIds.getValue(key))
             }
             validated.sourceWorks.forEach { work ->
                 restoreSourceWork(work, creatorIds, now)
@@ -251,9 +314,17 @@ class SqlDelightAuthorArchiveBackupContributor(
                 reconcileArchiveCanonicalVersion(sourceWorkId)
             }
             validated.languageDecisions.forEach { decision ->
+                val subjectKey = if (decision.subjectType == "CREATOR") {
+                    val rootId = creatorIds.getValue(decision.subjectKey.removePrefix("creator:"))
+                    val rootKey = author_archiveQueries.getArchiveCreatorIdentityRecord(rootId)
+                        .executeAsOne().portable_key
+                    "creator:$rootKey"
+                } else {
+                    decision.subjectKey
+                }
                 author_archiveQueries.upsertArchiveLanguageAssertion(
                     subjectType = decision.subjectType,
-                    subjectKey = decision.subjectKey,
+                    subjectKey = subjectKey,
                     dimension = decision.dimension,
                     languageTag = decision.languageTag,
                     confidence = 1.0,
@@ -267,7 +338,7 @@ class SqlDelightAuthorArchiveBackupContributor(
                         append("restore-language:")
                         append(decision.subjectType)
                         append(':')
-                        append(decision.subjectKey)
+                        append(subjectKey)
                         append(':')
                         append(decision.dimension)
                         append(':')
@@ -275,10 +346,25 @@ class SqlDelightAuthorArchiveBackupContributor(
                     },
                 )
             }
-            validated.watches.forEach { watch ->
-                restoreWatch(watch, creatorIds.getValue(watch.creatorPortableKey), now)
+            validated.watches.groupBy { creatorIds.getValue(it.creatorPortableKey) }.forEach { (id, watches) ->
+                restoreWatch(
+                    watches.first().copy(
+                        enabled = watches.any { it.enabled },
+                        periodMillis = watches.minOf { it.periodMillis },
+                        sourceIds = watches.flatMap { it.sourceIds }.distinct(),
+                        readingLanguageTags = watches.flatMap { it.readingLanguageTags }.distinct(),
+                        includeProbable = watches.any { it.includeProbable },
+                        includeUnknown = watches.any { it.includeUnknown },
+                        notifyProbable = watches.any { it.notifyProbable },
+                        notifyUnknown = watches.any { it.notifyUnknown },
+                    ),
+                    id,
+                    now,
+                )
             }
-            validated.discoveries.forEach { discovery ->
+            validated.discoveries.groupBy {
+                Triple(creatorIds.getValue(it.creatorPortableKey), it.sourceId, it.stableSourceUrl)
+            }.values.map(::mergeRestoredDiscoveries).forEach { discovery ->
                 author_archiveQueries.restoreArchiveDiscoveryState(
                     kind = discovery.kind,
                     reason = discovery.reason,
@@ -289,18 +375,43 @@ class SqlDelightAuthorArchiveBackupContributor(
                     now = now,
                     sourceId = discovery.sourceId,
                     stableSourceUrl = discovery.stableSourceUrl,
-                    creatorPortableKey = discovery.creatorPortableKey,
-                )
-            }
-            validated.creators.filter { it.status == STATUS_MERGED }.forEach { creator ->
-                author_archiveQueries.markArchiveCreatorMergedFromBackup(
-                    targetCreatorId = creatorIds.getValue(checkNotNull(creator.mergedIntoPortableKey)),
-                    lastModifiedAt = now,
-                    sourceCreatorId = creatorIds.getValue(creator.portableKey),
+                    creatorPortableKey = author_archiveQueries.getArchiveCreatorIdentityRecord(
+                        creatorIds.getValue(discovery.creatorPortableKey),
+                    ).executeAsOne().portable_key,
                 )
             }
         }
     }
+
+    private fun Database.preferredRestoreRoot(source: Long, target: Long, localPrimaries: Set<Long>): Long =
+        listOf(source, target).filter { it in localPrimaries }.minByOrNull {
+            author_archiveQueries.getArchiveCreatorIdentityRecord(it).executeAsOne().portable_key
+        } ?: target
+
+    /** Same precedence as mergeArchiveDuplicateDiscoveries; only merges collisions inside this backup. */
+    private fun mergeRestoredDiscoveries(discoveries: List<BackupAuthorDiscovery>): BackupAuthorDiscovery {
+        if (discoveries.size == 1) return discoveries.single()
+        return discoveries.first().copy(
+            kind = if (discoveries.any { it.kind == "NEW_WORK_CANDIDATE" }) {
+                "NEW_WORK_CANDIDATE"
+            } else {
+                "NEW_SOURCE_VERSION"
+            },
+            reason = discoveries.map { it.reason }.distinct().sorted().joinToString("\n"),
+            baselineGeneration = discoveries.maxOf { it.baselineGeneration },
+            readState = if (discoveries.any { it.readState == "UNSEEN" }) "UNSEEN" else "SEEN",
+            reviewDisposition = when {
+                discoveries.any { it.reviewDisposition == "PENDING" } -> "PENDING"
+                discoveries.any { it.reviewDisposition == "ACCEPTED" } -> "ACCEPTED"
+                else -> "IGNORED"
+            },
+            firstDiscoveredAt = discoveries.minOf { it.firstDiscoveredAt },
+        )
+    }
+
+    private fun Database.resolveActiveCreatorRoot(creatorId: Long): Long =
+        author_archiveQueries.resolveArchiveCreatorRootId(creatorId).executeAsOneOrNull()
+            ?: error("Creator identity redirect does not terminate at an active root: $creatorId")
 
     private fun Database.restoreWatch(watch: BackupAuthorWatch, creatorId: Long, now: Long) {
         author_archiveQueries.upsertArchiveWatchPolicyCommand(
@@ -386,6 +497,8 @@ class SqlDelightAuthorArchiveBackupContributor(
         }
         work.bindings.forEach { binding ->
             val creatorId = creatorIds.getValue(binding.creatorPortableKey)
+            val previousRole = author_archiveQueries.getArchiveSourceWorkCreator(sourceWorkId, creatorId)
+                .executeAsOneOrNull()?.role
             author_archiveQueries.upsertArchiveSourceWorkCreator(
                 sourceWorkId = sourceWorkId,
                 creatorId = creatorId,
@@ -399,7 +512,10 @@ class SqlDelightAuthorArchiveBackupContributor(
                 createdAt = now,
                 lastModifiedAt = now,
             )
+            previousRole?.let { author_archiveQueries.unionArchiveSourceWorkCreatorRole(it, sourceWorkId, creatorId) }
             if (mangaId != null) {
+                val previousMangaRole = author_archiveQueries.getArchiveMangaLink(mangaId, creatorId)
+                    .executeAsOneOrNull()?.role
                 author_archiveQueries.upsertArchiveMangaLink(
                     mangaId = mangaId,
                     creatorId = creatorId,
@@ -412,8 +528,15 @@ class SqlDelightAuthorArchiveBackupContributor(
                     createdAt = now,
                     lastModifiedAt = now,
                 )
+                previousMangaRole?.let { author_archiveQueries.unionArchiveMangaLinkRole(it, mangaId, creatorId) }
             }
         }
+    }
+
+    private fun unionRole(left: String, right: String): String = when {
+        left == right || right == "UNKNOWN" -> left
+        left == "UNKNOWN" -> right
+        else -> "BOTH"
     }
 
     private fun validate(section: BackupAuthorArchiveSection): BackupAuthorArchiveSection {
@@ -429,6 +552,17 @@ class SqlDelightAuthorArchiveBackupContributor(
             )
         }
         val normalizedSection = section.copy(
+            creators = section.creators.map { creator ->
+                if (section.version >= 5) {
+                    creator
+                } else {
+                    creator.copy(
+                        names = (listOf(creator.displayName) + creator.aliases.map { it.rawAlias })
+                            .map(String::trim).filter(String::isNotBlank).distinct()
+                            .map { BackupCreatorName(it, "RESTORE") },
+                    )
+                }
+            },
             sourceWorks = section.sourceWorks.map { work ->
                 work.copy(
                     stableSourceUrl = CreatorSourceWorkKey.portableUrl(
@@ -480,6 +614,25 @@ class SqlDelightAuthorArchiveBackupContributor(
             }
         }
         validateRedirects(creators)
+        if (section.version >= 5) {
+            val names = mutableSetOf<String>()
+            normalizedSection.creators.forEach { creator ->
+                require(
+                    creator.names.all {
+                        it.text.isNotBlank() && it.text == it.text.trim() && it.origin.isNotBlank()
+                    },
+                ) {
+                    "Invalid exact creator name"
+                }
+                require(creator.names.all { names.add(it.text) }) { "Duplicate exact creator name ownership" }
+                require(creator.status != STATUS_ACTIVE || creator.names.any { it.text == creator.displayName }) {
+                    "Creator primary name is missing from exact names"
+                }
+                require(creator.status != STATUS_MERGED || creator.names.isEmpty()) {
+                    "Merged creator cannot own exact names"
+                }
+            }
+        }
 
         val naturalKeys = normalizedSection.sourceWorks.map { it.sourceId to it.stableSourceUrl }
         require(naturalKeys.distinct().size == naturalKeys.size) { "Duplicate source work natural key" }

@@ -1,0 +1,46 @@
+/* Reuse the Mihon shell/theme tokens; additions belong only to this sibling prototype. */
+.preview-tool-panel a { color: #adc6ff; font-size: 12px; }
+.embedded-preview .android-shell { width: min(390px, 100%); }
+.permission-source-list { padding-bottom: 24px; }
+.permission-card {
+  margin: 8px 0 16px;
+  padding: 16px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 16px;
+  background: var(--surface-container-high, var(--surface));
+  color: var(--on-surface);
+  overflow-wrap: anywhere;
+}
+.permission-heading { display: flex; align-items: flex-start; gap: 10px; }
+.permission-heading .MihonIcon { flex: 0 0 22px; width: 22px; height: 22px; color: var(--primary); }
+.permission-card h2 { font-size: 16px; line-height: 1.5; margin: 0; }
+.permission-card p, .permission-dialog p { font-size: 14px; line-height: 1.65; margin: 10px 0 14px; }
+.permission-muted { color: var(--on-surface-variant, var(--outline)); }
+.permission-card .m-button, .permission-dialog .m-button { min-height: 48px; white-space: normal; font-size: 14px; padding: 10px 16px; }
+.permission-card .m-button + .m-button { margin-left: 6px; }
+.permission-feedback { margin-bottom: 0 !important; }
+.permission-progress { display: flex; align-items: center; gap: 10px; padding: 16px 0; font-size: 14px; }
+.permission-spinner { width: 18px; height: 18px; border: 2px solid var(--outline-variant); border-top-color: var(--primary); border-radius: 50%; animation: permission-spin 1s linear infinite; }
+@keyframes permission-spin { to { transform: rotate(360deg); } }
+.permission-dialog {
+  width: min(440px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  overflow: auto;
+  margin: auto;
+  padding: 24px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 24px;
+  color: var(--on-surface);
+  background: var(--surface);
+  box-shadow: 0 24px 80px #0005;
+}
+.permission-dialog::backdrop { background: #0009; }
+.permission-dialog h2 { font-size: 20px; line-height: 1.4; margin: 12px 0 24px; }
+.permission-dialog h3 { font-size: 16px; }
+.permission-app { color: var(--primary); font-size: 24px; font-weight: 600; }
+.permission-demo-label { display: inline-block; color: var(--on-surface-variant, var(--outline)); font-size: 12px; }
+.permission-dialog-actions { display: flex; flex-direction: column; align-items: stretch; gap: 8px; margin-top: 24px; }
+.permission-source-list .source-row { min-height: 64px; }
+.permission-source-list .source-row strong { font-size: 14px; }
+.permission-source-list .source-row small { font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .permission-spinner { animation: none; } }

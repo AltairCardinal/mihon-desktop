@@ -4,7 +4,7 @@ import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
-import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
+import mihon.domain.reader.ReaderModeFlags
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.core.metadata.comicinfo.ComicInfo
 import tachiyomi.core.metadata.comicinfo.ComicInfoPublishingStatus
@@ -16,7 +16,7 @@ import uy.kohesive.injekt.api.get
 
 // TODO: move these into the domain model
 val Manga.readingMode: Long
-    get() = viewerFlags and ReadingMode.MASK.toLong()
+    get() = ReaderModeFlags.read(viewerFlags)
 
 val Manga.readerOrientation: Long
     get() = viewerFlags and ReaderOrientation.MASK.toLong()

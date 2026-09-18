@@ -37,8 +37,8 @@ class ReaderPreferences(
 
     fun defaultReadingMode() = preferenceStore.getInt(
         "pref_default_reading_mode_key",
-        ReadingMode.RIGHT_TO_LEFT.flagValue,
-    )
+        ReadingMode.AUTO.flagValue,
+    ).apply { if (get() == ReadingMode.DEFAULT.flagValue) set(ReadingMode.AUTO.flagValue) }
 
     fun defaultOrientationType() = preferenceStore.getInt(
         "pref_default_orientation_type_key",

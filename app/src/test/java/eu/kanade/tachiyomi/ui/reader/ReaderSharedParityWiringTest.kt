@@ -2,6 +2,8 @@ package eu.kanade.tachiyomi.ui.reader
 
 import androidx.lifecycle.SavedStateHandle
 import eu.kanade.domain.base.BasePreferences
+import eu.kanade.domain.manga.interactor.SetMangaViewerFlags
+import eu.kanade.domain.manga.model.readingMode
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
@@ -42,9 +44,30 @@ import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaUpdate
+import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 
 class ReaderSharedParityWiringTest {
+
+    @Test
+    fun `Android persisted manga modes consume shared automatic legacy and retain other flags`() = runTest {
+        val unrelated = 0x28L or (1L shl 32) or (1L shl 42)
+        var manga = Manga.create().copy(id = 1L, viewerFlags = unrelated or (1L shl 34) or 2L)
+        val repository = mockk<MangaRepository>()
+        coEvery { repository.getMangaById(1L) } answers { manga }
+        coEvery { repository.update(any()) } answers {
+            manga = manga.copy(viewerFlags = requireNotNull(firstArg<MangaUpdate>().viewerFlags))
+            true
+        }
+        val writer = SetMangaViewerFlags(repository)
+        assertEquals(7L, manga.readingMode)
+        for (mode in listOf(7L, 2L, 6L, 1L, 4L, 5L, 3L, 0L)) {
+            writer.awaitSetReadingMode(1L, mode)
+            assertEquals((if (mode == 0L) unrelated and (1L shl 32).inv() else unrelated) or mode, manga.viewerFlags)
+            assertEquals(mode, manga.readingMode)
+        }
+    }
 
     @Test
     fun `fork-added pairing adapter and shared core produce the same enhancement vectors`() {
@@ -224,6 +247,7 @@ class ReaderSharedParityWiringTest {
             val getChapters = mockk<GetChaptersByMangaId>()
             coEvery { getChapters.await(manga.id, applyScanlatorFilter = true) } returns chapters
             val readerPreferences = mockk<ReaderPreferences>(relaxed = true)
+            every { readerPreferences.defaultReadingMode().get() } returns 1
             every { readerPreferences.skipRead().get() } returns true
             every { readerPreferences.skipFiltered().get() } returns false
             every { readerPreferences.skipDupe().get() } returns false
@@ -256,6 +280,17 @@ class ReaderSharedParityWiringTest {
             )
 
             assertTrue(viewModel.init(manga.id, initialChapterId = 3).isSuccess)
+            assertEquals(1, viewModel.getMangaReadingMode())
+            assertEquals(0, viewModel.getMangaReadingMode(resolveDefault = false))
+            val stateField = ReaderViewModel::class.java.getDeclaredField("mutableState").apply { isAccessible = true }
+
+            @Suppress("UNCHECKED_CAST")
+            val state = stateField.get(viewModel) as MutableStateFlow<ReaderViewModel.State>
+            for (explicit in listOf(7L, (1L shl 34) or 2L)) {
+                state.value = state.value.copy(manga = manga.copy(viewerFlags = explicit))
+                assertEquals(7, viewModel.getMangaReadingMode())
+                assertEquals(7, viewModel.getMangaReadingMode(resolveDefault = false))
+            }
 
             val visible = requireNotNull(viewModel.state.value.viewerChapters)
             assertEquals(3L, visible.currChapter.chapter.id)

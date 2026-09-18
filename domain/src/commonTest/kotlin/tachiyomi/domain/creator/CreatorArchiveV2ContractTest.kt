@@ -98,7 +98,8 @@ class CreatorArchiveV2ContractTest {
     fun `physical table names unique keys and deletion policies are frozen`() {
         val tables = CreatorArchivePhysicalSchema.tables
 
-        assertEquals(20, tables.size)
+        assertEquals(20, CreatorArchivePhysicalSchema.version16Tables.size)
+        assertEquals(24, tables.size)
         assertEquals(tables.size, tables.map { it.name }.toSet().size)
         assertTrue(tables.all { it.name.startsWith("author_archive_") && it.uniqueKeys.isNotEmpty() })
         assertEquals(

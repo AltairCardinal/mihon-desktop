@@ -1,9 +1,7 @@
 package mihon.desktop.ui.authors
 
 import tachiyomi.i18n.MR
-
 import mihon.desktop.LocalDesktopUiDependencies
-
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +11,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
@@ -47,6 +48,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.style.TextOverflow
@@ -71,6 +73,10 @@ import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.service.CreatorLibraryIndexState
 import tachiyomi.domain.source.service.SourceManager
 import java.util.Locale
+import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
+
+
+
 
 object AuthorsTab : Tab {
 
@@ -105,10 +111,21 @@ class AuthorsRootScreen : Screen {
         val model = rememberScreenModel { AuthorsScreenModelFactory.root(dependencies) }
         val state by model.state.collectAsState()
         val indexPresentation = authorIndexPresentation(state.indexState, state.creators.size)
+        val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
+        model.settingsEditor?.let { editor ->
+            val settings by editor.state.collectAsState()
+            androidx.compose.runtime.LaunchedEffect(settings.savedRevision) {
+                if (settings.savedRevision > 0) snackbar.showSnackbar(MR.strings.creator_settings_saved.localized())
+            }
+        }
 
         Scaffold(
+            snackbarHost = { androidx.compose.material3.SnackbarHost(snackbar) },
             topBar = {
-                TopAppBar(title = { Text(MR.strings.desktop_ui_authors.localized()) })
+                TopAppBar(
+                    title = { Text(MR.strings.desktop_ui_authors.localized()) },
+                    actions = { model.settingsEditor?.let { CreatorSettingsButton(it) } },
+                )
             },
         ) { padding ->
             Column(
@@ -262,14 +279,8 @@ data class AuthorDetailScreen(
         val manualAliases = state.manualAliases
         val identityActionError = state.error
         val identityActionRunning = state.actionRunning
-        var showAliasDialog by remember { mutableStateOf(false) }
-        var aliasInput by remember { mutableStateOf("") }
-        var aliasPendingRemoval by remember { mutableStateOf<String?>(null) }
-        var showMergePicker by remember { mutableStateOf(false) }
-        var mergeTarget by remember { mutableStateOf<Creator?>(null) }
         var showSplitDialog by remember { mutableStateOf(false) }
-        var splitName by remember { mutableStateOf("") }
-        var splitMangaIds by remember { mutableStateOf(emptySet<Long>()) }
+        var confirmUnfollow by remember { mutableStateOf(false) }
         LaunchedEffect(model) {
             model.effects.collect { effect ->
                 when (effect) {
@@ -284,203 +295,25 @@ data class AuthorDetailScreen(
         }
 
         val isCurrentCreatorDiscovery = discoveryState?.scope == CreatorDiscoveryRunScope.Creator &&
-            discoveryState?.creatorId == creatorId
+            discoveryState?.creatorId == (creator?.id ?: creatorId)
         val isDiscoveryBusy = discoveryState?.status in setOf(TaskStatus.Pending, TaskStatus.Running)
         val isManualDiscoveryRunning = discoveryState?.status == TaskStatus.Running && isCurrentCreatorDiscovery
 
         val isFollowed = state.followed
 
-        if (showAliasDialog) {
-            AlertDialog(
-                onDismissRequest = { showAliasDialog = false },
-                title = { Text(MR.strings.desktop_ui_add_author_alias.localized()) },
-                text = {
-                    OutlinedTextField(
-                        value = aliasInput,
-                        onValueChange = { aliasInput = it },
-                        label = { Text(MR.strings.desktop_ui_author_alias.localized()) },
-                        singleLine = true,
-                    )
-                },
-                confirmButton = {
-                    TextButton(
-                        enabled = aliasInput.isNotBlank() && !identityActionRunning,
-                        onClick = {
-                            val alias = aliasInput
-                            showAliasDialog = false
-                            model.addAlias(alias)
-                            aliasInput = ""
-                        },
-                    ) { Text(MR.strings.action_add.localized()) }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showAliasDialog = false }) {
-                        Text(MR.strings.action_cancel.localized())
-                    }
-                },
-            )
-        }
-
-        aliasPendingRemoval?.let { alias ->
-            AlertDialog(
-                onDismissRequest = { aliasPendingRemoval = null },
-                title = { Text(MR.strings.desktop_ui_remove_author_alias.localized()) },
-                text = {
-                    Text(
-                        MR.strings.desktop_ui_remove_author_alias_summary.localized(
-                            Locale.getDefault(),
-                            alias,
-                        ),
-                    )
-                },
-                confirmButton = {
-                    TextButton(
-                        enabled = !identityActionRunning,
-                        onClick = {
-                            aliasPendingRemoval = null
-                            model.removeAlias(alias)
-                        },
-                    ) { Text(MR.strings.action_remove.localized()) }
-                },
-                dismissButton = {
-                    TextButton(onClick = { aliasPendingRemoval = null }) {
-                        Text(MR.strings.action_cancel.localized())
-                    }
-                },
-            )
-        }
-
-        if (showMergePicker) {
-            val targets = allCreators.filter { it.id != creatorId }
-            AlertDialog(
-                onDismissRequest = { showMergePicker = false },
-                title = { Text(MR.strings.desktop_ui_merge_author_identity.localized()) },
-                text = {
-                    if (targets.isEmpty()) {
-                        Text(MR.strings.desktop_ui_no_other_author_identities.localized())
-                    } else {
-                        LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                            items(targets, key = Creator::id) { target ->
-                                ListItem(
-                                    headlineContent = { Text(target.displayName) },
-                                    supportingContent = {
-                                        if (target.aliases.isNotEmpty()) {
-                                            Text(target.aliases.joinToString())
-                                        }
-                                    },
-                                    modifier = Modifier.clickable {
-                                        mergeTarget = target
-                                        showMergePicker = false
-                                    },
-                                )
-                            }
-                        }
-                    }
-                },
-                confirmButton = {},
-                dismissButton = {
-                    TextButton(onClick = { showMergePicker = false }) {
-                        Text(MR.strings.action_cancel.localized())
-                    }
-                },
-            )
-        }
-
-        mergeTarget?.let { target ->
-            AlertDialog(
-                onDismissRequest = { mergeTarget = null },
-                title = { Text(MR.strings.desktop_ui_merge_author_identity.localized()) },
-                text = {
-                    Text(
-                        MR.strings.desktop_ui_merge_author_identity_summary.localized(
-                            Locale.getDefault(),
-                            creator?.displayName ?: MR.strings.unknown_author.localized(),
-                            target.displayName,
-                        ),
-                    )
-                },
-                confirmButton = {
-                    TextButton(
-                        enabled = !identityActionRunning,
-                        onClick = {
-                            mergeTarget = null
-                            model.merge(target.id)
-                        },
-                    ) { Text(MR.strings.desktop_ui_merge_author_identity.localized()) }
-                },
-                dismissButton = {
-                    TextButton(onClick = { mergeTarget = null }) {
-                        Text(MR.strings.action_cancel.localized())
-                    }
-                },
-            )
-        }
-
         if (showSplitDialog) {
-            val uniqueMangaIds = mangaLinks.map(MangaCreator::mangaId).distinct()
             AlertDialog(
                 onDismissRequest = { showSplitDialog = false },
-                title = { Text(MR.strings.desktop_ui_split_author_identity.localized()) },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(MR.strings.desktop_ui_split_author_identity_summary.localized())
-                        OutlinedTextField(
-                            value = splitName,
-                            onValueChange = { splitName = it },
-                            label = { Text(MR.strings.desktop_ui_new_identity_name.localized()) },
-                            singleLine = true,
-                        )
-                        LazyColumn(Modifier.heightIn(max = 280.dp)) {
-                            items(uniqueMangaIds, key = { it }) { mangaId ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().clickable {
-                                        splitMangaIds = if (mangaId in splitMangaIds) {
-                                            splitMangaIds - mangaId
-                                        } else {
-                                            splitMangaIds + mangaId
-                                        }
-                                    },
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Checkbox(
-                                        checked = mangaId in splitMangaIds,
-                                        onCheckedChange = { checked ->
-                                            splitMangaIds = if (checked) splitMangaIds + mangaId else splitMangaIds - mangaId
-                                        },
-                                    )
-                                    Text(
-                                        mangaTitles[mangaId]
-                                            ?: MR.strings.desktop_ui_manga_number.localized(Locale.getDefault(), mangaId),
-                                    )
-                                }
-                            }
-                        }
-                        if (splitMangaIds.isEmpty()) {
-                            Text(
-                                MR.strings.desktop_ui_select_at_least_one_manga.localized(),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        enabled = splitName.isNotBlank() && splitMangaIds.isNotEmpty() && !identityActionRunning,
-                        onClick = {
-                            val selectedIds = splitMangaIds
-                            val newName = splitName
-                            showSplitDialog = false
-                            model.split(selectedIds, newName)
-                            splitMangaIds = emptySet()
-                            splitName = ""
-                        },
-                    ) { Text(MR.strings.desktop_ui_split_author_identity.localized()) }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showSplitDialog = false }) {
-                        Text(MR.strings.action_cancel.localized())
-                    }
-                },
+                text = { Text(MR.strings.creator_split_unavailable.localized()) },
+                confirmButton = { TextButton(onClick = { showSplitDialog = false }) { Text(MR.strings.action_ok.localized()) } },
+            )
+        }
+        if (confirmUnfollow) {
+            AlertDialog(
+                onDismissRequest = { confirmUnfollow = false },
+                text = { Text(MR.strings.creator_unfollow_confirm.localized()) },
+                confirmButton = { TextButton(onClick = { confirmUnfollow = false; model.toggleFollow() }) { Text(MR.strings.action_ok.localized()) } },
+                dismissButton = { TextButton(onClick = { confirmUnfollow = false }) { Text(MR.strings.action_cancel.localized()) } },
             )
         }
 
@@ -535,20 +368,17 @@ data class AuthorDetailScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text(creator?.displayName ?: MR.strings.unknown_author.localized(), style = MaterialTheme.typography.titleLarge)
+                        CreatorIdentityHeader(model.identityEditor, creator?.displayName.orEmpty())
                         Text(
-                            MR.strings.desktop_ui_discovered_candidate_count.localized(Locale.getDefault(), candidates.size),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            MR.strings.desktop_ui_archived_source_link_count.localized(Locale.getDefault(), mangaLinks.size),
+                            MR.strings.creator_work_version_count.localized(Locale.getDefault(),
+                                state.workArchive.works.size + state.workArchive.pending.size + state.workArchive.rejected.size,
+                                state.workArchive.works.sumOf { it.versions.size } + state.workArchive.pending.size + state.workArchive.rejected.size),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     Button(
-                        onClick = model::toggleFollow,
+                        onClick = { if (isFollowed) confirmUnfollow = true else model.toggleFollow() },
                     ) {
                         Text(if (isFollowed) MR.strings.desktop_ui_unfollow.localized() else MR.strings.desktop_ui_follow.localized())
                     }
@@ -567,7 +397,7 @@ data class AuthorDetailScreen(
                 }
 
                 discoveryState?.takeIf { state ->
-                    state.scope != CreatorDiscoveryRunScope.Creator || state.creatorId == creatorId
+                    state.scope != CreatorDiscoveryRunScope.Creator || state.creatorId == (creator?.id ?: creatorId)
                 }?.let { state ->
                     when (state.status) {
                         TaskStatus.Pending -> {
@@ -664,57 +494,8 @@ data class AuthorDetailScreen(
                     }
                 }
 
-                creator?.aliases?.takeIf { it.isNotEmpty() }?.let { aliases ->
-                    Text(
-                        MR.strings.desktop_ui_author_aliases.localized(
-                            Locale.getDefault(),
-                            aliases.joinToString(),
-                        ),
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                manualAliases.takeIf { it.isNotEmpty() }?.let { aliases ->
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        aliases.forEach { alias ->
-                            TextButton(
-                                enabled = !identityActionRunning,
-                                onClick = { aliasPendingRemoval = alias },
-                            ) {
-                                Text(
-                                    MR.strings.desktop_ui_remove_named_author_alias.localized(
-                                        Locale.getDefault(),
-                                        alias,
-                                    ),
-                                )
-                            }
-                        }
-                    }
-                }
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    TextButton(
-                        enabled = !identityActionRunning,
-                        onClick = { showAliasDialog = true },
-                    ) { Text(MR.strings.desktop_ui_add_author_alias.localized()) }
-                    TextButton(
-                        enabled = !identityActionRunning && allCreators.any { it.id != creatorId },
-                        onClick = { showMergePicker = true },
-                    ) { Text(MR.strings.desktop_ui_merge_author_identity.localized()) }
-                    TextButton(
-                        enabled = !identityActionRunning && mangaLinks.isNotEmpty(),
-                        onClick = {
-                            splitName = creator?.displayName.orEmpty()
-                            splitMangaIds = emptySet()
-                            showSplitDialog = true
-                        },
-                    ) { Text(MR.strings.desktop_ui_split_author_identity.localized()) }
+                TextButton(onClick = { showSplitDialog = true }) {
+                    Text(MR.strings.desktop_ui_split_author_identity.localized())
                 }
 
                 HorizontalDivider()
@@ -741,6 +522,15 @@ data class AuthorDetailScreen(
                     }
                 }
 
+                CreatorWorkFilters(
+                    state.workFilter.query, state.workFilter.sourceId,
+                    (state.workArchive.works.flatMap { it.versions } + state.workArchive.pending + state.workArchive.rejected)
+                        .map { it.naturalKey.sourceId }.distinct().sorted().associateWith {
+                            desktopDependencies.sourceManager.getOrStub(it).name
+                        },
+                    model::searchWorks, model::filterSource,
+                )
+
                 if (workArchive.works.isEmpty() && workArchive.pending.isEmpty() && workArchive.rejected.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
@@ -750,7 +540,7 @@ data class AuthorDetailScreen(
                             ) {
                                 MR.strings.desktop_ui_no_discovered_works_yet.localized()
                             } else {
-                                MR.strings.desktop_ui_language_filter_empty.localized()
+                                MR.strings.creator_work_filter_empty.localized()
                             },
                         )
                     }
@@ -766,22 +556,26 @@ data class AuthorDetailScreen(
                             }
                             workArchive.works.forEach { work ->
                                 item(key = "work-${work.workId}") {
-                                    ListItem(
-                                        headlineContent = { Text(work.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                        supportingContent = {
-                                            Text(
-                                                MR.strings.desktop_ui_source_versions.localized(
-                                                    Locale.getDefault(),
-                                                    work.versions.size,
-                                                ),
-                                            )
-                                        },
-                                        leadingContent = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null) },
-                                    )
-                                }
-                                items(work.versions, key = { "version-${it.sourceWorkId}" }) { version ->
-                                    ArchiveVersionListItem(version, desktopDependencies.sourceManager) {
-                                        navigator.push(WorkCompareScreen(version.sourceWorkId, creatorId))
+                                    CreatorArchiveWorkRow(work.title, work.versions.firstOrNull()?.thumbnailUrl, work.workId.toString()) {
+                                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                work.versions.forEach { version ->
+                                                    var showVersionMenu by remember(version.sourceWorkId) { mutableStateOf(false) }
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        TextButton(onClick = { model.openVersion(version) }, modifier = Modifier.weight(1f, fill = false).testTag("creator-version-${version.sourceWorkId}")) {
+                                                            Text(authorVersionLabel(version, desktopDependencies.sourceManager))
+                                                        }
+                                                        IconButton(onClick = { showVersionMenu = true }, modifier = Modifier.width(32.dp)) {
+                                                            Icon(Icons.Default.MoreVert, MR.strings.action_edit.localized())
+                                                        }
+                                                        androidx.compose.material3.DropdownMenu(expanded = showVersionMenu, onDismissRequest = { showVersionMenu = false }) {
+                                                            androidx.compose.material3.DropdownMenuItem(text = { Text(MR.strings.desktop_ui_pending_work_suggestions.localized()) }, onClick = {
+                                                                showVersionMenu = false
+                                                                navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
+                                                            })
+                                                        }
+                                                    }
+                                                }
+                                            }
                                     }
                                 }
                                 item(key = "work-divider-${work.workId}") { HorizontalDivider() }
@@ -796,8 +590,8 @@ data class AuthorDetailScreen(
                                 )
                             }
                             items(workArchive.pending, key = { "pending-${it.sourceWorkId}" }) { version ->
-                                ArchiveVersionListItem(version, desktopDependencies.sourceManager) {
-                                    navigator.push(WorkCompareScreen(version.sourceWorkId, creatorId))
+                                ArchiveVersionListItem(version, desktopDependencies.sourceManager, onOpen = { model.openVersion(version) }) {
+                                    navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
                                 }
                             }
                         }
@@ -810,8 +604,8 @@ data class AuthorDetailScreen(
                                 )
                             }
                             items(workArchive.rejected, key = { "rejected-${it.sourceWorkId}" }) { version ->
-                                ArchiveVersionListItem(version, desktopDependencies.sourceManager) {
-                                    navigator.push(WorkCompareScreen(version.sourceWorkId, creatorId))
+                                ArchiveVersionListItem(version, desktopDependencies.sourceManager, onOpen = { model.openVersion(version) }) {
+                                    navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
                                 }
                             }
                         }
@@ -822,10 +616,41 @@ data class AuthorDetailScreen(
     }
 }
 
-@Composable
-private fun ArchiveVersionListItem(
+private fun authorVersionLabel(
     version: tachiyomi.domain.creator.model.SourceWorkArchiveVersion,
     sourceManager: SourceManager,
+): String {
+    val name = sourceManager.getOrStub(version.naturalKey.sourceId).name
+    return if (sourceManager.get(version.naturalKey.sourceId) == null) {
+        "$name · ${MR.strings.desktop_ui_source_missing.localized()}"
+    } else name
+}
+
+@Composable
+private fun CreatorArchiveWorkRow(
+    title: String,
+    thumbnailUrl: String?,
+    key: String,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) {
+    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        coil3.compose.AsyncImage(thumbnailUrl, null,
+            fallback = rememberVectorPainter(Icons.AutoMirrored.Filled.MenuBook),
+            modifier = Modifier.width(64.dp).height(88.dp).testTag("creator-cover-$key"),
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("creator-work-$key"))
+            content()
+        }
+    }
+}
+
+@Composable
+private fun ArchiveVersionListItem(
+    version: SourceWorkArchiveVersion,
+    sourceManager: SourceManager,
+    onOpen: () -> Unit,
     onClick: () -> Unit,
 ) {
     val sourceName = sourceManager.getOrStub(version.naturalKey.sourceId).name
@@ -836,9 +661,16 @@ private fun ArchiveVersionListItem(
     }
     val checkResult = version.lastCheckResult?.name?.lowercase()
         ?: MR.strings.desktop_ui_source_not_checked.localized()
-    ListItem(
-        headlineContent = { Text(version.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        supportingContent = {
+    CreatorArchiveWorkRow(version.title, version.thumbnailUrl, "version-${version.sourceWorkId}") {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onOpen, modifier = Modifier.weight(1f, fill = false)
+                .testTag("creator-version-${version.sourceWorkId}")) {
+                Text(authorVersionLabel(version, sourceManager))
+            }
+            IconButton(onClick = onClick, modifier = Modifier.width(32.dp)) {
+                Icon(Icons.Default.MoreVert, MR.strings.action_edit.localized())
+            }
+        }
             Text(
                 MR.strings.desktop_ui_archive_version_evidence.localized(
                     Locale.getDefault(),
@@ -856,9 +688,8 @@ private fun ArchiveVersionListItem(
                     version.lastSuccessAt?.toString() ?: MR.strings.unknown.localized(),
                 ),
             )
-        },
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-    )
+    }
+
 }
 
 internal fun shouldCollectAuthorOnOpen(
@@ -1134,7 +965,6 @@ private fun AuthorListItem(creator: Creator, followed: Boolean, onClick: () -> U
         supportingContent = {
             Text(if (followed) MR.strings.desktop_ui_followed.localized() else MR.strings.not_selected.localized())
         },
-        leadingContent = { Icon(Icons.Default.Person, contentDescription = null) },
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),

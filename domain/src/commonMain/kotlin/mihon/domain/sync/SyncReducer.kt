@@ -148,8 +148,8 @@ object SyncReducer {
             val headRefs = heads.map { it.ref }
             val metadata = heads.associate { it.ref to SyncEffectMetadata(it.event.occurredAt, it.event.origin) }
             val effectsByRef = heads.associate { it.ref to it.effect }
-            val userHeads = heads.filter { it.event.origin == SyncOrigin.USER }
-            val considered = if (userHeads.isNotEmpty()) userHeads else heads
+            val effectiveRefs = effectiveSyncHeads(headRefs, metadata).toSet()
+            val considered = heads.filter { it.ref in effectiveRefs }
             val membership = if (key.field == SyncField.FAVORITE || key.field == SyncField.FOLLOWING) {
                 when {
                     considered.any { it.effect.kind == SyncEffectKind.ADD } -> true

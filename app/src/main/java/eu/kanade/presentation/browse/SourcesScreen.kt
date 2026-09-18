@@ -45,10 +45,13 @@ fun SourcesScreen(
     onClickItem: (Source, Listing) -> Unit,
     onClickPin: (Source) -> Unit,
     onLongClickItem: (Source) -> Unit,
+    onGetInstalledAppsPermission: () -> Unit = {},
+    onRetryInstalledAppsPermission: () -> Unit = {},
 ) {
+    val permissionNotice = state.installedAppsPermission.hasNotice || state.permissionSettingsUnavailable
     when {
-        state.isLoading -> LoadingScreen(Modifier.padding(contentPadding))
-        state.isEmpty -> EmptyScreen(
+        state.isLoading && !permissionNotice -> LoadingScreen(Modifier.padding(contentPadding))
+        state.isEmpty && !permissionNotice -> EmptyScreen(
             stringRes = MR.strings.source_empty_screen,
             modifier = Modifier.padding(contentPadding),
         )
@@ -56,6 +59,16 @@ fun SourcesScreen(
             ScrollbarLazyColumn(
                 contentPadding = contentPadding + topSmallPaddingValues,
             ) {
+                if (permissionNotice) {
+                    item(key = "installed-apps-permission") {
+                        InstalledAppsPermissionNotice(
+                            state = state.installedAppsPermission,
+                            settingsUnavailable = state.permissionSettingsUnavailable,
+                            onGetPermission = onGetInstalledAppsPermission,
+                            onRetry = onRetryInstalledAppsPermission,
+                        )
+                    }
+                }
                 items(
                     items = state.items,
                     contentType = {

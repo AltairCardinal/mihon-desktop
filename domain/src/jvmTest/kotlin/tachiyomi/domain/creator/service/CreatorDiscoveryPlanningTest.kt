@@ -86,6 +86,24 @@ class CreatorDiscoveryPlanningTest {
     }
 
     @Test
+    fun `identity gate does not verify names that only match after search normalization`() {
+        val widthVariant = CreatorIdentityEvidenceEvaluator.evaluate(
+            listOf("ONE"),
+            work(author = "ＯＮＥ", artist = null),
+        )
+        val punctuationVariant = CreatorIdentityEvidenceEvaluator.evaluate(
+            listOf("ONE"),
+            work(
+                author = null,
+                structured = listOf(CreatorStructuredIdentityMatch("one!", CreatorRole.AUTHOR, "structured")),
+            ),
+        )
+
+        assertEquals(CreatorRelationVerification.POSSIBLE, widthVariant.verification)
+        assertEquals(CreatorRelationVerification.POSSIBLE, punctuationVariant.verification)
+    }
+
+    @Test
     fun `result policy separates archive inclusion from notification eligibility`() {
         val policy = policy(
             languages = setOf("ja"),

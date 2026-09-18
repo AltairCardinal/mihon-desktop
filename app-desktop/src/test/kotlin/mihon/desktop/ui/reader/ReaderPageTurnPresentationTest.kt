@@ -147,7 +147,7 @@ class ReaderPageTurnPresentationTest {
                     fixture.writeFrame("reader-page-turn-after.png")
                 }
                 assertEquals(animated, sawTransition, "Animation preference must control the mounted production reader")
-                assertEquals(target + if (dual) 1 else 0, fixture.page)
+                assertEquals(target, fixture.page)
                 assertEquals(setOf(if (forward) GREEN else RED), fixture.frame())
             }
         }
@@ -163,7 +163,7 @@ class ReaderPageTurnPresentationTest {
             fixture.page = if (dual) 5 else 3
             repeat(80) { fixture.frame(); runCurrent() }
 
-            assertEquals((if (dual) 5 else 3) + if (dual) 1 else 0, fixture.page)
+            assertEquals(if (dual) 5 else 3, fixture.page)
             assertEquals(setOf(GREEN), fixture.frame())
         }
     }

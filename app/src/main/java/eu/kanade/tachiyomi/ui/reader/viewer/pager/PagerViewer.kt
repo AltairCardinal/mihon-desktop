@@ -152,7 +152,7 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
 
         config.navigationModeChangedListener = {
             val showOnStart = config.navigationOverlayOnStart || config.forceNavigationOverlay
-            activity.binding.navigationOverlay.setNavigation(config.navigator, showOnStart)
+            activity.setViewerNavigation(config.navigator, showOnStart)
         }
     }
 
@@ -236,7 +236,7 @@ abstract class PagerViewer(override val activity: ReaderActivity) : Viewer, View
     internal fun onReaderPageSelected(page: ReaderPage, allowPreload: Boolean, forward: Boolean) {
         val pages = page.chapter.pages ?: return
         logcat { "onReaderPageSelected: ${page.number}/${pages.size}" }
-        activity.onPageSelected(page)
+        activity.onViewerPageSelected(this, page)
 
         // Notify holder of page change
         getPageHolder(page)?.onPageSelected(forward)

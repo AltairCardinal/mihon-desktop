@@ -44,6 +44,8 @@ data class ReaderState(
 
     // ── Reading mode ─────────────────────────────────────────────────────────
     val readingMode: ReadingMode = ReadingMode.LTR,
+    val automaticLayout: Boolean = false,
+    val followsGlobalReadingMode: Boolean = false,
     val dualPageMode: Boolean = false,
     val autoSplitPages: Boolean = false,
     val autoSpreadMatching: Boolean = false,

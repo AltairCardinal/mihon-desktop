@@ -1,13 +1,21 @@
 package tachiyomi.domain.creator.interactor
 
+import tachiyomi.domain.creator.model.AddCreatorAliasesRequest
 import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.creator.model.CreatorMentionResolution
+import tachiyomi.domain.creator.model.SetCreatorDisplayNameRequest
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.manga.model.Manga
 
 class ManageCreatorIdentity(
     private val repository: CreatorArchiveRepository,
 ) {
+    fun observe(creatorId: Long) = repository.observeIdentitySnapshot(creatorId)
+    suspend fun snapshot(creatorId: Long) = repository.getIdentitySnapshot(creatorId)
+    suspend fun candidates(creatorId: Long) = repository.getAliasCandidates(creatorId)
+    suspend fun addAliases(request: AddCreatorAliasesRequest) = repository.addCreatorAliases(request)
+    suspend fun setDisplayName(request: SetCreatorDisplayNameRequest) = repository.setCreatorDisplayName(request)
+
     suspend fun addAlias(creatorId: Long, alias: String) = repository.addManualCreatorAlias(creatorId, alias)
 
     suspend fun getManualAliases(creatorId: Long): List<String> = repository.getManualCreatorAliases(creatorId)
@@ -20,18 +28,8 @@ class ManageCreatorIdentity(
     suspend fun split(sourceCreatorId: Long, mangaIds: Set<Long>, newDisplayName: String): Long =
         repository.splitCreatorIdentity(sourceCreatorId, mangaIds, newDisplayName)
 
-    suspend fun resolve(manga: Manga, mention: CreatorMention): CreatorMentionResolution {
-        val options = repository.getCreatorIdentityOptions(manga.id, mention)
-        return when (options.size) {
-            0 -> CreatorMentionResolution.Resolved(repository.createAndBindMangaCreatorIdentity(manga, mention))
-            1 -> {
-                val creatorId = options.single().id
-                repository.bindMangaCreatorIdentity(manga, mention, creatorId)
-                CreatorMentionResolution.Resolved(creatorId)
-            }
-            else -> CreatorMentionResolution.Ambiguous(mention, options)
-        }
-    }
+    suspend fun resolve(manga: Manga, mention: CreatorMention): CreatorMentionResolution =
+        CreatorMentionResolution.Resolved(repository.createAndBindMangaCreatorIdentity(manga, mention))
 
     suspend fun select(manga: Manga, mention: CreatorMention, creatorId: Long) =
         repository.bindMangaCreatorIdentity(manga, mention, creatorId)

@@ -60,6 +60,7 @@ class CreatorArchivePerformanceContractTest {
 
             val firstRun = runBackfill(mangaRepository, writer)
 
+            println("Exact creator backfill first pass: $firstRun")
             firstRun.firstProgressMillis.shouldBeLessThanOrEqual(FIRST_PROGRESS_BUDGET_MILLIS)
             firstRun.totalMillis.shouldBeLessThanOrEqual(TOTAL_BUDGET_MILLIS)
             writer.largestBatch shouldBe BATCH_SIZE
@@ -72,6 +73,7 @@ class CreatorArchivePerformanceContractTest {
             val countsBeforeReplay = archiveCounts(driver)
             val secondRun = runBackfill(mangaRepository, writer)
 
+            println("Exact creator backfill idempotent replay: $secondRun")
             secondRun.totalMillis.shouldBeLessThanOrEqual(TOTAL_BUDGET_MILLIS)
             archiveCounts(driver) shouldBe countsBeforeReplay
         } finally {
@@ -99,7 +101,10 @@ class CreatorArchivePerformanceContractTest {
             withTimeout(FIRST_PROGRESS_TIMEOUT_MILLIS) { firstProgress.await() }
             val firstProgressMillis = elapsedMillis(startedAt)
             withTimeout(TEST_TIMEOUT_MILLIS) {
-                indexer.state.filterIsInstance<CreatorLibraryIndexState.Ready>().first()
+                val terminal = indexer.state.first {
+                    it is CreatorLibraryIndexState.Ready || it is CreatorLibraryIndexState.Failed
+                }
+                check(terminal is CreatorLibraryIndexState.Ready) { "Backfill failed: $terminal" }
             }
             BackfillTiming(
                 firstProgressMillis = firstProgressMillis,
