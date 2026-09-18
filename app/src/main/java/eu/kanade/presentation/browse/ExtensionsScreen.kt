@@ -190,6 +190,14 @@ private fun ExtensionContent(
     var trustState by remember { mutableStateOf<Extension.Untrusted?>(null) }
     val installGranted = rememberRequestPackageInstallsPermissionState(initialValue = true)
 
+    val suggestionContent = extensionSuggestionContent(
+        state.suggestionPanel, suggestionController,
+        onInstallSuggestion, onSuggestionWebsite,
+        onRepositories = { navigator.push(ExtensionReposScreen()) },
+        onMigrate = onSuggestionMigration,
+        onDiagnose = onSuggestionDiagnose,
+        onRefresh = onRefresh, errors = state.installErrors,
+    )
     FastScrollLazyColumn(
         contentPadding = contentPadding + topSmallPaddingValues,
     ) {
@@ -232,16 +240,7 @@ private fun ExtensionContent(
                     onResolvePause = onResolveBatchPause,
                 )
             }
-            item(key = "extension-suggestions") {
-                ExtensionSuggestionSection(
-                    state.suggestionPanel, suggestionController,
-                    onInstallSuggestion, onSuggestionWebsite,
-                    onRepositories = { navigator.push(ExtensionReposScreen()) },
-                    onMigrate = onSuggestionMigration,
-                    onDiagnose = onSuggestionDiagnose,
-                    onRefresh = onRefresh, errors = state.installErrors,
-                )
-            }
+            suggestionContent()
         }
         var suggestionAdded = false
         state.items.forEach { (header, items) ->

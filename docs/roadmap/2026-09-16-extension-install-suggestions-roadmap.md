@@ -470,3 +470,32 @@ python scripts/gradle-coordinator.py run --key eis-final -- gradlew.bat :domain:
 | macOS x64 ZIP | [Mihon Desktop macOS](D:/Shell/Github/mihon-eis/app-desktop/artifacts/macos/Mihon-Desktop-0.11.19.46.6893d15-macos-x64.zip) | `817bfac95d14a44e905e102daf9b08498fe1d134431d769268be7b01918d4197` |
 
 用户验收入口仍为「浏览 → 插件」，Desktop 为已安装页顶部。只对收藏中缺失且能按 source ID 匹配现有仓库目录的插件提供安装建议；不会自动添加仓库或后台安装。未匹配、目录不完整及权限不足有对应解释，不能把所有未知图源都等同于可安装候选。错误处理独立进程的 WorkManager 问题未扩展修复；本次覆盖升级解决的是 schema27→25 不兼容包造成的启动失败。
+
+
+## 11. 建议区通栏布局修复（2026-09-18）
+
+用户确认以 `docs/prototypes/multi-device-sync/extension-layout.html` 和 README 的通栏设计为生产修复基准。范围限于 Android/Desktop 建议区：与所在插件列表通栏对齐；宽屏信息在左、操作在右，窄屏换行；建议及未匹配项加入页面现有惰性列表，取消独立固定高度滚动区。保留既有导航、匹配、安装、安全及持久化语义，不将 HTML 模拟数据带入生产。
+
+- [x] 双端真实 Compose 布局红绿测试及实现；保留稳定条目 key、页面级对话框和忽略撤销生命周期。
+- [x] 主代理独立审查与相关自动化验证；最终全量集合仅运行一次，修复只复验受影响路径。
+- [ ] 正式 Android/Windows/macOS 构建、运行验收、真机覆盖安装与显示复核；记录产物和限制，整合提交后勾选。
+
+预算：复用原实施代理 1 个，主代理独立审查 1 轮，必要修复复审最多 1 轮；不新增匹配算法、数据库迁移或真机测试数据。过程日志留在忽略的 `.gradle-coordinator/`，结果汇总于本节，不另建逐任务报告。
+
+### 实施与验证证据
+
+- 实施由原 `eis_implementation` 代理承担，主代理独立审查通栏约束、单列表接线、稳定 key、页面级 Dialog/Undo、Desktop 原有错误映射及批次确认生命周期。双端在列表实际宽度大于 600dp 时左右分列，较窄时操作换行靠右；空白未知源名称仅在 UI 回退源 ID，不改变匹配结果。
+- 涉及双端生产 5 文件、布局测试 2 文件、发布版本和既有文档；超过原估算行数的原因是将列表内容与页面级状态拆开并保持平台本地化差异，属于同一显示修复批次，没有无关重构。
+- 行为红：`eis-layout-red-fixed` 实际复现 Android 两个纵向滚动区、Desktop 建议视口受限及双端宽屏按钮位置错误；`eis-layout-alignment-red` 复现窄屏右对齐和空名称 ID 缺失。之前的夹具编译失败不作为红证据。
+- `eis-layout-final-focused` PASSED：Android 13、Desktop 16，共 29 项，失败/错误/跳过均 0；包含真实 Compose 布局、惰性滚动、原单项/批次/网站/忽略交互。原规则局部格式检查通过，无 IdeHook。
+- `eis-layout-full` PASSED / exit0 / 20m16s：domain JVM518/Android446、data JVM425/Android233、app589、Desktop3162、test-desktop52，共5425项，其中5422通过、3项既有条件跳过、0失败/错误。包含 `-PincludeIntegrationTests=true`、全局 `spotlessCheck` 和 Android 仪器测试代码编译；XML 保留于 `.gradle-coordinator/eis-layout-full-xml/`。外层等待超时后核对仍运行，未重复启动；既有10k/100k规模验收正常完成。
+- `eis-layout-android-release` PASSED / 2m42s，含 `finalParityAudit`；aex.10/code28、schema27、原证书、非debuggable、R8开启，v2/v3签名核验通过。
+- Windows/macOS 使用同一冻结源码树 `293b9b475990c08a659e364ce710d368bc520586`，经正式 `build-desktop.sh build-only` 各分配 BUILD46→47，版本 `0.11.19.47.448461e`。后缀是构建时基线HEAD，产物包含本批次已审查diff，不能理解成原448461e干净源码。Mac仅x64；最初辅助脚本CRLF导致启动失败，转LF后正常运行，未修改安全设置或产品源码。
+- Windows正式脚本版本/插件安装验收通过；`eis-layout-windows-runtime/result.json` 和 `eis-layout-macos-runtime-result.json` 均 success=true，覆盖真实SQL/loader、网站、忽略/折叠重启、单批安装、失败重试、去重和停止，使用隔离profile。
+- 真机：已启动保留数据的 `adb install -r`，设备当前锁屏且安装仍未完成，安装后显示验收尚未完成；不将自动化或模拟结果当作真机通过。
+
+| 产物 | 路径 | SHA-256 |
+|---|---|---|
+| Android | [aex.10 universal APK](D:/Shell/Github/mihon/app/artifacts/android/0.19.4-aex.10/Mihon-Fork-0.19.4-aex.10-universal.apk) | `9f3efd75629917f0f1e0788f7569bd153a0175db6834f238b0b9115a5c983335` |
+| Windows | [Final unpacked EXE](D:/Shell/Github/mihon-eis/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.47.448461e-unpacked/Mihon%20Desktop.exe) | `3691bdcfd3ea9fb2b38af9ee68e9fc941149d1fdea3e7f03ec03ad8cb726aebe` |
+| macOS x64 | [ZIP](D:/Shell/Github/mihon-eis/app-desktop/artifacts/macos/Mihon-Desktop-0.11.19.47.448461e-macos-x64.zip) | `696ccc4ae519bea5486087c946353df779ebfb3b0e99d6ea63ec845c90c41261` |

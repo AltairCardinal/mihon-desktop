@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -364,9 +365,9 @@ internal fun ExtensionListContent(
                     }
                 }
                 when (selectedTab) {
-                0 -> Column(Modifier.weight(1f)) {
-                    ExtensionSuggestionBatchSection(model)
-                    ExtensionSuggestionSection(
+                0 -> {
+                    val batchContent = extensionSuggestionBatchContent(model)
+                    val suggestionContent = extensionSuggestionContent(
                         state.suggestionPanel, model.suggestionPanel,
                         onInstall = { model.installSuggestion(it) },
                         onWebsite = { source ->
@@ -393,6 +394,10 @@ internal fun ExtensionListContent(
                     onUninstall = { pendingRemoval = it },
                     onOpen = onOpen,
                     emptyCopy = copy,
+                    leadingContent = {
+                        item(key = "extension-suggestion-batch") { batchContent() }
+                        suggestionContent()
+                    },
                     modifier = Modifier.weight(1f),
                 )
                 }
@@ -456,24 +461,26 @@ private fun InstalledTab(
     onUninstall: (DesktopExtensionItem) -> Unit,
     onOpen: (InstalledExtension) -> Unit,
     emptyCopy: ExtensionListCopy,
+    leadingContent: LazyListScope.() -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (extensions.isEmpty()) {
-        EmptyExtensions(emptyCopy, modifier = modifier.fillMaxSize())
-    } else {
-        LazyColumn(
-            modifier = modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        ) {
+    LazyColumn(modifier = modifier.fillMaxSize()) {
+        leadingContent()
+        if (extensions.isEmpty()) {
+            item(key = "installed-empty") {
+                EmptyExtensions(emptyCopy, modifier = Modifier.fillMaxWidth().padding(16.dp))
+            }
+        } else {
             items(extensions, key = { requireNotNull(it.installed).jarFile.absolutePath }) { item ->
                 val ext = requireNotNull(item.installed)
-                ExtensionCard(
-                    extension = ext,
-                    compatibility = item.compatibility,
-                    onUninstall = { onUninstall(item) },
-                    onOpen = { onOpen(ext) },
-                )
+                Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    ExtensionCard(
+                        extension = ext,
+                        compatibility = item.compatibility,
+                        onUninstall = { onUninstall(item) },
+                        onOpen = { onOpen(ext) },
+                    )
+                }
             }
         }
     }

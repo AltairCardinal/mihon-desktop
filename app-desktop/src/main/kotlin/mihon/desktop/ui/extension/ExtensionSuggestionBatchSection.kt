@@ -27,6 +27,12 @@ import java.util.Locale
 /** Batch feedback remains visible when the suggestions are collapsed or installed rows disappear. */
 @Composable
 internal fun ExtensionSuggestionBatchSection(model: ExtensionsScreenModel) {
+    extensionSuggestionBatchContent(model)()
+}
+
+/** Keep confirmations with the page even when the batch summary is scrolled out of its lazy viewport. */
+@Composable
+internal fun extensionSuggestionBatchContent(model: ExtensionsScreenModel): @Composable () -> Unit {
     val screen by model.state.collectAsState()
     val batch by model.suggestionBatch.state.collectAsState()
     var confirmation by remember { mutableStateOf<List<ExtensionArtifact>?>(null) }
@@ -34,52 +40,8 @@ internal fun ExtensionSuggestionBatchSection(model: ExtensionsScreenModel) {
     var resume by remember { mutableStateOf(false) }
     var rejected by remember { mutableStateOf(false) }
     val canStart = !batch.running && batch.remaining.isEmpty() && screen.suggestionPanel.rows.any { it.canInstall }
-    if (!canStart && batch.items.isEmpty()) return
+    if (!canStart && batch.items.isEmpty()) return {}
 
-    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-        if (canStart) {
-            TextButton(onClick = { retry = false; resume = false; confirmation = model.suggestionSnapshot() }) {
-                Text(
-                    if (screen.searchQuery.isBlank()) MR.strings.extension_batch_install_all.localized()
-                    else MR.strings.extension_batch_install_matching.localized(),
-                )
-            }
-        }
-        if (batch.items.isNotEmpty()) {
-            Text(MR.strings.extension_batch_progress.localized(Locale.getDefault(), batch.completed, batch.items.size))
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 200.dp)) {
-                items(batch.items, key = { it.artifact.packageName }) { item ->
-                    Column(Modifier.padding(vertical = 4.dp)) {
-                        Text("${item.artifact.name} · ${item.artifact.versionName}")
-                        Text(item.resultText())
-                    }
-                }
-            }
-            if (!batch.running && batch.remaining.isEmpty() && batch.items.any { it.result is SuggestionBatchResult.Failed }) {
-                TextButton(onClick = {
-                    retry = true
-                    resume = false
-                    confirmation = model.updatedBatchSnapshot(batch.items.filter { it.result is SuggestionBatchResult.Failed }.map { it.artifact })
-                }) { Text(MR.strings.extension_batch_retry.localized()) }
-            }
-            if (!batch.running && batch.remaining.isNotEmpty()) {
-                Text(MR.strings.extension_batch_reconfirm.localized())
-                TextButton(onClick = {
-                    retry = false
-                    resume = true
-                    confirmation = model.updatedBatchSnapshot(batch.remaining)
-                }) { Text(MR.strings.extension_batch_review.localized()) }
-                TextButton(onClick = { model.suggestionBatch.stop() }) {
-                    Text(MR.strings.extension_batch_stop.localized())
-                }
-            }
-            if (batch.running) {
-                TextButton(onClick = { model.suggestionBatch.stop() }, enabled = !batch.stopping) {
-                    Text(MR.strings.extension_batch_stop.localized())
-                }
-            }
-        }
-    }
     confirmation?.let { snapshot ->
         val conflict = model.batchSourcesConflict(snapshot, resume || retry)
         val missing = snapshot.any { !model.isCurrentBatchArtifact(it) }
@@ -127,6 +89,52 @@ internal fun ExtensionSuggestionBatchSection(model: ExtensionsScreenModel) {
                 TextButton(onClick = { confirmation = null }) { Text(MR.strings.action_cancel.localized()) }
             },
         )
+    }
+    return {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+            if (canStart) {
+                TextButton(onClick = { retry = false; resume = false; confirmation = model.suggestionSnapshot() }) {
+                    Text(
+                        if (screen.searchQuery.isBlank()) MR.strings.extension_batch_install_all.localized()
+                        else MR.strings.extension_batch_install_matching.localized(),
+                    )
+                }
+            }
+            if (batch.items.isNotEmpty()) {
+                Text(MR.strings.extension_batch_progress.localized(Locale.getDefault(), batch.completed, batch.items.size))
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 200.dp)) {
+                    items(batch.items, key = { it.artifact.packageName }) { item ->
+                        Column(Modifier.padding(vertical = 4.dp)) {
+                            Text("${item.artifact.name} · ${item.artifact.versionName}")
+                            Text(item.resultText())
+                        }
+                    }
+                }
+                if (!batch.running && batch.remaining.isEmpty() && batch.items.any { it.result is SuggestionBatchResult.Failed }) {
+                    TextButton(onClick = {
+                        retry = true
+                        resume = false
+                        confirmation = model.updatedBatchSnapshot(batch.items.filter { it.result is SuggestionBatchResult.Failed }.map { it.artifact })
+                    }) { Text(MR.strings.extension_batch_retry.localized()) }
+                }
+                if (!batch.running && batch.remaining.isNotEmpty()) {
+                    Text(MR.strings.extension_batch_reconfirm.localized())
+                    TextButton(onClick = {
+                        retry = false
+                        resume = true
+                        confirmation = model.updatedBatchSnapshot(batch.remaining)
+                    }) { Text(MR.strings.extension_batch_review.localized()) }
+                    TextButton(onClick = { model.suggestionBatch.stop() }) {
+                        Text(MR.strings.extension_batch_stop.localized())
+                    }
+                }
+                if (batch.running) {
+                    TextButton(onClick = { model.suggestionBatch.stop() }, enabled = !batch.stopping) {
+                        Text(MR.strings.extension_batch_stop.localized())
+                    }
+                }
+            }
+        }
     }
 }
 
