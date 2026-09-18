@@ -26,7 +26,12 @@ import mihon.domain.sync.crypto.SyncAeadEngine
 import mihon.domain.sync.crypto.SyncBatchEncryption
 import mihon.domain.sync.crypto.SyncCryptoBinding
 import mihon.domain.sync.crypto.SyncEncryptedBatch
+import mihon.domain.sync.crypto.SyncPayload
 import mihon.domain.sync.crypto.SyncSecret
+import mihon.domain.sync.crypto.SyncSpaceDescriptorCodec
+import mihon.domain.sync.crypto.SyncSpaceMaterial
+import mihon.domain.sync.crypto.SyncSpacePayload
+import mihon.domain.sync.crypto.SyncSpacePayloadCodec
 import mihon.domain.sync.transport.SyncBatchIndexEntry
 import mihon.domain.sync.transport.SyncGitBlob
 import mihon.domain.sync.transport.SyncGitCommit
@@ -61,6 +66,7 @@ class GitHubSyncTransport(
     private val maxTreeEntries: Int = 20_000,
     private val indexSecret: SyncSecret? = null,
     private val indexEngine: SyncAeadEngine = SyncAeadEngineFactory.create(),
+    private val spaceMaterial: SyncSpaceMaterial? = null,
 ) : SyncTransportPort {
     private val http = SyncHttpClient(productionClient, setOf(apiBaseUrl.hostOrNull() ?: "api.github.com"))
 
@@ -75,6 +81,19 @@ class GitHubSyncTransport(
         require(!tree.truncated && tree.entries.size <= maxTreeEntries) { "sync tree is truncated or oversized" }
         val files = tree.entries.associateBy { it.path }
         require(files.size == tree.entries.size) { "sync tree contains duplicate paths" }
+        spaceMaterial?.let { material ->
+            require(
+                material.descriptor.spaceId == expectedSpaceId && material.descriptor.generation == expectedGeneration,
+            ) {
+                "sync space identity mismatch"
+            }
+            val descriptor = files[SyncSpaceDescriptorCodec.PATH] ?: error("sync space descriptor is missing")
+            require(descriptor.type == "blob" && descriptor.mode == "100644") {
+                "space descriptor must be a regular file"
+            }
+            val remote = SyncSpaceDescriptorCodec.decode(getBlob(repository, descriptor.sha).content).getOrThrow()
+            require(remote == material.descriptor) { "sync space descriptor changed" }
+        }
         val indexEntries = tree.entries.filter { it.type == "blob" && it.path.startsWith(".mihon-sync/index/") }
         require(indexEntries.isNotEmpty()) { "sync index is missing" }
         require(indexEntries.size <= 10_000) { "sync index exceeds entry limit" }
@@ -173,11 +192,12 @@ class GitHubSyncTransport(
     }
 
     override fun prepare(snapshot: SyncSnapshot, encryptedBatch: SyncEncryptedBatch): SyncPreparedUpload {
-        val secret = indexSecret ?: error("sync index key is unavailable")
+        val secret = spaceMaterial?.secret ?: indexSecret
+        require(spaceMaterial != null || secret != null) { "sync index key is unavailable" }
         require(snapshot.spaceId == encryptedBatch.spaceId && snapshot.generation == encryptedBatch.generation) {
             "sync batch scope does not match snapshot"
         }
-        SyncBatchEncryption.decrypt(indexEngine, secret, encryptedBatch)
+        SyncBatchEncryption.decrypt(indexEngine, secret, encryptedBatch, spaceMaterial)
         val previous = snapshot.batches
             .filter { it.actorId == encryptedBatch.actorId && it.epoch == encryptedBatch.epoch }
             .maxByOrNull { it.lastSeq }
@@ -216,13 +236,11 @@ class GitHubSyncTransport(
             encryptedBatch,
             previous?.indexPath,
             previousSeq,
-            indexEngine.encrypt(
-                secret,
+            protect(
                 encodeManifestShard(shard).encodeToByteArray(),
-                encryptedBatch.binding().copy(path = indexPath).canonicalAad(),
+                encryptedBatch.binding().copy(path = indexPath),
             ),
-            indexEngine.encrypt(
-                secret,
+            protect(
                 encodeManifestHead(head).encodeToByteArray(),
                 SyncCryptoBinding(
                     1,
@@ -230,7 +248,7 @@ class GitHubSyncTransport(
                     snapshot.generation,
                     "head-${encryptedBatch.actorId}-${encryptedBatch.epoch}",
                     headPath,
-                ).canonicalAad(),
+                ),
             ),
         )
     }
@@ -249,6 +267,22 @@ class GitHubSyncTransport(
             "sync upload scope mismatch"
         }
         validatePrepared(upload)
+        if (spaceMaterial != null) {
+            val private = try {
+                getRepositoryInfo(repository).private
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                false
+            }
+            if (!private) {
+                return SyncPublishResult(
+                    SyncPublishStatus.FAILED,
+                    batch.batchId,
+                    error = "private repository access could not be verified",
+                )
+            }
+        }
         var current = snapshot
         var blobs: List<SyncGitTreeEntry>? = null
         for (attempt in 1..MAX_PUBLISH_ATTEMPTS) {
@@ -349,8 +383,9 @@ class GitHubSyncTransport(
 
     private fun validatePrepared(upload: SyncPreparedUpload) {
         val batch = upload.encryptedBatch
-        val secret = indexSecret ?: error("sync index key is unavailable")
-        SyncBatchEncryption.decrypt(indexEngine, secret, batch)
+        val secret = spaceMaterial?.secret ?: indexSecret
+        require(spaceMaterial != null || secret != null) { "sync index key is unavailable" }
+        SyncBatchEncryption.decrypt(indexEngine, secret, batch, spaceMaterial)
         val shard = decryptShard(upload.indexCiphertext.bytes, upload.indexPath, batch.spaceId, batch.generation)
         val head = decryptHead(upload.headCiphertext.bytes, upload.headPath, batch.spaceId, batch.generation)
         require(
@@ -399,7 +434,8 @@ class GitHubSyncTransport(
         val existing = try {
             getRef(repository)
         } catch (error: SyncHttpException) {
-            if (error.code != 404) return SyncInitializationResult.Failed("branch lookup failed")
+            val emptyRepository = spaceMaterial != null && info.size == 0L && error.code == 409
+            if (error.code != 404 && !emptyRepository) return SyncInitializationResult.Failed("branch lookup failed")
             null
         }
         if (existing != null) {
@@ -407,7 +443,9 @@ class GitHubSyncTransport(
                 .fold(
                     onSuccess = { SyncInitializationResult.Adopted(it.head, it.spaceId) },
                     onFailure = { error ->
-                        if (error.message == "sync index is missing") {
+                        if (error.message == "sync index is missing" ||
+                            error.message == "sync space descriptor is missing"
+                        ) {
                             initializeOnHead(repository, existing, spaceId, generation)
                         } else {
                             SyncInitializationResult.Failed("existing sync space requires explicit import")
@@ -419,7 +457,8 @@ class GitHubSyncTransport(
             val defaultRef = try {
                 getRef(repository, info.defaultBranch)
             } catch (error: SyncHttpException) {
-                if (error.code != 404 || info.size > 0) {
+                val emptyRepository = spaceMaterial != null && info.size == 0L && error.code == 409
+                if ((error.code != 404 && !emptyRepository) || info.size > 0) {
                     return SyncInitializationResult.Failed("default branch lookup failed")
                 }
                 null
@@ -445,6 +484,12 @@ class GitHubSyncTransport(
                     require(it.objectSha == bootstrapSha || it.objectSha.isNotBlank()) {
                         "bootstrap commit could not be read"
                     }
+                }
+            }
+            if (spaceMaterial != null) {
+                val sourceTree = getTree(repository, getCommit(repository, sourceRef.objectSha).treeSha)
+                if (!isExactBootstrapTree(repository, sourceTree)) {
+                    return SyncInitializationResult.NeedsExplicitAction("initial repository contains unrecognized data")
                 }
             }
             val targetRef = try {
@@ -478,11 +523,23 @@ class GitHubSyncTransport(
         generation: Long,
     ): SyncInitializationResult {
         return try {
-            val secret = indexSecret ?: return SyncInitializationResult.Failed("sync index key is unavailable")
+            if (spaceMaterial == null &&
+                indexSecret == null
+            ) {
+                return SyncInitializationResult.Failed("sync index key is unavailable")
+            }
+            spaceMaterial?.let {
+                require(it.descriptor.spaceId == spaceId && it.descriptor.generation == generation) {
+                    "initialization space identity mismatch"
+                }
+            }
             val baseCommit = getCommit(repository, baseRef.objectSha)
             val baseTree = getTree(repository, baseCommit.treeSha)
             require(!baseTree.truncated && baseTree.entries.size <= maxTreeEntries) {
                 "initialization tree is incomplete"
+            }
+            if (spaceMaterial != null && !isExactBootstrapTree(repository, baseTree)) {
+                return SyncInitializationResult.NeedsExplicitAction("initial sync branch contains unrecognized data")
             }
             if (baseTree.entries.any {
                     it.path.startsWith(".mihon-sync/") && it.path != ".mihon-sync/bootstrap"
@@ -494,17 +551,21 @@ class GitHubSyncTransport(
             }
             val indexPath = ".mihon-sync/index/bootstrap/0/bootstrap.bin"
             val shard = ManifestShard(1, spaceId, generation, "bootstrap", 0, null, null)
-            val ciphertext = indexEngine.encrypt(
-                secret,
+            val ciphertext = protect(
                 encodeManifestShard(shard).encodeToByteArray(),
-                SyncCryptoBinding(1, spaceId, generation, "bootstrap", indexPath).canonicalAad(),
+                SyncCryptoBinding(1, spaceId, generation, "bootstrap", indexPath),
             )
             val blob = createBlob(repository, ciphertext.bytes)
+            val initialEntries = mutableListOf(SyncGitTreeEntry(indexPath, "100644", "blob", blob.sha))
+            spaceMaterial?.let {
+                val descriptorBlob = createBlob(repository, SyncSpaceDescriptorCodec.encode(it.descriptor))
+                initialEntries += SyncGitTreeEntry(SyncSpaceDescriptorCodec.PATH, "100644", "blob", descriptorBlob.sha)
+            }
             val tree =
                 createTree(
                     repository,
                     baseCommit.treeSha,
-                    listOf(SyncGitTreeEntry(indexPath, "100644", "blob", blob.sha)),
+                    initialEntries,
                 )
             val commit = createCommit(repository, tree.sha, baseRef.objectSha)
             var refError: Exception? = null
@@ -540,6 +601,19 @@ class GitHubSyncTransport(
         } catch (_: Exception) {
             SyncInitializationResult.Failed("initialization failed")
         }
+    }
+
+    /** Recheck immutable initial tree bytes immediately before any v2 branch or space publication. */
+    private suspend fun isExactBootstrapTree(repository: SyncRepository, tree: SyncGitTree): Boolean {
+        if (tree.truncated || tree.entries.size > 2 || tree.entries.map { it.path }.toSet().size != tree.entries.size) {
+            return false
+        }
+        val bootstrap = tree.entries.singleOrNull { it.path == ".mihon-sync/bootstrap" } ?: return false
+        if (bootstrap.type != "blob" || bootstrap.mode != "100644") return false
+        if (tree.entries.any {
+                it != bootstrap && !(it.path == ".mihon-sync" && it.type == "tree" && it.mode == "040000")
+            }) return false
+        return getBlob(repository, bootstrap.sha).content.contentEquals("mihon-sync bootstrap".encodeToByteArray())
     }
 
     private suspend fun getRef(repository: SyncRepository, branch: String = repository.branch): SyncGitRef {
@@ -775,15 +849,13 @@ class GitHubSyncTransport(
         expectedSpaceId: String,
         expectedGeneration: Long,
     ): DecodedShard {
-        val secret = indexSecret ?: throw IllegalStateException("sync index key is unavailable")
         require(path.startsWith(".mihon-sync/index/")) { "sync index path is invalid" }
         val pathParts = path.removePrefix(".mihon-sync/index/").split('/')
         require(pathParts.size == 3 && pathParts[1].toLongOrNull() != null) { "sync index path is invalid" }
         val indexBatchId = pathParts[2].removeSuffix(".bin")
-        val plaintext = indexEngine.decrypt(
-            secret,
-            SyncAeadCiphertext(bytes),
-            SyncCryptoBinding(1, expectedSpaceId, expectedGeneration, indexBatchId, path).canonicalAad(),
+        val plaintext = unprotect(
+            bytes,
+            SyncCryptoBinding(1, expectedSpaceId, expectedGeneration, indexBatchId, path),
         )
         val shard = runCatching { githubJson.decodeFromString<ManifestShard>(plaintext.decodeToString()) }
             .getOrElse { throw IllegalStateException("sync index shard is malformed") }
@@ -820,22 +892,20 @@ class GitHubSyncTransport(
         expectedSpaceId: String,
         expectedGeneration: Long,
     ): DecodedHead {
-        val secret = indexSecret ?: throw IllegalStateException("sync index key is unavailable")
         val pathParts = path.removePrefix(".mihon-sync/heads/").split('/')
         require(pathParts.size == 2 && pathParts[0].isNotBlank()) { "sync head path is invalid" }
         val epoch = pathParts[1].removeSuffix(".bin").toLongOrNull()
             ?: throw IllegalStateException("sync head epoch is invalid")
         require(epoch >= 0) { "sync head epoch is invalid" }
-        val plaintext = indexEngine.decrypt(
-            secret,
-            SyncAeadCiphertext(bytes),
+        val plaintext = unprotect(
+            bytes,
             SyncCryptoBinding(
                 1,
                 expectedSpaceId,
                 expectedGeneration,
                 "head-${pathParts[0]}-$epoch",
                 path,
-            ).canonicalAad(),
+            ),
         )
         val head = runCatching { githubJson.decodeFromString<ManifestHead>(plaintext.decodeToString()) }
             .getOrElse { throw IllegalStateException("sync head is malformed") }
@@ -862,6 +932,14 @@ class GitHubSyncTransport(
     private fun decodeStoredBatch(bytes: ByteArray): StoredSyncBatch =
         runCatching { githubJson.decodeFromString<StoredSyncBatch>(bytes.decodeToString()) }
             .getOrElse { throw IllegalStateException("sync batch is malformed") }
+
+    private fun protect(plaintext: ByteArray, binding: SyncCryptoBinding): SyncPayload = spaceMaterial?.let {
+        SyncSpacePayloadCodec.encode(indexEngine, it, binding, plaintext)
+    } ?: indexEngine.encrypt(requireNotNull(indexSecret), plaintext, binding.canonicalAad())
+
+    private fun unprotect(bytes: ByteArray, binding: SyncCryptoBinding): ByteArray = spaceMaterial?.let {
+        SyncSpacePayloadCodec.decode(indexEngine, it, binding, SyncSpacePayload(bytes))
+    } ?: indexEngine.decrypt(requireNotNull(indexSecret), SyncAeadCiphertext(bytes), binding.canonicalAad())
 
     private companion object {
         const val MAX_PUBLISH_ATTEMPTS = 3

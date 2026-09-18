@@ -719,6 +719,7 @@ class SyncGitSafetyContractTest {
         var nextRefResponse: MockResponse? = null
         var failReadAfterPatch = false
         var competingWrites = 0
+        var emptyRefStatus = 404
         val baseUrl: String get() = server.url("/").toString().removeSuffix("/")
 
         init {
@@ -814,7 +815,8 @@ class SyncGitSafetyContractTest {
                     return it
                 }
                 val branch = path.removePrefix("/git/ref/heads/")
-                return refs[branch]?.let { respond(ref(branch, it)) } ?: error(404, "Reference does not exist")
+                return refs[branch]?.let { respond(ref(branch, it)) }
+                    ?: error(if (refs.isEmpty()) emptyRefStatus else 404, "Reference does not exist")
             }
             if (method == "GET" && path.startsWith("/git/commits/")) {
                 val id = path.substringAfterLast('/')

@@ -56,9 +56,13 @@ data class SyncCryptoBinding(
         ).joinToString("\u0000") { it.length.toString() + ":" + it }.encodeToByteArray()
 }
 
-class SyncAeadCiphertext(input: ByteArray) {
+sealed interface SyncPayload {
+    val bytes: ByteArray
+}
+
+class SyncAeadCiphertext(input: ByteArray) : SyncPayload {
     private val value = input.copyOf()
-    val bytes: ByteArray get() = value.copyOf()
+    override val bytes: ByteArray get() = value.copyOf()
 
     init {
         require(value.size in SYNC_AEAD_NONCE_BYTES + SYNC_AEAD_TAG_BYTES..SYNC_MAX_CIPHERTEXT_BYTES) {
@@ -131,7 +135,7 @@ class SyncEncryptedBatch(
     val batchId: String,
     val path: String,
     plaintextDigest: ByteArray,
-    val ciphertext: SyncAeadCiphertext,
+    val ciphertext: SyncPayload,
     val actorId: String = "unknown",
     val epoch: Long = 0,
     val firstSeq: Long = 0,
@@ -142,7 +146,8 @@ class SyncEncryptedBatch(
 
     init {
         require(digest.size == 32) { "invalid plaintext digest" }
-        require(ciphertext.bytes.size <= SYNC_MAX_CIPHERTEXT_BYTES) { "ciphertext too large" }
+        val maxPayloadBytes = if (ciphertext is SyncSpacePayload) SYNC_MAX_SPACE_PAYLOAD_BYTES else SYNC_MAX_CIPHERTEXT_BYTES
+        require(ciphertext.bytes.size <= maxPayloadBytes) { "sync payload too large" }
         require(actorId.isNotBlank() && epoch >= 0 && firstSeq <= lastSeq) { "invalid batch sequence metadata" }
     }
 
@@ -156,7 +161,7 @@ class SyncEncryptedBatch(
         batchId: String = this.batchId,
         path: String = this.path,
         plaintextDigest: ByteArray = this.plaintextDigest,
-        ciphertext: SyncAeadCiphertext = this.ciphertext,
+        ciphertext: SyncPayload = this.ciphertext,
         actorId: String = this.actorId,
         epoch: Long = this.epoch,
         firstSeq: Long = this.firstSeq,
@@ -205,9 +210,10 @@ class SyncEncryptedBatch(
 object SyncBatchEncryption {
     fun encrypt(
         engine: SyncAeadEngine,
-        secret: SyncSecret,
+        secret: SyncSecret?,
         batch: SyncBatch,
         path: String,
+        spaceMaterial: SyncSpaceMaterial? = null,
     ): SyncEncryptedBatch {
         require(batch.events.isNotEmpty()) { "sync batch cannot be empty" }
         require(batch.events.map { it.actorId }.toSet().size == 1) { "sync batch mixes actors" }
@@ -238,7 +244,11 @@ object SyncBatchEncryption {
         require(plaintext.size <= 512 * 1024) { "plaintext batch exceeds sync limit" }
         val binding = SyncCryptoBinding(batch.protocolVersion, batch.spaceId, batch.generation, batch.batchId, path)
         val digest = engine.sha256(plaintext)
-        val ciphertext = engine.encrypt(secret, plaintext, binding.canonicalAad())
+        val ciphertext = if (spaceMaterial == null) {
+            engine.encrypt(requireNotNull(secret), plaintext, binding.canonicalAad())
+        } else {
+            SyncSpacePayloadCodec.encode(engine, spaceMaterial, binding, plaintext)
+        }
         return SyncEncryptedBatch(
             batch.protocolVersion,
             batch.spaceId,
@@ -256,10 +266,19 @@ object SyncBatchEncryption {
 
     fun decrypt(
         engine: SyncAeadEngine,
-        secret: SyncSecret,
+        secret: SyncSecret?,
         encrypted: SyncEncryptedBatch,
+        spaceMaterial: SyncSpaceMaterial? = null,
     ): SyncBatch {
-        val plaintext = engine.decrypt(secret, encrypted.ciphertext, encrypted.binding().canonicalAad())
+        val plaintext = if (spaceMaterial == null) {
+            engine.decrypt(
+                requireNotNull(secret),
+                encrypted.ciphertext as? SyncAeadCiphertext ?: throw SyncCryptoException("unexpected space payload"),
+                encrypted.binding().canonicalAad(),
+            )
+        } else {
+            SyncSpacePayloadCodec.decode(engine, spaceMaterial, encrypted.binding(), encrypted.ciphertext)
+        }
         require(plaintext.size <= 512 * 1024) { "plaintext batch exceeds sync limit" }
         require(engine.sha256(plaintext).contentEquals(encrypted.plaintextDigest)) {
             throw SyncCryptoException("plaintext digest mismatch")

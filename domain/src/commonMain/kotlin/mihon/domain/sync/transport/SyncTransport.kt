@@ -3,6 +3,7 @@ package mihon.domain.sync.transport
 import mihon.domain.sync.SyncBatch
 import mihon.domain.sync.crypto.SyncAeadCiphertext
 import mihon.domain.sync.crypto.SyncEncryptedBatch
+import mihon.domain.sync.crypto.SyncPayload
 
 data class SyncRepository(
     val owner: String,
@@ -135,8 +136,8 @@ data class SyncPreparedUpload(
     val encryptedBatch: SyncEncryptedBatch,
     val previousIndexPath: String?,
     val previousLastSeq: Long,
-    val indexCiphertext: SyncAeadCiphertext,
-    val headCiphertext: SyncAeadCiphertext,
+    val indexCiphertext: SyncPayload,
+    val headCiphertext: SyncPayload,
 ) {
     val indexPath: String get() =
         ".mihon-sync/index/${encryptedBatch.actorId}/${encryptedBatch.epoch}/${encryptedBatch.batchId}.bin"

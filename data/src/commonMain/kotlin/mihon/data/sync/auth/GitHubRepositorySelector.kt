@@ -11,10 +11,12 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import mihon.data.sync.http.SyncHttpClient
+import mihon.data.sync.http.SyncHttpException
 import mihon.data.sync.http.SyncHttpResponse
 import mihon.domain.sync.transport.SyncRepository
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
+import okhttp3.RequestBody
 
 data class GitHubPrivateRepository(
     val repository: SyncRepository,
@@ -28,6 +30,15 @@ class GitHubPrivateRepositorySelector(
 ) {
     private val baseUrl = apiBaseUrl.trimEnd('/')
     private val http = SyncHttpClient(productionClient, setOf(baseUrl.hostOrNull() ?: "api.github.com"))
+
+    internal suspend fun objects(path: String, field: String): List<JsonObject> =
+        collectPages("$baseUrl$path") { response -> response.json().array(field).map { it.jsonObject } }.flatten()
+
+    internal suspend fun requestPath(
+        path: String,
+        method: String = "GET",
+        body: RequestBody? = null,
+    ): SyncHttpResponse = request("$baseUrl$path", method, body)
 
     suspend fun select(
         branch: String,
@@ -72,7 +83,14 @@ class GitHubPrivateRepositorySelector(
             val current = url ?: return pages
             require(visited.add(current)) { "GitHub pagination loop" }
             val response = request(current)
-            if (response.code !in 200..299) throw IllegalStateException("GitHub repository request failed")
+            if (response.code !in 200..299) {
+                throw SyncHttpException(
+                    response.code,
+                    "GitHub repository request failed",
+                    response.code == 429 || response.code >= 500 || response.headers["retry-after"] != null ||
+                        response.headers["x-ratelimit-remaining"] == "0",
+                )
+            }
             pages += try {
                 read(response)
             } catch (error: CancellationException) {
@@ -86,17 +104,18 @@ class GitHubPrivateRepositorySelector(
         throw IllegalStateException("GitHub pagination exceeds limit")
     }
 
-    private suspend fun request(url: String): SyncHttpResponse {
+    private suspend fun request(url: String, method: String = "GET", body: RequestBody? = null): SyncHttpResponse {
         val token = accessToken().takeIf { it.isNotBlank() } ?: throw IllegalStateException("authorization required")
         return http.execute(
             http.request(
                 url,
-                "GET",
+                method,
                 headers = mapOf(
                     "Accept" to "application/vnd.github+json",
                     "Authorization" to "Bearer $token",
                     "X-GitHub-Api-Version" to "2026-03-10",
                 ),
+                body = body,
             ),
         )
     }

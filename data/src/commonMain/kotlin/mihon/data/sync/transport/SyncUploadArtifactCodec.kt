@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import mihon.domain.sync.crypto.SyncAeadCiphertext
 import mihon.domain.sync.crypto.SyncEncryptedBatch
+import mihon.domain.sync.crypto.SyncSpacePayload
 import mihon.domain.sync.transport.SyncPreparedUpload
 import mihon.domain.sync.transport.SyncRepository
 import okio.ByteString.Companion.decodeBase64
@@ -16,7 +17,8 @@ object SyncUploadArtifactCodec {
 
     fun encode(value: SyncPreparedUpload): String = json.encodeToString(
         StoredUpload(
-            1, value.repository.owner, value.repository.name, value.repository.branch, value.baseHead,
+            if (value.encryptedBatch.ciphertext is SyncSpacePayload) 2 else 1,
+            value.repository.owner, value.repository.name, value.repository.branch, value.baseHead,
             StoredSyncBatch.fromDomain(value.encryptedBatch), value.previousIndexPath, value.previousLastSeq,
             value.indexCiphertext.bytes.toByteString().base64(), value.headCiphertext.bytes.toByteString().base64(),
         ),
@@ -25,15 +27,34 @@ object SyncUploadArtifactCodec {
     fun decode(encoded: String): SyncPreparedUpload = try {
         require(encoded.length <= 4 * 1024 * 1024) { "upload artifact exceeds limit" }
         val value = json.decodeFromString<StoredUpload>(encoded)
-        require(value.version == 1 && value.previousLastSeq >= 0 && value.baseHead.length in 1..128)
+        require(
+            value.version in 1..2 && value.batch.spaceFormatVersion == value.version && value.previousLastSeq >= 0 &&
+                value.baseHead.length in 1..128,
+        )
         SyncPreparedUpload(
             SyncRepository(value.owner, value.repository, value.branch),
             value.baseHead,
             value.batch.toDomain(),
             value.previousIndexPath,
             value.previousLastSeq,
-            SyncAeadCiphertext(requireNotNull(value.index.decodeBase64()).toByteArray()),
-            SyncAeadCiphertext(requireNotNull(value.head.decodeBase64()).toByteArray()),
+            requireNotNull(value.index.decodeBase64()).toByteArray().let {
+                if (value.version ==
+                    2
+                ) {
+                    SyncSpacePayload(it)
+                } else {
+                    SyncAeadCiphertext(it)
+                }
+            },
+            requireNotNull(value.head.decodeBase64()).toByteArray().let {
+                if (value.version ==
+                    2
+                ) {
+                    SyncSpacePayload(it)
+                } else {
+                    SyncAeadCiphertext(it)
+                }
+            },
         )
     } catch (_: Exception) {
         throw IllegalArgumentException("saved upload artifact is invalid")
@@ -67,20 +88,33 @@ internal data class StoredSyncBatch(
     val epoch: Long,
     val firstSeq: Long,
     val lastSeq: Long,
+    val spaceFormatVersion: Int = 1,
 ) {
     fun body(): ByteArray = Json.encodeToString(this).encodeToByteArray()
 
-    fun toDomain(): SyncEncryptedBatch = SyncEncryptedBatch(
-        protocolVersion, spaceId, generation, batchId, path, plaintextDigestHex.decodeHex().toByteArray(),
-        SyncAeadCiphertext(requireNotNull(ciphertextBase64.decodeBase64()).toByteArray()),
-        actorId, epoch, firstSeq, lastSeq,
-    )
+    fun toDomain(): SyncEncryptedBatch {
+        require(spaceFormatVersion in 1..2) { "unsupported stored batch format" }
+        return SyncEncryptedBatch(
+            protocolVersion, spaceId, generation, batchId, path, plaintextDigestHex.decodeHex().toByteArray(),
+            requireNotNull(ciphertextBase64.decodeBase64()).toByteArray().let {
+                if (spaceFormatVersion ==
+                    2
+                ) {
+                    SyncSpacePayload(it)
+                } else {
+                    SyncAeadCiphertext(it)
+                }
+            },
+            actorId, epoch, firstSeq, lastSeq,
+        )
+    }
 
     companion object {
         fun fromDomain(value: SyncEncryptedBatch): StoredSyncBatch = StoredSyncBatch(
             value.protocolVersion, value.spaceId, value.generation, value.batchId, value.path,
             value.plaintextDigest.toByteString().hex(), value.ciphertext.bytes.toByteString().base64(),
             value.actorId, value.epoch, value.firstSeq, value.lastSeq,
+            if (value.ciphertext is SyncSpacePayload) 2 else 1,
         )
     }
 }
