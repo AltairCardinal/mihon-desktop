@@ -24,6 +24,7 @@ import tachiyomi.core.common.util.system.logcat
 internal class ExtensionInstallReceiver(private val listener: Listener) : BroadcastReceiver() {
 
     val scope = CoroutineScope(SupervisorJob())
+    private val pendingLoads = mutableMapOf<String, Any>()
 
     fun register(context: Context) {
         ContextCompat.registerReceiver(context, this, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
@@ -50,29 +51,50 @@ internal class ExtensionInstallReceiver(private val listener: Listener) : Broadc
             Intent.ACTION_PACKAGE_ADDED, ACTION_EXTENSION_ADDED -> {
                 if (isReplacing(intent)) return
 
-                scope.launch {
-                    when (val result = getExtensionFromIntent(context, intent)) {
-                        is LoadResult.Success -> listener.onExtensionInstalled(result.extension)
-                        is LoadResult.Untrusted -> listener.onExtensionUntrusted(result.extension)
-                        else -> {}
-                    }
-                }
+                loadCurrentExtension(context, intent, replacing = false)
             }
             Intent.ACTION_PACKAGE_REPLACED, ACTION_EXTENSION_REPLACED -> {
-                scope.launch {
-                    when (val result = getExtensionFromIntent(context, intent)) {
-                        is LoadResult.Success -> listener.onExtensionUpdated(result.extension)
-                        is LoadResult.Untrusted -> listener.onExtensionUntrusted(result.extension)
-                        else -> {}
-                    }
-                }
+                loadCurrentExtension(context, intent, replacing = true)
             }
             Intent.ACTION_PACKAGE_REMOVED, ACTION_EXTENSION_REMOVED -> {
                 if (isReplacing(intent)) return
 
                 val pkgName = getPackageNameFromIntent(intent)
                 if (pkgName != null) {
-                    listener.onPackageUninstalled(pkgName)
+                    synchronized(pendingLoads) {
+                        pendingLoads.remove(pkgName)
+                        listener.onPackageUninstalled(pkgName)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun loadCurrentExtension(context: Context, intent: Intent, replacing: Boolean) {
+        val pkgName = getPackageNameFromIntent(intent) ?: return
+        val token = Any()
+        synchronized(pendingLoads) { pendingLoads[pkgName] = token }
+        scope.launch {
+            try {
+                val result = getExtensionFromIntent(context, intent)
+                synchronized(pendingLoads) {
+                    // A later removal or replacement supersedes this asynchronous loader.
+                    // Keep validation and notification atomic with the removal callback.
+                    if (pendingLoads[pkgName] !== token) return@synchronized
+                    when (result) {
+                        is LoadResult.Success -> if (replacing) {
+                            listener.onExtensionUpdated(result.extension)
+                        } else {
+                            listener.onExtensionInstalled(result.extension)
+                        }
+                        is LoadResult.Untrusted -> listener.onExtensionUntrusted(result.extension)
+                        else -> {}
+                    }
+                    listener.onPackageChanged(pkgName)
+                }
+            } finally {
+                synchronized(pendingLoads) {
+                    if (pendingLoads[pkgName] === token) pendingLoads.remove(pkgName)
                 }
             }
         }
@@ -113,6 +135,7 @@ internal class ExtensionInstallReceiver(private val listener: Listener) : Broadc
      * Listener that receives extension installation events.
      */
     interface Listener {
+        fun onPackageChanged(pkgName: String) {}
         fun onExtensionInstalled(extension: Extension.Installed)
         fun onExtensionUpdated(extension: Extension.Installed)
         fun onExtensionUntrusted(extension: Extension.Untrusted)

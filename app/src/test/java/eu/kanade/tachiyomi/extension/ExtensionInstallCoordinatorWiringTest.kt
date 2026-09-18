@@ -38,6 +38,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import mihon.domain.error.AppError
 import mihon.domain.extension.service.ExtensionCatalogService
+import mihon.domain.extension.service.ExtensionInstallBusy
 import mihon.domain.extension.service.ExtensionInstallFailure
 import mihon.domain.extension.service.ExtensionInstallPort
 import mihon.domain.extension.service.ExtensionInstallRequest
@@ -49,6 +50,7 @@ import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -79,11 +81,11 @@ class ExtensionInstallCoordinatorWiringTest {
     }
 
     @Test
-    fun `late failed transaction cannot restore an error after a retry has started`() = runTest {
+    fun `cancelled transaction retains ownership through late failure and only then permits retry`() = runTest {
         mockkObject(Installer.Companion)
         every { Installer.cancelInstallQueue(any(), any()) } returns CompletableDeferred(Unit)
+        val releaseOld = CompletableDeferred<Unit>()
         try {
-            val releaseOld = CompletableDeferred<Unit>()
             var attempt = 0
             val port = RecordingInstallPort(prepareAction = {
                 if (attempt++ == 0) {
@@ -100,11 +102,20 @@ class ExtensionInstallCoordinatorWiringTest {
             backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
                 manager.installErrors.collect { observed += it }
             }
-            val retry = manager.installExtension(availableExtension())
+            assertThrows(ExtensionInstallBusy::class.java) { manager.installExtension(availableExtension()) }
+            assertEquals(1, attempt)
+            manager.cancelInstallUpdateExtension(availableExtension())
+            runCurrent()
+            assertThrows(ExtensionInstallBusy::class.java) { manager.installExtension(availableExtension()) }
+            assertEquals(1, attempt)
             releaseOld.complete(Unit)
+            manager.installArbiter.reservations.first { PACKAGE_NAME !in it }
+            val retry = manager.installExtension(availableExtension())
             assertEquals(InstallStep.Installed, retry.first(InstallStep::isCompleted))
+            assertEquals(2, attempt)
             assertTrue(observed.all { it[PACKAGE_NAME] == null })
         } finally {
+            releaseOld.complete(Unit)
             unmockkObject(Installer.Companion)
         }
     }

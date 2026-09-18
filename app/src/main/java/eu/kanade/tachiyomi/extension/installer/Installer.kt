@@ -27,6 +27,8 @@ abstract class Installer(private val service: Service) {
 
     private val extensionManager: ExtensionManager by injectLazy()
 
+    protected var interruption: mihon.domain.extension.suggestion.SuggestionBatchPause? = null
+
     private var waitingInstall = AtomicReference<Entry?>(null)
     private val queue = Collections.synchronizedList(mutableListOf<Entry>())
     private val completedTransactions = ConcurrentHashMap<String, Long>()
@@ -130,7 +132,7 @@ abstract class Installer(private val service: Service) {
             }
             return
         }
-        extensionManager.updateInstallStep(transactionId, resultStep)
+        reportResult(transactionId, resultStep)
         checkQueue()
     }
 
@@ -227,7 +229,16 @@ abstract class Installer(private val service: Service) {
 
     private fun completeQueued(entry: Entry, step: InstallStep) {
         if (completedTransactions.putIfAbsent(entry.transactionId, System.nanoTime()) == null) {
-            extensionManager.updateInstallStep(entry.transactionId, step)
+            reportResult(entry.transactionId, step)
+        }
+    }
+
+    private fun reportResult(transactionId: String, step: InstallStep) {
+        val reason = interruption
+        if (step == InstallStep.Error && reason != null) {
+            extensionManager.pauseInstall(transactionId, reason)
+        } else {
+            extensionManager.updateInstallStep(transactionId, step)
         }
     }
 

@@ -1,5 +1,6 @@
 package mihon.desktop.ui.extension
 
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import java.io.File
 import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
@@ -56,6 +57,7 @@ class ExtensionSharedStateWiringTest {
         var nowMillis = 1_000L
         var refreshCalls = 0
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } coAnswers {
                 refreshCalls++
                 catalog
@@ -91,6 +93,7 @@ class ExtensionSharedStateWiringTest {
         )
         var refreshCalls = 0
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } coAnswers {
                 refreshCalls++
                 if (refreshCalls == 1) firstCatalog else secondCatalog
@@ -132,6 +135,7 @@ class ExtensionSharedStateWiringTest {
         val catalog = ExtensionCatalogResult(emptyList(), emptyList())
         var refreshCalls = 0
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } coAnswers {
                 refreshCalls++
                 if (refreshCalls == 1) {
@@ -179,6 +183,7 @@ class ExtensionSharedStateWiringTest {
         val installedFlow = MutableStateFlow(listOf(installed))
         val refreshError = IllegalStateException("catalog offline")
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } throws refreshError
         }
         val model = ExtensionsScreenModel(
@@ -200,7 +205,7 @@ class ExtensionSharedStateWiringTest {
     @Test
     fun `real port refresh reducer and authoritative flow preserve partial failure identity`() = runTest {
         val installedFlow = MutableStateFlow<List<InstalledExtension>>(emptyList())
-        val api = mockk<DesktopExtensionApi>()
+        val api = mockk<DesktopExtensionApi> { io.mockk.every { installArbiter } returns ExtensionInstallArbiter() }
         val manager = mockk<DesktopExtensionManager>()
         val port = DesktopExtensionPresentationPort(api, manager, installedFlow)
         val failure = RepositoryCatalogFailure(
@@ -250,7 +255,7 @@ class ExtensionSharedStateWiringTest {
         val firstCandidate = available("pkg.update").copy(name = "First candidate", repoUrl = "https://first", repoFingerprint = "first")
         val candidate = available("pkg.update").copy(name = "Last candidate", repoUrl = "https://last", repoFingerprint = "last")
         val catalog = ExtensionCatalogResult(emptyList(), emptyList())
-        val api = mockk<DesktopExtensionApi>()
+        val api = mockk<DesktopExtensionApi> { io.mockk.every { installArbiter } returns ExtensionInstallArbiter() }
         val manager = mockk<DesktopExtensionManager>()
         coEvery { api.refreshCatalog() } returns catalog
         every { api.availableExtensions(catalog) } returns listOf(firstCandidate, candidate, available("pkg.not-update"))
@@ -290,7 +295,7 @@ class ExtensionSharedStateWiringTest {
         val first = available("pkg.update.first")
         val second = available("pkg.update.second")
         val catalog = ExtensionCatalogResult(emptyList(), emptyList())
-        val api = mockk<DesktopExtensionApi>()
+        val api = mockk<DesktopExtensionApi> { io.mockk.every { installArbiter } returns ExtensionInstallArbiter() }
         val manager = mockk<DesktopExtensionManager>()
         coEvery { api.refreshCatalog() } returns catalog
         every { api.availableExtensions(catalog) } returns listOf(first, second)
@@ -345,7 +350,7 @@ class ExtensionSharedStateWiringTest {
 
     @Test
     fun `port and flow failures discard active trust before advancing the queue`() = runTest {
-        val api = mockk<DesktopExtensionApi>()
+        val api = mockk<DesktopExtensionApi> { io.mockk.every { installArbiter } returns ExtensionInstallArbiter() }
         val manager = mockk<DesktopExtensionManager>()
         val one = available("pkg.failure.one")
         val two = available("pkg.failure.two")
@@ -383,7 +388,7 @@ class ExtensionSharedStateWiringTest {
 
     @Test
     fun `cancelling confirmation discards active trust before exposing the next request`() = runTest {
-        val api = mockk<DesktopExtensionApi>()
+        val api = mockk<DesktopExtensionApi> { io.mockk.every { installArbiter } returns ExtensionInstallArbiter() }
         val manager = mockk<DesktopExtensionManager>()
         val one = available("pkg.cancel.one")
         val two = available("pkg.cancel.two")
@@ -409,7 +414,7 @@ class ExtensionSharedStateWiringTest {
 
     @Test
     fun `closing during confirmation discards active and queued trust without pending actions`() = runTest {
-        val api = mockk<DesktopExtensionApi>()
+        val api = mockk<DesktopExtensionApi> { io.mockk.every { installArbiter } returns ExtensionInstallArbiter() }
         val manager = mockk<DesktopExtensionManager>()
         val one = available("pkg.close.one")
         val two = available("pkg.close.two")
@@ -442,7 +447,7 @@ class ExtensionSharedStateWiringTest {
 
     @Test
     fun `pending cleanup preserves a concurrent package error update`() = runTest {
-        val api = mockk<DesktopExtensionApi>()
+        val api = mockk<DesktopExtensionApi> { io.mockk.every { installArbiter } returns ExtensionInstallArbiter() }
         val manager = mockk<DesktopExtensionManager>()
         val pending = available("pkg.interleave.pending")
         val rejected = available("pkg.interleave.rejected")
@@ -491,7 +496,7 @@ class ExtensionSharedStateWiringTest {
 
     @Test
     fun `typed install flow stops after installed while exact error remains and idle cleans`() = runTest {
-        val api = mockk<DesktopExtensionApi>()
+        val api = mockk<DesktopExtensionApi> { io.mockk.every { installArbiter } returns ExtensionInstallArbiter() }
         val manager = mockk<DesktopExtensionManager>()
         val model = model(api, manager, backgroundScope)
         val success = available("pkg.success")
@@ -528,8 +533,8 @@ class ExtensionSharedStateWiringTest {
     }
 
     @Test
-    fun `same package replacement joins cleanup and cancel leaves sibling independent`() = runTest {
-        val api = mockk<DesktopExtensionApi>()
+    fun `explicit cancel joins cleanup before retry and leaves sibling independent`() = runTest {
+        val api = mockk<DesktopExtensionApi> { io.mockk.every { installArbiter } returns ExtensionInstallArbiter() }
         val manager = mockk<DesktopExtensionManager>()
         val model = model(api, manager, backgroundScope)
         val replace = available("pkg.replace")
@@ -553,12 +558,19 @@ class ExtensionSharedStateWiringTest {
             flow { emit(ExtensionInstallState.Preparing); awaitCancellation() },
         )
 
-        model.install(replace.item())
+        val first = model.install(replace.item())
         firstStarted.await()
-        val current = model.install(replace.item())
+        assertSame(first, model.install(replace.item()))
+        val cancellation = model.cancel(replace.pkgName)
         cleanupEntered.await()
+        model.install(replace.item())
+        testScheduler.runCurrent()
+        assertFalse(cancellation.isCompleted)
+        assertEquals(1, attempts)
         assertFalse(secondStarted.isCompleted)
         releaseCleanup.complete(Unit)
+        cancellation.join()
+        val current = model.install(replace.item())
         secondStarted.await()
         val sibling = model.install(siblingExtension.item())
         model.cancel(replace.pkgName).join()
@@ -569,7 +581,7 @@ class ExtensionSharedStateWiringTest {
 
     @Test
     fun `trust ids are consumed once and close drains owned work without cancelling parent sibling`() = runTest {
-        val api = mockk<DesktopExtensionApi>()
+        val api = mockk<DesktopExtensionApi> { io.mockk.every { installArbiter } returns ExtensionInstallArbiter() }
         val manager = mockk<DesktopExtensionManager>()
         val model = model(api, manager, backgroundScope)
         val one = available("pkg.one")
@@ -632,7 +644,7 @@ class ExtensionSharedStateWiringTest {
         val foreign = available("pkg.update").copy(repoUrl = "https://foreign", repoFingerprint = "owner-key")
         val wrongKey = available("pkg.update").copy(repoUrl = "https://owner", repoFingerprint = "other-key")
         val catalog = ExtensionCatalogResult(emptyList(), emptyList())
-        val api = mockk<DesktopExtensionApi>()
+        val api = mockk<DesktopExtensionApi> { io.mockk.every { installArbiter } returns ExtensionInstallArbiter() }
         coEvery { api.refreshCatalog() } returns catalog
         every { api.availableExtensions(catalog) } returns listOf(foreign, wrongKey)
         val port = DesktopExtensionPresentationPort(api, mockk(), MutableStateFlow(listOf(installed)))

@@ -94,6 +94,7 @@ data class ExtensionListScreen(val initialTab: Int = 0) : Screen {
             onBack = navigator::pop,
             onRepositories = navigator::pushExtensionRepository,
             onOpen = navigator::pushExtensionDetails,
+            onSuggestionMigration = { navigator.push(suggestionMigrationDestination(it)) },
             initialTab = initialTab,
         )
     }
@@ -109,6 +110,9 @@ internal fun sourcePreferencesDestination(sourceId: Long, sourceName: String) =
 internal fun sourceBrowseDestination(sourceId: Long) = SourceBrowseScreen(sourceId)
 
 internal fun extensionRepositoryDestination() = ExtensionRepoScreen()
+
+internal fun suggestionMigrationDestination(sourceId: Long) =
+    mihon.desktop.ui.migration.MigrationMangaScreen(sourceId, sourceId.toString())
 
 internal fun Navigator.pushExtensionDetails(extension: InstalledExtension) {
     push(extensionDetailsDestination(extension.jarFile.absolutePath))
@@ -133,6 +137,7 @@ internal fun ExtensionListContent(
     showBackButton: Boolean = true,
     primaryNavigation: (@Composable () -> Unit)? = null,
     initialTab: Int = 0,
+    onSuggestionMigration: (Long) -> Unit = {},
 ) {
         val state by model.state.collectAsState()
         val copy = remember { extensionListCopy() }
@@ -359,19 +364,44 @@ internal fun ExtensionListContent(
                     }
                 }
                 when (selectedTab) {
-                0 -> InstalledTab(
+                0 -> Column(Modifier.weight(1f)) {
+                    ExtensionSuggestionBatchSection(model)
+                    ExtensionSuggestionSection(
+                        state.suggestionPanel, model.suggestionPanel,
+                        onInstall = { model.installSuggestion(it) },
+                        onWebsite = { source ->
+                            DesktopUrlOpener.open(source.baseUrl).onFailure { error ->
+                                scope.launch { snackbarHostState.showSnackbar(
+                                    MR.strings.desktop_extension_open_link_failed.localized(Locale.getDefault(), error.message.orEmpty())) }
+                            }
+                        },
+                        onRepositories = onRepositories ?: {},
+                        onMigrate = onSuggestionMigration,
+                        onDiagnose = {
+                            scope.launch {
+                                model.reloadInstalled().join()
+                                if (model.state.value.reloadError == null) {
+                                    snackbarHostState.showSnackbar(MR.strings.extension_suggestions_checked.localized())
+                                }
+                            }
+                        },
+                        onRefresh = { model.refresh() },
+                        errors = state.installErrors,
+                    )
+                    InstalledTab(
                     extensions = ui.installed,
                     onUninstall = { pendingRemoval = it },
                     onOpen = onOpen,
                     emptyCopy = copy,
                     modifier = Modifier.weight(1f),
                 )
+                }
                 1 -> AvailableTab(
                     extensions = ui.updates + ui.available,
                     loadState = state.availableExtensionLoadState((ui.updates + ui.available).isNotEmpty()),
                     installedExtensions = installedExtensions,
                     updatableExtensions = ui.updates,
-                    installSteps = state.actions.installSteps,
+                    installSteps = state.installSteps,
                     installErrors = state.installErrors,
                     onInstall = model::install,
                     onUpdate = { model.update(it) },

@@ -1,5 +1,6 @@
 package mihon.desktop.extension
 
+import mihon.domain.extension.suggestion.ExtensionInventory
 import eu.kanade.tachiyomi.source.Source
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +50,8 @@ class DesktopExtensionManager(
     private val installCoordinator = ExtensionInstallCoordinator(installPort, installScope)
     private val mutableInstalledExtensions = MutableStateFlow<List<InstalledExtension>>(emptyList())
     override val installedExtensions: StateFlow<List<InstalledExtension>> = mutableInstalledExtensions.asStateFlow()
+    private val mutableInventory = MutableStateFlow(ExtensionInventory())
+    val inventory = mutableInventory.asStateFlow()
 
     /** Loads all extensions from the extensions directory. */
     fun loadAll() {
@@ -126,11 +129,13 @@ class DesktopExtensionManager(
 
     private fun publishInstalledExtensions() {
         val snapshot = snapshotInstalledExtensions()
+        val inventorySnapshot = scanDesktopExtensionInventory(loader.extensionsDirectory, snapshot.extensions)
         synchronized(runtimeLock) {
             // Snapshot projection performs file I/O outside the runtime lock. A slower, older
             // projection must not overwrite a newer installation snapshot that already won.
             if (snapshot.revision >= publishedRuntimeRevision) {
                 mutableInstalledExtensions.value = snapshot.extensions
+                mutableInventory.value = inventorySnapshot
                 publishedRuntimeRevision = snapshot.revision
             }
         }
@@ -153,16 +158,22 @@ class DesktopExtensionManager(
 
     /**
      * Deletes the JAR file and its meta sidecar for [extension].
-     * @return true if the JAR was deleted successfully.
+     * @return true if both the JAR and its metadata were deleted successfully.
      */
     override fun removeExtensionWithMeta(extension: InstalledExtension): Boolean {
         val removed = lifecycleGate.withPublicOperation {
             releaseRuntime(extension.pkgName)
-            extension.jarFile.delete().also { deleted ->
+            extension.jarFile.delete().let { deleted ->
                 if (deleted) {
-                    deleteExtensionMeta(extension.jarFile)
+                    try {
+                        deleteExtensionMeta(extension.jarFile)
+                        true
+                    } catch (_: java.io.IOException) {
+                        false
+                    }
                 } else {
                     reloadRuntime(extension.pkgName, extension.sources.map { it.id }.toSet())
+                    false
                 }
             }
         }
@@ -176,8 +187,8 @@ class DesktopExtensionManager(
     internal suspend fun installExtension(artifact: ExtensionArtifact): ExtensionInstallState =
         installExtensionStates(artifact).last()
 
-    override fun installExtensionStates(artifact: ExtensionArtifact): Flow<ExtensionInstallState> =
-        installCoordinator.install(ExtensionInstallRequest(artifact))
+    override fun installExtensionStates(artifact: ExtensionArtifact, beforeCommit: (() -> Unit)?): Flow<ExtensionInstallState> =
+        installCoordinator.install(ExtensionInstallRequest(artifact, beforeCommit))
             .onCompletion { publishInstalledExtensions() }
 
     private fun releaseRuntime(packageName: String) {

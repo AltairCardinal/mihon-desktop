@@ -6,9 +6,9 @@
 
 - active-child-plan: none（2026-09-16 Android扩展专项按收紧范围完成；其他暂停计划不自动恢复）
 
-- 最近完成专项：[Android 新版扩展系统完整兼容 Roadmap](./2026-09-12-android-extension-v2-compatibility-roadmap.md)（2026-09-16，COMPLETE）。产品提交 `b3d81b34dc`；rc9正式Android/ARM业务及Windows/macOS限定回归已验收。MangaPlus live仍未验证成功，明确限制和证据以子计划为准。
+- 此前完成专项：[Android 新版扩展系统完整兼容 Roadmap](./2026-09-12-android-extension-v2-compatibility-roadmap.md)（2026-09-16，COMPLETE）。产品提交 `b3d81b34dc`；rc9正式Android/ARM业务及Windows/macOS限定回归已验收。MangaPlus live仍未验证成功，明确限制和证据以子计划为准。
 
-- 待执行专项：[收藏缺失插件「建议安装」完整 Roadmap](./2026-09-16-extension-install-suggestions-roadmap.md)（PLANNED，HTML 交互已通过；共享识别、双端单项操作、Desktop 批量、Android 系统流程、三端发布五个批次）。本次仅编写计划，不切换上述执行指针。
+- 最近完成专项：[收藏缺失插件「建议安装」完整 Roadmap](./2026-09-16-extension-install-suggestions-roadmap.md)（2026-09-18，COMPLETE；EIS-01～05 及主干整合已完成）。保留主干作者功能/schema27，交付 Android aex.9 与 Windows/macOS x64 BUILD46；完整集合有效 5,414 通过、3 条件跳过，三端正式运行及 API36 覆盖升级验收通过，真机未连接。新产物、历史失败、定向修复和边界见子计划第 10 节，不恢复其他暂停计划。
 
 ## 0. 产品路线
 

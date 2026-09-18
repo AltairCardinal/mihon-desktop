@@ -18,15 +18,49 @@ import kotlin.time.Duration.Companion.seconds
 class ExtensionInstallActivity : Activity() {
 
     // MIUI package installer bug workaround
+    private var completed = false
     private var ignoreUntil = 0L
     private var ignoreResult = false
     private var hasIgnoredResult = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState != null) {
+            completed = savedInstanceState.getBoolean("completed")
+            ignoreResult = savedInstanceState.getBoolean("ignoreResult")
+            ignoreUntil = savedInstanceState.getLong("ignoreUntil")
+            hasIgnoredResult = savedInstanceState.getBoolean("hasIgnoredResult")
+            if (completed) {
+                finish()
+            } else if (intent.action == Intent.ACTION_UNINSTALL_PACKAGE) {
+                val id = intent.getStringExtra(ExtensionInstaller.EXTRA_TRANSACTION_ID)
+                val packageName = intent.data?.takeIf { it.scheme == "package" }?.schemeSpecificPart
+                if (id == null || packageName == null ||
+                    !Injekt.get<ExtensionManager>().restoreUninstall(id, packageName)
+                ) {
+                    finish()
+                }
+            } else {
+                val id = intent.getStringExtra(ExtensionInstaller.EXTRA_TRANSACTION_ID)
+                val packageName = intent.getStringExtra(ExtensionInstaller.EXTRA_PACKAGE_NAME)
+                if (id == null || packageName == null ||
+                    !Injekt.get<ExtensionManager>().restoreInstallWindow(id, packageName)
+                ) {
+                    finish()
+                }
+            }
+            return
+        }
 
         @Suppress("DEPRECATION")
-        val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE)
+        val installIntent = Intent(
+            if (intent.action == Intent.ACTION_UNINSTALL_PACKAGE) {
+                Intent.ACTION_UNINSTALL_PACKAGE
+            } else {
+                Intent.ACTION_INSTALL_PACKAGE
+            },
+
+        )
             .setDataAndType(intent.data, intent.type)
             .putExtra(Intent.EXTRA_RETURN_RESULT, true)
             .putExtra(
@@ -46,10 +80,21 @@ class ExtensionInstallActivity : Activity() {
             // Either install package can't be found (probably bots) or there's a security exception
             // with the download manager. Nothing we can workaround.
             toast(error.message)
+            checkInstallationResult(RESULT_FIRST_USER)
+            finish()
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("completed", completed)
+        outState.putBoolean("ignoreResult", ignoreResult)
+        outState.putLong("ignoreUntil", ignoreUntil)
+        outState.putBoolean("hasIgnoredResult", hasIgnoredResult)
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode != INSTALL_REQUEST_CODE || completed) return
         if (ignoreResult && System.nanoTime() < ignoreUntil) {
             hasIgnoredResult = true
             return
@@ -70,18 +115,26 @@ class ExtensionInstallActivity : Activity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        intent.data?.let { contentResolver.delete(it, null, null) }
+        if (!isChangingConfigurations && intent.action != Intent.ACTION_UNINSTALL_PACKAGE) {
+            intent.data?.let { contentResolver.delete(it, null, null) }
+        }
     }
 
     private fun checkInstallationResult(resultCode: Int) {
+        if (completed) return
+        completed = true
         val transactionId = intent.getStringExtra(ExtensionInstaller.EXTRA_TRANSACTION_ID) ?: return
         val extensionManager = Injekt.get<ExtensionManager>()
+        if (intent.action == Intent.ACTION_UNINSTALL_PACKAGE) {
+            extensionManager.completeUninstall(transactionId, resultCode)
+            return
+        }
         val newStep = when (resultCode) {
             RESULT_OK -> InstallStep.Installed
             RESULT_CANCELED -> InstallStep.Idle
             else -> InstallStep.Error
         }
-        extensionManager.updateInstallStep(transactionId, newStep)
+        extensionManager.completeInstallWindow(transactionId, newStep)
     }
 }
 

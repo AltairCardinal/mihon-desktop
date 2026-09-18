@@ -1,5 +1,6 @@
 package mihon.desktop.ui.extension
 
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -214,6 +215,7 @@ class SourceExtensionNavigationContractTest {
         )
         val installed = MutableStateFlow(listOf(extension))
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } returns ExtensionCatalogResult(emptyList(), emptyList())
             every { availableExtensions(any()) } returns emptyList()
             coEvery { loadExtensionIcon(any()) } returns null

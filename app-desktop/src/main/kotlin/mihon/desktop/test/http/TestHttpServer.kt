@@ -600,7 +600,10 @@ internal fun Application.testHttpServer(
                 )
                 return@post
             }
-            val extensionResult = extensionController?.execute(action, params)
+            val extensionResult = extensionController?.execute(action, params) { url ->
+                platformAcceptanceController?.openWebsite(call.request.headers[PLATFORM_ACCEPTANCE_TOKEN_HEADER], url)
+                    ?: mihon.desktop.platform.DesktopUrlOpener.open(url)
+            }
             val isLibraryAction = action in setOf(
                 "search", "filter", "sort", "select", "open_manga_detail",
                 "addToLibrary", "removeFromLibrary", "detail_categories", "detail_chapter", "detail_cover", "download",

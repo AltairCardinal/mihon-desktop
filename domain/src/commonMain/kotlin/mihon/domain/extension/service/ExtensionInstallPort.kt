@@ -5,6 +5,7 @@ import mihon.domain.extension.model.ExtensionArtifact
 
 data class ExtensionInstallRequest(
     val artifact: ExtensionArtifact,
+    val beforeCommit: (() -> Unit)? = null,
 )
 
 @JvmInline

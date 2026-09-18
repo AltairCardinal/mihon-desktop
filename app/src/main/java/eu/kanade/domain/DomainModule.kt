@@ -22,18 +22,23 @@ import eu.kanade.domain.source.interactor.ToggleIncognito
 import eu.kanade.domain.source.interactor.ToggleLanguage
 import eu.kanade.domain.source.interactor.ToggleSource
 import eu.kanade.domain.source.interactor.ToggleSourcePin
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.track.interactor.AddTracks
 import eu.kanade.domain.track.interactor.RefreshTracks
 import eu.kanade.domain.track.interactor.SyncChapterProgressWithTrack
 import eu.kanade.domain.track.interactor.TrackChapter
 import eu.kanade.tachiyomi.data.sync.AndroidSyncScheduler
 import eu.kanade.tachiyomi.data.sync.AndroidSyncSecureStore
+import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.ui.browse.extension.ExtensionsScreenModel
 import mihon.data.repository.ExtensionRepoRepositoryImpl
 import mihon.data.sync.journal.BackupRestoreSync
 import mihon.data.sync.journal.SyncBackupRestorer
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
+import mihon.domain.extension.suggestion.ExtensionSuggestionPreferences
+import mihon.domain.extension.suggestion.ObserveExtensionSuggestions
 import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
 import mihon.domain.extensionrepo.interactor.DeleteExtensionRepo
 import mihon.domain.extensionrepo.interactor.GetExtensionRepo
@@ -81,8 +86,10 @@ import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.creator.interactor.CreatorArchive
 import tachiyomi.domain.creator.interactor.DiscoverCreatorWorks
+import tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga
 import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreators
+import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
@@ -175,7 +182,7 @@ class DomainModule : InjektModule {
         addSingletonFactory<CreatorRepository> { get<CreatorRepositoryImpl>() }
         addSingletonFactory<CreatorArchiveRepository> { get<CreatorRepositoryImpl>() }
         addSingletonFactory { CreatorArchive(get<CreatorRepository>(), get<CreatorArchiveRepository>()) }
-        addFactory { tachiyomi.domain.creator.interactor.ManageCreatorIdentity(get<CreatorArchiveRepository>()) }
+        addFactory { ManageCreatorIdentity(get<CreatorArchiveRepository>()) }
         addSingletonFactory<CreatorLibraryIndexWriter> { get<CreatorRepositoryImpl>() }
         addSingletonFactory<tachiyomi.data.backup.AuthorArchiveBackupContributor> {
             tachiyomi.data.backup.SqlDelightAuthorArchiveBackupContributor(
@@ -187,7 +194,7 @@ class DomainModule : InjektModule {
         addSingletonFactory<MangaRepository> { get<MangaRepositoryImpl>() }
         addSingletonFactory<CreatorLibraryMangaSource> { get<MangaRepositoryImpl>() }
         addSingletonFactory {
-            CreatorLibraryIndexer(get(), get(), tachiyomi.domain.creator.interactor.ExtractCreatorsFromManga())
+            CreatorLibraryIndexer(get(), get(), ExtractCreatorsFromManga())
         }
         addSingletonFactory { SourceMangaSearchService() }
         addSingletonFactory<tachiyomi.domain.creator.service.CreatorDiscoverySourcePort> {
@@ -242,7 +249,7 @@ class DomainModule : InjektModule {
         }
 
         addSingletonFactory<ReleaseService> {
-            ReleaseServiceImpl(get<eu.kanade.tachiyomi.network.NetworkHelper>().client, get(), AndroidPlatformInfo())
+            ReleaseServiceImpl(get<NetworkHelper>().client, get(), AndroidPlatformInfo())
         }
         addFactory { GetApplicationRelease(get(), get()) }
 
@@ -281,6 +288,34 @@ class DomainModule : InjektModule {
         addFactory { DeleteDownload(get(), get()) }
 
         addFactory { GetExtensionsByType(get(), get()) }
+        addFactory { ObserveExtensionSuggestions(get(), get()) }
+        addFactory { ExtensionSuggestionPreferences(get()) }
+        addSingletonFactory {
+            val manager = get<ExtensionManager>()
+            val preferences = get<SourcePreferences>()
+            val localPreferences = get<ExtensionSuggestionPreferences>()
+            val basePreferences = get<eu.kanade.domain.base.BasePreferences>()
+            eu.kanade.tachiyomi.extension.AndroidExtensionSuggestionBatch(
+                manager,
+                get<ObserveExtensionSuggestions>().subscribe(
+                    manager.suggestionCatalog,
+                    manager.inventory,
+                    preferences.showNsfwSource().changes(),
+                    localPreferences.ignoredIdentities(),
+                ),
+                localPreferences,
+                { basePreferences.extensionInstaller().get() },
+            )
+        }
+        addFactory {
+            val batch = get<eu.kanade.tachiyomi.extension.AndroidExtensionSuggestionBatch>()
+            val suggestionPreferences = get<ExtensionSuggestionPreferences>()
+            ExtensionsScreenModel(
+                suggestionPreferences = suggestionPreferences,
+                suggestions = batch.suggestions,
+                suggestionBatch = batch,
+            )
+        }
         addFactory { GetExtensionSources(get()) }
         addFactory { GetExtensionLanguages(get(), get()) }
 

@@ -1,5 +1,6 @@
 package mihon.desktop.test.http
 
+import cafe.adriel.voyager.core.model.screenModelScope
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
 import io.mockk.coEvery
@@ -7,6 +8,8 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +25,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import mihon.desktop.domain.SortMode
 import mihon.desktop.di.initDesktopDIForTest
+import mihon.desktop.di.DesktopTestDIContext
 import mihon.desktop.ui.library.LibraryScreenModel
 import mihon.desktop.ui.library.MangaDetailScreenModel
 import org.junit.jupiter.api.AfterEach
@@ -94,7 +98,7 @@ class LibraryMangaTestModeHttpTest {
                 )
             }
         } finally {
-            context.closeAndJoin()
+            context.closeLibraryFixture()
         }
     }
 
@@ -128,7 +132,7 @@ class LibraryMangaTestModeHttpTest {
                 assertEquals(5, select.detail().getValue("chapters").let { it as kotlinx.serialization.json.JsonArray }.size)
             }
         } finally {
-            context.closeAndJoin()
+            context.closeLibraryFixture()
         }
     }
 
@@ -136,7 +140,7 @@ class LibraryMangaTestModeHttpTest {
     fun `library owner close removes state and rejects later actions`(@TempDir tempDir: File) = runBlocking {
         val context = context(tempDir)
         withServer { baseUrl ->
-            context.closeAndJoin()
+            context.closeLibraryFixture()
 
             assertSame(
                 kotlinx.serialization.json.JsonNull,
@@ -209,7 +213,7 @@ class LibraryMangaTestModeHttpTest {
                 assertEquals("[${chapterRow.id}]", download.detail().getValue("lastSucceededChapterIds").toString())
             }
         } finally {
-            context.closeAndJoin()
+            context.closeLibraryFixture()
         }
     }
 
@@ -289,6 +293,13 @@ class LibraryMangaTestModeHttpTest {
         .getValue("rows").let { rows -> rows as kotlinx.serialization.json.JsonArray }
         .map { it.jsonObject.getValue("title").jsonPrimitive.content }
     private fun HttpResponse<String>.detail() = json().getValue("detail").jsonObject
+
+    private suspend fun DesktopTestDIContext.closeLibraryFixture() {
+        // Sort persistence belongs to the model, not the HTTP controller's collection scope.
+        // Drain that owner before closing SQL and resetting the fixture's Main dispatcher.
+        libraryScreenModel.screenModelScope.coroutineContext[Job]?.cancelAndJoin()
+        closeAndJoin()
+    }
 
     private suspend fun awaitLibraryRows(baseUrl: String, predicate: (List<String>) -> Boolean): List<String>? =
         withTimeoutOrNull(1_000) {

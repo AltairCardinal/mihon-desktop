@@ -25,6 +25,8 @@ import io.mockk.mockkStatic
 import io.mockk.unmockkObject
 import io.mockk.unmockkStatic
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -55,6 +57,8 @@ class InstalledAppsPermissionAppModuleTest {
         Injekt = InjektScope(DefaultRegistrar())
         val app = mockk<Application>(relaxed = true)
         val pm = mockk<PackageManager>()
+        var manager: ExtensionManager? = null
+        every { pm.packageInstaller } returns mockk { every { mySessions } returns emptyList() }
         var permission = PackageManager.PERMISSION_DENIED
         every { app.packageManager } returns pm
         every { app.packageName } returns "app.test"
@@ -69,6 +73,11 @@ class InstalledAppsPermissionAppModuleTest {
                 every { isSet() } returns true
             }
         }
+        Injekt.addSingleton(
+            mockk<mihon.domain.extensionrepo.interactor.GetExtensionRepo> {
+                every { subscribeAll() } returns kotlinx.coroutines.flow.emptyFlow()
+            },
+        )
         Injekt.addSingleton(SecurityPreferences(InMemoryPreferenceStore()))
         Injekt.addSingleton(preferences)
         Injekt.addSingleton(mockk<TrustExtension>(relaxed = true))
@@ -79,15 +88,18 @@ class InstalledAppsPermissionAppModuleTest {
         )
         every { ContextCompat.getMainExecutor(app) } returns Executor { }
         every { ContextCompat.registerReceiver(eq(app), any(), any(), any()) } returns null
+        every { ExtensionLoader.scanInventory(app) } returns
+            mihon.domain.extension.suggestion.ExtensionInventory(initialized = true)
         coEvery { ExtensionLoader.loadExtensions(app, false) } returns emptyList()
         coEvery { ExtensionLoader.loadExtensions(app, true) } returns listOf(LoadResult.Success(installed))
         Dispatchers.setMain(UnconfinedTestDispatcher())
         try {
             Injekt.importModule(AppModule(app))
             val controller = Injekt.get<InstalledAppsPermissionController>()
-            val manager = Injekt.get<ExtensionManager>()
+            val resolved = Injekt.get<ExtensionManager>()
+            manager = resolved
             assertSame(controller, Injekt.get<InstalledAppsPermissionController>())
-            withTimeout(5_000) { manager.isInitialized.first { it } }
+            withTimeout(5_000) { resolved.isInitialized.first { it } }
             withTimeout(5_000) {
                 controller.state.first { it.status == InstalledAppsPermissionStatus.DENIED && !it.isRefreshing }
             }
@@ -97,13 +109,14 @@ class InstalledAppsPermissionAppModuleTest {
             every { owner.lifecycle } returns lifecycle
             lifecycle.currentState = Lifecycle.State.STARTED
             App().onStart(owner)
-            withTimeout(5_000) { manager.installedExtensionsFlow.first { it.isNotEmpty() } }
+            withTimeout(5_000) { resolved.installedExtensionsFlow.first { it.isNotEmpty() } }
             withTimeout(5_000) {
                 controller.state.first { it.status == InstalledAppsPermissionStatus.GRANTED && !it.isRefreshing }
             }
             lifecycle.currentState = Lifecycle.State.DESTROYED
-            assertEquals(listOf(installed), manager.installedExtensionsFlow.value)
+            assertEquals(listOf(installed), resolved.installedExtensionsFlow.value)
         } finally {
+            manager?.scope?.coroutineContext?.get(Job)?.cancelAndJoin()
             Dispatchers.resetMain()
             unmockkObject(ExtensionLoader)
             unmockkStatic(ContextCompat::class)

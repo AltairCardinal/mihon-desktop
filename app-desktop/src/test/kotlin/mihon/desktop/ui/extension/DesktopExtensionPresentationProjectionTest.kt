@@ -1,5 +1,6 @@
 package mihon.desktop.ui.extension
 
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -166,12 +167,13 @@ class DesktopExtensionPresentationProjectionTest {
         val artifact = mockk<ExtensionArtifact>()
         val error = AppError.Network()
         val raw = listOf(
+            ExtensionInstallState.Queued,
             ExtensionInstallState.Preparing, ExtensionInstallState.Validating, ExtensionInstallState.Committing,
             ExtensionInstallState.Reloading, ExtensionInstallState.RollingBack, ExtensionInstallState.RestoringRuntime,
             ExtensionInstallState.Installed(artifact), ExtensionInstallState.Failed(error), ExtensionInstallState.Failed(AppError.Cancelled),
         )
         val extension = available("pkg.install")
-        val api = mockk<DesktopExtensionApi>()
+        val api = mockk<DesktopExtensionApi> { io.mockk.every { installArbiter } returns ExtensionInstallArbiter() }
         val manager = mockk<DesktopExtensionManager>()
         val installedExtensions = MutableStateFlow<List<InstalledExtension>>(emptyList())
         coEvery { api.beginInstall(extension, manager) } returns DesktopExtensionInstallStart.Started(flowOf(*raw.toTypedArray()))
@@ -186,7 +188,7 @@ class DesktopExtensionPresentationProjectionTest {
                 listOf(ExtensionPresentationInstallStep.Installed, ExtensionPresentationInstallStep.Error, ExtensionPresentationInstallStep.Idle),
             events.map { it.step },
         )
-        assertEquals(raw, events.drop(1).map { it.raw })
+        assertEquals(raw, events.map { it.raw })
         assertSame(artifact, (events.single { it.raw is ExtensionInstallState.Installed }.raw as ExtensionInstallState.Installed).artifact)
         assertSame(error, (events.single { it.raw is ExtensionInstallState.Failed && it.raw.error === error }.raw as ExtensionInstallState.Failed).error)
         assertSame(AppError.Cancelled, (events.last().raw as ExtensionInstallState.Failed).error)

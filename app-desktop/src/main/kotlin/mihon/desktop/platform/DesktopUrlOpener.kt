@@ -14,7 +14,7 @@ object DesktopUrlOpener {
     }
 
     private fun openWithSystemBrowser(uri: URI) {
-        DesktopExternalActionPolicy.requireAllowed("System browser")
+        DesktopExternalActionPolicy.requireBrowserAllowed(uri)
         check(Desktop.isDesktopSupported()) { "Desktop API is not supported" }
         val desktop = Desktop.getDesktop()
         check(desktop.isSupported(Desktop.Action.BROWSE)) { "Desktop browse action is not supported" }

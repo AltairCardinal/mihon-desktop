@@ -1,5 +1,7 @@
 package mihon.desktop.ui.extension
 
+import mihon.domain.extension.service.ExtensionInstallState
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -66,11 +68,13 @@ class DesktopExtensionPresentationPortTest {
             "Reader", "pkg.reader", "1.4.2", 2, lang = "en", isNsfw = false,
             jarUrl = artifact.downloadUrl, iconUrl = "", repoUrl = repository.baseUrl,
         )
-        val api = mockk<DesktopExtensionApi> { coEvery { refreshCatalog() } returns catalog }
+        val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
+            coEvery { refreshCatalog() } returns catalog }
         val manager = mockk<DesktopExtensionManager>()
         every { api.availableExtensions(catalog) } returns listOf(available)
         every { api.discardTrust("request") } returns true
-        val states = flowOf(mihon.domain.extension.service.ExtensionInstallState.Preparing)
+        val states = flowOf(ExtensionInstallState.Preparing)
         val start = DesktopExtensionInstallStart.Started(states)
         coEvery { api.beginInstall(available, manager) } returns start
         every { api.confirmTrust("request", manager) } returns states

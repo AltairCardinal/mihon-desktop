@@ -122,7 +122,13 @@ class AppModule(val app: Application) : InjektModule {
 
         addSingletonFactory<SourceManager> { AndroidSourceManager(app, get(), get()) }
         addSingletonFactory { InstalledAppsPermissionController.android(app) }
-        addSingletonFactory { ExtensionManager(app, installedAppsPermissionController = get()) }
+        addSingletonFactory {
+            ExtensionManager(
+                app,
+                installedAppsPermissionController = get(),
+                repositoryUpdates = get<mihon.domain.extensionrepo.interactor.GetExtensionRepo>().subscribeAll(),
+            )
+        }
 
         addSingletonFactory { DownloadProvider(app) }
         addSingletonFactory { DownloadManager(app) }

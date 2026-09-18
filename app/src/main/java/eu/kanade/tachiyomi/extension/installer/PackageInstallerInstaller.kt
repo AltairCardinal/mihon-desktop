@@ -11,19 +11,27 @@ import android.content.pm.PackageInstaller
 import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentSanitizer
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ProcessLifecycleOwner
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.extension.util.ExtensionInstaller
 import eu.kanade.tachiyomi.util.lang.use
 import eu.kanade.tachiyomi.util.system.getParcelableExtraCompat
 import eu.kanade.tachiyomi.util.system.getUriSize
 import logcat.LogPriority
+import mihon.domain.extension.suggestion.SuggestionBatchPause
 import tachiyomi.core.common.util.system.logcat
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 @OptIn(ExperimentalAtomicApi::class)
-class PackageInstallerInstaller(private val service: Service) : Installer(service) {
+class PackageInstallerInstaller(
+    private val service: Service,
+    private val isForeground: () -> Boolean = {
+        ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+    },
+) : Installer(service) {
 
     private val packageInstaller = service.packageManager.packageInstaller
 
@@ -35,40 +43,86 @@ class PackageInstallerInstaller(private val service: Service) : Installer(servic
             if (active?.entry?.transactionId != transactionId || active.sessionId != sessionId) return
             when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
                 PackageInstaller.STATUS_PENDING_USER_ACTION -> {
-                    val userAction = intent.getParcelableExtraCompat<Intent>(Intent.EXTRA_INTENT)
-                        ?.run {
-                            // Doesn't actually needed as the receiver is actually not exported
-                            // But the warnings can't be suppressed without this
-                            IntentSanitizer.Builder()
-                                .allowAction(this.action!!)
-                                .allowExtra(PackageInstaller.EXTRA_SESSION_ID) { id -> id == active.sessionId }
-                                .allowAnyComponent()
-                                .allowPackage {
-                                    // There is no way to check the actual installer name so allow all.
-                                    true
-                                }
-                                .build()
-                                .sanitizeByFiltering(this)
+                    if (active.awaitingForeground.get()) return
+                    val userAction = try {
+                        intent.getParcelableExtraCompat<Intent>(Intent.EXTRA_INTENT)?.let { candidate ->
+                            candidate.action?.let { action ->
+                                IntentSanitizer.Builder()
+                                    .allowAction(action)
+                                    .allowExtra(PackageInstaller.EXTRA_SESSION_ID) { id -> id == active.sessionId }
+                                    .allowAnyComponent()
+                                    // The platform installer package varies across devices.
+                                    .allowPackage { true }
+                                    .build()
+                                    .sanitizeByFiltering(candidate)
+                            }
                         }
+                    } catch (failure: Exception) {
+                        logcat(LogPriority.ERROR, failure) { "Invalid extension installation confirmation" }
+                        null
+                    }
                     if (userAction == null) {
                         logcat(LogPriority.ERROR) { "Fatal error for $intent" }
-                        finishSession(active, InstallStep.Error)
+                        awaitForeground(active)
                         return
                     }
-                    userAction.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    service.startActivity(userAction)
+                    if (!isForeground()) {
+                        awaitForeground(active)
+                        return
+                    }
+                    try {
+                        userAction.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        service.startActivity(userAction)
+                    } catch (failure: Exception) {
+                        logcat(LogPriority.ERROR, failure) { "Unable to show extension installation confirmation" }
+                        awaitForeground(active)
+                    }
                 }
                 PackageInstaller.STATUS_FAILURE_ABORTED -> {
-                    finishSession(active, InstallStep.Idle)
+                    if (!active.awaitingForeground.get()) finishSession(active, InstallStep.Idle)
                 }
                 PackageInstaller.STATUS_SUCCESS -> finishSession(active, InstallStep.Installed)
-                else -> finishSession(active, InstallStep.Error)
+                else -> if (!active.awaitingForeground.get()) finishSession(active, InstallStep.Error)
             }
         }
     }
 
     private val activeSession = AtomicReference<ActiveSession?>(null)
     private val receiverRegistered = AtomicBoolean(true)
+    private val sessionCallbackRegistered = AtomicBoolean(true)
+    private val sessionCallback = object : PackageInstaller.SessionCallback() {
+        override fun onCreated(sessionId: Int) = Unit
+        override fun onBadgingChanged(sessionId: Int) = Unit
+        override fun onActiveChanged(sessionId: Int, active: Boolean) = Unit
+        override fun onProgressChanged(sessionId: Int, progress: Float) = Unit
+
+        override fun onFinished(sessionId: Int, success: Boolean) {
+            val active = activeSession.load()?.takeIf { it.sessionId == sessionId } ?: return
+            active.finished.compareAndSet(null, success)
+            if (active.awaitingForeground.get()) finishForegroundRecovery(active)
+        }
+    }
+
+    private fun awaitForeground(active: ActiveSession) {
+        if (!active.awaitingForeground.compareAndSet(false, true)) return
+        interruption = SuggestionBatchPause.APP_FOREGROUND
+        ready = false
+        if (active.finished.load() != null) {
+            finishForegroundRecovery(active)
+            return
+        }
+        try {
+            packageInstaller.abandonSession(active.sessionId)
+        } catch (failure: Exception) {
+            // Abandon failure is not proof of completion. Keep ownership until an actual terminal callback.
+            logcat(LogPriority.ERROR, failure) { "Unable to abandon extension installation session" }
+        }
+    }
+
+    private fun finishForegroundRecovery(active: ActiveSession) {
+        val success = active.finished.load() ?: return
+        finishSession(active, if (success) InstallStep.Installed else InstallStep.Error)
+    }
 
     // Always ready
     override var ready = true
@@ -117,6 +171,10 @@ class PackageInstallerInstaller(private val service: Service) : Installer(servic
 
     override fun cancelEntry(entry: Entry): Boolean {
         val active = activeSession.load()
+        if (active?.entry == entry && active.awaitingForeground.get()) {
+            // The existing cancellation acknowledgement completes after onFinished and service cleanup.
+            return false
+        }
         if (active?.entry == entry && activeSession.compareAndSet(active, null)) {
             packageInstaller.abandonSession(active.sessionId)
         }
@@ -136,6 +194,7 @@ class PackageInstallerInstaller(private val service: Service) : Installer(servic
     private fun finishSession(active: ActiveSession, step: InstallStep) {
         if (activeSession.compareAndSet(active, null)) {
             continueQueue(active.entry.transactionId, step)
+            if (active.awaitingForeground.get()) service.stopSelf()
         }
     }
 
@@ -143,11 +202,20 @@ class PackageInstallerInstaller(private val service: Service) : Installer(servic
         if (receiverRegistered.compareAndSet(true, false)) {
             service.unregisterReceiver(packageActionReceiver)
         }
+        if (sessionCallbackRegistered.compareAndSet(true, false)) {
+            packageInstaller.unregisterSessionCallback(sessionCallback)
+        }
     }
 
-    private data class ActiveSession(val entry: Entry, val sessionId: Int)
+    private data class ActiveSession(
+        val entry: Entry,
+        val sessionId: Int,
+        val awaitingForeground: AtomicBoolean = AtomicBoolean(false),
+        val finished: AtomicReference<Boolean?> = AtomicReference(null),
+    )
 
     init {
+        packageInstaller.registerSessionCallback(sessionCallback)
         ContextCompat.registerReceiver(
             service,
             packageActionReceiver,

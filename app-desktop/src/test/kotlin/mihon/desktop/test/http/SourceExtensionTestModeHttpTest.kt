@@ -1,5 +1,6 @@
 package mihon.desktop.test.http
 
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
 import io.mockk.coEvery
@@ -72,6 +73,18 @@ class SourceExtensionTestModeHttpTest {
                 assertEquals("wired-query", context.extensionScreenModel.state.value.searchQuery)
                 assertEquals("wired-query", get(baseUrl, "/test/state").extensionState().getValue("searchQuery").jsonPrimitive.content)
 
+                val expanded = context.extensionScreenModel.suggestionPanel.state.value.expanded
+                val toggle = post(baseUrl, "/test/action/extension_suggestion_toggle", "{}")
+                assertEquals(200, toggle.status)
+                assertActionEnvelope(toggle.json, "extension_suggestion_toggle", true)
+                withTimeoutOrNull(5_000) {
+                    context.extensionScreenModel.suggestionPanel.state.first { it.expanded != expanded }
+                } ?: error("Test Mode did not change the production panel preference")
+                val panel = get(baseUrl, "/test/state").extensionState().getValue("suggestions").jsonObject
+                assertEquals(!expanded, panel.getValue("expanded").jsonPrimitive.booleanOrNull)
+                val emptyBatch = post(baseUrl, "/test/action/extension_suggestion_batch_request", "{}")
+                assertActionEnvelope(emptyBatch.json, "extension_suggestion_batch_request", false)
+
                 context.closeAndJoin()
                 assertSame(JsonNull, get(baseUrl, "/test/state").json["extension"])
                 val unavailable = post(baseUrl, "/test/action/extension_search", """{"query":"ignored"}""")
@@ -97,6 +110,7 @@ class SourceExtensionTestModeHttpTest {
         val installed = MutableStateFlow(emptyList<InstalledExtension>())
         val manager = mockk<DesktopExtensionManager>()
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } returns ExtensionCatalogResult(emptyList(), emptyList())
             every { availableExtensions(any()) } returns listOf(extension)
             coEvery { beginInstall(extension, manager) } answers { starts.removeFirst() }

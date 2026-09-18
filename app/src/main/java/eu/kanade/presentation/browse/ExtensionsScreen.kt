@@ -87,6 +87,17 @@ fun ExtensionScreen(
     onOpenExtension: (Extension.Installed) -> Unit,
     onClickUpdateAll: () -> Unit,
     onRefresh: () -> Unit,
+    suggestionController: mihon.domain.extension.suggestion.ExtensionSuggestionPanel? = null,
+    onInstallSuggestion: (mihon.domain.extension.suggestion.SuggestionIdentity) -> Unit = {},
+    onSuggestionWebsite: (mihon.domain.extension.model.ExtensionSourceDescriptor) -> Unit = {},
+    onSuggestionMigration: (Long) -> Unit = {},
+    onSuggestionDiagnose: () -> Unit = {},
+    onRequestBatchStart: () -> Unit = {},
+    onRequestBatchResume: () -> Unit = {},
+    onRequestBatchRetry: () -> Unit = {},
+    onStopBatch: () -> Unit = {},
+    batchPauseExplanation: String? = null,
+    onResolveBatchPause: (() -> Unit)? = null,
 ) {
     val navigator = LocalNavigator.currentOrThrow
 
@@ -97,7 +108,9 @@ fun ExtensionScreen(
     ) {
         when {
             state.isLoading -> LoadingScreen(Modifier.padding(contentPadding))
-            state.isEmpty && state.repositoryFailures.isEmpty() -> {
+            state.isEmpty && state.repositoryFailures.isEmpty() && !state.suggestionPanel.loading &&
+                state.suggestionPanel.total == 0 && state.suggestionPanel.unmatched.isEmpty() &&
+                !state.suggestionPanel.canUndo && state.suggestionBatch.items.isEmpty() -> {
                 val msg = if (!searchQuery.isNullOrEmpty()) {
                     MR.strings.no_results_found
                 } else {
@@ -128,6 +141,18 @@ fun ExtensionScreen(
                     onTrustExtension = onTrustExtension,
                     onOpenExtension = onOpenExtension,
                     onClickUpdateAll = onClickUpdateAll,
+                    suggestionController = suggestionController,
+                    onInstallSuggestion = onInstallSuggestion,
+                    onSuggestionWebsite = onSuggestionWebsite,
+                    onSuggestionMigration = onSuggestionMigration,
+                    onSuggestionDiagnose = onSuggestionDiagnose,
+                    onRequestBatchStart = onRequestBatchStart,
+                    onRequestBatchResume = onRequestBatchResume,
+                    onRequestBatchRetry = onRequestBatchRetry,
+                    onStopBatch = onStopBatch,
+                    batchPauseExplanation = batchPauseExplanation,
+                    onResolveBatchPause = onResolveBatchPause,
+                    onRefresh = onRefresh,
                 )
             }
         }
@@ -147,8 +172,21 @@ private fun ExtensionContent(
     onTrustExtension: (Extension.Untrusted) -> Unit,
     onOpenExtension: (Extension.Installed) -> Unit,
     onClickUpdateAll: () -> Unit,
+    onRefresh: () -> Unit,
+    suggestionController: mihon.domain.extension.suggestion.ExtensionSuggestionPanel? = null,
+    onInstallSuggestion: (mihon.domain.extension.suggestion.SuggestionIdentity) -> Unit = {},
+    onSuggestionWebsite: (mihon.domain.extension.model.ExtensionSourceDescriptor) -> Unit = {},
+    onSuggestionMigration: (Long) -> Unit = {},
+    onSuggestionDiagnose: () -> Unit = {},
+    onRequestBatchStart: () -> Unit = {},
+    onRequestBatchResume: () -> Unit = {},
+    onRequestBatchRetry: () -> Unit = {},
+    onStopBatch: () -> Unit = {},
+    batchPauseExplanation: String? = null,
+    onResolveBatchPause: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val navigator = LocalNavigator.currentOrThrow
     var trustState by remember { mutableStateOf<Extension.Untrusted?>(null) }
     val installGranted = rememberRequestPackageInstallsPermissionState(initialValue = true)
 
@@ -180,7 +218,37 @@ private fun ExtensionContent(
             }
         }
 
+        fun suggestionItem() {
+            item(key = "extension-suggestion-batch") {
+                ExtensionSuggestionBatchSection(
+                    state.suggestionBatch,
+                    canStart = state.suggestionPanel.rows.any { it.canInstall },
+                    matchingSearch = !state.searchQuery.isNullOrBlank(),
+                    onRequestStart = onRequestBatchStart,
+                    onRequestResume = onRequestBatchResume,
+                    onRequestRetry = onRequestBatchRetry,
+                    onStop = onStopBatch,
+                    pauseExplanation = batchPauseExplanation,
+                    onResolvePause = onResolveBatchPause,
+                )
+            }
+            item(key = "extension-suggestions") {
+                ExtensionSuggestionSection(
+                    state.suggestionPanel, suggestionController,
+                    onInstallSuggestion, onSuggestionWebsite,
+                    onRepositories = { navigator.push(ExtensionReposScreen()) },
+                    onMigrate = onSuggestionMigration,
+                    onDiagnose = onSuggestionDiagnose,
+                    onRefresh = onRefresh, errors = state.installErrors,
+                )
+            }
+        }
+        var suggestionAdded = false
         state.items.forEach { (header, items) ->
+            if (!suggestionAdded && header != ExtensionUiModel.Header.Resource(MR.strings.ext_updates_pending)) {
+                suggestionItem()
+                suggestionAdded = true
+            }
             item(
                 contentType = "header",
                 key = "extensionHeader-${header.hashCode()}",
@@ -276,6 +344,7 @@ private fun ExtensionContent(
                 )
             }
         }
+        if (!suggestionAdded) suggestionItem()
     }
     if (trustState != null) {
         ExtensionTrustDialog(

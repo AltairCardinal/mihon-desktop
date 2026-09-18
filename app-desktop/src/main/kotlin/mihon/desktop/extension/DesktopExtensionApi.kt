@@ -1,5 +1,6 @@
 package mihon.desktop.extension
 
+import mihon.domain.extension.service.ExtensionInstallBusy
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.network.await
@@ -9,6 +10,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.last
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.onEach
+import mihon.domain.extension.service.ExtensionInstallArbiter
+import mihon.domain.extension.service.ExtensionInstallLease
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import mihon.domain.error.AppError
@@ -55,8 +61,10 @@ class DesktopExtensionApi(
     private val extensionRepoRepository: ExtensionRepoRepository,
     private val catalogService: ExtensionCatalogService = ExtensionCatalogService(),
     private val trustPolicy: ExtensionTrustPolicy = ExtensionTrustPolicy(),
+    val installArbiter: ExtensionInstallArbiter = ExtensionInstallArbiter(),
 ) {
-    private val pendingTrust = mutableMapOf<String, ExtensionTrustRequest>()
+    private data class PendingTrust(val request: ExtensionTrustRequest, val lease: ExtensionInstallLease)
+    private val pendingTrust = mutableMapOf<String, PendingTrust>()
     suspend fun loadExtensionIcon(iconUrl: String): ByteArray? = withContext(Dispatchers.IO) {
         if (iconUrl.isBlank()) return@withContext null
         runCatching {
@@ -133,31 +141,83 @@ class DesktopExtensionApi(
     internal suspend fun beginInstall(
         extension: DesktopAvailableExtension,
         manager: DesktopExtensionPresentationService,
-    ): DesktopExtensionInstallStart = withContext(Dispatchers.IO) {
-        if (extension.compatibility != ExtensionCompatibility.Compatible) {
-            return@withContext DesktopExtensionInstallStart.Rejected(
-                AppError.MalformedData(IllegalArgumentException("Unsupported extension API: ${extension.libVersion}")),
-            )
-        }
+        reservation: ExtensionInstallLease? = null,
+    ): DesktopExtensionInstallStart {
+        var lease: ExtensionInstallLease? = null
         try {
-            val installedJar = extensionArtifactFile(manager.extensionsDirectory, extension.pkgName, "jar")
-            val meta = readExtensionMeta(installedJar)
-            val request = extension.trustRequest(installedJar, meta)
-            when (val decision = trustPolicy.evaluate(request)) {
-                ExtensionTrustDecision.Trusted -> DesktopExtensionInstallStart.Started(
-                    manager.installExtensionStates(request.incomingArtifact),
-                )
-                is ExtensionTrustDecision.ConfirmationRequired -> {
-                    val id = UUID.randomUUID().toString()
-                    synchronized(pendingTrust) { pendingTrust[id] = request }
-                    DesktopExtensionInstallStart.TrustRequired(
-                        id, meta?.repoFingerprint.orEmpty(), extension.repoFingerprint, decision.reasons, request,
+            return withContext(Dispatchers.IO) {
+                if (extension.compatibility != ExtensionCompatibility.Compatible) {
+                    return@withContext DesktopExtensionInstallStart.Rejected(
+                        AppError.MalformedData(IllegalArgumentException("Unsupported extension API: ${extension.libVersion}")),
                     )
                 }
-                is ExtensionTrustDecision.Rejected -> DesktopExtensionInstallStart.Rejected(decision.error)
+                try {
+                    val requested = extension.toArtifact()
+                    val artifact = reservation?.artifact ?: requested
+                    if (reservation != null && artifact.copy(
+                            downloadUrl = artifact.jarUrl ?: artifact.downloadUrl,
+                            declaredLibVersion = artifact.libVersion,
+                            apkUrl = null,
+                            jarUrl = null,
+                        ) != requested
+                    ) {
+                        return@withContext DesktopExtensionInstallStart.Rejected(AppError.MalformedData(IllegalArgumentException("Reservation artifact differs from request")))
+                    }
+                    val claimed = reservation ?: installArbiter.reserve(artifact)
+                        ?: return@withContext DesktopExtensionInstallStart.Rejected(AppError.Unknown(ExtensionInstallBusy(extension.pkgName)))
+                    if (!installArbiter.activate(claimed, artifact)) {
+                        return@withContext DesktopExtensionInstallStart.Rejected(AppError.Unknown(IllegalStateException("Installation reservation is no longer available")))
+                    }
+                    lease = claimed
+                    val installedJar = extensionArtifactFile(manager.extensionsDirectory, extension.pkgName, "jar")
+                    val meta = readExtensionMeta(installedJar)
+                    val request = extension.trustRequest(installedJar, meta).copy(incomingArtifact = claimed.artifact)
+                    when (val decision = trustPolicy.evaluate(request)) {
+                        ExtensionTrustDecision.Trusted -> DesktopExtensionInstallStart.Started(
+                            reservedStates(manager, claimed),
+                        )
+                        is ExtensionTrustDecision.ConfirmationRequired -> {
+                            val id = UUID.randomUUID().toString()
+                            synchronized(pendingTrust) { pendingTrust[id] = PendingTrust(request, claimed) }
+                            DesktopExtensionInstallStart.TrustRequired(
+                                id, meta?.repoFingerprint.orEmpty(), extension.repoFingerprint, decision.reasons, request,
+                            )
+                        }
+                        is ExtensionTrustDecision.Rejected -> {
+                            installArbiter.release(claimed)
+                            DesktopExtensionInstallStart.Rejected(decision.error)
+                        }
+                    }
+                } catch (failure: mihon.domain.extension.service.ExtensionInstallFailure) {
+                    lease?.let(installArbiter::release)
+                    DesktopExtensionInstallStart.Rejected(failure.error)
+                }
             }
-        } catch (failure: mihon.domain.extension.service.ExtensionInstallFailure) {
-            DesktopExtensionInstallStart.Rejected(failure.error)
+        } catch (failure: Throwable) {
+            lease?.let { held ->
+                synchronized(pendingTrust) { pendingTrust.entries.removeAll { it.value.lease === held } }
+                installArbiter.release(held)
+            }
+            throw failure
+        }
+    }
+
+    private fun reservedStates(
+        manager: DesktopExtensionPresentationService,
+        lease: ExtensionInstallLease,
+    ): Flow<ExtensionInstallState> {
+        val collected = java.util.concurrent.atomic.AtomicBoolean()
+        return flow {
+            check(collected.compareAndSet(false, true)) { "Installation result has already been consumed" }
+            try {
+                emit(ExtensionInstallState.Queued)
+                emitAll(
+                    manager.installExtensionStates(lease.artifact) { installArbiter.enterCommit(lease) }
+                        .onEach { installArbiter.progress(lease, it) },
+                )
+            } finally {
+                installArbiter.release(lease)
+            }
         }
     }
 
@@ -165,10 +225,13 @@ class DesktopExtensionApi(
         requestId: String,
         manager: DesktopExtensionPresentationService,
     ): Flow<ExtensionInstallState>? = synchronized(pendingTrust) { pendingTrust.remove(requestId) }
-        ?.let { manager.installExtensionStates(it.incomingArtifact) }
+        ?.let { reservedStates(manager, it.lease) }
 
     internal fun discardTrust(requestId: String): Boolean =
-        synchronized(pendingTrust) { pendingTrust.remove(requestId) != null }
+        synchronized(pendingTrust) { pendingTrust.remove(requestId) }?.let {
+            installArbiter.release(it.lease)
+            true
+        } ?: false
 
     internal val pendingTrustCount: Int get() = synchronized(pendingTrust) { pendingTrust.size }
 
@@ -252,6 +315,21 @@ class DesktopExtensionApi(
         throw mihon.domain.extension.service.ExtensionInstallFailure(AppError.Storage(failure))
     }
 
+    private fun DesktopAvailableExtension.toArtifact(): ExtensionArtifact = ExtensionArtifact(
+                name = name,
+                packageName = pkgName,
+                versionName = versionName,
+                versionCode = versionCode,
+                language = lang,
+                isNsfw = isNsfw,
+                sources = sources.map { ExtensionSourceDescriptor(it.id, it.lang, it.name, it.baseUrl) },
+                repository = RepositoryIdentity(repoUrl, repoName, repoFingerprint),
+                downloadUrl = jarUrl,
+                iconUrl = iconUrl,
+                declaredSha256 = declaredSha256,
+                declaredLibVersion = libVersion,
+            )
+
     private fun DesktopAvailableExtension.trustRequest(
         installedJar: File,
         existingMeta: ExtensionMeta?,
@@ -267,20 +345,7 @@ class DesktopExtensionApi(
             )
         }
         return ExtensionTrustRequest(
-            incomingArtifact = ExtensionArtifact(
-                name = name,
-                packageName = pkgName,
-                versionName = versionName,
-                versionCode = versionCode,
-                language = lang,
-                isNsfw = isNsfw,
-                sources = sources.map { ExtensionSourceDescriptor(it.id, it.lang, it.name, it.baseUrl) },
-                repository = RepositoryIdentity(repoUrl, repoName, repoFingerprint),
-                downloadUrl = jarUrl,
-                iconUrl = iconUrl,
-                declaredSha256 = declaredSha256,
-                declaredLibVersion = libVersion,
-            ),
+            incomingArtifact = toArtifact(),
             downloadedArtifactSha256 = null,
             installed = installed,
             installedArtifactSha256 = installedJar.takeIf(File::exists)?.sha256(),

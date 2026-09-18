@@ -1,5 +1,6 @@
 package mihon.desktop.test.http
 
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -64,6 +65,7 @@ class SourceExtensionTestModeControllerTest {
         ))
         val manager = mockk<DesktopExtensionManager> { every { removeExtensionWithMeta(stable) } returns true }
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } returns ExtensionCatalogResult(emptyList(), listOf(repositoryFailure))
             every { availableExtensions(any()) } returns listOf(update, fresh)
             coEvery { beginInstall(any(), manager) } answers {

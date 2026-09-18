@@ -1,5 +1,6 @@
 package mihon.desktop.ui.browse
 
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.network.DesktopCookieJar
 import eu.kanade.tachiyomi.source.CatalogueSource
@@ -143,6 +144,7 @@ class SourceSharedStateWiringTest {
     @OptIn(ExperimentalComposeUiApi::class)
     fun `browse tab keeps sources and extensions together with repository navigation`() = runBlocking {
         val extensionApi = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } returns ExtensionCatalogResult(emptyList(), emptyList())
             every { availableExtensions(any()) } returns emptyList()
             coEvery { loadExtensionIcon(any()) } returns null

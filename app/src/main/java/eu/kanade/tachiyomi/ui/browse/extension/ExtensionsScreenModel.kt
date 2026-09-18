@@ -9,10 +9,13 @@ import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.extension.interactor.GetExtensionsByType
 import eu.kanade.domain.extension.interactor.androidExtensionPresentationStore
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.presentation.browse.ExtensionSuggestionBatchConfirmation
 import eu.kanade.presentation.components.SEARCH_DEBOUNCE_MILLIS
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
+import eu.kanade.tachiyomi.extension.model.toAvailable
+import eu.kanade.tachiyomi.extension.util.ExtensionOriginConfirmation
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -29,11 +32,23 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import mihon.domain.error.AppError
+import mihon.domain.extension.model.ExtensionArtifact
+import mihon.domain.extension.model.ExtensionCompatibility
 import mihon.domain.extension.presentation.ExtensionPresentationAction
 import mihon.domain.extension.presentation.ExtensionPresentationActionState
 import mihon.domain.extension.presentation.ExtensionPresentationClassifier
 import mihon.domain.extension.presentation.ExtensionPresentationInstallStep
 import mihon.domain.extension.presentation.ExtensionPresentationStore
+import mihon.domain.extension.service.ExtensionInstallBusy
+import mihon.domain.extension.service.ExtensionInstallState
+import mihon.domain.extension.suggestion.ExtensionSuggestionPreferences
+import mihon.domain.extension.suggestion.ExtensionSuggestions
+import mihon.domain.extension.suggestion.SuggestionBatchPause
+import mihon.domain.extension.suggestion.SuggestionBatchResult
+import mihon.domain.extension.suggestion.SuggestionIdentity
+import mihon.domain.extension.suggestion.SuggestionPanelState
+import tachiyomi.core.common.preference.InMemoryPreferenceStore
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
@@ -42,7 +57,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.seconds
 
 class ExtensionsScreenModel(
-    preferences: SourcePreferences = Injekt.get(),
+    private val preferences: SourcePreferences = Injekt.get(),
     basePreferences: BasePreferences = Injekt.get(),
     private val extensionManager: ExtensionManager = Injekt.get(),
     private val getExtensions: GetExtensionsByType = Injekt.get(),
@@ -50,12 +65,48 @@ class ExtensionsScreenModel(
     private val context: Application = Injekt.get(),
     private val actionStore: ExtensionPresentationStore<Extension> =
         androidExtensionPresentationStore,
+    suggestions: Flow<ExtensionSuggestions>? = null,
+    suggestionPreferences: ExtensionSuggestionPreferences =
+        ExtensionSuggestionPreferences(InMemoryPreferenceStore()),
+    val suggestionBatch: eu.kanade.tachiyomi.extension.AndroidExtensionSuggestionBatch? = null,
 ) : StateScreenModel<ExtensionsScreenModel.State>(State()) {
 
     private val actionState = MutableStateFlow(ExtensionPresentationActionState())
     private val installCollections = ConcurrentHashMap<String, Any>()
+    private val sharedInstallSteps =
+        combine(actionState, extensionManager.installArbiter.reservations) { local, reservations ->
+            local.installSteps + reservations.mapValues { (_, reservation) ->
+                when (val progress = reservation.progress) {
+                    null, ExtensionInstallState.Queued -> ExtensionPresentationInstallStep.Pending
+                    ExtensionInstallState.Preparing -> ExtensionPresentationInstallStep.Downloading
+                    is ExtensionInstallState.Installed -> ExtensionPresentationInstallStep.Installed
+                    is ExtensionInstallState.Failed ->
+                        if (progress.error == AppError.Cancelled) {
+                            ExtensionPresentationInstallStep.Idle
+                        } else {
+                            ExtensionPresentationInstallStep.Error
+                        }
+                    else -> ExtensionPresentationInstallStep.Installing
+                }
+            }
+        }
+    val suggestionPanel = mihon.domain.extension.suggestion.ExtensionSuggestionPanel(
+        screenModelScope,
+        state.map { it.suggestions }.distinctUntilChanged(),
+        sharedInstallSteps,
+        suggestionPreferences,
+    )
 
     init {
+        extensionManager.pendingSystemPauses.onEach { pauses ->
+            mutableState.update { it.copy(pendingSystemPauses = pauses) }
+        }.launchIn(screenModelScope)
+        suggestionBatch?.state?.onEach { batch -> mutableState.update { it.copy(suggestionBatch = batch) } }
+            ?.launchIn(screenModelScope)
+        suggestionPanel.state.onEach { panel -> mutableState.update { it.copy(suggestionPanel = panel) } }
+            .launchIn(screenModelScope)
+        suggestions?.onEach { value -> mutableState.update { it.copy(suggestions = value) } }
+            ?.launchIn(screenModelScope)
         val extensionMapper: (Map<String, InstallStep>) -> ((Extension) -> ExtensionUiModel.Item) = { map ->
             {
                 ExtensionUiModel.Item(it, map[it.pkgName] ?: InstallStep.Idle)
@@ -68,8 +119,8 @@ class ExtensionsScreenModel(
                     .distinctUntilChanged()
                     .debounce(SEARCH_DEBOUNCE_MILLIS)
                     .map { searchQueryPredicate(it ?: "") },
-                actionState.map { actionState ->
-                    actionState.installSteps.mapValues { InstallStep.valueOf(it.value.name) }
+                sharedInstallSteps.map { steps ->
+                    steps.mapValues { InstallStep.valueOf(it.value.name) }
                 },
                 getExtensions.subscribe(),
             ) { predicate, downloads, (_updates, _installed, _available, _untrusted) ->
@@ -131,13 +182,112 @@ class ExtensionsScreenModel(
             .launchIn(screenModelScope)
     }
 
+    internal fun requestSuggestionBatch(mode: BatchReviewMode = BatchReviewMode.START) {
+        val batch = suggestionBatch ?: return
+        val snapshot = when (mode) {
+            BatchReviewMode.START ->
+                suggestionPanel.state.value.rows.filter { it.canInstall }.map { it.suggestion.artifact }
+            BatchReviewMode.RESUME -> batch.state.value.remaining
+            BatchReviewMode.RETRY ->
+                batch.state.value.items.filter { it.result is SuggestionBatchResult.Failed }.map { it.artifact }
+        }
+        mutableState.update {
+            it.copy(
+                batchReviewMode = mode,
+                batchConfirmation = snapshot.takeIf { it.isNotEmpty() }?.let { artifacts ->
+                    batchConfirmation(
+                        artifacts,
+                        mode,
+                    )
+                },
+            )
+        }
+    }
+
+    internal fun confirmSuggestionBatch(artifacts: List<ExtensionArtifact>): Boolean {
+        val batch = suggestionBatch ?: return false
+        val review = state.value.batchConfirmation ?: return false
+        if (review.artifacts != artifacts) return false
+        val mode = state.value.batchReviewMode
+        val refreshed = batchConfirmation(review.artifacts, mode)
+        mutableState.update { it.copy(batchConfirmation = refreshed) }
+        if (refreshed.artifacts != artifacts ||
+            refreshed.unavailablePackages.isNotEmpty() ||
+            refreshed.hasSourceConflict
+        ) {
+            return false
+        }
+        return when (mode) {
+            BatchReviewMode.START -> batch.start(artifacts)
+            BatchReviewMode.RESUME -> batch.resume(artifacts)
+            BatchReviewMode.RETRY -> batch.retryFailed(artifacts)
+        }
+    }
+
+    internal fun selectBatchReplacement(artifact: ExtensionArtifact) {
+        val review = state.value.batchConfirmation ?: return
+        if (review.artifacts.none { it.packageName == artifact.packageName } ||
+            artifact !in batchCandidates(artifact.packageName)
+        ) {
+            return
+        }
+        val selected = review.artifacts.map { if (it.packageName == artifact.packageName) artifact else it }
+        mutableState.update { it.copy(batchConfirmation = batchConfirmation(selected, it.batchReviewMode)) }
+    }
+
+    internal fun dismissBatchReview() {
+        mutableState.update { it.copy(batchConfirmation = null) }
+    }
+
+    private fun batchCandidates(packageName: String): List<ExtensionArtifact> = extensionManager.suggestionCatalog.value
+        ?.entries.orEmpty().filter {
+            it.artifact.packageName == packageName &&
+                it.compatibility == ExtensionCompatibility.Compatible
+        }
+        .map { it.artifact }.groupBy { SuggestionIdentity.of(it) }.values
+        .map { versions -> versions.maxWith(compareBy({ it.libVersion }, { it.versionCode })) }
+        .filter { !it.isNsfw || preferences.showNsfwSource().get() }
+
+    private fun batchConfirmation(
+        artifacts: List<ExtensionArtifact>,
+        mode: BatchReviewMode,
+    ): ExtensionSuggestionBatchConfirmation {
+        val candidates = artifacts.associate { it.packageName to batchCandidates(it.packageName) }
+        val updated = artifacts.map { old ->
+            candidates.getValue(old.packageName).firstOrNull { SuggestionIdentity.of(it) == SuggestionIdentity.of(old) }
+                ?: old
+        }
+        val unavailable =
+            updated.filter { it !in candidates.getValue(it.packageName) }.mapTo(mutableSetOf()) { it.packageName }
+        val installed = if (mode == BatchReviewMode.START) {
+            emptyList()
+        } else {
+            suggestionBatch?.state?.value?.items.orEmpty()
+                .filter { it.result == SuggestionBatchResult.Installed }.map { it.artifact }
+        }
+        val sources = (updated + installed).flatMap { artifact -> artifact.sources.map { it.id }.distinct() }
+        return ExtensionSuggestionBatchConfirmation(
+            updated,
+            unavailable,
+            candidates,
+            hasSourceConflict = sources.size != sources.distinct().size,
+        )
+    }
+
+    enum class BatchReviewMode { START, RESUME, RETRY }
+
     fun searchQueryPredicate(query: String, includePackageName: Boolean = false): (Extension) -> Boolean =
         classifier.searchPredicate(query, includePackageName)
 
     fun search(query: String?) {
+        suggestionPanel.search(query.orEmpty())
         mutableState.update {
             it.copy(searchQuery = query)
         }
+    }
+
+    fun recheckInstalledInventory() = screenModelScope.launchIO {
+        extensionManager.recheckInstalledInventory().join()
     }
 
     fun updateAllExtensions() {
@@ -154,6 +304,18 @@ class ExtensionsScreenModel(
         launchInstall(extension) { extensionManager.installExtension(extension) }
     }
 
+    fun installSuggestion(identity: mihon.domain.extension.suggestion.SuggestionIdentity) {
+        val artifact = suggestionPanel.installable(identity) ?: return
+        val inventory = extensionManager.inventory.value
+        if (!inventory.initialized || inventory.hasUnknownArtifacts ||
+            artifact.packageName in inventory.packages
+        ) {
+            return
+        }
+        if (extensionManager.suggestionCatalog.value?.entries?.none { it.artifact == artifact } != false) return
+        installExtension(artifact.toAvailable())
+    }
+
     fun updateExtension(extension: Extension.Installed) {
         launchInstall(extension) { extensionManager.updateExtension(extension) }
     }
@@ -167,6 +329,9 @@ class ExtensionsScreenModel(
     }
 
     private fun addDownloadState(extension: Extension, installStep: InstallStep) {
+        if (installStep != InstallStep.Error && installStep != InstallStep.Pending) {
+            mutableState.update { it.copy(installErrors = it.installErrors - extension.pkgName) }
+        }
         dispatch(
             ExtensionPresentationAction.InstallStepChanged(
                 extension.pkgName,
@@ -186,27 +351,59 @@ class ExtensionsScreenModel(
 
     private fun launchInstall(extension: Extension, operation: () -> Flow<InstallStep>) {
         val collection = Any()
-        synchronized(installCollections) { installCollections[extension.pkgName] = collection }
+        synchronized(installCollections) {
+            if (installCollections.containsKey(extension.pkgName)) return
+            installCollections[extension.pkgName] = collection
+            addDownloadState(extension, InstallStep.Pending)
+        }
         screenModelScope.launchIO {
-            val steps = synchronized(installCollections) {
-                if (installCollections[extension.pkgName] === collection) operation() else null
-            } ?: return@launchIO
-            steps
-                .onEach { step ->
-                    synchronized(installCollections) {
-                        if (installCollections[extension.pkgName] === collection) addDownloadState(extension, step)
+            try {
+                val steps = synchronized(installCollections) {
+                    if (installCollections[extension.pkgName] === collection) operation() else null
+                } ?: return@launchIO
+                steps
+                    .onEach { step ->
+                        synchronized(installCollections) {
+                            if (installCollections[extension.pkgName] === collection) addDownloadState(extension, step)
+                        }
+                    }
+                    .takeWhile { step ->
+                        actionStore.shouldContinue(ExtensionPresentationInstallStep.valueOf(step.name)) &&
+                            !step.isCompleted()
+                    }
+                    .onCompletion {
+                        synchronized(installCollections) {
+                            if (installCollections.remove(extension.pkgName, collection) &&
+                                actionState.value.installSteps[extension.pkgName] !=
+                                ExtensionPresentationInstallStep.Error
+                            ) {
+                                removeDownloadState(extension)
+                            }
+                        }
+                    }
+                    .collect()
+            } catch (busy: ExtensionInstallBusy) {
+                mutableState.update { it.copy(installRequestBusy = true) }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                synchronized(installCollections) {
+                    if (installCollections[extension.pkgName] === collection) {
+                        addDownloadState(extension, InstallStep.Error)
+                        mutableState.update {
+                            it.copy(installErrors = it.installErrors + (extension.pkgName to AppError.Unknown(failure)))
+                        }
                     }
                 }
-                .takeWhile { step ->
-                    actionStore.shouldContinue(ExtensionPresentationInstallStep.valueOf(step.name)) &&
-                        !step.isCompleted()
-                }
-                .onCompletion {
-                    synchronized(installCollections) {
-                        if (installCollections.remove(extension.pkgName, collection)) removeDownloadState(extension)
+            } finally {
+                synchronized(installCollections) {
+                    if (installCollections.remove(extension.pkgName, collection) &&
+                        actionState.value.installSteps[extension.pkgName] != ExtensionPresentationInstallStep.Error
+                    ) {
+                        removeDownloadState(extension)
                     }
                 }
-                .collect()
+            }
         }
     }
 
@@ -240,6 +437,13 @@ class ExtensionsScreenModel(
 
     @Immutable
     data class State(
+        val pendingSystemPauses: Map<String, SuggestionBatchPause> = emptyMap(),
+        val batchReviewMode: BatchReviewMode = BatchReviewMode.START,
+        val batchConfirmation: eu.kanade.presentation.browse.ExtensionSuggestionBatchConfirmation? = null,
+        val suggestionBatch: mihon.domain.extension.suggestion.SuggestionBatchState =
+            mihon.domain.extension.suggestion.SuggestionBatchState(),
+        val suggestions: ExtensionSuggestions = ExtensionSuggestions(),
+        val suggestionPanel: SuggestionPanelState = SuggestionPanelState(),
         val isLoading: Boolean = true,
         val isRefreshing: Boolean = false,
         val items: ItemGroups = mutableMapOf(),
@@ -247,8 +451,9 @@ class ExtensionsScreenModel(
         val installer: BasePreferences.ExtensionInstaller? = null,
         val searchQuery: String? = null,
         val repositoryFailures: List<mihon.domain.extension.model.RepositoryCatalogFailure> = emptyList(),
-        val installErrors: Map<String, mihon.domain.error.AppError> = emptyMap(),
-        val originConfirmations: List<eu.kanade.tachiyomi.extension.util.ExtensionOriginConfirmation> = emptyList(),
+        val installErrors: Map<String, AppError> = emptyMap(),
+        val installRequestBusy: Boolean = false,
+        val originConfirmations: List<ExtensionOriginConfirmation> = emptyList(),
     ) {
         val isEmpty = items.isEmpty()
     }

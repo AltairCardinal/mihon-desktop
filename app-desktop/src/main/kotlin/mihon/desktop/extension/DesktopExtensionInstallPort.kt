@@ -302,7 +302,9 @@ internal class DesktopExtensionInstallPort(
         currentCoroutineContext().ensureActive()
         releaseRuntime(install.artifact.packageName)
         fileSystem.replaceFromSnapshot(install.candidate, install.destination)
-        fileSystem.replaceFromSnapshot(install.stagedMetadata, install.metadata)
+        withExtensionMetadataWrite {
+            fileSystem.replaceFromSnapshot(install.stagedMetadata, install.metadata)
+        }
     }
 
     override suspend fun reload(packageName: String) = storageBoundary {
@@ -319,7 +321,9 @@ internal class DesktopExtensionInstallPort(
         releaseRuntime(install.artifact.packageName)
         val recovery = readRecoveryArchive(install)
         restore(recovery.jar, install.destination, recovery.jarExisted)
-        restore(recovery.metadata, install.metadata, recovery.metaExisted)
+        withExtensionMetadataWrite {
+            restore(recovery.metadata, install.metadata, recovery.metaExisted)
+        }
     }
 
     override suspend fun cleanup(token: PreparedExtensionInstallToken) = storageBoundary {
@@ -386,7 +390,9 @@ internal class DesktopExtensionInstallPort(
         DataOutputStream(install.recoveryArchive.outputStream().buffered()).use { output ->
             output.writeInt(RECOVERY_MAGIC)
             output.writeSnapshot(install.destination, install.jarExisted)
-            output.writeSnapshot(install.metadata, install.metaExisted)
+            withExtensionMetadataRead {
+                output.writeSnapshot(install.metadata, install.metaExisted)
+            }
         }
     }
 

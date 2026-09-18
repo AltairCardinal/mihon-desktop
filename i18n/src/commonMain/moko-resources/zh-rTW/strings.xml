@@ -1545,4 +1545,20 @@
     <string name="desktop_ui_hide_missing_chapter_indicators">隱藏缺話提示</string>
     <string name="desktop_ui_download_malformed_error">圖源傳回的頁面資料無效，請更新擴充套件或稍後重試。</string>
     <string name="desktop_ui_download_unknown_error">來源無法使用或發生未知錯誤，請檢查來源設定後重試。</string>
+    <string name="extension_batch_install_all">安裝全部建議</string>
+    <string name="extension_batch_install_matching">安裝相符項目</string>
+    <string name="extension_batch_confirm">確認安裝清單</string>
+    <string name="extension_batch_install_count">安裝 %1$d 個擴充套件</string>
+    <string name="extension_batch_stop">停止後續安裝</string>
+    <string name="extension_batch_progress">已完成 %1$d / %2$d 項安裝</string>
+    <string name="extension_batch_retry">重試失敗項</string>
+    <string name="extension_batch_busy">已排隊或正在安裝，已略過</string>
+    <string name="extension_batch_stopped">已停止</string>
+    <string name="extension_batch_failed">失敗</string>
+    <string name="extension_batch_changed">安裝條件已變更，已略過或等待重新確認</string>
+    <string name="extension_batch_review">檢查剩餘項</string>
+    <string name="extension_batch_reconfirm">安裝已暫停。繼續前請重新檢查並確認剩餘擴充套件。</string>
+    <string name="extension_batch_conflict">所選擴充套件提供了相同來源。繼續前請只選擇一個提供者。</string>
+    <string name="extension_batch_unavailable">清單已變更。請重新整理擴充套件或明確選擇替代儲存庫，然後重新檢查。</string>
+    <string name="extension_batch_use_repository">使用此儲存庫</string>
 </resources>

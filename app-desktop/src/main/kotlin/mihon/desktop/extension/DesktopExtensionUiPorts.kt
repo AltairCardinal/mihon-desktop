@@ -11,7 +11,7 @@ interface DesktopExtensionPresentationService {
     val installedExtensions: StateFlow<List<InstalledExtension>>
     val extensionsDirectory: File
 
-    fun installExtensionStates(artifact: ExtensionArtifact): Flow<ExtensionInstallState>
+    fun installExtensionStates(artifact: ExtensionArtifact, beforeCommit: (() -> Unit)? = null): Flow<ExtensionInstallState>
 
     fun removeExtensionWithMeta(extension: InstalledExtension): Boolean
 

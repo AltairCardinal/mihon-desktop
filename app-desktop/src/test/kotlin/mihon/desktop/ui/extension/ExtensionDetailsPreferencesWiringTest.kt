@@ -1,5 +1,6 @@
 package mihon.desktop.ui.extension
 
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -93,6 +94,7 @@ class ExtensionDetailsPreferencesWiringTest {
         val refreshEntered = CompletableDeferred<Unit>()
         val releaseRefresh = CompletableDeferred<Unit>()
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } coAnswers {
                 refreshEntered.complete(Unit)
                 releaseRefresh.await()

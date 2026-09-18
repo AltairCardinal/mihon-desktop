@@ -1,5 +1,6 @@
 package mihon.desktop.extension
 
+import mihon.domain.extension.service.ExtensionInstallBusy
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
@@ -47,6 +48,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -59,6 +61,132 @@ import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
 
 class DesktopExtensionInstallTransactionTest {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = [false, true])
+    fun `production commit and rollback metadata replacements exclude concurrent readers`(
+        rollback: Boolean,
+        @TempDir directory: Path,
+    ) = runBlocking {
+        installedSnapshot(directory)
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val replacements = java.util.concurrent.atomic.AtomicInteger()
+        val fileSystem = object : DesktopExtensionFileSystem by DefaultDesktopExtensionFileSystem {
+            override fun replaceFromSnapshot(snapshot: File, destination: File) {
+                if (destination.name == "$PACKAGE.meta.json" && replacements.incrementAndGet() == if (rollback) 2 else 1) {
+                    entered.countDown()
+                    check(release.await(5, TimeUnit.SECONDS))
+                }
+                DefaultDesktopExtensionFileSystem.replaceFromSnapshot(snapshot, destination)
+            }
+        }
+        val loader = FailOnceLoader(directory.toFile())
+        val manager = transactionManager(loader,
+            artifactProvider = { _, destination -> destination.writeBytes(sourceJar(FixtureNewSource::class.java)) },
+            fileSystem = fileSystem).also { it.loadAll() }
+        loader.failNextReload = rollback
+        val install = async(Dispatchers.IO) { manager.installExtension(artifact(FixtureNewSource.ID)) }
+        val reader = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            val readerStarted = CountDownLatch(1)
+            val read = reader.submit<ExtensionMeta?> {
+                readerStarted.countDown()
+                readExtensionMeta(directory.resolve("$PACKAGE.jar").toFile())
+            }
+            assertTrue(readerStarted.await(5, TimeUnit.SECONDS))
+            assertThrows(java.util.concurrent.TimeoutException::class.java) { read.get(100, TimeUnit.MILLISECONDS) }
+            release.countDown()
+            val metadata = requireNotNull(read.get(5, TimeUnit.SECONDS))
+            val terminal = withTimeout(5_000) { install.await() }
+            if (rollback) {
+                assertInstanceOf(ExtensionInstallState.Failed::class.java, terminal)
+                assertEquals(1L, metadata.versionCode)
+            } else {
+                assertInstanceOf(ExtensionInstallState.Installed::class.java, terminal)
+                assertEquals(2L, metadata.versionCode)
+            }
+        } finally {
+            release.countDown()
+            reader.shutdownNow()
+            assertTrue(reader.awaitTermination(5, TimeUnit.SECONDS))
+            manager.close()
+        }
+    }
+
+    @Test
+    fun `failed sidecar deletion returns false and publishes actual installed inventory`(@TempDir directory: Path) {
+        installedSnapshot(directory)
+        val manager = DesktopExtensionManager(loader = DesktopExtensionLoader(directory.toFile()))
+        try {
+            manager.loadAll()
+            val installed = manager.getInstalledExtensions().single()
+            val metadata = directory.resolve("$PACKAGE.meta.json").toFile()
+            assertTrue(metadata.delete())
+            assertTrue(metadata.mkdir())
+            File(metadata, "held").writeText("not empty")
+            assertFalse(manager.removeExtensionWithMeta(installed))
+            assertTrue(manager.installedExtensions.value.isEmpty())
+            assertFalse(PACKAGE in manager.inventory.value.records)
+            assertFalse(installed.jarFile.exists())
+            assertTrue(metadata.exists())
+        } finally { manager.close() }
+    }
+
+    @Test
+    fun `metadata deletion waits for an active production read and closes the sidecar`(@TempDir directory: Path) {
+        installedSnapshot(directory)
+        val jar = directory.resolve("$PACKAGE.jar").toFile()
+        val metadata = directory.resolve("$PACKAGE.meta.json").toFile()
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val once = AtomicBoolean(true)
+        val readFile = object : File(jar.absolutePath) {
+            override fun getParent(): String {
+                if (once.compareAndSet(true, false)) {
+                    // A real file handle models the Windows read/delete window; the latch only fixes its timing.
+                    metadata.inputStream().use {
+                        entered.countDown()
+                        check(release.await(5, TimeUnit.SECONDS))
+                    }
+                }
+                return super.getParent()
+            }
+        }
+        val executor = java.util.concurrent.Executors.newFixedThreadPool(2)
+        try {
+            val read = executor.submit<ExtensionMeta?> { readExtensionMeta(readFile) }
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            val deleting = CountDownLatch(1)
+            val deletion = executor.submit {
+                deleting.countDown()
+                deleteExtensionMeta(jar)
+            }
+            assertTrue(deleting.await(5, TimeUnit.SECONDS))
+            val early = runCatching { deletion.get(100, TimeUnit.MILLISECONDS) }
+            assertTrue(early.exceptionOrNull() is java.util.concurrent.TimeoutException,
+                "Deletion completed during read: done=${deletion.isDone}, sidecarExists=${metadata.exists()}")
+            release.countDown()
+            assertNotNull(read.get(5, TimeUnit.SECONDS))
+            deletion.get(5, TimeUnit.SECONDS)
+            assertFalse(metadata.exists())
+            assertTrue(jar.exists())
+        } finally {
+            release.countDown()
+            executor.shutdownNow()
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS))
+        }
+    }
+
+    @Test
+    fun `metadata deletion failure is reported instead of silently leaving a sidecar`(@TempDir directory: Path) {
+        val jar = directory.resolve("blocked.jar").toFile()
+        val metadata = directory.resolve("blocked.meta.json").toFile().apply { mkdirs() }
+        File(metadata, "held").writeText("not empty")
+        assertThrows(java.io.IOException::class.java) { deleteExtensionMeta(jar) }
+        assertTrue(metadata.exists())
+    }
+
     @Test
     fun `native JAR install wires authenticated Page ABI adaptation before runtime load`(
         @TempDir directory: Path,
@@ -76,7 +204,7 @@ class DesktopExtensionInstallTransactionTest {
     }
 
     @Test
-    fun `same package concurrent installs share one application transaction`(@TempDir directory: Path) = runBlocking {
+    fun `same package concurrent API requests keep the owner and reject the duplicate as busy`(@TempDir directory: Path) = runBlocking {
         val bytes = sourceJar(FixtureNewSource::class.java)
         MockWebServer().use { server ->
             server.start()
@@ -102,7 +230,11 @@ class DesktopExtensionInstallTransactionTest {
                 }
 
                 assertEquals(1, server.requestCount)
-                assertTrue(results.all { it is DesktopExtensionApi.InstallResult.Success })
+                assertEquals(1, results.count { it is DesktopExtensionApi.InstallResult.Success })
+                val rejected = results.filterIsInstance<DesktopExtensionApi.InstallResult.Error>().single()
+                assertTrue(rejected.error?.cause is ExtensionInstallBusy)
+                assertNotNull(manager.getSource(FixtureNewSource.ID))
+                assertFalse(api.installArbiter.isBusy(extension.pkgName))
             } finally {
                 manager.close()
             }
@@ -173,7 +305,7 @@ class DesktopExtensionInstallTransactionTest {
         val result = install(bytes, directory)
 
         val error = assertInstanceOf(DesktopExtensionApi.InstallResult.Error::class.java, result)
-        assertInstanceOf(mihon.domain.error.AppError.MalformedData::class.java, error.error)
+        assertInstanceOf(AppError.MalformedData::class.java, error.error)
         assertFalse(directory.resolve("$PACKAGE.jar").toFile().exists())
     }
 
@@ -188,7 +320,7 @@ class DesktopExtensionInstallTransactionTest {
         val result = install(bytes, directory, FixtureNewSource.ID, packageName = declaredPackage)
 
         val error = assertInstanceOf(DesktopExtensionApi.InstallResult.Error::class.java, result)
-        assertInstanceOf(mihon.domain.error.AppError.MalformedData::class.java, error.error)
+        assertInstanceOf(AppError.MalformedData::class.java, error.error)
         assertFalse(directory.resolve("$declaredPackage.jar").toFile().exists())
     }
 
@@ -207,7 +339,7 @@ class DesktopExtensionInstallTransactionTest {
             }
 
             val error = assertInstanceOf(DesktopExtensionApi.InstallResult.Error::class.java, result)
-            val serverError = assertInstanceOf(mihon.domain.error.AppError.Server::class.java, error.error)
+            val serverError = assertInstanceOf(AppError.Server::class.java, error.error)
             assertEquals(503, serverError.statusCode)
         }
     }
@@ -662,6 +794,7 @@ class DesktopExtensionInstallTransactionTest {
                 val installedTerminal = assertInstanceOf(ExtensionInstallState.Installed::class.java, terminal)
                 assertEquals(
                     listOf(
+                        ExtensionInstallState.Queued::class,
                         ExtensionInstallState.Preparing::class,
                         ExtensionInstallState.Validating::class,
                         ExtensionInstallState.Committing::class,
@@ -894,7 +1027,7 @@ class DesktopExtensionInstallTransactionTest {
         val result = install(apk, directory)
 
         val error = assertInstanceOf(DesktopExtensionApi.InstallResult.Error::class.java, result)
-        assertInstanceOf(mihon.domain.error.AppError.MalformedData::class.java, error.error)
+        assertInstanceOf(AppError.MalformedData::class.java, error.error)
         assertFalse(directory.resolve("$PACKAGE.jar").toFile().exists())
         assertNoTransactionFiles(directory)
     }

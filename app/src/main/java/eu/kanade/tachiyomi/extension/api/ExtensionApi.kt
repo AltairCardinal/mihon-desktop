@@ -4,6 +4,7 @@ import android.content.Context
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.LoadResult
+import eu.kanade.tachiyomi.extension.model.toAvailable
 import eu.kanade.tachiyomi.extension.util.ExtensionLoader
 import eu.kanade.tachiyomi.network.AndroidNetworkResponseAdapter
 import eu.kanade.tachiyomi.network.GET
@@ -63,32 +64,9 @@ internal class ExtensionApi(
         val extensions = catalog.entries
             .map { entry ->
                 val artifact = entry.artifact
-                Extension.Available(
-                    name = artifact.name,
-                    pkgName = artifact.packageName,
-                    versionName = artifact.versionName,
-                    versionCode = artifact.versionCode,
-                    libVersion = artifact.libVersion,
-                    lang = artifact.language,
-                    isNsfw = artifact.isNsfw,
-                    sources = artifact.sources.map {
-                        Extension.Available.Source(
-                            id = it.id,
-                            lang = it.language,
-                            name = it.name,
-                            baseUrl = it.baseUrl,
-                        )
-                    },
-                    apkName = (artifact.apkUrl ?: artifact.downloadUrl).substringAfterLast('/'),
-                    iconUrl = artifact.iconUrl,
-                    repoUrl = artifact.repository.baseUrl,
-                    repoName = artifact.repository.name,
-                    repoFingerprint = artifact.repository.signingKeyFingerprint,
-                    declaredSha256 = artifact.declaredSha256,
-                    downloadUrl = artifact.apkUrl ?: artifact.downloadUrl,
-                )
+                artifact.toAvailable()
             }
-        return ExtensionDiscoveryResult(extensions, catalog.failures, catalog.repositories)
+        return ExtensionDiscoveryResult(extensions, catalog.failures, catalog.repositories, catalog)
     }
 
     suspend fun refreshCatalog(): ExtensionCatalogResult = withIOContext {
@@ -169,4 +147,5 @@ internal data class ExtensionDiscoveryResult(
     val extensions: List<Extension.Available>,
     val failures: List<mihon.domain.extension.model.RepositoryCatalogFailure>,
     val repositories: List<mihon.domain.extension.model.RepositoryIdentity>,
+    val catalog: ExtensionCatalogResult? = null,
 )

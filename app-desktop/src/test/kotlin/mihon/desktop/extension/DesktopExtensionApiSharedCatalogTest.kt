@@ -1,6 +1,8 @@
 package mihon.desktop.extension
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -27,9 +29,107 @@ import java.nio.file.Path
 import java.security.MessageDigest
 
 class DesktopExtensionApiSharedCatalogTest {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = [false, true])
+    fun `cancelling at presentation Pending releases normal and confirmed API ownership`(trustRequired: Boolean) = runBlocking {
+        val api = api()
+        val extension = DesktopAvailableExtension(
+            "Reader", "pkg.firstpending", "1.4.2", 2, 1.4, "en", false,
+            "https://repo.example/reader.jar", "", "https://repo.example", repoFingerprint = "new-key",
+        )
+        if (trustRequired) {
+            val jar = extensionArtifactFile(tempDir.toFile(), extension.pkgName, "jar")
+            jar.writeBytes(byteArrayOf(1, 2, 3))
+            writeExtensionMeta(jar, ExtensionMeta(extension.pkgName, 1, "1.4.1", repoUrl = extension.repoUrl, repoFingerprint = "old-key"))
+        }
+        val manager = io.mockk.mockk<DesktopExtensionPresentationService> {
+            io.mockk.every { installedExtensions } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+            io.mockk.every { extensionsDirectory } returns tempDir.toFile()
+        }
+        val port = mihon.desktop.ui.extension.DesktopExtensionPresentationPort(api, manager)
+        val first = port.beginPresentationInstall(extension)
+        val events = when (first) {
+            is mihon.desktop.ui.extension.DesktopPresentationInstallStart.Started -> first.events
+            is mihon.desktop.ui.extension.DesktopPresentationInstallStart.TrustRequired ->
+                checkNotNull(port.confirmPresentationTrust(first.request.requestId))
+            is mihon.desktop.ui.extension.DesktopPresentationInstallStart.Rejected -> error("Unexpected rejection")
+        }
+        assertEquals(mihon.domain.extension.presentation.ExtensionPresentationInstallStep.Pending, events.take(1).toList().single().step)
+        org.junit.jupiter.api.Assertions.assertFalse(api.installArbiter.isBusy(extension.pkgName))
+        io.mockk.verify(exactly = 0) { manager.installExtensionStates(any(), any()) }
+    }
+
 
     @TempDir
     lateinit var tempDir: Path
+
+    @Test
+    fun `metadata is read only after the actual package reservation is active`() = runBlocking {
+        val api = api()
+        val extension = DesktopAvailableExtension(
+            "Reader", "pkg.metadata", "1.4.2", 2, 1.4, "en", false,
+            "https://repo.example/reader.jar", "", "https://repo.example", repoFingerprint = "key",
+        )
+        val manager = io.mockk.mockk<DesktopExtensionPresentationService>()
+        io.mockk.every { manager.extensionsDirectory } answers {
+            assertTrue(api.installArbiter.isBusy(extension.pkgName))
+            tempDir.toFile()
+        }
+        io.mockk.every { manager.installExtensionStates(any(), any()) } returns kotlinx.coroutines.flow.emptyFlow()
+        assertInstanceOf(DesktopExtensionInstallStart.Started::class.java, api.beginInstall(extension, manager)).states.collect {}
+    }
+
+    @Test
+    fun `trust synchronous adapter failure releases the exact reservation`() = runBlocking {
+        val api = api()
+        val extension = DesktopAvailableExtension(
+            "Reader", "pkg.trust", "1.4.2", 2, 1.4, "en", false,
+            "https://repo.example/reader.jar", "", "https://repo.example", repoFingerprint = "new-key",
+        )
+        val jar = extensionArtifactFile(tempDir.toFile(), extension.pkgName, "jar")
+        jar.writeBytes(byteArrayOf(1, 2, 3))
+        writeExtensionMeta(jar, ExtensionMeta(extension.pkgName, 1, "1.4.1", repoUrl = extension.repoUrl, repoFingerprint = "old-key"))
+        val manager = io.mockk.mockk<DesktopExtensionPresentationService>()
+        io.mockk.every { manager.extensionsDirectory } returns tempDir.toFile()
+        val pending = assertInstanceOf(DesktopExtensionInstallStart.TrustRequired::class.java, api.beginInstall(extension, manager))
+        assertInstanceOf(DesktopExtensionInstallStart.Rejected::class.java, api.beginInstall(extension, manager))
+        io.mockk.every { manager.installExtensionStates(any(), any()) } throws IllegalStateException("synchronous adapter failure")
+        val failure = runCatching { checkNotNull(api.confirmTrust(pending.requestId, manager)).collect {} }.exceptionOrNull()
+        assertEquals("synchronous adapter failure", failure?.message)
+        org.junit.jupiter.api.Assertions.assertFalse(api.installArbiter.isBusy(extension.pkgName))
+        val retry = assertInstanceOf(DesktopExtensionInstallStart.TrustRequired::class.java, api.beginInstall(extension, manager))
+        assertTrue(api.discardTrust(retry.requestId))
+        org.junit.jupiter.api.Assertions.assertFalse(api.installArbiter.isBusy(extension.pkgName))
+    }
+
+    @Test
+    fun `two production API entries reject a busy package instead of keeping a replacement request`() = runBlocking {
+        val api = api()
+        val extension = DesktopAvailableExtension(
+            "Reader", "pkg.busy", "1.4.2", 2, 1.4, "en", false,
+            "https://repo.example/reader.jar", "", "https://repo.example", repoFingerprint = "key",
+        )
+        val manager = io.mockk.mockk<DesktopExtensionPresentationService>(relaxed = true)
+        io.mockk.every { manager.extensionsDirectory } returns tempDir.toFile()
+        val entered = CompletableDeferred<Unit>()
+        io.mockk.every { manager.installExtensionStates(any(), any()) } returns kotlinx.coroutines.flow.flow {
+            entered.complete(Unit)
+            kotlinx.coroutines.awaitCancellation()
+        }
+        val first = assertInstanceOf(DesktopExtensionInstallStart.Started::class.java, api.beginInstall(extension, manager))
+        val running = async { first.states.collect {} }
+        entered.await()
+        try {
+            assertInstanceOf(DesktopExtensionInstallStart.Rejected::class.java, api.beginInstall(extension.copy(repoUrl = "https://other.example"), manager))
+            io.mockk.verify(exactly = 1) { manager.installExtensionStates(any(), any()) }
+        } finally {
+            running.cancelAndJoin()
+        }
+        val retry = assertInstanceOf(DesktopExtensionInstallStart.Started::class.java, api.beginInstall(extension, manager))
+        val retryJob = async { retry.states.collect {} }
+        kotlinx.coroutines.yield()
+        retryJob.cancelAndJoin()
+    }
 
     @Test
     fun `Desktop explicit zero API cannot fall back to supported version name`() = runBlocking {
@@ -42,7 +142,7 @@ class DesktopExtensionApiSharedCatalogTest {
             assertEquals(0.0, extension.libVersion)
             assertInstanceOf(ExtensionCompatibility.UnsupportedLib::class.java, extension.compatibility)
             assertInstanceOf(DesktopExtensionInstallStart.Rejected::class.java, api.beginInstall(extension, manager))
-            io.mockk.verify(exactly = 0) { manager.installExtensionStates(any()) }
+            io.mockk.verify(exactly = 0) { manager.installExtensionStates(any(), any()) }
         }
     }
 
@@ -65,8 +165,8 @@ class DesktopExtensionApiSharedCatalogTest {
         val manager = io.mockk.mockk<DesktopExtensionPresentationService>(relaxed = true)
         io.mockk.every { manager.extensionsDirectory } returns tempDir.toFile()
         val captured = io.mockk.slot<mihon.domain.extension.model.ExtensionArtifact>()
-        io.mockk.every { manager.installExtensionStates(capture(captured)) } returns kotlinx.coroutines.flow.emptyFlow()
-        assertInstanceOf(DesktopExtensionInstallStart.Started::class.java, api.beginInstall(extension, manager))
+        io.mockk.every { manager.installExtensionStates(capture(captured), any()) } returns kotlinx.coroutines.flow.emptyFlow()
+        assertInstanceOf(DesktopExtensionInstallStart.Started::class.java, api.beginInstall(extension, manager)).states.collect {}
         assertEquals(1.6, captured.captured.libVersion)
     }
 
@@ -108,7 +208,7 @@ class DesktopExtensionApiSharedCatalogTest {
             io.mockk.every { manager.extensionsDirectory } returns tempDir.toFile()
             val result = api.beginInstall(extensions.single(), manager)
             assertInstanceOf(DesktopExtensionInstallStart.Rejected::class.java, result)
-            io.mockk.verify(exactly = 0) { manager.installExtensionStates(any()) }
+            io.mockk.verify(exactly = 0) { manager.installExtensionStates(any(), any()) }
         }
     }
 

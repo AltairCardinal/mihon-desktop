@@ -1,5 +1,6 @@
 package mihon.desktop.i18n
 
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
@@ -42,6 +43,7 @@ class DesktopExtensionListRenderedCopyTest {
     fun `extension list filter and uninstall render localized copy`() = runBlocking {
         val extension = InstalledExtension(File("example.jar"), emptyList(), displayName = "Example Extension", language = "en")
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } returns ExtensionCatalogResult(emptyList(), emptyList())
             every { availableExtensions(any()) } returns emptyList()
             coEvery { loadExtensionIcon(any()) } returns null

@@ -1,5 +1,6 @@
 package mihon.desktop.ui.extension
 
+import mihon.domain.extension.service.ExtensionInstallArbiter
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
@@ -69,6 +70,7 @@ class ExtensionPresentationUiTest {
         )
         val catalog = ExtensionCatalogResult(emptyList(), emptyList())
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } returns catalog
             every { availableExtensions(catalog) } returns listOf(candidate)
             coEvery { loadExtensionIcon(any()) } returns null
@@ -101,6 +103,7 @@ class ExtensionPresentationUiTest {
         val installedFlow = MutableStateFlow(listOf(installed))
         val catalog = ExtensionCatalogResult(emptyList(), emptyList())
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } returns catalog
             every { availableExtensions(catalog) } returns emptyList()
             coEvery { loadExtensionIcon(any()) } returns null
@@ -171,6 +174,7 @@ class ExtensionPresentationUiTest {
         Locale.setDefault(Locale.ENGLISH)
         val installed = InstalledExtension(File("local.jar"), emptyList(), displayName = "Local extension")
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } throws IllegalStateException("catalog offline")
             coEvery { loadExtensionIcon(any()) } returns null
         }
@@ -213,6 +217,7 @@ class ExtensionPresentationUiTest {
         val installed = InstalledExtension(File("local-details.jar"), emptyList(), displayName = "Local details")
         val catalogs = Channel<ExtensionCatalogResult>(Channel.UNLIMITED)
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } coAnswers { catalogs.receive() }
             coEvery { loadExtensionIcon(any()) } returns null
         }
@@ -264,6 +269,12 @@ class ExtensionPresentationUiTest {
         val localModel = mockk<ExtensionsScreenModel>(relaxed = true)
         val globalModel = mockk<ExtensionsScreenModel>(relaxed = true)
         every { localModel.state } returns localState
+        every { localModel.suggestionBatch } returns mihon.domain.extension.suggestion.ExtensionSuggestionBatchController(
+            this,
+            ExtensionInstallArbiter(),
+            mihon.domain.extension.suggestion.SuggestionBatchInstallPort { _, _ -> error("No installation expected") },
+            { null },
+        )
         val dependencies = mockk<DesktopUiDependencies>(relaxed = true)
         val scene = ImageComposeScene(900, 900, coroutineContext = coroutineContext) {}
         val previous = Injekt
@@ -298,6 +309,7 @@ class ExtensionPresentationUiTest {
         val alpha = InstalledExtension(File("alpha.jar"), emptyList(), displayName = "Alpha Extension")
         val beta = InstalledExtension(File("beta.jar"), emptyList(), displayName = "Beta Extension")
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } returns ExtensionCatalogResult(emptyList(), emptyList())
             every { availableExtensions(any()) } returns emptyList()
             coEvery { loadExtensionIcon(any()) } returns null
@@ -353,6 +365,7 @@ class ExtensionPresentationUiTest {
         val availableCopyManga = extension("CopyManga", copyManga.pkgName, emptyList()).copy(lang = "zh")
         val catalog = ExtensionCatalogResult(emptyList(), emptyList())
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } returns catalog
             every { availableExtensions(catalog) } returns listOf(availableCopyManga)
             coEvery { loadExtensionIcon(any()) } returns null
@@ -402,6 +415,7 @@ class ExtensionPresentationUiTest {
         val releaseRefresh = CompletableDeferred<Unit>()
         val catalog = ExtensionCatalogResult(emptyList(), emptyList())
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } coAnswers {
                 refreshEntered.complete(Unit)
                 releaseRefresh.await()
@@ -452,6 +466,7 @@ class ExtensionPresentationUiTest {
         val catalog = ExtensionCatalogResult(emptyList(), emptyList())
         var refreshCalls = 0
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } coAnswers {
                 refreshCalls++
                 catalog
@@ -507,6 +522,7 @@ class ExtensionPresentationUiTest {
         var refreshCalls = 0
         var nowMillis = 1_000L
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } coAnswers {
                 refreshCalls++
                 if (refreshCalls > 1) {
@@ -560,6 +576,7 @@ class ExtensionPresentationUiTest {
         val catalog = ExtensionCatalogResult(emptyList(), emptyList())
         val repositories = MutableStateFlow<List<ExtensionRepo>>(emptyList())
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } returns catalog
             every { availableExtensions(catalog) } returns emptyList()
         }
@@ -626,6 +643,7 @@ class ExtensionPresentationUiTest {
         val catalogs = Channel<ExtensionCatalogResult>(Channel.UNLIMITED)
         var refreshCalls = 0
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } coAnswers { refreshCalls++; catalogs.receive() }
             every { availableExtensions(any()) } answers {
                 if (firstArg<ExtensionCatalogResult>() === partial) listOf(candidate, firstAvailable, available) else emptyList()
@@ -800,6 +818,7 @@ class ExtensionPresentationUiTest {
         Locale.setDefault(Locale.SIMPLIFIED_CHINESE)
         val extension = InstalledExtension(File("pkg.routed.jar"), emptyList(), displayName = "Routed extension")
         val api = mockk<DesktopExtensionApi> {
+            io.mockk.every { installArbiter } returns ExtensionInstallArbiter()
             coEvery { refreshCatalog() } returns ExtensionCatalogResult(emptyList(), emptyList())
             every { availableExtensions(any()) } returns emptyList()
             coEvery { loadExtensionIcon(any()) } returns null
