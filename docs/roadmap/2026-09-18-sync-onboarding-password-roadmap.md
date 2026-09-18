@@ -1,5 +1,7 @@
 # 同步初次配置简化与可选密码 Roadmap
 
+> 2026-09-19 新迭代：[专用仓库最小权限 roadmap](2026-09-19-sync-least-privilege-onboarding-roadmap.md)取代自动建库及 Administration 权限方向，当前仅完成规划。以下已完成项是历史事实；P6 未通过的真实运行门槛继续保留，不因新计划登记而勾选或宣称发布完成。
+
 日期：2026-09-18。状态：P1–P5 已实现、独立审查及验证通过，随本批源码提交。Windows 正式产物和 Android API 26 Release/R8 跨进程验收已通过；P6 尚缺 macOS Keychain/正式产物、真实 GitHub 隔离账号联调与最低支持真机性能证据，保持未完成。用户确认的无需兼容旧格式、App 注册权限及固定名安全创建决定不变。
 
 设计权威：[本次迭代交互设计](../2026-09-18-sync-onboarding-password-design.md)，其中 O1–O10 是本轮交互覆盖索引。原型：[双端 DEMO 及验证说明](../prototypes/multi-device-sync/README.md)。现有实现与历史验收：[已完成 S1–S5 计划](2026-09-13-multi-device-sync-implementation.md)。

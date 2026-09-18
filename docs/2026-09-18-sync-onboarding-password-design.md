@@ -1,5 +1,7 @@
 # 跨端同步首次配置：自动连接与可选密码
 
+> 2026-09-19 后续决策：[专用仓库最小权限设计](2026-09-19-sync-least-privilege-onboarding-design.md)替代本文的 API 自动建库、Administration 权限和未知空库一律不接管规则。新迭代仍待实施；本文保留历史实现与验收依据，v2 格式和可选密码规则继续适用。
+
 - 日期：2026-09-18
 - 状态：生产配置流程已接入共享及双端原生入口；独立审查、Windows 正式运行及 Android API 26 R8 验证通过，外部联调和剩余平台门槛见 roadmap。
 - 原型：[双端 HTML DEMO](prototypes/multi-device-sync/index.html) · [运行与审阅说明](prototypes/multi-device-sync/README.md)
