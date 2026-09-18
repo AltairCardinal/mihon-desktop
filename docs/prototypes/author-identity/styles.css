@@ -69,11 +69,10 @@
 .version-choice:nth-child(even) .cover { background: linear-gradient(145deg, #476f79, #20334e); }
 
 /* BrowseBadges.InLibraryBadge / Badge: CollectionsBookmark, bodySmall, secondary colors.
-   CommonMangaItemDefaults.BrowseFavoriteCoverAlpha = 0.34; list badge follows title. */
+   CommonMangaItemDefaults.BrowseFavoriteCoverAlpha = 0.34; all author work layouts keep the badge at cover top-start. */
 .theme-light { --secondary: #575e71; --on-secondary: #ffffff; }
 .theme-dark { --secondary: #bfc6dc; --on-secondary: #293041; }
 .collected-badge svg { width: 12px; height: 12px; display: block; }
 .representative-cover::before { content: ''; position: absolute; inset: 0; border-radius: inherit; z-index: -1; background: radial-gradient(circle at 90% 5%, #ffffff22 0 27%, transparent 28%), linear-gradient(155deg, #416276, #202e41); }
 .representative-cover:has(.collected-badge)::before, .representative-cover:has(.collected-badge) > span:first-child { opacity: .34; }
 .work-item:has(.collected-badge) .cover, .version-choice:has(.collected-badge) .cover { opacity: .34; }
-.work-item > .collected-badge { position: static; flex: none; align-self: center; }

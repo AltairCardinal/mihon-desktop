@@ -329,7 +329,7 @@ test('直接添加失败保留选择、过期在当前窗刷新、搜索与键�
   await action(pc, 'add').click(); assert.equal(await pc.getByRole('dialog').count(), 0);
 }));
 
-test('收藏采用原版书签图标与封面透明度，网格左上角而列表行尾', () => setup(async (page, pc, phone) => {
+test('收藏采用原版书签图标与封面透明度，列表与网格均在封面左上角', () => setup(async (page, pc, phone) => {
   await page.locator('#narrow').check();
   for (const f of [pc, phone]) {
     if (f === pc) await f.getByTestId('nav-authors').click();
@@ -343,7 +343,12 @@ test('收藏采用原版书签图标与封面透明度，网格左上角而列�
     await f.locator('[data-author="a"]').click();
     const work = f.locator('[data-action="work"][data-work="w0"]');
     assert.equal(await work.locator('.cover').evaluate(e => getComputedStyle(e).opacity), '0.34');
-    assert.equal(await work.locator(':scope > .collected-badge').count(), 1);
+    assert.equal(await work.locator(':scope > .collected-badge').count(), 0);
+    assert.equal(await work.locator('.work-cover-wrap > .collected-badge').count(), 1);
+    const coverBox = await work.locator('.work-cover-wrap').boundingBox();
+    const badgeBox = await work.locator('.collected-badge').boundingBox();
+    assert.ok(Math.abs(badgeBox.x - coverBox.x - 4) < 1);
+    assert.ok(Math.abs(badgeBox.y - coverBox.y - 4) < 1);
     for (const mode of ['comfortable', 'compact']) {
       await action(f, 'display').click(); await f.locator(`[data-display="${mode}"]`).click();
       assert.equal(await work.locator('.work-cover-wrap > .collected-badge').count(), 1);

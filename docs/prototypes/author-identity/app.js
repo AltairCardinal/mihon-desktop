@@ -22,7 +22,7 @@
   const workDate = work => { const d = M.workDate(state, work); return `<span class="work-date"${d.source ? ` title="日期来源：${esc(d.source)}"` : ''}>${esc(d.label)} ${esc(d.date)}</span>`; };
   const workItem = group => {
     const v = group[0], siblings = versions(current().id).filter(item => item.work === v.work);
-    return `<button class="row work-row work-item" data-action="work" data-work="${esc(v.work)}"><span class="work-cover-wrap"><span class="cover small">${esc(v.title)}</span>${displayMode !== 'list' ? badge(collected(v.work)) : ''}${displayMode === 'compact' ? `<strong class="cover-title">${esc(v.title)}</strong>` : ''}</span><span class="grow">${displayMode !== 'compact' ? `<strong>${esc(v.title)}</strong>` : ''}${unseen(current().id).includes(v.work) ? '<span class="new-work-badge">新作 · 未查看</span>' : ''}${workDate(v.work)}<span class="source-summary">${siblings.length} 个来源版本</span></span>${displayMode === 'list' ? badge(collected(v.work)) : ''}</button>`;
+    return `<button class="row work-row work-item" data-action="work" data-work="${esc(v.work)}"><span class="work-cover-wrap"><span class="cover small">${esc(v.title)}</span>${badge(collected(v.work))}${displayMode === 'compact' ? `<strong class="cover-title">${esc(v.title)}</strong>` : ''}</span><span class="grow">${displayMode !== 'compact' ? `<strong>${esc(v.title)}</strong>` : ''}${unseen(current().id).includes(v.work) ? '<span class="new-work-badge">新作 · 未查看</span>' : ''}${workDate(v.work)}<span class="source-summary">${siblings.length} 个来源版本</span></span></button>`;
   };
   const authorRow = a => {
     // Local design fixtures have no reading/popularity signals: retain first-seen work order.
