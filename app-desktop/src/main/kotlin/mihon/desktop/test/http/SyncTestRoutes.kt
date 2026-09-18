@@ -36,7 +36,8 @@ internal fun Route.syncTestRoutes(panel: SyncPanel?, secureStore: SyncSecureStor
             put("pendingTotal", state.pendingTotal)
             put("setupStep", state.setupStep.name)
             put("setupBusy", state.setupBusy)
-            put("repositoryCount", state.repositories.size)
+            put("spaceCount", state.spaces.size)
+            put("setupProblem", state.setupProblem?.name?.let(::JsonPrimitive) ?: JsonNull)
             put("problem", state.problem?.name?.let(::JsonPrimitive) ?: JsonNull)
             put("authFailure", state.authFailure?.name?.let(::JsonPrimitive) ?: JsonNull)
             put("lastSuccessMillis", state.lastSuccessMillis)
@@ -73,7 +74,7 @@ internal fun Route.syncTestRoutes(panel: SyncPanel?, secureStore: SyncSecureStor
             "setup" -> SyncPanelAction.BeginSetup
             "authorize" -> SyncPanelAction.Authorize
             "cancel_authorization" -> SyncPanelAction.CancelAuthorization
-            "refresh_repositories" -> SyncPanelAction.RefreshRepositories
+            "retry_setup" -> SyncPanelAction.RetrySetup
             "synchronize" -> SyncPanelAction.Synchronize
             "cancel_sync" -> SyncPanelAction.CancelSync
             else -> null

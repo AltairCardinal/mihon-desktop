@@ -14,7 +14,16 @@ import java.security.SecureRandom
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
+enum class SyncPasswordInputIssue { TOO_LONG, INVALID }
+
+class SyncPasswordInputException(val issue: SyncPasswordInputIssue) : IllegalArgumentException(
+    "invalid sync password input",
+)
+
 object SyncSpaceCrypto {
+    fun validatePassword(password: String) {
+        passwordBytes(password).fill(0)
+    }
     fun create(spaceId: String, generation: Long, password: String): SyncSpaceMaterial {
         val input = passwordBytes(password)
         try {
@@ -92,15 +101,15 @@ object SyncSpaceCrypto {
     }
 
     private fun passwordBytes(password: String): ByteArray {
-        require(password.length <= 1024) { "sync password exceeds 1024 UTF-8 bytes" }
+        if (password.length > 1024) throw SyncPasswordInputException(SyncPasswordInputIssue.TOO_LONG)
         val bytes = try {
             password.encodeToByteArray(throwOnInvalidSequence = true)
         } catch (_: Exception) {
-            throw SyncCryptoException("sync password contains invalid Unicode")
+            throw SyncPasswordInputException(SyncPasswordInputIssue.INVALID)
         }
         if (bytes.size > 1024) {
             bytes.fill(0)
-            throw SyncCryptoException("sync password exceeds 1024 UTF-8 bytes")
+            throw SyncPasswordInputException(SyncPasswordInputIssue.TOO_LONG)
         }
         return bytes
     }

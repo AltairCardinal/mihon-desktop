@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.semantics.SemanticsActions
@@ -22,25 +23,20 @@ import mihon.data.sync.runtime.SyncPanel
 import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPanelState
+import mihon.data.sync.runtime.SyncSetupStep
 import mihon.desktop.DesktopUiDependencies
 import mihon.desktop.LocalDesktopUiDependencies
 import mihon.desktop.domain.fakes.FakeCategoryRepository
 import mihon.desktop.domain.fakes.FakeMangaRepository
-import mihon.desktop.platform.DesktopFilePicker
-import mihon.desktop.platform.DesktopFilePickerRequest
-import mihon.desktop.platform.DesktopFilePickerResult
 import mihon.desktop.ui.library.LibraryRootScreen
 import mihon.desktop.ui.library.LibraryScreenModel
 import mihon.desktop.ui.library.ProvideLibraryScreenModelFactory
-import mihon.domain.sync.crypto.SyncRecoveryCodec
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.manga.interactor.GetLibraryManga
-import java.io.File
 
 @OptIn(ExperimentalComposeUiApi::class)
 class DesktopSyncPanelTest {
@@ -107,42 +103,23 @@ class DesktopSyncPanelTest {
             )
             click("sync-copy-open")
             verify(exactly = 2) { dependencies.notificationService.post(any()) }
+            panel.state.value = panel.state.value.copy(setupStep = SyncSetupStep.NEW_PASSWORD, deviceCode = null)
+            withTimeout(2_000) { while (find("sync-password-input") == null) render() }
+            requireNotNull(find("sync-password-input")!!.config[SemanticsActions.RequestFocus].action).invoke()
+            render()
+            val eventType = Class.forName("androidx.compose.ui.input.key.KeyEventType")
+                .getMethod("access\$getKeyDown\$cp").invoke(null)
+            val factory = Class.forName("androidx.compose.ui.input.key.KeyEvent_desktopKt").declaredMethods
+                .single { it.name.startsWith("KeyEvent-") && !it.name.endsWith("\$default") }
+            val native = factory.invoke(null, Key.Escape.keyCode, eventType, 0, false, false, false, false, null)
+            scene.sendKeyEvent(androidx.compose.ui.input.key.KeyEvent(native))
+            render()
+            assertEquals(SyncPanelPage.MAIN, panel.state.value.page)
             click("sync-close")
             assertFalse(panel.state.value.visible)
         } finally {
             scene.close()
         }
-    }
-
-    @Test
-    fun `recovery files use the shared picker and report success only after actual IO`(
-        @TempDir directory: File,
-    ) = runBlocking {
-        val file = directory.resolve("recovery.json")
-        val requests = mutableListOf<DesktopFilePickerRequest>()
-        val picker = object : DesktopFilePicker {
-            override suspend fun choose(request: DesktopFilePickerRequest): DesktopFilePickerResult {
-                requests += request
-                return DesktopFilePickerResult.Selected(file)
-            }
-        }
-        val panel = TestPanel()
-        val codec = DesktopSyncRecoveryFiles(picker)
-        val recovery = SyncRecoveryCodec.encode(
-            SyncRecoveryCodec.generate("space", 1, "fixture-recovery-id", { ByteArray(32) { 1 } }, 1).data,
-        )
-        assertTrue(codec.save(panel, recovery))
-        assertEquals(recovery, file.readText(Charsets.UTF_8))
-        assertEquals(listOf(SyncPanelAction.RecoverySaved(recovery)), panel.actions)
-        assertTrue(codec.load(panel))
-        assertEquals(SyncPanelAction.SetRecovery(recovery), panel.actions.last())
-        file.writeBytes(ByteArray(16 * 1024 + 1))
-        val before = panel.actions.size
-        assertFalse(codec.load(panel))
-        assertEquals(before, panel.actions.size)
-        file.writeBytes(byteArrayOf(0xc3.toByte(), 0x28))
-        assertFalse(codec.load(panel))
-        assertEquals(4, requests.size)
     }
 
     private class TestPanel : SyncPanel {

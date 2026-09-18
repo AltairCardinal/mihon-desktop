@@ -13,11 +13,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
+import mihon.data.sync.auth.SyncDiscoveryProblem
 import mihon.data.sync.inbox.SyncPendingItem
 import mihon.data.sync.runtime.SyncBulkConfirmation
 import mihon.data.sync.runtime.SyncBulkStatus
@@ -28,6 +31,7 @@ import mihon.data.sync.runtime.SyncPanelNotice
 import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPanelQuestion
 import mihon.data.sync.runtime.SyncPanelState
+import mihon.data.sync.runtime.SyncPasswordProblem
 import mihon.data.sync.runtime.SyncSetupStep
 import mihon.domain.sync.SyncCancellationDecision
 import mihon.domain.sync.SyncObjectKey
@@ -42,10 +46,117 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import tachiyomi.i18n.MR
 import java.io.File
+import java.util.Locale
 
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncPanelContentTest {
+    @Test
+    fun `unsupported binding is clearly identified in the main panel before any exchange`() = rendered(
+        connected().copy(
+            connection = connected().connection!!.copy(enabled = false, protectionMode = null),
+            setupProblem = SyncDiscoveryProblem.INCOMPATIBLE,
+            problem = SyncRunProblem.INVALID_DATA,
+        ),
+    ) {
+        awaitTag("sync-now")
+        assertTrue(texts().contains(MR.strings.sync_setup_incompatible.localized(Locale.getDefault())))
+        assertFalse(hasTag("sync-reenter-password"))
+        click("sync-now")
+        assertEquals(SyncPanelAction.BeginSetup, actions.last())
+    }
+
+    @Test
+    fun `setup completion is a dismissible session notice`() = rendered(
+        connected().copy(notice = SyncPanelNotice(setupCompleted = true)),
+    ) {
+        awaitTag("sync-setup-complete")
+        click("sync-dismiss-notice")
+        assertEquals(SyncPanelAction.DismissNotice, actions.last())
+        panel.state.value = connected()
+        render()
+        assertFalse(hasTag("sync-setup-complete"))
+    }
+
+    @Test
+    fun `unfinished setup offers continue and key problems offer verified reconnection`() = rendered(
+        SyncPanelState(visible = true, loaded = true, setupStep = SyncSetupStep.NEW_PASSWORD),
+    ) {
+        awaitTag("sync-now")
+        assertTrue(texts().contains(MR.strings.sync_setup_continue.localized(Locale.getDefault())))
+        click("sync-now")
+        assertEquals(SyncPanelAction.BeginSetup, actions.last())
+        panel.state.value = connected().copy(problem = SyncRunProblem.STORAGE)
+        awaitTag("sync-reenter-password")
+        click("sync-reenter-password")
+        assertEquals(SyncPanelAction.BeginSetup, actions.last())
+    }
+
+    @Test
+    fun `new password input changes action and visibility preserves selection`() = rendered(
+        SyncPanelState(visible = true, page = SyncPanelPage.SETUP, setupStep = SyncSetupStep.NEW_PASSWORD),
+    ) {
+        awaitTag("sync-password-input")
+        captureVisuals("password")
+        assertTrue(texts().contains(MR.strings.sync_password_skip.localized(Locale.getDefault())))
+        assertFalse(node("sync-password-submit").config.contains(SemanticsProperties.Disabled))
+        click("sync-password-submit")
+        assertEquals(SyncPanelAction.SubmitPassword(""), actions.last())
+        enterPassword(" 密碼 🔒 ")
+        assertTrue(texts().contains(MR.strings.sync_password_confirm.localized(Locale.getDefault())))
+        val input = node("sync-password-input")
+        requireNotNull(input.config[SemanticsActions.RequestFocus].action).invoke()
+        requireNotNull(input.config[SemanticsActions.SetSelection].action).invoke(1, 3, false)
+        render()
+        click("sync-password-visibility")
+        render()
+        assertEquals(TextRange(1, 3), node("sync-password-input").config[SemanticsProperties.TextSelectionRange])
+        assertTrue(node("sync-password-input").config[SemanticsProperties.Focused])
+        click("sync-password-submit")
+        assertEquals(SyncPanelAction.SubmitPassword(" 密碼 🔒 "), actions.last())
+        render()
+        enterPassword("temporary")
+        enterPassword("")
+        assertTrue(texts().contains(MR.strings.sync_password_skip.localized(Locale.getDefault())))
+        click("sync-password-submit")
+        assertEquals(SyncPanelAction.SubmitPassword(""), actions.last())
+        assertFalse(hasTag("sync-save-recovery"))
+        assertFalse(hasTag("sync-confirm-merge"))
+    }
+
+    @Test
+    fun `existing password input cannot skip and close clears unsubmitted text`() = rendered(
+        SyncPanelState(visible = true, page = SyncPanelPage.SETUP, setupStep = SyncSetupStep.UNLOCK),
+    ) {
+        awaitTag("sync-password-input")
+        assertTrue(node("sync-password-submit").config.contains(SemanticsProperties.Disabled))
+        enterPassword("local secret")
+        assertFalse(node("sync-password-submit").config.contains(SemanticsProperties.Disabled))
+        panel.state.value = panel.state.value.copy(visible = false)
+        render()
+        panel.state.value = panel.state.value.copy(visible = true)
+        render()
+        assertTrue(node("sync-password-submit").config.contains(SemanticsProperties.Disabled))
+        assertTrue(actions.isEmpty())
+    }
+
+    @Test
+    fun `settings show actual password protection instead of recovery export`() = rendered(
+        connected().copy(page = SyncPanelPage.SETTINGS),
+    ) {
+        awaitTag("sync-settings-list")
+        scroll("sync-settings-list", 5)
+        assertFalse(hasTag("sync-show-recovery"))
+        assertTrue(hasTag("sync-password-status"))
+        assertTrue(texts().contains(MR.strings.sync_password_disabled.localized(Locale.getDefault())))
+        panel.state.value = panel.state.value.copy(
+            connection = panel.state.value.connection!!.copy(protectionMode = "password"),
+        )
+        render()
+        assertTrue(texts().contains(MR.strings.sync_password_enabled.localized(Locale.getDefault())))
+    }
+
     @Test
     fun `reconnection explicitly authorizes from status settings and failed discovery`() = rendered(
         connected().copy(problem = SyncRunProblem.AUTHORIZATION),
@@ -59,7 +170,7 @@ class SyncPanelContentTest {
         assertEquals(SyncPanelAction.Authorize, actions.last())
         panel.state.value = connected().copy(
             page = SyncPanelPage.SETUP,
-            setupStep = SyncSetupStep.REPOSITORY,
+            setupStep = SyncSetupStep.ERROR,
             problem = SyncRunProblem.UNKNOWN,
         )
         awaitTag("sync-repo-reconnect")
@@ -68,19 +179,16 @@ class SyncPanelContentTest {
     }
 
     @Test
-    fun `unconfigured settings disable space actions but disconnected recovery remains available`() = rendered(
+    fun `unconfigured settings disable space actions and show unavailable protection`() = rendered(
         SyncPanelState(visible = true, page = SyncPanelPage.SETTINGS),
     ) {
         awaitTag("sync-settings-list")
         scroll("sync-settings-list", 5)
-        for (tag in listOf("sync-show-recovery", "sync-disconnect", "sync-switch")) {
+        for (tag in listOf("sync-disconnect", "sync-switch")) {
             assertTrue(node(tag).config.contains(SemanticsProperties.Disabled), tag)
         }
-        panel.state.value = panel.state.value.copy(connection = connected().connection!!.copy(enabled = false))
-        render()
-        assertFalse(node("sync-show-recovery").config.contains(SemanticsProperties.Disabled))
-        click("sync-show-recovery")
-        assertEquals(SyncPanelAction.ShowRecovery, actions.last())
+        assertTrue(hasTag("sync-password-status"))
+        assertFalse(hasTag("sync-show-recovery"))
     }
 
     @Test
@@ -90,17 +198,20 @@ class SyncPanelContentTest {
     }
 
     @Test
-    fun `repository setup opens installation and creation in the system browser`() = rendered(
-        SyncPanelState(visible = true, page = SyncPanelPage.SETUP, setupStep = SyncSetupStep.REPOSITORY),
+    fun `failed authorization offers installation and retry without manual repository creation`() = rendered(
+        SyncPanelState(
+            visible = true,
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.ERROR,
+            setupProblem = SyncDiscoveryProblem.AUTHORIZATION_REQUIRED,
+        ),
     ) {
         awaitTag("sync-install-app")
         click("sync-install-app")
         assertEquals(listOf("https://github.com/apps/mihon-desktop/installations/new"), opened)
-        click("sync-create-repo")
-        assertEquals("https://github.com/new", opened.last())
-        assertTrue(actions.isEmpty())
-        click("sync-refresh-repos")
-        assertEquals(listOf(SyncPanelAction.RefreshRepositories), actions)
+        assertFalse(hasTag("sync-create-repo"))
+        click("sync-setup-retry")
+        assertEquals(listOf(SyncPanelAction.RetrySetup), actions)
     }
 
     @Test
@@ -245,8 +356,8 @@ class SyncPanelContentTest {
         click("sync-period-0")
         assertEquals(SyncPanelAction.SetPeriod(0), actions.last())
         scroll("sync-settings-list", 5)
-        click("sync-show-recovery")
-        assertEquals(SyncPanelAction.ShowRecovery, actions.last())
+        assertTrue(hasTag("sync-password-status"))
+        assertFalse(hasTag("sync-show-recovery"))
         click("sync-disconnect")
         assertEquals(SyncPanelAction.Ask(SyncPanelQuestion.DISCONNECT), actions.last())
         click("sync-back")
@@ -274,29 +385,26 @@ class SyncPanelContentTest {
     }
 
     @Test
-    fun `recovery export requires native save and merge stays an explicit action`() = rendered(
+    fun `password errors stay editable and busy setup prevents duplicate submit`() = rendered(
         SyncPanelState(
             visible = true,
             page = SyncPanelPage.SETUP,
-            setupStep = SyncSetupStep.RECOVERY,
-            newSpace = true,
-            recoveryText = "recovery-secret",
+            setupStep = SyncSetupStep.UNLOCK,
+            passwordProblem = SyncPasswordProblem.INCORRECT,
         ),
     ) {
-        awaitTag("sync-save-recovery")
-        click("sync-save-recovery")
-        assertEquals(listOf("recovery-secret"), saved)
-        assertFalse(actions.any { it is SyncPanelAction.RecoverySaved })
-        assertFalse(texts().contains("recovery-secret"))
-        assertTrue(node("sync-prepare-merge").config.contains(SemanticsProperties.Disabled))
-        panel.state.value = panel.state.value.copy(recoverySaved = true)
+        awaitTag("sync-password-error")
+        enterPassword("corrected")
+        click("sync-password-submit")
+        assertEquals(SyncPanelAction.SubmitPassword("corrected"), actions.last())
+        panel.state.value = panel.state.value.copy(setupBusy = true)
         render()
-        click("sync-prepare-merge")
-        assertEquals(SyncPanelAction.PrepareMerge, actions.last())
-        panel.state.value = panel.state.value.copy(setupStep = SyncSetupStep.MERGE)
+        assertTrue(node("sync-password-submit").config.contains(SemanticsProperties.Disabled))
+        assertTrue(node("sync-password-input").config.contains(SemanticsProperties.Disabled))
+        panel.state.value = panel.state.value.copy(setupStep = SyncSetupStep.MERGING, passwordProblem = null)
         render()
-        click("sync-confirm-merge")
-        assertEquals(SyncPanelAction.ConfirmMerge, actions.last())
+        assertFalse(hasTag("sync-confirm-merge"))
+        assertFalse(hasTag("sync-password-input"))
     }
 
     @Test
@@ -320,7 +428,13 @@ class SyncPanelContentTest {
     private fun connected() = SyncPanelState(
         visible = true,
         loaded = true,
-        connection = SyncConnection("space", 1, SyncRepository("owner", "private", "sync"), true),
+        connection = SyncConnection(
+            "space",
+            1,
+            SyncRepository("owner", "private", "sync"),
+            true,
+            protectionMode = "none",
+        ),
     )
 
     private fun item(id: Long) = SyncPendingItem(
@@ -344,8 +458,6 @@ class SyncPanelContentTest {
         val actions = mutableListOf<SyncPanelAction>()
         val opened = mutableListOf<String>()
         val copied = mutableListOf<String>()
-        val saved = mutableListOf<String>()
-        var imported = 0
         val panel = TestPanel(initial, actions)
         fun setContent() {
             scene.setContent {
@@ -358,8 +470,6 @@ class SyncPanelContentTest {
                                 panel,
                                 onOpenBrowser = opened::add,
                                 onCopyCode = copied::add,
-                                onSaveRecovery = saved::add,
-                                onImportRecovery = { imported++ },
                             )
                         }
                     }
@@ -376,7 +486,13 @@ class SyncPanelContentTest {
                 )
                 try {
                     rendered.setContent()
-                    rendered.awaitTag(if (name == "main") "sync-keep-selected" else "sync-settings-list")
+                    rendered.awaitTag(
+                        when (name) {
+                            "main" -> "sync-keep-selected"
+                            "password" -> "sync-password-input"
+                            else -> "sync-settings-list"
+                        },
+                    )
                     rendered.render()
                     rendered.scene.render().use { image ->
                         requireNotNull(image.encodeToData(EncodedImageFormat.PNG)).use { data ->
@@ -405,6 +521,11 @@ class SyncPanelContentTest {
         fun node(value: String) = nodes().first { tag(it) == value }
         fun click(value: String) {
             assertTrue(requireNotNull(node(value).config[SemanticsActions.OnClick].action).invoke())
+        }
+        suspend fun enterPassword(value: String) {
+            requireNotNull(node("sync-password-input").config[SemanticsActions.SetText].action)
+                .invoke(AnnotatedString(value))
+            render()
         }
         suspend fun scroll(value: String, index: Int) {
             requireNotNull(node(value).config[SemanticsActions.ScrollToIndex].action).invoke(index)

@@ -1,6 +1,6 @@
 # 同步初次配置简化与可选密码 Roadmap
 
-日期：2026-09-18。状态：P1 契约已冻结；用户已确认无需兼容旧格式，App 注册权限已实际核验通过，用户已批准固定名安全创建。P2/P3 底层实现、契约验证与独立审查通过，进入 P4；原生配置功能与发布验收尚未完成。
+日期：2026-09-18。状态：P1–P5 已实现、独立审查及验证通过，随本批源码提交。Windows 正式产物和 Android API 26 Release/R8 跨进程验收已通过；P6 尚缺 macOS Keychain/正式产物、真实 GitHub 隔离账号联调与最低支持真机性能证据，保持未完成。用户确认的无需兼容旧格式、App 注册权限及固定名安全创建决定不变。
 
 设计权威：[本次迭代交互设计](../2026-09-18-sync-onboarding-password-design.md)，其中 O1–O10 是本轮交互覆盖索引。原型：[双端 DEMO 及验证说明](../prototypes/multi-device-sync/README.md)。现有实现与历史验收：[已完成 S1–S5 计划](2026-09-13-multi-device-sync-implementation.md)。
 
@@ -33,8 +33,8 @@
 - [x] P1：冻结权限、空间识别与格式支持边界。
 - [x] P2：接入未加密／密码保护两种空间格式。
 - [x] P3：实现自动发现与可恢复创建。
-- [ ] P4：连接配置状态机与自动首次合并。
-- [ ] P5：完成双端原生配置交互与相关设置入口。
+- [x] P4：连接配置状态机与自动首次合并。
+- [x] P5：完成双端原生配置交互与相关设置入口。
 - [ ] P6：完成迭代集成回归与发布运行验收。
 
 ### P1：冻结权限、空间识别与格式支持边界
@@ -200,4 +200,44 @@ P1 验收：用户决定与实际 App 注册权限已核验；独立契约审查
 
 两种 v2 空间格式、密码包装与完整交换、自动发现及固定名可恢复创建已实现；仍未接入新配置页面。共享测试使用真实 codec、HTTP 客户端及 Git fixture。红绿分别覆盖新格式、发现、初始化和修复边界；空库 409、默认分支正常而同步分支混入文件或篡改 bootstrap、最大合法批次封装均先复现失败再修复。独立审查首次发现两项初始化阻塞，唯一修复复审确认关闭并给出 GO。
 
-`sync-p23-validation` 协调器日志记录 JVM 83 项、Android Release 41 项相关契约全通过，限定 domain/data 格式检查通过，耗时 44 秒。该批跨 domain/data 的变更保持同一空间格式与初始化协议，文件数超过估算但未拆开不可独立验收的协议上下文；主要风险由拒绝写入、错误分类和真实交换契约覆盖。安全材料持久重开、配置账号隔离与应用 DI/UI 接线由 P4/P5 完成集成验收，实际设备性能及正式产物仍由 P6 验证；本批结果不代表这些后续项已完成。
+`sync-p23-validation` 协调器日志记录 JVM 83 项、Android Release 41 项相关契约全通过，耗时 44 秒。此前限定格式命令的目标匹配未经核实，该项证据撤回；P4/P5 收口使用实际 FileCollection 并断言输入文件数，补验整个本轮 Kotlin 文件集。该批跨 domain/data 的变更保持同一空间格式与初始化协议，文件数超过估算但未拆开不可独立验收的协议上下文；主要风险由拒绝写入、错误分类和真实交换契约覆盖。安全材料持久重开、配置账号隔离与应用 DI/UI 接线由 P4/P5 完成集成验收，实际设备性能及正式产物仍由 P6 验证；本批结果不代表这些后续项已完成。
+
+### P4/P5 实施与审查状态
+
+共享 controller/runtime、v2 安全材料与持久配置任务、四条自动接入分支、两端密码输入及保护状态页面已接入。产品恢复文件导入／导出及人工选库／合并确认流程已移除；旧格式保留数据但拒绝交换。关闭面板清除输入，后台回执不抢页；私库变公开停止写入并保留队列；同空间重新验密可修复本机损坏材料。
+
+`sync-p4-validation` JVM 41／Android 36、`sync-p4-private-green` JVM 2／Android 2、`sync-p5-wiring-green` 共享 UI／真实 controller 20 项通过。P4/P5 首次独立审查发现旧绑定首次打开错误提示及暂停合并重启入口遗漏；`sync-p45-review-red` 三条正确失败后，`sync-p4-review-green` JVM 31／Android 26、共享 UI 21 和 Desktop 原生面板／Test Mode 6 项通过。Android 原生面板最终由 `sync-p5-android-visible` 验证 3 项通过，覆盖真实 Dialog 的返回分发、设置状态和浏览器／剪贴板。
+
+唯一修复复审仍为 NO-GO：断开旧连接后重新配置被阻挡，以及绑定已写入但 pending.connected 尚未保存的中断窗口。原实施者已在 `sync-p4-residual-red` 准确复现两项，并由 `sync-p4-residual-green` JVM 33／Android 28 验证修复：明确断开释放接入阻挡，实际 active 账号／仓库／材料一致即可恢复 pending，不只依赖最后的布尔写入。用户批准的一次限定额外独立复核已完成，原审查者确认两项残留关闭并给出 GO；本批验证完成，P4/P5 随源码提交勾选。
+
+格式采用忽略目录内的 Gradle init 脚本，对本轮 34 个 Kotlin 文件逐模块传入 FileCollection，并断言 task inputs 包含全部目标。Desktop 本无 Spotless 插件，只在此验证进程临时加载；不扩大永久构建配置。真实格式化和 check 已通过，补正 P2/P3 空目标风险；Android 测试修正后的最终格式复验随 `sync-onboarding-android-r8` 通过。
+
+### P6 当前平台边界
+
+macOS 在独立 `/Users/altair/github/mihon-sync-onboarding` worktree 通过规定脚本执行，未触碰已有仓库改动或日常安装。全量 Desktop 共 3158 项，1 项系统 Keychain 用例失败、7 项跳过，构建脚本因此停止在测试门槛。对独立合成记录的系统命令诊断返回 `SecKeychainItemCreateFromContent: User interaction is not allowed`（exit 36）；本轮没有把失败解释为格式 bug，也没有绕过该门槛发布应用。用户报告解锁后，`sync-onboarding-macos-keychain` 仅复验安全存储 4 项，仍有同一项失败；独立合成记录再次返回 exit 36。尝试 GUI 用户会话被系统拒绝切换 audit session，未绕过权限；已请求确认解锁的是“登录”钥匙串，而非仅屏幕。
+
+真实 GitHub 写入仍未获隔离账号授权；Android API 26 模拟器只能用于 ART/R8 与原生安全存储正确性，不代替最低支持真机性能指标。以上门槛未闭合前，P6 保持未完成。
+
+#### 本地全量与 Windows 正式产物
+
+`sync-onboarding-full-tests` 成功，耗时 16 分 52 秒，仅执行一次全量回归；5536 项中 0 失败、2 项按既有条件跳过：domain JVM 518／Android 446，data JVM 473／Android 281，共享 UI 21，Android app 587，Desktop 3158，test-desktop 52。包含真实数据库的十万事件规模契约。未启用既有 live-network／network-survey／integration 选择性标签，不把默认全量测试称为真实网络验收。
+
+`sync-onboarding-windows-build` 使用 `scripts/build-desktop.sh build-only`，复用同一产品 diff 的完整 Desktop 测试证据；脚本仍重建正式应用并通过版本及 production 扩展安装验收。日志 `Final unpacked EXE:` 已核实文件存在：
+
+- [Mihon Desktop 0.11.19.48.0cf6097](D:/Shell/Github/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.48.0cf6097-unpacked/Mihon%20Desktop.exe)
+- [Windows 分发 ZIP](D:/Shell/Github/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.48.0cf6097-windows.zip)，SHA-256 `2195170901b192832588768cef54aed57c3dc29cf4f9593554d7b31d895eca85`。
+
+另外使用该正式 EXE、全新隔离 `--test-profile` 和 Test Mode 验证：打开面板 MAIN → setup 进入 SIGN_IN；状态包含 spaceCount，不含密码或密钥；旧 refresh_repositories 接口返回 400。production 安全存储 probe 写入合成记录，终止原进程后用相同隔离 profile 重启，读取匹配并删除成功。该无界面模式只作为控制接口及 DPAPI 跨进程证据；页面交互由共享离屏图和双端原生面板测试覆盖，不冒充真实 GitHub 配置。
+
+#### Android API 26 Release/R8 与 Keystore
+
+`sync-onboarding-android-r8` 通过实际 R8／资源压缩构建和最终限定格式检查。隔离验收 APK 使用 `app.mihon.syncacceptance`，只对该身份使用本机 debug 签名；不替换正常 `app.mihon`，也不是可分发的正式 Android 签名包。独立 API 26／x86_64 AVD `mihon-sync-onboarding-api26` 使用已安装镜像，无真实账号。
+
+首次 ART 发现独立测试 APK 调用已被优化的 `SyncRuntime.getPreferences()` 入口缺失。仅在 `scripts/sync-android-acceptance.pro` 补充实际测试调用的精确成员 keep，保留方法体优化，不改普通发布规则；`sync-onboarding-android-r8-abi` 重建成功。最终 `sync-onboarding-art26-prepare-fixed.log` 与 `sync-onboarding-art26-verify.log` 各 `OK (4 tests)`：真实 App/DI/数据库写入、v2 绑定与数据密钥跨进程恢复、Unicode 密码解锁和错误密码拒绝、无密码模式、AEAD 冻结向量、Keystore 包装密钥丢失时拒绝覆盖。prepare 后显式 force-stop，verify 校验 PID／启动时间变化；失败授权保留原队列。结束后关闭本轮模拟器，保留隔离数据供复核。
+
+验收产物已复制到固定目录并校验：
+
+- [API 26 x86_64 隔离 Release APK](D:/Shell/Github/mihon/app/artifacts/android/sync-onboarding-20260918-api26/app-x86_64-release.apk)，SHA-256 `379faea466a2ae5cf3d8fb52877f92a37bc3ba9b47132f8712c3c514bd8a1c62`。
+- [对应测试 APK](D:/Shell/Github/mihon/app/artifacts/android/sync-onboarding-20260918-api26/app-release-androidTest.apk)，SHA-256 `7f2bd8375ab282ff73fa88049087a244e6a0877c910654f40cead1ec5a182372`。
+
+本批跨共享 runtime、双端原生入口、测试与发布验收文件，规模超过初始文件数提示，但属于同一配置能力的完整接线与验证，保持一个功能提交；没有为压缩 diff 拆散协议上下文。未执行的真实 GitHub 写入、真机性能及 macOS 最终产物仍按前述边界保留，不能据本地成功勾选 P6。

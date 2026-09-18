@@ -42,6 +42,31 @@ import java.util.prefs.Preferences
 @Isolated
 class SyncTestModeIntegrationTest {
     @Test
+    fun `setup diagnostics accept retry without retaining the obsolete repository action`() = runBlocking {
+        val actions = java.util.concurrent.CopyOnWriteArrayList<SyncPanelAction>()
+        val panel = object : SyncPanel {
+            override val state = MutableStateFlow(SyncPanelState())
+            override fun dispatch(action: SyncPanelAction) {
+                actions += action
+            }
+        }
+        val server = embeddedServer(CIO, host = "127.0.0.1", port = 0) {
+            testHttpServer(syncPanel = panel)
+        }.start()
+        try {
+            val base = "http://127.0.0.1:${server.resolvedConnectors().single().port}/test/sync"
+            assertEquals(400, request("$base/refresh_repositories", post = true).statusCode())
+            assertEquals(202, request("$base/retry_setup", post = true).statusCode())
+            assertEquals(listOf(SyncPanelAction.RetrySetup), actions)
+            val snapshot = Json.parseToJsonElement(request(base).body()).jsonObject
+            assertEquals("0", snapshot.getValue("spaceCount").jsonPrimitive.content)
+            assertFalse("repositoryCount" in snapshot)
+        } finally {
+            server.stop(0, 0)
+        }
+    }
+
+    @Test
     fun `a generic HTTP host does not resurrect a stopped application graph`(@TempDir folder: File) = runBlocking {
         val node = Preferences.userRoot().node("mihon-sync-stopped-" + UUID.randomUUID())
         val context = initDesktopDIForTest(folder, DesktopPreferenceStore(node))
@@ -78,7 +103,14 @@ class SyncTestModeIntegrationTest {
             val snapshot = Json.parseToJsonElement(response.body()).jsonObject
             assertEquals("true", snapshot.getValue("visible").jsonPrimitive.content)
             assertEquals("0", snapshot.getValue("queuedTotal").jsonPrimitive.content)
-            for (privateKey in listOf("recoveryText", "deviceCode", "accessToken", "refreshToken")) {
+            for (privateKey in listOf(
+                "recoveryText",
+                "deviceCode",
+                "accessToken",
+                "refreshToken",
+                "password",
+                "secret",
+            )) {
                 assertFalse(privateKey in response.body())
             }
             assertEquals(400, request("$base/confirm_merge", post = true).statusCode())
@@ -147,7 +179,6 @@ class SyncTestModeIntegrationTest {
         val panel = object : SyncPanel {
             override val state = MutableStateFlow(
                 SyncPanelState(
-                    recoveryText = "private-recovery-marker",
                     deviceCode = GitHubDeviceCode(
                         "private-device-marker",
                         "TEST-CODE",

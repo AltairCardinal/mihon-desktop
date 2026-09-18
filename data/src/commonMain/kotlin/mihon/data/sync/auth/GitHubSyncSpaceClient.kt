@@ -35,6 +35,7 @@ data class DiscoveredSyncSpace(
 )
 
 enum class SyncDiscoveryProblem {
+    REPOSITORY_NOT_PRIVATE,
     AUTHORIZATION_REQUIRED,
     RATE_LIMITED,
     RETRYABLE,

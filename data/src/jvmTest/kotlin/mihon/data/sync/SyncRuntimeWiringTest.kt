@@ -35,31 +35,19 @@ import java.util.UUID
 import java.util.prefs.Preferences
 
 class SyncRuntimeWiringTest {
-    private val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync")
-    private val recovery = SyncRecoveryCodec.generate("space", 1, "fixture-recovery-key", {
-        ByteArray(32) { (it + 1).toByte() }
-    }, 1).data
-
     @Test
     fun `temporary token refresh failures retain credentials and report retryable network failure`() = runBlocking {
         Fixture().use { f ->
-            SyncGitSafetyContractTest().GitFixture().use { git ->
-                mockwebserver3.MockWebServer().use { auth ->
-                    auth.start()
-                    git.transport().initialize(repository, "space", 1)
-                    val runtime = f.runtime(git.baseUrl, auth.url("/token").toString())
-                    val initial = runtime.credentials.replace(null, token())
-                    runtime.connect(repository, recovery)
+            mockwebserver3.MockWebServer().use { auth ->
+                auth.start()
+                SyncOnboardingFixture(f.storage, f.preferences, f.client, auth.url("/token").toString()).use { setup ->
+                    setup.existing("")
+                    setup.authorize()
+                    setup.begin()
+                    val runtime = setup.runtime
                     val expiring = runtime.credentials.replace(
-                        initial.revision,
-                        GitHubAccessToken(
-                            "access-secret",
-                            "refresh-secret",
-                            "bearer",
-                            emptySet(),
-                            1000,
-                            1_000_000,
-                        ),
+                        runtime.credentials.read()!!.revision,
+                        GitHubAccessToken("access-secret", "refresh-secret", "bearer", emptySet(), 1000, 1_000_000),
                     )
                     for (code in listOf(500, 429)) {
                         auth.enqueue(mockwebserver3.MockResponse(code = code, body = "private diagnostic"))
@@ -76,11 +64,11 @@ class SyncRuntimeWiringTest {
     @Test
     fun `configured graph uses credentials production client database exchange and local history`() = runBlocking {
         Fixture().use { f ->
-            SyncGitSafetyContractTest().GitFixture().use { git ->
-                git.transport().initialize(repository, "space", 1)
-                val runtime = f.runtime(git.baseUrl)
-                runtime.credentials.replace(null, token())
-                runtime.connect(repository, recovery)
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
                 f.storage.favorite("/runtime")
                 val result = runtime.coordinator.synchronize(SyncTrigger.MANUAL)
                 assertEquals(SyncRunStatus.SUCCESS, result.status)
@@ -90,7 +78,7 @@ class SyncRuntimeWiringTest {
                 assertTrue(runtime.preferences.history.get().contains("SUCCESS"))
                 assertTrue(f.preferences.getAll().keys.all { Preference.isAppState(it) })
                 assertFalse(f.preferences.getAll().toString().contains("access-secret"))
-                val reopened = f.runtime(git.baseUrl)
+                val reopened = setup.runtime()
                 assertEquals("access-secret", reopened.accessToken())
                 assertEquals(0, reopened.coordinator.synchronize(SyncTrigger.STARTUP).uploaded)
                 runtime.disconnect()
@@ -106,14 +94,14 @@ class SyncRuntimeWiringTest {
     @Test
     fun `missing authorization and unavailable secure storage are distinct safe failures`() = runBlocking {
         Fixture().use { f ->
-            SyncGitSafetyContractTest().GitFixture().use { git ->
-                git.transport().initialize(repository, "space", 1)
-                val runtime = f.runtime(git.baseUrl)
-                runtime.credentials.replace(null, token())
-                runtime.connect(repository, recovery)
+            SyncOnboardingFixture(f.storage).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val runtime = setup.runtime
                 runtime.credentials.clear()
                 assertEquals(SyncRunProblem.AUTHORIZATION, runtime.coordinator.synchronize(SyncTrigger.MANUAL).problem)
-                f.secure.fail = true
+                setup.secure.fail = true
                 assertEquals(SyncRunProblem.STORAGE, runtime.coordinator.synchronize(SyncTrigger.MANUAL).problem)
             }
         }
@@ -136,16 +124,15 @@ class SyncRuntimeWiringTest {
     @Test
     fun `restoring a database without this devices secure binding renews actor before reconnecting`() = runBlocking {
         Fixture().use { f ->
-            SyncGitSafetyContractTest().GitFixture().use { git ->
-                git.transport().initialize(repository, "space", 1)
-                f.storage.connect("old-device", repository)
-                val runtime = f.runtime(git.baseUrl)
-                runtime.credentials.replace(null, token())
-                runtime.connect(repository, recovery)
+            SyncOnboardingFixture(f.storage).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                f.storage.connect("old-device", setup.repository)
+                setup.begin()
                 val first = f.storage.handler.await { sync_journalQueries.getActiveActor().executeAsOne() }
                 assertNotEquals("old-device", first.actor_id)
                 assertEquals(2L, first.epoch)
-                runtime.connect(repository, recovery)
+                setup.begin()
                 assertEquals(first, f.storage.handler.await { sync_journalQueries.getActiveActor().executeAsOne() })
             }
         }
@@ -182,7 +169,7 @@ class SyncRuntimeWiringTest {
         private val node = Preferences.userRoot().node("mihon-sync-runtime-test-" + UUID.randomUUID())
         val preferences = DesktopPreferenceStore(node)
         var networkCalls = 0
-        private val client = OkHttpClient.Builder().eventListener(object : EventListener() {
+        val client = OkHttpClient.Builder().eventListener(object : EventListener() {
             override fun callStart(call: Call) {
                 networkCalls++
             }

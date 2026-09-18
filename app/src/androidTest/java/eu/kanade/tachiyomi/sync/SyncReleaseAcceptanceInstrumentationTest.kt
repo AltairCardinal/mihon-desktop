@@ -10,7 +10,13 @@ import eu.kanade.tachiyomi.App
 import eu.kanade.tachiyomi.data.sync.AndroidSyncScheduler
 import eu.kanade.tachiyomi.data.sync.AndroidSyncSecureStore
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import mihon.data.sync.crypto.SyncAeadEngineFactory
+import mihon.data.sync.crypto.SyncSpaceCrypto
 import mihon.data.sync.journal.SyncLocalJournal
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.domain.sync.SyncBatch
@@ -26,8 +32,8 @@ import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.SyncOrigin
 import mihon.domain.sync.crypto.SyncAeadCiphertext
 import mihon.domain.sync.crypto.SyncBatchEncryption
-import mihon.domain.sync.crypto.SyncRecoveryCodec
 import mihon.domain.sync.crypto.SyncSecret
+import mihon.domain.sync.crypto.SyncSpaceDescriptorCodec
 import mihon.domain.sync.runtime.SyncRunProblem
 import mihon.domain.sync.runtime.SyncRunStatus
 import mihon.domain.sync.runtime.SyncTrigger
@@ -67,6 +73,29 @@ import java.util.UUID
  * remote connection/HTTP acceptance and the minimum-API device gate remain separate requirements.
  */
 class SyncReleaseAcceptanceInstrumentationTest {
+    @Test
+    fun optionalPasswordFormatSurvivesReleaseR8AndNativeSecureStore() = runBlocking {
+        val password = " 密碼e\u0301🔒 "
+        val material = SyncSpaceCrypto.create("art-password-space", 1, password)
+        val encoded = SyncSpaceDescriptorCodec.encode(material.descriptor).decodeToString()
+        assertFalse(encoded.contains(password))
+        val store = Injekt.get<SyncSecureStore>()
+        val key = "onboarding-art-${UUID.randomUUID()}"
+        assertTrue(store.compareAndSet(key, null, encoded))
+        try {
+            val restored = SyncSpaceDescriptorCodec.decode(
+                requireNotNull(AndroidSyncSecureStore(context).read(key)).encodeToByteArray(),
+            ).getOrThrow()
+            assertTrue(SyncSpaceCrypto.unlock(restored, "wrong").isFailure)
+            assertEquals(material.secret, SyncSpaceCrypto.unlock(restored, password).getOrThrow().secret)
+            val plain = SyncSpaceCrypto.create("art-plain-space", 1, "")
+            assertEquals("none", plain.descriptor.mode)
+            assertNull(plain.secret)
+        } finally {
+            assertTrue(store.compareAndSet(key, encoded, null))
+        }
+    }
+
     private val context: Context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private val receipt get() = context.getSharedPreferences("sync-art-acceptance", Context.MODE_PRIVATE)
     private val fixtureSecret get() = SyncSecret.fromBytes(ByteArray(32) { (it + 1).toByte() })
@@ -121,10 +150,16 @@ class SyncReleaseAcceptanceInstrumentationTest {
             fixtureSecret,
             batch,
             ".mihon-sync/batches/$ACTOR/1/art-batch.json",
+            spaceMaterial = null,
         )
-        assertEquals(batch, SyncBatchEncryption.decrypt(engine, fixtureSecret, sealed))
+        assertEquals(batch, SyncBatchEncryption.decrypt(engine, fixtureSecret, sealed, spaceMaterial = null))
         assertThrows(IllegalArgumentException::class.java) {
-            SyncBatchEncryption.decrypt(engine, fixtureSecret, sealed.copy(spaceId = "different-space"))
+            SyncBatchEncryption.decrypt(
+                engine,
+                fixtureSecret,
+                sealed.copy(spaceId = "different-space"),
+                spaceMaterial = null,
+            )
         }
     }
 
@@ -150,11 +185,32 @@ class SyncReleaseAcceptanceInstrumentationTest {
         runtime.preferences.setInterval(0)
         runtime.coordinator.cancelAndJoin()
 
-        val recovery = SyncRecoveryCodec.generate(SPACE, 1, "art-acceptance-key-1", { fixtureSecret.bytes }, 1).data
-        val encoded = SyncRecoveryCodec.encode(recovery)
+        val material = SyncSpaceCrypto.create(SPACE, 1, FIXTURE_PASSWORD)
+        val secret = requireNotNull(material.secret)
+        // Frozen v2 secure-storage wire fixture, decoded by the real runtime in both processes.
+        // These synthetic identity numbers are local metadata, never GitHub credentials.
+        val encoded = buildJsonObject {
+            put("version", 2)
+            put("accountId", 900000001L)
+            put("accountLogin", "fixture-owner")
+            put("repositoryId", 900000002L)
+            put("owner", "fixture-owner")
+            put("repository", "private-sync")
+            put("branch", "mihon-sync")
+            put(
+                "material",
+                buildJsonObject {
+                    put("descriptor", SyncSpaceDescriptorCodec.encode(material.descriptor).decodeToString())
+                    put("keyHex", secret.bytes.toByteString().hex())
+                },
+            )
+            put("actorId", ACTOR)
+            put("epoch", 1)
+        }.toString()
+        assertFalse(encoded.contains(FIXTURE_PASSWORD))
         assertTrue(secure.compareAndSet(SECRET_PURPOSE, null, encoded))
         assertEquals(encoded, AndroidSyncSecureStore(context).read(SECRET_PURPOSE))
-        val ciphertext = SyncAeadEngineFactory.create().encrypt(fixtureSecret, "跨进程恢复".encodeToByteArray(), AAD)
+        val ciphertext = SyncAeadEngineFactory.create().encrypt(secret, "跨进程恢复".encodeToByteArray(), AAD)
 
         val mangas = Injekt.get<MangaRepository>()
         val manga = mangas.insertNetworkManga(
@@ -201,9 +257,13 @@ class SyncReleaseAcceptanceInstrumentationTest {
                 receipt.getLong("process-start", -1) == Process.getStartElapsedRealtime(),
         )
         val encoded = requireNotNull(secure.read(SECRET_PURPOSE))
-        val recovery = SyncRecoveryCodec.decode(encoded).getOrThrow()
-        val restored = SyncRecoveryCodec.importSecret(recovery, SPACE, 1).getOrThrow()
-        assertEquals(fixtureSecret, restored)
+        val material = Json.parseToJsonElement(encoded).jsonObject.getValue("material").jsonObject
+        val descriptor = SyncSpaceDescriptorCodec.decode(
+            material.getValue("descriptor").jsonPrimitive.content.encodeToByteArray(),
+        ).getOrThrow()
+        val restored = requireNotNull(SyncSpaceCrypto.unlock(descriptor, FIXTURE_PASSWORD).getOrThrow().secret)
+        assertArrayEquals(material.getValue("keyHex").jsonPrimitive.content.decodeHex().toByteArray(), restored.bytes)
+        assertFalse(encoded.contains(FIXTURE_PASSWORD))
         val encrypted = SyncAeadCiphertext(
             requireNotNull(receipt.getString("ciphertext", null)).decodeHex().toByteArray(),
         )
@@ -231,6 +291,9 @@ class SyncReleaseAcceptanceInstrumentationTest {
         assertEquals(SPACE, connection.spaceId)
         assertEquals(REPOSITORY, connection.repository)
         assertTrue(connection.enabled)
+        assertFalse(connection.unsupportedFormat)
+        assertEquals("password", connection.protectionMode)
+        assertEquals("fixture-owner", connection.accountLogin)
         assertTrue(Injekt.get<MangaRepository>().getMangaById(mangaId).favorite)
         assertTrue(requireNotNull(Injekt.get<ChapterRepository>().getChapterById(chapterId)).read)
         val handler = Injekt.get<DatabaseHandler>()
@@ -285,11 +348,14 @@ class SyncReleaseAcceptanceInstrumentationTest {
     private companion object {
         const val SPACE = "art-acceptance-space"
         const val ACTOR = "art-acceptance-actor"
-        const val SECRET_PURPOSE = "art-acceptance-recovery"
+
+        // Frozen purpose for generation 1 / art-acceptance-space; changing the storage mapping breaks this fixture.
+        const val SECRET_PURPOSE = "space-a7376dcef8037f48464910f19a6c82c22c9254b519b40ca1c18bea28d1ad7444"
+        const val FIXTURE_PASSWORD = "art-only-密碼-test"
         const val SOURCE_ID = 9223372036854775806L
         const val MANGA_URL = "/art-acceptance/manga"
         const val CHAPTER_URL = "/art-acceptance/chapter"
         val REPOSITORY = SyncRepository("fixture-owner", "private-sync", "mihon-sync")
-        val AAD = "sync-art-persistence-v1".encodeToByteArray()
+        val AAD = "sync-art-persistence-v2".encodeToByteArray()
     }
 }

@@ -19,17 +19,22 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
-import mihon.data.sync.crypto.SyncRecoveryFactory
+import mihon.data.sync.auth.DiscoveredSyncSpace
+import mihon.data.sync.auth.SyncDiscoveryProblem
+import mihon.data.sync.auth.SyncGitHubAccount
+import mihon.data.sync.auth.SyncSpaceDiscovery
+import mihon.data.sync.crypto.SyncPasswordInputException
+import mihon.data.sync.crypto.SyncPasswordInputIssue
+import mihon.data.sync.crypto.SyncSpaceCrypto
 import mihon.data.sync.inbox.SyncBulkProgress
 import mihon.domain.sync.SyncField
 import mihon.domain.sync.auth.GitHubDeviceAuthResult
-import mihon.domain.sync.crypto.SyncRecoveryCodec
+import mihon.domain.sync.crypto.SyncSpaceMaterial
+import mihon.domain.sync.crypto.SyncSpaceProtection
 import mihon.domain.sync.runtime.SyncRunProblem
 import mihon.domain.sync.runtime.SyncRunStatus
 import mihon.domain.sync.runtime.SyncTrigger
-import mihon.domain.sync.transport.SyncInitializationResult
 import tachiyomi.data.DatabaseHandler
-import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 class SyncPanelController(
@@ -53,6 +58,11 @@ class SyncPanelController(
     private var repositoryJob: Job? = null
     private var setupJob: Job? = null
     private var authVersion = 0L
+    private var setupVersion = 0L
+    private var panelSession = 0L
+    private var setupExchangeCompletion = -1L
+    private var setupAccount: SyncGitHubAccount? = null
+    private var chosenSpace: DiscoveredSyncSpace? = null
     private var observedCompletion = runtime.coordinator.activity.value.completion
 
     init {
@@ -94,7 +104,9 @@ class SyncPanelController(
                         it.copy(
                             busy = activity.running,
                             problem = if (completed) activity.result?.problem else it.problem,
-                            notice = if (completed && it.visible && activity.result?.status != SyncRunStatus.SKIPPED) {
+                            notice = if (completed && it.visible && activity.completion != setupExchangeCompletion &&
+                                activity.result?.status != SyncRunStatus.SKIPPED
+                            ) {
                                 SyncPanelNotice(exchange = activity.result)
                             } else {
                                 it.notice
@@ -163,6 +175,32 @@ class SyncPanelController(
 
     private suspend fun refresh() {
         val connection = runtime.connection()
+        if (connection?.unsupportedFormat == true) {
+            mutableState.update {
+                it.copy(
+                    setupStep = SyncSetupStep.ERROR,
+                    setupProblem = SyncDiscoveryProblem.INCOMPATIBLE,
+                    problem = SyncRunProblem.INVALID_DATA,
+                )
+            }
+        } else if (connection != null && state.value.setupStep == SyncSetupStep.SIGN_IN && !state.value.setupBusy) {
+            val pending = try {
+                runtime.pendingSetup(connection)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            if (pending != null) {
+                mutableState.update {
+                    it.copy(
+                        setupStep = SyncSetupStep.MERGING,
+                        setupAccountLogin = pending.accountLogin,
+                        setupRepository = pending.repository(),
+                    )
+                }
+            }
+        }
         if (state.value.connection?.spaceId != connection?.spaceId ||
             state.value.connection?.generation != connection?.generation
         ) {
@@ -246,18 +284,19 @@ class SyncPanelController(
                 refresh()
             }
             SyncPanelAction.Close -> {
+                panelSession++
                 cancelAuthorization()
                 cancelConfirmation()
                 clearSelection()
                 mutableState.update {
-                    it.copy(visible = false, notice = null, question = null, recoveryText = "", deviceCode = null)
+                    it.copy(visible = false, notice = null, question = null, deviceCode = null)
                 }
             }
             SyncPanelAction.Back -> if (state.value.page == SyncPanelPage.MAIN) {
                 handle(SyncPanelAction.Close)
             } else {
                 if (state.value.page == SyncPanelPage.SETUP) cancelAuthorization()
-                mutableState.update { it.copy(page = SyncPanelPage.MAIN, recoveryText = "") }
+                mutableState.update { it.copy(page = SyncPanelPage.MAIN) }
             }
             is SyncPanelAction.Navigate -> mutableState.update { it.copy(page = action.page) }
             SyncPanelAction.Synchronize -> if (state.value.connection?.enabled == true) {
@@ -273,7 +312,11 @@ class SyncPanelController(
             SyncPanelAction.ResumeImport -> {
                 runtime.preferences.importPaused.set(false)
                 refresh()
-                scope.launch { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
+                if (state.value.setupStep == SyncSetupStep.MERGING) {
+                    discover()
+                } else {
+                    scope.launch { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
+                }
             }
             is SyncPanelAction.SetPeriod -> {
                 runtime.preferences.setInterval(action.minutes)
@@ -342,68 +385,20 @@ class SyncPanelController(
             }
             SyncPanelAction.DismissNotice -> mutableState.update { it.copy(notice = null) }
             SyncPanelAction.BeginSetup -> beginSetup()
+            SyncPanelAction.RetrySetup -> discover()
+            is SyncPanelAction.ChooseSpace -> if (action.space in state.value.spaces) selectSpace(action.space)
+            is SyncPanelAction.SubmitPassword -> submitPassword(action.password)
             SyncPanelAction.Authorize -> authorize()
             SyncPanelAction.CancelAuthorization -> cancelAuthorization()
-            SyncPanelAction.RefreshRepositories -> loadRepositories()
-            is SyncPanelAction.ChooseRepository -> {
-                if (state.value.repositories.none { it.repository == action.repository }) return
-                val recovery = if (action.newSpace) {
-                    SyncRecoveryCodec.encode(
-                        SyncRecoveryFactory.generate(
-                            UUID.randomUUID().toString(),
-                            1,
-                            UUID.randomUUID().toString(),
-                            clock(),
-                        ).data,
-                    )
-                } else {
-                    ""
-                }
-                mutableState.update {
-                    it.copy(
-                        setupRepository = action.repository,
-                        newSpace = action.newSpace,
-                        setupStep = SyncSetupStep.RECOVERY,
-                        recoveryText = recovery,
-                        recoverySaved = false,
-                        recoveryInvalid = false,
-                        problem = null,
-                    )
-                }
-            }
-            is SyncPanelAction.SetRecovery -> if (!state.value.newSpace) {
-                mutableState.update {
-                    it.copy(
-                        recoveryText = action.text.take(16 * 1024),
-                        recoveryInvalid = action.text.length > 16 * 1024,
-                    )
-                }
-            }
-            is SyncPanelAction.RecoverySaved -> if (
-                action.text.isNotEmpty() && action.text == state.value.recoveryText
-            ) {
-                mutableState.update { it.copy(recoverySaved = true) }
-            }
-            SyncPanelAction.PrepareMerge -> {
-                val current = state.value
-                if (current.newSpace && !current.recoverySaved) return
-                if (SyncRecoveryCodec.decode(current.recoveryText).isFailure) {
-                    mutableState.update { it.copy(recoveryInvalid = true) }
-                } else {
-                    mutableState.update { it.copy(setupStep = SyncSetupStep.MERGE, recoveryInvalid = false) }
-                }
-            }
-            SyncPanelAction.ConfirmMerge -> connect()
-            SyncPanelAction.ShowRecovery -> {
-                val recovery = SyncRecoveryCodec.encode(runtime.recoveryData())
-                mutableState.update { it.copy(page = SyncPanelPage.RECOVERY, recoveryText = recovery) }
-            }
             is SyncPanelAction.Ask -> mutableState.update { it.copy(question = action.question) }
             SyncPanelAction.CancelQuestion -> mutableState.update { it.copy(question = null) }
             SyncPanelAction.ConfirmQuestion -> {
                 val question = state.value.question ?: return
                 mutableState.update { it.copy(question = null) }
                 if (question == SyncPanelQuestion.DISCONNECT) {
+                    setupVersion++
+                    setupJob?.cancelAndJoin()
+                    setupJob = null
                     cancelAuthorization()
                     bulkJob?.cancelAndJoin()
                     runtime.disconnect()
@@ -416,21 +411,31 @@ class SyncPanelController(
     }
 
     private suspend fun beginSetup() {
+        mutableState.update { it.copy(page = SyncPanelPage.SETUP, passwordProblem = null) }
+        if (setupJob?.isActive == true) return
         cancelAuthorization()
+        if (runtime.connection()?.unsupportedFormat == true) {
+            mutableState.update {
+                it.copy(
+                    setupStep = SyncSetupStep.ERROR,
+                    setupProblem = SyncDiscoveryProblem.INCOMPATIBLE,
+                    problem = SyncRunProblem.INVALID_DATA,
+                    setupBusy = false,
+                )
+            }
+            return
+        }
         val authorized = runtime.credentials.read() != null
         mutableState.update {
             it.copy(
-                page = SyncPanelPage.SETUP,
-                setupStep = if (authorized) SyncSetupStep.REPOSITORY else SyncSetupStep.SIGN_IN,
+                setupStep = if (authorized) SyncSetupStep.DISCOVERING else SyncSetupStep.SIGN_IN,
                 setupRepository = null,
-                recoveryText = "",
-                recoverySaved = false,
-                recoveryInvalid = false,
+                setupProblem = null,
                 authFailure = null,
                 problem = null,
             )
         }
-        if (authorized) loadRepositories()
+        if (authorized) discover()
     }
 
     private suspend fun cancelAuthorization() {
@@ -443,6 +448,10 @@ class SyncPanelController(
     }
 
     private suspend fun authorize() {
+        setupVersion++
+        setupJob?.cancelAndJoin()
+        setupJob = null
+        runtime.coordinator.cancelAndJoin()
         cancelAuthorization()
         val version = authVersion
         val previous = runtime.credentials.read()?.revision
@@ -461,11 +470,11 @@ class SyncPanelController(
                 if (version != authVersion || !state.value.visible) return@enqueue
                 when (result) {
                     is GitHubDeviceAuthResult.Authorized -> {
-                        runtime.credentials.replace(previous, result.token)
+                        runtime.acceptAuthorization(previous, result.token)
                         mutableState.update {
-                            it.copy(deviceCode = null, setupStep = SyncSetupStep.REPOSITORY, setupBusy = false)
+                            it.copy(deviceCode = null, setupStep = SyncSetupStep.DISCOVERING, setupBusy = false)
                         }
-                        loadRepositories()
+                        discover()
                     }
                     is GitHubDeviceAuthResult.Failed -> mutableState.update {
                         it.copy(deviceCode = null, setupBusy = false, authFailure = result.failure.reason)
@@ -475,84 +484,206 @@ class SyncPanelController(
         }
     }
 
-    private fun loadRepositories() {
+    private fun discover() {
         if (setupJob?.isActive == true || repositoryJob?.isActive == true) return
         val version = authVersion
-        mutableState.update { it.copy(setupBusy = true, problem = null) }
+        mutableState.update {
+            it.copy(
+                setupStep = SyncSetupStep.DISCOVERING,
+                setupBusy = true,
+                setupProblem = null,
+                passwordProblem = null,
+            )
+        }
         repositoryJob = scope.launch {
             try {
-                val repositories = runtime.repositories.select("mihon-sync-v1")
-                enqueue {
-                    if (version == authVersion) {
-                        mutableState.update { it.copy(repositories = repositories, setupBusy = false) }
+                val pending = runtime.onboarding.pending()
+                if (pending != null) {
+                    enqueue { if (version == authVersion) runSetup { pending } }
+                } else {
+                    val found = runtime.onboarding.discover()
+                    enqueue {
+                        if (version == authVersion) handleDiscovery(found)
                     }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                enqueue {
-                    if (version == authVersion) {
-                        mutableState.update { it.copy(problem = failure.syncProblem(), setupBusy = false) }
-                    }
-                }
+                enqueue { if (version == authVersion) setupFailed(failure) }
             }
         }
     }
 
-    private fun connect() {
+    private fun handleDiscovery(result: SyncSpaceDiscovery) {
+        when (result) {
+            is SyncSpaceDiscovery.Found -> selectSpace(result.space)
+            is SyncSpaceDiscovery.Multiple -> mutableState.update {
+                it.copy(setupStep = SyncSetupStep.CHOOSE_SPACE, setupBusy = false, spaces = result.spaces)
+            }
+            is SyncSpaceDiscovery.NoVisibleSpace -> {
+                setupAccount = result.account
+                chosenSpace = null
+                mutableState.update {
+                    it.copy(
+                        setupStep = SyncSetupStep.NEW_PASSWORD,
+                        setupBusy = false,
+                        setupAccountLogin = result.account.login,
+                        spaces = emptyList(),
+                    )
+                }
+            }
+            is SyncSpaceDiscovery.Failed -> setupFailed(SyncSetupException(result.problem))
+        }
+    }
+
+    private fun selectSpace(space: DiscoveredSyncSpace) {
         if (setupJob?.isActive == true) return
-        val current = state.value
-        if (current.setupStep != SyncSetupStep.MERGE || (current.newSpace && !current.recoverySaved)) return
-        val repository = current.setupRepository ?: return
-        val recovery = SyncRecoveryCodec.decode(current.recoveryText).getOrNull() ?: return
-        mutableState.update { it.copy(setupBusy = true, problem = null) }
-        setupJob = scope.launch {
-            try {
-                if (current.newSpace) {
-                    val secret = SyncRecoveryCodec.importSecret(
-                        recovery,
-                        recovery.spaceId,
-                        recovery.generation,
-                    ).getOrThrow()
-                    val initialized = runtime.transport(
-                        secret,
-                    ).initialize(repository, recovery.spaceId, recovery.generation)
-                    val initializedSpace = when (initialized) {
-                        is SyncInitializationResult.Initialized -> initialized.spaceId
-                        is SyncInitializationResult.Adopted -> initialized.spaceId
-                        else -> null
-                    }
-                    if (initializedSpace != recovery.spaceId) {
-                        enqueue {
-                            mutableState.update {
-                                it.copy(
-                                    setupBusy = false,
-                                    setupStep = SyncSetupStep.RECOVERY,
-                                    newSpace = false,
-                                    recoveryText = "",
-                                    recoverySaved = false,
-                                    problem = SyncRunProblem.REMOTE_CHANGED,
-                                )
-                            }
-                        }
-                        return@launch
-                    }
+        setupAccount = space.account
+        chosenSpace = space
+        mutableState.update {
+            it.copy(
+                setupRepository = space.repository,
+                setupAccountLogin = space.account.login,
+                spaces = emptyList(),
+                setupProblem = null,
+                passwordProblem = null,
+                setupStep = if (space.descriptor.protection == SyncSpaceProtection.None) {
+                    SyncSetupStep.MERGING
+                } else {
+                    SyncSetupStep.UNLOCK
+                },
+                setupBusy = space.descriptor.protection == SyncSpaceProtection.None,
+            )
+        }
+        if (space.descriptor.protection == SyncSpaceProtection.None) {
+            runSetup { runtime.onboarding.join(space, SyncSpaceMaterial(space.descriptor, null)) }
+        }
+    }
+
+    private fun submitPassword(password: String) {
+        if (setupJob?.isActive == true || state.value.setupBusy) return
+        val step = state.value.setupStep
+        if (step != SyncSetupStep.NEW_PASSWORD && step != SyncSetupStep.UNLOCK) return
+        try {
+            SyncSpaceCrypto.validatePassword(password)
+        } catch (failure: SyncPasswordInputException) {
+            mutableState.update {
+                it.copy(
+                    passwordProblem = if (failure.issue == SyncPasswordInputIssue.TOO_LONG) {
+                        SyncPasswordProblem.TOO_LONG
+                    } else {
+                        SyncPasswordProblem.INVALID
+                    },
+                )
+            }
+            return
+        }
+        if (step == SyncSetupStep.NEW_PASSWORD) {
+            val account = setupAccount ?: return
+            runSetup { runtime.onboarding.create(account, password) }
+        } else {
+            val space = chosenSpace ?: return
+            runSetup {
+                val material = SyncSpaceCrypto.unlock(space.descriptor, password).getOrElse {
+                    throw IncorrectSyncPassword()
                 }
-                runtime.connect(repository, recovery)
-                enqueue {
-                    mutableState.update {
-                        it.copy(page = SyncPanelPage.MAIN, setupBusy = false, recoveryText = "", recoverySaved = false)
-                    }
-                    refresh()
-                }
-                runtime.coordinator.synchronize(SyncTrigger.MANUAL)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Exception) {
-                enqueue { mutableState.update { it.copy(setupBusy = false, problem = failure.syncProblem()) } }
+                runtime.onboarding.join(space, material)
             }
         }
     }
+
+    private fun runSetup(prepare: suspend () -> StoredSyncSetup) {
+        if (setupJob?.isActive == true) return
+        val version = setupVersion
+        val previousStep = state.value.setupStep
+        val session = panelSession
+        mutableState.update {
+            it.copy(setupBusy = true, setupStep = SyncSetupStep.CREATING, setupProblem = null, passwordProblem = null)
+        }
+        setupJob = scope.launch {
+            try {
+                val outcome = runtime.onboarding.resume(prepare())
+                when (outcome) {
+                    is SyncSetupOutcome.Existing -> enqueue {
+                        if (version == setupVersion) {
+                            setupJob = null
+                            selectSpace(outcome.space)
+                        }
+                    }
+                    is SyncSetupOutcome.Connected -> {
+                        enqueue {
+                            if (version == setupVersion) {
+                                mutableState.update { it.copy(setupStep = SyncSetupStep.MERGING) }
+                                refresh()
+                            }
+                        }
+                        setupExchangeCompletion = runtime.coordinator.activity.value.completion + 1
+                        val result = runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                        val material = outcome.setup.material.material()
+                        val remaining = handler.await {
+                            sync_importQueries.countPendingImports(
+                                material.descriptor.spaceId,
+                                material.descriptor.generation,
+                            ).executeAsOne()
+                        }
+                        val complete = result.status == SyncRunStatus.SUCCESS && remaining == 0L
+                        if (complete) runtime.onboarding.complete(outcome.setup)
+                        enqueue {
+                            if (version == setupVersion) {
+                                mutableState.update {
+                                    it.copy(
+                                        setupBusy = false,
+                                        setupStep = if (complete) SyncSetupStep.COMPLETE else SyncSetupStep.MERGING,
+                                        page = if (complete && it.visible && it.page == SyncPanelPage.SETUP) {
+                                            SyncPanelPage.MAIN
+                                        } else {
+                                            it.page
+                                        },
+                                        problem = result.problem,
+                                        notice = if (complete && it.visible && session == panelSession) {
+                                            SyncPanelNotice(setupCompleted = true)
+                                        } else {
+                                            it.notice
+                                        },
+                                    )
+                                }
+                                refresh()
+                            }
+                        }
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: IncorrectSyncPassword) {
+                enqueue {
+                    if (version == setupVersion) {
+                        mutableState.update {
+                            it.copy(
+                                setupBusy = false,
+                                setupStep = previousStep,
+                                passwordProblem = SyncPasswordProblem.INCORRECT,
+                            )
+                        }
+                    }
+                }
+            } catch (failure: Exception) {
+                enqueue { if (version == setupVersion) setupFailed(failure) }
+            }
+        }
+    }
+
+    private fun setupFailed(failure: Exception) {
+        mutableState.update {
+            it.copy(
+                setupBusy = false,
+                setupStep = SyncSetupStep.ERROR,
+                setupProblem = (failure as? SyncSetupException)?.problem ?: SyncDiscoveryProblem.RETRYABLE,
+                problem = failure.syncProblem(),
+            )
+        }
+    }
+
+    private class IncorrectSyncPassword : IllegalArgumentException("sync password is incorrect")
 
     private fun clearSelection() {
         selectedBindings = emptyMap()

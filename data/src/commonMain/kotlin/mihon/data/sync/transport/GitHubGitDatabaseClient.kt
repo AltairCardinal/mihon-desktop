@@ -612,7 +612,10 @@ class GitHubSyncTransport(
         if (bootstrap.type != "blob" || bootstrap.mode != "100644") return false
         if (tree.entries.any {
                 it != bootstrap && !(it.path == ".mihon-sync" && it.type == "tree" && it.mode == "040000")
-            }) return false
+            }
+        ) {
+            return false
+        }
         return getBlob(repository, bootstrap.sha).content.contentEquals("mihon-sync bootstrap".encodeToByteArray())
     }
 

@@ -1,10 +1,10 @@
 package mihon.data.sync
 
-import mihon.data.sync.crypto.SyncSpaceCrypto
 import mihon.data.sync.crypto.SyncAeadEngineFactory
+import mihon.data.sync.crypto.SyncSpaceCrypto
 import mihon.domain.sync.crypto.SyncCryptoBinding
-import mihon.domain.sync.crypto.SyncSpacePayloadCodec
 import mihon.domain.sync.crypto.SyncSpaceDescriptorCodec
+import mihon.domain.sync.crypto.SyncSpacePayloadCodec
 import mihon.domain.sync.crypto.SyncSpaceProtection
 import okio.ByteString.Companion.toByteString
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -25,7 +25,8 @@ class SyncSpaceContractTest {
             val material = SyncSpaceCrypto.create("space", 1, password)
             val encoded = SyncSpacePayloadCodec.encode(engine, material, binding, plaintext)
             org.junit.jupiter.api.Assertions.assertArrayEquals(
-                plaintext, SyncSpacePayloadCodec.decode(engine, material, binding, encoded),
+                plaintext,
+                SyncSpacePayloadCodec.decode(engine, material, binding, encoded),
             )
         }
     }

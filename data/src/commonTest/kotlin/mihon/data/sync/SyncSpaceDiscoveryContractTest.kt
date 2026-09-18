@@ -1,23 +1,25 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package mihon.data.sync
 
 import kotlinx.coroutines.test.runTest
 import mihon.data.sync.auth.GitHubSyncSpaceClient
-import mihon.data.sync.auth.SyncDiscoveryProblem
 import mihon.data.sync.auth.SyncCreationAttempt
+import mihon.data.sync.auth.SyncDiscoveryProblem
 import mihon.data.sync.auth.SyncGitHubAccount
 import mihon.data.sync.auth.SyncSpaceCreation
 import mihon.data.sync.auth.SyncSpaceDiscovery
 import mihon.data.sync.crypto.SyncSpaceCrypto
-import mihon.domain.sync.crypto.SyncSpaceDescriptorCodec
 import mihon.domain.sync.auth.GitHubAuthException
 import mihon.domain.sync.auth.GitHubAuthFailure
 import mihon.domain.sync.auth.GitHubAuthFailureReason
+import mihon.domain.sync.crypto.SyncSpaceDescriptorCodec
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
-import okhttp3.OkHttpClient
 import okhttp3.Headers.Companion.headersOf
+import okhttp3.OkHttpClient
 import okio.ByteString.Companion.toByteString
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -61,7 +63,8 @@ class SyncSpaceDiscoveryContractTest {
                                 MockResponse(
                                     body = """{"truncated":false,"tree":[
                                         {"path":"$name","type":"blob","mode":"100644","sha":"$sha"}
-                                    ]}""".trimIndent(),
+                                    ]}
+                                    """.trimIndent(),
                                 )
                             }
                             path.contains("/git/blobs/") -> {
@@ -131,13 +134,33 @@ class SyncSpaceDiscoveryContractTest {
                         path == "/user" -> MockResponse(body = ACCOUNT)
                         path == "/user/installations" -> MockResponse(body = INSTALLATIONS)
                         path.endsWith("/repositories") -> MockResponse(body = """{"repositories":[],"total_count":0}""")
-                        request.method == "POST" -> { exists = true; posts++; MockResponse(code = 422, body = "{}") }
+                        request.method == "POST" -> {
+                            exists = true
+                            posts++
+                            MockResponse(code = 422, body = "{}")
+                        }
                         !exists -> MockResponse(code = 404, body = "{}")
-                        path == "/repos/synthetic-user/mihon-sync" -> MockResponse(body = repositoryJson(description = "Mihon sync setup:other-attempt-0001"))
+                        path == "/repos/synthetic-user/mihon-sync" -> MockResponse(
+                            body = repositoryJson(description = "Mihon sync setup:other-attempt-0001"),
+                        )
                         path.contains("/git/ref/") -> MockResponse(body = """{"object":{"sha":"${"a".repeat(40)}"}}""")
-                        path.contains("/git/commits/") -> MockResponse(body = """{"tree":{"sha":"${"b".repeat(40)}"}}""")
-                        path.contains("/git/trees/") -> MockResponse(body = """{"truncated":false,"tree":[{"path":".mihon-sync/space.json","type":"blob","mode":"100644","sha":"${"c".repeat(40)}"}]}""")
-                        path.contains("/git/blobs/") -> MockResponse(body = """{"encoding":"base64","content":"${SyncSpaceDescriptorCodec.encode(winner).toByteString().base64()}"}""")
+                        path.contains(
+                            "/git/commits/",
+                        ) -> MockResponse(body = """{"tree":{"sha":"${"b".repeat(40)}"}}""")
+                        path.contains(
+                            "/git/trees/",
+                        ) -> MockResponse(
+                            body = """{"truncated":false,"tree":[{"path":".mihon-sync/space.json","type":"blob","mode":"100644","sha":"${"c".repeat(
+                                40,
+                            )}"}]}""",
+                        )
+                        path.contains(
+                            "/git/blobs/",
+                        ) -> MockResponse(
+                            body = """{"encoding":"base64","content":"${SyncSpaceDescriptorCodec.encode(
+                                winner,
+                            ).toByteString().base64()}"}""",
+                        )
                         else -> error("unexpected request")
                     }
                 }
@@ -161,8 +184,20 @@ class SyncSpaceDiscoveryContractTest {
                 server.enqueue(MockResponse(code = 404, body = "{}"))
                 server.enqueue(MockResponse(body = """{"object":{"sha":"${"a".repeat(40)}"}}"""))
                 server.enqueue(MockResponse(body = """{"tree":{"sha":"${"b".repeat(40)}"}}"""))
-                server.enqueue(MockResponse(body = """{"truncated":false,"tree":[{"path":".mihon-sync","mode":"040000","type":"tree","sha":"${"d".repeat(40)}"},{"path":".mihon-sync/bootstrap","mode":"100644","type":"blob","sha":"${"c".repeat(40)}"}]}"""))
-                server.enqueue(MockResponse(body = """{"encoding":"base64","content":"${content.encodeToByteArray().toByteString().base64()}"}"""))
+                server.enqueue(
+                    MockResponse(
+                        body = """{"truncated":false,"tree":[{"path":".mihon-sync","mode":"040000","type":"tree","sha":"${"d".repeat(
+                            40,
+                        )}"},{"path":".mihon-sync/bootstrap","mode":"100644","type":"blob","sha":"${"c".repeat(
+                            40,
+                        )}"}]}""",
+                    ),
+                )
+                server.enqueue(
+                    MockResponse(
+                        body = """{"encoding":"base64","content":"${content.encodeToByteArray().toByteString().base64()}"}""",
+                    ),
+                )
                 server.enqueue(MockResponse(code = 404, body = "{}"))
                 val result = client(server).createOrResume(attempt().copy(submitted = true)) { }
                 if (content == "mihon-sync bootstrap") {
@@ -207,7 +242,12 @@ class SyncSpaceDiscoveryContractTest {
                 } else {
                     server.url("/user/installations/7/repositories?per_page=100&page=2").toString()
                 }
-                server.enqueue(MockResponse(body = """{"repositories":[],"total_count":0}""", headers = headersOf("Link", "<$next>; rel=\"next\"")))
+                server.enqueue(
+                    MockResponse(
+                        body = """{"repositories":[],"total_count":0}""",
+                        headers = headersOf("Link", "<$next>; rel=\"next\""),
+                    ),
+                )
                 if (!external) {
                     server.enqueue(MockResponse(body = """{"repositories":[],"total_count":0}"""))
                     server.enqueue(MockResponse(code = 404, body = "{}"))
@@ -235,7 +275,13 @@ class SyncSpaceDiscoveryContractTest {
                 if (old) {
                     server.enqueue(MockResponse(body = """{"object":{"sha":"${"a".repeat(40)}"}}"""))
                     server.enqueue(MockResponse(body = """{"tree":{"sha":"${"b".repeat(40)}"}}"""))
-                    server.enqueue(MockResponse(body = """{"truncated":false,"tree":[{"path":".mihon-sync/index/bootstrap/0/bootstrap.bin","type":"blob","mode":"100644","sha":"${"c".repeat(40)}"}]}"""))
+                    server.enqueue(
+                        MockResponse(
+                            body = """{"truncated":false,"tree":[{"path":".mihon-sync/index/bootstrap/0/bootstrap.bin","type":"blob","mode":"100644","sha":"${"c".repeat(
+                                40,
+                            )}"}]}""",
+                        ),
+                    )
                 } else {
                     enqueueSpace(server, """{"spaceFormatVersion":999}""".encodeToByteArray())
                 }
@@ -285,7 +331,9 @@ class SyncSpaceDiscoveryContractTest {
                 override fun dispatch(request: RecordedRequest): MockResponse = when {
                     request.url.encodedPath == "/user" -> MockResponse(body = ACCOUNT)
                     request.url.encodedPath == "/user/installations" -> MockResponse(body = INSTALLATIONS)
-                    request.url.encodedPath.endsWith("/repositories") -> MockResponse(body = """{"repositories":[],"total_count":0}""")
+                    request.url.encodedPath.endsWith(
+                        "/repositories",
+                    ) -> MockResponse(body = """{"repositories":[],"total_count":0}""")
                     request.method == "POST" -> {
                         check(saved?.submitted == true)
                         check(request.url.encodedPath == "/user/repos")
@@ -316,8 +364,13 @@ class SyncSpaceDiscoveryContractTest {
                 override fun dispatch(request: RecordedRequest): MockResponse = when {
                     request.url.encodedPath == "/user" -> MockResponse(body = ACCOUNT)
                     request.url.encodedPath == "/user/installations" -> MockResponse(body = INSTALLATIONS)
-                    request.url.encodedPath.endsWith("/repositories") -> MockResponse(body = """{"repositories":[],"total_count":0}""" )
-                    request.method == "POST" -> { posts++; MockResponse(code = 500, body = "{}") }
+                    request.url.encodedPath.endsWith(
+                        "/repositories",
+                    ) -> MockResponse(body = """{"repositories":[],"total_count":0}""")
+                    request.method == "POST" -> {
+                        posts++
+                        MockResponse(code = 500, body = "{}")
+                    }
                     else -> MockResponse(code = 404, body = "{}")
                 }
             }
@@ -418,7 +471,9 @@ class SyncSpaceDiscoveryContractTest {
     }
 
     private fun client(server: MockWebServer) = GitHubSyncSpaceClient(
-        OkHttpClient(), { "synthetic-token" }, server.url("/").toString(),
+        OkHttpClient(),
+        { "synthetic-token" },
+        server.url("/").toString(),
     )
 
     private fun enqueueIdentity(
@@ -426,7 +481,11 @@ class SyncSpaceDiscoveryContractTest {
         permissions: String = """{"administration":"write","contents":"write","metadata":"read"}""",
     ) {
         server.enqueue(MockResponse(body = ACCOUNT))
-        server.enqueue(MockResponse(body = """{"installations":[{"id":7,"app_slug":"mihon-desktop","account":{"id":42,"type":"User"},"suspended_at":null,"repository_selection":"selected","permissions":$permissions}]}"""))
+        server.enqueue(
+            MockResponse(
+                body = """{"installations":[{"id":7,"app_slug":"mihon-desktop","account":{"id":42,"type":"User"},"suspended_at":null,"repository_selection":"selected","permissions":$permissions}]}""",
+            ),
+        )
     }
 
     companion object {
@@ -439,8 +498,16 @@ class SyncSpaceDiscoveryContractTest {
     private fun enqueueSpace(server: MockWebServer, descriptor: ByteArray) {
         server.enqueue(MockResponse(body = """{"object":{"sha":"${"a".repeat(40)}"}}"""))
         server.enqueue(MockResponse(body = """{"tree":{"sha":"${"b".repeat(40)}"}}"""))
-        server.enqueue(MockResponse(body = """{"truncated":false,"tree":[{"path":".mihon-sync/space.json","type":"blob","mode":"100644","sha":"${"c".repeat(40)}"}]}"""))
-        server.enqueue(MockResponse(body = """{"encoding":"base64","content":"${descriptor.toByteString().base64()}"}"""))
+        server.enqueue(
+            MockResponse(
+                body = """{"truncated":false,"tree":[{"path":".mihon-sync/space.json","type":"blob","mode":"100644","sha":"${"c".repeat(
+                    40,
+                )}"}]}""",
+            ),
+        )
+        server.enqueue(
+            MockResponse(body = """{"encoding":"base64","content":"${descriptor.toByteString().base64()}"}"""),
+        )
     }
 
     private fun repositoryJson(description: String = "Mihon sync setup:attempt-fixture-0001") =

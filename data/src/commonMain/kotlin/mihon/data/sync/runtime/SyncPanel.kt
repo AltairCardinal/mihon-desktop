@@ -1,7 +1,8 @@
 package mihon.data.sync.runtime
 
 import kotlinx.coroutines.flow.StateFlow
-import mihon.data.sync.auth.GitHubPrivateRepository
+import mihon.data.sync.auth.DiscoveredSyncSpace
+import mihon.data.sync.auth.SyncDiscoveryProblem
 import mihon.data.sync.inbox.SyncPendingItem
 import mihon.domain.sync.SyncCancellationDecision
 import mihon.domain.sync.auth.GitHubAuthFailureReason
@@ -10,8 +11,19 @@ import mihon.domain.sync.runtime.SyncRunProblem
 import mihon.domain.sync.runtime.SyncRunResult
 import mihon.domain.sync.transport.SyncRepository
 
-enum class SyncPanelPage { MAIN, SETTINGS, HISTORY, SETUP, RECOVERY }
-enum class SyncSetupStep { SIGN_IN, REPOSITORY, RECOVERY, MERGE }
+enum class SyncPanelPage { MAIN, SETTINGS, HISTORY, SETUP }
+enum class SyncSetupStep {
+    SIGN_IN,
+    DISCOVERING,
+    CHOOSE_SPACE,
+    NEW_PASSWORD,
+    UNLOCK,
+    CREATING,
+    MERGING,
+    COMPLETE,
+    ERROR,
+}
+enum class SyncPasswordProblem { INCORRECT, TOO_LONG, INVALID }
 enum class SyncDecisionScope { ITEM, SELECTED, ALL }
 enum class SyncPanelQuestion { DISCONNECT, SWITCH_SPACE }
 
@@ -35,7 +47,11 @@ data class SyncBulkStatus(
 )
 
 /** Only events produced during the current visible session may populate this value. */
-data class SyncPanelNotice(val exchange: SyncRunResult? = null, val bulk: SyncBulkStatus? = null)
+data class SyncPanelNotice(
+    val exchange: SyncRunResult? = null,
+    val bulk: SyncBulkStatus? = null,
+    val setupCompleted: Boolean = false,
+)
 
 data class SyncPanelState(
     val visible: Boolean = false,
@@ -69,16 +85,15 @@ data class SyncPanelState(
     val setupBusy: Boolean = false,
     val deviceCode: GitHubDeviceCode? = null,
     val authFailure: GitHubAuthFailureReason? = null,
-    val repositories: List<GitHubPrivateRepository> = emptyList(),
+    val setupProblem: SyncDiscoveryProblem? = null,
+    val passwordProblem: SyncPasswordProblem? = null,
+    val spaces: List<DiscoveredSyncSpace> = emptyList(),
+    val setupAccountLogin: String? = null,
     val setupRepository: SyncRepository? = null,
-    val newSpace: Boolean = false,
-    val recoveryText: String = "",
-    val recoverySaved: Boolean = false,
-    val recoveryInvalid: Boolean = false,
 ) {
     val queuedTotal: Long get() = queuedMembership + queuedReading
 
-    // Never accidentally serialize recovery material or a device code into an exception/log.
+    // Device codes and transient authentication details must never be logged.
     override fun toString(): String = "SyncPanelState(page=$page, visible=$visible, busy=$busy)"
 }
 
@@ -97,17 +112,11 @@ sealed interface SyncPanelAction {
     data object BeginSetup : SyncPanelAction
     data object Authorize : SyncPanelAction
     data object CancelAuthorization : SyncPanelAction
-    data object RefreshRepositories : SyncPanelAction
-    data class ChooseRepository(val repository: SyncRepository, val newSpace: Boolean) : SyncPanelAction
-    data class SetRecovery(val text: String) : SyncPanelAction {
-        override fun toString(): String = "SetRecovery(<redacted>)"
+    data object RetrySetup : SyncPanelAction
+    data class ChooseSpace(val space: DiscoveredSyncSpace) : SyncPanelAction
+    data class SubmitPassword(val password: String) : SyncPanelAction {
+        override fun toString(): String = "SubmitPassword(<redacted>)"
     }
-    data class RecoverySaved(val text: String) : SyncPanelAction {
-        override fun toString(): String = "RecoverySaved(<redacted>)"
-    }
-    data object PrepareMerge : SyncPanelAction
-    data object ConfirmMerge : SyncPanelAction
-    data object ShowRecovery : SyncPanelAction
     data class Ask(val question: SyncPanelQuestion) : SyncPanelAction
     data object CancelQuestion : SyncPanelAction
     data object ConfirmQuestion : SyncPanelAction

@@ -1,11 +1,9 @@
 package eu.kanade.tachiyomi.data.sync
 
-import android.app.Activity
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import androidx.activity.ComponentActivity
+import androidx.activity.ComponentDialog
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
@@ -14,13 +12,14 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextInput
 import eu.kanade.presentation.library.components.LibraryToolbar
 import eu.kanade.presentation.library.components.LibraryToolbarTitle
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.runBlocking
 import mihon.data.sync.runtime.SyncConnection
 import mihon.data.sync.runtime.SyncPanel
 import mihon.data.sync.runtime.SyncPanelAction
@@ -39,15 +38,14 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowDialog
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.InjektScope
 import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.registry.default.DefaultRegistrar
-import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = android.app.Application::class)
@@ -82,8 +80,9 @@ class AndroidSyncPanelTest {
         compose.onNodeWithTag("sync-now").assertIsDisplayed()
         compose.onNodeWithTag("sync-settings").performClick()
         compose.onNodeWithTag("sync-settings-list", useUnmergedTree = true)
-            .performScrollToNode(hasTestTag("sync-show-recovery"))
-        compose.onNodeWithTag("sync-show-recovery").assertIsDisplayed()
+            .performScrollToNode(hasTestTag("sync-password-status"))
+        compose.onNodeWithTag("sync-password-status", useUnmergedTree = true).performScrollTo()
+        compose.onNodeWithTag("sync-password-status", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithTag("sync-back").performClick()
         compose.onNodeWithTag("sync-now").assertIsDisplayed()
         compose.onNodeWithTag("sync-close").performClick()
@@ -94,33 +93,22 @@ class AndroidSyncPanelTest {
     }
 
     @Test
-    fun `real sheet picker result writes the recovery before acknowledging it`() {
+    fun `native password entry handles system back inside the existing sheet`() {
         panel.state.value = panel.state.value.copy(
-            page = SyncPanelPage.RECOVERY,
-            setupStep = SyncSetupStep.RECOVERY,
-            recoveryText = "picker-recovery-fixture",
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.NEW_PASSWORD,
         )
-        val file = File.createTempFile("sync-picker-", ".json", activity.get().cacheDir)
-        try {
-            showToolbar()
-            compose.onNodeWithTag("sync-open").performClick()
-            compose.onNodeWithTag("sync-save-recovery").performClick()
-            val request = shadowOf(activity.get()).nextStartedActivityForResult
-            assertEquals(Intent.ACTION_CREATE_DOCUMENT, request.intent.action)
-            assertFalse(panel.actions.any { it is SyncPanelAction.RecoverySaved })
-            compose.runOnUiThread {
-                shadowOf(activity.get()).receiveResult(
-                    request.intent,
-                    Activity.RESULT_OK,
-                    Intent().setData(Uri.fromFile(file)),
-                )
-            }
-            compose.waitUntil(5000) {
-                panel.actions.contains(SyncPanelAction.RecoverySaved("picker-recovery-fixture"))
-            }
-            assertEquals("picker-recovery-fixture", file.readText(Charsets.UTF_8))
-        } finally {
-            file.delete()
+        showToolbar()
+        compose.onNodeWithTag("sync-open").performClick()
+        compose.onNodeWithTag("sync-password-input").assertIsDisplayed().performTextInput("temporary")
+        compose.runOnUiThread {
+            (ShadowDialog.getLatestDialog() as ComponentDialog).onBackPressedDispatcher.onBackPressed()
+        }
+        compose.onNodeWithTag("sync-password-input").assertDoesNotExist()
+        compose.runOnIdle {
+            assertEquals(SyncPanelPage.MAIN, panel.state.value.page)
+            assertTrue(panel.state.value.visible)
+            assertFalse(panel.actions.any { it is SyncPanelAction.SubmitPassword })
         }
     }
 
@@ -133,40 +121,6 @@ class AndroidSyncPanelTest {
         val clipboard = activity.get().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         assertEquals("ABCD-EFGH", clipboard.primaryClip?.getItemAt(0)?.text?.toString())
         assertTrue(clipboard.primaryClip?.description?.extras?.getBoolean("android.content.extra.IS_SENSITIVE") == true)
-    }
-
-    @Test
-    fun `recovery save acknowledges only a successful real document write`() = runBlocking {
-        val directory = RuntimeEnvironment.getApplication().cacheDir
-        val file = File.createTempFile("sync-recovery-", ".txt", directory)
-        try {
-            val files = AndroidSyncPanelFiles(activity.get(), panel)
-            assertTrue(files.save(Uri.fromFile(file), "recovery-fixture"))
-            assertEquals("recovery-fixture", file.readText(Charsets.UTF_8))
-            assertEquals(listOf(SyncPanelAction.RecoverySaved("recovery-fixture")), panel.actions)
-            assertFalse(files.save(Uri.fromFile(directory), "must-not-be-acknowledged"))
-            assertEquals(1, panel.actions.size)
-        } finally {
-            file.delete()
-        }
-    }
-
-    @Test
-    fun `recovery document import is bounded and malformed utf8 is rejected`() = runBlocking {
-        val file = File.createTempFile("sync-import-", ".txt", activity.get().cacheDir)
-        try {
-            val files = AndroidSyncPanelFiles(activity.get(), panel)
-            file.writeText("recovery-fixture", Charsets.UTF_8)
-            assertTrue(files.import(Uri.fromFile(file)))
-            assertEquals(listOf(SyncPanelAction.SetRecovery("recovery-fixture")), panel.actions)
-            file.writeBytes(ByteArray(16 * 1024 + 1))
-            assertFalse(files.import(Uri.fromFile(file)))
-            file.writeBytes(byteArrayOf(0xC3.toByte(), 0x28))
-            assertFalse(files.import(Uri.fromFile(file)))
-            assertEquals(1, panel.actions.size)
-        } finally {
-            file.delete()
-        }
     }
 
     private fun showToolbar() {
@@ -184,7 +138,13 @@ class AndroidSyncPanelTest {
         override val state = MutableStateFlow(
             SyncPanelState(
                 loaded = true,
-                connection = SyncConnection("space", 1, SyncRepository("owner", "repo", "sync"), true),
+                connection = SyncConnection(
+                    "space",
+                    1,
+                    SyncRepository("owner", "repo", "sync"),
+                    true,
+                    protectionMode = "none",
+                ),
             ),
         )
         val actions = mutableListOf<SyncPanelAction>()

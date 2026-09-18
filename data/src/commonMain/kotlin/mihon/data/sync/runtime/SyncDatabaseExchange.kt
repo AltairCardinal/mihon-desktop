@@ -13,6 +13,7 @@ import mihon.data.sync.transport.SyncBatchSyncService
 import mihon.data.sync.transport.SyncRemoteSnapshotRejected
 import mihon.domain.sync.auth.GitHubAuthException
 import mihon.domain.sync.crypto.SyncSecret
+import mihon.domain.sync.crypto.SyncSpaceMaterial
 import mihon.domain.sync.runtime.SyncRunProblem
 import mihon.domain.sync.runtime.SyncRunResult
 import mihon.domain.sync.runtime.SyncRunStatus
@@ -29,7 +30,8 @@ class SyncDatabaseExchange(
     private val baseline: SyncBaselineStore,
     private val projector: SyncInboxProjector,
     private val transport: SyncTransportPort,
-    private val secret: SyncSecret,
+    private val secret: SyncSecret? = null,
+    private val spaceMaterial: SyncSpaceMaterial? = null,
     private val allowImport: () -> Boolean = { true },
 ) {
     suspend fun exchange(spaceId: String, generation: Long, repository: SyncRepository): SyncRunResult {
@@ -52,7 +54,7 @@ class SyncDatabaseExchange(
                 yield()
             }
             val store = SyncInboxStore(handler)
-            val service = SyncBatchSyncService(transport, secret)
+            val service = SyncBatchSyncService(transport, secret, spaceMaterial = spaceMaterial)
             val inbox = SyncInboxExchange(store, service)
             val outbox = SyncOutboxExchange(SyncOutboxStore(handler), service)
             projector.retryUnavailable(spaceId, generation)
@@ -114,6 +116,15 @@ class SyncDatabaseExchange(
 }
 
 internal fun Exception.syncProblem(): SyncRunProblem = when (this) {
+    is mihon.domain.sync.crypto.SyncCryptoException -> SyncRunProblem.INVALID_DATA
+    is UnsupportedSyncSpace -> SyncRunProblem.INVALID_DATA
+    is SyncSetupException -> when (problem) {
+        mihon.data.sync.auth.SyncDiscoveryProblem.REPOSITORY_NOT_PRIVATE -> SyncRunProblem.REPOSITORY_NOT_PRIVATE
+        mihon.data.sync.auth.SyncDiscoveryProblem.ACCOUNT_CHANGED,
+        mihon.data.sync.auth.SyncDiscoveryProblem.AUTHORIZATION_REQUIRED,
+        -> SyncRunProblem.AUTHORIZATION
+        else -> SyncRunProblem.REMOTE_CHANGED
+    }
     is GitHubAuthException -> if (failure.retryable) SyncRunProblem.NETWORK else SyncRunProblem.AUTHORIZATION
     is SyncSecureStoreException -> SyncRunProblem.STORAGE
     is SyncRemoteSnapshotRejected -> SyncRunProblem.REMOTE_CHANGED

@@ -146,7 +146,11 @@ class SyncEncryptedBatch(
 
     init {
         require(digest.size == 32) { "invalid plaintext digest" }
-        val maxPayloadBytes = if (ciphertext is SyncSpacePayload) SYNC_MAX_SPACE_PAYLOAD_BYTES else SYNC_MAX_CIPHERTEXT_BYTES
+        val maxPayloadBytes = if (ciphertext is SyncSpacePayload) {
+            SYNC_MAX_SPACE_PAYLOAD_BYTES
+        } else {
+            SYNC_MAX_CIPHERTEXT_BYTES
+        }
         require(ciphertext.bytes.size <= maxPayloadBytes) { "sync payload too large" }
         require(actorId.isNotBlank() && epoch >= 0 && firstSeq <= lastSeq) { "invalid batch sequence metadata" }
     }

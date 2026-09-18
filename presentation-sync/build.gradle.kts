@@ -27,6 +27,9 @@ kotlin {
             implementation(project.dependencies.platform(androidCompose.bom))
         }
         jvmTest.dependencies {
+            implementation(projects.core.common)
+            implementation(projects.sourceApi)
+            implementation(libs.okhttp.mockwebserver)
             implementation(compose.desktop.currentOs)
             implementation(libs.bundles.test)
             implementation(kotlinx.coroutines.test)

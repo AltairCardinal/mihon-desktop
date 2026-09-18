@@ -21,7 +21,15 @@ enum class SyncTrigger { MANUAL, STARTUP, PERIODIC }
 enum class SyncRunStatus { SUCCESS, PARTIAL, FAILED, SKIPPED }
 
 @kotlinx.serialization.Serializable
-enum class SyncRunProblem { AUTHORIZATION, NETWORK, STORAGE, REMOTE_CHANGED, INVALID_DATA, UNKNOWN }
+enum class SyncRunProblem {
+    AUTHORIZATION,
+    NETWORK,
+    STORAGE,
+    REMOTE_CHANGED,
+    INVALID_DATA,
+    REPOSITORY_NOT_PRIVATE,
+    UNKNOWN,
+}
 
 @kotlinx.serialization.Serializable
 data class SyncRunResult(

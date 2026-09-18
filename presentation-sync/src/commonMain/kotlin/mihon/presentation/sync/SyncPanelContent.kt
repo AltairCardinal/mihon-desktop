@@ -29,6 +29,8 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
@@ -58,6 +60,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isShiftPressed
@@ -67,11 +71,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.icerock.moko.resources.StringResource
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import mihon.data.sync.auth.SyncDiscoveryProblem
 import mihon.data.sync.inbox.SyncPendingItem
 import mihon.data.sync.runtime.SyncDecisionScope
 import mihon.data.sync.runtime.SyncPanel
@@ -79,6 +86,7 @@ import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPanelQuestion
 import mihon.data.sync.runtime.SyncPanelState
+import mihon.data.sync.runtime.SyncPasswordProblem
 import mihon.data.sync.runtime.SyncSetupStep
 import mihon.domain.sync.SyncCancellationDecision
 import mihon.domain.sync.SyncObjectType
@@ -130,8 +138,6 @@ fun SyncPanelContent(
     modifier: Modifier = Modifier,
     onOpenBrowser: (String) -> Unit,
     onCopyCode: (String) -> Unit,
-    onSaveRecovery: (String) -> Unit,
-    onImportRecovery: () -> Unit,
 ) {
     val state by panel.state.collectAsState()
     val listState = rememberLazyListState()
@@ -142,13 +148,11 @@ fun SyncPanelContent(
             SyncPanelPage.MAIN -> MainPage(state, panel::dispatch, listState, Modifier.weight(1f))
             SyncPanelPage.SETTINGS -> SettingsPage(state, panel::dispatch, Modifier.weight(1f))
             SyncPanelPage.HISTORY -> RecordsPage(state, Modifier.weight(1f))
-            SyncPanelPage.SETUP, SyncPanelPage.RECOVERY -> SetupPage(
+            SyncPanelPage.SETUP -> SetupPage(
                 state,
                 panel::dispatch,
                 onOpenBrowser,
                 onCopyCode,
-                onSaveRecovery,
-                onImportRecovery,
                 Modifier.weight(1f),
             )
         }
@@ -227,7 +231,6 @@ private fun PanelHeader(state: SyncPanelState, dispatch: (SyncPanelAction) -> Un
                 when (state.page) {
                     SyncPanelPage.SETTINGS -> MR.strings.sync_settings
                     SyncPanelPage.HISTORY -> MR.strings.sync_records
-                    SyncPanelPage.RECOVERY -> MR.strings.sync_recovery
                     else -> MR.strings.sync_title
                 },
             ),
@@ -256,6 +259,7 @@ private fun MainPage(
     listState: LazyListState,
     modifier: Modifier,
 ) {
+    val continuingSetup = state.setupStep !in setOf(SyncSetupStep.SIGN_IN, SyncSetupStep.COMPLETE)
     Column(modifier) {
         Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -268,19 +272,23 @@ private fun MainPage(
             Button(
                 onClick = {
                     dispatch(
-                        if (state.connection?.enabled != true) {
+                        if (state.connection?.enabled != true || continuingSetup) {
                             SyncPanelAction.BeginSetup
                         } else {
                             SyncPanelAction.Synchronize
                         },
                     )
                 },
-                enabled = !state.busy,
+                enabled = !state.busy || continuingSetup,
                 modifier = Modifier.padding(start = 8.dp).testTag("sync-now"),
             ) {
                 Text(
                     syncString(
-                        if (state.connection?.enabled != true) MR.strings.sync_connect else MR.strings.sync_now,
+                        when {
+                            continuingSetup -> MR.strings.sync_setup_continue
+                            state.connection?.enabled != true -> MR.strings.sync_connect
+                            else -> MR.strings.sync_now
+                        },
                     ),
                 )
             }
@@ -288,12 +296,20 @@ private fun MainPage(
         if (state.problem == SyncRunProblem.AUTHORIZATION) {
             Action("sync-reconnect", MR.strings.sync_reconnect) { dispatch(SyncPanelAction.Authorize) }
         }
+        if (state.setupProblem != SyncDiscoveryProblem.INCOMPATIBLE &&
+            (state.problem == SyncRunProblem.STORAGE || state.problem == SyncRunProblem.INVALID_DATA)
+        ) {
+            Action("sync-reenter-password", MR.strings.sync_password_connect) { dispatch(SyncPanelAction.BeginSetup) }
+        }
         state.notice?.let { notice ->
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
+                    if (notice.setupCompleted) {
+                        Text(syncString(MR.strings.sync_setup_complete), Modifier.testTag("sync-setup-complete"))
+                    }
                     notice.exchange?.let { result ->
                         if (result.status == SyncRunStatus.SUCCESS || result.status == SyncRunStatus.PARTIAL) {
                             Text(
@@ -591,9 +607,16 @@ private fun SettingsPage(state: SyncPanelState, dispatch: (SyncPanelAction) -> U
             )
         }
         item {
-            Action("sync-show-recovery", MR.strings.sync_recovery, state.connection != null) {
-                dispatch(SyncPanelAction.ShowRecovery)
-            }
+            Text(
+                syncString(
+                    when (state.connection?.protectionMode) {
+                        "password" -> MR.strings.sync_password_enabled
+                        "none" -> MR.strings.sync_password_disabled
+                        else -> MR.strings.sync_password_unavailable
+                    },
+                ),
+                Modifier.testTag("sync-password-status"),
+            )
         }
         item {
             Action("sync-settings-history", MR.strings.sync_records) {
@@ -643,14 +666,17 @@ private fun SetupPage(
     dispatch: (SyncPanelAction) -> Unit,
     openBrowser: (String) -> Unit,
     copyCode: (String) -> Unit,
-    saveRecovery: (String) -> Unit,
-    importRecovery: () -> Unit,
     modifier: Modifier,
 ) {
-    LazyColumn(modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    // Session-local text only: closing or leaving this step discards unsubmitted input.
+    var password by remember(state.visible, state.setupStep, state.setupRepository) { mutableStateOf(TextFieldValue()) }
+    var showPassword by remember(state.visible, state.setupStep) { mutableStateOf(false) }
+    val passwordFocus = remember { FocusRequester() }
+    LazyColumn(modifier.padding(24.dp).testTag("sync-setup-list"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (state.setupBusy) item { CircularProgressIndicator(Modifier.size(24.dp)) }
-        state.problem?.let { item { Text(problemText(it)) } }
-        when (if (state.page == SyncPanelPage.RECOVERY) SyncSetupStep.RECOVERY else state.setupStep) {
+        state.setupProblem?.let { item { Text(setupProblemText(it), Modifier.testTag("sync-setup-error")) } }
+        if (state.setupProblem == null) state.problem?.let { item { Text(problemText(it)) } }
+        when (state.setupStep) {
             SyncSetupStep.SIGN_IN -> {
                 item { Text(syncString(MR.strings.sync_auth_description)) }
                 state.deviceCode?.let { code ->
@@ -678,112 +704,150 @@ private fun SetupPage(
                     }
                 }
             }
-            SyncSetupStep.REPOSITORY -> {
-                if (state.problem != null) {
+            SyncSetupStep.NEW_PASSWORD, SyncSetupStep.UNLOCK -> {
+                val creating = state.setupStep == SyncSetupStep.NEW_PASSWORD
+                item {
+                    Text(
+                        syncString(
+                            if (creating) MR.strings.sync_password_new_title else MR.strings.sync_password_unlock_title,
+                        ),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+                item {
+                    Text(
+                        syncString(
+                            if (creating) MR.strings.sync_password_new_hint else MR.strings.sync_password_unlock_hint,
+                        ),
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        modifier = Modifier.fillMaxWidth().focusRequester(passwordFocus).testTag("sync-password-input"),
+                        enabled = !state.setupBusy,
+                        label = {
+                            Text(
+                                syncString(
+                                    if (creating) MR.strings.sync_password_optional else MR.strings.sync_password_label,
+                                ),
+                            )
+                        },
+                        keyboardOptions = KeyboardOptions(
+                            autoCorrectEnabled = false,
+                            keyboardType = KeyboardType.Password,
+                        ),
+                        visualTransformation = if (showPassword) {
+                            VisualTransformation.None
+                        } else {
+                            PasswordVisualTransformation()
+                        },
+                        singleLine = true,
+                        isError = state.passwordProblem != null,
+                        trailingIcon = {
+                            IconButton(
+                                onClick = {
+                                    showPassword = !showPassword
+                                    passwordFocus.requestFocus()
+                                },
+                                enabled = !state.setupBusy,
+                                modifier = Modifier.testTag("sync-password-visibility"),
+                            ) {
+                                Icon(
+                                    if (showPassword) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                    syncString(
+                                        if (showPassword) {
+                                            MR.strings.sync_password_hide
+                                        } else {
+                                            MR.strings.sync_password_show
+                                        },
+                                    ),
+                                )
+                            }
+                        },
+                    )
+                }
+                state.passwordProblem?.let { problem ->
                     item {
-                        Action("sync-repo-reconnect", MR.strings.sync_reconnect) {
-                            dispatch(SyncPanelAction.Authorize)
-                        }
-                    }
-                }
-                item {
-                    Text(syncString(MR.strings.sync_repositories), style = MaterialTheme.typography.titleMedium)
-                }
-                item { Text(syncString(MR.strings.sync_repository_setup_hint)) }
-                item {
-                    Action("sync-install-app", MR.strings.sync_install_app) {
-                        openBrowser("https://github.com/apps/mihon-desktop/installations/new")
-                    }
-                }
-                item {
-                    Action("sync-create-repo", MR.strings.sync_create_repo) {
-                        openBrowser("https://github.com/new")
-                    }
-                }
-                item {
-                    Action("sync-refresh-repos", MR.strings.sync_refresh_repos, !state.setupBusy) {
-                        dispatch(SyncPanelAction.RefreshRepositories)
-                    }
-                }
-                items(
-                    state.repositories,
-                    key = { "${it.repository.owner}/${it.repository.name}" },
-                ) { candidate ->
-                    Column {
-                        Text("${candidate.repository.owner}/${candidate.repository.name}")
-                        Action(
-                            "sync-repo-existing-${candidate.repository.name}",
-                            MR.strings.sync_existing_space,
-                            !state.setupBusy,
-                        ) {
-                            dispatch(SyncPanelAction.ChooseRepository(candidate.repository, false))
-                        }
-                        Action(
-                            "sync-repo-new-${candidate.repository.name}",
-                            MR.strings.sync_new_space,
-                            !state.setupBusy,
-                        ) {
-                            dispatch(SyncPanelAction.ChooseRepository(candidate.repository, true))
-                        }
-                    }
-                }
-            }
-            SyncSetupStep.RECOVERY -> {
-                item { Text(syncString(MR.strings.sync_recovery_explain)) }
-                if (state.newSpace || state.page == SyncPanelPage.RECOVERY) {
-                    item {
-                        Action(
-                            "sync-save-recovery",
-                            MR.strings.sync_save_recovery,
-                            state.recoveryText.isNotBlank(),
-                        ) {
-                            saveRecovery(state.recoveryText)
-                        }
-                    }
-                    if (state.recoverySaved) item { Text(syncString(MR.strings.sync_recovery_saved)) }
-                } else {
-                    item { Action("sync-import-recovery", MR.strings.sync_import_recovery) { importRecovery() } }
-                    item {
-                        OutlinedTextField(
-                            state.recoveryText,
-                            { dispatch(SyncPanelAction.SetRecovery(it)) },
-                            Modifier.fillMaxWidth().testTag("sync-recovery-input"),
-                            label = { Text(syncString(MR.strings.sync_recovery)) },
-                            keyboardOptions = KeyboardOptions(
-                                autoCorrectEnabled = false,
-                                keyboardType = KeyboardType.Password,
+                        Text(
+                            syncString(
+                                when (problem) {
+                                    SyncPasswordProblem.INCORRECT -> MR.strings.sync_password_incorrect
+                                    SyncPasswordProblem.TOO_LONG -> MR.strings.sync_password_too_long
+                                    SyncPasswordProblem.INVALID -> MR.strings.sync_password_invalid
+                                },
                             ),
-                            visualTransformation = PasswordVisualTransformation(),
-                            maxLines = 4,
+                            Modifier.testTag("sync-password-error"),
+                            color = MaterialTheme.colorScheme.error,
                         )
                     }
                 }
-                if (state.recoveryInvalid) {
-                    item {
-                        Text(syncString(MR.strings.sync_recovery_invalid), color = MaterialTheme.colorScheme.error)
+                item {
+                    Action(
+                        "sync-password-submit",
+                        when {
+                            !creating -> MR.strings.sync_password_connect
+                            password.text.isEmpty() -> MR.strings.sync_password_skip
+                            else -> MR.strings.sync_password_confirm
+                        },
+                        !state.setupBusy && (creating || password.text.isNotEmpty()),
+                    ) {
+                        val submitted = password.text
+                        password = TextFieldValue()
+                        dispatch(SyncPanelAction.SubmitPassword(submitted))
                     }
                 }
-                if (state.page != SyncPanelPage.RECOVERY) {
+            }
+            SyncSetupStep.CHOOSE_SPACE -> {
+                item { Text(syncString(MR.strings.sync_setup_multiple)) }
+                items(state.spaces, key = { it.repositoryId }) { space ->
+                    TextButton(
+                        onClick = { dispatch(SyncPanelAction.ChooseSpace(space)) },
+                        enabled = !state.setupBusy,
+                        modifier = Modifier.testTag("sync-space-${space.repositoryId}"),
+                    ) { Text(space.repository.fullName) }
+                }
+            }
+            SyncSetupStep.DISCOVERING -> item { Text(syncString(MR.strings.sync_setup_discovering)) }
+            SyncSetupStep.CREATING -> item { Text(syncString(MR.strings.sync_setup_creating)) }
+            SyncSetupStep.MERGING -> {
+                item { Text(syncString(MR.strings.sync_setup_merging)) }
+                if (state.importRemaining > 0) {
+                    item { Text(syncString(MR.strings.sync_import_remaining, state.importRemaining)) }
                     item {
-                        Action(
-                            "sync-prepare-merge",
-                            MR.strings.sync_continue,
-                            !state.setupBusy && if (state.newSpace) {
-                                state.recoverySaved
-                            } else {
-                                state.recoveryText.isNotBlank()
-                            },
-                        ) {
-                            dispatch(SyncPanelAction.PrepareMerge)
+                        if (state.importPaused) {
+                            Action("sync-resume-import", MR.strings.sync_resume) {
+                                dispatch(SyncPanelAction.ResumeImport)
+                            }
+                        } else {
+                            Action("sync-pause-import", MR.strings.sync_pause) { dispatch(SyncPanelAction.PauseImport) }
                         }
                     }
                 }
             }
-            SyncSetupStep.MERGE -> {
-                item { Text(syncString(MR.strings.sync_merge_explain)) }
+            SyncSetupStep.COMPLETE -> item { Text(syncString(MR.strings.sync_setup_complete)) }
+            SyncSetupStep.ERROR -> {
                 item {
-                    Action("sync-confirm-merge", MR.strings.sync_merge, !state.setupBusy) {
-                        dispatch(SyncPanelAction.ConfirmMerge)
+                    Action("sync-setup-retry", MR.strings.sync_setup_retry, !state.setupBusy) {
+                        dispatch(SyncPanelAction.RetrySetup)
+                    }
+                }
+                item {
+                    Action("sync-repo-reconnect", MR.strings.sync_reconnect, !state.setupBusy) {
+                        dispatch(SyncPanelAction.Authorize)
+                    }
+                }
+                if (state.setupProblem in setOf(
+                        SyncDiscoveryProblem.AUTHORIZATION_REQUIRED,
+                        SyncDiscoveryProblem.NAME_OCCUPIED,
+                        SyncDiscoveryProblem.CREATION_UNCONFIRMED,
+                    )
+                ) {
+                    item {
+                        Action("sync-install-app", MR.strings.sync_install_app) {
+                            openBrowser("https://github.com/apps/mihon-desktop/installations/new")
+                        }
                     }
                 }
             }
@@ -792,7 +856,24 @@ private fun SetupPage(
 }
 
 @Composable
+private fun setupProblemText(problem: SyncDiscoveryProblem): String = syncString(
+    when (problem) {
+        SyncDiscoveryProblem.AUTHORIZATION_REQUIRED -> MR.strings.sync_setup_authorization
+        SyncDiscoveryProblem.RATE_LIMITED -> MR.strings.sync_setup_rate_limited
+        SyncDiscoveryProblem.INCOMPATIBLE -> MR.strings.sync_setup_incompatible
+        SyncDiscoveryProblem.NAME_OCCUPIED -> MR.strings.sync_setup_name_occupied
+        SyncDiscoveryProblem.CREATION_UNCONFIRMED -> MR.strings.sync_setup_unconfirmed
+        SyncDiscoveryProblem.ACCOUNT_CHANGED -> MR.strings.sync_setup_account_changed
+        SyncDiscoveryProblem.MULTIPLE_SPACES -> MR.strings.sync_setup_multiple
+        SyncDiscoveryProblem.MALFORMED -> MR.strings.sync_problem_data
+        SyncDiscoveryProblem.RETRYABLE -> MR.strings.sync_problem_unknown
+        SyncDiscoveryProblem.REPOSITORY_NOT_PRIVATE -> MR.strings.sync_problem_not_private
+    },
+)
+
+@Composable
 private fun statusText(state: SyncPanelState): String = when {
+    state.setupProblem != null -> state.setupProblem?.let { setupProblemText(it) }.orEmpty()
     state.busy -> syncString(MR.strings.sync_busy)
     state.problem != null -> state.problem?.let { problemText(it) }.orEmpty()
     state.connection?.enabled != true -> syncString(MR.strings.sync_connect)
@@ -823,6 +904,7 @@ private fun problemText(problem: SyncRunProblem): String = syncString(
         SyncRunProblem.REMOTE_CHANGED -> MR.strings.sync_problem_remote
         SyncRunProblem.INVALID_DATA -> MR.strings.sync_problem_data
         SyncRunProblem.UNKNOWN -> MR.strings.sync_problem_unknown
+        SyncRunProblem.REPOSITORY_NOT_PRIVATE -> MR.strings.sync_problem_not_private
     },
 )
 

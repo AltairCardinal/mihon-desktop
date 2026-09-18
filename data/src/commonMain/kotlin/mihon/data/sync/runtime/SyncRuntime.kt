@@ -7,7 +7,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import mihon.data.sync.auth.GitHubAuthClient
-import mihon.data.sync.auth.GitHubPrivateRepositorySelector
 import mihon.data.sync.auth.GitHubTokenRefresher
 import mihon.data.sync.auth.PersistentGitHubCredentialStore
 import mihon.data.sync.inbox.SyncInboxProjector
@@ -15,14 +14,10 @@ import mihon.data.sync.journal.SyncBaselineStore
 import mihon.data.sync.journal.SyncLocalIdentity
 import mihon.data.sync.journal.SyncLocalJournal
 import mihon.data.sync.projection.SyncRemoteProjectionWriter
-import mihon.data.sync.transport.GitHubSyncTransport
 import mihon.domain.sync.auth.GitHubAuthEndpoints
 import mihon.domain.sync.auth.GitHubAuthException
 import mihon.domain.sync.auth.GitHubAuthFailure
 import mihon.domain.sync.auth.GitHubAuthFailureReason
-import mihon.domain.sync.crypto.SyncRecoveryCodec
-import mihon.domain.sync.crypto.SyncRecoveryData
-import mihon.domain.sync.crypto.SyncSecret
 import mihon.domain.sync.runtime.SyncCoordinator
 import mihon.domain.sync.runtime.SyncPreferences
 import mihon.domain.sync.runtime.SyncRunPort
@@ -39,7 +34,6 @@ import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter
 import tachiyomi.domain.creator.repository.CreatorRepository
-import java.security.MessageDigest
 import java.util.UUID
 
 data class SyncConnection(
@@ -47,6 +41,10 @@ data class SyncConnection(
     val generation: Long,
     val repository: SyncRepository,
     val enabled: Boolean,
+    val protectionMode: String? = null,
+    val accountLogin: String? = null,
+    // An enabled legacy binding blocks setup until explicitly disconnected; its local data remains stored.
+    val unsupportedFormat: Boolean = false,
 )
 
 @Serializable
@@ -71,7 +69,6 @@ class SyncRuntime(
     val coordinator = SyncCoordinator(this)
     private val panelDelegate = lazy { SyncPanelController(this, handler, clock = clock) }
     val panel: SyncPanel get() = panelDelegate.value
-    val repositories = GitHubPrivateRepositorySelector(productionClient, { accessToken() }, endpoints.apiBaseUrl)
     val baseline = SyncBaselineStore(handler, bootstrap)
     val projector =
         SyncInboxProjector(
@@ -87,6 +84,61 @@ class SyncRuntime(
         )
     private val refresher = GitHubTokenRefresher(authorization, credentials, clock)
     private val connectionMutex = Mutex()
+    internal val onboarding =
+        SyncOnboarding(this, productionClient, endpoints.apiBaseUrl, SyncSetupStorage(secureStore))
+
+    internal suspend fun acceptAuthorization(revision: Long?, token: mihon.domain.sync.auth.GitHubAccessToken) {
+        coordinator.cancelAndJoin()
+        connectionMutex.withLock { credentials.replace(revision, token) }
+    }
+
+    internal suspend fun bindSetup(setup: StoredSyncSetup) {
+        coordinator.cancelAndJoin()
+        connectionMutex.withLock {
+            val material = setup.material.material()
+            val descriptor = material.descriptor
+            val stored = onboarding.storage.connection(descriptor.spaceId, descriptor.generation)
+            require(
+                stored == null || (
+                    stored.accountId == setup.accountId &&
+                        stored.repositoryId == setup.repositoryId &&
+                        stored.material.material().descriptor == setup.material.material().descriptor
+                    ),
+            ) {
+                "sync binding cannot be replaced"
+            }
+            val current = handler.await {
+                sync_journalQueries.getCurrentActor(descriptor.spaceId, descriptor.generation).executeAsOneOrNull()
+            }
+            val identity = when {
+                current == null -> SyncLocalIdentity(UUID.randomUUID().toString(), 1)
+                stored?.actorId == current.actor_id && stored.epoch == current.epoch ->
+                    SyncLocalIdentity(current.actor_id, current.epoch)
+                else -> SyncLocalJournal(handler).renewIdentity(descriptor.spaceId, descriptor.generation)
+            }
+            onboarding.storage.bind(
+                StoredSyncConnection(
+                    accountId = setup.accountId,
+                    accountLogin = setup.accountLogin,
+                    repositoryId = requireNotNull(setup.repositoryId),
+                    owner = setup.owner,
+                    repository = setup.repository,
+                    branch = setup.branch,
+                    material = setup.material,
+                    actorId = identity.actorId,
+                    epoch = identity.epoch,
+                ),
+                stored,
+            )
+            baseline.connectAndImport(
+                descriptor.spaceId,
+                descriptor.generation,
+                setup.repository(),
+                identity.actorId,
+                identity.epoch,
+            )
+        }
+    }
 
     init {
         if (preferences.scheduleAnchor.get() == 0L) preferences.scheduleAnchor.set(clock())
@@ -109,48 +161,39 @@ class SyncRuntime(
         }.credential.accessToken
     }
 
-    suspend fun connection(): SyncConnection? = handler.await {
-        sync_journalQueries.getActiveSpace().executeAsOneOrNull()?.let {
-            SyncConnection(
-                it.space_id,
-                it.generation,
-                SyncRepository(it.repository_owner, it.repository_name, it.repository_branch),
-                it.exchange_enabled,
-            )
+    suspend fun connection(): SyncConnection? {
+        val active = handler.await { sync_journalQueries.getActiveSpace().executeAsOneOrNull() } ?: return null
+        var unsupported = false
+        val stored = try {
+            onboarding.storage.connection(active.space_id, active.generation)
+        } catch (_: UnsupportedSyncSpace) {
+            unsupported = true
+            null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
         }
+        return SyncConnection(
+            active.space_id,
+            active.generation,
+            SyncRepository(active.repository_owner, active.repository_name, active.repository_branch),
+            active.exchange_enabled && !unsupported,
+            stored?.material?.material()?.descriptor?.mode,
+            stored?.accountLogin,
+            unsupportedFormat = unsupported && active.exchange_enabled,
+        )
     }
 
-    /** The UI must obtain recovery material and explicit connection consent before calling this. */
-    suspend fun connect(repository: SyncRepository, recovery: SyncRecoveryData) {
-        coordinator.cancelAndJoin()
-        connectionMutex.withLock {
-            val secret = SyncRecoveryCodec.importSecret(recovery, recovery.spaceId, recovery.generation).getOrThrow()
-            val transport = transport(secret)
-            transport.readSnapshot(repository, recovery.spaceId, recovery.generation).getOrThrow()
-            val key = secretKey(recovery.spaceId, recovery.generation)
-            val previous = secureStore.read(key)
-            val stored = previous?.let(::decodeSpaceKey)
-            require(stored == null || stored.recovery.rawKeyset == recovery.rawKeyset) { "sync key cannot be replaced" }
-            val current = handler.await {
-                sync_journalQueries.getCurrentActor(recovery.spaceId, recovery.generation).executeAsOneOrNull()
-            }
-            val identity = when {
-                current == null -> SyncLocalIdentity(UUID.randomUUID().toString(), 1)
-                stored?.actorId == current.actor_id && stored.epoch == current.epoch -> SyncLocalIdentity(
-                    current.actor_id,
-                    current.epoch,
-                )
-                else -> SyncLocalJournal(handler).renewIdentity(recovery.spaceId, recovery.generation)
-            }
-            val encoded = Json.encodeToString(SpaceKey(recovery, identity.actorId, identity.epoch))
-            if (!secureStore.compareAndSet(key, previous, encoded)) throw SyncSecureStoreException()
-            baseline.connectAndImport(
-                recovery.spaceId,
-                recovery.generation,
-                repository,
-                identity.actorId,
-                identity.epoch,
-            )
+    /** Reads local durable facts only; network authorization is rechecked when work resumes. */
+    internal suspend fun pendingSetup(connection: SyncConnection): StoredSyncSetup? {
+        if (!connection.enabled || connection.unsupportedFormat) return null
+        val stored = onboarding.storage.connection(connection.spaceId, connection.generation) ?: return null
+        if (stored.repository() != connection.repository) return null
+        return onboarding.storage.pending(stored.accountId)?.takeIf {
+            // A crash can follow the DB commit but precede the final connected-marker CAS.
+            it.repositoryId == stored.repositoryId && it.repository() == stored.repository() &&
+                it.material == stored.material
         }
     }
 
@@ -162,34 +205,28 @@ class SyncRuntime(
         }
     }
 
-    /** Explicit recovery-file UI only; callers must not persist this in ordinary view state. */
-    suspend fun recoveryData(): SyncRecoveryData = connectionMutex.withLock {
-        val connection = connection() ?: throw SyncSecureStoreException()
-        val stored = secureStore.read(secretKey(connection.spaceId, connection.generation))?.let(::decodeSpaceKey)
-            ?: throw SyncSecureStoreException()
-        stored.recovery
-    }
-
     override suspend fun exchange(trigger: SyncTrigger): SyncRunResult = connectionMutex.withLock {
-        val connection = connection()?.takeIf { it.enabled } ?: return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
+        val connection = connection()?.takeIf { it.enabled || it.unsupportedFormat }
+            ?: return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
         val result = try {
             preferences.lastAttempt.set(clock())
-            // Check authorization separately from key access so the UI can offer the appropriate recovery action.
-            accessToken()
-            val stored = secureStore.read(secretKey(connection.spaceId, connection.generation))?.let(::decodeSpaceKey)
+            val stored = onboarding.storage.connection(connection.spaceId, connection.generation)
                 ?: throw SyncSecureStoreException()
+            require(stored.repository() == connection.repository) { "sync repository binding changed" }
+            val session = onboarding.session(stored.accountId)
+            onboarding.verifyRepository(session, connection.repository, stored.repositoryId)
             val actor = handler.await {
                 sync_journalQueries.getCurrentActor(connection.spaceId, connection.generation).executeAsOne()
             }
             if (stored.actorId != actor.actor_id || stored.epoch != actor.epoch) throw SyncSecureStoreException()
-            val secret = SyncRecoveryCodec.importSecret(
-                stored.recovery,
-                connection.spaceId,
-                connection.generation,
-            ).getOrThrow()
-            SyncDatabaseExchange(handler, baseline, projector, transport(secret), secret) {
-                !preferences.importPaused.get()
-            }
+            val material = stored.material.material()
+            SyncDatabaseExchange(
+                handler,
+                baseline,
+                projector,
+                onboarding.transport(session.token, material),
+                spaceMaterial = material,
+            ) { !preferences.importPaused.get() }
                 .exchange(connection.spaceId, connection.generation, connection.repository)
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -204,27 +241,6 @@ class SyncRuntime(
     fun records(): List<SyncRunRecord> = runCatching {
         Json.decodeFromString<List<SyncRunRecord>>(preferences.history.get())
     }.getOrDefault(emptyList())
-
-    fun transport(secret: SyncSecret) = GitHubSyncTransport(productionClient, {
-        accessToken()
-    }, endpoints.apiBaseUrl, indexSecret = secret)
-
-    private fun secretKey(spaceId: String, generation: Long): String = "space-" + MessageDigest.getInstance("SHA-256")
-        .digest("$generation:$spaceId".toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
-
-    private fun decodeSpaceKey(value: String): SpaceKey = try {
-        Json.decodeFromString<SpaceKey>(value).also {
-            require(it.actorId.matches(Regex("[A-Za-z0-9_-]{1,128}")) && it.epoch > 0)
-            SyncRecoveryCodec.importSecret(it.recovery, it.recovery.spaceId, it.recovery.generation).getOrThrow()
-        }
-    } catch (_: Exception) {
-        throw SyncSecureStoreException()
-    }
-
-    @Serializable
-    private data class SpaceKey(val recovery: SyncRecoveryData, val actorId: String, val epoch: Long) {
-        override fun toString(): String = "SpaceKey(<redacted>)"
-    }
 
     companion object {
         const val CLIENT_ID = "Iv23liNtj6rhGAXJEwCS"
