@@ -32,7 +32,7 @@
 flowchart TD
     A[书架 → 同步 → 连接 GitHub] --> B[浏览器登录并授权]
     B --> C[应用自动查找专用私有仓库]
-    C -->|不存在| D[将创建同步空间，是否需要设置密码？]
+    C -->|已授权范围未找到| D[准备同步空间，选择可选密码]
     D -->|留空：不设置密码| E[自动创建未加密同步空间]
     D -->|已输入：确认密码| F[自动创建密码保护的同步空间]
     C -->|已有未加密空间| G[自动连接]
@@ -49,11 +49,11 @@ flowchart TD
 
 ## 3. 首次创建：可选密码
 
-仅当授权有效、查找成功且确定没有已有空间时显示。查找超时或权限不足不得当作“不存在”。
+仅当授权有效、已授权范围查找成功且未找到有效空间时显示。按用户批准的第10.6节采用固定名安全创建；查找超时或权限不足不得当作“不存在”，同名目标不可见时也不承诺账号没有空间。
 
 标题：**设置同步密码**。
 
-说明：**将创建同步空间，是否需要设置密码？设置后，其他设备必须输入正确密码才能连接这个同步空间。**
+说明：**准备同步空间；如需新建，将使用以下密码选择。设置密码后，其他设备必须输入正确密码才能连接这个同步空间。**
 
 输入框：**同步密码（可选）**，默认空白、隐藏字符，提供“显示密码／隐藏密码”。不预填随机密码，不加入第二个确认输入框，不要求勾选保存资料。
 
@@ -194,9 +194,9 @@ HTML 沿用 `preview.js` 双端容器、`app.js` 书架面板、`sync-interactio
 
 GitHub 真实权限、并发创建、重启持久恢复、加密算法和旧协议拒绝处理是生产验收项。DEMO 中固定密码与定时状态转换仅证明交互可审阅；本次文档核对不修复无关原型模型问题，不把它们扩成实施任务。
 
-## 10. P1 契约候选与审核门槛（2026-09-18）
+## 10. P1 实现契约（2026-09-18）
 
-状态：已核对生产入口，以下是具体候选，**不是已批准或已实现协议**。实际 GitHub 权限、发现范围及请求契约见 roadmap 第 6 节；用户已确认不兼容旧格式，兼容决策门已关闭；实际权限与发现范围尚未确认，P1 未通过，不能据此进入 P2／P3。
+状态：已核对生产入口，用户已确认无需旧格式兼容及固定名安全创建，App注册权限已实际核验通过。以下冻结为P2/P3实现契约，不代表代码实现、安全审查或性能验收已通过。实际权限证据见roadmap第6节。
 
 ### 10.1 当前代码事实
 
@@ -218,11 +218,11 @@ GitHub 真实权限、并发创建、重启持久恢复、加密算法和旧协�
 
 “不兼容”不构成删除旧数据或重建远端仓库的授权。本决定解除兼容例外审核门槛，不替代实际 GitHub 权限与发现范围核验。
 
-### 10.3 空间封装候选
+### 10.3 空间封装
 
 事件协议继续为 1，另设 `spaceFormatVersion = 2`。新增 `.mihon-sync/space.json`，严格 UTF-8 JSON、最多 16 KiB。必需字段为 `application: "mihon-sync"`、`spaceFormatVersion: 2`、`eventProtocolVersion: 1`、`spaceId`、非负 `generation` 及 `protection`。未知／重复字段、错误类型、缺失字段、超限均拒绝，不靠解析失败推断明文。
 
-| protection | 精确候选字段 |
+| protection | 字段 |
 | --- | --- |
 | 无密码 | `mode: "none"`，禁止出现 KDF／包装字段 |
 | 密码 | `mode: "password"`、`kdf: "PBKDF2-HMAC-SHA256"`、`iterations: 600000`、`saltHex`（32 个小写十六进制字符）、`aead: "AES-256-GCM"`、`wrappedKeyHex`（120 个小写十六进制字符） |
@@ -233,22 +233,22 @@ v2 batch、index、head、bootstrap 使用统一显式模式封装，带空间�
 
 v2 AAD 字段按顺序为域标识、空间封装版本、事件版本、模式、空间 ID、generation；包装域 `mihon-sync-wrap-v2` 再追加 KDF、迭代数、盐、AEAD 名称，载荷域 `mihon-sync-payload-v2` 再追加载荷身份及路径。字段用 UTF-8 字节长度前缀及 NUL 分隔，不能依赖 JSON 属性顺序。既有设备将模式及描述符摘要绑定到本机安全材料，远端变更拒绝交换；新设备的首次描述符依赖 GitHub 授权信任，不宣称可验证此前历史。
 
-### 10.4 密码与性能候选
+### 10.4 密码与性能验收标准
 
-采用 PBKDF2-HMAC-SHA256、600,000 轮、随机 16 字节盐、32 字节输出，作为 KEK 包装随机 32 字节数据密钥。沿用 AES-256-GCM 无前缀布局：12 字节 nonce、32 字节密文、16 字节 tag。参数参考 [OWASP 密码存储说明](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)，包装边界参考 [OWASP 加密存储说明](https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html)。这是为复用现有 Android/JVM 密码学边界提出的候选，仍需独立安全审查与真机性能验证，不宣称优于内存困难 KDF。
+采用 PBKDF2-HMAC-SHA256、600,000 轮、随机 16 字节盐、32 字节输出，作为 KEK 包装随机 32 字节数据密钥。沿用 AES-256-GCM 无前缀布局：12 字节 nonce、32 字节密文、16 字节 tag。参数参考 [OWASP 密码存储说明](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)，包装边界参考 [OWASP 加密存储说明](https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html)。这是本轮复用现有 Android/JVM 密码学边界的实现选择，仍需独立安全审查与真机性能验证，不宣称优于内存困难 KDF。
 
-输入严格编码为 UTF-8，不 trim、不做 Unicode 规范化；空字符串只在新建时代表 none，空格仍是密码。上限候选为 1,024 UTF-8 字节，超限及无效代理字符明确报错，不截断、不转无密码。双端须用包含中文、emoji、组合字符及前后空格的同一向量验证，不能假定不同 provider 对密码字符的转换一致。
+输入严格编码为 UTF-8，不 trim、不做 Unicode 规范化；空字符串只在新建时代表 none，空格仍是密码。上限为 1,024 UTF-8 字节，超限及无效代理字符明确报错，不截断、不转无密码。双端须用包含中文、emoji、组合字符及前后空格的同一向量验证，不能假定不同 provider 对密码字符的转换一致。
 
 不另存密码哈希，以包装 AEAD 验证成功为准。错误密码与包装篡改不能可靠区分，统一提示“密码不正确或空间验证失败，请重试或检查连接”；结构错误单独报告。原始密码及 KEK 仅短时驻留，安全存储只保留数据密钥及绑定；状态、日志、异常和持久任务不得包含密码或密钥。
 
-性能候选门槛：最低受支持 Android 真机及正式 Desktop runtime 各预热 1 次、测量 10 次，记录设备／系统／构建及 p95；派生 p95 不超过 2 秒，不占主线程，关闭／返回 100 ms 内受理，取消后的结果不提交配置或恢复旧页面。当前没有测量证据，不能据此声称达标，失败时不自动降低工作因子，按 roadmap 审核替代方案。
+性能验收门槛：最低受支持 Android 真机及正式 Desktop runtime 各预热 1 次、测量 10 次，记录设备／系统／构建及 p95；派生 p95 不超过 2 秒，不占主线程，关闭／返回 100 ms 内受理，取消后的结果不提交配置或恢复旧页面。当前没有测量证据，不能据此声称达标，失败时不自动降低工作因子，按 roadmap 审核替代方案。
 
 ### 10.5 实现接口与 fixtures
 
 接口为职责约定，复用现有 runtime，不建立第二套控制器：
 
 - `inspect(repository, head): SpaceInspection` → `V2(descriptor, digest)`／`UnsupportedLegacy`／`EmptyOwnedAttempt`／`NotSync`／`Unsupported`／`Malformed`，读取同一不可变 Git head；访问失败单独返回。
-- `discover(account): DiscoveryResult` → `Found`／`Absent`／`MultipleCandidates`／`VisibilityUnknown`／`AuthorizationRequired`／`Incompatible`／`RetryableFailure`。只有完整分页和可信可见范围才允许 `Absent`；selected 安装的空集不代表账号没有空间，也不自动扩大 all-repositories 授权。仓库命名与碰撞细节尚未冻结，须与 roadmap 第 6 节可见范围门槛一并闭合。
+- `discover(account): DiscoveryResult` → `Found`／`NoVisibleSpace`／`MultipleCandidates`／`VisibilityUnknown`／`AuthorizationRequired`／`Incompatible`／`RetryableFailure`。完整分页无有效候选返回 `NoVisibleSpace`，不代表账号没有空间，也不扩大all-repositories授权。固定名create-only及碰撞细节按第10.6节执行。
 - `createOrResume(account, attemptId, protectionChoice)` → 先重新发现，未知建库结果先重新读取；尝试绑定账号、repo、space 与模式。不能占用无本机尝试证据的空库；并发输家服从远端赢家模式。
 - `unlock(descriptor, password)`／`connectVerified(repository, descriptor, material)` → 先验证材料与真实快照，再复用安全存储 CAS 及基线合并。账号／空间／尝试身份贯穿异步回执，过期结果丢弃；旧格式在进入解锁及连接之前拒绝，不进入兼容 adapter。
 
@@ -260,4 +260,21 @@ v2 AAD 字段按顺序为域标识、空间封装版本、事件版本、模式�
 | HTTP／发现 | 分页完整／截断、selected 安装、同名非同步、多候选、401／403／404可见性不明／429／500、畸形响应、私库创建及响应丢失、初始化中断和并发冲突 |
 | 本机材料／生命周期 | 旧绑定重开后拒绝交换且保留数据、新模式重开、密码错误零写入、账号回执隔离、敏感内容不进入可观察输出，必须通过 production wiring |
 
-以上是待实施的 fixture 清单，尚未创建或运行。P1 门槛解除后先编写正确原因失败的 focused 测试，再实施 P2／P3；源码扫描不作为行为验收。
+以上是待实施的 fixture 清单，尚未创建或运行。P1契约冻结后先编写正确原因失败的focused测试，再实施P2/P3；源码扫描不作为行为验收。
+
+### 10.6 固定名安全创建（用户已批准，替代先证明不存在的前提）
+
+固定个人账号下的 `mihon-sync` 仓库，保留 `mihon-sync-v1` 分支名以复用现有路由；分支名不代表支持旧空间封装。穷尽已授权范围后无有效空间时返回 `NoVisibleSpace`，404 只表示目标不可见。密码页说明改为“准备同步空间；如需新建，将使用以下密码选择”，不承诺已证明账号没有空间。用户确认后再次查找，再对固定名称使用 GitHub 的 create-only 接口，始终指定 `private: true`；不改名重试、不覆盖已有空库、不删除旧库。
+
+| 远端事实 | 行为 |
+| --- | --- |
+| 可见有效空间 | 按其实际模式连接；多个候选只走既定异常选择 |
+| 可见同名非同步库或旧格式 | 明确占用／不支持，零写入 |
+| 201 创建成功 | 核对账号 ID、仓库 ID、名称、私有属性及本次标记后初始化 |
+| 422 | 不直接断言重名；重新查找，存在有效空间则遵循赢家模式，仍不可见时引导到 GitHub 安装设置恢复权限；其他校验错误明确反馈 |
+| 超时、断线、5xx、重启 | 先读取固定目标核对上次结果；无法证明归属则保持待恢复，禁止自动重复 POST |
+| 并发发现正在初始化的库 | 等待／重查，不使用后加入设备的密码覆盖初始化 |
+
+创建前持久化账号、随机 attempt ID、固定目标和保护选择；密码模式的继续任务材料保存在现有安全存储，不保存密码明文。将非秘密 attempt ID 标记随建库请求写入 description，创建成功补存仓库 ID。响应丢失后只有账号、目标、标记和预期初始内容均相符，才能认领未初始化库；单凭“空库”或本机曾发请求不足以认领。首次空间描述符与 bootstrap 同次 Git 发布，非强制更新遵循已有 transport。
+
+此方案的边界是：**手工改名且未授权给 App 的空间无法发现，可能随后创建新的独立空间。** 不通过开放所有私库权限绕过该限制，不声称全账号唯一空间。用户已明确批准调整原“只有确定不存在才询问密码并创建”的前提；它不扩大同步数据字段或授权真实远端建库。
