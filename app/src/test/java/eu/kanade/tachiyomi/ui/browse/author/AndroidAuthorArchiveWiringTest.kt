@@ -1,12 +1,11 @@
 package eu.kanade.tachiyomi.ui.browse.author
 
-import cafe.adriel.voyager.core.model.screenModelScope
 import cafe.adriel.voyager.core.screen.Screen
 import eu.kanade.tachiyomi.data.library.CreatorDiscoveryJob
+import eu.kanade.tachiyomi.test.ScreenModelTestHost
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.async
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -48,6 +47,7 @@ import tachiyomi.domain.manga.model.Manga
 
 class AndroidAuthorArchiveWiringTest {
     private lateinit var jdbcDriver: java.sql.Driver
+    private val modelHost = ScreenModelTestHost()
 
     @BeforeEach
     fun registerJdbcDriver() {
@@ -92,11 +92,13 @@ class AndroidAuthorArchiveWiringTest {
         val networkToLocal = NetworkToLocalManga(mangaRepository)
         try {
             tachiyomi.data.creator.verifyCreatorIdentityEditor(handler) { repository, manager, id ->
-                AndroidAuthorDetailScreenModel(
-                    id, GetCreatorDetails(repository), GetCreators(repository),
-                    SetCreatorFollow(repository), mockk(), CreatorArchive(repository, repository), mockk(), manager,
-                    networkToLocal,
-                ).also { model = it }.identityEditor
+                modelHost.create {
+                    AndroidAuthorDetailScreenModel(
+                        id, GetCreatorDetails(repository), GetCreators(repository),
+                        SetCreatorFollow(repository), mockk(), CreatorArchive(repository, repository), mockk(), manager,
+                        networkToLocal,
+                    )
+                }.also { model = it }.identityEditor
             }
             val detail = requireNotNull(model)
             val version = SourceWorkArchiveVersion(
@@ -119,7 +121,7 @@ class AndroidAuthorArchiveWiringTest {
             assertEquals("/specific-version", stored.url)
             assertEquals(false, stored.favorite)
         } finally {
-            model?.screenModelScope?.cancel()
+            modelHost.close()
             driver.close()
             kotlinx.coroutines.Dispatchers.resetMain()
         }
@@ -185,17 +187,19 @@ class AndroidAuthorArchiveWiringTest {
                     "navigation-unread",
                 ),
             )
-            detail = AndroidAuthorDetailScreenModel(
-                creatorId = creator.id,
-                details = GetCreatorDetails(repository),
-                creators = GetCreators(repository),
-                follow = SetCreatorFollow(repository),
-                discovery = mockk(),
-                archive = CreatorArchive(repository, repository),
-                sources = mockk(relaxed = true),
-                identity = ManageCreatorIdentity(repository),
-                networkToLocal = networkToLocal,
-            )
+            detail = modelHost.create {
+                AndroidAuthorDetailScreenModel(
+                    creatorId = creator.id,
+                    details = GetCreatorDetails(repository),
+                    creators = GetCreators(repository),
+                    follow = SetCreatorFollow(repository),
+                    discovery = mockk(),
+                    archive = CreatorArchive(repository, repository),
+                    sources = mockk(relaxed = true),
+                    identity = ManageCreatorIdentity(repository),
+                    networkToLocal = networkToLocal,
+                )
+            }
             val version = SourceWorkArchiveVersion(
                 sourceWorkId = 1L,
                 naturalKey = sourceWork,
@@ -222,7 +226,7 @@ class AndroidAuthorArchiveWiringTest {
             detail.markWorkSeenAfterNavigation(opened.sourceWork)
             assertTrue(repository.getUnreadWorkDiscoveries(10L).isEmpty())
         } finally {
-            detail?.screenModelScope?.cancel()
+            modelHost.close()
             driver.close()
             kotlinx.coroutines.Dispatchers.resetMain()
         }

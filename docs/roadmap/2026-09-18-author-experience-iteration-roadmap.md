@@ -233,15 +233,16 @@ TDD红绿记录：`ax01-android-author-card-layout-red2` exit 1，真实320dp mo
 
 | 范围 | 命令/记录 | 结果 |
 |---|---|---|
-| Android focused 修复复验 | `ax06-android-failed-focused1`；`ax06-android-author-class-focused1` | 作者设置 UI mock 与 Android 归档身份契约 focused 测试通过；真实 SQLite、ScreenModel 和导航确认路径通过 |
-| Android 模块全量 | `ax06-android-full1`、`ax06-android-full2`；`gradlew.bat testReleaseUnitTest` | 两次均被既有 `CreatorGlobalScheduleWiringTest` 的 `ExtensionManager` 未注册失败阻断；第二次为600 tests、4 failed（该测试重试3次，归档身份契约在全量顺序下另有一次不稳定失败；归档 focused 类通过） |
+| Android focused 修复复验 | `ax06-android-failed-focused1`；`ax06-android-author-class-focused1`；`ax06-android-identity-host-cleanup` | 作者设置 UI mock、Android 归档身份契约和实际 ScreenModel 生命周期 focused 测试通过；用 `ScreenModelTestHost` 修复直接构造模型复用已取消 fallback scope 的全量顺序问题，归档类 10/10 首轮通过 |
+| Android 模块全量 | `ax06-android-full-final`；`gradlew.bat :app:testReleaseUnitTest --rerun-tasks` | 597 tests、0 failures/errors、0 skipped；`CreatorGlobalScheduleWiringTest` 通过真实 `ExtensionManager` DI 注册，身份契约全量首轮通过 |
 | Desktop focused 修复复验 | `ax06-desktop-failed-focused1`；`gradlew.bat :app-desktop:jvmTest --tests mihon.desktop.ui.authors.AuthorCardProductionWiringTest --tests mihon.desktop.ui.authors.AuthorDetailBehaviorTest` | 通过；补齐 `libraryPreferences` mock 后详情导航协程与身份行为测试恢复 |
-| Desktop 模块全量 | `ax06-desktop-full1`、`ax06-desktop-full2`；`gradlew.bat :app-desktop:jvmTest :test-desktop:test` | 第二次为3168 tests、2 skipped、仅1 failed；失败为 `DesktopProductCapabilityContractTest` 检查既有 parity manifest 的 `DomainModule.kt:146` CURRENT_ANDROID symbol 过期，作者能力测试均通过 |
-| 格式与差异 | `ax06-spotless-final1`；`git diff --check` | Spotless 通过，diff 无空白错误（仅其他任务文件的 CRLF 转换提示） |
+| Desktop 模块全量 | `ax06-desktop-full3`；`gradlew.bat :app-desktop:jvmTest :test-desktop:test` | `app-desktop` 3168 tests、2 skipped、0 failures/errors；Robot 52 tests、0 failures/errors；既有 parity 行号证据已同步后完整通过 |
+| 格式与差异 | `ax06-spotless-final3`；`git diff --check` | Spotless 通过，diff 无空白错误（仅其他任务文件的 CRLF 转换提示） |
 | SDK 前置 | `D:\Android\Sdk\platforms\android-36\android.jar`、`build-tools\36.0.0\aapt2.exe`、`platform-tools\adb.exe` | 三个文件均存在 |
-| Windows 正式构建 / Test Mode | `scripts/build-desktop.sh` | 未执行：`build-only` 的仓库前置是等价 Desktop 全量通过；当前 parity 门禁失败，因此没有生成或报告不对应当前提交的 EXE |
+| Windows 正式构建 | `bash scripts/build-desktop.sh build-only` | 通过；版本 `0.11.19.52.83ada6b`，扩展运行时验收通过，ZIP SHA-256 为 `d9cca90405e3a9a67051825f3281a43d75f36cbcee9d0a30145b7285868e73c2`；正式未打包 EXE 已发布到 `app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.52.83ada6b-unpacked/Mihon Desktop.exe` |
+| Windows Test Mode | 正式 EXE + 独立 `--test-profile`、`--test-http-port`、`--headless` | `/test/health`、`/test/state`、`/test/reset`、`authors_state` 成功；作者同步 fixture 按 `add → remove → confirm_remove → replay → refollow → author_unfollow → verify_local_cancel` 顺序全部成功，profile marker 已核验 |
 | macOS 正式构建 / 运行 | `ssh mbp`；`ssh mbp-lan` | `mbp` 连接超时；`mbp-lan` 可达但远端仓库为脱离分支的 `c84ed331fa` 且有未提交/未跟踪文件，不是本轮提交，未在其上构建或替换应用 |
-| parity-manifest | `app-desktop/src/test/resources/parity/parity-manifest.json` | 本轮作者提醒不属于该 manifest 的能力范围；未建立第二套状态权威，也未改动其他任务维护的过期证据 |
+| parity-manifest | `ax06-parity-fix3`；`DesktopProductCapabilityContractTest`；角色证据扫描 | 仅维护既有行号漂移（272 条 `CURRENT_ANDROID`/`SHARED_OR_ADAPTER`/`DESKTOP_CONSUMER` 证据扫描 0 错误）；契约测试通过，未建立第二套状态权威 |
 
 ## 4. 通用红绿与证据规则
 

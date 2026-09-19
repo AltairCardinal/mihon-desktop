@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.data.library
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -95,6 +96,7 @@ class CreatorGlobalScheduleWiringTest {
                 coEvery { getSearchManga(any(), any(), any()) } returns MangasPage(emptyList(), false)
             }
             Injekt.addSingleton<SourceManager>(testSources(listOf(source)))
+            Injekt.addSingleton<ExtensionManager>(mockk(relaxed = true))
             val preferences = Injekt.get<CreatorDiscoveryPreferences>()
             preferences.frequency().set("weekly")
             tachiyomi.data.creator.verifyCreatorBackupReadiness(
