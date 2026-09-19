@@ -1,6 +1,6 @@
 # 同步进度与待机恢复 Roadmap
 
-日期：2026-09-19。状态：IN_PROGRESS；R1–R4 已完成实现与 focused 验证，R5 的独立审查、设备运行和正式构建仍未收口。
+日期：2026-09-19。状态：IN_PROGRESS；R1–R4 已完成实现、独立复审、验证与提交，R5 仍受真机/Doze、macOS 和全量基线门禁限制。
 
 设计权威：[同步进度、条目日志与待机恢复设计](../2026-09-19-sync-progress-resume-design.md)。原型：[并列入口](../prototypes/multi-device-sync/index.html)与[现有边界](../prototypes/multi-device-sync/README.md)。
 
@@ -26,10 +26,10 @@
 
 ## 3. 任务清单
 
-- [ ] R1：调整双端交互原型，覆盖自动恢复与主动暂停的区别。（实现与 focused 浏览器验证完成，待独立审查和提交）
-- [ ] R2：接入共享运行记录、真实检查点进度与可串行恢复的执行入口。（实现与 SQLite/运行链路验证完成，待独立审查和提交）
-- [ ] R3：接入 Android 前台恢复、一次性后台补偿与通知。（实现与 Robolectric focused 验证完成，待设备验收）
-- [ ] R4：接入双端原生进度、条目日志与首次合并恢复闭环。（实现与 Compose focused 验证完成，待完整 wiring 验收）
+- [x] R1：调整双端交互原型，覆盖自动恢复与主动暂停的区别。（实现、独立复审、focused 浏览器验证与提交完成）
+- [x] R2：接入共享运行记录、真实检查点进度与可串行恢复的执行入口。（实现、独立复审、SQLite/运行链路验证与提交完成）
+- [x] R3：接入 Android 前台恢复、一次性后台补偿与通知。（实现、独立复审、Robolectric focused 验证与提交完成；真机门禁归 R5）
+- [x] R4：接入双端原生进度、条目日志与首次合并恢复闭环。（实现、独立复审、Compose/Desktop wiring 验证与提交完成）
 - [ ] R5：完成独立审查、正式运行验证与发布交付。
 
 ### R1：双端交互原型
@@ -120,4 +120,8 @@
 
 ## 4. 当前交付记录
 
-2026-09-19：完成 R1–R4 实现整合。原型新增系统中断自动恢复、主动暂停、等待网络、未知总量、重试耗尽和授权阻塞；生产侧新增 SQLDelight 运行/日志表及 27 号迁移、真实阶段进度、分页日志、ownerSession claim/条件写入、Android ON_START 恢复、按 `nextRetryAt` 延迟的一次性 WorkManager 补偿、dataSync 前台通知、Desktop 共享恢复入口、Compose 进度卡片，以及重开后恢复 FAILED/BLOCKED 终态、倒计时和重试动作。补充了暂停/取消竞态、重复恢复去重、attempt 不回退、重试预算、阻塞态持久化与进程重建接管测试。已通过：原型 focused 浏览器 6/6、domain `SyncCoordinatorTest`、data 运行存储/迁移/运行 wiring/storage/panel contract/controller、Android `AndroidSyncRuntimeWiringTest`、presentation-sync `SyncPanelContentTest`、`spotlessCheck`。所有 R1–R5 checkbox 暂不勾选：独立复审、完整测试、设备/Doze、正式 Android arm64 与 Windows 构建尚未完成；不得将上述证据写成发布通过。
+2026-09-19：完成 R1–R4 实现整合。原型新增系统中断自动恢复、主动暂停、等待网络、未知总量、重试耗尽和授权阻塞；生产侧新增 SQLDelight 运行/日志表及 27 号迁移、真实阶段进度、分页日志、ownerSession claim/条件写入、Android ON_START 恢复、按 `nextRetryAt` 延迟的一次性 WorkManager 补偿、dataSync 前台通知、Desktop 共享恢复入口、Compose 进度卡片，以及重开后恢复 FAILED/BLOCKED 终态、倒计时和重试动作。补充了暂停/取消竞态、重复恢复去重、attempt 不回退、重试预算、阻塞态持久化与进程重建接管测试。独立复审最终 PASS，未发现 must-fix；R1–R4 已勾选并提交。
+
+本轮收口核验：同步 focused 契约继续通过（原型 progress/interaction 6/6、domain `SyncCoordinatorTest`、data 运行存储/迁移/wiring/controller、Android `AndroidSyncRuntimeWiringTest`、`presentation-sync` `SyncPanelContentTest`、Desktop `DesktopSyncSchedulerTest`、`spotlessCheck`）。Desktop 全量在修正本轮 `DesktopAppModule.kt` 新增回调造成的 parity manifest 行号漂移后通过（`3159 tests completed, 0 failed, 2 skipped`），并以发布未打包 EXE 的 Test Mode `/test/health`、`/test/state`、`/test/shutdown` 完成运行验收。Android fork 正式 arm64 APK 已以既有 `bd8e3af...a648cae3` 证书签名，包名 `app.mihon.desktop.fork`、versionCode `29`、versionName `0.19.4-aex.11`、ABI `arm64-v8a`；Windows 产物为 `0.11.19.50.df0b70c`。普通 Android `app.mihon` release 也完成 R8 编译但仅生成 unsigned 输出，未作为交付物。
+
+R5 仍未完成：`adb devices -l` 无设备，无法执行真实锁屏/返回、Doze、进程重建和 API 26/33/35/36 矩阵；当前 Windows 环境没有 macOS 构建条件。Android 全量单测有 3 个既有 `InstalledAppsPermissionAppModuleTest` Injekt 初始化失败，domain/data 全量有 3 个既有 CreatorArchive 冻结迁移失败；完整原型套件为 39 项中 35 通过、4 项既有 library-sync/UI 断言失败。上述失败均已保留日志，不能替代真机/发布门禁，因此不得勾选 R5。
