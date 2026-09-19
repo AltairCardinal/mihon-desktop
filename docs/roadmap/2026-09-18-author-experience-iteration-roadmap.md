@@ -2,9 +2,9 @@
 
 日期：2026-09-18。状态：IN_PROGRESS。
 
-- 需求权威：[完整设计](../2026-09-18-author-experience-iteration-design.md)。交互基线：[DEMO](../prototypes/author-identity/index.html)，提交 `7773095f5e`。
+- 需求权威：[完整设计](../2026-09-18-author-experience-iteration-design.md)。交互基线：[DEMO](../prototypes/author-identity/index.html)，AX-08审核冻结提交 `b1d4d73d89`。
 - 本计划为产品child plan，从首个未勾选批次推导进度，不声明active-task。旧[唯一作者Roadmap](2026-09-17-global-author-identity-roadmap.md)保持原完成状态，不重置GA任务。
-- 本计划已进入生产实施，父级唯一 `active-child-plan` 指向本计划。AX-01至AX-07已留下对应实现与验收记录；AX-08承接新的自动简繁展示需求，当前仅完成设计。各批依赖与提交边界按本计划执行。
+- 本计划已进入生产实施，父级唯一 `active-child-plan` 指向本计划。AX-01至AX-07已留下对应实现与验收记录；AX-08需求与HTML交互已于2026-09-20审核通过，production实现尚未开始。各批依赖与提交边界按本计划执行。
 - checkbox仅在实现、相关测试、必要独立审查和提交均完成后勾选；历史DEMO测试不替代本计划production证据。
 
 ## 1. 开发边界与前置
@@ -283,7 +283,9 @@ TDD红绿记录：`ax01-android-author-card-layout-red2` exit 1，真实320dp mo
 
 - [ ] AX-08：作者页自动把简繁及排版符号等价的来源版本显示为一个作品，无确认弹窗或合并按钮；沿用原有图源名称，并保留来源原题、准确导航和可撤销的“分开显示”纠错。
 
-**需求权威**：[作者作品简繁同名自动聚合 · 迭代需求设计](../2026-09-19-author-work-script-equivalence-presentation-design.md)。
+**需求权威**：[作者作品简繁与排版符号等价自动聚合 · 迭代需求设计](../2026-09-19-author-work-script-equivalence-presentation-design.md)。
+
+**审核状态**：用户已于2026-09-20通过需求与双端HTML交互审核，原型冻结提交为 `b1d4d73d89`。该结论只解锁production实施，不作为正式功能完成证据。
 
 **用户结果**：进入作者详情即可看到一张聚合作品卡，卡片显示完整来源数；点击后在现有来源窗口查看每个图源的原始标题并选择准确版本。刷新新增等价来源时自动加入原卡片，不出现检测提示、确认弹窗、合并按钮或额外 Toast。误判可在来源窗口选择“分开显示”，并通过 Snackbar 撤销。
 
@@ -298,6 +300,16 @@ TDD红绿记录：`ax01-android-author-card-layout-red2` exit 1，真实320dp mo
 5. 在来源窗口增加“分开显示”，选择要移出的版本后立即拆卡，显示“已分开显示 / 撤销”。保存失败保持原状态并反馈；已确认 canonical 不提供此入口，继续走既有高级拆分能力。
 6. 使用最小设备本地排除记录保存 active creator root 与来源自然键，不复用 `REJECTED` canonical 决策，不扩大同步/备份协议。作者合并、拆分、来源删除和 canonical 变化时安全重算或忽略无效记录。
 7. 兼容 AX-07：既有 confirmed canonical 保留；既有 `SUGGESTED` 不再产生按钮；满足严格规则时只自动呈现；两个不同 canonical 即使标题等价也保持分开。
+
+**实施子批次（按依赖串行）**：
+
+- [ ] AX-08.1 共享归一化与展示投影：先补失败契约测试，再扩展 `WorkTitleNormalizer` 和共享 `WorkPresentationGroup` 服务。转换顺序固定为上下文短语、字符回退、移除 Unicode 空白/排版标点；保留大小写、数字、卷次和正文。输出稳定组键、展示标题、完整成员、来源数、收藏、新作、日期及代表版本，不修改来源记录或 canonical 决策。验收为共享正负例、canonical 冲突、多目标歧义和 `REJECTED` 全绿。预计4–7个domain/common测试与production文件。
+- [ ] AX-08.2 排除规则与数据接线：在既有设备本地存储中保存 active creator root + 来源作品自然键；若现有存储不能满足有界查询才增加最小schema/migration。覆盖写入失败原子性、重启恢复、撤销、作者合并/拆分、来源删除与canonical变化；禁止编码成 `REJECTED` 或加入同步/备份协议。验收为真实repository/SQLite测试和DI解析通过。预计4–7个data/domain文件；涉及迁移时须独立审查。
+- [ ] AX-08.3 Android作者页接线：让作品计数、三种视图、搜索、原有图源FilterChip、来源窗口、收藏、新作与代表作共同消费共享投影；删除AX-07简繁候选说明及按钮，来源窗口显示真实图源名称和各版本原题，并提供分开显示/撤销。验收为真实ScreenModel/SQLite、Screen实例化与导航类型测试，覆盖320dp、焦点、准确mangaId和筛选后完整来源成员。预计5–8个Android/共享UI文件。
+- [ ] AX-08.4 Desktop作者页接线：复用同一投影与排除用例，保持Windows导航、键盘、焦点恢复和现有来源选择窗口；不得在Desktop复制归一化表。验收为mounted测试、DI wiring、320dp/长标题布局及Android/Desktop共享fixture结果一致。预计4–7个Desktop/共享UI文件。
+- [ ] AX-08.5 跨功能回归与交付：验证新增等价来源静默加入原卡，作品数、代表作、收藏、新作和日期只聚合一次，两个confirmed canonical保持分开；运行受影响模块完整测试、`spotlessCheck`、Android/Desktop回归及正式Desktop构建脚本运行验收。独立审查关闭数据完整性、迁移和跨模块协议问题后，在同一功能提交中勾选AX-08并记录证据，不单独提交纯checkoff。预计仅测试、必要修复和本计划证据更新。
+
+首个production任务簇为AX-08.1。开始详细实现前按仓库规则交给实施子代理承担主要实现与focused验证；主代理负责接口约束、整合和验收。AX-08.2存在持久化/迁移风险，若实际新增schema，须在AX-08.3/4依赖前完成一轮未参与实现者的独立审查。
 
 **交互流程**：
 
