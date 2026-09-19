@@ -13,7 +13,7 @@
 ## 2. 任务与依赖
 
 - [x] M1：完成最小权限发现与专用空库初始化的共享生产闭环、安全审查。
-- [ ] M2：完成双端引导、准确错误和旧配置退出的产品接线。
+- [x] M2：完成双端引导、准确错误和旧配置退出的产品接线。
 - [ ] M3：完成真实最小权限联调、平台回归与可覆盖升级的分发验收。
 
 依赖严格为 M1 → M2 → M3。M1 包含相互依赖的发现、初始化意图及 transport，作为一个可独立集成验收批次，不按文件拆散。M2 消费已审查接口，不提前复制一套模拟流程。
@@ -71,6 +71,13 @@
 **红绿重构与验收**：共享 Compose + 实际 controller/存储交互测试先红后绿；验证点击、浏览器 URL、安全参数、返回重查、密码/错误状态转移，而非只查文本。Android 返回键与窄屏、Desktop 键盘/关闭与 Test Mode、断开确认取消/确认分别覆盖；新增导航或依赖解析补实例化/导航类型/DI 测试。
 
 运行批次相关 UI、生命周期和集成/格式检查。独立审查聚焦 M1 guard 是否被 UI 绕过、账号回调隔离、初始化确认和权限说明；与 M1 使用同一合适审查者，但属于第二批审查，启动前按第3节审批预算。交付双端可执行入口、测试及一个功能提交。
+
+**M2 执行证据（2026-09-19）**：已通过共享 `SyncPanelController`、`SyncPanelState`、Compose sync panel 和 i18n 接通“创建专用私有仓库 → 安装 Mihon GitHub App → 仅授权目标库 → 重新检查”的真实 discovery/onboarding 链路。未安装、已安装但目标库不可见、Contents 权限不足、安装暂停、不可写/不可用仓库均保留类型化反馈；只有重查确认的空 `mihon-sync` 私库才进入可选密码初始化，并在页面显示实际目标仓库。管理链接使用固定 HTTPS 路由，owner 和组织路径按 RFC3986 编码；`all` 或多个授权仓库显示范围提示，不自动收窄授权。旧绑定、无密码合并、错误密码、关闭清除未提交密码、后台完成不抢页及重复提交保护沿用既有 controller/平台 wiring。DEMO 文案已标明生产流程要求用户创建私有库并限制 App 授权，仍是本地交互模拟。
+
+- 本批改动 12 个文件（约 828 行新增、99 行删除），这些文件共同组成安装元数据、发现结果传播、controller 状态、共享 Compose 入口、翻译和 DEMO 契约；拆分会留下未编译或未接线的中间状态。
+- 红绿与 focused 验证：`SyncSpaceDiscoveryContractTest` 34/34、`SyncPanelOnboardingIntegrationTest` 2/2、Android sync panel 3/3、Desktop sync panel 与 Test Mode 生命周期通过；root `spotlessCheck`、`git diff --check` 和 DEMO `node --check` 通过。Compose 合同批次 22/23，唯一失败为 M1 HEAD 基线已复现的旧 `TextRange` selection 断言，未由 M2 引入。
+- 独立 M2 复审通过，无 must-fix：未发现 UI 绕过 M1 discovery/空库 guard、stale callback 或错误账号混入；初始化确认、URL 编码、授权范围提示和旧绑定保护均符合边界。普通仓库直达入口和旧绑定错误页直达断开属于非阻塞后续建议。
+- 所有 GitHub HTTP 仍来自本地 fixture；没有执行真实账号授权、权限变更、仓库写入或发布构建。DEMO 浏览器测试因当前环境没有 `playwright-core`/`PLAYWRIGHT_CORE_PATH` 未运行，保留为环境限制；真实最小权限联调继续作为 M3 门槛。
 
 ### M3：真实权限与发布验收
 

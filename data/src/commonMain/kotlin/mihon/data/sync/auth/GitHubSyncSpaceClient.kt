@@ -17,10 +17,21 @@ import mihon.domain.sync.auth.GitHubAuthFailureReason
 import mihon.domain.sync.crypto.SyncSpaceDescriptor
 import mihon.domain.sync.crypto.SyncSpaceDescriptorCodec
 import mihon.domain.sync.transport.SyncRepository
+import mihon.domain.sync.transport.SyncRepositoryTarget
 import okhttp3.OkHttpClient
 import okio.ByteString.Companion.decodeBase64
 
 data class SyncGitHubAccount(val id: Long, val login: String)
+
+enum class SyncRepositorySelection { ALL, SELECTED }
+enum class SyncInstallationAccountType { USER, ORGANIZATION }
+
+data class SyncAppInstallation(
+    val id: Long,
+    val repositorySelection: SyncRepositorySelection,
+    val authorizedRepositoryCount: Int? = null,
+    val accountType: SyncInstallationAccountType = SyncInstallationAccountType.USER,
+)
 
 data class DiscoveredSyncSpace(
     val account: SyncGitHubAccount,
@@ -28,6 +39,7 @@ data class DiscoveredSyncSpace(
     val repository: SyncRepository,
     val descriptor: SyncSpaceDescriptor,
     val head: String,
+    val installation: SyncAppInstallation? = null,
 )
 
 data class EmptySyncRepositoryCandidate(
@@ -35,6 +47,7 @@ data class EmptySyncRepositoryCandidate(
     val repositoryId: Long,
     val repository: SyncRepository,
     val defaultBranch: String,
+    val installation: SyncAppInstallation? = null,
 )
 
 enum class SyncDiscoveryProblem {
@@ -60,12 +73,28 @@ sealed interface SyncSpaceDiscovery {
     data class Found(val space: DiscoveredSyncSpace) : SyncSpaceDiscovery
     data class Multiple(val spaces: List<DiscoveredSyncSpace>) : SyncSpaceDiscovery
     data class NeedsInstallation(val account: SyncGitHubAccount) : SyncSpaceDiscovery
-    data class NeedsRepositoryAccess(val account: SyncGitHubAccount) : SyncSpaceDiscovery
-    data class NeedsContentsPermission(val account: SyncGitHubAccount) : SyncSpaceDiscovery
-    data class InstallationSuspended(val account: SyncGitHubAccount) : SyncSpaceDiscovery
+    data class NeedsRepositoryAccess(
+        val account: SyncGitHubAccount,
+        val installation: SyncAppInstallation? = null,
+    ) : SyncSpaceDiscovery
+    data class NeedsContentsPermission(
+        val account: SyncGitHubAccount,
+        val installation: SyncAppInstallation? = null,
+    ) : SyncSpaceDiscovery
+    data class InstallationSuspended(
+        val account: SyncGitHubAccount,
+        val installation: SyncAppInstallation? = null,
+    ) : SyncSpaceDiscovery
     data class EmptyRepository(val candidate: EmptySyncRepositoryCandidate) : SyncSpaceDiscovery
-    data class NoVisibleSpace(val account: SyncGitHubAccount) : SyncSpaceDiscovery
-    data class Failed(val problem: SyncDiscoveryProblem) : SyncSpaceDiscovery
+    data class NoVisibleSpace(
+        val account: SyncGitHubAccount,
+        val installation: SyncAppInstallation? = null,
+    ) : SyncSpaceDiscovery
+    data class Failed(
+        val problem: SyncDiscoveryProblem,
+        val account: SyncGitHubAccount? = null,
+        val installation: SyncAppInstallation? = null,
+    ) : SyncSpaceDiscovery
 }
 
 data class SyncCreationAttempt(
@@ -97,14 +126,18 @@ class GitHubSyncSpaceClient(
             scan.spaces.size > 1 -> SyncSpaceDiscovery.Multiple(scan.spaces)
             scan.emptyCandidate != null -> SyncSpaceDiscovery.EmptyRepository(scan.emptyCandidate)
             scan.spaces.size == 1 -> SyncSpaceDiscovery.Found(scan.spaces.single())
-            scan.target != null -> SyncSpaceDiscovery.Failed(scan.target.problem())
-            scan.targetProblem != null -> discoveryResult(scan.account, scan.targetProblem)
-            else -> SyncSpaceDiscovery.NoVisibleSpace(scan.account)
+            scan.target != null -> SyncSpaceDiscovery.Failed(
+                scan.target.problem(),
+                scan.account,
+                scan.installation,
+            )
+            scan.targetProblem != null -> discoveryResult(scan.account, scan.targetProblem, scan.installation)
+            else -> SyncSpaceDiscovery.NoVisibleSpace(scan.account, scan.installation)
         }
     } catch (error: CancellationException) {
         throw error
     } catch (error: DiscoveryException) {
-        discoveryResult(error.account, error.problem)
+        discoveryResult(error.account, error.problem, error.installation)
     } catch (error: Exception) {
         SyncSpaceDiscovery.Failed(error.problem())
     }
@@ -166,24 +199,41 @@ class GitHubSyncSpaceClient(
             if (installs.isEmpty()) fail(SyncDiscoveryProblem.NEEDS_INSTALLATION, account)
             if (installs.size != 1) fail(SyncDiscoveryProblem.MALFORMED, account)
             val installation = installs.single()
+            val installationId = installation.number("id")
+            require(installationId > 0)
+            val installationAccount = installation.obj("account")
+            val accountType = when (installationAccount.string("type")) {
+                "User" -> SyncInstallationAccountType.USER
+                "Organization" -> SyncInstallationAccountType.ORGANIZATION
+                else -> error("invalid installation account type")
+            }
+            require(installationAccount.number("id") == account.id)
+            val repositorySelection = when (installation.string("repository_selection")) {
+                "all" -> SyncRepositorySelection.ALL
+                "selected" -> SyncRepositorySelection.SELECTED
+                else -> error("invalid repository selection")
+            }
+            val initialInstallation =
+                SyncAppInstallation(installationId, repositorySelection, accountType = accountType)
             when (val suspendedAt = installation["suspended_at"]) {
-                null -> fail(SyncDiscoveryProblem.MALFORMED, account)
+                null -> fail(SyncDiscoveryProblem.MALFORMED, account, initialInstallation)
                 JsonNull -> Unit
                 is JsonPrimitive -> {
                     if (!suspendedAt.isString || suspendedAt.contentOrNull.isNullOrBlank()) {
-                        fail(SyncDiscoveryProblem.MALFORMED, account)
+                        fail(SyncDiscoveryProblem.MALFORMED, account, initialInstallation)
                     }
-                    fail(SyncDiscoveryProblem.INSTALLATION_SUSPENDED, account)
+                    fail(SyncDiscoveryProblem.INSTALLATION_SUSPENDED, account, initialInstallation)
                 }
-                else -> fail(SyncDiscoveryProblem.MALFORMED, account)
+                else -> fail(SyncDiscoveryProblem.MALFORMED, account, initialInstallation)
             }
             if (installation.obj("permissions").optionalString("contents") != "write") {
-                fail(SyncDiscoveryProblem.NEEDS_CONTENTS_PERMISSION, account)
+                fail(SyncDiscoveryProblem.NEEDS_CONTENTS_PERMISSION, account, initialInstallation)
             }
-            require(installation.string("repository_selection") in setOf("all", "selected"))
-            val id = installation.number("id")
-            require(id > 0)
-            val repositories = api.objects("/user/installations/$id/repositories?per_page=100&page=1", "repositories")
+            val repositories = api.objects(
+                "/user/installations/$installationId/repositories?per_page=100&page=1",
+                "repositories",
+            )
+            val appInstallation = initialInstallation.copy(authorizedRepositoryCount = repositories.size)
             val owned = repositories.filter {
                 it.obj("owner").number("id") == account.id && it.obj("owner").string("type") == "User"
             }
@@ -191,14 +241,18 @@ class GitHubSyncSpaceClient(
             for (item in owned) {
                 val name = item.string("name")
                 if (!item.boolean("private")) {
-                    if (name == REPOSITORY_NAME) fail(SyncDiscoveryProblem.REPOSITORY_NOT_PRIVATE, account)
+                    if (name == REPOSITORY_NAME) {
+                        fail(SyncDiscoveryProblem.REPOSITORY_NOT_PRIVATE, account, appInstallation)
+                    }
                     continue
                 }
                 if (!writable(item)) {
-                    if (name == REPOSITORY_NAME) fail(SyncDiscoveryProblem.REPOSITORY_NOT_WRITABLE, account)
+                    if (name == REPOSITORY_NAME) {
+                        fail(SyncDiscoveryProblem.REPOSITORY_NOT_WRITABLE, account, appInstallation)
+                    }
                     continue
                 }
-                val repo = repository(item, account)
+                val repo = repository(item, account, appInstallation)
                 if (repo.archived || repo.disabled) continue
                 require(candidates.put(repo.id, repo) == null)
             }
@@ -206,40 +260,51 @@ class GitHubSyncSpaceClient(
             // A direct 404 is ambiguous only when installation listing omitted the fixed target.
             val targetResponse = get("/repos/${account.login}/$REPOSITORY_NAME")
             val target = when (targetResponse.code) {
-                404 -> if (listedTarget) fail(SyncDiscoveryProblem.RETRYABLE, account) else null
-                200 -> repository(targetResponse.objectBody(), account).also {
-                    if (it.repository.name != REPOSITORY_NAME) fail(SyncDiscoveryProblem.MALFORMED, account)
-                    if (candidates[it.id] == null) fail(SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS, account)
+                404 -> if (listedTarget) fail(SyncDiscoveryProblem.RETRYABLE, account, appInstallation) else null
+                200 -> repository(targetResponse.objectBody(), account, appInstallation).also {
+                    if (it.repository.name != REPOSITORY_NAME) {
+                        fail(SyncDiscoveryProblem.MALFORMED, account, appInstallation)
+                    }
+                    if (candidates[it.id] == null) {
+                        fail(SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS, account, appInstallation)
+                    }
                     val listed = candidates.getValue(it.id)
                     if (listed.repository != it.repository || listed.defaultBranch != it.defaultBranch) {
-                        fail(SyncDiscoveryProblem.RETRYABLE, account)
+                        fail(SyncDiscoveryProblem.RETRYABLE, account, appInstallation)
                     }
                     it
                 }
-                else -> fail(targetResponse.failure(), account)
+                else -> fail(targetResponse.failure(), account, appInstallation)
             }
-            val found = candidates.values.mapNotNull { inspect(it, account) }
-            val emptyCandidate = target?.let { verifyEmptyRepository(it, account) }
+            val found = candidates.values.mapNotNull { inspect(it, account, appInstallation) }
+            val emptyCandidate = target?.let { verifyEmptyRepository(it, account, appInstallation) }
             return Scan(
                 account,
                 found,
                 target,
                 emptyCandidate,
+                appInstallation,
                 if (target == null) SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS else null,
             )
         }
 
-        fun repository(value: JsonObject, account: SyncGitHubAccount): Repository {
+        fun repository(
+            value: JsonObject,
+            account: SyncGitHubAccount,
+            installation: SyncAppInstallation? = null,
+        ): Repository {
             val owner = value.obj("owner")
             require(owner.number("id") == account.id && owner.string("type") == "User")
             require(owner.string("login").equals(account.login, ignoreCase = true))
-            if (!value.boolean("private")) fail(SyncDiscoveryProblem.REPOSITORY_NOT_PRIVATE, account)
-            if (!writable(value)) fail(SyncDiscoveryProblem.REPOSITORY_NOT_WRITABLE, account)
+            if (!value.boolean("private")) {
+                fail(SyncDiscoveryProblem.REPOSITORY_NOT_PRIVATE, account, installation)
+            }
+            if (!writable(value)) fail(SyncDiscoveryProblem.REPOSITORY_NOT_WRITABLE, account, installation)
             val repo = SyncRepository(account.login, value.string("name"), BRANCH)
             val archived = value.boolean("archived")
             val disabled = value.boolean("disabled")
             if (repo.name == REPOSITORY_NAME && (archived || disabled)) {
-                fail(SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE, account)
+                fail(SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE, account, installation)
             }
             require(value.string("full_name").equals(repo.fullName, ignoreCase = true))
             val id = value.number("id")
@@ -253,12 +318,22 @@ class GitHubSyncSpaceClient(
         private suspend fun verifyEmptyRepository(
             repository: Repository,
             account: SyncGitHubAccount,
+            installation: SyncAppInstallation,
         ): EmptySyncRepositoryCandidate? {
             if (repository.repository.name != REPOSITORY_NAME || repository.size != 0L) return null
             val base = "/repos/${repository.repository.fullName}"
 
             // GitHub's matching-refs endpoint without a prefix includes every namespace, including notes and stashes.
-            if (api.matchingRefs("$base/git/matching-refs/").isNotEmpty()) return null
+            // Preserve the verified account and installation when the response is malformed or unavailable so
+            // the UI can offer a targeted recheck instead of losing the management context.
+            val matchingRefs = try {
+                api.matchingRefs("$base/git/matching-refs/")
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                fail(error.problem(), account, installation)
+            }
+            if (matchingRefs.isNotEmpty()) return null
 
             val defaultRef = get("$base/git/ref/heads/${repository.defaultBranch}")
             when (defaultRef.code) {
@@ -267,9 +342,9 @@ class GitHubSyncSpaceClient(
                 // listings and root Contents response below must independently confirm it.
                 404 -> Unit
                 409 -> if (!defaultRef.hasExplicitEmptyRepositoryMessage()) {
-                    fail(SyncDiscoveryProblem.RETRYABLE, account)
+                    fail(SyncDiscoveryProblem.RETRYABLE, account, installation)
                 }
-                else -> fail(defaultRef.failure(), account)
+                else -> fail(defaultRef.failure(), account, installation)
             }
 
             // GitHub reports an empty repository as 404 from Contents in current fixtures. Accept an empty array
@@ -280,16 +355,22 @@ class GitHubSyncSpaceClient(
                     val root = try {
                         Json.parseToJsonElement(contents.body.decodeToString(throwOnInvalidSequence = true)).jsonArray
                     } catch (_: Exception) {
-                        fail(SyncDiscoveryProblem.MALFORMED, account)
+                        fail(SyncDiscoveryProblem.MALFORMED, account, installation)
                     }
                     if (root.isNotEmpty()) return null
                 }
                 404 -> if (!contents.hasExplicitEmptyRepositoryMessage()) {
-                    fail(SyncDiscoveryProblem.RETRYABLE, account)
+                    fail(SyncDiscoveryProblem.RETRYABLE, account, installation)
                 }
-                else -> fail(contents.failure(), account)
+                else -> fail(contents.failure(), account, installation)
             }
-            return EmptySyncRepositoryCandidate(account, repository.id, repository.repository, repository.defaultBranch)
+            return EmptySyncRepositoryCandidate(
+                account,
+                repository.id,
+                repository.repository,
+                repository.defaultBranch,
+                installation,
+            )
         }
 
         private fun writable(value: JsonObject): Boolean {
@@ -297,7 +378,11 @@ class GitHubSyncSpaceClient(
             return permissions["push"] == JsonPrimitive(true) || permissions["admin"] == JsonPrimitive(true)
         }
 
-        private suspend fun inspect(repository: Repository, account: SyncGitHubAccount): DiscoveredSyncSpace? {
+        private suspend fun inspect(
+            repository: Repository,
+            account: SyncGitHubAccount,
+            installation: SyncAppInstallation,
+        ): DiscoveredSyncSpace? {
             val base = "/repos/${repository.repository.fullName}"
             val ref = get("$base/git/ref/heads/$BRANCH")
             if (ref.code == 404 || (ref.code == 409 && repository.size == 0L)) return null
@@ -312,7 +397,9 @@ class GitHubSyncSpaceClient(
             require(paths.distinct().size == paths.size)
             val descriptor = entries.singleOrNull { it.string("path") == SyncSpaceDescriptorCodec.PATH }
             if (descriptor == null) {
-                if (paths.any { it.startsWith(".mihon-sync/") }) fail(SyncDiscoveryProblem.INCOMPATIBLE)
+                if (paths.any { it.startsWith(".mihon-sync/") }) {
+                    fail(SyncDiscoveryProblem.INCOMPATIBLE, account, installation)
+                }
                 return null
             }
             require(descriptor.string("type") == "blob" && descriptor.string("mode") == "100644")
@@ -320,8 +407,10 @@ class GitHubSyncSpaceClient(
             val blob = get("$base/git/blobs/$sha").checked().objectBody()
             require(blob.string("encoding") == "base64")
             val bytes = blob.string("content").replace("\n", "").decodeBase64()?.toByteArray() ?: error("invalid blob")
-            val decoded = SyncSpaceDescriptorCodec.decode(bytes).getOrElse { fail(SyncDiscoveryProblem.INCOMPATIBLE) }
-            return DiscoveredSyncSpace(account, repository.id, repository.repository, decoded, head)
+            val decoded = SyncSpaceDescriptorCodec.decode(bytes).getOrElse {
+                fail(SyncDiscoveryProblem.INCOMPATIBLE, account, installation)
+            }
+            return DiscoveredSyncSpace(account, repository.id, repository.repository, decoded, head, installation)
         }
 
         private suspend fun get(path: String) = api.requestPath(path)
@@ -343,31 +432,46 @@ class GitHubSyncSpaceClient(
         val spaces: List<DiscoveredSyncSpace>,
         val target: Repository?,
         val emptyCandidate: EmptySyncRepositoryCandidate?,
+        val installation: SyncAppInstallation,
         val targetProblem: SyncDiscoveryProblem?,
     )
 
     companion object {
-        const val REPOSITORY_NAME = "mihon-sync"
-        const val BRANCH = "mihon-sync-v1"
+        const val REPOSITORY_NAME = SyncRepositoryTarget.NAME
+        const val BRANCH = SyncRepositoryTarget.BRANCH
     }
 }
 
 private class DiscoveryException(
     val problem: SyncDiscoveryProblem,
     val account: SyncGitHubAccount? = null,
+    val installation: SyncAppInstallation? = null,
 ) : IllegalStateException("sync discovery failed")
 
-private fun fail(problem: SyncDiscoveryProblem, account: SyncGitHubAccount? = null): Nothing =
-    throw DiscoveryException(problem, account)
+private fun fail(
+    problem: SyncDiscoveryProblem,
+    account: SyncGitHubAccount? = null,
+    installation: SyncAppInstallation? = null,
+): Nothing = throw DiscoveryException(problem, account, installation)
 
-private fun discoveryResult(account: SyncGitHubAccount?, problem: SyncDiscoveryProblem): SyncSpaceDiscovery =
+private fun discoveryResult(
+    account: SyncGitHubAccount?,
+    problem: SyncDiscoveryProblem,
+    installation: SyncAppInstallation? = null,
+): SyncSpaceDiscovery =
     when (problem) {
         SyncDiscoveryProblem.NEEDS_INSTALLATION -> account?.let(SyncSpaceDiscovery::NeedsInstallation)
-        SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS -> account?.let(SyncSpaceDiscovery::NeedsRepositoryAccess)
-        SyncDiscoveryProblem.NEEDS_CONTENTS_PERMISSION -> account?.let(SyncSpaceDiscovery::NeedsContentsPermission)
-        SyncDiscoveryProblem.INSTALLATION_SUSPENDED -> account?.let(SyncSpaceDiscovery::InstallationSuspended)
+        SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS -> account?.let {
+            SyncSpaceDiscovery.NeedsRepositoryAccess(it, installation)
+        }
+        SyncDiscoveryProblem.NEEDS_CONTENTS_PERMISSION -> account?.let {
+            SyncSpaceDiscovery.NeedsContentsPermission(it, installation)
+        }
+        SyncDiscoveryProblem.INSTALLATION_SUSPENDED -> account?.let {
+            SyncSpaceDiscovery.InstallationSuspended(it, installation)
+        }
         else -> null
-    } ?: SyncSpaceDiscovery.Failed(problem)
+    } ?: SyncSpaceDiscovery.Failed(problem, account, installation)
 
 private fun Exception.problem(): SyncDiscoveryProblem = when (this) {
     is DiscoveryException -> problem

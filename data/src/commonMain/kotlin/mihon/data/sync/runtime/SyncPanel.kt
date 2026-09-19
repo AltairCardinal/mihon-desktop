@@ -2,6 +2,7 @@ package mihon.data.sync.runtime
 
 import kotlinx.coroutines.flow.StateFlow
 import mihon.data.sync.auth.DiscoveredSyncSpace
+import mihon.data.sync.auth.SyncAppInstallation
 import mihon.data.sync.auth.SyncDiscoveryProblem
 import mihon.data.sync.inbox.SyncPendingItem
 import mihon.domain.sync.SyncCancellationDecision
@@ -89,6 +90,7 @@ data class SyncPanelState(
     val passwordProblem: SyncPasswordProblem? = null,
     val spaces: List<DiscoveredSyncSpace> = emptyList(),
     val setupAccountLogin: String? = null,
+    val setupInstallation: SyncAppInstallation? = null,
     val setupRepository: SyncRepository? = null,
 ) {
     val queuedTotal: Long get() = queuedMembership + queuedReading

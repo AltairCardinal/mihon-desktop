@@ -4,9 +4,11 @@ package mihon.data.sync
 
 import kotlinx.coroutines.test.runTest
 import mihon.data.sync.auth.GitHubSyncSpaceClient
+import mihon.data.sync.auth.SyncAppInstallation
 import mihon.data.sync.auth.SyncCreationAttempt
 import mihon.data.sync.auth.SyncDiscoveryProblem
 import mihon.data.sync.auth.SyncGitHubAccount
+import mihon.data.sync.auth.SyncRepositorySelection
 import mihon.data.sync.auth.SyncSpaceCreation
 import mihon.data.sync.auth.SyncSpaceDiscovery
 import mihon.data.sync.crypto.SyncSpaceCrypto
@@ -240,7 +242,11 @@ class SyncSpaceDiscoveryContractTest {
             allRefsBody = """[{"ref":"refs/notes/commits","object":{"sha":"${"a".repeat(40)}"}}]""",
         ).use { server ->
             assertEquals(
-                SyncSpaceDiscovery.Failed(SyncDiscoveryProblem.NAME_OCCUPIED),
+                SyncSpaceDiscovery.Failed(
+                    SyncDiscoveryProblem.NAME_OCCUPIED,
+                    SyncGitHubAccount(42, "synthetic-user"),
+                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 1),
+                ),
                 client(server).discover(),
             )
         }
@@ -269,7 +275,14 @@ class SyncSpaceDiscoveryContractTest {
 
             val result = client(server).discover()
 
-            assertEquals(SyncSpaceDiscovery.Failed(SyncDiscoveryProblem.RETRYABLE), result)
+            assertEquals(
+                SyncSpaceDiscovery.Failed(
+                    SyncDiscoveryProblem.RETRYABLE,
+                    SyncGitHubAccount(42, "synthetic-user"),
+                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 1),
+                ),
+                result,
+            )
             assertEquals(
                 listOf(
                     "/user",
@@ -345,7 +358,10 @@ class SyncSpaceDiscoveryContractTest {
                     assertEquals(3, server.requestCount)
                 } else {
                     assertEquals(
-                        SyncSpaceDiscovery.NeedsRepositoryAccess(SyncGitHubAccount(42, "synthetic-user")),
+                        SyncSpaceDiscovery.NeedsRepositoryAccess(
+                            SyncGitHubAccount(42, "synthetic-user"),
+                            SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 0),
+                        ),
                         result,
                     )
                     assertEquals(5, server.requestCount)
@@ -376,7 +392,14 @@ class SyncSpaceDiscoveryContractTest {
                 } else {
                     enqueueSpace(server, """{"spaceFormatVersion":999}""".encodeToByteArray())
                 }
-                assertEquals(SyncSpaceDiscovery.Failed(SyncDiscoveryProblem.INCOMPATIBLE), client(server).discover())
+                assertEquals(
+                    SyncSpaceDiscovery.Failed(
+                        SyncDiscoveryProblem.INCOMPATIBLE,
+                        SyncGitHubAccount(42, "synthetic-user"),
+                        SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 1),
+                    ),
+                    client(server).discover(),
+                )
                 repeat(server.requestCount) { assertEquals("GET", server.takeRequest().method) }
             }
         }
@@ -387,9 +410,40 @@ class SyncSpaceDiscoveryContractTest {
             server.enqueue(MockResponse(body = """{"repositories":[$publicRepository],"total_count":1}"""))
             server.enqueue(MockResponse(body = publicRepository))
             assertEquals(
-                SyncSpaceDiscovery.Failed(SyncDiscoveryProblem.REPOSITORY_NOT_PRIVATE),
+                SyncSpaceDiscovery.Failed(
+                    SyncDiscoveryProblem.REPOSITORY_NOT_PRIVATE,
+                    SyncGitHubAccount(42, "synthetic-user"),
+                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 1),
+                ),
                 client(server).discover(),
             )
+        }
+    }
+
+    @Test
+    fun `fixed repository safety errors retain account and installation metadata`() = runTest {
+        for ((repository, problem) in listOf(
+            repositoryJson().replace("\"private\":true", "\"private\":false") to
+                SyncDiscoveryProblem.REPOSITORY_NOT_PRIVATE,
+            repositoryJson().replace("\"push\":true", "\"push\":false") to
+                SyncDiscoveryProblem.REPOSITORY_NOT_WRITABLE,
+            repositoryJson().replace("\"archived\":false", "\"archived\":true") to
+                SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE,
+        )) {
+            MockWebServer().use { server ->
+                server.start()
+                enqueueIdentity(server)
+                server.enqueue(MockResponse(body = """{"repositories":[$repository],"total_count":1}"""))
+
+                assertEquals(
+                    SyncSpaceDiscovery.Failed(
+                        problem,
+                        SyncGitHubAccount(42, "synthetic-user"),
+                        SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 1),
+                    ),
+                    client(server).discover(),
+                )
+            }
         }
     }
 
@@ -411,7 +465,10 @@ class SyncSpaceDiscoveryContractTest {
                 server.url("/").newBuilder().host("localhost").build().toString(),
             )
             assertEquals(
-                SyncSpaceDiscovery.NeedsRepositoryAccess(SyncGitHubAccount(42, "synthetic-user")),
+                SyncSpaceDiscovery.NeedsRepositoryAccess(
+                    SyncGitHubAccount(42, "synthetic-user"),
+                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 0),
+                ),
                 client.discover(),
             )
             assertTrue(resolutions > 0)
@@ -481,7 +538,10 @@ class SyncSpaceDiscoveryContractTest {
             server.enqueue(MockResponse(code = 404, body = "{}"))
             val result = client(server).discover()
             assertEquals(
-                SyncSpaceDiscovery.NeedsRepositoryAccess(SyncGitHubAccount(42, "synthetic-user")),
+                SyncSpaceDiscovery.NeedsRepositoryAccess(
+                    SyncGitHubAccount(42, "synthetic-user"),
+                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 0),
+                ),
                 result,
             )
             assertEquals(4, server.requestCount)
@@ -524,7 +584,10 @@ class SyncSpaceDiscoveryContractTest {
             enqueueIdentity(server, permissions = """{"metadata":"read"}""")
 
             assertEquals(
-                SyncSpaceDiscovery.NeedsContentsPermission(SyncGitHubAccount(42, "synthetic-user")),
+                SyncSpaceDiscovery.NeedsContentsPermission(
+                    SyncGitHubAccount(42, "synthetic-user"),
+                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED),
+                ),
                 client(server).discover(),
             )
             assertEquals(2, server.requestCount)
@@ -538,7 +601,10 @@ class SyncSpaceDiscoveryContractTest {
             enqueueIdentity(server, suspendedAt = "\"2026-09-18T12:00:00Z\"")
 
             assertEquals(
-                SyncSpaceDiscovery.InstallationSuspended(SyncGitHubAccount(42, "synthetic-user")),
+                SyncSpaceDiscovery.InstallationSuspended(
+                    SyncGitHubAccount(42, "synthetic-user"),
+                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED),
+                ),
                 client(server).discover(),
             )
             assertEquals(2, server.requestCount)
@@ -552,7 +618,11 @@ class SyncSpaceDiscoveryContractTest {
             enqueueIdentity(server, includeSuspendedAt = false)
 
             assertEquals(
-                SyncSpaceDiscovery.Failed(SyncDiscoveryProblem.MALFORMED),
+                SyncSpaceDiscovery.Failed(
+                    SyncDiscoveryProblem.MALFORMED,
+                    SyncGitHubAccount(42, "synthetic-user"),
+                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED),
+                ),
                 client(server).discover(),
             )
             assertEquals(2, server.requestCount)
@@ -632,13 +702,76 @@ class SyncSpaceDiscoveryContractTest {
     }
 
     @Test
+    fun `installation scope and all paginated repository count accompany discovery`() = runTest {
+        val secondary = repositoryJson()
+            .replace("mihon-sync", "secondary")
+            .replace("\"id\":99", "\"id\":100")
+            .replace("\"size\":0", "\"size\":1")
+        val cases: List<Triple<String, List<String>, SyncAppInstallation>> = listOf(
+            Triple("all", emptyList(), SyncAppInstallation(7, SyncRepositorySelection.ALL, 1)),
+            Triple("selected", listOf(secondary), SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 2)),
+        )
+        for ((selection, extras, expectedInstallation) in cases) {
+            emptyRepositoryServer(
+                repositorySelection = selection,
+                additionalRepositories = extras,
+                paginateAdditionalRepositories = extras.isNotEmpty(),
+            ).use { server ->
+                val result = client(server).discover()
+
+                assertTrue(result is SyncSpaceDiscovery.EmptyRepository)
+                assertEquals(
+                    expectedInstallation,
+                    (result as SyncSpaceDiscovery.EmptyRepository).candidate.installation,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `installed but unselected target retains verified installation for management`() = runTest {
+        emptyRepositoryServer(includeTargetInInstallation = false).use { server ->
+            assertEquals(
+                SyncSpaceDiscovery.NeedsRepositoryAccess(
+                    SyncGitHubAccount(42, "synthetic-user"),
+                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 0),
+                ),
+                client(server).discover(),
+            )
+        }
+    }
+
+    @Test
+    fun `permission failure retains the verified installation id for its management page`() = runTest {
+        MockWebServer().use { server ->
+            server.start()
+            enqueueIdentity(server, permissions = """{"metadata":"read"}""")
+
+            assertEquals(
+                SyncSpaceDiscovery.NeedsContentsPermission(
+                    SyncGitHubAccount(42, "synthetic-user"),
+                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED),
+                ),
+                client(server).discover(),
+            )
+        }
+    }
+
+    @Test
     fun `unknown matching refs conflict is retryable and cannot prove an empty repository`() = runTest {
         emptyRepositoryServer(
             matchingRefsBody = """{"message":"Repository is temporarily unavailable."}""",
         ).use { server ->
             val result = client(server).discover()
 
-            assertEquals(SyncSpaceDiscovery.Failed(SyncDiscoveryProblem.RETRYABLE), result)
+            assertEquals(
+                SyncSpaceDiscovery.Failed(
+                    SyncDiscoveryProblem.RETRYABLE,
+                    SyncGitHubAccount(42, "synthetic-user"),
+                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 1),
+                ),
+                result,
+            )
         }
     }
 
@@ -653,7 +786,14 @@ class SyncSpaceDiscoveryContractTest {
         ).use { server ->
             val result = client(server).discover()
 
-            assertEquals(SyncSpaceDiscovery.Failed(SyncDiscoveryProblem.RETRYABLE), result)
+            assertEquals(
+                SyncSpaceDiscovery.Failed(
+                    SyncDiscoveryProblem.RETRYABLE,
+                    SyncGitHubAccount(42, "synthetic-user"),
+                    SyncAppInstallation(7, SyncRepositorySelection.SELECTED, 1),
+                ),
+                result,
+            )
         }
     }
 
@@ -783,6 +923,10 @@ class SyncSpaceDiscoveryContractTest {
 
     private fun emptyRepositoryServer(
         repositoryJson: String = repositoryJson(),
+        repositorySelection: String = "selected",
+        additionalRepositories: List<String> = emptyList(),
+        includeTargetInInstallation: Boolean = true,
+        paginateAdditionalRepositories: Boolean = false,
         matchingRefsCode: Int = 409,
         matchingRefsBody: String = """{"message":"Git Repository is empty."}""",
         allRefsCode: Int = matchingRefsCode,
@@ -797,11 +941,35 @@ class SyncSpaceDiscoveryContractTest {
             override fun dispatch(request: RecordedRequest): MockResponse = when (request.url.encodedPath) {
                 "/user" -> MockResponse(body = ACCOUNT)
                 "/user/installations" -> MockResponse(
-                    body = """{"installations":[{"id":7,"app_slug":"mihon-desktop","account":{"id":42,"type":"User"},"suspended_at":null,"repository_selection":"selected","permissions":{"contents":"write","metadata":"read"}}]}""",
+                    body = """{"installations":[{"id":7,"app_slug":"mihon-desktop","account":{"id":42,"type":"User"},"suspended_at":null,"repository_selection":"$repositorySelection","permissions":{"contents":"write","metadata":"read"}}]}""",
                 )
-                "/user/installations/7/repositories" -> MockResponse(
-                    body = """{"repositories":[$repositoryJson],"total_count":1}""",
-                )
+                "/user/installations/7/repositories" -> {
+                    val secondPage = request.url.toString().contains("page=2")
+                    val listed = if (secondPage) {
+                        additionalRepositories
+                    } else {
+                        buildList {
+                            if (includeTargetInInstallation) add(repositoryJson)
+                            if (!paginateAdditionalRepositories) addAll(additionalRepositories)
+                        }
+                    }
+                    val body = """{"repositories":[${listed.joinToString()}],"total_count":${if (paginateAdditionalRepositories) {
+                        listed.size + if (secondPage) 1 else additionalRepositories.size
+                    } else {
+                        listed.size
+                    }}}"""
+                    if (paginateAdditionalRepositories && !secondPage) {
+                        MockResponse(
+                            body = body,
+                            headers = headersOf(
+                                "Link",
+                                "<${request.url.toString().replace("page=1", "page=2")}>; rel=\"next\"",
+                            ),
+                        )
+                    } else {
+                        MockResponse(body = body)
+                    }
+                }
                 "/repos/synthetic-user/mihon-sync" -> MockResponse(body = repositoryJson)
                 "/repos/synthetic-user/mihon-sync/git/ref/heads/mihon-sync-v1" -> MockResponse(code = 404, body = "{}")
                 "/repos/synthetic-user/mihon-sync/git/ref/heads/main" -> MockResponse(
@@ -821,6 +989,7 @@ class SyncSpaceDiscoveryContractTest {
                 "/repos/synthetic-user/mihon-sync/branches",
                 "/repos/synthetic-user/mihon-sync/tags",
                 -> MockResponse(body = "[]")
+                "/repos/synthetic-user/secondary/git/ref/heads/mihon-sync-v1" -> MockResponse(code = 404, body = "{}")
                 "/repos/synthetic-user/mihon-sync/contents/" -> MockResponse(
                     code = contentsCode,
                     body = contentsBody,

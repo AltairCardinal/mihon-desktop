@@ -47,6 +47,12 @@ class SyncPanelOnboardingIntegrationTest {
     @Test
     fun `real UI dispatches invalid password to production controller without creating a plain space`() = runBlocking {
         MockWebServer().use { server ->
+            val repository = """
+                {"id":99,"name":"mihon-sync","full_name":"fixture/mihon-sync",
+                "owner":{"id":42,"login":"fixture","type":"User"},"private":true,
+                "permissions":{"push":true},"size":0,"default_branch":"main",
+                "archived":false,"disabled":false}
+            """.trimIndent()
             server.dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest): MockResponse = when (request.url.encodedPath) {
                     "/user" -> MockResponse(body = """{"id":42,"login":"fixture","type":"User"}""")
@@ -57,7 +63,22 @@ class SyncPanelOnboardingIntegrationTest {
                             "permissions":{"administration":"write","contents":"write","metadata":"read"}}]}""",
                     )
                     "/user/installations/7/repositories" ->
-                        MockResponse(body = """{"repositories":[],"total_count":0}""")
+                        MockResponse(body = """{"repositories":[$repository],"total_count":1}""")
+                    "/repos/fixture/mihon-sync" -> MockResponse(body = repository)
+                    "/repos/fixture/mihon-sync/git/ref/heads/mihon-sync-v1" ->
+                        MockResponse(code = 404, body = "{}")
+                    "/repos/fixture/mihon-sync/git/matching-refs/" -> MockResponse(
+                        code = 409,
+                        body = """{"message":"Git Repository is empty."}""",
+                    )
+                    "/repos/fixture/mihon-sync/git/ref/heads/main" -> MockResponse(
+                        code = 409,
+                        body = """{"message":"Git Repository is empty."}""",
+                    )
+                    "/repos/fixture/mihon-sync/contents/" -> MockResponse(
+                        code = 404,
+                        body = """{"message":"This repository is empty."}""",
+                    )
                     else -> MockResponse(code = 404, body = "{}")
                 }
             }
@@ -127,6 +148,166 @@ class SyncPanelOnboardingIntegrationTest {
                 panel.dispatch(SyncPanelAction.Close)
                 withTimeout(5_000) { panel.state.first { !it.visible } }
                 assertTrue(runtime.credentials.read() != null)
+            } finally {
+                scene.close()
+                runtime.stopPanel()
+                handler.close()
+                client.connectionPool.evictAll()
+                client.dispatcher.executorService.shutdown()
+            }
+        }
+    }
+
+    @Test
+    fun missingInstallationPresentsDedicatedRepoStepsAndProductionRecheck() = runBlocking {
+        MockWebServer().use { server ->
+            var appInstalledWithOtherRepositories = false
+            val authorizedRepositories = listOf("reader-data", "comic-backups").mapIndexed { index, name ->
+                """{"id":${91 + index},"name":"$name","full_name":"fixture-owner/$name","owner":{"id":42,"login":"fixture-owner","type":"User"},"private":true,"permissions":{"push":true},"size":1,"default_branch":"main","archived":false,"disabled":false}"""
+            }
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    val path = request.url.encodedPath
+                    return when {
+                        path == "/user" -> MockResponse(body = """{"id":42,"login":"fixture-owner","type":"User"}""")
+                        path == "/user/installations" -> MockResponse(
+                            body = if (appInstalledWithOtherRepositories) {
+                                """{"installations":[{"id":55,"app_slug":"mihon-desktop","account":{"id":42,"type":"User"},"suspended_at":null,"repository_selection":"selected","permissions":{"contents":"write","metadata":"read"}}]}"""
+                            } else {
+                                """{"installations":[]}"""
+                            },
+                        )
+                        path == "/user/installations/55/repositories" -> MockResponse(
+                            body = """{"repositories":[${authorizedRepositories.joinToString()}],"total_count":2}""",
+                        )
+                        path.startsWith("/repos/fixture-owner/reader-data/git/ref/heads/") ||
+                            path.startsWith("/repos/fixture-owner/comic-backups/git/ref/heads/") ->
+                            MockResponse(code = 404, body = "{}")
+                        path == "/repos/fixture-owner/mihon-sync" -> MockResponse(code = 404, body = "{}")
+                        else -> MockResponse(code = 404, body = "{}")
+                    }
+                }
+            }
+            server.start()
+            val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+            Database.Schema.create(driver)
+            val database = Database(
+                driver,
+                History.Adapter(DateColumnAdapter),
+                Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+            )
+            val handler = JvmDatabaseHandler(database, driver)
+            val bootstrap = CreatorArchiveLegacyBootstrap(CreatorArchiveLegacyBridge(handler))
+            val creators = CreatorRepositoryImpl(handler, bootstrap = bootstrap)
+            val stored = ConcurrentHashMap<String, String>()
+            val secure = object : SyncSecureStore {
+                override suspend fun read(key: String) = stored[key]
+                override suspend fun compareAndSet(key: String, expected: String?, value: String?): Boolean =
+                    synchronized(stored) {
+                        if (stored[key] != expected) return@synchronized false
+                        if (value == null) stored.remove(key) else stored[key] = value
+                        true
+                    }
+            }
+            val client = OkHttpClient()
+            val runtime = SyncRuntime(
+                handler, bootstrap, creators, creators, { true }, secure, InMemoryPreferenceStore(), client,
+                GitHubAuthEndpoints(apiBaseUrl = server.url("/").toString()),
+            )
+            val panel = runtime.panel
+            val opened = mutableListOf<String>()
+            val scene = ImageComposeScene(360, 720, coroutineContext = coroutineContext) {}
+            fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)
+            fun node(tag: String) = scene.semanticsOwners.flatMap { flatten(it.rootSemanticsNode) }.firstOrNull {
+                it.config.contains(SemanticsProperties.TestTag) && it.config[SemanticsProperties.TestTag] == tag
+            }
+            suspend fun awaitNode(tag: String): SemanticsNode = withTimeout(5_000) {
+                while (node(tag) == null) {
+                    scene.render()
+                    yield()
+                }
+                requireNotNull(node(tag))
+            }
+            try {
+                runtime.credentials.replace(
+                    null,
+                    GitHubAccessToken("fixture-token", null, "bearer", emptySet(), null, null),
+                )
+                scene.setContent {
+                    MaterialTheme { SyncPanelContent(panel, onOpenBrowser = opened::add, onCopyCode = {}) }
+                }
+                panel.dispatch(SyncPanelAction.Open)
+                requireNotNull(awaitNode("sync-now").config[SemanticsActions.OnClick].action).invoke()
+                withTimeout(5_000) {
+                    panel.state.first { it.setupStep == SyncSetupStep.ERROR && !it.setupBusy }
+                }
+
+                awaitNode("sync-setup-error")
+                assertTrue(
+                    node("sync-create-private-repo") != null,
+                    "missing-installation guidance should link to GitHub repository creation",
+                )
+                assertTrue(
+                    node("sync-install-app") != null,
+                    "missing-installation guidance should link to the App installation flow",
+                )
+                assertTrue(
+                    node("sync-recheck-installation") != null,
+                    "browser completion should have an explicit production recheck action",
+                )
+                assertEquals("fixture-owner", panel.state.value.setupAccountLogin)
+                assertNull(node("sync-password-input"), "an uninstalled account must not enter initialization")
+
+                requireNotNull(node("sync-create-private-repo")?.config?.get(SemanticsActions.OnClick)?.action).invoke()
+                assertEquals(
+                    "https://github.com/new?name=mihon-sync&visibility=private&owner=fixture-owner",
+                    opened.last(),
+                )
+                requireNotNull(node("sync-install-app")?.config?.get(SemanticsActions.OnClick)?.action).invoke()
+                assertEquals("https://github.com/apps/mihon-desktop/installations/new", opened.last())
+                requireNotNull(
+                    node("sync-recheck-installation")?.config?.get(SemanticsActions.OnClick)?.action,
+                ).invoke()
+                withTimeout(5_000) {
+                    panel.state.first {
+                        it.setupProblem == mihon.data.sync.auth.SyncDiscoveryProblem.NEEDS_INSTALLATION && !it.setupBusy
+                    }
+                }
+                assertNull(
+                    node("sync-password-input"),
+                    "retry must revalidate installation before exposing initialization",
+                )
+                assertTrue(
+                    server.requestCount >= 4,
+                    "the explicit recheck must query GitHub through the production controller",
+                )
+
+                appInstalledWithOtherRepositories = true
+                requireNotNull(
+                    node("sync-recheck-installation")?.config?.get(SemanticsActions.OnClick)?.action,
+                ).invoke()
+                withTimeout(5_000) {
+                    panel.state.first {
+                        it.setupProblem == mihon.data.sync.auth.SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS &&
+                            !it.setupBusy
+                    }
+                }
+                assertEquals(
+                    mihon.data.sync.auth.SyncAppInstallation(
+                        55,
+                        mihon.data.sync.auth.SyncRepositorySelection.SELECTED,
+                        authorizedRepositoryCount = 2,
+                    ),
+                    panel.state.value.setupInstallation,
+                )
+                awaitNode("sync-installation-scope-warning")
+                requireNotNull(awaitNode("sync-install-app").config[SemanticsActions.OnClick]?.action).invoke()
+                assertEquals("https://github.com/settings/installations/55", opened.last())
+                assertNull(node("sync-password-input"), "a missing or inaccessible target cannot start initialization")
+                assertTrue(
+                    server.requestCount >= 8,
+                    "recheck must read the installation and its paginated repositories",
+                )
             } finally {
                 scene.close()
                 runtime.stopPanel()

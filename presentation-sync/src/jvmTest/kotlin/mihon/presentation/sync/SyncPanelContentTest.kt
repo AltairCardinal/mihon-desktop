@@ -20,7 +20,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
+import mihon.data.sync.auth.SyncAppInstallation
 import mihon.data.sync.auth.SyncDiscoveryProblem
+import mihon.data.sync.auth.SyncInstallationAccountType
+import mihon.data.sync.auth.SyncRepositorySelection
 import mihon.data.sync.inbox.SyncPendingItem
 import mihon.data.sync.runtime.SyncBulkConfirmation
 import mihon.data.sync.runtime.SyncBulkStatus
@@ -171,7 +174,7 @@ class SyncPanelContentTest {
         panel.state.value = connected().copy(
             page = SyncPanelPage.SETUP,
             setupStep = SyncSetupStep.ERROR,
-            problem = SyncRunProblem.UNKNOWN,
+            setupProblem = SyncDiscoveryProblem.AUTHORIZATION_REQUIRED,
         )
         awaitTag("sync-repo-reconnect")
         click("sync-repo-reconnect")
@@ -198,7 +201,7 @@ class SyncPanelContentTest {
     }
 
     @Test
-    fun `failed authorization offers installation and retry without manual repository creation`() = rendered(
+    fun `failed authorization offers reauthorization without confusing App installation`() = rendered(
         SyncPanelState(
             visible = true,
             page = SyncPanelPage.SETUP,
@@ -206,12 +209,78 @@ class SyncPanelContentTest {
             setupProblem = SyncDiscoveryProblem.AUTHORIZATION_REQUIRED,
         ),
     ) {
-        awaitTag("sync-install-app")
-        click("sync-install-app")
-        assertEquals(listOf("https://github.com/apps/mihon-desktop/installations/new"), opened)
+        awaitTag("sync-repo-reconnect")
+        click("sync-repo-reconnect")
+        assertEquals(SyncPanelAction.Authorize, actions.last())
+        assertTrue(opened.isEmpty())
+        assertFalse(hasTag("sync-install-app"))
         assertFalse(hasTag("sync-create-repo"))
         click("sync-setup-retry")
-        assertEquals(listOf(SyncPanelAction.RetrySetup), actions)
+        assertEquals(SyncPanelAction.RetrySetup, actions.last())
+    }
+
+    @Test
+    fun `repository guidance encodes owner and links to the verified installation scope`() = rendered(
+        SyncPanelState(
+            visible = true,
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.ERROR,
+            setupProblem = SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS,
+            setupAccountLogin = "owner&other=a/b",
+            setupInstallation = SyncAppInstallation(
+                7,
+                SyncRepositorySelection.SELECTED,
+                authorizedRepositoryCount = 2,
+            ),
+        ),
+    ) {
+        awaitTag("sync-install-app")
+        assertTrue(hasTag("sync-installation-scope-warning"))
+        assertTrue(texts().any { it == MR.strings.sync_setup_manage_installation.localized(Locale.getDefault()) })
+        click("sync-create-private-repo")
+        assertEquals(
+            "https://github.com/new?name=mihon-sync&visibility=private&owner=owner%26other%3Da%2Fb",
+            opened.last(),
+        )
+        click("sync-install-app")
+        assertEquals("https://github.com/settings/installations/7", opened.last())
+        assertFalse(opened.last().contains("/settings/installations?"))
+
+        panel.state.value = panel.state.value.copy(
+            setupInstallation = SyncAppInstallation(
+                9,
+                SyncRepositorySelection.ALL,
+                authorizedRepositoryCount = 1,
+            ),
+        )
+        render()
+        assertTrue(hasTag("sync-installation-scope-warning"))
+        assertTrue(texts().any { it == MR.strings.sync_setup_scope_all.localized(Locale.getDefault()) })
+
+        panel.state.value = panel.state.value.copy(
+            setupInstallation = SyncAppInstallation(
+                11,
+                SyncRepositorySelection.SELECTED,
+                authorizedRepositoryCount = 1,
+                accountType = SyncInstallationAccountType.ORGANIZATION,
+            ),
+        )
+        render()
+        click("sync-install-app")
+        assertEquals(
+            "https://github.com/organizations/owner%26other%3Da%2Fb/settings/installations/11",
+            opened.last(),
+        )
+        assertFalse(texts().any { it == MR.strings.sync_setup_scope_multiple.localized(Locale.getDefault()) })
+
+        panel.state.value = panel.state.value.copy(
+            setupProblem = SyncDiscoveryProblem.REPOSITORY_NOT_WRITABLE,
+            setupInstallation = SyncAppInstallation(13, SyncRepositorySelection.SELECTED, 1),
+        )
+        render()
+        awaitTag("sync-install-app")
+        click("sync-install-app")
+        assertEquals("https://github.com/settings/installations/13", opened.last())
     }
 
     @Test

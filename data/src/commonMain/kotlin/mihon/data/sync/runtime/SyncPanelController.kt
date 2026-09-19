@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
 import mihon.data.sync.auth.DiscoveredSyncSpace
 import mihon.data.sync.auth.EmptySyncRepositoryCandidate
+import mihon.data.sync.auth.SyncAppInstallation
 import mihon.data.sync.auth.SyncDiscoveryProblem
 import mihon.data.sync.auth.SyncGitHubAccount
 import mihon.data.sync.auth.SyncSpaceDiscovery
@@ -423,6 +424,8 @@ class SyncPanelController(
                     setupProblem = SyncDiscoveryProblem.INCOMPATIBLE,
                     problem = SyncRunProblem.INVALID_DATA,
                     setupBusy = false,
+                    setupAccountLogin = null,
+                    setupInstallation = null,
                 )
             }
             return
@@ -432,6 +435,8 @@ class SyncPanelController(
             it.copy(
                 setupStep = if (authorized) SyncSetupStep.DISCOVERING else SyncSetupStep.SIGN_IN,
                 setupRepository = null,
+                setupAccountLogin = null,
+                setupInstallation = null,
                 setupProblem = null,
                 authFailure = null,
                 problem = null,
@@ -538,11 +543,21 @@ class SyncPanelController(
         when (result) {
             is SyncSpaceDiscovery.Found -> selectSpace(result.space)
             is SyncSpaceDiscovery.Multiple -> mutableState.update {
-                it.copy(setupStep = SyncSetupStep.CHOOSE_SPACE, setupBusy = false, spaces = result.spaces)
+                it.copy(
+                    setupStep = SyncSetupStep.CHOOSE_SPACE,
+                    setupBusy = false,
+                    spaces = result.spaces,
+                    setupAccountLogin = result.spaces.firstOrNull()?.account?.login,
+                    setupInstallation = result.spaces.firstOrNull()?.installation,
+                )
             }
             is SyncSpaceDiscovery.NoVisibleSpace -> {
                 emptyRepositoryCandidate = null
-                setupFailed(SyncSetupException(SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS))
+                setupFailed(
+                    SyncSetupException(SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS),
+                    result.account.login,
+                    result.installation,
+                )
             }
             is SyncSpaceDiscovery.EmptyRepository -> {
                 emptyRepositoryCandidate = result.candidate
@@ -553,6 +568,7 @@ class SyncPanelController(
                         setupStep = SyncSetupStep.NEW_PASSWORD,
                         setupBusy = false,
                         setupAccountLogin = result.candidate.account.login,
+                        setupInstallation = result.candidate.installation,
                         setupRepository = result.candidate.repository,
                         spaces = emptyList(),
                     )
@@ -560,17 +576,29 @@ class SyncPanelController(
             }
             is SyncSpaceDiscovery.NeedsInstallation -> setupFailed(
                 SyncSetupException(SyncDiscoveryProblem.NEEDS_INSTALLATION),
+                result.account.login,
+                null,
             )
             is SyncSpaceDiscovery.NeedsRepositoryAccess -> setupFailed(
                 SyncSetupException(SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS),
+                result.account.login,
+                result.installation,
             )
             is SyncSpaceDiscovery.NeedsContentsPermission -> setupFailed(
                 SyncSetupException(SyncDiscoveryProblem.NEEDS_CONTENTS_PERMISSION),
+                result.account.login,
+                result.installation,
             )
             is SyncSpaceDiscovery.InstallationSuspended -> setupFailed(
                 SyncSetupException(SyncDiscoveryProblem.INSTALLATION_SUSPENDED),
+                result.account.login,
+                result.installation,
             )
-            is SyncSpaceDiscovery.Failed -> setupFailed(SyncSetupException(result.problem))
+            is SyncSpaceDiscovery.Failed -> setupFailed(
+                SyncSetupException(result.problem),
+                result.account?.login,
+                result.installation,
+            )
         }
     }
 
@@ -582,6 +610,7 @@ class SyncPanelController(
             it.copy(
                 setupRepository = space.repository,
                 setupAccountLogin = space.account.login,
+                setupInstallation = space.installation,
                 spaces = emptyList(),
                 setupProblem = null,
                 passwordProblem = null,
@@ -705,18 +734,28 @@ class SyncPanelController(
                     }
                 }
             } catch (failure: Exception) {
-                enqueue { if (version == setupVersion) setupFailed(failure) }
+                enqueue {
+                    if (version == setupVersion) {
+                        setupFailed(failure, state.value.setupAccountLogin, state.value.setupInstallation)
+                    }
+                }
             }
         }
     }
 
-    private fun setupFailed(failure: Exception) {
+    private fun setupFailed(
+        failure: Exception,
+        accountLogin: String? = null,
+        installation: SyncAppInstallation? = null,
+    ) {
         mutableState.update {
             it.copy(
                 setupBusy = false,
                 setupStep = SyncSetupStep.ERROR,
                 setupProblem = (failure as? SyncSetupException)?.problem ?: SyncDiscoveryProblem.RETRYABLE,
                 problem = failure.syncProblem(),
+                setupAccountLogin = accountLogin,
+                setupInstallation = installation,
             )
         }
     }

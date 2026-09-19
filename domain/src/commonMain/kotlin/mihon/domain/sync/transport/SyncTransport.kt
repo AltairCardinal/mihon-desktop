@@ -6,6 +6,11 @@ import mihon.domain.sync.crypto.SyncAeadCiphertext
 import mihon.domain.sync.crypto.SyncEncryptedBatch
 import mihon.domain.sync.crypto.SyncPayload
 
+object SyncRepositoryTarget {
+    const val NAME = "mihon-sync"
+    const val BRANCH = "mihon-sync-v1"
+}
+
 data class SyncRepository(
     val owner: String,
     val name: String,

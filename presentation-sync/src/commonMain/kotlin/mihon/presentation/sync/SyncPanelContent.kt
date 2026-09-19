@@ -78,7 +78,10 @@ import androidx.compose.ui.unit.dp
 import dev.icerock.moko.resources.StringResource
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import mihon.data.sync.auth.SyncAppInstallation
 import mihon.data.sync.auth.SyncDiscoveryProblem
+import mihon.data.sync.auth.SyncInstallationAccountType
+import mihon.data.sync.auth.SyncRepositorySelection
 import mihon.data.sync.inbox.SyncPendingItem
 import mihon.data.sync.runtime.SyncDecisionScope
 import mihon.data.sync.runtime.SyncPanel
@@ -92,6 +95,7 @@ import mihon.domain.sync.SyncCancellationDecision
 import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.runtime.SyncRunProblem
 import mihon.domain.sync.runtime.SyncRunStatus
+import mihon.domain.sync.transport.SyncRepositoryTarget
 import tachiyomi.i18n.MR
 
 @Composable
@@ -676,6 +680,11 @@ private fun SetupPage(
         if (state.setupBusy) item { CircularProgressIndicator(Modifier.size(24.dp)) }
         state.setupProblem?.let { item { Text(setupProblemText(it), Modifier.testTag("sync-setup-error")) } }
         if (state.setupProblem == null) state.problem?.let { item { Text(problemText(it)) } }
+        state.setupInstallation?.let(::installationScopeWarning)?.let { warning ->
+            item {
+                Text(syncString(warning), Modifier.testTag("sync-installation-scope-warning"))
+            }
+        }
         when (state.setupStep) {
             SyncSetupStep.SIGN_IN -> {
                 item { Text(syncString(MR.strings.sync_auth_description)) }
@@ -720,6 +729,17 @@ private fun SetupPage(
                             if (creating) MR.strings.sync_password_new_hint else MR.strings.sync_password_unlock_hint,
                         ),
                     )
+                }
+                if (creating) {
+                    item {
+                        Text(
+                            syncString(
+                                MR.strings.sync_setup_new_space_target,
+                                state.setupRepository?.fullName.orEmpty(),
+                            ),
+                            Modifier.testTag("sync-setup-target"),
+                        )
+                    }
                 }
                 item {
                     OutlinedTextField(
@@ -828,25 +848,80 @@ private fun SetupPage(
             }
             SyncSetupStep.COMPLETE -> item { Text(syncString(MR.strings.sync_setup_complete)) }
             SyncSetupStep.ERROR -> {
-                item {
-                    Action("sync-setup-retry", MR.strings.sync_setup_retry, !state.setupBusy) {
-                        dispatch(SyncPanelAction.RetrySetup)
-                    }
-                }
-                item {
-                    Action("sync-repo-reconnect", MR.strings.sync_reconnect, !state.setupBusy) {
-                        dispatch(SyncPanelAction.Authorize)
-                    }
-                }
-                if (state.setupProblem in setOf(
-                        SyncDiscoveryProblem.AUTHORIZATION_REQUIRED,
-                        SyncDiscoveryProblem.NAME_OCCUPIED,
-                        SyncDiscoveryProblem.CREATION_UNCONFIRMED,
-                    )
-                ) {
+                val problem = state.setupProblem
+                val needsRepositoryGuide = problem in setOf(
+                    SyncDiscoveryProblem.NEEDS_INSTALLATION,
+                    SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS,
+                )
+                if (needsRepositoryGuide) {
                     item {
-                        Action("sync-install-app", MR.strings.sync_install_app) {
-                            openBrowser("https://github.com/apps/mihon-desktop/installations/new")
+                        Text(syncString(MR.strings.sync_setup_repository_guide))
+                    }
+                    item {
+                        Text(syncString(MR.strings.sync_setup_app_guide))
+                    }
+                    item {
+                        Text(syncString(MR.strings.sync_setup_recheck_guide))
+                    }
+                    state.setupAccountLogin?.let { login ->
+                        item {
+                            Action("sync-create-private-repo", MR.strings.sync_setup_create_repo) {
+                                openBrowser(githubRepositoryCreationUrl(login))
+                            }
+                        }
+                    }
+                }
+                val installationIsMissing = problem == SyncDiscoveryProblem.NEEDS_INSTALLATION
+                val manageInstallation = problem in setOf(
+                    SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS,
+                    SyncDiscoveryProblem.NEEDS_CONTENTS_PERMISSION,
+                    SyncDiscoveryProblem.INSTALLATION_SUSPENDED,
+                    SyncDiscoveryProblem.REPOSITORY_NOT_WRITABLE,
+                    SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE,
+                )
+                val installationManagementUrl = if (manageInstallation) {
+                    state.setupInstallation?.let { installation ->
+                        state.setupAccountLogin?.let { login -> githubInstallationManagementUrl(installation, login) }
+                    }
+                } else {
+                    null
+                }
+                if (installationIsMissing || installationManagementUrl != null) {
+                    item {
+                        Action(
+                            "sync-install-app",
+                            if (installationIsMissing) {
+                                MR.strings.sync_setup_install_app
+                            } else {
+                                MR.strings.sync_setup_manage_installation
+                            },
+                        ) {
+                            openBrowser(
+                                if (installationIsMissing) {
+                                    GITHUB_APP_INSTALL_URL
+                                } else {
+                                    requireNotNull(installationManagementUrl)
+                                },
+                            )
+                        }
+                    }
+                    item {
+                        Action("sync-recheck-installation", MR.strings.sync_setup_recheck, !state.setupBusy) {
+                            dispatch(SyncPanelAction.RetrySetup)
+                        }
+                    }
+                }
+                if (problem !in INSTALLATION_RECOVERY_PROBLEMS) {
+                    item {
+                        Action("sync-setup-retry", MR.strings.sync_setup_retry, !state.setupBusy) {
+                            dispatch(SyncPanelAction.RetrySetup)
+                        }
+                    }
+                }
+                if (problem == SyncDiscoveryProblem.AUTHORIZATION_REQUIRED) {
+                    item {
+                        Action("sync-repo-reconnect", MR.strings.sync_reconnect, !state.setupBusy) {
+                            dispatch(SyncPanelAction.Authorize)
                         }
                     }
                 }
@@ -858,6 +933,12 @@ private fun SetupPage(
 @Composable
 private fun setupProblemText(problem: SyncDiscoveryProblem): String = syncString(
     when (problem) {
+        SyncDiscoveryProblem.NEEDS_INSTALLATION -> MR.strings.sync_setup_needs_installation
+        SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS -> MR.strings.sync_setup_needs_repository_access
+        SyncDiscoveryProblem.NEEDS_CONTENTS_PERMISSION -> MR.strings.sync_setup_missing_contents
+        SyncDiscoveryProblem.INSTALLATION_SUSPENDED -> MR.strings.sync_setup_installation_suspended
+        SyncDiscoveryProblem.REPOSITORY_NOT_WRITABLE -> MR.strings.sync_setup_not_writable
+        SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE -> MR.strings.sync_setup_repository_unavailable
         SyncDiscoveryProblem.AUTHORIZATION_REQUIRED -> MR.strings.sync_setup_authorization
         SyncDiscoveryProblem.RATE_LIMITED -> MR.strings.sync_setup_rate_limited
         SyncDiscoveryProblem.INCOMPATIBLE -> MR.strings.sync_setup_incompatible
@@ -870,6 +951,53 @@ private fun setupProblemText(problem: SyncDiscoveryProblem): String = syncString
         SyncDiscoveryProblem.REPOSITORY_NOT_PRIVATE -> MR.strings.sync_problem_not_private
     },
 )
+
+private val INSTALLATION_RECOVERY_PROBLEMS = setOf(
+    SyncDiscoveryProblem.NEEDS_INSTALLATION,
+    SyncDiscoveryProblem.NEEDS_REPOSITORY_ACCESS,
+    SyncDiscoveryProblem.NEEDS_CONTENTS_PERMISSION,
+    SyncDiscoveryProblem.INSTALLATION_SUSPENDED,
+    SyncDiscoveryProblem.REPOSITORY_NOT_WRITABLE,
+    SyncDiscoveryProblem.REPOSITORY_UNAVAILABLE,
+)
+
+private const val GITHUB_APP_INSTALL_URL = "https://github.com/apps/mihon-desktop/installations/new"
+
+private fun githubRepositoryCreationUrl(owner: String): String =
+    "https://github.com/new?name=${encodeQueryParameter(SyncRepositoryTarget.NAME)}" +
+        "&visibility=${encodeQueryParameter("private")}&owner=${encodeQueryParameter(owner)}"
+
+private fun githubInstallationManagementUrl(installation: SyncAppInstallation, accountLogin: String): String? {
+    if (installation.id <= 0) return null
+    return when (installation.accountType) {
+        SyncInstallationAccountType.USER -> "https://github.com/settings/installations/${installation.id}"
+        SyncInstallationAccountType.ORGANIZATION ->
+            "https://github.com/organizations/${encodeQueryParameter(accountLogin)}" +
+                "/settings/installations/${installation.id}"
+    }
+}
+
+private fun installationScopeWarning(installation: SyncAppInstallation): StringResource? = when {
+    installation.repositorySelection == SyncRepositorySelection.ALL -> MR.strings.sync_setup_scope_all
+    installation.authorizedRepositoryCount?.let { it > 1 } == true -> MR.strings.sync_setup_scope_multiple
+    else -> null
+}
+
+private fun encodeQueryParameter(value: String): String = buildString {
+    val hex = "0123456789ABCDEF"
+    value.encodeToByteArray().forEach { byte ->
+        val code = byte.toInt() and 0xFF
+        if (code in 'a'.code..'z'.code || code in 'A'.code..'Z'.code ||
+            code in '0'.code..'9'.code || code == '-'.code || code == '.'.code || code == '_'.code || code == '~'.code
+        ) {
+            append(code.toChar())
+        } else {
+            append('%')
+            append(hex[code shr 4])
+            append(hex[code and 0x0F])
+        }
+    }
+}
 
 @Composable
 private fun statusText(state: SyncPanelState): String = when {

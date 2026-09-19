@@ -140,7 +140,7 @@
     }
     function issuePage() {
       const kind = data().issue || 'network';
-      const labels = { network: ['暂时无法连接', '本设备的变动已保留。连接恢复后可以重试。', '重新同步', 'retry'], access: ['需要重新连接 GitHub', '登录授权已失效，或同步空间的访问权限发生变化。本设备的变动已保留。', '重新连接 GitHub', 'reconnect'], key: ['同步密码不正确', '无法连接这个同步空间。请输入设置空间时使用的同步密码。', '重新输入同步密码', 'repair-password'], empty: ['尚未创建同步空间', '可以自动创建专用私有同步空间。', '创建同步空间', 'initialize'], unknown: ['正在核对同步结果', '上次连接在上传后中断。核对结果后继续同步，本设备的变动暂时保留。', '继续核对', 'retry'] };
+      const labels = { network: ['暂时无法连接', '本设备的变动已保留。连接恢复后可以重试。', '重新同步', 'retry'], access: ['需要重新连接 GitHub', '登录授权已失效，或同步空间的访问权限发生变化。本设备的变动已保留。', '重新连接 GitHub', 'reconnect'], key: ['同步密码不正确', '无法连接这个同步空间。请输入设置空间时使用的同步密码。', '重新输入同步密码', 'repair-password'], empty: ['尚未创建同步空间', '请先在 GitHub 创建专用私有 mihon-sync 仓库，并只授权 Mihon App 访问该仓库。完成后返回这里重新检查。', '查看创建与授权步骤', 'initialize'], unknown: ['正在核对同步结果', '上次连接在上传后中断。核对结果后继续同步，本设备的变动暂时保留。', '继续核对', 'retry'] };
       const [title, detail, label, name] = labels[kind];
       return `<h3>${title}</h3>` + note(detail) + pair('同步空间', data().fields.repo) + message() + actions(action(label, name, true) + action('返回同步', 'home'));
     }
