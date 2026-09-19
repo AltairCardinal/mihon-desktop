@@ -79,6 +79,8 @@
 - 独立 M2 复审通过，无 must-fix：未发现 UI 绕过 M1 discovery/空库 guard、stale callback 或错误账号混入；初始化确认、URL 编码、授权范围提示和旧绑定保护均符合边界。普通仓库直达入口和旧绑定错误页直达断开属于非阻塞后续建议。
 - 所有 GitHub HTTP 仍来自本地 fixture；没有执行真实账号授权、权限变更、仓库写入或发布构建。DEMO 浏览器测试因当前环境没有 `playwright-core`/`PLAYWRIGHT_CORE_PATH` 未运行，保留为环境限制；真实最小权限联调继续作为 M3 门槛。
 
+**M3 本地验收进展（2026-09-19）**：在不触碰真实 GitHub 账号、仓库或设备的前提下，已完成最终本地回归和发布候选检查。`:app-desktop:jvmTest` 与 `:app:testDebugUnitTest` 全量通过；`scripts/build-desktop.sh build-only` 通过生产扩展运行验收，生成版本 `0.11.19.49.d015682` 的 Windows 未打包 EXE，ZIP SHA-256 为 `16d8e12b7e086fd02e1abaddbb7d94f846cc38cfa24f9ad88fb595c68612d463`。使用 `scripts/android-fork-release.init.gradle` 的 `:app:assembleRelease` 通过 fork 身份、R8、遥测/更新器约束；已有签名脚本生成 `app.mihon.desktop.fork`、`0.19.4-aex.11`、versionCode 29、仅 `arm64-v8a` 的正式候选，证书和 v2/v3 签名通过，APK SHA-256 为 `8246bfb2e7d1c2864c2686cdcc1c13241e02f5cc15c32f3eee39a6da3c2e47e2`。`adb devices` 未发现真机，macOS 发布环境未执行；真实 GitHub App 权限、隔离库写入和恢复流程仍未取得授权，因此 M3 保持未勾选。
+
 ### M3：真实权限与发布验收
 
 **前置**：M2 通过；正式发布身份和签名路径核验；实际 App 权限降低及测试账号/仓库写入取得明确授权。生产 App 尚未降低权限时可以先完成本地自动化，但不勾选真实最小权限验收。
