@@ -1,8 +1,10 @@
 package mihon.data.sync.runtime
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -67,6 +69,7 @@ class SyncRuntime(
     val credentials = PersistentGitHubCredentialStore(secureStore)
     val authorization = GitHubAuthClient(productionClient, endpoints, nowMillis = clock)
     val coordinator = SyncCoordinator(this)
+    val runStore = SyncRunStore(handler, clock)
     private val panelDelegate = lazy { SyncPanelController(this, handler, clock = clock) }
     val panel: SyncPanel get() = panelDelegate.value
     val baseline = SyncBaselineStore(handler, bootstrap)
@@ -148,6 +151,53 @@ class SyncRuntime(
         if (panelDelegate.isInitialized()) panelDelegate.value.stop()
     }
 
+    /** Resumes only an accepted system-interrupted run; a user pause remains paused. */
+    suspend fun hasResumableRun(): Boolean {
+        val connection = connection() ?: return false
+        return runStore.active(connection.spaceId, connection.generation)?.let {
+            it.state in RESUMABLE_STATES
+        } == true
+    }
+
+    /** Returns whether an accepted automatic run is allowed to make its next attempt now. */
+    suspend fun isRecoveryDue(): Boolean {
+        val connection = connection() ?: return false
+        return runStore.active(connection.spaceId, connection.generation)?.let {
+            it.state in RESUMABLE_STATES && (it.nextRetryAt == 0L || it.nextRetryAt <= clock())
+        } == true
+    }
+
+    /** Delay used when the platform schedules the durable recovery wake-up. */
+    suspend fun recoveryDelayMillis(): Long {
+        val connection = connection() ?: return 0L
+        return runStore.active(connection.spaceId, connection.generation)?.let {
+            if (it.state in RESUMABLE_STATES) (it.nextRetryAt - clock()).coerceAtLeast(0L) else 0L
+        } ?: 0L
+    }
+
+    /** Resumes only an accepted system-interrupted run; a user pause remains paused. */
+    suspend fun resumeIfNeeded(): Boolean {
+        val connection = connection() ?: return false
+        val run = runStore.active(connection.spaceId, connection.generation) ?: return false
+        if (run.state !in RESUMABLE_STATES) return false
+        if (run.nextRetryAt > clock()) return true
+        if (!coordinator.activity.value.running && run.state == SyncRunState.RUNNING) {
+            runStore.releaseForRecovery(run.runId)
+        }
+        coordinator.synchronize(SyncTrigger.RECOVERY)
+        return true
+    }
+
+    suspend fun cancelSync() {
+        connection()?.let { runStore.active(it.spaceId, it.generation)?.let { runStore.cancel(it.runId) } }
+        coordinator.cancelAndJoin()
+    }
+
+    suspend fun pauseSync() {
+        connection()?.let { runStore.active(it.spaceId, it.generation)?.let { runStore.pause(it.runId) } }
+        coordinator.cancelAndJoin()
+    }
+
     suspend fun accessToken(): String {
         if (credentials.read() == null) {
             throw GitHubAuthException(
@@ -200,7 +250,10 @@ class SyncRuntime(
     suspend fun disconnect() {
         coordinator.cancelAndJoin()
         connectionMutex.withLock {
-            connection()?.let { SyncLocalJournal(handler).disconnect(it.spaceId, it.generation) }
+            connection()?.let {
+                runStore.active(it.spaceId, it.generation)?.let { run -> runStore.cancel(run.runId) }
+                SyncLocalJournal(handler).disconnect(it.spaceId, it.generation)
+            }
             credentials.clear()
         }
     }
@@ -208,6 +261,58 @@ class SyncRuntime(
     override suspend fun exchange(trigger: SyncTrigger): SyncRunResult = connectionMutex.withLock {
         val connection = connection()?.takeIf { it.enabled || it.unsupportedFormat }
             ?: return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
+        val active = runStore.active(connection.spaceId, connection.generation)
+        if (trigger == SyncTrigger.RECOVERY && active?.state !in RESUMABLE_STATES) {
+            return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
+        }
+        if (trigger in setOf(SyncTrigger.RECOVERY, SyncTrigger.PERIODIC) &&
+            active?.state in setOf(SyncRunState.PAUSED_USER, SyncRunState.BLOCKED)
+        ) {
+            return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
+        }
+        if (trigger in setOf(SyncTrigger.RECOVERY, SyncTrigger.PERIODIC) &&
+            active?.nextRetryAt?.takeIf { it > 0 }?.let { it > clock() } == true
+        ) {
+            return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
+        }
+        if (trigger in setOf(SyncTrigger.RECOVERY, SyncTrigger.PERIODIC) && active == null &&
+            runStore.latest(connection.spaceId, connection.generation)?.let {
+                it.state == SyncRunState.FAILED && it.stopReason == "retry_exhausted"
+            } == true
+        ) {
+            return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
+        }
+        if (trigger == SyncTrigger.MANUAL && active?.state == SyncRunState.BLOCKED) {
+            runStore.finish(active.runId, SyncRunState.CANCELLED, "superseded_by_manual_retry")
+        }
+        val existing = active?.takeIf {
+            it.state == SyncRunState.QUEUED ||
+                (trigger in setOf(SyncTrigger.RECOVERY, SyncTrigger.PERIODIC) && it.state in RESUMABLE_STATES) ||
+                (trigger == SyncTrigger.MANUAL && it.state == SyncRunState.RUNNING)
+        }
+        val run = existing ?: runStore.start(connection.spaceId, connection.generation, trigger)
+        val ownerSession = UUID.randomUUID().toString()
+        val automatic = trigger in setOf(SyncTrigger.RECOVERY, SyncTrigger.PERIODIC)
+        val exhausted = automatic && run.attempt >= MAX_AUTOMATIC_ATTEMPTS
+        val attempt = if (exhausted) run.attempt else run.attempt + 1
+        if (!runStore.claim(run.runId, ownerSession, attempt)) {
+            return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
+        }
+        if (exhausted) {
+            runStore.finish(run.runId, SyncRunState.FAILED, "retry_exhausted", ownerSession)
+            return@withLock SyncRunResult(SyncRunStatus.FAILED, problem = SyncRunProblem.NETWORK)
+        }
+        runStore.progress(
+            run.runId,
+            SyncRunPhase.CHECKING,
+            run.processed,
+            run.total,
+            run.completed,
+            run.skipped,
+            run.failed,
+            attempt = attempt,
+            ownerSession = ownerSession,
+        )
         val result = try {
             preferences.lastAttempt.set(clock())
             val stored = onboarding.storage.connection(connection.spaceId, connection.generation)
@@ -226,13 +331,65 @@ class SyncRuntime(
                 projector,
                 onboarding.transport(session.token, material),
                 spaceMaterial = material,
-            ) { !preferences.importPaused.get() }
+                allowImport = { !preferences.importPaused.get() },
+                progress = runStore.reporter(run.runId, ownerSession),
+            )
                 .exchange(connection.spaceId, connection.generation, connection.repository)
         } catch (cancelled: CancellationException) {
+            withContext(NonCancellable) {
+                val current = runStore.get(run.runId)
+                if (current?.state !in setOf(SyncRunState.PAUSED_USER, SyncRunState.CANCELLED)) {
+                    runStore.finish(run.runId, SyncRunState.WAITING_SYSTEM, "cancelled", ownerSession)
+                }
+            }
             throw cancelled
         } catch (failure: Exception) {
             SyncRunResult(SyncRunStatus.FAILED, problem = failure.syncProblem())
         }
+        if (result.status == SyncRunStatus.SUCCESS) {
+            runStore.progress(
+                run.runId,
+                SyncRunPhase.COMPLETE,
+                (result.uploaded + result.downloaded).toLong(),
+                (result.uploaded + result.downloaded).toLong(),
+                completed = (result.uploaded + result.downloaded).toLong(),
+                ownerSession = ownerSession,
+            )
+        } else if (result.problem == SyncRunProblem.NETWORK && attempt < MAX_AUTOMATIC_ATTEMPTS) {
+            val snapshot = runStore.get(run.runId)
+            if (snapshot != null) {
+                runStore.progress(
+                    run.runId,
+                    snapshot.phase,
+                    snapshot.processed,
+                    snapshot.total,
+                    snapshot.completed,
+                    snapshot.skipped,
+                    snapshot.failed,
+                    attempt = snapshot.attempt,
+                    nextRetryAt = clock() + RETRY_DELAYS[(attempt - 1).toInt()],
+                    state = SyncRunState.WAITING_RETRY,
+                    reason = "network",
+                    ownerSession = ownerSession,
+                )
+            }
+        }
+        runStore.finish(
+            run.runId,
+            when {
+                result.status == SyncRunStatus.SUCCESS -> SyncRunState.SUCCEEDED
+                result.problem == SyncRunProblem.NETWORK && attempt < MAX_AUTOMATIC_ATTEMPTS ->
+                    SyncRunState.WAITING_RETRY
+                result.problem == SyncRunProblem.NETWORK -> SyncRunState.FAILED
+                else -> SyncRunState.BLOCKED
+            },
+            if (result.problem == SyncRunProblem.NETWORK && attempt >= MAX_AUTOMATIC_ATTEMPTS) {
+                "retry_exhausted"
+            } else {
+                result.problem?.name
+            },
+            ownerSession,
+        )
         if (result.status == SyncRunStatus.SUCCESS) preferences.lastSuccess.set(clock())
         preferences.history.set(Json.encodeToString((records() + SyncRunRecord(clock(), trigger, result)).takeLast(20)))
         result
@@ -245,5 +402,15 @@ class SyncRuntime(
     companion object {
         const val CLIENT_ID = "Iv23liNtj6rhGAXJEwCS"
         const val APP_SLUG = "mihon-desktop"
+        private const val MAX_AUTOMATIC_ATTEMPTS = 3L
+        private val RETRY_DELAYS = longArrayOf(10_000L, 30_000L, 120_000L)
+
+        private val RESUMABLE_STATES = setOf(
+            SyncRunState.QUEUED,
+            SyncRunState.RUNNING,
+            SyncRunState.WAITING_NETWORK,
+            SyncRunState.WAITING_RETRY,
+            SyncRunState.WAITING_SYSTEM,
+        )
     }
 }

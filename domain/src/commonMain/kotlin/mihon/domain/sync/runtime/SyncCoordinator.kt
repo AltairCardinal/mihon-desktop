@@ -15,7 +15,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 @kotlinx.serialization.Serializable
-enum class SyncTrigger { MANUAL, STARTUP, PERIODIC }
+enum class SyncTrigger { MANUAL, STARTUP, PERIODIC, RECOVERY }
 
 @kotlinx.serialization.Serializable
 enum class SyncRunStatus { SUCCESS, PARTIAL, FAILED, SKIPPED }
@@ -53,7 +53,7 @@ data class SyncActivity(
 
 /** One coordinator per application, shared by foreground and scheduled callers. */
 class SyncCoordinator(private val port: SyncRunPort) {
-    private class Flight(val owner: Job) {
+    private class Flight(val owner: Job, val trigger: SyncTrigger) {
         val completion = CompletableDeferred<SyncRunResult>()
         var pending: SyncTrigger? = null
     }
@@ -67,8 +67,13 @@ class SyncCoordinator(private val port: SyncRunPort) {
         val owner = currentCoroutineContext().job
         val current = mutex.withLock {
             flight?.also { existing ->
-                if (existing.pending != SyncTrigger.MANUAL) existing.pending = trigger
-            } ?: Flight(owner).also {
+                val duplicateAutomatic = trigger in AUTOMATIC_TRIGGERS &&
+                    existing.trigger in AUTOMATIC_TRIGGERS &&
+                    existing.pending == null
+                if (!duplicateAutomatic && existing.pending != SyncTrigger.MANUAL && existing.pending != trigger) {
+                    existing.pending = trigger
+                }
+            } ?: Flight(owner, trigger).also {
                 flight = it
                 mutableActivity.value = mutableActivity.value.copy(running = true, trigger = trigger)
             }
@@ -119,5 +124,9 @@ class SyncCoordinator(private val port: SyncRunPort) {
 
     suspend fun cancelAndJoin() {
         mutex.withLock { flight?.owner }?.cancelAndJoin()
+    }
+
+    companion object {
+        private val AUTOMATIC_TRIGGERS = setOf(SyncTrigger.PERIODIC, SyncTrigger.RECOVERY)
     }
 }

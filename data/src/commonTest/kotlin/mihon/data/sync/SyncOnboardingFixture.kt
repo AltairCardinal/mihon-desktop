@@ -60,6 +60,7 @@ internal class SyncOnboardingFixture(
     var created = false
     var repositoryPrivate = true
     var repositoryWrites = 0
+    var now = 1_000L
     var description = ""
     var creationPosts = 0
     var rejectCreation = false
@@ -128,7 +129,7 @@ internal class SyncOnboardingFixture(
 
     fun runtime(): SyncRuntime = SyncRuntime(
         storage.handler, storage.bootstrap, storage.creators, storage.creators, { true }, secure,
-        preferences, client, endpoints, clock = { 1000L },
+        preferences, client, endpoints, clock = { now },
     )
 
     suspend fun authorize(token: String = "synthetic-token") {

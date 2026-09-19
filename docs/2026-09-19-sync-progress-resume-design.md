@@ -1,6 +1,6 @@
 # 同步进度、条目日志与待机恢复设计
 
-日期：2026-09-19。状态：设计与实施计划已整理，生产功能尚未实施；本文件不代表原型最终审核或发布验收通过。
+日期：2026-09-19。状态：设计、原型与生产接入已完成；设备、Doze 与正式发布验收仍待 R5。本文件不代表真机或发布验收通过。
 
 实施入口：[本轮 Roadmap](roadmap/2026-09-19-sync-progress-resume-roadmap.md)。交互参考：[双端 DEMO](prototypes/multi-device-sync/index.html)及[说明](prototypes/multi-device-sync/README.md)。既有架构：[多设备同步技术方案](2026-09-13-multi-device-sync-technical-proposal.md)。
 
@@ -14,15 +14,15 @@
 
 ## 2. 已核对的现状与证据边界
 
-| 入口 | 当前事实 | 本轮需要补足 |
+| 入口 | 当前事实 | 仍需补足 |
 | --- | --- | --- |
-| [Android App](../app/src/main/java/eu/kanade/tachiyomi/App.kt)与[调度器](../app/src/main/java/eu/kanade/tachiyomi/data/sync/AndroidSyncScheduler.kt) | 进程创建时可触发 STARTUP；周期任务受 CONNECTED 约束；前台生命周期未接同步恢复 | 返回前台、冷启动和网络恢复共同触发未完成运行的恢复判定 |
-| [SyncWorker](../app/src/main/java/eu/kanade/tachiyomi/data/sync/SyncWorker.kt) | 仅 PERIODIC，未提供同步前台通知；FAILED/NETWORK 有界重试，PARTIAL 不进入此重试分支 | 一次性恢复任务、停止原因、部分失败重试及受限执行反馈 |
-| [SyncPanelController](../data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncPanelController.kt) | 手动同步及首次合并由进程内协程驱动；MERGING 展示不足以判断运行活性 | 统一请求入口和数据库驱动的进度／恢复状态 |
-| [SyncCoordinator](../domain/src/commonMain/kotlin/mihon/domain/sync/runtime/SyncCoordinator.kt) | 进程内单执行者，后续请求仅在成功后消费；取消释放 flight | 区分观察、恢复、用户新请求；运行归属与取消交接，不能加入旧挂起任务后无限等待 |
-| [SyncRuntime](../data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRuntime.kt) | 历史只在一次交换返回后保存，运行中状态不持久化 | 运行意图、阶段、尝试结果与恢复资格 |
+| [Android App](../app/src/main/java/eu/kanade/tachiyomi/App.kt)与[调度器](../app/src/main/java/eu/kanade/tachiyomi/data/sync/AndroidSyncScheduler.kt) | 进程创建时可触发 STARTUP；周期任务受 CONNECTED 约束；现已在 ON_START 合并恢复判定并登记一次性补偿任务 | R5 仍需验证真实锁屏、Doze、进程重建与网络切换时序 |
+| [SyncWorker](../app/src/main/java/eu/kanade/tachiyomi/data/sync/SyncWorker.kt) | 现已区分 PERIODIC/RECOVERY，使用独立同步通知；网络失败按有界预算返回 retry；恢复 Worker 只执行一次交换 | R5 验证通知权限、前台提升受限、Android 版本配额与停止原因 |
+| [SyncPanelController](../data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncPanelController.kt) | 手动同步及首次合并仍由既有协程驱动；现已读取持久化运行状态、阶段计数与分页日志 | 补齐设备运行证据和首次合并异常收口验收 |
+| [SyncCoordinator](../domain/src/commonMain/kotlin/mihon/domain/sync/runtime/SyncCoordinator.kt) | 进程内单执行者，现已增加 RECOVERY 触发类型并与手动请求共用 flight | R5 覆盖前台、周期、手动同时到达时的实际竞争 |
+| [SyncRuntime](../data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRuntime.kt) | 现已把运行意图、阶段、尝试、ownerSession 和结束状态写入本机 SQLDelight 表；恢复只接受系统中断状态 | 真机验证进程重建、上传响应未知与空间切换时的恢复资格 |
 | [SyncDatabaseExchange](../data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncDatabaseExchange.kt)、[SyncOutboxStore](../data/src/commonMain/kotlin/mihon/data/sync/journal/SyncOutboxStore.kt) | 初始导入、收件与投影已有分段事务；上传前保存完整制品，确认后才清队列 | 从真实事务与发布确认产生进度，复用既有恢复边界 |
-| [DesktopSyncScheduler](../app-desktop/src/main/kotlin/mihon/desktop/sync/DesktopSyncScheduler.kt) | 进程内定期检查墙钟，最长检查间隔 60 秒；没有专用电源唤醒恢复入口 | 保持现有定期语义，共享新状态与启动恢复，不承诺桌面唤醒即时性 |
+| [DesktopSyncScheduler](../app-desktop/src/main/kotlin/mihon/desktop/sync/DesktopSyncScheduler.kt) | 进程内定期检查墙钟，最长检查间隔 60 秒；启动和周期触发现已先调用共享 `resumeIfNeeded` | 保持现有定期语义，共享新状态与启动恢复；不承诺桌面专用电源唤醒即时性 |
 
 因此应纠正“没有 checkpoint”的笼统说法：已有业务数据检查点，缺的是持久化运行意图、可观察进度与前台恢复编排。本轮尚无该手机的系统停止原因或故障复现记录，不把待机直接认定为截图卡住的已证实原因。
 
@@ -49,6 +49,8 @@
 | 数据、私有性、空间身份或存储异常 | 同步未完成，并显示可理解的具体原因 | 沿用既有修复入口，保留有效数据，不以网络重试掩盖 |
 | 完成 | 已完成本次同步 | 忙碌状态结束；待用户确认的取消收藏／关注仍独立显示 |
 
+重试耗尽与阻塞状态会从本机最近一次运行记录恢复到面板，即使用户关闭后重新打开也保留计数与条目日志。重试耗尽提供“重试同步”以创建新的手动运行；BLOCKED 显示 `stopReason` 对应的授权、存储或数据原因，并复用已有修复入口。WAITING_RETRY 显示 `nextRetryAt` 倒计时，不把等待状态伪装成执行中。
+
 “暂停同步”暂停当前逻辑运行，保存用户暂停意图，不回滚已确认结果。它与现有“暂停首次导入”区分：后者只暂停基线导入，仍允许其他变动交换；按钮命名必须明确范围，不能把两个动作绑定到同一布尔值。“取消同步”入口如保留，则终止本次运行的自动恢复，不清除业务队列、不关闭周期设置；以后的明确新请求按原语义执行。断开／换空间沿用确认框并撤销旧运行的执行权。
 
 ### 3.3 进度的计数定义
@@ -70,27 +72,27 @@
 
 ### 3.5 现有 DEMO 的差异
 
-当前“设备待机后恢复 · 进度与日志”场景仍需要点“继续同步”，仅证明已有布局和模拟进度。本设计替代其恢复语义：默认演示返回应用后自动恢复；手动继续只用于用户主动暂停或重试耗尽。需补双端运行、未知总量、离线恢复、主动暂停、进程重建及授权错误场景。此次仅写文档，不声称 HTML 已完成这些调整。
+当前 DEMO 已将“设备待机后恢复 · 进度与日志”改为返回应用后自动恢复；“继续同步”只出现在用户主动暂停或重试耗尽。双端均覆盖未知总量、等待网络、授权阻塞、成功收口和焦点隔离。DEMO 仍是本地交互原型，不代表真实 Android 后台任务、持久化或跨设备通信。
 
 ## 4. 技术方案
 
 ### 4.1 共享运行编排与持久化
 
-在既有 SyncRuntime / SyncCoordinator 上增加窄接口 `requestSync`、`resumeIfNeeded`、`pauseRun` 与只读进度流；名称为设计意图，实施时沿用项目命名。Panel、启动、周期和平台 Worker 必须经过同一入口，执行仍调用原有数据库交换链。
+在既有 SyncRuntime / SyncCoordinator 上复用 `coordinator.synchronize`，由 `SyncRuntime.resumeIfNeeded`、`cancelSync`、`pauseSync` 和 `SyncRunStore` 提供恢复、用户操作与只读运行状态。Panel、启动、周期和平台 Worker 均经过同一执行入口，执行仍调用原有数据库交换链；`SyncProgressReporter` 只记录真实阶段与条目结果。
 
-本地运行表保存 runId、空间与 generation、连接修订、原始触发、恢复策略、状态、阶段、计数、尝试次数、下次重试时间、最近真实进展、停止原因及执行者身份。状态采用 QUEUED / RUNNING / WAITING_NETWORK / WAITING_RETRY / WAITING_SYSTEM / PAUSED_USER / BLOCKED / SUCCEEDED / CANCELLED；阶段另存，避免阶段与失败原因混用。字段仅属于本机，不更改远端协议。
+本地运行表保存 runId、空间与 generation（连接修订）、原始触发、恢复策略、状态、阶段、计数、尝试次数、下次重试时间、最近真实进展、停止原因及执行者身份。状态采用 QUEUED / RUNNING / WAITING_NETWORK / WAITING_RETRY / WAITING_SYSTEM / PAUSED_USER / BLOCKED / SUCCEEDED / CANCELLED；阶段另存，避免阶段与失败原因混用。字段仅属于本机，不更改远端协议。
 
-执行前先提交运行意图，再安排执行。数据库和 WorkManager 不是同一事务：启动／回前台时对账，补齐“意图已保存、任务未入队”的窗口；多余 Worker 发现运行已结束则成功退出。队列非空本身不证明用户要求立即同步：普通新变动仍遵守启动／周期偏好，只有已接受且未完成的运行自动恢复。
+执行前先提交运行意图，再安排执行。数据库和 WorkManager 不是同一事务：启动／回前台时对账，补齐“意图已保存、任务未入队”的窗口；多余 Worker 发现运行已结束则成功退出。队列非空本身不证明用户要求立即同步：普通新变动仍遵守启动／周期偏好，只有已接受且未完成的运行自动恢复。恢复前先以条件更新取得 ownerSession；取得失败不发起网络交换。
 
-每个空间同一时刻只有一个执行者。沿用进程内协调锁，增加持久化 attemptId／ownerSession 与条件更新，防止旧尝试覆盖新状态。执行者不能仅因墙钟时间过期被接管；同进程先取消并等待旧任务释放，跨进程沿用或增加受限于同步 namespace 的进程锁，持锁前不得进行网络发布。新 session 取得执行权后，才把孤立 RUNNING 转为待恢复。需要定时检测时使用可注入的单调时钟与会话身份，不用心跳超时作为并发写许可。
+每个空间同一时刻只有一个执行者。沿用进程内协调锁，增加持久化 attemptId／ownerSession 与条件更新，防止旧尝试覆盖新状态和日志。执行者不能仅因墙钟时间过期被接管；同进程先取消并等待旧任务释放，应用新进程在没有健康本地执行者时把孤立 RUNNING 标为 WAITING_SYSTEM，再取得执行权；claim 失败不得发起网络发布。需要定时检测时使用可注入的单调时钟与会话身份，不用心跳超时作为并发写许可。
 
 检查点复用 sync_imports、收件箱、投影状态和 prepared_upload；业务提交与对应计数尽可能同事务，无法同事务时以已有事实对账，不能让 UI 计数成为数据提交依据。初次连接还须恢复 pendingSetup，在真实交换成功且导入清空后补 complete 标记，避免数据已同步而配置页永远 MERGING。
 
 ### 4.2 返回应用立即恢复
 
-Android 复用 ProcessLifecycleOwner 的 ON_START 作为统一前台入口；冷启动经同一判定合并，不同时在多个生命周期回调各开一轮。必要时结合 Activity 可见性确认实际前台执行条件。
+Android 复用 ProcessLifecycleOwner 的 ON_START 作为统一前台入口；冷启动由 `AndroidSyncScheduler.start` 经同一判定合并，不同时在多个生命周期回调各开一轮。`SyncWorker` 也只通过同一 `SyncRuntime` 检查恢复资格，避免 Worker 先恢复一次、再重复交换。
 
-恢复顺序：读取已接受的未完成运行 → 检查用户暂停、连接身份、错误和重试预算 → 观察已有健康执行者 → 没有执行者时在应用前台的应用级协程中立即申请执行权并继续，同时登记一次性 WorkManager 作为持久后台补偿。前台路径不等待下次周期、Worker 退避或 expedited 配额；数据库与初始化尚未就绪时先展示恢复状态。
+恢复顺序：读取已接受的未完成运行 → 检查用户暂停、连接身份、错误和重试预算及 `nextRetryAt` → 观察已有健康执行者 → 没有执行者且到达重试时间时在应用前台的应用级协程中立即申请执行权并继续，同时登记一次性 WorkManager 作为持久后台补偿。尚未到重试时间时只保留运行意图并安排延迟唤醒，不启动业务请求；前台路径不等待下次周期、Worker 退避或 expedited 配额；数据库与初始化尚未就绪时先展示恢复状态。
 
 Worker 与前台执行器竞争同一执行权。已有执行者时只订阅状态或退出本次冗余执行，不把恢复观察当成新同步请求追加一轮。需要从被系统停止的 Worker 转交时，先完成取消和释放再启动前台执行；跟随者取消不能取消 owner。应用进入后台时，前台执行器在安全边界交还任务，后台补偿从检查点继续；交接不能丢请求，也不能双重发布。
 
@@ -100,7 +102,7 @@ Worker 与前台执行器竞争同一执行权。已有执行者时只订阅状�
 
 ### 4.3 WorkManager 与后台连续性
 
-保留唯一周期任务；新增按运行身份关联的一次性任务，使用 CONNECTED 约束。唯一任务名与 KEEP 用于减少重复调度，但不能替代执行权：已入队且处于退避的 Worker 不得阻塞前台恢复；Worker 退出与新请求交错时用持久请求修订和再次对账防止 KEEP 吞掉后续工作。
+保留唯一周期任务；现已新增 `mihon-sync-recovery` 一次性任务，使用 CONNECTED 约束并按 `nextRetryAt` 设置初始延迟。唯一任务名与 KEEP 用于减少重复调度，但不能替代执行权：前台恢复先检查持久化运行，退避 Worker 只作为补偿；恢复 Worker 不再调用两次恢复交换。Worker 与手动继续都复用同一 runId，ownerSession 条件更新阻止旧尝试回写。
 
 短而用户可感知的一次性请求可使用 expedited，配额不足降为普通任务，不丢任务。长时、用户已发起且需要后台继续的同步，提供 dataSync 前台通知及取消／暂停操作；周期同步保持可中断的有界工作片段，不把全部周期任务提升为长期前台服务。
 
@@ -118,7 +120,7 @@ Android 16 长时间 Worker 仍受 job 配额影响，前台服务也不是待�
 
 网络回调只提示重新判定，不证明 GitHub 可达；使用实际 production 客户端确定 DNS、代理、TLS 和 HTTP 结果。每次连接状态变化合并为一次尝试，不用持续探测保持后台活跃。
 
-网络失败与有网络问题的 PARTIAL 都保留未完成运行；首次失败后至多 3 次自动重试，建议退避 10 秒、30 秒、2 分钟。离线等待不消耗请求预算；确认联网可提前唤起一次，但受同一预算、服务端 Retry-After 和去重约束。后台实际时间允许更晚。回前台最多提前一次有效恢复尝试，不重置预算；耗尽需用户重试创建新预算。授权、空间变更、私有性、数据损坏和存储错误进入 BLOCKED，不自动绕过校验。
+网络失败与有网络问题的 PARTIAL 都保留未完成运行；首次失败后至多 3 次自动重试，退避 10 秒、30 秒、2 分钟写入 nextRetryAt。未到时间的周期、Worker 和回前台触发只观察并退出，不清除 nextRetryAt；确认联网可提前唤起一次，但仍受同一预算、服务端 Retry-After 和去重约束。后台实际时间允许更晚。第三次网络失败进入 FAILED／`retry_exhausted`，用户需发起新的手动运行；授权、空间变更、私有性、数据损坏和存储错误进入 BLOCKED，页面保留具体原因并提供既有修复入口，不自动绕过校验。
 
 恢复既有运行与开启新自动同步分开：关闭“启动时同步”不否定此前已确认、尚未完成的运行；主动暂停／取消该运行则禁止恢复。关闭周期同步只停止未来周期触发，不误取消手动运行。所有取消都先持久化意图再停任务；系统直接杀进程没有 finally 回调也能从上次检查点恢复。数据库空间不足导致意图保存失败时不开始新的远端写入。
 
@@ -126,7 +128,7 @@ Android 16 长时间 Worker 仍受 job 配额影响，前台服务也不是待�
 
 共享状态、计数、恢复资格和失败规则放 domain/data；Compose 视图放 presentation-sync。Android 生命周期、网络回调、Worker 和通知留在 app adapter；Desktop 沿用已有 runtime service，不引入 Android API。所有入口使用同一 Injekt graph 和 production HTTP 配置。
 
-数据库仅增量迁移本机运行／日志状态。旧版本没有运行记录时不根据陈旧 lastAttempt 猜测“待机中断”；未完成初次配置可从 pendingSetup 和导入事实对账，其余按既有启动／周期选项进入新运行。迁移不触碰同步事件身份、加密制品或远端文件。已有备份过滤须覆盖新增本机状态。
+数据库通过 27 号增量迁移加入本机运行／日志状态。旧版本没有运行记录时不根据陈旧 lastAttempt 猜测“待机中断”；未完成初次配置可从 pendingSetup 和导入事实对账，其余按既有启动／周期选项进入新运行。迁移不触碰同步事件身份、加密制品或远端文件。已有备份过滤须覆盖新增本机状态。
 
 日志截断、页面计数错误不能改变收件／上传结果；暂停、取消、切空间和断开必须核验空间与连接修订，旧执行者不得写入新空间状态。用户待确认的取消条目不阻止其他同步，也不被“同步完成”自动确认。
 

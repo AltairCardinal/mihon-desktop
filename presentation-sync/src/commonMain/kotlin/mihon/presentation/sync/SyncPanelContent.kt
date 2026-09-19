@@ -41,6 +41,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -87,6 +88,9 @@ import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPanelQuestion
 import mihon.data.sync.runtime.SyncPanelState
 import mihon.data.sync.runtime.SyncPasswordProblem
+import mihon.data.sync.runtime.SyncRunPhase
+import mihon.data.sync.runtime.SyncRunSnapshot
+import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncSetupStep
 import mihon.domain.sync.SyncCancellationDecision
 import mihon.domain.sync.SyncObjectType
@@ -279,7 +283,7 @@ private fun MainPage(
                         },
                     )
                 },
-                enabled = !state.busy || continuingSetup,
+                enabled = (!state.busy && state.run?.state != SyncRunState.PAUSED_USER) || continuingSetup,
                 modifier = Modifier.padding(start = 8.dp).testTag("sync-now"),
             ) {
                 Text(
@@ -291,6 +295,72 @@ private fun MainPage(
                         },
                     ),
                 )
+            }
+        }
+        state.run?.let { run ->
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp)
+                    .testTag("sync-progress-card"),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(syncString(runPhaseLabel(run.phase)), style = MaterialTheme.typography.titleSmall)
+                if (run.total > 0) {
+                    LinearProgressIndicator(
+                        progress = { (run.processed.toFloat() / run.total).coerceIn(0f, 1f) },
+                        Modifier.fillMaxWidth().testTag("sync-progress"),
+                    )
+                    Text(syncString(MR.strings.sync_progress, run.processed, run.total))
+                } else {
+                    LinearProgressIndicator(Modifier.fillMaxWidth().testTag("sync-progress"))
+                }
+                when (run.state) {
+                    SyncRunState.PAUSED_USER -> {
+                        Text(syncString(MR.strings.sync_paused))
+                        Action("sync-resume-run", MR.strings.sync_resume_run) {
+                            dispatch(SyncPanelAction.ResumeSync)
+                        }
+                    }
+                    SyncRunState.WAITING_NETWORK -> Text(syncString(MR.strings.sync_waiting_network))
+                    SyncRunState.WAITING_SYSTEM -> Text(syncString(MR.strings.sync_waiting_system))
+                    SyncRunState.WAITING_RETRY -> {
+                        Text(syncString(MR.strings.sync_waiting_retry))
+                        Text(retryLabel(run, state.nowMillis), Modifier.testTag("sync-retry-countdown"))
+                    }
+                    SyncRunState.FAILED -> {
+                        Text(syncString(MR.strings.sync_retry_exhausted))
+                        Action("sync-retry-run", MR.strings.sync_retry_run) {
+                            dispatch(SyncPanelAction.RetrySync)
+                        }
+                    }
+                    SyncRunState.BLOCKED -> {
+                        Text(syncString(MR.strings.sync_blocked))
+                        Text(
+                            problemText(state.problem ?: SyncRunProblem.UNKNOWN),
+                            Modifier.testTag("sync-blocked-reason"),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    else -> Action("sync-pause-run", MR.strings.sync_pause_run) {
+                        dispatch(SyncPanelAction.PauseSync)
+                    }
+                }
+                if (state.logs.isNotEmpty()) {
+                    Text(syncString(MR.strings.sync_log_title), style = MaterialTheme.typography.labelLarge)
+                    state.logs.forEach { log ->
+                        Text(
+                            "${log.title} · ${log.detail}",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("sync-log-${log.key}"),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    if (state.logsHasMore) {
+                        Action("sync-log-more", MR.strings.sync_load_more) {
+                            dispatch(SyncPanelAction.LoadMoreLogs)
+                        }
+                    }
+                }
             }
         }
         if (state.problem == SyncRunProblem.AUTHORIZATION) {
@@ -886,6 +956,26 @@ private fun statusText(state: SyncPanelState): String = when {
     state.queuedTotal > 0 -> syncString(MR.strings.sync_queued, state.queuedTotal)
     state.pendingTotal > 0 -> syncString(MR.strings.sync_exchanged)
     else -> syncString(MR.strings.sync_synced)
+}
+
+private fun runPhaseLabel(phase: SyncRunPhase): StringResource = when (phase) {
+    SyncRunPhase.CHECKING -> MR.strings.sync_phase_checking
+    SyncRunPhase.IMPORTING -> MR.strings.sync_phase_importing
+    SyncRunPhase.DOWNLOADING -> MR.strings.sync_phase_downloading
+    SyncRunPhase.MERGING -> MR.strings.sync_phase_merging
+    SyncRunPhase.UPLOADING -> MR.strings.sync_phase_uploading
+    SyncRunPhase.CONFIRMING -> MR.strings.sync_phase_confirming
+    SyncRunPhase.COMPLETE -> MR.strings.sync_phase_complete
+}
+
+@Composable
+private fun retryLabel(run: SyncRunSnapshot, nowMillis: Long): String {
+    val remainingSeconds = ((run.nextRetryAt - nowMillis).coerceAtLeast(0L) + 999L) / 1_000L
+    return when {
+        remainingSeconds == 0L -> syncString(MR.strings.sync_retry_ready)
+        remainingSeconds < 60L -> syncString(MR.strings.sync_retry_after_seconds, remainingSeconds)
+        else -> syncString(MR.strings.sync_retry_after_minutes, (remainingSeconds + 59L) / 60L)
+    }
 }
 
 @Composable

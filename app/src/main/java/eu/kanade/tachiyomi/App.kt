@@ -53,6 +53,7 @@ import eu.kanade.tachiyomi.util.system.notify
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -93,6 +94,7 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
     private val basePreferences: BasePreferences by injectLazy()
     private val privacyPreferences: PrivacyPreferences by injectLazy()
     private val networkPreferences: NetworkPreferences by injectLazy()
+    private var syncForegroundResume: Job? = null
 
     private val disableIncognitoReceiver = DisableIncognitoReceiver()
 
@@ -245,6 +247,9 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
     override fun onStart(owner: LifecycleOwner) {
         SecureActivityDelegate.onApplicationStart()
         owner.lifecycleScope.launch { Injekt.get<InstalledAppsPermissionController>().refresh() }
+        if (syncForegroundResume?.isActive != true) {
+            syncForegroundResume = Injekt.get<AndroidSyncScheduler>().resumeIfNeeded(owner.lifecycleScope)
+        }
     }
 
     override fun onStop(owner: LifecycleOwner) {

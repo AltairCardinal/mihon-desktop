@@ -53,6 +53,7 @@ class SyncPanelController(
     private var selectedBindings = emptyMap<Long, String>()
     private var anchor: Long? = null
     private var loadedCount = 100
+    private var logLimit = 5L
     private var bulkJob: Job? = null
     private var authJob: Job? = null
     private var repositoryJob: Job? = null
@@ -133,6 +134,7 @@ class SyncPanelController(
                 if (visible) {
                     while (true) {
                         mutableState.update { it.copy(nowMillis = clock()) }
+                        queueRefresh()
                         delay(1_000)
                     }
                 }
@@ -210,6 +212,7 @@ class SyncPanelController(
             selectedBindings = emptyMap()
             anchor = null
             loadedCount = 100
+            logLimit = 5
         }
         var membership = 0L
         var reading = 0L
@@ -252,6 +255,15 @@ class SyncPanelController(
                     ?.takeIf { it.space_id == connection?.spaceId && it.generation == connection.generation }
                     ?.let { runtime.projector.bulkProgress(id).toStatus(id, bulkJob?.isActive == true) }
             }
+        val run = connection?.let {
+            runtime.runStore.active(it.spaceId, it.generation)
+                ?: runtime.runStore.latest(it.spaceId, it.generation)?.takeIf { latest ->
+                    latest.state in setOf(SyncRunState.FAILED, SyncRunState.BLOCKED)
+                }
+        }
+        val logs = run?.let { runtime.runStore.logs(it.runId, limit = logLimit) }.orEmpty()
+        val persistedProblem = run?.takeIf { it.state in setOf(SyncRunState.FAILED, SyncRunState.BLOCKED) }
+            ?.let(::persistedProblem)
         mutableState.update {
             it.copy(
                 loaded = true,
@@ -273,6 +285,10 @@ class SyncPanelController(
                 importRemaining = imports,
                 importPaused = prefs.importPaused.get(),
                 records = runtime.records().asReversed(),
+                run = run,
+                logs = logs,
+                logsHasMore = run != null && logLimit < 500L && logs.size.toLong() == logLimit,
+                problem = persistedProblem ?: it.problem,
             )
         }
     }
@@ -299,12 +315,33 @@ class SyncPanelController(
                 mutableState.update { it.copy(page = SyncPanelPage.MAIN) }
             }
             is SyncPanelAction.Navigate -> mutableState.update { it.copy(page = action.page) }
-            SyncPanelAction.Synchronize -> if (state.value.connection?.enabled == true) {
-                scope.launch { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
-            } else {
-                beginSetup()
+            SyncPanelAction.Synchronize -> if (state.value.run?.state != SyncRunState.PAUSED_USER) {
+                if (state.value.connection?.enabled == true) {
+                    scope.launch { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
+                } else {
+                    beginSetup()
+                }
             }
-            SyncPanelAction.CancelSync -> scope.launch { runtime.coordinator.cancelAndJoin() }
+            SyncPanelAction.RetrySync -> if (state.value.run?.state == SyncRunState.FAILED) {
+                mutableState.update { it.copy(problem = null) }
+                scope.launch {
+                    runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                    refresh()
+                }
+            }
+            SyncPanelAction.CancelSync -> scope.launch {
+                runtime.cancelSync()
+                refresh()
+            }
+            SyncPanelAction.PauseSync -> scope.launch {
+                runtime.pauseSync()
+                refresh()
+            }
+            SyncPanelAction.ResumeSync -> scope.launch {
+                val resumed = state.value.run?.let { runtime.runStore.resumeIfAllowed(it.runId) } == true
+                if (resumed) runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                refresh()
+            }
             SyncPanelAction.PauseImport -> {
                 runtime.preferences.importPaused.set(true)
                 refresh()
@@ -383,6 +420,10 @@ class SyncPanelController(
                 loadedCount += 100
                 refresh()
             }
+            SyncPanelAction.LoadMoreLogs -> {
+                logLimit = (logLimit + 20).coerceAtMost(500L)
+                refresh()
+            }
             SyncPanelAction.DismissNotice -> mutableState.update { it.copy(notice = null) }
             SyncPanelAction.BeginSetup -> beginSetup()
             SyncPanelAction.RetrySetup -> discover()
@@ -408,6 +449,15 @@ class SyncPanelController(
                 }
             }
         }
+    }
+
+    private fun persistedProblem(run: SyncRunSnapshot): SyncRunProblem = when (run.stopReason) {
+        "retry_exhausted",
+        "network",
+        -> SyncRunProblem.NETWORK
+        else -> run.stopReason?.let { reason ->
+            runCatching { SyncRunProblem.valueOf(reason) }.getOrNull()
+        } ?: SyncRunProblem.UNKNOWN
     }
 
     private suspend fun beginSetup() {

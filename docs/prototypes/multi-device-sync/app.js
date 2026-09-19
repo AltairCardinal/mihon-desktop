@@ -438,7 +438,7 @@
   function handleAction(action, target) {
     const current = currentDevice();
     if (interactions.handle(action, target)) return;
-    if (action === 'toggle-online') { model.setOnline(state, !state.online); notice(state.online ? '模拟网络已恢复，可以重试待上传操作。' : '模拟网络已断开；本地操作仍可继续。', state.online ? 'success' : 'failure'); }
+    if (action === 'toggle-online') { model.setOnline(state, !state.online); interactions.networkChanged(state.online); notice(state.online ? '模拟网络已恢复，可以重试待上传操作。' : '模拟网络已断开；本地操作仍可继续。', state.online ? 'success' : 'failure'); }
     else if (action === 'reset') { const platform = state.ui.platform; const theme = state.ui.theme; if (state.ui.timerId) window.clearTimeout(state.ui.timerId); model.resetDemo(state); state.selectedDevice = platform === 'windows' ? 'desktop-b' : 'phone-a'; state.ui = { platform, theme, route: 'library', browseTab: 'sources', detail: null, reader: false, busy: false, timerId: null, busyDeviceId: null, notice: '演示已重置；已恢复初始待确认示例。', tone: 'success', filter: false, calendar: false, readUpdates: { 'desktop-b': ['manga-night'], 'phone-a': ['manga-night'] } }; }
     else if (action === 'back') { if (state.ui.reader) { state.ui.reader = false; model.setReadingActive(state, current.id, false); } else { state.ui.detail = null; } }
     else if (action === 'open-manga') { state.ui.detail = target.dataset.object; state.ui.reader = false; }
@@ -575,7 +575,7 @@
   });
 
   root.addEventListener('input', event => { interactions.input(event.target); extensions.input(event.target); });
-  window.__mihonSyncDemo = { state, model, view, render, scheduleSync, showInteractionScenario: interactions.showScenario, extensions };
+  window.__mihonSyncDemo = { state, model, view, render, scheduleSync, showInteractionScenario: interactions.showScenario, networkChanged: online => interactions.networkChanged(online), extensions };
   if (preview) {
     switchPlatform(window.frameElement.dataset.platform);
     state.ui.theme = preview.theme;

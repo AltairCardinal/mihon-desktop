@@ -1,0 +1,108 @@
+CREATE TABLE sync_runtime_runs (
+    run_id TEXT NOT NULL PRIMARY KEY,
+    space_id TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    trigger TEXT NOT NULL,
+    state TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    processed INTEGER NOT NULL DEFAULT 0,
+    total INTEGER NOT NULL DEFAULT 0,
+    completed INTEGER NOT NULL DEFAULT 0,
+    skipped INTEGER NOT NULL DEFAULT 0,
+    failed INTEGER NOT NULL DEFAULT 0,
+    attempt INTEGER NOT NULL DEFAULT 0,
+    next_retry_at INTEGER NOT NULL DEFAULT 0,
+    last_progress_at INTEGER NOT NULL,
+    stop_reason TEXT,
+    owner_session TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX sync_runtime_active ON sync_runtime_runs(space_id, generation, state);
+
+CREATE TABLE sync_runtime_logs (
+    run_id TEXT NOT NULL REFERENCES sync_runtime_runs(run_id) ON DELETE CASCADE,
+    log_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    detail TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (run_id, log_key)
+);
+
+CREATE INDEX sync_runtime_log_order ON sync_runtime_logs(run_id, created_at DESC);
+
+insertRuntimeRun:
+INSERT INTO sync_runtime_runs(
+    run_id, space_id, generation, trigger, state, phase, last_progress_at, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getRuntimeRun:
+SELECT * FROM sync_runtime_runs WHERE run_id = ?;
+
+getActiveRuntimeRun:
+SELECT * FROM sync_runtime_runs
+WHERE space_id = ? AND generation = ?
+  AND state IN ('QUEUED', 'RUNNING', 'WAITING_NETWORK', 'WAITING_RETRY', 'WAITING_SYSTEM', 'BLOCKED', 'PAUSED_USER')
+ORDER BY updated_at DESC LIMIT 1;
+
+getLatestRuntimeRun:
+SELECT * FROM sync_runtime_runs
+WHERE space_id = ? AND generation = ?
+ORDER BY updated_at DESC LIMIT 1;
+
+updateRuntimeProgress:
+UPDATE sync_runtime_runs SET
+    state = ?, phase = ?, processed = ?, total = ?, completed = ?, skipped = ?, failed = ?,
+    attempt = ?, next_retry_at = ?, last_progress_at = ?, stop_reason = ?, owner_session = ?, updated_at = ?
+WHERE run_id = ?;
+
+updateRuntimeProgressOwned:
+UPDATE sync_runtime_runs SET
+    state = ?, phase = ?, processed = ?, total = ?, completed = ?, skipped = ?, failed = ?,
+    attempt = ?, next_retry_at = ?, last_progress_at = ?, stop_reason = ?, owner_session = ?, updated_at = ?
+WHERE run_id = ? AND owner_session = ?;
+
+claimRuntimeRun:
+UPDATE sync_runtime_runs SET
+    state = 'RUNNING', attempt = ?, next_retry_at = 0, stop_reason = NULL, owner_session = ?, updated_at = ?
+WHERE run_id = ?
+  AND state IN ('QUEUED', 'RUNNING', 'WAITING_NETWORK', 'WAITING_RETRY', 'WAITING_SYSTEM')
+  AND (owner_session IS NULL OR owner_session = ?);
+
+releaseRuntimeRunForRecovery:
+UPDATE sync_runtime_runs SET state = 'WAITING_SYSTEM', stop_reason = ?, owner_session = NULL, updated_at = ?
+WHERE run_id = ? AND state = 'RUNNING' AND owner_session IS NOT NULL;
+
+updateRuntimeState:
+UPDATE sync_runtime_runs SET state = ?, stop_reason = ?, owner_session = ?, updated_at = ?
+WHERE run_id = ?;
+
+updateRuntimeStateOwned:
+UPDATE sync_runtime_runs SET state = ?, stop_reason = ?, owner_session = ?, updated_at = ?
+WHERE run_id = ? AND owner_session = ?;
+
+resumeRuntimeRun:
+UPDATE sync_runtime_runs SET state = 'RUNNING', stop_reason = NULL, owner_session = NULL, updated_at = ?
+WHERE run_id = ? AND state = 'PAUSED_USER';
+
+insertRuntimeLog:
+INSERT OR REPLACE INTO sync_runtime_logs(run_id, log_key, title, detail, status, created_at)
+VALUES (?, ?, ?, ?, ?, ?);
+
+insertRuntimeLogOwned:
+INSERT OR REPLACE INTO sync_runtime_logs(run_id, log_key, title, detail, status, created_at)
+SELECT ?, ?, ?, ?, ?, ?
+WHERE EXISTS (
+    SELECT 1 FROM sync_runtime_runs WHERE run_id = ? AND owner_session = ?
+);
+
+getRuntimeLogs:
+SELECT * FROM sync_runtime_logs WHERE run_id = ? ORDER BY created_at DESC, log_key DESC LIMIT ?;
+
+getRuntimeLogKeys:
+SELECT log_key FROM sync_runtime_logs WHERE run_id = ? ORDER BY created_at ASC, log_key ASC;
+
+deleteRuntimeLog:
+DELETE FROM sync_runtime_logs WHERE run_id = ? AND log_key = ?;

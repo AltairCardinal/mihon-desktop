@@ -33,6 +33,7 @@ class SyncDatabaseExchange(
     private val secret: SyncSecret? = null,
     private val spaceMaterial: SyncSpaceMaterial? = null,
     private val allowImport: () -> Boolean = { true },
+    private val progress: SyncProgressReporter? = null,
 ) {
     suspend fun exchange(spaceId: String, generation: Long, repository: SyncRepository): SyncRunResult {
         var uploaded = 0
@@ -46,11 +47,15 @@ class SyncDatabaseExchange(
                 } == true
             }
             if (!enabled) return SyncRunResult(SyncRunStatus.SKIPPED)
+            progress?.phase(SyncRunPhase.CHECKING, processed = 0, total = 0)
             while (allowImport()) {
                 val importId = handler.await {
                     sync_importQueries.getNextPendingImport(spaceId, generation).executeAsOneOrNull()
                 } ?: break
+                progress?.phase(SyncRunPhase.IMPORTING, processed = 0, total = 0)
+                progress?.log(importId, "首次合并", "正在写入已保存的数据", SyncRunLogStatus.ACTIVE)
                 baseline.process(importId)
+                progress?.log(importId, "首次合并", "已写入已保存的数据", SyncRunLogStatus.COMPLETED)
                 yield()
             }
             val store = SyncInboxStore(handler)
@@ -60,6 +65,7 @@ class SyncDatabaseExchange(
             projector.retryUnavailable(spaceId, generation)
             val attempted = mutableSetOf<String>()
             while (true) {
+                progress?.phase(SyncRunPhase.DOWNLOADING, downloaded.toLong(), 0, completed = downloaded.toLong())
                 val snapshot = transport.readSnapshot(repository, spaceId, generation).getOrThrow()
                 store.observeSnapshot(snapshot)
                 for (entry in snapshot.batches) {
@@ -78,21 +84,45 @@ class SyncDatabaseExchange(
                     val result = inbox.receive(snapshot, entry)
                     if (result.accepted) {
                         if (!result.duplicate) downloaded += (entry.lastSeq - entry.firstSeq + 1).toInt()
+                        progress?.phase(
+                            SyncRunPhase.MERGING,
+                            downloaded.toLong(),
+                            snapshot.batches.sumOf { (it.lastSeq - it.firstSeq + 1).toInt() }.toLong(),
+                            completed = downloaded.toLong(),
+                        )
+                        progress?.log(
+                            entry.batchId,
+                            "同步数据",
+                            if (result.duplicate) "已确认重复数据" else "已接收远端数据",
+                            SyncRunLogStatus.COMPLETED,
+                        )
                     } else {
                         problem = SyncRunProblem.INVALID_DATA
+                        progress?.log(entry.batchId, "同步数据", "数据无法读取", SyncRunLogStatus.FAILED)
                     }
                     yield()
                 }
                 while (projector.project(spaceId, generation) == 50) yield()
                 pending = store.status(spaceId, generation).pendingDecisions.toInt()
+                progress?.phase(SyncRunPhase.UPLOADING, uploaded.toLong(), 0, completed = uploaded.toLong())
                 val result = outbox.uploadNext(snapshot) ?: break
                 if (result.publish.status != SyncPublishStatus.PUBLISHED) {
                     problem = SyncRunProblem.NETWORK
+                    progress?.phase(
+                        SyncRunPhase.UPLOADING,
+                        (uploaded + downloaded).toLong(),
+                        0,
+                        completed = (uploaded + downloaded).toLong(),
+                        state = SyncRunState.WAITING_RETRY,
+                        reason = "network",
+                    )
                     break
                 }
                 uploaded += handler.await {
                     sync_journalQueries.getBatch(spaceId, generation, result.publish.batchId).executeAsOne().event_count
                 }.toInt()
+                progress?.phase(SyncRunPhase.CONFIRMING, (uploaded + downloaded).toLong(), 0)
+                progress?.log(result.publish.batchId, "本机变动", "已确认上传", SyncRunLogStatus.COMPLETED)
                 yield()
                 // The publisher has advanced the durable remote anchor; always obtain a fresh snapshot.
             }

@@ -95,21 +95,43 @@
     }
     function progressPage() {
       const d = data();
-      const total = d.importTotal || 60;
-      const processed = d.importProcessed ?? Math.round((d.importProgress || 0) / 100 * total);
-      const recovery = d.importRecovery === 'sleep'
-        ? '设备待机后已暂停同步'
-        : d.importRecovery === 'resuming'
-          ? '正在继续同步'
+      const hasTotal = Number.isFinite(d.importTotal);
+      const total = hasTotal ? d.importTotal : null;
+      const processed = d.importProcessed ?? (hasTotal ? Math.round((d.importProgress || 0) / 100 * total) : 0);
+      const recovery = d.importRecovery === 'network'
+        ? '等待网络连接'
+        : d.importRecovery === 'unknown'
+          ? '正在获取同步数据'
+          : d.importRecovery === 'retry-exhausted'
+            ? '连接失败，已保留进度'
+            : d.importRecovery === 'resuming'
+              ? '正在恢复同步'
+              : d.importPaused
+                ? '同步已暂停'
+                : '正在合并数据';
+      const detail = recovery === '等待网络连接'
+        ? '本设备已保存当前进度。网络恢复后会自动继续，不需要重复点击同步。'
+        : recovery === '正在获取同步数据'
+          ? '同步空间正在返回数据，当前无法知道总量；仅显示已确认处理的条目。'
+          : recovery === '连接失败，已保留进度'
+            ? '已达到本次自动重试次数。已完成的条目会保留，重试后从未完成条目继续。'
+            : recovery === '正在恢复同步'
+              ? '系统中断后已恢复，从上次确认的进度继续处理。'
+              : d.importPaused
+                ? '这是你主动暂停的同步；回到页面或网络恢复后也不会自动继续。'
+                : '已完成的条目会保留，可以收起面板继续使用书架。';
+      const progress = hasTotal
+        ? `<progress aria-label="同步进度" data-testid="sync-import-progress" value="${processed}" max="${total}"></progress>`
+        : '<progress aria-label="同步进度" data-testid="sync-import-progress"></progress>';
+      const count = hasTotal ? `已处理 ${processed} / ${total} 项` : `已处理 ${processed} 项`;
+      const control = d.importWaitingNetwork
+        ? action('暂停同步', 'import-pause')
+        : d.importRecovery === 'retry-exhausted'
+          ? action('重试', 'import-retry', true)
           : d.importPaused
-            ? '同步已暂停'
-            : '正在合并数据';
-      const detail = recovery === '设备待机后已暂停同步'
-        ? '设备待机后已暂停同步。设备刚从待机恢复，已完成的条目已保留；继续后会从未完成条目接着处理。'
-        : recovery === '正在继续同步'
-          ? '正在继续同步，已从上次未完成的条目继续。'
-          : '已完成的条目会保留，可以收起面板继续使用书架。';
-      return `<h3>${recovery}</h3><p class="sync-recovery-state" data-testid="sync-recovery-state">${detail}</p><div class="sync-import-progress" data-testid="sync-import-progress-card"><div class="sync-import-progress-heading"><strong>合并同步空间</strong><span data-testid="sync-import-count">已处理 ${processed} / ${total} 项</span></div><progress aria-label="同步进度" data-testid="sync-import-progress" value="${processed}" max="${total}"></progress></div>${importLog()}${actions(d.importPaused ? action('继续同步', 'import-resume', true) : action('暂停同步', 'import-pause'))}`;
+            ? action('继续同步', 'import-resume', true)
+            : action('暂停同步', 'import-pause');
+      return `<h3>${recovery}</h3><p class="sync-recovery-state" data-testid="sync-recovery-state">${detail}</p><div class="sync-import-progress" data-testid="sync-import-progress-card"><div class="sync-import-progress-heading"><strong>合并同步空间</strong><span data-testid="sync-import-count">${count}</span></div>${progress}</div>${importLog()}${actions(control)}`;
     }
     let authWindow = null;
     let authRequest = 0;
@@ -200,14 +222,16 @@
       }, 350);
     }
     function beginImport() {
-      const d = data(); d.fields.password = ''; d.showPassword = false; d.importProgress = 0; d.importTotal = d.importKind === 'empty' ? 48 : 60; d.importProcessed = 0; d.importReady = false; d.importRecovery = 'active'; d.importLog = null;
+      const d = data(); d.fields.password = ''; d.showPassword = false; d.importProgress = 0; d.importTotal = d.importKind === 'empty' ? 48 : 60; d.importProcessed = 0; d.importReady = false; d.importRecovery = 'active'; d.importLog = null; d.importWaitingNetwork = false; d.importUnknownTotal = false;
       setupPage('importing'); advanceImport();
     }
     let importTimer = null;
     function advanceImport() {
       clearTimeout(importTimer);
-      data().importPaused = false;
-      data().importRecovery = data().importRecovery === 'resuming' ? 'resuming' : 'active';
+      const current = data();
+      if (current.importWaitingNetwork || current.importUnknownTotal) return;
+      current.importPaused = false;
+      current.importRecovery = current.importRecovery === 'resuming' ? 'resuming' : 'active';
       importTimer = setTimeout(() => {
         const d = data();
         const total = d.importTotal || 60;
@@ -222,6 +246,14 @@
         else advanceImport();
         render();
       }, 650);
+    }
+    function networkChanged(online) {
+      const d = data();
+      if (!online || !d.importWaitingNetwork || d.importPaused || d.importReady) return;
+      d.importWaitingNetwork = false;
+      d.importRecovery = 'resuming';
+      advanceImport();
+      render();
     }
     let batchTimer = null;
     let batchStep = null;
@@ -265,8 +297,8 @@
         d.importTotal = 60;
         d.importProcessed = 24;
         d.importProgress = 40;
-        d.importPaused = true;
-        d.importRecovery = 'sleep';
+        d.importPaused = false;
+        d.importRecovery = 'resuming';
         d.importLog = [
           { title: '同步空间索引', detail: '已读取远端变动', status: 'done' },
           { title: '《星海骑士》收藏', detail: '已合并到本设备', status: 'done' },
@@ -275,7 +307,74 @@
           { title: '《夜行纪事》阅读记录', detail: '等待继续处理', status: 'pending' },
         ];
         go('importing');
+        advanceImport();
       }
+      else if (name === 'user-paused') {
+        d.importTotal = 60;
+        d.importProcessed = 24;
+        d.importProgress = 40;
+        d.importPaused = true;
+        d.importRecovery = 'manual';
+        d.importLog = [
+          { title: '同步空间索引', detail: '已读取远端变动', status: 'done' },
+          { title: '《星海骑士》收藏', detail: '已合并到本设备', status: 'done' },
+          { title: '《黎明邮局》阅读记录', detail: '用户暂停前已保存第 12 页', status: 'active' },
+          { title: '《远山来信》作者关注', detail: '等待手动继续', status: 'pending' },
+          { title: '《夜行纪事》阅读记录', detail: '等待手动继续', status: 'pending' },
+        ];
+        go('importing');
+      }
+      else if (name === 'waiting-network') {
+        d.importTotal = 60;
+        d.importProcessed = 24;
+        d.importProgress = 40;
+        d.importPaused = false;
+        d.importWaitingNetwork = true;
+        d.importRecovery = 'network';
+        d.importLog = [
+          { title: '同步空间索引', detail: '已读取远端变动', status: 'done' },
+          { title: '《星海骑士》收藏', detail: '已合并到本设备', status: 'done' },
+          { title: '《黎明邮局》阅读记录', detail: '已保存第 12 页', status: 'done' },
+          { title: '《远山来信》作者关注', detail: '等待网络连接', status: 'pending' },
+          { title: '《夜行纪事》阅读记录', detail: '等待网络连接', status: 'pending' },
+        ];
+        go('importing');
+      }
+      else if (name === 'unknown-total') {
+        d.importTotal = null;
+        d.importProcessed = 24;
+        d.importProgress = null;
+        d.importPaused = false;
+        d.importUnknownTotal = true;
+        d.importRecovery = 'unknown';
+        d.importLog = [
+          { title: '同步空间索引', detail: '已读取 24 项，仍在获取总量', status: 'active' },
+          { title: '《星海骑士》收藏', detail: '已合并到本设备', status: 'done' },
+          { title: '《黎明邮局》阅读记录', detail: '已保存第 12 页', status: 'done' },
+          { title: '远端数据', detail: '等待继续读取', status: 'pending' },
+        ];
+        go('importing');
+      }
+      else if (name === 'retry-exhausted') {
+        d.importTotal = 60;
+        d.importProcessed = 24;
+        d.importProgress = 40;
+        d.importPaused = false;
+        d.importRecovery = 'retry-exhausted';
+        d.importLog = [
+          { title: '同步空间索引', detail: '连接失败，进度已保存', status: 'active' },
+          { title: '《星海骑士》收藏', detail: '已合并到本设备', status: 'done' },
+          { title: '《黎明邮局》阅读记录', detail: '已保存第 12 页', status: 'done' },
+          { title: '《远山来信》作者关注', detail: '等待重试', status: 'pending' },
+        ];
+        go('importing');
+      }
+      else if (name === 'success') {
+        d.importReady = true;
+        d.importProgress = null;
+        go('imported');
+      }
+      else if (name === 'auth-blocked') { d.issue = 'access'; go('issue'); }
       else if (name === 'batch') d.batch = { total: 120, done: 72, skipped: 2, failed: 3, running: false };
       else if (['network', 'access', 'key', 'empty', 'unknown'].includes(name)) d.issue = name;
       render();
@@ -307,6 +406,7 @@
       else if (actionName === 'import-start') { d.connected = true; d.importProgress = 0; d.importReady = false; go('importing'); advanceImport(); }
       else if (actionName === 'import-resume') { d.importRecovery = 'resuming'; advanceImport(); }
       else if (actionName === 'import-pause') { clearTimeout(importTimer); d.importPaused = true; d.importRecovery = d.importRecovery === 'sleep' ? 'sleep' : 'manual'; }
+      else if (actionName === 'import-retry') { d.importWaitingNetwork = false; d.importRecovery = 'resuming'; advanceImport(); }
       else if (actionName === 'import-done') { d.automatic = true; d.importReady = false; d.importProgress = null; home(); }
       else if (actionName === 'import-view') go(d.importReady ? 'imported' : 'importing');
       else if (actionName === 'period') { currentDevice().settings.periodMinutes = Number(target.dataset.minutes); resetCountdown(); back(); }
@@ -325,8 +425,8 @@
       data().fields[target.dataset.ixField] = target.value;
       if (target.dataset.ixField === 'password') { const submit = document.querySelector('[data-testid="ix-password-confirm"]'); if (submit) { submit.textContent = data().mode === 'join' ? '连接同步空间' : target.value === '' ? '不设置密码' : '确认密码'; submit.disabled = data().mode === 'join' && target.value === ''; } }
     }
-    return { screen, title: () => titles[screen()], back, close, settings, settingsFooter, renderScreen, unconfigured, connected: () => data().connected, status, didSync, resetCountdown, summary, handle, input, showScenario, startBatch, batchActive: () => data().batch && data().batch.done < data().batch.total,
-      importStatus: () => data().importProgress != null ? row(data().importReady ? '合并已完成' : data().importPaused ? '合并尚未完成' : '正在合并数据', '查看进度与继续操作', 'import-view') : '',
+    return { screen, title: () => titles[screen()], back, close, settings, settingsFooter, renderScreen, unconfigured, connected: () => data().connected, status, didSync, resetCountdown, summary, handle, input, showScenario, networkChanged, startBatch, batchActive: () => data().batch && data().batch.done < data().batch.total,
+      importStatus: () => data().importProgress != null ? row(data().importReady ? '合并已完成' : data().importWaitingNetwork ? '等待网络连接' : data().importPaused ? '合并尚未完成' : '正在合并数据', '查看进度与继续操作', 'import-view') : '',
       busy: () => data().issue === 'unknown' || (data().importProgress != null && !data().importPaused && !data().importReady),
     };
   }

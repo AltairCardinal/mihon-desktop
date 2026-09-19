@@ -22,6 +22,7 @@ class DesktopSyncScheduler(
     private val preferences: SyncPreferences,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val onStopped: suspend () -> Unit = {},
+    private val resumeIfNeeded: suspend () -> Boolean = { false },
     private val clock: () -> Long = System::currentTimeMillis,
 ) : DesktopRuntimeService {
     private var job: Job? = null
@@ -32,7 +33,10 @@ class DesktopSyncScheduler(
         if (job?.isActive == true) return
         job = scope.launch {
             coroutineScope {
-                if (preferences.startup.get()) launch { coordinator.synchronize(SyncTrigger.STARTUP) }
+                launch {
+                    val resumed = resumeIfNeeded()
+                    if (!resumed && preferences.startup.get()) coordinator.synchronize(SyncTrigger.STARTUP)
+                }
                 var observedPeriod: Int? = null
                 preferences.periodMinutes.changes().distinctUntilChanged().collectLatest {
                     val minutes = preferences.intervalMinutes()
@@ -55,7 +59,7 @@ class DesktopSyncScheduler(
                             delay(minOf(remaining, 60_000))
                         } else {
                             try {
-                                coordinator.synchronize(SyncTrigger.PERIODIC)
+                                if (!resumeIfNeeded()) coordinator.synchronize(SyncTrigger.PERIODIC)
                             } catch (_: CancellationException) {
                                 // Canceling a single exchange must not remove the device's periodic observer.
                                 currentCoroutineContext().ensureActive()

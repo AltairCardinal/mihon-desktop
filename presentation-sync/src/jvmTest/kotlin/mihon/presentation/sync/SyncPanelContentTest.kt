@@ -32,6 +32,11 @@ import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPanelQuestion
 import mihon.data.sync.runtime.SyncPanelState
 import mihon.data.sync.runtime.SyncPasswordProblem
+import mihon.data.sync.runtime.SyncRunLog
+import mihon.data.sync.runtime.SyncRunLogStatus
+import mihon.data.sync.runtime.SyncRunPhase
+import mihon.data.sync.runtime.SyncRunSnapshot
+import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncSetupStep
 import mihon.domain.sync.SyncCancellationDecision
 import mihon.domain.sync.SyncObjectKey
@@ -317,6 +322,147 @@ class SyncPanelContentTest {
         render()
         assertFalse(texts().contains("99+"))
         assertEquals("", node("sync-open").config[SemanticsProperties.StateDescription])
+    }
+
+    @Test
+    fun `active run exposes phase progress recent logs and pause action`() = rendered(
+        connected().copy(
+            run = SyncRunSnapshot(
+                runId = "run-1",
+                spaceId = "space",
+                generation = 1,
+                trigger = mihon.domain.sync.runtime.SyncTrigger.RECOVERY,
+                state = SyncRunState.RUNNING,
+                phase = SyncRunPhase.MERGING,
+                processed = 2,
+                total = 5,
+                completed = 2,
+                skipped = 0,
+                failed = 0,
+                attempt = 1,
+                nextRetryAt = 0,
+                lastProgressAt = 1,
+                stopReason = null,
+                ownerSession = "session",
+                createdAt = 1,
+                updatedAt = 1,
+            ),
+            logs = listOf(
+                SyncRunLog("run-1", "item-1", "作品 A", "阅读记录 · 已合并", SyncRunLogStatus.COMPLETED, 1),
+            ),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertTrue(hasTag("sync-progress"))
+        assertTrue(hasTag("sync-log-item-1"))
+        click("sync-pause-run")
+        assertEquals(SyncPanelAction.PauseSync, actions.last())
+
+        panel.state.value = panel.state.value.copy(
+            run = panel.state.value.run!!.copy(state = SyncRunState.PAUSED_USER),
+        )
+        render()
+        assertTrue(node("sync-now").config.contains(SemanticsProperties.Disabled))
+        click("sync-resume-run")
+        assertEquals(SyncPanelAction.ResumeSync, actions.last())
+    }
+
+    @Test
+    fun `retry exhausted run remains visible with retained progress and retry action`() = rendered(
+        connected().copy(
+            problem = SyncRunProblem.NETWORK,
+            run = SyncRunSnapshot(
+                runId = "run-retry",
+                spaceId = "space",
+                generation = 1,
+                trigger = mihon.domain.sync.runtime.SyncTrigger.RECOVERY,
+                state = SyncRunState.FAILED,
+                phase = SyncRunPhase.UPLOADING,
+                processed = 24,
+                total = 60,
+                completed = 24,
+                skipped = 0,
+                failed = 0,
+                attempt = 3,
+                nextRetryAt = 0,
+                lastProgressAt = 1,
+                stopReason = "retry_exhausted",
+                ownerSession = null,
+                createdAt = 1,
+                updatedAt = 1,
+            ),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertTrue(texts().contains(MR.strings.sync_retry_exhausted.localized(Locale.getDefault())))
+        click("sync-retry-run")
+        assertEquals(SyncPanelAction.RetrySync, actions.last())
+    }
+
+    @Test
+    fun `blocked run restores its concrete repair reason`() = rendered(
+        connected().copy(
+            problem = SyncRunProblem.AUTHORIZATION,
+            run = SyncRunSnapshot(
+                runId = "run-blocked",
+                spaceId = "space",
+                generation = 1,
+                trigger = mihon.domain.sync.runtime.SyncTrigger.MANUAL,
+                state = SyncRunState.BLOCKED,
+                phase = SyncRunPhase.CHECKING,
+                processed = 4,
+                total = 10,
+                completed = 4,
+                skipped = 0,
+                failed = 0,
+                attempt = 1,
+                nextRetryAt = 0,
+                lastProgressAt = 1,
+                stopReason = "AUTHORIZATION",
+                ownerSession = null,
+                createdAt = 1,
+                updatedAt = 1,
+            ),
+        ),
+    ) {
+        awaitTag("sync-blocked-reason")
+        assertTrue(texts().contains(MR.strings.sync_problem_auth.localized(Locale.getDefault())))
+        click("sync-reconnect")
+        assertEquals(SyncPanelAction.Authorize, actions.last())
+    }
+
+    @Test
+    fun `waiting retry shows the persisted backoff countdown`() = rendered(
+        connected().copy(
+            nowMillis = 1_000,
+            run = SyncRunSnapshot(
+                runId = "run-waiting",
+                spaceId = "space",
+                generation = 1,
+                trigger = mihon.domain.sync.runtime.SyncTrigger.RECOVERY,
+                state = SyncRunState.WAITING_RETRY,
+                phase = SyncRunPhase.UPLOADING,
+                processed = 2,
+                total = 5,
+                completed = 2,
+                skipped = 0,
+                failed = 0,
+                attempt = 1,
+                nextRetryAt = 6_000,
+                lastProgressAt = 1,
+                stopReason = "network",
+                ownerSession = null,
+                createdAt = 1,
+                updatedAt = 1,
+            ),
+        ),
+    ) {
+        awaitTag("sync-retry-countdown")
+        assertTrue(
+            texts().contains(
+                MR.strings.sync_retry_after_seconds.localized(Locale.getDefault(), 5),
+            ),
+        )
     }
 
     @Test

@@ -81,6 +81,9 @@ data class SyncPanelState(
     val importRemaining: Long = 0,
     val importPaused: Boolean = false,
     val records: List<SyncRunRecord> = emptyList(),
+    val run: SyncRunSnapshot? = null,
+    val logs: List<SyncRunLog> = emptyList(),
+    val logsHasMore: Boolean = false,
     val setupStep: SyncSetupStep = SyncSetupStep.SIGN_IN,
     val setupBusy: Boolean = false,
     val deviceCode: GitHubDeviceCode? = null,
@@ -103,7 +106,10 @@ sealed interface SyncPanelAction {
     data object Back : SyncPanelAction
     data class Navigate(val page: SyncPanelPage) : SyncPanelAction
     data object Synchronize : SyncPanelAction
+    data object RetrySync : SyncPanelAction
     data object CancelSync : SyncPanelAction
+    data object PauseSync : SyncPanelAction
+    data object ResumeSync : SyncPanelAction
     data object PauseImport : SyncPanelAction
     data object ResumeImport : SyncPanelAction
     data class SetPeriod(val minutes: Int) : SyncPanelAction
@@ -134,6 +140,7 @@ sealed interface SyncPanelAction {
     data object PauseBulk : SyncPanelAction
     data object ResumeBulk : SyncPanelAction
     data object LoadMore : SyncPanelAction
+    data object LoadMoreLogs : SyncPanelAction
     data object DismissNotice : SyncPanelAction
 }
 

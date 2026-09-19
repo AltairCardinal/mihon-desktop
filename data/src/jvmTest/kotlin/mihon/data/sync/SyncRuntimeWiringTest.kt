@@ -2,6 +2,8 @@ package mihon.data.sync
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.runBlocking
+import mihon.data.sync.runtime.SyncPanelAction
+import mihon.data.sync.runtime.SyncRunState
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.domain.sync.auth.GitHubAccessToken
 import mihon.domain.sync.auth.GitHubAuthEndpoints
@@ -55,7 +57,20 @@ class SyncRuntimeWiringTest {
                         assertEquals(SyncRunProblem.NETWORK, result.problem)
                         assertEquals(expiring, runtime.credentials.read())
                         assertFalse(runtime.preferences.history.get().contains("private diagnostic"))
+                        assertEquals(SyncRunState.WAITING_RETRY, runtime.runStore.active("space", 1)?.state)
+                        if (code == 500) {
+                            assertEquals(
+                                SyncRunStatus.SKIPPED,
+                                runtime.coordinator.synchronize(SyncTrigger.PERIODIC).status,
+                            )
+                        }
+                        setup.now = if (code == 500) 11_000L else 41_000L
                     }
+                    auth.enqueue(mockwebserver3.MockResponse(code = 500, body = "private diagnostic"))
+                    assertEquals(SyncRunProblem.NETWORK, runtime.coordinator.synchronize(SyncTrigger.PERIODIC).problem)
+                    assertEquals(SyncRunState.FAILED, runtime.runStore.latest("space", 1)?.state)
+                    assertEquals("retry_exhausted", runtime.runStore.latest("space", 1)?.stopReason)
+                    assertEquals(null, runtime.runStore.active("space", 1))
                 }
             }
         }
@@ -92,6 +107,93 @@ class SyncRuntimeWiringTest {
     }
 
     @Test
+    fun `manual continuation reuses the resumed run instead of creating a second run`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
+                val connection = requireNotNull(runtime.connection())
+                val run = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.MANUAL)
+                runtime.runStore.pause(run.runId)
+                runtime.runStore.resumeIfAllowed(run.runId)
+
+                assertEquals(SyncRunStatus.SUCCESS, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                assertEquals(SyncRunState.SUCCEEDED, runtime.runStore.get(run.runId)?.state)
+            }
+        }
+    }
+
+    @Test
+    fun `system recovery reclaims an orphaned run while user pause stays paused`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
+                val connection = requireNotNull(runtime.connection())
+                val orphan = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.RECOVERY)
+                assertTrue(runtime.runStore.claim(orphan.runId, "dead-process", 1))
+                assertTrue(runtime.resumeIfNeeded())
+                assertEquals(SyncRunState.SUCCEEDED, runtime.runStore.get(orphan.runId)?.state)
+
+                val paused = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.MANUAL)
+                runtime.runStore.pause(paused.runId)
+                assertFalse(runtime.resumeIfNeeded())
+                assertEquals(SyncRunState.PAUSED_USER, runtime.runStore.get(paused.runId)?.state)
+            }
+        }
+    }
+
+    @Test
+    fun `reopened panel restores retry exhausted and blocked runs`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
+                val connection = requireNotNull(runtime.connection())
+
+                setup.panel.act(SyncPanelAction.Close)
+                val exhausted = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.RECOVERY)
+                runtime.runStore.finish(exhausted.runId, SyncRunState.FAILED, "retry_exhausted")
+                setup.panel.act(SyncPanelAction.Open)
+                assertEquals(SyncRunState.FAILED, setup.panel.state.value.run?.state)
+                assertEquals(SyncRunProblem.NETWORK, setup.panel.state.value.problem)
+
+                setup.panel.act(SyncPanelAction.Close)
+                val blocked = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.MANUAL)
+                runtime.runStore.finish(blocked.runId, SyncRunState.BLOCKED, "AUTHORIZATION")
+                setup.panel.act(SyncPanelAction.Open)
+                assertEquals(SyncRunState.BLOCKED, setup.panel.state.value.run?.state)
+                assertEquals(SyncRunProblem.AUTHORIZATION, setup.panel.state.value.problem)
+            }
+        }
+    }
+
+    @Test
+    fun `manual retry supersedes blocked run so periodic sync can continue`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
+                val connection = requireNotNull(runtime.connection())
+                val blocked = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.MANUAL)
+                runtime.runStore.finish(blocked.runId, SyncRunState.BLOCKED, "AUTHORIZATION")
+
+                assertEquals(SyncRunStatus.SUCCESS, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                assertEquals(SyncRunState.CANCELLED, runtime.runStore.get(blocked.runId)?.state)
+                assertEquals(SyncRunStatus.SUCCESS, runtime.coordinator.synchronize(SyncTrigger.PERIODIC).status)
+            }
+        }
+    }
+
+    @Test
     fun `missing authorization and unavailable secure storage are distinct safe failures`() = runBlocking {
         Fixture().use { f ->
             SyncOnboardingFixture(f.storage).use { setup ->
@@ -101,6 +203,7 @@ class SyncRuntimeWiringTest {
                 val runtime = setup.runtime
                 runtime.credentials.clear()
                 assertEquals(SyncRunProblem.AUTHORIZATION, runtime.coordinator.synchronize(SyncTrigger.MANUAL).problem)
+                assertEquals(SyncRunState.BLOCKED, runtime.runStore.active("space", 1)?.state)
                 setup.secure.fail = true
                 assertEquals(SyncRunProblem.STORAGE, runtime.coordinator.synchronize(SyncTrigger.MANUAL).problem)
             }
@@ -166,6 +269,7 @@ class SyncRuntimeWiringTest {
         }
         val storage = SyncRuntimeStorageContract.Storage(driver, JvmDatabaseHandler(database, driver))
         val secure = MemorySecureStore()
+        var now = 1_000L
         private val node = Preferences.userRoot().node("mihon-sync-runtime-test-" + UUID.randomUUID())
         val preferences = DesktopPreferenceStore(node)
         var networkCalls = 0
@@ -176,7 +280,7 @@ class SyncRuntimeWiringTest {
         }).build()
         fun runtime(baseUrl: String, tokenUrl: String = "https://github.com/login/oauth/access_token") = SyncRuntime(
             storage.handler, storage.bootstrap, storage.creators, storage.creators, { true }, secure,
-            preferences, client, GitHubAuthEndpoints(accessTokenUrl = tokenUrl, apiBaseUrl = baseUrl), { 1000L },
+            preferences, client, GitHubAuthEndpoints(accessTokenUrl = tokenUrl, apiBaseUrl = baseUrl), { now },
         )
         override fun close() {
             storage.close()

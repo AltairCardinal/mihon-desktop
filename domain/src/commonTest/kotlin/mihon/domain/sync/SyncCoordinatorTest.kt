@@ -155,6 +155,29 @@ class SyncCoordinatorTest {
     }
 
     @Test
+    fun `duplicate recovery requests do not queue a second exchange`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        var calls = 0
+        val coordinator = SyncCoordinator(
+            SyncRunPort {
+                calls++
+                gate.await()
+                success
+            },
+        )
+        val first = async { coordinator.synchronize(SyncTrigger.RECOVERY) }
+        runCurrent()
+        val second = async { coordinator.synchronize(SyncTrigger.RECOVERY) }
+        runCurrent()
+        assertEquals(1, calls)
+        gate.complete(Unit)
+
+        assertEquals(success, first.await())
+        assertEquals(success, second.await())
+        assertEquals(1, calls)
+    }
+
+    @Test
     fun `unexpected failure is sanitized and does not leave coordinator busy`() = runTest {
         val coordinator = SyncCoordinator(SyncRunPort { error("secret from backend") })
         val result = coordinator.synchronize(SyncTrigger.MANUAL)
