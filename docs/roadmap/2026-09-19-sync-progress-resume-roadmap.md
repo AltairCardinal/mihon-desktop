@@ -132,4 +132,6 @@ macOS 验收补充：在 `mbp-lan` 的独立 bundle 检出目录使用 JDK 21 �
 
 2026-09-20：原型基线收口完成。同步面板补回待上传操作、收藏/关注、阅读记录三行真实队列摘要；批量处理增加当前面板会话内的临时结果；离线状态明确显示“离线，等待网络连接”；设置焦点测试对齐现有同步频率入口。完整 DEMO 套件 39/39 通过（串行 Chrome 回归）。
 
+2026-09-20：R5 现场审计补充。旧 `D:/Shell/Github/mihon-sync/.gradle-coordinator/s5b-windows-runtime/profile` 与 peer profile 仍保存专用空间 `AltairCardinal/mihon-sync` 的历史连接和批次，但证据来自较早 v36 产物。当前候选未在该远端空间运行；Windows DPAPI 与 Java 偏好凭据按 Desktop Test Profile 身份隔离，复制 profile 不能安全复用凭据。本轮未执行远端写入，也未把旧 v36 证据计入当前候选。
+
 R5 仍未完成：本轮没有真实账号/同步空间，不能宣称锁屏期间条目进度推进或重复应用已被真机证明。真实同步空间运行门禁仍未闭合，不能勾选 R5。
