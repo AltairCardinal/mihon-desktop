@@ -81,6 +81,8 @@
 
 **M3 本地验收进展（2026-09-19）**：在不触碰真实 GitHub 账号、仓库或设备的前提下，已完成最终本地回归和发布候选检查。`:app-desktop:jvmTest` 与 `:app:testDebugUnitTest` 全量通过；`scripts/build-desktop.sh build-only` 通过生产扩展运行验收，生成版本 `0.11.19.49.d015682` 的 Windows 未打包 EXE，ZIP SHA-256 为 `16d8e12b7e086fd02e1abaddbb7d94f846cc38cfa24f9ad88fb595c68612d463`。使用 `scripts/android-fork-release.init.gradle` 的 `:app:assembleRelease` 通过 fork 身份、R8、遥测/更新器约束；已有签名脚本生成 `app.mihon.desktop.fork`、`0.19.4-aex.11`、versionCode 29、仅 `arm64-v8a` 的正式候选，证书和 v2/v3 签名通过，APK SHA-256 为 `8246bfb2e7d1c2864c2686cdcc1c13241e02f5cc15c32f3eee39a6da3c2e47e2`。`adb devices` 未发现真机，macOS 发布环境未执行；真实 GitHub App 权限、隔离库写入和恢复流程仍未取得授权，因此 M3 保持未勾选。
 
+**本轮引导文案迭代验收（2026-09-19）**：`presentation-sync:jvmTest` 22/22 通过，覆盖成功通知、空库密码页和遗留交换错误不显示；Windows `scripts/build-desktop.sh evidence` 在完整 `:app-desktop:jvmTest` 中发现 4 个现有作者专项失败（parity manifest、AuthorCard、AuthorDetail、AuthorsProductionWiring），未生成产物。随后使用同一脚本 `build-only` 完成编译、生产扩展运行验收和发布，版本 `0.11.19.51.f2f0876` 的 EXE 为 `D:\Codex\worktrees\sync-release-20260919\app-desktop\artifacts\windows\Mihon-Desktop-0.11.19.51.f2f0876-unpacked\Mihon Desktop.exe`，ZIP SHA-256 为 `8ed21aafca921a4334111175d75e18319c9248d97543308d12d22a83d75ba2ef`。Android fork `:app:assembleRelease` 通过，签名 arm64 APK 为 `D:\Codex\worktrees\sync-release-20260919\app\build\outputs\apk\release\mihon-desktop-fork-0.19.4-aex.11-arm64-v8a.apk`，包名 `app.mihon.desktop.fork`、versionCode 29、v2/v3 签名和固定证书通过，SHA-256 为 `5e132579fde60c9c0c183e47a212eecdde3f0b4162f4ffb5efb97652e8f96c6d`。未执行真实 GitHub 权限变更、隔离库写入或真机覆盖升级，M3 仍保持未勾选。
+
 ### M3：真实权限与发布验收
 
 **前置**：M2 通过；正式发布身份和签名路径核验；实际 App 权限降低及测试账号/仓库写入取得明确授权。生产 App 尚未降低权限时可以先完成本地自动化，但不勾选真实最小权限验收。
