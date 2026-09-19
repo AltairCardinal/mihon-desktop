@@ -12,7 +12,7 @@ Android「获取已安装应用列表」权限提示的独立审阅入口见[插
 - 建议项、未匹配项和普通插件项左右边界一致；宽屏信息靠左，操作靠右。根据列表实际宽度，在 600px 及以下将操作移到下一行，避免手机挤压；不再按 Android 平台强制换行。
 - 保留折叠、忽略／撤销、网站、单项／批量安装及未匹配详情交互。未知图源 999 为本地示例，不读取真机收藏。用户后续已要求生产接入，实现及验证见[Roadmap 第11节](../../roadmap/2026-09-16-extension-install-suggestions-roadmap.md#11-建议区通栏布局修复2026-09-18)；平板入口沿用原型底部导航，不声称完整还原真机侧栏。
 
-验证：通栏浏览器测试先因旧卡片边框失败，修改后通过；建议安装测试共 4/4 通过，覆盖宽屏／320px 布局、双端入口和隔离、折叠、安装及异常反馈。已检查两种宽度的实际截图与脚本语法。并列预览测试在既有离线文案断言失败（期望“离线”，实际“同步尚未完成已保存现有数据，可以稍后重试”），与下方历史记录相同；不将其报告为全绿，不扩修同步逻辑。未运行产品构建。
+验证：通栏浏览器测试先因旧卡片边框失败，修改后通过；建议安装测试共 4/4 通过，覆盖宽屏／320px 布局、双端入口和隔离、折叠、安装及异常反馈。已检查两种宽度的实际截图与脚本语法。并列预览的旧离线文案失败属于 2026-09-18 的历史记录，已在 2026-09-20 的同步进度回归中修正并通过。未运行产品构建。
 
 运行：`node --test --test-concurrency=1 docs/prototypes/multi-device-sync/extension-suggestions.test.cjs docs/prototypes/multi-device-sync/parallel-preview.test.cjs`。
 
@@ -42,7 +42,7 @@ node --test docs/prototypes/multi-device-sync/extension-suggestions.test.cjs
 
 完整 DEMO 回归使用 `node --test --test-concurrency=1 docs/prototypes/multi-device-sync/*.test.cjs`；执行前设置 `PLAYWRIGHT_CORE_PATH` 为本机 `playwright-core` 目录，需要可启动的 Chrome。不使用生产 Android/Desktop 构建作为 HTML 原型测试。
 
-本轮验证：新增浏览器行为测试 3/3 通过；独立检查并列预览、320px 手机布局和系统确认弹窗，无横向溢出或页面脚本错误。完整 DEMO 回归为 33 项中 29 项通过、4 项失败；4 项均在修改前 HEAD 导出的 DEMO 中以相同断言复现，分别为 `library-sync.test.cjs` 的临时通知计数和旧待上传选择器、`parallel-preview.test.cjs` 的离线文案、`ui-browser.test.cjs` 的设置焦点。它们是现有同步测试问题，本轮不扩修同步逻辑。最后补充的安装方式切换暂停修正已通过新增 3 项 focused 复验，未重复全套测试。
+本轮验证：新增浏览器行为测试 3/3 通过；独立检查并列预览、320px 手机布局和系统确认弹窗，无横向溢出或页面脚本错误。该历史批次的完整 DEMO 回归曾为 33 项中 29 项通过；后续同步进度迭代补齐了临时通知、待上传摘要、离线文案和设置焦点断言。最后补充的安装方式切换暂停修正已通过新增 3 项 focused 复验，未重复当时全套测试。
 
 本次变更涉及双端脚本加载、现有路由接入、独立建议模块、样式、行为测试和说明文档，构成一个完整交互批次。主要风险为模态焦点、安装定时器、设备状态隔离和旧页面回归；未修改生产 Kotlin、数据库、构建或同步协议。
 
@@ -99,7 +99,9 @@ node --test --test-concurrency=1 docs/prototypes/multi-device-sync/sync-setup.te
 
 运行前设置 `PLAYWRIGHT_CORE_PATH` 指向本机 `playwright-core`。覆盖两端授权成功/取消/过期重试、新空间可选密码、已有空间密码验证、自动合并、关闭重开、单行状态、待确认期间同步、自动处理记录及批量；检查支持 HTTP 和直接打开 HTML。未运行模型单元测试、全量 Android/Desktop 测试或构建，这些不属于本轮交互验收范围。
 
-2026-09-18 本轮验证：新增配置测试先因旧授权页仍有仓库选择而双端失败，再实现并通过；`sync-setup.test.cjs` 与 `sync-interactions.test.cjs` 合计 5/5 通过，最终显隐焦点与选区复验 2/2 通过。主代理经 HTTP 独立核验双端布局、两个设备的输入隔离、新建密码保护、后台合并不抢插件页及关闭期间完成不回放通知；检查了实际页面截图。`batch-sync.test.cjs` 与 `extension-suggestions.test.cjs` 共 5/5 通过。`parallel-preview.test.cjs` 仍在第 49 行旧离线文案断言失败（期望“离线”，实际“同步尚未完成”），与上方既有失败记录一致；该状态文案本轮未改，不计为通过，也未扩修。脚本语法与差异格式检查通过。
+2026-09-18 本轮验证：新增配置测试先因旧授权页仍有仓库选择而双端失败，再实现并通过；`sync-setup.test.cjs` 与 `sync-interactions.test.cjs` 合计 5/5 通过，最终显隐焦点与选区复验 2/2 通过。主代理经 HTTP 独立核验双端布局、两个设备的输入隔离、新建密码保护、后台合并不抢插件页及关闭期间完成不回放通知；检查了实际页面截图。`batch-sync.test.cjs` 与 `extension-suggestions.test.cjs` 共 5/5 通过。`parallel-preview.test.cjs` 的离线文案失败属于该日期的历史基线，后续已修正。
+
+2026-09-20 同步进度回归：完整 DEMO 套件 39/39 通过（`--test-concurrency=1`，使用本机 Chrome 与 `playwright-core`），覆盖 Windows/Android 并列预览、同步进度与日志、待上传队列、离线保留、临时通知生命周期、批量处理和设置焦点顺序。同步状态新增待上传三行摘要，离线状态明确显示“离线”，批量结果只在当前面板会话显示；设置页焦点测试与当前“同步频率”入口顺序一致。
 
 新空间输入的密码只用于演示“已开启／未开启”分支，不实现密码保存、跨设备密钥传递或真实验证；“已有同步空间 · 密码 mihon-demo”是独立样本，正确密码固定为 `mihon-demo`。手工审阅可依次选择“首次创建同步空间”“已有同步空间 · 未设密码”“已有同步空间 · 密码 mihon-demo”“同步空间查找失败”“同步空间创建失败”。
 

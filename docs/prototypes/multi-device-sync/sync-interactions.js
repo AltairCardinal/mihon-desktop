@@ -67,14 +67,23 @@
     }
     function status({ total, membership, reading, pending, busy, online }) {
       const d = data();
-      if (d.changes) { membership = d.changes.membership; reading = d.changes.reading; total = membership + reading; }
+      if (d.changes) { membership = { total: d.changes.membership, favorites: d.changes.membership, authors: 0 }; reading = d.changes.reading; total = d.changes.membership + reading; }
+      const membershipTotal = typeof membership === 'number' ? membership : membership.total;
+      const favorites = typeof membership === 'number' ? membership : membership.favorites;
+      const authors = typeof membership === 'number' ? 0 : membership.authors;
       let title = total ? `有 ${total} 项变动等待同步` : pending ? '数据交换已完成' : '已同步';
-      let detail = total ? `收藏与关注 ${membership} 项 · 阅读记录 ${reading} 项` : pending ? `${pending} 项取消操作待确认，其他数据已同步` : `上次同步 ${d.lastSync}`;
+      let detail = total ? `收藏与关注 ${membershipTotal} 项 · 阅读记录 ${reading} 项` : pending ? `${pending} 项取消操作待确认，其他数据已同步` : `上次同步 ${d.lastSync}`;
       const showCountdown = currentDevice().settings.periodicSync && !busy && online && !d.issue;
       if (showCountdown) title = countdownTitle();
-      if (busy) { title = '正在同步'; detail = total ? `收藏与关注 ${membership} 项 · 阅读记录 ${reading} 项` : '正在接收其他设备的变动'; }
-      else if (!online || d.issue) { title = d.issue === 'unknown' ? '正在核对同步结果' : '同步尚未完成'; detail = total ? `已保留 ${total} 项变动，稍后继续同步` : '已保存现有数据，可以稍后重试'; }
-      return `<div class="native-sync-status sync-status-single" data-testid="sync-status-row"><div class="sync-symbol">${view.icon('sync')}</div><div class="sync-status-copy"><strong${showCountdown ? ' data-sync-countdown' : ''}>${title}</strong><small>${detail}</small></div>${button('立即同步', 'data-action="sync-manual" data-testid="manual-sync"', 'm-button-primary')}</div>`;
+      if (busy) { title = '正在同步'; detail = total ? `收藏与关注 ${membershipTotal} 项 · 阅读记录 ${reading} 项` : '正在接收其他设备的变动'; }
+      else if (!online) { title = '离线，等待网络连接'; detail = total ? `已保留 ${total} 项变动，联网后自动继续` : '已保存现有数据，联网后自动继续'; }
+      else if (d.issue) { title = d.issue === 'unknown' ? '正在核对同步结果' : '同步尚未完成'; detail = total ? `已保留 ${total} 项变动，稍后继续同步` : '已保存现有数据，可以稍后重试'; }
+      const queue = `<div class="sync-queue-summary" data-testid="sync-queue-summary">${[
+        ['待上传操作', `${total} 项`],
+        ['收藏与关注', `${favorites} 条收藏 · ${authors} 条关注`],
+        ['阅读记录', `${reading} 条阅读记录`],
+      ].map(([label, value]) => `<div class="native-list-row"><div class="row-copy"><strong>${label}</strong></div><span class="row-value">${value}</span></div>`).join('')}</div>`;
+      return `<div class="native-sync-status sync-status-single" data-testid="sync-status-row"><div class="sync-symbol">${view.icon('sync')}</div><div class="sync-status-copy"><strong${showCountdown ? ' data-sync-countdown' : ''}>${title}</strong><small>${detail}</small></div>${button('立即同步', 'data-action="sync-manual" data-testid="manual-sync"', 'm-button-primary')}</div>${queue}`;
     }
     function didSync(ok) { if (ok) { data().changes = null; data().lastSync = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }); resetCountdown(); } }
     function importPage() {
@@ -257,9 +266,11 @@
     }
     let batchTimer = null;
     let batchStep = null;
-    function startBatch(total, step) {
+    let batchComplete = null;
+    function startBatch(total, step, onComplete = null) {
       data().batch = { total, done: 0, skipped: 0, failed: 0, running: true };
       batchStep = step;
+      batchComplete = onComplete;
       advanceBatch();
     }
     function advanceBatch() {
@@ -270,7 +281,12 @@
         if (batchStep) batch.skipped += batchStep(batch.done, next);
         batch.done = next;
         batch.failed = 0;
-        if (batch.done < batch.total) advanceBatch(); else batch.running = false;
+        if (batch.done < batch.total) advanceBatch(); else {
+          batch.running = false;
+          const complete = batchComplete;
+          batchComplete = null;
+          complete?.(batch);
+        }
         render();
       }, 650);
     }

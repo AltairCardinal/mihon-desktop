@@ -156,12 +156,18 @@
     const review = state.ui.batchReview;
     if (!review || review.deviceId !== state.selectedDevice) return;
     clearBatchSelection();
+    state.ui.batchResult = { ok: true, message: '批量处理已开始，本次选择正在处理。' };
     // Pace the existing demo actions so the progress, stop and resume controls can be reviewed.
     interactions.startBatch(review.ids.length, (start, end) => {
       const existing = new Set(model.getDevice(state, review.deviceId).confirmations.map(item => item.id));
       const chunk = review.ids.slice(start, end);
       chunk.filter(id => existing.has(id)).forEach(id => (review.choice === 'confirm' ? model.confirmCancellation : model.ignoreCancellation)(state, review.deviceId, id));
       return chunk.filter(id => !existing.has(id)).length;
+    }, batch => {
+      state.ui.batchResult = {
+        ok: true,
+        message: `批量处理完成：已处理 ${batch.done - batch.skipped} 项，跳过 ${batch.skipped} 项。`,
+      };
     });
   }
   function renderBatchReview() {
@@ -215,13 +221,19 @@
     const pending = current.confirmations.length;
     const pendingIds = new Set(current.pendingOutgoing);
     const uploads = state.shared.operations.filter(op => op.sourceDevice === current.id && pendingIds.has(op.id));
-    const membership = uploads.filter(op => op.kind.startsWith('favorite-') || op.kind.startsWith('author-')).length;
+    const membership = {
+      total: uploads.filter(op => op.kind.startsWith('favorite-') || op.kind.startsWith('author-')).length,
+      favorites: uploads.filter(op => op.kind.startsWith('favorite-')).length,
+      authors: uploads.filter(op => op.kind.startsWith('author-')).length,
+    };
     const reading = uploads.filter(op => op.kind === 'read-position').length;
     const result = state.ui.syncResult;
+    const batchResult = state.ui.batchResult;
     const busy = state.ui.busy && state.ui.busyDeviceId === current.id;
     return `<section class="sync-content" data-testid="sync-panel">
       ${interactions.status({ total: current.pendingOutgoing.length, membership, reading, pending, busy, online: state.online })}
       ${result ? `<div class="snackbar-inline ${result.ok ? 'success' : 'failure'}" data-testid="sync-result">${view.icon(result.ok ? 'check' : 'info')}<span>${esc(result.message)}</span></div>` : ''}
+      ${batchResult ? `<div class="snackbar-inline ${batchResult.ok ? 'success' : 'failure'}" data-testid="batch-result">${view.icon(batchResult.ok ? 'check' : 'info')}<span>${esc(batchResult.message)}</span></div>` : ''}
       ${interactions.summary()}${interactions.importStatus()}
       ${pending ? `<div class="sync-list pending-list">${renderPendingToolbar(pending)}${current.confirmations.map(renderConfirmation).join('')}</div>` : '<div class="sync-empty">当前没有待确认的操作</div>'}
       <div class="sync-record-link">${button('查看同步记录', 'data-action="ix-activity" data-testid="ix-activity"', 'm-button-text')}</div>
@@ -411,9 +423,9 @@
       if (state.ui.timerId !== timer) return;
       const result = model.triggerSync(state, deviceId, trigger);
       interactions.didSync(result.ok);
-      if (result.ok) {
+      if (result.ok && !result.skipped) {
         const count = model.getDevice(state, deviceId).confirmations.length;
-        result.message = '同步完成，本设备的变动已同步。' + (count ? `还有 ${count} 项取消操作待确认。` : '');
+        result.message = `${result.message}${count ? ` 还有 ${count} 项取消操作待确认。` : ''}`;
       }
       if (state.ui.syncOpen && state.selectedDevice === deviceId) state.ui.syncResult = result;
       state.ui.timerId = null; state.ui.busy = false; state.ui.busyDeviceId = null; notice(result.message, result.ok ? 'success' : 'failure'); render();
