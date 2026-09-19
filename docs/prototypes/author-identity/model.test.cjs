@@ -87,21 +87,28 @@ test('设置和名称保存失败保留原值，大小写名称严格独立', ()
   s.fail = false; const next = M.observe(s, { id: 'case', name: 'okamoto lynn', title: '样本' }); assert.equal(next.authors.length, 4);
 });
 
-test('严格简繁同名自动形成展示组，保留原始标题并支持分开显示后撤销', () => {
+test('简繁与排版符号等价标题自动形成展示组，保留原始标题并支持分开显示后撤销', () => {
   let s = M.create();
   s.versions.push(
-    { id: 'script-hans', work: 'script-hans', title: '诡谲屋', source: '简体源', author: 'a', sourceKey: 'text', favorite: false, chapterCount: 10, listedAt: null, latestChapterAt: null, firstSeenAt: s.today },
-    { id: 'script-hant', work: 'script-hant', title: '詭譎屋', source: '繁體源', author: 'a', sourceKey: 'text', favorite: false, chapterCount: 11, listedAt: null, latestChapterAt: null, firstSeenAt: s.today },
+    { id: 'script-hans', work: 'script-hans', title: '诡谲屋', source: '拷贝漫画', author: 'a', sourceKey: 'text', favorite: false, chapterCount: 10, listedAt: null, latestChapterAt: null, firstSeenAt: s.today },
+    { id: 'script-hant', work: 'script-hant', title: '詭譎屋', source: '漫画柜', author: 'a', sourceKey: 'text', favorite: false, chapterCount: 11, listedAt: null, latestChapterAt: null, firstSeenAt: s.today },
+    { id: 'punctuation-hans', work: 'punctuation-hans', title: '诡谲屋 外传', source: '拷贝漫画', author: 'a', sourceKey: 'text', favorite: false, chapterCount: 3, listedAt: null, latestChapterAt: null, firstSeenAt: s.today },
+    { id: 'punctuation-hant', work: 'punctuation-hant', title: '《詭譎屋：外傳》', source: '漫画柜', author: 'a', sourceKey: 'text', favorite: false, chapterCount: 3, listedAt: null, latestChapterAt: null, firstSeenAt: s.today },
   );
   assert.equal(M.normalizeWorkTitle('詭譎屋'), M.normalizeWorkTitle('诡谲屋'));
-  assert.equal(M.normalizeWorkTitle('詭譎屋:外傳'), '诡谲屋:外传');
-  assert.notEqual(M.normalizeWorkTitle('詭譎屋:外傳'), M.normalizeWorkTitle('诡谲屋 外传'));
+  assert.equal(M.normalizeWorkTitle('《詭譎屋：外傳》'), '诡谲屋外传');
+  assert.equal(M.normalizeWorkTitle('《詭譎屋：外傳》'), M.normalizeWorkTitle('诡谲屋 外传'));
+  assert.notEqual(M.normalizeWorkTitle('Series 1'), M.normalizeWorkTitle('series 1'));
+  assert.notEqual(M.normalizeWorkTitle('诡谲屋 第1卷'), M.normalizeWorkTitle('詭譎屋 第2卷'));
   let groups = M.presentationGroups(s, 'a');
   let scriptGroup = groups.find(group => group.versions.some(v => v.id === 'script-hans'));
   assert.ok(scriptGroup);
   assert.equal(scriptGroup.versions.length, 2);
   assert.deepEqual(scriptGroup.versions.map(v => v.title), ['诡谲屋', '詭譎屋']);
   assert.equal(scriptGroup.autoMerged, true);
+  const punctuationGroup = groups.find(group => group.versions.some(v => v.id === 'punctuation-hans'));
+  assert.equal(punctuationGroup.versions.length, 2);
+  assert.deepEqual(punctuationGroup.versions.map(v => v.title), ['诡谲屋 外传', '《詭譎屋：外傳》']);
   s = M.splitPresentation(s, 'a', 'script-hant');
   groups = M.presentationGroups(s, 'a');
   assert.equal(groups.filter(group => group.versions.some(v => ['script-hans', 'script-hant'].includes(v.id))).length, 2);

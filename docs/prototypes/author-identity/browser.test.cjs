@@ -362,7 +362,7 @@ test('收藏采用原版书签图标与封面透明度，列表与网格均在�
   }
 }));
 
-test('简繁同名自动聚合为一张卡、搜索与来源选择保留原始标题，支持分开显示撤销', () => setup(async (page, pc, phone) => {
+test('简繁与符号差异自动聚合、按普通图源筛选并支持分开显示撤销', () => setup(async (page, pc, phone) => {
   await page.locator('#narrow').check();
   for (const [target, f] of [['windows', pc], ['android', phone]]) {
     await page.locator('#target').selectOption(target);
@@ -374,10 +374,17 @@ test('简繁同名自动聚合为一张卡、搜索与来源选择保留原始�
     assert.match(await group.innerText(), /诡谲屋/);
     assert.match(await group.innerText(), /2 个来源版本/);
     assert.equal(await f.locator('[data-action="work"][data-work="script-hant"]').count(), 0);
+    const punctuationGroup = f.locator('[data-action="work"][data-work="script-punctuation-a"]');
+    assert.equal(await punctuationGroup.count(), 1);
+    assert.match(await punctuationGroup.innerText(), /2 个来源版本/);
+    assert.equal(await f.locator('[data-action="work"][data-work="script-punctuation-b"]').count(), 0);
+    assert.equal(await f.getByRole('button', { name: /简体源|繁體源/ }).count(), 0);
     assert.doesNotMatch(await f.locator('main').innerText(), /按标题简繁体合并|确认后合并/);
+    await f.getByLabel('查找作品').fill('《詭譎屋：外傳》');
+    assert.equal(await f.locator('[data-action="work"][data-work="script-punctuation-a"]').count(), 1);
     await f.getByLabel('查找作品').fill('詭譎屋');
     assert.equal(await f.locator('[data-action="work"][data-work="script-hans"]').count(), 1);
-    await f.getByRole('button', { name: '繁體源', exact: true }).evaluate(e => e.click());
+    await f.getByRole('button', { name: '拷贝漫画', exact: true }).evaluate(e => e.click());
     assert.equal(await f.locator('[data-action="work"][data-work="script-hans"]').count(), 1);
     await page.locator('#add-script').evaluate(e => e.click());
     await f.getByText('3 个来源版本', { exact: true }).waitFor();

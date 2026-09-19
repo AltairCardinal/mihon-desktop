@@ -201,10 +201,10 @@
     if (scenario === 'empty') state = M.apply(state, M.preview(state, { selected: state.authors.map(a => a.id), target: 'a' }));
     if (scenario === 'script-equivalent') {
       state.versions.push(
-        { id: 'script-hans', work: 'script-hans', title: '诡谲屋', source: '简体源', author: 'a', sourceKey: 'text', favorite: false, chapterCount: 10, listedAt: null, latestChapterAt: null, firstSeenAt: state.today },
-        { id: 'script-hant', work: 'script-hant', title: '詭譎屋', source: '繁體源', author: 'a', sourceKey: 'text', favorite: false, chapterCount: 11, listedAt: null, latestChapterAt: null, firstSeenAt: state.today },
-        { id: 'script-punctuation-a', work: 'script-punctuation-a', title: '诡谲屋:外传', source: '标点源', author: 'a', sourceKey: 'text', favorite: false, chapterCount: null, listedAt: null, latestChapterAt: null, firstSeenAt: state.today },
-        { id: 'script-punctuation-b', work: 'script-punctuation-b', title: '詭譎屋 外傳', source: '空格源', author: 'a', sourceKey: 'text', favorite: false, chapterCount: null, listedAt: null, latestChapterAt: null, firstSeenAt: state.today },
+        { id: 'script-hans', work: 'script-hans', title: '诡谲屋', source: '拷贝漫画', author: 'a', sourceKey: 'text', favorite: false, chapterCount: 10, listedAt: null, latestChapterAt: null, firstSeenAt: state.today },
+        { id: 'script-hant', work: 'script-hant', title: '詭譎屋', source: '漫画柜', author: 'a', sourceKey: 'text', favorite: false, chapterCount: 11, listedAt: null, latestChapterAt: null, firstSeenAt: state.today },
+        { id: 'script-punctuation-a', work: 'script-punctuation-a', title: '诡谲屋 外传', source: '拷贝漫画', author: 'a', sourceKey: 'text', favorite: false, chapterCount: null, listedAt: null, latestChapterAt: null, firstSeenAt: state.today },
+        { id: 'script-punctuation-b', work: 'script-punctuation-b', title: '《詭譎屋：外傳》', source: '漫画柜', author: 'a', sourceKey: 'text', favorite: false, chapterCount: null, listedAt: null, latestChapterAt: null, firstSeenAt: state.today },
       );
     }
     state.fail = scenario === 'submit-error'; state.unavailable = scenario === 'unavailable'; render();

@@ -24,7 +24,10 @@
   function normalizeWorkTitle(title) {
     let result = String(title ?? '');
     for (const [traditional, simplified] of scriptPhrases) result = result.split(traditional).join(simplified);
-    return [...result].map(character => scriptCharacters.get(character) || character).join('');
+    return [...result]
+      .map(character => scriptCharacters.get(character) || character)
+      .join('')
+      .replace(/[\p{P}\p{Z}\s]+/gu, '');
   }
   function isExcluded(state, author, work) {
     return (state.presentationExclusions || []).some(item => item.author === author && item.work === work);
