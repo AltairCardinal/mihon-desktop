@@ -30,7 +30,13 @@ import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
+import tachiyomi.domain.creator.model.ArchiveWatchPolicy
 import tachiyomi.domain.creator.model.CreatorMentionResolution
+import tachiyomi.domain.creator.model.CreatorRelationOrigin
+import tachiyomi.domain.creator.model.CreatorRelationVerification
+import tachiyomi.domain.creator.model.CreatorRole
+import tachiyomi.domain.creator.model.DiscoveryCommit
+import tachiyomi.domain.creator.model.DiscoveryKind
 import tachiyomi.domain.creator.model.LanguageCertainty
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.LanguageEvidenceKind
@@ -105,15 +111,118 @@ class AndroidAuthorArchiveWiringTest {
             )
             val existing = async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { detail.openManga.first() }
             detail.openVersion(version).join()
-            assertEquals(321L, existing.await())
+            assertEquals(321L, existing.await().mangaId)
             val listed = async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { detail.openManga.first() }
             detail.openVersion(version.copy(mangaId = null)).join()
-            val stored = mangaRepository.getMangaById(listed.await())
+            val stored = mangaRepository.getMangaById(listed.await().mangaId)
             assertEquals(42L, stored.source)
             assertEquals("/specific-version", stored.url)
             assertEquals(false, stored.favorite)
         } finally {
             model?.screenModelScope?.cancel()
+            driver.close()
+            kotlinx.coroutines.Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `actual Android author navigation marks unread work only after consumer confirmation`() = runTest {
+        kotlinx.coroutines.Dispatchers.setMain(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler))
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
+        )
+        Database.Schema.create(driver)
+        val database = Database(
+            driver,
+            historyAdapter = History.Adapter(DateColumnAdapter),
+            mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+        )
+        val handler = AndroidDatabaseHandler(database, driver)
+        val repository = tachiyomi.data.creator.CreatorRepositoryImpl(handler)
+        val mangaRepository = tachiyomi.data.manga.MangaRepositoryImpl(
+            handler,
+            tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter,
+        )
+        val networkToLocal = NetworkToLocalManga(mangaRepository)
+        var detail: AndroidAuthorDetailScreenModel? = null
+        try {
+            val creator = repository.upsertCreator("Navigation Author")
+            val sourceWork = SourceWorkNaturalKey(42L, "/navigation-unread")
+            repository.upsertWatchPolicy(
+                ArchiveWatchPolicy(creator.id, true, 1_000L, setOf(sourceWork.sourceId), emptySet()),
+                now = 1L,
+            )
+            repository.upsertSourceWork(
+                42L,
+                sourceWork.stableSourceUrl,
+                321L,
+                "Navigation Work",
+                creator.displayName,
+                null,
+                null,
+                2L,
+            )
+            repository.upsertSourceWorkCreator(
+                sourceWork,
+                creator.id,
+                CreatorRole.AUTHOR,
+                0L,
+                CreatorRelationOrigin.AUTOMATIC,
+                CreatorRelationVerification.VERIFIED,
+                creator.displayName,
+                1.0,
+                "fixture",
+            )
+            repository.commitDiscovery(
+                DiscoveryCommit(
+                    creator.id,
+                    sourceWork,
+                    DiscoveryKind.NEW_WORK_CANDIDATE,
+                    "fixture",
+                    1L,
+                    100L,
+                    "TEST",
+                    "navigation-unread",
+                ),
+            )
+            detail = AndroidAuthorDetailScreenModel(
+                creatorId = creator.id,
+                details = GetCreatorDetails(repository),
+                creators = GetCreators(repository),
+                follow = SetCreatorFollow(repository),
+                discovery = mockk(),
+                archive = CreatorArchive(repository, repository),
+                sources = mockk(relaxed = true),
+                identity = ManageCreatorIdentity(repository),
+                networkToLocal = networkToLocal,
+            )
+            val version = SourceWorkArchiveVersion(
+                sourceWorkId = 1L,
+                naturalKey = sourceWork,
+                mangaId = 321L,
+                title = "Navigation Work",
+                readingLanguage = LanguageProjectionContract(
+                    LanguageDimension.READING,
+                    "und",
+                    LanguageCertainty.UNKNOWN,
+                    LanguageEvidenceKind.UNKNOWN,
+                ),
+                chapterCount = 0L,
+                inLibrary = false,
+                detailsFetchedAt = null,
+                lastSeenAt = 2L,
+                decision = null,
+            )
+            val request = async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { detail.openManga.first() }
+            detail.openVersion(version).join()
+            val opened = request.await()
+            assertEquals(321L, opened.mangaId)
+            assertTrue(repository.getUnreadWorkDiscoveries(10L).isNotEmpty())
+
+            detail.markWorkSeenAfterNavigation(opened.sourceWork)
+            assertTrue(repository.getUnreadWorkDiscoveries(10L).isEmpty())
+        } finally {
+            detail?.screenModelScope?.cancel()
             driver.close()
             kotlinx.coroutines.Dispatchers.resetMain()
         }

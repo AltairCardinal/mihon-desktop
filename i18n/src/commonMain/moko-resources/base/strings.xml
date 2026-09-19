@@ -2015,6 +2015,9 @@
     <string name="creator_following_empty_action">View all authors</string>
     <string name="creator_no_representative_work">No works yet</string>
     <string name="creator_unique_work_count">%1$d works</string>
+    <string name="creator_new_work_count">%1$d new works</string>
+    <string name="creator_new_work_unread">New work · unread</string>
+    <string name="creator_view_new_works">View new works</string>
     <string name="creator_work_version_count">%1$d works · %2$d source versions</string>
     <string name="creator_work_search">Find works</string>
     <string name="creator_work_sources_all">All sources</string>

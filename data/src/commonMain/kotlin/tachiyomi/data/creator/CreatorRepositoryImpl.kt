@@ -29,6 +29,7 @@ import tachiyomi.domain.creator.model.AddCreatorAliasesRequest
 import tachiyomi.domain.creator.model.ArchiveAppendOutcome
 import tachiyomi.domain.creator.model.ArchiveDiscovery
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
+import tachiyomi.domain.creator.model.ArchiveUnreadWork
 import tachiyomi.domain.creator.model.ArchiveUpsertOutcome
 import tachiyomi.domain.creator.model.ArchiveWatchPolicy
 import tachiyomi.domain.creator.model.CanonicalWork
@@ -314,6 +315,7 @@ class CreatorRepositoryImpl(
                     lastModifiedAt,
                     followed,
                     uniqueWorkCount,
+                    unreadWorkCount,
                     sourceWorkId,
                     sourceId,
                     stableSourceUrl,
@@ -340,6 +342,7 @@ class CreatorRepositoryImpl(
                     ),
                     followed = followed != 0L,
                     uniqueWorkCount = uniqueWorkCount.toInt(),
+                    unreadWorkCount = unreadWorkCount.toInt(),
                     candidate = sourceWorkId?.let { id ->
                         val naturalKey = SourceWorkNaturalKey(
                             sourceId = checkNotNull(sourceId),
@@ -379,6 +382,7 @@ class CreatorRepositoryImpl(
                     creator = first.creator,
                     followed = first.followed,
                     uniqueWorkCount = first.uniqueWorkCount,
+                    unreadWorkCount = first.unreadWorkCount,
                 ),
                 candidates = creatorRows.mapNotNull(CreatorCardProjectionRow::candidate),
             )
@@ -995,7 +999,10 @@ class CreatorRepositoryImpl(
             commit.sourceWork.sourceId,
             commit.sourceWork.stableSourceUrl.trim(),
         ).executeAsOne()
-        if (existingId == null) {
+        var discovery = author_archiveQueries
+            .getArchiveDiscoveryProjectionById(discoveryId, ::mapArchiveDiscovery)
+            .executeAsOne()
+        if (existingId == null && discovery.state.readState == DiscoveryReadState.UNSEEN) {
             author_archiveQueries.insertArchiveNotificationOutbox(
                 discoveryId = discoveryId,
                 channel = commit.outboxChannel,
@@ -1008,10 +1015,11 @@ class CreatorRepositoryImpl(
             check(outbox.discovery_id == discoveryId && outbox.channel == commit.outboxChannel) {
                 "Discovery idempotency key conflicts with another outbox payload"
             }
+            discovery = author_archiveQueries
+                .getArchiveDiscoveryProjectionById(discoveryId, ::mapArchiveDiscovery)
+                .executeAsOne()
         }
-        return author_archiveQueries
-            .getArchiveDiscoveryProjectionById(discoveryId, ::mapArchiveDiscovery)
-            .executeAsOne()
+        return discovery
     }
 
     private fun Database.appendObservationLanguageAssertion(
@@ -1123,6 +1131,46 @@ class CreatorRepositoryImpl(
             author_archiveQueries.getArchiveUnreadDiscoveries(limit, ::mapArchiveDiscovery)
         }
             .onStart { bootstrap.awaitReady() }
+    }
+
+    override suspend fun getUnreadWorkDiscoveries(limit: Long): List<ArchiveUnreadWork> {
+        bootstrap.awaitReady()
+        require(limit > 0) { "Unread work limit must be positive" }
+        return handler.awaitList {
+            author_archiveQueries.getArchiveUnreadWorkDiscoveries(limit, ::mapArchiveUnreadWork)
+        }
+    }
+
+    override fun observeUnreadWorkDiscoveries(limit: Long): Flow<List<ArchiveUnreadWork>> {
+        require(limit > 0) { "Unread work limit must be positive" }
+        return handler.subscribeToList {
+            author_archiveQueries.getArchiveUnreadWorkDiscoveries(limit, ::mapArchiveUnreadWork)
+        }.onStart { bootstrap.awaitReady() }
+    }
+
+    override suspend fun markWorkSeen(sourceWork: SourceWorkNaturalKey, now: Long) {
+        bootstrap.awaitReady()
+        require(now >= 0L) { "Work read timestamp must not be negative" }
+        handler.await(inTransaction = true) {
+            val canonicalWorkId = author_archiveQueries
+                .getArchiveCanonicalWorkIdBySourceWork(
+                    sourceId = sourceWork.sourceId,
+                    stableSourceUrl = sourceWork.stableSourceUrl.trim(),
+                )
+                .executeAsOneOrNull()
+            if (canonicalWorkId == null) {
+                author_archiveQueries.markArchiveSourceWorkDiscoveriesSeen(
+                    sourceId = sourceWork.sourceId,
+                    stableSourceUrl = sourceWork.stableSourceUrl.trim(),
+                    now = now,
+                )
+            } else {
+                author_archiveQueries.markArchiveCanonicalWorkDiscoveriesSeen(
+                    workId = canonicalWorkId,
+                    now = now,
+                )
+            }
+        }
     }
 
     override suspend fun getDiscoveries(limit: Long): List<ArchiveDiscovery> {
@@ -3532,6 +3580,7 @@ private data class CreatorCardProjectionRow(
     val creator: Creator,
     val followed: Boolean,
     val uniqueWorkCount: Int,
+    val unreadWorkCount: Int,
     val candidate: CreatorCardWorkCandidate?,
 )
 
@@ -3682,6 +3731,8 @@ private fun mapCreatorWorkArchiveRow(
     originalLanguageConfidence: Double?,
     originalLanguageEvidenceKind: String?,
     originalLanguageConflict: Long,
+    unread: Long,
+    unreadFirstDiscoveredAt: Long?,
 ): CreatorWorkArchiveRow {
     val language = if (languageConflict != 0L && languageEvidenceKind != null) {
         LanguageProjectionContract(
@@ -3779,6 +3830,8 @@ private fun mapCreatorWorkArchiveRow(
             publishedDateReason = publishedDateReason,
             latestChapterDateQuality = SourceDateQualityStatus.valueOf(latestChapterDateQuality),
             latestChapterDateReason = latestChapterDateReason,
+            unread = unread != 0L,
+            unreadFirstDiscoveredAt = unreadFirstDiscoveredAt,
         ),
         canonicalWorkId = canonicalWorkId,
         canonicalPortableKey = canonicalPortableKey,
@@ -3796,8 +3849,19 @@ private fun List<CreatorWorkArchiveRow>.toCreatorWorkArchive(): CreatorWorkArchi
             title = checkNotNull(first.canonicalTitle),
             versions = versions.map(CreatorWorkArchiveRow::version),
         )
-    }
-    val ungrouped = filter { it.canonicalWorkId == null }.map(CreatorWorkArchiveRow::version)
+    }.sortedWith(
+        compareByDescending<CanonicalWorkArchiveGroup> { work -> work.versions.any(SourceWorkArchiveVersion::unread) }
+            .thenByDescending { work ->
+                work.versions.mapNotNull(SourceWorkArchiveVersion::unreadFirstDiscoveredAt).minOrNull()
+                    ?: Long.MIN_VALUE
+            }
+            .thenBy { it.portableKey },
+    )
+    val ungrouped = filter { it.canonicalWorkId == null }.map(CreatorWorkArchiveRow::version).sortedWith(
+        compareByDescending<SourceWorkArchiveVersion> { it.unread }
+            .thenByDescending { it.unreadFirstDiscoveredAt ?: Long.MIN_VALUE }
+            .thenBy { "${it.naturalKey.sourceId}:${it.naturalKey.stableSourceUrl}" },
+    )
     return CreatorWorkArchive(
         works = works,
         pending = ungrouped.filter { it.decision?.decision?.state != WorkDecisionState.REJECTED },
@@ -3908,6 +3972,27 @@ private fun mapArchiveDiscovery(
     ),
     firstDiscoveredAt = firstDiscoveredAt,
     lastModifiedAt = lastModifiedAt,
+)
+
+private fun mapArchiveUnreadWork(
+    workKey: String?,
+    creatorId: Long,
+    creatorName: String,
+    creatorIds: String?,
+    representativeDiscoveryId: Long?,
+    sourceId: Long,
+    stableSourceUrl: String,
+    title: String,
+    firstDiscoveredAt: Long?,
+) = ArchiveUnreadWork(
+    workKey = checkNotNull(workKey),
+    creatorId = creatorId,
+    creatorIds = checkNotNull(creatorIds).split(',').mapNotNull { it.toLongOrNull() }.distinct().sorted(),
+    representativeDiscoveryId = checkNotNull(representativeDiscoveryId),
+    sourceWork = SourceWorkNaturalKey(sourceId, stableSourceUrl),
+    title = title,
+    firstDiscoveredAt = checkNotNull(firstDiscoveredAt),
+    creatorName = creatorName,
 )
 
 private fun mapOutboxItem(

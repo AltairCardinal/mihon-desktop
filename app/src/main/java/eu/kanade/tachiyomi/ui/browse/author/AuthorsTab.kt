@@ -111,6 +111,7 @@ import tachiyomi.domain.creator.model.LanguageCertainty
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.SourceDateQualityStatus
 import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
+import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.service.CreatorIdentityEditor
 import tachiyomi.domain.creator.service.OpenCreatorWorkVersion
@@ -362,11 +363,14 @@ internal class AndroidAuthorsScreenModel(
     init {
         loadFirstPage()
         screenModelScope.launch {
-            var previousSnapshot: Pair<List<Creator>, Set<Long>>? = null
+            var previousSnapshot: Triple<List<Creator>, Set<Long>, List<String>>? = null
             combine(
                 getCreators.subscribe(),
                 getCreators.subscribeFollowed().map { rows -> rows.mapTo(mutableSetOf()) { it.creatorId } },
-            ) { creators, followedIds -> creators to followedIds }
+                creatorArchive.observeUnreadWorks(1_000L).map { works ->
+                    works.flatMap { work -> work.creatorIds.map { creatorId -> "$creatorId:${work.workKey}" } }.sorted()
+                },
+            ) { creators, followedIds, unreadWorks -> Triple(creators, followedIds, unreadWorks) }
                 .distinctUntilChanged()
                 .collect { snapshot ->
                     if (previousSnapshot != null && previousSnapshot != snapshot) refreshLoadedPages()
@@ -514,6 +518,13 @@ private fun CreatorCardRow(card: CreatorCardProjection, onClick: () -> Unit) {
         Column(Modifier.fillMaxWidth().testTag("creator-card-${card.creator.id}-heading")) {
             Text(card.creator.displayName)
             Text(stringResource(MR.strings.creator_unique_work_count, card.uniqueWorkCount))
+            if (card.unreadWorkCount > 0) {
+                Text(
+                    stringResource(MR.strings.creator_new_work_count, card.unreadWorkCount),
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.testTag("creator-card-${card.creator.id}-new-work-count"),
+                )
+            }
             if (card.followed) {
                 Text(
                     stringResource(MR.strings.desktop_ui_followed),
@@ -577,10 +588,11 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
             }
         }
         LaunchedEffect(model) {
-            model.openManga.collect {
+            model.openManga.collect { request ->
                 showSourceChooserFor = null
                 sourceFocusRequester = null
-                navigator.push(eu.kanade.tachiyomi.ui.manga.MangaScreen(it))
+                navigator.push(eu.kanade.tachiyomi.ui.manga.MangaScreen(request.mangaId))
+                model.markWorkSeenAfterNavigation(request.sourceWork)
             }
         }
         if (confirmUnfollow) {
@@ -678,6 +690,13 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 if (state.loading) CircularProgressIndicator()
+                state.workOpenError?.let { error ->
+                    Text(
+                        stringResource(MR.strings.desktop_ui_error_reason, error),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("creator-work-open-error"),
+                    )
+                }
                 state.workDisplayModeError?.let { error ->
                     Text(
                         error,
@@ -981,6 +1000,7 @@ private fun CreatorArchiveWorkCard(
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.testTag("creator-work-$key"),
                     )
+                    unreadWorkLabel(version, key)
                     firstSeenDate?.let { date ->
                         Text(
                             stringResource(MR.strings.desktop_ui_first_seen, date),
@@ -1010,6 +1030,7 @@ private fun CreatorArchiveWorkCard(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
                             .testTag("creator-work-$key"),
                     )
+                    unreadWorkLabel(version, key)
                     firstSeenDate?.let { date ->
                         Text(
                             stringResource(MR.strings.desktop_ui_first_seen, date),
@@ -1043,10 +1064,23 @@ private fun CreatorArchiveWorkCard(
                                 .testTag("creator-work-first-seen-$key"),
                         )
                     }
+                    unreadWorkLabel(version, key)
                     content()
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun unreadWorkLabel(version: SourceWorkArchiveVersion?, key: String) {
+    if (version?.unread == true) {
+        Text(
+            stringResource(MR.strings.creator_new_work_unread),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.testTag("creator-work-$key-unread"),
+        )
     }
 }
 
@@ -1219,6 +1253,11 @@ internal data class AuthorState(
     }
 }
 
+internal data class OpenMangaRequest(
+    val mangaId: Long,
+    val sourceWork: SourceWorkNaturalKey,
+)
+
 internal class AndroidAuthorDetailScreenModel(
     private val creatorId: Long,
     private val details: GetCreatorDetails = Injekt.get(),
@@ -1238,7 +1277,7 @@ internal class AndroidAuthorDetailScreenModel(
         ),
     )
     val state: StateFlow<AuthorState> = mutableState.asStateFlow()
-    private val mutableOpenManga = kotlinx.coroutines.flow.MutableSharedFlow<Long>(extraBufferCapacity = 1)
+    private val mutableOpenManga = kotlinx.coroutines.flow.MutableSharedFlow<OpenMangaRequest>(extraBufferCapacity = 1)
     val openManga = mutableOpenManga.asSharedFlow()
     fun openVersion(version: SourceWorkArchiveVersion) = screenModelScope.launch {
         if (mutableState.value.workOpening) return@launch
@@ -1254,7 +1293,7 @@ internal class AndroidAuthorDetailScreenModel(
                     ),
                 ).id
             }
-            mutableOpenManga.emit(opener.await(version))
+            mutableOpenManga.emit(OpenMangaRequest(opener.await(version), version.naturalKey))
         }.onFailure { failure ->
             mutableState.update { it.copy(workOpenError = failure.message ?: failure::class.simpleName) }
         }
@@ -1262,6 +1301,16 @@ internal class AndroidAuthorDetailScreenModel(
     }
 
     fun clearWorkOpenError() = mutableState.update { it.copy(workOpenError = null) }
+
+    suspend fun markWorkSeenAfterNavigation(sourceWork: SourceWorkNaturalKey) {
+        try {
+            archive.markWorkSeen(sourceWork, System.currentTimeMillis())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            mutableState.update { it.copy(workOpenError = failure.message ?: failure::class.simpleName) }
+        }
+    }
     fun isSourceMissing(version: SourceWorkArchiveVersion): Boolean = sources.get(version.naturalKey.sourceId) == null
     fun sourceName(version: SourceWorkArchiveVersion): String = sources.getOrStub(version.naturalKey.sourceId).name
     val identityEditor = CreatorIdentityEditor(creatorId, identity, screenModelScope)

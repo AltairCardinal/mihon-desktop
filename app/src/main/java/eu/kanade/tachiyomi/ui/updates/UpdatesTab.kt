@@ -17,6 +17,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -90,23 +91,19 @@ data object UpdatesTab : Tab {
             hasActiveFilters = state.hasActiveFilters,
         )
 
-        if (state.authorDiscoveries.isNotEmpty()) {
+        if (state.authorUnreadWorks.isNotEmpty()) {
             LazyColumn(Modifier.padding(top = 64.dp)) {
-                items(state.authorDiscoveries, key = { "author-${it.id}" }) { discovery ->
+                items(state.authorUnreadWorks, key = { "author-work-${it.workKey}" }) { work ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = {
-                            screenModel.markAuthorDiscoverySeen(discovery.id)
-                            navigator.push(AndroidAuthorDetailScreen(discovery.creatorId))
-                        }) { Text(discovery.title) }
-                        Button(onClick = { screenModel.ignoreAuthorDiscovery(discovery.id) }) {
+                            navigator.push(AndroidAuthorDetailScreen(work.creatorId))
+                        }) { Text(stringResource(MR.strings.creator_view_new_works)) }
+                        Text(
+                            stringResource(MR.strings.creator_new_work_count, 1),
+                            modifier = Modifier.testTag("author-new-work-${work.workKey}"),
+                        )
+                        Button(onClick = { screenModel.ignoreAuthorDiscovery(work.representativeDiscoveryId) }) {
                             Text(stringResource(MR.strings.action_ignore))
-                        }
-                        if (discovery.state.reviewDisposition ==
-                            tachiyomi.domain.creator.model.ReviewDisposition.IGNORED
-                        ) {
-                            Button(onClick = { screenModel.undoAuthorDiscovery(discovery.id) }) {
-                                Text(stringResource(MR.strings.action_undo))
-                            }
                         }
                     }
                 }

@@ -175,7 +175,7 @@ TDD红绿记录：`ax01-android-author-card-layout-red2` exit 1，真实320dp mo
 
 ### AX-05 · 新作未查看状态与提醒闭环
 
-- [ ] AX-05：交付应用内新作提醒及持久化查看，A09–A11/A14通过。
+- [x] AX-05：交付应用内新作提醒及持久化查看，A09–A11/A14通过。
 
 **用户结果**：关注作者有新作时提示，双图源同作只算1部；进入作者页和取消窗口不清除，成功打开任一漫画版本后清除，重启不复发。
 
@@ -195,6 +195,19 @@ TDD红绿记录：`ax01-android-author-card-layout-red2` exit 1，真实320dp mo
 **审查关口**：查看去重、迁移与通知数据完整性须独立审查，并在AX-06之前关闭阻塞。与AX-03不同的审查里程碑须在启动执行时明确范围/预算，不无限追加轮次。
 
 **边界**：不按标题自动判同作，不改已有系统通知中心外观，不将通知发送当已查看，不新增周期配置。
+
+**执行证据**：
+
+| 范围 | 命令/记录 | 结果 |
+|---|---|---|
+| 作品级 SQL 投影与持久化 | `ax05-red-uncanonical1`、`ax05-green-uncanonical-multiauthor1`、`ax05-red-multiauthor1`、`ax05-data-focused7`；`:data:jvmTest --tests tachiyomi.data.creator.CreatorRepositoryImplTest` | 红测分别证明无 canonical 未读标记缺失、同时间代表受 discovery id 影响；绿测通过无 canonical、稳定作者键/来源键代表、两源去重、标记已读、重启和迟到来源抑制 |
+| 关注状态、outbox 与返回投影 | `ax05-green-disabled-history2`、`ax05-red-outbox-return1`、`ax05-green-outbox-return1` | 取消关注只隐藏未读提醒但保留已读历史；迟到来源不创建新 outbox；新 discovery 返回 `PENDING` delivery state |
+| Android 生产接线 | `ax05-android-navigation-test3`；`:app:testReleaseUnitTest --tests eu.kanade.tachiyomi.ui.browse.author.AndroidAuthorArchiveWiringTest` | 真实 SQLite 与 Android ScreenModel 验证导航请求未被消费前保持未读，导航确认后按 canonical/source 成员事务清除；打开失败和标记失败保留状态并在详情页显示错误 |
+| Desktop 生产接线 | `ax05-desktop-authors-test6`、`ax05-desktop-updates-test6`；`:app-desktop:jvmTest --tests mihon.desktop.ui.authors.AuthorsProductionWiringTest --tests mihon.desktop.updates.UpdatesScreenModelTest` | 真实 SQLite、作者详情和更新页验证作品提醒、取消关注过滤、三布局未读标记及导航确认后的清除 |
+| 双端编译与格式 | `ax05-p1-p2-compile1`；`ax05-spotless-final5`；`git diff --check` | Android/Desktop/data 编译通过；Spotless 通过；diff 无空白错误（仅 CRLF 转换提示） |
+| 独立审查 | `/root/ax03_review` 初审及修复复审 | 初审的无 canonical、稳定代表、取消关注和导航时序问题已关闭；修复复审提出的错误可见性与 outbox 返回时序已由本批红绿测试和双端编译关闭 |
+
+**实现边界与维护说明**：作品级未读状态复用现有 source discovery、`read_state` 和 outbox 事实，没有新增 schema/migration 或备份字段。canonical work 使用所有当前 source member 进行事务性 `markWorkSeen`，未 canonical work 只标记对应 source work；enabled watch 过滤只影响提醒视图，已读历史仍保留。作者卡片、作者详情三种布局、Android/Desktop 更新页均读取真实 repository 投影；来源选择器关闭、进入作者页或通知投递成功不会自动清除，只有 `navigator.push` 成功后才标记。标记失败保留未读并在作者详情页显示原因。多作者代表按最早发现时间、稳定 creator portable key、稳定 source key、discovery id 选择；不按标题自动合并，canonical merge/split 继续由既有关系事实决定。
 
 ### AX-06 · 双端整合与正式运行验收
 

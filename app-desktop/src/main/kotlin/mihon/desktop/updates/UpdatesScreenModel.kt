@@ -15,6 +15,7 @@ import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.creator.model.ArchiveDiscovery
+import tachiyomi.domain.creator.model.ArchiveUnreadWork
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.DiscoveryReadState
 import tachiyomi.domain.creator.model.ReviewDisposition
@@ -39,10 +40,14 @@ data class UpdatesState(
     val filterBookmarked: TriState = TriState.DISABLED,
     val filterExcludedScanlators: Boolean = false,
     val creatorDiscoveries: List<ArchiveDiscovery> = emptyList(),
+    val unreadWorks: List<ArchiveUnreadWork> = emptyList(),
     val showCreatorDiscoveries: Boolean = true,
     val creatorLanguageFilter: LanguageArchiveFilter = LanguageArchiveFilter.ALL,
 ) {
-    val unreadDiscoveryCount: Int get() = creatorDiscoveries.count { it.state.readState == DiscoveryReadState.UNSEEN }
+    val unreadDiscoveryCount: Int
+        get() = if (unreadWorks.isNotEmpty()) unreadWorks.size else {
+            creatorDiscoveries.count { it.state.readState == DiscoveryReadState.UNSEEN }
+        }
 
     val hasActiveFilters: Boolean
         get() = listOf(filterUnread, filterDownloaded, filterStarted, filterBookmarked)
@@ -121,6 +126,8 @@ class UpdatesScreenModel(
             }
         }.orEmpty()
         _state.update { it.copy(creatorDiscoveries = discoveries) }
+        val unreadWorks = creatorArchiveRepository?.getUnreadWorkDiscoveries(DISCOVERY_LIMIT).orEmpty()
+        _state.update { it.copy(unreadWorks = unreadWorks) }
         applyVisibleItems()
     }
 
@@ -147,7 +154,13 @@ class UpdatesScreenModel(
             it.state.readState == DiscoveryReadState.UNSEEN
         }
         updateChapter.awaitAll(unreadItems.map { ChapterUpdate(id = it.chapterId, read = true) })
-        creatorArchiveRepository?.markDiscoveriesSeen(unreadDiscoveries.mapTo(mutableSetOf(), ArchiveDiscovery::id), now())
+        if (state.value.unreadWorks.isNotEmpty()) {
+            state.value.unreadWorks.forEach { work ->
+                creatorArchiveRepository?.markWorkSeen(work.sourceWork, now())
+            }
+        } else {
+            creatorArchiveRepository?.markDiscoveriesSeen(unreadDiscoveries.mapTo(mutableSetOf(), ArchiveDiscovery::id), now())
+        }
         val unreadIds = unreadItems.map { it.chapterId }.toSet()
         val unreadDiscoveryIds = unreadDiscoveries.mapTo(mutableSetOf(), ArchiveDiscovery::id)
         rawItems = rawItems.map { if (it.chapterId in unreadIds) it.copy(read = true) else it }
@@ -161,6 +174,7 @@ class UpdatesScreenModel(
                         discovery
                     }
                 },
+                unreadWorks = emptyList(),
                 showMarkAllReadDialog = false,
             )
         }

@@ -24,16 +24,21 @@ import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.domain.creator.model.ArchiveAppendOutcome
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.ArchiveUpsertOutcome
+import tachiyomi.domain.creator.model.ArchiveWatchPolicy
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.CreatorRelationOrigin
 import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.DecisionActor
 import tachiyomi.domain.creator.model.DiscoveryCandidateState
+import tachiyomi.domain.creator.model.DiscoveryCommit
+import tachiyomi.domain.creator.model.DiscoveryKind
+import tachiyomi.domain.creator.model.DiscoveryReadState
 import tachiyomi.domain.creator.model.LanguageAssertionContract
 import tachiyomi.domain.creator.model.LanguageCertainty
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.LanguageEvidenceKind
+import tachiyomi.domain.creator.model.NotificationDeliveryState
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.StaleWorkDecisionException
 import tachiyomi.domain.creator.model.WorkDecisionContract
@@ -50,6 +55,252 @@ class CreatorRepositoryImplTest {
     private lateinit var repository: CreatorRepositoryImpl
     private lateinit var driver: JdbcSqliteDriver
     private lateinit var handler: JvmDatabaseHandler
+
+    @Test
+    fun `unread work projection suppresses late sources after read`() = runBlocking<Unit> {
+        val creator = repository.upsertCreator("Unread Author")
+        val watchPolicy = ArchiveWatchPolicy(
+            creatorId = creator.id,
+            enabled = true,
+            periodMillis = 1_000L,
+            sourceIds = setOf(10L, 11L, 12L),
+            readingLanguageTags = emptySet(),
+        )
+        repository.upsertWatchPolicy(
+            watchPolicy,
+            now = 1L,
+        )
+        val first = SourceWorkNaturalKey(10L, "/same-a")
+        val second = SourceWorkNaturalKey(11L, "/same-b")
+        val late = SourceWorkNaturalKey(12L, "/same-c")
+        listOf(first, second, late).forEachIndexed { index, key ->
+            repository.upsertSourceWork(
+                key.sourceId,
+                key.stableSourceUrl,
+                null,
+                "Same Work",
+                "Unread Author",
+                null,
+                null,
+                10L + index,
+            )
+            repository.upsertSourceWorkCreator(
+                sourceWork = key,
+                creatorId = creator.id,
+                role = CreatorRole.AUTHOR,
+                order = 0L,
+                origin = CreatorRelationOrigin.AUTOMATIC,
+                verification = CreatorRelationVerification.VERIFIED,
+                sourceText = "Unread Author",
+                confidence = 1.0,
+                evidence = "fixture",
+            )
+        }
+        val canonical = repository.createCanonicalWork("Same Work", creator.id, null)
+        listOf(first, second, late).forEachIndexed { index, key ->
+            repository.appendWorkDecision(
+                sourceWork = key,
+                workId = canonical.id,
+                decision = tachiyomi.domain.creator.model.WorkDecisionContract(
+                    state = WorkDecisionState.CONFIRMED,
+                    actor = DecisionActor.USER,
+                    explicit = true,
+                ),
+                algorithmVersion = null,
+                score = 1.0,
+                evidence = "fixture",
+                decidedAt = 20L + index,
+                idempotencyKey = "unread-decision-${key.sourceId}",
+            )
+        }
+        suspend fun commit(key: SourceWorkNaturalKey, at: Long) = repository.commitDiscovery(
+            DiscoveryCommit(
+                creatorId = creator.id,
+                sourceWork = key,
+                kind = DiscoveryKind.NEW_WORK_CANDIDATE,
+                reason = "fixture",
+                baselineGeneration = 1L,
+                discoveredAt = at,
+                outboxChannel = "TEST",
+                idempotencyKey = "unread-discovery-${key.sourceId}",
+            ),
+        )
+
+        commit(second, 101L).state.deliveryState shouldBe NotificationDeliveryState.PENDING
+        commit(first, 100L)
+        val unreadWork = repository.getUnreadWorkDiscoveries(10L).single()
+        unreadWork.sourceWork shouldBe first
+        unreadWork.firstDiscoveredAt shouldBe 100L
+        repository.getCreatorWorkArchive(creator.id).works.single().versions.all { it.unread } shouldBe true
+        repository.getCreatorCardProjectionPage(0, 10, followedOnly = true).creators.single().unreadWorkCount shouldBe 1
+        repository.upsertWatchPolicy(watchPolicy.copy(enabled = false), now = 150L)
+        repository.getUnreadDiscoveries(10L) shouldBe emptyList()
+        repository.getUnreadWorkDiscoveries(10L) shouldBe emptyList()
+        repository.getDiscoveries(10L).filter { it.state.readState == DiscoveryReadState.UNSEEN } shouldBe emptyList()
+        repository.getCreatorCardProjectionPage(0, 10, followedOnly = false)
+            .creators.single().unreadWorkCount shouldBe 0
+        repository.upsertWatchPolicy(watchPolicy, now = 160L)
+        repository.getUnreadWorkDiscoveries(10L).single().sourceWork shouldBe first
+        repository.markWorkSeen(first, 200L)
+        repository.getUnreadWorkDiscoveries(10L) shouldBe emptyList()
+        repository.getCreatorWorkArchive(creator.id).works.single().versions.any { it.unread } shouldBe false
+        repository.getCreatorCardProjectionPage(0, 10, followedOnly = true).creators.single().unreadWorkCount shouldBe 0
+
+        val restarted = CreatorRepositoryImpl(handler)
+        restarted.getUnreadWorkDiscoveries(10L) shouldBe emptyList()
+        restarted.commitDiscovery(
+            DiscoveryCommit(
+                creatorId = creator.id,
+                sourceWork = late,
+                kind = DiscoveryKind.NEW_WORK_CANDIDATE,
+                reason = "fixture",
+                baselineGeneration = 1L,
+                discoveredAt = 300L,
+                outboxChannel = "TEST",
+                idempotencyKey = "unread-discovery-${late.sourceId}",
+            ),
+        )
+        restarted.getUnreadDiscoveries(10L).filter { it.sourceWork == late } shouldBe emptyList()
+        restarted.getUnreadWorkDiscoveries(10L) shouldBe emptyList()
+        queryLong("SELECT COUNT(*) FROM author_archive_discoveries WHERE read_state = 'SEEN'") shouldBe 3L
+        queryLong("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 2L
+    }
+
+    @Test
+    fun `uncanonical unread source work is projected into the author archive`() = runBlocking<Unit> {
+        val creator = repository.upsertCreator("Uncanonical Author")
+        val watchPolicy = ArchiveWatchPolicy(
+            creatorId = creator.id,
+            enabled = true,
+            periodMillis = 1_000L,
+            sourceIds = setOf(31L),
+            readingLanguageTags = emptySet(),
+        )
+        repository.upsertWatchPolicy(watchPolicy, now = 1L)
+        val sourceWork = SourceWorkNaturalKey(31L, "/uncanonical")
+        repository.upsertSourceWork(
+            31L,
+            sourceWork.stableSourceUrl,
+            null,
+            "Uncanonical Work",
+            creator.displayName,
+            null,
+            null,
+            10L,
+        )
+        repository.upsertSourceWorkCreator(
+            sourceWork = sourceWork,
+            creatorId = creator.id,
+            role = CreatorRole.AUTHOR,
+            order = 0L,
+            origin = CreatorRelationOrigin.AUTOMATIC,
+            verification = CreatorRelationVerification.VERIFIED,
+            sourceText = creator.displayName,
+            confidence = 1.0,
+            evidence = "fixture",
+        )
+        repository.commitDiscovery(
+            DiscoveryCommit(
+                creatorId = creator.id,
+                sourceWork = sourceWork,
+                kind = DiscoveryKind.NEW_WORK_CANDIDATE,
+                reason = "fixture",
+                baselineGeneration = 1L,
+                discoveredAt = 100L,
+                outboxChannel = "TEST",
+                idempotencyKey = "uncanonical-discovery",
+            ),
+        )
+
+        val pending = repository.getCreatorWorkArchive(creator.id).pending.single()
+        pending.unread shouldBe true
+        pending.unreadFirstDiscoveredAt shouldBe 100L
+        repository.getCreatorCardProjectionPage(0, 10, followedOnly = false)
+            .creators.single().unreadWorkCount shouldBe 1
+
+        repository.markWorkSeen(sourceWork, 200L)
+        repository.getCreatorWorkArchive(creator.id).pending.single().unread shouldBe false
+    }
+
+    @Test
+    fun `same-time multi-author unread work chooses the stable creator key`() = runBlocking<Unit> {
+        val firstCreator = repository.upsertCreator("First Stable Author")
+        val secondCreator = repository.upsertCreator("Second Stable Author")
+        val sourceWork = SourceWorkNaturalKey(32L, "/multi-author")
+        listOf(firstCreator, secondCreator).forEach { creator ->
+            repository.upsertWatchPolicy(
+                ArchiveWatchPolicy(
+                    creatorId = creator.id,
+                    enabled = true,
+                    periodMillis = 1_000L,
+                    sourceIds = setOf(sourceWork.sourceId),
+                    readingLanguageTags = emptySet(),
+                ),
+                now = 1L,
+            )
+        }
+        repository.upsertSourceWork(
+            32L,
+            sourceWork.stableSourceUrl,
+            null,
+            "Shared Stable Work",
+            "First Stable Author, Second Stable Author",
+            null,
+            null,
+            10L,
+        )
+        listOf(firstCreator, secondCreator).forEachIndexed { index, creator ->
+            repository.upsertSourceWorkCreator(
+                sourceWork = sourceWork,
+                creatorId = creator.id,
+                role = CreatorRole.AUTHOR,
+                order = index.toLong(),
+                origin = CreatorRelationOrigin.AUTOMATIC,
+                verification = CreatorRelationVerification.VERIFIED,
+                sourceText = creator.displayName,
+                confidence = 1.0,
+                evidence = "fixture",
+            )
+        }
+        val canonical = repository.createCanonicalWork("Shared Stable Work", firstCreator.id, null)
+        repository.appendWorkDecision(
+            sourceWork = sourceWork,
+            workId = canonical.id,
+            decision = WorkDecisionContract(
+                state = WorkDecisionState.CONFIRMED,
+                actor = DecisionActor.USER,
+                explicit = true,
+            ),
+            algorithmVersion = null,
+            score = 1.0,
+            evidence = "fixture",
+            decidedAt = 20L,
+            idempotencyKey = "multi-author-decision",
+        )
+        val expectedCreator = queryLong(
+            "SELECT _id FROM author_archive_creators ORDER BY portable_key LIMIT 1",
+        )
+        val firstCommitCreator = if (expectedCreator == firstCreator.id) secondCreator else firstCreator
+        val secondCommitCreator = if (expectedCreator == firstCreator.id) firstCreator else secondCreator
+        listOf(firstCommitCreator, secondCommitCreator).forEachIndexed { index, creator ->
+            repository.commitDiscovery(
+                DiscoveryCommit(
+                    creatorId = creator.id,
+                    sourceWork = sourceWork,
+                    kind = DiscoveryKind.NEW_WORK_CANDIDATE,
+                    reason = "fixture",
+                    baselineGeneration = 1L,
+                    discoveredAt = 100L,
+                    outboxChannel = "TEST",
+                    idempotencyKey = "multi-author-discovery-$index",
+                ),
+            )
+        }
+
+        val unread = repository.getUnreadWorkDiscoveries(10L).single()
+        unread.creatorId shouldBe expectedCreator
+        unread.creatorIds.toSet() shouldBe setOf(firstCreator.id, secondCreator.id)
+    }
 
     @BeforeEach
     fun setup() {

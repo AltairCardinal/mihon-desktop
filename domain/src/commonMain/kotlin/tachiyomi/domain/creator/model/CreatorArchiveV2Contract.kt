@@ -262,6 +262,8 @@ data class SourceWorkArchiveVersion(
     val publishedDateReason: String? = null,
     val latestChapterDateQuality: SourceDateQualityStatus = SourceDateQualityStatus.UNKNOWN,
     val latestChapterDateReason: String? = null,
+    val unread: Boolean = false,
+    val unreadFirstDiscoveredAt: Long? = null,
 )
 
 data class CanonicalWorkArchiveGroup(

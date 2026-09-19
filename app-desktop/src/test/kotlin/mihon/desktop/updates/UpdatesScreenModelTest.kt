@@ -25,6 +25,7 @@ import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaCover
 import tachiyomi.domain.creator.model.ArchiveDiscovery
+import tachiyomi.domain.creator.model.ArchiveUnreadWork
 import tachiyomi.domain.creator.model.DiscoveryKind
 import tachiyomi.domain.creator.model.DiscoveryReadState
 import tachiyomi.domain.creator.model.DiscoveryStateVector
@@ -152,6 +153,7 @@ class UpdatesScreenModelTest {
         val archive = mockk<CreatorArchiveRepository>()
         val discovery = sampleDiscovery()
         coEvery { archive.getDiscoveries(any()) } returns listOf(discovery)
+        coEvery { archive.getUnreadWorkDiscoveries(any()) } returns emptyList()
         coEvery { archive.getLanguageProjection(any(), LanguageDimension.READING) } returns LanguageProjectionContract(
             LanguageDimension.READING,
             "ja",
@@ -177,6 +179,34 @@ class UpdatesScreenModelTest {
         coVerify { archive.setDiscoveryReview(discovery.id, ReviewDisposition.IGNORED, any()) }
         model.undoDiscoveryReview(discovery)
         coVerify { archive.setDiscoveryReview(discovery.id, ReviewDisposition.PENDING, any()) }
+    }
+
+    @Test
+    fun `markAllRead marks work-level reminders through the archive`() = runTest {
+        val archive = mockk<CreatorArchiveRepository>()
+        val work = ArchiveUnreadWork(
+            workKey = "source:7:/new-work",
+            creatorId = 11L,
+            creatorIds = listOf(11L),
+            representativeDiscoveryId = 31L,
+            sourceWork = SourceWorkNaturalKey(7L, "/new-work"),
+            title = "New work",
+            firstDiscoveredAt = 100L,
+            creatorName = "Author",
+        )
+        coEvery { archive.getDiscoveries(any()) } returns emptyList()
+        coEvery { archive.getUnreadWorkDiscoveries(any()) } returns listOf(work)
+        coEvery { archive.markWorkSeen(any(), any()) } returns Unit
+        val model = buildModel(creatorArchiveRepository = archive)
+
+        model.loadUpdates(Instant.EPOCH)
+        assertEquals(1, model.state.value.unreadDiscoveryCount)
+        model.setShowMarkAllReadDialog(true)
+        model.markAllRead()
+
+        coVerify(exactly = 1) { archive.markWorkSeen(work.sourceWork, any()) }
+        assertTrue(model.state.value.unreadWorks.isEmpty())
+        assertFalse(model.state.value.showMarkAllReadDialog)
     }
 
     private fun buildModel(

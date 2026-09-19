@@ -26,6 +26,7 @@ data class CreatorCardProjection(
     val creator: Creator,
     val followed: Boolean,
     val uniqueWorkCount: Int,
+    val unreadWorkCount: Int = 0,
     val representativeWorks: List<CreatorCardWorkCandidate> = emptyList(),
 )
 

@@ -50,6 +50,7 @@ import eu.kanade.tachiyomi.source.CatalogueSource
 import mihon.desktop.DesktopUiDependencies
 import tachiyomi.domain.creator.service.OpenCreatorWorkVersion
 import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
+import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.service.CreatorIdentityEditor
 import tachiyomi.domain.creator.model.WorkDecisionProjection
@@ -152,8 +153,11 @@ class AuthorsRootScreenModel(
                 getCreators.subscribe(),
                 getCreators.subscribeFollowed().map { rows -> rows.mapTo(mutableSetOf()) { it.creatorId } },
                 preferredLanguageChanges,
-            ) { creators, followedIds, languages ->
-                CreatorListRefreshSnapshot(creators, followedIds, languages)
+                creatorArchive.observeUnreadWorks(1_000L).map { works ->
+                    works.flatMap { work -> work.creatorIds.map { creatorId -> "$creatorId:${work.workKey}" } }.sorted()
+                },
+            ) { creators, followedIds, languages, unreadWorks ->
+                CreatorListRefreshSnapshot(creators, followedIds, languages, unreadWorks)
             }.distinctUntilChanged().collect { snapshot ->
                 if (previousSnapshot != null && previousSnapshot != snapshot) refreshLoadedPages()
                 previousSnapshot = snapshot
@@ -322,6 +326,7 @@ private data class CreatorListRefreshSnapshot(
     val creators: List<Creator>,
     val followedIds: Set<Long>,
     val preferredLanguages: Set<String>,
+    val unreadWorks: List<String>,
 )
 
 private const val CREATOR_CARD_PAGE_SIZE = 50
@@ -372,7 +377,7 @@ data class AuthorDetailState(
 }
 
 sealed interface AuthorDetailEffect {
-    data class OpenManga(val mangaId: Long) : AuthorDetailEffect
+    data class OpenManga(val mangaId: Long, val sourceWork: SourceWorkNaturalKey) : AuthorDetailEffect
     data class OpenCreator(val creatorId: Long) : AuthorDetailEffect
     data class OpenWorkCompare(val candidateId: Long, val creatorId: Long) : AuthorDetailEffect
     data object IdentityMerged : AuthorDetailEffect
@@ -510,7 +515,7 @@ internal class AuthorDetailScreenModel(
                     authorArchiveVersionSourceManga(listed), listed.naturalKey.sourceId,
                 ).manga.id
             }
-            mutableEffects.emit(AuthorDetailEffect.OpenManga(opener.await(version)))
+            mutableEffects.emit(AuthorDetailEffect.OpenManga(opener.await(version), version.naturalKey))
         }.onFailure { error ->
             mutableState.update { it.copy(workOpenError = error.message ?: error::class.simpleName) }
         }
@@ -518,6 +523,16 @@ internal class AuthorDetailScreenModel(
     }
 
     fun clearWorkOpenError() = mutableState.update { it.copy(workOpenError = null) }
+
+    suspend fun markWorkSeenAfterNavigation(sourceWork: SourceWorkNaturalKey) {
+        try {
+            creatorArchive?.markWorkSeen(sourceWork, System.currentTimeMillis())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            mutableState.update { it.copy(workOpenError = error.message ?: error::class.simpleName) }
+        }
+    }
 
     fun openCandidate(candidate: DiscoveryCandidate) {
         mutableEffects.tryEmit(AuthorDetailEffect.OpenWorkCompare(candidate.id, activeCreatorId))

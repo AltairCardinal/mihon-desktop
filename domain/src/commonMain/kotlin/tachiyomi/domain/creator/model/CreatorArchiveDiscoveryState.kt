@@ -153,6 +153,18 @@ data class ArchiveDiscovery(
     ),
 )
 
+/** A single unread work projected from one or more source-level discovery rows. */
+data class ArchiveUnreadWork(
+    val workKey: String,
+    val creatorId: Long,
+    val creatorIds: List<Long>,
+    val representativeDiscoveryId: Long,
+    val sourceWork: SourceWorkNaturalKey,
+    val title: String,
+    val firstDiscoveredAt: Long,
+    val creatorName: String = "",
+)
+
 data class NotificationOutboxItem(
     val id: Long,
     val discoveryId: Long,

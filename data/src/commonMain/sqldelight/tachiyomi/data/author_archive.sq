@@ -3410,6 +3410,34 @@ SELECT
         AND OTHER_OLA.evidence_kind != 'MANUAL'
         AND OTHER_OLA.language_tag != OLA.language_tag
     ) THEN 1 ELSE 0 END AS original_language_conflict
+    ,CASE WHEN EXISTS(
+        SELECT 1
+        FROM author_archive_discoveries UNREAD_D
+        JOIN author_archive_watches UNREAD_W ON UNREAD_W._id = UNREAD_D.watch_id
+        LEFT JOIN author_archive_canonical_versions UNREAD_CV
+            ON UNREAD_CV.source_work_id = UNREAD_D.source_work_id
+        WHERE UNREAD_W.creator_id = :creatorId
+        AND UNREAD_W.enabled = 1
+        AND UNREAD_D.read_state = 'UNSEEN'
+        AND (
+            (CV.work_id IS NOT NULL AND UNREAD_CV.work_id = CV.work_id)
+            OR (CV.work_id IS NULL AND UNREAD_D.source_work_id = SW._id)
+        )
+    ) THEN 1 ELSE 0 END AS unread,
+    (
+        SELECT min(UNREAD_D.first_discovered_at)
+        FROM author_archive_discoveries UNREAD_D
+        JOIN author_archive_watches UNREAD_W ON UNREAD_W._id = UNREAD_D.watch_id
+        LEFT JOIN author_archive_canonical_versions UNREAD_CV
+            ON UNREAD_CV.source_work_id = UNREAD_D.source_work_id
+        WHERE UNREAD_W.creator_id = :creatorId
+        AND UNREAD_W.enabled = 1
+        AND UNREAD_D.read_state = 'UNSEEN'
+        AND (
+            (CV.work_id IS NOT NULL AND UNREAD_CV.work_id = CV.work_id)
+            OR (CV.work_id IS NULL AND UNREAD_D.source_work_id = SW._id)
+        )
+    ) AS unread_first_discovered_at
 FROM author_archive_source_works SW
 JOIN author_archive_source_work_creators SWC ON SWC.source_work_id = SW._id
 LEFT JOIN author_archive_watches W ON W.creator_id = SWC.creator_id
@@ -3610,6 +3638,14 @@ WITH page_creators AS (
     FROM card_work_candidates
     WHERE relation_verification = 'VERIFIED'
     GROUP BY creator_id
+), card_unread_counts AS (
+    SELECT R.creator_id, count(DISTINCT R.work_key) AS unread_work_count
+    FROM card_work_candidates R
+    JOIN author_archive_discoveries D ON D.source_work_id = R.source_work_id
+    JOIN author_archive_watches W ON W._id = D.watch_id AND W.creator_id = R.creator_id
+    WHERE W.enabled = 1
+    AND D.read_state = 'UNSEEN'
+    GROUP BY R.creator_id
 )
 SELECT
     P.creator_id,
@@ -3621,6 +3657,7 @@ SELECT
     P.last_modified_at,
     P.followed,
     coalesce(CWC.unique_work_count, 0) AS unique_work_count,
+    coalesce(CUC.unread_work_count, 0) AS unread_work_count,
     CAND.source_work_id,
     CAND.source_id,
     CAND.stable_source_url,
@@ -3636,6 +3673,7 @@ SELECT
     CAND.source_language
 FROM page_creators P
 LEFT JOIN card_work_counts CWC ON CWC.creator_id = P.creator_id
+LEFT JOIN card_unread_counts CUC ON CUC.creator_id = P.creator_id
 LEFT JOIN card_work_candidates CAND ON CAND.creator_id = P.creator_id
 ORDER BY P.sort_name COLLATE NOCASE, P.display_name COLLATE NOCASE, P.creator_id,
     CAND.candidate_title COLLATE NOCASE, CAND.source_id, CAND.stable_source_url;
@@ -3990,12 +4028,53 @@ INSERT INTO author_archive_discoveries(
 )
 SELECT
     W._id, SW._id, :kind, :reason, :baselineGeneration,
-    'UNSEEN', 'PENDING', :discoveredAt, :discoveredAt
+    CASE WHEN EXISTS (
+        SELECT 1
+        FROM author_archive_discoveries EXISTING_D
+        LEFT JOIN author_archive_canonical_versions EXISTING_CV
+            ON EXISTING_CV.source_work_id = EXISTING_D.source_work_id
+        LEFT JOIN author_archive_canonical_versions CURRENT_CV
+            ON CURRENT_CV.source_work_id = SW._id
+        WHERE EXISTING_D.read_state = 'SEEN'
+        AND (
+            (CURRENT_CV.work_id IS NOT NULL AND EXISTING_CV.work_id = CURRENT_CV.work_id)
+            OR (CURRENT_CV.work_id IS NULL AND EXISTING_D.source_work_id = SW._id)
+        )
+    ) THEN 'SEEN' ELSE 'UNSEEN' END,
+    'PENDING', :discoveredAt, :discoveredAt
 FROM author_archive_watches W
 JOIN author_archive_source_works SW
     ON SW.source_id = :sourceId AND SW.stable_source_url = :stableSourceUrl
 WHERE W.creator_id = :creatorId
 ON CONFLICT(watch_id, source_work_id) DO NOTHING;
+
+getArchiveCanonicalWorkIdBySourceWork:
+SELECT CV.work_id
+FROM author_archive_canonical_versions CV
+JOIN author_archive_source_works SW ON SW._id = CV.source_work_id
+WHERE SW.source_id = :sourceId
+AND SW.stable_source_url = :stableSourceUrl;
+
+markArchiveSourceWorkDiscoveriesSeen:
+UPDATE author_archive_discoveries
+SET read_state = 'SEEN', last_modified_at = :now
+WHERE source_work_id = (
+    SELECT _id
+    FROM author_archive_source_works
+    WHERE source_id = :sourceId
+    AND stable_source_url = :stableSourceUrl
+)
+AND read_state = 'UNSEEN';
+
+markArchiveCanonicalWorkDiscoveriesSeen:
+UPDATE author_archive_discoveries
+SET read_state = 'SEEN', last_modified_at = :now
+WHERE source_work_id IN (
+    SELECT source_work_id
+    FROM author_archive_canonical_versions
+    WHERE work_id = :workId
+)
+AND read_state = 'UNSEEN';
 
 getArchiveDiscoveryByNaturalKey:
 SELECT D._id
@@ -4041,8 +4120,85 @@ FROM author_archive_discoveries D
 JOIN author_archive_watches W ON W._id = D.watch_id
 JOIN author_archive_source_works SW ON SW._id = D.source_work_id
 LEFT JOIN author_archive_notification_outbox O ON O.discovery_id = D._id
-WHERE D.read_state = 'UNSEEN'
+WHERE W.enabled = 1
+AND D.read_state = 'UNSEEN'
 ORDER BY D.first_discovered_at DESC, D._id DESC
+LIMIT :limit;
+
+getArchiveUnreadWorkDiscoveries:
+WITH unread AS (
+    SELECT
+        D._id AS discovery_id,
+        W.creator_id,
+        C.portable_key AS creator_key,
+        C.display_name AS creator_name,
+        SW.source_id,
+        SW.stable_source_url,
+        CAST(SW.source_id AS TEXT) || ':' || SW.stable_source_url AS source_key,
+        SW.title,
+        D.first_discovered_at,
+        CASE
+            WHEN CW.portable_key IS NOT NULL THEN 'canonical:' || CW.portable_key
+            ELSE 'source:' || SW.source_id || ':' || SW.stable_source_url
+        END AS work_key
+    FROM author_archive_discoveries D
+    JOIN author_archive_watches W ON W._id = D.watch_id
+    JOIN author_archive_creators C ON C._id = W.creator_id
+    JOIN author_archive_source_works SW ON SW._id = D.source_work_id
+    LEFT JOIN author_archive_canonical_versions CV ON CV.source_work_id = SW._id
+    LEFT JOIN author_archive_canonical_works CW ON CW._id = CV.work_id AND CW.status = 'ACTIVE'
+    WHERE W.enabled = 1
+    AND D.read_state = 'UNSEEN'
+), representative_times AS (
+    SELECT work_key, min(first_discovered_at) AS first_discovered_at
+    FROM unread
+    GROUP BY work_key
+), representative_creators AS (
+    SELECT U.work_key, min(U.creator_key) AS creator_key
+    FROM unread U
+    JOIN representative_times T
+        ON T.work_key = U.work_key
+        AND T.first_discovered_at = U.first_discovered_at
+    GROUP BY U.work_key
+), representative_sources AS (
+    SELECT U.work_key, min(U.source_key) AS source_key
+    FROM unread U
+    JOIN representative_times T
+        ON T.work_key = U.work_key
+        AND T.first_discovered_at = U.first_discovered_at
+    JOIN representative_creators C
+        ON C.work_key = U.work_key
+        AND C.creator_key = U.creator_key
+    GROUP BY U.work_key
+), representatives AS (
+    SELECT U.work_key, min(U.discovery_id) AS representative_discovery_id
+    FROM unread U
+    JOIN representative_times T
+        ON T.work_key = U.work_key
+        AND T.first_discovered_at = U.first_discovered_at
+    JOIN representative_creators C
+        ON C.work_key = U.work_key
+        AND C.creator_key = U.creator_key
+    JOIN representative_sources S
+        ON S.work_key = U.work_key
+        AND S.source_key = U.source_key
+    GROUP BY U.work_key
+)
+SELECT
+    R.work_key,
+    REP.creator_id,
+    REP.creator_name,
+    group_concat(DISTINCT CAST(U.creator_id AS TEXT)) AS creator_ids,
+    R.representative_discovery_id,
+    REP.source_id,
+    REP.stable_source_url,
+    REP.title,
+    min(U.first_discovered_at) AS first_discovered_at
+FROM representatives R
+JOIN unread REP ON REP.discovery_id = R.representative_discovery_id
+JOIN unread U ON U.work_key = R.work_key
+GROUP BY R.work_key, R.representative_discovery_id
+ORDER BY first_discovered_at DESC, R.work_key DESC
 LIMIT :limit;
 
 getArchiveDiscoveries:
@@ -4055,6 +4211,7 @@ FROM author_archive_discoveries D
 JOIN author_archive_watches W ON W._id = D.watch_id
 JOIN author_archive_source_works SW ON SW._id = D.source_work_id
 LEFT JOIN author_archive_notification_outbox O ON O.discovery_id = D._id
+WHERE W.enabled = 1 OR D.read_state = 'SEEN'
 ORDER BY D.first_discovered_at DESC, D._id DESC
 LIMIT :limit;
 

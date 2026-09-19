@@ -18,6 +18,7 @@ import java.util.UUID
 import java.util.prefs.Preferences
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
@@ -44,10 +45,15 @@ import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.CreatorCardProjection
 import tachiyomi.domain.creator.model.CreatorCardProjectionPage
 import tachiyomi.domain.creator.model.CanonicalWork
+import tachiyomi.domain.creator.model.ArchiveWatchPolicy
+import tachiyomi.domain.creator.model.CreatorRelationOrigin
+import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.CreatorWorkArchive
+import tachiyomi.domain.creator.model.DiscoveryCommit
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.DiscoveryCandidateState
+import tachiyomi.domain.creator.model.DiscoveryKind
 import tachiyomi.domain.creator.model.MangaCreator
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorLibraryMangaSource
@@ -122,6 +128,97 @@ class AuthorsProductionWiringTest {
             MR.strings.creator_work_latest_date_pending.localized(),
             latestChapterDateLabel(version.copy(latestChapterDateQuality = SourceDateQualityStatus.SUSPECT)),
         )
+    }
+
+    @Test
+    fun `desktop author navigation marks unread work only after consumer confirmation`() = runBlocking {
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
+        )
+        Database.Schema.create(driver)
+        val handler = JvmDatabaseHandler(
+            Database(
+                driver,
+                historyAdapter = History.Adapter(DateColumnAdapter),
+                mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+            ),
+            driver,
+        )
+        val repository = tachiyomi.data.creator.CreatorRepositoryImpl(handler)
+        val creator = repository.upsertCreator("Navigation Author")
+        val sourceWork = SourceWorkNaturalKey(42L, "/desktop-navigation-unread")
+        repository.upsertWatchPolicy(
+            ArchiveWatchPolicy(creator.id, true, 1_000L, setOf(sourceWork.sourceId), emptySet()),
+            now = 1L,
+        )
+        repository.upsertSourceWork(42L, sourceWork.stableSourceUrl, 321L, "Navigation Work", creator.displayName, null, null, 2L)
+        repository.upsertSourceWorkCreator(
+            sourceWork,
+            creator.id,
+            CreatorRole.AUTHOR,
+            0L,
+            CreatorRelationOrigin.AUTOMATIC,
+            CreatorRelationVerification.VERIFIED,
+            creator.displayName,
+            1.0,
+            "fixture",
+        )
+        repository.commitDiscovery(
+            DiscoveryCommit(
+                creator.id,
+                sourceWork,
+                DiscoveryKind.NEW_WORK_CANDIDATE,
+                "fixture",
+                1L,
+                100L,
+                "TEST",
+                "desktop-navigation-unread",
+            ),
+        )
+        val model = AuthorDetailScreenModel(
+            creatorId = creator.id,
+            collectOnOpen = false,
+            getCreatorDetails = GetCreatorDetails(repository),
+            getCreators = GetCreators(repository),
+            setCreatorFollow = SetCreatorFollow(repository),
+            discoveryScheduler = null,
+            creatorArchive = CreatorArchive(repository, repository),
+            identityActions = AuthorIdentityActions(ManageCreatorIdentity(repository)),
+            saveSourceMangaForDetails = mockk(),
+        )
+        try {
+            val effect = async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                model.effects.filterIsInstance<AuthorDetailEffect.OpenManga>().first()
+            }
+            model.openVersion(
+                SourceWorkArchiveVersion(
+                    sourceWorkId = 1L,
+                    naturalKey = sourceWork,
+                    mangaId = 321L,
+                    title = "Navigation Work",
+                    readingLanguage = LanguageProjectionContract(
+                        LanguageDimension.READING,
+                        "und",
+                        LanguageCertainty.UNKNOWN,
+                        LanguageEvidenceKind.UNKNOWN,
+                    ),
+                    chapterCount = 0L,
+                    inLibrary = false,
+                    detailsFetchedAt = null,
+                    lastSeenAt = 2L,
+                    decision = null,
+                ),
+            ).join()
+            val opened = effect.await()
+            assertEquals(321L, opened.mangaId)
+            assertTrue(repository.getUnreadWorkDiscoveries(10L).isNotEmpty())
+
+            model.markWorkSeenAfterNavigation(opened.sourceWork)
+            assertTrue(repository.getUnreadWorkDiscoveries(10L).isEmpty())
+        } finally {
+            model.onDispose()
+            driver.close()
+        }
     }
 
     @Test
@@ -758,6 +855,7 @@ class AuthorsProductionWiringTest {
             coEvery { getMangaCreatorsForCreator(7L) } returns emptyList()
         }
         val archiveRepository = mockk<CreatorArchiveRepository> {
+            every { observeUnreadWorkDiscoveries(any()) } returns flowOf(emptyList())
             coEvery { getManualCreatorAliases(7L) } returnsMany listOf(
                 listOf("J. Doe"),
                 emptyList(),
@@ -818,6 +916,7 @@ class AuthorsProductionWiringTest {
             every { getFollowedCreatorsAsFlow() } returns flowOf(emptyList())
         }
         val archiveRepository = mockk<CreatorArchiveRepository> {
+            every { observeUnreadWorkDiscoveries(any()) } returns flowOf(emptyList())
             coEvery {
                 getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any())
             } returns tachiyomi.domain.creator.model.CreatorCardProjectionPage(0, 50, false, emptyList())
@@ -888,6 +987,7 @@ class AuthorsProductionWiringTest {
         )
         val projectionCalls = AtomicInteger()
         val archiveRepository = mockk<CreatorArchiveRepository> {
+            every { observeUnreadWorkDiscoveries(any()) } returns flowOf(emptyList())
             coEvery {
                 getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any())
             } coAnswers {
@@ -984,6 +1084,7 @@ class AuthorsProductionWiringTest {
             coEvery { getMangaCreatorsForCreator(7L) } returns emptyList()
         }
         val archiveRepository = mockk<CreatorArchiveRepository> {
+            every { observeUnreadWorkDiscoveries(any()) } returns flowOf(emptyList())
             coEvery { getManualCreatorAliases(7L) } returns emptyList()
             every { observeSourceCheckpoints(7L) } returns flowOf(emptyList())
             every { observeCreatorWorkArchive(7L) } returns flowOf(CreatorWorkArchive(emptyList(), emptyList(), emptyList()))
@@ -1057,7 +1158,10 @@ class AuthorsProductionWiringTest {
             every { getCreatorsAsFlow() } returns flowOf(emptyList())
             every { getFollowedCreatorsAsFlow() } returns flowOf(emptyList())
         }
-        val archive = mockk<CreatorArchiveRepository> { coEvery { getDueWatchSources(any(), any()) } returns emptyList() }
+        val archive = mockk<CreatorArchiveRepository> {
+            every { observeUnreadWorkDiscoveries(any()) } returns flowOf(emptyList())
+            coEvery { getDueWatchSources(any(), any()) } returns emptyList()
+        }
         coEvery {
             archive.getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any())
         } returns tachiyomi.domain.creator.model.CreatorCardProjectionPage(0, 50, false, emptyList())

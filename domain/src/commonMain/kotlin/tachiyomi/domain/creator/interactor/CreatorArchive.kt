@@ -3,6 +3,7 @@ package tachiyomi.domain.creator.interactor
 import kotlinx.coroutines.flow.Flow
 import tachiyomi.domain.creator.model.ArchiveDiscovery
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
+import tachiyomi.domain.creator.model.ArchiveUnreadWork
 import tachiyomi.domain.creator.model.CanonicalWork
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.CreatorCardProjectionPage
@@ -28,9 +29,15 @@ class CreatorArchive(
 
     fun observeUnread(limit: Long): Flow<List<ArchiveDiscovery>> = archive.observeUnreadDiscoveries(limit)
 
+    fun observeUnreadWorks(limit: Long): Flow<List<ArchiveUnreadWork>> = archive.observeUnreadWorkDiscoveries(limit)
+
+    suspend fun getUnreadWorks(limit: Long): List<ArchiveUnreadWork> = archive.getUnreadWorkDiscoveries(limit)
+
     fun observeDiscoveries(limit: Long): Flow<List<ArchiveDiscovery>> = archive.observeDiscoveries(limit)
 
     suspend fun markSeen(discoveryId: Long, now: Long) = archive.markDiscoverySeen(discoveryId, now)
+
+    suspend fun markWorkSeen(sourceWork: SourceWorkNaturalKey, now: Long) = archive.markWorkSeen(sourceWork, now)
 
     suspend fun review(discoveryId: Long, disposition: ReviewDisposition, now: Long) =
         archive.setDiscoveryReview(discoveryId, disposition, now)

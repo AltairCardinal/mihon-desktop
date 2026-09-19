@@ -46,6 +46,7 @@ import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.creator.interactor.CreatorArchive
 import tachiyomi.domain.creator.model.ArchiveDiscovery
+import tachiyomi.domain.creator.model.ArchiveUnreadWork
 import tachiyomi.domain.creator.model.ReviewDisposition
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetManga
@@ -149,6 +150,12 @@ class UpdatesScreenModel(
         creatorArchive.observeDiscoveries(100L)
             .onEach { discoveries ->
                 mutableState.update { it.copy(authorDiscoveries = discoveries.toPersistentList()) }
+            }
+            .launchIn(screenModelScope)
+
+        creatorArchive.observeUnreadWorks(100L)
+            .onEach { works ->
+                mutableState.update { it.copy(authorUnreadWorks = works.toPersistentList()) }
             }
             .launchIn(screenModelScope)
     }
@@ -477,6 +484,7 @@ class UpdatesScreenModel(
         val hasActiveFilters: Boolean = false,
         val items: PersistentList<UpdatesItem> = persistentListOf(),
         val authorDiscoveries: PersistentList<ArchiveDiscovery> = persistentListOf(),
+        val authorUnreadWorks: PersistentList<ArchiveUnreadWork> = persistentListOf(),
         val dialog: Dialog? = null,
     ) {
         val selected = items.filter { it.selected }

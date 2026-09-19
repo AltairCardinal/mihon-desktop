@@ -46,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
@@ -239,14 +240,47 @@ class UpdatesRootScreen : Screen {
                 }
             }
 
-            val visibleDiscoveries = state.visibleCreatorDiscoveries
+            if (state.unreadWorks.isNotEmpty()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    state.unreadWorks.forEach { work ->
+                        Card(modifier = Modifier.fillMaxWidth().testTag("author-unread-work-${work.workKey}")) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(work.creatorName, style = MaterialTheme.typography.labelMedium)
+                                    Text(work.title, style = MaterialTheme.typography.titleSmall)
+                                    Text(
+                                        MR.strings.creator_new_work_unread.localized(),
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                                TextButton(onClick = { navigator.push(AuthorDetailScreen(work.creatorId)) }) {
+                                    Text(MR.strings.creator_view_new_works.localized())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            val unreadRepresentativeIds = state.unreadWorks.mapTo(mutableSetOf()) { it.representativeDiscoveryId }
+            val visibleDiscoveries = state.visibleCreatorDiscoveries.filter { discovery ->
+                state.unreadWorks.isEmpty() || discovery.state.readState != DiscoveryReadState.UNSEEN ||
+                    discovery.id in unreadRepresentativeIds
+            }
             val listItems = remember(state.items, visibleDiscoveries) {
                 buildUpdatesListItems(state.items, visibleDiscoveries)
             }
 
-            if (listItems.isEmpty()) {
+            if (listItems.isEmpty() && state.unreadWorks.isEmpty()) {
                 Box(
-                    Modifier.fillMaxSize(),
+                    Modifier.weight(1f).fillMaxWidth(),
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -265,7 +299,7 @@ class UpdatesRootScreen : Screen {
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
@@ -321,7 +355,6 @@ class UpdatesRootScreen : Screen {
                                 discovery = item.discovery,
                                 onOpen = {
                                     scope.launch {
-                                        model.markDiscoverySeen(item.discovery)
                                         navigator.push(AuthorDetailScreen(item.discovery.creatorId))
                                     }
                                 },

@@ -5,6 +5,7 @@ import tachiyomi.domain.creator.model.AddCreatorAliasesRequest
 import tachiyomi.domain.creator.model.ArchiveAppendOutcome
 import tachiyomi.domain.creator.model.ArchiveDiscovery
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
+import tachiyomi.domain.creator.model.ArchiveUnreadWork
 import tachiyomi.domain.creator.model.ArchiveUpsertOutcome
 import tachiyomi.domain.creator.model.ArchiveWatchPolicy
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
@@ -266,6 +267,18 @@ interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
     suspend fun commitDiscovery(commit: DiscoveryCommit): ArchiveDiscovery
 
     suspend fun getUnreadDiscoveries(limit: Long): List<ArchiveDiscovery>
+
+    /** Returns one unread reminder per canonical/source work, independent of source count. */
+    suspend fun getUnreadWorkDiscoveries(limit: Long): List<ArchiveUnreadWork> = emptyList()
+
+    /** Reactive work-level projection used by the author cards and in-app reminder. */
+    fun observeUnreadWorkDiscoveries(limit: Long): Flow<List<ArchiveUnreadWork>> =
+        kotlinx.coroutines.flow.flowOf(emptyList())
+
+    /** Marks a work and all current source-level discovery members as seen atomically. */
+    suspend fun markWorkSeen(sourceWork: SourceWorkNaturalKey, now: Long) {
+        throw UnsupportedOperationException("Work-level discovery read state is not implemented")
+    }
 
     fun observeUnreadDiscoveries(limit: Long): Flow<List<ArchiveDiscovery>>
 

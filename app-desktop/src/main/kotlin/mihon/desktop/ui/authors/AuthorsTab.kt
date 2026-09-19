@@ -454,6 +454,7 @@ data class AuthorDetailScreen(
                         showSourceChooserFor = null
                         sourceFocusRequester = null
                         navigator.push(MangaDetailScreen(effect.mangaId))
+                        model.markWorkSeenAfterNavigation(effect.sourceWork)
                     }
                     is AuthorDetailEffect.OpenCreator -> navigator.replace(AuthorDetailScreen(effect.creatorId))
                     is AuthorDetailEffect.OpenWorkCompare -> navigator.push(
@@ -582,6 +583,13 @@ data class AuthorDetailScreen(
                     .padding(padding),
             ) {
                 if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                state.workOpenError?.let { error ->
+                    Text(
+                        MR.strings.desktop_ui_error_reason.localized(Locale.getDefault(), error),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp).testTag("creator-work-open-error"),
+                    )
+                }
                 state.workDisplayModeError?.let { error ->
                     Text(
                         error,
@@ -778,6 +786,7 @@ data class AuthorDetailScreen(
                                         sourceId = work.versions.firstOrNull()?.naturalKey?.sourceId ?: 0L,
                                         firstSeenDate = earliestFirstSeenDate(allVersions),
                                         favorite = allVersions.any { it.inLibrary },
+                                        unread = allVersions.any { it.unread },
                                         key = work.workId.toString(),
                                         mode = mode,
                                         focusRequester = focusRequester,
@@ -846,6 +855,7 @@ data class AuthorDetailScreen(
                                         sourceId = work.versions.firstOrNull()?.naturalKey?.sourceId ?: 0L,
                                         firstSeenDate = earliestFirstSeenDate(allVersions),
                                         favorite = allVersions.any { it.inLibrary },
+                                        unread = allVersions.any { it.unread },
                                         key = work.workId.toString(),
                                         mode = mode,
                                         focusRequester = focusRequester,
@@ -1085,6 +1095,7 @@ private fun CreatorArchiveWorkCard(
     sourceId: Long,
     firstSeenDate: String?,
     favorite: Boolean,
+    unread: Boolean,
     key: String,
     mode: LibraryDisplayMode,
     focusRequester: FocusRequester,
@@ -1107,6 +1118,7 @@ private fun CreatorArchiveWorkCard(
                 CreatorWorkCover(title, thumbnailUrl, sourceId, key, Modifier.width(64.dp).height(88.dp), favorite)
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("creator-work-$key"))
+                    unreadWorkLabel(unread, key)
                     firstSeenDate?.let { date ->
                         Text(
                             MR.strings.desktop_ui_first_seen.localized(Locale.getDefault(), date),
@@ -1129,6 +1141,7 @@ private fun CreatorArchiveWorkCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp).testTag("creator-work-$key"),
                     )
+                    unreadWorkLabel(unread, key)
                     firstSeenDate?.let { date ->
                         Text(
                             MR.strings.desktop_ui_first_seen.localized(Locale.getDefault(), date),
@@ -1155,10 +1168,23 @@ private fun CreatorArchiveWorkCard(
                                 .testTag("creator-work-first-seen-$key"),
                         )
                     }
+                    unreadWorkLabel(unread, key)
                     content()
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun unreadWorkLabel(unread: Boolean, key: String) {
+    if (unread) {
+        Text(
+            MR.strings.creator_new_work_unread.localized(),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.testTag("creator-work-$key-unread"),
+        )
     }
 }
 
@@ -1561,6 +1587,14 @@ private fun CreatorCardRow(
                 MR.strings.creator_unique_work_count.localized(Locale.getDefault(), card.uniqueWorkCount),
                 style = MaterialTheme.typography.bodySmall,
             )
+            if (card.unreadWorkCount > 0) {
+                Text(
+                    MR.strings.creator_new_work_count.localized(Locale.getDefault(), card.unreadWorkCount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.testTag("creator-card-${card.creator.id}-new-work-count"),
+                )
+            }
             if (card.followed) {
                 Text(MR.strings.desktop_ui_followed.localized(), modifier = Modifier.testTag("creator-card-${card.creator.id}-followed"))
             }
