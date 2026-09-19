@@ -134,4 +134,6 @@ macOS 验收补充：在 `mbp-lan` 的独立 bundle 检出目录使用 JDK 21 �
 
 2026-09-20：R5 现场审计补充。旧 `D:/Shell/Github/mihon-sync/.gradle-coordinator/s5b-windows-runtime/profile` 与 peer profile 仍保存专用空间 `AltairCardinal/mihon-sync` 的历史连接和批次，但证据来自较早 v36 产物。当前候选未在该远端空间运行；Windows DPAPI 与 Java 偏好凭据按 Desktop Test Profile 身份隔离，复制 profile 不能安全复用凭据。本轮未执行远端写入，也未把旧 v36 证据计入当前候选。
 
-R5 仍未完成：本轮没有真实账号/同步空间，不能宣称锁屏期间条目进度推进或重复应用已被真机证明。真实同步空间运行门禁仍未闭合，不能勾选 R5。
+2026-09-20：只读远端核对补充。当前 GitHub CLI 已登录 `AltairCardinal`，专用仓库仍为私有，`main` 与 `mihon-sync-v1` 分支存在，空间描述要求密码。该结果只证明 CLI 对仓库的只读可达性，不等同于当前 Mihon 候选的 App 凭据、空间密码或真实交换；本轮仍未执行远端写入。
+
+R5 仍未完成：当前候选尚未在真实同步空间中完成锁屏期间条目推进、恢复日志和重复应用验证。真实同步空间运行门禁仍未闭合，不能勾选 R5。
