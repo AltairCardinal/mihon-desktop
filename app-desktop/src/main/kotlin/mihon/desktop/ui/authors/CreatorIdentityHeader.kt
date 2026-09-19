@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -19,6 +21,7 @@ import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -247,31 +250,24 @@ internal fun CreatorWorkFilters(
     onSearch: (String) -> Unit,
     onSource: (Long?) -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        androidx.compose.foundation.layout.Box {
-            TextButton(onClick = { expanded = true }) {
-                Text(sources[sourceId] ?: MR.strings.creator_work_sources_all.localized())
-            }
-            androidx.compose.material3.DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
-                androidx.compose.material3.DropdownMenuItem(
-                    text = {
-                        Text(MR.strings.creator_work_sources_all.localized())
-                    },
-                    onClick = {
-                        expanded = false
-                        onSource(null)
-                    },
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            FilterChip(
+                selected = sourceId == null,
+                onClick = { onSource(null) },
+                label = { Text(MR.strings.creator_work_sources_all.localized()) },
+                modifier = Modifier.testTag("creator-source-chip-all"),
+            )
+            sources.toSortedMap().forEach { (id, name) ->
+                FilterChip(
+                    selected = sourceId == id,
+                    onClick = { onSource(id) },
+                    label = { Text(name, maxLines = 1) },
+                    modifier = Modifier.testTag("creator-source-chip-$id"),
                 )
-                sources.forEach { (id, name) ->
-                    androidx.compose.material3.DropdownMenuItem(
-                        text = { Text(name) },
-                        onClick = {
-                            expanded = false
-                            onSource(id)
-                        },
-                    )
-                }
             }
         }
         OutlinedTextField(

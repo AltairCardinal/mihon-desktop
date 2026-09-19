@@ -19,6 +19,18 @@ class LibraryPreferences(
         LibraryDisplayMode.Serializer::deserialize,
     )
 
+    /** Optional author detail override. A missing or unsupported value follows the current shelf mode. */
+    fun creatorWorkDisplayModeOverride() = preferenceStore.getObjectFromString<LibraryDisplayMode?>(
+        key = "pref_creator_work_display_mode",
+        defaultValue = null,
+        serializer = { it?.serialize().orEmpty() },
+        deserializer = { serialized ->
+            LibraryDisplayMode.values.firstOrNull {
+                it != LibraryDisplayMode.CoverOnlyGrid && it.serialize() == serialized
+            }
+        },
+    )
+
     fun sortingMode() = preferenceStore.getObjectFromString(
         "library_sorting_mode",
         LibrarySort.default,

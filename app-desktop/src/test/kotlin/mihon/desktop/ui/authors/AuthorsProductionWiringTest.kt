@@ -14,6 +14,8 @@ import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
 import java.util.Locale
+import java.util.UUID
+import java.util.prefs.Preferences
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.filterIsInstance
@@ -28,6 +30,7 @@ import mihon.desktop.domain.CreatorDiscoveryScheduler
 import mihon.desktop.domain.ListedMangaForDetails
 import mihon.desktop.task.DesktopTaskScheduler
 import mihon.desktop.task.FileTaskCheckpointStore
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -65,6 +68,9 @@ import tachiyomi.domain.creator.model.LanguageEvidenceKind
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.WorkDecisionState
+import tachiyomi.core.common.preference.DesktopPreferenceStore
+import tachiyomi.domain.library.model.LibraryDisplayMode
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.creator.model.LanguageCertainty
 import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
@@ -91,6 +97,207 @@ class AuthorsProductionWiringTest {
     @Test
     fun `authors root defaults to the followed scope`() {
         assertTrue(AuthorsRootState().followedOnly)
+    }
+
+    @Test
+    fun `mounted author detail exposes a display mode control backed by device preferences`() = runBlocking {
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
+        )
+        Database.Schema.create(driver)
+        val handler = JvmDatabaseHandler(
+            Database(
+                driver,
+                historyAdapter = History.Adapter(DateColumnAdapter),
+                mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+            ),
+            driver,
+        )
+        val repository = tachiyomi.data.creator.CreatorRepositoryImpl(handler)
+        val creator = repository.upsertCreator("Display mode author")
+        val preferenceNode = Preferences.userRoot().node("mihon/ax02/${UUID.randomUUID()}")
+        val preferences = LibraryPreferences(DesktopPreferenceStore(preferenceNode))
+        val archive = CreatorArchive(repository, repository)
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { getCreators } returns GetCreators(repository)
+            every { getCreatorDetails } returns GetCreatorDetails(repository)
+            every { setCreatorFollow } returns SetCreatorFollow(repository)
+            every { creatorArchive } returns archive
+            every { manageCreatorIdentity } returns ManageCreatorIdentity(repository)
+            every { creatorDiscoveryScheduler } returns null
+            every { sourceManager } returns mockk(relaxed = true)
+            every { saveSourceMangaForDetails } returns mockk(relaxed = true)
+            every { libraryPreferences } returns preferences
+        }
+        val scene = ImageComposeScene(320, 900, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent {
+                androidx.compose.material3.MaterialTheme {
+                    CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                        Navigator(AuthorDetailScreen(creator.id)) {
+                            cafe.adriel.voyager.navigator.CurrentScreen()
+                        }
+                    }
+                }
+            }
+            withTimeout(5_000) {
+                while ("Display mode author" !in texts(scene)) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
+            }
+
+            assertTrue(
+                nodes(scene).any {
+                    it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-display-mode-button"
+                },
+                "The mounted author detail should expose its display mode control",
+            )
+        } finally {
+            scene.close()
+            handler.close()
+            preferenceNode.removeNode()
+        }
+    }
+
+    @Test
+    fun `mounted display mode follows shelf until explicit selection and survives remount`() = runBlocking {
+        val driver = app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver(
+            app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver.IN_MEMORY,
+        )
+        Database.Schema.create(driver)
+        val handler = JvmDatabaseHandler(
+            Database(
+                driver,
+                historyAdapter = History.Adapter(DateColumnAdapter),
+                mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+            ),
+            driver,
+        )
+        val repository = tachiyomi.data.creator.CreatorRepositoryImpl(handler)
+        val mangaRepository = tachiyomi.data.manga.MangaRepositoryImpl(handler, NoopCreatorLibraryIndexWriter)
+        val creator = repository.upsertCreator("Layout author")
+        val archive = CreatorArchive(repository, repository)
+        val workTitle = "A long title that must fit in the author grid"
+        val work = archive.createWork(workTitle, creator.id, null)
+        val manga = mangaRepository.insertNetworkManga(
+            listOf(
+                Manga.create().copy(
+                    source = 241L,
+                    url = "/layout-work",
+                    title = workTitle,
+                    favorite = true,
+                ),
+            ),
+        ).single()
+        val key = tachiyomi.domain.creator.model.SourceWorkNaturalKey(manga.source, manga.url)
+        repository.upsertSourceWork(manga.source, manga.url, manga.id, manga.title, creator.displayName, null, null, null)
+        repository.upsertSourceWorkCreator(
+            key,
+            creator.id,
+            CreatorRole.AUTHOR,
+            0,
+            tachiyomi.domain.creator.model.CreatorRelationOrigin.AUTOMATIC,
+            tachiyomi.domain.creator.model.CreatorRelationVerification.VERIFIED,
+            creator.displayName,
+            1.0,
+            "ax02 fixture",
+        )
+        archive.decide(key, work.id, WorkDecisionState.CONFIRMED, null, 1.0, "ax02 fixture", manga.source, "layout")
+
+        val preferenceNode = Preferences.userRoot().node("mihon/ax02/${UUID.randomUUID()}")
+        val preferences = LibraryPreferences(DesktopPreferenceStore(preferenceNode))
+        preferences.displayMode().set(LibraryDisplayMode.ComfortableGrid)
+        assertTrue(!preferences.creatorWorkDisplayModeOverride().isSet())
+        val sources = mockk<tachiyomi.domain.source.service.SourceManager> {
+            every { get(any<Long>()) } returns null
+            every { getOrStub(any()) } answers {
+                val sourceId = firstArg<Long>()
+                mockk {
+                    every { id } returns sourceId
+                    every { name } returns "Source $sourceId"
+                }
+            }
+        }
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { getCreators } returns GetCreators(repository)
+            every { getCreatorDetails } returns GetCreatorDetails(repository)
+            every { setCreatorFollow } returns SetCreatorFollow(repository)
+            every { creatorArchive } returns archive
+            every { manageCreatorIdentity } returns ManageCreatorIdentity(repository)
+            every { creatorDiscoveryScheduler } returns null
+            every { sourceManager } returns sources
+            every { saveSourceMangaForDetails } returns mockk(relaxed = true)
+            every { libraryPreferences } returns preferences
+        }
+
+        fun mount() = ImageComposeScene(320, 960, coroutineContext = coroutineContext) {}.also { scene ->
+            scene.setContent {
+                androidx.compose.material3.MaterialTheme {
+                    CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                        Navigator(AuthorDetailScreen(creator.id)) {
+                            cafe.adriel.voyager.navigator.CurrentScreen()
+                        }
+                    }
+                }
+            }
+        }
+        suspend fun awaitWork(scene: ImageComposeScene) {
+            withTimeout(5_000) {
+                while ("A long title that must fit in the author grid" !in texts(scene)) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
+            }
+        }
+        fun tagged(scene: ImageComposeScene, tag: String): SemanticsNode = nodes(scene, unmerged = true).single {
+            it.config.getOrElse(SemanticsProperties.TestTag) { "" } == tag
+        }
+        suspend fun awaitTag(scene: ImageComposeScene, tag: String) {
+            withTimeout(5_000) {
+                while (nodes(scene, unmerged = true).none {
+                    it.config.getOrElse(SemanticsProperties.TestTag) { "" } == tag
+                }) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
+            }
+        }
+        var scene = mount()
+        try {
+            awaitWork(scene)
+            assertTrue(!preferences.creatorWorkDisplayModeOverride().isSet())
+            tagged(scene, "creator-display-mode-button").config[SemanticsActions.OnClick].action?.invoke()
+            awaitTag(scene, "creator-display-mode-option-COMFORTABLE_GRID")
+            tagged(scene, "creator-display-mode-option-COMFORTABLE_GRID")
+                .config[SemanticsActions.OnClick].action?.invoke()
+            scene.render()
+            assertTrue(preferences.creatorWorkDisplayModeOverride().isSet())
+            assertEquals(LibraryDisplayMode.ComfortableGrid, preferences.creatorWorkDisplayModeOverride().get())
+
+            preferences.displayMode().set(LibraryDisplayMode.List)
+            scene.close()
+            scene = mount()
+            awaitWork(scene)
+
+            awaitTag(scene, "creator-cover-${work.id}")
+            awaitTag(scene, "creator-work-${work.id}")
+            tagged(scene, "creator-work-card-${work.id}").config[SemanticsActions.OnClick].action?.invoke()
+            awaitTag(scene, "creator-source-version-1")
+            assertTrue(texts(scene).any { it.contains("All known source versions") })
+            tagged(scene, "creator-source-cancel").config[SemanticsActions.OnClick].action?.invoke()
+            awaitTag(scene, "creator-work-card-${work.id}")
+            val cover = tagged(scene, "creator-cover-${work.id}")
+            val title = tagged(scene, "creator-work-${work.id}")
+            assertTrue(
+                cover.boundsInRoot.bottom <= title.boundsInRoot.top,
+                "Comfortable grid must place the title below its cover after the shelf mode changes and remounts",
+            )
+        } finally {
+            scene.close()
+            handler.close()
+            preferenceNode.removeNode()
+        }
     }
 
     @Test
@@ -920,8 +1127,9 @@ class AuthorsProductionWiringTest {
         }
     }
 
-    private fun nodes(scene: ImageComposeScene): List<SemanticsNode> = scene.semanticsOwners.flatMap { owner ->
-        flatten(owner.rootSemanticsNode)
+    private fun nodes(scene: ImageComposeScene, unmerged: Boolean = false): List<SemanticsNode> =
+        scene.semanticsOwners.flatMap { owner ->
+        flatten(if (unmerged) owner.unmergedRootSemanticsNode else owner.rootSemanticsNode)
     }
 
     private fun flatten(node: SemanticsNode): List<SemanticsNode> = listOf(node) + node.children.flatMap(::flatten)

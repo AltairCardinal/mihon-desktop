@@ -59,6 +59,7 @@ import tachiyomi.domain.creator.model.CreatorRelationOrigin
 import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter
@@ -73,6 +74,8 @@ import tachiyomi.domain.creator.service.CreatorSourceDetailsResult
 import tachiyomi.domain.creator.service.CreatorSourceFailure
 import tachiyomi.domain.creator.service.CreatorSourcePageResult
 import tachiyomi.domain.creator.service.EnabledCreatorSource
+import tachiyomi.domain.library.model.LibraryDisplayMode
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
@@ -274,6 +277,127 @@ class AndroidCreatorSettingsUiTest {
                 "All representative works should stay within the 320dp list: $list / $works",
                 works.all { it.left >= list.left && it.right <= list.right },
             )
+        } finally {
+            activity.pause().stop().destroy()
+            driver.close()
+            shared.edit().clear().commit()
+            Injekt = previous
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h900dp-mdpi")
+    fun `mounted author work display modes keep title geometry in their production layouts`(): Unit = runBlocking {
+        val previous = Injekt
+        Injekt = InjektScope(DefaultRegistrar())
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        val shared = activity.get().getSharedPreferences("creator-work-layout-ui", Context.MODE_PRIVATE)
+        shared.edit().clear().commit()
+        val store = AndroidPreferenceStore(activity.get(), shared)
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        Database.Schema.create(driver)
+        val database = Database(
+            driver,
+            historyAdapter = History.Adapter(DateColumnAdapter),
+            mangasAdapter = Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+        )
+        val handler = AndroidDatabaseHandler(database, driver)
+        val repository = CreatorRepositoryImpl(handler)
+        try {
+            val creator = repository.upsertCreator("A long author name for the narrow work layout")
+            repository.followCreator(creator.id)
+            val archive = CreatorArchive(repository, repository)
+            val work = archive.createWork("A very long representative work title", creator.id, null)
+            repeat(3) { index ->
+                val key = SourceWorkNaturalKey(71L + index, "/android-layout/$index")
+                repository.upsertSourceWork(
+                    sourceId = key.sourceId,
+                    stableSourceUrl = key.stableSourceUrl,
+                    mangaId = null,
+                    title = "Version ${index + 1}",
+                    authorText = creator.displayName,
+                    artistText = null,
+                    thumbnailUrl = null,
+                    detailsFetchedAt = 1L,
+                )
+                repository.upsertSourceWorkCreator(
+                    sourceWork = key,
+                    creatorId = creator.id,
+                    role = CreatorRole.AUTHOR,
+                    order = index.toLong(),
+                    origin = CreatorRelationOrigin.USER,
+                    verification = CreatorRelationVerification.VERIFIED,
+                    sourceText = creator.displayName,
+                    confidence = 1.0,
+                    evidence = "Android layout fixture",
+                )
+                archive.decide(
+                    sourceWork = key,
+                    workId = work.id,
+                    state = WorkDecisionState.CONFIRMED,
+                    expectedDecidedAt = null,
+                    score = 1.0,
+                    evidence = "Android layout fixture",
+                    decidedAt = 1L,
+                    idempotencyKey = "android-layout:$index",
+                )
+            }
+            val details = GetCreatorDetails(repository)
+            val mangaRepository = tachiyomi.data.manga.MangaRepositoryImpl(
+                handler,
+                NoopCreatorLibraryIndexWriter,
+            )
+            Injekt.addSingleton(GetCreators(repository))
+            Injekt.addSingleton(archive)
+            Injekt.addSingleton(CreatorDiscoveryPreferences(store))
+            Injekt.addSingleton(eu.kanade.domain.source.service.SourcePreferences(store))
+            Injekt.addSingleton(CoverCache(activity.get()))
+            Injekt.addSingleton(details)
+            Injekt.addSingleton(SetCreatorFollow(repository))
+            Injekt.addSingleton(DiscoverCreatorWorks(mockk(relaxed = true), details))
+            Injekt.addSingleton(mockk<SourceManager>(relaxed = true))
+            Injekt.addSingleton(ManageCreatorIdentity(repository))
+            Injekt.addSingleton(NetworkToLocalManga(mangaRepository))
+            val libraryPreferences = LibraryPreferences(store)
+            libraryPreferences.displayMode().set(LibraryDisplayMode.ComfortableGrid)
+            Injekt.addSingleton(libraryPreferences)
+
+            activity.get().setContent { MaterialTheme { Navigator(AndroidAuthorDetailScreen(creator.id)) } }
+
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithTag("creator-work-${work.id}", useUnmergedTree = true)
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            val cover = compose.onNodeWithTag("creator-cover-${work.id}", useUnmergedTree = true)
+                .fetchSemanticsNode().boundsInRoot
+            val title = compose.onNodeWithTag("creator-work-${work.id}", useUnmergedTree = true)
+                .fetchSemanticsNode().boundsInRoot
+            assertTrue(
+                "Comfortable author work layout should put title below cover: $cover / $title",
+                cover.bottom <= title.top,
+            )
+
+            compose.onNodeWithTag("creator-display-mode-button").performClick()
+            compose.onNodeWithTag("creator-display-mode-option-LIST").performClick()
+            compose.onNodeWithTag("creator-cover-${work.id}", useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithTag("creator-work-${work.id}", useUnmergedTree = true).assertIsDisplayed()
+
+            compose.onNodeWithTag("creator-display-mode-button").performClick()
+            compose.onNodeWithTag("creator-display-mode-option-COMPACT_GRID").performClick()
+            compose.onNodeWithTag("creator-cover-${work.id}", useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithTag("creator-work-${work.id}", useUnmergedTree = true).assertIsDisplayed()
+
+            compose.onNodeWithTag("creator-source-chip-71").performClick()
+            compose.onNodeWithTag("creator-work-card-${work.id}", useUnmergedTree = true).performClick()
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithTag("creator-source-version-2", useUnmergedTree = true)
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithTag("creator-source-version-1", useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithTag("creator-source-version-2", useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithTag("creator-source-version-3", useUnmergedTree = true).assertIsDisplayed()
+            compose.onNodeWithTag("creator-source-cancel", useUnmergedTree = true).performClick()
+            compose.onNodeWithTag("creator-work-card-${work.id}", useUnmergedTree = true).assertIsFocused()
         } finally {
             activity.pause().stop().destroy()
             driver.close()

@@ -1,29 +1,48 @@
 package eu.kanade.tachiyomi.ui.browse.author
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -37,8 +56,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -86,6 +112,8 @@ import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
 import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.service.CreatorIdentityEditor
 import tachiyomi.domain.creator.service.OpenCreatorWorkVersion
+import tachiyomi.domain.library.model.LibraryDisplayMode
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
@@ -523,12 +551,32 @@ private fun CreatorCardWorkCandidate.toMangaCover() =
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
     @Composable override fun Content() {
-        val model = rememberScreenModel { AndroidAuthorDetailScreenModel(creatorId) }
+        val model = rememberScreenModel {
+            AndroidAuthorDetailScreenModel(
+                creatorId,
+                libraryPreferences = Injekt.get(),
+            )
+        }
         val state by model.state.collectAsState()
         val navigator = LocalNavigator.currentOrThrow
         var confirmUnfollow by remember { mutableStateOf(false) }
+        var showDisplayModeMenu by remember { mutableStateOf(false) }
+        var showSourceChooserFor by remember { mutableStateOf<Long?>(null) }
+        var sourceFocusRequester by remember { mutableStateOf<FocusRequester?>(null) }
+        var pendingSourceFocusRestore by remember { mutableStateOf<FocusRequester?>(null) }
+        LaunchedEffect(pendingSourceFocusRestore) {
+            pendingSourceFocusRestore?.let { requester ->
+                withFrameNanos { }
+                requester.requestFocus()
+                pendingSourceFocusRestore = null
+            }
+        }
         LaunchedEffect(model) {
-            model.openManga.collect { navigator.push(eu.kanade.tachiyomi.ui.manga.MangaScreen(it)) }
+            model.openManga.collect {
+                showSourceChooserFor = null
+                sourceFocusRequester = null
+                navigator.push(eu.kanade.tachiyomi.ui.manga.MangaScreen(it))
+            }
         }
         if (confirmUnfollow) {
             AlertDialog(
@@ -546,6 +594,23 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
             )
         }
 
+        showSourceChooserFor?.let { workId ->
+            state.archive.works.firstOrNull { it.workId == workId }?.let { work ->
+                AndroidCreatorWorkSourceChooserDialog(
+                    work = work,
+                    model = model,
+                    error = state.workOpenError,
+                    opening = state.workOpening,
+                    onDismiss = {
+                        model.clearWorkOpenError()
+                        pendingSourceFocusRestore = sourceFocusRequester
+                        sourceFocusRequester = null
+                        showSourceChooserFor = null
+                    },
+                )
+            }
+        }
+
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -560,6 +625,46 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                             )
                         }
                     },
+                    actions = {
+                        Box {
+                            IconButton(
+                                onClick = { showDisplayModeMenu = true },
+                                modifier = Modifier.testTag("creator-display-mode-button"),
+                            ) {
+                                Icon(
+                                    Icons.Default.GridView,
+                                    contentDescription = stringResource(MR.strings.action_display_grid),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showDisplayModeMenu,
+                                onDismissRequest = { showDisplayModeMenu = false },
+                            ) {
+                                listOf(
+                                    LibraryDisplayMode.List to MR.strings.action_display_list,
+                                    LibraryDisplayMode.ComfortableGrid to MR.strings.action_display_comfortable_grid,
+                                    LibraryDisplayMode.CompactGrid to MR.strings.action_display_grid,
+                                ).forEach { (mode, label) ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                if (state.effectiveWorkDisplayMode == mode) {
+                                                    "✓ ${stringResource(label)}"
+                                                } else {
+                                                    stringResource(label)
+                                                },
+                                            )
+                                        },
+                                        onClick = {
+                                            model.setWorkDisplayMode(mode)
+                                            showDisplayModeMenu = false
+                                        },
+                                        modifier = Modifier.testTag("creator-display-mode-option-${mode.serialize()}"),
+                                    )
+                                }
+                            }
+                        }
+                    },
                 )
             },
         ) { padding ->
@@ -568,6 +673,13 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 if (state.loading) CircularProgressIndicator()
+                state.workDisplayModeError?.let { error ->
+                    Text(
+                        error,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("creator-display-mode-error"),
+                    )
+                }
                 CreatorIdentityHeader(model.identityEditor, state.details.creator?.displayName.orEmpty())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { if (state.followed) confirmUnfollow = true else model.toggleFollow() }) {
@@ -598,33 +710,106 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                     model::searchWorks,
                     model::filterSource,
                 )
+                Text(
+                    stringResource(MR.strings.creator_unique_work_count, state.visibleArchive.works.size),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("creator-visible-work-count"),
+                )
                 if (state.visibleArchive.works.isEmpty() && state.visibleArchive.pending.isEmpty() &&
                     state.visibleArchive.rejected.isEmpty()
                 ) {
                     Text(stringResource(MR.strings.creator_work_filter_empty))
                 }
-                LazyColumn {
-                    state.visibleArchive.works.forEach { work ->
-                        item(key = "work-${work.workId}") {
-                            CreatorArchiveWorkRow(work.title, work.versions.firstOrNull()?.thumbnailUrl) {
+                val mode = state.effectiveWorkDisplayMode
+                if (mode == LibraryDisplayMode.List) {
+                    LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
+                        items(state.visibleArchive.works, key = { "work-${it.workId}" }) { work ->
+                            val allVersions = state.allVersionsForWork(work.workId)
+                            val focusRequester = remember(work.workId) { FocusRequester() }
+                            CreatorArchiveWorkCard(
+                                title = work.title,
+                                version = work.versions.firstOrNull(),
+                                favorite = allVersions.any { it.inLibrary },
+                                key = work.workId.toString(),
+                                mode = mode,
+                                focusRequester = focusRequester,
+                                onClick = {
+                                    sourceFocusRequester = focusRequester
+                                    showSourceChooserFor = work.workId
+                                },
+                            ) {
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     work.versions.forEach { version -> CreatorVersionButton(version, model) }
                                 }
                             }
                         }
-                    }
-                    items(state.visibleArchive.pending, key = { "pending-${it.sourceWorkId}" }) { version ->
-                        CreatorArchiveWorkRow(version.title, version.thumbnailUrl) {
-                            CreatorVersionButton(version, model)
-                            TextButton(onClick = { model.openReview(version) }) {
-                                Text(stringResource(MR.strings.desktop_ui_pending_work_suggestions))
+                        items(state.visibleArchive.pending, key = { "pending-${it.sourceWorkId}" }) { version ->
+                            CreatorArchiveWorkRow(version.title, version.thumbnailUrl) {
+                                CreatorVersionButton(version, model)
+                                TextButton(onClick = { model.openReview(version) }) {
+                                    Text(stringResource(MR.strings.desktop_ui_pending_work_suggestions))
+                                }
+                            }
+                        }
+                        items(state.visibleArchive.rejected, key = { "rejected-${it.sourceWorkId}" }) { version ->
+                            CreatorArchiveWorkRow(version.title, version.thumbnailUrl) {
+                                CreatorVersionButton(version, model)
+                                Text(stringResource(MR.strings.desktop_ui_separated_work_versions))
                             }
                         }
                     }
-                    items(state.visibleArchive.rejected, key = { "rejected-${it.sourceWorkId}" }) { version ->
-                        CreatorArchiveWorkRow(version.title, version.thumbnailUrl) {
-                            CreatorVersionButton(version, model)
-                            Text(stringResource(MR.strings.desktop_ui_separated_work_versions))
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(
+                            if (mode == LibraryDisplayMode.ComfortableGrid) 136.dp else 112.dp,
+                        ),
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        contentPadding = PaddingValues(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        items(state.visibleArchive.works, key = { "work-${it.workId}" }) { work ->
+                            val allVersions = state.allVersionsForWork(work.workId)
+                            val focusRequester = remember(work.workId) { FocusRequester() }
+                            CreatorArchiveWorkCard(
+                                title = work.title,
+                                version = work.versions.firstOrNull(),
+                                favorite = allVersions.any { it.inLibrary },
+                                key = work.workId.toString(),
+                                mode = mode,
+                                focusRequester = focusRequester,
+                                onClick = {
+                                    sourceFocusRequester = focusRequester
+                                    showSourceChooserFor = work.workId
+                                },
+                            ) {
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    work.versions.forEach { version -> CreatorVersionButton(version, model) }
+                                }
+                            }
+                        }
+                        items(
+                            state.visibleArchive.pending,
+                            span = { GridItemSpan(maxLineSpan) },
+                            key = { "pending-${it.sourceWorkId}" },
+                        ) { version ->
+                            CreatorArchiveWorkRow(version.title, version.thumbnailUrl) {
+                                CreatorVersionButton(version, model)
+                                TextButton(onClick = { model.openReview(version) }) {
+                                    Text(stringResource(MR.strings.desktop_ui_pending_work_suggestions))
+                                }
+                            }
+                        }
+                        items(
+                            state.visibleArchive.rejected,
+                            span = { GridItemSpan(maxLineSpan) },
+                            key = { "rejected-${it.sourceWorkId}" },
+                        ) { version ->
+                            CreatorArchiveWorkRow(version.title, version.thumbnailUrl) {
+                                CreatorVersionButton(version, model)
+                                Text(stringResource(MR.strings.desktop_ui_separated_work_versions))
+                            }
                         }
                     }
                 }
@@ -661,6 +846,232 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
         }
     }
 }
+
+@Composable
+private fun AndroidCreatorWorkSourceChooserDialog(
+    work: tachiyomi.domain.creator.model.CanonicalWorkArchiveGroup,
+    model: AndroidAuthorDetailScreenModel,
+    error: String?,
+    opening: Boolean,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(work.title) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    stringResource(MR.strings.creator_work_all_source_versions),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                work.versions.forEach { version ->
+                    val sourceName = model.sourceName(version)
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = !opening) { model.openVersion(version) }
+                            .testTag("creator-source-version-${version.sourceWorkId}"),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Box(Modifier.width(48.dp).height(68.dp)) {
+                                MangaCover.Book(
+                                    data = version.toMangaCover(),
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                if (version.inLibrary) {
+                                    Icon(
+                                        Icons.Outlined.CollectionsBookmark,
+                                        contentDescription = stringResource(MR.strings.desktop_ui_in_library),
+                                        modifier = Modifier.align(Alignment.TopStart).padding(2.dp).size(16.dp),
+                                    )
+                                }
+                            }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(sourceName, style = MaterialTheme.typography.labelLarge)
+                                if (model.isSourceMissing(version)) {
+                                    Text(
+                                        stringResource(MR.strings.desktop_ui_source_missing),
+                                        color = MaterialTheme.colorScheme.error,
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                                Text(version.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    if (version.chapterCount > 0) {
+                                        stringResource(MR.strings.desktop_ui_chapter_count, version.chapterCount)
+                                    } else {
+                                        stringResource(MR.strings.creator_work_chapters_unknown)
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Text(
+                                    stringResource(MR.strings.creator_work_latest_date_unknown),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    }
+                }
+                error?.let {
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("creator-source-open-error"),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss, modifier = Modifier.testTag("creator-source-cancel")) {
+                Text(stringResource(MR.strings.action_cancel))
+            }
+        },
+    )
+}
+
+@Composable
+private fun CreatorArchiveWorkCard(
+    title: String,
+    version: SourceWorkArchiveVersion?,
+    favorite: Boolean,
+    key: String,
+    mode: LibraryDisplayMode,
+    focusRequester: FocusRequester,
+    onClick: () -> Unit,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) {
+    val cardModifier = Modifier
+        .fillMaxWidth()
+        .focusRequester(focusRequester)
+        .focusable()
+        .clickable(onClick = onClick)
+        .testTag("creator-work-card-$key")
+    when (mode) {
+        LibraryDisplayMode.List -> {
+            Row(
+                modifier = cardModifier.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                CreatorArchiveWorkCover(
+                    version = version,
+                    title = title,
+                    favorite = favorite,
+                    key = key,
+                    modifier = Modifier.width(64.dp).height(88.dp),
+                )
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.testTag("creator-work-$key"),
+                    )
+                    content()
+                }
+            }
+        }
+        LibraryDisplayMode.ComfortableGrid -> {
+            Card(modifier = cardModifier, colors = CardDefaults.cardColors()) {
+                Column {
+                    CreatorArchiveWorkCover(
+                        version = version,
+                        title = title,
+                        favorite = favorite,
+                        key = key,
+                        modifier = Modifier.fillMaxWidth().aspectRatio(0.7f),
+                    )
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                            .testTag("creator-work-$key"),
+                    )
+                    content()
+                }
+            }
+        }
+        LibraryDisplayMode.CompactGrid, LibraryDisplayMode.CoverOnlyGrid -> {
+            Card(modifier = cardModifier, colors = CardDefaults.cardColors()) {
+                Column {
+                    CreatorArchiveWorkCover(
+                        version = version,
+                        title = title,
+                        favorite = favorite,
+                        key = key,
+                        modifier = Modifier.fillMaxWidth().aspectRatio(0.7f),
+                        compactTitle = true,
+                    )
+                    content()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CreatorArchiveWorkCover(
+    version: SourceWorkArchiveVersion?,
+    title: String,
+    favorite: Boolean,
+    key: String,
+    modifier: Modifier,
+    compactTitle: Boolean = false,
+) {
+    Box(modifier = modifier.testTag("creator-cover-$key")) {
+        version?.let {
+            MangaCover.Book(
+                data = it.toMangaCover(),
+                modifier = Modifier.fillMaxSize().alpha(if (favorite) 0.34f else 1f),
+            )
+        } ?: Text(
+            title,
+            modifier = Modifier.align(Alignment.Center).padding(8.dp),
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (compactTitle) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.82f))),
+                ),
+            )
+            Text(
+                title,
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.align(Alignment.BottomStart).padding(6.dp)
+                    .testTag("creator-work-$key"),
+            )
+        }
+        if (favorite) {
+            Icon(
+                Icons.Outlined.CollectionsBookmark,
+                contentDescription = stringResource(MR.strings.desktop_ui_in_library),
+                modifier = Modifier.align(Alignment.TopStart).padding(4.dp).size(16.dp)
+                    .testTag("creator-favorite-$key"),
+            )
+        }
+    }
+}
+
+private fun SourceWorkArchiveVersion.toMangaCover() = tachiyomi.domain.manga.model.MangaCover(
+    mangaId = mangaId ?: -sourceWorkId,
+    sourceId = naturalKey.sourceId,
+    isMangaFavorite = inLibrary,
+    url = naturalKey.stableSourceUrl,
+    lastModified = detailsFetchedAt ?: 0L,
+)
 
 @Composable
 private fun CreatorArchiveWorkRow(
@@ -710,7 +1121,20 @@ internal data class AuthorState(
     val error: String? = null,
     val reviewing: SourceWorkArchiveVersion? = null,
     val languageTag: String = "",
+    val workDisplayModeOverride: LibraryDisplayMode? = null,
+    val shelfDisplayMode: LibraryDisplayMode = LibraryDisplayMode.default,
+    val workDisplayModeError: String? = null,
+    val workOpenError: String? = null,
+    val workOpening: Boolean = false,
 ) {
+    fun allVersionsForWork(workId: Long): List<SourceWorkArchiveVersion> =
+        archive.works.firstOrNull { it.workId == workId }?.versions.orEmpty()
+
+    val effectiveWorkDisplayMode: LibraryDisplayMode
+        get() = (workDisplayModeOverride ?: shelfDisplayMode).let { mode ->
+            if (mode == LibraryDisplayMode.CoverOnlyGrid) LibraryDisplayMode.CompactGrid else mode
+        }
+
     val visibleArchive: CreatorWorkArchive get() = workFilter.apply(archive).let { filtered ->
         fun matches(version: SourceWorkArchiveVersion) =
             language == null || version.readingLanguage.certainty == language
@@ -734,12 +1158,20 @@ internal class AndroidAuthorDetailScreenModel(
     private val sources: SourceManager = Injekt.get(),
     identity: ManageCreatorIdentity = Injekt.get(),
     private val networkToLocal: NetworkToLocalManga = Injekt.get(),
+    private val libraryPreferences: LibraryPreferences? = null,
 ) : ScreenModel {
-    private val mutableState = MutableStateFlow(AuthorState())
+    private val mutableState = MutableStateFlow(
+        AuthorState(
+            workDisplayModeOverride = libraryPreferences?.creatorWorkDisplayModeOverride()?.get(),
+            shelfDisplayMode = libraryPreferences?.displayMode()?.get() ?: LibraryDisplayMode.default,
+        ),
+    )
     val state: StateFlow<AuthorState> = mutableState.asStateFlow()
     private val mutableOpenManga = kotlinx.coroutines.flow.MutableSharedFlow<Long>(extraBufferCapacity = 1)
     val openManga = mutableOpenManga.asSharedFlow()
     fun openVersion(version: SourceWorkArchiveVersion) = screenModelScope.launch {
+        if (mutableState.value.workOpening) return@launch
+        mutableState.update { it.copy(workOpening = true, workOpenError = null) }
         runCatching {
             val opener = OpenCreatorWorkVersion { listed ->
                 networkToLocal(
@@ -752,13 +1184,30 @@ internal class AndroidAuthorDetailScreenModel(
                 ).id
             }
             mutableOpenManga.emit(opener.await(version))
-        }.onFailure(::fail)
+        }.onFailure { failure ->
+            mutableState.update { it.copy(workOpenError = failure.message ?: failure::class.simpleName) }
+        }
+        mutableState.update { it.copy(workOpening = false) }
     }
+
+    fun clearWorkOpenError() = mutableState.update { it.copy(workOpenError = null) }
     fun isSourceMissing(version: SourceWorkArchiveVersion): Boolean = sources.get(version.naturalKey.sourceId) == null
     fun sourceName(version: SourceWorkArchiveVersion): String = sources.getOrStub(version.naturalKey.sourceId).name
     val identityEditor = CreatorIdentityEditor(creatorId, identity, screenModelScope)
     private val activeCreatorId: Long get() = identityEditor.state.value.identity?.id ?: creatorId
     init {
+        libraryPreferences?.let { preferences ->
+            screenModelScope.launch {
+                preferences.creatorWorkDisplayModeOverride().changes().collect { mode ->
+                    mutableState.update { it.copy(workDisplayModeOverride = mode) }
+                }
+            }
+            screenModelScope.launch {
+                preferences.displayMode().changes().collect { mode ->
+                    mutableState.update { it.copy(shelfDisplayMode = mode) }
+                }
+            }
+        }
         screenModelScope.launch {
             identityEditor.state.map { it.identity }.distinctUntilChanged().collect { snapshot ->
                 snapshot?.let { value ->
@@ -808,6 +1257,27 @@ internal class AndroidAuthorDetailScreenModel(
             },
         )
     }
+    fun setWorkDisplayMode(mode: LibraryDisplayMode) {
+        val preference = libraryPreferences?.creatorWorkDisplayModeOverride()
+        if (preference == null) {
+            mutableState.update { it.copy(workDisplayModeError = "Display mode preference is unavailable") }
+            return
+        }
+        val previousMode = mutableState.value.workDisplayModeOverride
+        runCatching { preference.set(mode) }
+            .onSuccess {
+                mutableState.update { it.copy(workDisplayModeOverride = mode, workDisplayModeError = null) }
+            }
+            .onFailure { error ->
+                mutableState.update {
+                    it.copy(
+                        workDisplayModeOverride = previousMode,
+                        workDisplayModeError = error.message ?: error::class.simpleName,
+                    )
+                }
+            }
+    }
+    fun clearWorkDisplayModeError() = mutableState.update { it.copy(workDisplayModeError = null) }
     fun openReview(version: SourceWorkArchiveVersion) = mutableState.update { it.copy(reviewing = version) }
     fun closeReview() = mutableState.update { it.copy(reviewing = null, languageTag = "") }
     fun languageTag(value: String) = mutableState.update { it.copy(languageTag = value) }

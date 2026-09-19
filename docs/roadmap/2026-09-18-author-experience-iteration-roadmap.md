@@ -71,7 +71,7 @@ TDD红绿记录：`ax01-android-author-card-layout-red2` exit 1，真实320dp mo
 
 ### AX-02 · 作者作品三视图、收藏和多源选择
 
-- [ ] AX-02：交付作者作品浏览闭环，A05–A08/A15相关项通过。
+- [x] AX-02：交付作者作品浏览闭环，A05–A08/A15相关项通过。
 
 **用户结果**：作品可切列表/舒适网格/紧凑网格；第一次跟随书架，主动选择后所有作者共用保存值。所有收藏图标在封面左上角；点作品选择准确图源版本。
 
@@ -88,6 +88,21 @@ TDD红绿记录：`ax01-android-author-card-layout-red2` exit 1，真实320dp mo
 **红绿验证**：真实PreferenceStore重启测试及共享有效模式契约；双端真实点击切模式/换作者、选择同值、保存失败、过滤后完整多源、准确mangaId、已有manga不重复、图标相对封面位置和可访问性。所有新增navigator.push/DI绑定有集成测试。测试覆盖1源、3源、缺源、部分目录、不同收藏状态、长标题320dp。
 
 **边界/证据**：不新增收藏操作，不联动修改书架偏好，不模拟后台抓取作为窗口加载。双端focused/格式及可运行UI证据随单批提交。
+
+**内聚性与风险**：实际改动跨 Android、Desktop、domain、i18n 与两端 mounted/wiring 测试，并超过8文件/400行；这些改动共同完成同一作品浏览闭环，拆开会留下偏好继承、完整版本聚合、来源选择或导航错误的未接线状态。作者显示覆盖只使用一个设备级偏好键；作品卡显示与来源窗口始终从未过滤的确认版本组计算收藏和版本，来源筛选仍只作用于可见列表。打开版本增加串行门控，失败保留窗口和旧状态；取消/Escape通过实际 `FocusRequester` 恢复作品卡焦点。AX-02不改变章节日期事实，日期占位继续由AX-03/04负责。
+
+**执行证据**：
+
+| 范围 | 命令/记录 | 结果 |
+|---|---|---|
+| 偏好契约 | `:domain:jvmTest --tests tachiyomi.domain.library.LibraryPreferencesTest`；`ax02-preference-contract-green1` | exit 0；缺省跟随书架、显式覆盖、无效值回退及不回写书架通过 |
+| Android 三视图/来源窗口 | `:app:testReleaseUnitTest --tests '*AndroidCreatorSettingsUiTest.mounted author work display modes*'`；`ax02-android-display-layout-green4`、`ax02-source-dialog-android-green2`、`ax02-android-focus-final1` | 均exit 0；320dp真实挂载验证列表/舒适网格/紧凑网格、过滤后仍显示完整1/2/3版本、取消焦点恢复通过 |
+| Android 作者接线 | `:app:testReleaseUnitTest --tests 'eu.kanade.tachiyomi.ui.browse.author.AndroidAuthorArchiveWiringTest.actual Android detail editor obeys shared identity contract'`；`ax02-android-archive-final2` | exit 0；已有版本复用与缺失版本保存走真实 `OpenCreatorWorkVersion`，未因新增偏好依赖破坏身份编辑接线 |
+| Desktop 三视图/来源窗口 | `:app-desktop:jvmTest --tests 'mihon.desktop.ui.authors.AuthorsProductionWiringTest.mounted display mode follows shelf until explicit selection and survives remount'`；`ax02-desktop-source-final2`、`ax02-desktop-focus-final4` | 均exit 0；真实SQLite挂载验证书架继承、显式持久化、重启恢复、完整来源窗口与取消路径 |
+| 有效红灯记录 | `ax02-display-mode-red1`、`ax02-display-mode-persistence-layout-red2`、`ax02-android-display-layout-red5` | 均为生产行为断言失败且编译成功；分别先证明入口缺失、重启后布局未实现、Android标题布局未接线，随后由本批实现修复 |
+| 格式与差异 | `spotlessCheck`；`ax02-spotless-final5`；`git diff --check` | 均通过；仅报告换行格式提示，无空白错误 |
+
+审阅结论：按需求逐项检查了设备级覆盖、无效值回退、来源过滤与完整版本聚合、收藏透明度/左上角标记、缺源与失败保留窗口、串行打开和取消焦点恢复；未发现会扩大到AX-03日期或AX-05提醒的实现。一次全类 Desktop 回归因既有 MockK 全局接线测试的并行隔离失败而失败（6个非本批测试，AX-02定向测试通过），未将其作为生产回归证据。
 
 ### AX-03 · 首次发现日期与元数据持久化
 

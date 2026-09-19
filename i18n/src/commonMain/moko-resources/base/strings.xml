@@ -2005,6 +2005,11 @@
     <string name="creator_work_search">Find works</string>
     <string name="creator_work_sources_all">All sources</string>
     <string name="creator_work_filter_empty">No matching works. Change the source or clear your search.</string>
+    <string name="creator_work_choose_source">Choose a source</string>
+    <string name="creator_work_all_source_versions">All known source versions for this work</string>
+    <string name="creator_work_chapters_unknown">Chapter count unknown</string>
+    <string name="creator_work_latest_date_unknown">Latest chapter date unavailable</string>
+    <string name="creator_work_latest_date_pending">Latest chapter date pending verification</string>
     <string name="creator_settings_title">Author settings</string>
     <string name="creator_settings_frequency">Check all followed authors</string>
     <string name="creator_frequency_daily">Daily</string>

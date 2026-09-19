@@ -1765,6 +1765,11 @@
     <string name="creator_work_search">查找作品</string>
     <string name="creator_work_sources_all">全部来源</string>
     <string name="creator_work_filter_empty">没有符合条件的作品。可切换来源或清空搜索。</string>
+    <string name="creator_work_choose_source">选择图源</string>
+    <string name="creator_work_all_source_versions">此作品的全部已知图源版本</string>
+    <string name="creator_work_chapters_unknown">章节数未知</string>
+    <string name="creator_work_latest_date_unknown">最新章节日期未提供</string>
+    <string name="creator_work_latest_date_pending">最新章节日期待核实</string>
     <string name="creator_settings_title">作者设置</string>
     <string name="creator_settings_frequency">检查所有已关注作者</string>
     <string name="creator_frequency_daily">每天</string>

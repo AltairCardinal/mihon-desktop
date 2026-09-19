@@ -53,6 +53,8 @@ import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
 import tachiyomi.domain.creator.service.CreatorIdentityEditor
 import tachiyomi.domain.creator.model.WorkDecisionProjection
 import tachiyomi.domain.creator.model.CreatorWorkArchiveFilter
+import tachiyomi.domain.library.model.LibraryDisplayMode
+import tachiyomi.domain.library.service.LibraryPreferences
 
 
 
@@ -85,6 +87,7 @@ internal object AuthorsScreenModelFactory {
             discoveryScheduler = dependencies.creatorDiscoveryScheduler,
             creatorArchive = archive,
             saveSourceMangaForDetails = dependencies.saveSourceMangaForDetails,
+            libraryPreferences = dependencies.libraryPreferences,
             identityActions = AuthorIdentityActions(
                 requireNotNull(dependencies.manageCreatorIdentity),
             ),
@@ -336,7 +339,19 @@ data class AuthorDetailState(
     val actionRunning: Boolean = false,
     val followFeedback: Boolean? = null,
     val error: String? = null,
+    val workDisplayModeOverride: LibraryDisplayMode? = null,
+    val shelfDisplayMode: LibraryDisplayMode = LibraryDisplayMode.default,
+    val workDisplayModeError: String? = null,
+    val workOpenError: String? = null,
 ) {
+    fun allVersionsForWork(workId: Long): List<SourceWorkArchiveVersion> =
+        workArchive.works.firstOrNull { it.workId == workId }?.versions.orEmpty()
+
+    val effectiveWorkDisplayMode: LibraryDisplayMode
+        get() = (workDisplayModeOverride ?: shelfDisplayMode).let { mode ->
+            if (mode == LibraryDisplayMode.CoverOnlyGrid) LibraryDisplayMode.CompactGrid else mode
+        }
+
     val languageSummary: LanguageFilterSummary
         get() = LanguageFilterSummary.from(
             workArchive.works.flatMap { it.versions }.map { it.readingLanguage.certainty } +
@@ -373,9 +388,15 @@ internal class AuthorDetailScreenModel(
     private val creatorArchive: CreatorArchive?,
     private val identityActions: AuthorIdentityActions,
     private val saveSourceMangaForDetails: SaveSourceMangaForDetails? = null,
+    private val libraryPreferences: LibraryPreferences? = null,
 ) : ScreenModel {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val mutableState = MutableStateFlow(AuthorDetailState())
+    private val mutableState = MutableStateFlow(
+        AuthorDetailState(
+            workDisplayModeOverride = libraryPreferences?.creatorWorkDisplayModeOverride()?.get(),
+            shelfDisplayMode = libraryPreferences?.displayMode()?.get() ?: LibraryDisplayMode.default,
+        ),
+    )
     val state: StateFlow<AuthorDetailState> = mutableState.asStateFlow()
     private val mutableEffects = MutableSharedFlow<AuthorDetailEffect>(extraBufferCapacity = 4)
     val effects = mutableEffects.asSharedFlow()
@@ -386,6 +407,18 @@ internal class AuthorDetailScreenModel(
     private val activeCreatorId: Long get() = identityEditor.state.value.identity?.id ?: creatorId
 
     init {
+        libraryPreferences?.let { preferences ->
+            scope.launch {
+                preferences.creatorWorkDisplayModeOverride().changes().collect { mode ->
+                    mutableState.update { it.copy(workDisplayModeOverride = mode) }
+                }
+            }
+            scope.launch {
+                preferences.displayMode().changes().collect { mode ->
+                    mutableState.update { it.copy(shelfDisplayMode = mode) }
+                }
+            }
+        }
         scope.launch {
             identityEditor.state.map { it.identity }.distinctUntilChanged().collect { snapshot ->
                 snapshot?.let { identity ->
@@ -468,15 +501,22 @@ internal class AuthorDetailScreenModel(
     }
 
     fun openVersion(version: SourceWorkArchiveVersion) = scope.launch {
-        runAction {
+        if (mutableState.value.actionRunning) return@launch
+        mutableState.update { it.copy(actionRunning = true, workOpenError = null) }
+        runCatching {
             val opener = OpenCreatorWorkVersion { listed ->
                 requireNotNull(saveSourceMangaForDetails).awaitListedForDetails(
                     authorArchiveVersionSourceManga(listed), listed.naturalKey.sourceId,
                 ).manga.id
             }
             mutableEffects.emit(AuthorDetailEffect.OpenManga(opener.await(version)))
+        }.onFailure { error ->
+            mutableState.update { it.copy(workOpenError = error.message ?: error::class.simpleName) }
         }
+        mutableState.update { it.copy(actionRunning = false) }
     }
+
+    fun clearWorkOpenError() = mutableState.update { it.copy(workOpenError = null) }
 
     fun openCandidate(candidate: DiscoveryCandidate) {
         mutableEffects.tryEmit(AuthorDetailEffect.OpenWorkCompare(candidate.id, activeCreatorId))
@@ -484,6 +524,29 @@ internal class AuthorDetailScreenModel(
 
     fun searchWorks(query: String) = mutableState.update { it.copy(workFilter = it.workFilter.copy(query = query)) }
     fun filterSource(sourceId: Long?) = mutableState.update { it.copy(workFilter = it.workFilter.copy(sourceId = sourceId)) }
+
+    fun setWorkDisplayMode(mode: LibraryDisplayMode) {
+        val preference = libraryPreferences?.creatorWorkDisplayModeOverride()
+        if (preference == null) {
+            mutableState.update { it.copy(workDisplayModeError = "Display mode preference is unavailable") }
+            return
+        }
+        val previousMode = mutableState.value.workDisplayModeOverride
+        runCatching { preference.set(mode) }
+            .onSuccess {
+                mutableState.update { it.copy(workDisplayModeOverride = mode, workDisplayModeError = null) }
+            }
+            .onFailure { error ->
+                mutableState.update {
+                    it.copy(
+                        workDisplayModeOverride = previousMode,
+                        workDisplayModeError = error.message ?: error::class.simpleName,
+                    )
+                }
+            }
+    }
+
+    fun clearWorkDisplayModeError() = mutableState.update { it.copy(workDisplayModeError = null) }
 
     fun setLanguageFilter(filter: LanguageArchiveFilter) = mutableState.update { it.copy(languageFilter = filter) }
 

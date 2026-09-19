@@ -3,30 +3,46 @@ package mihon.desktop.ui.authors
 import tachiyomi.i18n.MR
 import mihon.desktop.LocalDesktopUiDependencies
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -47,7 +63,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -77,6 +100,8 @@ import tachiyomi.domain.source.service.SourceManager
 import java.util.Locale
 import java.util.UUID
 import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
+import tachiyomi.domain.library.model.LibraryDisplayMode
+import mihon.desktop.image.desktopSourceImageModel
 
 
 
@@ -406,10 +431,25 @@ data class AuthorDetailScreen(
         val identityActionRunning = state.actionRunning
         var showSplitDialog by remember { mutableStateOf(false) }
         var confirmUnfollow by remember { mutableStateOf(false) }
+        var showDisplayModeMenu by remember { mutableStateOf(false) }
+        var showSourceChooserFor by remember { mutableStateOf<Long?>(null) }
+        var sourceFocusRequester by remember { mutableStateOf<FocusRequester?>(null) }
+        var pendingSourceFocusRestore by remember { mutableStateOf<FocusRequester?>(null) }
+        LaunchedEffect(pendingSourceFocusRestore) {
+            pendingSourceFocusRestore?.let { requester ->
+                withFrameNanos { }
+                requester.requestFocus()
+                pendingSourceFocusRestore = null
+            }
+        }
         LaunchedEffect(model) {
             model.effects.collect { effect ->
                 when (effect) {
-                    is AuthorDetailEffect.OpenManga -> navigator.push(MangaDetailScreen(effect.mangaId))
+                    is AuthorDetailEffect.OpenManga -> {
+                        showSourceChooserFor = null
+                        sourceFocusRequester = null
+                        navigator.push(MangaDetailScreen(effect.mangaId))
+                    }
                     is AuthorDetailEffect.OpenCreator -> navigator.replace(AuthorDetailScreen(effect.creatorId))
                     is AuthorDetailEffect.OpenWorkCompare -> navigator.push(
                         WorkCompareScreen(effect.candidateId, effect.creatorId),
@@ -442,6 +482,24 @@ data class AuthorDetailScreen(
             )
         }
 
+        showSourceChooserFor?.let { workId ->
+            state.workArchive.works.firstOrNull { it.workId == workId }?.let { work ->
+                CreatorWorkSourceChooserDialog(
+                    work = work,
+                    sourceManager = desktopDependencies.sourceManager,
+                    error = state.workOpenError,
+                    opening = state.actionRunning,
+                    onOpen = model::openVersion,
+                    onDismiss = {
+                        model.clearWorkOpenError()
+                        pendingSourceFocusRestore = sourceFocusRequester
+                        sourceFocusRequester = null
+                        showSourceChooserFor = null
+                    },
+                )
+            }
+        }
+
         identityActionError?.let { error ->
             AlertDialog(
                 onDismissRequest = model::clearError,
@@ -465,6 +523,40 @@ data class AuthorDetailScreen(
                         }
                     },
                     actions = {
+                        Box {
+                            IconButton(
+                                onClick = { showDisplayModeMenu = true },
+                                modifier = Modifier.testTag("creator-display-mode-button"),
+                            ) {
+                                Icon(
+                                    Icons.Default.GridView,
+                                    contentDescription = MR.strings.action_display_grid.localized(),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showDisplayModeMenu,
+                                onDismissRequest = { showDisplayModeMenu = false },
+                            ) {
+                                listOf(
+                                    LibraryDisplayMode.List to MR.strings.action_display_list.localized(),
+                                    LibraryDisplayMode.ComfortableGrid to MR.strings.action_display_comfortable_grid.localized(),
+                                    LibraryDisplayMode.CompactGrid to MR.strings.action_display_grid.localized(),
+                                ).forEach { (mode, label) ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                if (state.effectiveWorkDisplayMode == mode) "✓ $label" else label,
+                                            )
+                                        },
+                                        onClick = {
+                                            model.setWorkDisplayMode(mode)
+                                            showDisplayModeMenu = false
+                                        },
+                                        modifier = Modifier.testTag("creator-display-mode-option-${mode.serialize()}"),
+                                    )
+                                }
+                            }
+                        }
                         IconButton(
                             enabled = !isDiscoveryBusy,
                             onClick = model::refreshDiscovery,
@@ -485,6 +577,13 @@ data class AuthorDetailScreen(
                     .padding(padding),
             ) {
                 if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                state.workDisplayModeError?.let { error ->
+                    Text(
+                        error,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp).testTag("creator-display-mode-error"),
+                    )
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -633,6 +732,12 @@ data class AuthorDetailScreen(
                         },
                     model::searchWorks, model::filterSource,
                 )
+                Text(
+                    MR.strings.creator_unique_work_count.localized(Locale.getDefault(), workArchive.works.size),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp).testTag("creator-visible-work-count"),
+                )
 
                 if (workArchive.works.isEmpty() && workArchive.pending.isEmpty() && workArchive.rejected.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -648,67 +753,129 @@ data class AuthorDetailScreen(
                         )
                     }
                 } else {
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        if (workArchive.works.isNotEmpty()) {
-                            item {
-                                Text(
-                                    text = MR.strings.desktop_ui_canonical_works.localized(),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                )
+                    val mode = state.effectiveWorkDisplayMode
+                    if (mode == LibraryDisplayMode.List) {
+                        LazyColumn(Modifier.fillMaxSize()) {
+                            if (workArchive.works.isNotEmpty()) {
+                                item {
+                                    Text(
+                                        text = MR.strings.desktop_ui_canonical_works.localized(),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    )
+                                }
+                                items(workArchive.works, key = { "work-${it.workId}" }) { work ->
+                                    val allVersions = state.allVersionsForWork(work.workId)
+                                    val focusRequester = remember(work.workId) { FocusRequester() }
+                                    CreatorArchiveWorkCard(
+                                        title = work.title,
+                                        thumbnailUrl = work.versions.firstOrNull()?.thumbnailUrl,
+                                        sourceId = work.versions.firstOrNull()?.naturalKey?.sourceId ?: 0L,
+                                favorite = allVersions.any { it.inLibrary },
+                                key = work.workId.toString(),
+                                mode = mode,
+                                        focusRequester = focusRequester,
+                                        onClick = {
+                                            sourceFocusRequester = focusRequester
+                                            showSourceChooserFor = work.workId
+                                        },
+                                content = {
+                                            CreatorCanonicalVersions(work, model, navigator, creator?.id ?: creatorId, desktopDependencies.sourceManager)
+                                        },
+                                    )
+                                    HorizontalDivider()
+                                }
                             }
-                            workArchive.works.forEach { work ->
-                                item(key = "work-${work.workId}") {
-                                    CreatorArchiveWorkRow(work.title, work.versions.firstOrNull()?.thumbnailUrl, work.workId.toString()) {
-                                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                work.versions.forEach { version ->
-                                                    var showVersionMenu by remember(version.sourceWorkId) { mutableStateOf(false) }
-                                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        TextButton(onClick = { model.openVersion(version) }, modifier = Modifier.weight(1f, fill = false).testTag("creator-version-${version.sourceWorkId}")) {
-                                                            Text(authorVersionLabel(version, desktopDependencies.sourceManager))
-                                                        }
-                                                        IconButton(onClick = { showVersionMenu = true }, modifier = Modifier.width(32.dp)) {
-                                                            Icon(Icons.Default.MoreVert, MR.strings.action_edit.localized())
-                                                        }
-                                                        androidx.compose.material3.DropdownMenu(expanded = showVersionMenu, onDismissRequest = { showVersionMenu = false }) {
-                                                            androidx.compose.material3.DropdownMenuItem(text = { Text(MR.strings.desktop_ui_pending_work_suggestions.localized()) }, onClick = {
-                                                                showVersionMenu = false
-                                                                navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
-                                                            })
-                                                        }
-                                                    }
-                                                }
-                                            }
+                            if (workArchive.pending.isNotEmpty()) {
+                                item {
+                                    Text(
+                                        text = MR.strings.desktop_ui_pending_work_suggestions.localized(),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    )
+                                }
+                                items(workArchive.pending, key = { "pending-${it.sourceWorkId}" }) { version ->
+                                    ArchiveVersionListItem(version, desktopDependencies.sourceManager, onOpen = { model.openVersion(version) }) {
+                                        navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
                                     }
                                 }
-                                item(key = "work-divider-${work.workId}") { HorizontalDivider() }
                             }
-                        }
-                        if (workArchive.pending.isNotEmpty()) {
-                            item {
-                                Text(
-                                    text = MR.strings.desktop_ui_pending_work_suggestions.localized(),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                )
-                            }
-                            items(workArchive.pending, key = { "pending-${it.sourceWorkId}" }) { version ->
-                                ArchiveVersionListItem(version, desktopDependencies.sourceManager, onOpen = { model.openVersion(version) }) {
-                                    navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
+                            if (workArchive.rejected.isNotEmpty()) {
+                                item {
+                                    Text(
+                                        text = MR.strings.desktop_ui_separated_work_versions.localized(),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    )
+                                }
+                                items(workArchive.rejected, key = { "rejected-${it.sourceWorkId}" }) { version ->
+                                    ArchiveVersionListItem(version, desktopDependencies.sourceManager, onOpen = { model.openVersion(version) }) {
+                                        navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
+                                    }
                                 }
                             }
                         }
-                        if (workArchive.rejected.isNotEmpty()) {
-                            item {
-                                Text(
-                                    text = MR.strings.desktop_ui_separated_work_versions.localized(),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                )
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(if (mode == LibraryDisplayMode.ComfortableGrid) 164.dp else 112.dp),
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            if (workArchive.works.isNotEmpty()) {
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    Text(
+                                        text = MR.strings.desktop_ui_canonical_works.localized(),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                                    )
+                                }
+                                items(workArchive.works, key = { "work-${it.workId}" }) { work ->
+                                    val allVersions = state.allVersionsForWork(work.workId)
+                                    val focusRequester = remember(work.workId) { FocusRequester() }
+                                    CreatorArchiveWorkCard(
+                                        title = work.title,
+                                        thumbnailUrl = work.versions.firstOrNull()?.thumbnailUrl,
+                                        sourceId = work.versions.firstOrNull()?.naturalKey?.sourceId ?: 0L,
+                                favorite = allVersions.any { it.inLibrary },
+                                key = work.workId.toString(),
+                                mode = mode,
+                                        focusRequester = focusRequester,
+                                        onClick = {
+                                            sourceFocusRequester = focusRequester
+                                            showSourceChooserFor = work.workId
+                                        },
+                                content = {
+                                            CreatorCanonicalVersions(work, model, navigator, creator?.id ?: creatorId, desktopDependencies.sourceManager)
+                                        },
+                                    )
+                                }
                             }
-                            items(workArchive.rejected, key = { "rejected-${it.sourceWorkId}" }) { version ->
-                                ArchiveVersionListItem(version, desktopDependencies.sourceManager, onOpen = { model.openVersion(version) }) {
-                                    navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
+                            if (workArchive.pending.isNotEmpty()) {
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    Text(
+                                        text = MR.strings.desktop_ui_pending_work_suggestions.localized(),
+                                        style = MaterialTheme.typography.titleSmall,
+                                    )
+                                }
+                                items(workArchive.pending, span = { GridItemSpan(maxLineSpan) }, key = { "pending-${it.sourceWorkId}" }) { version ->
+                                    ArchiveVersionListItem(version, desktopDependencies.sourceManager, onOpen = { model.openVersion(version) }) {
+                                        navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
+                                    }
+                                }
+                            }
+                            if (workArchive.rejected.isNotEmpty()) {
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    Text(
+                                        text = MR.strings.desktop_ui_separated_work_versions.localized(),
+                                        style = MaterialTheme.typography.titleSmall,
+                                    )
+                                }
+                                items(workArchive.rejected, span = { GridItemSpan(maxLineSpan) }, key = { "rejected-${it.sourceWorkId}" }) { version ->
+                                    ArchiveVersionListItem(version, desktopDependencies.sourceManager, onOpen = { model.openVersion(version) }) {
+                                        navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
+                                    }
                                 }
                             }
                         }
@@ -727,6 +894,249 @@ private fun authorVersionLabel(
     return if (sourceManager.get(version.naturalKey.sourceId) == null) {
         "$name · ${MR.strings.desktop_ui_source_missing.localized()}"
     } else name
+}
+
+@Composable
+private fun CreatorWorkSourceChooserDialog(
+    work: tachiyomi.domain.creator.model.CanonicalWorkArchiveGroup,
+    sourceManager: SourceManager,
+    error: String?,
+    opening: Boolean,
+    onOpen: (SourceWorkArchiveVersion) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(work.title) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 560.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    MR.strings.creator_work_all_source_versions.localized(),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                work.versions.forEach { version ->
+                    val sourceName = sourceManager.getOrStub(version.naturalKey.sourceId).name
+                    val sourceMissing = sourceManager.get(version.naturalKey.sourceId) == null
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = !opening) { onOpen(version) }
+                            .testTag("creator-source-version-${version.sourceWorkId}"),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Box(Modifier.width(48.dp).height(68.dp)) {
+                                coil3.compose.AsyncImage(
+                                    model = mihon.desktop.image.desktopSourceImageModel(
+                                        version.thumbnailUrl,
+                                        version.naturalKey.sourceId,
+                                    ),
+                                    contentDescription = version.title,
+                                    fallback = rememberVectorPainter(Icons.AutoMirrored.Filled.MenuBook),
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                if (version.inLibrary) {
+                                    Icon(
+                                        Icons.Default.CollectionsBookmark,
+                                        contentDescription = MR.strings.desktop_ui_in_library.localized(),
+                                        modifier = Modifier.align(Alignment.TopStart).padding(2.dp).size(16.dp),
+                                    )
+                                }
+                            }
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(sourceName, style = MaterialTheme.typography.labelLarge)
+                                if (sourceMissing) {
+                                    Text(
+                                        MR.strings.desktop_ui_source_missing.localized(),
+                                        color = MaterialTheme.colorScheme.error,
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                                Text(version.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    if (version.chapterCount > 0) {
+                                        MR.strings.desktop_ui_chapter_count.localized(
+                                            Locale.getDefault(),
+                                            version.chapterCount,
+                                        )
+                                    } else {
+                                        MR.strings.creator_work_chapters_unknown.localized()
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Text(
+                                    MR.strings.creator_work_latest_date_unknown.localized(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    }
+                }
+                error?.let {
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("creator-source-open-error"),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss, modifier = Modifier.testTag("creator-source-cancel")) {
+                Text(MR.strings.action_cancel.localized())
+            }
+        },
+    )
+}
+
+@Composable
+private fun CreatorCanonicalVersions(
+    work: tachiyomi.domain.creator.model.CanonicalWorkArchiveGroup,
+    model: AuthorDetailScreenModel,
+    navigator: Navigator,
+    creatorId: Long,
+    sourceManager: SourceManager,
+) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        work.versions.forEach { version ->
+            var showVersionMenu by remember(version.sourceWorkId) { mutableStateOf(false) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(
+                    onClick = { model.openVersion(version) },
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .testTag("creator-version-${version.sourceWorkId}"),
+                ) {
+                    Text(authorVersionLabel(version, sourceManager))
+                }
+                IconButton(onClick = { showVersionMenu = true }, modifier = Modifier.width(32.dp)) {
+                    Icon(Icons.Default.MoreVert, MR.strings.action_edit.localized())
+                }
+                DropdownMenu(expanded = showVersionMenu, onDismissRequest = { showVersionMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text(MR.strings.desktop_ui_pending_work_suggestions.localized()) },
+                        onClick = {
+                            showVersionMenu = false
+                            navigator.push(WorkCompareScreen(version.sourceWorkId, creatorId))
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CreatorArchiveWorkCard(
+    title: String,
+    thumbnailUrl: String?,
+    sourceId: Long,
+    favorite: Boolean,
+    key: String,
+    mode: LibraryDisplayMode,
+    focusRequester: FocusRequester,
+    onClick: () -> Unit,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) {
+    val cardModifier = Modifier
+        .fillMaxWidth()
+        .focusRequester(focusRequester)
+        .focusable()
+        .clickable(onClick = onClick)
+        .testTag("creator-work-card-$key")
+    when (mode) {
+        LibraryDisplayMode.List -> {
+            Row(
+                modifier = cardModifier.padding(16.dp),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                CreatorWorkCover(title, thumbnailUrl, sourceId, key, Modifier.width(64.dp).height(88.dp), favorite)
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("creator-work-$key"))
+                    content()
+                }
+            }
+        }
+        LibraryDisplayMode.ComfortableGrid -> {
+            Card(modifier = cardModifier, colors = CardDefaults.cardColors()) {
+                Column {
+                    CreatorWorkCover(title, thumbnailUrl, sourceId, key, Modifier.fillMaxWidth().aspectRatio(0.7f), favorite)
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp).testTag("creator-work-$key"),
+                    )
+                    content()
+                }
+            }
+        }
+        LibraryDisplayMode.CompactGrid, LibraryDisplayMode.CoverOnlyGrid -> {
+            Card(modifier = cardModifier, colors = CardDefaults.cardColors()) {
+                Column {
+                    CreatorWorkCover(title, thumbnailUrl, sourceId, key, Modifier.fillMaxWidth().aspectRatio(0.7f), favorite, compactTitle = true)
+                    content()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CreatorWorkCover(
+    title: String,
+    thumbnailUrl: String?,
+    sourceId: Long,
+    key: String,
+    modifier: Modifier,
+    favorite: Boolean,
+    compactTitle: Boolean = false,
+) {
+    Box(modifier = modifier.testTag("creator-cover-$key")) {
+        coil3.compose.AsyncImage(
+            model = mihon.desktop.image.desktopSourceImageModel(thumbnailUrl, sourceId),
+            contentDescription = title,
+            fallback = rememberVectorPainter(Icons.AutoMirrored.Filled.MenuBook),
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize().alpha(if (favorite) 0.34f else 1f),
+        )
+        if (compactTitle) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.82f))),
+                ),
+            )
+            Text(
+                title,
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.align(Alignment.BottomStart).padding(6.dp).testTag("creator-work-$key"),
+            )
+        }
+        if (favorite) {
+            Icon(
+                Icons.Default.CollectionsBookmark,
+                contentDescription = MR.strings.desktop_ui_in_library.localized(),
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.align(Alignment.TopStart).padding(5.dp).size(20.dp)
+                    .testTag("creator-favorite-$key"),
+            )
+        }
+    }
 }
 
 @Composable
