@@ -49,13 +49,19 @@
 | 未登录 | “连接 GitHub” | 设备授权完成后检查个人账号与安装 |
 | 未安装 | “尚未安装 Mihon GitHub App”及三步说明 | “创建专用私有仓库”“安装并授权专用仓库”“我已完成，重新检查” |
 | 已安装但看不到目标 | “尚未能访问 mihon-sync，可能尚未创建或未授权” | 同上，安装按钮优先进入既有安装配置 |
-| 可初始化空库 | 显示账号/仓库及单个可选密码框 | “不设置密码并开始同步”或“设置密码并开始同步” |
+| 可初始化空库 | 显示账号/仓库及单个可选密码框，不增加成功提示 | “不设置密码并开始同步”或“设置密码并开始同步” |
 | 已有无密码 v2 | 显示连接/合并进度 | 自动合并，无建库或密码确认 |
 | 已有密码 v2 | 输入密码，支持显隐 | 正确后合并；错误留在原页，不写远端 |
 | 初始化中 | “正在准备同步空间” | 成功后自动合并，可关闭面板 |
 | 旧本机连接 | “此设备保留旧版同步连接，请先断开后重新配置” | 直接提供“断开旧连接”确认入口 |
 | 旧远端/未知格式 | “此仓库中的同步格式不受支持，数据已保留” | 查看仓库、重新检查、返回；不自动覆盖 |
 | 普通非空仓库 | “该仓库已有文件，无法作为新的空同步空间” | 查看仓库及处理说明，不提供一键清空 |
+
+### 4.1 正常推进与异常显示边界
+
+首次检查返回 `NoVisibleSpace` 是“准备创建新空间”的正常结果，随后进入 `NEW_PASSWORD`。密码设置页只显示设置密码所需的标题、说明、输入框和继续动作；不显示“已确认为空”“检查成功”或“初始化成功”等成功状态文案。用户看到流程进入下一步即可判断默认流程正在正常推进。
+
+异常信息只在当前操作明确失败或被安全检查暂停时出现，并使用当前操作对应的原因。密码设置、解锁和发现阶段不显示上一轮同步交换遗留的 `SyncRunProblem`；初始化失败显示本次 `setupProblem`，实际交换失败才显示本轮 `SyncRunProblem`。异步完成事件不能把旧错误重新写回正在进行的首次配置页面。
 
 建库按钮使用固定 HTTPS GitHub 路由，通过现有 URL 构造器编码参数，例如 `https://github.com/new?name=mihon-sync&visibility=private&owner=<已核验登录名>`。页面提示：所有者选本人，保持 Private，不添加 README、.gitignore、License，不使用模板。URL 不携带令牌、密码、密钥或本地任务标识。浏览器可能登录不同账户，应用返回后必须重新核对稳定账号 ID；不信任预填值和回调。
 
@@ -68,6 +74,43 @@
 ## 5. 发现与验证契约
 
 复用 `GitHubSyncSpaceClient`、`GitHubPrivateRepositorySelector` 和 `SyncRuntime` 的 production HTTP/授权链，移除 Administration 必须为 write 的检查、`POST /user/repos` 及仓库 description 创建标记依赖。保持合法分页、origin 约束、私有性、所有者 ID 和用户实际写权限检查。
+
+### 5.1 首次发现的正常结果与异常结果
+
+首次发现结果先按产品状态分类，再映射到用户界面：
+
+| 结果 | 状态 | 处理 |
+| --- | --- | --- |
+| `NoVisibleSpace` | 正常 | 进入 `NEW_PASSWORD`，等待用户选择可选密码；不显示成功提示 |
+| `Found` | 正常 | 进入已有空间的解锁或合并流程 |
+| `Multiple` | 需要选择 | 展示已发现空间，由用户选择目标；不归类为远端历史异常 |
+| `Failed(problem)` | 异常 | 进入 `ERROR`，保留具体 `SyncDiscoveryProblem`，显示对应原因和重试/重新授权动作 |
+
+`Failed` 的异常原因必须保持可区分：
+
+- `AUTHORIZATION_REQUIRED`：未完成 GitHub 授权、App 未安装/暂停、安装权限不足或目标仓库不可访问。
+- `REPOSITORY_NOT_PRIVATE`：目标仓库不是私有仓库。
+- `NAME_OCCUPIED`：固定名 `mihon-sync` 已被占用，但不是可识别的 Mihon 同步空间。
+- `CREATION_UNCONFIRMED`：仓库创建结果、默认分支/bootstrap、提交树或归属证据无法确认。
+- `INCOMPATIBLE`：发现 `.mihon-sync` 内容，但 descriptor 或空间格式不受支持。
+- `ACCOUNT_CHANGED`：当前稳定 GitHub 账号 ID 与本次配置意图不一致。
+- `MULTIPLE_SPACES`：发现多个有效同步空间，不能静默选择或覆盖。
+- `RATE_LIMITED`、`RETRYABLE`、`MALFORMED`：分别表示限流、可重试的网络/服务失败和响应格式错误。
+
+`NoVisibleSpace` 不能因为仓库尚未有同步 descriptor 就被当作异常；只有无法证明目标是安全的专用空库时，才进入相应失败结果。`NEW_PASSWORD` 与 `setupProblem == null` 的组合是首次配置的正常状态。
+
+### 5.2 运行交换异常与文案边界
+
+`SyncRunProblem.REMOTE_CHANGED` 只表示远端历史保护器拒绝了当前快照，具体包括：
+
+- 远端 Git tree 被截断，或批次缺少 blob、索引、摘要等完整证据；
+- 已观察过的 HEAD 指纹发生变化；
+- 已观察过的不可变对象指纹发生变化；
+- 该同步空间已被持久化标记为阻断。
+
+远端仓库与本地空间的 owner/name/branch 绑定不一致、空间代次不一致等身份问题也必须进入明确的安全失败分类，不能退化为普通未知错误。`REMOTE_CHANGED` 的界面文案只在真实交换已经开始且上述保护器拒绝时显示，不能出现在 `NEW_PASSWORD`、`UNLOCK` 或 `DISCOVERING` 的正常配置页面。
+
+当前实现把 `SyncSetupException` 中除 `REPOSITORY_NOT_PRIVATE`、`ACCOUNT_CHANGED` 和 `AUTHORIZATION_REQUIRED` 之外的所有原因都回退到 `REMOTE_CHANGED`。本轮实现必须取消这种宽泛映射：初始化异常保留 `setupProblem` 的具体枚举；限流、可重试、畸形数据、名称冲突、初始化未确认、多空间和格式不兼容分别使用对应错误状态。没有稳定分类时使用通用的可重试/未知错误，不得声称远端历史发生变化。
 
 建议在现有 sealed result 上表达下列语义，名称以实施签名为准：
 
@@ -93,7 +136,7 @@
 
 1. 显示密码页前得到核验结果；用户提交时重新核对账号 ID、仓库 ID、本人所有、私有、可写和空状态。以实际 repository ID 绑定任务，同名删除重建必须使旧意图失效。
 2. 首次远端写入前持久化初始化意图：账号/仓库 ID、固定分支、attempt ID、v2 材料、所处阶段及已确认的远端提交证据；不保存原始密码。不沿用 `submitted=true` 表示旧建库 POST 已发出的语义。
-3. 复用 Contents API 的首次 bootstrap 能力，创建文件请求不得携带替换已有文件的 SHA。bootstrap 需具有可验证的任务归属；不得依靠公开 description 或固定字符串 alone 认领其他初始化。新 bootstrap 元数据不改变已完成 v2 的 descriptor/交换格式。
+3. 复用 Contents API 的首次 bootstrap 能力，创建文件请求不得携带替换已有文件的 SHA。bootstrap 需具有可验证的任务归属；不得依靠公开 description 或固定字符串单独认领其他初始化。新 bootstrap 元数据不改变已完成 v2 的 descriptor/交换格式。
 4. 在进入下一阶段前重新读取 bootstrap 精确内容和树、账号/仓库 ID；只允许本次已知内容。同步分支首次发布须保持完整 descriptor 与初始索引在同一提交中，引用创建或更新保持 create-only/非强制语义。默认分支名取 GitHub 元数据，不假定为 main，也不修改仓库设置。
 5. 超时、409/422、取消或进程中断后先读远端事实。相同意图继续；其他端已发布有效空间则丢弃未使用材料，转入赢家空间的密码/无密码加入流程。不得沿用输家的密码或覆盖赢家 descriptor。
 6. 若只有其他端的未完成 bootstrap，显示“另一设备正在准备同步空间，请稍后重试”；不以超时自动夺取。无法证明归属时显示可恢复错误并保留数据，不反复写入。权限撤销后暂停，恢复后再次核验目标身份。
@@ -114,6 +157,13 @@ GitHub 不提供跨“验空—写文件—发布引用”的整体事务，不�
 | presentation-sync/SyncPanelContent.kt、i18n | 双端共享步骤、动作与文案 |
 | Android/Desktop sync adapters | 沿用浏览器/生命周期/安全存储接线，仅补必要差异 |
 
+状态来源与展示优先级固定如下：
+
+1. `setupStep` 表示首次配置流程；`setupProblem` 只描述当前配置尝试的失败原因。
+2. `SyncRunProblem` 只描述已经开始的同步交换；它不能覆盖正常的 `NEW_PASSWORD`、`UNLOCK` 或 `DISCOVERING` 页面。
+3. `SyncPasswordProblem` 只描述当前密码输入，不改变远端状态，也不写入同步历史。
+4. `ERROR` 状态必须保留具体原因码和可执行动作；返回重查后清除旧的 setup/runtime 错误，重新从发现结果推导页面。
+
 不另建同步 manager、网络客户端或数据库镜像。增加安全诊断原因码，区分未安装、缺 Contents、不可见、初始化冲突与本机旧绑定；日志只含阶段、原因码、HTTP 状态和必要 request ID，不记录令牌、密码、密钥、私库正文。面向用户使用可操作说明，不要求用户理解 Git 对象。
 
 ## 8. 验收与发布边界
@@ -121,6 +171,14 @@ GitHub 不提供跨“验空—写文件—发布引用”的整体事务，不�
 共享契约在 JVM/Android 执行真实 production 实现；HTTP 用 MockWebServer，UI 用真实 controller 和共享 Compose，双端补原生浏览器/返回/重启验收。不得只验证字符串出现或 mock parser。
 
 必须覆盖：从零开始且仅选专用仓库、安装缺失/暂停/缺 Contents、无 Administration 的成功闭环、所有空库反例、README 拒绝、两种密码模式、并发不同密码、所有持久阶段中断、账号与仓库替换、权限/私有性撤销、旧绑定退出、已有 v2 回归。验证全链路不再请求 POST /user/repos 或修改仓库设置，并验证生产 wiring 共用 HTTP 客户端。
+
+状态与文案验收还必须覆盖：
+
+- 空私库首次检查返回 `NoVisibleSpace` 后进入 `NEW_PASSWORD`，页面不出现“已确认为空”或其他成功提示；默认流程继续即可完成该阶段验收。
+- `AUTHORIZATION_REQUIRED`、`NAME_OCCUPIED`、`CREATION_UNCONFIRMED`、`INCOMPATIBLE`、`ACCOUNT_CHANGED`、`MULTIPLE_SPACES`、限流、可重试和畸形响应分别保留对应原因，不显示“远端历史异常”。
+- 仅由快照完整性、HEAD 指纹或不可变对象指纹变化触发 `REMOTE_CHANGED`；触发后暂停交换并保留待处理数据，不自动覆盖或初始化。
+- 在首次配置页面先产生过一次同步错误时，重新进入 `NEW_PASSWORD` 或 `UNLOCK` 不再显示旧的 `SyncRunProblem`；密码错误只显示密码错误。
+- 真实 controller、共享 Compose 和 Android/Desktop 入口使用同一状态优先级；测试必须在 production wiring 损坏时失败，不能只断言字符串存在。
 
 真实 GitHub 验收使用明确获准的隔离个人账号、专用私库和合成书架；权限为 Contents 写、Metadata 读，安装选择仅该仓库。从用户网页建库到双端交换、重启恢复全程执行。无法取得该证据则标记外部验收未完成，不宣称最小权限可发布。不自动删除验收库。
 
