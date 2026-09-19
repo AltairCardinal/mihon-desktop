@@ -5,7 +5,7 @@
   let state = M.create(), page = 'manga', manga = 'v0', author = 'a', filter = '全部来源', query = '', notice = '', scenario = 'history';
   let authorScroll = { following: 0, all: 0 };
   const rememberAuthorScroll = () => { if (page === 'authors') authorScroll[authorTab] = app.querySelector('main')?.scrollTop || 0; };
-  let displayMode = 'list', selectedWork = '', deferredDiscovery = false;
+  let displayMode = 'list', selectedWork = '', deferredDiscovery = false, splitTarget = '', undoSplit = null;
   let authorTab = 'following', detailReturn = 'manga', mangaReturn = 'authors';
   let modal = null, opener = null, selected = [], target = 'a', settingsFrequency = 'daily', error = '', candidateQuery = '', renameDraft = '', sessionRevision = 0, modalFocus = null;
   const esc = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -14,21 +14,24 @@
   const current = () => state.authors.find(a => a.id === M.resolve(state, author)) || state.authors[0];
   const versions = id => state.versions.filter(v => v.author === M.resolve(state, id));
   const workNames = id => versions(id).map(v => v.title).join('、');
-  const collected = work => versions(current().id).some(v => v.work === work && v.favorite);
+  const collectedGroup = group => group.versions.some(v => v.favorite);
   const badge = favorite => favorite ? '<span class="collected-badge" role="img" aria-label="已收藏" title="已收藏"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-6 2h2v5l-1-.75L14 9V4zm6 12H8V4h4v9l3-2.25L18 13V4h2v12z"/></svg></span>' : '';
   const unseen = id => M.unseenWorks(state, id);
   const pendingAuthors = () => state.authors.filter(a => unseen(a.id).length);
   const discoveryBanner = () => { const pending = pendingAuthors(); return pending.length ? `<aside class="discovery-banner" role="status"><span>发现 ${new Set(pending.flatMap(a => unseen(a.id))).size} 部新作<span class="discovery-names">${pending.map(a => esc(a.name)).join('、')}</span></span>${button('view-new', '查看新作')}</aside>` : ''; };
-  const workDate = work => { const d = M.workDate(state, work); return `<span class="work-date"${d.source ? ` title="日期来源：${esc(d.source)}"` : ''}>${esc(d.label)} ${esc(d.date)}</span>`; };
+  const groupDate = group => {
+    const dates = group.versions.map(v => M.workDate(state, v.work)).sort((a, b) => a.date.localeCompare(b.date));
+    const d = dates[0] || { date: state.today, label: '首次发现', source: null };
+    return `<span class="work-date"${d.source ? ` title="日期来源：${esc(d.source)}"` : ''}>${esc(d.label)} ${esc(d.date)}</span>`;
+  };
+  const groupUnseen = group => group.versions.some(v => unseen(current().id).includes(v.work));
   const workItem = group => {
-    const v = group[0], siblings = versions(current().id).filter(item => item.work === v.work);
-    return `<button class="row work-row work-item" data-action="work" data-work="${esc(v.work)}"><span class="work-cover-wrap"><span class="cover small">${esc(v.title)}</span>${badge(collected(v.work))}${displayMode === 'compact' ? `<strong class="cover-title">${esc(v.title)}</strong>` : ''}</span><span class="grow">${displayMode !== 'compact' ? `<strong>${esc(v.title)}</strong>` : ''}${unseen(current().id).includes(v.work) ? '<span class="new-work-badge">新作 · 未查看</span>' : ''}${workDate(v.work)}<span class="source-summary">${siblings.length} 个来源版本</span></span></button>`;
+    return `<button class="row work-row work-item" data-action="work" data-work="${esc(group.id)}"><span class="work-cover-wrap"><span class="cover small">${esc(group.title)}</span>${badge(collectedGroup(group))}${displayMode === 'compact' ? `<strong class="cover-title">${esc(group.title)}</strong>` : ''}</span><span class="grow">${displayMode !== 'compact' ? `<strong>${esc(group.title)}</strong>` : ''}${groupUnseen(group) ? '<span class="new-work-badge">新作 · 未查看</span>' : ''}${groupDate(group)}<span class="source-summary">${group.versions.length} 个来源版本</span></span></button>`;
   };
   const authorRow = a => {
     // Local design fixtures have no reading/popularity signals: retain first-seen work order.
-    const works = [...new Map(versions(a.id).map(v => [v.work, null])).keys()]
-      .map(id => versions(a.id).find(v => v.work === id));
-    return `<button class="row row-button author-card" data-author="${a.id}" aria-label="${esc(a.name)}，${works.length}部作品，${a.follow ? '已关注' : '未关注'}"><span class="author-card-heading"><span class="grow"><strong>${esc(a.name)}</strong><span class="muted">${works.length} 部作品 · ${a.follow ? '已关注' : '未关注'}</span></span>${unseen(a.id).length ? `<span class="new-count">${unseen(a.id).length} 部新作</span>` : ''}${V.icon('chevron')}</span>${works.length ? `<span class="representative-shelf">${works.slice(0, 3).map(v => `<span class="representative-work" data-work="${esc(v.work)}"><span class="representative-cover" aria-label="${esc(v.title)}示意封面"><span>${esc(v.title)}</span>${badge(versions(a.id).some(item => item.work === v.work && item.favorite))}</span><span class="representative-title">${esc(v.title)}</span></span>`).join('')}</span>` : '<span class="muted">暂无作品</span>'}</button>`;
+    const works = M.presentationGroups(state, a.id);
+    return `<button class="row row-button author-card" data-author="${a.id}" aria-label="${esc(a.name)}，${works.length}部作品，${a.follow ? '已关注' : '未关注'}"><span class="author-card-heading"><span class="grow"><strong>${esc(a.name)}</strong><span class="muted">${works.length} 部作品 · ${a.follow ? '已关注' : '未关注'}</span></span>${unseen(a.id).length ? `<span class="new-count">${unseen(a.id).length} 部新作</span>` : ''}${V.icon('chevron')}</span>${works.length ? `<span class="representative-shelf">${works.slice(0, 3).map(group => `<span class="representative-work" data-work="${esc(group.id)}"><span class="representative-cover" aria-label="${esc(group.title)}示意封面"><span>${esc(group.title)}</span>${badge(collectedGroup(group))}</span><span class="representative-title">${esc(group.title)}</span></span>`).join('')}</span>` : '<span class="muted">暂无作品</span>'}</button>`;
   };
   function authorsView() {
     const shown = state.authors.filter(a => authorTab === 'all' || a.follow);
@@ -39,16 +42,16 @@
     return `<div class="hero"><div class="cover" aria-label="示意封面">${esc(v.title)}</div><div><span class="pill">${esc(v.source)}</span><h2 class="manga-title">${esc(v.title)}</h2>${creatorRow(button('signature', esc(v.signature), 'creator-name', 'data-testid="signature"'))}<p class="muted">连载中 · 漫画</p></div></div><p class="note">相同名字自动使用同一个作者页，不区分插件或来源。点击署名查看作者。</p><h3 class="section-title">作品简介</h3><p>这是用于作者名字交互审阅的本地作品样本。封面为示意，不加载漫画图片或章节。</p>${state.unavailable ? '<p class="note warning">漫画柜来源不可用。作者、已有作品和关注仍保留。</p>' : ''}<h3 class="section-title">章节</h3><p class="muted">本原型仅演示漫画与作者之间的导航，不提供阅读或下载。</p>`;
   }
   function detailView() {
-    const a = current(), all = versions(a.id), shown = all.filter(v => (filter === '全部来源' || v.source === filter) && v.title.toLowerCase().includes(query.toLowerCase()));
-    const groups = new Map(); shown.forEach(v => { if (!groups.has(v.work)) groups.set(v.work, []); groups.get(v.work).push(v); });
+    const a = current(), all = versions(a.id), allGroups = M.presentationGroups(state, a.id), groups = M.presentationGroups(state, a.id, { source: filter, query });
     const sources = ['全部来源', ...new Set(all.map(v => v.source))];
-    return `<div class="hero author-hero"><div><h2 class="manga-title" data-testid="author-name" tabindex="-1">${esc(a.name)}</h2>${a.aliases.length ? `<div class="alias-links" data-testid="author-aliases">${a.aliases.map(name => creatorRow(button('alias-name', esc(name), 'creator-name', `data-alias="${esc(name)}"`))).join('')}</div>` : ''}<p class="muted">${new Set(all.map(v => v.work)).size} 部作品 · ${all.length} 个来源版本</p></div></div><div class="actions">${button('follow', a.follow ? '已关注' : '关注作者', a.follow ? '' : 'primary', 'data-testid="follow"')}${button('merge-select', '添加别名')}</div>${state.unavailable ? '<p class="note warning">漫画柜插件不可用，已有作者、作品和关注不受影响。</p>' : ''}<div class="works-toolbar"><h3 class="section-title">作品 <span class="text-count">${groups.size}</span></h3>${button('display', '显示方式', 'display-button', 'aria-label="显示方式"')}</div><div class="source-filters" role="group" aria-label="来源筛选">${sources.map(s => button('filter-source', esc(s), 'filter-chip', `data-source="${esc(s)}" aria-label="${esc(s)}" aria-pressed="${s === filter}"`)).join('')}</div><div class="filters"><label>查找作品 <input id="work-search" value="${esc(query)}" placeholder="作品名" size="12"></label></div>${groups.size ? `<div class="work-collection" data-display="${displayMode}">${[...groups.values()].sort((a, b) => Number(unseen(current().id).includes(b[0].work)) - Number(unseen(current().id).includes(a[0].work))).map(workItem).join('')}</div>` : '<p class="empty muted">没有符合条件的作品。可切换来源或清空搜索。</p>'}`;
+    return `<div class="hero author-hero"><div><h2 class="manga-title" data-testid="author-name" tabindex="-1">${esc(a.name)}</h2>${a.aliases.length ? `<div class="alias-links" data-testid="author-aliases">${a.aliases.map(name => creatorRow(button('alias-name', esc(name), 'creator-name', `data-alias="${esc(name)}"`))).join('')}</div>` : ''}<p class="muted">${allGroups.length} 部作品 · ${all.length} 个来源版本</p></div></div><div class="actions">${button('follow', a.follow ? '已关注' : '关注作者', a.follow ? '' : 'primary', 'data-testid="follow"')}${button('merge-select', '添加别名')}</div>${state.unavailable ? '<p class="note warning">漫画柜插件不可用，已有作者、作品和关注不受影响。</p>' : ''}<div class="works-toolbar"><h3 class="section-title">作品 <span class="text-count">${groups.length}</span></h3>${button('display', '显示方式', 'display-button', 'aria-label="显示方式"')}</div><div class="source-filters" role="group" aria-label="来源筛选">${sources.map(s => button('filter-source', esc(s), 'filter-chip', `data-source="${esc(s)}" aria-label="${esc(s)}" aria-pressed="${s === filter}"`)).join('')}</div><div class="filters"><label>查找作品 <input id="work-search" value="${esc(query)}" placeholder="作品名" size="12"></label></div>${groups.length ? `<div class="work-collection" data-display="${displayMode}">${[...groups].sort((a, b) => Number(groupUnseen(b)) - Number(groupUnseen(a))).map(workItem).join('')}</div>` : '<p class="empty muted">没有符合条件的作品。可切换来源或清空搜索。</p>'}`;
   }
   function render() {
     const nav = page === 'authors' || page === 'author' ? (platform === 'android' ? 'browse' : 'authors') : page === 'manga' ? 'library' : page;
     const title = page === 'manga' ? '漫画详情' : page === 'author' ? '作者详情' : page === 'authors' ? '作者' : page === 'browse' ? '浏览' : spec.nav.find(n => n.route === page)?.label || 'Mihon';
     const inner = page === 'manga' ? mangaView() : page === 'author' ? detailView() : page === 'authors' ? authorsView() : page === 'browse' ? '<p class="note">请选择作者页签继续本次交互审阅。</p>' : `<div class="empty"><p>本页不在作者名字原型范围内。</p>${button('home', '返回《平行天堂》')}</div>`;
-    app.innerHTML = `${platform === 'windows' ? '<div class="desktop-windowbar"><span>Mihon Desktop</span><span>—　□　×</span></div>' : '<div class="android-statusbar"><span>9:41</span><span>● ▰</span></div>'}<div class="bar">${button('back', V.icon('back'), 'icon-button', 'aria-label="返回"')}<h1>${title}</h1>${page === 'authors' ? button('settings', V.icon('settings'), 'icon-button author-settings', 'aria-label="作者设置"') : ''}</div>${platform === 'android' && ['browse', 'authors'].includes(page) ? `<div class="tabs">${spec.browseTabs.map(t => button(t === '作者' ? 'authors' : 'browse-boundary', t, t === '作者' && page === 'authors' ? 'selected' : '')).join('')}</div>` : ''}<main class="content">${discoveryBanner()}${notice ? `<p class="feedback" role="status">${esc(notice)}</p>` : ''}${inner}</main>${V.renderNav(spec, nav)}`;
+    const feedback = notice ? `<p class="feedback" role="status">${esc(notice)}${undoSplit ? button('undo-split', '撤销', 'text-button', 'data-testid="undo-split"') : ''}</p>` : '';
+    app.innerHTML = `${platform === 'windows' ? '<div class="desktop-windowbar"><span>Mihon Desktop</span><span>—　□　×</span></div>' : '<div class="android-statusbar"><span>9:41</span><span>● ▰</span></div>'}<div class="bar">${button('back', V.icon('back'), 'icon-button', 'aria-label="返回"')}<h1>${title}</h1>${page === 'authors' ? button('settings', V.icon('settings'), 'icon-button author-settings', 'aria-label="作者设置"') : ''}</div>${platform === 'android' && ['browse', 'authors'].includes(page) ? `<div class="tabs">${spec.browseTabs.map(t => button(t === '作者' ? 'authors' : 'browse-boundary', t, t === '作者' && page === 'authors' ? 'selected' : '')).join('')}</div>` : ''}<main class="content">${discoveryBanner()}${feedback}${inner}</main>${V.renderNav(spec, nav)}`;
     if (page === 'authors') app.querySelector('main').scrollTop = authorScroll[authorTab];
   }
   function open(kind, preserve = false) { if (!preserve) opener = document.activeElement; modal = kind; error = ''; app.inert = true; drawModal(); }
@@ -57,14 +60,21 @@
     let title = '', body = '', actions = button('cancel', '取消');
     if (modal === 'sources') {
       title = '选择漫画源';
-      const items = versions(current().id).filter(v => v.work === selectedWork);
+      const group = M.presentationGroup(state, current().id, selectedWork);
+      const items = group?.versions || [];
       body = `<p class="muted">此作品的全部来源版本</p><div class="source-versions">${items.map(v => {
         const latest = M.latestDate(state, v);
         return button('manga', `<span class="work-cover-wrap"><span class="cover small">${esc(v.title)}</span>${badge(v.favorite)}</span><span class="grow"><strong>${esc(v.source)}</strong><span class="version-title">${esc(v.title)}</span><span class="version-meta">${v.chapterCount == null ? '章节数未知' : esc(v.chapterCount) + ' 章'} · ${v.favorite ? '已收藏' : '未收藏'}</span><span class="version-meta">${esc(latest.label)}${latest.date ? ' ' + esc(latest.date) : ''}</span>${state.unavailable && v.source === '漫画柜' ? '<span class="version-meta">来源不可用 · 查看本地详情</span>' : ''}</span>`, 'version-choice', `data-version="${v.id}"`);
-      }).join('')}</div>`;
+      }).join('')}</div>${group?.autoMerged ? `<div class="modal-secondary-actions">${button('split-menu', '分开显示', 'text-button')}</div>` : ''}`;
     } else if (modal === 'display') {
       title = '显示方式';
       body = `<div class="display-choices">${[['list', '列表'], ['comfortable', '舒适网格'], ['compact', '紧凑网格']].map(([value, name]) => button('display-select', `${displayMode === value ? '✓ ' : ''}${name}`, '', `data-display="${value}" aria-pressed="${displayMode === value}"`)).join('')}</div>`;
+    } else if (modal === 'split') {
+      title = '分开显示';
+      const group = M.presentationGroup(state, current().id, selectedWork);
+      const items = group?.versions || [];
+      body = `<p>选择要单独显示的来源版本。原始标题和来源信息会保留。</p><div class="split-versions">${items.map(v => `<label class="note inline-label"><input type="radio" name="split-version" data-split="${esc(v.work)}" ${splitTarget === v.work ? 'checked' : ''}><span><strong>${esc(v.title)}</strong><br>${esc(v.source)}</span></label>`).join('')}</div>`;
+      actions += button('split-confirm', '确认分开', 'primary', splitTarget ? '' : 'disabled');
     } else if (modal === 'merge-select') {
       title = '添加别名';
       const allCandidates = state.authors.filter(a => a.id !== current().id);
@@ -94,6 +104,18 @@
     if (a === 'cancel') close();
     else if (a === 'view-new') { const next = pendingAuthors()[0]; if (next) { rememberAuthorScroll(); author = next.id; detailReturn = 'authors'; page = 'author'; filter = '全部来源'; query = ''; notice = ''; render(); app.querySelector('.new-work-badge')?.closest('button')?.focus(); } }
     else if (a === 'work') { selectedWork = b.dataset.work; open('sources'); }
+    else if (a === 'split-menu') { splitTarget = ''; open('split', true); }
+    else if (a === 'split-confirm') {
+      if (!splitTarget) return;
+      state = M.splitPresentation(state, current().id, splitTarget);
+      undoSplit = { author: current().id, work: splitTarget };
+      notice = '已分开显示'; splitTarget = ''; close(); render();
+    }
+    else if (a === 'undo-split') {
+      if (!undoSplit) return;
+      state = M.undoPresentationSplit(state, undoSplit.author, undoSplit.work);
+      undoSplit = null; notice = '已撤销分开显示'; render();
+    }
     else if (a === 'display') open('display');
     else if (a === 'display-select') { displayMode = b.dataset.display; close(); render(); app.querySelector('[data-action="display"]').focus(); }
     else if (a === 'settings') { settingsFrequency = state.frequency; open('settings'); }
@@ -135,6 +157,7 @@
   document.addEventListener('change', event => {
     const e = event.target;
     if (e.dataset.select) { selected = e.checked ? [...selected, e.dataset.select] : selected.filter(s => s !== e.dataset.select); drawModal(); overlay.querySelector(`[data-select="${e.dataset.select}"]`).focus(); }
+    else if (e.dataset.split) { splitTarget = e.dataset.split; drawModal(); overlay.querySelector(`[data-split="${e.dataset.split}"]`).focus(); }
     else if (e.id === 'frequency') settingsFrequency = e.value;
     else if (e.id === 'work-search') { query = e.value; render(); document.getElementById('work-search').focus(); }
   });
@@ -164,14 +187,26 @@
     if (event.data.refreshDates) { state = M.refreshDates(state); notice = '已模拟次日刷新，首次发现日期保持不变'; if (!modal) render(); else drawModal(); return; }
     if (event.data.add) {
       const alias = event.data.add === 'alias';
+      const script = event.data.add === 'script';
       if (alias && !state.authors.some(a => a.aliases.includes('Okamoto Lynn') || a.name === 'Okamoto Lynn' && a.aliases.length)) { if (!modal) { notice = '请先合并 Okamoto Lynn，再演示已合并别名的新作品。'; render(); } return; }
-      state = M.observe(state, { id: alias ? 'future-alias' : 'future-same', work: alias ? 'future-alias' : 'future-same', title: alias ? '别名新作（虚构样本）' : '同名新作（虚构样本）', source: '新插件（演示）', name: alias ? 'Okamoto Lynn' : '冈本伦' });
+      const id = alias ? 'future-alias' : script ? 'future-script' : 'future-same';
+      const work = alias ? 'future-alias' : script ? 'script-hans' : 'future-same';
+      const title = alias ? '别名新作（虚构样本）' : script ? '诡谲屋' : '同名新作（虚构样本）';
+      state = M.observe(state, { id, work, title, source: script ? '新增图源（演示）' : '新插件（演示）', name: alias ? 'Okamoto Lynn' : '冈本伦' });
       if (modal) { modalFocus?.focus(); return; } // Keep the open session; its snapshot is now stale.
-      author = state.versions.find(v => v.id === (alias ? 'future-alias' : 'future-same')).author; page = 'author'; notice = alias ? '已加入别名作品；重复加入不增加条目。' : '已加入同名作品；未提供来源作者编号仍自动复用。'; render(); return;
+      author = state.versions.find(v => v.id === id).author; page = 'author'; notice = script ? '' : alias ? '已加入别名作品；重复加入不增加条目。' : '已加入同名作品；未提供来源作者编号仍自动复用。'; render(); return;
     }
     if (!event.data.scenario) return;
-    close(); authorScroll = { following: 0, all: 0 }; authorTab = 'following'; detailReturn = 'manga'; mangaReturn = 'authors'; state = M.create(); scenario = event.data.scenario; author = 'a'; manga = 'v0'; page = 'manga'; filter = '全部来源'; query = ''; notice = ''; selected = [];
+    close(); authorScroll = { following: 0, all: 0 }; authorTab = 'following'; detailReturn = 'manga'; mangaReturn = 'authors'; state = M.create(); scenario = event.data.scenario; author = 'a'; manga = 'v0'; page = 'manga'; filter = '全部来源'; query = ''; notice = ''; selected = []; splitTarget = ''; undoSplit = null;
     if (scenario === 'empty') state = M.apply(state, M.preview(state, { selected: state.authors.map(a => a.id), target: 'a' }));
+    if (scenario === 'script-equivalent') {
+      state.versions.push(
+        { id: 'script-hans', work: 'script-hans', title: '诡谲屋', source: '简体源', author: 'a', sourceKey: 'text', favorite: false, chapterCount: 10, listedAt: null, latestChapterAt: null, firstSeenAt: state.today },
+        { id: 'script-hant', work: 'script-hant', title: '詭譎屋', source: '繁體源', author: 'a', sourceKey: 'text', favorite: false, chapterCount: 11, listedAt: null, latestChapterAt: null, firstSeenAt: state.today },
+        { id: 'script-punctuation-a', work: 'script-punctuation-a', title: '诡谲屋:外传', source: '标点源', author: 'a', sourceKey: 'text', favorite: false, chapterCount: null, listedAt: null, latestChapterAt: null, firstSeenAt: state.today },
+        { id: 'script-punctuation-b', work: 'script-punctuation-b', title: '詭譎屋 外傳', source: '空格源', author: 'a', sourceKey: 'text', favorite: false, chapterCount: null, listedAt: null, latestChapterAt: null, firstSeenAt: state.today },
+      );
+    }
     state.fail = scenario === 'submit-error'; state.unavailable = scenario === 'unavailable'; render();
   });
   render();

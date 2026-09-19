@@ -86,3 +86,27 @@ test('设置和名称保存失败保留原值，大小写名称严格独立', ()
   assert.throws(() => M.setFrequency(s, 'weekly')); assert.throws(() => M.rename(s, 'a', '新名字')); assert.deepEqual(s, before);
   s.fail = false; const next = M.observe(s, { id: 'case', name: 'okamoto lynn', title: '样本' }); assert.equal(next.authors.length, 4);
 });
+
+test('严格简繁同名自动形成展示组，保留原始标题并支持分开显示后撤销', () => {
+  let s = M.create();
+  s.versions.push(
+    { id: 'script-hans', work: 'script-hans', title: '诡谲屋', source: '简体源', author: 'a', sourceKey: 'text', favorite: false, chapterCount: 10, listedAt: null, latestChapterAt: null, firstSeenAt: s.today },
+    { id: 'script-hant', work: 'script-hant', title: '詭譎屋', source: '繁體源', author: 'a', sourceKey: 'text', favorite: false, chapterCount: 11, listedAt: null, latestChapterAt: null, firstSeenAt: s.today },
+  );
+  assert.equal(M.normalizeWorkTitle('詭譎屋'), M.normalizeWorkTitle('诡谲屋'));
+  assert.equal(M.normalizeWorkTitle('詭譎屋:外傳'), '诡谲屋:外传');
+  assert.notEqual(M.normalizeWorkTitle('詭譎屋:外傳'), M.normalizeWorkTitle('诡谲屋 外传'));
+  let groups = M.presentationGroups(s, 'a');
+  let scriptGroup = groups.find(group => group.versions.some(v => v.id === 'script-hans'));
+  assert.ok(scriptGroup);
+  assert.equal(scriptGroup.versions.length, 2);
+  assert.deepEqual(scriptGroup.versions.map(v => v.title), ['诡谲屋', '詭譎屋']);
+  assert.equal(scriptGroup.autoMerged, true);
+  s = M.splitPresentation(s, 'a', 'script-hant');
+  groups = M.presentationGroups(s, 'a');
+  assert.equal(groups.filter(group => group.versions.some(v => ['script-hans', 'script-hant'].includes(v.id))).length, 2);
+  assert.deepEqual(s.presentationExclusions, [{ author: 'a', work: 'script-hant' }]);
+  s = M.undoPresentationSplit(s, 'a', 'script-hant');
+  scriptGroup = M.presentationGroups(s, 'a').find(group => group.versions.some(v => v.id === 'script-hans'));
+  assert.equal(scriptGroup.versions.length, 2);
+});

@@ -8,6 +8,94 @@
     return id;
   }
   function names(author) { return [author.name, ...author.aliases]; }
+  // The prototype keeps a small, explicit script table so the interaction can
+  // demonstrate strict equivalence without introducing fuzzy title matching.
+  const scriptPhrases = [
+    ['詭譎屋', '诡谲屋'],
+    ['情有獨鍾', '情有独钟'],
+    ['極黑的布倫希爾德', '极黑的布伦希尔德'],
+    ['外傳', '外传'],
+  ];
+  const scriptCharacters = new Map(Object.entries({
+    詭: '诡', 譎: '谲', 極: '极', 黑: '黑', 布: '布', 倫: '伦', 希: '希', 爾: '尔', 德: '德',
+    獨: '独', 鍾: '钟', 傳: '传', 後: '后', 發: '发', 體: '体', 國: '国', 間: '间', 門: '门',
+    經: '经', 續: '续', 來: '来', 這: '这', 個: '个', 與: '与', 對: '对', 無: '无', 新: '新',
+  }));
+  function normalizeWorkTitle(title) {
+    let result = String(title ?? '');
+    for (const [traditional, simplified] of scriptPhrases) result = result.split(traditional).join(simplified);
+    return [...result].map(character => scriptCharacters.get(character) || character).join('');
+  }
+  function isExcluded(state, author, work) {
+    return (state.presentationExclusions || []).some(item => item.author === author && item.work === work);
+  }
+  function matchesPresentation(version, query, source) {
+    if (source && version.source !== source) return false;
+    const value = String(query || '').trim();
+    if (!value) return true;
+    const raw = version.title.toLocaleLowerCase();
+    const normalized = normalizeWorkTitle(version.title).toLocaleLowerCase();
+    const needle = value.toLocaleLowerCase();
+    const normalizedNeedle = normalizeWorkTitle(value).toLocaleLowerCase();
+    return raw.includes(needle) || normalized.includes(normalizedNeedle);
+  }
+  function presentationGroups(state, authorId, options = {}) {
+    const root = resolve(state, authorId);
+    const versions = state.versions.filter(version => resolve(state, version.author) === root);
+    const byWork = new Map();
+    for (const version of versions) {
+      if (!byWork.has(version.work)) byWork.set(version.work, []);
+      byWork.get(version.work).push(version);
+    }
+    const groups = [];
+    for (const members of byWork.values()) {
+      const first = members[0];
+      const normalizedTitle = normalizeWorkTitle(first.title);
+      const existing = groups.find(group => {
+        if (group.normalizedTitle !== normalizedTitle || group.excluded || isExcluded(state, root, first.work)) return false;
+        if (group.canonicalWork && first.canonicalWork && group.canonicalWork !== first.canonicalWork) return false;
+        return !group.versions.some(version => isExcluded(state, root, version.work));
+      });
+      if (existing) {
+        existing.versions.push(...members);
+        existing.workIds.add(first.work);
+        existing.autoMerged = existing.workIds.size > 1;
+      } else {
+        groups.push({
+          id: first.work,
+          title: first.title,
+          normalizedTitle,
+          canonicalWork: first.canonicalWork || null,
+          versions: [...members],
+          workIds: new Set([first.work]),
+          excluded: isExcluded(state, root, first.work),
+          autoMerged: false,
+        });
+      }
+    }
+    const query = options.query || '';
+    const source = options.source && options.source !== '全部来源' ? options.source : '';
+    return groups.filter(group => group.versions.some(version => matchesPresentation(version, query, source)));
+  }
+  function presentationGroup(state, authorId, groupId) {
+    return presentationGroups(state, authorId).find(group => group.id === groupId || group.workIds.has(groupId));
+  }
+  function splitPresentation(input, authorId, work) {
+    const state = structuredClone(input);
+    const root = resolve(state, authorId);
+    if (!state.versions.some(version => resolve(state, version.author) === root && version.work === work)) return state;
+    state.presentationExclusions ||= [];
+    if (!state.presentationExclusions.some(item => item.author === root && item.work === work)) state.presentationExclusions.push({ author: root, work });
+    state.revision++;
+    return state;
+  }
+  function undoPresentationSplit(input, authorId, work) {
+    const state = structuredClone(input);
+    const root = resolve(state, authorId);
+    state.presentationExclusions = (state.presentationExclusions || []).filter(item => !(item.author === root && item.work === work));
+    state.revision++;
+    return state;
+  }
   function mergeInto(state, selected, target, follow, displayName) {
     const retained = state.authors.find(a => a.id === target);
     const members = state.authors.filter(a => selected.includes(a.id));
@@ -40,6 +128,7 @@
   function create() {
     const state = normalize({
       today: '2026-09-18', workDates: {}, discoveries: [],
+      presentationExclusions: [],
       // Demonstration evidence only, not a rating of the real plugins with these display names.
       dateSources: {
         cabinet: { listing: 'trusted', chapters: 'trusted' },
@@ -175,5 +264,5 @@
     const allNames = [...new Set([...names(author), name])];
     author.name = name; author.aliases = allNames.filter(n => n !== name); state.revision++; return state;
   }
-  return { create, normalize, observe, preview, apply, resolve, follow, setFrequency, rename, workDate, latestDate, assessChapterDates, refreshDates, unseenWorks, markSeen };
+  return { create, normalize, observe, preview, apply, resolve, follow, setFrequency, rename, workDate, latestDate, assessChapterDates, refreshDates, unseenWorks, markSeen, normalizeWorkTitle, presentationGroups, presentationGroup, splitPresentation, undoPresentationSplit };
 });

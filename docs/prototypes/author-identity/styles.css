@@ -56,6 +56,9 @@
 .version-choice .grow { min-width: 0; flex: 1; }
 .version-choice strong { display: block; font-size: 14px; color: var(--on-surface); overflow-wrap: anywhere; margin-bottom: 4px; }
 .version-title { color: var(--on-surface); margin-bottom: 6px; }
+.modal-secondary-actions { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--outline-variant); }
+.text-button { border: 0; color: var(--primary); padding-left: 0; padding-right: 0; }
+.split-versions { display: flex; flex-direction: column; gap: 4px; }
 .display-choices { display: flex; flex-direction: column; gap: 8px; }
 .display-choices button { text-align: left; }
 .display-choices button[aria-pressed="true"] { background: var(--secondary-container); color: var(--primary); }

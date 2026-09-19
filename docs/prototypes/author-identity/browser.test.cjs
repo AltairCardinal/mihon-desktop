@@ -62,6 +62,7 @@ test('弹窗期间发现新作不抢焦点，关闭后呈现提醒并跨网格�
   assert.equal(await first.evaluate(e => e === document.activeElement), true);
   await first.press('Escape');
   assert.equal(await action(pc, 'display').evaluate(e => e === document.activeElement), true);
+  await pc.locator('.discovery-banner').waitFor();
   assert.equal(await pc.locator('.discovery-banner').count(), 1);
   for (const mode of ['comfortable', 'compact']) {
     await action(pc, 'display').click(); await pc.locator(`[data-display="${mode}"]`).click();
@@ -358,5 +359,44 @@ test('收藏采用原版书签图标与封面透明度，列表与网格均在�
     assert.equal(await f.locator('[data-version="v0"] .cover').evaluate(e => getComputedStyle(e).opacity), '0.34');
     assert.equal(await f.locator('[data-version="v0-other"] .cover').evaluate(e => getComputedStyle(e).opacity), '1');
     assert.equal(await f.getByRole('dialog').evaluate(e => e.scrollWidth > e.clientWidth), false);
+  }
+}));
+
+test('简繁同名自动聚合为一张卡、搜索与来源选择保留原始标题，支持分开显示撤销', () => setup(async (page, pc, phone) => {
+  await page.locator('#narrow').check();
+  for (const [target, f] of [['windows', pc], ['android', phone]]) {
+    await page.locator('#target').selectOption(target);
+    await page.locator('#scenario').selectOption('script-equivalent');
+    await page.locator('#apply-scenario').click();
+    await f.getByTestId('signature').click();
+    const group = f.locator('[data-action="work"][data-work="script-hans"]');
+    assert.equal(await group.count(), 1);
+    assert.match(await group.innerText(), /诡谲屋/);
+    assert.match(await group.innerText(), /2 个来源版本/);
+    assert.equal(await f.locator('[data-action="work"][data-work="script-hant"]').count(), 0);
+    assert.doesNotMatch(await f.locator('main').innerText(), /按标题简繁体合并|确认后合并/);
+    await f.getByLabel('查找作品').fill('詭譎屋');
+    assert.equal(await f.locator('[data-action="work"][data-work="script-hans"]').count(), 1);
+    await f.getByRole('button', { name: '繁體源', exact: true }).evaluate(e => e.click());
+    assert.equal(await f.locator('[data-action="work"][data-work="script-hans"]').count(), 1);
+    await page.locator('#add-script').evaluate(e => e.click());
+    await f.getByText('3 个来源版本', { exact: true }).waitFor();
+    assert.match(await f.locator('[data-action="work"][data-work="script-hans"]').innerText(), /3 个来源版本/);
+    assert.equal(await f.getByRole('status').count(), 0);
+    await f.getByRole('button', { name: '全部来源', exact: true }).evaluate(e => e.click());
+    await group.click();
+    const sources = f.getByRole('dialog').locator('[data-version]');
+    assert.equal(await sources.count(), 3);
+    assert.match(await sources.allTextContents().then(values => values.join('\n')), /诡谲屋/);
+    assert.match(await sources.allTextContents().then(values => values.join('\n')), /詭譎屋/);
+    await f.getByRole('button', { name: '分开显示', exact: true }).click();
+    await f.locator('[data-split="script-hant"]').check();
+    await f.getByRole('button', { name: '确认分开', exact: true }).click();
+    assert.equal(await f.locator('[data-action="work"][data-work="script-hans"]').count(), 1);
+    assert.equal(await f.locator('[data-action="work"][data-work="script-hant"]').count(), 1);
+    assert.match(await f.getByRole('status').innerText(), /已分开显示/);
+    await f.getByTestId('undo-split').click();
+    assert.equal(await f.locator('[data-action="work"][data-work="script-hant"]').count(), 0);
+    assert.match(await f.getByRole('status').innerText(), /已撤销分开显示/);
   }
 }));

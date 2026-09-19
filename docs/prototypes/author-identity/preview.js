@@ -4,6 +4,7 @@
   el('apply-scenario').onclick = () => send({ scenario: el('scenario').value });
   el('discover-new').onclick = () => send({ discoverNew: true });
   el('add-same').onclick = () => send({ add: 'same' });
+  el('add-script').onclick = () => send({ add: 'script' });
   el('add-alias').onclick = () => send({ add: 'alias' });
   el('refresh-dates').onclick = () => send({ refreshDates: true });
   el('reset').onclick = () => send({ scenario: 'history' });
