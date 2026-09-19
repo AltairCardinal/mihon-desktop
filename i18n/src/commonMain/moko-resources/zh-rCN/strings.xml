@@ -1687,9 +1687,9 @@
     <string name="sync_setup_create_repo">创建专用私有 mihon-sync 仓库</string>
     <string name="sync_setup_install_app">安装 Mihon GitHub App</string>
     <string name="sync_setup_recheck">我已完成，重新检查</string>
-    <string name="sync_setup_repository_guide">1. 在你的 GitHub 账号下创建私有 mihon-sync 仓库。请保持仓库为空，不要添加 README、许可证或 .gitignore。GitHub 可能不会采用预填内容；创建前请核对所有者、名称和可见性。</string>
-    <string name="sync_setup_app_guide">2. 安装 Mihon GitHub App 时，只选择 mihon-sync。不要选择 All repositories（所有仓库）。登录并不等于安装 App，也不会自动授予仓库访问权。</string>
-    <string name="sync_setup_recheck_guide">3. 返回这里重新检查。Mihon 会先核验账号、App 安装、仓库 ID、私有状态和访问权限，再开放初始化。</string>
+    <string name="sync_setup_repository_guide">1. 创建私有仓库 mihon-sync，确认所有者是你的 GitHub 账号。保持仓库为空，不要添加 README、许可证或其他初始化文件。</string>
+    <string name="sync_setup_app_guide">2. 安装 Mihon GitHub App 时，只授权 mihon-sync，不要选择“所有仓库”。</string>
+    <string name="sync_setup_recheck_guide">3. 返回这里，点击“重新检查”。确认通过后继续同步设置。</string>
     <string name="sync_setup_needs_installation">此 GitHub 账号尚未安装 Mihon GitHub App。请先创建专用私有仓库，再安装 App 并只授予 mihon-sync 访问权。</string>
     <string name="sync_setup_needs_repository_access">Mihon GitHub App 已安装，但当前安装无法看到 mihon-sync。仓库可能尚未创建，也可能未包含在此安装授权中。仅登录 GitHub 不会授予仓库访问权。</string>
     <string name="sync_setup_missing_contents">Mihon GitHub App 安装缺少 Contents 写入权限。请在 GitHub 更新此安装的权限，然后重新检查。</string>
