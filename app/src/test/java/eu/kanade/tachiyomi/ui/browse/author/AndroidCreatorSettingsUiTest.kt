@@ -116,6 +116,7 @@ class AndroidCreatorSettingsUiTest {
             }
             val archiveRepository = mockk<CreatorArchiveRepository> {
                 coEvery { getDueWatchSources(any(), any()) } returns emptyList()
+                every { observeUnreadWorkDiscoveries(any()) } returns flowOf(emptyList())
             }
             Injekt.addSingleton(GetCreators(repository))
             Injekt.addSingleton(CreatorArchive(repository, archiveRepository))
@@ -557,6 +558,7 @@ class AndroidCreatorSettingsUiTest {
                         query = request[5] as String,
                     )
                 }
+                every { observeUnreadWorkDiscoveries(any()) } returns flowOf(emptyList())
             }
             Injekt.addSingleton(GetCreators(sqlRepository))
             Injekt.addSingleton(CreatorArchive(sqlRepository, archive))

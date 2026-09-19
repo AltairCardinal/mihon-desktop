@@ -154,6 +154,7 @@ class AuthorCardProductionWiringTest {
             every { creatorDiscoveryPreferences } returns null
             every { creatorDiscoveryScheduler } returns null
             every { saveSourceMangaForDetails } returns mockk(relaxed = true)
+            every { libraryPreferences } returns null
             every { appPreferences } returns desktopPreferences
             every { customCoverStore } returns desktopCoverStore
         }
