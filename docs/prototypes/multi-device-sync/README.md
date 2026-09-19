@@ -68,6 +68,8 @@ node --test docs/prototypes/multi-device-sync/extension-suggestions.test.cjs
 
 ## 设备待机后的同步进度与条目日志（2026-09-19 待审）
 
+后续自动恢复要求已整理为[进度与待机恢复设计](../../2026-09-19-sync-progress-resume-design.md)和[实施 Roadmap](../../roadmap/2026-09-19-sync-progress-resume-roadmap.md)：系统中断后返回应用自动继续，用户主动暂停仍需手动继续。下述现有 DEMO 仍演示手动继续；自动恢复场景调整列入 R1，尚未实现，也未代替最终交互审核。
+
 这是针对 Android 同步面板的交互设计草案，尚未代表生产界面。打开 `index.html`，在演示栏选择“触发设备：手机 A”，选择“设备待机后恢复 · 进度与日志”，点击“显示场景”。面板展示：
 
 - “设备待机后已暂停同步”说明，明确已完成内容已保留；

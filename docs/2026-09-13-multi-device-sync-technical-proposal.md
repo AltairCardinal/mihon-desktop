@@ -313,6 +313,8 @@ S4a 接入约定（2026-09-16）：`SyncRuntime` 是平台调度与后续原生 
 
 ## 11. 三种触发与运行状态
 
+2026-09-19 增量方案见[同步进度、条目日志与待机恢复设计](2026-09-19-sync-progress-resume-design.md)及[实施 Roadmap](roadmap/2026-09-19-sync-progress-resume-roadmap.md)。其补充真实进度、持久化运行意图和 Android 返回前台自动恢复；复用本方案的交换协议与业务检查点。当前为待实施设计，不代表以下既有实现已具备这些能力。
+
 Android 通过独立 WorkManager 任务注册周期与网络约束；启动在应用初始化后异步请求一次，手动请求进入同一协调入口。周期任务和一次性任务的唯一名称不能单独替代业务串行保护，需共享运行锁/可恢复 lease，避免不同触发互相覆盖。
 
 具体复用 [CreatorDiscoveryJob](../app/src/main/java/eu/kanade/tachiyomi/data/library/CreatorDiscoveryJob.kt) 的共享 executor + 平台 Worker 模式，Desktop 在 [DesktopAppRuntime](../app-desktop/src/main/kotlin/mihon/desktop/DesktopAppRuntime.kt) 注册独立 service。Android 现有 MainActivity.CheckForUpdates 可作异步启动体验参考，其发现更新后推页面的行为不移植到自动同步。
