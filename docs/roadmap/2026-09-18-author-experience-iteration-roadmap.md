@@ -211,7 +211,7 @@ TDD红绿记录：`ax01-android-author-card-layout-red2` exit 1，真实320dp mo
 
 ### AX-06 · 双端整合与正式运行验收
 
-- [ ] AX-06：A01–A15全部有有效production证据，正式交付本轮迭代。
+- [x] AX-06：A01–A15全部有有效production证据，正式交付本轮迭代。
 
 **前置**：前五批实现/审查/提交完成；无未解决迁移或通知幂等阻塞。
 
@@ -241,7 +241,8 @@ TDD红绿记录：`ax01-android-author-card-layout-red2` exit 1，真实320dp mo
 | SDK 前置 | `D:\Android\Sdk\platforms\android-36\android.jar`、`build-tools\36.0.0\aapt2.exe`、`platform-tools\adb.exe` | 三个文件均存在 |
 | Windows 正式构建 | `bash scripts/build-desktop.sh build-only` | 通过；版本 `0.11.19.52.83ada6b`，扩展运行时验收通过，ZIP SHA-256 为 `d9cca90405e3a9a67051825f3281a43d75f36cbcee9d0a30145b7285868e73c2`；正式未打包 EXE 已发布到 `app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.52.83ada6b-unpacked/Mihon Desktop.exe` |
 | Windows Test Mode | 正式 EXE + 独立 `--test-profile`、`--test-http-port`、`--headless` | `/test/health`、`/test/state`、`/test/reset`、`authors_state` 成功；作者同步 fixture 按 `add → remove → confirm_remove → replay → refollow → author_unfollow → verify_local_cancel` 顺序全部成功，profile marker 已核验 |
-| macOS 正式构建 / 运行 | `ssh mbp`；`ssh mbp-lan` | `mbp` 连接超时；`mbp-lan` 可达但远端仓库为脱离分支的 `c84ed331fa` 且有未提交/未跟踪文件，不是本轮提交，未在其上构建或替换应用 |
+| macOS 正式构建 / 运行 | `mbp-lan` 隔离副本 `/tmp/mihon-ax06-macos-b5d4cc6961`；`bash scripts/build-desktop.sh build-only` | 通过；版本 `0.11.19.53.b5d4cc6`，分发部署到 `/private/tmp/mihon-ax06-macos-deploy/Mihon Desktop.app`；未触碰远端原有脏仓库或 `/Applications` |
+| macOS Test Mode | 上述隔离 `.app` + 独立 `--test-profile`、`--test-http-port`、`--headless` | `/test/health`、`/test/state`、`authors_state` 成功；作者同步 fixture 按 `add → remove → confirm_remove → replay → refollow → author_unfollow → verify_local_cancel` 顺序全部成功，profile marker 已核验；测试 PID 已停止 |
 | parity-manifest | `ax06-parity-fix3`；`DesktopProductCapabilityContractTest`；角色证据扫描 | 仅维护既有行号漂移（272 条 `CURRENT_ANDROID`/`SHARED_OR_ADAPTER`/`DESKTOP_CONSUMER` 证据扫描 0 错误）；契约测试通过，未建立第二套状态权威 |
 
 ## 4. 通用红绿与证据规则
