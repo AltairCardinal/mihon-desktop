@@ -24,6 +24,8 @@ import tachiyomi.domain.creator.model.LanguageCertainty
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.LanguageEvidenceKind
 import tachiyomi.domain.creator.model.LanguageProjectionContract
+import tachiyomi.domain.creator.model.SourceDatePrecision
+import tachiyomi.domain.creator.model.SourceDateValue
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 
 class CreatorDiscoveryPlanningTest {
@@ -153,6 +155,34 @@ class CreatorDiscoveryPlanningTest {
         )
         assertEquals(1, enabled.authorSearchCalls)
         assertEquals(0, enabled.fallbackSearchCalls)
+    }
+
+    @Test
+    fun `catalogue adapter carries extension identity and adapter supplied publication date`() = runBlocking {
+        val source = StructuredSource(3)
+        val published = SourceDateValue(
+            rawValue = "2024-01-02",
+            valueAt = 1_704_153_600_000L,
+            precision = SourceDatePrecision.DAY,
+            semanticConfirmed = true,
+        )
+        val adapter = CatalogueCreatorDiscoverySourceAdapter(
+            enabledSourcesProvider = { listOf(source) },
+            sourceResolver = { source },
+            extensionPackageProvider = { "example.extension" },
+            extensionVersionProvider = { "1.2+3" },
+            publishedDateProvider = { published },
+            clock = { 1_000 },
+        )
+
+        val snapshot = adapter.enabledSourcesSnapshot().single()
+        val content = adapter.searchPage(
+            BoundedAuthorSearchPageRequest(3, "ONE", page = 1, pageLimit = 1, deadlineAtMillis = 2_000),
+        ) as CreatorSourcePageResult.Content
+
+        assertEquals("example.extension", snapshot.extensionPackage)
+        assertEquals("1.2+3", snapshot.extensionVersion)
+        assertEquals(published, content.works.single().publishedDate)
     }
 
     @Test

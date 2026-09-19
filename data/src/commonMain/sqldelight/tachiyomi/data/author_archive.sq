@@ -35,6 +35,71 @@ CREATE TABLE author_archive_representative_work_cache(
     FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE CASCADE
 );
 
+-- Device-local, rebuildable evidence for source supplied dates. It is intentionally not part of
+-- the backup contract: a new extension version gets a fresh quality bucket.
+CREATE TABLE author_archive_source_date_quality(
+    extension_package TEXT NOT NULL,
+    extension_version TEXT NOT NULL,
+    source_id INTEGER NOT NULL,
+    field_kind TEXT NOT NULL CHECK(field_kind IN ('WORK_PUBLISHED', 'CHAPTER_UPDATED')),
+    status TEXT NOT NULL CHECK(status IN ('UNKNOWN', 'TRUSTED', 'SUSPECT')),
+    strategy_version INTEGER NOT NULL,
+    sample_count INTEGER NOT NULL,
+    observed_work_count INTEGER NOT NULL,
+    stable_chapter_count INTEGER NOT NULL,
+    distinct_history_date_count INTEGER NOT NULL,
+    first_observed_at INTEGER,
+    last_observed_at INTEGER,
+    projected_date_at INTEGER,
+    last_reason TEXT,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY(extension_package, extension_version, source_id, field_kind)
+);
+
+-- The most recently observed extension identity is explicit so equal observation timestamps
+-- cannot make an older trusted parser win projection reads.
+CREATE TABLE author_archive_source_date_quality_current(
+    source_id INTEGER NOT NULL,
+    field_kind TEXT NOT NULL CHECK(field_kind IN ('WORK_PUBLISHED', 'CHAPTER_UPDATED')),
+    extension_package TEXT NOT NULL,
+    extension_version TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY(source_id, field_kind),
+    FOREIGN KEY(extension_package, extension_version, source_id, field_kind)
+        REFERENCES author_archive_source_date_quality(
+            extension_package, extension_version, source_id, field_kind
+        ) ON DELETE CASCADE
+);
+
+CREATE TABLE author_archive_source_date_quality_samples(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    extension_package TEXT NOT NULL,
+    extension_version TEXT NOT NULL,
+    source_id INTEGER NOT NULL,
+    field_kind TEXT NOT NULL CHECK(field_kind IN ('WORK_PUBLISHED', 'CHAPTER_UPDATED')),
+    work_natural_key TEXT NOT NULL,
+    chapter_natural_key TEXT,
+    raw_value TEXT,
+    value_at INTEGER,
+    precision TEXT NOT NULL CHECK(precision IN ('UNKNOWN', 'YEAR', 'MONTH', 'DAY')),
+    semantic_confirmed INTEGER AS Boolean NOT NULL,
+    observed_at INTEGER NOT NULL,
+    reason TEXT,
+    network_failure INTEGER AS Boolean NOT NULL,
+    FOREIGN KEY(extension_package, extension_version, source_id, field_kind)
+        REFERENCES author_archive_source_date_quality(
+            extension_package, extension_version, source_id, field_kind
+        ) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_source_date_quality_samples_key
+ON author_archive_source_date_quality_samples(
+    extension_package, extension_version, source_id, field_kind, work_natural_key, chapter_natural_key
+);
+
+CREATE INDEX idx_author_archive_source_date_quality_samples_observed
+ON author_archive_source_date_quality_samples(observed_at);
+
 CREATE TABLE author_archive_identity_names(
     name_text TEXT COLLATE BINARY NOT NULL PRIMARY KEY,
     creator_id INTEGER NOT NULL,
@@ -1153,6 +1218,162 @@ FROM author_archive_source_works
 WHERE manga_id = :mangaId
 ORDER BY _id
 LIMIT 1;
+
+getSourceDateQualitySnapshot:
+SELECT
+    extension_package,
+    extension_version,
+    source_id,
+    field_kind,
+    status,
+    strategy_version,
+    sample_count,
+    observed_work_count,
+    stable_chapter_count,
+    distinct_history_date_count,
+    first_observed_at,
+    last_observed_at,
+    projected_date_at,
+    last_reason,
+    updated_at
+FROM author_archive_source_date_quality
+WHERE extension_package = :extensionPackage
+AND extension_version = :extensionVersion
+AND source_id = :sourceId
+AND field_kind = :fieldKind;
+
+getSourceDateQualityObservations:
+SELECT
+    extension_package,
+    extension_version,
+    source_id,
+    field_kind,
+    work_natural_key,
+    chapter_natural_key,
+    raw_value,
+    value_at,
+    precision,
+    semantic_confirmed,
+    observed_at,
+    reason,
+    network_failure
+FROM author_archive_source_date_quality_samples
+WHERE extension_package = :extensionPackage
+AND extension_version = :extensionVersion
+AND source_id = :sourceId
+AND field_kind = :fieldKind
+ORDER BY observed_at, _id;
+
+deleteSourceDateQualitySamplesForKey:
+DELETE FROM author_archive_source_date_quality_samples
+WHERE extension_package = :extensionPackage
+AND extension_version = :extensionVersion
+AND source_id = :sourceId
+AND field_kind = :fieldKind;
+
+insertSourceDateQualityObservation:
+INSERT INTO author_archive_source_date_quality_samples(
+    extension_package,
+    extension_version,
+    source_id,
+    field_kind,
+    work_natural_key,
+    chapter_natural_key,
+    raw_value,
+    value_at,
+    precision,
+    semantic_confirmed,
+    observed_at,
+    reason,
+    network_failure
+)
+VALUES(
+    :extensionPackage,
+    :extensionVersion,
+    :sourceId,
+    :fieldKind,
+    :workNaturalKey,
+    :chapterNaturalKey,
+    :rawValue,
+    :valueAt,
+    :precision,
+    :semanticConfirmed,
+    :observedAt,
+    :reason,
+    :networkFailure
+);
+
+upsertSourceDateQualitySnapshot:
+INSERT INTO author_archive_source_date_quality(
+    extension_package,
+    extension_version,
+    source_id,
+    field_kind,
+    status,
+    strategy_version,
+    sample_count,
+    observed_work_count,
+    stable_chapter_count,
+    distinct_history_date_count,
+    first_observed_at,
+    last_observed_at,
+    projected_date_at,
+    last_reason,
+    updated_at
+)
+VALUES(
+    :extensionPackage,
+    :extensionVersion,
+    :sourceId,
+    :fieldKind,
+    :status,
+    :strategyVersion,
+    :sampleCount,
+    :observedWorkCount,
+    :stableChapterCount,
+    :distinctHistoryDateCount,
+    :firstObservedAt,
+    :lastObservedAt,
+    :projectedDateAt,
+    :lastReason,
+    :updatedAt
+)
+ON CONFLICT(extension_package, extension_version, source_id, field_kind) DO UPDATE SET
+    status = excluded.status,
+    strategy_version = excluded.strategy_version,
+    sample_count = excluded.sample_count,
+    observed_work_count = excluded.observed_work_count,
+    stable_chapter_count = excluded.stable_chapter_count,
+    distinct_history_date_count = excluded.distinct_history_date_count,
+    first_observed_at = excluded.first_observed_at,
+    last_observed_at = excluded.last_observed_at,
+    projected_date_at = excluded.projected_date_at,
+    last_reason = excluded.last_reason,
+    updated_at = excluded.updated_at;
+
+upsertSourceDateQualityCurrent:
+INSERT INTO author_archive_source_date_quality_current(
+    source_id,
+    field_kind,
+    extension_package,
+    extension_version,
+    updated_at
+)
+VALUES(
+    :sourceId,
+    :fieldKind,
+    :extensionPackage,
+    :extensionVersion,
+    :updatedAt
+)
+ON CONFLICT(source_id, field_kind) DO UPDATE SET
+    extension_package = excluded.extension_package,
+    extension_version = excluded.extension_version,
+    updated_at = excluded.updated_at;
+
+deleteSourceDateQualitySamplesBefore:
+DELETE FROM author_archive_source_date_quality_samples
+WHERE observed_at < :cutoff;
 
 getArchiveSourceWorksByManga:
 SELECT *
@@ -3071,6 +3292,80 @@ SELECT
     SW.chapter_count_state,
     SW.catalog_chapter_count,
     SW.latest_chapter_at,
+    (
+        SELECT S.value_at
+        FROM author_archive_source_date_quality_samples S
+        JOIN author_archive_source_date_quality Q
+            ON Q.extension_package = S.extension_package
+            AND Q.extension_version = S.extension_version
+            AND Q.source_id = S.source_id
+            AND Q.field_kind = S.field_kind
+        JOIN author_archive_source_date_quality_current CURRENT_Q
+            ON CURRENT_Q.source_id = Q.source_id
+            AND CURRENT_Q.field_kind = Q.field_kind
+            AND CURRENT_Q.extension_package = Q.extension_package
+            AND CURRENT_Q.extension_version = Q.extension_version
+        WHERE S.source_id = SW.source_id
+        AND S.field_kind = 'WORK_PUBLISHED'
+        AND S.work_natural_key = SW.stable_source_url
+        AND S.value_at IS NOT NULL
+        AND S.value_at > 0
+        AND S.precision != 'UNKNOWN'
+        AND S.semantic_confirmed = 1
+        AND S.network_failure = 0
+        AND Q.status = 'TRUSTED'
+        AND S.value_at <= Q.updated_at
+        ORDER BY S.observed_at DESC, S._id DESC
+        LIMIT 1
+    ) AS published_date_at,
+    coalesce((
+        SELECT Q.status
+        FROM author_archive_source_date_quality Q
+        JOIN author_archive_source_date_quality_current CURRENT_Q
+            ON CURRENT_Q.source_id = Q.source_id
+            AND CURRENT_Q.field_kind = Q.field_kind
+            AND CURRENT_Q.extension_package = Q.extension_package
+            AND CURRENT_Q.extension_version = Q.extension_version
+        WHERE Q.source_id = SW.source_id
+        AND Q.field_kind = 'WORK_PUBLISHED'
+        LIMIT 1
+    ), 'UNKNOWN') AS published_date_quality,
+    (
+        SELECT Q.last_reason
+        FROM author_archive_source_date_quality Q
+        JOIN author_archive_source_date_quality_current CURRENT_Q
+            ON CURRENT_Q.source_id = Q.source_id
+            AND CURRENT_Q.field_kind = Q.field_kind
+            AND CURRENT_Q.extension_package = Q.extension_package
+            AND CURRENT_Q.extension_version = Q.extension_version
+        WHERE Q.source_id = SW.source_id
+        AND Q.field_kind = 'WORK_PUBLISHED'
+        LIMIT 1
+    ) AS published_date_reason,
+    coalesce((
+        SELECT Q.status
+        FROM author_archive_source_date_quality Q
+        JOIN author_archive_source_date_quality_current CURRENT_Q
+            ON CURRENT_Q.source_id = Q.source_id
+            AND CURRENT_Q.field_kind = Q.field_kind
+            AND CURRENT_Q.extension_package = Q.extension_package
+            AND CURRENT_Q.extension_version = Q.extension_version
+        WHERE Q.source_id = SW.source_id
+        AND Q.field_kind = 'CHAPTER_UPDATED'
+        LIMIT 1
+    ), 'UNKNOWN') AS latest_chapter_date_quality,
+    (
+        SELECT Q.last_reason
+        FROM author_archive_source_date_quality Q
+        JOIN author_archive_source_date_quality_current CURRENT_Q
+            ON CURRENT_Q.source_id = Q.source_id
+            AND CURRENT_Q.field_kind = Q.field_kind
+            AND CURRENT_Q.extension_package = Q.extension_package
+            AND CURRENT_Q.extension_version = Q.extension_version
+        WHERE Q.source_id = SW.source_id
+        AND Q.field_kind = 'CHAPTER_UPDATED'
+        LIMIT 1
+    ) AS latest_chapter_date_reason,
     SC.result_state AS last_check_result,
     coalesce(SC.consecutive_failures, 0) AS consecutive_failures,
     SC.last_success_at,

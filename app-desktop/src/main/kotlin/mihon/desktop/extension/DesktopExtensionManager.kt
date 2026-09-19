@@ -84,6 +84,13 @@ class DesktopExtensionManager(
         loadedExtensions.find { it.source.id == sourceId }?.jarFile?.nameWithoutExtension
     }
 
+    fun getExtensionVersion(sourceId: Long): String? = synchronized(runtimeLock) {
+        loadedExtensions.find { it.source.id == sourceId }?.let { loaded ->
+            val meta = readExtensionMeta(loaded.jarFile)
+            "${meta?.versionName.orEmpty()}+${meta?.versionCode ?: 0L}"
+        }
+    }
+
     fun requiresApkReconversion(sourceId: Long): Boolean =
         installedExtensions.value.any { extension ->
             extension.requiresApkReconversion && extension.sources.any { it.id == sourceId }

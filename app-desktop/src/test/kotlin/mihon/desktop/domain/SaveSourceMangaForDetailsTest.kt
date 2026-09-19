@@ -16,6 +16,9 @@ import org.junit.jupiter.api.Test
 import mihon.domain.error.AppError
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
+import tachiyomi.domain.creator.model.SourceDateExtensionIdentity
+import tachiyomi.domain.creator.model.SourceDateField
+import tachiyomi.domain.creator.model.SourceDatePrecision
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
@@ -176,6 +179,7 @@ class SaveSourceMangaForDetailsTest {
             mangaRepo,
             chapterRepo,
             archive,
+            sourceDateExtensionIdentityProvider = { SourceDateExtensionIdentity("example.extension", "1.0+1") },
         )
         val chapters = listOf(
             SChapter.create().apply {
@@ -194,6 +198,20 @@ class SaveSourceMangaForDetailsTest {
             sChapters = chapters,
         )
 
+        coVerify {
+            archive.recordSourceDateQualityObservations(
+                match { observations ->
+                    observations.single().identity.field == SourceDateField.CHAPTER_UPDATED &&
+                        observations.single().identity.extensionPackage == "example.extension" &&
+                        observations.single().identity.extensionVersion == "1.0+1" &&
+                        observations.single().workNaturalKey == saved.url &&
+                        observations.single().chapterNaturalKey == chapters.single().url &&
+                        observations.single().valueAt == chapters.single().date_upload &&
+                        observations.single().precision == SourceDatePrecision.DAY
+                },
+                now = any(),
+            )
+        }
         coVerify {
             archive.updateSourceWorkCatalog(
                 sourceWork = SourceWorkNaturalKey(42L, "/manga/archive"),

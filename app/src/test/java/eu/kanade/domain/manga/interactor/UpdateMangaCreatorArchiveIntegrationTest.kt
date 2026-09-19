@@ -16,6 +16,9 @@ import org.junit.Test
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
+import tachiyomi.domain.creator.model.SourceDateExtensionIdentity
+import tachiyomi.domain.creator.model.SourceDateField
+import tachiyomi.domain.creator.model.SourceDatePrecision
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.manga.interactor.FetchInterval
@@ -63,6 +66,9 @@ class UpdateMangaCreatorArchiveIntegrationTest {
             mangaRepository = mangaRepository,
             fetchInterval = FetchInterval(mockk<GetChaptersByMangaId>()),
             creatorArchiveRepository = archive,
+            sourceDateExtensionIdentityProvider = {
+                SourceDateExtensionIdentity("example.extension", "1.0+1")
+            },
         )
 
         update.awaitFromRemote(
@@ -77,6 +83,20 @@ class UpdateMangaCreatorArchiveIntegrationTest {
             downloadManager = mockk(relaxed = true),
         )
 
+        coVerify(exactly = 1) {
+            archive.recordSourceDateQualityObservations(
+                match { observations ->
+                    observations.single().identity.field == SourceDateField.CHAPTER_UPDATED &&
+                        observations.single().identity.extensionPackage == "example.extension" &&
+                        observations.single().identity.extensionVersion == "1.0+1" &&
+                        observations.single().workNaturalKey == manga.url &&
+                        observations.single().chapterNaturalKey == chapter.url &&
+                        observations.single().valueAt == chapter.date_upload &&
+                        observations.single().precision == SourceDatePrecision.DAY
+                },
+                now = any(),
+            )
+        }
         coVerify(exactly = 1) {
             archive.updateSourceWorkCatalog(
                 sourceWork = SourceWorkNaturalKey(manga.source, manga.url),

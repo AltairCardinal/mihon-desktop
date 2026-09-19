@@ -1786,6 +1786,10 @@
     <string name="creator_work_chapters_fetched">已获取章节：%d</string>
     <string name="creator_work_latest_date_unknown">最新章节日期未提供</string>
     <string name="creator_work_latest_date_pending">最新章节日期待核实</string>
+    <string name="creator_work_latest_date">最新章节：%s</string>
+    <string name="creator_work_published_date_unknown">上架日期未提供</string>
+    <string name="creator_work_published_date_pending">上架日期待核实</string>
+    <string name="creator_work_published_date">上架日期：%s</string>
     <string name="creator_settings_title">作者设置</string>
     <string name="creator_settings_frequency">检查所有已关注作者</string>
     <string name="creator_frequency_daily">每天</string>

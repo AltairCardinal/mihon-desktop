@@ -186,6 +186,14 @@ class ExtensionManager internal constructor(
             ?.pkgName
     }
 
+    fun getExtensionVersion(sourceId: Long): String? {
+        return installedExtensionsFlow.value.find { extension ->
+            extension.sources.any { it.id == sourceId }
+        }?.let { extension ->
+            "${extension.versionName}+${extension.versionCode}"
+        }
+    }
+
     fun getExtensionPackageAsFlow(sourceId: Long): Flow<String?> {
         return installedExtensionsFlow.map { extensions ->
             extensions.find { extension ->

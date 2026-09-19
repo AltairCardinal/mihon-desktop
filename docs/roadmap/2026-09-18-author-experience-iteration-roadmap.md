@@ -142,7 +142,7 @@ TDD红绿记录：`ax01-android-author-card-layout-red2` exit 1，真实320dp mo
 
 ### AX-04 · 日期可信采样与生产更新链路
 
-- [ ] AX-04：交付本地可信来源维护与质量反馈，A12–A13通过。
+- [x] AX-04：交付本地可信来源维护与质量反馈，A12–A13通过。
 
 **用户结果**：正确日期被使用，今日回填等异常值显示待核实；无可信日期继续稳定首次发现。更新插件后不会立即信任新解析值。
 
@@ -159,6 +159,19 @@ TDD红绿记录：`ax01-android-author-card-layout-red2` exit 1，真实320dp mo
 **红绿验证**：共享时钟参数测试＋真实repository注册表状态机；若修改HTTP/解析，MockWebServer覆盖成功、空/缺字段、403/429/500、畸形响应，执行真实adapter→观测→存储→UI投影。测试新章插入/章节重排、样本不足、全章漂移、字段隔离、插件升级、采样上限和清理不删事实。
 
 **完成证据/边界**：Android与Desktop更新入口必须真实调用共享策略，删除wiring时测试失败。缺真实来源证据可保留unknown，但不允许把实现未接线称为“等待验证”。不得为本批爬全站或修改第三方插件。
+
+**执行证据**：
+
+| 范围 | 命令/记录 | 结果 |
+|---|---|---|
+| 日期质量策略 | `ax04-red-policy3`、`ax04-green-policy3`、`ax04-red-policy-boundary1`、`ax04-green-policy-boundary3`；`SourceDateQualityPolicyTest` | 红灯先证明类型/策略与网络失败容量、未确认语义边界缺失；绿灯通过3作品×3章节、跨24小时、漂移SUSPECT、网络失败独立诊断容量及publication semantic-confirmed门槛 |
+| SQLite 注册表与投影 | `ax04-red-repository`、`ax04-green-repository2`、`ax04-red-per-work-projection1`、`ax04-green-per-work-projection3`、`ax04-red-projection-boundaries3`、`ax04-green-projection-boundaries7`；`SourceDateQualityRepositoryTest` | 真实SQLite验证扩展版本/字段隔离、网络失败不降级、按作品自然键日期、无效/未来/未确认/网络失败publication样本过滤，以及同毫秒插件升级切换current identity |
+| 迁移、schema与备份边界 | `ax04-green-migration-current2`、`ax04-green-domain-data-boundaries7`；`CreatorArchiveMigration16Test`、`CreatorArchiveMigration15Test`、`AuthorArchiveBackupContributorTest`、`CreatorArchiveV2ContractTest` | migration 29 与 fresh schema 一致，v16 replay、备份/恢复及本地质量表排除通过；质量 registry/sample/current 表保持设备本地可重建，不进入同步载荷 |
+| 生产更新与发现接线 | `ax04-green-android-wiring2`、`ax04-final-android2`、`ax04-final-desktop2`、`ax04-green-desktop-di1` | Android `UpdateManga`、Desktop library/detail 更新及 discovery adapter 使用真实 extension package/version、稳定作品/章节自然键和共享策略；移除 DI/wiring 时 focused 测试失败 |
+| UI 与格式 | `ax04-green-ui-label2`、`ax04-spotless-check6`、`git diff --check` | Android/Desktop 来源选择窗口显示可信上架/最新章节日期、未知或待核实状态；格式与差异检查通过（仅 CRLF 转换提示） |
+| 独立审查 | `/root/ax03_review` 修复复审 | `APPROVED`；未发现可复现 P0/P1/P2 风险 |
+
+**实现边界与维护说明**：质量键按扩展包、扩展版本、sourceId及字段种类隔离；更新插件后通过 current identity 立即回到 UNKNOWN，不继承旧版本 trusted。有效日期证据与网络失败、未来值、未确认语义等诊断样本分开限额，诊断保留30天并有独立容量，不会挤掉可信样本。章节展示沿用每作品目录事实并受当前质量状态门控；上架日期只读取 adapter 明确提供且 semantic-confirmed 的作品样本，按作品自然键投影。没有统一字段、样本不足或来源失败时保持 UNKNOWN/待核实，不做 HTML 抓取、白名单评级或第三方插件修改。
 
 ### AX-05 · 新作未查看状态与提醒闭环
 

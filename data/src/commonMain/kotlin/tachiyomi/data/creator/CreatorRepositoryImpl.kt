@@ -85,6 +85,12 @@ import tachiyomi.domain.creator.model.SetCreatorDisplayNameRequest
 import tachiyomi.domain.creator.model.SourceCheckpoint
 import tachiyomi.domain.creator.model.SourceCheckpointResult
 import tachiyomi.domain.creator.model.SourceCheckpointUpdate
+import tachiyomi.domain.creator.model.SourceDateObservation
+import tachiyomi.domain.creator.model.SourceDatePrecision
+import tachiyomi.domain.creator.model.SourceDateQualityIdentity
+import tachiyomi.domain.creator.model.SourceDateQualityPolicy
+import tachiyomi.domain.creator.model.SourceDateQualitySnapshot
+import tachiyomi.domain.creator.model.SourceDateQualityStatus
 import tachiyomi.domain.creator.model.SourceDiscoveryObservation
 import tachiyomi.domain.creator.model.SourceDiscoveryObservationResult
 import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
@@ -525,6 +531,97 @@ class CreatorRepositoryImpl(
             )
         }
     }
+
+    override suspend fun recordSourceDateQualityObservations(
+        observations: List<SourceDateObservation>,
+        now: Long,
+    ): SourceDateQualitySnapshot? {
+        bootstrap.awaitReady()
+        if (observations.isEmpty()) return null
+        require(now > 0L) { "Date quality observation time must be positive" }
+        val identity = observations.first().identity
+        require(observations.all { it.identity == identity }) {
+            "Date quality observations must share one quality key"
+        }
+        return handler.await(inTransaction = true) {
+            val existing = author_archiveQueries.getSourceDateQualityObservations(
+                extensionPackage = identity.extensionPackage,
+                extensionVersion = identity.extensionVersion,
+                sourceId = identity.sourceId,
+                fieldKind = identity.field.name,
+                mapper = ::mapSourceDateObservation,
+            ).executeAsList()
+            val retained = SourceDateQualityPolicy.retain(existing + observations, now)
+            val snapshot = SourceDateQualityPolicy.evaluate(identity, retained, now)
+            author_archiveQueries.upsertSourceDateQualitySnapshot(
+                extensionPackage = identity.extensionPackage,
+                extensionVersion = identity.extensionVersion,
+                sourceId = identity.sourceId,
+                fieldKind = identity.field.name,
+                status = snapshot.status.name,
+                strategyVersion = snapshot.strategyVersion,
+                sampleCount = snapshot.sampleCount.toLong(),
+                observedWorkCount = snapshot.observedWorkCount.toLong(),
+                stableChapterCount = snapshot.stableChapterCount.toLong(),
+                distinctHistoryDateCount = snapshot.distinctHistoryDateCount.toLong(),
+                firstObservedAt = snapshot.firstObservedAt,
+                lastObservedAt = snapshot.lastObservedAt,
+                projectedDateAt = snapshot.projectedDateAt,
+                lastReason = snapshot.lastReason,
+                updatedAt = now,
+            )
+            author_archiveQueries.upsertSourceDateQualityCurrent(
+                sourceId = identity.sourceId,
+                fieldKind = identity.field.name,
+                extensionPackage = identity.extensionPackage,
+                extensionVersion = identity.extensionVersion,
+                updatedAt = now,
+            )
+            author_archiveQueries.deleteSourceDateQualitySamplesForKey(
+                extensionPackage = identity.extensionPackage,
+                extensionVersion = identity.extensionVersion,
+                sourceId = identity.sourceId,
+                fieldKind = identity.field.name,
+            )
+            retained.forEach { observation ->
+                author_archiveQueries.insertSourceDateQualityObservation(
+                    extensionPackage = identity.extensionPackage,
+                    extensionVersion = identity.extensionVersion,
+                    sourceId = identity.sourceId,
+                    fieldKind = identity.field.name,
+                    workNaturalKey = observation.workNaturalKey,
+                    chapterNaturalKey = observation.chapterNaturalKey,
+                    rawValue = observation.rawValue,
+                    valueAt = observation.valueAt,
+                    precision = observation.precision.name,
+                    semanticConfirmed = observation.semanticConfirmed,
+                    observedAt = observation.observedAt,
+                    reason = observation.reason,
+                    networkFailure = observation.networkFailure,
+                )
+            }
+            author_archiveQueries.deleteSourceDateQualitySamplesBefore(
+                cutoff = now - SourceDateQualityPolicy.DIAGNOSTIC_RETENTION_MILLIS,
+            )
+            snapshot
+        }
+    }
+
+    override suspend fun getSourceDateQualitySnapshot(
+        identity: SourceDateQualityIdentity,
+    ): SourceDateQualitySnapshot? {
+        bootstrap.awaitReady()
+        return handler.await {
+            author_archiveQueries.getSourceDateQualitySnapshot(
+                extensionPackage = identity.extensionPackage,
+                extensionVersion = identity.extensionVersion,
+                sourceId = identity.sourceId,
+                fieldKind = identity.field.name,
+                ::mapSourceDateQualitySnapshot,
+            ).executeAsOneOrNull()
+        }
+    }
+
     override suspend fun upsertWatchPolicy(policy: ArchiveWatchPolicy, now: Long) {
         bootstrap.awaitReady()
         ensureExactIdentityInvariant()
@@ -3474,6 +3571,73 @@ private fun mapWorkDecisionProjection(
     decidedAt = decidedAt,
 )
 
+private fun mapSourceDateQualitySnapshot(
+    extensionPackage: String,
+    extensionVersion: String,
+    sourceId: Long,
+    fieldKind: String,
+    status: String,
+    strategyVersion: Long,
+    sampleCount: Long,
+    observedWorkCount: Long,
+    stableChapterCount: Long,
+    distinctHistoryDateCount: Long,
+    firstObservedAt: Long?,
+    lastObservedAt: Long?,
+    projectedDateAt: Long?,
+    lastReason: String?,
+    updatedAt: Long,
+) = SourceDateQualitySnapshot(
+    identity = SourceDateQualityIdentity(
+        extensionPackage = extensionPackage,
+        extensionVersion = extensionVersion,
+        sourceId = sourceId,
+        field = tachiyomi.domain.creator.model.SourceDateField.valueOf(fieldKind),
+    ),
+    status = SourceDateQualityStatus.valueOf(status),
+    strategyVersion = strategyVersion,
+    sampleCount = sampleCount.toInt(),
+    observedWorkCount = observedWorkCount.toInt(),
+    stableChapterCount = stableChapterCount.toInt(),
+    distinctHistoryDateCount = distinctHistoryDateCount.toInt(),
+    firstObservedAt = firstObservedAt,
+    lastObservedAt = lastObservedAt,
+    projectedDateAt = projectedDateAt,
+    lastReason = lastReason,
+)
+
+private fun mapSourceDateObservation(
+    extensionPackage: String,
+    extensionVersion: String,
+    sourceId: Long,
+    fieldKind: String,
+    workNaturalKey: String,
+    chapterNaturalKey: String?,
+    rawValue: String?,
+    valueAt: Long?,
+    precision: String,
+    semanticConfirmed: Boolean,
+    observedAt: Long,
+    reason: String?,
+    networkFailure: Boolean,
+) = SourceDateObservation(
+    identity = SourceDateQualityIdentity(
+        extensionPackage = extensionPackage,
+        extensionVersion = extensionVersion,
+        sourceId = sourceId,
+        field = tachiyomi.domain.creator.model.SourceDateField.valueOf(fieldKind),
+    ),
+    workNaturalKey = workNaturalKey,
+    chapterNaturalKey = chapterNaturalKey,
+    rawValue = rawValue,
+    valueAt = valueAt,
+    precision = SourceDatePrecision.valueOf(precision),
+    semanticConfirmed = semanticConfirmed,
+    observedAt = observedAt,
+    reason = reason,
+    networkFailure = networkFailure,
+)
+
 private fun mapCreatorWorkArchiveRow(
     sourceWorkId: Long,
     sourceId: Long,
@@ -3489,6 +3653,11 @@ private fun mapCreatorWorkArchiveRow(
     chapterCountState: String,
     catalogChapterCount: Long,
     latestChapterAt: Long?,
+    publishedDateAt: Long?,
+    publishedDateQuality: String,
+    publishedDateReason: String?,
+    latestChapterDateQuality: String,
+    latestChapterDateReason: String?,
     lastCheckResult: String?,
     consecutiveFailures: Long,
     lastSuccessAt: Long?,
@@ -3605,6 +3774,11 @@ private fun mapCreatorWorkArchiveRow(
             firstSeenZone = firstSeenZone,
             chapterCompleteness = ChapterCatalogCompleteness.valueOf(chapterCountState),
             latestChapterAt = latestChapterAt,
+            publishedDateAt = publishedDateAt,
+            publishedDateQuality = SourceDateQualityStatus.valueOf(publishedDateQuality),
+            publishedDateReason = publishedDateReason,
+            latestChapterDateQuality = SourceDateQualityStatus.valueOf(latestChapterDateQuality),
+            latestChapterDateReason = latestChapterDateReason,
         ),
         canonicalWorkId = canonicalWorkId,
         canonicalPortableKey = canonicalPortableKey,

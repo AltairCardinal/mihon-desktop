@@ -5,6 +5,11 @@ import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.model.SManga
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
+import tachiyomi.domain.creator.model.SourceDateExtensionIdentity
+import tachiyomi.domain.creator.model.SourceDateField
+import tachiyomi.domain.creator.model.SourceDateObservation
+import tachiyomi.domain.creator.model.SourceDatePrecision
+import tachiyomi.domain.creator.model.SourceDateQualityIdentity
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.service.CreatorSourceWorkKey
 import tachiyomi.domain.library.service.LibraryPreferences
@@ -22,6 +27,9 @@ class UpdateManga(
     private val mangaRepository: MangaRepository,
     private val fetchInterval: FetchInterval,
     private val creatorArchiveRepository: CreatorArchiveRepository? = null,
+    private val sourceDateExtensionIdentityProvider: (Long) -> SourceDateExtensionIdentity = {
+        SourceDateExtensionIdentity("unknown.extension", "unknown")
+    },
 ) {
 
     suspend fun awaitFromRemote(
@@ -78,20 +86,46 @@ class UpdateManga(
             emptyList()
         }
         if (fetchChapters) {
+            val observedAt = Instant.now().toEpochMilli()
+            val extensionIdentity = sourceDateExtensionIdentityProvider(currentManga.source)
+            val stableSourceUrl = CreatorSourceWorkKey.stableUrl(
+                url = currentManga.url,
+                title = currentManga.title,
+                author = currentManga.author,
+                artist = currentManga.artist,
+            )
+            creatorArchiveRepository?.recordSourceDateQualityObservations(
+                update.chapters.mapNotNull { chapter ->
+                    chapter.url.takeIf(String::isNotBlank)?.let { chapterUrl ->
+                        val value = chapter.date_upload.takeIf { it > 0L }
+                        SourceDateObservation(
+                            identity = SourceDateQualityIdentity(
+                                extensionPackage = extensionIdentity.packageName,
+                                extensionVersion = extensionIdentity.version,
+                                sourceId = currentManga.source,
+                                field = SourceDateField.CHAPTER_UPDATED,
+                            ),
+                            workNaturalKey = stableSourceUrl,
+                            chapterNaturalKey = chapterUrl,
+                            rawValue = value?.toString(),
+                            valueAt = value,
+                            precision = value?.let { SourceDatePrecision.DAY } ?: SourceDatePrecision.UNKNOWN,
+                            observedAt = observedAt,
+                            reason = value?.let { null } ?: "missing-date",
+                        )
+                    }
+                },
+                now = observedAt,
+            )
             creatorArchiveRepository?.updateSourceWorkCatalog(
                 sourceWork = tachiyomi.domain.creator.model.SourceWorkNaturalKey(
                     sourceId = currentManga.source,
-                    stableSourceUrl = CreatorSourceWorkKey.stableUrl(
-                        url = currentManga.url,
-                        title = currentManga.title,
-                        author = currentManga.author,
-                        artist = currentManga.artist,
-                    ),
+                    stableSourceUrl = stableSourceUrl,
                 ),
                 chapterCount = update.chapters.size.toLong(),
                 completeness = ChapterCatalogCompleteness.COMPLETE,
                 latestChapterAt = update.chapters.map { it.date_upload }.filter { it > 0L }.maxOrNull(),
-                observedAt = Instant.now().toEpochMilli(),
+                observedAt = observedAt,
                 mangaId = currentManga.id,
             )
         }

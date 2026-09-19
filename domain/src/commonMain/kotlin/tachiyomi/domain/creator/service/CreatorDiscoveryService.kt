@@ -33,6 +33,8 @@ import tachiyomi.domain.creator.model.LeaseAcquireResult
 import tachiyomi.domain.creator.model.SourceCheckpoint
 import tachiyomi.domain.creator.model.SourceCheckpointResult
 import tachiyomi.domain.creator.model.SourceCheckpointUpdate
+import tachiyomi.domain.creator.model.SourceDateObservation
+import tachiyomi.domain.creator.model.SourceDateQualityIdentity
 import tachiyomi.domain.creator.model.SourceDiscoveryObservation
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WatchBaselineState
@@ -662,6 +664,26 @@ class CreatorDiscoveryService(
                     notificationEligible,
                     truncated,
                     detailsResult.error,
+                )
+            }
+            details.work.publishedDate?.let { date ->
+                archive.recordSourceDateQualityObservations(
+                    listOf(
+                        SourceDateObservation(
+                            identity = SourceDateQualityIdentity(
+                                extensionPackage = sourcePlan.source.extensionPackage,
+                                extensionVersion = sourcePlan.source.extensionVersion,
+                                sourceId = details.work.key.sourceId,
+                                field = tachiyomi.domain.creator.model.SourceDateField.WORK_PUBLISHED,
+                            ),
+                            workNaturalKey = details.work.key.stableSourceUrl,
+                            rawValue = date.rawValue,
+                            valueAt = date.valueAt,
+                            precision = date.precision,
+                            semanticConfirmed = date.semanticConfirmed,
+                            observedAt = clock(),
+                        ),
+                    ),
                 )
             }
             val identity = CreatorIdentityEvidenceEvaluator.evaluate(plan.aliases, details.work)

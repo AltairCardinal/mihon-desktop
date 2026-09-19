@@ -109,6 +109,7 @@ import tachiyomi.domain.creator.model.CreatorWorkArchive
 import tachiyomi.domain.creator.model.CreatorWorkArchiveFilter
 import tachiyomi.domain.creator.model.LanguageCertainty
 import tachiyomi.domain.creator.model.LanguageDimension
+import tachiyomi.domain.creator.model.SourceDateQualityStatus
 import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
 import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.service.CreatorIdentityEditor
@@ -122,6 +123,9 @@ import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 
 class AndroidMangaCreatorNavigator(
     private val extractCreators: ExtractCreatorsFromManga = ExtractCreatorsFromManga(),
@@ -911,7 +915,11 @@ private fun AndroidCreatorWorkSourceChooserDialog(
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                                 Text(
-                                    stringResource(MR.strings.creator_work_latest_date_unknown),
+                                    publishedDateLabel(version),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Text(
+                                    latestChapterDateLabel(version),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             }
@@ -1108,6 +1116,33 @@ private fun chapterCountLabel(version: SourceWorkArchiveVersion): String = when 
     ChapterCatalogCompleteness.PARTIAL -> stringResource(MR.strings.creator_work_chapters_fetched, version.chapterCount)
     ChapterCatalogCompleteness.COMPLETE -> stringResource(MR.strings.desktop_ui_chapter_count, version.chapterCount)
 }
+
+@Composable
+private fun latestChapterDateLabel(version: SourceWorkArchiveVersion): String {
+    val dateAt = version.latestChapterAt
+    return when {
+        version.latestChapterDateQuality == SourceDateQualityStatus.SUSPECT ->
+            stringResource(MR.strings.creator_work_latest_date_pending)
+        version.latestChapterDateQuality == SourceDateQualityStatus.TRUSTED && dateAt != null ->
+            stringResource(MR.strings.creator_work_latest_date, sourceDateDisplayDate(dateAt))
+        else -> stringResource(MR.strings.creator_work_latest_date_unknown)
+    }
+}
+
+@Composable
+private fun publishedDateLabel(version: SourceWorkArchiveVersion): String {
+    val dateAt = version.publishedDateAt
+    return when {
+        version.publishedDateQuality == SourceDateQualityStatus.SUSPECT ->
+            stringResource(MR.strings.creator_work_published_date_pending)
+        version.publishedDateQuality == SourceDateQualityStatus.TRUSTED && dateAt != null ->
+            stringResource(MR.strings.creator_work_published_date, sourceDateDisplayDate(dateAt))
+        else -> stringResource(MR.strings.creator_work_published_date_unknown)
+    }
+}
+
+private fun sourceDateDisplayDate(value: Long): String =
+    Instant.ofEpochMilli(value).atZone(ZoneOffset.UTC).toLocalDate().format(DateTimeFormatter.ISO_LOCAL_DATE)
 
 @Composable
 private fun CreatorArchiveWorkRow(

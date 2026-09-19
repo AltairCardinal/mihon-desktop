@@ -16,6 +16,9 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
+import tachiyomi.domain.creator.model.SourceDateExtensionIdentity
+import tachiyomi.domain.creator.model.SourceDateField
+import tachiyomi.domain.creator.model.SourceDatePrecision
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.manga.model.Manga
@@ -97,10 +100,29 @@ class LibraryUpdateCheckerTest {
         val mangaRepo = mihon.desktop.domain.fakes.FakeMangaRepository().apply { seed(manga()) }
         val archive = mockk<CreatorArchiveRepository>(relaxed = true)
         val latest = sChapter("/ch/latest").apply { date_upload = 1_790_000_000_000L }
-        val checker = LibraryUpdateChecker(chapterRepo, mangaRepo, archive)
+        val checker = LibraryUpdateChecker(
+            chapterRepo,
+            mangaRepo,
+            archive,
+            sourceDateExtensionIdentityProvider = { SourceDateExtensionIdentity("example.extension", "1.0+1") },
+        )
 
         checker.checkForUpdates(manga(), StubSource(listOf(latest)))
 
+        coVerify {
+            archive.recordSourceDateQualityObservations(
+                match { observations ->
+                    observations.single().identity.field == SourceDateField.CHAPTER_UPDATED &&
+                        observations.single().identity.extensionPackage == "example.extension" &&
+                        observations.single().identity.extensionVersion == "1.0+1" &&
+                        observations.single().workNaturalKey == manga().url &&
+                        observations.single().chapterNaturalKey == latest.url &&
+                        observations.single().valueAt == latest.date_upload &&
+                        observations.single().precision == SourceDatePrecision.DAY
+                },
+                now = any(),
+            )
+        }
         coVerify {
             archive.updateSourceWorkCatalog(
                 SourceWorkNaturalKey(sourceId, manga().url),

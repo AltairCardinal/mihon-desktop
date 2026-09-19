@@ -152,6 +152,7 @@ import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter
 import tachiyomi.domain.creator.repository.CreatorLibraryMangaSource
+import tachiyomi.domain.creator.model.SourceDateExtensionIdentity
 import tachiyomi.domain.creator.service.CreatorLibraryIndexer
 import tachiyomi.domain.creator.service.CreatorDiscoveryService
 import tachiyomi.domain.creator.service.CatalogueCreatorDiscoverySourceAdapter
@@ -697,6 +698,13 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
     val networkToLocalManga = NetworkToLocalManga(mangaRepository)
     val updateChapter = UpdateChapter(chapterRepository)
     val updateManga = UpdateManga(mangaRepository)
+    val sourceDateExtensionIdentityProvider: (Long) -> SourceDateExtensionIdentity = { sourceId ->
+        val manager = Injekt.get<DesktopExtensionManager>()
+        SourceDateExtensionIdentity(
+            packageName = manager.getExtensionPackage(sourceId) ?: "builtin.source",
+            version = manager.getExtensionVersion(sourceId) ?: "builtin",
+        )
+    }
     val upsertHistory = UpsertHistory(historyRepository)
     Injekt.addSingleton(networkToLocalManga)
     Injekt.addSingleton(updateChapter)
@@ -710,6 +718,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
         mangaRepository,
         chapterRepository,
         Injekt.get<CreatorArchiveRepository>(),
+        sourceDateExtensionIdentityProvider = sourceDateExtensionIdentityProvider,
     )
     Injekt.addSingleton(saveSourceMangaForDetails)
     Injekt.addSingleton(GetFavorites(mangaRepository))
@@ -733,6 +742,7 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
             chapterRepository,
             mangaRepository,
             Injekt.get<CreatorArchiveRepository>(),
+            sourceDateExtensionIdentityProvider,
         ),
     )
     val creatorDiscoverySourcePort = CatalogueCreatorDiscoverySourceAdapter(
@@ -748,6 +758,16 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
                 ?.get(sourceId) as? CatalogueSource
         },
         sourceMangaSearchService = sourceMangaSearchService,
+        extensionPackageProvider = { source ->
+            runCatching { Injekt.get<DesktopExtensionManager>().getExtensionPackage(source.id) }
+                .getOrNull()
+                ?: "builtin.source"
+        },
+        extensionVersionProvider = { source ->
+            runCatching { Injekt.get<DesktopExtensionManager>().getExtensionVersion(source.id) }
+                .getOrNull()
+                ?: "builtin"
+        },
     )
     Injekt.addSingleton<CreatorDiscoverySourcePort>(creatorDiscoverySourcePort)
     val creatorDiscoveryService = CreatorDiscoveryService(

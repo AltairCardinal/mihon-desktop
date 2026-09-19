@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import mihon.domain.error.AppError
 import tachiyomi.domain.creator.model.CreatorRole
+import tachiyomi.domain.creator.model.SourceDateValue
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.source.service.SourceMangaSearchRequest
 import tachiyomi.domain.source.service.SourceMangaSearchService
@@ -25,6 +26,15 @@ class CatalogueCreatorDiscoverySourceAdapter(
     private val sourceMangaSearchService: SourceMangaSearchService = SourceMangaSearchService(),
     private val languageProfileProvider: (CatalogueSource) -> CreatorSourceReadingLanguageProfile = {
         CreatorSourceReadingLanguageProfile.Unknown
+    },
+    private val extensionPackageProvider: (CatalogueSource) -> String = {
+        "unknown.extension"
+    },
+    private val extensionVersionProvider: (CatalogueSource) -> String = {
+        "unknown"
+    },
+    private val publishedDateProvider: (SManga) -> SourceDateValue? = {
+        null
     },
     private val clock: () -> Long = { System.currentTimeMillis() },
 ) : CreatorDiscoverySourcePort {
@@ -54,6 +64,8 @@ class CatalogueCreatorDiscoverySourceAdapter(
                 },
                 readingLanguageProfile = languageProfileProvider(source),
                 catalogueLanguageTag = source.lang,
+                extensionPackage = extensionPackageProvider(source),
+                extensionVersion = extensionVersionProvider(source),
             )
         }
     }
@@ -178,6 +190,7 @@ class CatalogueCreatorDiscoverySourceAdapter(
         artistText = artist,
         thumbnailUrl = thumbnail_url,
         structuredCreatorMatches = structuredMatches,
+        publishedDate = publishedDateProvider(this),
     )
 
     private fun AuthorSearchManga.key(sourceId: Long): SourceWorkNaturalKey = manga.toSnapshot(sourceId).key

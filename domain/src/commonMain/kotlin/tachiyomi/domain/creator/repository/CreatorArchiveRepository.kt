@@ -36,6 +36,9 @@ import tachiyomi.domain.creator.model.ReviewDisposition
 import tachiyomi.domain.creator.model.SetCreatorDisplayNameRequest
 import tachiyomi.domain.creator.model.SourceCheckpoint
 import tachiyomi.domain.creator.model.SourceCheckpointUpdate
+import tachiyomi.domain.creator.model.SourceDateObservation
+import tachiyomi.domain.creator.model.SourceDateQualityIdentity
+import tachiyomi.domain.creator.model.SourceDateQualitySnapshot
 import tachiyomi.domain.creator.model.SourceDiscoveryObservation
 import tachiyomi.domain.creator.model.SourceDiscoveryObservationResult
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
@@ -129,6 +132,16 @@ interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
         observedAt: Long,
         mangaId: Long? = null,
     )
+
+    /** Records bounded, device-local evidence for source supplied dates. */
+    suspend fun recordSourceDateQualityObservations(
+        observations: List<SourceDateObservation>,
+        now: Long = observations.maxOfOrNull(SourceDateObservation::observedAt) ?: 0L,
+    ): SourceDateQualitySnapshot? = null
+
+    suspend fun getSourceDateQualitySnapshot(
+        identity: SourceDateQualityIdentity,
+    ): SourceDateQualitySnapshot? = null
 
     suspend fun upsertWatchPolicy(policy: ArchiveWatchPolicy, now: Long)
 

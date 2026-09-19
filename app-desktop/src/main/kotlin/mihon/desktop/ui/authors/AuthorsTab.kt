@@ -96,13 +96,17 @@ import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.MangaCreator
 import tachiyomi.domain.creator.model.LanguageDimension
+import tachiyomi.domain.creator.model.SourceDateQualityStatus
+import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
 import tachiyomi.domain.creator.service.CreatorLibraryIndexState
 import tachiyomi.domain.source.service.SourceManager
-import java.util.Locale
-import java.util.UUID
-import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import mihon.desktop.image.desktopSourceImageModel
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+import java.util.UUID
 
 
 
@@ -915,6 +919,37 @@ private fun chapterCountLabel(version: SourceWorkArchiveVersion): String = when 
     )
 }
 
+internal fun latestChapterDateLabel(version: SourceWorkArchiveVersion): String {
+    val dateAt = version.latestChapterAt
+    return when {
+        version.latestChapterDateQuality == SourceDateQualityStatus.SUSPECT ->
+            MR.strings.creator_work_latest_date_pending.localized()
+        version.latestChapterDateQuality == SourceDateQualityStatus.TRUSTED && dateAt != null ->
+            MR.strings.creator_work_latest_date.localized(
+                Locale.getDefault(),
+                sourceDateDisplayDate(dateAt),
+            )
+        else -> MR.strings.creator_work_latest_date_unknown.localized()
+    }
+}
+
+private fun publishedDateLabel(version: SourceWorkArchiveVersion): String {
+    val dateAt = version.publishedDateAt
+    return when {
+        version.publishedDateQuality == SourceDateQualityStatus.SUSPECT ->
+            MR.strings.creator_work_published_date_pending.localized()
+        version.publishedDateQuality == SourceDateQualityStatus.TRUSTED && dateAt != null ->
+            MR.strings.creator_work_published_date.localized(
+                Locale.getDefault(),
+                sourceDateDisplayDate(dateAt),
+            )
+        else -> MR.strings.creator_work_published_date_unknown.localized()
+    }
+}
+
+private fun sourceDateDisplayDate(value: Long): String =
+    Instant.ofEpochMilli(value).atZone(ZoneOffset.UTC).toLocalDate().format(DateTimeFormatter.ISO_LOCAL_DATE)
+
 @Composable
 private fun CreatorWorkSourceChooserDialog(
     work: tachiyomi.domain.creator.model.CanonicalWorkArchiveGroup,
@@ -983,10 +1018,8 @@ private fun CreatorWorkSourceChooserDialog(
                                 }
                                 Text(version.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 Text(chapterCountLabel(version), style = MaterialTheme.typography.bodySmall)
-                                Text(
-                                    MR.strings.creator_work_latest_date_unknown.localized(),
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
+                                Text(publishedDateLabel(version), style = MaterialTheme.typography.bodySmall)
+                                Text(latestChapterDateLabel(version), style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }

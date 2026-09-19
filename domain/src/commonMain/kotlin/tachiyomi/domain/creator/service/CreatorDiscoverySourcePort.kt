@@ -1,5 +1,6 @@
 package tachiyomi.domain.creator.service
 
+import tachiyomi.domain.creator.model.SourceDateValue
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 
 enum class CreatorSourceCapability {
@@ -16,6 +17,8 @@ data class EnabledCreatorSource(
     val capabilities: Set<CreatorSourceCapability>,
     val readingLanguageProfile: CreatorSourceReadingLanguageProfile = CreatorSourceReadingLanguageProfile.Unknown,
     val catalogueLanguageTag: String? = null,
+    val extensionPackage: String = "unknown.extension",
+    val extensionVersion: String = "unknown",
 )
 
 sealed interface CreatorSourceReadingLanguageProfile {
@@ -58,6 +61,7 @@ data class CreatorSourceWorkSnapshot(
     val artistText: String?,
     val thumbnailUrl: String?,
     val structuredCreatorMatches: List<CreatorStructuredIdentityMatch> = emptyList(),
+    val publishedDate: SourceDateValue? = null,
 )
 
 data class CreatorStructuredIdentityMatch(

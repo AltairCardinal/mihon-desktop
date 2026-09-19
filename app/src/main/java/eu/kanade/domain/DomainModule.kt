@@ -91,6 +91,7 @@ import tachiyomi.domain.creator.interactor.GetCreatorDetails
 import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
+import tachiyomi.domain.creator.model.SourceDateExtensionIdentity
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter
@@ -199,6 +200,7 @@ class DomainModule : InjektModule {
         addSingletonFactory { SourceMangaSearchService() }
         addSingletonFactory<tachiyomi.domain.creator.service.CreatorDiscoverySourcePort> {
             val sources = get<SourceManager>()
+            val extensionManager = get<ExtensionManager>()
             tachiyomi.domain.creator.service.CatalogueCreatorDiscoverySourceAdapter(
                 enabledSourcesProvider = { sources.getCatalogueSources() },
                 sourceResolver = { sources.get(it) as? eu.kanade.tachiyomi.source.CatalogueSource },
@@ -207,6 +209,12 @@ class DomainModule : InjektModule {
                     source.lang.takeIf(String::isNotBlank)
                         ?.let(tachiyomi.domain.creator.service.CreatorSourceReadingLanguageProfile::Single)
                         ?: tachiyomi.domain.creator.service.CreatorSourceReadingLanguageProfile.Unknown
+                },
+                extensionPackageProvider = { source ->
+                    extensionManager.getExtensionPackage(source.id) ?: "builtin.source"
+                },
+                extensionVersionProvider = { source ->
+                    extensionManager.getExtensionVersion(source.id) ?: "builtin"
                 },
             )
         }
@@ -236,7 +244,15 @@ class DomainModule : InjektModule {
         addFactory { SetMangaDefaultChapterFlags(get(), get(), get()) }
         addFactory { SetMangaViewerFlags(get()) }
         addFactory { NetworkToLocalManga(get()) }
-        addFactory { UpdateManga(get(), get(), get()) }
+        addFactory {
+            val extensionManager = get<ExtensionManager>()
+            UpdateManga(get(), get(), get()) { sourceId ->
+                SourceDateExtensionIdentity(
+                    packageName = extensionManager.getExtensionPackage(sourceId) ?: "builtin.source",
+                    version = extensionManager.getExtensionVersion(sourceId) ?: "builtin",
+                )
+            }
+        }
         addFactory { UpdateLibraryMembership(get<MangaRepository>()) }
         addFactory { UpdateMangaNotes(get()) }
         addFactory { SetMangaCategories(get()) }

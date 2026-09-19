@@ -1,0 +1,60 @@
+CREATE TABLE author_archive_source_date_quality(
+    extension_package TEXT NOT NULL,
+    extension_version TEXT NOT NULL,
+    source_id INTEGER NOT NULL,
+    field_kind TEXT NOT NULL CHECK(field_kind IN ('WORK_PUBLISHED', 'CHAPTER_UPDATED')),
+    status TEXT NOT NULL CHECK(status IN ('UNKNOWN', 'TRUSTED', 'SUSPECT')),
+    strategy_version INTEGER NOT NULL,
+    sample_count INTEGER NOT NULL,
+    observed_work_count INTEGER NOT NULL,
+    stable_chapter_count INTEGER NOT NULL,
+    distinct_history_date_count INTEGER NOT NULL,
+    first_observed_at INTEGER,
+    last_observed_at INTEGER,
+    projected_date_at INTEGER,
+    last_reason TEXT,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY(extension_package, extension_version, source_id, field_kind)
+);
+
+CREATE TABLE author_archive_source_date_quality_current(
+    source_id INTEGER NOT NULL,
+    field_kind TEXT NOT NULL CHECK(field_kind IN ('WORK_PUBLISHED', 'CHAPTER_UPDATED')),
+    extension_package TEXT NOT NULL,
+    extension_version TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY(source_id, field_kind),
+    FOREIGN KEY(extension_package, extension_version, source_id, field_kind)
+        REFERENCES author_archive_source_date_quality(
+            extension_package, extension_version, source_id, field_kind
+        ) ON DELETE CASCADE
+);
+
+CREATE TABLE author_archive_source_date_quality_samples(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    extension_package TEXT NOT NULL,
+    extension_version TEXT NOT NULL,
+    source_id INTEGER NOT NULL,
+    field_kind TEXT NOT NULL CHECK(field_kind IN ('WORK_PUBLISHED', 'CHAPTER_UPDATED')),
+    work_natural_key TEXT NOT NULL,
+    chapter_natural_key TEXT,
+    raw_value TEXT,
+    value_at INTEGER,
+    precision TEXT NOT NULL CHECK(precision IN ('UNKNOWN', 'YEAR', 'MONTH', 'DAY')),
+    semantic_confirmed INTEGER AS Boolean NOT NULL,
+    observed_at INTEGER NOT NULL,
+    reason TEXT,
+    network_failure INTEGER AS Boolean NOT NULL,
+    FOREIGN KEY(extension_package, extension_version, source_id, field_kind)
+        REFERENCES author_archive_source_date_quality(
+            extension_package, extension_version, source_id, field_kind
+        ) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_source_date_quality_samples_key
+ON author_archive_source_date_quality_samples(
+    extension_package, extension_version, source_id, field_kind, work_natural_key, chapter_natural_key
+);
+
+CREATE INDEX idx_author_archive_source_date_quality_samples_observed
+ON author_archive_source_date_quality_samples(observed_at);

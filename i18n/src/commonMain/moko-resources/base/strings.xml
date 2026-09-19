@@ -2025,6 +2025,10 @@
     <string name="creator_work_chapters_fetched">Fetched chapters: %d</string>
     <string name="creator_work_latest_date_unknown">Latest chapter date unavailable</string>
     <string name="creator_work_latest_date_pending">Latest chapter date pending verification</string>
+    <string name="creator_work_latest_date">Latest chapter: %s</string>
+    <string name="creator_work_published_date_unknown">Publication date unavailable</string>
+    <string name="creator_work_published_date_pending">Publication date pending verification</string>
+    <string name="creator_work_published_date">Published: %s</string>
     <string name="creator_settings_title">Author settings</string>
     <string name="creator_settings_frequency">Check all followed authors</string>
     <string name="creator_frequency_daily">Daily</string>

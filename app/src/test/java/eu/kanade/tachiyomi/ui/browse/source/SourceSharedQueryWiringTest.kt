@@ -3,8 +3,10 @@ package eu.kanade.tachiyomi.ui.browse.source
 import android.app.Application
 import androidx.core.content.ContextCompat
 import eu.kanade.domain.DomainModule
+import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.tachiyomi.di.AppModule
 import eu.kanade.tachiyomi.di.PreferenceModule
+import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.network.AndroidNetworkResponseAdapter
 import io.mockk.every
 import io.mockk.mockk
@@ -23,9 +25,11 @@ import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorLibraryIndexWriter
 import tachiyomi.domain.creator.repository.CreatorLibraryMangaSource
 import tachiyomi.domain.creator.repository.CreatorRepository
+import tachiyomi.domain.creator.service.CreatorDiscoverySourcePort
 import tachiyomi.domain.creator.service.CreatorLibraryIndexer
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.interactor.UpdateLibraryMembership
+import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.service.SourceMangaSearchService
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.InjektScope
@@ -72,6 +76,19 @@ class SourceSharedQueryWiringTest {
             assertNotNull(Injekt.get<CreatorLibraryIndexer>())
             assertNotNull(Injekt.get<ManageCreatorIdentity>())
             assertNotNull(Injekt.get<NetworkToLocalManga>())
+        }
+    }
+
+    @Test
+    fun `Android author date quality bindings resolve through production domain DI`() {
+        withIsolatedInjekt {
+            Injekt.addSingleton<DatabaseHandler>(mockk(relaxed = true))
+            Injekt.addSingleton<SourceManager>(mockk(relaxed = true))
+            Injekt.addSingleton<ExtensionManager>(mockk(relaxed = true))
+            Injekt.importModule(DomainModule())
+
+            assertNotNull(Injekt.get<CreatorDiscoverySourcePort>())
+            assertNotNull(Injekt.get<UpdateManga>())
         }
     }
 

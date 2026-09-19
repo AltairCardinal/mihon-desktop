@@ -72,6 +72,7 @@ import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.creator.model.LanguageCertainty
+import tachiyomi.domain.creator.model.SourceDateQualityStatus
 import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.JvmDatabaseHandler
@@ -92,6 +93,35 @@ class AuthorsProductionWiringTest {
         tachiyomi.data.creator.verifyCreatorWorkFilterProjection { archive, filter ->
             AuthorDetailState(workArchive = archive, workFilter = filter).visibleWorkArchive
         }
+    }
+
+    @Test
+    fun `source chooser date labels distinguish trusted and suspect projections`() {
+        val version = SourceWorkArchiveVersion(
+            sourceWorkId = 1L,
+            naturalKey = SourceWorkNaturalKey(241L, "/date-work"),
+            mangaId = null,
+            title = "Date work",
+            readingLanguage = LanguageProjectionContract(
+                dimension = LanguageDimension.READING,
+                tag = "en",
+                certainty = LanguageCertainty.CONFIRMED,
+                evidenceKind = LanguageEvidenceKind.STRUCTURED_METADATA,
+            ),
+            chapterCount = 3L,
+            inLibrary = false,
+            detailsFetchedAt = null,
+            lastSeenAt = 1L,
+            decision = null,
+            latestChapterAt = 1_735_689_600_000L,
+            latestChapterDateQuality = SourceDateQualityStatus.TRUSTED,
+        )
+
+        assertTrue(latestChapterDateLabel(version).contains("2025-"))
+        assertEquals(
+            MR.strings.creator_work_latest_date_pending.localized(),
+            latestChapterDateLabel(version.copy(latestChapterDateQuality = SourceDateQualityStatus.SUSPECT)),
+        )
     }
 
     @Test
