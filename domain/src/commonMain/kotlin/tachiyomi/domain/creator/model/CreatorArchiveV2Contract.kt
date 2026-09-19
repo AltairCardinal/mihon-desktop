@@ -3,7 +3,7 @@ package tachiyomi.domain.creator.model
 object CreatorArchiveV2Contract {
     const val CURRENT_SCHEMA_VERSION = 15L
     const val TARGET_SCHEMA_VERSION = 16L
-    const val LATEST_SCHEMA_VERSION = 27L
+    const val LATEST_SCHEMA_VERSION = 28L
     const val TARGET_MIGRATION = "15.sqm"
     const val BACKUP_ENVELOPE_FIELD = 107
     const val BACKUP_SECTION_VERSION = 1

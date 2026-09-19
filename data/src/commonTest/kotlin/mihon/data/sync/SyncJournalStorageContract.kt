@@ -347,7 +347,8 @@ abstract class SyncJournalStorageContract {
 /** Reconstruct the schema before synchronization when a test starts from the generated current schema. */
 internal fun removeSyncJournalSchema(driver: SqlDriver) {
     listOf(
-        "sync_restore_units", "sync_restore_runs", "sync_history_watermarks", "sync_history_clears",
+        "sync_runtime_logs", "sync_runtime_runs", "sync_restore_units", "sync_restore_runs",
+        "sync_history_watermarks", "sync_history_clears",
         "sync_private_reading", "sync_import_heads", "sync_import_entries", "sync_imports",
         "sync_remote_heads", "sync_remote_objects", "sync_remote_guards",
         "sync_bulk_items", "sync_bulk_jobs", "sync_decisions", "sync_projected_history", "sync_pending_decisions",

@@ -128,4 +128,6 @@
 
 macOS 验收补充：在 `mbp-lan` 的独立 bundle 检出目录使用 JDK 21 和 `scripts/build-desktop.sh build-only` 构建成功，版本 `0.11.19.51.ab58a0a`；产物部署到 `/private/tmp/codex-mihon-deploy-r5/Mihon Desktop.app`，Test Mode 的 `/test/health`、`/test/state`、`/test/shutdown` 均返回成功。该构建复用已通过的 Desktop JVM 全量证据，未改动远端用户工作树。
 
-R5 仍未完成：本轮没有真实账号/同步空间，不能宣称锁屏期间条目进度推进或重复应用已被真机证明；Android 全量单测有 3 个既有 `InstalledAppsPermissionAppModuleTest` Injekt 初始化失败，domain/data 全量有 3 个既有 CreatorArchive 冻结迁移失败；完整原型套件为 39 项中 35 通过、4 项既有 library-sync/UI 断言失败。上述失败均已保留日志，不能替代剩余发布门禁，因此不得勾选 R5。
+2026-09-20：收口基线修复完成。由于新增 27 号同步运行迁移使生成数据库 schema 版本为 28，`CreatorArchiveV2Contract.LATEST_SCHEMA_VERSION` 与旧 schema 重建测试辅助已同步更新；`domain:jvmTest + data:jvmTest` 通过（`BUILD SUCCESSFUL in 16m 24s`）。`InstalledAppsPermissionAppModuleTest` 的隔离 Injekt scope 补注册放宽的 `AndroidSyncScheduler` mock 后，`:app:testDebugUnitTest` 通过（`BUILD SUCCESSFUL in 3m 4s`）；`spotlessCheck` 通过。以上变更只修复测试 fixture 与隔离 wiring，不改变生产同步语义。
+
+R5 仍未完成：本轮没有真实账号/同步空间，不能宣称锁屏期间条目进度推进或重复应用已被真机证明；完整原型套件为 39 项中 35 通过、4 项既有 library-sync/UI 断言失败。上述剩余项仍是发布门禁，不能勾选 R5。

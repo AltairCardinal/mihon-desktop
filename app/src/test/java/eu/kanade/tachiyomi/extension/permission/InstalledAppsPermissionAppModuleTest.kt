@@ -12,6 +12,7 @@ import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.App
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
+import eu.kanade.tachiyomi.data.sync.AndroidSyncScheduler
 import eu.kanade.tachiyomi.di.AppModule
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
@@ -95,6 +96,7 @@ class InstalledAppsPermissionAppModuleTest {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         try {
             Injekt.importModule(AppModule(app))
+            Injekt.addSingleton(mockk<AndroidSyncScheduler>(relaxed = true))
             val controller = Injekt.get<InstalledAppsPermissionController>()
             val resolved = Injekt.get<ExtensionManager>()
             manager = resolved
