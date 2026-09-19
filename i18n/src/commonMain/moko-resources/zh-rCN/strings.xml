@@ -1777,6 +1777,8 @@
     <string name="creator_no_representative_work">暂无作品</string>
     <string name="creator_unique_work_count">%1$d 部作品</string>
     <string name="creator_work_version_count">%1$d 部作品 · %2$d 个图源版本</string>
+    <string name="creator_work_script_variant_detected">检测到可能只是简繁标题差异，请确认后合并。</string>
+    <string name="creator_work_merge_script_variant">按标题简繁体与“%s”合并</string>
     <string name="creator_work_search">查找作品</string>
     <string name="creator_work_sources_all">全部来源</string>
     <string name="creator_work_filter_empty">没有符合条件的作品。可切换来源或清空搜索。</string>

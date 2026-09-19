@@ -8,6 +8,7 @@ import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.ArchiveUnreadWork
 import tachiyomi.domain.creator.model.ArchiveUpsertOutcome
 import tachiyomi.domain.creator.model.ArchiveWatchPolicy
+import tachiyomi.domain.creator.model.CanonicalWork
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.CreatorAliasCandidates
 import tachiyomi.domain.creator.model.CreatorArchiveV2Policy
@@ -31,6 +32,7 @@ import tachiyomi.domain.creator.model.LanguageAssertionContract
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.LanguageProjectionContract
 import tachiyomi.domain.creator.model.LeaseAcquireResult
+import tachiyomi.domain.creator.model.NewCanonicalWorkDecision
 import tachiyomi.domain.creator.model.NotificationDeliveryState
 import tachiyomi.domain.creator.model.NotificationOutboxItem
 import tachiyomi.domain.creator.model.ReviewDisposition
@@ -387,6 +389,13 @@ interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
         decidedAt: Long,
         idempotencyKey: String,
     ): WorkDecisionProjection
+
+    /** Creates one canonical work and confirms all supplied source versions in the same transaction. */
+    suspend fun createCanonicalWorkWithUserWorkDecisions(
+        primaryTitle: String,
+        primaryCreatorId: Long?,
+        decisions: List<NewCanonicalWorkDecision>,
+    ): CanonicalWork
 
     suspend fun appendLanguageAssertion(
         subject: ArchiveLanguageSubject,

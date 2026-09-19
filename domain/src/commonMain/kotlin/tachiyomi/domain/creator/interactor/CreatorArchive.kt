@@ -10,6 +10,7 @@ import tachiyomi.domain.creator.model.CreatorCardProjectionPage
 import tachiyomi.domain.creator.model.CreatorWorkArchive
 import tachiyomi.domain.creator.model.DueWatchSource
 import tachiyomi.domain.creator.model.LanguageDimension
+import tachiyomi.domain.creator.model.NewCanonicalWorkDecision
 import tachiyomi.domain.creator.model.ReviewDisposition
 import tachiyomi.domain.creator.model.SourceCheckpoint
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
@@ -85,6 +86,12 @@ class CreatorArchive(
         decidedAt,
         idempotencyKey,
     )
+
+    suspend fun createCanonicalWorkWithUserWorkDecisions(
+        primaryTitle: String,
+        creatorId: Long?,
+        decisions: List<NewCanonicalWorkDecision>,
+    ) = archive.createCanonicalWorkWithUserWorkDecisions(primaryTitle, creatorId, decisions)
 
     suspend fun setLanguage(subject: ArchiveLanguageSubject, dimension: LanguageDimension, tag: String, now: Long) =
         archive.setManualLanguage(subject, dimension, tag, now)

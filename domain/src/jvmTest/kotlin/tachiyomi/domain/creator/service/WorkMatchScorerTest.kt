@@ -94,6 +94,19 @@ class WorkMatchScorerTest {
     }
 
     @Test
+    fun `simplified and traditional title variants are an explicit merge suggestion`() {
+        val score = WorkMatchScorer.score(
+            current = WorkMatchInput(title = "詭譎屋", creators = emptyList(), language = null),
+            candidate = WorkMatchInput(title = "诡谲屋", creators = emptyList(), language = null),
+        )
+
+        score.evidence.map(WorkMatchEvidence::kind) shouldContain WorkMatchEvidenceKind.TITLE_SCRIPT_VARIANT
+        score.value shouldBeGreaterThan 0.5
+        score.recommendedState shouldBe tachiyomi.domain.creator.model.WorkDecisionState.SUGGESTED
+        score.eligibleForAutomaticConfirmation shouldBe false
+    }
+
+    @Test
     fun `chapter coverage is evidence but cannot confirm a work`() {
         val score = WorkMatchScorer.score(
             current = WorkMatchInput(

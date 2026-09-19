@@ -38,6 +38,7 @@ import tachiyomi.domain.creator.model.LanguageAssertionContract
 import tachiyomi.domain.creator.model.LanguageCertainty
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.LanguageEvidenceKind
+import tachiyomi.domain.creator.model.NewCanonicalWorkDecision
 import tachiyomi.domain.creator.model.NotificationDeliveryState
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.StaleWorkDecisionException
@@ -164,6 +165,62 @@ class CreatorRepositoryImplTest {
         restarted.getUnreadWorkDiscoveries(10L) shouldBe emptyList()
         queryLong("SELECT COUNT(*) FROM author_archive_discoveries WHERE read_state = 'SEEN'") shouldBe 3L
         queryLong("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 2L
+    }
+
+    @Test
+    fun `new canonical merge rolls back all decisions when a source is missing`() = runBlocking<Unit> {
+        val creator = repository.upsertCreator("Merge Author")
+        val existing = SourceWorkNaturalKey(10L, "/existing")
+        val missing = SourceWorkNaturalKey(11L, "/missing")
+        repository.upsertSourceWork(
+            existing.sourceId,
+            existing.stableSourceUrl,
+            null,
+            "詭譎屋",
+            creator.displayName,
+            null,
+            null,
+            1L,
+        )
+        repository.upsertSourceWorkCreator(
+            existing,
+            creator.id,
+            CreatorRole.AUTHOR,
+            0L,
+            CreatorRelationOrigin.AUTOMATIC,
+            CreatorRelationVerification.VERIFIED,
+            creator.displayName,
+            1.0,
+            "merge-test",
+        )
+
+        shouldThrow<IllegalStateException> {
+            repository.createCanonicalWorkWithUserWorkDecisions(
+                primaryTitle = "诡谲屋",
+                primaryCreatorId = creator.id,
+                decisions = listOf(
+                    NewCanonicalWorkDecision(
+                        sourceWork = existing,
+                        expectedDecidedAt = null,
+                        score = 1.0,
+                        evidence = "manual-script-variant",
+                        decidedAt = 2L,
+                        idempotencyKey = "merge-existing",
+                    ),
+                    NewCanonicalWorkDecision(
+                        sourceWork = missing,
+                        expectedDecidedAt = null,
+                        score = 1.0,
+                        evidence = "manual-script-variant",
+                        decidedAt = 3L,
+                        idempotencyKey = "merge-missing",
+                    ),
+                ),
+            )
+        }
+
+        repository.getCreatorWorkArchive(creator.id).works shouldBe emptyList()
+        repository.getWorkDecisions(existing) shouldBe emptyList()
     }
 
     @Test

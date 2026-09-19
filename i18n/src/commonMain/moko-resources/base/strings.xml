@@ -2019,6 +2019,8 @@
     <string name="creator_new_work_unread">New work · unread</string>
     <string name="creator_view_new_works">View new works</string>
     <string name="creator_work_version_count">%1$d works · %2$d source versions</string>
+    <string name="creator_work_script_variant_detected">A simplified/traditional title variant may be the same work. Confirm before merging.</string>
+    <string name="creator_work_merge_script_variant">Merge with “%s” by title script</string>
     <string name="creator_work_search">Find works</string>
     <string name="creator_work_sources_all">All sources</string>
     <string name="creator_work_filter_empty">No matching works. Change the source or clear your search.</string>

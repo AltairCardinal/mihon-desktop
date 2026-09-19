@@ -79,6 +79,7 @@ import tachiyomi.domain.creator.model.LanguageProjectionContract
 import tachiyomi.domain.creator.model.LeaseAcquireResult
 import tachiyomi.domain.creator.model.MangaCreator
 import tachiyomi.domain.creator.model.MangaWorkMatch
+import tachiyomi.domain.creator.model.NewCanonicalWorkDecision
 import tachiyomi.domain.creator.model.NotificationDeliveryState
 import tachiyomi.domain.creator.model.NotificationOutboxItem
 import tachiyomi.domain.creator.model.ReviewDisposition
@@ -2005,6 +2006,81 @@ class CreatorRepositoryImpl(
                 stableSourceUrl = sourceWork.stableSourceUrl,
                 mapper = ::mapWorkDecisionProjection,
             ).executeAsList().first { it.workId == workId }
+        }
+    }
+
+    override suspend fun createCanonicalWorkWithUserWorkDecisions(
+        primaryTitle: String,
+        primaryCreatorId: Long?,
+        decisions: List<NewCanonicalWorkDecision>,
+    ): CanonicalWork {
+        bootstrap.awaitReady()
+        require(primaryTitle.isNotBlank()) { "Canonical work title must not be blank" }
+        require(decisions.size >= 2) { "A canonical merge requires at least two source works" }
+        require(decisions.map(NewCanonicalWorkDecision::sourceWork).distinct().size == decisions.size) {
+            "A canonical merge cannot repeat a source work"
+        }
+        decisions.forEach { decision ->
+            require(decision.evidence.isNotBlank()) { "Work decision evidence must not be blank" }
+            require(decision.idempotencyKey.isNotBlank()) { "Work decision idempotency key must not be blank" }
+            val score = decision.score
+            require(score == null || score in 0.0..1.0) {
+                "Work decision score must be between 0 and 1"
+            }
+        }
+        val now = clock()
+        return handler.await(inTransaction = true) {
+            val portableKey = portableKeyFactory()
+            author_archiveQueries.insertArchiveCanonicalWork(
+                portableKey = portableKey,
+                primaryTitle = primaryTitle.trim(),
+                normalizedTitle = CreatorNameNormalizer.normalize(primaryTitle),
+                createdAt = now,
+                lastModifiedAt = now,
+            )
+            val workId = author_archiveQueries.selectArchiveLastInsertedRowId().executeAsOne()
+            if (primaryCreatorId != null) {
+                author_archiveQueries.upsertArchiveCanonicalCreator(
+                    workId = workId,
+                    creatorId = primaryCreatorId,
+                    role = "AUTHOR",
+                    creatorOrder = 0,
+                    origin = "USER",
+                    evidence = "CreatorRepository.createCanonicalWorkWithUserWorkDecisions",
+                )
+            }
+            decisions.forEach { decision ->
+                val sourceWorkId = author_archiveQueries
+                    .getArchiveSourceWorkByKey(decision.sourceWork.sourceId, decision.sourceWork.stableSourceUrl.trim())
+                    .executeAsOneOrNull()
+                    ?._id
+                    ?: error("Source work does not exist: ${decision.sourceWork}")
+                val current = author_archiveQueries
+                    .getLatestArchiveWorkDecision(sourceWorkId, workId)
+                    .executeAsOneOrNull()
+                if (current?.decided_at != decision.expectedDecidedAt) {
+                    throw StaleWorkDecisionException()
+                }
+                require(
+                    author_archiveQueries
+                        .getArchiveWorkDecisionByIdempotencyKey(decision.idempotencyKey, ::mapWorkDecisionEvent)
+                        .executeAsOneOrNull() == null,
+                ) { "Work decision idempotency key already exists" }
+                author_archiveQueries.upsertArchiveWorkDecision(
+                    sourceWorkId = sourceWorkId,
+                    workId = workId,
+                    state = WorkDecisionState.CONFIRMED.name,
+                    actor = DecisionActor.USER.name,
+                    explicit = true,
+                    algorithmVersion = null,
+                    score = decision.score,
+                    evidence = decision.evidence,
+                    decidedAt = decision.decidedAt,
+                    idempotencyKey = decision.idempotencyKey,
+                )
+                reconcileArchiveCanonicalVersion(sourceWorkId)
+            }
+            author_archiveQueries.getArchiveCanonicalWork(workId, ::mapCanonicalWork).executeAsOne()
         }
     }
 

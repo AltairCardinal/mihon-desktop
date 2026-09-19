@@ -109,12 +109,14 @@ import tachiyomi.domain.creator.model.CreatorWorkArchive
 import tachiyomi.domain.creator.model.CreatorWorkArchiveFilter
 import tachiyomi.domain.creator.model.LanguageCertainty
 import tachiyomi.domain.creator.model.LanguageDimension
+import tachiyomi.domain.creator.model.NewCanonicalWorkDecision
 import tachiyomi.domain.creator.model.SourceDateQualityStatus
 import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.service.CreatorIdentityEditor
 import tachiyomi.domain.creator.service.OpenCreatorWorkVersion
+import tachiyomi.domain.creator.service.WorkTitleNormalizer
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
@@ -848,6 +850,25 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(stringResource(MR.strings.desktop_ui_pending_work_suggestions))
+                        if (state.reviewCandidates.isNotEmpty()) {
+                            Text(stringResource(MR.strings.creator_work_script_variant_detected))
+                            state.reviewCandidates.forEach { candidate ->
+                                TextButton(
+                                    enabled = !state.reviewActionRunning,
+                                    onClick = { model.decide(WorkDecisionState.CONFIRMED, candidate) },
+                                    modifier = Modifier.testTag(
+                                        "creator-work-script-variant-${candidate.sourceWorkId}",
+                                    ),
+                                ) {
+                                    Text(
+                                        stringResource(
+                                            MR.strings.creator_work_merge_script_variant,
+                                            candidate.title,
+                                        ),
+                                    )
+                                }
+                            }
+                        }
                         OutlinedTextField(
                             value = state.languageTag,
                             onValueChange = model::languageTag,
@@ -859,12 +880,18 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { model.decide(WorkDecisionState.CONFIRMED) }) {
+                    TextButton(
+                        enabled = !state.reviewActionRunning,
+                        onClick = { model.decide(WorkDecisionState.CONFIRMED) },
+                    ) {
                         Text(stringResource(MR.strings.desktop_ui_confirm_same_work))
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { model.decide(WorkDecisionState.REJECTED) }) {
+                    TextButton(
+                        enabled = !state.reviewActionRunning,
+                        onClick = { model.decide(WorkDecisionState.REJECTED) },
+                    ) {
                         Text(stringResource(MR.strings.desktop_ui_reject_same_work))
                     }
                 },
@@ -1225,6 +1252,8 @@ internal data class AuthorState(
     val running: Boolean = false,
     val error: String? = null,
     val reviewing: SourceWorkArchiveVersion? = null,
+    val reviewCandidates: List<SourceWorkArchiveVersion> = emptyList(),
+    val reviewActionRunning: Boolean = false,
     val languageTag: String = "",
     val workDisplayModeOverride: LibraryDisplayMode? = null,
     val shelfDisplayMode: LibraryDisplayMode = LibraryDisplayMode.default,
@@ -1398,25 +1427,89 @@ internal class AndroidAuthorDetailScreenModel(
             }
     }
     fun clearWorkDisplayModeError() = mutableState.update { it.copy(workDisplayModeError = null) }
-    fun openReview(version: SourceWorkArchiveVersion) = mutableState.update { it.copy(reviewing = version) }
-    fun closeReview() = mutableState.update { it.copy(reviewing = null, languageTag = "") }
+    fun openReview(version: SourceWorkArchiveVersion) = mutableState.update {
+        it.copy(
+            reviewing = version,
+            reviewCandidates = scriptVariantCandidates(version, it.archive),
+        )
+    }
+    fun closeReview() = mutableState.update {
+        it.copy(reviewing = null, reviewCandidates = emptyList(), languageTag = "")
+    }
     fun languageTag(value: String) = mutableState.update { it.copy(languageTag = value) }
-    fun decide(state: WorkDecisionState) = screenModelScope.launch {
+    fun decide(state: WorkDecisionState, target: SourceWorkArchiveVersion? = null) = screenModelScope.launch {
+        if (mutableState.value.reviewActionRunning) return@launch
         val version = mutableState.value.reviewing ?: return@launch
+        mutableState.update { it.copy(reviewActionRunning = true, error = null) }
         val now = System.currentTimeMillis()
         runCatching {
-            val workId = version.decision?.workId ?: archive.createWork(version.title, activeCreatorId, null).id
+            val targetDecision = target?.decision
+            val targetWorkId = target?.let { candidate ->
+                mutableState.value.archive.works.firstOrNull { work ->
+                    work.versions.any { it.sourceWorkId == candidate.sourceWorkId }
+                }?.workId ?: targetDecision
+                    ?.takeUnless { it.decision.state == WorkDecisionState.REJECTED }
+                    ?.workId
+            }
+            if (target != null && targetWorkId == null && targetDecision == null && version.decision == null) {
+                archive.createCanonicalWorkWithUserWorkDecisions(
+                    primaryTitle = target.title,
+                    creatorId = activeCreatorId,
+                    decisions = listOf(
+                        NewCanonicalWorkDecision(
+                            sourceWork = target.naturalKey,
+                            expectedDecidedAt = target.decision?.decidedAt,
+                            score = 1.0,
+                            evidence = "manual-script-variant",
+                            decidedAt = now,
+                            idempotencyKey = "android-script-variant:${target.sourceWorkId}:$now",
+                        ),
+                        NewCanonicalWorkDecision(
+                            sourceWork = version.naturalKey,
+                            expectedDecidedAt = version.decision?.decidedAt,
+                            score = 1.0,
+                            evidence = "manual-script-variant",
+                            decidedAt = now + 1,
+                            idempotencyKey = "android-script-variant:${version.sourceWorkId}:$now",
+                        ),
+                    ),
+                )
+                return@runCatching
+            }
+            val workId = targetWorkId ?: version.decision?.workId ?: archive.createWork(
+                target?.title ?: version.title,
+                activeCreatorId,
+                null,
+            ).id
+            if (
+                target != null &&
+                targetWorkId != null &&
+                targetWorkId == targetDecision?.workId &&
+                target?.decision?.decision?.state == WorkDecisionState.SUGGESTED
+            ) {
+                archive.decide(
+                    sourceWork = target.naturalKey,
+                    workId = workId,
+                    state = WorkDecisionState.CONFIRMED,
+                    expectedDecidedAt = targetDecision.decidedAt,
+                    score = 1.0,
+                    evidence = "manual-script-variant",
+                    decidedAt = now,
+                    idempotencyKey = "android-script-variant:${target.sourceWorkId}:$workId:$now",
+                )
+            }
             archive.decide(
                 sourceWork = version.naturalKey,
                 workId = workId,
                 state = state,
-                expectedDecidedAt = version.decision?.decidedAt,
+                expectedDecidedAt = version.decision?.takeIf { it.workId == workId }?.decidedAt,
                 score = 1.0,
-                evidence = "android-manual-review",
-                decidedAt = now,
-                idempotencyKey = "android-review:${version.sourceWorkId}:$workId:$now",
+                evidence = if (target != null) "manual-script-variant" else "android-manual-review",
+                decidedAt = now + if (target != null && targetWorkId == null) 1 else 0,
+                idempotencyKey = "android-review:${version.sourceWorkId}:$workId:${now + if (target != null) 1 else 0}",
             )
         }.onSuccess { closeReview() }.onFailure(::fail)
+        mutableState.update { it.copy(reviewActionRunning = false) }
     }
     fun setReadingLanguage() = screenModelScope.launch {
         val version = mutableState.value.reviewing ?: return@launch
@@ -1441,4 +1534,24 @@ internal class AndroidAuthorDetailScreenModel(
     private fun fail(
         error: Throwable,
     ) = mutableState.update { it.copy(error = error.message ?: error::class.simpleName, loading = false) }
+
+    private fun scriptVariantCandidates(
+        version: SourceWorkArchiveVersion,
+        archive: CreatorWorkArchive,
+    ): List<SourceWorkArchiveVersion> {
+        val currentWorkId = archive.works.firstOrNull { work ->
+            work.versions.any { it.sourceWorkId == version.sourceWorkId }
+        }?.workId
+        return (archive.works.flatMap { it.versions } + archive.pending)
+            .filter { candidate ->
+                val candidateWorkId = archive.works.firstOrNull { work ->
+                    work.versions.any { it.sourceWorkId == candidate.sourceWorkId }
+                }?.workId
+                candidate.sourceWorkId != version.sourceWorkId &&
+                    candidate.decision?.decision?.state != WorkDecisionState.REJECTED &&
+                    WorkTitleNormalizer.isSimplifiedTraditionalVariant(version.title, candidate.title) &&
+                    (currentWorkId == null || candidateWorkId == null || candidateWorkId != currentWorkId)
+            }
+            .sortedBy { it.sourceWorkId }
+    }
 }

@@ -39,6 +39,7 @@ import tachiyomi.domain.creator.interactor.CreatorArchive
 import tachiyomi.domain.creator.service.WorkMatchInput
 import tachiyomi.domain.creator.service.WorkMatchScore
 import tachiyomi.domain.creator.service.WorkMatchScorer
+import tachiyomi.domain.creator.service.WorkMatchEvidenceKind
 import tachiyomi.domain.creator.service.CreatorLibraryIndexState
 import tachiyomi.domain.creator.service.CreatorLibraryIndexer
 import tachiyomi.domain.creator.service.ChapterVariantInput
@@ -51,6 +52,7 @@ import mihon.desktop.DesktopUiDependencies
 import tachiyomi.domain.creator.service.OpenCreatorWorkVersion
 import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.model.NewCanonicalWorkDecision
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.service.CreatorIdentityEditor
 import tachiyomi.domain.creator.model.WorkDecisionProjection
@@ -599,6 +601,7 @@ data class WorkComparisonSuggestion(
 ) {
     val mangaId: Long get() = checkNotNull(version.mangaId)
     val title: String get() = version.title
+    val isScriptVariant: Boolean get() = score.evidence.any { it.kind == WorkMatchEvidenceKind.TITLE_SCRIPT_VARIANT }
 }
 
 data class WorkCompareState(
@@ -684,18 +687,53 @@ internal class WorkCompareScreenModel(
                     version.naturalKey.sourceId,
                 )
                 val existing = mutableState.value.currentDecision
-                val workId = existing?.workId ?: target?.canonicalWorkId ?: creatorArchive.createWork(
+                val now = System.currentTimeMillis()
+                val targetDecision = target?.version?.decision
+                val targetWorkId = target?.canonicalWorkId
+                    ?: targetDecision
+                        ?.takeUnless { it.decision.state == WorkDecisionState.REJECTED }
+                        ?.workId
+                if (target != null && targetWorkId == null && targetDecision == null && existing == null) {
+                    creatorArchive.createCanonicalWorkWithUserWorkDecisions(
+                        primaryTitle = target.title,
+                        creatorId = creatorId,
+                        decisions = listOf(
+                            NewCanonicalWorkDecision(
+                                sourceWork = target.version.naturalKey,
+                                expectedDecidedAt = target.version.decision?.decidedAt,
+                                score = target.score.value,
+                                evidence = target.score.reason,
+                                decidedAt = now,
+                                idempotencyKey = "desktop-script-variant:${target.version.sourceWorkId}:$now",
+                            ),
+                            NewCanonicalWorkDecision(
+                                sourceWork = version.naturalKey,
+                                expectedDecidedAt = version.decision?.decidedAt,
+                                score = target.score.value,
+                                evidence = target.score.reason,
+                                decidedAt = now + 1,
+                                idempotencyKey = "desktop-script-variant:${version.sourceWorkId}:$now",
+                            ),
+                        ),
+                    )
+                    load()
+                    return@runCatching
+                }
+                val workId = targetWorkId ?: existing?.workId ?: creatorArchive.createWork(
                     title = target?.title ?: version.title,
                     creatorId = creatorId,
                     originalLanguage = null,
                 ).id
-                val now = System.currentTimeMillis()
-                if (target != null && target.canonicalWorkId == null && existing == null) {
+                if (
+                    target != null &&
+                    target.canonicalWorkId == null &&
+                    targetDecision?.decision?.state == WorkDecisionState.SUGGESTED
+                ) {
                     creatorArchive.decide(
                         sourceWork = target.version.naturalKey,
                         workId = workId,
                         state = WorkDecisionState.CONFIRMED,
-                        expectedDecidedAt = target.version.decision?.decidedAt,
+                        expectedDecidedAt = targetDecision.decidedAt,
                         score = target.score.value,
                         evidence = target.score.reason,
                         decidedAt = now,
@@ -706,7 +744,7 @@ internal class WorkCompareScreenModel(
                     sourceWork = version.naturalKey,
                     workId = workId,
                     state = state,
-                    expectedDecidedAt = existing?.decidedAt,
+                    expectedDecidedAt = existing?.takeIf { it.workId == workId }?.decidedAt,
                     score = target?.score?.value ?: 1.0,
                     evidence = target?.score?.reason ?: "manual-singleton-review",
                     decidedAt = now + 1,
@@ -735,7 +773,13 @@ internal class WorkCompareScreenModel(
             chapterCount = chapterCountForWorkMatching(version),
         )
         val canonicalWorkIds = archive.works.flatMap { work -> work.versions.map { it.sourceWorkId to work.workId } }.toMap()
-        val suggestions = versions.filter { it.sourceWorkId != version.sourceWorkId && it.mangaId != null }.map { other ->
+        val currentCanonicalWorkId = canonicalWorkIds[version.sourceWorkId]
+        val suggestions = versions.filter { other ->
+            other.sourceWorkId != version.sourceWorkId &&
+                other.mangaId != null &&
+                other.decision?.decision?.state != WorkDecisionState.REJECTED &&
+                (currentCanonicalWorkId == null || canonicalWorkIds[other.sourceWorkId] != currentCanonicalWorkId)
+        }.map { other ->
             WorkComparisonSuggestion(
                 version = other,
                 canonicalWorkId = canonicalWorkIds[other.sourceWorkId],

@@ -231,6 +231,16 @@ data class WorkDecisionProjection(
     val decidedAt: Long,
 )
 
+/** A user-confirmed source version to append while creating one new canonical work. */
+data class NewCanonicalWorkDecision(
+    val sourceWork: SourceWorkNaturalKey,
+    val expectedDecidedAt: Long?,
+    val score: Double?,
+    val evidence: String,
+    val decidedAt: Long,
+    val idempotencyKey: String,
+)
+
 data class SourceWorkArchiveVersion(
     val sourceWorkId: Long,
     val naturalKey: SourceWorkNaturalKey,

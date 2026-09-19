@@ -13,7 +13,7 @@
 
 开始每批前检查实际HEAD、未提交改动、相关AGENTS及现有测试；保护并排除其他任务改动。本次规划时旧功能设计、旧roadmap/handoff、i18n及testfile已有未提交内容，不能把它们当成本轮可覆盖文件。新增字符串需在实施时协调同文件改动。
 
-不包含自动模糊同作、外部作者数据库、远端热门排行、额外通知中心、新同步功能和手工代表作管理。只有已确认同作品关系可聚合；日期来源ID不决定作者身份。
+不包含自动模糊同作、外部作者数据库、远端热门排行、额外通知中心、新同步功能和手工代表作管理。只有已确认同作品关系可聚合；日期来源ID不决定作者身份。AX-07增加一个受控例外：审阅页可以提出确定性简繁标题等价候选，但必须由用户明确确认，不能自动合并或改写来源标题。
 
 ## 2. 依赖、规模与执行安排
 
@@ -25,8 +25,9 @@
 | AX-04 | 来源日期可信判断及生产更新接线 | AX-03 | 8–12小时 |
 | AX-05 | 作品级新作提醒与查看闭环 | AX-02、AX-03；默认在AX-04后执行 | 8–12小时 |
 | AX-06 | 双端整合、回归、正式发布运行验收 | AX-01至AX-05 | 6–10小时 |
+| AX-07 | 待审作品简繁标题等价候选与显式合并 | AX-06；复用既有canonical决策事务 | 4–6小时 |
 
-总估算44–68工程小时，不含外部真实图源跨日采样等待；日期测试使用可注入时钟和本地HTTP fixture，无需等待24小时跑测试。真实来源没有充分证据时保持unknown，不以工期为由写入白名单。
+总估算48–74工程小时，不含外部真实图源跨日采样等待；日期测试使用可注入时钟和本地HTTP fixture，无需等待24小时跑测试。真实来源没有充分证据时保持unknown，不以工期为由写入白名单。
 
 默认串行，避免共享ScreenModel、schema与测试资源写入冲突；有额外授权/明确边界时才并行无依赖工作。首个AX-01任务簇已由实施子代理负责主要实现与验证，主代理负责接口、整合与验收；后续相近任务复用同一实施者。主代理不重复实现已委派部分。
 
@@ -244,6 +245,36 @@ TDD红绿记录：`ax01-android-author-card-layout-red2` exit 1，真实320dp mo
 | macOS 正式构建 / 运行 | `mbp-lan` 隔离副本 `/tmp/mihon-ax06-macos-b5d4cc6961`；`bash scripts/build-desktop.sh build-only` | 通过；版本 `0.11.19.53.b5d4cc6`，分发部署到 `/private/tmp/mihon-ax06-macos-deploy/Mihon Desktop.app`；未触碰远端原有脏仓库或 `/Applications` |
 | macOS Test Mode | 上述隔离 `.app` + 独立 `--test-profile`、`--test-http-port`、`--headless` | `/test/health`、`/test/state`、`authors_state` 成功；作者同步 fixture 按 `add → remove → confirm_remove → replay → refollow → author_unfollow → verify_local_cancel` 顺序全部成功，profile marker 已核验；测试 PID 已停止 |
 | parity-manifest | `ax06-parity-fix3`；`DesktopProductCapabilityContractTest`；角色证据扫描 | 仅维护既有行号漂移（272 条 `CURRENT_ANDROID`/`SHARED_OR_ADAPTER`/`DESKTOP_CONSUMER` 证据扫描 0 错误）；契约测试通过，未建立第二套状态权威 |
+
+### AX-07 · 作品待审列表的简繁标题等价候选与显式合并
+
+- [x] AX-07：在作者详情的待审作品中提供确定性简繁标题候选，用户确认后把来源版本归入同一作品组；原始标题、来源和版本事实保持不变。
+
+**用户结果**：作者详情 → 待审作品 → 打开审阅/比较时，如果两个标题只有简体/繁体差异，页面显示“按标题简繁体合并”操作。用户点击并确认后，两个来源版本进入同一 canonical 作品组；取消或拒绝不会写入合并关系。
+
+**前置与复用**：复用 `WorkMatchScorer`、`SourceWorkArchiveVersion`、`CanonicalWorkArchiveGroup` 和 `CreatorArchiveRepository.appendUserWorkDecisionIfCurrent`。不新增数据库表、迁移、同步字段或第二套合并事务；只在共享 domain 增加确定性标题归一化和证据类型，并在 Android/Desktop 现有审阅入口显示候选。
+
+**实施任务**：
+
+1. 从共享标题规范化入口生成最长短语优先、字符回退的简繁归一化键；只转换脚本字符，保留大小写、标点和空白边界。保留原始标题，限制在同一作者归档内，空标题、相同原文和已在同一 canonical 组的版本不得成为候选。
+2. 在作品匹配证据中增加 `TITLE_SCRIPT_VARIANT`，候选得分可以达到建议阈值，但状态只能是 `SUGGESTED`；不得凭标题自动确认，已有稳定外部ID和手动确认语义不变。
+3. Desktop 比较页和 Android 审阅对话框使用现有确认事务。两个待审来源尚无 canonical 时，通过共享 SQLite 原子事务一次创建 canonical 并写入两条用户决策；已有 canonical 时只追加缺失来源。确认按钮在写入期间禁用，避免重复创建作品。
+4. 按钮文案说明是按标题简繁体合并，Desktop 排除当前 canonical 组候选；确认后保留来源标题、封面、章节、收藏和日期投影。
+5. 为转换歧义加入上下文短语和标点/大小写负例回归（例如“乾坤”不应被字符表误改），并用真实 SQLite/ScreenModel、mounted Desktop 归档测试验证两个来源最终落在同一作品组及事务回滚。
+
+**边界**：只处理共享确定性表产生的简繁等价；普通相似标题、别名相似、翻译标题和空标题不自动合并。候选仅是审阅辅助，必须用户逐项确认；不提供批量无确认合并，不修改来源返回的原始标题，不改变拒绝、拆分、撤销和现有手动校正入口。
+
+**红绿与验收证据**：
+
+| 范围 | 命令/记录 | 预期 |
+|---|---|---|
+| 共享归一化与匹配 | `ax07-title-variant-red` → `ax07-title-variant-green-domain2`；边界红灯 `ax07-boundary-red-domain` → `ax07-boundary-green-domain`；收口 `ax07-close-domain` | 红灯先因缺少归一化/证据类型和标点边界失败；绿灯通过 `詭譎屋/诡谲屋`、相同标题不误判、`情有獨鍾`短语、多候选首选、标点/大小写负例和仅建议不自动确认 |
+| 原子归档事务 | `ax07-atomic-red-data2` → `ax07-atomic-green-data`；`ax07-boundary-compile3` | 缺失第二来源时 canonical 与第一条决策整体回滚；实现通过 domain/data/Android/Desktop 编译 |
+| Android 真实接线 | `ax07-android-script-merge-test4`；`ax07-atomic-green-android3`；`ax07-close-android`；`ax07-suggested-red2` → `ax07-suggested-green-android` → `ax07-suggested-close-android` | 真实 SQLite 与 `AndroidAuthorDetailScreenModel` 点击两个待审简繁候选后，两个标题进入同一 canonical 组；既有 `SUGGESTED` 目标决策沿用原 work ID；写入期间按钮锁定 |
+| Desktop 真实接线 | `ax07-desktop-script-merge-test2`；`ax07-atomic-green-desktop`；`ax07-boundary-green-desktop2`；`ax07-close-desktop`；`ax07-suggested-desktop-red2` → `ax07-suggested-green-desktop` → `ax07-suggested-close-desktop` | mounted 比较页显示简繁合并按钮；canonical 或 `SUGGESTED` 目标复用既有决策事务；两个待审来源走原子事务，`REJECTED` 候选被排除 |
+| 编译、格式与差异 | `ax07-title-variant-compile2`；`ax07-boundary-spotless-final`；`ax07-suggested-spotless`；`ax07-close-domain`；`git diff --check` | Android/Desktop/domain/data 编译、格式和空白检查通过；不暂存其他任务改动 |
+
+**维护说明**：简繁映射表来源于 OpenCC 的 `TSPhrases.txt` 和 `STCharacters.txt`，以 Apache-2.0 许可数据生成 Kotlin 常量；升级映射时先更新归一化回归测试，再复验两端归档接线。原子事务失败时不留下 canonical 或部分决策；已有 `SUGGESTED` 决策确认时保持其目标 work 和并发时间戳，`REJECTED` 不进入脚本候选；重复点击在当前审阅会话内被锁定。该功能不改变作者身份的严格文本规则，也不把标题归一化键写入同步或备份事实。
 
 ## 4. 通用红绿与证据规则
 

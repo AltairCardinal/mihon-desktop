@@ -50,6 +50,7 @@ import tachiyomi.domain.creator.model.CreatorRelationOrigin
 import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.CreatorWorkArchive
+import tachiyomi.domain.creator.model.DecisionActor
 import tachiyomi.domain.creator.model.DiscoveryCommit
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.DiscoveryCandidateState
@@ -74,6 +75,8 @@ import tachiyomi.domain.creator.model.LanguageEvidenceKind
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.WorkDecisionState
+import tachiyomi.domain.creator.model.WorkDecisionContract
+import tachiyomi.domain.creator.model.WorkDecisionProjection
 import tachiyomi.core.common.preference.DesktopPreferenceStore
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.service.LibraryPreferences
@@ -835,6 +838,159 @@ class AuthorsProductionWiringTest {
         }
     }
 
+    @Test
+    fun `mounted work comparison offers explicit merge for simplified and traditional title variants`() = runBlocking {
+        val creatorRepository = mockk<CreatorRepository>(relaxed = true)
+        val archiveRepository = mockk<CreatorArchiveRepository>(relaxed = true) {
+            coEvery { getCreatorWorkArchive(7L) } returns scriptVariantArchive()
+        }
+        val saved = Manga.create().copy(id = 12L, source = 10L, url = "/traditional", title = "詭譎屋")
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { creatorArchiveRepository } returns archiveRepository
+            every { this@mockk.creatorRepository } returns creatorRepository
+            every { creatorArchive } returns CreatorArchive(creatorRepository, archiveRepository)
+            every { saveSourceMangaForDetails } returns mockk {
+                coEvery { awaitListedForDetails(any(), 10L) } returns ListedMangaForDetails(saved, false)
+            }
+            every { getChaptersByMangaId } returns mockk {
+                coEvery { await(any()) } returns emptyList()
+            }
+            every { sourceManager } returns mockk(relaxed = true)
+        }
+        val scene = ImageComposeScene(1100, 800, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(WorkCompareScreen(workId = 30L, creatorId = 7L))
+                }
+            }
+            val action = MR.strings.creator_work_merge_script_variant.localized(Locale.getDefault(), "诡谲屋")
+            withTimeout(5_000) {
+                while (action !in texts(scene)) scene.render()
+            }
+            assertTrue(texts(scene).any { it.contains("title_script_variant") })
+            clickableTextNode(scene, action).config[SemanticsActions.OnClick].action?.invoke()
+            coVerify {
+                archiveRepository.appendUserWorkDecisionIfCurrent(
+                    SourceWorkNaturalKey(10L, "/traditional"),
+                    80L,
+                    WorkDecisionState.CONFIRMED,
+                    null,
+                    any(),
+                    match { it.contains("title_script_variant") },
+                    any(),
+                    any(),
+                )
+            }
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    fun `mounted work comparison uses one transaction for two pending script variants`() = runBlocking {
+        val creatorRepository = mockk<CreatorRepository>(relaxed = true)
+        val archiveRepository = mockk<CreatorArchiveRepository>(relaxed = true) {
+            coEvery { getCreatorWorkArchive(7L) } returns scriptVariantPendingArchive()
+            coEvery {
+                createCanonicalWorkWithUserWorkDecisions(any(), any(), any())
+            } returns CanonicalWork(80L, "诡谲屋", "诡谲屋", 7L, null, 1L, 1L)
+        }
+        val saved = Manga.create().copy(id = 12L, source = 10L, url = "/traditional", title = "詭譎屋")
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { creatorArchiveRepository } returns archiveRepository
+            every { this@mockk.creatorRepository } returns creatorRepository
+            every { creatorArchive } returns CreatorArchive(creatorRepository, archiveRepository)
+            every { saveSourceMangaForDetails } returns mockk {
+                coEvery { awaitListedForDetails(any(), 10L) } returns ListedMangaForDetails(saved, false)
+            }
+            every { getChaptersByMangaId } returns mockk {
+                coEvery { await(any()) } returns emptyList()
+            }
+            every { sourceManager } returns mockk(relaxed = true)
+        }
+        val scene = ImageComposeScene(1100, 800, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(WorkCompareScreen(workId = 30L, creatorId = 7L))
+                }
+            }
+            val action = MR.strings.creator_work_merge_script_variant.localized(Locale.getDefault(), "诡谲屋")
+            withTimeout(5_000) {
+                while (action !in texts(scene)) scene.render()
+            }
+            clickableTextNode(scene, action).config[SemanticsActions.OnClick].action?.invoke()
+            coVerify {
+                archiveRepository.createCanonicalWorkWithUserWorkDecisions(
+                    "诡谲屋",
+                    7L,
+                    match { decisions -> decisions.size == 2 },
+                )
+            }
+        } finally {
+            scene.close()
+        }
+    }
+
+    @Test
+    fun `mounted work comparison confirms an existing suggested script variant target`() = runBlocking {
+        val creatorRepository = mockk<CreatorRepository>(relaxed = true)
+        val archiveRepository = mockk<CreatorArchiveRepository>(relaxed = true) {
+            coEvery { getCreatorWorkArchive(7L) } returns scriptVariantSuggestedArchive()
+        }
+        val saved = Manga.create().copy(id = 12L, source = 10L, url = "/traditional", title = "詭譎屋")
+        val dependencies = mockk<DesktopUiDependencies> {
+            every { creatorArchiveRepository } returns archiveRepository
+            every { this@mockk.creatorRepository } returns creatorRepository
+            every { creatorArchive } returns CreatorArchive(creatorRepository, archiveRepository)
+            every { saveSourceMangaForDetails } returns mockk {
+                coEvery { awaitListedForDetails(any(), 10L) } returns ListedMangaForDetails(saved, false)
+            }
+            every { getChaptersByMangaId } returns mockk {
+                coEvery { await(any()) } returns emptyList()
+            }
+            every { sourceManager } returns mockk(relaxed = true)
+        }
+        val scene = ImageComposeScene(1100, 800, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent {
+                CompositionLocalProvider(LocalDesktopUiDependencies provides dependencies) {
+                    Navigator(WorkCompareScreen(workId = 30L, creatorId = 7L))
+                }
+            }
+            val action = MR.strings.creator_work_merge_script_variant.localized(Locale.getDefault(), "诡谲屋")
+            withTimeout(5_000) {
+                while (action !in texts(scene)) scene.render()
+            }
+            clickableTextNode(scene, action).config[SemanticsActions.OnClick].action?.invoke()
+            coVerify {
+                archiveRepository.appendUserWorkDecisionIfCurrent(
+                    SourceWorkNaturalKey(11L, "/suggested"),
+                    80L,
+                    WorkDecisionState.CONFIRMED,
+                    2L,
+                    any(),
+                    match { it.contains("title_script_variant") },
+                    any(),
+                    any(),
+                )
+                archiveRepository.appendUserWorkDecisionIfCurrent(
+                    SourceWorkNaturalKey(10L, "/traditional"),
+                    80L,
+                    WorkDecisionState.CONFIRMED,
+                    null,
+                    any(),
+                    match { it.contains("title_script_variant") },
+                    any(),
+                    any(),
+                )
+            }
+        } finally {
+            scene.close()
+        }
+    }
+
 
     @Test
     fun `mounted author explains unsupported split without changing identity`() = runBlocking {
@@ -1252,6 +1408,68 @@ class AuthorsProductionWiringTest {
             pending = listOf(candidate),
             rejected = emptyList(),
         )
+    }
+
+    private fun scriptVariantArchive(): CreatorWorkArchive {
+        val pending = pendingArchive("詭譎屋").pending.single().copy(
+            mangaId = 12L,
+            naturalKey = SourceWorkNaturalKey(10L, "/traditional"),
+        )
+        val simplified = pending.copy(
+            sourceWorkId = 31L,
+            naturalKey = SourceWorkNaturalKey(11L, "/simplified"),
+            mangaId = 11L,
+            title = "诡谲屋",
+        )
+        return CreatorWorkArchive(
+            works = listOf(
+                CanonicalWorkArchiveGroup(
+                    workId = 80L,
+                    portableKey = "script-variant-work",
+                    title = "诡谲屋",
+                    versions = listOf(simplified),
+                ),
+            ),
+            pending = listOf(pending),
+            rejected = emptyList(),
+        )
+    }
+
+    private fun scriptVariantPendingArchive(): CreatorWorkArchive {
+        val pending = pendingArchive("詭譎屋").pending.single().copy(
+            mangaId = 12L,
+            naturalKey = SourceWorkNaturalKey(10L, "/traditional"),
+        )
+        val simplified = pending.copy(
+            sourceWorkId = 31L,
+            naturalKey = SourceWorkNaturalKey(11L, "/simplified"),
+            mangaId = 11L,
+            title = "诡谲屋",
+        )
+        return CreatorWorkArchive(works = emptyList(), pending = listOf(pending, simplified), rejected = emptyList())
+    }
+
+    private fun scriptVariantSuggestedArchive(): CreatorWorkArchive {
+        val pending = pendingArchive("詭譎屋").pending.single().copy(
+            mangaId = 12L,
+            naturalKey = SourceWorkNaturalKey(10L, "/traditional"),
+        )
+        val suggested = pending.copy(
+            sourceWorkId = 31L,
+            naturalKey = SourceWorkNaturalKey(11L, "/suggested"),
+            mangaId = 11L,
+            title = "诡谲屋",
+            decision = WorkDecisionProjection(
+                workId = 80L,
+                workPortableKey = "script-variant-work",
+                workTitle = "诡谲屋",
+                decision = WorkDecisionContract(WorkDecisionState.SUGGESTED, DecisionActor.ALGORITHM, false),
+                score = 1.0,
+                evidence = "title_script_variant",
+                decidedAt = 2L,
+            ),
+        )
+        return CreatorWorkArchive(works = emptyList(), pending = listOf(pending, suggested), rejected = emptyList())
     }
 
     private fun clickableTextNode(scene: ImageComposeScene, text: String): SemanticsNode = nodes(scene).single { node ->

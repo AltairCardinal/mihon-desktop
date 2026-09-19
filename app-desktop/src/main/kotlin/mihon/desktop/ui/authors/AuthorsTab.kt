@@ -1537,7 +1537,18 @@ data class WorkCompareScreen(val workId: Long, val creatorId: Long = -1L) : Scre
                                     TextButton(
                                         enabled = !state.actionRunning,
                                         onClick = { model.confirm(suggestion) },
-                                    ) { Text(MR.strings.desktop_ui_confirm_same_work.localized()) }
+                                    ) {
+                                        Text(
+                                            if (suggestion.isScriptVariant) {
+                                                MR.strings.creator_work_merge_script_variant.localized(
+                                                    Locale.getDefault(),
+                                                    suggestion.title,
+                                                )
+                                            } else {
+                                                MR.strings.desktop_ui_confirm_same_work.localized()
+                                            },
+                                        )
+                                    }
                                     TextButton(
                                         enabled = !state.actionRunning,
                                         onClick = { model.reject(suggestion) },

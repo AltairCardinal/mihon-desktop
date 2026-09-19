@@ -14,6 +14,7 @@ data class WorkMatchInput(
 enum class WorkMatchEvidenceKind {
     STABLE_EXTERNAL_ID,
     TITLE,
+    TITLE_SCRIPT_VARIANT,
     TITLE_ALIAS,
     CREATOR,
     CREATOR_CONFLICT,
@@ -38,7 +39,7 @@ data class WorkMatchScore(
 }
 
 object WorkMatchScorer {
-    const val ALGORITHM_VERSION = "author-work-match-v2"
+    const val ALGORITHM_VERSION = "author-work-match-v3"
 
     fun score(current: WorkMatchInput, candidate: WorkMatchInput): WorkMatchScore {
         val stableIdMatch = current.externalIds.entries.any { (provider, id) ->
@@ -48,7 +49,8 @@ object WorkMatchScorer {
         val aliasTitleScore = (current.titleAliases + current.title).maxOf { alias ->
             (candidate.titleAliases + candidate.title).maxOf { other -> SmartSearchSimilarity.similarity(alias, other) }
         }
-        val titleScore = maxOf(directTitleScore, aliasTitleScore)
+        val scriptVariant = WorkTitleNormalizer.isSimplifiedTraditionalVariant(current.title, candidate.title)
+        val titleScore = maxOf(directTitleScore, aliasTitleScore, if (scriptVariant) 1.0 else 0.0)
         val creatorScore = creatorSimilarity(current.creators, candidate.creators)
         val languagesKnown = current.language != null && candidate.language != null
         val languageScore = if (languagesKnown && current.language == candidate.language) 1.0 else 0.0
@@ -61,15 +63,13 @@ object WorkMatchScorer {
             }
             add(
                 WorkMatchEvidence(
-                    if (aliasTitleScore >
-                        directTitleScore
-                    ) {
-                        WorkMatchEvidenceKind.TITLE_ALIAS
-                    } else {
-                        WorkMatchEvidenceKind.TITLE
+                    when {
+                        scriptVariant -> WorkMatchEvidenceKind.TITLE_SCRIPT_VARIANT
+                        aliasTitleScore > directTitleScore -> WorkMatchEvidenceKind.TITLE_ALIAS
+                        else -> WorkMatchEvidenceKind.TITLE
                     },
                     titleScore,
-                    "normalized title similarity",
+                    if (scriptVariant) "simplified/traditional title equivalence" else "normalized title similarity",
                 ),
             )
             add(
