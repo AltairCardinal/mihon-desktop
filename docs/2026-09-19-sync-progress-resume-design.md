@@ -1,6 +1,6 @@
 # 同步进度、条目日志与待机恢复设计
 
-日期：2026-09-19。状态：设计、原型与生产接入已完成；设备、Doze 与正式发布验收仍待 R5。本文件不代表真机或发布验收通过。
+日期：2026-09-19。状态：设计、原型与生产接入已完成；API 26/33/35/36 生命周期及 Windows/macOS 运行证据已补齐，真实同步空间条目推进与完整基线验收仍待 R5。本文件不代表真实同步空间或完整发布验收通过。
 
 实施入口：[本轮 Roadmap](roadmap/2026-09-19-sync-progress-resume-roadmap.md)。交互参考：[双端 DEMO](prototypes/multi-device-sync/index.html)及[说明](prototypes/multi-device-sync/README.md)。既有架构：[多设备同步技术方案](2026-09-13-multi-device-sync-technical-proposal.md)。
 
@@ -16,15 +16,15 @@
 
 | 入口 | 当前事实 | 仍需补足 |
 | --- | --- | --- |
-| [Android App](../app/src/main/java/eu/kanade/tachiyomi/App.kt)与[调度器](../app/src/main/java/eu/kanade/tachiyomi/data/sync/AndroidSyncScheduler.kt) | 进程创建时可触发 STARTUP；周期任务受 CONNECTED 约束；现已在 ON_START 合并恢复判定并登记一次性补偿任务 | R5 仍需验证真实锁屏、Doze、进程重建与网络切换时序 |
+| [Android App](../app/src/main/java/eu/kanade/tachiyomi/App.kt)与[调度器](../app/src/main/java/eu/kanade/tachiyomi/data/sync/AndroidSyncScheduler.kt) | 进程创建时可触发 STARTUP；周期任务受 CONNECTED 约束；现已在 ON_START 合并恢复判定并登记一次性补偿任务；隔离 API 26/33/35/36 AVD 已完成锁屏、Doze 和 force-stop 生命周期检查 | R5 仍需在真实同步空间中验证进程重建、网络切换与条目进度连续性 |
 | [SyncWorker](../app/src/main/java/eu/kanade/tachiyomi/data/sync/SyncWorker.kt) | 现已区分 PERIODIC/RECOVERY，使用独立同步通知；网络失败按有界预算返回 retry；恢复 Worker 只执行一次交换 | R5 验证通知权限、前台提升受限、Android 版本配额与停止原因 |
-| [SyncPanelController](../data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncPanelController.kt) | 手动同步及首次合并仍由既有协程驱动；现已读取持久化运行状态、阶段计数与分页日志 | 补齐设备运行证据和首次合并异常收口验收 |
+| [SyncPanelController](../data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncPanelController.kt) | 手动同步及首次合并仍由既有协程驱动；现已读取持久化运行状态、阶段计数与分页日志 | 在真实同步空间中补齐首次合并异常收口和条目推进验收 |
 | [SyncCoordinator](../domain/src/commonMain/kotlin/mihon/domain/sync/runtime/SyncCoordinator.kt) | 进程内单执行者，现已增加 RECOVERY 触发类型并与手动请求共用 flight | R5 覆盖前台、周期、手动同时到达时的实际竞争 |
 | [SyncRuntime](../data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncRuntime.kt) | 现已把运行意图、阶段、尝试、ownerSession 和结束状态写入本机 SQLDelight 表；恢复只接受系统中断状态 | 真机验证进程重建、上传响应未知与空间切换时的恢复资格 |
 | [SyncDatabaseExchange](../data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncDatabaseExchange.kt)、[SyncOutboxStore](../data/src/commonMain/kotlin/mihon/data/sync/journal/SyncOutboxStore.kt) | 初始导入、收件与投影已有分段事务；上传前保存完整制品，确认后才清队列 | 从真实事务与发布确认产生进度，复用既有恢复边界 |
 | [DesktopSyncScheduler](../app-desktop/src/main/kotlin/mihon/desktop/sync/DesktopSyncScheduler.kt) | 进程内定期检查墙钟，最长检查间隔 60 秒；启动和周期触发现已先调用共享 `resumeIfNeeded` | 保持现有定期语义，共享新状态与启动恢复；不承诺桌面专用电源唤醒即时性 |
 
-因此应纠正“没有 checkpoint”的笼统说法：已有业务数据检查点，缺的是持久化运行意图、可观察进度与前台恢复编排。本轮尚无该手机的系统停止原因或故障复现记录，不把待机直接认定为截图卡住的已证实原因。
+因此应纠正“没有 checkpoint”的笼统说法：已有业务数据检查点，缺的是持久化运行意图、可观察进度与前台恢复编排。隔离 AVD 已证明平台生命周期路径可运行，但尚无用户设备的系统停止原因或真实同步空间故障复现，不把待机直接认定为截图卡住的已证实原因。
 
 ## 3. 页面交互
 

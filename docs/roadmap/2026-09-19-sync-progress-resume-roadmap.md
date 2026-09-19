@@ -1,6 +1,6 @@
 # 同步进度与待机恢复 Roadmap
 
-日期：2026-09-19。状态：IN_PROGRESS；R1–R4 已完成实现、独立复审、验证与提交，R5 仍受真机/Doze、macOS 和全量基线门禁限制。
+日期：2026-09-19。状态：IN_PROGRESS；R1–R4 已完成实现、独立复审、验证与提交，R5 的版本矩阵与 macOS 运行证据已补齐，真实同步空间和全量基线门禁仍未闭合。
 
 设计权威：[同步进度、条目日志与待机恢复设计](../2026-09-19-sync-progress-resume-design.md)。原型：[并列入口](../prototypes/multi-device-sync/index.html)与[现有边界](../prototypes/multi-device-sync/README.md)。
 
@@ -114,7 +114,7 @@
 
 **最终检查与构建**：相关格式、Android/Desktop 全量测试及 Test Mode 集中运行；按仓库要求完成 Windows/macOS 正式构建和运行验证，Windows 必须经 `scripts/build-desktop.sh`，已有等价全量证据时才使用 build-only。Android 交付 arm64 正式签名 APK，并核对与目标已安装版本的 applicationId、versionCode 和签名升级兼容；未经授权不覆盖用户安装。R8 运行验证不以 debug APK 替代。
 
-真实远端账号操作只在已有或明确批准的隔离空间进行；没有授权先完成本地 fixture，不擅自修改用户仓库。报告实际 Windows `Final unpacked EXE:` 路径、Android APK、版本、测试和限制。macOS／真机／签名等发布门槛不可用时保持 R5 未勾选，报告实际缺项。
+真实远端账号操作只在已有或明确批准的隔离空间进行；没有授权先完成本地 fixture，不擅自修改用户仓库。报告实际 Windows `Final unpacked EXE:` 路径、Android APK、macOS `.app`、版本、测试和限制。任一发布门槛不可用时保持 R5 未勾选，报告实际缺项。
 
 **结束条件**：独立审查与必要修复通过、任务全部验证且已提交、正式产物路径存在。完成报告按仓库规定列用户可见特性、实际修复和可执行验收项；不得把本文计划描述作为功能已实现的证据。
 
@@ -124,8 +124,8 @@
 
 本轮收口核验：同步 focused 契约继续通过（原型 progress/interaction 6/6、domain `SyncCoordinatorTest`、data 运行存储/迁移/wiring/controller、Android `AndroidSyncRuntimeWiringTest`、`presentation-sync` `SyncPanelContentTest`、Desktop `DesktopSyncSchedulerTest`、`spotlessCheck`）。Desktop 全量在修正本轮 `DesktopAppModule.kt` 新增回调造成的 parity manifest 行号漂移后通过（`3159 tests completed, 0 failed, 2 skipped`），并以发布未打包 EXE 的 Test Mode `/test/health`、`/test/state`、`/test/shutdown` 完成运行验收。Android fork 正式 arm64 APK 已以既有 `bd8e3af...a648cae3` 证书签名，包名 `app.mihon.desktop.fork`、versionCode `29`、versionName `0.19.4-aex.11`、ABI `arm64-v8a`；Windows 产物为 `0.11.19.50.df0b70c`。普通 Android `app.mihon` release 也完成 R8 编译但仅生成 unsigned 输出，未作为交付物。
 
-补充设备验收：在隔离 API 26 与 API 36 AVD 上安装 fork universal release，锁屏/解锁分别观察到 `Awake → Asleep/Display OFF → 解锁`，`dumpsys deviceidle force-idle/unforce` 分别得到 `IDLE → ACTIVE`；force-stop 后没有自启，手动重新打开成功且无 FATAL。API 36 的隔离 R8 release instrumentation 按 `prepare`/force-stop/`verify` 两进程执行，4/4 通过（密码格式、Keystore 缺失闭环、AEAD 篡改保护、跨进程仓库/Keystore 保留）。这些是平台生命周期与 release wiring 证据，不等同于已配置同步空间后的真实条目推进。
+补充设备验收：在隔离 API 26、33、35 与 36 AVD 上安装 fork universal release，锁屏/解锁分别观察到 `Awake → Asleep/Display OFF → 解锁`，`dumpsys deviceidle force-idle/unforce` 分别得到 `IDLE → ACTIVE`；force-stop 后没有自启，手动重新打开成功，崩溃缓冲区无 FATAL。API 33/35 镜像分别为 `x86_64-33_r17.zip`（SHA-1 `2b96f5bd5c79bfe1cc645e70b3e630b5755d9711`）和 `x86_64-35_r09.zip`（SHA-1 `0103e6dab21290c4b9d16550a3ce99476f884eef`）。API 36 的隔离 R8 release instrumentation 按 `prepare`/force-stop/`verify` 两进程执行，4/4 通过（密码格式、Keystore 缺失闭环、AEAD 篡改保护、跨进程仓库/Keystore 保留）。这些是平台生命周期与 release wiring 证据，不等同于已配置同步空间后的真实条目推进。
 
-环境核验补充：尝试通过本机代理安装 API 33/35 平台与 Google APIs x86_64 系统镜像；`sdkmanager` 在 HTTPS 下载读取阶段保持连接约 12 分钟且未写入有效镜像文件，已终止该进程。SDK 状态未改变，API 33/35 仍不可用；该次尝试不构成版本矩阵验收证据。
+macOS 验收补充：在 `mbp-lan` 的独立 bundle 检出目录使用 JDK 21 和 `scripts/build-desktop.sh build-only` 构建成功，版本 `0.11.19.51.ab58a0a`；产物部署到 `/private/tmp/codex-mihon-deploy-r5/Mihon Desktop.app`，Test Mode 的 `/test/health`、`/test/state`、`/test/shutdown` 均返回成功。该构建复用已通过的 Desktop JVM 全量证据，未改动远端用户工作树。
 
-R5 仍未完成：当前 SDK 没有 API 33/35 系统镜像，无法完成完整版本矩阵；本轮没有真实账号/同步空间，不能宣称锁屏期间条目进度推进或重复应用已被真机证明；当前 Windows 环境没有 macOS 构建条件。Android 全量单测有 3 个既有 `InstalledAppsPermissionAppModuleTest` Injekt 初始化失败，domain/data 全量有 3 个既有 CreatorArchive 冻结迁移失败；完整原型套件为 39 项中 35 通过、4 项既有 library-sync/UI 断言失败。上述失败均已保留日志，不能替代剩余发布门禁，因此不得勾选 R5。
+R5 仍未完成：本轮没有真实账号/同步空间，不能宣称锁屏期间条目进度推进或重复应用已被真机证明；Android 全量单测有 3 个既有 `InstalledAppsPermissionAppModuleTest` Injekt 初始化失败，domain/data 全量有 3 个既有 CreatorArchive 冻结迁移失败；完整原型套件为 39 项中 35 通过、4 项既有 library-sync/UI 断言失败。上述失败均已保留日志，不能替代剩余发布门禁，因此不得勾选 R5。
