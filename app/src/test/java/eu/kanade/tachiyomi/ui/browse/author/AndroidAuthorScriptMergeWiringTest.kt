@@ -9,6 +9,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -54,7 +55,7 @@ class AndroidAuthorScriptMergeWiringTest {
     }
 
     @Test
-    fun `Android review merges traditional and simplified title variants through production archive`() = runTest {
+    fun `Android presentation groups traditional and simplified title variants without archiving`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         Database.Schema.create(driver)
@@ -117,30 +118,19 @@ class AndroidAuthorScriptMergeWiringTest {
                     networkToLocal = mockk<NetworkToLocalManga>(relaxed = true),
                 )
             }
-            withTimeout(5_000) {
-                model.state.first { it.archive.pending.size == 2 }
-            }
-            val current = model.state.value.archive.pending.first { it.title == "詭譎屋" }
-            model.openReview(current)
-            val target = model.state.value.reviewCandidates.single()
-            assertEquals("诡谲屋", target.title)
-
-            model.decide(WorkDecisionState.CONFIRMED, target).join()
-            assertEquals(false, model.state.value.reviewActionRunning)
-            assertEquals(null, model.state.value.error)
-            val persistedArchive = CreatorArchive(repository, repository).get(creator.id)
-            assertEquals(2, persistedArchive.works.singleOrNull()?.versions?.size)
-
-            withTimeout(5_000) {
-                model.state.first { state ->
-                    state.error != null ||
-                        state.archive.works.singleOrNull()?.versions?.map { it.title }?.toSet() ==
-                        setOf("詭譎屋", "诡谲屋")
+            withContext(Dispatchers.Default.limitedParallelism(1)) {
+                withTimeout(5_000) {
+                    model.state.first { it.archive.pending.size == 2 }
                 }
             }
-            assertEquals(null, model.state.value.error)
-            assertEquals(2, model.state.value.archive.works.single().versions.size)
+            val presentation = model.state.value.presentationGroups.single()
+            assertEquals(null, presentation.canonicalWorkId)
+            assertEquals(setOf("詭譎屋", "诡谲屋"), presentation.members.map { it.title }.toSet())
+            val persistedArchive = CreatorArchive(repository, repository).get(creator.id)
+            assertEquals(2, persistedArchive.pending.size)
+            assertEquals(emptyList<Any>(), persistedArchive.works)
         } finally {
+            modelHost.close()
             driver.close()
             Dispatchers.resetMain()
         }
@@ -220,20 +210,19 @@ class AndroidAuthorScriptMergeWiringTest {
                     networkToLocal = mockk<NetworkToLocalManga>(relaxed = true),
                 )
             }
-            withTimeout(5_000) {
-                model.state.first { it.archive.pending.size == 2 }
+            withContext(Dispatchers.Default.limitedParallelism(1)) {
+                withTimeout(5_000) {
+                    model.state.first { it.archive.pending.size == 2 }
+                }
             }
-            val current = model.state.value.archive.pending.first { it.title == "詭譎屋" }
-            model.openReview(current)
-            val target = model.state.value.reviewCandidates.single()
-
-            model.decide(WorkDecisionState.CONFIRMED, target).join()
-
-            assertEquals(null, model.state.value.error)
+            val presentation = model.state.value.presentationGroups.single()
+            assertEquals(null, presentation.canonicalWorkId)
+            assertEquals(2, presentation.members.size)
             val persistedArchive = CreatorArchive(repository, repository).get(creator.id)
-            assertEquals(suggestedWork.id, persistedArchive.works.singleOrNull()?.workId)
-            assertEquals(2, persistedArchive.works.singleOrNull()?.versions?.size)
+            assertEquals(2, persistedArchive.pending.size)
+            assertEquals(emptyList<Any>(), persistedArchive.works)
         } finally {
+            modelHost.close()
             driver.close()
             Dispatchers.resetMain()
         }

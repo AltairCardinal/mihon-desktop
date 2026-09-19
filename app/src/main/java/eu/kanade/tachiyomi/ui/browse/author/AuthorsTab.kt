@@ -45,6 +45,9 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -54,6 +57,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -114,9 +118,11 @@ import tachiyomi.domain.creator.model.SourceDateQualityStatus
 import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WorkDecisionState
+import tachiyomi.domain.creator.model.WorkPresentationGroup
 import tachiyomi.domain.creator.service.CreatorIdentityEditor
+import tachiyomi.domain.creator.service.CreatorWorkPresentationExclusions
 import tachiyomi.domain.creator.service.OpenCreatorWorkVersion
-import tachiyomi.domain.creator.service.WorkTitleNormalizer
+import tachiyomi.domain.creator.service.WorkPresentationGroupService
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
@@ -579,7 +585,11 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
         val navigator = LocalNavigator.currentOrThrow
         var confirmUnfollow by remember { mutableStateOf(false) }
         var showDisplayModeMenu by remember { mutableStateOf(false) }
-        var showSourceChooserFor by remember { mutableStateOf<Long?>(null) }
+        var showSourceChooserFor by remember { mutableStateOf<String?>(null) }
+        val snackbarHostState = remember { SnackbarHostState() }
+        val snackbarScope = rememberCoroutineScope()
+        val separateDisplayDoneMessage = stringResource(MR.strings.creator_work_separate_display_done)
+        val separateDisplayUndoLabel = stringResource(MR.strings.creator_work_separate_display_undo)
         var sourceFocusRequester by remember { mutableStateOf<FocusRequester?>(null) }
         var pendingSourceFocusRestore by remember { mutableStateOf<FocusRequester?>(null) }
         LaunchedEffect(pendingSourceFocusRestore) {
@@ -613,13 +623,28 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
             )
         }
 
-        showSourceChooserFor?.let { workId ->
-            state.archive.works.firstOrNull { it.workId == workId }?.let { work ->
+        showSourceChooserFor?.let { groupKey ->
+            state.presentationGroups.firstOrNull { it.groupKey == groupKey }?.let { group ->
                 AndroidCreatorWorkSourceChooserDialog(
-                    work = work,
+                    group = group,
                     model = model,
                     error = state.workOpenError,
                     opening = state.workOpening,
+                    onSeparate = { version ->
+                        model.excludePresentationVersion(version)
+                        pendingSourceFocusRestore = sourceFocusRequester
+                        sourceFocusRequester = null
+                        showSourceChooserFor = null
+                        snackbarScope.launch {
+                            val result = snackbarHostState.showSnackbar(
+                                message = separateDisplayDoneMessage,
+                                actionLabel = separateDisplayUndoLabel,
+                            )
+                            if (result == SnackbarResult.ActionPerformed) {
+                                model.restorePresentationVersion(version)
+                            }
+                        }
+                    },
                     onDismiss = {
                         model.clearWorkOpenError()
                         pendingSourceFocusRestore = sourceFocusRequester
@@ -631,6 +656,7 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
         }
 
         Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
                 TopAppBar(
                     title = {
@@ -722,8 +748,8 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                 Text(
                     stringResource(
                         MR.strings.creator_work_version_count,
-                        state.archive.works.size + state.archive.pending.size + state.archive.rejected.size,
-                        state.archive.works.sumOf { it.versions.size } + state.archive.pending.size +
+                        state.presentationGroups.size + state.archive.rejected.size,
+                        state.presentationGroups.sumOf { it.sourceCount } +
                             state.archive.rejected.size,
                     ),
                 )
@@ -737,12 +763,12 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                     model::filterSource,
                 )
                 Text(
-                    stringResource(MR.strings.creator_unique_work_count, state.visibleArchive.works.size),
+                    stringResource(MR.strings.creator_unique_work_count, state.visiblePresentationCards.size),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.testTag("creator-visible-work-count"),
                 )
-                if (state.visibleArchive.works.isEmpty() && state.visibleArchive.pending.isEmpty() &&
+                if (state.visiblePresentationCards.isEmpty() && state.visiblePendingVersions.isEmpty() &&
                     state.visibleArchive.rejected.isEmpty()
                 ) {
                     Text(stringResource(MR.strings.creator_work_filter_empty))
@@ -750,28 +776,28 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                 val mode = state.effectiveWorkDisplayMode
                 if (mode == LibraryDisplayMode.List) {
                     LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
-                        items(state.visibleArchive.works, key = { "work-${it.workId}" }) { work ->
-                            val allVersions = state.allVersionsForWork(work.workId)
-                            val focusRequester = remember(work.workId) { FocusRequester() }
+                        items(state.visiblePresentationCards, key = { "presentation-${it.groupKey}" }) { group ->
+                            val presentationCardKey = group.canonicalWorkId?.toString() ?: group.groupKey
+                            val focusRequester = remember(group.groupKey) { FocusRequester() }
                             CreatorArchiveWorkCard(
-                                title = work.title,
-                                version = work.versions.firstOrNull(),
-                                firstSeenDate = earliestFirstSeenDate(allVersions),
-                                favorite = allVersions.any { it.inLibrary },
-                                key = work.workId.toString(),
+                                title = group.title,
+                                version = group.representative,
+                                firstSeenDate = group.firstSeenAt?.let(::sourceDateDisplayDate),
+                                favorite = group.inLibrary,
+                                key = presentationCardKey,
                                 mode = mode,
                                 focusRequester = focusRequester,
                                 onClick = {
                                     sourceFocusRequester = focusRequester
-                                    showSourceChooserFor = work.workId
+                                    showSourceChooserFor = group.groupKey
                                 },
                             ) {
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    work.versions.forEach { version -> CreatorVersionButton(version, model) }
+                                    group.members.forEach { version -> CreatorVersionButton(version, model) }
                                 }
                             }
                         }
-                        items(state.visibleArchive.pending, key = { "pending-${it.sourceWorkId}" }) { version ->
+                        items(state.visiblePendingVersions, key = { "pending-${it.sourceWorkId}" }) { version ->
                             CreatorArchiveWorkRow(version.title, version.thumbnailUrl) {
                                 CreatorVersionButton(version, model)
                                 TextButton(onClick = { model.openReview(version) }) {
@@ -796,29 +822,29 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        items(state.visibleArchive.works, key = { "work-${it.workId}" }) { work ->
-                            val allVersions = state.allVersionsForWork(work.workId)
-                            val focusRequester = remember(work.workId) { FocusRequester() }
+                        items(state.visiblePresentationCards, key = { "presentation-${it.groupKey}" }) { group ->
+                            val presentationCardKey = group.canonicalWorkId?.toString() ?: group.groupKey
+                            val focusRequester = remember(group.groupKey) { FocusRequester() }
                             CreatorArchiveWorkCard(
-                                title = work.title,
-                                version = work.versions.firstOrNull(),
-                                firstSeenDate = earliestFirstSeenDate(allVersions),
-                                favorite = allVersions.any { it.inLibrary },
-                                key = work.workId.toString(),
+                                title = group.title,
+                                version = group.representative,
+                                firstSeenDate = group.firstSeenAt?.let(::sourceDateDisplayDate),
+                                favorite = group.inLibrary,
+                                key = presentationCardKey,
                                 mode = mode,
                                 focusRequester = focusRequester,
                                 onClick = {
                                     sourceFocusRequester = focusRequester
-                                    showSourceChooserFor = work.workId
+                                    showSourceChooserFor = group.groupKey
                                 },
                             ) {
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    work.versions.forEach { version -> CreatorVersionButton(version, model) }
+                                    group.members.forEach { version -> CreatorVersionButton(version, model) }
                                 }
                             }
                         }
                         items(
-                            state.visibleArchive.pending,
+                            state.visiblePendingVersions,
                             span = { GridItemSpan(maxLineSpan) },
                             key = { "pending-${it.sourceWorkId}" },
                         ) { version ->
@@ -850,25 +876,6 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(stringResource(MR.strings.desktop_ui_pending_work_suggestions))
-                        if (state.reviewCandidates.isNotEmpty()) {
-                            Text(stringResource(MR.strings.creator_work_script_variant_detected))
-                            state.reviewCandidates.forEach { candidate ->
-                                TextButton(
-                                    enabled = !state.reviewActionRunning,
-                                    onClick = { model.decide(WorkDecisionState.CONFIRMED, candidate) },
-                                    modifier = Modifier.testTag(
-                                        "creator-work-script-variant-${candidate.sourceWorkId}",
-                                    ),
-                                ) {
-                                    Text(
-                                        stringResource(
-                                            MR.strings.creator_work_merge_script_variant,
-                                            candidate.title,
-                                        ),
-                                    )
-                                }
-                            }
-                        }
                         OutlinedTextField(
                             value = state.languageTag,
                             onValueChange = model::languageTag,
@@ -902,15 +909,16 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
 
 @Composable
 private fun AndroidCreatorWorkSourceChooserDialog(
-    work: tachiyomi.domain.creator.model.CanonicalWorkArchiveGroup,
+    group: WorkPresentationGroup,
     model: AndroidAuthorDetailScreenModel,
     error: String?,
     opening: Boolean,
+    onSeparate: ((SourceWorkArchiveVersion) -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(work.title) },
+        title = { Text(group.title) },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
@@ -920,54 +928,56 @@ private fun AndroidCreatorWorkSourceChooserDialog(
                     stringResource(MR.strings.creator_work_all_source_versions),
                     style = MaterialTheme.typography.bodySmall,
                 )
-                work.versions.forEach { version ->
+                group.members.forEach { version ->
                     val sourceName = model.sourceName(version)
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(enabled = !opening) { model.openVersion(version) }
-                            .testTag("creator-source-version-${version.sourceWorkId}"),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.Top,
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = !opening) { model.openVersion(version) }
+                                .testTag("creator-source-version-${version.sourceWorkId}"),
                         ) {
-                            Box(Modifier.width(48.dp).height(68.dp)) {
-                                MangaCover.Book(
-                                    data = version.toMangaCover(),
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                                if (version.inLibrary) {
-                                    Icon(
-                                        Icons.Outlined.CollectionsBookmark,
-                                        contentDescription = stringResource(MR.strings.desktop_ui_in_library),
-                                        modifier = Modifier.align(Alignment.TopStart).padding(2.dp).size(16.dp),
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.Top,
+                            ) {
+                                Box(Modifier.width(48.dp).height(68.dp)) {
+                                    MangaCover.Book(
+                                        data = version.toMangaCover(),
+                                        modifier = Modifier.fillMaxSize(),
                                     )
+                                    if (version.inLibrary) {
+                                        Icon(
+                                            Icons.Outlined.CollectionsBookmark,
+                                            contentDescription = stringResource(MR.strings.desktop_ui_in_library),
+                                            modifier = Modifier.align(Alignment.TopStart).padding(2.dp).size(16.dp),
+                                        )
+                                    }
+                                }
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(sourceName, style = MaterialTheme.typography.labelLarge)
+                                    if (model.isSourceMissing(version)) {
+                                        Text(
+                                            stringResource(MR.strings.desktop_ui_source_missing),
+                                            color = MaterialTheme.colorScheme.error,
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                    }
+                                    Text(version.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    Text(chapterCountLabel(version), style = MaterialTheme.typography.bodySmall)
+                                    Text(publishedDateLabel(version), style = MaterialTheme.typography.bodySmall)
+                                    Text(latestChapterDateLabel(version), style = MaterialTheme.typography.bodySmall)
                                 }
                             }
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(sourceName, style = MaterialTheme.typography.labelLarge)
-                                if (model.isSourceMissing(version)) {
-                                    Text(
-                                        stringResource(MR.strings.desktop_ui_source_missing),
-                                        color = MaterialTheme.colorScheme.error,
-                                        style = MaterialTheme.typography.bodySmall,
-                                    )
-                                }
-                                Text(version.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text(
-                                    chapterCountLabel(version),
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                                Text(
-                                    publishedDateLabel(version),
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                                Text(
-                                    latestChapterDateLabel(version),
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
+                        }
+                        if (onSeparate != null && group.canonicalWorkId == null && group.members.size > 1) {
+                            TextButton(
+                                enabled = !opening,
+                                onClick = { onSeparate(version) },
+                                modifier = Modifier.align(Alignment.End),
+                            ) {
+                                Text(stringResource(MR.strings.creator_work_separate_display))
                             }
                         }
                     }
@@ -1245,6 +1255,8 @@ private fun CreatorVersionButton(version: SourceWorkArchiveVersion, model: Andro
 internal data class AuthorState(
     val details: CreatorDetails = CreatorDetails(null, emptyList(), emptyList()),
     val archive: CreatorWorkArchive = CreatorWorkArchive(emptyList(), emptyList(), emptyList()),
+    val presentationGroups: List<WorkPresentationGroup> = emptyList(),
+    val presentationExcluded: Set<SourceWorkNaturalKey> = emptySet(),
     val followed: Boolean = false,
     val language: LanguageCertainty? = null,
     val workFilter: CreatorWorkArchiveFilter = CreatorWorkArchiveFilter(),
@@ -1252,7 +1264,6 @@ internal data class AuthorState(
     val running: Boolean = false,
     val error: String? = null,
     val reviewing: SourceWorkArchiveVersion? = null,
-    val reviewCandidates: List<SourceWorkArchiveVersion> = emptyList(),
     val reviewActionRunning: Boolean = false,
     val languageTag: String = "",
     val workDisplayModeOverride: LibraryDisplayMode? = null,
@@ -1280,6 +1291,27 @@ internal data class AuthorState(
             rejected = filtered.rejected.filter(::matches),
         )
     }
+
+    val visiblePresentationGroups: List<WorkPresentationGroup>
+        get() = presentationGroups.filter { group ->
+            workFilter.matches(group) &&
+                (language == null || group.members.any { it.readingLanguage.certainty == language })
+        }
+
+    val visiblePresentationCards: List<WorkPresentationGroup>
+        get() = visiblePresentationGroups.filter { group ->
+            group.canonicalWorkId != null ||
+                group.members.size > 1 ||
+                group.members.any { it.naturalKey in presentationExcluded }
+        }
+
+    val visiblePendingVersions: List<SourceWorkArchiveVersion>
+        get() {
+            val renderedPendingIds = visiblePresentationCards
+                .flatMap { it.members }
+                .mapTo(mutableSetOf()) { it.sourceWorkId }
+            return visibleArchive.pending.filterNot { it.sourceWorkId in renderedPendingIds }
+        }
 }
 
 internal data class OpenMangaRequest(
@@ -1299,6 +1331,9 @@ internal class AndroidAuthorDetailScreenModel(
     private val networkToLocal: NetworkToLocalManga = Injekt.get(),
     private val libraryPreferences: LibraryPreferences? = null,
 ) : ScreenModel {
+    private val presentationExclusions = libraryPreferences?.let {
+        CreatorWorkPresentationExclusions(it.creatorWorkPresentationExclusions())
+    }
     private val mutableState = MutableStateFlow(
         AuthorState(
             workDisplayModeOverride = libraryPreferences?.creatorWorkDisplayModeOverride()?.get(),
@@ -1366,7 +1401,19 @@ internal class AndroidAuthorDetailScreenModel(
             }
         }
         screenModelScope.launch {
-            archive.observe(creatorId).collect { value -> mutableState.update { it.copy(archive = value) } }
+            archive.observe(creatorId).collect { value ->
+                mutableState.update { state ->
+                    val excluded = presentationExclusions?.get(activeCreatorId).orEmpty()
+                    state.copy(
+                        archive = value,
+                        presentationExcluded = excluded,
+                        presentationGroups = WorkPresentationGroupService.project(
+                            value,
+                            excludedNaturalKeys = excluded,
+                        ),
+                    )
+                }
+            }
         }
         screenModelScope.launch {
             creators.subscribeFollowed().collect { rows ->
@@ -1427,14 +1474,48 @@ internal class AndroidAuthorDetailScreenModel(
             }
     }
     fun clearWorkDisplayModeError() = mutableState.update { it.copy(workDisplayModeError = null) }
+    fun excludePresentationVersion(version: SourceWorkArchiveVersion) = screenModelScope.launch {
+        val exclusions = presentationExclusions ?: return@launch
+        val root = activeCreatorId
+        runCatching { exclusions.exclude(root, version.naturalKey) }
+            .onSuccess {
+                mutableState.update { state ->
+                    val next = state.presentationExcluded + version.naturalKey
+                    state.copy(
+                        presentationExcluded = next,
+                        presentationGroups = WorkPresentationGroupService.project(
+                            state.archive,
+                            excludedNaturalKeys = next,
+                        ),
+                    )
+                }
+            }
+            .onFailure(::fail)
+    }
+
+    fun restorePresentationVersion(version: SourceWorkArchiveVersion) = screenModelScope.launch {
+        val exclusions = presentationExclusions ?: return@launch
+        val root = activeCreatorId
+        runCatching { exclusions.restore(root, version.naturalKey) }
+            .onSuccess {
+                mutableState.update { state ->
+                    val next = state.presentationExcluded - version.naturalKey
+                    state.copy(
+                        presentationExcluded = next,
+                        presentationGroups = WorkPresentationGroupService.project(
+                            state.archive,
+                            excludedNaturalKeys = next,
+                        ),
+                    )
+                }
+            }
+            .onFailure(::fail)
+    }
     fun openReview(version: SourceWorkArchiveVersion) = mutableState.update {
-        it.copy(
-            reviewing = version,
-            reviewCandidates = scriptVariantCandidates(version, it.archive),
-        )
+        it.copy(reviewing = version)
     }
     fun closeReview() = mutableState.update {
-        it.copy(reviewing = null, reviewCandidates = emptyList(), languageTag = "")
+        it.copy(reviewing = null, languageTag = "")
     }
     fun languageTag(value: String) = mutableState.update { it.copy(languageTag = value) }
     fun decide(state: WorkDecisionState, target: SourceWorkArchiveVersion? = null) = screenModelScope.launch {
@@ -1534,24 +1615,4 @@ internal class AndroidAuthorDetailScreenModel(
     private fun fail(
         error: Throwable,
     ) = mutableState.update { it.copy(error = error.message ?: error::class.simpleName, loading = false) }
-
-    private fun scriptVariantCandidates(
-        version: SourceWorkArchiveVersion,
-        archive: CreatorWorkArchive,
-    ): List<SourceWorkArchiveVersion> {
-        val currentWorkId = archive.works.firstOrNull { work ->
-            work.versions.any { it.sourceWorkId == version.sourceWorkId }
-        }?.workId
-        return (archive.works.flatMap { it.versions } + archive.pending)
-            .filter { candidate ->
-                val candidateWorkId = archive.works.firstOrNull { work ->
-                    work.versions.any { it.sourceWorkId == candidate.sourceWorkId }
-                }?.workId
-                candidate.sourceWorkId != version.sourceWorkId &&
-                    candidate.decision?.decision?.state != WorkDecisionState.REJECTED &&
-                    WorkTitleNormalizer.isSimplifiedTraditionalVariant(version.title, candidate.title) &&
-                    (currentWorkId == null || candidateWorkId == null || candidateWorkId != currentWorkId)
-            }
-            .sortedBy { it.sourceWorkId }
-    }
 }

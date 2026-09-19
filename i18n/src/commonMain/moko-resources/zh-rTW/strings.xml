@@ -1561,4 +1561,8 @@
     <string name="extension_batch_conflict">所選擴充套件提供了相同來源。繼續前請只選擇一個提供者。</string>
     <string name="extension_batch_unavailable">清單已變更。請重新整理擴充套件或明確選擇替代儲存庫，然後重新檢查。</string>
     <string name="extension_batch_use_repository">使用此儲存庫</string>
+    <string name="creator_work_separate_display">分開顯示此來源版本</string>
+    <string name="creator_work_separate_display_done">已分開顯示此來源版本</string>
+    <string name="creator_work_separate_display_undo">復原</string>
+    <string name="creator_work_separate_display_failed">無法分開顯示此來源版本，請再試一次。</string>
 </resources>

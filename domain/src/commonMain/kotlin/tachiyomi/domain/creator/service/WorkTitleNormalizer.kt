@@ -1,5 +1,7 @@
 package tachiyomi.domain.creator.service
 
+import kotlin.text.CharCategory
+
 /**
  * Normalizes work titles for an explicit simplified/traditional merge suggestion.
  *
@@ -25,12 +27,34 @@ object WorkTitleNormalizer {
         return converted
     }
 
+    /**
+     * Produces the strict key used by the author-page presentation projection.
+     *
+     * Script conversion deliberately delegates to [normalizeForMerge], so the contextual phrase
+     * precedence and character fallback stay shared with the existing merge evidence. Only
+     * Unicode whitespace and punctuation used for typography are removed after conversion.
+     */
+    fun normalizeForPresentationGroup(title: String): String = normalizeForMerge(title)
+        .filterNot { character ->
+            character.isWhitespace() || character.category in TYPOGRAPHY_PUNCTUATION
+        }
+
     fun isSimplifiedTraditionalVariant(first: String, second: String): Boolean {
         return first.isNotBlank() &&
             second.isNotBlank() &&
             first != second &&
             normalizeForMerge(first) == normalizeForMerge(second)
     }
+
+    private val TYPOGRAPHY_PUNCTUATION = setOf(
+        CharCategory.CONNECTOR_PUNCTUATION,
+        CharCategory.DASH_PUNCTUATION,
+        CharCategory.START_PUNCTUATION,
+        CharCategory.END_PUNCTUATION,
+        CharCategory.INITIAL_QUOTE_PUNCTUATION,
+        CharCategory.FINAL_QUOTE_PUNCTUATION,
+        CharCategory.OTHER_PUNCTUATION,
+    )
 
     private val phraseMappings: List<Pair<String, String>> = listOf(
         "酒逢知己千鍾少話不投機半句多" to "酒逢知己千锺少话不投机半句多",
@@ -310,7 +334,7 @@ object WorkTitleNormalizer {
         "頸鍊" to "颈链",
         "顧藉" to "顾借",
         "龍鍾" to "龙钟",
-    )
+    ).sortedByDescending { it.first.length }
 
     private val traditionalToSimplified: Map<Char, Char> = buildMap {
         val traditional = buildString {

@@ -31,6 +31,11 @@ class LibraryPreferences(
         },
     )
 
+    /** Device-local presentation corrections; intentionally excluded from backup and sync. */
+    fun creatorWorkPresentationExclusions() = preferenceStore.getStringSet(
+        Preference.appStateKey("creator_work_presentation_exclusions"),
+    )
+
     fun sortingMode() = preferenceStore.getObjectFromString(
         "library_sorting_mode",
         LibrarySort.default,

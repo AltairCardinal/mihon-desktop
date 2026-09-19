@@ -864,7 +864,7 @@ class AuthorsProductionWiringTest {
                     Navigator(WorkCompareScreen(workId = 30L, creatorId = 7L))
                 }
             }
-            val action = MR.strings.creator_work_merge_script_variant.localized(Locale.getDefault(), "诡谲屋")
+            val action = MR.strings.desktop_ui_confirm_same_work.localized()
             withTimeout(5_000) {
                 while (action !in texts(scene)) scene.render()
             }
@@ -916,7 +916,7 @@ class AuthorsProductionWiringTest {
                     Navigator(WorkCompareScreen(workId = 30L, creatorId = 7L))
                 }
             }
-            val action = MR.strings.creator_work_merge_script_variant.localized(Locale.getDefault(), "诡谲屋")
+            val action = MR.strings.desktop_ui_confirm_same_work.localized()
             withTimeout(5_000) {
                 while (action !in texts(scene)) scene.render()
             }
@@ -959,7 +959,7 @@ class AuthorsProductionWiringTest {
                     Navigator(WorkCompareScreen(workId = 30L, creatorId = 7L))
                 }
             }
-            val action = MR.strings.creator_work_merge_script_variant.localized(Locale.getDefault(), "诡谲屋")
+            val action = MR.strings.desktop_ui_confirm_same_work.localized()
             withTimeout(5_000) {
                 while (action !in texts(scene)) scene.render()
             }

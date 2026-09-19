@@ -1784,6 +1784,10 @@
     <string name="creator_work_filter_empty">没有符合条件的作品。可切换来源或清空搜索。</string>
     <string name="creator_work_choose_source">选择图源</string>
     <string name="creator_work_all_source_versions">此作品的全部已知图源版本</string>
+    <string name="creator_work_separate_display">分开显示此图源版本</string>
+    <string name="creator_work_separate_display_done">已分开显示此图源版本</string>
+    <string name="creator_work_separate_display_undo">撤销</string>
+    <string name="creator_work_separate_display_failed">无法分开显示此图源版本，请重试。</string>
     <string name="creator_work_chapters_unknown">章节数未知</string>
     <string name="creator_work_chapters_fetched">已获取章节：%d</string>
     <string name="creator_work_latest_date_unknown">最新章节日期未提供</string>

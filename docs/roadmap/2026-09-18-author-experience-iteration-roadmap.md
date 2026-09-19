@@ -1,10 +1,10 @@
 # 作者页体验迭代 · 开发Roadmap
 
-日期：2026-09-18。状态：IN_PROGRESS。
+日期：2026-09-18。状态：COMPLETE。
 
 - 需求权威：[完整设计](../2026-09-18-author-experience-iteration-design.md)。交互基线：[DEMO](../prototypes/author-identity/index.html)，AX-08审核冻结提交 `b1d4d73d89`。
 - 本计划为产品child plan，从首个未勾选批次推导进度，不声明active-task。旧[唯一作者Roadmap](2026-09-17-global-author-identity-roadmap.md)保持原完成状态，不重置GA任务。
-- 本计划已进入生产实施，父级唯一 `active-child-plan` 指向本计划。AX-01至AX-07已留下对应实现与验收记录；AX-08需求与HTML交互已于2026-09-20审核通过，production实现尚未开始。各批依赖与提交边界按本计划执行。
+- 本计划已完成生产实施，父级唯一 `active-child-plan` 指向本计划。AX-01至AX-07已留下对应实现与验收记录；AX-08需求与HTML交互已于2026-09-20审核通过，production实现、双端接线、回归和正式构建均已完成。各批依赖与提交边界按本计划执行。
 - checkbox仅在实现、相关测试、必要独立审查和提交均完成后勾选；历史DEMO测试不替代本计划production证据。
 
 ## 1. 开发边界与前置
@@ -281,7 +281,7 @@ TDD红绿记录：`ax01-android-author-card-layout-red2` exit 1，真实320dp mo
 
 ### AX-08 · 简繁与排版符号等价作品自动聚合呈现与纠错
 
-- [ ] AX-08：作者页自动把简繁及排版符号等价的来源版本显示为一个作品，无确认弹窗或合并按钮；沿用原有图源名称，并保留来源原题、准确导航和可撤销的“分开显示”纠错。
+- [x] AX-08：作者页自动把简繁及排版符号等价的来源版本显示为一个作品，无确认弹窗或合并按钮；沿用原有图源名称，并保留来源原题、准确导航和可撤销的“分开显示”纠错。
 
 **需求权威**：[作者作品简繁与排版符号等价自动聚合 · 迭代需求设计](../2026-09-19-author-work-script-equivalence-presentation-design.md)。
 
@@ -303,13 +303,13 @@ TDD红绿记录：`ax01-android-author-card-layout-red2` exit 1，真实320dp mo
 
 **实施子批次（按依赖串行）**：
 
-- [ ] AX-08.1 共享归一化与展示投影：先补失败契约测试，再扩展 `WorkTitleNormalizer` 和共享 `WorkPresentationGroup` 服务。转换顺序固定为上下文短语、字符回退、移除 Unicode 空白/排版标点；保留大小写、数字、卷次和正文。输出稳定组键、展示标题、完整成员、来源数、收藏、新作、日期及代表版本，不修改来源记录或 canonical 决策。验收为共享正负例、canonical 冲突、多目标歧义和 `REJECTED` 全绿。预计4–7个domain/common测试与production文件。
-- [ ] AX-08.2 排除规则与数据接线：在既有设备本地存储中保存 active creator root + 来源作品自然键；若现有存储不能满足有界查询才增加最小schema/migration。覆盖写入失败原子性、重启恢复、撤销、作者合并/拆分、来源删除与canonical变化；禁止编码成 `REJECTED` 或加入同步/备份协议。验收为真实repository/SQLite测试和DI解析通过。预计4–7个data/domain文件；涉及迁移时须独立审查。
-- [ ] AX-08.3 Android作者页接线：让作品计数、三种视图、搜索、原有图源FilterChip、来源窗口、收藏、新作与代表作共同消费共享投影；删除AX-07简繁候选说明及按钮，来源窗口显示真实图源名称和各版本原题，并提供分开显示/撤销。验收为真实ScreenModel/SQLite、Screen实例化与导航类型测试，覆盖320dp、焦点、准确mangaId和筛选后完整来源成员。预计5–8个Android/共享UI文件。
-- [ ] AX-08.4 Desktop作者页接线：复用同一投影与排除用例，保持Windows导航、键盘、焦点恢复和现有来源选择窗口；不得在Desktop复制归一化表。验收为mounted测试、DI wiring、320dp/长标题布局及Android/Desktop共享fixture结果一致。预计4–7个Desktop/共享UI文件。
-- [ ] AX-08.5 跨功能回归与交付：验证新增等价来源静默加入原卡，作品数、代表作、收藏、新作和日期只聚合一次，两个confirmed canonical保持分开；运行受影响模块完整测试、`spotlessCheck`、Android/Desktop回归及正式Desktop构建脚本运行验收。独立审查关闭数据完整性、迁移和跨模块协议问题后，在同一功能提交中勾选AX-08并记录证据，不单独提交纯checkoff。预计仅测试、必要修复和本计划证据更新。
+- [x] AX-08.1 共享归一化与展示投影：先补失败契约测试，再扩展 `WorkTitleNormalizer` 和共享 `WorkPresentationGroup` 服务。转换顺序固定为上下文短语、字符回退、移除 Unicode 空白/排版标点；保留大小写、数字、卷次和正文。输出稳定组键、展示标题、完整成员、来源数、收藏、新作、日期及代表版本，不修改来源记录或 canonical 决策。验收为共享正负例、canonical 冲突、多目标歧义和 `REJECTED` 全绿。预计4–7个domain/common测试与production文件。
+- [x] AX-08.2 排除规则与数据接线：在既有设备本地存储中保存 active creator root + 来源作品自然键；若现有存储不能满足有界查询才增加最小schema/migration。覆盖写入失败原子性、重启恢复、撤销、作者合并/拆分、来源删除与canonical变化；禁止编码成 `REJECTED` 或加入同步/备份协议。验收为真实repository/SQLite测试和DI解析通过。预计4–7个data/domain文件；涉及迁移时须独立审查。
+- [x] AX-08.3 Android作者页接线：让作品计数、三种视图、搜索、原有图源FilterChip、来源窗口、收藏、新作与代表作共同消费共享投影；删除AX-07简繁候选说明及按钮，来源窗口显示真实图源名称和各版本原题，并提供分开显示/撤销。验收为真实ScreenModel/SQLite、Screen实例化与导航类型测试，覆盖320dp、焦点、准确mangaId和筛选后完整来源成员。预计5–8个Android/共享UI文件。
+- [x] AX-08.4 Desktop作者页接线：复用同一投影与排除用例，保持Windows导航、键盘、焦点恢复和现有来源选择窗口；不得在Desktop复制归一化表。验收为mounted测试、DI wiring、320dp/长标题布局及Android/Desktop共享fixture结果一致。预计4–7个Desktop/共享UI文件。
+- [x] AX-08.5 跨功能回归与交付：验证新增等价来源静默加入原卡，作品数、代表作、收藏、新作和日期只聚合一次，两个confirmed canonical保持分开；运行受影响模块完整测试、`spotlessCheck`、Android/Desktop回归及正式Desktop构建脚本运行验收。独立审查关闭数据完整性、迁移和跨模块协议问题后，在同一功能提交中勾选AX-08并记录证据，不单独提交纯checkoff。预计仅测试、必要修复和本计划证据更新。
 
-首个production任务簇为AX-08.1。开始详细实现前按仓库规则交给实施子代理承担主要实现与focused验证；主代理负责接口约束、整合和验收。AX-08.2存在持久化/迁移风险，若实际新增schema，须在AX-08.3/4依赖前完成一轮未参与实现者的独立审查。
+AX-08 已按 AX-08.1 → AX-08.2 → Android/Desktop 接线 → 跨功能回归顺序完成。实施阶段由子代理承担共享实现与 focused 验证，主代理完成接口约束、双端整合、失败修复、全量验收和本节证据更新；本实现未新增 schema，因此没有迁移审查项。
 
 **交互流程**：
 
@@ -329,6 +329,21 @@ TDD红绿记录：`ax01-android-author-card-layout-red2` exit 1，真实320dp mo
 | Desktop 接线 | mounted 页面仍显示候选按钮或两卡 | mounted 测试覆盖同一共享分组、键盘操作、320dp、来源原题和纠错反馈 |
 | 跨功能一致性 | 作品数、代表作、收藏或新作仍按来源重复 | production wiring 证明所有消费者使用同一展示投影，组内状态只显示一次且来源事实保留 |
 | 回归与收口 | 破坏 AX-07 既有 confirmed canonical 或普通来源导航 | 相关 domain/data/Android/Desktop 测试、格式检查、双端运行验收通过；路线图勾选与同一功能提交一起完成 |
+
+**执行证据（2026-09-20）**：
+
+| 范围 | 实际命令/记录 | 结果 |
+|---|---|---|
+| AX-08.1/AX-08.2 domain | `ax08-domain-full`：`python scripts/gradle-coordinator.py run --key ax08-domain-full -- .\gradlew.bat :domain:jvmTest` | 通过；共享分组、严格归一化、canonical 冲突、`REJECTED`、排除记录和偏好原子性测试通过 |
+| Android focused wiring | `ax08-android-author-lifecycle-fix`、`ax08-android-creator-settings-key-fix` | 通过；真实 SQLite/ScreenModel、320dp 作者布局、来源窗口、原题、准确版本导航和纠错反馈通过 |
+| Desktop focused wiring | `ax08-desktop-authors-final`：`AuthorsProductionWiringTest`、`AuthorsScreenModelsTest` | 通过；production ScreenModel、展示投影、筛选、来源窗口、焦点和 DI 接线通过 |
+| Desktop full regression | `ax08-desktop-full`：`python scripts/gradle-coordinator.py run --key ax08-desktop-full -- .\gradlew.bat :app-desktop:jvmTest` | `BUILD SUCCESSFUL` |
+| Android full regression | `ax08-android-full-final`：`python scripts/gradle-coordinator.py run --key ax08-android-full-final -- .\gradlew.bat :app:testReleaseUnitTest` | `BUILD SUCCESSFUL` |
+| 格式与差异 | `ax08-spotless-final2`：`spotlessCheck`；`git diff --check` | 均通过；仅保留本任务文件，未暂存并排任务改动 |
+| Windows 正式构建 | `bash scripts/build-desktop.sh build-only` | 通过；版本 `0.11.19.53.6dd1abc`，扩展运行时验收通过，正式未打包 EXE 与 ZIP 已生成 |
+| 审查与修复 | 实现后逐项审阅共享投影、Android/Desktop wiring、持久化边界和导航 key；补修 Android canonical card 的兼容 testTag，并完成 focused/full 复验 | 未发现未解决的数据、同步、备份或 canonical 污染问题；委派审查代理未返回结构化回执，工具关闭后由主代理完成收口审查并保留该限制记录 |
+
+正式产物：未打包运行文件和 ZIP 的绝对路径记录在最终验收报告中；`AppVersion.BUILD` 按正式构建脚本从 52 提升为 53。排除记录使用设备本地 app-state preference，不新增数据库 schema，不进入 canonical 决策、同步或备份协议。
 
 ## 4. 通用红绿与证据规则
 

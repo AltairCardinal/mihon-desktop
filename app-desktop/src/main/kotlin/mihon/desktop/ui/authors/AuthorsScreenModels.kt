@@ -57,8 +57,11 @@ import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.service.CreatorIdentityEditor
 import tachiyomi.domain.creator.model.WorkDecisionProjection
 import tachiyomi.domain.creator.model.CreatorWorkArchiveFilter
+import tachiyomi.domain.creator.model.WorkPresentationGroup
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.domain.creator.service.CreatorWorkPresentationExclusions
+import tachiyomi.domain.creator.service.WorkPresentationGroupService
 
 
 
@@ -341,6 +344,8 @@ data class AuthorDetailState(
     val discovery: CreatorDiscoveryTaskState? = null,
     val checkpoints: List<SourceCheckpoint> = emptyList(),
     val workArchive: CreatorWorkArchive = CreatorWorkArchive(emptyList(), emptyList(), emptyList()),
+    val presentationGroups: List<WorkPresentationGroup> = emptyList(),
+    val presentationExcluded: Set<SourceWorkNaturalKey> = emptySet(),
     val languageFilter: LanguageArchiveFilter = LanguageArchiveFilter.ALL,
     val workFilter: CreatorWorkArchiveFilter = CreatorWorkArchiveFilter(),
     val loading: Boolean = true,
@@ -376,6 +381,32 @@ data class AuthorDetailState(
             pending = workArchive.pending.filter { languageFilter.accepts(it.readingLanguage.certainty) },
             rejected = workArchive.rejected.filter { languageFilter.accepts(it.readingLanguage.certainty) },
         ))
+
+    val visiblePresentationGroups: List<WorkPresentationGroup>
+        get() = presentationGroups.filter { group ->
+            workFilter.matches(group) && group.members.any { languageFilter.accepts(it.readingLanguage.certainty) }
+        }
+
+    val visiblePresentationCards: List<WorkPresentationGroup>
+        get() = visiblePresentationGroups.filter { group ->
+            group.canonicalWorkId != null || group.members.size > 1 ||
+                group.members.any { it.naturalKey in presentationExcluded }
+        }
+
+    val visiblePendingVersions: List<SourceWorkArchiveVersion>
+        get() {
+            val filteredPending = workFilter.apply(
+                CreatorWorkArchive(
+                    works = emptyList(),
+                    pending = workArchive.pending.filter { languageFilter.accepts(it.readingLanguage.certainty) },
+                    rejected = emptyList(),
+                ),
+            ).pending
+            val renderedKeys = visiblePresentationCards.flatMapTo(mutableSetOf()) { group ->
+                group.members.map(SourceWorkArchiveVersion::naturalKey)
+            }
+            return filteredPending.filterNot { it.naturalKey in renderedKeys }
+        }
 }
 
 sealed interface AuthorDetailEffect {
@@ -408,6 +439,9 @@ internal class AuthorDetailScreenModel(
     val state: StateFlow<AuthorDetailState> = mutableState.asStateFlow()
     private val mutableEffects = MutableSharedFlow<AuthorDetailEffect>(extraBufferCapacity = 4)
     val effects = mutableEffects.asSharedFlow()
+    private val presentationExclusions = libraryPreferences?.let {
+        CreatorWorkPresentationExclusions(it.creatorWorkPresentationExclusions())
+    }
 
     val identityEditor = CreatorIdentityEditor(
         creatorId, identityActions.manageCreatorIdentity, scope,
@@ -449,7 +483,17 @@ internal class AuthorDetailScreenModel(
         creatorArchive?.let { archive ->
             scope.launch {
                 archive.observe(creatorId).collect { workArchive ->
-                    mutableState.update { it.copy(workArchive = workArchive) }
+                    val excluded = presentationExclusions?.get(activeCreatorId).orEmpty()
+                    mutableState.update {
+                        it.copy(
+                            workArchive = workArchive,
+                            presentationExcluded = excluded,
+                            presentationGroups = WorkPresentationGroupService.project(
+                                workArchive,
+                                excludedNaturalKeys = excluded,
+                            ),
+                        )
+                    }
                 }
             }
             scope.launch {
@@ -565,6 +609,44 @@ internal class AuthorDetailScreenModel(
     }
 
     fun clearWorkDisplayModeError() = mutableState.update { it.copy(workDisplayModeError = null) }
+
+    fun excludePresentationVersion(version: SourceWorkArchiveVersion) = scope.launch {
+        val exclusions = presentationExclusions ?: return@launch
+        val root = activeCreatorId
+        runCatching { exclusions.exclude(root, version.naturalKey) }
+            .onSuccess {
+                mutableState.update { state ->
+                    val next = state.presentationExcluded + version.naturalKey
+                    state.copy(
+                        presentationExcluded = next,
+                        presentationGroups = WorkPresentationGroupService.project(
+                            state.workArchive,
+                            excludedNaturalKeys = next,
+                        ),
+                    )
+                }
+            }
+            .onFailure { error -> mutableState.update { it.copy(error = error.message ?: error::class.simpleName) } }
+    }
+
+    fun restorePresentationVersion(version: SourceWorkArchiveVersion) = scope.launch {
+        val exclusions = presentationExclusions ?: return@launch
+        val root = activeCreatorId
+        runCatching { exclusions.restore(root, version.naturalKey) }
+            .onSuccess {
+                mutableState.update { state ->
+                    val next = state.presentationExcluded - version.naturalKey
+                    state.copy(
+                        presentationExcluded = next,
+                        presentationGroups = WorkPresentationGroupService.project(
+                            state.workArchive,
+                            excludedNaturalKeys = next,
+                        ),
+                    )
+                }
+            }
+            .onFailure { error -> mutableState.update { it.copy(error = error.message ?: error::class.simpleName) } }
+    }
 
     fun setLanguageFilter(filter: LanguageArchiveFilter) = mutableState.update { it.copy(languageFilter = filter) }
 

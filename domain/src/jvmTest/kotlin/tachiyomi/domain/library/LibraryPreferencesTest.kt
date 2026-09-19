@@ -38,4 +38,22 @@ class LibraryPreferencesTest {
             node.removeNode()
         }
     }
+
+    @Test
+    fun `creator presentation exclusions are app state and survive preference store recreation`() {
+        val node = Preferences.userRoot().node("mihon/ax08/${UUID.randomUUID()}")
+        try {
+            val first = LibraryPreferences(DesktopPreferenceStore(node))
+            assertFalse(first.creatorWorkPresentationExclusions().isSet())
+            assertEquals(emptySet<String>(), first.creatorWorkPresentationExclusions().get())
+
+            first.creatorWorkPresentationExclusions().set(setOf("7|42|2F776F726B"))
+
+            val reopened = LibraryPreferences(DesktopPreferenceStore(node))
+            assertEquals(setOf("7|42|2F776F726B"), reopened.creatorWorkPresentationExclusions().get())
+            assertTrue(reopened.creatorWorkPresentationExclusions().key().startsWith("__APP_STATE_"))
+        } finally {
+            node.removeNode()
+        }
+    }
 }
