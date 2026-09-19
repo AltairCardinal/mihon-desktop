@@ -126,4 +126,6 @@
 
 补充设备验收：在隔离 API 26 与 API 36 AVD 上安装 fork universal release，锁屏/解锁分别观察到 `Awake → Asleep/Display OFF → 解锁`，`dumpsys deviceidle force-idle/unforce` 分别得到 `IDLE → ACTIVE`；force-stop 后没有自启，手动重新打开成功且无 FATAL。API 36 的隔离 R8 release instrumentation 按 `prepare`/force-stop/`verify` 两进程执行，4/4 通过（密码格式、Keystore 缺失闭环、AEAD 篡改保护、跨进程仓库/Keystore 保留）。这些是平台生命周期与 release wiring 证据，不等同于已配置同步空间后的真实条目推进。
 
+环境核验补充：尝试通过本机代理安装 API 33/35 平台与 Google APIs x86_64 系统镜像；`sdkmanager` 在 HTTPS 下载读取阶段保持连接约 12 分钟且未写入有效镜像文件，已终止该进程。SDK 状态未改变，API 33/35 仍不可用；该次尝试不构成版本矩阵验收证据。
+
 R5 仍未完成：当前 SDK 没有 API 33/35 系统镜像，无法完成完整版本矩阵；本轮没有真实账号/同步空间，不能宣称锁屏期间条目进度推进或重复应用已被真机证明；当前 Windows 环境没有 macOS 构建条件。Android 全量单测有 3 个既有 `InstalledAppsPermissionAppModuleTest` Injekt 初始化失败，domain/data 全量有 3 个既有 CreatorArchive 冻结迁移失败；完整原型套件为 39 项中 35 通过、4 项既有 library-sync/UI 断言失败。上述失败均已保留日志，不能替代剩余发布门禁，因此不得勾选 R5。
