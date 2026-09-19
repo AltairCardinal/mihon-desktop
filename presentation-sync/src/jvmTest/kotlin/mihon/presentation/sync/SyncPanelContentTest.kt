@@ -71,15 +71,26 @@ class SyncPanelContentTest {
     }
 
     @Test
-    fun `setup completion is a dismissible session notice`() = rendered(
+    fun `setup completion does not show a session notice`() = rendered(
         connected().copy(notice = SyncPanelNotice(setupCompleted = true)),
     ) {
-        awaitTag("sync-setup-complete")
-        click("sync-dismiss-notice")
-        assertEquals(SyncPanelAction.DismissNotice, actions.last())
-        panel.state.value = connected()
-        render()
         assertFalse(hasTag("sync-setup-complete"))
+        assertFalse(hasTag("sync-dismiss-notice"))
+    }
+
+    @Test
+    fun `setup page omits normal target status and stale exchange errors`() = rendered(
+        SyncPanelState(
+            visible = true,
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.NEW_PASSWORD,
+            setupRepository = SyncRepository("owner", "private", "sync"),
+            problem = SyncRunProblem.REMOTE_CHANGED,
+        ),
+    ) {
+        awaitTag("sync-password-input")
+        assertFalse(hasTag("sync-setup-target"))
+        assertFalse(texts().contains(MR.strings.sync_problem_remote.localized(Locale.getDefault())))
     }
 
     @Test

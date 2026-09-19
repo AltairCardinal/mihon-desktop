@@ -1879,7 +1879,7 @@
     <string name="sync_problem_network">Network unavailable. Your changes are saved; try again.</string>
     <string name="sync_problem_auth">GitHub authorization needs to be renewed.</string>
     <string name="sync_problem_storage">Secure storage is unavailable. Your changes are preserved.</string>
-    <string name="sync_problem_remote">The remote history changed unexpectedly. Check your sync space before continuing.</string>
+    <string name="sync_problem_remote">The sync repository state changed, so syncing is paused. Check the GitHub repository, then retry.</string>
     <string name="sync_problem_data">Some remote data could not be verified.</string>
     <string name="sync_problem_unknown">Synchronization could not finish. Try again.</string>
     <string name="sync_auth_failed">Authorization did not finish. Retry or cancel.</string>
@@ -1902,7 +1902,6 @@
     <string name="sync_setup_installation_suspended">The Mihon GitHub App installation is suspended. Resume it in GitHub settings, then recheck.</string>
     <string name="sync_setup_not_writable">This account cannot write to the private mihon-sync repository. Confirm that it belongs to this account and that you have write access, then recheck.</string>
     <string name="sync_setup_repository_unavailable">This repository is archived or disabled. Restore it in GitHub, then recheck.</string>
-    <string name="sync_setup_new_space_target">This verified empty private repository will be initialized: %1$s. Leaving the password blank keeps the repository private but does not encrypt its contents.</string>
     <string name="sync_setup_scope_all">This installation grants Mihon access to all repositories. Mihon will not change that grant. To narrow it, choose Only select repositories in GitHub and select only mihon-sync.</string>
     <string name="sync_setup_scope_multiple">This installation grants Mihon access to multiple repositories. Mihon will not change that selection. You can narrow it in GitHub to only mihon-sync.</string>
     <string name="sync_setup_manage_installation">Manage GitHub App access</string>
@@ -1926,7 +1925,6 @@
     <string name="sync_setup_discovering">Finding your sync space…</string>
     <string name="sync_setup_creating">Preparing your sync space…</string>
     <string name="sync_setup_merging">Merging your data…</string>
-    <string name="sync_setup_complete">Sync is on</string>
     <string name="sync_setup_retry">Retry</string>
     <string name="sync_setup_continue">Continue connecting</string>
     <string name="sync_setup_multiple">More than one sync space was found. Choose one to connect.</string>

@@ -305,15 +305,12 @@ private fun MainPage(
         ) {
             Action("sync-reenter-password", MR.strings.sync_password_connect) { dispatch(SyncPanelAction.BeginSetup) }
         }
-        state.notice?.let { notice ->
+        state.notice?.takeIf { it.exchange != null || it.bulk != null }?.let { notice ->
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    if (notice.setupCompleted) {
-                        Text(syncString(MR.strings.sync_setup_complete), Modifier.testTag("sync-setup-complete"))
-                    }
                     notice.exchange?.let { result ->
                         if (result.status == SyncRunStatus.SUCCESS || result.status == SyncRunStatus.PARTIAL) {
                             Text(
@@ -679,7 +676,6 @@ private fun SetupPage(
     LazyColumn(modifier.padding(24.dp).testTag("sync-setup-list"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (state.setupBusy) item { CircularProgressIndicator(Modifier.size(24.dp)) }
         state.setupProblem?.let { item { Text(setupProblemText(it), Modifier.testTag("sync-setup-error")) } }
-        if (state.setupProblem == null) state.problem?.let { item { Text(problemText(it)) } }
         state.setupInstallation?.let(::installationScopeWarning)?.let { warning ->
             item {
                 Text(syncString(warning), Modifier.testTag("sync-installation-scope-warning"))
@@ -729,17 +725,6 @@ private fun SetupPage(
                             if (creating) MR.strings.sync_password_new_hint else MR.strings.sync_password_unlock_hint,
                         ),
                     )
-                }
-                if (creating) {
-                    item {
-                        Text(
-                            syncString(
-                                MR.strings.sync_setup_new_space_target,
-                                state.setupRepository?.fullName.orEmpty(),
-                            ),
-                            Modifier.testTag("sync-setup-target"),
-                        )
-                    }
                 }
                 item {
                     OutlinedTextField(
@@ -846,7 +831,7 @@ private fun SetupPage(
                     }
                 }
             }
-            SyncSetupStep.COMPLETE -> item { Text(syncString(MR.strings.sync_setup_complete)) }
+            SyncSetupStep.COMPLETE -> { }
             SyncSetupStep.ERROR -> {
                 val problem = state.setupProblem
                 val needsRepositoryGuide = problem in setOf(

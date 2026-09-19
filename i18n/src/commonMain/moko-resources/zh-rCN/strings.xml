@@ -1673,7 +1673,7 @@
     <string name="sync_problem_network">网络暂不可用，变动已保留，请重试。</string>
     <string name="sync_problem_auth">GitHub 授权需要重新连接。</string>
     <string name="sync_problem_storage">安全存储不可用，变动已保留。</string>
-    <string name="sync_problem_remote">远端历史出现异常变化，请检查同步空间后继续。</string>
+    <string name="sync_problem_remote">同步仓库状态发生变化，已暂停同步。请检查 GitHub 中的同步仓库后重试。</string>
     <string name="sync_problem_data">部分远端数据未通过校验。</string>
     <string name="sync_problem_unknown">同步未能完成，请重试。</string>
     <string name="sync_auth_failed">授权未完成，请重试或取消。</string>
@@ -1696,7 +1696,6 @@
     <string name="sync_setup_installation_suspended">Mihon GitHub App 安装已暂停。请在 GitHub 设置中恢复安装，然后重新检查。</string>
     <string name="sync_setup_not_writable">当前账号无法写入私有 mihon-sync 仓库。请确认仓库属于此账号且你有写入权限，然后重新检查。</string>
     <string name="sync_setup_repository_unavailable">此仓库已归档或停用。请在 GitHub 恢复仓库，然后重新检查。</string>
-    <string name="sync_setup_new_space_target">即将初始化已核验为空的私有仓库：%1$s。不设置密码时，仓库仍为私有，但同步内容不会额外加密。</string>
     <string name="sync_setup_scope_all">此安装授权了 Mihon 访问所有仓库。Mihon 不会擅自更改这项授权。你可以在 GitHub 中选择 Only select repositories（仅选择仓库），并只勾选 mihon-sync。</string>
     <string name="sync_setup_scope_multiple">此安装授权了 Mihon 访问多个仓库。Mihon 不会擅自更改仓库选择。你可以在 GitHub 中收窄为只授权 mihon-sync。</string>
     <string name="sync_setup_manage_installation">管理 GitHub App 访问权限</string>
@@ -1814,7 +1813,6 @@
     <string name="sync_setup_discovering">正在查找同步空间…</string>
     <string name="sync_setup_creating">正在准备同步空间…</string>
     <string name="sync_setup_merging">正在合并数据…</string>
-    <string name="sync_setup_complete">同步已开启</string>
     <string name="sync_setup_retry">重试</string>
     <string name="sync_setup_continue">继续连接同步空间</string>
     <string name="sync_setup_multiple">发现多个同步空间，请选择一个连接</string>
