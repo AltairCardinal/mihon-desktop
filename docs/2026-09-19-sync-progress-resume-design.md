@@ -24,7 +24,7 @@
 | [SyncDatabaseExchange](../data/src/commonMain/kotlin/mihon/data/sync/runtime/SyncDatabaseExchange.kt)、[SyncOutboxStore](../data/src/commonMain/kotlin/mihon/data/sync/journal/SyncOutboxStore.kt) | 初始导入、收件与投影已有分段事务；上传前保存完整制品，确认后才清队列 | 从真实事务与发布确认产生进度，复用既有恢复边界 |
 | [DesktopSyncScheduler](../app-desktop/src/main/kotlin/mihon/desktop/sync/DesktopSyncScheduler.kt) | 进程内定期检查墙钟，最长检查间隔 60 秒；启动和周期触发现已先调用共享 `resumeIfNeeded` | 保持现有定期语义，共享新状态与启动恢复；不承诺桌面专用电源唤醒即时性 |
 
-因此应纠正“没有 checkpoint”的笼统说法：已有业务数据检查点，缺的是持久化运行意图、可观察进度与前台恢复编排。隔离 AVD 已证明平台生命周期路径可运行，但尚无用户设备的系统停止原因或真实同步空间故障复现，不把待机直接认定为截图卡住的已证实原因。
+因此应纠正“没有 checkpoint”的笼统说法：已有业务数据检查点，缺的是持久化运行意图、可观察进度与前台恢复编排。隔离 AVD 与 API 33/35/36 的 R8 release instrumentation 已证明平台和发布 wiring 路径可运行，但尚无用户设备的系统停止原因或真实同步空间故障复现，不把待机直接认定为截图卡住的已证实原因。
 
 ## 3. 页面交互
 
