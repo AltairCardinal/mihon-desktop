@@ -92,6 +92,7 @@ import mihon.desktop.domain.CreatorDiscoveryRunScope
 import mihon.desktop.ui.library.MangaDetailScreen
 import mihon.domain.task.TaskStatus
 import tachiyomi.domain.creator.model.Creator
+import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.MangaCreator
 import tachiyomi.domain.creator.model.LanguageDimension
@@ -771,9 +772,10 @@ data class AuthorDetailScreen(
                                         title = work.title,
                                         thumbnailUrl = work.versions.firstOrNull()?.thumbnailUrl,
                                         sourceId = work.versions.firstOrNull()?.naturalKey?.sourceId ?: 0L,
-                                favorite = allVersions.any { it.inLibrary },
-                                key = work.workId.toString(),
-                                mode = mode,
+                                        firstSeenDate = earliestFirstSeenDate(allVersions),
+                                        favorite = allVersions.any { it.inLibrary },
+                                        key = work.workId.toString(),
+                                        mode = mode,
                                         focusRequester = focusRequester,
                                         onClick = {
                                             sourceFocusRequester = focusRequester
@@ -838,9 +840,10 @@ data class AuthorDetailScreen(
                                         title = work.title,
                                         thumbnailUrl = work.versions.firstOrNull()?.thumbnailUrl,
                                         sourceId = work.versions.firstOrNull()?.naturalKey?.sourceId ?: 0L,
-                                favorite = allVersions.any { it.inLibrary },
-                                key = work.workId.toString(),
-                                mode = mode,
+                                        firstSeenDate = earliestFirstSeenDate(allVersions),
+                                        favorite = allVersions.any { it.inLibrary },
+                                        key = work.workId.toString(),
+                                        mode = mode,
                                         focusRequester = focusRequester,
                                         onClick = {
                                             sourceFocusRequester = focusRequester
@@ -894,6 +897,22 @@ private fun authorVersionLabel(
     return if (sourceManager.get(version.naturalKey.sourceId) == null) {
         "$name · ${MR.strings.desktop_ui_source_missing.localized()}"
     } else name
+}
+
+private fun earliestFirstSeenDate(
+    versions: List<tachiyomi.domain.creator.model.SourceWorkArchiveVersion>,
+): String? = versions.mapNotNull { it.firstSeenDate?.takeIf(String::isNotBlank) }.minOrNull()
+
+private fun chapterCountLabel(version: SourceWorkArchiveVersion): String = when (version.chapterCompleteness) {
+    ChapterCatalogCompleteness.UNKNOWN -> MR.strings.creator_work_chapters_unknown.localized()
+    ChapterCatalogCompleteness.PARTIAL -> MR.strings.creator_work_chapters_fetched.localized(
+        Locale.getDefault(),
+        version.chapterCount,
+    )
+    ChapterCatalogCompleteness.COMPLETE -> MR.strings.desktop_ui_chapter_count.localized(
+        Locale.getDefault(),
+        version.chapterCount,
+    )
 }
 
 @Composable
@@ -963,17 +982,7 @@ private fun CreatorWorkSourceChooserDialog(
                                     )
                                 }
                                 Text(version.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text(
-                                    if (version.chapterCount > 0) {
-                                        MR.strings.desktop_ui_chapter_count.localized(
-                                            Locale.getDefault(),
-                                            version.chapterCount,
-                                        )
-                                    } else {
-                                        MR.strings.creator_work_chapters_unknown.localized()
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
+                                Text(chapterCountLabel(version), style = MaterialTheme.typography.bodySmall)
                                 Text(
                                     MR.strings.creator_work_latest_date_unknown.localized(),
                                     style = MaterialTheme.typography.bodySmall,
@@ -1041,6 +1050,7 @@ private fun CreatorArchiveWorkCard(
     title: String,
     thumbnailUrl: String?,
     sourceId: Long,
+    firstSeenDate: String?,
     favorite: Boolean,
     key: String,
     mode: LibraryDisplayMode,
@@ -1064,6 +1074,13 @@ private fun CreatorArchiveWorkCard(
                 CreatorWorkCover(title, thumbnailUrl, sourceId, key, Modifier.width(64.dp).height(88.dp), favorite)
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("creator-work-$key"))
+                    firstSeenDate?.let { date ->
+                        Text(
+                            MR.strings.desktop_ui_first_seen.localized(Locale.getDefault(), date),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.testTag("creator-work-first-seen-$key"),
+                        )
+                    }
                     content()
                 }
             }
@@ -1079,6 +1096,14 @@ private fun CreatorArchiveWorkCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp).testTag("creator-work-$key"),
                     )
+                    firstSeenDate?.let { date ->
+                        Text(
+                            MR.strings.desktop_ui_first_seen.localized(Locale.getDefault(), date),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                                .testTag("creator-work-first-seen-$key"),
+                        )
+                    }
                     content()
                 }
             }
@@ -1087,6 +1112,16 @@ private fun CreatorArchiveWorkCard(
             Card(modifier = cardModifier, colors = CardDefaults.cardColors()) {
                 Column {
                     CreatorWorkCover(title, thumbnailUrl, sourceId, key, Modifier.fillMaxWidth().aspectRatio(0.7f), favorite, compactTitle = true)
+                    firstSeenDate?.let { date ->
+                        Text(
+                            MR.strings.desktop_ui_first_seen.localized(Locale.getDefault(), date),
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                                .testTag("creator-work-first-seen-$key"),
+                        )
+                    }
                     content()
                 }
             }
@@ -1191,7 +1226,7 @@ private fun ArchiveVersionListItem(
                     availability,
                     version.readingLanguage.tag.uppercase(),
                     version.readingLanguage.certainty.name.lowercase(),
-                    version.chapterCount,
+                    chapterCountLabel(version),
                     if (version.inLibrary) {
                         MR.strings.desktop_ui_in_library.localized()
                     } else {
@@ -1353,7 +1388,7 @@ data class WorkCompareScreen(val workId: Long, val creatorId: Long = -1L) : Scre
                     }
                     Text(MR.strings.desktop_ui_source_url.localized(Locale.getDefault(), item.naturalKey.stableSourceUrl))
                     Text(MR.strings.desktop_ui_last_seen.localized(Locale.getDefault(), item.lastSeenAt.toString()))
-                    Text(MR.strings.desktop_ui_chapter_count.localized(Locale.getDefault(), item.chapterCount))
+                    Text(chapterCountLabel(item))
                     Text(
                         MR.strings.desktop_ui_source_check_quality.localized(
                             Locale.getDefault(),

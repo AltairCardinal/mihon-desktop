@@ -5,12 +5,14 @@ import kotlinx.coroutines.sync.withLock
 import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.creator.model.CanonicalWorkPortableKey
+import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.CreatorArchiveLanguageTag
 import tachiyomi.domain.creator.model.CreatorArchiveSubjectKey
 import tachiyomi.domain.creator.model.CreatorRole
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import tachiyomi.domain.creator.service.CreatorNameNormalizer
+import tachiyomi.domain.creator.service.CreatorSourceWorkKey
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -479,6 +481,8 @@ class CreatorArchiveLegacyBridge(
             artistText = candidate.artistText,
             thumbnailUrl = candidate.thumbnailUrl,
             firstSeenAt = candidate.firstSeenAt,
+            firstSeenDate = frozenArchiveDate(candidate.firstSeenAt),
+            firstSeenZone = ARCHIVE_DATE_ZONE,
             lastSeenAt = candidate.lastSeenAt,
             detailsFetchedAt = candidate.detailsFetchedAt,
             legacyCandidateId = candidate.id,
@@ -495,6 +499,8 @@ class CreatorArchiveLegacyBridge(
             artistText = candidate.artistText,
             thumbnailUrl = candidate.thumbnailUrl,
             firstSeenAt = candidate.firstSeenAt,
+            firstSeenDate = frozenArchiveDate(candidate.firstSeenAt),
+            firstSeenZone = ARCHIVE_DATE_ZONE,
             lastSeenAt = candidate.lastSeenAt,
             detailsFetchedAt = candidate.detailsFetchedAt,
             legacyCandidateId = candidate.id,
@@ -630,7 +636,7 @@ class CreatorArchiveLegacyBridge(
     private fun Database.ensureSourceWorkForManga(match: LegacyMangaWorkMatch): Long {
         author_archiveQueries.getArchiveSourceWorkByManga(match.mangaId).executeAsOneOrNull()?.let { return it._id }
         val manga = author_archiveQueries.getMangaSourceWorkSeed(match.mangaId).executeAsOne()
-        val stableUrl = manga.url.trim().ifBlank { "legacy-manga:${match.mangaId}" }
+        val stableUrl = CreatorSourceWorkKey.stableUrl(manga.url, manga.title, manga.author, manga.artist)
         author_archiveQueries.getArchiveSourceWorkByKey(manga.source, stableUrl).executeAsOneOrNull()?.let { existing ->
             return existing._id
         }
@@ -644,8 +650,13 @@ class CreatorArchiveLegacyBridge(
             artistText = manga.artist,
             thumbnailUrl = manga.thumbnail_url,
             firstSeenAt = match.createdAt,
+            firstSeenDate = frozenArchiveDate(match.createdAt),
+            firstSeenZone = ARCHIVE_DATE_ZONE,
             lastSeenAt = match.lastModifiedAt,
             detailsFetchedAt = null,
+            chapterCountState = ChapterCatalogCompleteness.UNKNOWN.name,
+            catalogChapterCount = 0L,
+            latestChapterAt = null,
             legacyReviewSnapshot = null,
         )
         return author_archiveQueries.selectArchiveLastInsertedRowId().executeAsOne()

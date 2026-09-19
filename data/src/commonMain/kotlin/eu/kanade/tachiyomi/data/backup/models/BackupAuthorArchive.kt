@@ -111,6 +111,13 @@ data class BackupAuthorSourceWork(
     @ProtoNumber(5) val artistText: String? = null,
     @ProtoNumber(6) val thumbnailUrl: String? = null,
     @ProtoNumber(7) val bindings: List<BackupAuthorBinding> = emptyList(),
+    /** Frozen discovery facts are optional so older field-107 payloads remain readable. */
+    @ProtoNumber(8) val firstSeenAt: Long? = null,
+    @ProtoNumber(9) val firstSeenDate: String? = null,
+    @ProtoNumber(10) val firstSeenZone: String? = null,
+    @ProtoNumber(11) val chapterCount: Long? = null,
+    @ProtoNumber(12) val chapterCompleteness: String? = null,
+    @ProtoNumber(13) val latestChapterAt: Long? = null,
 )
 
 @Serializable

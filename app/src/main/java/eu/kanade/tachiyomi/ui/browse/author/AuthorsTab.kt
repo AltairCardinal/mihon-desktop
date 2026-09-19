@@ -99,6 +99,7 @@ import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
+import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.CreatorCardProjection
 import tachiyomi.domain.creator.model.CreatorCardWorkCandidate
@@ -730,6 +731,7 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                             CreatorArchiveWorkCard(
                                 title = work.title,
                                 version = work.versions.firstOrNull(),
+                                firstSeenDate = earliestFirstSeenDate(allVersions),
                                 favorite = allVersions.any { it.inLibrary },
                                 key = work.workId.toString(),
                                 mode = mode,
@@ -775,6 +777,7 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                             CreatorArchiveWorkCard(
                                 title = work.title,
                                 version = work.versions.firstOrNull(),
+                                firstSeenDate = earliestFirstSeenDate(allVersions),
                                 favorite = allVersions.any { it.inLibrary },
                                 key = work.workId.toString(),
                                 mode = mode,
@@ -904,11 +907,7 @@ private fun AndroidCreatorWorkSourceChooserDialog(
                                 }
                                 Text(version.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 Text(
-                                    if (version.chapterCount > 0) {
-                                        stringResource(MR.strings.desktop_ui_chapter_count, version.chapterCount)
-                                    } else {
-                                        stringResource(MR.strings.creator_work_chapters_unknown)
-                                    },
+                                    chapterCountLabel(version),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                                 Text(
@@ -940,6 +939,7 @@ private fun AndroidCreatorWorkSourceChooserDialog(
 private fun CreatorArchiveWorkCard(
     title: String,
     version: SourceWorkArchiveVersion?,
+    firstSeenDate: String?,
     favorite: Boolean,
     key: String,
     mode: LibraryDisplayMode,
@@ -973,6 +973,13 @@ private fun CreatorArchiveWorkCard(
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.testTag("creator-work-$key"),
                     )
+                    firstSeenDate?.let { date ->
+                        Text(
+                            stringResource(MR.strings.desktop_ui_first_seen, date),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.testTag("creator-work-first-seen-$key"),
+                        )
+                    }
                     content()
                 }
             }
@@ -995,6 +1002,14 @@ private fun CreatorArchiveWorkCard(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
                             .testTag("creator-work-$key"),
                     )
+                    firstSeenDate?.let { date ->
+                        Text(
+                            stringResource(MR.strings.desktop_ui_first_seen, date),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                                .testTag("creator-work-first-seen-$key"),
+                        )
+                    }
                     content()
                 }
             }
@@ -1010,6 +1025,16 @@ private fun CreatorArchiveWorkCard(
                         modifier = Modifier.fillMaxWidth().aspectRatio(0.7f),
                         compactTitle = true,
                     )
+                    firstSeenDate?.let { date ->
+                        Text(
+                            stringResource(MR.strings.desktop_ui_first_seen, date),
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                                .testTag("creator-work-first-seen-$key"),
+                        )
+                    }
                     content()
                 }
             }
@@ -1072,6 +1097,17 @@ private fun SourceWorkArchiveVersion.toMangaCover() = tachiyomi.domain.manga.mod
     url = naturalKey.stableSourceUrl,
     lastModified = detailsFetchedAt ?: 0L,
 )
+
+private fun earliestFirstSeenDate(versions: List<SourceWorkArchiveVersion>): String? = versions
+    .mapNotNull { it.firstSeenDate?.takeIf(String::isNotBlank) }
+    .minOrNull()
+
+@Composable
+private fun chapterCountLabel(version: SourceWorkArchiveVersion): String = when (version.chapterCompleteness) {
+    ChapterCatalogCompleteness.UNKNOWN -> stringResource(MR.strings.creator_work_chapters_unknown)
+    ChapterCatalogCompleteness.PARTIAL -> stringResource(MR.strings.creator_work_chapters_fetched, version.chapterCount)
+    ChapterCatalogCompleteness.COMPLETE -> stringResource(MR.strings.desktop_ui_chapter_count, version.chapterCount)
+}
 
 @Composable
 private fun CreatorArchiveWorkRow(

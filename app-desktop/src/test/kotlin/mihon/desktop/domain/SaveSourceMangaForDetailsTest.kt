@@ -3,6 +3,8 @@ package mihon.desktop.domain
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
+import io.mockk.coVerify
+import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.desktop.domain.fakes.FakeCatalogueSource
@@ -13,6 +15,9 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
 import mihon.domain.error.AppError
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
+import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 
@@ -159,6 +164,46 @@ class SaveSourceMangaForDetailsTest {
         assertEquals(42L, result.source)
         assertEquals(2, chapterRepo.addedChapters.size)
         assertEquals(result.id, chapterRepo.addedChapters.first().mangaId)
+    }
+
+    @Test
+    fun `saving source manga records the complete catalogue through the archive repository`() = runBlocking<Unit> {
+        val mangaRepo = FakeMangaRepository()
+        val chapterRepo = FakeChapterRepository()
+        val archive = mockk<CreatorArchiveRepository>(relaxed = true)
+        val useCase = SaveSourceMangaForDetails(
+            NetworkToLocalManga(mangaRepo),
+            mangaRepo,
+            chapterRepo,
+            archive,
+        )
+        val chapters = listOf(
+            SChapter.create().apply {
+                url = "/chapter/1"
+                name = "Chapter 1"
+                date_upload = 1_790_000_000_000L
+            },
+        )
+
+        val saved = useCase.await(
+            sManga = SManga.create().apply {
+                url = "/manga/archive"
+                title = "Archive Work"
+            },
+            sourceId = 42L,
+            sChapters = chapters,
+        )
+
+        coVerify {
+            archive.updateSourceWorkCatalog(
+                sourceWork = SourceWorkNaturalKey(42L, "/manga/archive"),
+                chapterCount = 1L,
+                completeness = ChapterCatalogCompleteness.COMPLETE,
+                latestChapterAt = 1_790_000_000_000L,
+                observedAt = any(),
+                mangaId = saved.id,
+            )
+        }
     }
 
     @Test

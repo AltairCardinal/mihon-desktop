@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.Flow
 import tachiyomi.domain.creator.model.ArchiveDiscovery
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.CanonicalWork
+import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.CreatorCardProjectionPage
 import tachiyomi.domain.creator.model.CreatorWorkArchive
 import tachiyomi.domain.creator.model.DueWatchSource
@@ -86,6 +87,15 @@ class CreatorArchive(
 
     suspend fun getChapterVariants(sourceWork: SourceWorkNaturalKey): List<ChapterVariantRecord> =
         archive.getChapterVariants(sourceWork)
+
+    suspend fun updateSourceWorkCatalog(
+        sourceWork: SourceWorkNaturalKey,
+        chapterCount: Long,
+        completeness: ChapterCatalogCompleteness,
+        latestChapterAt: Long?,
+        observedAt: Long,
+        mangaId: Long? = null,
+    ) = archive.updateSourceWorkCatalog(sourceWork, chapterCount, completeness, latestChapterAt, observedAt, mangaId)
 
     suspend fun replaceChapterVariants(
         sourceWork: SourceWorkNaturalKey,

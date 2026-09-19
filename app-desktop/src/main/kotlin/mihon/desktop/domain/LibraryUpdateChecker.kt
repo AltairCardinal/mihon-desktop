@@ -8,6 +8,9 @@ import mihon.domain.error.AppError
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
+import tachiyomi.domain.creator.service.CreatorSourceWorkKey
 import tachiyomi.domain.manga.model.Manga
 
 /**
@@ -17,6 +20,7 @@ import tachiyomi.domain.manga.model.Manga
 class LibraryUpdateChecker(
     private val chapterRepository: ChapterRepository,
     private val mangaRepository: tachiyomi.domain.manga.repository.MangaRepository,
+    private val creatorArchiveRepository: CreatorArchiveRepository? = null,
 ) {
 
     /**
@@ -71,6 +75,23 @@ class LibraryUpdateChecker(
         } else {
             emptyList()
         }
+
+        creatorArchiveRepository?.updateSourceWorkCatalog(
+            sourceWork = tachiyomi.domain.creator.model.SourceWorkNaturalKey(
+                sourceId = manga.source,
+                stableSourceUrl = CreatorSourceWorkKey.stableUrl(
+                    url = manga.url,
+                    title = manga.title,
+                    author = manga.author,
+                    artist = manga.artist,
+                ),
+            ),
+            chapterCount = remoteChapters.size.toLong(),
+            completeness = ChapterCatalogCompleteness.COMPLETE,
+            latestChapterAt = remoteChapters.map { it.date_upload }.filter { it > 0L }.maxOrNull(),
+            observedAt = System.currentTimeMillis(),
+            mangaId = manga.id,
+        )
 
         return UpdateResult(newChapterCount = inserted.size, newChapters = inserted)
     }

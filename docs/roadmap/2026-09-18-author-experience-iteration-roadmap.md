@@ -106,7 +106,7 @@ TDD红绿记录：`ax01-android-author-card-layout-red2` exit 1，真实320dp mo
 
 ### AX-03 · 首次发现日期与元数据持久化
 
-- [ ] AX-03：交付稳定日期及真实章节完整性投影，A08/A13及日期恢复项通过。
+- [x] AX-03：交付稳定日期及真实章节完整性投影，A08/A13及日期恢复项通过。
 
 **用户结果**：没有可信上架日期时显示固定首次发现年月日；刷新、重启或恢复不会变晚，未抓目录不冒充0章。
 
@@ -126,6 +126,19 @@ TDD红绿记录：`ax01-android-author-card-layout-red2` exit 1，真实320dp mo
 **审查关口**：迁移、日期数据完整性与备份为高风险；由未参与实现者独立审查通过后才能让AX-04/05依赖。记录用例与真实日志，不以“测试已绿”替代审查。采用本执行批次预先声明的审查预算。
 
 **边界**：不建立真实源白名单，不将章节最早日期写为上架日，不扩大同步字段语义。
+
+**执行证据**：
+
+| 范围 | 命令/记录 | 结果 |
+|---|---|---|
+| 备份、日期、旧行恢复与迁移 | `ax03-green-restore-fallback`、`ax03-green-backup-full2`、`ax03-batch-data`；包含旧 payload 保留、日期/时区一致性、碰撞合并、无通知恢复、`legacy-manga:*` 行复用、v15/v16 fixture 重放 | 均 exit 0；恢复按 source+manga 限定复用旧行，未知目录不会写成真实 0 |
+| 领域契约与匹配边界 | `ax03-batch-domain`；`CreatorWorkArchiveMetadataTest`、`CreatorArchiveV2ContractTest`、`WorkMatchScorerTest` | exit 0；UNKNOWN 章节数在匹配中为 null，COMPLETE 的 0 仍保留 |
+| Android 生产更新接线 | `ax03-batch-android-fixed`；`UpdateMangaCreatorArchiveIntegrationTest`、`AndroidCreatorSettingsUiTest` | exit 0；章节刷新真实写入 COMPLETE 目录事实及 mangaId，作者页读取真实投影 |
+| Desktop 生产更新与 UI | `ax03-batch-desktop-final`；`LibraryUpdateCheckerTest`、`SaveSourceMangaForDetailsTest`、`AuthorsProductionWiringTest`、`AuthorsScreenModelsTest` | exit 0；更新/详情保存接入目录写入，三种布局显示首次发现日期，来源窗口区分未知/部分/完整，UNKNOWN 不进入章节匹配 |
+| 红绿与格式 | 有效红灯：`ax03-red-restore-valid2`、`ax03-review-red-match`；绿灯：`ax03-green-restore-fallback`、`ax03-green-unknown-match`；`ax03-spotless-final`、`git diff --check` | 红灯均为编译成功后的行为断言失败；修复后全部通过，diff 无错误（仅 CRLF 转换提示） |
+| 独立审查 | `/root/ax03_review` 最终复审 | `APPROVED`；未发现恢复去重、迁移/备份兼容、未知匹配或双端 wiring 回归 |
+
+**实现边界与维护说明**：schema 从 v28 迁移到 v29，新增冻结日期/时区、章节完整性、目录计数和最新章节时间；旧备份字段缺失时保留本地事实，恢复不创建通知。Android 与 Desktop 更新入口只记录当前目录观察结果；没有可信来源日期时仍使用本地首次发现日期，质量采样和真实来源白名单留给 AX-04。
 
 ### AX-04 · 日期可信采样与生产更新链路
 

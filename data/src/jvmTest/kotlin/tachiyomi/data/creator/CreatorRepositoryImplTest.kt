@@ -24,6 +24,7 @@ import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.domain.creator.model.ArchiveAppendOutcome
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.ArchiveUpsertOutcome
+import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.CreatorRelationOrigin
 import tachiyomi.domain.creator.model.CreatorRelationVerification
 import tachiyomi.domain.creator.model.CreatorRole
@@ -41,6 +42,7 @@ import tachiyomi.domain.creator.model.WorkMatchState
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import tachiyomi.domain.creator.service.ChapterVariantRecord
 import tachiyomi.domain.creator.service.ChapterVariantType
+import tachiyomi.domain.creator.service.CreatorSourceWorkKey
 import java.nio.file.Files
 
 class CreatorRepositoryImplTest {
@@ -98,6 +100,71 @@ class CreatorRepositoryImplTest {
             CreatorRelationVerification.VERIFIED, "Second", 1.0, "fixture",
         )
         repository.observeCreatorWorkArchive(first.id).first().pending.single().naturalKey shouldBe key
+    }
+
+    @Test
+    fun `catalog refresh preserves frozen first seen facts and records completeness`() = runBlocking<Unit> {
+        val key = SourceWorkNaturalKey(91L, "/catalog")
+        val firstSeenAt = 1_736_294_400_000L
+        val refreshedAt = 1_800_000_000_000L
+        var now = firstSeenAt
+        val timedRepository = CreatorRepositoryImpl(handler, clock = { now })
+        timedRepository.upsertSourceWork(91L, key.stableSourceUrl, null, "Catalog", null, null, null, null)
+        now = refreshedAt
+        timedRepository.upsertSourceWork(91L, key.stableSourceUrl, null, "Catalog renamed", null, null, null, null)
+
+        timedRepository.updateSourceWorkCatalog(
+            sourceWork = key,
+            chapterCount = 3L,
+            completeness = ChapterCatalogCompleteness.PARTIAL,
+            latestChapterAt = 1_790_000_000_000L,
+            observedAt = refreshedAt,
+        )
+
+        handler.await(inTransaction = true) {
+            val row = author_archiveQueries.getArchiveSourceWorkByKey(91L, key.stableSourceUrl).executeAsOne()
+            row.first_seen_at shouldBe firstSeenAt
+            row.first_seen_date shouldBe "2025-01-08"
+            row.first_seen_zone shouldBe "UTC"
+            row.chapter_count_state shouldBe ChapterCatalogCompleteness.PARTIAL.name
+            row.catalog_chapter_count shouldBe 3L
+            row.latest_chapter_at shouldBe 1_790_000_000_000L
+        }
+    }
+
+    @Test
+    fun `catalog refresh updates a migrated blank-url source work`() = runBlocking<Unit> {
+        seedManga(id = 123L, source = 91L, url = "", title = "Legacy Catalog")
+        val legacyUrl = "legacy-manga:123"
+        repository.upsertSourceWork(
+            sourceId = 91L,
+            stableSourceUrl = legacyUrl,
+            mangaId = 123L,
+            title = "Legacy Catalog",
+            authorText = null,
+            artistText = null,
+            thumbnailUrl = null,
+            detailsFetchedAt = null,
+        )
+
+        repository.updateSourceWorkCatalog(
+            sourceWork = SourceWorkNaturalKey(
+                sourceId = 91L,
+                stableSourceUrl = CreatorSourceWorkKey.stableUrl("", "Legacy Catalog", null, null),
+            ),
+            chapterCount = 4L,
+            completeness = ChapterCatalogCompleteness.COMPLETE,
+            latestChapterAt = 1_800L,
+            observedAt = 2_000L,
+            mangaId = 123L,
+        )
+
+        handler.await(inTransaction = true) {
+            val row = author_archiveQueries.getArchiveSourceWorkByKey(91L, legacyUrl).executeAsOne()
+            row.chapter_count_state shouldBe ChapterCatalogCompleteness.COMPLETE.name
+            row.catalog_chapter_count shouldBe 4L
+            row.latest_chapter_at shouldBe 1_800L
+        }
     }
 
     @Test
@@ -211,7 +278,10 @@ class CreatorRepositoryImplTest {
                 "(2,1,2,'ARTIST',1,'RESTORE','Variant',0.9,'artist evidence',3,4)",
         )
         seed(
-            "INSERT INTO author_archive_source_works VALUES " +
+            "INSERT INTO author_archive_source_works(" +
+                "_id,source_id,stable_source_url,manga_id,title,normalized_title,author_text,artist_text," +
+                "thumbnail_url,first_seen_at,last_seen_at,details_fetched_at,legacy_candidate_id," +
+                "legacy_review_snapshot) VALUES " +
                 "(1,77,'/raw',1,'Work','work','Same','Variant',NULL,1,2,3,201,'ACCEPTED')",
         )
         seed(

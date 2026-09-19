@@ -119,8 +119,15 @@ CREATE TABLE author_archive_source_works(
     artist_text TEXT,
     thumbnail_url TEXT,
     first_seen_at INTEGER NOT NULL,
+    first_seen_date TEXT NOT NULL DEFAULT '',
+    first_seen_zone TEXT NOT NULL DEFAULT 'UTC',
     last_seen_at INTEGER NOT NULL,
     details_fetched_at INTEGER,
+    chapter_count_state TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK(
+        chapter_count_state IN ('UNKNOWN', 'PARTIAL', 'COMPLETE')
+    ),
+    catalog_chapter_count INTEGER NOT NULL DEFAULT 0 CHECK(catalog_chapter_count >= 0),
+    latest_chapter_at INTEGER,
     legacy_candidate_id INTEGER UNIQUE,
     legacy_review_snapshot TEXT CHECK(
         legacy_review_snapshot IS NULL OR
@@ -129,6 +136,19 @@ CREATE TABLE author_archive_source_works(
     UNIQUE(source_id, stable_source_url),
     FOREIGN KEY(manga_id) REFERENCES mangas(_id) ON DELETE SET NULL
 );
+
+CREATE TRIGGER author_archive_source_work_first_seen_defaults
+AFTER INSERT ON author_archive_source_works
+WHEN new.first_seen_at > 0 AND length(trim(new.first_seen_date)) = 0
+BEGIN
+    UPDATE author_archive_source_works
+    SET first_seen_date = strftime('%Y-%m-%d', new.first_seen_at / 1000, 'unixepoch'),
+        first_seen_zone = CASE
+            WHEN length(trim(new.first_seen_zone)) = 0 THEN 'UTC'
+            ELSE new.first_seen_zone
+        END
+    WHERE _id = new._id;
+END;
 
 CREATE INDEX idx_author_archive_source_works_manga
 ON author_archive_source_works(manga_id);
@@ -1148,7 +1168,13 @@ SELECT
     SW.title,
     SW.author_text,
     SW.artist_text,
-    SW.thumbnail_url
+    SW.thumbnail_url,
+    SW.first_seen_at,
+    SW.first_seen_date,
+    SW.first_seen_zone,
+    SW.catalog_chapter_count,
+    SW.chapter_count_state,
+    SW.latest_chapter_at
 FROM author_archive_source_works SW
 WHERE EXISTS(
     SELECT 1
@@ -1205,8 +1231,13 @@ INSERT INTO author_archive_source_works(
     artist_text,
     thumbnail_url,
     first_seen_at,
+    first_seen_date,
+    first_seen_zone,
     last_seen_at,
     details_fetched_at,
+    chapter_count_state,
+    catalog_chapter_count,
+    latest_chapter_at,
     legacy_candidate_id,
     legacy_review_snapshot
 )
@@ -1220,8 +1251,13 @@ VALUES (
     :artistText,
     :thumbnailUrl,
     :firstSeenAt,
+    :firstSeenDate,
+    :firstSeenZone,
     :lastSeenAt,
     :detailsFetchedAt,
+    :chapterCountState,
+    :catalogChapterCount,
+    :latestChapterAt,
     NULL,
     :legacyReviewSnapshot
 );
@@ -1237,6 +1273,8 @@ INSERT INTO author_archive_source_works(
     artist_text,
     thumbnail_url,
     first_seen_at,
+    first_seen_date,
+    first_seen_zone,
     last_seen_at,
     details_fetched_at,
     legacy_candidate_id,
@@ -1252,6 +1290,8 @@ VALUES (
     :artistText,
     :thumbnailUrl,
     :firstSeenAt,
+    :firstSeenDate,
+    :firstSeenZone,
     :lastSeenAt,
     :detailsFetchedAt,
     :legacyCandidateId,
@@ -1272,6 +1312,14 @@ SET title = :title,
     artist_text = :artistText,
     thumbnail_url = :thumbnailUrl,
     first_seen_at = min(first_seen_at, :firstSeenAt),
+    first_seen_date = CASE
+        WHEN :firstSeenAt < first_seen_at THEN :firstSeenDate
+        ELSE first_seen_date
+    END,
+    first_seen_zone = CASE
+        WHEN :firstSeenAt < first_seen_at THEN :firstSeenZone
+        ELSE first_seen_zone
+    END,
     last_seen_at = max(last_seen_at, :lastSeenAt),
     details_fetched_at = coalesce(:detailsFetchedAt, details_fetched_at),
     legacy_candidate_id = coalesce(legacy_candidate_id, :legacyCandidateId)
@@ -1298,6 +1346,30 @@ SET manga_id = coalesce(:mangaId, manga_id),
     last_seen_at = :lastSeenAt,
     details_fetched_at = coalesce(:detailsFetchedAt, details_fetched_at)
 WHERE _id = :id;
+
+updateArchiveSourceWorkCatalog:
+UPDATE author_archive_source_works
+SET chapter_count_state = :chapterCountState,
+    catalog_chapter_count = :catalogChapterCount,
+    latest_chapter_at = :latestChapterAt,
+    last_seen_at = max(last_seen_at, :lastSeenAt)
+WHERE source_id = :sourceId
+AND (
+    stable_source_url = trim(:stableSourceUrl)
+    OR (
+        :mangaId IS NOT NULL
+        AND manga_id = :mangaId
+        AND stable_source_url LIKE 'legacy-manga:%'
+    )
+);
+
+restoreArchiveSourceWorkFirstSeen:
+UPDATE author_archive_source_works
+SET first_seen_at = :firstSeenAt,
+    first_seen_date = :firstSeenDate,
+    first_seen_zone = :firstSeenZone
+WHERE _id = :id
+AND :firstSeenAt < first_seen_at;
 
 updateArchiveSourceWorkLegacyReviewSnapshot:
 UPDATE author_archive_source_works
@@ -1811,8 +1883,13 @@ INSERT INTO author_archive_source_works(
     artist_text,
     thumbnail_url,
     first_seen_at,
+    first_seen_date,
+    first_seen_zone,
     last_seen_at,
     details_fetched_at,
+    chapter_count_state,
+    catalog_chapter_count,
+    latest_chapter_at,
     legacy_candidate_id,
     legacy_review_snapshot
 )
@@ -1829,8 +1906,16 @@ SELECT
     M.artist,
     M.thumbnail_url,
     B.indexed_at,
+    CASE
+        WHEN B.indexed_at > 0 THEN strftime('%Y-%m-%d', B.indexed_at / 1000, 'unixepoch')
+        ELSE ''
+    END,
+    'UTC',
     B.indexed_at,
     CASE WHEN M.last_modified_at > 0 THEN M.last_modified_at ELSE NULL END,
+    'UNKNOWN',
+    0,
+    NULL,
     NULL,
     NULL
 FROM (
@@ -2979,12 +3064,17 @@ SELECT
     SW.title,
     SW.thumbnail_url,
     SW.details_fetched_at,
+    SW.first_seen_at,
+    SW.first_seen_date,
+    SW.first_seen_zone,
     SW.last_seen_at,
+    SW.chapter_count_state,
+    SW.catalog_chapter_count,
+    SW.latest_chapter_at,
     SC.result_state AS last_check_result,
     coalesce(SC.consecutive_failures, 0) AS consecutive_failures,
     SC.last_success_at,
     coalesce(M.favorite, 0) AS in_library,
-    (SELECT count(*) FROM chapters CH WHERE CH.manga_id = SW.manga_id) AS chapter_count,
     CV.work_id AS canonical_work_id,
     CW.portable_key AS canonical_portable_key,
     CW.primary_title AS canonical_title,

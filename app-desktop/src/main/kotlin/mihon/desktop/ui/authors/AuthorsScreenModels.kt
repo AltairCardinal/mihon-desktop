@@ -50,6 +50,7 @@ import eu.kanade.tachiyomi.source.CatalogueSource
 import mihon.desktop.DesktopUiDependencies
 import tachiyomi.domain.creator.service.OpenCreatorWorkVersion
 import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
+import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.service.CreatorIdentityEditor
 import tachiyomi.domain.creator.model.WorkDecisionProjection
 import tachiyomi.domain.creator.model.CreatorWorkArchiveFilter
@@ -716,7 +717,7 @@ internal class WorkCompareScreenModel(
             title = version.title,
             creators = emptyList(),
             language = version.readingLanguage.tag.takeUnless { it == "und" },
-            chapterCount = version.chapterCount.toInt(),
+            chapterCount = chapterCountForWorkMatching(version),
         )
         val canonicalWorkIds = archive.works.flatMap { work -> work.versions.map { it.sourceWorkId to work.workId } }.toMap()
         val suggestions = versions.filter { it.sourceWorkId != version.sourceWorkId && it.mangaId != null }.map { other ->
@@ -729,7 +730,7 @@ internal class WorkCompareScreenModel(
                         title = other.title,
                         creators = emptyList(),
                         language = other.readingLanguage.tag.takeUnless { it == "und" },
-                        chapterCount = other.chapterCount.toInt(),
+                        chapterCount = chapterCountForWorkMatching(other),
                     ),
                 ),
             )
@@ -777,6 +778,9 @@ internal class WorkCompareScreenModel(
         return summary
     }
 }
+
+internal fun chapterCountForWorkMatching(version: SourceWorkArchiveVersion): Int? =
+    version.chapterCount.takeUnless { version.chapterCompleteness == ChapterCatalogCompleteness.UNKNOWN }?.toInt()
 
 internal fun authorArchiveVersionSourceManga(version: SourceWorkArchiveVersion): SManga =
     SManga.create().apply {

@@ -4,6 +4,9 @@ import eu.kanade.domain.manga.model.hasCustomCover
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.model.SManga
+import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
+import tachiyomi.domain.creator.service.CreatorSourceWorkKey
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.FetchInterval
 import tachiyomi.domain.manga.model.Manga
@@ -18,6 +21,7 @@ import java.time.ZonedDateTime
 class UpdateManga(
     private val mangaRepository: MangaRepository,
     private val fetchInterval: FetchInterval,
+    private val creatorArchiveRepository: CreatorArchiveRepository? = null,
 ) {
 
     suspend fun awaitFromRemote(
@@ -72,6 +76,24 @@ class UpdateManga(
                 },
             )
             emptyList()
+        }
+        if (fetchChapters) {
+            creatorArchiveRepository?.updateSourceWorkCatalog(
+                sourceWork = tachiyomi.domain.creator.model.SourceWorkNaturalKey(
+                    sourceId = currentManga.source,
+                    stableSourceUrl = CreatorSourceWorkKey.stableUrl(
+                        url = currentManga.url,
+                        title = currentManga.title,
+                        author = currentManga.author,
+                        artist = currentManga.artist,
+                    ),
+                ),
+                chapterCount = update.chapters.size.toLong(),
+                completeness = ChapterCatalogCompleteness.COMPLETE,
+                latestChapterAt = update.chapters.map { it.date_upload }.filter { it > 0L }.maxOrNull(),
+                observedAt = Instant.now().toEpochMilli(),
+                mangaId = currentManga.id,
+            )
         }
         return mangaRepository.getMangaById(manga.id) to newChapters
     }

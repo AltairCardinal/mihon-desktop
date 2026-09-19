@@ -372,6 +372,8 @@ class AndroidCreatorSettingsUiTest {
                 .fetchSemanticsNode().boundsInRoot
             val title = compose.onNodeWithTag("creator-work-${work.id}", useUnmergedTree = true)
                 .fetchSemanticsNode().boundsInRoot
+            compose.onNodeWithTag("creator-work-first-seen-${work.id}", useUnmergedTree = true)
+                .assertIsDisplayed()
             assertTrue(
                 "Comfortable author work layout should put title below cover: $cover / $title",
                 cover.bottom <= title.top,
@@ -642,6 +644,7 @@ class AndroidCreatorSettingsUiTest {
                 NoopCreatorLibraryIndexWriter,
             )
             Injekt.addSingleton(NetworkToLocalManga(mangaRepository))
+            Injekt.addSingleton(LibraryPreferences(store))
 
             activity.get().setContent { MaterialTheme { Navigator(SettingsAuthorsScreen()) } }
 

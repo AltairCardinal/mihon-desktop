@@ -13,8 +13,11 @@ import eu.kanade.tachiyomi.data.backup.models.BackupCreatorIdentity
 import eu.kanade.tachiyomi.data.backup.models.BackupCreatorName
 import tachiyomi.data.Database
 import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.creator.ARCHIVE_DATE_ZONE
+import tachiyomi.data.creator.frozenArchiveDate
 import tachiyomi.data.creator.mergeCreatorIdentityGraph
 import tachiyomi.data.creator.reconcileArchiveCanonicalVersion
+import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.CreatorArchiveLanguageTag
 import tachiyomi.domain.creator.model.CreatorRelationOrigin
 import tachiyomi.domain.creator.model.CreatorRelationVerification
@@ -26,6 +29,13 @@ import tachiyomi.domain.creator.model.ReviewDisposition
 import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.service.CreatorNameNormalizer
 import tachiyomi.domain.creator.service.CreatorSourceWorkKey
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+
+private val ARCHIVE_DATE_PATTERN = Regex("\\d{4}-\\d{2}-\\d{2}")
 
 /**
  * Creates and restores the identity/alias/binding slice of backup field 107.
@@ -91,6 +101,12 @@ class SqlDelightAuthorArchiveBackupContributor(
                     authorText = work.author_text,
                     artistText = work.artist_text,
                     thumbnailUrl = work.thumbnail_url,
+                    firstSeenAt = work.first_seen_at,
+                    firstSeenDate = work.first_seen_date.takeIf(String::isNotBlank),
+                    firstSeenZone = work.first_seen_zone,
+                    chapterCount = work.catalog_chapter_count,
+                    chapterCompleteness = work.chapter_count_state,
+                    latestChapterAt = work.latest_chapter_at,
                     bindings = bindings[work.source_id to work.stable_source_url].orEmpty().map { binding ->
                         BackupAuthorBinding(
                             creatorPortableKey = binding.creator_portable_key,
@@ -106,7 +122,7 @@ class SqlDelightAuthorArchiveBackupContributor(
                 )
             }.groupBy { it.sourceId to it.stableSourceUrl }
                 .map { (_, versions) ->
-                    versions.first().copy(
+                    mergeSourceWorkFacts(versions).copy(
                         bindings = versions.flatMap(BackupAuthorSourceWork::bindings)
                             .groupBy(BackupAuthorBinding::creatorPortableKey)
                             .values
@@ -191,9 +207,9 @@ class SqlDelightAuthorArchiveBackupContributor(
     }
 
     override suspend fun restoreSection(section: BackupAuthorArchiveSection) {
-        val validated = validate(section)
-        awaitIdentityReady()
         val now = clock()
+        val validated = validate(section, now)
+        awaitIdentityReady()
         handler.await(inTransaction = true) {
             val localPrimaries = author_archiveQueries.getArchiveCreatorsForBackup().executeAsList()
                 .filter { it.status == STATUS_ACTIVE }.associate { creator ->
@@ -465,7 +481,15 @@ class SqlDelightAuthorArchiveBackupContributor(
         val existing = author_archiveQueries
             .getArchiveSourceWorkByKey(work.sourceId, work.stableSourceUrl)
             .executeAsOneOrNull()
+            ?: mangaId?.let { id ->
+                author_archiveQueries.getArchiveSourceWorksByManga(id).executeAsList()
+                    .firstOrNull { sourceWork ->
+                        sourceWork.source_id == work.sourceId &&
+                            sourceWork.stable_source_url.startsWith("legacy-manga:")
+                    }
+            }
         val sourceWorkId = if (existing == null) {
+            val firstSeenAt = work.firstSeenAt ?: now
             author_archiveQueries.insertArchiveSourceWork(
                 sourceId = work.sourceId,
                 stableSourceUrl = work.stableSourceUrl,
@@ -475,9 +499,14 @@ class SqlDelightAuthorArchiveBackupContributor(
                 authorText = work.authorText,
                 artistText = work.artistText,
                 thumbnailUrl = work.thumbnailUrl,
-                firstSeenAt = now,
+                firstSeenAt = firstSeenAt,
+                firstSeenDate = work.firstSeenDate ?: frozenArchiveDate(firstSeenAt),
+                firstSeenZone = work.firstSeenZone?.takeIf(String::isNotBlank) ?: ARCHIVE_DATE_ZONE,
                 lastSeenAt = now,
                 detailsFetchedAt = null,
+                chapterCountState = work.chapterCompleteness ?: ChapterCatalogCompleteness.UNKNOWN.name,
+                catalogChapterCount = work.chapterCount ?: 0L,
+                latestChapterAt = work.latestChapterAt,
                 legacyReviewSnapshot = null,
             )
             author_archiveQueries.selectArchiveLastInsertedRowId().executeAsOne()
@@ -494,6 +523,29 @@ class SqlDelightAuthorArchiveBackupContributor(
                 id = existing._id,
             )
             existing._id
+        }
+        if (existing != null) {
+            val firstSeenAt = work.firstSeenAt ?: existing.first_seen_at
+            author_archiveQueries.restoreArchiveSourceWorkFirstSeen(
+                firstSeenAt = firstSeenAt,
+                firstSeenDate = work.firstSeenDate ?: frozenArchiveDate(firstSeenAt),
+                firstSeenZone = work.firstSeenZone?.takeIf(String::isNotBlank) ?: ARCHIVE_DATE_ZONE,
+                id = existing._id,
+            )
+            if (work.chapterCompleteness != null || work.chapterCount != null || work.latestChapterAt != null) {
+                val chapterCountState = work.chapterCompleteness ?: existing.chapter_count_state
+                val catalogChapterCount = work.chapterCount ?: existing.catalog_chapter_count
+                val latestChapterAt = work.latestChapterAt ?: existing.latest_chapter_at
+                author_archiveQueries.updateArchiveSourceWorkCatalog(
+                    chapterCountState = chapterCountState,
+                    catalogChapterCount = catalogChapterCount,
+                    latestChapterAt = latestChapterAt,
+                    lastSeenAt = now,
+                    sourceId = work.sourceId,
+                    stableSourceUrl = work.stableSourceUrl,
+                    mangaId = existing.manga_id,
+                )
+            }
         }
         work.bindings.forEach { binding ->
             val creatorId = creatorIds.getValue(binding.creatorPortableKey)
@@ -539,7 +591,35 @@ class SqlDelightAuthorArchiveBackupContributor(
         else -> "BOTH"
     }
 
-    private fun validate(section: BackupAuthorArchiveSection): BackupAuthorArchiveSection {
+    private fun mergeSourceWorkFacts(versions: List<BackupAuthorSourceWork>): BackupAuthorSourceWork {
+        val first = versions.first()
+        val firstSeenAt = versions.mapNotNull { it.firstSeenAt?.takeIf { value -> value > 0L } }.minOrNull()
+        val firstSeenRecord = firstSeenAt?.let { value -> versions.firstOrNull { it.firstSeenAt == value } }
+        val completeness = versions.mapNotNull { it.chapterCompleteness }
+            .maxByOrNull { chapterCompletenessRank(it) }
+        val chapterCount = completeness?.let { state ->
+            versions.filter { it.chapterCompleteness == state }
+                .mapNotNull { it.chapterCount }
+                .maxOrNull()
+        } ?: versions.mapNotNull { it.chapterCount }.maxOrNull()
+        return first.copy(
+            firstSeenAt = firstSeenAt ?: first.firstSeenAt,
+            firstSeenDate = if (firstSeenRecord != null) firstSeenRecord.firstSeenDate else first.firstSeenDate,
+            firstSeenZone = if (firstSeenRecord != null) firstSeenRecord.firstSeenZone else first.firstSeenZone,
+            chapterCount = chapterCount,
+            chapterCompleteness = completeness,
+            latestChapterAt = versions.mapNotNull { it.latestChapterAt }.maxOrNull(),
+        )
+    }
+
+    private fun chapterCompletenessRank(value: String): Int = when (value) {
+        ChapterCatalogCompleteness.COMPLETE.name -> 2
+        ChapterCatalogCompleteness.PARTIAL.name -> 1
+        ChapterCatalogCompleteness.UNKNOWN.name -> 0
+        else -> -1
+    }
+
+    private fun validate(section: BackupAuthorArchiveSection, now: Long? = null): BackupAuthorArchiveSection {
         require(section.version in 1..BackupAuthorArchiveSection.CURRENT_VERSION) {
             "Unsupported author archive backup version: ${section.version}"
         }
@@ -639,6 +719,59 @@ class SqlDelightAuthorArchiveBackupContributor(
         normalizedSection.sourceWorks.forEach { work ->
             require(work.stableSourceUrl.isNotBlank()) { "Source work URL must not be blank" }
             require(work.title.isNotBlank()) { "Source work title must not be blank" }
+            require(work.firstSeenAt == null || work.firstSeenAt > 0L) {
+                "Source work first-seen time must be positive"
+            }
+            val firstSeenZone = work.firstSeenZone?.let { zone ->
+                runCatching { ZoneId.of(zone) }.getOrNull()
+            }
+            require(work.firstSeenZone == null || firstSeenZone != null) {
+                "Source work first-seen zone is invalid"
+            }
+            var parsedFirstSeenDate: LocalDate? = null
+            work.firstSeenDate?.let { date ->
+                require(ARCHIVE_DATE_PATTERN.matches(date)) {
+                    "Source work first-seen date must use YYYY-MM-DD"
+                }
+                parsedFirstSeenDate =
+                    runCatching { LocalDate.parse(date, DateTimeFormatter.ISO_LOCAL_DATE) }.getOrNull()
+                require(parsedFirstSeenDate != null) { "Source work first-seen date is invalid" }
+                now?.let { observedAt ->
+                    require(
+                        !parsedFirstSeenDate!!.isAfter(
+                            Instant.ofEpochMilli(observedAt)
+                                .atZone(firstSeenZone ?: ZoneOffset.UTC)
+                                .toLocalDate(),
+                        ),
+                    ) {
+                        "Source work first-seen date must not be in the future"
+                    }
+                }
+            }
+            if (parsedFirstSeenDate != null && work.firstSeenAt != null) {
+                require(
+                    parsedFirstSeenDate == Instant.ofEpochMilli(work.firstSeenAt)
+                        .atZone(firstSeenZone ?: ZoneOffset.UTC)
+                        .toLocalDate(),
+                ) {
+                    "Source work first-seen date does not match its timestamp"
+                }
+            }
+            now?.let { observedAt ->
+                require(work.firstSeenAt == null || work.firstSeenAt <= observedAt) {
+                    "Source work first-seen time must not be in the future"
+                }
+            }
+            require(work.firstSeenZone == null || work.firstSeenZone.isNotBlank()) {
+                "Source work first-seen zone must not be blank"
+            }
+            require(work.chapterCount == null || work.chapterCount >= 0L) {
+                "Source work chapter count must not be negative"
+            }
+            work.chapterCompleteness?.let { enumValueOf<ChapterCatalogCompleteness>(it) }
+            require(work.latestChapterAt == null || work.latestChapterAt > 0L) {
+                "Source work latest chapter time must be positive"
+            }
             require(work.bindings.distinctBy(BackupAuthorBinding::creatorPortableKey).size == work.bindings.size) {
                 "Duplicate creator binding for source work"
             }

@@ -18,8 +18,226 @@ import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.JvmDatabaseHandler
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
+import tachiyomi.domain.creator.service.CreatorSourceWorkKey
 
 class AuthorArchiveBackupContributorTest {
+
+    @Test
+    fun `portable backup round trip preserves frozen source work facts without notifications`() = runBlocking {
+        val source = fixture()
+        source.seedManga(1L, 10L, "/one")
+        source.seedArchive()
+        source.driver.execute(
+            null,
+            "UPDATE author_archive_source_works SET first_seen_at = ?, first_seen_date = ?, " +
+                "first_seen_zone = ?, chapter_count_state = ?, catalog_chapter_count = ?, latest_chapter_at = ? " +
+                "WHERE _id = 1",
+            6,
+        ) {
+            bindLong(0, 1_736_294_400_000L)
+            bindString(1, "2025-01-08")
+            bindString(2, "UTC")
+            bindString(3, "PARTIAL")
+            bindLong(4, 3L)
+            bindLong(5, 1_790_000_000_000L)
+        }
+
+        val section = checkNotNull(source.contributor.createSection())
+        val target = fixture()
+        target.contributor.restoreSection(section)
+
+        target.string("SELECT first_seen_date FROM author_archive_source_works WHERE source_id = 10") shouldBe
+            "2025-01-08"
+        target.string("SELECT first_seen_zone FROM author_archive_source_works WHERE source_id = 10") shouldBe "UTC"
+        target.string("SELECT chapter_count_state FROM author_archive_source_works WHERE source_id = 10") shouldBe
+            "PARTIAL"
+        target.long("SELECT catalog_chapter_count FROM author_archive_source_works WHERE source_id = 10") shouldBe 3L
+        target.long("SELECT latest_chapter_at FROM author_archive_source_works WHERE source_id = 10") shouldBe
+            1_790_000_000_000L
+        target.long("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 0L
+    }
+
+    @Test
+    fun `portable backup merges colliding legacy and blank-url work facts`() = runBlocking<Unit> {
+        val source = fixture()
+        source.seedManga(1L, 10L, "/one")
+        source.seedManga(2L, 10L, "/two")
+        source.seedArchive()
+        val blankUrl = CreatorSourceWorkKey.stableUrl("", "Collision", "Author", null)
+        source.driver.execute(
+            null,
+            "INSERT INTO author_archive_source_works(" +
+                "_id, source_id, stable_source_url, title, normalized_title, author_text, first_seen_at, " +
+                "first_seen_date, first_seen_zone, last_seen_at, chapter_count_state, catalog_chapter_count, " +
+                "latest_chapter_at" +
+                ") VALUES " +
+                "(3, 42, 'legacy-manga:30', 'Collision', 'collision', 'Author', 1000, '1970-01-01', " +
+                "'UTC', 3000, 'COMPLETE', 9, 2900), " +
+                "(4, 42, '$blankUrl', 'Collision', 'collision', 'Author', 2000, '1970-01-01', " +
+                "'UTC', 3000, 'UNKNOWN', 0, NULL)",
+            0,
+        )
+        source.driver.execute(
+            null,
+            "INSERT INTO author_archive_source_work_creators(" +
+                "source_work_id, creator_id, role, creator_order, origin, verification, confidence, evidence, " +
+                "created_at, last_modified_at" +
+                ") VALUES " +
+                "(3, 1, 'AUTHOR', 0, 'USER', 'VERIFIED', 1, 'legacy collision', 1, 1), " +
+                "(4, 1, 'AUTHOR', 0, 'USER', 'VERIFIED', 1, 'blank collision', 1, 1)",
+            0,
+        )
+
+        val section = checkNotNull(source.contributor.createSection())
+        val collision = section.sourceWorks.single { it.title == "Collision" }
+
+        collision.firstSeenAt shouldBe 1000L
+        collision.chapterCount shouldBe 9L
+        collision.chapterCompleteness shouldBe "COMPLETE"
+        collision.latestChapterAt shouldBe 2900L
+        collision.bindings.single().creatorPortableKey shouldBe "creator-a"
+    }
+
+    @Test
+    fun `restoring a blank-url work reuses an existing migrated legacy row`() = runBlocking<Unit> {
+        val target = fixture()
+        target.seedManga(1L, 42L, "", title = "Legacy", author = "Author")
+        target.seedManga(2L, 10L, "/two")
+        target.seedArchive()
+        target.driver.execute(
+            null,
+            "INSERT INTO author_archive_source_works(" +
+                "_id, source_id, stable_source_url, manga_id, title, normalized_title, author_text, first_seen_at, " +
+                "first_seen_date, first_seen_zone, last_seen_at" +
+                ") VALUES (3, 42, 'legacy-manga:1', 1, 'Legacy', 'legacy', 'Author', 100, " +
+                "'1970-01-01', 'UTC', 200)",
+            0,
+        )
+        target.driver.execute(
+            null,
+            "INSERT INTO author_archive_source_work_creators(" +
+                "source_work_id, creator_id, role, creator_order, origin, verification, confidence, evidence, " +
+                "created_at, last_modified_at" +
+                ") VALUES (3, 1, 'AUTHOR', 0, 'MIGRATION', 'VERIFIED', 1, 'legacy row', 1, 1)",
+            0,
+        )
+        val blankUrl = CreatorSourceWorkKey.stableUrl("", "Legacy", "Author", null)
+        val section = BackupAuthorArchiveSection(
+            creators = listOf(BackupCreatorIdentity("creator-a", "Same A", "same")),
+            sourceWorks = listOf(
+                BackupAuthorSourceWork(
+                    sourceId = 42L,
+                    stableSourceUrl = blankUrl,
+                    title = "Legacy",
+                    authorText = "Author",
+                    firstSeenAt = 100L,
+                    firstSeenDate = "1970-01-01",
+                    firstSeenZone = "UTC",
+                    chapterCount = 4L,
+                    chapterCompleteness = "COMPLETE",
+                    bindings = listOf(
+                        BackupAuthorBinding(
+                            creatorPortableKey = "creator-a",
+                            role = "AUTHOR",
+                            order = 0,
+                            origin = "RESTORE",
+                            verification = "VERIFIED",
+                            confidence = 1.0,
+                            evidence = "backup",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        target.contributor.restoreSection(section)
+
+        target.long(
+            "SELECT COUNT(*) FROM author_archive_source_works WHERE source_id = 42 AND manga_id = 1",
+        ) shouldBe 1L
+        target.string(
+            "SELECT stable_source_url FROM author_archive_source_works WHERE source_id = 42 AND manga_id = 1",
+        ) shouldBe "legacy-manga:1"
+        target.string(
+            "SELECT chapter_count_state FROM author_archive_source_works WHERE source_id = 42 AND manga_id = 1",
+        ) shouldBe "COMPLETE"
+    }
+
+    @Test
+    fun `legacy payload does not erase local frozen source work facts`() = runBlocking {
+        val source = fixture()
+        source.seedManga(1L, 10L, "/one")
+        source.seedArchive()
+        source.driver.execute(
+            null,
+            "UPDATE author_archive_source_works SET first_seen_date = ?, first_seen_zone = ?, " +
+                "chapter_count_state = ?, catalog_chapter_count = ?, latest_chapter_at = ? WHERE _id = 1",
+            5,
+        ) {
+            bindString(0, "2025-01-08")
+            bindString(1, "UTC")
+            bindString(2, "COMPLETE")
+            bindLong(3, 9L)
+            bindLong(4, 1_790_000_000_000L)
+        }
+        val section = checkNotNull(source.contributor.createSection())
+        val legacyPayload = section.copy(
+            sourceWorks = section.sourceWorks.map {
+                it.copy(
+                    firstSeenAt = null,
+                    firstSeenDate = null,
+                    firstSeenZone = null,
+                    chapterCount = null,
+                    chapterCompleteness = null,
+                    latestChapterAt = null,
+                )
+            },
+        )
+
+        val target = fixture()
+        target.seedManga(1L, 10L, "/one")
+        target.seedArchive()
+        target.contributor.restoreSection(legacyPayload)
+
+        target.string("SELECT first_seen_date FROM author_archive_source_works WHERE _id = 1") shouldBe "2025-01-08"
+        target.string("SELECT chapter_count_state FROM author_archive_source_works WHERE _id = 1") shouldBe "COMPLETE"
+        target.long("SELECT catalog_chapter_count FROM author_archive_source_works WHERE _id = 1") shouldBe 9L
+        target.long("SELECT latest_chapter_at FROM author_archive_source_works WHERE _id = 1") shouldBe
+            1_790_000_000_000L
+    }
+
+    @Test
+    fun `invalid or future source work dates are rejected before transaction writes`() = runBlocking {
+        val target = fixture()
+        val creator = BackupCreatorIdentity("creator-a", "Author", "author")
+        val binding =
+            BackupAuthorBinding(
+                "creator-a",
+                "AUTHOR",
+                0,
+                "AUTOMATIC",
+                "VERIFIED",
+                confidence = 1.0,
+                evidence = "fixture",
+            )
+        val base = BackupAuthorArchiveSection(
+            creators = listOf(creator),
+            sourceWorks = listOf(BackupAuthorSourceWork(10L, "/one", "One", bindings = listOf(binding))),
+        )
+
+        for (invalid in listOf(
+            base.copy(sourceWorks = listOf(base.sourceWorks.single().copy(firstSeenDate = "2025-02-29"))),
+            base.copy(sourceWorks = listOf(base.sourceWorks.single().copy(firstSeenAt = 501L))),
+            base.copy(
+                sourceWorks = listOf(
+                    base.sourceWorks.single().copy(firstSeenAt = 200L, firstSeenDate = "1969-12-31"),
+                ),
+            ),
+        )) {
+            shouldThrow<IllegalArgumentException> { target.contributor.restoreSection(invalid) }
+            target.long("SELECT COUNT(*) FROM author_archive_creators") shouldBe 0L
+        }
+    }
 
     @Test
     fun `device local representative cache is excluded from portable author backup`() = runBlocking {

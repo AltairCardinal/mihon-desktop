@@ -705,7 +705,12 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
     Injekt.addSingleton(SetMangaChapterFlags(mangaRepository))
     Injekt.addSingleton(upsertHistory)
 
-    val saveSourceMangaForDetails = SaveSourceMangaForDetails(networkToLocalManga, mangaRepository, chapterRepository)
+    val saveSourceMangaForDetails = SaveSourceMangaForDetails(
+        networkToLocalManga,
+        mangaRepository,
+        chapterRepository,
+        Injekt.get<CreatorArchiveRepository>(),
+    )
     Injekt.addSingleton(saveSourceMangaForDetails)
     Injekt.addSingleton(GetFavorites(mangaRepository))
     val setMangaCategories = SetMangaCategories(mangaRepository)
@@ -723,7 +728,13 @@ internal fun initDomainLayer(handler: DatabaseHandler) {
     )
     Injekt.addSingleton(UpdateMangaNotes(mangaRepository))
     Injekt.addSingleton(ReaderModeMemoryCleaner(mangaRepository))
-    Injekt.addSingleton(LibraryUpdateChecker(chapterRepository, mangaRepository))
+    Injekt.addSingleton(
+        LibraryUpdateChecker(
+            chapterRepository,
+            mangaRepository,
+            Injekt.get<CreatorArchiveRepository>(),
+        ),
+    )
     val creatorDiscoverySourcePort = CatalogueCreatorDiscoverySourceAdapter(
         enabledSourcesProvider = {
             runCatching { Injekt.get<DesktopSourceManager>() }

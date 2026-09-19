@@ -19,6 +19,9 @@ import mihon.domain.manga.model.toDomainManga
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
+import tachiyomi.domain.creator.service.CreatorSourceWorkKey
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
@@ -34,6 +37,7 @@ class SaveSourceMangaForDetails(
     private val networkToLocalManga: NetworkToLocalManga,
     private val mangaRepository: MangaRepository,
     private val chapterRepository: ChapterRepository,
+    private val creatorArchiveRepository: CreatorArchiveRepository? = null,
     private val refreshScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
 
@@ -190,6 +194,23 @@ class SaveSourceMangaForDetails(
         if (toAdd.isNotEmpty()) {
             chapterRepository.addAll(toAdd)
         }
+
+        creatorArchiveRepository?.updateSourceWorkCatalog(
+            sourceWork = tachiyomi.domain.creator.model.SourceWorkNaturalKey(
+                sourceId = dbManga.source,
+                stableSourceUrl = CreatorSourceWorkKey.stableUrl(
+                    url = dbManga.url,
+                    title = dbManga.title,
+                    author = dbManga.author,
+                    artist = dbManga.artist,
+                ),
+            ),
+            chapterCount = sChapters.size.toLong(),
+            completeness = ChapterCatalogCompleteness.COMPLETE,
+            latestChapterAt = sChapters.map { it.date_upload }.filter { it > 0L }.maxOrNull(),
+            observedAt = now,
+            mangaId = dbManga.id,
+        )
 
         return dbManga
     }

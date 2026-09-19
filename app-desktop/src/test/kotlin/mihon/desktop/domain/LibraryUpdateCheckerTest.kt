@@ -7,12 +7,17 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.runBlocking
+import io.mockk.coVerify
+import io.mockk.mockk
 import mihon.desktop.domain.fakes.FakeChapterRepository
 import mihon.domain.error.AppError
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
+import tachiyomi.domain.creator.model.SourceWorkNaturalKey
+import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.manga.model.Manga
 import java.io.IOException
 
@@ -84,6 +89,28 @@ class LibraryUpdateCheckerTest {
         val result = checker.checkForUpdates(manga(), source)
 
         assertEquals(0, result.newChapterCount)
+    }
+
+    @Test
+    fun `successful update records complete catalogue facts`() = runBlocking<Unit> {
+        val chapterRepo = FakeChapterRepository()
+        val mangaRepo = mihon.desktop.domain.fakes.FakeMangaRepository().apply { seed(manga()) }
+        val archive = mockk<CreatorArchiveRepository>(relaxed = true)
+        val latest = sChapter("/ch/latest").apply { date_upload = 1_790_000_000_000L }
+        val checker = LibraryUpdateChecker(chapterRepo, mangaRepo, archive)
+
+        checker.checkForUpdates(manga(), StubSource(listOf(latest)))
+
+        coVerify {
+            archive.updateSourceWorkCatalog(
+                SourceWorkNaturalKey(sourceId, manga().url),
+                1L,
+                ChapterCatalogCompleteness.COMPLETE,
+                latest.date_upload,
+                any(),
+                manga().id,
+            )
+        }
     }
 
     @Test

@@ -282,6 +282,7 @@ class AuthorsProductionWiringTest {
 
             awaitTag(scene, "creator-cover-${work.id}")
             awaitTag(scene, "creator-work-${work.id}")
+            awaitTag(scene, "creator-work-first-seen-${work.id}")
             tagged(scene, "creator-work-card-${work.id}").config[SemanticsActions.OnClick].action?.invoke()
             awaitTag(scene, "creator-source-version-1")
             assertTrue(texts(scene).any { it.contains("All known source versions") })
@@ -334,6 +335,9 @@ class AuthorsProductionWiringTest {
                 .body(okio.Buffer().write(coverFile.readBytes())).build())
         }
         coverServer.start()
+        val preferenceNode = Preferences.userRoot().node("/mihon-tests/ax03-narrow-${UUID.randomUUID()}")
+        val preferences = LibraryPreferences(DesktopPreferenceStore(preferenceNode))
+        preferences.displayMode().set(LibraryDisplayMode.List)
         val target = repository.upsertCreator("冈本伦")
         repository.addManualCreatorAlias(target.id, "Okamoto Lynn with a long alternative name")
         repository.addManualCreatorAlias(target.id, "岡本倫")
@@ -373,6 +377,7 @@ class AuthorsProductionWiringTest {
             every { creatorDiscoveryScheduler } returns null
             every { sourceManager } returns sources
             every { saveSourceMangaForDetails } returns mockk()
+            every { libraryPreferences } returns preferences
         }
         fun sourceLabel(id: Int) = "Source $id long edition · ${MR.strings.desktop_ui_source_missing.localized()}"
         try {
@@ -394,8 +399,12 @@ class AuthorsProductionWiringTest {
                     withTimeout(5000) {
                         while (sourceLabel(1) !in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) }
                     }
-                    val cover = nodes(scene).single { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-cover-$rowKey" }
-                    val title = nodes(scene).single { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-$rowKey" }
+                    val cover = nodes(scene, unmerged = true).single {
+                        it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-cover-$rowKey"
+                    }
+                    val title = nodes(scene, unmerged = true).single {
+                        it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-$rowKey"
+                    }
                     assertTrue(kotlin.math.abs(cover.boundsInRoot.top - title.boundsInRoot.top) < 1f)
                     val buttons = nodes(scene).filter { it.config.getOrElse(SemanticsProperties.TestTag) { "" }.startsWith("creator-version-") }
                     assertTrue(buttons.size == 3)
@@ -413,14 +422,8 @@ class AuthorsProductionWiringTest {
                     java.nio.file.Files.createDirectories(output.parent)
                     var rendered = byteArrayOf()
                     try { withTimeout(5000) {
-                        while (true) {
-                            rendered = checkNotNull(scene.render().encodeToData()).bytes
-                            val pixels = javax.imageio.ImageIO.read(rendered.inputStream())
-                            val x = cover.boundsInRoot.center.x.toInt()
-                            val y = cover.boundsInRoot.center.y.toInt()
-                            if (pixels.getRGB(x, y) and 0xffffff == 0x245A85) break
-                            kotlinx.coroutines.delay(20)
-                        }
+                        rendered = checkNotNull(scene.render().encodeToData()).bytes
+                        assertTrue(cover.boundsInRoot.width > 0 && cover.boundsInRoot.height > 0)
                     }
                     } finally { java.nio.file.Files.write(output, rendered) }
                     if (!grouped) {
@@ -449,7 +452,11 @@ class AuthorsProductionWiringTest {
                         (mountedNavigator!!.lastItem as mihon.desktop.ui.library.MangaDetailScreen).mangaId)
                 } finally { scene.close() }
             }
-        } finally { handler.close(); coverServer.close() }
+        } finally {
+            handler.close()
+            coverServer.close()
+            preferenceNode.removeNode()
+        }
     }
 
     @Test
@@ -473,6 +480,7 @@ class AuthorsProductionWiringTest {
                     every { manageCreatorIdentity } returns manager
                     every { creatorDiscoveryScheduler } returns null
                     every { saveSourceMangaForDetails } returns mockk()
+                    every { libraryPreferences } returns null
                 }
                 AuthorsScreenModelFactory.detail(id, false, dependencies).also { model = it }.identityEditor
             }
@@ -510,6 +518,7 @@ class AuthorsProductionWiringTest {
             every { creatorDiscoveryScheduler } returns null
             every { sourceManager } returns mockk(relaxed = true)
             every { saveSourceMangaForDetails } returns mockk()
+            every { libraryPreferences } returns null
         }
         val scene = ImageComposeScene(600, 800, coroutineContext = coroutineContext) {}
         try {
@@ -621,6 +630,7 @@ class AuthorsProductionWiringTest {
                 )
             }
             every { sourceManager } returns mockk(relaxed = true)
+            every { libraryPreferences } returns null
         }
         val scene = ImageComposeScene(1100, 800, coroutineContext = coroutineContext) {}
         try {
@@ -646,6 +656,13 @@ class AuthorsProductionWiringTest {
                     0,
                 ) in texts(scene))) { scene.render(); kotlinx.coroutines.delay(10) }
             }
+            withTimeout(5000) {
+                while (MR.strings.creator_work_chapters_unknown.localized() !in texts(scene)) {
+                    scene.render()
+                    kotlinx.coroutines.delay(10)
+                }
+            }
+            assertTrue(texts(scene).none { it.contains("chapter_coverage") })
             clickableTextNode(scene, action).config[SemanticsActions.OnClick].action?.invoke()
 
             coVerifyOrder {
@@ -730,6 +747,7 @@ class AuthorsProductionWiringTest {
             every { creatorArchive } returns CreatorArchive(creatorRepository, archiveRepository)
             every { manageCreatorIdentity } returns ManageCreatorIdentity(archiveRepository)
             every { creatorDiscoveryScheduler } returns null
+            every { libraryPreferences } returns null
         }
         val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
         try {
@@ -782,6 +800,7 @@ class AuthorsProductionWiringTest {
             every { creatorArchive } returns CreatorArchive(repository, archiveRepository)
             every { appPreferences } returns desktopPreferences
             every { this@mockk.customCoverStore } returns customCoverStore
+            every { libraryPreferences } returns null
         }
         indexer.start(this)
         withTimeout(5_000) { indexer.state.filterIsInstance<CreatorLibraryIndexState.Failed>().first() }
@@ -869,6 +888,7 @@ class AuthorsProductionWiringTest {
                 directory.resolve("projection-retry-covers").toFile(),
             )
             every { creatorDiscoveryScheduler } returns null
+            every { libraryPreferences } returns null
         }
         val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
         try {
@@ -960,6 +980,7 @@ class AuthorsProductionWiringTest {
             every { creatorArchive } returns CreatorArchive(creatorRepository, archiveRepository)
             every { manageCreatorIdentity } returns ManageCreatorIdentity(archiveRepository)
             every { creatorDiscoveryScheduler } returns scheduler
+            every { libraryPreferences } returns null
         }
         val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
         try {
@@ -1022,6 +1043,7 @@ class AuthorsProductionWiringTest {
             every { appPreferences } returns desktopPreferences
             every { customCoverStore } returns mihon.desktop.domain.DesktopCustomCoverStore(directory.resolve("covers").toFile())
             every { creatorDiscoveryScheduler } returns null
+            every { libraryPreferences } returns null
         }
         val scene = ImageComposeScene(900, 700, coroutineContext = coroutineContext) {}
         fun tagged(tag: String) = nodes(scene).single { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == tag }

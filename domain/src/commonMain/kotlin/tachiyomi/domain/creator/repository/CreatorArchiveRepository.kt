@@ -7,6 +7,7 @@ import tachiyomi.domain.creator.model.ArchiveDiscovery
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.ArchiveUpsertOutcome
 import tachiyomi.domain.creator.model.ArchiveWatchPolicy
+import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.CreatorAliasCandidates
 import tachiyomi.domain.creator.model.CreatorArchiveV2Policy
 import tachiyomi.domain.creator.model.CreatorCardProjectionPage
@@ -118,6 +119,16 @@ interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
     )
 
     suspend fun getChapterVariants(sourceWork: SourceWorkNaturalKey): List<ChapterVariantRecord>
+
+    /** Persist one real catalogue observation without changing the source work's first-seen fact. */
+    suspend fun updateSourceWorkCatalog(
+        sourceWork: SourceWorkNaturalKey,
+        chapterCount: Long,
+        completeness: ChapterCatalogCompleteness,
+        latestChapterAt: Long?,
+        observedAt: Long,
+        mangaId: Long? = null,
+    )
 
     suspend fun upsertWatchPolicy(policy: ArchiveWatchPolicy, now: Long)
 

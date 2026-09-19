@@ -236,7 +236,7 @@ class DomainModule : InjektModule {
         addFactory { SetMangaDefaultChapterFlags(get(), get(), get()) }
         addFactory { SetMangaViewerFlags(get()) }
         addFactory { NetworkToLocalManga(get()) }
-        addFactory { UpdateManga(get(), get()) }
+        addFactory { UpdateManga(get(), get(), get()) }
         addFactory { UpdateLibraryMembership(get<MangaRepository>()) }
         addFactory { UpdateMangaNotes(get()) }
         addFactory { SetMangaCategories(get()) }

@@ -1768,6 +1768,7 @@
     <string name="creator_work_choose_source">选择图源</string>
     <string name="creator_work_all_source_versions">此作品的全部已知图源版本</string>
     <string name="creator_work_chapters_unknown">章节数未知</string>
+    <string name="creator_work_chapters_fetched">已获取章节：%d</string>
     <string name="creator_work_latest_date_unknown">最新章节日期未提供</string>
     <string name="creator_work_latest_date_pending">最新章节日期待核实</string>
     <string name="creator_settings_title">作者设置</string>

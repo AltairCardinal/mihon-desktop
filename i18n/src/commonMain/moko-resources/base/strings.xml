@@ -1634,7 +1634,7 @@
     <string name="desktop_ui_source_versions">%d source versions</string>
     <string name="desktop_ui_pending_work_suggestions">Needs review</string>
     <string name="desktop_ui_separated_work_versions">Kept separate</string>
-    <string name="desktop_ui_archive_version_evidence">%1$s (%2$s) · %3$s (%4$s) · %5$d chapters · %6$s · check %7$s · last success %8$s</string>
+    <string name="desktop_ui_archive_version_evidence">%1$s (%2$s) · %3$s (%4$s) · %5$s · %6$s · check %7$s · last success %8$s</string>
     <string name="desktop_ui_in_library">In library</string>
     <string name="desktop_ui_not_in_library">Not in library</string>
     <string name="desktop_ui_pending_decision">pending</string>
@@ -2008,6 +2008,7 @@
     <string name="creator_work_choose_source">Choose a source</string>
     <string name="creator_work_all_source_versions">All known source versions for this work</string>
     <string name="creator_work_chapters_unknown">Chapter count unknown</string>
+    <string name="creator_work_chapters_fetched">Fetched chapters: %d</string>
     <string name="creator_work_latest_date_unknown">Latest chapter date unavailable</string>
     <string name="creator_work_latest_date_pending">Latest chapter date pending verification</string>
     <string name="creator_settings_title">Author settings</string>

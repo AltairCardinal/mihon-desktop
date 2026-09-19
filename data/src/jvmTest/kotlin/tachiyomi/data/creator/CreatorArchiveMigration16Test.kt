@@ -14,12 +14,14 @@ class CreatorArchiveMigration16Test {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         Database.Schema.create(driver)
         mihon.data.sync.removeSyncJournalSchema(driver)
-        // Remove only identity additions from migrations 25 and 26 before replaying v16 onward.
+        // Remove additions from migrations 25 through 28 before replaying v16 onward.
         val identityObjects = driver.executeQuery(
             null,
             """SELECT type, name FROM sqlite_master
                 WHERE (type = 'table' AND name GLOB 'author_archive_identity_*')
+                   OR (type = 'table' AND name = 'author_archive_representative_work_cache')
                    OR (type = 'trigger' AND name GLOB 'author_archive_*_revision')
+                   OR (type = 'trigger' AND name = 'author_archive_source_work_first_seen_defaults')
                 ORDER BY CASE type WHEN 'trigger' THEN 0 ELSE 1 END""",
             { cursor ->
                 app.cash.sqldelight.db.QueryResult.Value(
@@ -33,6 +35,16 @@ class CreatorArchiveMigration16Test {
             0,
         ).value
         identityObjects.forEach { (type, name) -> driver.execute(null, "DROP $type $name", 0) }
+        listOf(
+            "first_seen_date",
+            "first_seen_zone",
+            "chapter_count_state",
+            "catalog_chapter_count",
+            "latest_chapter_at",
+        )
+            .forEach { column ->
+                driver.execute(null, "ALTER TABLE author_archive_source_works DROP COLUMN $column", 0)
+            }
         driver.execute(null, "ALTER TABLE author_archive_creators DROP COLUMN identity_revision", 0)
         driver.execute(null, "ALTER TABLE mangas DROP COLUMN memo", 0)
         driver.execute(null, "ALTER TABLE chapters DROP COLUMN memo", 0)

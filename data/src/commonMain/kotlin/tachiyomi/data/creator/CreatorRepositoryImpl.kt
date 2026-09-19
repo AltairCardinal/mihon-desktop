@@ -34,6 +34,7 @@ import tachiyomi.domain.creator.model.ArchiveWatchPolicy
 import tachiyomi.domain.creator.model.CanonicalWork
 import tachiyomi.domain.creator.model.CanonicalWorkArchiveGroup
 import tachiyomi.domain.creator.model.CanonicalWorkPortableKey
+import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.CreatorAliasCandidates
 import tachiyomi.domain.creator.model.CreatorArchiveLanguageTag
@@ -497,6 +498,31 @@ class CreatorRepositoryImpl(
                     evidence = evidence,
                 )
             }
+        }
+    }
+
+    override suspend fun updateSourceWorkCatalog(
+        sourceWork: SourceWorkNaturalKey,
+        chapterCount: Long,
+        completeness: ChapterCatalogCompleteness,
+        latestChapterAt: Long?,
+        observedAt: Long,
+        mangaId: Long?,
+    ) {
+        bootstrap.awaitReady()
+        require(chapterCount >= 0L) { "Chapter count must not be negative" }
+        require(observedAt > 0L) { "Catalog observation time must be positive" }
+        require(mangaId == null || mangaId > 0L) { "Manga ID must be positive" }
+        handler.await(inTransaction = true) {
+            author_archiveQueries.updateArchiveSourceWorkCatalog(
+                chapterCountState = completeness.name,
+                catalogChapterCount = chapterCount,
+                latestChapterAt = latestChapterAt,
+                lastSeenAt = observedAt,
+                sourceId = sourceWork.sourceId,
+                stableSourceUrl = sourceWork.stableSourceUrl.trim(),
+                mangaId = mangaId,
+            )
         }
     }
     override suspend fun upsertWatchPolicy(policy: ArchiveWatchPolicy, now: Long) {
@@ -2755,8 +2781,13 @@ class CreatorRepositoryImpl(
                 artistText = artistText,
                 thumbnailUrl = thumbnailUrl,
                 firstSeenAt = now,
+                firstSeenDate = frozenArchiveDate(now),
+                firstSeenZone = ARCHIVE_DATE_ZONE,
                 lastSeenAt = now,
                 detailsFetchedAt = detailsFetchedAt,
+                chapterCountState = ChapterCatalogCompleteness.UNKNOWN.name,
+                catalogChapterCount = 0,
+                latestChapterAt = null,
                 legacyReviewSnapshot = reviewState,
             )
             val id = author_archiveQueries.selectArchiveLastInsertedRowId().executeAsOne()
@@ -3451,12 +3482,17 @@ private fun mapCreatorWorkArchiveRow(
     title: String,
     thumbnailUrl: String?,
     detailsFetchedAt: Long?,
+    firstSeenAt: Long,
+    firstSeenDate: String,
+    firstSeenZone: String,
     lastSeenAt: Long,
+    chapterCountState: String,
+    catalogChapterCount: Long,
+    latestChapterAt: Long?,
     lastCheckResult: String?,
     consecutiveFailures: Long,
     lastSuccessAt: Long?,
     inLibrary: Long,
-    chapterCount: Long,
     canonicalWorkId: Long?,
     canonicalPortableKey: String?,
     canonicalTitle: String?,
@@ -3555,7 +3591,7 @@ private fun mapCreatorWorkArchiveRow(
             title = title,
             thumbnailUrl = thumbnailUrl,
             readingLanguage = language,
-            chapterCount = chapterCount,
+            chapterCount = catalogChapterCount,
             inLibrary = inLibrary != 0L,
             detailsFetchedAt = detailsFetchedAt,
             lastSeenAt = lastSeenAt,
@@ -3564,6 +3600,11 @@ private fun mapCreatorWorkArchiveRow(
             lastCheckResult = lastCheckResult?.let(SourceCheckpointResult::valueOf),
             consecutiveFailures = consecutiveFailures,
             lastSuccessAt = lastSuccessAt,
+            firstSeenAt = firstSeenAt,
+            firstSeenDate = firstSeenDate.takeIf(String::isNotBlank),
+            firstSeenZone = firstSeenZone,
+            chapterCompleteness = ChapterCatalogCompleteness.valueOf(chapterCountState),
+            latestChapterAt = latestChapterAt,
         ),
         canonicalWorkId = canonicalWorkId,
         canonicalPortableKey = canonicalPortableKey,
