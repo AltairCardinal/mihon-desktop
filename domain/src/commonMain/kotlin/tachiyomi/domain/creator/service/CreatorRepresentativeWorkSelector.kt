@@ -15,6 +15,7 @@ object CreatorRepresentativeWorkSelector {
         candidates: List<CreatorCardWorkCandidate>,
         previous: CreatorRepresentativeWorkCache? = null,
         preferredLanguages: Set<String> = emptySet(),
+        preferredDisplayScript: WorkTitleNormalizer.DisplayScript? = null,
     ): CreatorRepresentativeWorkSelection {
         val priorSelection = previous
             ?.takeIf { it.strategyVersion == STRATEGY_VERSION }
@@ -37,7 +38,7 @@ object CreatorRepresentativeWorkSelector {
                 val previousVersion = priorVersionByWork[workKey]
                 val version = versions
                     .distinctBy { it.naturalKey }
-                    .minWithOrNull(versionComparator(previousVersion, preferredLanguageKeys))
+                    .minWithOrNull(versionComparator(previousVersion, preferredLanguageKeys, preferredDisplayScript))
                     ?: return@mapNotNull null
                 EligibleWork(
                     workKey = workKey,
@@ -96,10 +97,25 @@ object CreatorRepresentativeWorkSelector {
     private fun versionComparator(
         previous: tachiyomi.domain.creator.model.SourceWorkNaturalKey?,
         preferredLanguages: Set<String>,
-    ) = compareByDescending<CreatorCardWorkCandidate> { if (it.naturalKey == previous) 1 else 0 }
+        preferredDisplayScript: WorkTitleNormalizer.DisplayScript?,
+    ) = compareByDescending<CreatorCardWorkCandidate> {
+        if (it.naturalKey == previous &&
+            (
+                preferredDisplayScript == null ||
+                    WorkTitleNormalizer.matchesDisplayScript(it.title, preferredDisplayScript)
+                )
+        ) {
+            1
+        } else {
+            0
+        }
+    }
         .thenByDescending { it.hasCustomCover }
         .thenByDescending { it.inLibrary }
         .thenByDescending { if (it.sourceLanguage?.lowercase() in preferredLanguages) 1 else 0 }
+        .thenByDescending {
+            preferredDisplayScript?.let { script -> WorkTitleNormalizer.matchesDisplayScript(it.title, script) } == true
+        }
         .thenByDescending(::hasCoverReference)
         .thenByDescending { it.lastReadAt ?: Long.MIN_VALUE }
         .thenBy { it.naturalKey.sourceId }

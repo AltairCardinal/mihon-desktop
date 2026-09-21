@@ -35,6 +35,20 @@ CREATE TABLE author_archive_representative_work_cache(
     FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE CASCADE
 );
 
+-- Device-local presentation corrections. These records are intentionally excluded from backup
+-- and sync; source_work_id preserves the natural source identity without changing canonical facts.
+CREATE TABLE author_archive_presentation_exclusions(
+    creator_id INTEGER NOT NULL,
+    source_work_id INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY(creator_id, source_work_id),
+    FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE CASCADE,
+    FOREIGN KEY(source_work_id) REFERENCES author_archive_source_works(_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_presentation_exclusions_source_work
+ON author_archive_presentation_exclusions(source_work_id);
+
 -- Device-local, rebuildable evidence for source supplied dates. It is intentionally not part of
 -- the backup contract: a new extension version gets a fresh quality bucket.
 CREATE TABLE author_archive_source_date_quality(
@@ -3629,7 +3643,16 @@ WITH page_creators AS (
         RSW.source_language,
         PH.last_read_at,
         RSW.relation_verification,
-        RSW.decision_state
+        RSW.decision_state,
+        CASE WHEN EXISTS (
+            SELECT 1
+            FROM author_archive_discoveries D
+            JOIN author_archive_watches W ON W._id = D.watch_id
+            WHERE D.source_work_id = RSW.source_work_id
+            AND W.creator_id = RSW.creator_id
+            AND W.enabled = 1
+            AND D.read_state = 'UNSEEN'
+        ) THEN 1 ELSE 0 END AS unread
     FROM related_source_works RSW
     LEFT JOIN page_history PH ON PH.manga_id = RSW.manga_id
     WHERE coalesce(RSW.decision_state, '') != 'REJECTED'
@@ -3670,7 +3693,8 @@ SELECT
     CAND.last_read_at,
     CAND.relation_verification,
     CAND.decision_state,
-    CAND.source_language
+    CAND.source_language,
+    CAND.unread
 FROM page_creators P
 LEFT JOIN card_work_counts CWC ON CWC.creator_id = P.creator_id
 LEFT JOIN card_unread_counts CUC ON CUC.creator_id = P.creator_id
@@ -3682,6 +3706,76 @@ getRepresentativeWorkCaches:
 SELECT creator_id, strategy_version, payload
 FROM author_archive_representative_work_cache
 WHERE creator_id IN :creatorIds;
+
+getPresentationExclusions:
+SELECT SW.source_id, SW.stable_source_url
+FROM author_archive_presentation_exclusions PE
+JOIN author_archive_source_works SW ON SW._id = PE.source_work_id
+WHERE PE.creator_id = :creatorId
+ORDER BY SW.source_id, SW.stable_source_url;
+
+getPresentationExclusionsForCreators:
+SELECT PE.creator_id, SW.source_id, SW.stable_source_url
+FROM author_archive_presentation_exclusions PE
+JOIN author_archive_source_works SW ON SW._id = PE.source_work_id
+WHERE PE.creator_id IN :creatorIds
+ORDER BY PE.creator_id, SW.source_id, SW.stable_source_url;
+
+upsertPresentationExclusion:
+INSERT OR IGNORE INTO author_archive_presentation_exclusions(creator_id, source_work_id, created_at)
+SELECT :creatorId, SW._id, :createdAt
+FROM author_archive_source_works SW
+WHERE SW.source_id = :sourceId AND SW.stable_source_url = :stableSourceUrl;
+
+deletePresentationExclusion:
+DELETE FROM author_archive_presentation_exclusions
+WHERE creator_id = :creatorId
+AND source_work_id = (
+    SELECT _id
+    FROM author_archive_source_works
+    WHERE source_id = :sourceId AND stable_source_url = :stableSourceUrl
+);
+
+deletePresentationExclusionConflicts:
+DELETE FROM author_archive_presentation_exclusions
+WHERE creator_id = :sourceCreatorId
+AND EXISTS (
+    SELECT 1
+    FROM author_archive_presentation_exclusions TARGET
+    WHERE TARGET.creator_id = :targetCreatorId
+    AND TARGET.source_work_id = author_archive_presentation_exclusions.source_work_id
+);
+
+movePresentationExclusionsRoot:
+UPDATE author_archive_presentation_exclusions
+SET creator_id = :targetCreatorId
+WHERE creator_id = :sourceCreatorId;
+
+deletePresentationExclusionsRoot:
+DELETE FROM author_archive_presentation_exclusions
+WHERE creator_id = :sourceCreatorId;
+
+deletePresentationExclusionConflictsForSourceWorks:
+DELETE FROM author_archive_presentation_exclusions
+WHERE creator_id = :sourceCreatorId
+AND source_work_id IN :sourceWorkIds
+AND EXISTS (
+    SELECT 1
+    FROM author_archive_presentation_exclusions TARGET
+    WHERE TARGET.creator_id = :targetCreatorId
+    AND TARGET.source_work_id = author_archive_presentation_exclusions.source_work_id
+);
+
+movePresentationExclusionsForSourceWorks:
+UPDATE author_archive_presentation_exclusions
+SET creator_id = :targetCreatorId
+WHERE creator_id = :sourceCreatorId
+AND source_work_id IN :sourceWorkIds;
+
+deleteMovedPresentationExclusions:
+DELETE FROM author_archive_presentation_exclusions
+WHERE creator_id = :sourceCreatorId
+AND source_work_id IN :sourceWorkIds;
 
 upsertRepresentativeWorkCache:
 INSERT INTO author_archive_representative_work_cache(creator_id, strategy_version, payload)

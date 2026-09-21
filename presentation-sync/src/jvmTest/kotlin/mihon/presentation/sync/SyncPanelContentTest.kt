@@ -108,6 +108,28 @@ class SyncPanelContentTest {
     }
 
     @Test
+    fun `legacy setup recovery requires confirmation and explains local-only cleanup`() = rendered(
+        SyncPanelState(
+            visible = true,
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.ERROR,
+            setupProblem = SyncDiscoveryProblem.CREATION_UNCONFIRMED,
+            legacyRecoveryAvailable = true,
+        ),
+    ) {
+        awaitTag("sync-abandon-legacy")
+        click("sync-abandon-legacy")
+        assertEquals(SyncPanelAction.Ask(SyncPanelQuestion.ABANDON_LEGACY), actions.last())
+
+        panel.state.value = panel.state.value.copy(question = SyncPanelQuestion.ABANDON_LEGACY)
+        render()
+        assertTrue(texts().contains(MR.strings.sync_setup_abandon_legacy_title.localized(Locale.getDefault())))
+        assertTrue(texts().contains(MR.strings.sync_setup_abandon_legacy_body.localized(Locale.getDefault())))
+        click("sync-confirm-question")
+        assertEquals(SyncPanelAction.ConfirmQuestion, actions.last())
+    }
+
+    @Test
     fun `new password input changes action and visibility preserves selection`() = rendered(
         SyncPanelState(visible = true, page = SyncPanelPage.SETUP, setupStep = SyncSetupStep.NEW_PASSWORD),
     ) {

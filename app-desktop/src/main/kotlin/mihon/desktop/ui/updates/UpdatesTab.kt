@@ -240,45 +240,20 @@ class UpdatesRootScreen : Screen {
                 }
             }
 
-            if (state.unreadWorks.isNotEmpty()) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    state.unreadWorks.forEach { work ->
-                        Card(modifier = Modifier.fillMaxWidth().testTag("author-unread-work-${work.workKey}")) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(work.creatorName, style = MaterialTheme.typography.labelMedium)
-                                    Text(work.title, style = MaterialTheme.typography.titleSmall)
-                                    Text(
-                                        MR.strings.creator_new_work_unread.localized(),
-                                        color = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
-                                TextButton(onClick = { navigator.push(AuthorDetailScreen(work.creatorId)) }) {
-                                    Text(MR.strings.creator_view_new_works.localized())
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
             val unreadRepresentativeIds = state.unreadWorks.mapTo(mutableSetOf()) { it.representativeDiscoveryId }
             val visibleDiscoveries = state.visibleCreatorDiscoveries.filter { discovery ->
                 state.unreadWorks.isEmpty() || discovery.state.readState != DiscoveryReadState.UNSEEN ||
                     discovery.id in unreadRepresentativeIds
             }
-            val listItems = remember(state.items, visibleDiscoveries) {
-                buildUpdatesListItems(state.items, visibleDiscoveries)
+            val listItems = remember(state.items, visibleDiscoveries, state.showCreatorDiscoveries) {
+                buildUpdatesListItems(
+                    state.items,
+                    visibleDiscoveries,
+                    state.unreadWorks.takeIf { state.showCreatorDiscoveries }.orEmpty(),
+                )
             }
 
-            if (listItems.isEmpty() && state.unreadWorks.isEmpty()) {
+            if (listItems.isEmpty()) {
                 Box(
                     Modifier.weight(1f).fillMaxWidth(),
                     contentAlignment = Alignment.Center,
@@ -308,6 +283,7 @@ class UpdatesRootScreen : Screen {
                         key = { item ->
                             when (item) {
                                 is UpdatesListItem.Header -> "header-${item.label}"
+                                is UpdatesListItem.UnreadWork -> "author-unread-work-${item.work.workKey}"
                                 is UpdatesListItem.Entry -> item.update.chapterId
                                 is UpdatesListItem.DiscoveryEntry -> "discovery-${item.discovery.id}"
                             }
@@ -315,6 +291,7 @@ class UpdatesRootScreen : Screen {
                         contentType = { item ->
                             when (item) {
                                 is UpdatesListItem.Header -> "header"
+                                is UpdatesListItem.UnreadWork -> "author-unread-work"
                                 is UpdatesListItem.Entry -> "entry"
                                 is UpdatesListItem.DiscoveryEntry -> "discovery"
                             }
@@ -322,6 +299,10 @@ class UpdatesRootScreen : Screen {
                     ) { item ->
                         when (item) {
                             is UpdatesListItem.Header -> UpdatesDateHeader(item.label)
+                            is UpdatesListItem.UnreadWork -> UnreadWorkItem(
+                                work = item.work,
+                                onOpen = { navigator.push(AuthorDetailScreen(item.work.creatorId)) },
+                            )
                             is UpdatesListItem.Entry -> UpdateItem(
                                 item = item.update,
                                 onRead = {
@@ -366,6 +347,27 @@ class UpdatesRootScreen : Screen {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun UnreadWorkItem(
+    work: tachiyomi.domain.creator.model.ArchiveUnreadWork,
+    onOpen: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth().testTag("author-unread-work-${work.workKey}")) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                if (work.creatorName.isNotBlank()) Text(work.creatorName, style = MaterialTheme.typography.labelMedium)
+                Text(work.title, style = MaterialTheme.typography.titleSmall)
+                Text(MR.strings.creator_new_work_unread.localized(), color = MaterialTheme.colorScheme.primary)
+            }
+            TextButton(onClick = onOpen) { Text(MR.strings.creator_view_new_works.localized()) }
         }
     }
 }
@@ -635,6 +637,7 @@ private fun DiscoveryItem(
 
 private sealed interface UpdatesListItem {
     data class Header(val label: String) : UpdatesListItem
+    data class UnreadWork(val work: tachiyomi.domain.creator.model.ArchiveUnreadWork) : UpdatesListItem
     data class Entry(val update: UpdatesWithRelations) : UpdatesListItem
     data class DiscoveryEntry(val discovery: ArchiveDiscovery) : UpdatesListItem
 }
@@ -642,11 +645,13 @@ private sealed interface UpdatesListItem {
 private fun buildUpdatesListItems(
     items: List<UpdatesWithRelations>,
     discoveries: List<ArchiveDiscovery>,
+    unreadWorks: List<tachiyomi.domain.creator.model.ArchiveUnreadWork> = emptyList(),
 ): List<UpdatesListItem> {
     val today = LocalDate.now()
     val yesterday = today.minusDays(1)
     val timeline = items.map { it.dateFetch to UpdatesListItem.Entry(it) } +
-        discoveries.map { it.firstDiscoveredAt to UpdatesListItem.DiscoveryEntry(it) }
+        discoveries.map { it.firstDiscoveredAt to UpdatesListItem.DiscoveryEntry(it) } +
+        unreadWorks.map { it.firstDiscoveredAt to UpdatesListItem.UnreadWork(it) }
     val grouped = timeline.groupBy { (timestamp) ->
         Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault()).toLocalDate()
     }

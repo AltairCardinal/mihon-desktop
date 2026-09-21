@@ -173,6 +173,44 @@ class SourceDateQualityPolicyTest {
         )
     }
 
+    @Test
+    fun `long chapter lists retain cross day anchors instead of latest rows only`() {
+        val now = DAY * 40
+        val identity = SourceDateQualityIdentity("example.extension", "1.0", 42L, SourceDateField.CHAPTER_UPDATED)
+        val observations = buildList {
+            repeat(3) { work ->
+                repeat(60) { chapter ->
+                    val value = DAY * (chapter + 1L)
+                    add(observation(identity, work, chapter, value, now - DAY))
+                    add(observation(identity, work, chapter, value, now))
+                }
+            }
+        }
+
+        val retained = SourceDateQualityPolicy.retain(observations, now)
+
+        assertEquals(SourceDateQualityStatus.TRUSTED, SourceDateQualityPolicy.evaluate(identity, retained, now).status)
+    }
+
+    @Test
+    fun `frequent refreshes preserve the first cross day observation`() {
+        val now = DAY * 40
+        val identity = SourceDateQualityIdentity("example.extension", "1.0", 42L, SourceDateField.CHAPTER_UPDATED)
+        val observations = buildList {
+            repeat(3) { work ->
+                repeat(3) { chapter ->
+                    val value = DAY * (10L + chapter)
+                    add(observation(identity, work, chapter, value, now - DAY))
+                    repeat(10) { refresh -> add(observation(identity, work, chapter, value, now - refresh * 60_000L)) }
+                }
+            }
+        }
+
+        val retained = SourceDateQualityPolicy.retain(observations, now)
+
+        assertEquals(SourceDateQualityStatus.TRUSTED, SourceDateQualityPolicy.evaluate(identity, retained, now).status)
+    }
+
     private fun observation(
         identity: SourceDateQualityIdentity,
         work: Int,

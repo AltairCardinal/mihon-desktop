@@ -126,22 +126,36 @@ object SourceDateQualityPolicy {
                     .groupBy { it.workNaturalKey to it.chapterNaturalKey }
                     .values
                     .map { values ->
-                        values.sortedByDescending(SourceDateObservation::observedAt)
-                            .take(MAX_OBSERVATIONS_PER_NATURAL_KEY)
+                        retainQualityAnchors(values)
                     }
                     .flatten()
                 perNaturalKey
                     .groupBy(SourceDateObservation::workNaturalKey)
                     .entries
-                    .sortedByDescending { (_, values) ->
-                        values.maxOfOrNull(SourceDateObservation::observedAt) ?: 0L
-                    }
+                    .sortedWith(
+                        compareByDescending<Map.Entry<String, List<SourceDateObservation>>> { entry ->
+                            entry.value.groupBy { it.chapterNaturalKey }.values.any(::hasStableObservation)
+                        }.thenByDescending { entry ->
+                            entry.value.maxOfOrNull(SourceDateObservation::observedAt) ?: 0L
+                        },
+                    )
                     .take(MAX_WORK_SAMPLES)
                     .flatMap { (_, values) ->
-                        values.sortedWith(
-                            compareByDescending<SourceDateObservation> { it.observedAt }
-                                .thenBy { it.chapterNaturalKey },
-                        ).take(MAX_CHAPTER_SAMPLES_PER_WORK * MAX_OBSERVATIONS_PER_NATURAL_KEY)
+                        values
+                            .groupBy { it.chapterNaturalKey }
+                            .entries
+                            .sortedWith(
+                                compareByDescending<Map.Entry<String?, List<SourceDateObservation>>> { entry ->
+                                    hasStableObservation(entry.value)
+                                }.thenByDescending { entry ->
+                                    entry.value.maxOfOrNull(SourceDateObservation::observedAt) ?: 0L
+                                }.thenBy { it.key },
+                            )
+                            .take(MAX_CHAPTER_SAMPLES_PER_WORK)
+                            .flatMap { (_, samples) ->
+                                samples.sortedByDescending(SourceDateObservation::observedAt)
+                                    .take(MAX_OBSERVATIONS_PER_NATURAL_KEY)
+                            }
                     }
             }
         val retainedDiagnostics = recent
@@ -260,6 +274,12 @@ object SourceDateQualityPolicy {
         val last = ordered.last()
         return first.valueAt != null && first.valueAt == last.valueAt &&
             last.observedAt - first.observedAt >= MIN_OBSERVATION_INTERVAL_MILLIS
+    }
+
+    private fun retainQualityAnchors(values: List<SourceDateObservation>): List<SourceDateObservation> {
+        val ordered = values.sortedBy(SourceDateObservation::observedAt)
+        if (ordered.size <= MAX_OBSERVATIONS_PER_NATURAL_KEY) return ordered
+        return listOf(ordered.first(), ordered.last()).distinctBy(SourceDateObservation::observedAt)
     }
 
     private fun hasHistoricDrift(

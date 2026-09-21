@@ -26,7 +26,7 @@ enum class SyncSetupStep {
 }
 enum class SyncPasswordProblem { INCORRECT, TOO_LONG, INVALID }
 enum class SyncDecisionScope { ITEM, SELECTED, ALL }
-enum class SyncPanelQuestion { DISCONNECT, SWITCH_SPACE }
+enum class SyncPanelQuestion { DISCONNECT, SWITCH_SPACE, ABANDON_LEGACY }
 
 data class SyncBulkConfirmation(
     val jobId: String,
@@ -92,6 +92,7 @@ data class SyncPanelState(
     val setupAccountLogin: String? = null,
     val setupInstallation: SyncAppInstallation? = null,
     val setupRepository: SyncRepository? = null,
+    val legacyRecoveryAvailable: Boolean = false,
 ) {
     val queuedTotal: Long get() = queuedMembership + queuedReading
 
@@ -115,6 +116,7 @@ sealed interface SyncPanelAction {
     data object Authorize : SyncPanelAction
     data object CancelAuthorization : SyncPanelAction
     data object RetrySetup : SyncPanelAction
+    data object AbandonLegacyPending : SyncPanelAction
     data class ChooseSpace(val space: DiscoveredSyncSpace) : SyncPanelAction
     data class SubmitPassword(val password: String) : SyncPanelAction {
         override fun toString(): String = "SubmitPassword(<redacted>)"

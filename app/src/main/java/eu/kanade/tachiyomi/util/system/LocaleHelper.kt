@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.util.system
 
 import android.content.Context
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import eu.kanade.tachiyomi.ui.browse.source.SourcesScreenModel
 import tachiyomi.core.common.i18n.stringResource
@@ -77,6 +78,12 @@ object LocaleHelper {
         }
         return locale!!.getDisplayName(locale).replaceFirstChar { it.uppercase(locale) }
     }
+
+    /** Returns the locale currently effective for application resources, including per-app overrides. */
+    fun getApplicationLanguageTag(): String =
+        AppCompatDelegate.getApplicationLocales().get(0)?.toLanguageTag()
+            ?: LocaleListCompat.getAdjustedDefault()[0]?.toLanguageTag()
+            ?: Locale.getDefault().toLanguageTag()
 
     /**
      * Return the default languages enabled for the sources.

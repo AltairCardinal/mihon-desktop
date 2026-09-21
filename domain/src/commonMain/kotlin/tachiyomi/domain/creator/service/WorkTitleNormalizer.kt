@@ -10,6 +10,31 @@ import kotlin.text.CharCategory
  */
 object WorkTitleNormalizer {
 
+    enum class DisplayScript {
+        SIMPLIFIED,
+        TRADITIONAL,
+    }
+
+    fun displayScriptForLanguageTag(languageTag: String?): DisplayScript? {
+        val tag = languageTag?.trim()?.replace('_', '-')?.lowercase() ?: return null
+        if (tag.isBlank() || tag == "en") return null
+        return when {
+            "hant" in tag ||
+                (tag.substringBefore('-') == "zh" && tag.substringAfter('-', "") in setOf("tw", "hk", "mo")) ->
+                DisplayScript.TRADITIONAL
+            "hans" in tag ||
+                (tag.substringBefore('-') == "zh" && tag.substringAfter('-', "") in setOf("cn", "sg")) ->
+                DisplayScript.SIMPLIFIED
+            tag == "zh" -> null
+            else -> null
+        }
+    }
+
+    fun matchesDisplayScript(title: String, script: DisplayScript): Boolean = when (script) {
+        DisplayScript.SIMPLIFIED -> normalizeForMerge(title) == title
+        DisplayScript.TRADITIONAL -> normalizeForMerge(title) != title
+    }
+
     fun normalizeForMerge(title: String): String {
         val converted = buildString(title.length) {
             var index = 0

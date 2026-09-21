@@ -54,6 +54,7 @@ class AndroidAuthorFollowSyncWiringTest {
         }
         val archive = mockk<CreatorArchive> {
             every { observe(7) } returns flowOf(CreatorWorkArchive(emptyList(), emptyList(), emptyList()))
+            coEvery { getPresentationExclusions(7) } returns emptySet()
         }
         val host = ScreenModelTestHost()
         var modelJob: Job? = null

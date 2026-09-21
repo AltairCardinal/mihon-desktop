@@ -24,6 +24,10 @@ class CreatorWorkPresentationExclusionsTest {
             CreatorWorkPresentationExclusions(preferences.creatorWorkPresentationExclusions())
                 .get(7L) shouldContainExactly setOf(key)
             first.get(8L) shouldBe emptySet()
+            first.remove(mapOf(7L to setOf(SourceWorkNaturalKey(99L, "/not-imported"))))
+            first.get(7L) shouldContainExactly setOf(key)
+            first.remove(mapOf(7L to setOf(key)))
+            first.get(7L) shouldBe emptySet()
             first.restore(7L, key)
             first.get(7L) shouldBe emptySet()
         } finally {

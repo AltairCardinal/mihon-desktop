@@ -18,6 +18,7 @@ import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.service.ChapterVariantRecord
+import tachiyomi.domain.creator.service.WorkTitleNormalizer
 
 /** UI-safe author archive boundary; repository composition remains outside presentation code. */
 class CreatorArchive(
@@ -40,6 +41,9 @@ class CreatorArchive(
 
     suspend fun markWorkSeen(sourceWork: SourceWorkNaturalKey, now: Long) = archive.markWorkSeen(sourceWork, now)
 
+    suspend fun markPresentationGroupSeen(sourceWorks: List<SourceWorkNaturalKey>, now: Long) =
+        archive.markPresentationGroupSeen(sourceWorks, now)
+
     suspend fun review(discoveryId: Long, disposition: ReviewDisposition, now: Long) =
         archive.setDiscoveryReview(discoveryId, disposition, now)
 
@@ -52,6 +56,7 @@ class CreatorArchive(
         preferredLanguages: Set<String> = emptySet(),
         customCoverExists: (Long) -> Boolean = { false },
         query: String = "",
+        preferredDisplayScript: WorkTitleNormalizer.DisplayScript? = null,
     ): CreatorCardProjectionPage = archive.getCreatorCardProjectionPage(
         offset = offset,
         limit = limit,
@@ -59,7 +64,23 @@ class CreatorArchive(
         preferredLanguages = preferredLanguages,
         customCoverExists = customCoverExists,
         query = query,
+        preferredDisplayScript = preferredDisplayScript,
     )
+
+    suspend fun getPresentationExclusions(creatorRootId: Long): Set<SourceWorkNaturalKey> =
+        archive.getPresentationExclusions(creatorRootId)
+
+    suspend fun setPresentationExclusion(
+        creatorRootId: Long,
+        sourceWork: SourceWorkNaturalKey,
+        excluded: Boolean,
+        now: Long,
+    ) = archive.setPresentationExclusion(creatorRootId, sourceWork, excluded, now)
+
+    suspend fun importPresentationExclusions(
+        entries: Map<Long, Set<SourceWorkNaturalKey>>,
+    ): Map<Long, Set<SourceWorkNaturalKey>> =
+        archive.importPresentationExclusions(entries)
 
     suspend fun getDueWatchSources(now: Long, limit: Long): List<DueWatchSource> =
         archive.getDueWatchSources(now, limit)

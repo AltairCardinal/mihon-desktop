@@ -1,6 +1,7 @@
 package mihon.desktop.ui.authors
 
 import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
+import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.service.CreatorLibraryIndexState
 
 
@@ -52,5 +53,6 @@ internal class AuthorIdentityActions(
         sourceCreatorId: Long,
         mangaIds: Set<Long>,
         newDisplayName: String,
-    ): Long = manageCreatorIdentity.split(sourceCreatorId, mangaIds, newDisplayName)
+        sourceWorks: Set<SourceWorkNaturalKey> = emptySet(),
+    ): Long = manageCreatorIdentity.split(sourceCreatorId, mangaIds, newDisplayName, sourceWorks)
 }

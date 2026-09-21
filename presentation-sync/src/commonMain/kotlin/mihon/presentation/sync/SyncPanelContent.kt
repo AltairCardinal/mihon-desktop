@@ -186,10 +186,10 @@ fun SyncPanelContent(
             title = {
                 Text(
                     syncString(
-                        if (question == SyncPanelQuestion.DISCONNECT) {
-                            MR.strings.sync_disconnect
-                        } else {
-                            MR.strings.sync_switch
+                        when (question) {
+                            SyncPanelQuestion.DISCONNECT -> MR.strings.sync_disconnect
+                            SyncPanelQuestion.SWITCH_SPACE -> MR.strings.sync_switch
+                            SyncPanelQuestion.ABANDON_LEGACY -> MR.strings.sync_setup_abandon_legacy_title
                         },
                     ),
                 )
@@ -197,10 +197,10 @@ fun SyncPanelContent(
             text = {
                 Text(
                     syncString(
-                        if (question == SyncPanelQuestion.DISCONNECT) {
-                            MR.strings.sync_disconnect_body
-                        } else {
-                            MR.strings.sync_switch_body
+                        when (question) {
+                            SyncPanelQuestion.DISCONNECT -> MR.strings.sync_disconnect_body
+                            SyncPanelQuestion.SWITCH_SPACE -> MR.strings.sync_switch_body
+                            SyncPanelQuestion.ABANDON_LEGACY -> MR.strings.sync_setup_abandon_legacy_body
                         },
                     ),
                 )
@@ -900,6 +900,19 @@ private fun SetupPage(
                     item {
                         Action("sync-setup-retry", MR.strings.sync_setup_retry, !state.setupBusy) {
                             dispatch(SyncPanelAction.RetrySetup)
+                        }
+                    }
+                }
+                if (state.legacyRecoveryAvailable) {
+                    item {
+                        Text(
+                            syncString(MR.strings.sync_setup_legacy_recovery),
+                            Modifier.testTag("sync-legacy-recovery"),
+                        )
+                    }
+                    item {
+                        Action("sync-abandon-legacy", MR.strings.sync_setup_abandon_legacy, !state.setupBusy) {
+                            dispatch(SyncPanelAction.Ask(SyncPanelQuestion.ABANDON_LEGACY))
                         }
                     }
                 }

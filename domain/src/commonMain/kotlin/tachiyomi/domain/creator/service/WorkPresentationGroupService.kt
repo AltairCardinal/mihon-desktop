@@ -24,16 +24,20 @@ object WorkPresentationGroupService {
         excludedNaturalKeys: Set<SourceWorkNaturalKey> = emptySet(),
         previousTitles: Map<String, String> = emptyMap(),
         preferredLanguageTags: Set<String> = emptySet(),
+        preferredDisplayScript: WorkTitleNormalizer.DisplayScript? = null,
     ): List<WorkPresentationGroup> {
         val preferredLanguages = preferredLanguageTags.mapTo(mutableSetOf()) { it.lowercase() }
-        val canonicalBuckets = archive.works.map { group ->
-            CanonicalBucket(
-                source = group,
-                members = group.versions.distinctBy(SourceWorkArchiveVersion::naturalKey).toMutableList(),
-            )
+        val standalone = mutableListOf<SourceWorkArchiveVersion>()
+        val canonicalBuckets = archive.works.mapNotNull { group ->
+            val members = group.versions.distinctBy(SourceWorkArchiveVersion::naturalKey)
+            standalone += members.filter { it.naturalKey in excludedNaturalKeys }
+            members.filterNot { it.naturalKey in excludedNaturalKeys }
+                .takeIf { it.isNotEmpty() }
+                ?.let { included ->
+                    CanonicalBucket(source = group, members = included.toMutableList())
+                }
         }
         val unmatched = mutableListOf<PendingVersion>()
-        val standalone = mutableListOf<SourceWorkArchiveVersion>()
 
         archive.pending
             .filterNot { it.decision?.decision?.state == WorkDecisionState.REJECTED }
@@ -64,7 +68,14 @@ object WorkPresentationGroupService {
             val members = sortedMembers(bucket.members)
             WorkPresentationGroup(
                 groupKey = "$CANONICAL_GROUP_PREFIX${bucket.source.portableKey}",
-                title = bucket.source.title.ifBlank { members.first().title },
+                title = chooseTitle(
+                    groupKey = "$CANONICAL_GROUP_PREFIX${bucket.source.portableKey}",
+                    members = members,
+                    previousTitles = previousTitles,
+                    preferredLanguages = preferredLanguages,
+                    preferredDisplayScript = preferredDisplayScript,
+                    fallback = bucket.source.title.ifBlank { members.first().title },
+                ),
                 members = members,
                 canonicalWorkId = bucket.source.workId,
                 representative = representative(members, preferredLanguages),
@@ -91,7 +102,14 @@ object WorkPresentationGroupService {
                     val groupKey = "$TITLE_GROUP_PREFIX$key"
                     groups += WorkPresentationGroup(
                         groupKey = groupKey,
-                        title = chooseTitle(groupKey, members, previousTitles, preferredLanguages),
+                        title = chooseTitle(
+                            groupKey,
+                            members,
+                            previousTitles,
+                            preferredLanguages,
+                            preferredDisplayScript,
+                            fallback = null,
+                        ),
                         members = members,
                         canonicalWorkId = null,
                         representative = representative(members, preferredLanguages),
@@ -125,13 +143,29 @@ object WorkPresentationGroupService {
         members: List<SourceWorkArchiveVersion>,
         previousTitles: Map<String, String>,
         preferredLanguages: Set<String>,
+        preferredDisplayScript: WorkTitleNormalizer.DisplayScript?,
+        fallback: String?,
     ): String {
         val previous = previousTitles[groupKey]
-        if (previous != null && members.any { it.title == previous }) return previous
-        return members
+        if (previous != null && members.any { it.title == previous } &&
+            (
+                preferredDisplayScript == null ||
+                    WorkTitleNormalizer.matchesDisplayScript(previous, preferredDisplayScript)
+                )
+        ) {
+            return previous
+        }
+        val candidates = if (preferredDisplayScript == null) {
+            members
+        } else {
+            members.filter { WorkTitleNormalizer.matchesDisplayScript(it.title, preferredDisplayScript) }
+                .ifEmpty { members }
+        }
+        return candidates
             .sortedWith(titleComparator(preferredLanguages))
             .first()
             .title
+            .ifBlank { fallback ?: members.first().title }
     }
 
     private fun representative(

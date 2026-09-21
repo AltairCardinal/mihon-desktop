@@ -111,10 +111,12 @@ import tachiyomi.domain.creator.repository.CreatorRepository
 import tachiyomi.domain.creator.repository.ReadyCreatorArchiveBootstrap
 import tachiyomi.domain.creator.service.ChapterVariantRecord
 import tachiyomi.domain.creator.service.ChapterVariantType
+import tachiyomi.domain.creator.service.CreatorCardPresentation
 import tachiyomi.domain.creator.service.CreatorDiscoverySchedule
 import tachiyomi.domain.creator.service.CreatorNameNormalizer
 import tachiyomi.domain.creator.service.CreatorRepresentativeWorkSelector
 import tachiyomi.domain.creator.service.CreatorSourceWorkKey
+import tachiyomi.domain.creator.service.WorkTitleNormalizer
 import tachiyomi.domain.manga.model.Manga
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -293,6 +295,7 @@ class CreatorRepositoryImpl(
         preferredLanguages: Set<String>,
         customCoverExists: (Long) -> Boolean,
         query: String,
+        preferredDisplayScript: WorkTitleNormalizer.DisplayScript?,
     ): CreatorCardProjectionPage {
         bootstrap.awaitReady()
         ensureExactIdentityInvariant()
@@ -330,6 +333,7 @@ class CreatorRepositoryImpl(
                     relationVerification,
                     decisionState,
                     sourceLanguage,
+                    unread,
                 ->
                 CreatorCardProjectionRow(
                     creator = mapCreator(
@@ -371,21 +375,41 @@ class CreatorRepositoryImpl(
                             ),
                             decisionState = decisionState?.let(WorkDecisionState::valueOf),
                             sourceLanguage = sourceLanguage,
+                            unread = unread != 0L,
                         )
                     },
                 )
             }
         }
-        val projections = rows.groupBy { it.creator.id }.values.map { creatorRows ->
+        val groupedRows = rows.groupBy { it.creator.id }
+        val excludedByCreator = if (groupedRows.isEmpty()) {
+            emptyMap()
+        } else {
+            handler.awaitList {
+                author_archiveQueries.getPresentationExclusionsForCreators(groupedRows.keys.toList()) {
+                        creatorId,
+                        sourceId,
+                        stableSourceUrl,
+                    ->
+                    creatorId to SourceWorkNaturalKey(sourceId, stableSourceUrl)
+                }
+            }.groupBy({ it.first }, { it.second }).mapValues { (_, keys) -> keys.toSet() }
+        }
+        val projections = groupedRows.values.map { creatorRows ->
             val first = creatorRows.first()
+            val excluded = excludedByCreator[first.creator.id].orEmpty()
+            val candidates = CreatorCardPresentation.project(
+                creatorRows.mapNotNull(CreatorCardProjectionRow::candidate),
+                excludedNaturalKeys = excluded,
+            )
             CreatorCardProjectionWithCandidates(
                 projection = CreatorCardProjection(
                     creator = first.creator,
                     followed = first.followed,
-                    uniqueWorkCount = first.uniqueWorkCount,
-                    unreadWorkCount = first.unreadWorkCount,
+                    uniqueWorkCount = CreatorCardPresentation.uniqueWorkCount(candidates),
+                    unreadWorkCount = CreatorCardPresentation.unreadWorkCount(candidates),
                 ),
-                candidates = creatorRows.mapNotNull(CreatorCardProjectionRow::candidate),
+                candidates = candidates,
             )
         }
         val hasMore = projections.size > pageLimit
@@ -411,6 +435,7 @@ class CreatorRepositoryImpl(
                 candidates = projectionWithCandidates.candidates,
                 previous = previousSelection,
                 preferredLanguages = preferredLanguages,
+                preferredDisplayScript = preferredDisplayScript,
             )
             val payload = CreatorRepresentativeWorkCacheCodec.encode(selection.cache)
             when {
@@ -447,6 +472,86 @@ class CreatorRepositoryImpl(
             hasMore = hasMore,
             creators = selectedPageCreators,
         )
+    }
+
+    override suspend fun getPresentationExclusions(creatorRootId: Long): Set<SourceWorkNaturalKey> {
+        bootstrap.awaitReady()
+        return handler.awaitList {
+            author_archiveQueries.getPresentationExclusions(creatorRootId) { sourceId, stableSourceUrl ->
+                SourceWorkNaturalKey(sourceId, stableSourceUrl)
+            }
+        }.toSet()
+    }
+
+    override suspend fun setPresentationExclusion(
+        creatorRootId: Long,
+        sourceWork: SourceWorkNaturalKey,
+        excluded: Boolean,
+        now: Long,
+    ) {
+        bootstrap.awaitReady()
+        handler.await(inTransaction = true) {
+            if (excluded) {
+                author_archiveQueries.upsertPresentationExclusion(
+                    creatorId = creatorRootId,
+                    sourceId = sourceWork.sourceId,
+                    stableSourceUrl = sourceWork.stableSourceUrl,
+                    createdAt = now,
+                )
+            } else {
+                author_archiveQueries.deletePresentationExclusion(
+                    creatorId = creatorRootId,
+                    sourceId = sourceWork.sourceId,
+                    stableSourceUrl = sourceWork.stableSourceUrl,
+                )
+            }
+        }
+    }
+
+    override suspend fun importPresentationExclusions(
+        entries: Map<Long, Set<SourceWorkNaturalKey>>,
+    ): Map<Long, Set<SourceWorkNaturalKey>> {
+        bootstrap.awaitReady()
+        if (entries.isEmpty()) return emptyMap()
+        return handler.await(inTransaction = true) {
+            val now = clock()
+            val imported = linkedMapOf<Long, MutableSet<SourceWorkNaturalKey>>()
+            entries.toSortedMap().forEach creatorLoop@{ (creatorId, sourceWorks) ->
+                val rootId = author_archiveQueries.resolveArchiveCreatorRootId(creatorId).executeAsOneOrNull()
+                    ?: return@creatorLoop
+                sourceWorks.sortedWith(
+                    compareBy(SourceWorkNaturalKey::sourceId, SourceWorkNaturalKey::stableSourceUrl),
+                ).forEach sourceWorkLoop@{ sourceWork ->
+                    if (author_archiveQueries.getArchiveSourceWorkByKey(
+                            sourceId = sourceWork.sourceId,
+                            stableSourceUrl = sourceWork.stableSourceUrl,
+                        ).executeAsOneOrNull() == null
+                    ) {
+                        return@sourceWorkLoop
+                    }
+                    val importKey = "creator:$creatorId:source:${sourceWork.sourceId}:${sourceWork.stableSourceUrl}"
+                    val fingerprint = "presentation-exclusion-v1"
+                    if (author_archiveQueries.getLegacyImportFingerprint("PRESENTATION_EXCLUSION", importKey)
+                            .executeAsOneOrNull() != fingerprint
+                    ) {
+                        author_archiveQueries.upsertLegacyImportFingerprint(
+                            entityType = "PRESENTATION_EXCLUSION",
+                            legacyKey = importKey,
+                            fingerprint = fingerprint,
+                            importedAt = now,
+                        )
+                    }
+                    author_archiveQueries.upsertPresentationExclusion(
+                        creatorId = rootId,
+                        sourceId = sourceWork.sourceId,
+                        stableSourceUrl = sourceWork.stableSourceUrl,
+                        createdAt = now,
+                    )
+                    imported.getOrPut(creatorId) { linkedSetOf() }.add(sourceWork)
+                }
+            }
+            imported.mapValues { (_, sourceWorks) -> sourceWorks.toSet() }
+        }
     }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -1174,6 +1279,35 @@ class CreatorRepositoryImpl(
         }
     }
 
+    override suspend fun markPresentationGroupSeen(sourceWorks: List<SourceWorkNaturalKey>, now: Long) {
+        bootstrap.awaitReady()
+        require(now >= 0L) { "Work read timestamp must not be negative" }
+        val members = sourceWorks.distinct()
+        if (members.isEmpty()) return
+        handler.await(inTransaction = true) {
+            members.forEach { sourceWork ->
+                val canonicalWorkId = author_archiveQueries
+                    .getArchiveCanonicalWorkIdBySourceWork(
+                        sourceId = sourceWork.sourceId,
+                        stableSourceUrl = sourceWork.stableSourceUrl.trim(),
+                    )
+                    .executeAsOneOrNull()
+                if (canonicalWorkId == null) {
+                    author_archiveQueries.markArchiveSourceWorkDiscoveriesSeen(
+                        sourceId = sourceWork.sourceId,
+                        stableSourceUrl = sourceWork.stableSourceUrl.trim(),
+                        now = now,
+                    )
+                } else {
+                    author_archiveQueries.markArchiveCanonicalWorkDiscoveriesSeen(
+                        workId = canonicalWorkId,
+                        now = now,
+                    )
+                }
+            }
+        }
+    }
+
     override suspend fun getDiscoveries(limit: Long): List<ArchiveDiscovery> {
         bootstrap.awaitReady()
         require(limit > 0) { "Discovery limit must be positive" }
@@ -1503,6 +1637,13 @@ class CreatorRepositoryImpl(
         handler.await(inTransaction = true) {
             val now = clock()
             sourceCreatorIds.sorted().forEach { mergeCreatorIdentitiesRecord(it, targetCreatorId, now) }
+            sourceCreatorIds.sorted().forEach { sourceCreatorId ->
+                author_archiveQueries.deletePresentationExclusionConflicts(sourceCreatorId, targetCreatorId)
+                author_archiveQueries.movePresentationExclusionsRoot(
+                    targetCreatorId = targetCreatorId,
+                    sourceCreatorId = sourceCreatorId,
+                )
+            }
         }
     }
 
@@ -1578,6 +1719,16 @@ class CreatorRepositoryImpl(
                 author_archiveQueries.deleteArchiveSourceWorkCreator(sourceWorkId, sourceCreatorId)
             }
             if (selectedSourceWorkIds.isNotEmpty()) {
+                author_archiveQueries.deletePresentationExclusionConflictsForSourceWorks(
+                    sourceCreatorId = sourceCreatorId,
+                    targetCreatorId = targetCreatorId,
+                    sourceWorkIds = selectedSourceWorkIds.toList(),
+                )
+                author_archiveQueries.movePresentationExclusionsForSourceWorks(
+                    sourceCreatorId = sourceCreatorId,
+                    targetCreatorId = targetCreatorId,
+                    sourceWorkIds = selectedSourceWorkIds.toList(),
+                )
                 val canonicalRelations = author_archiveQueries
                     .getArchiveCanonicalCreatorsForCreator(sourceCreatorId)
                     .executeAsList()

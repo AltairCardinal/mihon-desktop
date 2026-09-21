@@ -66,6 +66,7 @@ class SyncPanelController(
     private var setupAccount: SyncGitHubAccount? = null
     private var chosenSpace: DiscoveredSyncSpace? = null
     private var emptyRepositoryCandidate: EmptySyncRepositoryCandidate? = null
+    private var legacyPending: StoredLegacySyncSetup? = null
     private var observedCompletion = runtime.coordinator.activity.value.completion
 
     init {
@@ -389,6 +390,7 @@ class SyncPanelController(
             SyncPanelAction.DismissNotice -> mutableState.update { it.copy(notice = null) }
             SyncPanelAction.BeginSetup -> beginSetup()
             SyncPanelAction.RetrySetup -> discover()
+            SyncPanelAction.AbandonLegacyPending -> abandonLegacyPending()
             is SyncPanelAction.ChooseSpace -> if (action.space in state.value.spaces) selectSpace(action.space)
             is SyncPanelAction.SubmitPassword -> submitPassword(action.password)
             SyncPanelAction.Authorize -> authorize()
@@ -398,16 +400,18 @@ class SyncPanelController(
             SyncPanelAction.ConfirmQuestion -> {
                 val question = state.value.question ?: return
                 mutableState.update { it.copy(question = null) }
-                if (question == SyncPanelQuestion.DISCONNECT) {
-                    setupVersion++
-                    setupJob?.cancelAndJoin()
-                    setupJob = null
-                    cancelAuthorization()
-                    bulkJob?.cancelAndJoin()
-                    runtime.disconnect()
-                    refresh()
-                } else {
-                    beginSetup()
+                when (question) {
+                    SyncPanelQuestion.DISCONNECT -> {
+                        setupVersion++
+                        setupJob?.cancelAndJoin()
+                        setupJob = null
+                        cancelAuthorization()
+                        bulkJob?.cancelAndJoin()
+                        runtime.disconnect()
+                        refresh()
+                    }
+                    SyncPanelQuestion.SWITCH_SPACE -> beginSetup()
+                    SyncPanelQuestion.ABANDON_LEGACY -> abandonLegacyPending()
                 }
             }
         }
@@ -491,7 +495,7 @@ class SyncPanelController(
         }
     }
 
-    private fun discover() {
+    private fun discover(autoSelect: Boolean = true) {
         if (setupJob?.isActive == true || repositoryJob?.isActive == true) return
         val version = authVersion
         mutableState.update {
@@ -506,9 +510,25 @@ class SyncPanelController(
             try {
                 when (val pending = runtime.onboarding.pendingForCurrentAccount()) {
                     is SyncPendingSetup.Current -> enqueue {
-                        if (version == authVersion) runSetup { pending.setup }
+                        if (version == authVersion) {
+                            legacyPending = null
+                            mutableState.update { it.copy(legacyRecoveryAvailable = false) }
+                            if (autoSelect) {
+                                runSetup { pending.setup }
+                            } else {
+                                mutableState.update {
+                                    it.copy(setupStep = SyncSetupStep.MERGING, setupBusy = false)
+                                }
+                            }
+                        }
                     }
                     is SyncPendingSetup.Legacy -> {
+                        legacyPending = pending.setup
+                        enqueue {
+                            if (version == authVersion) {
+                                mutableState.update { it.copy(legacyRecoveryAvailable = true) }
+                            }
+                        }
                         val recheck = runtime.onboarding.recheckLegacyPending(pending.setup)
                         if (pending.setup.newSpace) {
                             enqueue {
@@ -525,9 +545,10 @@ class SyncPanelController(
                         }
                     }
                     SyncPendingSetup.None -> {
+                        legacyPending = null
                         val found = runtime.onboarding.discover()
                         enqueue {
-                            if (version == authVersion) handleDiscovery(found)
+                            if (version == authVersion) handleDiscovery(found, autoSelect)
                         }
                     }
                 }
@@ -539,9 +560,45 @@ class SyncPanelController(
         }
     }
 
-    private fun handleDiscovery(result: SyncSpaceDiscovery) {
+    private suspend fun abandonLegacyPending() {
+        val pending = legacyPending ?: return discover()
+        mutableState.update { it.copy(setupBusy = true, setupProblem = null) }
+        try {
+            runtime.onboarding.abandonLegacyPending(pending)
+            legacyPending = null
+            mutableState.update {
+                it.copy(setupBusy = false, setupProblem = null, legacyRecoveryAvailable = false)
+            }
+            discover(autoSelect = false)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            mutableState.update {
+                it.copy(
+                    setupBusy = false,
+                    setupProblem = (failure as? SyncSetupException)?.problem ?: SyncDiscoveryProblem.RETRYABLE,
+                )
+            }
+        }
+    }
+
+    private fun handleDiscovery(result: SyncSpaceDiscovery, autoSelect: Boolean = true) {
         when (result) {
-            is SyncSpaceDiscovery.Found -> selectSpace(result.space)
+            is SyncSpaceDiscovery.Found -> {
+                if (autoSelect) {
+                    selectSpace(result.space)
+                } else {
+                    mutableState.update {
+                        it.copy(
+                            setupStep = SyncSetupStep.CHOOSE_SPACE,
+                            setupBusy = false,
+                            spaces = listOf(result.space),
+                            setupAccountLogin = result.space.account.login,
+                            setupInstallation = result.space.installation,
+                        )
+                    }
+                }
+            }
             is SyncSpaceDiscovery.Multiple -> mutableState.update {
                 it.copy(
                     setupStep = SyncSetupStep.CHOOSE_SPACE,

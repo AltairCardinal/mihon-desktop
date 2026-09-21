@@ -1670,6 +1670,8 @@
     <string name="sync_import_remaining">首次合并剩余 %1$d 项</string>
     <string name="sync_disconnect_body">停止同步并清除本设备的 GitHub 登录？书架及尚未上传的变动仍保留在本机。</string>
     <string name="sync_switch_body">选择另一个同步空间？现有本机数据与待上传批次将分别保留。</string>
+    <string name="sync_setup_abandon_legacy_title">放弃未完成的初始化？</string>
+    <string name="sync_setup_abandon_legacy_body">确认后只会清除本机未完成的初始化记录；书架、待上传队列和远端文件保持不变。仅供这次未完成初始化使用的密钥材料将在确认后无法恢复。</string>
     <string name="sync_problem_network">网络暂不可用，变动已保留，请重试。</string>
     <string name="sync_problem_auth">GitHub 授权需要重新连接。</string>
     <string name="sync_problem_storage">安全存储不可用，变动已保留。</string>
@@ -1831,6 +1833,8 @@
     <string name="sync_setup_incompatible">此同步空间使用不支持的格式，原有数据已保留</string>
     <string name="sync_setup_name_occupied">mihon-sync 名称已被占用。请授权已有同步仓库，或在 GitHub 处理名称冲突后重试。</string>
     <string name="sync_setup_unconfirmed">无法核实上次配置结果，请检查 GitHub 授权后重试。不会覆盖已有文件。</string>
+    <string name="sync_setup_legacy_recovery">本机保留了一次未完成的初始化。放弃操作只会清除本机 pending 记录，不会删除远端文件。</string>
+    <string name="sync_setup_abandon_legacy">放弃旧初始化并重新检查</string>
     <string name="sync_setup_account_changed">GitHub 账号已更换，请重新连接后继续</string>
     <string name="sync_problem_not_private">同步仓库已变为公开，请在 GitHub 恢复为私有后重试。上传已暂停；恢复私有不能撤回此前可能公开的数据。</string>
 </resources>

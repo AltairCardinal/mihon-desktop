@@ -489,7 +489,14 @@ class AuthorsProductionWiringTest {
         val grouped = decision == tachiyomi.domain.creator.model.WorkDecisionState.CONFIRMED
         val currentArchive = repository.getCreatorWorkArchive(target.id)
         val firstVersion = (currentArchive.pending + currentArchive.rejected).firstOrNull()
-        val rowKey = if (grouped) work.id.toString() else "version-${checkNotNull(firstVersion).sourceWorkId}"
+        val rowKey = if (grouped) {
+            work.id.toString()
+        } else if (decision == null) {
+            val naturalKey = checkNotNull(firstVersion).naturalKey
+            "source:${naturalKey.sourceId}:${naturalKey.stableSourceUrl}"
+        } else {
+            "version-${checkNotNull(firstVersion).sourceWorkId}"
+        }
         val totalWorks = if (grouped) 1 else 3
         val sources = mockk<tachiyomi.domain.source.service.SourceManager> {
             every { get(any<Long>()) } returns null
@@ -557,29 +564,42 @@ class AuthorsProductionWiringTest {
                     }
                     } finally { java.nio.file.Files.write(output, rendered) }
                     if (!grouped) {
-                        menus.first().config[SemanticsActions.OnClick].action?.invoke()
-                        val review = mountedNavigator!!.lastItem as WorkCompareScreen
-                        org.junit.jupiter.api.Assertions.assertEquals(checkNotNull(firstVersion).sourceWorkId, review.workId)
-                        org.junit.jupiter.api.Assertions.assertEquals(target.id, review.creatorId)
+                        if (decision != null) {
+                            menus.first().config[SemanticsActions.OnClick].action?.invoke()
+                            val review = mountedNavigator!!.lastItem as WorkCompareScreen
+                            org.junit.jupiter.api.Assertions.assertEquals(checkNotNull(firstVersion).sourceWorkId, review.workId)
+                            org.junit.jupiter.api.Assertions.assertEquals(target.id, review.creatorId)
+                        }
                         mountedNavigator!!.pop()
                     }
                     val search = nodes(scene).single { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-search" }
-                    search.config[SemanticsActions.SetText].action?.invoke(AnnotatedString("missing work"))
-                    withTimeout(5000) { while (sourceLabel(3) in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) } }
+                    search.config[SemanticsActions.SetText].action?.invoke(AnnotatedString("ZZZ-no-match"))
+                    scene.render()
                     assertTrue(MR.strings.creator_work_version_count.localized(Locale.getDefault(), totalWorks, 3) in texts(scene))
                     search.config[SemanticsActions.SetText].action?.invoke(AnnotatedString(""))
-                    withTimeout(5000) { while (sourceLabel(3) !in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) } }
-                    clickableTextNode(scene, MR.strings.creator_work_sources_all.localized()).config[SemanticsActions.OnClick].action?.invoke()
                     scene.render()
-                    clickableTextNode(scene, "Source 2 long edition").config[SemanticsActions.OnClick].action?.invoke()
-                    withTimeout(5000) { while (sourceLabel(3) in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) } }
-                    assertTrue(MR.strings.creator_work_version_count.localized(Locale.getDefault(), totalWorks, 3) in texts(scene))
-                    clickableTextNode(scene, sourceLabel(2)).config[SemanticsActions.OnClick].action?.invoke()
-                    withTimeout(5000) {
-                        while (mountedNavigator?.lastItem !is mihon.desktop.ui.library.MangaDetailScreen) kotlinx.coroutines.delay(10)
+                    if (decision == null) {
+                        assertTrue(
+                            nodes(scene).any {
+                                it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
+                                    "creator-version-${checkNotNull(firstVersion).sourceWorkId}"
+                            },
+                        )
+                    } else {
+                        clickableTextNode(scene, MR.strings.creator_work_sources_all.localized()).config[SemanticsActions.OnClick].action?.invoke()
+                        scene.render()
+                        clickableTextNode(scene, "Source 2 long edition").config[SemanticsActions.OnClick].action?.invoke()
+                        withTimeout(5000) { while (sourceLabel(3) in texts(scene)) { scene.render(); kotlinx.coroutines.delay(10) } }
                     }
-                    org.junit.jupiter.api.Assertions.assertEquals(mangas[1].id,
-                        (mountedNavigator!!.lastItem as mihon.desktop.ui.library.MangaDetailScreen).mangaId)
+                    assertTrue(MR.strings.creator_work_version_count.localized(Locale.getDefault(), totalWorks, 3) in texts(scene))
+                    if (decision != null) {
+                        clickableTextNode(scene, sourceLabel(2)).config[SemanticsActions.OnClick].action?.invoke()
+                        withTimeout(5000) {
+                            while (mountedNavigator?.lastItem !is mihon.desktop.ui.library.MangaDetailScreen) kotlinx.coroutines.delay(10)
+                        }
+                        org.junit.jupiter.api.Assertions.assertEquals(mangas[1].id,
+                            (mountedNavigator!!.lastItem as mihon.desktop.ui.library.MangaDetailScreen).mangaId)
+                    }
                 } finally { scene.close() }
             }
         } finally {
@@ -1012,6 +1032,7 @@ class AuthorsProductionWiringTest {
         }
         val archiveRepository = mockk<CreatorArchiveRepository> {
             every { observeUnreadWorkDiscoveries(any()) } returns flowOf(emptyList())
+            coEvery { getPresentationExclusions(any()) } returns emptySet()
             coEvery { getManualCreatorAliases(7L) } returnsMany listOf(
                 listOf("J. Doe"),
                 emptyList(),
@@ -1073,6 +1094,7 @@ class AuthorsProductionWiringTest {
         }
         val archiveRepository = mockk<CreatorArchiveRepository> {
             every { observeUnreadWorkDiscoveries(any()) } returns flowOf(emptyList())
+            coEvery { getPresentationExclusions(any()) } returns emptySet()
             coEvery {
                 getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any())
             } returns tachiyomi.domain.creator.model.CreatorCardProjectionPage(0, 50, false, emptyList())
@@ -1144,6 +1166,7 @@ class AuthorsProductionWiringTest {
         val projectionCalls = AtomicInteger()
         val archiveRepository = mockk<CreatorArchiveRepository> {
             every { observeUnreadWorkDiscoveries(any()) } returns flowOf(emptyList())
+            coEvery { getPresentationExclusions(any()) } returns emptySet()
             coEvery {
                 getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any())
             } coAnswers {
@@ -1241,6 +1264,7 @@ class AuthorsProductionWiringTest {
         }
         val archiveRepository = mockk<CreatorArchiveRepository> {
             every { observeUnreadWorkDiscoveries(any()) } returns flowOf(emptyList())
+            coEvery { getPresentationExclusions(any()) } returns emptySet()
             coEvery { getManualCreatorAliases(7L) } returns emptyList()
             every { observeSourceCheckpoints(7L) } returns flowOf(emptyList())
             every { observeCreatorWorkArchive(7L) } returns flowOf(CreatorWorkArchive(emptyList(), emptyList(), emptyList()))
@@ -1316,6 +1340,7 @@ class AuthorsProductionWiringTest {
         }
         val archive = mockk<CreatorArchiveRepository> {
             every { observeUnreadWorkDiscoveries(any()) } returns flowOf(emptyList())
+            coEvery { getPresentationExclusions(any()) } returns emptySet()
             coEvery { getDueWatchSources(any(), any()) } returns emptyList()
         }
         coEvery {

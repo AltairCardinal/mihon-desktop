@@ -1,6 +1,6 @@
 # 分支实现审查修复 Roadmap
 
-日期：2026-09-21。状态：方案已制定，待实施；所有修复未完成。
+日期：2026-09-21。状态：RF-01～RF-05 已实现、审查并验证；RF-06 已完成可用平台收口，macOS/真实 Android 运行验收仍未完成。
 
 审查基线：`codex/author-experience-iteration`，`7df3d2adf5..0e68f9c5e9`，25 个提交、116 个文件。问题编号对应本次实现审查的 1–10 项；这是静态审查结论，执行时先以生产行为失败测试确认，不把历史测试通过当新验收。
 
@@ -33,7 +33,7 @@
 
 ### RF-01 · 统一展示投影与当前应用语言
 
-- [ ] RF-01：双端作者列表/详情使用一致分组、数量、代表作与标题；单来源也走来源选择窗口。
+- [x] RF-01：双端作者列表/详情使用一致分组、数量、代表作与标题；单来源也走来源选择窗口。
 
 **入口/范围**：domain creator 的分组/代表作/模型，data 作者卡片批量查询与缓存，双端 AuthorsTab/ScreenModel，现有 locale adapter 及相关测试。不修改发现已查看事务、日期质量或同步。
 
@@ -52,7 +52,7 @@
 
 ### RF-02 · 分开显示的原子提交、撤销与关系迁移
 
-- [ ] RF-02：成功保存后才拆卡/提示成功；失败可重试；作者合并/拆分后纠错按自然键保留。
+- [x] RF-02：成功保存后才拆卡/提示成功；失败可重试；作者合并/拆分后纠错按自然键保留。
 
 **入口/范围**：CreatorWorkPresentationExclusions、CreatorIdentityGraphMerger/既有身份编辑事务、data schema、双端分开显示回调与测试。复用现有用例/入口，不新建身份系统。
 
@@ -70,7 +70,7 @@
 
 ### RF-03 · 展示组查看闭环与更新页
 
-- [ ] RF-03：成功进入任一版本清除当前整组提示；更新页大量新作与章节仍可滚动访问。
+- [x] RF-03：成功进入任一版本清除当前整组提示；更新页大量新作与章节仍可滚动访问。
 
 **入口/范围**：CreatorArchive.markWorkSeen与repository事务、既有发现插入/read/outbox路径、双端导航确认与更新页面/模型。依赖RF-01投影，不复制分组规则。
 
@@ -87,7 +87,7 @@
 
 ### RF-04 · 有界采样与稳定日期投影
 
-- [ ] RF-04：完整长目录也能积累跨日稳定证据；卡片使用最早可信上架日期或冻结首次发现日期，降级不漂移。
+- [x] RF-04：完整长目录也能积累跨日稳定证据；卡片使用最早可信上架日期或冻结首次发现日期，降级不漂移。
 
 **入口/范围**：SourceDateQualityPolicy、production目录/发现记录入口、author_archive日期查询/快照、备份贡献者、双端卡片/来源窗口。沿用既有字段质量key，不扩大图源支持。
 
@@ -105,7 +105,7 @@
 
 ### RF-05 · 旧同步初始化恢复入口
 
-- [ ] RF-05：旧newSpace记录可明确放弃并重新检查；取消/失败/账号切换均保持安全。
+- [x] RF-05：旧newSpace记录可明确放弃并重新检查；取消/失败/账号切换均保持安全。
 
 **入口/范围**：SyncPanelController/State、SyncOnboarding.abandonLegacyPending、SyncSetupStorage现有CAS、共享presentation-sync与i18n。优先共享UI，两端只保留已有平台导航差异；不改Git发布协议或App权限。
 
@@ -151,4 +151,12 @@
 
 ## 6. 执行证据
 
-尚未开始实施。后续每批在此追加精简记录：提交、有效红灯、绿灯/重构、集成/格式、审查结论、平台限制；不提前填通过，不新增逐任务快照文件。
+- RF-01：补充共享卡片投影、脚本选择、代表作缓存切换和 Android/Desktop wiring；`rf01-script-cache-red` 先因缓存优先级失败，`rf01-script-cache-green` 通过；Desktop `AuthorsProductionWiringTest` 19/19 通过，Android follow wiring focused 通过。
+- RF-02：补充排除规则 SQL 表及 `30.sqm` 迁移、偏好一次性导入和 merge/split 事务；真实 SQLite merge/split、未解析导入、迁移安全 focused 测试通过；失败反馈/撤销仅在持久化成功后更新 UI。
+- RF-03：补充整组 seen 事务和 Desktop 同一 LazyColumn 更新列表；作者/更新页 production wiring 与核心全量测试通过。
+- RF-04：补充按作品/自然键有界采样及稳定日期质量；长目录跨日 focused 测试通过，核心全量测试通过。
+- RF-05：补充 legacy pending 确认、CAS 放弃、只读重查和 Compose 入口；`JvmSyncPanelStorageContractTest` 与 `SyncPanelContentTest` 通过，并验证放弃/重查阶段无远端写入。
+- 全量与格式：`:domain:jvmTest :data:jvmTest :presentation-sync:jvmTest`、`:app-desktop:jvmTest`、`:app:testReleaseUnitTest`（601 项）及 `spotlessCheck` 均通过；Android 首轮暴露的 mock wiring 缺口已补测试配置并 focused/full 复验通过。
+- 正式 Windows 验收：`bash ./scripts/build-desktop.sh build-only` 成功，extension runtime acceptance 通过；产物路径见最终交付报告。构建版本分配与实现同批提交，未混入既有未提交文档和 `testfile/`。
+- 第二轮主代理实现审查通过：核对统一投影、迁移回滚、双端 locale、同步安全边界及 roadmap 需求；未新增阻塞问题。
+- 平台限制：当前环境无 macOS 运行/发布机，且未执行真实 Android 设备运行验收；按本 roadmap 规则 RF-06 保持未勾选，不以 JVM/Windows 证据替代。

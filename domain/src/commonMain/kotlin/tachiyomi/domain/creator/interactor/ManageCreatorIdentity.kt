@@ -4,6 +4,7 @@ import tachiyomi.domain.creator.model.AddCreatorAliasesRequest
 import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.creator.model.SetCreatorDisplayNameRequest
+import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.repository.CreatorArchiveRepository
 import tachiyomi.domain.manga.model.Manga
 
@@ -25,8 +26,12 @@ class ManageCreatorIdentity(
     suspend fun merge(sourceCreatorId: Long, targetCreatorId: Long) =
         repository.mergeCreatorIdentities(sourceCreatorId, targetCreatorId)
 
-    suspend fun split(sourceCreatorId: Long, mangaIds: Set<Long>, newDisplayName: String): Long =
-        repository.splitCreatorIdentity(sourceCreatorId, mangaIds, newDisplayName)
+    suspend fun split(
+        sourceCreatorId: Long,
+        mangaIds: Set<Long>,
+        newDisplayName: String,
+        sourceWorks: Set<SourceWorkNaturalKey> = emptySet(),
+    ): Long = repository.splitCreatorIdentity(sourceCreatorId, mangaIds, newDisplayName, sourceWorks)
 
     suspend fun resolve(manga: Manga, mention: CreatorMention): CreatorMentionResolution =
         CreatorMentionResolution.Resolved(repository.createAndBindMangaCreatorIdentity(manga, mention))

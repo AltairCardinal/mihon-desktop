@@ -82,6 +82,7 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.components.TabContent
 import eu.kanade.presentation.manga.components.MangaCover
 import eu.kanade.tachiyomi.data.cache.CoverCache
+import eu.kanade.tachiyomi.util.system.LocaleHelper
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -123,6 +124,7 @@ import tachiyomi.domain.creator.service.CreatorIdentityEditor
 import tachiyomi.domain.creator.service.CreatorWorkPresentationExclusions
 import tachiyomi.domain.creator.service.OpenCreatorWorkVersion
 import tachiyomi.domain.creator.service.WorkPresentationGroupService
+import tachiyomi.domain.creator.service.WorkTitleNormalizer
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
@@ -135,6 +137,7 @@ import uy.kohesive.injekt.api.get
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 class AndroidMangaCreatorNavigator(
     private val extractCreators: ExtractCreatorsFromManga = ExtractCreatorsFromManga(),
@@ -508,6 +511,9 @@ internal class AndroidAuthorsScreenModel(
             preferredLanguages = sourcePreferences.enabledLanguages().get(),
             customCoverExists = { mangaId -> coverCache.getCustomCoverFile(mangaId).exists() },
             query = query,
+            preferredDisplayScript = WorkTitleNormalizer.displayScriptForLanguageTag(
+                LocaleHelper.getApplicationLanguageTag(),
+            ),
         )
 }
 
@@ -604,7 +610,7 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                 showSourceChooserFor = null
                 sourceFocusRequester = null
                 navigator.push(eu.kanade.tachiyomi.ui.manga.MangaScreen(request.mangaId))
-                model.markWorkSeenAfterNavigation(request.sourceWork)
+                model.markWorkSeenAfterNavigation(request.presentationMembers)
             }
         }
         if (confirmUnfollow) {
@@ -631,17 +637,18 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                     error = state.workOpenError,
                     opening = state.workOpening,
                     onSeparate = { version ->
-                        model.excludePresentationVersion(version)
-                        pendingSourceFocusRestore = sourceFocusRequester
-                        sourceFocusRequester = null
-                        showSourceChooserFor = null
                         snackbarScope.launch {
-                            val result = snackbarHostState.showSnackbar(
-                                message = separateDisplayDoneMessage,
-                                actionLabel = separateDisplayUndoLabel,
-                            )
-                            if (result == SnackbarResult.ActionPerformed) {
-                                model.restorePresentationVersion(version)
+                            if (model.excludePresentationVersion(version)) {
+                                pendingSourceFocusRestore = sourceFocusRequester
+                                sourceFocusRequester = null
+                                showSourceChooserFor = null
+                                val result = snackbarHostState.showSnackbar(
+                                    message = separateDisplayDoneMessage,
+                                    actionLabel = separateDisplayUndoLabel,
+                                )
+                                if (result == SnackbarResult.ActionPerformed) {
+                                    model.restorePresentationVersion(version)
+                                }
                             }
                         }
                     },
@@ -782,8 +789,9 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                             CreatorArchiveWorkCard(
                                 title = group.title,
                                 version = group.representative,
-                                firstSeenDate = group.firstSeenAt?.let(::sourceDateDisplayDate),
+                                dateLabel = groupDateLabel(group),
                                 favorite = group.inLibrary,
+                                unread = group.unread,
                                 key = presentationCardKey,
                                 mode = mode,
                                 focusRequester = focusRequester,
@@ -828,8 +836,9 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                             CreatorArchiveWorkCard(
                                 title = group.title,
                                 version = group.representative,
-                                firstSeenDate = group.firstSeenAt?.let(::sourceDateDisplayDate),
+                                dateLabel = groupDateLabel(group),
                                 favorite = group.inLibrary,
+                                unread = group.unread,
                                 key = presentationCardKey,
                                 mode = mode,
                                 focusRequester = focusRequester,
@@ -1003,8 +1012,9 @@ private fun AndroidCreatorWorkSourceChooserDialog(
 private fun CreatorArchiveWorkCard(
     title: String,
     version: SourceWorkArchiveVersion?,
-    firstSeenDate: String?,
+    dateLabel: String?,
     favorite: Boolean,
+    unread: Boolean,
     key: String,
     mode: LibraryDisplayMode,
     focusRequester: FocusRequester,
@@ -1037,10 +1047,10 @@ private fun CreatorArchiveWorkCard(
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.testTag("creator-work-$key"),
                     )
-                    unreadWorkLabel(version, key)
-                    firstSeenDate?.let { date ->
+                    unreadWorkLabel(unread, key)
+                    dateLabel?.let { date ->
                         Text(
-                            stringResource(MR.strings.desktop_ui_first_seen, date),
+                            date,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.testTag("creator-work-first-seen-$key"),
                         )
@@ -1067,10 +1077,10 @@ private fun CreatorArchiveWorkCard(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
                             .testTag("creator-work-$key"),
                     )
-                    unreadWorkLabel(version, key)
-                    firstSeenDate?.let { date ->
+                    unreadWorkLabel(unread, key)
+                    dateLabel?.let { date ->
                         Text(
-                            stringResource(MR.strings.desktop_ui_first_seen, date),
+                            date,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(horizontal = 8.dp)
                                 .testTag("creator-work-first-seen-$key"),
@@ -1091,9 +1101,9 @@ private fun CreatorArchiveWorkCard(
                         modifier = Modifier.fillMaxWidth().aspectRatio(0.7f),
                         compactTitle = true,
                     )
-                    firstSeenDate?.let { date ->
+                    dateLabel?.let { date ->
                         Text(
-                            stringResource(MR.strings.desktop_ui_first_seen, date),
+                            date,
                             style = MaterialTheme.typography.labelSmall,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -1101,7 +1111,7 @@ private fun CreatorArchiveWorkCard(
                                 .testTag("creator-work-first-seen-$key"),
                         )
                     }
-                    unreadWorkLabel(version, key)
+                    unreadWorkLabel(unread, key)
                     content()
                 }
             }
@@ -1110,8 +1120,8 @@ private fun CreatorArchiveWorkCard(
 }
 
 @Composable
-private fun unreadWorkLabel(version: SourceWorkArchiveVersion?, key: String) {
-    if (version?.unread == true) {
+private fun unreadWorkLabel(unread: Boolean, key: String) {
+    if (unread) {
         Text(
             stringResource(MR.strings.creator_new_work_unread),
             style = MaterialTheme.typography.labelSmall,
@@ -1180,6 +1190,18 @@ private fun SourceWorkArchiveVersion.toMangaCover() = tachiyomi.domain.manga.mod
 private fun earliestFirstSeenDate(versions: List<SourceWorkArchiveVersion>): String? = versions
     .mapNotNull { it.firstSeenDate?.takeIf(String::isNotBlank) }
     .minOrNull()
+
+@Composable
+private fun groupDateLabel(group: WorkPresentationGroup): String? {
+    val publishedDateAt = group.publishedDateAt
+    return when {
+        group.publishedDateQuality == SourceDateQualityStatus.TRUSTED && publishedDateAt != null ->
+            stringResource(MR.strings.creator_work_published_date, sourceDateDisplayDate(publishedDateAt))
+        group.publishedDateQuality == SourceDateQualityStatus.SUSPECT ->
+            stringResource(MR.strings.creator_work_published_date_pending)
+        else -> group.firstSeenDate?.let { date -> stringResource(MR.strings.desktop_ui_first_seen, date) }
+    }
+}
 
 @Composable
 private fun chapterCountLabel(version: SourceWorkArchiveVersion): String = when (version.chapterCompleteness) {
@@ -1299,11 +1321,7 @@ internal data class AuthorState(
         }
 
     val visiblePresentationCards: List<WorkPresentationGroup>
-        get() = visiblePresentationGroups.filter { group ->
-            group.canonicalWorkId != null ||
-                group.members.size > 1 ||
-                group.members.any { it.naturalKey in presentationExcluded }
-        }
+        get() = visiblePresentationGroups
 
     val visiblePendingVersions: List<SourceWorkArchiveVersion>
         get() {
@@ -1317,6 +1335,7 @@ internal data class AuthorState(
 internal data class OpenMangaRequest(
     val mangaId: Long,
     val sourceWork: SourceWorkNaturalKey,
+    val presentationMembers: List<SourceWorkNaturalKey> = listOf(sourceWork),
 )
 
 internal class AndroidAuthorDetailScreenModel(
@@ -1330,9 +1349,30 @@ internal class AndroidAuthorDetailScreenModel(
     identity: ManageCreatorIdentity = Injekt.get(),
     private val networkToLocal: NetworkToLocalManga = Injekt.get(),
     private val libraryPreferences: LibraryPreferences? = null,
+    private val preferredDisplayScript: WorkTitleNormalizer.DisplayScript? =
+        WorkTitleNormalizer.displayScriptForLanguageTag(LocaleHelper.getApplicationLanguageTag()),
 ) : ScreenModel {
     private val presentationExclusions = libraryPreferences?.let {
         CreatorWorkPresentationExclusions(it.creatorWorkPresentationExclusions())
+    }
+    private var legacyPresentationExclusionsImported = false
+
+    private suspend fun getPresentationExclusions(rootId: Long): Set<SourceWorkNaturalKey> {
+        if (!legacyPresentationExclusionsImported) {
+            val legacy = presentationExclusions?.entries().orEmpty()
+            if (legacy.isNotEmpty()) {
+                val imported = archive.importPresentationExclusions(legacy)
+                presentationExclusions?.remove(imported)
+                if (imported.values.sumOf { it.size } ==
+                    legacy.values.sumOf { it.size }
+                ) {
+                    legacyPresentationExclusionsImported = true
+                }
+            } else {
+                legacyPresentationExclusionsImported = true
+            }
+        }
+        return archive.getPresentationExclusions(rootId)
     }
     private val mutableState = MutableStateFlow(
         AuthorState(
@@ -1357,7 +1397,13 @@ internal class AndroidAuthorDetailScreenModel(
                     ),
                 ).id
             }
-            mutableOpenManga.emit(OpenMangaRequest(opener.await(version), version.naturalKey))
+            val members = mutableState.value.presentationGroups
+                .firstOrNull { group -> group.members.any { it.naturalKey == version.naturalKey } }
+                ?.members
+                ?.map(SourceWorkArchiveVersion::naturalKey)
+                .orEmpty()
+                .ifEmpty { listOf(version.naturalKey) }
+            mutableOpenManga.emit(OpenMangaRequest(opener.await(version), version.naturalKey, members))
         }.onFailure { failure ->
             mutableState.update { it.copy(workOpenError = failure.message ?: failure::class.simpleName) }
         }
@@ -1366,15 +1412,18 @@ internal class AndroidAuthorDetailScreenModel(
 
     fun clearWorkOpenError() = mutableState.update { it.copy(workOpenError = null) }
 
-    suspend fun markWorkSeenAfterNavigation(sourceWork: SourceWorkNaturalKey) {
+    suspend fun markWorkSeenAfterNavigation(sourceWorks: List<SourceWorkNaturalKey>) {
         try {
-            archive.markWorkSeen(sourceWork, System.currentTimeMillis())
+            archive.markPresentationGroupSeen(sourceWorks, System.currentTimeMillis())
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Throwable) {
             mutableState.update { it.copy(workOpenError = failure.message ?: failure::class.simpleName) }
         }
     }
+
+    suspend fun markWorkSeenAfterNavigation(sourceWork: SourceWorkNaturalKey) =
+        markWorkSeenAfterNavigation(listOf(sourceWork))
     fun isSourceMissing(version: SourceWorkArchiveVersion): Boolean = sources.get(version.naturalKey.sourceId) == null
     fun sourceName(version: SourceWorkArchiveVersion): String = sources.getOrStub(version.naturalKey.sourceId).name
     val identityEditor = CreatorIdentityEditor(creatorId, identity, screenModelScope)
@@ -1403,13 +1452,14 @@ internal class AndroidAuthorDetailScreenModel(
         screenModelScope.launch {
             archive.observe(creatorId).collect { value ->
                 mutableState.update { state ->
-                    val excluded = presentationExclusions?.get(activeCreatorId).orEmpty()
+                    val excluded = getPresentationExclusions(activeCreatorId)
                     state.copy(
                         archive = value,
                         presentationExcluded = excluded,
                         presentationGroups = WorkPresentationGroupService.project(
                             value,
                             excludedNaturalKeys = excluded,
+                            preferredDisplayScript = preferredDisplayScript,
                         ),
                     )
                 }
@@ -1474,42 +1524,66 @@ internal class AndroidAuthorDetailScreenModel(
             }
     }
     fun clearWorkDisplayModeError() = mutableState.update { it.copy(workDisplayModeError = null) }
-    fun excludePresentationVersion(version: SourceWorkArchiveVersion) = screenModelScope.launch {
-        val exclusions = presentationExclusions ?: return@launch
+    suspend fun excludePresentationVersion(version: SourceWorkArchiveVersion): Boolean {
+        val exclusions = presentationExclusions ?: return false
         val root = activeCreatorId
-        runCatching { exclusions.exclude(root, version.naturalKey) }
-            .onSuccess {
-                mutableState.update { state ->
-                    val next = state.presentationExcluded + version.naturalKey
-                    state.copy(
-                        presentationExcluded = next,
-                        presentationGroups = WorkPresentationGroupService.project(
-                            state.archive,
-                            excludedNaturalKeys = next,
-                        ),
-                    )
-                }
+        mutableState.update { it.copy(workOpening = true, error = null) }
+        return try {
+            archive.setPresentationExclusion(
+                root,
+                version.naturalKey,
+                excluded = true,
+                now = System.currentTimeMillis(),
+            )
+            mutableState.update { state ->
+                val next = state.presentationExcluded + version.naturalKey
+                state.copy(
+                    workOpening = false,
+                    presentationExcluded = next,
+                    presentationGroups = WorkPresentationGroupService.project(
+                        state.archive,
+                        excludedNaturalKeys = next,
+                        preferredDisplayScript = preferredDisplayScript,
+                    ),
+                )
             }
-            .onFailure(::fail)
+            true
+        } catch (error: Throwable) {
+            fail(error)
+            mutableState.update { it.copy(workOpening = false) }
+            false
+        }
     }
 
-    fun restorePresentationVersion(version: SourceWorkArchiveVersion) = screenModelScope.launch {
-        val exclusions = presentationExclusions ?: return@launch
+    suspend fun restorePresentationVersion(version: SourceWorkArchiveVersion): Boolean {
+        val exclusions = presentationExclusions ?: return false
         val root = activeCreatorId
-        runCatching { exclusions.restore(root, version.naturalKey) }
-            .onSuccess {
-                mutableState.update { state ->
-                    val next = state.presentationExcluded - version.naturalKey
-                    state.copy(
-                        presentationExcluded = next,
-                        presentationGroups = WorkPresentationGroupService.project(
-                            state.archive,
-                            excludedNaturalKeys = next,
-                        ),
-                    )
-                }
+        mutableState.update { it.copy(workOpening = true, error = null) }
+        return try {
+            archive.setPresentationExclusion(
+                root,
+                version.naturalKey,
+                excluded = false,
+                now = System.currentTimeMillis(),
+            )
+            mutableState.update { state ->
+                val next = state.presentationExcluded - version.naturalKey
+                state.copy(
+                    workOpening = false,
+                    presentationExcluded = next,
+                    presentationGroups = WorkPresentationGroupService.project(
+                        state.archive,
+                        excludedNaturalKeys = next,
+                        preferredDisplayScript = preferredDisplayScript,
+                    ),
+                )
             }
-            .onFailure(::fail)
+            true
+        } catch (error: Throwable) {
+            fail(error)
+            mutableState.update { it.copy(workOpening = false) }
+            false
+        }
     }
     fun openReview(version: SourceWorkArchiveVersion) = mutableState.update {
         it.copy(reviewing = version)

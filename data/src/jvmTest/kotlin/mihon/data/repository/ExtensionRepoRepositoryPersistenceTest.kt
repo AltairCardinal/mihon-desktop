@@ -227,9 +227,14 @@ class ExtensionRepoRepositoryPersistenceTest {
             """SELECT type, name FROM sqlite_master
                 WHERE (type = 'table' AND (
                     name GLOB 'sync_*' OR name GLOB 'author_archive_identity_*' OR
-                    name = 'author_archive_representative_work_cache'
+                    name = 'author_archive_representative_work_cache' OR
+                    name GLOB 'author_archive_source_date_quality*' OR
+                    name = 'author_archive_presentation_exclusions'
                 ))
-                   OR (type = 'trigger' AND name GLOB 'author_archive_*_revision')
+                   OR (type = 'trigger' AND (
+                    name GLOB 'author_archive_*_revision' OR
+                    name = 'author_archive_source_work_first_seen_defaults'
+                ))
                 ORDER BY CASE type WHEN 'trigger' THEN 0 ELSE 1 END""",
             { cursor ->
                 QueryResult.Value(
@@ -246,6 +251,15 @@ class ExtensionRepoRepositoryPersistenceTest {
         driver.execute(null, "ALTER TABLE author_archive_creators DROP COLUMN identity_revision", 0)
         driver.execute(null, "ALTER TABLE mangas DROP COLUMN memo", 0)
         driver.execute(null, "ALTER TABLE chapters DROP COLUMN memo", 0)
+        listOf(
+            "first_seen_date",
+            "first_seen_zone",
+            "chapter_count_state",
+            "catalog_chapter_count",
+            "latest_chapter_at",
+        ).forEach { column ->
+            driver.execute(null, "ALTER TABLE author_archive_source_works DROP COLUMN $column", 0)
+        }
         listOf("index_url", "extension_list_url", "contact_discord").forEach { column ->
             driver.execute(null, "ALTER TABLE extension_repos DROP COLUMN $column", 0)
         }

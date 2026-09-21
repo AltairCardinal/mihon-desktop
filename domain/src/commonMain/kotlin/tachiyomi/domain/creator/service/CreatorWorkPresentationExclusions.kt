@@ -13,6 +13,21 @@ import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 class CreatorWorkPresentationExclusions(
     private val preference: Preference<Set<String>>,
 ) {
+    fun entries(): Map<Long, Set<SourceWorkNaturalKey>> = preference.get()
+        .mapNotNull { value -> decode(value) }
+        .groupBy(Entry::creatorRootId)
+        .mapValues { (_, values) -> values.mapTo(linkedSetOf(), Entry::sourceWork) }
+
+    fun clear() = preference.set(emptySet())
+
+    fun remove(entries: Map<Long, Set<SourceWorkNaturalKey>>) {
+        val encoded = entries.flatMap { (creatorRootId, sourceWorks) ->
+            sourceWorks.map { sourceWork -> encode(Entry(creatorRootId, sourceWork)) }
+        }.toSet()
+        if (encoded.isEmpty()) return
+        update { values -> values - encoded }
+    }
+
     fun get(creatorRootId: Long): Set<SourceWorkNaturalKey> = preference.get()
         .mapNotNull(::decode)
         .filterTo(linkedSetOf()) { it.creatorRootId == creatorRootId }
@@ -25,6 +40,34 @@ class CreatorWorkPresentationExclusions(
     fun restore(creatorRootId: Long, sourceWork: SourceWorkNaturalKey) {
         update { values ->
             values - encode(Entry(creatorRootId, sourceWork))
+        }
+    }
+
+    fun migrateRoot(sourceRootId: Long, targetRootId: Long) {
+        require(sourceRootId != targetRootId)
+        update { values ->
+            values.mapTo(linkedSetOf()) { value ->
+                decode(value)?.takeIf { it.creatorRootId == sourceRootId }
+                    ?.copy(creatorRootId = targetRootId)
+                    ?.let(::encode)
+                    ?: value
+            }
+        }
+    }
+
+    fun moveMembers(
+        sourceRootId: Long,
+        targetRootId: Long,
+        sourceWorks: Set<SourceWorkNaturalKey>,
+    ) {
+        require(sourceRootId != targetRootId)
+        if (sourceWorks.isEmpty()) return
+        update { values ->
+            values.mapTo(linkedSetOf()) { value ->
+                decode(value)?.takeIf {
+                    it.creatorRootId == sourceRootId && it.sourceWork in sourceWorks
+                }?.copy(creatorRootId = targetRootId)?.let(::encode) ?: value
+            }
         }
     }
 

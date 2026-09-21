@@ -297,6 +297,46 @@ abstract class SyncPanelStorageContract {
     }
 
     @Test
+    fun `legacy pending can be explicitly abandoned without remote writes or local queue loss`() = runBlocking {
+        open().use { storage ->
+            SyncOnboardingFixture(storage).use { f ->
+                val material = f.existing("")
+                val record = legacySetupJson(material)
+                f.secure.values["sync-setup-v2-${f.accountId}"] = record
+                storage.favorite("/keep-legacy-queue")
+                f.authorize()
+                f.begin()
+                withTimeout(10_000) {
+                    f.panel.state.first {
+                        !it.setupBusy && it.setupStep == SyncSetupStep.ERROR && it.legacyRecoveryAvailable
+                    }
+                }
+
+                val queuedBefore = mihon.data.sync.journal.SyncLocalJournal(storage.handler)
+                    .pendingEvents(material.descriptor.spaceId, material.descriptor.generation)
+                val remoteWritesBefore = f.git.contentsPutBodies.size
+                val repositoryWritesBefore = f.repositoryWrites
+
+                f.panel.act(SyncPanelAction.Ask(mihon.data.sync.runtime.SyncPanelQuestion.ABANDON_LEGACY))
+                assertNotNull(f.panel.state.value.question)
+                f.panel.act(SyncPanelAction.ConfirmQuestion)
+                withTimeout(10_000) {
+                    f.panel.state.first { !it.setupBusy && !it.legacyRecoveryAvailable }
+                }
+
+                assertNull(f.secure.values["sync-setup-v2-${f.accountId}"])
+                assertEquals(
+                    queuedBefore,
+                    mihon.data.sync.journal.SyncLocalJournal(storage.handler)
+                        .pendingEvents(material.descriptor.spaceId, material.descriptor.generation),
+                )
+                assertEquals(remoteWritesBefore, f.git.contentsPutBodies.size)
+                assertEquals(repositoryWritesBefore, f.repositoryWrites)
+            }
+        }
+    }
+
+    @Test
     fun `legacy v2 join pending resumes exact connected space and retains queued work`() = runBlocking {
         open().use { storage ->
             SyncOnboardingFixture(storage).use { f ->

@@ -1876,6 +1876,8 @@
     <string name="sync_import_remaining">%1$d baseline items remaining</string>
     <string name="sync_disconnect_body">Stop synchronization and remove this device’s GitHub login? Your library and pending changes stay on this device.</string>
     <string name="sync_switch_body">Choose another sync space? Existing local data and pending batches are preserved separately.</string>
+    <string name="sync_setup_abandon_legacy_title">Abandon unfinished setup?</string>
+    <string name="sync_setup_abandon_legacy_body">Only the unfinished setup record on this device will be removed. Your library, pending queue, and remote files stay unchanged. Any key material used only by this unfinished setup cannot be recovered after you confirm.</string>
     <string name="sync_problem_network">Network unavailable. Your changes are saved; try again.</string>
     <string name="sync_problem_auth">GitHub authorization needs to be renewed.</string>
     <string name="sync_problem_storage">Secure storage is unavailable. Your changes are preserved.</string>
@@ -1933,6 +1935,8 @@
     <string name="sync_setup_incompatible">This sync space uses an unsupported format. Existing data has been preserved.</string>
     <string name="sync_setup_name_occupied">The name mihon-sync is already in use. Authorize the existing sync repository or resolve the name conflict on GitHub, then retry.</string>
     <string name="sync_setup_unconfirmed">The previous setup could not be verified. Check GitHub access and retry. Existing files will not be overwritten.</string>
+    <string name="sync_setup_legacy_recovery">A previous setup is unfinished on this device. Abandoning it only removes the local pending setup; it does not delete remote files.</string>
+    <string name="sync_setup_abandon_legacy">Abandon previous setup and recheck</string>
     <string name="sync_setup_account_changed">Your GitHub account changed. Connect again to continue safely.</string>
     <string name="sync_problem_not_private">Your sync repository is public. Restore it to private on GitHub, then retry. Uploads are paused; changing visibility cannot undo any previous exposure.</string>
     <string name="sync_repository_setup_hint">Create a private repository, then authorize the Mihon GitHub App to access it. Return here and refresh the list.</string>

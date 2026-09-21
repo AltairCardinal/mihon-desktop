@@ -11,6 +11,7 @@ import tachiyomi.domain.creator.model.LanguageCertainty
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.LanguageEvidenceKind
 import tachiyomi.domain.creator.model.LanguageProjectionContract
+import tachiyomi.domain.creator.model.SourceDateQualityStatus
 import tachiyomi.domain.creator.model.SourceWorkArchiveVersion
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WorkDecisionContract
@@ -175,6 +176,24 @@ class WorkPresentationGroupServiceTest {
     }
 
     @Test
+    fun `isolates an excluded canonical member without changing its canonical archive fact`() {
+        val first = version(10L, "/canonical-first", "詭譎屋")
+        val second = version(20L, "/canonical-second", "诡谲屋")
+        val canonical = canonicalGroup(100L, "canonical-a", "詭譎屋", 10L, "/canonical-first")
+            .copy(versions = listOf(first, second))
+
+        val groups = WorkPresentationGroupService.project(
+            CreatorWorkArchive(works = listOf(canonical), pending = emptyList(), rejected = emptyList()),
+            excludedNaturalKeys = setOf(second.naturalKey),
+        )
+
+        groups.single { it.canonicalWorkId == 100L }.members shouldContainExactly listOf(first)
+        groups.single { it.members.singleOrNull()?.naturalKey == second.naturalKey }.groupKey shouldBe
+            "source:20:/canonical-second"
+        canonical.versions shouldContainExactly listOf(first, second)
+    }
+
+    @Test
     fun `uses a prior member title when a stable group key receives a new equivalent source`() {
         val traditional = version(10L, "/traditional", "詭譎屋")
         val simplified = version(20L, "/simplified", "诡谲屋")
@@ -187,6 +206,34 @@ class WorkPresentationGroupServiceTest {
 
         group.groupKey shouldBe groupKey
         group.title shouldBe traditional.title
+    }
+
+    @Test
+    fun `display title follows requested application script without changing source facts`() {
+        val traditional = version(10L, "/traditional", "詭譎屋")
+        val simplified = version(20L, "/simplified", "诡谲屋")
+        val archive = CreatorWorkArchive(emptyList(), listOf(traditional, simplified), emptyList())
+
+        WorkPresentationGroupService.project(
+            archive,
+            preferredDisplayScript = WorkTitleNormalizer.DisplayScript.SIMPLIFIED,
+        ).single().title shouldBe simplified.title
+        WorkPresentationGroupService.project(
+            archive,
+            preferredDisplayScript = WorkTitleNormalizer.DisplayScript.TRADITIONAL,
+        ).single().title shouldBe traditional.title
+        archive.pending shouldContainExactly listOf(traditional, simplified)
+    }
+
+    @Test
+    fun `single source pending version is still a presentation group`() {
+        val only = version(20L, "/only", "诡谲屋")
+        val group = WorkPresentationGroupService.project(
+            CreatorWorkArchive(emptyList(), listOf(only), emptyList()),
+        ).single()
+
+        group.members shouldContainExactly listOf(only)
+        group.groupKey shouldBe "source:20:/only"
     }
 
     private fun canonicalGroup(
@@ -240,6 +287,13 @@ class WorkPresentationGroupServiceTest {
         },
         firstSeenAt = firstSeenAt,
         publishedDateAt = publishedDateAt,
+        publishedDateQuality = if (publishedDateAt !=
+            null
+        ) {
+            SourceDateQualityStatus.TRUSTED
+        } else {
+            SourceDateQualityStatus.UNKNOWN
+        },
         latestChapterAt = latestChapterAt,
         unread = unread,
     )

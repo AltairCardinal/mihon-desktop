@@ -78,6 +78,26 @@ class CreatorRepresentativeWorkSelectorTest {
     }
 
     @Test
+    fun `display script preference supersedes cached source version when language changes`() {
+        val simplified = candidate("canonical:script", 1, title = "龙")
+        val traditional = candidate("canonical:script", 2, title = "龍")
+
+        val simplifiedResult = CreatorRepresentativeWorkSelector.select(
+            candidates = listOf(simplified, traditional),
+            previous = cache(listOf(traditional)),
+            preferredDisplayScript = WorkTitleNormalizer.DisplayScript.SIMPLIFIED,
+        )
+        assertEquals(1L, simplifiedResult.representatives.single().sourceWorkId)
+
+        val traditionalResult = CreatorRepresentativeWorkSelector.select(
+            candidates = listOf(simplified, traditional),
+            previous = simplifiedResult.cache,
+            preferredDisplayScript = WorkTitleNormalizer.DisplayScript.TRADITIONAL,
+        )
+        assertEquals(2L, traditionalResult.representatives.single().sourceWorkId)
+    }
+
+    @Test
     fun `same-tier new work does not replace or reorder cached selections`() {
         val old = listOf(
             candidate("source:old-a", 1),
@@ -140,11 +160,12 @@ class CreatorRepresentativeWorkSelectorTest {
         sourceLanguage: String? = null,
         verification: CreatorRelationVerification = CreatorRelationVerification.VERIFIED,
         decisionState: WorkDecisionState? = null,
+        title: String = key,
     ) = CreatorCardWorkCandidate(
         workKey = key,
         sourceWorkId = sourceId,
         naturalKey = SourceWorkNaturalKey(sourceId, "/$key"),
-        title = key,
+        title = title,
         coverRequest = CreatorCoverRequest(
             sourceWorkId = sourceId,
             mangaId = if (favorite) sourceId else null,

@@ -14,7 +14,8 @@ class CreatorArchiveMigration16Test {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         Database.Schema.create(driver)
         mihon.data.sync.removeSyncJournalSchema(driver)
-        // Remove additions from migrations 25 through 29 before replaying v16 onward.
+        // Remove additions from migrations 25 through 30 before replaying v16 onward.
+        driver.execute(null, "DROP TABLE author_archive_presentation_exclusions", 0)
         driver.execute(null, "DROP TABLE author_archive_source_date_quality_current", 0)
         driver.execute(null, "DROP TABLE author_archive_source_date_quality_samples", 0)
         driver.execute(null, "DROP TABLE author_archive_source_date_quality", 0)

@@ -50,6 +50,7 @@ import tachiyomi.domain.creator.model.WorkDecisionContract
 import tachiyomi.domain.creator.model.WorkDecisionProjection
 import tachiyomi.domain.creator.model.WorkDecisionState
 import tachiyomi.domain.creator.service.ChapterVariantRecord
+import tachiyomi.domain.creator.service.WorkTitleNormalizer
 import tachiyomi.domain.manga.model.Manga
 
 /**
@@ -93,7 +94,27 @@ interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
         preferredLanguages: Set<String> = emptySet(),
         customCoverExists: (Long) -> Boolean = { false },
         query: String = "",
+        preferredDisplayScript: WorkTitleNormalizer.DisplayScript? = null,
     ): CreatorCardProjectionPage = throw UnsupportedOperationException("Creator card projection is not implemented")
+
+    /** Device-local presentation corrections; these facts are not part of backup or sync. */
+    suspend fun getPresentationExclusions(creatorRootId: Long): Set<SourceWorkNaturalKey> = emptySet()
+
+    suspend fun setPresentationExclusion(
+        creatorRootId: Long,
+        sourceWork: SourceWorkNaturalKey,
+        excluded: Boolean,
+        now: Long,
+    ) = Unit
+
+    /**
+     * Imports only source keys that can be resolved in the archive and returns those keys so the
+     * caller can remove exactly the migrated preference records. Unresolved or malformed legacy
+     * values remain in the preference store for a later retry.
+     */
+    suspend fun importPresentationExclusions(
+        entries: Map<Long, Set<SourceWorkNaturalKey>>,
+    ): Map<Long, Set<SourceWorkNaturalKey>> = emptyMap()
 
     suspend fun getIdentitySnapshot(creatorId: Long): CreatorIdentitySnapshot =
         throw UnsupportedOperationException("Identity editor is not implemented")
@@ -280,6 +301,10 @@ interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
     /** Marks a work and all current source-level discovery members as seen atomically. */
     suspend fun markWorkSeen(sourceWork: SourceWorkNaturalKey, now: Long) {
         throw UnsupportedOperationException("Work-level discovery read state is not implemented")
+    }
+
+    suspend fun markPresentationGroupSeen(sourceWorks: List<SourceWorkNaturalKey>, now: Long) {
+        sourceWorks.distinct().forEach { markWorkSeen(it, now) }
     }
 
     fun observeUnreadDiscoveries(limit: Long): Flow<List<ArchiveDiscovery>>

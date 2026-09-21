@@ -379,6 +379,124 @@ class CreatorRepositoryImplTest {
     }
 
     @Test
+    fun `presentation exclusions migrate with identity merge and split transactions`() = runBlocking<Unit> {
+        val source = repository.upsertCreator("Presentation source")
+        val target = repository.upsertCreator("Presentation target")
+        check(source.id != target.id)
+        val mergedKey = SourceWorkNaturalKey(301L, "/merged-presentation")
+        repository.upsertSourceWork(
+            mergedKey.sourceId,
+            mergedKey.stableSourceUrl,
+            null,
+            "Merged presentation",
+            source.displayName,
+            null,
+            null,
+            1L,
+        )
+        repository.upsertSourceWorkCreator(
+            mergedKey,
+            source.id,
+            CreatorRole.AUTHOR,
+            0L,
+            CreatorRelationOrigin.USER,
+            CreatorRelationVerification.VERIFIED,
+            source.displayName,
+            1.0,
+            "fixture",
+        )
+        repository.setPresentationExclusion(source.id, mergedKey, excluded = true, now = 2L)
+        repository.getPresentationExclusions(source.id) shouldBe setOf(mergedKey)
+        queryLong(
+            "SELECT COUNT(*) FROM author_archive_presentation_exclusions WHERE creator_id = ${source.id}",
+        ) shouldBe
+            1L
+
+        repository.mergeCreatorIdentities(source.id, target.id)
+
+        queryLong("SELECT COUNT(*) FROM author_archive_source_works WHERE source_id = 301") shouldBe 1L
+        queryLong("SELECT COUNT(*) FROM author_archive_presentation_exclusions") shouldBe 1L
+        queryLong(
+            "SELECT COUNT(*) FROM author_archive_presentation_exclusions WHERE creator_id = ${source.id}",
+        ) shouldBe
+            0L
+        queryLong(
+            "SELECT COUNT(*) FROM author_archive_presentation_exclusions WHERE creator_id = ${target.id}",
+        ) shouldBe
+            1L
+        repository.getPresentationExclusions(target.id) shouldBe setOf(mergedKey)
+        repository.getPresentationExclusions(source.id) shouldBe emptySet()
+        repository.getPresentationExclusions(target.id) shouldBe setOf(mergedKey)
+
+        val splitRoot = repository.upsertCreator("Presentation split")
+        val splitKey = SourceWorkNaturalKey(302L, "/split-presentation")
+        repository.upsertSourceWork(
+            splitKey.sourceId,
+            splitKey.stableSourceUrl,
+            null,
+            "Split presentation",
+            splitRoot.displayName,
+            null,
+            null,
+            3L,
+        )
+        repository.upsertSourceWorkCreator(
+            splitKey,
+            splitRoot.id,
+            CreatorRole.AUTHOR,
+            0L,
+            CreatorRelationOrigin.USER,
+            CreatorRelationVerification.VERIFIED,
+            splitRoot.displayName,
+            1.0,
+            "fixture",
+        )
+        repository.setPresentationExclusion(splitRoot.id, splitKey, excluded = true, now = 4L)
+
+        val newRoot = repository.splitCreatorIdentity(
+            sourceCreatorId = splitRoot.id,
+            mangaIds = emptySet(),
+            newDisplayName = "Presentation split target",
+            sourceWorks = setOf(splitKey),
+        )
+
+        repository.getPresentationExclusions(splitRoot.id) shouldBe emptySet()
+        repository.getPresentationExclusions(newRoot) shouldBe setOf(splitKey)
+    }
+
+    @Test
+    fun `presentation exclusion import keeps unresolved keys and records resolved imports`() = runBlocking<Unit> {
+        val creator = repository.upsertCreator("Presentation import")
+        val resolved = SourceWorkNaturalKey(303L, "/resolved-presentation")
+        val unresolved = SourceWorkNaturalKey(304L, "/unresolved-presentation")
+        repository.upsertSourceWork(
+            resolved.sourceId,
+            resolved.stableSourceUrl,
+            null,
+            "Resolved presentation",
+            creator.displayName,
+            null,
+            null,
+            1L,
+        )
+
+        val imported = repository.importPresentationExclusions(
+            mapOf(creator.id to setOf(resolved, unresolved)),
+        )
+
+        imported shouldBe mapOf(creator.id to setOf(resolved))
+        repository.getPresentationExclusions(creator.id) shouldBe setOf(resolved)
+        queryLong(
+            "SELECT COUNT(*) FROM author_archive_legacy_import_state " +
+                "WHERE entity_type = 'PRESENTATION_EXCLUSION'",
+        ) shouldBe 1L
+        queryLong(
+            "SELECT COUNT(*) FROM author_archive_presentation_exclusions " +
+                "WHERE creator_id = ${creator.id}",
+        ) shouldBe 1L
+    }
+
+    @Test
     fun `archive rejects redirect cycle and resubscription retries repaired graph`() = runBlocking<Unit> {
         val first = repository.upsertCreator("First")
         val second = repository.upsertCreator("Second")

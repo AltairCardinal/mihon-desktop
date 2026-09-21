@@ -3,7 +3,7 @@ package tachiyomi.domain.creator.model
 object CreatorArchiveV2Contract {
     const val CURRENT_SCHEMA_VERSION = 15L
     const val TARGET_SCHEMA_VERSION = 16L
-    const val LATEST_SCHEMA_VERSION = 30L
+    const val LATEST_SCHEMA_VERSION = 31L
     const val TARGET_MIGRATION = "15.sqm"
     const val BACKUP_ENVELOPE_FIELD = 107
     const val BACKUP_SECTION_VERSION = 1
@@ -75,6 +75,7 @@ object CreatorArchivePhysicalSchema {
             "source_id,field_kind",
             ArchiveDeletionPolicy.CASCADE,
         ),
+        table("author_archive_presentation_exclusions", "creator_id,source_work_id", ArchiveDeletionPolicy.CASCADE),
     )
 
     private fun table(

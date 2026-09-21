@@ -463,7 +463,7 @@ data class AuthorDetailScreen(
                         showSourceChooserFor = null
                         sourceFocusRequester = null
                         navigator.push(MangaDetailScreen(effect.mangaId))
-                        model.markWorkSeenAfterNavigation(effect.sourceWork)
+                        model.markWorkSeenAfterNavigation(effect.presentationMembers)
                     }
                     is AuthorDetailEffect.OpenCreator -> navigator.replace(AuthorDetailScreen(effect.creatorId))
                     is AuthorDetailEffect.OpenWorkCompare -> navigator.push(
@@ -506,17 +506,18 @@ data class AuthorDetailScreen(
                     opening = state.actionRunning,
                     onOpen = model::openVersion,
                     onSeparate = { version ->
-                        model.excludePresentationVersion(version)
-                        pendingSourceFocusRestore = sourceFocusRequester
-                        sourceFocusRequester = null
-                        showSourceChooserFor = null
                         snackbarScope.launch {
-                            if (snackbarHostState.showSnackbar(
-                                    message = MR.strings.creator_work_separate_display_done.localized(),
-                                    actionLabel = MR.strings.creator_work_separate_display_undo.localized(),
-                                ) == SnackbarResult.ActionPerformed
-                            ) {
-                                model.restorePresentationVersion(version)
+                            if (model.excludePresentationVersion(version)) {
+                                pendingSourceFocusRestore = sourceFocusRequester
+                                sourceFocusRequester = null
+                                showSourceChooserFor = null
+                                if (snackbarHostState.showSnackbar(
+                                        message = MR.strings.creator_work_separate_display_done.localized(),
+                                        actionLabel = MR.strings.creator_work_separate_display_undo.localized(),
+                                    ) == SnackbarResult.ActionPerformed
+                                ) {
+                                    model.restorePresentationVersion(version)
+                                }
                             }
                         }
                     },
@@ -809,7 +810,7 @@ data class AuthorDetailScreen(
                                         title = group.title,
                                         thumbnailUrl = group.representative.thumbnailUrl,
                                         sourceId = group.representative.naturalKey.sourceId,
-                                        firstSeenDate = group.firstSeenAt?.let(::sourceDateDisplayDate),
+                                        dateLabel = groupDateLabel(group),
                                         favorite = group.inLibrary,
                                         unread = group.unread,
                                         key = presentationCardKey,
@@ -885,7 +886,7 @@ data class AuthorDetailScreen(
                                         title = group.title,
                                         thumbnailUrl = group.representative.thumbnailUrl,
                                         sourceId = group.representative.naturalKey.sourceId,
-                                        firstSeenDate = group.firstSeenAt?.let(::sourceDateDisplayDate),
+                                        dateLabel = groupDateLabel(group),
                                         favorite = group.inLibrary,
                                         unread = group.unread,
                                         key = presentationCardKey,
@@ -955,6 +956,22 @@ private fun authorVersionLabel(
 private fun earliestFirstSeenDate(
     versions: List<tachiyomi.domain.creator.model.SourceWorkArchiveVersion>,
 ): String? = versions.mapNotNull { it.firstSeenDate?.takeIf(String::isNotBlank) }.minOrNull()
+
+private fun groupDateLabel(group: tachiyomi.domain.creator.model.WorkPresentationGroup): String? {
+    val publishedDateAt = group.publishedDateAt
+    return when {
+    group.publishedDateQuality == SourceDateQualityStatus.TRUSTED && publishedDateAt != null ->
+        MR.strings.creator_work_published_date.localized(
+            Locale.getDefault(),
+            sourceDateDisplayDate(publishedDateAt),
+        )
+    group.publishedDateQuality == SourceDateQualityStatus.SUSPECT ->
+        MR.strings.creator_work_published_date_pending.localized()
+    else -> group.firstSeenDate?.let { date ->
+        MR.strings.desktop_ui_first_seen.localized(Locale.getDefault(), date)
+    }
+}
+}
 
 private fun chapterCountLabel(version: SourceWorkArchiveVersion): String = when (version.chapterCompleteness) {
     ChapterCatalogCompleteness.UNKNOWN -> MR.strings.creator_work_chapters_unknown.localized()
@@ -1146,7 +1163,7 @@ private fun CreatorArchiveWorkCard(
     title: String,
     thumbnailUrl: String?,
     sourceId: Long,
-    firstSeenDate: String?,
+    dateLabel: String?,
     favorite: Boolean,
     unread: Boolean,
     key: String,
@@ -1172,9 +1189,9 @@ private fun CreatorArchiveWorkCard(
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("creator-work-$key"))
                     unreadWorkLabel(unread, key)
-                    firstSeenDate?.let { date ->
+                    dateLabel?.let { date ->
                         Text(
-                            MR.strings.desktop_ui_first_seen.localized(Locale.getDefault(), date),
+                            date,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.testTag("creator-work-first-seen-$key"),
                         )
@@ -1195,9 +1212,9 @@ private fun CreatorArchiveWorkCard(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp).testTag("creator-work-$key"),
                     )
                     unreadWorkLabel(unread, key)
-                    firstSeenDate?.let { date ->
+                    dateLabel?.let { date ->
                         Text(
-                            MR.strings.desktop_ui_first_seen.localized(Locale.getDefault(), date),
+                            date,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(horizontal = 8.dp)
                                 .testTag("creator-work-first-seen-$key"),
@@ -1211,9 +1228,9 @@ private fun CreatorArchiveWorkCard(
             Card(modifier = cardModifier, colors = CardDefaults.cardColors()) {
                 Column {
                     CreatorWorkCover(title, thumbnailUrl, sourceId, key, Modifier.fillMaxWidth().aspectRatio(0.7f), favorite, compactTitle = true)
-                    firstSeenDate?.let { date ->
+                    dateLabel?.let { date ->
                         Text(
-                            MR.strings.desktop_ui_first_seen.localized(Locale.getDefault(), date),
+                            date,
                             style = MaterialTheme.typography.labelSmall,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,

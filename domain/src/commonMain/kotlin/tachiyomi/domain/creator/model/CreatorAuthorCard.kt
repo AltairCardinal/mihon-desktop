@@ -20,6 +20,7 @@ data class CreatorCardWorkCandidate(
     val relationVerification: CreatorRelationVerification,
     val decisionState: WorkDecisionState? = null,
     val sourceLanguage: String? = null,
+    val unread: Boolean = false,
 )
 
 data class CreatorCardProjection(

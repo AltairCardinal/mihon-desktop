@@ -62,6 +62,8 @@ import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.creator.service.CreatorWorkPresentationExclusions
 import tachiyomi.domain.creator.service.WorkPresentationGroupService
+import tachiyomi.domain.creator.service.WorkTitleNormalizer
+import java.util.Locale
 
 
 
@@ -74,6 +76,9 @@ internal object AuthorsScreenModelFactory {
         preferredLanguages = dependencies.appPreferences.enabledLanguages::get,
         preferredLanguageChanges = dependencies.appPreferences.enabledLanguages.changes(),
         customCoverExists = dependencies.customCoverStore::customCoverExists,
+        preferredDisplayScript = {
+            WorkTitleNormalizer.displayScriptForLanguageTag(Locale.getDefault().toLanguageTag())
+        },
         onSettingsSaved = {
             dependencies.creatorDiscoveryScheduler?.runIfDue()
         },
@@ -97,6 +102,9 @@ internal object AuthorsScreenModelFactory {
             libraryPreferences = dependencies.libraryPreferences,
             identityActions = AuthorIdentityActions(
                 requireNotNull(dependencies.manageCreatorIdentity),
+            ),
+            preferredDisplayScript = WorkTitleNormalizer.displayScriptForLanguageTag(
+                Locale.getDefault().toLanguageTag(),
             ),
         )
     }
@@ -138,6 +146,7 @@ class AuthorsRootScreenModel(
     private val preferredLanguages: () -> Set<String> = { emptySet() },
     preferredLanguageChanges: Flow<Set<String>> = kotlinx.coroutines.flow.flowOf(emptySet()),
     private val customCoverExists: (Long) -> Boolean = { false },
+    private val preferredDisplayScript: () -> WorkTitleNormalizer.DisplayScript? = { null },
     onSettingsSaved: suspend () -> Unit = {},
 ) : ScreenModel {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -322,6 +331,7 @@ class AuthorsRootScreenModel(
             preferredLanguages = preferredLanguages(),
             customCoverExists = customCoverExists,
             query = query,
+            preferredDisplayScript = preferredDisplayScript(),
         )
 
     override fun onDispose() = scope.cancel()
@@ -388,10 +398,7 @@ data class AuthorDetailState(
         }
 
     val visiblePresentationCards: List<WorkPresentationGroup>
-        get() = visiblePresentationGroups.filter { group ->
-            group.canonicalWorkId != null || group.members.size > 1 ||
-                group.members.any { it.naturalKey in presentationExcluded }
-        }
+        get() = visiblePresentationGroups
 
     val visiblePendingVersions: List<SourceWorkArchiveVersion>
         get() {
@@ -410,7 +417,11 @@ data class AuthorDetailState(
 }
 
 sealed interface AuthorDetailEffect {
-    data class OpenManga(val mangaId: Long, val sourceWork: SourceWorkNaturalKey) : AuthorDetailEffect
+    data class OpenManga(
+        val mangaId: Long,
+        val sourceWork: SourceWorkNaturalKey,
+        val presentationMembers: List<SourceWorkNaturalKey> = listOf(sourceWork),
+    ) : AuthorDetailEffect
     data class OpenCreator(val creatorId: Long) : AuthorDetailEffect
     data class OpenWorkCompare(val candidateId: Long, val creatorId: Long) : AuthorDetailEffect
     data object IdentityMerged : AuthorDetailEffect
@@ -428,6 +439,7 @@ internal class AuthorDetailScreenModel(
     private val identityActions: AuthorIdentityActions,
     private val saveSourceMangaForDetails: SaveSourceMangaForDetails? = null,
     private val libraryPreferences: LibraryPreferences? = null,
+    private val preferredDisplayScript: WorkTitleNormalizer.DisplayScript? = null,
 ) : ScreenModel {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val mutableState = MutableStateFlow(
@@ -441,6 +453,26 @@ internal class AuthorDetailScreenModel(
     val effects = mutableEffects.asSharedFlow()
     private val presentationExclusions = libraryPreferences?.let {
         CreatorWorkPresentationExclusions(it.creatorWorkPresentationExclusions())
+    }
+    private var legacyPresentationExclusionsImported = false
+
+    private suspend fun getPresentationExclusions(rootId: Long): Set<SourceWorkNaturalKey> {
+        val archive = creatorArchive ?: return presentationExclusions?.get(rootId).orEmpty()
+        if (!legacyPresentationExclusionsImported) {
+            val legacy = presentationExclusions?.entries().orEmpty()
+            if (legacy.isNotEmpty()) {
+                val imported = archive.importPresentationExclusions(legacy)
+                presentationExclusions?.remove(imported)
+                if (imported.values.sumOf { it.size } ==
+                    legacy.values.sumOf { it.size }
+                ) {
+                    legacyPresentationExclusionsImported = true
+                }
+            } else {
+                legacyPresentationExclusionsImported = true
+            }
+        }
+        return archive.getPresentationExclusions(rootId)
     }
 
     val identityEditor = CreatorIdentityEditor(
@@ -483,7 +515,7 @@ internal class AuthorDetailScreenModel(
         creatorArchive?.let { archive ->
             scope.launch {
                 archive.observe(creatorId).collect { workArchive ->
-                    val excluded = presentationExclusions?.get(activeCreatorId).orEmpty()
+                    val excluded = getPresentationExclusions(activeCreatorId)
                     mutableState.update {
                         it.copy(
                             workArchive = workArchive,
@@ -491,6 +523,7 @@ internal class AuthorDetailScreenModel(
                             presentationGroups = WorkPresentationGroupService.project(
                                 workArchive,
                                 excludedNaturalKeys = excluded,
+                                preferredDisplayScript = preferredDisplayScript,
                             ),
                         )
                     }
@@ -547,7 +580,12 @@ internal class AuthorDetailScreenModel(
 
     fun split(mangaIds: Set<Long>, name: String) = scope.launch {
         runAction {
-            val newCreatorId = identityActions.split(creatorId, mangaIds, name)
+            val movedWorks = mutableState.value.workArchive.works
+                .flatMap { it.versions }
+                .plus(mutableState.value.workArchive.pending)
+                .filter { it.mangaId in mangaIds }
+                .mapTo(mutableSetOf()) { it.naturalKey }
+            val newCreatorId = identityActions.split(creatorId, mangaIds, name, movedWorks)
             mutableEffects.emit(AuthorDetailEffect.OpenCreator(newCreatorId))
         }
     }
@@ -561,7 +599,13 @@ internal class AuthorDetailScreenModel(
                     authorArchiveVersionSourceManga(listed), listed.naturalKey.sourceId,
                 ).manga.id
             }
-            mutableEffects.emit(AuthorDetailEffect.OpenManga(opener.await(version), version.naturalKey))
+            val members = mutableState.value.presentationGroups
+                .firstOrNull { group -> group.members.any { it.naturalKey == version.naturalKey } }
+                ?.members
+                ?.map(SourceWorkArchiveVersion::naturalKey)
+                .orEmpty()
+                .ifEmpty { listOf(version.naturalKey) }
+            mutableEffects.emit(AuthorDetailEffect.OpenManga(opener.await(version), version.naturalKey, members))
         }.onFailure { error ->
             mutableState.update { it.copy(workOpenError = error.message ?: error::class.simpleName) }
         }
@@ -570,15 +614,18 @@ internal class AuthorDetailScreenModel(
 
     fun clearWorkOpenError() = mutableState.update { it.copy(workOpenError = null) }
 
-    suspend fun markWorkSeenAfterNavigation(sourceWork: SourceWorkNaturalKey) {
+    suspend fun markWorkSeenAfterNavigation(sourceWorks: List<SourceWorkNaturalKey>) {
         try {
-            creatorArchive?.markWorkSeen(sourceWork, System.currentTimeMillis())
+            creatorArchive?.markPresentationGroupSeen(sourceWorks, System.currentTimeMillis())
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Throwable) {
             mutableState.update { it.copy(workOpenError = error.message ?: error::class.simpleName) }
         }
     }
+
+    suspend fun markWorkSeenAfterNavigation(sourceWork: SourceWorkNaturalKey) =
+        markWorkSeenAfterNavigation(listOf(sourceWork))
 
     fun openCandidate(candidate: DiscoveryCandidate) {
         mutableEffects.tryEmit(AuthorDetailEffect.OpenWorkCompare(candidate.id, activeCreatorId))
@@ -610,42 +657,66 @@ internal class AuthorDetailScreenModel(
 
     fun clearWorkDisplayModeError() = mutableState.update { it.copy(workDisplayModeError = null) }
 
-    fun excludePresentationVersion(version: SourceWorkArchiveVersion) = scope.launch {
-        val exclusions = presentationExclusions ?: return@launch
+    suspend fun excludePresentationVersion(version: SourceWorkArchiveVersion): Boolean {
+        val exclusions = presentationExclusions ?: return false
         val root = activeCreatorId
-        runCatching { exclusions.exclude(root, version.naturalKey) }
-            .onSuccess {
-                mutableState.update { state ->
-                    val next = state.presentationExcluded + version.naturalKey
-                    state.copy(
-                        presentationExcluded = next,
-                        presentationGroups = WorkPresentationGroupService.project(
-                            state.workArchive,
-                            excludedNaturalKeys = next,
-                        ),
-                    )
-                }
+        mutableState.update { it.copy(actionRunning = true, error = null) }
+        return try {
+            if (creatorArchive != null) {
+                creatorArchive.setPresentationExclusion(root, version.naturalKey, excluded = true, now = System.currentTimeMillis())
+            } else {
+                exclusions.exclude(root, version.naturalKey)
             }
-            .onFailure { error -> mutableState.update { it.copy(error = error.message ?: error::class.simpleName) } }
+            mutableState.update { state ->
+                val next = state.presentationExcluded + version.naturalKey
+                state.copy(
+                    actionRunning = false,
+                    presentationExcluded = next,
+                    presentationGroups = WorkPresentationGroupService.project(
+                        state.workArchive,
+                        excludedNaturalKeys = next,
+                        preferredDisplayScript = preferredDisplayScript,
+                    ),
+                )
+            }
+            true
+        } catch (error: Throwable) {
+            mutableState.update {
+                it.copy(actionRunning = false, error = error.message ?: error::class.simpleName)
+            }
+            false
+        }
     }
 
-    fun restorePresentationVersion(version: SourceWorkArchiveVersion) = scope.launch {
-        val exclusions = presentationExclusions ?: return@launch
+    suspend fun restorePresentationVersion(version: SourceWorkArchiveVersion): Boolean {
+        val exclusions = presentationExclusions ?: return false
         val root = activeCreatorId
-        runCatching { exclusions.restore(root, version.naturalKey) }
-            .onSuccess {
-                mutableState.update { state ->
-                    val next = state.presentationExcluded - version.naturalKey
-                    state.copy(
-                        presentationExcluded = next,
-                        presentationGroups = WorkPresentationGroupService.project(
-                            state.workArchive,
-                            excludedNaturalKeys = next,
-                        ),
-                    )
-                }
+        mutableState.update { it.copy(actionRunning = true, error = null) }
+        return try {
+            if (creatorArchive != null) {
+                creatorArchive.setPresentationExclusion(root, version.naturalKey, excluded = false, now = System.currentTimeMillis())
+            } else {
+                exclusions.restore(root, version.naturalKey)
             }
-            .onFailure { error -> mutableState.update { it.copy(error = error.message ?: error::class.simpleName) } }
+            mutableState.update { state ->
+                val next = state.presentationExcluded - version.naturalKey
+                state.copy(
+                    actionRunning = false,
+                    presentationExcluded = next,
+                    presentationGroups = WorkPresentationGroupService.project(
+                        state.workArchive,
+                        excludedNaturalKeys = next,
+                        preferredDisplayScript = preferredDisplayScript,
+                    ),
+                )
+            }
+            true
+        } catch (error: Throwable) {
+            mutableState.update {
+                it.copy(actionRunning = false, error = error.message ?: error::class.simpleName)
+            }
+            false
+        }
     }
 
     fun setLanguageFilter(filter: LanguageArchiveFilter) = mutableState.update { it.copy(languageFilter = filter) }

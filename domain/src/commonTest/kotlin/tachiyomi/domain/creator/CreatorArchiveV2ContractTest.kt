@@ -99,7 +99,7 @@ class CreatorArchiveV2ContractTest {
         val tables = CreatorArchivePhysicalSchema.tables
 
         assertEquals(20, CreatorArchivePhysicalSchema.version16Tables.size)
-        assertEquals(28, tables.size)
+        assertEquals(29, tables.size)
         assertEquals(tables.size, tables.map { it.name }.toSet().size)
         assertTrue(tables.all { it.name.startsWith("author_archive_") && it.uniqueKeys.isNotEmpty() })
         assertTrue(

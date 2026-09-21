@@ -1,5 +1,7 @@
 package tachiyomi.domain.creator.model
 
+import tachiyomi.domain.creator.service.WorkTitleNormalizer
+
 /** View-only filtering keeps canonical identities and stored totals intact. */
 data class CreatorWorkArchiveFilter(val query: String = "", val sourceId: Long? = null) {
     fun matches(group: WorkPresentationGroup): Boolean =
@@ -7,7 +9,11 @@ data class CreatorWorkArchiveFilter(val query: String = "", val sourceId: Long? 
             (
                 query.isBlank() ||
                     group.title.contains(query, ignoreCase = true) ||
-                    group.members.any { it.title.contains(query, ignoreCase = true) }
+                    group.members.any {
+                        it.title.contains(query, ignoreCase = true) ||
+                            WorkTitleNormalizer.normalizeForPresentationGroup(it.title)
+                                .contains(WorkTitleNormalizer.normalizeForPresentationGroup(query), ignoreCase = true)
+                    }
                 )
 
     fun apply(archive: CreatorWorkArchive): CreatorWorkArchive {
@@ -15,6 +21,8 @@ data class CreatorWorkArchiveFilter(val query: String = "", val sourceId: Long? 
             (sourceId == null || version.naturalKey.sourceId == sourceId) &&
                 (
                     version.title.contains(query, ignoreCase = true) ||
+                        WorkTitleNormalizer.normalizeForPresentationGroup(version.title)
+                            .contains(WorkTitleNormalizer.normalizeForPresentationGroup(query), ignoreCase = true) ||
                         groupTitle?.contains(query, ignoreCase = true) == true
                     )
         return archive.copy(
