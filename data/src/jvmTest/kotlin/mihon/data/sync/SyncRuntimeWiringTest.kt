@@ -84,12 +84,21 @@ class SyncRuntimeWiringTest {
                 setup.authorize("access-secret")
                 setup.begin()
                 val runtime = setup.runtime
+                setup.now = 2_000L
                 f.storage.favorite("/runtime")
                 val result = runtime.coordinator.synchronize(SyncTrigger.MANUAL)
                 assertEquals(SyncRunStatus.SUCCESS, result.status)
                 assertEquals(1, result.uploaded)
+                val completedRun = requireNotNull(runtime.runStore.latest("space", 1))
+                val completedLogs = runtime.runStore.logs(completedRun.runId)
+                assertTrue(
+                    completedLogs.any {
+                        it.title == "/runtime" && it.detail.contains("收藏") && it.detail.contains("已确认上传")
+                    },
+                    completedLogs.toString(),
+                )
                 assertTrue(f.networkCalls > 0)
-                assertEquals(1000L, runtime.preferences.lastSuccess.get())
+                assertEquals(2_000L, runtime.preferences.lastSuccess.get())
                 assertTrue(runtime.preferences.history.get().contains("SUCCESS"))
                 assertTrue(f.preferences.getAll().keys.all { Preference.isAppState(it) })
                 assertFalse(f.preferences.getAll().toString().contains("access-secret"))

@@ -485,6 +485,8 @@ abstract class SyncPanelStorageContract {
                 assertTrue(panel.state.value.visible)
                 assertTrue(panel.state.value.loaded)
                 assertEquals(1L, panel.state.value.queuedMembership)
+                assertEquals(1L, panel.state.value.queuedFavorites)
+                assertEquals(0L, panel.state.value.queuedFollows)
                 assertEquals(0L, panel.state.value.queuedReading)
                 assertEquals(1L, panel.state.value.importRemaining)
                 assertEquals(2, storage.manga.getLibraryManga().size)

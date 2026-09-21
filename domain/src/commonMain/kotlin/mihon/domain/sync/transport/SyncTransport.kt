@@ -125,6 +125,7 @@ interface SyncTransportPort {
 data class SyncUploadResult(
     val artifact: SyncPreparedUpload,
     val publish: SyncPublishResult,
+    val batch: SyncBatch? = null,
 ) {
     val encryptedBatch: SyncEncryptedBatch get() = artifact.encryptedBatch
 }

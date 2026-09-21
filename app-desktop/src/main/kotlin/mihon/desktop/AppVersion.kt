@@ -1,9 +1,9 @@
-﻿package mihon.desktop
+package mihon.desktop
 
 object AppVersion {
     const val STAGE = 11
     const val FEATURE = 19
-    const val BUILD = 52
+    const val BUILD = 53
 }
 
 val APP_VERSION: String =

@@ -1,6 +1,6 @@
 # 同步审查修复 Roadmap
 
-日期：2026-09-21。状态：IMPLEMENTED，F1–F4 已完成并提交；F5 已生成当前 worktree 候选，签名包、真机与 macOS 证据待补；F6 待用户验收。
+日期：2026-09-21。状态：IMPLEMENTED，F1–F4 已完成并提交；真机反馈后的 F4 页面修正已完成，F5 已生成当前 worktree 候选，真机安装与 macOS 证据待补；F6 待用户验收。
 
 设计权威：[修复设计](../2026-09-21-sync-repair-design.md)。原计划：[同步进度与恢复](2026-09-19-sync-progress-resume-roadmap.md)。当前 worktree 修复执行以本文件为准；从第一个未勾选项推导进度，不新增 active-task。
 
@@ -102,3 +102,5 @@ Android 使用真实 App/DI/WorkManager 与 runtime 联测，Desktop 使用同�
 ## 4. 记录
 
 2026-09-21：F1 已由 `915d336079` 提交，完成同号数据库兼容桥、作者结构迁移及 error_handler 最小启动路径；F2–F4 已在当前 worktree 完成并由最终提交收口，增加 schema 31/32（最终 schema 33）的运行计数与 per-run 基线、Android/Desktop 恢复调度、首次合并进度卡和历史成功结果。独立复审结论为 PASS；数据层（含 10k/100k 规模场景）、Android Worker、Desktop scheduler、presentation-sync focused 测试及 Desktop 全量 JVM 测试通过，`spotlessCheck` 通过。Windows Test Mode 候选已通过构建与运行验收：`app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.52.915d336-unpacked/Mihon Desktop.exe`；Android arm64 release 已构建但为未签名包：`app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk`，SHA-256 为 `1408F7656F398C769E9529A9D323ADCB0779EAA089BCD46232BB94A124BAA2C3`。浏览器 DEMO 的模型/视图测试通过，浏览器测试因当前环境未提供 `PLAYWRIGHT_CORE_PATH` 未执行。未安装真机、未修改远端仓库、未合并另一分支；F5 因签名包、macOS 与真实设备矩阵缺失保持未勾选，F6 待用户验收。
+
+2026-09-21 真机反馈修正：图一要求的主页面层级已接入生产 Android/Desktop 共享页面：同步空间副标题、同步状态图标、待上传/收藏关注/阅读记录三行摘要、带边框的“本次处理部分完成”进度卡、完成/跳过/失败/剩余明细和逐条日志。分类计数来自真实 outbox category；上传与接收日志从批次中的对象描述生成标题和操作结果，不再只显示重复的批次摘要。红绿验证新增 UI、分类计数和真实 production wiring 日志断言；数据 focused 通过 28 个面板契约、10 个 run store、13 个 runtime wiring、4 个迁移兼容和 10k/100k 规模场景，presentation-sync 26 个测试通过，`spotlessCheck` 通过。重新构建并签名 aex.11 arm64 候选：[Mihon-Fork-0.19.4-aex.11-arm64-v8a-sync-ui-fix.apk](../../app/artifacts/android/0.19.4-aex.11/Mihon-Fork-0.19.4-aex.11-arm64-v8a-sync-ui-fix.apk)，包名 `app.mihon.desktop.fork`、versionCode `29`、证书沿用 aex.11，SHA-256 `CAB774EEE60CE2E62E76EE4ED31A1E2978FECEDCDFF3E499A978EB51B3F61C01`。Windows 当前 diff 通过 `app-desktop:jvmTest`、扩展运行时验收和正式打包：[Mihon Desktop.exe](../../app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.53.a6152c0-unpacked/Mihon%20Desktop.exe)，Windows ZIP SHA-256 `8938ac0ed8fe6269339cebf74ec2da363820ceab19fc2d1d408e100bdf238b91`。ADB 当前未列出设备，真机安装、待机恢复、macOS 和 F6 仍待用户执行。

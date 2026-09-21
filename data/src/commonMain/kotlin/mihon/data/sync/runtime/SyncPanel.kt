@@ -62,6 +62,8 @@ data class SyncPanelState(
     val problem: SyncRunProblem? = null,
     val notice: SyncPanelNotice? = null,
     val queuedMembership: Long = 0,
+    val queuedFavorites: Long = 0,
+    val queuedFollows: Long = 0,
     val queuedReading: Long = 0,
     val pendingTotal: Long = 0,
     val pending: List<SyncPendingItem> = emptyList(),

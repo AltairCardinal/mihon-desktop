@@ -1611,6 +1611,13 @@
     <string name="sync_exchanged">数据交换已完成</string>
     <string name="sync_queued">有 %1$d 项变动等待同步</string>
     <string name="sync_detail">收藏与关注 %1$d 项 · 阅读记录 %2$d 项</string>
+    <string name="sync_space_subtitle">%1$s · 书架</string>
+    <string name="sync_queue_upload">待上传操作</string>
+    <string name="sync_queue_upload_value">%1$d 项</string>
+    <string name="sync_queue_membership">收藏与关注</string>
+    <string name="sync_queue_membership_value">%1$d 条收藏 · %2$d 条关注</string>
+    <string name="sync_queue_reading">阅读记录</string>
+    <string name="sync_queue_reading_value">%1$d 条阅读记录</string>
     <string name="sync_next">%1$s后同步</string>
     <string name="sync_soon">即将同步</string>
     <string name="sync_days">%1$d天</string>
@@ -1790,6 +1797,7 @@
     <string name="sync_setup_creating">正在准备同步空间…</string>
     <string name="sync_setup_merging">正在合并数据…</string>
     <string name="sync_progress">已处理 %1$d / %2$d 项</string>
+    <string name="sync_progress_detail">已完成 %1$d 项 · 跳过 %2$d 项 · 失败 %3$d 项 · 剩余 %4$d 项待处理</string>
     <string name="sync_log_title">最近条目</string>
     <string name="sync_pause_run">暂停同步</string>
     <string name="sync_resume_run">继续同步</string>

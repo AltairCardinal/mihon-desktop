@@ -1,6 +1,6 @@
 # 同步实现审查修复设计
 
-日期：2026-09-21。状态：F1–F4 已完成并提交；当前 worktree 候选已构建，签名包、真机与 macOS 验收仍待完成。实施入口：[修复 roadmap](roadmap/2026-09-21-sync-repair-roadmap.md)。
+日期：2026-09-21。状态：F1–F4 已完成并提交，F4 已按真机反馈修正页面层级与条目日志；当前 worktree aex.11 候选已签名构建，真机与 macOS 验收仍待完成。实施入口：[修复 roadmap](roadmap/2026-09-21-sync-repair-roadmap.md)。
 
 本文件修订[原同步进度设计](2026-09-19-sync-progress-resume-design.md)，以本文件处理审查发现时的规则为准。用户要求：先在 `D:/Codex/worktrees/85be/mihon` 修复并验收；另一开发分支完成后才合并。本方案不提前合并、不修改另一 worktree，也不把当前验收等同于未来合并验收。
 

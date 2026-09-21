@@ -11,6 +11,10 @@ import mihon.data.sync.journal.SyncOutboxExchange
 import mihon.data.sync.journal.SyncOutboxStore
 import mihon.data.sync.transport.SyncBatchSyncService
 import mihon.data.sync.transport.SyncRemoteSnapshotRejected
+import mihon.domain.sync.SyncBatch
+import mihon.domain.sync.SyncField
+import mihon.domain.sync.SyncObjectKey
+import mihon.domain.sync.SyncObjectType
 import mihon.domain.sync.auth.GitHubAuthException
 import mihon.domain.sync.crypto.SyncSecret
 import mihon.domain.sync.crypto.SyncSpaceMaterial
@@ -111,11 +115,10 @@ class SyncDatabaseExchange(
                             snapshot.batches.sumOf { (it.lastSeq - it.firstSeq + 1).toInt() }.toLong(),
                             completed = downloadedTotal,
                         )
-                        progress?.log(
+                        progress.logBatch(
+                            result.batch,
                             entry.batchId,
-                            "同步数据",
-                            if (result.duplicate) "已确认重复数据" else "已接收远端数据",
-                            SyncRunLogStatus.COMPLETED,
+                            if (result.duplicate) "已确认重复数据" else "已接收",
                         )
                     } else {
                         problem = SyncRunProblem.INVALID_DATA
@@ -147,7 +150,7 @@ class SyncDatabaseExchange(
                 uploadedTotal += publishedCount
                 progress?.totals(uploadedTotal, downloadedTotal)
                 progress?.phase(SyncRunPhase.CONFIRMING, uploadedTotal + downloadedTotal, 0)
-                progress?.log(result.publish.batchId, "本机变动", "已确认上传", SyncRunLogStatus.COMPLETED)
+                progress.logBatch(result.batch, result.publish.batchId, "已确认上传")
                 yield()
                 // The publisher has advanced the durable remote anchor; always obtain a fresh snapshot.
             }
@@ -168,6 +171,45 @@ class SyncDatabaseExchange(
             problem = problem,
         )
     }
+}
+
+private data class SyncBatchLogEntry(val key: String, val title: String, val detail: String)
+
+private suspend fun SyncProgressReporter?.logBatch(batch: SyncBatch?, batchId: String, result: String) {
+    val entries = batch?.itemLogs(result).orEmpty()
+    if (entries.isEmpty()) {
+        this?.log(batchId, "同步数据", result, SyncRunLogStatus.COMPLETED)
+        return
+    }
+    entries.forEach { entry ->
+        this?.log("$batchId:${entry.key}", entry.title, entry.detail, SyncRunLogStatus.COMPLETED)
+    }
+}
+
+private fun SyncBatch.itemLogs(result: String): List<SyncBatchLogEntry> {
+    val descriptions = objects.associateBy { it.objectKey.stableKey }
+    return events.asSequence()
+        .flatMap { it.effects.asSequence() }
+        .groupBy { it.objectKey.stableKey }
+        .map { (stableKey, effects) ->
+            val key = effects.first().objectKey
+            val title = when (key.type) {
+                SyncObjectType.CHAPTER -> descriptions[
+                    SyncObjectKey(SyncObjectType.MANGA, sourceId = key.sourceId, originalUrl = key.parentUrl).stableKey,
+                ]?.title ?: descriptions[stableKey]?.title
+                else -> descriptions[stableKey]?.title
+            } ?: when (key.type) {
+                SyncObjectType.AUTHOR -> "作者"
+                SyncObjectType.MANGA -> "漫画"
+                SyncObjectType.CHAPTER -> "阅读记录"
+            }
+            val operation = when {
+                effects.any { it.field == SyncField.FOLLOWING } -> "作者关注"
+                effects.any { it.field == SyncField.FAVORITE } -> "收藏"
+                else -> "阅读记录"
+            }
+            SyncBatchLogEntry(stableKey, title, "$operation · $result")
+        }
 }
 
 internal fun Exception.syncProblem(): SyncRunProblem = when (this) {

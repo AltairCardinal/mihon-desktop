@@ -215,6 +215,8 @@ class SyncPanelController(
             logLimit = 5
         }
         var membership = 0L
+        var favorites = 0L
+        var follows = 0L
         var reading = 0L
         var imports = 0L
         references = linkedMapOf()
@@ -225,7 +227,18 @@ class SyncPanelController(
                     .executeAsList().forEach { references[it._id] = it.binding }
                 sync_journalQueries.getPendingCategoryCounts(connection.spaceId, connection.generation)
                     .executeAsList().forEach {
-                        if (it.category == "READING") reading += it.count else membership += it.count
+                        when (it.category) {
+                            "FAVORITE" -> {
+                                favorites += it.count
+                                membership += it.count
+                            }
+                            "FOLLOW" -> {
+                                follows += it.count
+                                membership += it.count
+                            }
+                            "READING" -> reading += it.count
+                            else -> membership += it.count
+                        }
                     }
                 imports = sync_importQueries.countPendingImports(connection.spaceId, connection.generation)
                     .executeAsOne()
@@ -274,6 +287,8 @@ class SyncPanelController(
                 loaded = true,
                 connection = connection,
                 queuedMembership = membership,
+                queuedFavorites = favorites,
+                queuedFollows = follows,
                 queuedReading = reading,
                 pendingTotal = references.size.toLong(),
                 pending = items,

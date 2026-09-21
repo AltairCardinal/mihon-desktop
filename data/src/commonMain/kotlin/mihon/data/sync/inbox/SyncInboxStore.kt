@@ -14,7 +14,12 @@ import mihon.domain.sync.transport.SyncBatchIndexEntry
 import mihon.domain.sync.transport.SyncSnapshot
 import tachiyomi.data.DatabaseHandler
 
-data class SyncReceptionResult(val accepted: Boolean, val duplicate: Boolean = false, val error: String? = null)
+data class SyncReceptionResult(
+    val accepted: Boolean,
+    val duplicate: Boolean = false,
+    val error: String? = null,
+    val batch: SyncBatch? = null,
+)
 data class SyncInboxStatus(val receivedBatches: Long, val rejectedBatches: Long, val pendingDecisions: Long)
 
 class SyncInboxStore(private val handler: DatabaseHandler) {
@@ -36,7 +41,7 @@ class SyncInboxStore(private val handler: DatabaseHandler) {
             requireSyncExchange(batch.spaceId, batch.generation)
             val previous = sync_inboxQueries.getReceivedBatch(batch.spaceId, batch.generation, batch.batchId)
                 .executeAsOneOrNull()
-            if (previous == encoded) return@await SyncReceptionResult(true, duplicate = true)
+            if (previous == encoded) return@await SyncReceptionResult(true, duplicate = true, batch = batch)
             val conflicts = batch.events.filter { event ->
                 val existing = sync_inboxQueries.getEvent(batch.spaceId, batch.generation, event.eventId.stableKey)
                     .executeAsOneOrNull()?.let { (SyncCodec.decode(it) as? SyncDecodeResult.Accepted)?.event }
@@ -86,7 +91,7 @@ class SyncInboxStore(private val handler: DatabaseHandler) {
             }
             dirtySyncDependents(batch.spaceId, batch.generation, inserted)
             sync_inboxQueries.saveInboxBatch(batch.spaceId, batch.generation, batch.batchId, "RECEIVED", encoded, null)
-            SyncReceptionResult(true)
+            SyncReceptionResult(true, batch = batch)
         }
     }
 

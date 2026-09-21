@@ -58,6 +58,48 @@ import java.util.Locale
 @OptIn(ExperimentalComposeUiApi::class)
 class SyncPanelContentTest {
     @Test
+    fun `main panel follows approved status queue and progress hierarchy`() = rendered(
+        connected().copy(
+            deviceName = "手机 A",
+            queuedMembership = 4,
+            queuedFavorites = 3,
+            queuedFollows = 1,
+            queuedReading = 1_800,
+            run = SyncRunSnapshot(
+                runId = "run-visual",
+                spaceId = "space",
+                generation = 1,
+                trigger = mihon.domain.sync.runtime.SyncTrigger.MANUAL,
+                state = SyncRunState.RUNNING,
+                phase = SyncRunPhase.MERGING,
+                processed = 75,
+                total = 120,
+                completed = 70,
+                skipped = 2,
+                failed = 3,
+                attempt = 1,
+                nextRetryAt = 0,
+                lastProgressAt = 1,
+                stopReason = null,
+                ownerSession = "session",
+                createdAt = 1,
+                updatedAt = 1,
+            ),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertTrue(hasTag("sync-space-subtitle"))
+        assertTrue(texts().contains("手机 A · 书架"))
+        assertTrue(hasTag("sync-status-icon"))
+        assertTrue(hasTag("sync-queue-summary"))
+        assertTrue(texts().contains("1804 项"))
+        assertTrue(texts().contains("3 条收藏 · 1 条关注"))
+        assertTrue(texts().contains("1800 条阅读记录"))
+        assertTrue(hasTag("sync-progress-detail"))
+        assertTrue(texts().contains("已完成 70 项 · 跳过 2 项 · 失败 3 项 · 剩余 45 项待处理"))
+    }
+
+    @Test
     fun `unsupported binding is clearly identified in the main panel before any exchange`() = rendered(
         connected().copy(
             connection = connected().connection!!.copy(enabled = false, protectionMode = null),

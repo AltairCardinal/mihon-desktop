@@ -148,6 +148,6 @@ class SyncOutboxExchange(private val store: SyncOutboxStore, private val service
         )
         val result = service.uploadPrepared(snapshot.repository, snapshot, upload, store::observeSnapshot)
         if (result.publish.status == SyncPublishStatus.PUBLISHED) store.acknowledge(upload, result.publish)
-        return result
+        return result.copy(batch = batch)
     }
 }

@@ -1814,6 +1814,7 @@
     <string name="sync_now">Sync now</string>
     <string name="sync_busy">Synchronizing…</string>
     <string name="sync_progress">Processed %1$d / %2$d</string>
+    <string name="sync_progress_detail">Completed %1$d · Skipped %2$d · Failed %3$d · %4$d remaining</string>
     <string name="sync_log_title">Recent items</string>
     <string name="sync_pause_run">Pause sync</string>
     <string name="sync_resume_run">Continue sync</string>
@@ -1838,6 +1839,13 @@
     <string name="sync_exchanged">Data exchange completed</string>
     <string name="sync_queued">%1$d changes waiting to sync</string>
     <string name="sync_detail">Collection and follows %1$d · Reading %2$d</string>
+    <string name="sync_space_subtitle">%1$s · Library</string>
+    <string name="sync_queue_upload">Changes waiting to upload</string>
+    <string name="sync_queue_upload_value">%1$d items</string>
+    <string name="sync_queue_membership">Collection and follows</string>
+    <string name="sync_queue_membership_value">%1$d favorites · %2$d follows</string>
+    <string name="sync_queue_reading">Reading history</string>
+    <string name="sync_queue_reading_value">%1$d reading records</string>
     <string name="sync_next">Sync in %1$s</string>
     <string name="sync_soon">Syncing soon</string>
     <string name="sync_days">%1$d d</string>
