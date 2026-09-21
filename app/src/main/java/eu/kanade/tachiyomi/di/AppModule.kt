@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
+import app.cash.sqldelight.db.AfterVersion
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import eu.kanade.domain.track.store.DelayedTrackingStore
@@ -31,6 +32,7 @@ import nl.adaptivity.xmlutil.serialization.XML
 import tachiyomi.core.common.storage.AndroidStorageFolderProvider
 import tachiyomi.data.AndroidDatabaseHandler
 import tachiyomi.data.Database
+import tachiyomi.data.DatabaseMigration
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.History
@@ -63,7 +65,12 @@ class AppModule(val app: Application) : InjektModule {
                 } else {
                     RequerySQLiteOpenHelperFactory()
                 },
-                callback = object : AndroidSqliteDriver.Callback(Database.Schema) {
+                callback = object : AndroidSqliteDriver.Callback(
+                    Database.Schema,
+                    AfterVersion(DatabaseMigration.COMPATIBILITY_SCHEMA_VERSION - 1) {
+                        DatabaseMigration.validateCompatibility(it)
+                    },
+                ) {
                     override fun onOpen(db: SupportSQLiteDatabase) {
                         super.onOpen(db)
                         setPragma(db, "foreign_keys = ON")

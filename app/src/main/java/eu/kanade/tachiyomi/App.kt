@@ -75,6 +75,7 @@ import tachiyomi.presentation.widget.WidgetManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
+import java.io.File
 import java.security.Security
 
 class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factory {
@@ -101,6 +102,8 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
     @SuppressLint("LaunchActivityFromNotification")
     override fun onCreate() {
         super<Application>.onCreate()
+        if (isErrorHandlerProcess(currentProcessName())) return
+
         patchInjekt()
         TelemetryConfig.init(applicationContext)
 
@@ -272,6 +275,13 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         return super.getPackageName()
     }
 
+    private fun currentProcessName(): String? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) return getProcessName()
+        return runCatching {
+            File("/proc/${android.os.Process.myPid()}/cmdline").readText().trim('\u0000', '\n', ' ')
+        }.getOrNull()
+    }
+
     private fun setupNotificationChannels() {
         try {
             Notifications.createChannels(this)
@@ -309,3 +319,6 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
 }
 
 private const val ACTION_DISABLE_INCOGNITO_MODE = "tachi.action.DISABLE_INCOGNITO_MODE"
+
+internal fun isErrorHandlerProcess(processName: String?): Boolean =
+    processName?.endsWith(":error_handler") == true

@@ -14,6 +14,13 @@ class CreatorArchiveMigration16Test {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         Database.Schema.create(driver)
         mihon.data.sync.removeSyncJournalSchema(driver)
+        driver.execute(null, "DROP TRIGGER IF EXISTS author_archive_source_work_first_seen_defaults", 0)
+        listOf(
+            "author_archive_source_date_quality_samples",
+            "author_archive_source_date_quality_current",
+            "author_archive_source_date_quality",
+            "author_archive_representative_work_cache",
+        ).forEach { table -> driver.execute(null, "DROP TABLE IF EXISTS $table", 0) }
         // Remove only identity additions from migrations 25 and 26 before replaying v16 onward.
         val identityObjects = driver.executeQuery(
             null,
@@ -36,6 +43,15 @@ class CreatorArchiveMigration16Test {
         driver.execute(null, "ALTER TABLE author_archive_creators DROP COLUMN identity_revision", 0)
         driver.execute(null, "ALTER TABLE mangas DROP COLUMN memo", 0)
         driver.execute(null, "ALTER TABLE chapters DROP COLUMN memo", 0)
+        listOf(
+            "first_seen_date",
+            "first_seen_zone",
+            "chapter_count_state",
+            "catalog_chapter_count",
+            "latest_chapter_at",
+        ).forEach { column ->
+            driver.execute(null, "ALTER TABLE author_archive_source_works DROP COLUMN $column", 0)
+        }
         listOf("index_url", "extension_list_url", "contact_discord").forEach { column ->
             driver.execute(null, "ALTER TABLE extension_repos DROP COLUMN $column", 0)
         }

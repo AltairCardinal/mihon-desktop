@@ -27,6 +27,76 @@ ON author_archive_creators(status);
 CREATE INDEX idx_author_archive_creators_merged_into
 ON author_archive_creators(merged_into_creator_id);
 
+-- Device-local rebuildable presentation state; the migration bridge keeps this table
+-- compatible with the author schema family that published it at version 27.
+CREATE TABLE author_archive_representative_work_cache(
+    creator_id INTEGER NOT NULL PRIMARY KEY,
+    strategy_version INTEGER NOT NULL,
+    payload TEXT NOT NULL CHECK(length(payload) <= 8192),
+    FOREIGN KEY(creator_id) REFERENCES author_archive_creators(_id) ON DELETE CASCADE
+);
+
+CREATE TABLE author_archive_source_date_quality(
+    extension_package TEXT NOT NULL,
+    extension_version TEXT NOT NULL,
+    source_id INTEGER NOT NULL,
+    field_kind TEXT NOT NULL CHECK(field_kind IN ('WORK_PUBLISHED', 'CHAPTER_UPDATED')),
+    status TEXT NOT NULL CHECK(status IN ('UNKNOWN', 'TRUSTED', 'SUSPECT')),
+    strategy_version INTEGER NOT NULL,
+    sample_count INTEGER NOT NULL,
+    observed_work_count INTEGER NOT NULL,
+    stable_chapter_count INTEGER NOT NULL,
+    distinct_history_date_count INTEGER NOT NULL,
+    first_observed_at INTEGER,
+    last_observed_at INTEGER,
+    projected_date_at INTEGER,
+    last_reason TEXT,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY(extension_package, extension_version, source_id, field_kind)
+);
+
+CREATE TABLE author_archive_source_date_quality_current(
+    source_id INTEGER NOT NULL,
+    field_kind TEXT NOT NULL CHECK(field_kind IN ('WORK_PUBLISHED', 'CHAPTER_UPDATED')),
+    extension_package TEXT NOT NULL,
+    extension_version TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY(source_id, field_kind),
+    FOREIGN KEY(extension_package, extension_version, source_id, field_kind)
+        REFERENCES author_archive_source_date_quality(
+            extension_package, extension_version, source_id, field_kind
+        ) ON DELETE CASCADE
+);
+
+CREATE TABLE author_archive_source_date_quality_samples(
+    _id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    extension_package TEXT NOT NULL,
+    extension_version TEXT NOT NULL,
+    source_id INTEGER NOT NULL,
+    field_kind TEXT NOT NULL CHECK(field_kind IN ('WORK_PUBLISHED', 'CHAPTER_UPDATED')),
+    work_natural_key TEXT NOT NULL,
+    chapter_natural_key TEXT,
+    raw_value TEXT,
+    value_at INTEGER,
+    precision TEXT NOT NULL CHECK(precision IN ('UNKNOWN', 'YEAR', 'MONTH', 'DAY')),
+    semantic_confirmed INTEGER AS Boolean NOT NULL,
+    observed_at INTEGER NOT NULL,
+    reason TEXT,
+    network_failure INTEGER AS Boolean NOT NULL,
+    FOREIGN KEY(extension_package, extension_version, source_id, field_kind)
+        REFERENCES author_archive_source_date_quality(
+            extension_package, extension_version, source_id, field_kind
+        ) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_author_archive_source_date_quality_samples_key
+ON author_archive_source_date_quality_samples(
+    extension_package, extension_version, source_id, field_kind, work_natural_key, chapter_natural_key
+);
+
+CREATE INDEX idx_author_archive_source_date_quality_samples_observed
+ON author_archive_source_date_quality_samples(observed_at);
+
 CREATE TABLE author_archive_identity_names(
     name_text TEXT COLLATE BINARY NOT NULL PRIMARY KEY,
     creator_id INTEGER NOT NULL,
@@ -111,8 +181,15 @@ CREATE TABLE author_archive_source_works(
     artist_text TEXT,
     thumbnail_url TEXT,
     first_seen_at INTEGER NOT NULL,
+    first_seen_date TEXT NOT NULL DEFAULT '',
+    first_seen_zone TEXT NOT NULL DEFAULT 'UTC',
     last_seen_at INTEGER NOT NULL,
     details_fetched_at INTEGER,
+    chapter_count_state TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK(
+        chapter_count_state IN ('UNKNOWN', 'PARTIAL', 'COMPLETE')
+    ),
+    catalog_chapter_count INTEGER NOT NULL DEFAULT 0 CHECK(catalog_chapter_count >= 0),
+    latest_chapter_at INTEGER,
     legacy_candidate_id INTEGER UNIQUE,
     legacy_review_snapshot TEXT CHECK(
         legacy_review_snapshot IS NULL OR
@@ -121,6 +198,19 @@ CREATE TABLE author_archive_source_works(
     UNIQUE(source_id, stable_source_url),
     FOREIGN KEY(manga_id) REFERENCES mangas(_id) ON DELETE SET NULL
 );
+
+CREATE TRIGGER author_archive_source_work_first_seen_defaults
+AFTER INSERT ON author_archive_source_works
+WHEN new.first_seen_at > 0 AND length(trim(new.first_seen_date)) = 0
+BEGIN
+    UPDATE author_archive_source_works
+    SET first_seen_date = strftime('%Y-%m-%d', new.first_seen_at / 1000, 'unixepoch'),
+        first_seen_zone = CASE
+            WHEN length(trim(new.first_seen_zone)) = 0 THEN 'UTC'
+            ELSE new.first_seen_zone
+        END
+    WHERE _id = new._id;
+END;
 
 CREATE INDEX idx_author_archive_source_works_manga
 ON author_archive_source_works(manga_id);

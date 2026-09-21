@@ -1,0 +1,37 @@
+ALTER TABLE author_archive_source_works
+    ADD COLUMN first_seen_date TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE author_archive_source_works
+    ADD COLUMN first_seen_zone TEXT NOT NULL DEFAULT 'UTC';
+
+ALTER TABLE author_archive_source_works
+    ADD COLUMN chapter_count_state TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK(
+        chapter_count_state IN ('UNKNOWN', 'PARTIAL', 'COMPLETE')
+    );
+
+ALTER TABLE author_archive_source_works
+    ADD COLUMN catalog_chapter_count INTEGER NOT NULL DEFAULT 0 CHECK(catalog_chapter_count >= 0);
+
+ALTER TABLE author_archive_source_works
+    ADD COLUMN latest_chapter_at INTEGER;
+
+UPDATE author_archive_source_works
+SET first_seen_date = CASE
+        WHEN first_seen_at > 0 THEN strftime('%Y-%m-%d', first_seen_at / 1000, 'unixepoch')
+        ELSE ''
+    END,
+    first_seen_zone = 'UTC'
+WHERE length(trim(first_seen_date)) = 0;
+
+CREATE TRIGGER author_archive_source_work_first_seen_defaults
+AFTER INSERT ON author_archive_source_works
+WHEN new.first_seen_at > 0 AND length(trim(new.first_seen_date)) = 0
+BEGIN
+    UPDATE author_archive_source_works
+    SET first_seen_date = strftime('%Y-%m-%d', new.first_seen_at / 1000, 'unixepoch'),
+        first_seen_zone = CASE
+            WHEN length(trim(new.first_seen_zone)) = 0 THEN 'UTC'
+            ELSE new.first_seen_zone
+        END
+    WHERE _id = new._id;
+END;
