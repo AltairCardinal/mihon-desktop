@@ -1,6 +1,6 @@
 # 同步进度、条目日志与待机恢复设计
 
-日期：2026-09-19。状态：设计、原型与生产接入已完成；API 26/33/35/36 生命周期及 Windows/macOS 运行证据已补齐，真实同步空间条目推进与完整基线验收仍待 R5。本文件不代表真实同步空间或完整发布验收通过。
+日期：2026-09-19；2026-09-21 修订状态：实现审查不通过，R2–R4 重新打开。原有平台运行证据仅证明当时测试范围，不能证明覆盖升级、首次合并进度或自动恢复闭环已完成。当前修复规则以[修复设计](2026-09-21-sync-repair-design.md)及[修复 roadmap](roadmap/2026-09-21-sync-repair-roadmap.md)为准；本文保留原始需求和历史实现说明，不能作为当前实现已达标的证据。
 
 实施入口：[本轮 Roadmap](roadmap/2026-09-19-sync-progress-resume-roadmap.md)。交互参考：[双端 DEMO](prototypes/multi-device-sync/index.html)及[说明](prototypes/multi-device-sync/README.md)。既有架构：[多设备同步技术方案](2026-09-13-multi-device-sync-technical-proposal.md)。
 
@@ -128,7 +128,7 @@ Android 16 长时间 Worker 仍受 job 配额影响，前台服务也不是待�
 
 共享状态、计数、恢复资格和失败规则放 domain/data；Compose 视图放 presentation-sync。Android 生命周期、网络回调、Worker 和通知留在 app adapter；Desktop 沿用已有 runtime service，不引入 Android API。所有入口使用同一 Injekt graph 和 production HTTP 配置。
 
-数据库通过 27 号增量迁移加入本机运行／日志状态。旧版本没有运行记录时不根据陈旧 lastAttempt 猜测“待机中断”；未完成初次配置可从 pendingSetup 和导入事实对账，其余按既有启动／周期选项进入新运行。迁移不触碰同步事件身份、加密制品或远端文件。已有备份过滤须覆盖新增本机状态。
+历史实现曾通过 27 号增量迁移加入本机运行／日志状态；该编号与作者开发分支冲突，不能继续作为安全升级方案。修复采用固定作者结构基线与已交付数据库谱系识别，具体路径见修复设计第 2 节。旧版本没有运行记录时不根据陈旧 lastAttempt 猜测“待机中断”；未完成初次配置须从 pendingSetup 和导入事实对账，其余按既有启动／周期选项进入新运行。迁移不触碰同步事件身份、加密制品或远端文件。已有备份过滤须覆盖新增本机状态。
 
 日志截断、页面计数错误不能改变收件／上传结果；暂停、取消、切空间和断开必须核验空间与连接修订，旧执行者不得写入新空间状态。用户待确认的取消条目不阻止其他同步，也不被“同步完成”自动确认。
 
