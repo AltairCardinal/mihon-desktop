@@ -1,0 +1,2 @@
+ALTER TABLE sync_runtime_runs ADD COLUMN uploaded INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sync_runtime_runs ADD COLUMN downloaded INTEGER NOT NULL DEFAULT 0;

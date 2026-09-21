@@ -33,6 +33,8 @@ data class SyncRunSnapshot(
     val completed: Long,
     val skipped: Long,
     val failed: Long,
+    val uploaded: Long = 0,
+    val downloaded: Long = 0,
     val attempt: Long,
     val nextRetryAt: Long,
     val lastProgressAt: Long,
@@ -40,6 +42,8 @@ data class SyncRunSnapshot(
     val ownerSession: String?,
     val createdAt: Long,
     val updatedAt: Long,
+    val uploadedBaseline: Long = 0,
+    val downloadedBaseline: Long = 0,
 )
 
 data class SyncRunLog(
@@ -64,6 +68,8 @@ interface SyncProgressReporter {
     )
 
     suspend fun log(key: String, title: String, detail: String, status: SyncRunLogStatus)
+
+    suspend fun totals(uploaded: Long, downloaded: Long)
 }
 
 private class StoreProgressReporter(
@@ -95,6 +101,9 @@ private class StoreProgressReporter(
 
     override suspend fun log(key: String, title: String, detail: String, status: SyncRunLogStatus) =
         store.log(runId, key, title, detail, status, ownerSession)
+
+    override suspend fun totals(uploaded: Long, downloaded: Long) =
+        store.totals(runId, uploaded, downloaded, ownerSession)
 }
 
 class SyncRunStore(
@@ -106,6 +115,9 @@ class SyncRunStore(
         val now = clock()
         val runId = UUID.randomUUID().toString()
         handler.await(inTransaction = true) {
+            val uploadedBaseline = sync_journalQueries.countPublishedEvents(spaceId, generation).executeAsOne()
+            val downloadedBaseline = sync_journalQueries.countRemoteEvents(spaceId, generation, spaceId, generation)
+                .executeAsOne()
             sync_runtimeQueries.insertRuntimeRun(
                 runId,
                 spaceId,
@@ -113,6 +125,8 @@ class SyncRunStore(
                 trigger.name,
                 SyncRunState.QUEUED.name,
                 SyncRunPhase.CHECKING.name,
+                uploadedBaseline,
+                downloadedBaseline,
                 now,
                 now,
                 now,
@@ -155,11 +169,12 @@ class SyncRunStore(
                 sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull()
                     ?.takeIf { it.owner_session == ownerSession }
             }
-            val durableProcessed = previous?.processed?.coerceAtLeast(processed) ?: processed
-            val durableTotal = previous?.total?.coerceAtLeast(total) ?: total
-            val durableCompleted = previous?.completed?.coerceAtLeast(completed) ?: completed
-            val durableSkipped = previous?.skipped?.coerceAtLeast(skipped) ?: skipped
-            val durableFailed = previous?.failed?.coerceAtLeast(failed) ?: failed
+            val samePhase = previous?.phase == phase.name
+            val durableProcessed = if (samePhase) previous!!.processed.coerceAtLeast(processed) else processed
+            val durableTotal = if (samePhase) previous!!.total.coerceAtLeast(total) else total
+            val durableCompleted = if (samePhase) previous!!.completed.coerceAtLeast(completed) else completed
+            val durableSkipped = if (samePhase) previous!!.skipped.coerceAtLeast(skipped) else skipped
+            val durableFailed = if (samePhase) previous!!.failed.coerceAtLeast(failed) else failed
             val durableAttempt = previous?.attempt?.coerceAtLeast(attempt) ?: attempt
             if (ownerSession == null) {
                 sync_runtimeQueries.updateRuntimeProgress(
@@ -200,6 +215,16 @@ class SyncRunStore(
         }
     }
 
+    suspend fun totals(runId: String, uploaded: Long, downloaded: Long, ownerSession: String? = null) {
+        handler.await {
+            if (ownerSession == null) {
+                sync_runtimeQueries.updateRuntimeTotals(uploaded, downloaded, clock(), runId)
+            } else {
+                sync_runtimeQueries.updateRuntimeTotalsOwned(uploaded, downloaded, clock(), runId, ownerSession)
+            }
+        }
+    }
+
     suspend fun claim(runId: String, ownerSession: String, attempt: Long): Boolean = handler.await(
         inTransaction = true,
     ) {
@@ -214,6 +239,12 @@ class SyncRunStore(
         sync_runtimeQueries.getRuntimeRun(runId).executeAsOneOrNull()?.let {
             it.state == SyncRunState.WAITING_SYSTEM.name && it.owner_session == null
         } == true
+    }
+
+    suspend fun rewindSystemInterruptionAttempt(runId: String) {
+        handler.await {
+            sync_runtimeQueries.rewindRuntimeAttempt(clock(), runId)
+        }
     }
 
     suspend fun pause(runId: String) = state(runId, SyncRunState.PAUSED_USER, "user")
@@ -313,6 +344,10 @@ private fun tachiyomi.data.Sync_runtime_runs.toSnapshot() = SyncRunSnapshot(
     completed = completed,
     skipped = skipped,
     failed = failed,
+    uploaded = uploaded,
+    downloaded = downloaded,
+    uploadedBaseline = uploaded_baseline,
+    downloadedBaseline = downloaded_baseline,
     attempt = attempt,
     nextRetryAt = next_retry_at,
     lastProgressAt = last_progress_at,

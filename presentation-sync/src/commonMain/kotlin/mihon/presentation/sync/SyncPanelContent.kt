@@ -75,6 +75,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.icerock.moko.resources.StringResource
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -297,72 +298,7 @@ private fun MainPage(
                 )
             }
         }
-        state.run?.let { run ->
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp)
-                    .testTag("sync-progress-card"),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(syncString(runPhaseLabel(run.phase)), style = MaterialTheme.typography.titleSmall)
-                if (run.total > 0) {
-                    LinearProgressIndicator(
-                        progress = { (run.processed.toFloat() / run.total).coerceIn(0f, 1f) },
-                        Modifier.fillMaxWidth().testTag("sync-progress"),
-                    )
-                    Text(syncString(MR.strings.sync_progress, run.processed, run.total))
-                } else {
-                    LinearProgressIndicator(Modifier.fillMaxWidth().testTag("sync-progress"))
-                }
-                when (run.state) {
-                    SyncRunState.PAUSED_USER -> {
-                        Text(syncString(MR.strings.sync_paused))
-                        Action("sync-resume-run", MR.strings.sync_resume_run) {
-                            dispatch(SyncPanelAction.ResumeSync)
-                        }
-                    }
-                    SyncRunState.WAITING_NETWORK -> Text(syncString(MR.strings.sync_waiting_network))
-                    SyncRunState.WAITING_SYSTEM -> Text(syncString(MR.strings.sync_waiting_system))
-                    SyncRunState.WAITING_RETRY -> {
-                        Text(syncString(MR.strings.sync_waiting_retry))
-                        Text(retryLabel(run, state.nowMillis), Modifier.testTag("sync-retry-countdown"))
-                    }
-                    SyncRunState.FAILED -> {
-                        Text(syncString(MR.strings.sync_retry_exhausted))
-                        Action("sync-retry-run", MR.strings.sync_retry_run) {
-                            dispatch(SyncPanelAction.RetrySync)
-                        }
-                    }
-                    SyncRunState.BLOCKED -> {
-                        Text(syncString(MR.strings.sync_blocked))
-                        Text(
-                            problemText(state.problem ?: SyncRunProblem.UNKNOWN),
-                            Modifier.testTag("sync-blocked-reason"),
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                    else -> Action("sync-pause-run", MR.strings.sync_pause_run) {
-                        dispatch(SyncPanelAction.PauseSync)
-                    }
-                }
-                if (state.logs.isNotEmpty()) {
-                    Text(syncString(MR.strings.sync_log_title), style = MaterialTheme.typography.labelLarge)
-                    state.logs.forEach { log ->
-                        Text(
-                            "${log.title} · ${log.detail}",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.testTag("sync-log-${log.key}"),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    if (state.logsHasMore) {
-                        Action("sync-log-more", MR.strings.sync_load_more) {
-                            dispatch(SyncPanelAction.LoadMoreLogs)
-                        }
-                    }
-                }
-            }
-        }
+        state.run?.let { run -> SyncProgressCard(run, state, dispatch) }
         if (state.problem == SyncRunProblem.AUTHORIZATION) {
             Action("sync-reconnect", MR.strings.sync_reconnect) { dispatch(SyncPanelAction.Authorize) }
         }
@@ -883,6 +819,9 @@ private fun SetupPage(
             SyncSetupStep.CREATING -> item { Text(syncString(MR.strings.sync_setup_creating)) }
             SyncSetupStep.MERGING -> {
                 item { Text(syncString(MR.strings.sync_setup_merging)) }
+                state.run?.let { run ->
+                    item { SyncProgressCard(run, state, dispatch, horizontalPadding = 0.dp) }
+                }
                 if (state.importRemaining > 0) {
                     item { Text(syncString(MR.strings.sync_import_remaining, state.importRemaining)) }
                     item {
@@ -919,6 +858,82 @@ private fun SetupPage(
                             openBrowser("https://github.com/apps/mihon-desktop/installations/new")
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncProgressCard(
+    run: SyncRunSnapshot,
+    state: SyncPanelState,
+    dispatch: (SyncPanelAction) -> Unit,
+    horizontalPadding: Dp = 24.dp,
+) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = horizontalPadding, vertical = 4.dp)
+            .testTag("sync-progress-card"),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(syncString(runPhaseLabel(run.phase)), style = MaterialTheme.typography.titleSmall)
+        if (run.total > 0) {
+            LinearProgressIndicator(
+                progress = { (run.processed.toFloat() / run.total).coerceIn(0f, 1f) },
+                Modifier.fillMaxWidth().testTag("sync-progress"),
+            )
+            Text(syncString(MR.strings.sync_progress, run.processed, run.total))
+        } else {
+            LinearProgressIndicator(Modifier.fillMaxWidth().testTag("sync-progress"))
+        }
+        when (run.state) {
+            SyncRunState.PAUSED_USER -> {
+                Text(syncString(MR.strings.sync_paused))
+                Action("sync-resume-run", MR.strings.sync_resume_run) {
+                    dispatch(SyncPanelAction.ResumeSync)
+                }
+            }
+            SyncRunState.WAITING_NETWORK -> Text(syncString(MR.strings.sync_waiting_network))
+            SyncRunState.WAITING_SYSTEM -> Text(syncString(MR.strings.sync_waiting_system))
+            SyncRunState.WAITING_RETRY -> {
+                Text(syncString(MR.strings.sync_waiting_retry))
+                Text(retryLabel(run, state.nowMillis), Modifier.testTag("sync-retry-countdown"))
+            }
+            SyncRunState.FAILED -> {
+                Text(syncString(MR.strings.sync_retry_exhausted))
+                Action("sync-retry-run", MR.strings.sync_retry_run) {
+                    dispatch(SyncPanelAction.RetrySync)
+                }
+            }
+            SyncRunState.BLOCKED -> {
+                Text(syncString(MR.strings.sync_blocked))
+                Text(
+                    problemText(state.problem ?: SyncRunProblem.UNKNOWN),
+                    Modifier.testTag("sync-blocked-reason"),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            SyncRunState.SUCCEEDED,
+            SyncRunState.CANCELLED,
+            -> Unit
+            else -> Action("sync-pause-run", MR.strings.sync_pause_run) {
+                dispatch(SyncPanelAction.PauseSync)
+            }
+        }
+        if (state.logs.isNotEmpty()) {
+            Text(syncString(MR.strings.sync_log_title), style = MaterialTheme.typography.labelLarge)
+            state.logs.forEach { log ->
+                Text(
+                    "${log.title} · ${log.detail}",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.testTag("sync-log-${log.key}"),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (state.logsHasMore) {
+                Action("sync-log-more", MR.strings.sync_load_more) {
+                    dispatch(SyncPanelAction.LoadMoreLogs)
                 }
             }
         }

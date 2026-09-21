@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test
 class DatabaseMigrationCompatibilityTest {
     @Test
     fun `current schema reserves compatibility migration after published sync schema`() {
-        Database.Schema.version shouldBe 31L
+        Database.Schema.version shouldBe 33L
     }
 
     @Test
@@ -25,6 +25,10 @@ class DatabaseMigrationCompatibilityTest {
         )
         driver.execute(null, "DROP TRIGGER IF EXISTS author_archive_source_work_first_seen_defaults", 0)
         dropAuthorAdditions(driver)
+        driver.execute(null, "ALTER TABLE sync_runtime_runs DROP COLUMN uploaded", 0)
+        driver.execute(null, "ALTER TABLE sync_runtime_runs DROP COLUMN downloaded", 0)
+        driver.execute(null, "ALTER TABLE sync_runtime_runs DROP COLUMN uploaded_baseline", 0)
+        driver.execute(null, "ALTER TABLE sync_runtime_runs DROP COLUMN downloaded_baseline", 0)
         driver.execute(null, "PRAGMA user_version = 28", 0)
 
         DatabaseMigration.migrateAtomically(driver, 28, Database.Schema.version)
@@ -32,7 +36,7 @@ class DatabaseMigrationCompatibilityTest {
         queryLong(driver, "SELECT COUNT(*) FROM sync_runtime_runs") shouldBe 1L
         queryLong(driver, "SELECT COUNT(*) FROM author_archive_representative_work_cache") shouldBe 0L
         queryLong(driver, "SELECT COUNT(*) FROM author_archive_source_date_quality") shouldBe 0L
-        queryLong(driver, "PRAGMA user_version") shouldBe 31L
+        queryLong(driver, "PRAGMA user_version") shouldBe 33L
     }
 
     @Test
@@ -60,7 +64,7 @@ class DatabaseMigrationCompatibilityTest {
         queryLong(driver, "SELECT COUNT(*) FROM author_archive_creators") shouldBe 1L
         queryLong(driver, "SELECT COUNT(*) FROM sync_runtime_runs") shouldBe 0L
         queryLong(driver, "SELECT COUNT(*) FROM sync_runtime_logs") shouldBe 0L
-        queryLong(driver, "PRAGMA user_version") shouldBe 31L
+        queryLong(driver, "PRAGMA user_version") shouldBe 33L
     }
 
     @Test

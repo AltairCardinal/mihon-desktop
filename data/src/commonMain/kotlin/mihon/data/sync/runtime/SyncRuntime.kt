@@ -178,10 +178,18 @@ class SyncRuntime(
     /** Resumes only an accepted system-interrupted run; a user pause remains paused. */
     suspend fun resumeIfNeeded(): Boolean {
         val connection = connection() ?: return false
+        if (runStore.active(connection.spaceId, connection.generation) == null) {
+            completePendingSetupIfSettled()
+        }
         val run = runStore.active(connection.spaceId, connection.generation) ?: return false
         if (run.state !in RESUMABLE_STATES) return false
         if (run.nextRetryAt > clock()) return true
-        if (!coordinator.activity.value.running && run.state == SyncRunState.RUNNING) {
+        if (!coordinator.activity.value.running && run.state in setOf(
+                SyncRunState.RUNNING,
+                SyncRunState.WAITING_NETWORK,
+                SyncRunState.WAITING_RETRY,
+            )
+        ) {
             runStore.releaseForRecovery(run.runId)
         }
         coordinator.synchronize(SyncTrigger.RECOVERY)
@@ -247,6 +255,20 @@ class SyncRuntime(
         }
     }
 
+    /** Completes a connected setup after its durable import queue has drained. */
+    internal suspend fun completePendingSetupIfSettled(): Boolean {
+        val connection = connection() ?: return false
+        val setup = pendingSetup(connection) ?: return false
+        val latest = runStore.latest(connection.spaceId, connection.generation)
+        if (latest?.state != SyncRunState.SUCCEEDED) return false
+        val remaining = handler.await {
+            sync_importQueries.countPendingImports(connection.spaceId, connection.generation).executeAsOne()
+        }
+        if (remaining != 0L) return false
+        onboarding.complete(setup)
+        return true
+    }
+
     suspend fun disconnect() {
         coordinator.cancelAndJoin()
         connectionMutex.withLock {
@@ -262,6 +284,19 @@ class SyncRuntime(
         val connection = connection()?.takeIf { it.enabled || it.unsupportedFormat }
             ?: return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
         val active = runStore.active(connection.spaceId, connection.generation)
+        if (trigger == SyncTrigger.STARTUP && active != null) {
+            // Startup is a recovery probe. It must never create a second run over a
+            // paused, blocked, or still owned run; the scheduler will resume an
+            // eligible run separately.
+            return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
+        }
+        if (trigger == SyncTrigger.STARTUP && active == null &&
+            runStore.latest(connection.spaceId, connection.generation)?.let {
+                it.state == SyncRunState.FAILED && it.stopReason == "retry_exhausted"
+            } == true
+        ) {
+            return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
+        }
         if (trigger == SyncTrigger.RECOVERY && active?.state !in RESUMABLE_STATES) {
             return@withLock SyncRunResult(SyncRunStatus.SKIPPED)
         }
@@ -302,6 +337,7 @@ class SyncRuntime(
             runStore.finish(run.runId, SyncRunState.FAILED, "retry_exhausted", ownerSession)
             return@withLock SyncRunResult(SyncRunStatus.FAILED, problem = SyncRunProblem.NETWORK)
         }
+        val resumeProgress = runStore.get(run.runId)
         runStore.progress(
             run.runId,
             SyncRunPhase.CHECKING,
@@ -333,6 +369,10 @@ class SyncRuntime(
                 spaceMaterial = material,
                 allowImport = { !preferences.importPaused.get() },
                 progress = runStore.reporter(run.runId, ownerSession),
+                initialUploaded = resumeProgress?.uploaded ?: 0,
+                initialDownloaded = resumeProgress?.downloaded ?: 0,
+                uploadedBaseline = resumeProgress?.uploadedBaseline ?: 0,
+                downloadedBaseline = resumeProgress?.downloadedBaseline ?: 0,
             )
                 .exchange(connection.spaceId, connection.generation, connection.repository)
         } catch (cancelled: CancellationException) {
@@ -340,6 +380,7 @@ class SyncRuntime(
                 val current = runStore.get(run.runId)
                 if (current?.state !in setOf(SyncRunState.PAUSED_USER, SyncRunState.CANCELLED)) {
                     runStore.finish(run.runId, SyncRunState.WAITING_SYSTEM, "cancelled", ownerSession)
+                    runStore.rewindSystemInterruptionAttempt(run.runId)
                 }
             }
             throw cancelled
@@ -347,12 +388,15 @@ class SyncRuntime(
             SyncRunResult(SyncRunStatus.FAILED, problem = failure.syncProblem())
         }
         if (result.status == SyncRunStatus.SUCCESS) {
+            val completedSnapshot = runStore.get(run.runId)
+            val completedItems = (completedSnapshot?.uploaded ?: result.uploaded.toLong()) +
+                (completedSnapshot?.downloaded ?: result.downloaded.toLong())
             runStore.progress(
                 run.runId,
                 SyncRunPhase.COMPLETE,
-                (result.uploaded + result.downloaded).toLong(),
-                (result.uploaded + result.downloaded).toLong(),
-                completed = (result.uploaded + result.downloaded).toLong(),
+                completedItems,
+                completedItems,
+                completed = completedItems,
                 ownerSession = ownerSession,
             )
         } else if (result.problem == SyncRunProblem.NETWORK && attempt < MAX_AUTOMATIC_ATTEMPTS) {
@@ -390,6 +434,7 @@ class SyncRuntime(
             },
             ownerSession,
         )
+        if (result.status == SyncRunStatus.SUCCESS) completePendingSetupIfSettled()
         if (result.status == SyncRunStatus.SUCCESS) preferences.lastSuccess.set(clock())
         preferences.history.set(Json.encodeToString((records() + SyncRunRecord(clock(), trigger, result)).takeLast(20)))
         result

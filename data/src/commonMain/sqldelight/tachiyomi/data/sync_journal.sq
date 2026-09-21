@@ -181,6 +181,17 @@ getNextUploadBatch:
 SELECT * FROM sync_batches WHERE space_id = ? AND generation = ? AND status != 'PUBLISHED' AND event_count > 0
 ORDER BY actor_id, epoch, first_seq LIMIT 1;
 
+countPublishedEvents:
+SELECT coalesce(sum(event_count), 0) FROM sync_batches
+WHERE space_id = ? AND generation = ? AND status = 'PUBLISHED';
+
+countRemoteEvents:
+SELECT count(*) FROM sync_events
+WHERE space_id = ? AND generation = ? AND batch_id IN (
+    SELECT batch_id FROM sync_inbox_batches
+    WHERE space_id = ? AND generation = ? AND status = 'RECEIVED'
+);
+
 getBatch:
 SELECT * FROM sync_batches WHERE space_id = ? AND generation = ? AND batch_id = ?;
 

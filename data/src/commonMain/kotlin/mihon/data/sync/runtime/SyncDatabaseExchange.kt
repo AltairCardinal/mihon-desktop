@@ -34,10 +34,16 @@ class SyncDatabaseExchange(
     private val spaceMaterial: SyncSpaceMaterial? = null,
     private val allowImport: () -> Boolean = { true },
     private val progress: SyncProgressReporter? = null,
+    private val initialUploaded: Long = 0,
+    private val initialDownloaded: Long = 0,
+    private val uploadedBaseline: Long = 0,
+    private val downloadedBaseline: Long = 0,
 ) {
     suspend fun exchange(spaceId: String, generation: Long, repository: SyncRepository): SyncRunResult {
         var uploaded = 0
         var downloaded = 0
+        var uploadedTotal = initialUploaded
+        var downloadedTotal = initialDownloaded
         var pending = 0
         var problem: SyncRunProblem? = null
         try {
@@ -62,15 +68,27 @@ class SyncDatabaseExchange(
             val service = SyncBatchSyncService(transport, secret, spaceMaterial = spaceMaterial)
             val inbox = SyncInboxExchange(store, service)
             val outbox = SyncOutboxExchange(SyncOutboxStore(handler), service)
+            suspend fun reconcileTotals() {
+                val published = handler.await {
+                    sync_journalQueries.countPublishedEvents(spaceId, generation).executeAsOne()
+                }
+                val remote = handler.await {
+                    sync_journalQueries.countRemoteEvents(spaceId, generation, spaceId, generation).executeAsOne()
+                }
+                uploadedTotal = maxOf(uploadedTotal, (published - uploadedBaseline).coerceAtLeast(0))
+                downloadedTotal = maxOf(downloadedTotal, (remote - downloadedBaseline).coerceAtLeast(0))
+                progress?.totals(uploadedTotal, downloadedTotal)
+            }
+            reconcileTotals()
             projector.retryUnavailable(spaceId, generation)
             val attempted = mutableSetOf<String>()
             while (true) {
-                progress?.phase(SyncRunPhase.DOWNLOADING, downloaded.toLong(), 0, completed = downloaded.toLong())
+                progress?.phase(SyncRunPhase.DOWNLOADING, downloadedTotal, 0, completed = downloadedTotal)
                 val snapshot = transport.readSnapshot(repository, spaceId, generation).getOrThrow()
                 store.observeSnapshot(snapshot)
                 for (entry in snapshot.batches) {
                     if (!attempted.add(entry.batchId)) continue
-                    val received = handler.await {
+                    val alreadyReceived = handler.await {
                         sync_inboxQueries.getReceivedBatch(spaceId, generation, entry.batchId).executeAsOneOrNull() !=
                             null ||
                             sync_journalQueries.getBatch(
@@ -80,15 +98,18 @@ class SyncDatabaseExchange(
                             ).executeAsOneOrNull()?.status ==
                             "PUBLISHED"
                     }
-                    if (received) continue
+                    if (alreadyReceived) continue
                     val result = inbox.receive(snapshot, entry)
                     if (result.accepted) {
-                        if (!result.duplicate) downloaded += (entry.lastSeq - entry.firstSeq + 1).toInt()
+                        if (!result.duplicate) {
+                            downloaded += (entry.lastSeq - entry.firstSeq + 1).toInt()
+                            reconcileTotals()
+                        }
                         progress?.phase(
                             SyncRunPhase.MERGING,
-                            downloaded.toLong(),
+                            downloadedTotal,
                             snapshot.batches.sumOf { (it.lastSeq - it.firstSeq + 1).toInt() }.toLong(),
-                            completed = downloaded.toLong(),
+                            completed = downloadedTotal,
                         )
                         progress?.log(
                             entry.batchId,
@@ -102,26 +123,30 @@ class SyncDatabaseExchange(
                     }
                     yield()
                 }
+                reconcileTotals()
                 while (projector.project(spaceId, generation) == 50) yield()
                 pending = store.status(spaceId, generation).pendingDecisions.toInt()
-                progress?.phase(SyncRunPhase.UPLOADING, uploaded.toLong(), 0, completed = uploaded.toLong())
+                progress?.phase(SyncRunPhase.UPLOADING, uploadedTotal, 0, completed = uploadedTotal)
                 val result = outbox.uploadNext(snapshot) ?: break
                 if (result.publish.status != SyncPublishStatus.PUBLISHED) {
                     problem = SyncRunProblem.NETWORK
                     progress?.phase(
                         SyncRunPhase.UPLOADING,
-                        (uploaded + downloaded).toLong(),
+                        uploadedTotal + downloadedTotal,
                         0,
-                        completed = (uploaded + downloaded).toLong(),
+                        completed = uploadedTotal + downloadedTotal,
                         state = SyncRunState.WAITING_RETRY,
                         reason = "network",
                     )
                     break
                 }
-                uploaded += handler.await {
+                val publishedCount = handler.await {
                     sync_journalQueries.getBatch(spaceId, generation, result.publish.batchId).executeAsOne().event_count
                 }.toInt()
-                progress?.phase(SyncRunPhase.CONFIRMING, (uploaded + downloaded).toLong(), 0)
+                uploaded += publishedCount
+                uploadedTotal += publishedCount
+                progress?.totals(uploadedTotal, downloadedTotal)
+                progress?.phase(SyncRunPhase.CONFIRMING, uploadedTotal + downloadedTotal, 0)
                 progress?.log(result.publish.batchId, "本机变动", "已确认上传", SyncRunLogStatus.COMPLETED)
                 yield()
                 // The publisher has advanced the durable remote anchor; always obtain a fresh snapshot.

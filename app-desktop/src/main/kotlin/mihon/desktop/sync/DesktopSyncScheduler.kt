@@ -9,6 +9,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -23,6 +24,7 @@ class DesktopSyncScheduler(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val onStopped: suspend () -> Unit = {},
     private val resumeIfNeeded: suspend () -> Boolean = { false },
+    private val recoveryDelayMillis: suspend () -> Long = { 0L },
     private val clock: () -> Long = System::currentTimeMillis,
 ) : DesktopRuntimeService {
     private var job: Job? = null
@@ -33,6 +35,22 @@ class DesktopSyncScheduler(
         if (job?.isActive == true) return
         job = scope.launch {
             coroutineScope {
+                launch {
+                    var observedCompletion = coordinator.activity.value.completion
+                    coordinator.activity.collect { activity ->
+                        if (activity.completion == observedCompletion) return@collect
+                        observedCompletion = activity.completion
+                        if (activity.result?.problem == mihon.domain.sync.runtime.SyncRunProblem.NETWORK) {
+                            val delayMillis = recoveryDelayMillis().coerceAtLeast(0L)
+                            if (delayMillis > 0) delay(delayMillis)
+                            try {
+                                if (!resumeIfNeeded()) coordinator.synchronize(SyncTrigger.RECOVERY)
+                            } catch (_: CancellationException) {
+                                currentCoroutineContext().ensureActive()
+                            }
+                        }
+                    }
+                }
                 launch {
                     val resumed = resumeIfNeeded()
                     if (!resumed && preferences.startup.get()) coordinator.synchronize(SyncTrigger.STARTUP)

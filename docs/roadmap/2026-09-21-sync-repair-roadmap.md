@@ -1,6 +1,6 @@
 # 同步审查修复 Roadmap
 
-日期：2026-09-21。状态：PLANNED，方案待审，尚未实施。
+日期：2026-09-21。状态：IMPLEMENTED，F1–F4 已完成并提交；F5 已生成当前 worktree 候选，签名包、真机与 macOS 证据待补；F6 待用户验收。
 
 设计权威：[修复设计](../2026-09-21-sync-repair-design.md)。原计划：[同步进度与恢复](2026-09-19-sync-progress-resume-roadmap.md)。当前 worktree 修复执行以本文件为准；从第一个未勾选项推导进度，不新增 active-task。
 
@@ -16,10 +16,10 @@
 
 ## 2. 阶段 A：当前 worktree 独立验收
 
-- [ ] F1：整合固定数据库结构与双谱系覆盖升级，修复错误处理进程递归崩溃。
-- [ ] F2：修复共享恢复资格、预算、检查点计数、条目事实与首次配置完成闭环。
-- [ ] F3：接通 Android/Desktop 到期重试、后台补偿、网络恢复及可观察通知交接。
-- [ ] F4：接通首次合并/日常同步共用进度、成功会话结果和历史条目入口。
+- [x] F1：整合固定数据库结构与双谱系覆盖升级，修复错误处理进程递归崩溃。
+- [x] F2：修复共享恢复资格、预算、检查点计数、条目事实与首次配置完成闭环。
+- [x] F3：接通 Android/Desktop 到期重试、后台补偿、网络恢复及可观察通知交接。
+- [x] F4：接通首次合并/日常同步共用进度、成功会话结果和历史条目入口。
 - [ ] F5：完成正式产物、升级与同步故障矩阵，交付当前 worktree 候选。
 - [ ] F6：用户在当前 worktree 候选上验收通过，记录明确结论。
 
@@ -27,7 +27,7 @@
 
 前置：核对 `a45b2f8342`、固定作者结构提交 `0e68f9c5e9`、现有正式包身份及目标设备实际 schema（可得时）。先保存两条历史迁移证据，不能在冲突中覆盖掉任一谱系。
 
-范围：SQLDelight schema/迁移、共享 DatabaseMigration、Android/Desktop driver 接入、必要最小 adapter、App/error_handler 初始化与对应测试。只移植固定作者结构，不引入作者整套 UI；目标目前规划 schema 31，最终分配按设计规则核对。升级 bridge 在正常迁移前识别同步28/作者28，在同一事务中补齐，再执行后续迁移；不得 onOpen 后才纠错。
+范围：SQLDelight schema/迁移、共享 DatabaseMigration、Android/Desktop driver 接入、必要最小 adapter、App/error_handler 初始化与对应测试。只移植固定作者结构，不引入作者整套 UI；实际目标为 schema 33：30 号兼容桥、31 号运行计数、32 号每次运行业务基线。升级 bridge 在正常迁移前识别同步28/作者28，在同一事务中补齐，再执行后续迁移；不得 onOpen 后才纠错。
 
 红绿：用历史迁移/正式历史结构建立真实文件 SQLite fixture，分别覆盖共同27、同步28、作者28/29/30、新装、修复包重开、未知同号/更高版本。放入书架/阅读/作者新字段/同步冻结制品与运行日志数据。验证真实 driver 打开、结构指纹、数据保留、无重复 ALTER/建表、事务中断回滚和再次升级。共享契约跑 Android/JVM；Android release 的 Requery factory 必须有集成证据。禁止仅把当前 schema 建好后修改 user_version 冒充历史库。
 
@@ -41,7 +41,7 @@
 
 红绿场景：暂停→冷启动/周期/网络恢复仍暂停；耗尽→重开不重置；手动继续保持同一运行、显式重试结束旧活动记录；取消/空间切换与 owner 完成竞争。3 次系统中断后网络预算仍未消耗；4 次实际网络失败才耗尽，10/30/120 秒及 Retry-After 下限跨重建保存。
 
-检查点场景：不同阶段数量大小相反、未知总量切换、分段新快照、重复收件、提交后计数未写、投影失败/跳过、上传已生效但响应丢失。断点重建后的累计值与业务事实一致，processed=completed+skipped+failed。日志含真实标题/操作/结果、稳定去重键，500 条截断和 20 次终态保留不删除活动数据。
+检查点场景：不同阶段数量大小相反、未知总量切换、分段新快照、重复收件、提交后计数未写、投影失败/跳过、上传已生效但响应丢失。每个 run 在同一事务记录上传/下载业务基线，恢复时从已发布批次及已确认收件批次对账，避免历史计数混入，并分别保留 run 累计值和本次 attempt 返回值；运行中各阶段直接展示累计值，processed=completed+skipped+failed。日志含真实标题/操作/结果、稳定去重键，500 条截断和 20 次终态保留不删除活动数据。
 
 首次配置场景：绑定后尚未创建 run、导入途中、交换已成功但 complete 未写三个位置中断；重建 runtime 并由生产恢复入口完成标记，面板关闭也能收口，不重复建库或要求密码。
 
@@ -101,4 +101,4 @@ Android 使用真实 App/DI/WorkManager 与 runtime 联测，Desktop 使用同�
 
 ## 4. 记录
 
-2026-09-21：仅完成设计与任务拆分；没有实施迁移、修复产品、安装设备或合并分支。此前全量测试通过不覆盖本轮发现的失败场景；旧 R2–R4 的完成标记已撤回。
+2026-09-21：F1 已由 `915d336079` 提交，完成同号数据库兼容桥、作者结构迁移及 error_handler 最小启动路径；F2–F4 已在当前 worktree 完成并由最终提交收口，增加 schema 31/32（最终 schema 33）的运行计数与 per-run 基线、Android/Desktop 恢复调度、首次合并进度卡和历史成功结果。独立复审结论为 PASS；数据层（含 10k/100k 规模场景）、Android Worker、Desktop scheduler、presentation-sync focused 测试及 Desktop 全量 JVM 测试通过，`spotlessCheck` 通过。Windows Test Mode 候选已通过构建与运行验收：`app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.52.915d336-unpacked/Mihon Desktop.exe`；Android arm64 release 已构建但为未签名包：`app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk`，SHA-256 为 `1408F7656F398C769E9529A9D323ADCB0779EAA089BCD46232BB94A124BAA2C3`。浏览器 DEMO 的模型/视图测试通过，浏览器测试因当前环境未提供 `PLAYWRIGHT_CORE_PATH` 未执行。未安装真机、未修改远端仓库、未合并另一分支；F5 因签名包、macOS 与真实设备矩阵缺失保持未勾选，F6 待用户验收。

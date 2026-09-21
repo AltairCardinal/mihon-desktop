@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.domain.sync.runtime.SyncPreferences
@@ -27,6 +28,20 @@ class AndroidSyncScheduler(private val context: Context, private val runtime: Sy
     fun start(scope: CoroutineScope): Job {
         running?.takeIf { it.isActive }?.let { return it }
         return scope.launch(Dispatchers.IO) {
+            launch {
+                var observedCompletion = runtime.coordinator.activity.value.completion
+                runtime.coordinator.activity
+                    .map { it.completion to it.result }
+                    .distinctUntilChanged()
+                    .collect { (completion, result) ->
+                        if (completion != observedCompletion) {
+                            observedCompletion = completion
+                            if (result?.problem == mihon.domain.sync.runtime.SyncRunProblem.NETWORK) {
+                                enqueueRecovery(runtime.recoveryDelayMillis())
+                            }
+                        }
+                    }
+            }
             launch {
                 val preferences = runtime.preferences
                 combine(

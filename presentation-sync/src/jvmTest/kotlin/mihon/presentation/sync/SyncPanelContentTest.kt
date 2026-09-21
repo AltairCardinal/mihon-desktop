@@ -368,6 +368,40 @@ class SyncPanelContentTest {
     }
 
     @Test
+    fun `setup merge exposes the same progress card and item log`() = rendered(
+        connected().copy(
+            page = SyncPanelPage.SETUP,
+            setupStep = SyncSetupStep.MERGING,
+            run = SyncRunSnapshot(
+                runId = "setup-run",
+                spaceId = "space",
+                generation = 1,
+                trigger = mihon.domain.sync.runtime.SyncTrigger.MANUAL,
+                state = SyncRunState.RUNNING,
+                phase = SyncRunPhase.IMPORTING,
+                processed = 1,
+                total = 2,
+                completed = 1,
+                skipped = 0,
+                failed = 0,
+                attempt = 1,
+                nextRetryAt = 0,
+                lastProgressAt = 1,
+                stopReason = null,
+                ownerSession = "session",
+                createdAt = 1,
+                updatedAt = 1,
+            ),
+            logs = listOf(
+                SyncRunLog("setup-run", "item-1", "作品 A", "已合并", SyncRunLogStatus.COMPLETED, 1),
+            ),
+        ),
+    ) {
+        awaitTag("sync-progress-card")
+        assertTrue(hasTag("sync-log-item-1"))
+    }
+
+    @Test
     fun `retry exhausted run remains visible with retained progress and retry action`() = rendered(
         connected().copy(
             problem = SyncRunProblem.NETWORK,

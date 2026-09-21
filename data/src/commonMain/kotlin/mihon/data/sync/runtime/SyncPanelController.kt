@@ -258,7 +258,12 @@ class SyncPanelController(
         val run = connection?.let {
             runtime.runStore.active(it.spaceId, it.generation)
                 ?: runtime.runStore.latest(it.spaceId, it.generation)?.takeIf { latest ->
-                    latest.state in setOf(SyncRunState.FAILED, SyncRunState.BLOCKED)
+                    latest.state in setOf(
+                        SyncRunState.SUCCEEDED,
+                        SyncRunState.FAILED,
+                        SyncRunState.BLOCKED,
+                        SyncRunState.CANCELLED,
+                    )
                 }
         }
         val logs = run?.let { runtime.runStore.logs(it.runId, limit = logLimit) }.orEmpty()

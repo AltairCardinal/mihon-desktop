@@ -28,9 +28,24 @@ class SyncRunStoreTest {
         driver.execute(null, "DROP INDEX IF EXISTS sync_runtime_log_order", 0)
         driver.execute(null, "DROP TABLE IF EXISTS sync_runtime_logs", 0)
         driver.execute(null, "DROP TABLE IF EXISTS sync_runtime_runs", 0)
+        driver.execute(null, "DROP TRIGGER IF EXISTS author_archive_source_work_first_seen_defaults", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS author_archive_source_date_quality_samples", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS author_archive_source_date_quality_current", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS author_archive_source_date_quality", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS author_archive_representative_work_cache", 0)
+        listOf(
+            "first_seen_date",
+            "first_seen_zone",
+            "chapter_count_state",
+            "catalog_chapter_count",
+            "latest_chapter_at",
+        )
+            .forEach { column ->
+                driver.execute(null, "ALTER TABLE author_archive_source_works DROP COLUMN $column", 0)
+            }
         driver.execute(null, "PRAGMA user_version = 27", 0)
 
-        Database.Schema.migrate(driver, 27, 28)
+        Database.Schema.migrate(driver, 27, Database.Schema.version)
         val database = Database(
             driver,
             History.Adapter(DateColumnAdapter),
@@ -133,6 +148,46 @@ class SyncRunStoreTest {
     }
 
     @Test
+    fun `changing phase starts a fresh progress segment`() = runBlocking {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val database = Database(
+            driver,
+            History.Adapter(DateColumnAdapter),
+            Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+        ).also { Database.Schema.create(driver) }
+        val store = SyncRunStore(JvmDatabaseHandler(database, driver))
+        val run = store.start("space", 1, SyncTrigger.MANUAL)
+        assertTrue(store.claim(run.runId, "owner", 1))
+
+        store.progress(
+            run.runId,
+            SyncRunPhase.DOWNLOADING,
+            processed = 80,
+            total = 100,
+            completed = 70,
+            skipped = 5,
+            failed = 5,
+            ownerSession = "owner",
+        )
+        store.progress(
+            run.runId,
+            SyncRunPhase.MERGING,
+            processed = 1,
+            total = 3,
+            completed = 1,
+            ownerSession = "owner",
+        )
+
+        val snapshot = requireNotNull(store.get(run.runId))
+        assertEquals(SyncRunPhase.MERGING, snapshot.phase)
+        assertEquals(1L, snapshot.processed)
+        assertEquals(3L, snapshot.total)
+        assertEquals(1L, snapshot.completed)
+        assertEquals(0L, snapshot.skipped)
+        assertEquals(0L, snapshot.failed)
+    }
+
+    @Test
     fun `user pause remains authoritative when an owner is cancelled`() = runBlocking {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         val database = Database(
@@ -148,5 +203,64 @@ class SyncRunStoreTest {
         store.finish(run.runId, SyncRunState.WAITING_SYSTEM, "cancelled", ownerSession = "owner")
 
         assertEquals(SyncRunState.PAUSED_USER, store.get(run.runId)?.state)
+    }
+
+    @Test
+    fun `process restart does not spend the automatic network attempt`() = runBlocking {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val database = Database(
+            driver,
+            History.Adapter(DateColumnAdapter),
+            Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+        ).also { Database.Schema.create(driver) }
+        val store = SyncRunStore(JvmDatabaseHandler(database, driver))
+        val run = store.start("space", 1, SyncTrigger.RECOVERY)
+        assertTrue(store.claim(run.runId, "owner", 2))
+
+        assertTrue(store.releaseForRecovery(run.runId))
+        assertEquals(1L, store.get(run.runId)?.attempt)
+    }
+
+    @Test
+    fun `waiting retry owner can be reclaimed after a process restart`() = runBlocking {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val database = Database(
+            driver,
+            History.Adapter(DateColumnAdapter),
+            Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+        ).also { Database.Schema.create(driver) }
+        val store = SyncRunStore(JvmDatabaseHandler(database, driver))
+        val run = store.start("space", 1, SyncTrigger.RECOVERY)
+        assertTrue(store.claim(run.runId, "owner", 1))
+        store.progress(
+            run.runId,
+            SyncRunPhase.UPLOADING,
+            processed = 1,
+            total = 2,
+            state = SyncRunState.WAITING_RETRY,
+            ownerSession = "owner",
+        )
+
+        assertTrue(store.releaseForRecovery(run.runId))
+        assertEquals(SyncRunState.WAITING_SYSTEM, store.get(run.runId)?.state)
+        assertEquals(0L, store.get(run.runId)?.attempt)
+    }
+
+    @Test
+    fun `durable exchange totals keep upload and download counts separate`() = runBlocking {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val database = Database(
+            driver,
+            History.Adapter(DateColumnAdapter),
+            Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+        ).also { Database.Schema.create(driver) }
+        val store = SyncRunStore(JvmDatabaseHandler(database, driver))
+        val run = store.start("space", 1, SyncTrigger.RECOVERY)
+        assertTrue(store.claim(run.runId, "owner", 1))
+
+        store.totals(run.runId, uploaded = 2, downloaded = 100, ownerSession = "owner")
+
+        assertEquals(2L, store.get(run.runId)?.uploaded)
+        assertEquals(100L, store.get(run.runId)?.downloaded)
     }
 }

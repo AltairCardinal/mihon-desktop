@@ -5,7 +5,7 @@ import app.cash.sqldelight.db.SqlDriver
 
 /** Runs generated SQLDelight migrations as one atomic database change. */
 object DatabaseMigration {
-    const val COMPATIBILITY_SCHEMA_VERSION = 31L
+    const val COMPATIBILITY_SCHEMA_VERSION = 33L
 
     fun migrateAtomically(driver: SqlDriver, oldVersion: Long, newVersion: Long) {
         require(oldVersion <= newVersion) {
@@ -49,6 +49,10 @@ object DatabaseMigration {
                 "completed",
                 "skipped",
                 "failed",
+                "uploaded",
+                "downloaded",
+                "uploaded_baseline",
+                "downloaded_baseline",
                 "attempt",
                 "next_retry_at",
                 "last_progress_at",

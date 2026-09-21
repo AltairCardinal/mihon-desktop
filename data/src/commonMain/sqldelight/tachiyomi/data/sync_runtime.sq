@@ -10,6 +10,10 @@ CREATE TABLE sync_runtime_runs (
     completed INTEGER NOT NULL DEFAULT 0,
     skipped INTEGER NOT NULL DEFAULT 0,
     failed INTEGER NOT NULL DEFAULT 0,
+    uploaded INTEGER NOT NULL DEFAULT 0,
+    downloaded INTEGER NOT NULL DEFAULT 0,
+    uploaded_baseline INTEGER NOT NULL DEFAULT 0,
+    downloaded_baseline INTEGER NOT NULL DEFAULT 0,
     attempt INTEGER NOT NULL DEFAULT 0,
     next_retry_at INTEGER NOT NULL DEFAULT 0,
     last_progress_at INTEGER NOT NULL,
@@ -35,8 +39,9 @@ CREATE INDEX sync_runtime_log_order ON sync_runtime_logs(run_id, created_at DESC
 
 insertRuntimeRun:
 INSERT INTO sync_runtime_runs(
-    run_id, space_id, generation, trigger, state, phase, last_progress_at, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+    run_id, space_id, generation, trigger, state, phase, uploaded_baseline, downloaded_baseline,
+    last_progress_at, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getRuntimeRun:
 SELECT * FROM sync_runtime_runs WHERE run_id = ?;
@@ -72,8 +77,17 @@ WHERE run_id = ?
   AND (owner_session IS NULL OR owner_session = ?);
 
 releaseRuntimeRunForRecovery:
-UPDATE sync_runtime_runs SET state = 'WAITING_SYSTEM', stop_reason = ?, owner_session = NULL, updated_at = ?
-WHERE run_id = ? AND state = 'RUNNING' AND owner_session IS NOT NULL;
+UPDATE sync_runtime_runs SET
+    state = 'WAITING_SYSTEM',
+    attempt = CASE WHEN attempt > 0 THEN attempt - 1 ELSE 0 END,
+    stop_reason = ?,
+    owner_session = NULL,
+    updated_at = ?
+WHERE run_id = ? AND state IN ('RUNNING', 'WAITING_NETWORK', 'WAITING_RETRY') AND owner_session IS NOT NULL;
+
+rewindRuntimeAttempt:
+UPDATE sync_runtime_runs SET attempt = attempt - 1, updated_at = ?
+WHERE run_id = ? AND state = 'WAITING_SYSTEM' AND attempt > 0;
 
 updateRuntimeState:
 UPDATE sync_runtime_runs SET state = ?, stop_reason = ?, owner_session = ?, updated_at = ?
@@ -106,3 +120,11 @@ SELECT log_key FROM sync_runtime_logs WHERE run_id = ? ORDER BY created_at ASC, 
 
 deleteRuntimeLog:
 DELETE FROM sync_runtime_logs WHERE run_id = ? AND log_key = ?;
+
+updateRuntimeTotals:
+UPDATE sync_runtime_runs SET uploaded = ?, downloaded = ?, updated_at = ?
+WHERE run_id = ?;
+
+updateRuntimeTotalsOwned:
+UPDATE sync_runtime_runs SET uploaded = ?, downloaded = ?, updated_at = ?
+WHERE run_id = ? AND owner_session = ?;

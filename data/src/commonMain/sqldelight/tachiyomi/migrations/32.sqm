@@ -1,0 +1,25 @@
+ALTER TABLE sync_runtime_runs ADD COLUMN uploaded_baseline INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sync_runtime_runs ADD COLUMN downloaded_baseline INTEGER NOT NULL DEFAULT 0;
+
+-- Existing runs predate per-run baselines. Seed them from the durable journal so an
+-- upgrade does not report the whole historical exchange as new progress.
+UPDATE sync_runtime_runs
+SET uploaded_baseline = COALESCE((
+        SELECT SUM(event_count)
+        FROM sync_batches
+        WHERE sync_batches.space_id = sync_runtime_runs.space_id
+          AND sync_batches.generation = sync_runtime_runs.generation
+          AND sync_batches.status = 'PUBLISHED'
+    ), 0),
+    downloaded_baseline = COALESCE((
+        SELECT COUNT(*)
+        FROM sync_events
+        WHERE sync_events.space_id = sync_runtime_runs.space_id
+          AND sync_events.generation = sync_runtime_runs.generation
+          AND sync_events.batch_id IN (
+              SELECT batch_id FROM sync_inbox_batches
+              WHERE sync_inbox_batches.space_id = sync_runtime_runs.space_id
+                AND sync_inbox_batches.generation = sync_runtime_runs.generation
+                AND sync_inbox_batches.status = 'RECEIVED'
+          )
+    ), 0);

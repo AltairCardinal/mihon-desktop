@@ -21,10 +21,13 @@ import uy.kohesive.injekt.api.get
 class SyncWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result {
         val runtime = Injekt.get<SyncRuntime>()
-        if (inputData.getBoolean(RECOVERY_KEY, false) &&
-            (!runtime.hasResumableRun() || !runtime.isRecoveryDue())
-        ) {
-            return Result.success()
+        val recovery = inputData.getBoolean(RECOVERY_KEY, false)
+        val resumable = recovery && runtime.hasResumableRun()
+        if (recovery && (!resumable || !runtime.isRecoveryDue())) {
+            // WorkManager may wake this request before its persisted deadline (for
+            // example after a constraint change). Keep the durable wake alive so a
+            // premature wake cannot silently discard recovery.
+            return if (resumable) Result.retry() else Result.success()
         }
         try {
             setForeground(getForegroundInfo())
@@ -32,9 +35,16 @@ class SyncWorker(context: Context, parameters: WorkerParameters) : CoroutineWork
             // The task remains durable and the exchange reports its state; a foreground
             // promotion can be rejected by a test host or by an Android start restriction.
         }
-        val result = runtime.coordinator.synchronize(
-            if (inputData.getBoolean(RECOVERY_KEY, false)) SyncTrigger.RECOVERY else SyncTrigger.PERIODIC,
-        )
+        val result = if (recovery) {
+            if (!runtime.resumeIfNeeded()) {
+                mihon.domain.sync.runtime.SyncRunResult(SyncRunStatus.SKIPPED)
+            } else {
+                runtime.coordinator.activity.value.result
+                    ?: mihon.domain.sync.runtime.SyncRunResult(SyncRunStatus.SKIPPED)
+            }
+        } else {
+            runtime.coordinator.synchronize(SyncTrigger.PERIODIC)
+        }
         return when {
             result.status == SyncRunStatus.SUCCESS || result.status == SyncRunStatus.SKIPPED -> Result.success()
             result.problem == SyncRunProblem.NETWORK && runAttemptCount < 3 -> Result.retry()

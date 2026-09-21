@@ -193,4 +193,36 @@ class DesktopSyncSchedulerTest {
         scheduler.stop()
         scheduler.awaitStopped()
     }
+
+    @Test
+    fun `network failure gets a scheduled recovery attempt`() = runTest {
+        val preferences = SyncPreferences(InMemoryPreferenceStore())
+        preferences.startup.set(false)
+        val triggers = mutableListOf<SyncTrigger>()
+        var calls = 0
+        val coordinator = SyncCoordinator(
+            SyncRunPort {
+                triggers += it
+                if (++calls == 1) SyncRunResult(SyncRunStatus.FAILED, problem = mihon.domain.sync.runtime.SyncRunProblem.NETWORK)
+                else SyncRunResult(SyncRunStatus.SUCCESS)
+            },
+        )
+        val scheduler = DesktopSyncScheduler(
+            coordinator,
+            preferences,
+            backgroundScope,
+            recoveryDelayMillis = { 1_000L },
+            resumeIfNeeded = { false },
+        )
+        scheduler.start()
+        runCurrent()
+        coordinator.synchronize(SyncTrigger.MANUAL)
+        runCurrent()
+        advanceTimeBy(1_000L)
+        runCurrent()
+
+        assertEquals(listOf(SyncTrigger.MANUAL, SyncTrigger.RECOVERY), triggers)
+        scheduler.stop()
+        scheduler.awaitStopped()
+    }
 }

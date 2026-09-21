@@ -338,12 +338,13 @@ class AndroidSyncRuntimeWiringTest {
         }
         coEvery { runtime.hasResumableRun() } returns true
         coEvery { runtime.isRecoveryDue() } returns true
+        coEvery { runtime.resumeIfNeeded() } returns true
         val worker = TestListenableWorkerBuilder<SyncWorker>(context)
             .setInputData(workDataOf(SyncWorker.RECOVERY_KEY to true))
             .build()
 
         assertEquals(ListenableWorker.Result.success(), worker.doWork())
-        assertEquals(1, calls)
+        assertEquals(0, calls)
     }
 
     @Test
@@ -359,8 +360,33 @@ class AndroidSyncRuntimeWiringTest {
             .setInputData(workDataOf(SyncWorker.RECOVERY_KEY to true))
             .build()
 
-        assertEquals(ListenableWorker.Result.success(), worker.doWork())
+        assertEquals(ListenableWorker.Result.retry(), worker.doWork())
         assertEquals(0, calls)
+    }
+
+    @Test
+    fun `manual network failure schedules a durable recovery wake`() = runBlocking {
+        val runtime = runtime { SyncRunResult(SyncRunStatus.FAILED, problem = SyncRunProblem.NETWORK) }
+        coEvery { runtime.recoveryDelayMillis() } returns 15_000L
+        runtime.preferences.startup.set(false)
+        AndroidSyncScheduler(context, runtime).start(scope)
+
+        assertEquals(SyncRunProblem.NETWORK, runtime.coordinator.synchronize(SyncTrigger.MANUAL).problem)
+        var recovery: WorkInfo? = null
+        withTimeout(5_000) {
+            while (recovery == null) {
+                recovery = manager.getWorkInfosForUniqueWork(AndroidSyncScheduler.RECOVERY_WORK_NAME).get()
+                    .firstOrNull { it.state == WorkInfo.State.ENQUEUED }
+                if (recovery == null) delay(20)
+            }
+        }
+        val recoveryInfo = requireNotNull(recovery)
+        assertEquals(
+            NetworkType.CONNECTED,
+            property(spec(recoveryInfo), "constraints").let {
+                it as androidx.work.Constraints
+            }.requiredNetworkType,
+        )
     }
 
     @Test

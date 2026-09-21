@@ -96,6 +96,8 @@ class SyncRuntimeWiringTest {
                 val reopened = setup.runtime()
                 assertEquals("access-secret", reopened.accessToken())
                 assertEquals(0, reopened.coordinator.synchronize(SyncTrigger.STARTUP).uploaded)
+                f.storage.favorite("/runtime-next")
+                assertEquals(1, reopened.coordinator.synchronize(SyncTrigger.MANUAL).uploaded)
                 runtime.disconnect()
                 f.storage.favorite("/after-disconnect")
                 val before = f.networkCalls
@@ -148,6 +150,72 @@ class SyncRuntimeWiringTest {
     }
 
     @Test
+    fun `system recovery reclaims an owner left in waiting retry`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
+                val connection = requireNotNull(runtime.connection())
+                val orphan = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.RECOVERY)
+                assertTrue(runtime.runStore.claim(orphan.runId, "dead-process", 1))
+                runtime.runStore.progress(
+                    orphan.runId,
+                    mihon.data.sync.runtime.SyncRunPhase.UPLOADING,
+                    processed = 1,
+                    total = 2,
+                    state = SyncRunState.WAITING_RETRY,
+                    ownerSession = "dead-process",
+                )
+
+                assertTrue(runtime.resumeIfNeeded())
+                assertEquals(SyncRunState.SUCCEEDED, runtime.runStore.get(orphan.runId)?.state)
+            }
+        }
+    }
+
+    @Test
+    fun `startup never replaces a user paused run`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
+                val connection = requireNotNull(runtime.connection())
+                val paused = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.MANUAL)
+                runtime.runStore.pause(paused.runId)
+
+                assertEquals(SyncRunStatus.SKIPPED, runtime.coordinator.synchronize(SyncTrigger.STARTUP).status)
+                assertEquals(
+                    SyncRunState.PAUSED_USER,
+                    runtime.runStore.active(connection.spaceId, connection.generation)?.state,
+                )
+                assertEquals(paused.runId, runtime.runStore.latest(connection.spaceId, connection.generation)?.runId)
+            }
+        }
+    }
+
+    @Test
+    fun `startup does not reset an exhausted automatic run`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
+                val connection = requireNotNull(runtime.connection())
+                val exhausted = runtime.runStore.start(connection.spaceId, connection.generation, SyncTrigger.RECOVERY)
+                runtime.runStore.finish(exhausted.runId, SyncRunState.FAILED, "retry_exhausted")
+
+                assertEquals(SyncRunStatus.SKIPPED, runtime.coordinator.synchronize(SyncTrigger.STARTUP).status)
+                assertEquals(exhausted.runId, runtime.runStore.latest(connection.spaceId, connection.generation)?.runId)
+            }
+        }
+    }
+
+    @Test
     fun `reopened panel restores retry exhausted and blocked runs`() = runBlocking {
         Fixture().use { f ->
             SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
@@ -170,6 +238,24 @@ class SyncRuntimeWiringTest {
                 setup.panel.act(SyncPanelAction.Open)
                 assertEquals(SyncRunState.BLOCKED, setup.panel.state.value.run?.state)
                 assertEquals(SyncRunProblem.AUTHORIZATION, setup.panel.state.value.problem)
+            }
+        }
+    }
+
+    @Test
+    fun `reopened panel keeps the latest successful run available for review`() = runBlocking {
+        Fixture().use { f ->
+            SyncOnboardingFixture(f.storage, f.preferences, f.client).use { setup ->
+                setup.existing("")
+                setup.authorize("access-secret")
+                setup.begin()
+                val runtime = setup.runtime
+
+                setup.panel.act(SyncPanelAction.Close)
+                assertEquals(SyncRunStatus.SUCCESS, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                setup.panel.act(SyncPanelAction.Open)
+
+                assertEquals(SyncRunState.SUCCEEDED, setup.panel.state.value.run?.state)
             }
         }
     }
