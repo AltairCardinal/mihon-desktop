@@ -1,10 +1,12 @@
 # 作者页体验迭代 · 开发Roadmap
 
-日期：2026-09-18。状态：COMPLETE。
+日期：2026-09-18。状态：历史实施已提交；2026-09-21 实现审查发现待修复缺口，当前验收重新开放。
+
+2026-09-21 补充：原 AX 批次记录保留为历史证据，不再代表当前需求全部满足。后续以[实现审查修复 Roadmap](2026-09-21-branch-implementation-review-fixes-roadmap.md)的未完成项跟踪问题；本次仅制定方案，尚未修复。父计划已有其他未提交修改，本次不切换其指针；未来正式启动修复时由实施者协调唯一执行入口。
 
 - 需求权威：[完整设计](../2026-09-18-author-experience-iteration-design.md)。交互基线：[DEMO](../prototypes/author-identity/index.html)，AX-08审核冻结提交 `b1d4d73d89`。
 - 本计划为产品child plan，从首个未勾选批次推导进度，不声明active-task。旧[唯一作者Roadmap](2026-09-17-global-author-identity-roadmap.md)保持原完成状态，不重置GA任务。
-- 本计划已完成生产实施，父级唯一 `active-child-plan` 指向本计划。AX-01至AX-07已留下对应实现与验收记录；AX-08需求与HTML交互已于2026-09-20审核通过，production实现、双端接线、回归和正式构建均已完成。各批依赖与提交边界按本计划执行。
+- 父级唯一 `active-child-plan` 当前指向本计划。AX-01至AX-08的提交和历史测试记录如下；2026-09-21复核发现部分 production 接线与边界未满足需求，历史通过结果不能替代修复计划要求的新回归证据。
 - checkbox仅在实现、相关测试、必要独立审查和提交均完成后勾选；历史DEMO测试不替代本计划production证据。
 
 ## 1. 开发边界与前置
