@@ -10,7 +10,10 @@ import mihon.data.sync.runtime.SyncDatabaseExchange
 import mihon.domain.sync.SyncMutationContext
 import mihon.domain.sync.crypto.SyncSecret
 import mihon.domain.sync.runtime.SyncRunStatus
+import mihon.domain.sync.transport.SyncPreparedUpload
+import mihon.domain.sync.transport.SyncPublishResult
 import mihon.domain.sync.transport.SyncRepository
+import mihon.domain.sync.transport.SyncSnapshot
 import mihon.domain.sync.transport.SyncTransportPort
 import mockwebserver3.MockResponse
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -43,9 +46,11 @@ abstract class SyncRuntimeStorageContract {
             open().use { first ->
                 repeat(257) { first.favorite("/baseline-$it") }
                 first.connect("a", repository)
+                val snapshotReadsBeforeExchange = git.snapshotReads
                 val result = first.exchange(transport, secret, repository)
                 assertEquals(SyncRunStatus.SUCCESS, result.status)
                 assertEquals(257, result.uploaded)
+                assertEquals(3, git.snapshotReads - snapshotReadsBeforeExchange)
                 assertTrue(SyncLocalJournal(first.handler).pendingEvents("space", 1).isEmpty())
                 open().use { second ->
                     second.connect("b", repository)
@@ -56,6 +61,31 @@ abstract class SyncRuntimeStorageContract {
                     assertEquals(0, again.downloaded)
                     assertEquals(0, again.uploaded)
                 }
+            }
+        }
+    }
+
+    @Test
+    fun `exchange conservatively rereads when publication has no confirmed snapshot`() = runBlocking {
+        SyncGitSafetyContractTest().GitFixture().use { git ->
+            val transport = git.transport()
+            transport.initialize(repository, "space", 1)
+            val fallbackTransport = object : SyncTransportPort by transport {
+                override suspend fun publish(
+                    repository: SyncRepository,
+                    snapshot: SyncSnapshot,
+                    upload: SyncPreparedUpload,
+                    observeSnapshot: suspend (SyncSnapshot) -> Unit,
+                ): SyncPublishResult = transport.publish(repository, snapshot, upload, observeSnapshot)
+                    .copy(confirmedSnapshot = null)
+            }
+            open().use { first ->
+                repeat(257) { first.favorite("/fallback-$it") }
+                first.connect("a", repository)
+                val snapshotReadsBeforeExchange = git.snapshotReads
+                val result = first.exchange(fallbackTransport, secret, repository)
+                assertEquals(SyncRunStatus.SUCCESS, result.status)
+                assertEquals(5, git.snapshotReads - snapshotReadsBeforeExchange)
             }
         }
     }

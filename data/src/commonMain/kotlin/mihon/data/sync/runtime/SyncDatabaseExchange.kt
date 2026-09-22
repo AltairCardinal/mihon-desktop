@@ -86,9 +86,9 @@ class SyncDatabaseExchange(
             reconcileTotals()
             projector.retryUnavailable(spaceId, generation)
             val attempted = mutableSetOf<String>()
+            var snapshot = transport.readSnapshot(repository, spaceId, generation).getOrThrow()
             while (true) {
                 progress?.phase(SyncRunPhase.DOWNLOADING, downloadedTotal, 0, completed = downloadedTotal)
-                val snapshot = transport.readSnapshot(repository, spaceId, generation).getOrThrow()
                 store.observeSnapshot(snapshot)
                 for (entry in snapshot.batches) {
                     if (!attempted.add(entry.batchId)) continue
@@ -152,7 +152,10 @@ class SyncDatabaseExchange(
                 progress?.phase(SyncRunPhase.CONFIRMING, uploadedTotal + downloadedTotal, 0)
                 progress.logBatch(result.batch, result.publish.batchId, "已确认上传")
                 yield()
-                // The publisher has advanced the durable remote anchor; always obtain a fresh snapshot.
+                // A successful publisher already read and authenticated the live ref. Reuse it for the next pass;
+                // transports that cannot return that evidence retain the conservative fresh-read fallback.
+                snapshot = result.publish.confirmedSnapshot
+                    ?: transport.readSnapshot(repository, spaceId, generation).getOrThrow()
             }
         } catch (cancelled: CancellationException) {
             throw cancelled

@@ -51,6 +51,7 @@ import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import okio.ByteString.Companion.decodeBase64
 import okio.ByteString.Companion.toByteString
+import kotlin.collections.LinkedHashMap
 
 private val githubJson = Json {
     ignoreUnknownKeys = true
@@ -58,6 +59,33 @@ private val githubJson = Json {
     isLenient = false
 }
 private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+
+/**
+ * A bounded cache for immutable Git blob bytes.
+ *
+ * Git blob ids are content addressed, so a hit can only reuse bytes that were
+ * already validated against the requested id. The cache contains no credentials
+ * or durable sync state and can be dropped without changing the trust history.
+ */
+private class SyncBlobCache(private val maxBytes: Long = 16L * 1024 * 1024) {
+    private val values = LinkedHashMap<String, ByteArray>(16, 0.75f, true)
+    private var sizeBytes = 0L
+
+    fun get(key: String): ByteArray? = values[key]?.copyOf()
+
+    fun put(key: String, content: ByteArray) {
+        if (content.size.toLong() > maxBytes) return
+        values.remove(key)?.let { sizeBytes -= it.size }
+        values[key] = content.copyOf()
+        sizeBytes += content.size
+        val iterator = values.entries.iterator()
+        while (sizeBytes > maxBytes && iterator.hasNext()) {
+            val entry = iterator.next()
+            sizeBytes -= entry.value.size
+            iterator.remove()
+        }
+    }
+}
 
 class GitHubSyncTransport(
     productionClient: OkHttpClient,
@@ -69,6 +97,7 @@ class GitHubSyncTransport(
     private val spaceMaterial: SyncSpaceMaterial? = null,
 ) : SyncTransportPort {
     private val http = SyncHttpClient(productionClient, setOf(apiBaseUrl.hostOrNull() ?: "api.github.com"))
+    private val blobCache = SyncBlobCache()
 
     override suspend fun readSnapshot(
         repository: SyncRepository,
@@ -176,7 +205,7 @@ class GitHubSyncTransport(
     suspend fun readEncryptedBatch(snapshot: SyncSnapshot, entry: SyncBatchIndexEntry): SyncEncryptedBatch {
         val treeEntry = snapshot.tree.entries.firstOrNull { it.path == entry.path }
             ?: throw IllegalStateException("sync batch is missing")
-        val stored = decodeStoredBatch(getBlob(snapshot.repository, treeEntry.sha).content)
+        val stored = decodeStoredBatch(getBlob(snapshot.repository, treeEntry.sha, cache = false).content)
         require(stored.batchId == entry.batchId) { "sync batch id does not match index" }
         require(stored.plaintextDigestHex == entry.digestHex) { "sync batch digest does not match index" }
         require(stored.spaceId == snapshot.spaceId && stored.generation == snapshot.generation) {
@@ -305,6 +334,7 @@ class GitHubSyncTransport(
                     batch.batchId,
                     observed.head,
                     attempts = attempt - 1,
+                    confirmedSnapshot = observed,
                 )
             }
             val previous = current.batches.filter { it.actorId == batch.actorId && it.epoch == batch.epoch }
@@ -348,7 +378,13 @@ class GitHubSyncTransport(
             val observed = readSnapshot(repository, snapshot.spaceId, snapshot.generation).getOrNull()
             if (observed != null) observeSnapshot(observed)
             if (observed != null && suspendResult { matches(observed, upload) }.getOrDefault(false)) {
-                return SyncPublishResult(SyncPublishStatus.PUBLISHED, batch.batchId, observed.head, attempts = attempt)
+                return SyncPublishResult(
+                    SyncPublishStatus.PUBLISHED,
+                    batch.batchId,
+                    observed.head,
+                    attempts = attempt,
+                    confirmedSnapshot = observed,
+                )
             }
             if (refError is SyncHttpException && refError.code in listOf(409, 422)) {
                 if (observed == null || observed.head == current.head || attempt == MAX_PUBLISH_ATTEMPTS) {
@@ -650,12 +686,32 @@ class GitHubSyncTransport(
         return SyncGitTree(sha, entries, json.boolean("truncated") || entries.size > maxTreeEntries)
     }
 
-    private suspend fun getBlob(repository: SyncRepository, sha: String): SyncGitBlob {
+    private suspend fun getBlob(
+        repository: SyncRepository,
+        sha: String,
+        cache: Boolean = true,
+    ): SyncGitBlob {
+        val cacheKey = "$apiBaseUrl|git-${sha.length}|${repository.owner}/${repository.name}/${repository.branch}:$sha"
+        if (cache) {
+            blobCache.get(cacheKey)?.let { return SyncGitBlob(sha, it) }
+        }
         val json = call(repository, "GET", "/git/blobs/$sha").requireSuccess().json()
+        require(json.string("sha") == sha) { "sync blob id does not match requested object" }
         require(json.string("encoding") == "base64") { "sync blob encoding is invalid" }
         val content = json.string("content").replace("\n", "").decodeBase64()?.toByteArray()
             ?: throw IllegalStateException("sync blob content is invalid")
         require(content.size <= 2 * 1024 * 1024) { "sync blob exceeds limit" }
+        val gitObjectHeader = "blob ${content.size}\u0000".encodeToByteArray()
+        val objectBytes = (gitObjectHeader + content).toByteString()
+        val computedSha = when (sha.length) {
+            40 -> objectBytes.sha1().hex()
+            64 -> objectBytes.sha256().hex()
+            else -> null
+        }
+        require(computedSha == sha) {
+            "sync blob content does not match its Git object id"
+        }
+        if (cache) blobCache.put(cacheKey, content)
         return SyncGitBlob(sha, content)
     }
 

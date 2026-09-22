@@ -71,12 +71,49 @@ class SyncGitSafetyContractTest {
             val batch = batch("device-a")
             val uploaded = service.upload(repository, snapshot, batch, path(batch), persist = {})
             assertEquals(SyncPublishStatus.PUBLISHED, uploaded.publish.status)
+            val confirmed = requireNotNull(uploaded.publish.confirmedSnapshot)
+            assertEquals(uploaded.publish.commitSha, confirmed.head)
+            assertEquals(listOf(batch.batchId), confirmed.batches.map { it.batchId })
             val downloaded = transport.readSnapshot(repository, "space", 1).getOrThrow()
             val received = service.receive(downloaded, downloaded.batches.single())
             assertEquals(batch, received.batch)
             assertEquals("# Existing private repository", git.file("mihon-sync", "README.md")?.decodeToString())
             assertTrue(git.forceFlags.all { !it })
             assertTrue(git.invalidBaseTrees.isEmpty(), "Git tree updates must use a tree SHA, not a commit SHA")
+        }
+    }
+
+    @Test
+    fun `re-reading an unchanged snapshot only probes ref commit and tree`() = runTest {
+        GitFixture().use { git ->
+            val transport = git.transport()
+            assertTrue(transport.initialize(repository, "space", 1) is SyncInitializationResult.Initialized)
+            transport.readSnapshot(repository, "space", 1).getOrThrow()
+            val before = git.server.requestCount
+
+            transport.readSnapshot(repository, "space", 1).getOrThrow()
+
+            check(git.server.requestCount - before == 3) {
+                "request delta=${git.server.requestCount - before}"
+            }
+        }
+    }
+
+    @Test
+    fun `blob response with a different object id is rejected`() = runTest {
+        GitFixture().use { git ->
+            val transport = git.transport()
+            assertTrue(transport.initialize(repository, "space", 1) is SyncInitializationResult.Initialized)
+            val bootstrap = requireNotNull(git.file("mihon-sync", ".mihon-sync/index/bootstrap/0/bootstrap.bin"))
+            git.nextBlobResponse = MockResponse(
+                body = buildJsonObject {
+                    put("sha", "0".repeat(40))
+                    put("encoding", "base64")
+                    put("content", bootstrap.toByteString().base64())
+                }.toString(),
+            )
+
+            assertTrue(git.transport().readSnapshot(repository, "space", 1).isFailure)
         }
     }
 
@@ -507,6 +544,7 @@ class SyncGitSafetyContractTest {
             val service = SyncBatchSyncService(transport, secret)
             val result = service.upload(repository, snapshot, input, path(input), persist = {})
             assertEquals(SyncPublishStatus.UNCONFIRMED, result.publish.status)
+            assertEquals(null, result.publish.confirmedSnapshot)
             val writes = git.pathWrites.mapValues { it.value.toList() }
             val retry = service.uploadPrepared(
                 repository,
@@ -514,6 +552,7 @@ class SyncGitSafetyContractTest {
                 result.artifact,
             )
             assertEquals(SyncPublishStatus.PUBLISHED, retry.publish.status)
+            assertTrue(retry.publish.confirmedSnapshot != null)
             assertEquals(0, retry.publish.attempts)
             assertEquals(writes, git.pathWrites)
         }
@@ -719,6 +758,8 @@ class SyncGitSafetyContractTest {
         var refUpdateBarrier: CountDownLatch? = null
         var truncatedFlag: kotlinx.serialization.json.JsonElement = JsonPrimitive(false)
         var nextReadFailure: MockResponse? = null
+        var snapshotReads: Int = 0
+        var nextBlobResponse: MockResponse? = null
         var privateRepository = true
         var nextRefResponse: MockResponse? = null
         var failReadAfterPatch = false
@@ -778,7 +819,10 @@ class SyncGitSafetyContractTest {
         }
 
         private fun sha(): String = (nextObject++).toString(16).padStart(40, '0')
-        private fun storeBlob(bytes: ByteArray): String = sha().also { blobs[it] = bytes.copyOf() }
+        private fun storeBlob(bytes: ByteArray): String {
+            val header = "blob ${bytes.size}\u0000".encodeToByteArray()
+            return (header + bytes).toByteString().sha1().hex().also { blobs[it] = bytes.copyOf() }
+        }
         private fun respond(
             value: kotlinx.serialization.json.JsonElement,
             code: Int = 200,
@@ -814,6 +858,7 @@ class SyncGitSafetyContractTest {
                 )
             }
             if (method == "GET" && path.startsWith("/git/ref/heads/")) {
+                snapshotReads++
                 nextReadFailure?.let {
                     nextReadFailure = null
                     return it
@@ -886,6 +931,10 @@ class SyncGitSafetyContractTest {
                 )
             }
             if (method == "GET" && path.startsWith("/git/blobs/")) {
+                nextBlobResponse?.let {
+                    nextBlobResponse = null
+                    return it
+                }
                 val id = path.substringAfterLast('/')
                 val bytes = blobs[id] ?: return error(404, "Blob not found")
                 return respond(

@@ -87,6 +87,8 @@ data class SyncPublishResult(
     val commitSha: String? = null,
     val error: String? = null,
     val attempts: Int = 0,
+    /** The live snapshot that authenticated a successful publication, when available. */
+    val confirmedSnapshot: SyncSnapshot? = null,
 )
 
 sealed interface SyncInitializationResult {
