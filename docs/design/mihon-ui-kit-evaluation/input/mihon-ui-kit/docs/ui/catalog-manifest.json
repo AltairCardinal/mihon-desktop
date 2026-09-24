@@ -1,0 +1,2222 @@
+{
+  "schema_version": 1,
+  "document_version": "1.0.0",
+  "date": "2026-09-24",
+  "upstream_reference": "mihonapp/mihon@f52d890e7f8a3c418ddab41f41d4b577bce0dc06",
+  "adapter_target": "AltairCardinal/mihon@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+  "native_build_status": "NOT_RUN",
+  "device_status": "NOT_RUN",
+  "categories": [
+    {
+      "id": "UI-01",
+      "number": 1,
+      "title": "页面类型与容器职责",
+      "title_en": "Page structure",
+      "sources": [
+        "S05",
+        "S20"
+      ],
+      "scope": "所有页面与可复用内容",
+      "exception": "阅读器允许工具栏隐藏；嵌入内容复用父级容器。",
+      "rules": [
+        {
+          "id": "UI-01.01",
+          "requirement": "每次新增界面必须声明 root、subpage、tab-content、settings、detail、modal 或 reader 类型，以及顶栏、底栏、消息和安全区的唯一提供方。"
+        },
+        {
+          "id": "UI-01.02",
+          "requirement": "普通子页面必须提供非空标题和有效返回回调；内容组件禁止自行添加第二套页面导航；开发验证控件不能进入业务页面。"
+        },
+        {
+          "id": "UI-01.03",
+          "requirement": "不得因加载、空数据、错误分支提前返回而绕过已规定的页面容器。"
+        },
+        {
+          "id": "UI-01.04",
+          "requirement": "复用容器必须连同导航、滚动、间距和状态参数一并接入；不得仅复制视觉样式。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-01-C01",
+          "name": "普通子页",
+          "setup": "默认数据",
+          "steps": "打开子页并返回",
+          "expected": "只有一处页面顶栏；回到目录。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-01-C02",
+          "name": "标签内容",
+          "setup": "切换标签场景",
+          "steps": "切换子标签",
+          "expected": "父级顶栏保留；内容没有重复顶栏。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-01-C03",
+          "name": "加载",
+          "setup": "切换加载场景",
+          "steps": "检查标题和返回",
+          "expected": "内容加载不影响返回。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-01-C04",
+          "name": "失败",
+          "setup": "切换错误场景",
+          "steps": "重试后返回",
+          "expected": "错误有恢复动作；页面容器不变。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-02",
+      "number": 2,
+      "title": "顶层导航与标签切换",
+      "title_en": "Root navigation",
+      "sources": [
+        "S01",
+        "S03",
+        "S20"
+      ],
+      "scope": "根导航及其子标签",
+      "exception": "开发目录的退出动作属于工具入口；不复制进首页导航。",
+      "rules": [
+        {
+          "id": "UI-02.01",
+          "requirement": "根标签使用项目既有导航容器与平板判断；禁止每个标签独立定义屏幕断点。"
+        },
+        {
+          "id": "UI-02.02",
+          "requirement": "标签切换必须同步选中状态、标题、搜索能力及操作区；角标只表达对应计数，零值默认不展示。"
+        },
+        {
+          "id": "UI-02.03",
+          "requirement": "重复选择当前标签必须调用该标签既有重选行为；新增标签在设计记录中声明无操作或具体动作。"
+        },
+        {
+          "id": "UI-02.04",
+          "requirement": "根导航系统返回遵循宿主规则：先处理局部模式，再从非书库根标签回书库；不得创建重复目的地。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-02-C01",
+          "name": "普通标签",
+          "setup": "默认根标签",
+          "steps": "依次切换标签",
+          "expected": "选中项和内容一致。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-02-C02",
+          "name": "重复选择",
+          "setup": "当前标签已选中",
+          "steps": "再次点击当前项",
+          "expected": "记录重选事件；不压入重复页面。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-02-C03",
+          "name": "计数",
+          "setup": "启用样例计数",
+          "steps": "查看零值与非零值",
+          "expected": "只有非零计数显示。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-02-C04",
+          "name": "宽屏",
+          "setup": "切换设备到平板或宽窗口",
+          "steps": "切换根标签",
+          "expected": "使用侧栏；状态不随尺寸丢失。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-03",
+      "number": 3,
+      "title": "顶栏标题与操作区",
+      "title_en": "App bar",
+      "sources": [
+        "S02",
+        "S04"
+      ],
+      "scope": "包含顶栏的页面",
+      "exception": "详情标题可以随滚动显现；需保留返回入口。",
+      "rules": [
+        {
+          "id": "UI-03.01",
+          "requirement": "子页顶栏复用 AppBar；title、navigateUp、scrollBehavior 的传递必须在审查中逐项确认。"
+        },
+        {
+          "id": "UI-03.02",
+          "requirement": "标题来自资源或明确的实体名称；长标题按原版单行省略，副标题使用现有组件；禁止依赖截断后的标题识别实体。"
+        },
+        {
+          "id": "UI-03.03",
+          "requirement": "选择模式显示数量与取消动作，搜索模式使用 SearchToolbar；退出模式恢复原标题和操作。"
+        },
+        {
+          "id": "UI-03.04",
+          "requirement": "直接操作具有可访问名称与工具提示；次要操作放入既有更多菜单，能力不支持时不得保留无效回调。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-03-C01",
+          "name": "普通顶栏",
+          "setup": "默认场景",
+          "steps": "点击返回和右侧动作",
+          "expected": "两种动作各自有效。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-03-C02",
+          "name": "长标题",
+          "setup": "长标题场景",
+          "steps": "查看窄屏顶栏",
+          "expected": "标题省略；操作可见。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-03-C03",
+          "name": "选择顶栏",
+          "setup": "预选两项",
+          "steps": "取消选择",
+          "expected": "计数为2；取消后恢复标题。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-03-C04",
+          "name": "搜索顶栏",
+          "setup": "搜索已打开",
+          "steps": "输入后清空并关闭",
+          "expected": "清空保留搜索；关闭恢复普通顶栏。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-04",
+      "number": 4,
+      "title": "返回关闭与取消",
+      "title_en": "Back and dismissal",
+      "sources": [
+        "S01",
+        "S02",
+        "S03",
+        "S12"
+      ],
+      "scope": "页面、模式、弹层、键盘",
+      "exception": "系统 IME 会自行消费返回；不得把业务优先级误当系统全局顺序。",
+      "rules": [
+        {
+          "id": "UI-04.01",
+          "requirement": "必须分别声明系统返回、顶栏返回、选择取消、遮罩和滑动关闭的结果。"
+        },
+        {
+          "id": "UI-04.02",
+          "requirement": "有局部模式时先按当前参考实现退出模式；选择与搜索共存时遵循书库的先取消选择再退出搜索。"
+        },
+        {
+          "id": "UI-04.03",
+          "requirement": "嵌套弹层先返回内部上一级；关闭弹层不应同时弹出底下的业务页面；弹层关闭的一个动作只执行一次。"
+        },
+        {
+          "id": "UI-04.04",
+          "requirement": "未提交编辑默认取消无副作用；高成本草稿退出需确认或明确保存方案，禁止静默丢弃。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-04-C01",
+          "name": "子级返回",
+          "setup": "子级深度为1",
+          "steps": "触发返回两次",
+          "expected": "先回父内容，再退出示例。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-04-C02",
+          "name": "选择优先",
+          "setup": "选择与查询共存",
+          "steps": "连续返回",
+          "expected": "先清空选择，再关闭查询。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-04-C03",
+          "name": "搜索关闭",
+          "setup": "查询已打开",
+          "steps": "系统返回",
+          "expected": "关闭查询并保留本页。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-04-C04",
+          "name": "嵌套弹层",
+          "setup": "弹层打开后进入第二层",
+          "steps": "返回、再返回",
+          "expected": "先回弹层首页，再关闭弹层。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-05",
+      "number": 5,
+      "title": "安全区与滚动容器",
+      "title_en": "Insets and scrolling",
+      "sources": [
+        "S15",
+        "S04",
+        "S20"
+      ],
+      "scope": "可滚动页面、键盘、浮动操作",
+      "exception": "嵌套内容的已消费边距不重复添加。",
+      "rules": [
+        {
+          "id": "UI-05.01",
+          "requirement": "内容必须使用宿主传入的 PaddingValues；同一边缘由一个层级消费，禁止再叠加猜测的状态栏高度。"
+        },
+        {
+          "id": "UI-05.02",
+          "requirement": "有 FAB 时保留项目 Scaffold 的底部避让；最后一项及底部按钮必须可完全滚入并点击。"
+        },
+        {
+          "id": "UI-05.03",
+          "requirement": "顶栏滚动行为连接到实际滚动容器；不得嵌套两个无约束的同向滚动容器。"
+        },
+        {
+          "id": "UI-05.04",
+          "requirement": "输入页面处理 IME，使用 start/end 方向边距；真实键盘、手势导航和三键导航需要设备验证。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-05-C01",
+          "name": "长列表",
+          "setup": "多项数据",
+          "steps": "滚到最后一项",
+          "expected": "末项可点击且无顶栏遮挡。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-05-C02",
+          "name": "浮动按钮",
+          "setup": "开启FAB",
+          "steps": "滚至底部",
+          "expected": "末项不被FAB覆盖。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-05-C03",
+          "name": "键盘",
+          "setup": "输入场景",
+          "steps": "聚焦最后的输入框",
+          "expected": "输入和提交入口可见。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-05-C04",
+          "name": "方向布局",
+          "setup": "RTL设备设置",
+          "steps": "横向观察与点击",
+          "expected": "方向性边距正确，导航图标按项目镜像。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-06",
+      "number": 6,
+      "title": "状态保留与回跳",
+      "title_en": "State restoration",
+      "sources": [
+        "S01",
+        "S03"
+      ],
+      "scope": "有用户输入或滚动状态的页面",
+      "exception": "敏感字段、短暂提示、一次性事件不自动持久化。",
+      "rules": [
+        {
+          "id": "UI-06.01",
+          "requirement": "为查询、选中项、分类、滚动、草稿分别定义保存范围：重组、回栈、配置重建、进程重建或持久偏好。"
+        },
+        {
+          "id": "UI-06.02",
+          "requirement": "短暂UI状态用 saveable 或持有状态的现有机制；业务状态归 ViewModel/仓库；禁止将 remember 当成进程恢复保障。"
+        },
+        {
+          "id": "UI-06.03",
+          "requirement": "恢复以稳定实体ID重建状态；数据变化后清理失效选择并限制页码，不能用列表位置当长期标识。"
+        },
+        {
+          "id": "UI-06.04",
+          "requirement": "回跳与外部入口分别测试；事件不得因恢复重复提交；执行过配置重建不能宣称执行过进程终止测试。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-06-C01",
+          "name": "输入保留",
+          "setup": "输入草稿",
+          "steps": "触发无关重组",
+          "expected": "输入和选择不丢。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-06-C02",
+          "name": "回栈保留",
+          "setup": "修改标签和计数",
+          "steps": "回目录再进入同类别",
+          "expected": "本轮会话状态恢复。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-06-C03",
+          "name": "配置重建",
+          "setup": "草稿非空",
+          "steps": "旋转设备或重建Activity",
+          "expected": "声明为saveable的状态恢复。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-06-C04",
+          "name": "进程恢复",
+          "setup": "保存测试草稿",
+          "steps": "按文档执行进程终止并回任务",
+          "expected": "仅已声明可恢复字段恢复，无重复动作。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-07",
+      "number": 7,
+      "title": "主要操作与可用性",
+      "title_en": "Primary actions",
+      "sources": [
+        "S04",
+        "S10"
+      ],
+      "scope": "主操作、FAB与上下文动作",
+      "exception": "没有有效操作的页面可以不展示FAB。",
+      "rules": [
+        {
+          "id": "UI-07.01",
+          "requirement": "页面必须指定主操作及可用条件；主操作位置沿用同类页面，禁止无依据地增加另一套大按钮。"
+        },
+        {
+          "id": "UI-07.02",
+          "requirement": "是否显示、禁用或替换必须依据真实状态；不可用动作不能靠空回调实现。"
+        },
+        {
+          "id": "UI-07.03",
+          "requirement": "选择模式与正常模式操作相互协调；例如章节选择时停止显示继续阅读FAB。"
+        },
+        {
+          "id": "UI-07.04",
+          "requirement": "主操作必须防止重复提交；隐藏后的页面布局仍应正确收回占用空间。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-07-C01",
+          "name": "可执行",
+          "setup": "存在未读项",
+          "steps": "点击主操作",
+          "expected": "进入对应假数据结果。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-07-C02",
+          "name": "无候选",
+          "setup": "没有未读项",
+          "steps": "检查FAB",
+          "expected": "无无效继续入口。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-07-C03",
+          "name": "多选",
+          "setup": "预选项目",
+          "steps": "检查主操作与批量操作",
+          "expected": "继续入口隐藏，批量入口可用。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-07-C04",
+          "name": "执行中",
+          "setup": "任务运行",
+          "steps": "重复点击启动",
+          "expected": "只启动一次。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-08",
+      "number": 8,
+      "title": "条目和点击区域",
+      "title_en": "Lists and grids",
+      "sources": [
+        "S21",
+        "S11"
+      ],
+      "scope": "列表、网格、嵌套按钮",
+      "exception": "各业务的封面/整行动作可不同，需在映射表中声明。",
+      "rules": [
+        {
+          "id": "UI-08.01",
+          "requirement": "相同实体的不同展示模式应保持动作语义；优先复用既有列表和封面组件。"
+        },
+        {
+          "id": "UI-08.02",
+          "requirement": "必须声明整行、封面、尾部、长按的独立事件；子按钮动作不得冒泡触发整行动作。"
+        },
+        {
+          "id": "UI-08.03",
+          "requirement": "选择模式点击切换选择，普通模式点击打开内容；长按有明确用途并具备替代入口。"
+        },
+        {
+          "id": "UI-08.04",
+          "requirement": "列表使用稳定键；处理长标题、缺封面、大列表和字体放大；纯装饰图片不重复读屏。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-08-C01",
+          "name": "普通列表",
+          "setup": "默认列表",
+          "steps": "点击整行和尾部动作",
+          "expected": "输出不同事件，每次只执行一个。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-08-C02",
+          "name": "网格",
+          "setup": "网格模式",
+          "steps": "点击同一实体",
+          "expected": "与列表打开相同实体。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-08-C03",
+          "name": "长标题",
+          "setup": "长文本假数据",
+          "steps": "放大字体并点击",
+          "expected": "文本不覆盖尾部动作。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-08-C04",
+          "name": "选择模式",
+          "setup": "预选一项",
+          "steps": "点击另一项",
+          "expected": "只切换选择，不进入详情。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-09",
+      "number": 9,
+      "title": "选择与批量操作",
+      "title_en": "Selection",
+      "sources": [
+        "S03",
+        "S10",
+        "S02"
+      ],
+      "scope": "支持选择的集合",
+      "exception": "未提供批量业务的页面不强制加入选择模式。",
+      "rules": [
+        {
+          "id": "UI-09.01",
+          "requirement": "进入、退出、全选、反选和范围选择必须定义作用集合；全选不得默默包含当前筛选之外的不可见实体。"
+        },
+        {
+          "id": "UI-09.02",
+          "requirement": "选中计数与稳定ID集合一致；零选中退出动作模式；返回优先取消选择。"
+        },
+        {
+          "id": "UI-09.03",
+          "requirement": "批量操作按选中项目能力和状态计算适用子集，并说明部分成功或跳过；禁止只依据首项状态。"
+        },
+        {
+          "id": "UI-09.04",
+          "requirement": "确认、失败和取消后是否清空选择分别声明；不得因列表排序使选中实体变化。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-09-C01",
+          "name": "单选进入",
+          "setup": "无选中项",
+          "steps": "长按一项",
+          "expected": "进入选择模式，计数为1。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-09-C02",
+          "name": "多项选择",
+          "setup": "已有选中项",
+          "steps": "点击另一项再取消",
+          "expected": "计数和选中外观同步。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-09-C03",
+          "name": "全选反选",
+          "setup": "六项数据",
+          "steps": "全选后反选",
+          "expected": "计数归零，恢复普通模式。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-09-C04",
+          "name": "范围与混合",
+          "setup": "项目状态混合",
+          "steps": "范围选择并执行可用批量动作",
+          "expected": "只作用于适用实体并反馈。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-10",
+      "number": 10,
+      "title": "滑动拖拽与触觉",
+      "title_en": "Gestures and haptics",
+      "sources": [
+        "S05",
+        "S04",
+        "S03"
+      ],
+      "scope": "有滑动或排序的条目",
+      "exception": "无触觉硬件或系统关闭触觉时允许没有震动。",
+      "rules": [
+        {
+          "id": "UI-10.01",
+          "requirement": "章节滑动读取原版用户配置，明确 start/end 动作和禁用条件；选择模式不得意外执行横滑业务。"
+        },
+        {
+          "id": "UI-10.02",
+          "requirement": "拖拽从明确手柄或既有长按机制发起；与滚动、点击、范围选择避免竞争。"
+        },
+        {
+          "id": "UI-10.03",
+          "requirement": "排序提交遵循稳定ID与持久化规则；失败恢复原序列或提示未保存；拖拽取消不得误提交业务删除。"
+        },
+        {
+          "id": "UI-10.04",
+          "requirement": "触觉沿用同类行为且每次有效操作只触发一次；重要操作必须具备非手势入口。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-10-C01",
+          "name": "横滑",
+          "setup": "正常条目",
+          "steps": "按提示横滑条目",
+          "expected": "只有配置动作触发。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-10-C02",
+          "name": "禁用横滑",
+          "setup": "选择模式",
+          "steps": "尝试横滑",
+          "expected": "不触发滑动动作。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-10-C03",
+          "name": "重排序",
+          "setup": "默认顺序",
+          "steps": "长按手柄拖到新位置",
+          "expected": "顺序变化且返回后保留本轮状态。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-10-C04",
+          "name": "替代入口",
+          "setup": "不使用手势",
+          "steps": "使用上移下移动作",
+          "expected": "可以完成相同排序。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-11",
+      "number": 11,
+      "title": "搜索与键盘",
+      "title_en": "Search",
+      "sources": [
+        "S02",
+        "S03",
+        "S11"
+      ],
+      "scope": "可搜索界面",
+      "exception": "自动过滤与提交搜索是不同策略，页面必须选定一种。",
+      "rules": [
+        {
+          "id": "UI-11.01",
+          "requirement": "查询用null表示未打开搜索，空字符串表示打开但未输入；不得将两者合并。"
+        },
+        {
+          "id": "UI-11.02",
+          "requirement": "进入搜索按现有焦点策略请求键盘；清空查询保持模式和焦点；退出搜索恢复顶栏并释放焦点。"
+        },
+        {
+          "id": "UI-11.03",
+          "requirement": "键盘搜索与可见提交入口共用校验；空白查询按页面策略处理，异步旧结果不得覆盖新查询。"
+        },
+        {
+          "id": "UI-11.04",
+          "requirement": "明示搜索范围；查询和筛选共存时空结果提示应能帮助解除限制。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-11-C01",
+          "name": "未搜索",
+          "setup": "query=null",
+          "steps": "点击搜索",
+          "expected": "query变为空字符串。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-11-C02",
+          "name": "空查询",
+          "setup": "搜索已打开",
+          "steps": "清空再返回",
+          "expected": "清空保持模式；返回退出。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-11-C03",
+          "name": "有效查询",
+          "setup": "输入关键词",
+          "steps": "键盘提交",
+          "expected": "只提交一次且关闭键盘。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-11-C04",
+          "name": "无结果",
+          "setup": "特殊查询",
+          "steps": "清空搜索",
+          "expected": "出现无结果提示，清空后恢复数据。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-12",
+      "number": 12,
+      "title": "筛选排序显示偏好",
+      "title_en": "Filter and sort",
+      "sources": [
+        "S08"
+      ],
+      "scope": "集合筛选和显示选项",
+      "exception": "随机排序沿用独立语义；不假设每项都能切升降序。",
+      "rules": [
+        {
+          "id": "UI-12.01",
+          "requirement": "三态筛选使用项目枚举和循环顺序；不得把包含、排除、无约束压成普通开关。"
+        },
+        {
+          "id": "UI-12.02",
+          "requirement": "活动筛选有可见提示，并提供可理解的复位；全局模式强制的选项需展示原因及禁用状态。"
+        },
+        {
+          "id": "UI-12.03",
+          "requirement": "排序字段和方向分开保存；当前字段重复点击按原版翻转方向；随机排序不显示虚假的升降序。"
+        },
+        {
+          "id": "UI-12.04",
+          "requirement": "注明选项作用于全局、分类或单作品，以及即时生效/确认生效；横竖屏列数沿用原偏好。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-12-C01",
+          "name": "三态",
+          "setup": "默认无约束",
+          "steps": "连续切换三次",
+          "expected": "无约束、包含、排除可辨别。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-12-C02",
+          "name": "活动筛选",
+          "setup": "包含筛选",
+          "steps": "复位",
+          "expected": "过滤提示消失。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-12-C03",
+          "name": "排序",
+          "setup": "默认升序",
+          "steps": "重复选择同字段",
+          "expected": "切换方向，显示顺序改变。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-12-C04",
+          "name": "强制条件",
+          "setup": "仅下载模式",
+          "steps": "尝试修改下载筛选",
+          "expected": "禁用且说明原因。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-13",
+      "number": 13,
+      "title": "菜单与溢出操作",
+      "title_en": "Menus",
+      "sources": [
+        "S02",
+        "S13"
+      ],
+      "scope": "顶栏菜单、条目菜单",
+      "exception": "菜单项的排序以对应参考页面为准。",
+      "rules": [
+        {
+          "id": "UI-13.01",
+          "requirement": "主操作和次要操作按页面设计放置；使用 AppBarActions 或现有 DropdownMenu 封装。"
+        },
+        {
+          "id": "UI-13.02",
+          "requirement": "菜单选择后按原版关闭；嵌套菜单关闭应退出对应层级，不重复执行父项。"
+        },
+        {
+          "id": "UI-13.03",
+          "requirement": "操作名称准确描述影响对象；隐藏和禁用需保持能力判断一致，禁止表面可点但无行为。"
+        },
+        {
+          "id": "UI-13.04",
+          "requirement": "点击外部和系统返回关闭菜单而不离开页面；键盘焦点和锚点在设备上验证。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-13-C01",
+          "name": "普通菜单",
+          "setup": "默认",
+          "steps": "打开更多并选动作",
+          "expected": "动作执行一次并关闭。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-13-C02",
+          "name": "嵌套菜单",
+          "setup": "排序子菜单",
+          "steps": "选择子项",
+          "expected": "提交子项并关闭菜单链。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-13-C03",
+          "name": "取消",
+          "setup": "菜单打开",
+          "steps": "点击外部或返回",
+          "expected": "不执行业务动作。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-13-C04",
+          "name": "受限能力",
+          "setup": "不可用动作",
+          "steps": "查看菜单",
+          "expected": "无虚假的可用入口。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-14",
+      "number": 14,
+      "title": "弹层与内部导航",
+      "title_en": "Dialogs and sheets",
+      "sources": [
+        "S12",
+        "S08"
+      ],
+      "scope": "确认框、自适应Sheet",
+      "exception": "不可取消过程只能在真实必要且有说明时锁定关闭。",
+      "rules": [
+        {
+          "id": "UI-14.01",
+          "requirement": "短确认使用既有 AlertDialog；多选项和较复杂局部流程使用 AdaptiveSheet/TabbedDialog；复杂步骤使用内部导航。"
+        },
+        {
+          "id": "UI-14.02",
+          "requirement": "弹层标题、主动作、取消结果和退出条件必须声明；取消时不提交未确认值。"
+        },
+        {
+          "id": "UI-14.03",
+          "requirement": "关闭顺序由内部导航和未保存状态决定；遮罩、滑动、系统返回不得绕过需要保护的草稿。"
+        },
+        {
+          "id": "UI-14.04",
+          "requirement": "小屏靠底、大屏居中遵循原版自适应实现；不得靠固定屏幕像素模拟弹层位置。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-14-C01",
+          "name": "确认框",
+          "setup": "默认",
+          "steps": "打开并取消",
+          "expected": "无副作用。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-14-C02",
+          "name": "自适应弹层",
+          "setup": "Sheet场景",
+          "steps": "在手机和平板打开",
+          "expected": "采用现有AdaptiveSheet布局。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-14-C03",
+          "name": "嵌套层",
+          "setup": "进入第二步",
+          "steps": "返回",
+          "expected": "回到弹层第一步。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-14-C04",
+          "name": "草稿保护",
+          "setup": "已编辑文本",
+          "steps": "尝试关闭",
+          "expected": "按声明提示放弃或保留。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-15",
+      "number": 15,
+      "title": "设置项与生效时机",
+      "title_en": "Preferences",
+      "sources": [
+        "S06",
+        "S07"
+      ],
+      "scope": "设置页面和局部设置",
+      "exception": "样例使用本地假值；禁止接入真实Preference存储。",
+      "rules": [
+        {
+          "id": "UI-15.01",
+          "requirement": "设置页优先使用 PreferenceScaffold/PreferenceScreen 和既有Preference类型；保持分组与摘要风格。"
+        },
+        {
+          "id": "UI-15.02",
+          "requirement": "开关、单选、多选、滑块、文本使用适配语义的控件；不要把二态设置改成不明操作按钮。"
+        },
+        {
+          "id": "UI-15.03",
+          "requirement": "当前值摘要与已提交值一致；依赖设置关闭时子项禁用并说明原因。"
+        },
+        {
+          "id": "UI-15.04",
+          "requirement": "明确即时保存、确认保存和退出丢弃；输入取消不得变更已提交偏好；样例偏好必须使用内存实现。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-15-C01",
+          "name": "即时设置",
+          "setup": "默认值",
+          "steps": "切换开关",
+          "expected": "已提交摘要立即改变。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-15-C02",
+          "name": "单选",
+          "setup": "打开列表选择",
+          "steps": "选择选项",
+          "expected": "复用现有Preference控件并更新假值。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-15-C03",
+          "name": "依赖禁用",
+          "setup": "主开关关闭",
+          "steps": "尝试子项",
+          "expected": "子项禁用。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-15-C04",
+          "name": "取消编辑",
+          "setup": "已保存旧值",
+          "steps": "改值后取消",
+          "expected": "旧值保留。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-16",
+      "number": 16,
+      "title": "输入校验与焦点",
+      "title_en": "Forms",
+      "sources": [
+        "S19"
+      ],
+      "scope": "创建、重命名及文本输入",
+      "exception": "trim、大小写和重复定义由实体规则明确，不照抄历史缺陷。",
+      "rules": [
+        {
+          "id": "UI-16.01",
+          "requirement": "提交统一经过规范化和业务校验；可见确认按钮与IME动作调用同一函数。"
+        },
+        {
+          "id": "UI-16.02",
+          "requirement": "必填、重复、范围和无变化分别处理；行内错误可读；无效值不能提交。"
+        },
+        {
+          "id": "UI-16.03",
+          "requirement": "初始值、光标、焦点和键盘类型根据任务设定；输入框不被IME遮挡。"
+        },
+        {
+          "id": "UI-16.04",
+          "requirement": "编辑时只修改草稿；确认后提交一次；取消恢复原值；重命名比较初始值，不能只比较上一次输入。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-16-C01",
+          "name": "必填",
+          "setup": "空文本",
+          "steps": "点击确认或键盘提交",
+          "expected": "不可提交，有必填说明。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-16-C02",
+          "name": "重复",
+          "setup": "输入已有名称",
+          "steps": "尝试提交",
+          "expected": "不提交，显示重复错误。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-16-C03",
+          "name": "有效",
+          "setup": "输入新名称",
+          "steps": "提交",
+          "expected": "提交一次并更新已保存值。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-16-C04",
+          "name": "撤销编辑",
+          "setup": "已有保存值",
+          "steps": "编辑后取消",
+          "expected": "已保存值不变化。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-17",
+      "number": 17,
+      "title": "破坏性操作",
+      "title_en": "Destructive actions",
+      "sources": [
+        "S14",
+        "S13"
+      ],
+      "scope": "移除、删除、清空、解绑",
+      "exception": "取消可重建队列是否确认按任务风险记录；不套用统一确认。",
+      "rules": [
+        {
+          "id": "UI-17.01",
+          "requirement": "操作前明确对象及影响：书库关系、下载文件、历史、远端绑定不能使用含糊的删除描述。"
+        },
+        {
+          "id": "UI-17.02",
+          "requirement": "不可恢复或跨设备影响默认需要确认，列出影响范围；同类原版不同处理需写例外记录。"
+        },
+        {
+          "id": "UI-17.03",
+          "requirement": "没有选择影响范围时确认禁用；取消和遮罩关闭无副作用；失败不宣称成功。"
+        },
+        {
+          "id": "UI-17.04",
+          "requirement": "确认防重复；撤销仅在真正可逆时提供；绝不让样例删除真实文件或记录。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-17-C01",
+          "name": "确认范围",
+          "setup": "无勾选范围",
+          "steps": "打开移除",
+          "expected": "确认禁用。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-17-C02",
+          "name": "选择范围",
+          "setup": "选择假数据删除范围",
+          "steps": "确认",
+          "expected": "只删除所选范围。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-17-C03",
+          "name": "取消",
+          "setup": "已选择范围",
+          "steps": "取消",
+          "expected": "假数据不变。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-17-C04",
+          "name": "重复确认",
+          "setup": "成功提交一次",
+          "steps": "快速重复触发",
+          "expected": "只记录一次有效提交。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-18",
+      "number": 18,
+      "title": "加载空态与错误",
+      "title_en": "Content states",
+      "sources": [
+        "S09",
+        "S11"
+      ],
+      "scope": "异步内容界面",
+      "exception": "局部加载不能遮蔽无关已加载内容。",
+      "rules": [
+        {
+          "id": "UI-18.01",
+          "requirement": "至少区分初次加载、正常、空数据、查询无结果、筛选无结果、依赖缺失和错误的适用状态。"
+        },
+        {
+          "id": "UI-18.02",
+          "requirement": "内容状态不得导致页面标题或有效返回入口意外消失；重试不能重新压入相同页面。"
+        },
+        {
+          "id": "UI-18.03",
+          "requirement": "无数据提示使用原因对应文案并给出适用动作；禁止所有异常统一展示“暂无数据”。"
+        },
+        {
+          "id": "UI-18.04",
+          "requirement": "已有内容失败保留内容，附局部反馈；首次失败用整页恢复；不得把失败转换为空结果隐藏。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-18-C01",
+          "name": "加载",
+          "setup": "首次加载",
+          "steps": "检查并返回",
+          "expected": "有加载反馈和导航。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-18-C02",
+          "name": "空数据",
+          "setup": "无实体",
+          "steps": "查看提示",
+          "expected": "说明如何添加数据。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-18-C03",
+          "name": "无结果",
+          "setup": "有筛选/查询",
+          "steps": "清除限制",
+          "expected": "与空数据库文案不同。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-18-C04",
+          "name": "错误",
+          "setup": "失败状态",
+          "steps": "点击重试",
+          "expected": "恢复正常且栈不增加。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-19",
+      "number": 19,
+      "title": "刷新分页与长任务",
+      "title_en": "Async work",
+      "sources": [
+        "S10",
+        "S09"
+      ],
+      "scope": "分页、刷新和长任务",
+      "exception": "下拉动画可仅表示任务启动，但必须另有任务真实状态。",
+      "rules": [
+        {
+          "id": "UI-19.01",
+          "requirement": "启动、运行、成功、失败、取消是不同任务状态；禁止用按钮点击或动画结束代表完成。"
+        },
+        {
+          "id": "UI-19.02",
+          "requirement": "已有内容刷新保持可用数据；分页错误不清空列表，重试只重做对应阶段。"
+        },
+        {
+          "id": "UI-19.03",
+          "requirement": "进行中禁止重复启动或采用既有去重；选择模式下的刷新手势遵循参考行为。"
+        },
+        {
+          "id": "UI-19.04",
+          "requirement": "任务可以离开页面继续时须说明进度入口；可取消边界和迟到结果策略必须明确。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-19-C01",
+          "name": "首次任务",
+          "setup": "空内容",
+          "steps": "启动",
+          "expected": "状态变运行，尚未报告成功。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-19-C02",
+          "name": "刷新",
+          "setup": "已有结果",
+          "steps": "开始刷新再模拟失败",
+          "expected": "结果保留。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-19-C03",
+          "name": "分页失败",
+          "setup": "已有第一页",
+          "steps": "追加失败后重试",
+          "expected": "不丢失第一页且不重复。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-19-C04",
+          "name": "重复启动",
+          "setup": "任务运行",
+          "steps": "连续启动",
+          "expected": "有效启动次数不增加。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-20",
+      "number": 20,
+      "title": "反馈重试与恢复",
+      "title_en": "Feedback",
+      "sources": [
+        "S09",
+        "S22"
+      ],
+      "scope": "所有可失败交互",
+      "exception": "保留原版局部Toast的场景；新策略需显式记录。",
+      "rules": [
+        {
+          "id": "UI-20.01",
+          "requirement": "短结果使用既有 Snackbar/Toast；持续全局状态使用横幅；必须决策的事项使用对话框。"
+        },
+        {
+          "id": "UI-20.02",
+          "requirement": "失败文案说明发生了什么和可执行下一步；重试入口必须实际重试相同操作。"
+        },
+        {
+          "id": "UI-20.03",
+          "requirement": "暂时错误保留输入和已有结果；禁止错误后自动清空草稿；错误日志不得泄露令牌或个人数据。"
+        },
+        {
+          "id": "UI-20.04",
+          "requirement": "消息不重复弹出；一次性事件不随重组重复发送；只有成功回执后显示成功。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-20-C01",
+          "name": "成功",
+          "setup": "默认",
+          "steps": "触发假成功",
+          "expected": "只显示一次结果。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-20-C02",
+          "name": "可重试",
+          "setup": "失败操作",
+          "steps": "点击消息里的重试",
+          "expected": "重新执行并更新状态。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-20-C03",
+          "name": "草稿保留",
+          "setup": "有文本",
+          "steps": "模拟失败",
+          "expected": "文本保留。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-20-C04",
+          "name": "取消消息",
+          "setup": "消息显示",
+          "steps": "关闭提示",
+          "expected": "不改变业务状态。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-21",
+      "number": 21,
+      "title": "全局模式与横幅",
+      "title_en": "Global modes",
+      "sources": [
+        "S17",
+        "S08"
+      ],
+      "scope": "隐私、仅下载、索引状态",
+      "exception": "读取真实行为需要集成用例，横幅本身不能证明约束生效。",
+      "rules": [
+        {
+          "id": "UI-21.01",
+          "requirement": "横幅复用既有组件和次序；系统栏边距由统一容器处理。"
+        },
+        {
+          "id": "UI-21.02",
+          "requirement": "全局模式改变数据和操作能力时，所有受影响页面必须遵循同一状态源。"
+        },
+        {
+          "id": "UI-21.03",
+          "requirement": "仅下载模式禁止展示与该模式冲突的可执行入口；受强制的筛选需禁用并注明。"
+        },
+        {
+          "id": "UI-21.04",
+          "requirement": "隐私模式的数据记录与外发策略必须单独测试；样例只演示状态，不宣称证明生产隐私实现。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-21-C01",
+          "name": "正常",
+          "setup": "全部模式关闭",
+          "steps": "观察",
+          "expected": "没有无意义横幅。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-21-C02",
+          "name": "仅下载",
+          "setup": "开启模式",
+          "steps": "尝试改下载条件",
+          "expected": "强制条件生效。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-21-C03",
+          "name": "隐私",
+          "setup": "开启隐私",
+          "steps": "执行假阅读",
+          "expected": "假历史计数不增加。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-21-C04",
+          "name": "组合",
+          "setup": "多个模式开启",
+          "steps": "切换索引状态",
+          "expected": "横幅排序和布局稳定。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-22",
+      "number": 22,
+      "title": "视觉基础与复用",
+      "title_en": "Theme and components",
+      "sources": [
+        "S02",
+        "S05",
+        "S07"
+      ],
+      "scope": "所有新增UI",
+      "exception": "测试探针可显示边框/标签但默认可隐藏，禁止进入业务。",
+      "rules": [
+        {
+          "id": "UI-22.01",
+          "requirement": "主题颜色、字体层级、形状和间距优先来自当前分支现有主题/组件；禁止擅自引入另一套视觉语言。"
+        },
+        {
+          "id": "UI-22.02",
+          "requirement": "当前分支的图标体系与上游版本分别记录；不能在旧分支引用不存在的新图标包。"
+        },
+        {
+          "id": "UI-22.03",
+          "requirement": "组件能满足需求时不得另造同功能控件；必须定制时记录差异和为何需要。"
+        },
+        {
+          "id": "UI-22.04",
+          "requirement": "明暗、动态主题、禁用和错误状态均需可辨；截图必须注明主题、字体、尺寸、locale和commit。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-22-C01",
+          "name": "亮色",
+          "setup": "亮色系统",
+          "steps": "查看控件组",
+          "expected": "使用项目主题。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-22-C02",
+          "name": "暗色",
+          "setup": "暗色系统",
+          "steps": "查看相同控件",
+          "expected": "文字和状态可读。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-22-C03",
+          "name": "禁用",
+          "setup": "禁用状态",
+          "steps": "尝试点击",
+          "expected": "无动作且外观可辨。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-22-C04",
+          "name": "错误",
+          "setup": "错误状态",
+          "steps": "检查文字与控件",
+          "expected": "符合主题error语义。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-23",
+      "number": 23,
+      "title": "封面文本角标日期",
+      "title_en": "Content presentation",
+      "sources": [
+        "S02",
+        "S21",
+        "S11",
+        "S04"
+      ],
+      "scope": "实体卡片与元数据",
+      "exception": "样例封面为本地测试图形；不构成真实图片加载验证。",
+      "rules": [
+        {
+          "id": "UI-23.01",
+          "requirement": "封面比例、裁切、圆角和占位沿用现有组件；加载失败与无封面分别处理。"
+        },
+        {
+          "id": "UI-23.02",
+          "requirement": "标题省略、简介展开和标签动作保持同类页面一致；长文本不能侵占独立操作区。"
+        },
+        {
+          "id": "UI-23.03",
+          "requirement": "计数、日期与未知值使用现有格式化逻辑；零、未知、无值的语义分别定义。"
+        },
+        {
+          "id": "UI-23.04",
+          "requirement": "角标有明确含义并服从用户显示偏好；同一数字不得在不同页面表示不同对象而不说明。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-23-C01",
+          "name": "常规内容",
+          "setup": "短标题",
+          "steps": "查看条目",
+          "expected": "信息层级一致。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-23-C02",
+          "name": "长文本",
+          "setup": "超长标题简介",
+          "steps": "展开/收起",
+          "expected": "完整内容可访问。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-23-C03",
+          "name": "缺失封面",
+          "setup": "空封面",
+          "steps": "查看占位",
+          "expected": "布局不塌陷。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-23-C04",
+          "name": "边界元数据",
+          "setup": "零计数和未知日期",
+          "steps": "查看角标",
+          "expected": "不把未知当成零或今天。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-24",
+      "number": 24,
+      "title": "动效与滚动联动",
+      "title_en": "Motion",
+      "sources": [
+        "S01",
+        "S04",
+        "S05",
+        "S18"
+      ],
+      "scope": "列表、详情、弹层和工具栏",
+      "exception": "动效观感须实机检查；模型测试不能判定观感。",
+      "rules": [
+        {
+          "id": "UI-24.01",
+          "requirement": "复用当前分支的过渡与动画；新增时长/缓动需要具体用途和参考依据。"
+        },
+        {
+          "id": "UI-24.02",
+          "requirement": "列表重排、模式切换和工具栏显隐不得在动画中暂时改变动作目标或重复提交。"
+        },
+        {
+          "id": "UI-24.03",
+          "requirement": "滚动标题与FAB形态和真实滚动位置联动，不能用无关布尔值替代生产行为。"
+        },
+        {
+          "id": "UI-24.04",
+          "requirement": "关闭系统动画、大列表和快速反向操作需验证；动画结束不能代表后台任务结束。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-24-C01",
+          "name": "列表变动",
+          "setup": "默认条目",
+          "steps": "增加删除假条目",
+          "expected": "动画不改变ID语义。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-24-C02",
+          "name": "快速切换",
+          "setup": "模式开关",
+          "steps": "快速切换多次",
+          "expected": "最终状态正确。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-24-C03",
+          "name": "滚动联动",
+          "setup": "长列表",
+          "steps": "上下滚动",
+          "expected": "示例浮动操作随真实滚动调整。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-24-C04",
+          "name": "关闭动画",
+          "setup": "系统动画关闭",
+          "steps": "执行相同行为",
+          "expected": "状态和交互仍完整。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-25",
+      "number": 25,
+      "title": "屏幕与系统适配",
+      "title_en": "Adaptive layout",
+      "sources": [
+        "S01",
+        "S04",
+        "S12",
+        "S08"
+      ],
+      "scope": "手机、平板、多窗口",
+      "exception": "开发面板的尺寸开关仅为局部预览，不替代真实设备配置。",
+      "rules": [
+        {
+          "id": "UI-25.01",
+          "requirement": "采用当前项目的平板判定和双栏策略；禁止每页随意设断点。"
+        },
+        {
+          "id": "UI-25.02",
+          "requirement": "尺寸、方向或窗口变化时保留声明状态，切换侧栏/底栏时不重新导航到默认页面。"
+        },
+        {
+          "id": "UI-25.03",
+          "requirement": "IME、状态栏、手势导航、三键导航、刘海和大字体分别验证；不能只检查默认截图。"
+        },
+        {
+          "id": "UI-25.04",
+          "requirement": "英文、中文、长伪语言和RTL作为环境样本；方向动作遵循逻辑方向，阅读方向按阅读器规则独立处理。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-25-C01",
+          "name": "手机",
+          "setup": "窄窗口",
+          "steps": "检查全页",
+          "expected": "控件可点击。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-25-C02",
+          "name": "平板",
+          "setup": "宽窗口",
+          "steps": "切换布局",
+          "expected": "沿用项目平板判断。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-25-C03",
+          "name": "大字体",
+          "setup": "字体200%",
+          "steps": "滚动全页",
+          "expected": "无关键操作裁切。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-25-C04",
+          "name": "RTL与键盘",
+          "setup": "RTL并打开IME",
+          "steps": "输入和返回",
+          "expected": "安全区和导航方向正确。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-26",
+      "number": 26,
+      "title": "无障碍与本地化",
+      "title_en": "Accessibility",
+      "sources": [
+        "S02",
+        "S01"
+      ],
+      "scope": "全部可交互控件",
+      "exception": "装饰图标可无描述；存在旁边合并文本时避免重复读屏。",
+      "rules": [
+        {
+          "id": "UI-26.01",
+          "requirement": "图标操作提供资源化的可访问名称；可选择控件暴露checked/selected/disabled语义。"
+        },
+        {
+          "id": "UI-26.02",
+          "requirement": "标签与开关/复选框形成一个可访问操作目标；禁止双重读屏节点或双触发。"
+        },
+        {
+          "id": "UI-26.03",
+          "requirement": "可见文案、复数和状态说明通过资源获取；测试用稳定testTag，禁止依赖翻译文本做唯一定位。"
+        },
+        {
+          "id": "UI-26.04",
+          "requirement": "触控目标沿用组件最小交互尺寸，读屏、键盘导航和大字体必须有独立证据；截图不证明无障碍合规。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-26-C01",
+          "name": "语义标签",
+          "setup": "默认",
+          "steps": "使用TalkBack遍历",
+          "expected": "动作名称正确。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-26-C02",
+          "name": "复选状态",
+          "setup": "未选择",
+          "steps": "通过读屏切换",
+          "expected": "状态变更被正确表达。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-26-C03",
+          "name": "禁用",
+          "setup": "禁用控件",
+          "steps": "尝试读屏激活",
+          "expected": "不可执行。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-26-C04",
+          "name": "语言切换",
+          "setup": "中英文环境",
+          "steps": "重复核心流程",
+          "expected": "资源完整，testTag稳定。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-27",
+      "number": 27,
+      "title": "作品与章节",
+      "title_en": "Manga and chapters",
+      "sources": [
+        "S04",
+        "S10",
+        "S11"
+      ],
+      "scope": "作品详情、章节列表与快捷入口",
+      "exception": "样例使用虚构实体；真实阅读/下载/来源需另跑集成。",
+      "rules": [
+        {
+          "id": "UI-27.01",
+          "requirement": "封面、标题、章节行、来源、继续阅读和追踪各自有明确动作映射；跨历史与更新页保持语义一致。"
+        },
+        {
+          "id": "UI-27.02",
+          "requirement": "继续阅读根据未读章节与进度决定目标；全读、空章节、缺源和离线各自有可理解结果。"
+        },
+        {
+          "id": "UI-27.03",
+          "requirement": "选择状态、滑动、书签、下载和阅读状态联动使用同一实体状态；批量状态遵循UI-09。"
+        },
+        {
+          "id": "UI-27.04",
+          "requirement": "详情大小屏布局复用原实现；测试需要普通、全读、筛选空和来源缺失数据。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-27-C01",
+          "name": "可继续",
+          "setup": "存在未读章节",
+          "steps": "继续阅读",
+          "expected": "定位下一未读假章节。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-27-C02",
+          "name": "全已读",
+          "setup": "所有章节已读",
+          "steps": "检查继续入口",
+          "expected": "不出现无目标动作。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-27-C03",
+          "name": "多选章节",
+          "setup": "选择两章",
+          "steps": "批量标记",
+          "expected": "只修改所选假章节。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-27-C04",
+          "name": "缺源",
+          "setup": "来源缺失",
+          "steps": "检查返回与恢复",
+          "expected": "信息保留，有缺失说明。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-28",
+      "number": 28,
+      "title": "阅读器",
+      "title_en": "Reader",
+      "sources": [
+        "S18"
+      ],
+      "scope": "阅读器、页码和阅读设置",
+      "exception": "手势、音量键、真实图像解码与翻页性能需原阅读器集成测试。",
+      "rules": [
+        {
+          "id": "UI-28.01",
+          "requirement": "阅读器为独立页面类型，工具栏可以隐藏；隐藏时必须保留可发现的恢复手势与系统退出路径。"
+        },
+        {
+          "id": "UI-28.02",
+          "requirement": "翻页、章节跳转和页码必须限制边界；阅读方向、界面RTL和滑块方向分别定义。"
+        },
+        {
+          "id": "UI-28.03",
+          "requirement": "点击区域、缩放、长按、音量键使用当前阅读器配置；新增动作不能拦截已有手势。"
+        },
+        {
+          "id": "UI-28.04",
+          "requirement": "单作品覆盖与全局默认分离；设置关闭后保持阅读位置；加载失败和末章结果明确。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-28-C01",
+          "name": "工具栏",
+          "setup": "第一页",
+          "steps": "点内容显示/隐藏",
+          "expected": "控制层可恢复。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-28-C02",
+          "name": "边界",
+          "setup": "首末页",
+          "steps": "尝试越界",
+          "expected": "页码始终在有效范围。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-28-C03",
+          "name": "方向",
+          "setup": "反向阅读",
+          "steps": "前后翻页",
+          "expected": "语义前后与阅读方向一致。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-28-C04",
+          "name": "设置返回",
+          "setup": "中间页",
+          "steps": "打开设置再关闭",
+          "expected": "页码不丢失。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-29",
+      "number": 29,
+      "title": "下载与后台控制",
+      "title_en": "Download queue",
+      "sources": [
+        "S13"
+      ],
+      "scope": "队列和后台任务页面",
+      "exception": "取消队列不自动删除已下载文件；策略变更需记录。",
+      "rules": [
+        {
+          "id": "UI-29.01",
+          "requirement": "等待、运行、暂停、失败、完成区分显示；暂停/恢复入口与真实任务状态一致。"
+        },
+        {
+          "id": "UI-29.02",
+          "requirement": "单项取消、全部取消、清空完成、删除文件有不同作用域；文案不可混用。"
+        },
+        {
+          "id": "UI-29.03",
+          "requirement": "任务去重、进度边界、排序持久化和失败重试明确；不得启动后立即显示完成。"
+        },
+        {
+          "id": "UI-29.04",
+          "requirement": "离开页面后任务若继续，需可恢复进度与控制；样例仅驱动内存任务，禁止启动真实下载。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-29-C01",
+          "name": "待运行",
+          "setup": "默认队列",
+          "steps": "启动",
+          "expected": "进入运行且进度未满。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-29-C02",
+          "name": "暂停恢复",
+          "setup": "正在运行",
+          "steps": "暂停再恢复",
+          "expected": "进度不回零。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-29-C03",
+          "name": "失败重试",
+          "setup": "失败项",
+          "steps": "重试",
+          "expected": "进入等待或运行，已有完成项保留。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-29-C04",
+          "name": "空队列",
+          "setup": "全部取消",
+          "steps": "查看动作",
+          "expected": "没有无效运行FAB。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-30",
+      "number": 30,
+      "title": "源扩展与外部入口",
+      "title_en": "Sources and extensions",
+      "sources": [
+        "S16",
+        "S09",
+        "S04"
+      ],
+      "scope": "源、扩展和跳转",
+      "exception": "权限、签名信任、系统安装器必须在隔离测试环境集成验证。",
+      "rules": [
+        {
+          "id": "UI-30.01",
+          "requirement": "源缺失、扩展可安装、已加载、可更新、不受信任和加载失败必须区分动作与提示。"
+        },
+        {
+          "id": "UI-30.02",
+          "requirement": "缺权限提供解释和系统入口；拒绝/取消返回后可恢复，禁止自动反复弹权限。"
+        },
+        {
+          "id": "UI-30.03",
+          "requirement": "信任决定必须由用户明确操作，展示原版风险与标识；不能为便利自动信任签名。"
+        },
+        {
+          "id": "UI-30.04",
+          "requirement": "应用内网页、外部浏览器、复制、分享分开命名；恶意/无效链接不得直接作为内部导航指令；样例不发起外部安装。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-30-C01",
+          "name": "可安装",
+          "setup": "可用扩展",
+          "steps": "假安装",
+          "expected": "显示运行状态。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-30-C02",
+          "name": "已加载",
+          "setup": "已有扩展",
+          "steps": "打开设置",
+          "expected": "进入假配置。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-30-C03",
+          "name": "未信任",
+          "setup": "未信任标记",
+          "steps": "取消或确认信任",
+          "expected": "取消不改变信任，确认才改变。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-30-C04",
+          "name": "缺权限",
+          "setup": "无安装权限",
+          "steps": "重试入口",
+          "expected": "只记录请求，未获得权限前不安装。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-31",
+      "number": 31,
+      "title": "追踪与外部绑定",
+      "title_en": "Tracking",
+      "sources": [
+        "S23"
+      ],
+      "scope": "追踪服务面板",
+      "exception": "不同服务能力不统一；真实OAuth和远端同步不在假数据页验证。",
+      "rules": [
+        {
+          "id": "UI-31.01",
+          "requirement": "未登录、未绑定、已绑定、搜索中、失败和已解绑分别定义；禁止把UI勾选视为服务端成功。"
+        },
+        {
+          "id": "UI-31.02",
+          "requirement": "评分、日期、私密状态按服务能力显示；未支持字段无可编辑入口。"
+        },
+        {
+          "id": "UI-31.03",
+          "requirement": "修改状态/进度/评分验证范围，异步失败保留上下文；远端结果与本地显示的一致性有集成测试。"
+        },
+        {
+          "id": "UI-31.04",
+          "requirement": "解绑需说明本地关联与远端记录的影响；不记录或展示令牌；样例使用虚构服务。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-31-C01",
+          "name": "未绑定",
+          "setup": "假服务",
+          "steps": "搜索后绑定",
+          "expected": "进入已绑定假状态。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-31-C02",
+          "name": "完整能力",
+          "setup": "支持评分日期",
+          "steps": "编辑字段",
+          "expected": "字段按范围更新。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-31-C03",
+          "name": "能力有限",
+          "setup": "服务不支持评分",
+          "steps": "查看面板",
+          "expected": "评分入口不存在。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-31-C04",
+          "name": "失败解绑",
+          "setup": "保存失败",
+          "steps": "重试或取消解绑",
+          "expected": "错误明确，取消保留关联。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    },
+    {
+      "id": "UI-32",
+      "number": 32,
+      "title": "存储备份与导入导出",
+      "title_en": "Storage and backup",
+      "sources": [
+        "S22"
+      ],
+      "scope": "文件选择、导入、恢复与导出",
+      "exception": "样例不读写真实URI；完整备份恢复需使用可丢弃测试数据库。",
+      "rules": [
+        {
+          "id": "UI-32.01",
+          "requirement": "未选择目录、有效目录、权限失效、文件不兼容和处理中有明确文案与恢复入口。"
+        },
+        {
+          "id": "UI-32.02",
+          "requirement": "选择器取消无副作用；结果有效后才记录目录；持久授权失败不能假定长期可访问。"
+        },
+        {
+          "id": "UI-32.03",
+          "requirement": "恢复/导入前展示范围和冲突策略，过程互斥；不可取消阶段说明边界；失败不能显示完成。"
+        },
+        {
+          "id": "UI-32.04",
+          "requirement": "恢复后的数量/关系/文件需要验证，不仅检查任务结束；样例只驱动内存状态，不恢复用户书库。"
+        }
+      ],
+      "cases": [
+        {
+          "id": "UI-32-C01",
+          "name": "未配置",
+          "setup": "未选目录",
+          "steps": "假选择和取消",
+          "expected": "取消不改变配置。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-32-C02",
+          "name": "有效",
+          "setup": "假目录有效",
+          "steps": "开始假备份",
+          "expected": "运行中禁止重复任务。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-32-C03",
+          "name": "权限失效",
+          "setup": "失效状态",
+          "steps": "重新授权",
+          "expected": "显式操作才变为有效。",
+          "status": "NOT_RUN",
+          "evidence": null
+        },
+        {
+          "id": "UI-32-C04",
+          "name": "不兼容",
+          "setup": "无效文件",
+          "steps": "尝试恢复",
+          "expected": "拒绝执行并保留原数据。",
+          "status": "NOT_RUN",
+          "evidence": null
+        }
+      ]
+    }
+  ],
+  "source_links": {
+    "S01": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/tachiyomi/ui/home/HomeScreen.kt",
+    "S02": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/components/AppBar.kt",
+    "S03": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryTab.kt",
+    "S04": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/manga/MangaScreen.kt",
+    "S05": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/category/CategoryScreen.kt",
+    "S06": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/more/settings/PreferenceScaffold.kt",
+    "S07": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/more/settings/Preference.kt",
+    "S08": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/library/LibrarySettingsDialog.kt",
+    "S09": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/browse/BrowseSourceScreen.kt",
+    "S10": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/updates/UpdatesScreen.kt",
+    "S11": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/history/HistoryScreen.kt",
+    "S12": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/components/AdaptiveSheet.kt",
+    "S13": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/tachiyomi/ui/download/DownloadQueueScreen.kt",
+    "S14": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/library/DeleteLibraryMangaDialog.kt",
+    "S15": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/presentation-core/src/main/java/tachiyomi/presentation/core/components/material/Scaffold.kt",
+    "S16": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/browse/ExtensionsScreen.kt",
+    "S17": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/components/Banners.kt",
+    "S18": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/reader/appbars/ReaderAppBars.kt",
+    "S19": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/category/components/CategoryDialogs.kt",
+    "S20": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/components/TabbedScreen.kt",
+    "S21": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/library/components/LibraryCompactGrid.kt",
+    "S22": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsDataScreen.kt",
+    "S23": "https://github.com/mihonapp/mihon/blob/f52d890e7f8a3c418ddab41f41d4b577bce0dc06/app/src/main/java/eu/kanade/presentation/track/TrackInfoDialogHome.kt"
+  }
+}

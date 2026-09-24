@@ -1,0 +1,117 @@
+{
+  "kind": "PACKAGE_STRUCTURE_ONLY",
+  "passed": 27,
+  "failed": 0,
+  "android_build": "NOT_RUN",
+  "native_render": "NOT_RUN",
+  "checks": [
+    {
+      "name": "32 ordered categories",
+      "status": "PASS"
+    },
+    {
+      "name": "128 unique rule IDs",
+      "status": "PASS"
+    },
+    {
+      "name": "128 unique declared cases",
+      "status": "PASS"
+    },
+    {
+      "name": "native cases remain NOT_RUN",
+      "status": "PASS"
+    },
+    {
+      "name": "every case has preconditions steps expected",
+      "status": "PASS"
+    },
+    {
+      "name": "values has unique resource names",
+      "status": "PASS"
+    },
+    {
+      "name": "values-zh-rCN has unique resource names",
+      "status": "PASS"
+    },
+    {
+      "name": "resource keys match across locales",
+      "status": "PASS"
+    },
+    {
+      "name": "all debug R.string references defined",
+      "status": "PASS"
+    },
+    {
+      "name": "no production source-set modifications",
+      "status": "PASS"
+    },
+    {
+      "name": "fixture has no direct contentResolver.",
+      "status": "PASS"
+    },
+    {
+      "name": "fixture has no direct DownloadManager.",
+      "status": "PASS"
+    },
+    {
+      "name": "fixture has no direct WorkManager.",
+      "status": "PASS"
+    },
+    {
+      "name": "fixture has no direct navigator.push(",
+      "status": "PASS"
+    },
+    {
+      "name": "fixture has no direct startActivity(",
+      "status": "PASS"
+    },
+    {
+      "name": "fixture has no direct FileOutputStream",
+      "status": "PASS"
+    },
+    {
+      "name": "fixture has no direct OkHttpClient",
+      "status": "PASS"
+    },
+    {
+      "name": "fixture has no direct appGraph",
+      "status": "PASS"
+    },
+    {
+      "name": "fixture has no direct Injekt.get",
+      "status": "PASS"
+    },
+    {
+      "name": "all 32 entries registered",
+      "status": "PASS"
+    },
+    {
+      "name": "snapshot saver used by native screen",
+      "status": "PASS"
+    },
+    {
+      "name": "native AppBar is reused",
+      "status": "PASS"
+    },
+    {
+      "name": "native SearchToolbar is reused",
+      "status": "PASS"
+    },
+    {
+      "name": "native Scaffold is reused",
+      "status": "PASS"
+    },
+    {
+      "name": "preference adapter uses memory store",
+      "status": "PASS"
+    },
+    {
+      "name": "native tests declared",
+      "status": "PASS"
+    },
+    {
+      "name": "only debug launcher declares activity",
+      "status": "PASS"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "rule_ids": [],
+  "case_id": "UI-01-C01",
+  "layer": "ANDROID_COMPONENT",
+  "repository_commit": null,
+  "build_variant": null,
+  "device": {
+    "model": null,
+    "api": null,
+    "resolution": null,
+    "density": null
+  },
+  "environment": {
+    "locale": null,
+    "theme": null,
+    "font_scale": null,
+    "window_size_dp": null,
+    "navigation_mode": null,
+    "talkback": null
+  },
+  "fixture_or_account": "disposable fake data only",
+  "preconditions": null,
+  "steps": [],
+  "expected": null,
+  "actual": null,
+  "status": "NOT_RUN",
+  "command": null,
+  "exit_code": null,
+  "artifacts": [],
+  "reference_approval": null,
+  "reviewer": null,
+  "timestamp": null,
+  "limitations": []
+}

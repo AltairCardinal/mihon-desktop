@@ -1,0 +1,13 @@
+test_apply_preserves_instructions_and_existing_manifest (__main__.InstallerTests.test_apply_preserves_instructions_and_existing_manifest) ... ok
+test_changed_file_after_preflight_blocks_writes (__main__.InstallerTests.test_changed_file_after_preflight_blocks_writes) ... ok
+test_conflicting_file_blocks_all_writes (__main__.InstallerTests.test_conflicting_file_blocks_all_writes) ... ok
+test_dry_run_does_not_write (__main__.InstallerTests.test_dry_run_does_not_write) ... ok
+test_exact_base_required_by_default (__main__.InstallerTests.test_exact_base_required_by_default) ... ok
+test_failure_rolls_back_written_files (__main__.InstallerTests.test_failure_rolls_back_written_files) ... ok
+test_second_install_is_idempotent (__main__.InstallerTests.test_second_install_is_idempotent) ... ok
+test_symlink_destination_is_rejected (__main__.InstallerTests.test_symlink_destination_is_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.881s
+
+OK

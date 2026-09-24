@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Mihon UI 规范实验 · 双端</title>
+    <link rel="stylesheet" href="./trial.css">
+  </head>
+  <body class="preview-body theme-dark">
+    <header class="review-bar">
+      <div>
+        <strong>Mihon UI 规范实验</strong>
+        <p>书架、章节多选与同步设置 · 本地交互样本</p>
+      </div>
+      <div class="review-actions">
+        <button data-testid="theme-toggle" id="theme-toggle">切换浅色</button>
+        <a href="../multi-device-sync/index.html">打开旧 DEMO 对照</a>
+      </div>
+    </header>
+    <main class="device-pair">
+      <section class="device-column">
+        <h2>Windows Desktop</h2>
+        <iframe id="preview-windows" title="Windows Desktop 实验" src="./device.html?platform=windows">
+        </iframe>
+      </section>
+      <section class="device-column phone-column">
+        <h2>Android</h2>
+        <iframe id="preview-android" title="Android 实验" src="./device.html?platform=android">
+        </iframe>
+      </section>
+    </main>
+    <p class="review-note">交互、数据和设置仅保存在各自的演示页面内；页面刷新即重置。不连接真实服务。</p>
+    <script src="./preview.js">
+    </script>
+  </body>
+</html>

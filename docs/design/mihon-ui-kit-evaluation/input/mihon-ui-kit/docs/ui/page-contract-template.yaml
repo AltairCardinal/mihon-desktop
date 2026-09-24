@@ -1,0 +1,65 @@
+# Copy per new/modified production page. UNKNOWN blocks a claim of completion.
+contract_version: 1
+page_id: UNKNOWN
+repository_commit: UNKNOWN
+screen_path: UNKNOWN
+page_type: UNKNOWN # root | subpage | tab-content | settings | detail | modal | reader
+reference_files: [] # pinned upstream reference + live fork implementation
+applicable_rules: [] # UI-xx.yy
+exceptions: [] # rule, rationale, scope, approval, expiry
+ownership:
+  top_bar: UNKNOWN
+  bottom_bar: UNKNOWN
+  insets: UNKNOWN
+  snackbar: UNKNOWN
+  navigation: UNKNOWN
+  state: UNKNOWN
+header:
+  title_resource_or_entity: UNKNOWN
+  up_behavior: UNKNOWN
+  actions: []
+  mode_variants: []
+state_contract:
+  initial: UNKNOWN
+  supported_states: [] # loading, empty, no-results, error, content, selection, search...
+  saved_state_fields: [] # field, lifetime, identity, reconciliation, sensitivity
+  one_shot_events: [] # prevent replay after configuration/process restoration
+  asynchronous_updates: [] # preserve content, de-duplicate tasks, retry/cancel semantics
+back_contract:
+  system_ime_behavior: UNKNOWN
+  system_back: UNKNOWN
+  appbar_up: UNKNOWN
+  mode_cancel: UNKNOWN
+  modal_back: UNKNOWN
+  outside_dismiss: UNKNOWN
+  swipe_dismiss: UNKNOWN
+  dirty_draft: UNKNOWN
+side_effects:
+  allowed: []
+  forbidden_on_cancel: []
+  idempotency_key: UNKNOWN
+  permissions_and_capabilities: []
+  failure_recovery: UNKNOWN
+layout:
+  padding_owner_by_edge: UNKNOWN
+  actual_scrolling_container: UNKNOWN
+  fab_clearance: UNKNOWN
+  phone_tablet: UNKNOWN
+  landscape_multwindow: UNKNOWN
+  large_font_rtl_ime: UNKNOWN
+accessibility:
+  content_descriptions: []
+  roles_states_focus: UNKNOWN
+  gesture_alternatives: UNKNOWN
+localization:
+  resource_keys: []
+  plural_date_unknown_value_rules: UNKNOWN
+verification:
+  case_ids: []
+  model_checks: []
+  compose_tests: []
+  screenshot_reference: UNKNOWN # candidate until reviewed
+  device_combinations: []
+  production_e2e: []
+  evidence_records: []
+  overall_status: NOT_RUN

@@ -1,0 +1,538 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="lab_title">Mihon 交互验证（开发版）</string>
+    <string name="lab_notice">仅使用假数据。设备行为及真实业务集成尚未验证。</string>
+    <string name="lab_case">场景 %1$d / 4</string>
+    <string name="lab_cases">切换场景</string>
+    <string name="lab_previous">上一类别</string>
+    <string name="lab_next">下一类别</string>
+    <string name="lab_exit">回到目录</string>
+    <string name="lab_reset">重置假数据</string>
+    <string name="lab_help">显示／隐藏验证控件</string>
+    <string name="lab_back">触发返回</string>
+    <string name="lab_event">最近假数据事件：%1$s</string>
+    <string name="lab_state">状态：%1$s</string>
+    <string name="lab_counts">启动 %1$d 次 · 提交 %2$d 次</string>
+    <string name="lab_title_long">用于检查窄屏省略行为的很长页面标题与实体名称</string>
+    <string name="lab_subtitle">较长的副标题不能遮挡返回按钮与右侧操作按钮</string>
+    <string name="lab_root">根标签 %1$d</string>
+    <string name="lab_tab">标签 %1$d</string>
+    <string name="lab_body">当前内容由页面提供；顶栏由父级容器负责。</string>
+    <string name="lab_open_child">进入子级内容</string>
+    <string name="lab_depth">子级深度：%1$d</string>
+    <string name="lab_draft">名称草稿</string>
+    <string name="lab_saved">已保存假值：%1$s</string>
+    <string name="lab_save">保存</string>
+    <string name="lab_cancel">取消</string>
+    <string name="lab_confirm">确认</string>
+    <string name="lab_required">请输入非空、不同于原值且不重复的名称；Existing 和“已有名称”已被占用。</string>
+    <string name="lab_valid">输入有效</string>
+    <string name="lab_enabled">启用关联选项</string>
+    <string name="lab_secondary">关联选项</string>
+    <string name="lab_current">当前选项：%1$d</string>
+    <string name="lab_item">样例条目 %1$d</string>
+    <string name="lab_chapter">样例章节 %1$d</string>
+    <string name="lab_open">打开</string>
+    <string name="lab_info">详情</string>
+    <string name="lab_continue">继续阅读</string>
+    <string name="lab_select_all">全选</string>
+    <string name="lab_invert">反选</string>
+    <string name="lab_clear_selection">取消选择</string>
+    <string name="lab_mark_read">标记所选已读</string>
+    <string name="lab_bookmark">为所选添加书签</string>
+    <string name="lab_range">扩展选择到第5项</string>
+    <string name="lab_selected">已选择：%1$d</string>
+    <string name="lab_drag">拖拽手柄</string>
+    <string name="lab_up">上移</string>
+    <string name="lab_down">下移</string>
+    <string name="lab_swipe">横滑此行以记录配置的假动作</string>
+    <string name="lab_gesture_disabled">选择模式下禁用横滑</string>
+    <string name="lab_search">搜索</string>
+    <string name="lab_query">查询；输入 none 触发无结果</string>
+    <string name="lab_clear">清空</string>
+    <string name="lab_close_search">关闭搜索</string>
+    <string name="lab_filter_any">无约束</string>
+    <string name="lab_filter_include">包含</string>
+    <string name="lab_filter_exclude">排除</string>
+    <string name="lab_filter_locked">仅下载模式已锁定此筛选项。</string>
+    <string name="lab_sort">切换排序方向</string>
+    <string name="lab_sort_state">降序：%1$s</string>
+    <string name="lab_menu">更多操作</string>
+    <string name="lab_nested">进入下一层</string>
+    <string name="lab_sheet">打开自适应弹层</string>
+    <string name="lab_dialog">打开确认框</string>
+    <string name="lab_edit">编辑草稿</string>
+    <string name="lab_discard">放弃草稿？</string>
+    <string name="lab_discard_body">尚未提交的假数据草稿将被丢弃。</string>
+    <string name="lab_remove">移除假数据</string>
+    <string name="lab_remove_library">移除书库关系</string>
+    <string name="lab_remove_downloads">移除假下载记录</string>
+    <string name="lab_remove_body">请选择影响范围。该验证目录不会删除真实文件。</string>
+    <string name="lab_loading">正在加载假数据…</string>
+    <string name="lab_empty">尚未添加条目。</string>
+    <string name="lab_no_results">没有符合查询或筛选条件的条目。</string>
+    <string name="lab_error">假请求失败。已有内容和草稿保留。</string>
+    <string name="lab_missing">此来源未安装。已有信息仍可查看。</string>
+    <string name="lab_retry">重试</string>
+    <string name="lab_add">添加假条目</string>
+    <string name="lab_start">启动假任务</string>
+    <string name="lab_tick">推进假任务</string>
+    <string name="lab_pause">暂停</string>
+    <string name="lab_fail">模拟失败</string>
+    <string name="lab_clear_queue">取消全部假队列</string>
+    <string name="lab_progress">进度：%1$d%%</string>
+    <string name="lab_success">假数据操作已完成</string>
+    <string name="lab_message">显示结果消息</string>
+    <string name="lab_private">假数据隐私模式</string>
+    <string name="lab_downloaded">假数据仅下载模式</string>
+    <string name="lab_indexing">正在索引假数据</string>
+    <string name="lab_history">假历史记录：%1$d</string>
+    <string name="lab_fake_read">阅读假条目</string>
+    <string name="lab_theme_note">主题验证请切换真实系统主题。</string>
+    <string name="lab_button">操作</string>
+    <string name="lab_long_text">用于验证折行、省略、独立触控区域以及大字体适配的非常长的内容标题与详细说明。</string>
+    <string name="lab_cover">本地封面占位</string>
+    <string name="lab_expand">展开／收起</string>
+    <string name="lab_unknown">日期未知；未读数量为零</string>
+    <string name="lab_motion">切换动画内容</string>
+    <string name="lab_adaptive">当前布局：%1$s</string>
+    <string name="lab_phone">手机</string>
+    <string name="lab_tablet">平板</string>
+    <string name="lab_environment">请用真实横屏、大字体、RTL、键盘和系统导航设置验证。场景选择不会修改设备配置。</string>
+    <string name="lab_accessibility">一个带标签的可切换目标</string>
+    <string name="lab_bars">显示／隐藏阅读工具栏</string>
+    <string name="lab_page">第 %1$d 页，共 %2$d 页</string>
+    <string name="lab_page_prev">上一页</string>
+    <string name="lab_page_next">下一页</string>
+    <string name="lab_reader_notice">阅读控制为交互契约仿真。真实解码、缩放手势和音量键需在原阅读器中验证。</string>
+    <string name="lab_trust">信任假签名</string>
+    <string name="lab_trust_body">此操作只改变内存假数据，不安装扩展。</string>
+    <string name="lab_permission">模拟权限已授予</string>
+    <string name="lab_permissions">权限：%1$s · 信任：%2$s</string>
+    <string name="lab_bind">绑定假服务</string>
+    <string name="lab_unbind">解除假服务绑定</string>
+    <string name="lab_bound">已绑定：%1$s</string>
+    <string name="lab_score">假评分：%1$d</string>
+    <string name="lab_score_unsupported">此假服务不支持评分。</string>
+    <string name="lab_choose_dir">选择假目录</string>
+    <string name="lab_dir">目录已配置：%1$s</string>
+    <string name="lab_bad_file">假文件不兼容，已阻止导入。</string>
+    <string name="lab_storage_notice">下面的选择器为仿真。SAF、URI失效和真实备份需在可丢弃安装中验证。</string>
+    <string name="lab_models_only">交互契约仿真；生产业务集成仍为 NOT_RUN。</string>
+    <string name="lab_category_1">UI-01 页面类型与容器职责</string>
+    <string name="lab_case_1_0">UI-01-C01 · 普通子页</string>
+    <string name="lab_expect_1_0">操作：打开子页并返回
+预期：只有一处页面顶栏；回到目录。</string>
+    <string name="lab_case_1_1">UI-01-C02 · 标签内容</string>
+    <string name="lab_expect_1_1">操作：切换子标签
+预期：父级顶栏保留；内容没有重复顶栏。</string>
+    <string name="lab_case_1_2">UI-01-C03 · 加载</string>
+    <string name="lab_expect_1_2">操作：检查标题和返回
+预期：内容加载不影响返回。</string>
+    <string name="lab_case_1_3">UI-01-C04 · 失败</string>
+    <string name="lab_expect_1_3">操作：重试后返回
+预期：错误有恢复动作；页面容器不变。</string>
+    <string name="lab_category_2">UI-02 顶层导航与标签切换</string>
+    <string name="lab_case_2_0">UI-02-C01 · 普通标签</string>
+    <string name="lab_expect_2_0">操作：依次切换标签
+预期：选中项和内容一致。</string>
+    <string name="lab_case_2_1">UI-02-C02 · 重复选择</string>
+    <string name="lab_expect_2_1">操作：再次点击当前项
+预期：记录重选事件；不压入重复页面。</string>
+    <string name="lab_case_2_2">UI-02-C03 · 计数</string>
+    <string name="lab_expect_2_2">操作：查看零值与非零值
+预期：只有非零计数显示。</string>
+    <string name="lab_case_2_3">UI-02-C04 · 宽屏</string>
+    <string name="lab_expect_2_3">操作：切换根标签
+预期：使用侧栏；状态不随尺寸丢失。</string>
+    <string name="lab_category_3">UI-03 顶栏标题与操作区</string>
+    <string name="lab_case_3_0">UI-03-C01 · 普通顶栏</string>
+    <string name="lab_expect_3_0">操作：点击返回和右侧动作
+预期：两种动作各自有效。</string>
+    <string name="lab_case_3_1">UI-03-C02 · 长标题</string>
+    <string name="lab_expect_3_1">操作：查看窄屏顶栏
+预期：标题省略；操作可见。</string>
+    <string name="lab_case_3_2">UI-03-C03 · 选择顶栏</string>
+    <string name="lab_expect_3_2">操作：取消选择
+预期：计数为2；取消后恢复标题。</string>
+    <string name="lab_case_3_3">UI-03-C04 · 搜索顶栏</string>
+    <string name="lab_expect_3_3">操作：输入后清空并关闭
+预期：清空保留搜索；关闭恢复普通顶栏。</string>
+    <string name="lab_category_4">UI-04 返回关闭与取消</string>
+    <string name="lab_case_4_0">UI-04-C01 · 子级返回</string>
+    <string name="lab_expect_4_0">操作：触发返回两次
+预期：先回父内容，再退出示例。</string>
+    <string name="lab_case_4_1">UI-04-C02 · 选择优先</string>
+    <string name="lab_expect_4_1">操作：连续返回
+预期：先清空选择，再关闭查询。</string>
+    <string name="lab_case_4_2">UI-04-C03 · 搜索关闭</string>
+    <string name="lab_expect_4_2">操作：系统返回
+预期：关闭查询并保留本页。</string>
+    <string name="lab_case_4_3">UI-04-C04 · 嵌套弹层</string>
+    <string name="lab_expect_4_3">操作：返回、再返回
+预期：先回弹层首页，再关闭弹层。</string>
+    <string name="lab_category_5">UI-05 安全区与滚动容器</string>
+    <string name="lab_case_5_0">UI-05-C01 · 长列表</string>
+    <string name="lab_expect_5_0">操作：滚到最后一项
+预期：末项可点击且无顶栏遮挡。</string>
+    <string name="lab_case_5_1">UI-05-C02 · 浮动按钮</string>
+    <string name="lab_expect_5_1">操作：滚至底部
+预期：末项不被FAB覆盖。</string>
+    <string name="lab_case_5_2">UI-05-C03 · 键盘</string>
+    <string name="lab_expect_5_2">操作：聚焦最后的输入框
+预期：输入和提交入口可见。</string>
+    <string name="lab_case_5_3">UI-05-C04 · 方向布局</string>
+    <string name="lab_expect_5_3">操作：横向观察与点击
+预期：方向性边距正确，导航图标按项目镜像。</string>
+    <string name="lab_category_6">UI-06 状态保留与回跳</string>
+    <string name="lab_case_6_0">UI-06-C01 · 输入保留</string>
+    <string name="lab_expect_6_0">操作：触发无关重组
+预期：输入和选择不丢。</string>
+    <string name="lab_case_6_1">UI-06-C02 · 回栈保留</string>
+    <string name="lab_expect_6_1">操作：回目录再进入同类别
+预期：本轮会话状态恢复。</string>
+    <string name="lab_case_6_2">UI-06-C03 · 配置重建</string>
+    <string name="lab_expect_6_2">操作：旋转设备或重建Activity
+预期：声明为saveable的状态恢复。</string>
+    <string name="lab_case_6_3">UI-06-C04 · 进程恢复</string>
+    <string name="lab_expect_6_3">操作：按文档执行进程终止并回任务
+预期：仅已声明可恢复字段恢复，无重复动作。</string>
+    <string name="lab_category_7">UI-07 主要操作与可用性</string>
+    <string name="lab_case_7_0">UI-07-C01 · 可执行</string>
+    <string name="lab_expect_7_0">操作：点击主操作
+预期：进入对应假数据结果。</string>
+    <string name="lab_case_7_1">UI-07-C02 · 无候选</string>
+    <string name="lab_expect_7_1">操作：检查FAB
+预期：无无效继续入口。</string>
+    <string name="lab_case_7_2">UI-07-C03 · 多选</string>
+    <string name="lab_expect_7_2">操作：检查主操作与批量操作
+预期：继续入口隐藏，批量入口可用。</string>
+    <string name="lab_case_7_3">UI-07-C04 · 执行中</string>
+    <string name="lab_expect_7_3">操作：重复点击启动
+预期：只启动一次。</string>
+    <string name="lab_category_8">UI-08 条目和点击区域</string>
+    <string name="lab_case_8_0">UI-08-C01 · 普通列表</string>
+    <string name="lab_expect_8_0">操作：点击整行和尾部动作
+预期：输出不同事件，每次只执行一个。</string>
+    <string name="lab_case_8_1">UI-08-C02 · 网格</string>
+    <string name="lab_expect_8_1">操作：点击同一实体
+预期：与列表打开相同实体。</string>
+    <string name="lab_case_8_2">UI-08-C03 · 长标题</string>
+    <string name="lab_expect_8_2">操作：放大字体并点击
+预期：文本不覆盖尾部动作。</string>
+    <string name="lab_case_8_3">UI-08-C04 · 选择模式</string>
+    <string name="lab_expect_8_3">操作：点击另一项
+预期：只切换选择，不进入详情。</string>
+    <string name="lab_category_9">UI-09 选择与批量操作</string>
+    <string name="lab_case_9_0">UI-09-C01 · 单选进入</string>
+    <string name="lab_expect_9_0">操作：长按一项
+预期：进入选择模式，计数为1。</string>
+    <string name="lab_case_9_1">UI-09-C02 · 多项选择</string>
+    <string name="lab_expect_9_1">操作：点击另一项再取消
+预期：计数和选中外观同步。</string>
+    <string name="lab_case_9_2">UI-09-C03 · 全选反选</string>
+    <string name="lab_expect_9_2">操作：全选后反选
+预期：计数归零，恢复普通模式。</string>
+    <string name="lab_case_9_3">UI-09-C04 · 范围与混合</string>
+    <string name="lab_expect_9_3">操作：范围选择并执行可用批量动作
+预期：只作用于适用实体并反馈。</string>
+    <string name="lab_category_10">UI-10 滑动拖拽与触觉</string>
+    <string name="lab_case_10_0">UI-10-C01 · 横滑</string>
+    <string name="lab_expect_10_0">操作：按提示横滑条目
+预期：只有配置动作触发。</string>
+    <string name="lab_case_10_1">UI-10-C02 · 禁用横滑</string>
+    <string name="lab_expect_10_1">操作：尝试横滑
+预期：不触发滑动动作。</string>
+    <string name="lab_case_10_2">UI-10-C03 · 重排序</string>
+    <string name="lab_expect_10_2">操作：长按手柄拖到新位置
+预期：顺序变化且返回后保留本轮状态。</string>
+    <string name="lab_case_10_3">UI-10-C04 · 替代入口</string>
+    <string name="lab_expect_10_3">操作：使用上移下移动作
+预期：可以完成相同排序。</string>
+    <string name="lab_category_11">UI-11 搜索与键盘</string>
+    <string name="lab_case_11_0">UI-11-C01 · 未搜索</string>
+    <string name="lab_expect_11_0">操作：点击搜索
+预期：query变为空字符串。</string>
+    <string name="lab_case_11_1">UI-11-C02 · 空查询</string>
+    <string name="lab_expect_11_1">操作：清空再返回
+预期：清空保持模式；返回退出。</string>
+    <string name="lab_case_11_2">UI-11-C03 · 有效查询</string>
+    <string name="lab_expect_11_2">操作：键盘提交
+预期：只提交一次且关闭键盘。</string>
+    <string name="lab_case_11_3">UI-11-C04 · 无结果</string>
+    <string name="lab_expect_11_3">操作：清空搜索
+预期：出现无结果提示，清空后恢复数据。</string>
+    <string name="lab_category_12">UI-12 筛选排序显示偏好</string>
+    <string name="lab_case_12_0">UI-12-C01 · 三态</string>
+    <string name="lab_expect_12_0">操作：连续切换三次
+预期：无约束、包含、排除可辨别。</string>
+    <string name="lab_case_12_1">UI-12-C02 · 活动筛选</string>
+    <string name="lab_expect_12_1">操作：复位
+预期：过滤提示消失。</string>
+    <string name="lab_case_12_2">UI-12-C03 · 排序</string>
+    <string name="lab_expect_12_2">操作：重复选择同字段
+预期：切换方向，显示顺序改变。</string>
+    <string name="lab_case_12_3">UI-12-C04 · 强制条件</string>
+    <string name="lab_expect_12_3">操作：尝试修改下载筛选
+预期：禁用且说明原因。</string>
+    <string name="lab_category_13">UI-13 菜单与溢出操作</string>
+    <string name="lab_case_13_0">UI-13-C01 · 普通菜单</string>
+    <string name="lab_expect_13_0">操作：打开更多并选动作
+预期：动作执行一次并关闭。</string>
+    <string name="lab_case_13_1">UI-13-C02 · 嵌套菜单</string>
+    <string name="lab_expect_13_1">操作：选择子项
+预期：提交子项并关闭菜单链。</string>
+    <string name="lab_case_13_2">UI-13-C03 · 取消</string>
+    <string name="lab_expect_13_2">操作：点击外部或返回
+预期：不执行业务动作。</string>
+    <string name="lab_case_13_3">UI-13-C04 · 受限能力</string>
+    <string name="lab_expect_13_3">操作：查看菜单
+预期：无虚假的可用入口。</string>
+    <string name="lab_category_14">UI-14 弹层与内部导航</string>
+    <string name="lab_case_14_0">UI-14-C01 · 确认框</string>
+    <string name="lab_expect_14_0">操作：打开并取消
+预期：无副作用。</string>
+    <string name="lab_case_14_1">UI-14-C02 · 自适应弹层</string>
+    <string name="lab_expect_14_1">操作：在手机和平板打开
+预期：采用现有AdaptiveSheet布局。</string>
+    <string name="lab_case_14_2">UI-14-C03 · 嵌套层</string>
+    <string name="lab_expect_14_2">操作：返回
+预期：回到弹层第一步。</string>
+    <string name="lab_case_14_3">UI-14-C04 · 草稿保护</string>
+    <string name="lab_expect_14_3">操作：尝试关闭
+预期：按声明提示放弃或保留。</string>
+    <string name="lab_category_15">UI-15 设置项与生效时机</string>
+    <string name="lab_case_15_0">UI-15-C01 · 即时设置</string>
+    <string name="lab_expect_15_0">操作：切换开关
+预期：已提交摘要立即改变。</string>
+    <string name="lab_case_15_1">UI-15-C02 · 单选</string>
+    <string name="lab_expect_15_1">操作：选择选项
+预期：复用现有Preference控件并更新假值。</string>
+    <string name="lab_case_15_2">UI-15-C03 · 依赖禁用</string>
+    <string name="lab_expect_15_2">操作：尝试子项
+预期：子项禁用。</string>
+    <string name="lab_case_15_3">UI-15-C04 · 取消编辑</string>
+    <string name="lab_expect_15_3">操作：改值后取消
+预期：旧值保留。</string>
+    <string name="lab_category_16">UI-16 输入校验与焦点</string>
+    <string name="lab_case_16_0">UI-16-C01 · 必填</string>
+    <string name="lab_expect_16_0">操作：点击确认或键盘提交
+预期：不可提交，有必填说明。</string>
+    <string name="lab_case_16_1">UI-16-C02 · 重复</string>
+    <string name="lab_expect_16_1">操作：尝试提交
+预期：不提交，显示重复错误。</string>
+    <string name="lab_case_16_2">UI-16-C03 · 有效</string>
+    <string name="lab_expect_16_2">操作：提交
+预期：提交一次并更新已保存值。</string>
+    <string name="lab_case_16_3">UI-16-C04 · 撤销编辑</string>
+    <string name="lab_expect_16_3">操作：编辑后取消
+预期：已保存值不变化。</string>
+    <string name="lab_category_17">UI-17 破坏性操作</string>
+    <string name="lab_case_17_0">UI-17-C01 · 确认范围</string>
+    <string name="lab_expect_17_0">操作：打开移除
+预期：确认禁用。</string>
+    <string name="lab_case_17_1">UI-17-C02 · 选择范围</string>
+    <string name="lab_expect_17_1">操作：确认
+预期：只删除所选范围。</string>
+    <string name="lab_case_17_2">UI-17-C03 · 取消</string>
+    <string name="lab_expect_17_2">操作：取消
+预期：假数据不变。</string>
+    <string name="lab_case_17_3">UI-17-C04 · 重复确认</string>
+    <string name="lab_expect_17_3">操作：快速重复触发
+预期：只记录一次有效提交。</string>
+    <string name="lab_category_18">UI-18 加载空态与错误</string>
+    <string name="lab_case_18_0">UI-18-C01 · 加载</string>
+    <string name="lab_expect_18_0">操作：检查并返回
+预期：有加载反馈和导航。</string>
+    <string name="lab_case_18_1">UI-18-C02 · 空数据</string>
+    <string name="lab_expect_18_1">操作：查看提示
+预期：说明如何添加数据。</string>
+    <string name="lab_case_18_2">UI-18-C03 · 无结果</string>
+    <string name="lab_expect_18_2">操作：清除限制
+预期：与空数据库文案不同。</string>
+    <string name="lab_case_18_3">UI-18-C04 · 错误</string>
+    <string name="lab_expect_18_3">操作：点击重试
+预期：恢复正常且栈不增加。</string>
+    <string name="lab_category_19">UI-19 刷新分页与长任务</string>
+    <string name="lab_case_19_0">UI-19-C01 · 首次任务</string>
+    <string name="lab_expect_19_0">操作：启动
+预期：状态变运行，尚未报告成功。</string>
+    <string name="lab_case_19_1">UI-19-C02 · 刷新</string>
+    <string name="lab_expect_19_1">操作：开始刷新再模拟失败
+预期：结果保留。</string>
+    <string name="lab_case_19_2">UI-19-C03 · 分页失败</string>
+    <string name="lab_expect_19_2">操作：追加失败后重试
+预期：不丢失第一页且不重复。</string>
+    <string name="lab_case_19_3">UI-19-C04 · 重复启动</string>
+    <string name="lab_expect_19_3">操作：连续启动
+预期：有效启动次数不增加。</string>
+    <string name="lab_category_20">UI-20 反馈重试与恢复</string>
+    <string name="lab_case_20_0">UI-20-C01 · 成功</string>
+    <string name="lab_expect_20_0">操作：触发假成功
+预期：只显示一次结果。</string>
+    <string name="lab_case_20_1">UI-20-C02 · 可重试</string>
+    <string name="lab_expect_20_1">操作：点击消息里的重试
+预期：重新执行并更新状态。</string>
+    <string name="lab_case_20_2">UI-20-C03 · 草稿保留</string>
+    <string name="lab_expect_20_2">操作：模拟失败
+预期：文本保留。</string>
+    <string name="lab_case_20_3">UI-20-C04 · 取消消息</string>
+    <string name="lab_expect_20_3">操作：关闭提示
+预期：不改变业务状态。</string>
+    <string name="lab_category_21">UI-21 全局模式与横幅</string>
+    <string name="lab_case_21_0">UI-21-C01 · 正常</string>
+    <string name="lab_expect_21_0">操作：观察
+预期：没有无意义横幅。</string>
+    <string name="lab_case_21_1">UI-21-C02 · 仅下载</string>
+    <string name="lab_expect_21_1">操作：尝试改下载条件
+预期：强制条件生效。</string>
+    <string name="lab_case_21_2">UI-21-C03 · 隐私</string>
+    <string name="lab_expect_21_2">操作：执行假阅读
+预期：假历史计数不增加。</string>
+    <string name="lab_case_21_3">UI-21-C04 · 组合</string>
+    <string name="lab_expect_21_3">操作：切换索引状态
+预期：横幅排序和布局稳定。</string>
+    <string name="lab_category_22">UI-22 视觉基础与复用</string>
+    <string name="lab_case_22_0">UI-22-C01 · 亮色</string>
+    <string name="lab_expect_22_0">操作：查看控件组
+预期：使用项目主题。</string>
+    <string name="lab_case_22_1">UI-22-C02 · 暗色</string>
+    <string name="lab_expect_22_1">操作：查看相同控件
+预期：文字和状态可读。</string>
+    <string name="lab_case_22_2">UI-22-C03 · 禁用</string>
+    <string name="lab_expect_22_2">操作：尝试点击
+预期：无动作且外观可辨。</string>
+    <string name="lab_case_22_3">UI-22-C04 · 错误</string>
+    <string name="lab_expect_22_3">操作：检查文字与控件
+预期：符合主题error语义。</string>
+    <string name="lab_category_23">UI-23 封面文本角标日期</string>
+    <string name="lab_case_23_0">UI-23-C01 · 常规内容</string>
+    <string name="lab_expect_23_0">操作：查看条目
+预期：信息层级一致。</string>
+    <string name="lab_case_23_1">UI-23-C02 · 长文本</string>
+    <string name="lab_expect_23_1">操作：展开/收起
+预期：完整内容可访问。</string>
+    <string name="lab_case_23_2">UI-23-C03 · 缺失封面</string>
+    <string name="lab_expect_23_2">操作：查看占位
+预期：布局不塌陷。</string>
+    <string name="lab_case_23_3">UI-23-C04 · 边界元数据</string>
+    <string name="lab_expect_23_3">操作：查看角标
+预期：不把未知当成零或今天。</string>
+    <string name="lab_category_24">UI-24 动效与滚动联动</string>
+    <string name="lab_case_24_0">UI-24-C01 · 列表变动</string>
+    <string name="lab_expect_24_0">操作：增加删除假条目
+预期：动画不改变ID语义。</string>
+    <string name="lab_case_24_1">UI-24-C02 · 快速切换</string>
+    <string name="lab_expect_24_1">操作：快速切换多次
+预期：最终状态正确。</string>
+    <string name="lab_case_24_2">UI-24-C03 · 滚动联动</string>
+    <string name="lab_expect_24_2">操作：上下滚动
+预期：示例浮动操作随真实滚动调整。</string>
+    <string name="lab_case_24_3">UI-24-C04 · 关闭动画</string>
+    <string name="lab_expect_24_3">操作：执行相同行为
+预期：状态和交互仍完整。</string>
+    <string name="lab_category_25">UI-25 屏幕与系统适配</string>
+    <string name="lab_case_25_0">UI-25-C01 · 手机</string>
+    <string name="lab_expect_25_0">操作：检查全页
+预期：控件可点击。</string>
+    <string name="lab_case_25_1">UI-25-C02 · 平板</string>
+    <string name="lab_expect_25_1">操作：切换布局
+预期：沿用项目平板判断。</string>
+    <string name="lab_case_25_2">UI-25-C03 · 大字体</string>
+    <string name="lab_expect_25_2">操作：滚动全页
+预期：无关键操作裁切。</string>
+    <string name="lab_case_25_3">UI-25-C04 · RTL与键盘</string>
+    <string name="lab_expect_25_3">操作：输入和返回
+预期：安全区和导航方向正确。</string>
+    <string name="lab_category_26">UI-26 无障碍与本地化</string>
+    <string name="lab_case_26_0">UI-26-C01 · 语义标签</string>
+    <string name="lab_expect_26_0">操作：使用TalkBack遍历
+预期：动作名称正确。</string>
+    <string name="lab_case_26_1">UI-26-C02 · 复选状态</string>
+    <string name="lab_expect_26_1">操作：通过读屏切换
+预期：状态变更被正确表达。</string>
+    <string name="lab_case_26_2">UI-26-C03 · 禁用</string>
+    <string name="lab_expect_26_2">操作：尝试读屏激活
+预期：不可执行。</string>
+    <string name="lab_case_26_3">UI-26-C04 · 语言切换</string>
+    <string name="lab_expect_26_3">操作：重复核心流程
+预期：资源完整，testTag稳定。</string>
+    <string name="lab_category_27">UI-27 作品与章节</string>
+    <string name="lab_case_27_0">UI-27-C01 · 可继续</string>
+    <string name="lab_expect_27_0">操作：继续阅读
+预期：定位下一未读假章节。</string>
+    <string name="lab_case_27_1">UI-27-C02 · 全已读</string>
+    <string name="lab_expect_27_1">操作：检查继续入口
+预期：不出现无目标动作。</string>
+    <string name="lab_case_27_2">UI-27-C03 · 多选章节</string>
+    <string name="lab_expect_27_2">操作：批量标记
+预期：只修改所选假章节。</string>
+    <string name="lab_case_27_3">UI-27-C04 · 缺源</string>
+    <string name="lab_expect_27_3">操作：检查返回与恢复
+预期：信息保留，有缺失说明。</string>
+    <string name="lab_category_28">UI-28 阅读器</string>
+    <string name="lab_case_28_0">UI-28-C01 · 工具栏</string>
+    <string name="lab_expect_28_0">操作：点内容显示/隐藏
+预期：控制层可恢复。</string>
+    <string name="lab_case_28_1">UI-28-C02 · 边界</string>
+    <string name="lab_expect_28_1">操作：尝试越界
+预期：页码始终在有效范围。</string>
+    <string name="lab_case_28_2">UI-28-C03 · 方向</string>
+    <string name="lab_expect_28_2">操作：前后翻页
+预期：语义前后与阅读方向一致。</string>
+    <string name="lab_case_28_3">UI-28-C04 · 设置返回</string>
+    <string name="lab_expect_28_3">操作：打开设置再关闭
+预期：页码不丢失。</string>
+    <string name="lab_category_29">UI-29 下载与后台控制</string>
+    <string name="lab_case_29_0">UI-29-C01 · 待运行</string>
+    <string name="lab_expect_29_0">操作：启动
+预期：进入运行且进度未满。</string>
+    <string name="lab_case_29_1">UI-29-C02 · 暂停恢复</string>
+    <string name="lab_expect_29_1">操作：暂停再恢复
+预期：进度不回零。</string>
+    <string name="lab_case_29_2">UI-29-C03 · 失败重试</string>
+    <string name="lab_expect_29_2">操作：重试
+预期：进入等待或运行，已有完成项保留。</string>
+    <string name="lab_case_29_3">UI-29-C04 · 空队列</string>
+    <string name="lab_expect_29_3">操作：查看动作
+预期：没有无效运行FAB。</string>
+    <string name="lab_category_30">UI-30 源扩展与外部入口</string>
+    <string name="lab_case_30_0">UI-30-C01 · 可安装</string>
+    <string name="lab_expect_30_0">操作：假安装
+预期：显示运行状态。</string>
+    <string name="lab_case_30_1">UI-30-C02 · 已加载</string>
+    <string name="lab_expect_30_1">操作：打开设置
+预期：进入假配置。</string>
+    <string name="lab_case_30_2">UI-30-C03 · 未信任</string>
+    <string name="lab_expect_30_2">操作：取消或确认信任
+预期：取消不改变信任，确认才改变。</string>
+    <string name="lab_case_30_3">UI-30-C04 · 缺权限</string>
+    <string name="lab_expect_30_3">操作：重试入口
+预期：只记录请求，未获得权限前不安装。</string>
+    <string name="lab_category_31">UI-31 追踪与外部绑定</string>
+    <string name="lab_case_31_0">UI-31-C01 · 未绑定</string>
+    <string name="lab_expect_31_0">操作：搜索后绑定
+预期：进入已绑定假状态。</string>
+    <string name="lab_case_31_1">UI-31-C02 · 完整能力</string>
+    <string name="lab_expect_31_1">操作：编辑字段
+预期：字段按范围更新。</string>
+    <string name="lab_case_31_2">UI-31-C03 · 能力有限</string>
+    <string name="lab_expect_31_2">操作：查看面板
+预期：评分入口不存在。</string>
+    <string name="lab_case_31_3">UI-31-C04 · 失败解绑</string>
+    <string name="lab_expect_31_3">操作：重试或取消解绑
+预期：错误明确，取消保留关联。</string>
+    <string name="lab_category_32">UI-32 存储备份与导入导出</string>
+    <string name="lab_case_32_0">UI-32-C01 · 未配置</string>
+    <string name="lab_expect_32_0">操作：假选择和取消
+预期：取消不改变配置。</string>
+    <string name="lab_case_32_1">UI-32-C02 · 有效</string>
+    <string name="lab_expect_32_1">操作：开始假备份
+预期：运行中禁止重复任务。</string>
+    <string name="lab_case_32_2">UI-32-C03 · 权限失效</string>
+    <string name="lab_expect_32_2">操作：重新授权
+预期：显式操作才变为有效。</string>
+    <string name="lab_case_32_3">UI-32-C04 · 不兼容</string>
+    <string name="lab_expect_32_3">操作：尝试恢复
+预期：拒绝执行并保留原数据。</string>
+</resources>

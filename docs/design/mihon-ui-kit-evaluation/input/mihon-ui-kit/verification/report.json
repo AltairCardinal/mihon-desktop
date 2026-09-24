@@ -1,0 +1,87 @@
+{
+  "version": "1.0.0",
+  "created_at_utc": "2026-09-23T17:46:41.406638+00:00",
+  "upstream_reference": "mihonapp/mihon@f52d890e7f8a3c418ddab41f41d4b577bce0dc06",
+  "android_adapter_target": "AltairCardinal/mihon@6fbf6dfca203d99d6dd32137f2df97ced40c81b8",
+  "delivery": {
+    "rules": 128,
+    "categories": 32,
+    "declared_scenarios": 128,
+    "instrumentation_test_methods": 10
+  },
+  "execution": [
+    {
+      "layer": "KOTLIN_JVM_FIXTURE_MODEL",
+      "status": "PASS",
+      "passed": 180,
+      "failed": 0,
+      "command": "python tools/run_model_checks.py",
+      "exit_code": 0,
+      "scope": "128 snapshot round trips + 52 model/contract checks. No Android framework executed."
+    },
+    {
+      "layer": "PACKAGE_STRUCTURE",
+      "status": "PASS",
+      "passed": 27,
+      "failed": 0,
+      "command": "python tools/validate_package.py",
+      "exit_code": 0
+    },
+    {
+      "layer": "INSTALLER_SYNTHETIC_GIT_REPO",
+      "status": "PASS",
+      "passed": 8,
+      "failed": 0,
+      "command": "python verification/test_installer.py",
+      "exit_code": 0
+    },
+    {
+      "layer": "REAL_REPOSITORY_INSTALL",
+      "status": "NOT_RUN",
+      "reason": "No mounted full repository. No remote writes made."
+    },
+    {
+      "layer": "ANDROID_BUILD",
+      "status": "BLOCKED",
+      "command": "./gradlew :app:assembleDebug :app:assembleDebugAndroidTest",
+      "exit_code": null,
+      "reason": "No Android SDK/adb/Gradle wrapper checkout. Container git clone blocked by DNS resolution failure."
+    },
+    {
+      "layer": "ANDROID_INSTRUMENTATION",
+      "status": "NOT_RUN",
+      "command": "./gradlew :app:connectedDebugAndroidTest",
+      "exit_code": null,
+      "reason": "Requires successful build and Android device/emulator."
+    },
+    {
+      "layer": "VISUAL_AND_ACCESSIBILITY",
+      "status": "NOT_RUN",
+      "reason": "No native render, approved baseline screenshots or device evidence."
+    },
+    {
+      "layer": "PRODUCTION_E2E",
+      "status": "NOT_RUN",
+      "reason": "Native business examples use fake data and reducer; not real reader, installer, tracker or filesystem."
+    },
+    {
+      "layer": "RELEASE_PACKAGE_ISOLATION",
+      "status": "NOT_RUN",
+      "reason": "Debug source-set layout checked; final manifests/APK/AAB not built."
+    }
+  ],
+  "environment": {
+    "python": "3.13.5",
+    "java": "openjdk version \"21.0.11\" 2026-04-21\nOpenJDK Runtime Environment (build 21.0.11+10-1-deb13u2-Debian)\nOpenJDK 64-Bit Server VM (build 21.0.11+10-1-deb13u2-Debian, mixed mode, sharing)",
+    "kotlin": "info: kotlinc-jvm 1.9.0 (JRE 21.0.11+10-1-deb13u2-Debian)",
+    "android_sdk_available": false,
+    "adb_available": false
+  },
+  "known_limits": [
+    "Target is fetched remote Android main; local/unpushed branch not inspected.",
+    "Android source signatures, Compose semantics, resource compilation and Spotless remain unverified.",
+    "32x4 presets are an initial inventory, not exhaustive state-space or platform coverage.",
+    "Lab UI controls and diagnostics are not production design patterns.",
+    "The host Android Application still initializes on startup; use disposable debug data."
+  ]
+}

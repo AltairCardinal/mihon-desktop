@@ -1,0 +1,41 @@
+{
+  "kind": "INSTALLER_SYNTHETIC_REPOSITORY_ONLY",
+  "passed": 8,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "__main__.InstallerTests.test_apply_preserves_instructions_and_existing_manifest",
+      "status": "PASS"
+    },
+    {
+      "name": "__main__.InstallerTests.test_changed_file_after_preflight_blocks_writes",
+      "status": "PASS"
+    },
+    {
+      "name": "__main__.InstallerTests.test_conflicting_file_blocks_all_writes",
+      "status": "PASS"
+    },
+    {
+      "name": "__main__.InstallerTests.test_dry_run_does_not_write",
+      "status": "PASS"
+    },
+    {
+      "name": "__main__.InstallerTests.test_exact_base_required_by_default",
+      "status": "PASS"
+    },
+    {
+      "name": "__main__.InstallerTests.test_failure_rolls_back_written_files",
+      "status": "PASS"
+    },
+    {
+      "name": "__main__.InstallerTests.test_second_install_is_idempotent",
+      "status": "PASS"
+    },
+    {
+      "name": "__main__.InstallerTests.test_symlink_destination_is_rejected",
+      "status": "PASS"
+    }
+  ],
+  "real_repository_installation": "NOT_RUN",
+  "android_build": "NOT_RUN"
+}
