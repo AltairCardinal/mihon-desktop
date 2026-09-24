@@ -16,7 +16,8 @@
 .author-hero > div { width: 100%; }
 .work-row { align-items: flex-start; }
 .work-row strong { overflow-wrap: anywhere; }
-.work-sources { display: flex; flex-wrap: wrap; gap: 8px; }
+.work-sources { display: block; margin-top: 4px; color: var(--on-surface); opacity: .78; font-size: 14px; line-height: 20px; overflow-wrap: anywhere; }
+.work-source + .work-source::before { content: ' · '; color: var(--outline); }
 .source-button { font-size: 12px; min-height: 32px; padding: 6px 10px; color: var(--primary); max-width: 100%; overflow-wrap: anywhere; }
 /* GlobalSearchToolbar uses a horizontally scrolling Row of Material 3 FilterChips. */
 .source-filters { display: flex; gap: 8px; flex-wrap: nowrap; overflow-x: auto; max-width: 100%; padding: 8px 0; margin-bottom: 8px; }

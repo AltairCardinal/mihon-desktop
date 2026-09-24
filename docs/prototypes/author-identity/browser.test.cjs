@@ -18,6 +18,26 @@ async function setup(run) {
   } finally { await browser.close(); }
 }
 const action = (f, a) => f.locator(`[data-action="${a}"]`);
+test('作者作品仅在列表直接显示原版风格图源，两种网格点击后选择来源且没有 Needs review', () => setup(async (page, pc, phone) => {
+  await page.locator('#narrow').check();
+  for (const f of [pc, phone]) {
+    if (f === pc) await f.getByTestId('nav-authors').click();
+    else { await f.getByTestId('nav-browse').click(); await action(f, 'authors').click(); }
+    await f.locator('[data-author="a"]').click();
+    const work = f.locator('[data-action="work"][data-work="w0"]');
+    assert.deepEqual(await work.locator('.work-source').allTextContents(), ['漫画柜', '备用图源（演示）']);
+    assert.equal(await work.locator('.source-summary').count(), 0);
+    assert.equal(await work.locator('.work-sources').evaluate(e => getComputedStyle(e).fontSize), '14px');
+    assert.equal(await f.getByRole('button', { name: /Needs review/i }).count(), 0);
+    for (const mode of ['comfortable', 'compact']) {
+      await action(f, 'display').click(); await f.locator(`[data-display="${mode}"]`).click();
+      assert.equal(await work.locator('.work-sources, .source-summary').count(), 0);
+      await work.click();
+      assert.equal(await f.getByRole('dialog').locator('[data-version]').count(), 2);
+      await f.getByRole('button', { name: '取消', exact: true }).click();
+    }
+  }
+}));
 test('默认多图源与发现新作提醒、查看消除、重复检查及双端隔离', () => setup(async (page, pc, phone) => {
   await page.locator('#narrow').check();
   for (const [target, f] of [['windows', pc], ['android', phone]]) {
@@ -372,11 +392,11 @@ test('简繁与符号差异自动聚合、按普通图源筛选并支持分开�
     const group = f.locator('[data-action="work"][data-work="script-hans"]');
     assert.equal(await group.count(), 1);
     assert.match(await group.innerText(), /诡谲屋/);
-    assert.match(await group.innerText(), /2 个来源版本/);
+    assert.deepEqual(await group.locator('.work-source').allTextContents(), ['拷贝漫画', '漫画柜']);
     assert.equal(await f.locator('[data-action="work"][data-work="script-hant"]').count(), 0);
     const punctuationGroup = f.locator('[data-action="work"][data-work="script-punctuation-a"]');
     assert.equal(await punctuationGroup.count(), 1);
-    assert.match(await punctuationGroup.innerText(), /2 个来源版本/);
+    assert.deepEqual(await punctuationGroup.locator('.work-source').allTextContents(), ['拷贝漫画', '漫画柜']);
     assert.equal(await f.locator('[data-action="work"][data-work="script-punctuation-b"]').count(), 0);
     assert.equal(await f.getByRole('button', { name: /简体源|繁體源/ }).count(), 0);
     assert.doesNotMatch(await f.locator('main').innerText(), /按标题简繁体合并|确认后合并/);
@@ -387,8 +407,8 @@ test('简繁与符号差异自动聚合、按普通图源筛选并支持分开�
     await f.getByRole('button', { name: '拷贝漫画', exact: true }).evaluate(e => e.click());
     assert.equal(await f.locator('[data-action="work"][data-work="script-hans"]').count(), 1);
     await page.locator('#add-script').evaluate(e => e.click());
-    await f.getByText('3 个来源版本', { exact: true }).waitFor();
-    assert.match(await f.locator('[data-action="work"][data-work="script-hans"]').innerText(), /3 个来源版本/);
+    await group.getByText('新增图源（演示）', { exact: true }).waitFor();
+    assert.deepEqual((await group.locator('.work-source').allTextContents()).sort(), ['拷贝漫画', '新增图源（演示）', '漫画柜'].sort());
     assert.equal(await f.getByRole('status').count(), 0);
     await f.getByRole('button', { name: '全部来源', exact: true }).evaluate(e => e.click());
     await group.click();

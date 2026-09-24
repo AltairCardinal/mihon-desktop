@@ -26,7 +26,9 @@
   };
   const groupUnseen = group => group.versions.some(v => unseen(current().id).includes(v.work));
   const workItem = group => {
-    return `<button class="row work-row work-item" data-action="work" data-work="${esc(group.id)}"><span class="work-cover-wrap"><span class="cover small">${esc(group.title)}</span>${badge(collectedGroup(group))}${displayMode === 'compact' ? `<strong class="cover-title">${esc(group.title)}</strong>` : ''}</span><span class="grow">${displayMode !== 'compact' ? `<strong>${esc(group.title)}</strong>` : ''}${groupUnseen(group) ? '<span class="new-work-badge">新作 · 未查看</span>' : ''}${groupDate(group)}<span class="source-summary">${group.versions.length} 个来源版本</span></span></button>`;
+    const sourceNames = [...new Set(group.versions.map(v => v.source))];
+    const sources = displayMode === 'list' ? `<span class="work-sources" aria-label="图源：${esc(sourceNames.join('、'))}">${sourceNames.map(source => `<span class="work-source">${esc(source)}</span>`).join('')}</span>` : '';
+    return `<button class="row work-row work-item" data-action="work" data-work="${esc(group.id)}"><span class="work-cover-wrap"><span class="cover small">${esc(group.title)}</span>${badge(collectedGroup(group))}${displayMode === 'compact' ? `<strong class="cover-title">${esc(group.title)}</strong>` : ''}</span><span class="grow">${displayMode !== 'compact' ? `<strong>${esc(group.title)}</strong>` : ''}${groupUnseen(group) ? '<span class="new-work-badge">新作 · 未查看</span>' : ''}${sources}${groupDate(group)}</span></button>`;
   };
   const authorRow = a => {
     // Local design fixtures have no reading/popularity signals: retain first-seen work order.
