@@ -34,16 +34,22 @@ data class WorkPresentationGroup(
     val firstSeenAt: Long?
         get() = members.mapNotNull { it.firstSeenAt.takeIf { firstSeen -> firstSeen > 0L } }.minOrNull()
 
-    /** The earliest trusted work date is shared by all current members. */
+    /** The earliest retained publication date among current members, including evidence under review. */
     val publishedDateAt: Long?
         get() = members
-            .filter { it.publishedDateQuality == SourceDateQualityStatus.TRUSTED }
             .mapNotNull(SourceWorkArchiveVersion::publishedDateAt)
             .minOrNull()
 
     val publishedDateQuality: SourceDateQualityStatus
         get() = when {
-            publishedDateAt != null -> SourceDateQualityStatus.TRUSTED
+            publishedDateAt != null -> if (members.any {
+                    it.publishedDateAt == publishedDateAt && it.publishedDateQuality != SourceDateQualityStatus.TRUSTED
+                }
+            ) {
+                SourceDateQualityStatus.SUSPECT
+            } else {
+                SourceDateQualityStatus.TRUSTED
+            }
             members.any { it.publishedDateQuality == SourceDateQualityStatus.SUSPECT } ->
                 SourceDateQualityStatus.SUSPECT
             else -> SourceDateQualityStatus.UNKNOWN

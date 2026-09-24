@@ -1,0 +1,74 @@
+ALTER TABLE author_archive_source_works
+ADD COLUMN published_date_snapshot_at INTEGER CHECK(published_date_snapshot_at IS NULL OR published_date_snapshot_at > 0);
+
+ALTER TABLE author_archive_source_works
+ADD COLUMN published_date_snapshot_basis TEXT;
+
+ALTER TABLE author_archive_source_works
+ADD COLUMN published_date_snapshot_reason TEXT;
+
+UPDATE author_archive_source_works
+SET published_date_snapshot_at = (
+        SELECT MIN(S.value_at)
+        FROM author_archive_source_date_quality_samples S
+        JOIN author_archive_source_date_quality Q
+            ON Q.extension_package = S.extension_package
+            AND Q.extension_version = S.extension_version
+            AND Q.source_id = S.source_id
+            AND Q.field_kind = S.field_kind
+        WHERE S.source_id = author_archive_source_works.source_id
+            AND S.field_kind = 'WORK_PUBLISHED'
+            AND S.work_natural_key = author_archive_source_works.stable_source_url
+            AND S.value_at > 0
+            AND S.precision = 'DAY'
+            AND S.semantic_confirmed = 1
+            AND S.network_failure = 0
+            AND Q.status = 'TRUSTED'
+    ),
+    published_date_snapshot_basis = (
+        SELECT S.extension_package || '@' || S.extension_version
+        FROM author_archive_source_date_quality_samples S
+        JOIN author_archive_source_date_quality Q
+            ON Q.extension_package = S.extension_package
+            AND Q.extension_version = S.extension_version
+            AND Q.source_id = S.source_id
+            AND Q.field_kind = S.field_kind
+        WHERE S.source_id = author_archive_source_works.source_id
+            AND S.field_kind = 'WORK_PUBLISHED'
+            AND S.work_natural_key = author_archive_source_works.stable_source_url
+            AND S.value_at > 0
+            AND S.precision = 'DAY'
+            AND S.semantic_confirmed = 1
+            AND S.network_failure = 0
+            AND Q.status = 'TRUSTED'
+        ORDER BY S.value_at ASC, S.observed_at DESC, S._id DESC
+        LIMIT 1
+    );
+
+UPDATE author_archive_source_works
+SET published_date_snapshot_reason = CASE
+    WHEN NOT EXISTS(
+        SELECT 1 FROM author_archive_source_date_quality_current C
+        WHERE C.source_id = author_archive_source_works.source_id
+            AND C.field_kind = 'WORK_PUBLISHED'
+    ) THEN 'date_quality_not_available'
+    WHEN NOT EXISTS(
+        SELECT 1 FROM author_archive_source_date_quality_current C
+        WHERE C.source_id = author_archive_source_works.source_id
+            AND C.field_kind = 'WORK_PUBLISHED'
+            AND C.extension_package || '@' || C.extension_version = published_date_snapshot_basis
+    ) THEN 'extension_version_changed'
+    WHEN EXISTS(
+        SELECT 1 FROM author_archive_source_date_quality_current C
+        JOIN author_archive_source_date_quality Q
+            ON Q.extension_package = C.extension_package
+            AND Q.extension_version = C.extension_version
+            AND Q.source_id = C.source_id
+            AND Q.field_kind = C.field_kind
+        WHERE C.source_id = author_archive_source_works.source_id
+            AND C.field_kind = 'WORK_PUBLISHED'
+            AND Q.status != 'TRUSTED'
+    ) THEN 'date_quality_downgraded'
+    ELSE NULL
+END
+WHERE published_date_snapshot_at IS NOT NULL;

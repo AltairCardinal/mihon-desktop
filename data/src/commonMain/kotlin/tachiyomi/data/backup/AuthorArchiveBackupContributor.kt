@@ -107,6 +107,9 @@ class SqlDelightAuthorArchiveBackupContributor(
                     chapterCount = work.catalog_chapter_count,
                     chapterCompleteness = work.chapter_count_state,
                     latestChapterAt = work.latest_chapter_at,
+                    publishedDateAt = work.published_date_snapshot_at,
+                    publishedDateBasis = work.published_date_snapshot_basis,
+                    publishedDateReason = work.published_date_snapshot_reason,
                     bindings = bindings[work.source_id to work.stable_source_url].orEmpty().map { binding ->
                         BackupAuthorBinding(
                             creatorPortableKey = binding.creator_portable_key,
@@ -547,6 +550,14 @@ class SqlDelightAuthorArchiveBackupContributor(
                 )
             }
         }
+        work.publishedDateAt?.let { publishedDateAt ->
+            author_archiveQueries.restoreWorkPublicationDate(
+                publishedDateAt = publishedDateAt,
+                basis = work.publishedDateBasis,
+                reason = work.publishedDateReason,
+                sourceWorkId = sourceWorkId,
+            )
+        }
         work.bindings.forEach { binding ->
             val creatorId = creatorIds.getValue(binding.creatorPortableKey)
             val previousRole = author_archiveQueries.getArchiveSourceWorkCreator(sourceWorkId, creatorId)
@@ -609,6 +620,11 @@ class SqlDelightAuthorArchiveBackupContributor(
             chapterCount = chapterCount,
             chapterCompleteness = completeness,
             latestChapterAt = versions.mapNotNull { it.latestChapterAt }.maxOrNull(),
+            publishedDateAt = versions.mapNotNull { it.publishedDateAt }.minOrNull(),
+            publishedDateBasis = versions.filter { it.publishedDateAt != null }
+                .minByOrNull { it.publishedDateAt!! }?.publishedDateBasis,
+            publishedDateReason = versions.filter { it.publishedDateAt != null }
+                .minByOrNull { it.publishedDateAt!! }?.publishedDateReason,
         )
     }
 
@@ -771,6 +787,14 @@ class SqlDelightAuthorArchiveBackupContributor(
             work.chapterCompleteness?.let { enumValueOf<ChapterCatalogCompleteness>(it) }
             require(work.latestChapterAt == null || work.latestChapterAt > 0L) {
                 "Source work latest chapter time must be positive"
+            }
+            require(work.publishedDateAt == null || work.publishedDateAt > 0L) {
+                "Source work publication date must be positive"
+            }
+            require(
+                work.publishedDateAt != null || (work.publishedDateBasis == null && work.publishedDateReason == null),
+            ) {
+                "Source work publication evidence requires a date"
             }
             require(work.bindings.distinctBy(BackupAuthorBinding::creatorPortableKey).size == work.bindings.size) {
                 "Duplicate creator binding for source work"

@@ -4,9 +4,12 @@ import cafe.adriel.voyager.core.screen.Screen
 import eu.kanade.tachiyomi.data.library.CreatorDiscoveryJob
 import eu.kanade.tachiyomi.test.ScreenModelTestHost
 import io.mockk.coEvery
+import io.mockk.coVerifyOrder
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -30,6 +33,7 @@ import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.ManageCreatorIdentity
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.model.ArchiveWatchPolicy
+import tachiyomi.domain.creator.model.CreatorCardProjectionPage
 import tachiyomi.domain.creator.model.CreatorMentionResolution
 import tachiyomi.domain.creator.model.CreatorRelationOrigin
 import tachiyomi.domain.creator.model.CreatorRelationVerification
@@ -59,6 +63,59 @@ class AndroidAuthorArchiveWiringTest {
     @AfterEach
     fun releaseJdbcDriver() {
         java.sql.DriverManager.deregisterDriver(jdbcDriver)
+    }
+
+    @Test
+    fun `Android author list imports legacy exclusions before its first SQL card page`() = runTest {
+        kotlinx.coroutines.Dispatchers.setMain(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler))
+        try {
+            var legacyValues = emptySet<String>()
+            val legacyPreference = mockk<tachiyomi.core.common.preference.Preference<Set<String>>> {
+                every { get() } answers { legacyValues }
+                every { set(any()) } answers { legacyValues = firstArg() }
+            }
+            val store = mockk<tachiyomi.core.common.preference.PreferenceStore>(relaxed = true) {
+                every { getStringSet(any(), any()) } returns legacyPreference
+            }
+            val preferences = tachiyomi.domain.library.service.LibraryPreferences(store)
+            val sourceWork = SourceWorkNaturalKey(82L, "/legacy-separated")
+            tachiyomi.domain.creator.service.CreatorWorkPresentationExclusions(
+                preferences.creatorWorkPresentationExclusions(),
+            ).exclude(7L, sourceWork)
+            val creatorRepository = mockk<tachiyomi.domain.creator.repository.CreatorRepository> {
+                every { getCreatorsAsFlow() } returns flowOf(emptyList())
+                every { getFollowedCreatorsAsFlow() } returns flowOf(emptyList())
+            }
+            val archiveRepository = mockk<tachiyomi.domain.creator.repository.CreatorArchiveRepository> {
+                every { observeUnreadWorkDiscoveries(any()) } returns flowOf(emptyList())
+                coEvery { importPresentationExclusions(any()) } returns mapOf(7L to setOf(sourceWork))
+                coEvery { getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any(), any()) } returns
+                    CreatorCardProjectionPage(0, 50, false, emptyList())
+            }
+            val model = modelHost.create {
+                AndroidAuthorsScreenModel(
+                    creatorArchive = CreatorArchive(creatorRepository, archiveRepository),
+                    getCreators = GetCreators(creatorRepository),
+                    sourcePreferences = mockk<eu.kanade.domain.source.service.SourcePreferences> {
+                        every { enabledLanguages() } returns mockk {
+                            every { get() } returns emptySet()
+                        }
+                    },
+                    coverCache = mockk(),
+                    preferences = tachiyomi.domain.creator.service.CreatorDiscoveryPreferences(store),
+                    onSettingsSaved = {},
+                    libraryPreferences = preferences,
+                )
+            }
+            kotlinx.coroutines.withTimeout(5_000) { model.state.first { !it.loading } }
+            coVerifyOrder {
+                archiveRepository.importPresentationExclusions(mapOf(7L to setOf(sourceWork)))
+                archiveRepository.getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any(), any())
+            }
+        } finally {
+            modelHost.close()
+            kotlinx.coroutines.Dispatchers.resetMain()
+        }
     }
 
     @Test
@@ -221,9 +278,10 @@ class AndroidAuthorArchiveWiringTest {
             detail.openVersion(version).join()
             val opened = request.await()
             assertEquals(321L, opened.mangaId)
+            assertEquals(creator.id, opened.creatorId)
             assertTrue(repository.getUnreadWorkDiscoveries(10L).isNotEmpty())
 
-            detail.markWorkSeenAfterNavigation(opened.sourceWork)
+            detail.markWorkSeenAfterNavigation(opened.creatorId, opened.sourceWork)
             assertTrue(repository.getUnreadWorkDiscoveries(10L).isEmpty())
         } finally {
             modelHost.close()

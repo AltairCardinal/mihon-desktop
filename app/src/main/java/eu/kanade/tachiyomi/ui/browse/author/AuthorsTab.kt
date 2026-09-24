@@ -107,6 +107,7 @@ import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.ChapterCatalogCompleteness
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.CreatorCardProjection
+import tachiyomi.domain.creator.model.CreatorCardProjectionPage
 import tachiyomi.domain.creator.model.CreatorCardWorkCandidate
 import tachiyomi.domain.creator.model.CreatorMention
 import tachiyomi.domain.creator.model.CreatorMentionResolution
@@ -211,7 +212,7 @@ fun AndroidCreatorIdentityChooserDialog(
 @Composable
 fun Screen.authorsTab(): TabContent {
     val navigator = LocalNavigator.currentOrThrow
-    val model = rememberScreenModel { AndroidAuthorsScreenModel() }
+    val model = rememberScreenModel { AndroidAuthorsScreenModel(libraryPreferences = Injekt.get()) }
     val state by model.state.collectAsState()
     return TabContent(
         titleRes = MR.strings.desktop_ui_authors,
@@ -353,12 +354,17 @@ internal class AndroidAuthorsScreenModel(
     private val sourcePreferences: SourcePreferences = Injekt.get(),
     private val coverCache: CoverCache = Injekt.get(),
     preferences: tachiyomi.domain.creator.service.CreatorDiscoveryPreferences = Injekt.get(),
+    libraryPreferences: LibraryPreferences? = null,
     onSettingsSaved: suspend () -> Unit = {
         if (creatorArchive.getDueWatchSources(System.currentTimeMillis(), 1).isNotEmpty()) {
             eu.kanade.tachiyomi.data.library.CreatorDiscoveryJob.enqueue(Injekt.get<android.app.Application>())
         }
     },
 ) : ScreenModel {
+    private val legacyPresentationExclusions = libraryPreferences?.let {
+        CreatorWorkPresentationExclusions(it.creatorWorkPresentationExclusions())
+    }
+    private var legacyPresentationExclusionsImported = false
     val settingsEditor = tachiyomi.domain.creator.service.CreatorSettingsEditor(
         preferences,
         screenModelScope,
@@ -503,8 +509,19 @@ internal class AndroidAuthorsScreenModel(
         }
     }
 
-    private suspend fun getPage(offset: Int, followedOnly: Boolean, query: String) =
-        creatorArchive.getCreatorCardProjectionPage(
+    private suspend fun getPage(offset: Int, followedOnly: Boolean, query: String): CreatorCardProjectionPage {
+        if (!legacyPresentationExclusionsImported) {
+            val legacy = legacyPresentationExclusions?.entries().orEmpty()
+            if (legacy.isNotEmpty()) {
+                val imported = creatorArchive.importPresentationExclusions(legacy)
+                legacyPresentationExclusions?.remove(imported)
+                legacyPresentationExclusionsImported = imported.values.sumOf { it.size } ==
+                    legacy.values.sumOf { it.size }
+            } else {
+                legacyPresentationExclusionsImported = true
+            }
+        }
+        return creatorArchive.getCreatorCardProjectionPage(
             offset = offset,
             limit = CREATOR_CARD_PAGE_SIZE,
             followedOnly = followedOnly,
@@ -515,6 +532,7 @@ internal class AndroidAuthorsScreenModel(
                 LocaleHelper.getApplicationLanguageTag(),
             ),
         )
+    }
 }
 
 private const val CREATOR_CARD_PAGE_SIZE = 50
@@ -610,7 +628,7 @@ data class AndroidAuthorDetailScreen(val creatorId: Long) : Screen {
                 showSourceChooserFor = null
                 sourceFocusRequester = null
                 navigator.push(eu.kanade.tachiyomi.ui.manga.MangaScreen(request.mangaId))
-                model.markWorkSeenAfterNavigation(request.presentationMembers)
+                model.markWorkSeenAfterNavigation(request.creatorId, request.sourceWork)
             }
         }
         if (confirmUnfollow) {
@@ -1197,8 +1215,10 @@ private fun groupDateLabel(group: WorkPresentationGroup): String? {
     return when {
         group.publishedDateQuality == SourceDateQualityStatus.TRUSTED && publishedDateAt != null ->
             stringResource(MR.strings.creator_work_published_date, sourceDateDisplayDate(publishedDateAt))
-        group.publishedDateQuality == SourceDateQualityStatus.SUSPECT ->
-            stringResource(MR.strings.creator_work_published_date_pending)
+        publishedDateAt != null -> stringResource(
+            MR.strings.creator_work_published_date_retained,
+            sourceDateDisplayDate(publishedDateAt),
+        )
         else -> group.firstSeenDate?.let { date -> stringResource(MR.strings.desktop_ui_first_seen, date) }
     }
 }
@@ -1225,11 +1245,12 @@ private fun latestChapterDateLabel(version: SourceWorkArchiveVersion): String {
 @Composable
 private fun publishedDateLabel(version: SourceWorkArchiveVersion): String {
     val dateAt = version.publishedDateAt
+    val firstSeenDate = version.firstSeenDate
     return when {
-        version.publishedDateQuality == SourceDateQualityStatus.SUSPECT ->
-            stringResource(MR.strings.creator_work_published_date_pending)
         version.publishedDateQuality == SourceDateQualityStatus.TRUSTED && dateAt != null ->
             stringResource(MR.strings.creator_work_published_date, sourceDateDisplayDate(dateAt))
+        dateAt != null -> stringResource(MR.strings.creator_work_published_date_retained, sourceDateDisplayDate(dateAt))
+        !firstSeenDate.isNullOrBlank() -> stringResource(MR.strings.desktop_ui_first_seen, firstSeenDate)
         else -> stringResource(MR.strings.creator_work_published_date_unknown)
     }
 }
@@ -1334,8 +1355,8 @@ internal data class AuthorState(
 
 internal data class OpenMangaRequest(
     val mangaId: Long,
+    val creatorId: Long,
     val sourceWork: SourceWorkNaturalKey,
-    val presentationMembers: List<SourceWorkNaturalKey> = listOf(sourceWork),
 )
 
 internal class AndroidAuthorDetailScreenModel(
@@ -1397,13 +1418,7 @@ internal class AndroidAuthorDetailScreenModel(
                     ),
                 ).id
             }
-            val members = mutableState.value.presentationGroups
-                .firstOrNull { group -> group.members.any { it.naturalKey == version.naturalKey } }
-                ?.members
-                ?.map(SourceWorkArchiveVersion::naturalKey)
-                .orEmpty()
-                .ifEmpty { listOf(version.naturalKey) }
-            mutableOpenManga.emit(OpenMangaRequest(opener.await(version), version.naturalKey, members))
+            mutableOpenManga.emit(OpenMangaRequest(opener.await(version), activeCreatorId, version.naturalKey))
         }.onFailure { failure ->
             mutableState.update { it.copy(workOpenError = failure.message ?: failure::class.simpleName) }
         }
@@ -1412,9 +1427,9 @@ internal class AndroidAuthorDetailScreenModel(
 
     fun clearWorkOpenError() = mutableState.update { it.copy(workOpenError = null) }
 
-    suspend fun markWorkSeenAfterNavigation(sourceWorks: List<SourceWorkNaturalKey>) {
+    suspend fun markWorkSeenAfterNavigation(creatorId: Long, sourceWork: SourceWorkNaturalKey) {
         try {
-            archive.markPresentationGroupSeen(sourceWorks, System.currentTimeMillis())
+            archive.markPresentationGroupSeen(creatorId, sourceWork, System.currentTimeMillis())
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Throwable) {
@@ -1422,8 +1437,6 @@ internal class AndroidAuthorDetailScreenModel(
         }
     }
 
-    suspend fun markWorkSeenAfterNavigation(sourceWork: SourceWorkNaturalKey) =
-        markWorkSeenAfterNavigation(listOf(sourceWork))
     fun isSourceMissing(version: SourceWorkArchiveVersion): Boolean = sources.get(version.naturalKey.sourceId) == null
     fun sourceName(version: SourceWorkArchiveVersion): String = sources.getOrStub(version.naturalKey.sourceId).name
     val identityEditor = CreatorIdentityEditor(creatorId, identity, screenModelScope)

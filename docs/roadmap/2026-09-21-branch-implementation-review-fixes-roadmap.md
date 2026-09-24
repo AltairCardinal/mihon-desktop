@@ -160,3 +160,18 @@
 - 正式 Windows 验收：`bash ./scripts/build-desktop.sh build-only` 成功，extension runtime acceptance 通过；产物路径见最终交付报告。构建版本分配与实现同批提交，未混入既有未提交文档和 `testfile/`。
 - 第二轮主代理实现审查通过：核对统一投影、迁移回滚、双端 locale、同步安全边界及 roadmap 需求；未新增阻塞问题。
 - 平台限制：当前环境无 macOS 运行/发布机，且未执行真实 Android 设备运行验收；按本 roadmap 规则 RF-06 保持未勾选，不以 JVM/Windows 证据替代。
+
+### 2026-09-25 · AX 及 RF 已完成实现的追加审查修复
+
+本次在上述历史批次完成后，对照较早的 AX roadmap 追加审查，并修复六处遗留缺口；历史勾选与测试记录不作为这些补漏已被当时审查覆盖的证明。
+
+- 新来源提醒按当前作者的严格展示同作组去重；迟到的等价来源继承既有已读事实。确认作品及同一来源原有的跨作者已读语义保持；标题推断不跨作者传播。
+- 进入作品成功后，仅传作者根和选中来源，仓库事务内重算当前成员。分开显示的版本作为独立卡只清自身发现，不清原组或其他作者的发现；过期或已移走的来源返回可重试错误。
+- 上架展示日期以来源作品自然键保存最早可信的完整日精度快照、依据和待核实原因；质量降级与插件升级保留日期。`31.sqm` 将 schema 从 31 升至 32，回填仍在库中的历史可信日精度样本；备份 v6 携带快照，原始质量样本仍仅设备本地。旧样本若在迁移前已清理，不能凭空回填。
+- 作者列表匹配 canonical 主标题及未排除成员的来源原题，并只投影一次后计数，避免与详情作品数不一致。
+- 旧“分开显示”偏好在双端首次列表 SQL 查询前导入；仅导入当前作者实际拥有的来源，已导入指纹阻止撤销后的旧值回灌。未解析记录保留在旧偏好中等待后续重试。
+- Desktop 作品卡及来源窗口的收藏书签改为与 Android 一致的描边图标。
+
+修复按真实 SQLite、双端 production wiring 红绿测试实施。独立审查发现的排除卡已读、非日精度快照、canonical 标题三项阻塞已分别经聚焦复审关闭；相关 data 回归 66/66、卡片投影 14/14，Desktop 作者接线 20/20 与图标 1/1，Android 作者接线 10/10 通过。`git diff --check` 与相关格式检查通过。未读列表目前会先加载全部未读候选再按 `limit` 截取，属于已记录的非阻塞大数据量性能风险，不在此次补漏中重写分页。
+
+本次整体验收运行 `spotlessCheck :app:testReleaseUnitTest :app-desktop:jvmTest :test-desktop:test -PincludeIntegrationTests=true`：Desktop、`test-desktop` 和格式任务完成；Android 612 次执行中 18 次失败集中于 6 个挂载测试的重复执行，原因是测试专用 Injekt 容器缺少新增的 `LibraryPreferences` 绑定。补齐测试容器并等待异步列表加载后，受影响的 `AndroidCreatorSettingsUiTest` 和 `AndroidAuthorArchiveWiringTest` 聚焦复验通过；依本计划的一次全量上限，未再次运行 Android 全量，因此本次不能声明 Android 全量全绿。正式 `scripts/build-desktop.sh build-only` 生成 Windows 未打包应用并通过扩展运行验收，正式 EXE 的 Test Mode `/test/state` 返回 HTTP 200。macOS 与真实 Android 设备运行验收仍缺，RF-06 保持未勾选。

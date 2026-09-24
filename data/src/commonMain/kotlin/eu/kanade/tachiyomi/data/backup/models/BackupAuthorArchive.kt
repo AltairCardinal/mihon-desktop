@@ -22,7 +22,7 @@ data class BackupAuthorArchiveSection(
     @ProtoNumber(8) val languageDecisions: List<BackupAuthorLanguageDecision> = emptyList(),
 ) {
     companion object {
-        const val CURRENT_VERSION = 5
+        const val CURRENT_VERSION = 6
     }
 }
 
@@ -118,6 +118,9 @@ data class BackupAuthorSourceWork(
     @ProtoNumber(11) val chapterCount: Long? = null,
     @ProtoNumber(12) val chapterCompleteness: String? = null,
     @ProtoNumber(13) val latestChapterAt: Long? = null,
+    @ProtoNumber(14) val publishedDateAt: Long? = null,
+    @ProtoNumber(15) val publishedDateBasis: String? = null,
+    @ProtoNumber(16) val publishedDateReason: String? = null,
 )
 
 @Serializable

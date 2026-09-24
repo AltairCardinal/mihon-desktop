@@ -29,6 +29,7 @@ import tachiyomi.domain.creator.interactor.GetCreators
 import tachiyomi.domain.creator.interactor.SetCreatorFollow
 import tachiyomi.domain.creator.model.Creator
 import tachiyomi.domain.creator.model.CreatorCardProjection
+import tachiyomi.domain.creator.model.CreatorCardProjectionPage
 import tachiyomi.domain.creator.model.CreatorWorkArchive
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
 import tachiyomi.domain.creator.model.DiscoveryCandidate
@@ -73,6 +74,7 @@ internal object AuthorsScreenModelFactory {
         creatorArchive = requireNotNull(dependencies.creatorArchive),
         indexer = requireNotNull(dependencies.creatorLibraryIndexer),
         preferences = dependencies.creatorDiscoveryPreferences,
+        libraryPreferences = dependencies.libraryPreferences,
         preferredLanguages = dependencies.appPreferences.enabledLanguages::get,
         preferredLanguageChanges = dependencies.appPreferences.enabledLanguages.changes(),
         customCoverExists = dependencies.customCoverStore::customCoverExists,
@@ -143,6 +145,7 @@ class AuthorsRootScreenModel(
     private val creatorArchive: CreatorArchive,
     private val indexer: CreatorLibraryIndexer,
     preferences: tachiyomi.domain.creator.service.CreatorDiscoveryPreferences? = null,
+    libraryPreferences: LibraryPreferences? = null,
     private val preferredLanguages: () -> Set<String> = { emptySet() },
     preferredLanguageChanges: Flow<Set<String>> = kotlinx.coroutines.flow.flowOf(emptySet()),
     private val customCoverExists: (Long) -> Boolean = { false },
@@ -150,6 +153,10 @@ class AuthorsRootScreenModel(
     onSettingsSaved: suspend () -> Unit = {},
 ) : ScreenModel {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val legacyPresentationExclusions = libraryPreferences?.let {
+        CreatorWorkPresentationExclusions(it.creatorWorkPresentationExclusions())
+    }
+    private var legacyPresentationExclusionsImported = false
     val settingsEditor = preferences?.let { tachiyomi.domain.creator.service.CreatorSettingsEditor(it, scope, onSettingsSaved) }
     private val mutableState = MutableStateFlow(AuthorsRootState(indexState = indexer.state.value))
     val state: StateFlow<AuthorsRootState> = mutableState.asStateFlow()
@@ -323,8 +330,19 @@ class AuthorsRootScreenModel(
         }
     }
 
-    private suspend fun getPage(offset: Int, followedOnly: Boolean, query: String) =
-        creatorArchive.getCreatorCardProjectionPage(
+    private suspend fun getPage(offset: Int, followedOnly: Boolean, query: String): CreatorCardProjectionPage {
+        if (!legacyPresentationExclusionsImported) {
+            val legacy = legacyPresentationExclusions?.entries().orEmpty()
+            if (legacy.isNotEmpty()) {
+                val imported = creatorArchive.importPresentationExclusions(legacy)
+                legacyPresentationExclusions?.remove(imported)
+                legacyPresentationExclusionsImported = imported.values.sumOf { it.size } ==
+                    legacy.values.sumOf { it.size }
+            } else {
+                legacyPresentationExclusionsImported = true
+            }
+        }
+        return creatorArchive.getCreatorCardProjectionPage(
             offset = offset,
             limit = CREATOR_CARD_PAGE_SIZE,
             followedOnly = followedOnly,
@@ -333,6 +351,7 @@ class AuthorsRootScreenModel(
             query = query,
             preferredDisplayScript = preferredDisplayScript(),
         )
+    }
 
     override fun onDispose() = scope.cancel()
 }
@@ -419,8 +438,8 @@ data class AuthorDetailState(
 sealed interface AuthorDetailEffect {
     data class OpenManga(
         val mangaId: Long,
+        val creatorId: Long,
         val sourceWork: SourceWorkNaturalKey,
-        val presentationMembers: List<SourceWorkNaturalKey> = listOf(sourceWork),
     ) : AuthorDetailEffect
     data class OpenCreator(val creatorId: Long) : AuthorDetailEffect
     data class OpenWorkCompare(val candidateId: Long, val creatorId: Long) : AuthorDetailEffect
@@ -599,13 +618,7 @@ internal class AuthorDetailScreenModel(
                     authorArchiveVersionSourceManga(listed), listed.naturalKey.sourceId,
                 ).manga.id
             }
-            val members = mutableState.value.presentationGroups
-                .firstOrNull { group -> group.members.any { it.naturalKey == version.naturalKey } }
-                ?.members
-                ?.map(SourceWorkArchiveVersion::naturalKey)
-                .orEmpty()
-                .ifEmpty { listOf(version.naturalKey) }
-            mutableEffects.emit(AuthorDetailEffect.OpenManga(opener.await(version), version.naturalKey, members))
+            mutableEffects.emit(AuthorDetailEffect.OpenManga(opener.await(version), activeCreatorId, version.naturalKey))
         }.onFailure { error ->
             mutableState.update { it.copy(workOpenError = error.message ?: error::class.simpleName) }
         }
@@ -614,9 +627,9 @@ internal class AuthorDetailScreenModel(
 
     fun clearWorkOpenError() = mutableState.update { it.copy(workOpenError = null) }
 
-    suspend fun markWorkSeenAfterNavigation(sourceWorks: List<SourceWorkNaturalKey>) {
+    suspend fun markWorkSeenAfterNavigation(creatorId: Long, sourceWork: SourceWorkNaturalKey) {
         try {
-            creatorArchive?.markPresentationGroupSeen(sourceWorks, System.currentTimeMillis())
+            creatorArchive?.markPresentationGroupSeen(creatorId, sourceWork, System.currentTimeMillis())
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Throwable) {
@@ -624,8 +637,6 @@ internal class AuthorDetailScreenModel(
         }
     }
 
-    suspend fun markWorkSeenAfterNavigation(sourceWork: SourceWorkNaturalKey) =
-        markWorkSeenAfterNavigation(listOf(sourceWork))
 
     fun openCandidate(candidate: DiscoveryCandidate) {
         mutableEffects.tryEmit(AuthorDetailEffect.OpenWorkCompare(candidate.id, activeCreatorId))

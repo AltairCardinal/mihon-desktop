@@ -13,10 +13,13 @@ object CreatorCardPresentation {
     ): List<CreatorCardWorkCandidate> {
         val canonical = candidates.filter { it.workKey.startsWith("canonical:") }.groupBy { it.workKey }
         val canonicalByTitle = canonical.entries
-            .mapNotNull { (key, values) ->
-                values.firstOrNull()?.let { candidate ->
-                    WorkTitleNormalizer.normalizeForPresentationGroup(candidate.title)
-                        .takeIf(String::isNotBlank)?.let { normalized -> normalized to key }
+            .flatMap { (key, values) ->
+                values.filterNot { it.naturalKey in excludedNaturalKeys }.flatMap { candidate ->
+                    listOfNotNull(candidate.canonicalTitle, candidate.title)
+                        .mapNotNull { title ->
+                            WorkTitleNormalizer.normalizeForPresentationGroup(title)
+                                .takeIf(String::isNotBlank)?.let { normalized -> normalized to key }
+                        }
                 }
             }
             .groupBy({ it.first }, { it.second })
@@ -53,7 +56,9 @@ object CreatorCardPresentation {
     fun uniqueWorkCount(
         candidates: List<CreatorCardWorkCandidate>,
         excludedNaturalKeys: Set<SourceWorkNaturalKey> = emptySet(),
-    ): Int = project(candidates, excludedNaturalKeys)
+    ): Int = uniqueProjectedWorkCount(project(candidates, excludedNaturalKeys))
+
+    fun uniqueProjectedWorkCount(candidates: List<CreatorCardWorkCandidate>): Int = candidates
         .asSequence()
         .filter { it.relationVerification == CreatorRelationVerification.VERIFIED }
         .map(CreatorCardWorkCandidate::workKey)
@@ -63,7 +68,9 @@ object CreatorCardPresentation {
     fun unreadWorkCount(
         candidates: List<CreatorCardWorkCandidate>,
         excludedNaturalKeys: Set<SourceWorkNaturalKey> = emptySet(),
-    ): Int = project(candidates, excludedNaturalKeys)
+    ): Int = unreadProjectedWorkCount(project(candidates, excludedNaturalKeys))
+
+    fun unreadProjectedWorkCount(candidates: List<CreatorCardWorkCandidate>): Int = candidates
         .asSequence()
         .filter(CreatorCardWorkCandidate::unread)
         .map(CreatorCardWorkCandidate::workKey)

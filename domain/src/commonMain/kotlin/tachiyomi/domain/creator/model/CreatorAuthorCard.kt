@@ -21,6 +21,7 @@ data class CreatorCardWorkCandidate(
     val decisionState: WorkDecisionState? = null,
     val sourceLanguage: String? = null,
     val unread: Boolean = false,
+    val canonicalTitle: String? = null,
 )
 
 data class CreatorCardProjection(

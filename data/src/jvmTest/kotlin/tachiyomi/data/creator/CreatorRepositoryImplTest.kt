@@ -58,6 +58,325 @@ class CreatorRepositoryImplTest {
     private lateinit var handler: JvmDatabaseHandler
 
     @Test
+    fun `equivalent works share one reminder and late source inherits seen`() = runBlocking<Unit> {
+        val creator = repository.upsertCreator("Equivalent Author")
+        repository.upsertWatchPolicy(
+            ArchiveWatchPolicy(creator.id, true, 1_000L, setOf(10L, 11L, 12L), emptySet()),
+            now = 1L,
+        )
+        val keys = listOf(
+            SourceWorkNaturalKey(10L, "/traditional"),
+            SourceWorkNaturalKey(11L, "/simplified"),
+            SourceWorkNaturalKey(12L, "/late"),
+        )
+        val titles = listOf("詭譎屋", "诡谲屋", "《詭譎屋》")
+        keys.forEachIndexed { index, key ->
+            repository.upsertSourceWork(
+                key.sourceId,
+                key.stableSourceUrl,
+                null,
+                titles[index],
+                "Equivalent Author",
+                null,
+                null,
+                10L + index,
+            )
+            repository.upsertSourceWorkCreator(
+                key, creator.id, CreatorRole.AUTHOR, 0L, CreatorRelationOrigin.AUTOMATIC,
+                CreatorRelationVerification.VERIFIED, "Equivalent Author", 1.0, "fixture",
+            )
+        }
+        suspend fun commit(index: Int) = repository.commitDiscovery(
+            DiscoveryCommit(
+                creator.id,
+                keys[index],
+                DiscoveryKind.NEW_WORK_CANDIDATE,
+                "fixture",
+                1L,
+                100L + index,
+                "TEST",
+                "equivalent-discovery-$index",
+            ),
+        )
+
+        commit(0).state.readState shouldBe DiscoveryReadState.UNSEEN
+        commit(1).state.readState shouldBe DiscoveryReadState.UNSEEN
+        repository.getUnreadWorkDiscoveries(10L).size shouldBe 1
+        queryLong("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 1L
+
+        repository.markPresentationGroupSeen(creator.id, keys.first(), 200L)
+        commit(2).state.readState shouldBe DiscoveryReadState.SEEN
+        repository.getUnreadWorkDiscoveries(10L) shouldBe emptyList()
+        queryLong("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 1L
+        queryLong("SELECT COUNT(*) FROM author_archive_canonical_versions") shouldBe 0L
+    }
+
+    @Test
+    fun `current group read isolates correction and rejects moved selection`() = runBlocking<Unit> {
+        val creator = repository.upsertCreator("Read Transaction Author")
+        repository.upsertWatchPolicy(
+            ArchiveWatchPolicy(creator.id, true, 1_000L, setOf(40L, 41L, 42L), emptySet()),
+            now = 1L,
+        )
+        val keys = listOf(
+            SourceWorkNaturalKey(40L, "/first"),
+            SourceWorkNaturalKey(41L, "/second"),
+            SourceWorkNaturalKey(42L, "/corrected"),
+        )
+        val titles = listOf("詭譎屋", "诡谲屋", "《詭譎屋》")
+        keys.forEachIndexed { index, key ->
+            repository.upsertSourceWork(key.sourceId, key.stableSourceUrl, null, titles[index], null, null, null, 10L)
+            repository.upsertSourceWorkCreator(
+                key, creator.id, CreatorRole.AUTHOR, 0L, CreatorRelationOrigin.USER,
+                CreatorRelationVerification.VERIFIED, "fixture", 1.0, "fixture",
+            )
+            repository.commitDiscovery(
+                DiscoveryCommit(
+                    creator.id,
+                    key,
+                    DiscoveryKind.NEW_WORK_CANDIDATE,
+                    "fixture",
+                    1L,
+                    100L + index,
+                    "TEST",
+                    "read-transaction-$index",
+                ),
+            )
+        }
+        repository.setPresentationExclusion(creator.id, keys[2], excluded = true, now = 200L)
+
+        repository.markPresentationGroupSeen(creator.id, keys[0], 300L)
+
+        queryLong("SELECT COUNT(*) FROM author_archive_discoveries WHERE read_state = 'SEEN'") shouldBe 2L
+        repository.markPresentationGroupSeen(creator.id, keys[2], 301L)
+        queryLong("SELECT COUNT(*) FROM author_archive_discoveries WHERE read_state = 'SEEN'") shouldBe 3L
+
+        val moved = repository.splitCreatorIdentity(
+            sourceCreatorId = creator.id,
+            mangaIds = emptySet(),
+            newDisplayName = "Read Transaction Moved",
+            sourceWorks = setOf(keys[1]),
+        )
+        shouldThrow<IllegalStateException> {
+            repository.markPresentationGroupSeen(creator.id, keys[1], 302L)
+        }
+        repository.markPresentationGroupSeen(moved, keys[1], 303L)
+    }
+
+    @Test
+    fun `excluded standalone read clears only selected authors own discovery`() = runBlocking<Unit> {
+        val first = repository.upsertCreator("Standalone first author")
+        val second = repository.upsertCreator("Standalone second author")
+        val selected = SourceWorkNaturalKey(940L, "/excluded-shared")
+        val sibling = SourceWorkNaturalKey(941L, "/sibling")
+        listOf(first, second).forEach { creator ->
+            repository.upsertWatchPolicy(
+                ArchiveWatchPolicy(creator.id, true, 1_000L, setOf(940L, 941L), emptySet()),
+                1L,
+            )
+        }
+        listOf(selected, sibling).forEach { key ->
+            repository.upsertSourceWork(key.sourceId, key.stableSourceUrl, null, "Shared Work", null, null, null, 10L)
+            repository.upsertSourceWorkCreator(
+                key, first.id, CreatorRole.AUTHOR, 0L, CreatorRelationOrigin.USER,
+                CreatorRelationVerification.VERIFIED, "fixture", 1.0, "fixture",
+            )
+        }
+        repository.upsertSourceWorkCreator(
+            selected, second.id, CreatorRole.AUTHOR, 0L, CreatorRelationOrigin.USER,
+            CreatorRelationVerification.VERIFIED, "fixture", 1.0, "fixture",
+        )
+        val firstSelected = repository.commitDiscovery(
+            DiscoveryCommit(
+                first.id,
+                selected,
+                DiscoveryKind.NEW_WORK_CANDIDATE,
+                "fixture",
+                1L,
+                100L,
+                "TEST",
+                "first-excluded",
+            ),
+        )
+        val firstSibling = repository.commitDiscovery(
+            DiscoveryCommit(
+                first.id,
+                sibling,
+                DiscoveryKind.NEW_WORK_CANDIDATE,
+                "fixture",
+                1L,
+                101L,
+                "TEST",
+                "first-sibling",
+            ),
+        )
+        val secondSelected = repository.commitDiscovery(
+            DiscoveryCommit(
+                second.id,
+                selected,
+                DiscoveryKind.NEW_WORK_CANDIDATE,
+                "fixture",
+                1L,
+                102L,
+                "TEST",
+                "second-selected",
+            ),
+        )
+        repository.setPresentationExclusion(first.id, selected, excluded = true, now = 200L)
+
+        repository.markPresentationGroupSeen(first.id, selected, 300L)
+
+        repository.getDiscovery(firstSelected.id)?.state?.readState shouldBe DiscoveryReadState.SEEN
+        repository.getDiscovery(firstSibling.id)?.state?.readState shouldBe DiscoveryReadState.UNSEEN
+        repository.getDiscovery(secondSelected.id)?.state?.readState shouldBe DiscoveryReadState.UNSEEN
+    }
+
+    @Test
+    fun `canonical read preserves excluded version and clears pending`() = runBlocking<Unit> {
+        val creator = repository.upsertCreator("Canonical Read Author")
+        repository.upsertWatchPolicy(
+            ArchiveWatchPolicy(creator.id, true, 1_000L, setOf(50L, 51L, 52L), emptySet()),
+            now = 1L,
+        )
+        val keys = listOf(
+            SourceWorkNaturalKey(50L, "/canonical"),
+            SourceWorkNaturalKey(51L, "/excluded-canonical"),
+            SourceWorkNaturalKey(52L, "/pending"),
+        )
+        val titles = listOf("詭譎屋", "诡谲屋", "《詭譎屋》")
+        val canonical = repository.createCanonicalWork("詭譎屋", creator.id, null)
+        keys.forEachIndexed { index, key ->
+            repository.upsertSourceWork(key.sourceId, key.stableSourceUrl, null, titles[index], null, null, null, 10L)
+            repository.upsertSourceWorkCreator(
+                key, creator.id, CreatorRole.AUTHOR, 0L, CreatorRelationOrigin.USER,
+                CreatorRelationVerification.VERIFIED, "fixture", 1.0, "fixture",
+            )
+            if (index < 2) {
+                repository.appendWorkDecision(
+                    sourceWork = key,
+                    workId = canonical.id,
+                    decision = WorkDecisionContract(WorkDecisionState.CONFIRMED, DecisionActor.USER, explicit = true),
+                    algorithmVersion = null,
+                    score = 1.0,
+                    evidence = "fixture",
+                    decidedAt = 20L + index,
+                    idempotencyKey = "canonical-read-$index",
+                )
+            }
+            repository.commitDiscovery(
+                DiscoveryCommit(
+                    creator.id,
+                    key,
+                    DiscoveryKind.NEW_WORK_CANDIDATE,
+                    "fixture",
+                    1L,
+                    100L + index,
+                    "TEST",
+                    "canonical-read-discovery-$index",
+                ),
+            )
+        }
+        repository.setPresentationExclusion(creator.id, keys[1], excluded = true, now = 200L)
+        val projected = tachiyomi.domain.creator.service.WorkPresentationGroupService.project(
+            repository.getCreatorWorkArchive(creator.id),
+            repository.getPresentationExclusions(creator.id),
+        )
+        projected.first { group -> group.members.any { it.naturalKey == keys[0] } }
+            .members.map { it.naturalKey }.toSet() shouldBe setOf(keys[0], keys[2])
+
+        repository.markPresentationGroupSeen(creator.id, keys[0], 300L)
+
+        fun state(sourceId: Long) = queryString(
+            "SELECT D.read_state FROM author_archive_discoveries D " +
+                "JOIN author_archive_source_works SW ON SW._id = D.source_work_id WHERE SW.source_id = $sourceId",
+        )
+        state(50L) shouldBe "SEEN"
+        state(51L) shouldBe "UNSEEN"
+        state(52L) shouldBe "SEEN"
+        queryLong("SELECT COUNT(*) FROM author_archive_discoveries WHERE read_state = 'SEEN'") shouldBe 2L
+        queryLong("SELECT COUNT(*) FROM author_archive_discoveries WHERE read_state = 'UNSEEN'") shouldBe 1L
+    }
+
+    @Test
+    fun `presentation reminder grouping respects author exclusion and canonical boundaries`() = runBlocking<Unit> {
+        val firstAuthor = repository.upsertCreator("First Author")
+        val secondAuthor = repository.upsertCreator("Second Author")
+        listOf(firstAuthor, secondAuthor).forEach { creator ->
+            repository.upsertWatchPolicy(
+                ArchiveWatchPolicy(creator.id, true, 1_000L, setOf(20L, 21L, 22L, 23L), emptySet()),
+                now = 1L,
+            )
+        }
+        suspend fun add(creatorId: Long, sourceId: Long, url: String, title: String): SourceWorkNaturalKey {
+            val key = SourceWorkNaturalKey(sourceId, url)
+            repository.upsertSourceWork(sourceId, url, null, title, null, null, null, 10L)
+            repository.upsertSourceWorkCreator(
+                key, creatorId, CreatorRole.AUTHOR, 0L, CreatorRelationOrigin.USER,
+                CreatorRelationVerification.VERIFIED, "fixture", 1.0, "fixture",
+            )
+            return key
+        }
+        suspend fun discover(creatorId: Long, key: SourceWorkNaturalKey, number: Int) = repository.commitDiscovery(
+            DiscoveryCommit(
+                creatorId,
+                key,
+                DiscoveryKind.NEW_WORK_CANDIDATE,
+                "fixture",
+                1L,
+                100L + number,
+                "TEST",
+                "boundary-discovery-$number",
+            ),
+        )
+        val first = add(firstAuthor.id, 20L, "/first", "詭譎屋")
+        val excluded = add(firstAuthor.id, 21L, "/excluded", "诡谲屋")
+        val otherAuthor = add(secondAuthor.id, 22L, "/other", "诡谲屋")
+        repository.setPresentationExclusion(firstAuthor.id, excluded, excluded = true, now = 20L)
+        discover(firstAuthor.id, first, 0)
+        discover(firstAuthor.id, excluded, 1)
+        discover(secondAuthor.id, otherAuthor, 2)
+        repository.getUnreadWorkDiscoveries(10L).size shouldBe 3
+        queryLong("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 3L
+
+        val canonical = repository.createCanonicalWork("Separate Canonical", firstAuthor.id, null)
+        repository.appendWorkDecision(
+            sourceWork = excluded,
+            workId = canonical.id,
+            decision = WorkDecisionContract(WorkDecisionState.CONFIRMED, DecisionActor.USER, explicit = true),
+            algorithmVersion = null,
+            score = 1.0,
+            evidence = "fixture",
+            decidedAt = 30L,
+            idempotencyKey = "boundary-canonical",
+        )
+        val otherCanonical = repository.createCanonicalWork("Other Canonical", firstAuthor.id, null)
+        repository.appendWorkDecision(
+            sourceWork = first,
+            workId = repository.createCanonicalWork("First Canonical", firstAuthor.id, null).id,
+            decision = WorkDecisionContract(WorkDecisionState.CONFIRMED, DecisionActor.USER, explicit = true),
+            algorithmVersion = null,
+            score = 1.0,
+            evidence = "fixture",
+            decidedAt = 31L,
+            idempotencyKey = "boundary-first-canonical",
+        )
+        val canonicalSource = add(firstAuthor.id, 23L, "/other-canonical", "《詭譎屋》")
+        repository.appendWorkDecision(
+            sourceWork = canonicalSource,
+            workId = otherCanonical.id,
+            decision = WorkDecisionContract(WorkDecisionState.CONFIRMED, DecisionActor.USER, explicit = true),
+            algorithmVersion = null,
+            score = 1.0,
+            evidence = "fixture",
+            decidedAt = 32L,
+            idempotencyKey = "boundary-other-canonical",
+        )
+        discover(firstAuthor.id, canonicalSource, 3)
+        repository.getUnreadWorkDiscoveries(10L).size shouldBe 4
+        queryLong("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 4L
+    }
+
+    @Test
     fun `unread work projection suppresses late sources after read`() = runBlocking<Unit> {
         val creator = repository.upsertCreator("Unread Author")
         val watchPolicy = ArchiveWatchPolicy(
@@ -164,7 +483,7 @@ class CreatorRepositoryImplTest {
         restarted.getUnreadDiscoveries(10L).filter { it.sourceWork == late } shouldBe emptyList()
         restarted.getUnreadWorkDiscoveries(10L) shouldBe emptyList()
         queryLong("SELECT COUNT(*) FROM author_archive_discoveries WHERE read_state = 'SEEN'") shouldBe 3L
-        queryLong("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 2L
+        queryLong("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 1L
     }
 
     @Test
@@ -357,6 +676,69 @@ class CreatorRepositoryImplTest {
         val unread = repository.getUnreadWorkDiscoveries(10L).single()
         unread.creatorId shouldBe expectedCreator
         unread.creatorIds.toSet() shouldBe setOf(firstCreator.id, secondCreator.id)
+        queryLong("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 1L
+    }
+
+    @Test
+    fun `seen canonical work is inherited by a later discovery for another author`() = runBlocking<Unit> {
+        val creators = listOf(
+            repository.upsertCreator("Canonical First"),
+            repository.upsertCreator("Canonical Second"),
+        )
+        val key = SourceWorkNaturalKey(33L, "/shared-canonical")
+        creators.forEach { creator ->
+            repository.upsertWatchPolicy(
+                ArchiveWatchPolicy(creator.id, true, 1_000L, setOf(key.sourceId), emptySet()),
+                now = 1L,
+            )
+        }
+        repository.upsertSourceWork(key.sourceId, key.stableSourceUrl, null, "Shared Canonical", null, null, null, 10L)
+        creators.forEach { creator ->
+            repository.upsertSourceWorkCreator(
+                key, creator.id, CreatorRole.AUTHOR, 0L, CreatorRelationOrigin.USER,
+                CreatorRelationVerification.VERIFIED, "fixture", 1.0, "fixture",
+            )
+        }
+        val canonical = repository.createCanonicalWork("Shared Canonical", creators.first().id, null)
+        repository.appendWorkDecision(
+            sourceWork = key,
+            workId = canonical.id,
+            decision = WorkDecisionContract(WorkDecisionState.CONFIRMED, DecisionActor.USER, explicit = true),
+            algorithmVersion = null,
+            score = 1.0,
+            evidence = "fixture",
+            decidedAt = 20L,
+            idempotencyKey = "canonical-cross-author-seen",
+        )
+        val first = repository.commitDiscovery(
+            DiscoveryCommit(
+                creators[0].id,
+                key,
+                DiscoveryKind.NEW_WORK_CANDIDATE,
+                "fixture",
+                1L,
+                100L,
+                "TEST",
+                "cross-author-first",
+            ),
+        )
+        repository.markDiscoverySeen(first.id, 200L)
+        val late = repository.commitDiscovery(
+            DiscoveryCommit(
+                creators[1].id,
+                key,
+                DiscoveryKind.NEW_WORK_CANDIDATE,
+                "fixture",
+                1L,
+                300L,
+                "TEST",
+                "cross-author-late",
+            ),
+        )
+
+        late.state.readState shouldBe DiscoveryReadState.SEEN
+        queryLong("SELECT COUNT(*) FROM author_archive_discoveries") shouldBe 2L
+        queryLong("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 1L
     }
 
     @BeforeEach
@@ -479,6 +861,17 @@ class CreatorRepositoryImplTest {
             null,
             1L,
         )
+        repository.upsertSourceWorkCreator(
+            resolved,
+            creator.id,
+            CreatorRole.AUTHOR,
+            0L,
+            CreatorRelationOrigin.USER,
+            CreatorRelationVerification.VERIFIED,
+            creator.displayName,
+            1.0,
+            "fixture",
+        )
 
         val imported = repository.importPresentationExclusions(
             mapOf(creator.id to setOf(resolved, unresolved)),
@@ -494,6 +887,32 @@ class CreatorRepositoryImplTest {
             "SELECT COUNT(*) FROM author_archive_presentation_exclusions " +
                 "WHERE creator_id = ${creator.id}",
         ) shouldBe 1L
+    }
+
+    @Test
+    fun `legacy exclusion import requires creator relation and preserves undone correction`() = runBlocking<Unit> {
+        val creator = repository.upsertCreator("Legacy correction owner")
+        val other = repository.upsertCreator("Another owner")
+        val owned = SourceWorkNaturalKey(930L, "/owned-correction")
+        val foreign = SourceWorkNaturalKey(931L, "/foreign-correction")
+        listOf(owned, foreign).forEach { key ->
+            repository.upsertSourceWork(key.sourceId, key.stableSourceUrl, null, "Work", "Author", null, null, 1L)
+        }
+        repository.upsertSourceWorkCreator(
+            owned, creator.id, CreatorRole.AUTHOR, 0L, CreatorRelationOrigin.USER,
+            CreatorRelationVerification.VERIFIED, creator.displayName, 1.0, "fixture",
+        )
+        repository.upsertSourceWorkCreator(
+            foreign, other.id, CreatorRole.AUTHOR, 0L, CreatorRelationOrigin.USER,
+            CreatorRelationVerification.VERIFIED, other.displayName, 1.0, "fixture",
+        )
+        val oldPreference = mapOf(creator.id to setOf(owned, foreign))
+
+        repository.importPresentationExclusions(oldPreference) shouldBe mapOf(creator.id to setOf(owned))
+        repository.getPresentationExclusions(creator.id) shouldBe setOf(owned)
+        repository.setPresentationExclusion(creator.id, owned, excluded = false, now = 5L)
+        repository.importPresentationExclusions(oldPreference) shouldBe mapOf(creator.id to setOf(owned))
+        repository.getPresentationExclusions(creator.id) shouldBe emptySet()
     }
 
     @Test

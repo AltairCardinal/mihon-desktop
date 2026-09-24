@@ -303,9 +303,12 @@ interface CreatorArchiveRepository : CreatorLibraryIndexWriter {
         throw UnsupportedOperationException("Work-level discovery read state is not implemented")
     }
 
-    suspend fun markPresentationGroupSeen(sourceWorks: List<SourceWorkNaturalKey>, now: Long) {
-        sourceWorks.distinct().forEach { markWorkSeen(it, now) }
-    }
+    /** Revalidates the selected version and its current author group in one repository transaction. */
+    suspend fun markPresentationGroupSeen(
+        creatorId: Long,
+        selectedSourceWork: SourceWorkNaturalKey,
+        now: Long,
+    )
 
     fun observeUnreadDiscoveries(limit: Long): Flow<List<ArchiveDiscovery>>
 

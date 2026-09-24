@@ -217,9 +217,108 @@ class SourceDateQualityRepositoryTest {
             }
             val publication = repository.recordSourceDateQualityObservations(publicationObservations, now)
             assertEquals(SourceDateQualityStatus.TRUSTED, publication?.status)
+            listOf("/projection-year", "/projection-month").forEach { stableUrl ->
+                repository.upsertSourceWork(
+                    sourceId = 42L,
+                    stableSourceUrl = stableUrl,
+                    mangaId = null,
+                    title = "Coarse date work",
+                    authorText = creator.displayName,
+                    artistText = null,
+                    thumbnailUrl = null,
+                    detailsFetchedAt = now,
+                )
+            }
+            val coarse = repository.recordSourceDateQualityObservations(
+                listOf(
+                    observation(
+                        publicationIdentity,
+                        3,
+                        null,
+                        DAY * 15L,
+                        now - DAY,
+                        workNaturalKey = "/projection-year",
+                        precision = SourceDatePrecision.YEAR,
+                    ),
+                    observation(
+                        publicationIdentity,
+                        3,
+                        null,
+                        DAY * 15L,
+                        now,
+                        workNaturalKey = "/projection-year",
+                        precision = SourceDatePrecision.YEAR,
+                    ),
+                    observation(
+                        publicationIdentity,
+                        4,
+                        null,
+                        DAY * 16L,
+                        now - DAY,
+                        workNaturalKey = "/projection-month",
+                        precision = SourceDatePrecision.MONTH,
+                    ),
+                    observation(
+                        publicationIdentity,
+                        4,
+                        null,
+                        DAY * 16L,
+                        now,
+                        workNaturalKey = "/projection-month",
+                        precision = SourceDatePrecision.MONTH,
+                    ),
+                ),
+                now,
+            )
+            assertEquals(SourceDateQualityStatus.TRUSTED, coarse?.status)
+            assertEquals(
+                null,
+                database.author_archiveQueries.getArchiveSourceWorkByKey(42L, "/projection-year")
+                    .executeAsOne().published_date_snapshot_at,
+            )
+            assertEquals(
+                null,
+                database.author_archiveQueries.getArchiveSourceWorkByKey(42L, "/projection-month")
+                    .executeAsOne().published_date_snapshot_at,
+            )
+            listOf("/projection-year", "/projection-month").forEach { stableUrl ->
+                repository.upsertSourceWorkCreator(
+                    sourceWork = SourceWorkNaturalKey(42L, stableUrl),
+                    creatorId = creator.id,
+                    role = CreatorRole.AUTHOR,
+                    order = 0L,
+                    origin = CreatorRelationOrigin.AUTOMATIC,
+                    verification = CreatorRelationVerification.VERIFIED,
+                    sourceText = creator.displayName,
+                    confidence = 1.0,
+                    evidence = "coarse date projection fixture",
+                )
+            }
+            val coarseVersions = repository.getCreatorWorkArchive(creator.id).pending
+                .associateBy { it.naturalKey.stableSourceUrl }
+            assertEquals(null, coarseVersions.getValue("/projection-year").publishedDateAt)
+            assertEquals(null, coarseVersions.getValue("/projection-month").publishedDateAt)
+            repository.upsertSourceWork(
+                sourceId = 42L,
+                stableSourceUrl = "/projection-future",
+                mangaId = null,
+                title = "Future-only sample",
+                authorText = creator.displayName,
+                artistText = null,
+                thumbnailUrl = null,
+                detailsFetchedAt = now,
+            )
 
             repository.recordSourceDateQualityObservations(
                 listOf(
+                    observation(
+                        publicationIdentity,
+                        work = 3,
+                        chapter = null,
+                        valueAt = DAY * 90L,
+                        observedAt = now + 1L,
+                        workNaturalKey = "/projection-future",
+                    ),
                     observation(
                         publicationIdentity,
                         work = 0,
@@ -255,9 +354,32 @@ class SourceDateQualityRepositoryTest {
                 SourceDateQualityStatus.TRUSTED,
                 repository.getSourceDateQualitySnapshot(publicationIdentity)?.status,
             )
+            assertEquals(
+                null,
+                database.author_archiveQueries.getArchiveSourceWorkByKey(42L, "/projection-future")
+                    .executeAsOne().published_date_snapshot_at,
+            )
             val beforeUpgrade = repository.getCreatorWorkArchive(creator.id).pending
                 .associateBy { it.naturalKey.stableSourceUrl }
             assertEquals(DAY * 20L, beforeUpgrade.getValue("/projection-0").publishedDateAt)
+            val drifted = repository.recordSourceDateQualityObservations(
+                (0..2).map { work ->
+                    observation(
+                        publicationIdentity,
+                        work = work,
+                        chapter = null,
+                        valueAt = now + DAY,
+                        observedAt = now + DAY,
+                        workNaturalKey = "/projection-$work",
+                    )
+                },
+                now = now + DAY,
+            )
+            assertEquals(SourceDateQualityStatus.SUSPECT, drifted?.status)
+            val afterDrift = repository.getCreatorWorkArchive(creator.id).pending
+                .associateBy { it.naturalKey.stableSourceUrl }
+            assertEquals(DAY * 20L, afterDrift.getValue("/projection-0").publishedDateAt)
+            assertEquals(SourceDateQualityStatus.SUSPECT, afterDrift.getValue("/projection-0").publishedDateQuality)
             val upgradedIdentity = publicationIdentity.copy(extensionVersion = "2.0")
             repository.recordSourceDateQualityObservations(
                 listOf(
@@ -266,31 +388,33 @@ class SourceDateQualityRepositoryTest {
                         work = 0,
                         chapter = null,
                         valueAt = DAY * 99L,
-                        observedAt = now + 3L,
+                        observedAt = now + 2 * DAY,
                         semanticConfirmed = false,
                         workNaturalKey = "/projection-0",
                     ),
                 ),
-                now = now + 3L,
+                now = now + 2 * DAY,
             )
 
             val versions = repository.getCreatorWorkArchive(creator.id).pending
-            assertEquals(3, versions.size)
+            assertEquals(5, versions.size)
             val versionsByUrl = versions.associateBy { it.naturalKey.stableSourceUrl }
             assertEquals(
                 SourceDateQualityStatus.TRUSTED,
                 versionsByUrl.getValue("/projection-0").latestChapterDateQuality,
             )
             assertEquals(
-                SourceDateQualityStatus.UNKNOWN,
+                SourceDateQualityStatus.SUSPECT,
                 versionsByUrl.getValue("/projection-0").publishedDateQuality,
             )
             assertEquals(DAY * 12L, versionsByUrl.getValue("/projection-0").latestChapterAt)
             assertEquals(DAY * 22L, versionsByUrl.getValue("/projection-1").latestChapterAt)
             assertEquals(DAY * 32L, versionsByUrl.getValue("/projection-2").latestChapterAt)
-            assertEquals(null, versionsByUrl.getValue("/projection-0").publishedDateAt)
-            assertEquals(null, versionsByUrl.getValue("/projection-1").publishedDateAt)
-            assertEquals(null, versionsByUrl.getValue("/projection-2").publishedDateAt)
+            assertEquals(DAY * 20L, versionsByUrl.getValue("/projection-0").publishedDateAt)
+            assertEquals(DAY * 21L, versionsByUrl.getValue("/projection-1").publishedDateAt)
+            assertEquals(DAY * 22L, versionsByUrl.getValue("/projection-2").publishedDateAt)
+            assertNotNull(versionsByUrl.getValue("/projection-1").publishedDateReason)
+            assertEquals(SourceDateQualityStatus.SUSPECT, versionsByUrl.getValue("/projection-2").publishedDateQuality)
         } finally {
             driver.close()
         }
@@ -306,13 +430,14 @@ class SourceDateQualityRepositoryTest {
         reason: String? = null,
         semanticConfirmed: Boolean = identity.field == SourceDateField.WORK_PUBLISHED,
         workNaturalKey: String = "work-$work",
+        precision: SourceDatePrecision = SourceDatePrecision.DAY,
     ) = SourceDateObservation(
         identity = identity,
         workNaturalKey = workNaturalKey,
         chapterNaturalKey = chapter?.let { "chapter-$it" },
         rawValue = valueAt?.toString(),
         valueAt = valueAt,
-        precision = SourceDatePrecision.DAY,
+        precision = precision,
         semanticConfirmed = semanticConfirmed,
         observedAt = observedAt,
         networkFailure = networkFailure,

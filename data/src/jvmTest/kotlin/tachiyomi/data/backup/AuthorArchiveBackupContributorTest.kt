@@ -30,9 +30,11 @@ class AuthorArchiveBackupContributorTest {
         source.driver.execute(
             null,
             "UPDATE author_archive_source_works SET first_seen_at = ?, first_seen_date = ?, " +
-                "first_seen_zone = ?, chapter_count_state = ?, catalog_chapter_count = ?, latest_chapter_at = ? " +
+                "first_seen_zone = ?, chapter_count_state = ?, catalog_chapter_count = ?, latest_chapter_at = ?, " +
+                "published_date_snapshot_at = ?, published_date_snapshot_basis = ?, " +
+                "published_date_snapshot_reason = ? " +
                 "WHERE _id = 1",
-            6,
+            9,
         ) {
             bindLong(0, 1_736_294_400_000L)
             bindString(1, "2025-01-08")
@@ -40,6 +42,9 @@ class AuthorArchiveBackupContributorTest {
             bindString(3, "PARTIAL")
             bindLong(4, 3L)
             bindLong(5, 1_790_000_000_000L)
+            bindLong(6, 1_736_208_000_000L)
+            bindString(7, "example.extension@1.0")
+            bindString(8, "extension_version_changed")
         }
 
         val section = checkNotNull(source.contributor.createSection())
@@ -54,6 +59,16 @@ class AuthorArchiveBackupContributorTest {
         target.long("SELECT catalog_chapter_count FROM author_archive_source_works WHERE source_id = 10") shouldBe 3L
         target.long("SELECT latest_chapter_at FROM author_archive_source_works WHERE source_id = 10") shouldBe
             1_790_000_000_000L
+        target.long("SELECT published_date_snapshot_at FROM author_archive_source_works WHERE source_id = 10") shouldBe
+            1_736_208_000_000L
+        target.string(
+            "SELECT published_date_snapshot_basis FROM author_archive_source_works WHERE source_id = 10",
+        ) shouldBe
+            "example.extension@1.0"
+        target.string(
+            "SELECT published_date_snapshot_reason FROM author_archive_source_works WHERE source_id = 10",
+        ) shouldBe
+            "extension_version_changed"
         target.long("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 0L
     }
 

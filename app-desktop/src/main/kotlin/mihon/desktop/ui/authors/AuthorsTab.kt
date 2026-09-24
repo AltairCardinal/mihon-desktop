@@ -30,7 +30,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.filled.CollectionsBookmark
+import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
@@ -463,7 +463,7 @@ data class AuthorDetailScreen(
                         showSourceChooserFor = null
                         sourceFocusRequester = null
                         navigator.push(MangaDetailScreen(effect.mangaId))
-                        model.markWorkSeenAfterNavigation(effect.presentationMembers)
+                        model.markWorkSeenAfterNavigation(effect.creatorId, effect.sourceWork)
                     }
                     is AuthorDetailEffect.OpenCreator -> navigator.replace(AuthorDetailScreen(effect.creatorId))
                     is AuthorDetailEffect.OpenWorkCompare -> navigator.push(
@@ -965,8 +965,10 @@ private fun groupDateLabel(group: tachiyomi.domain.creator.model.WorkPresentatio
             Locale.getDefault(),
             sourceDateDisplayDate(publishedDateAt),
         )
-    group.publishedDateQuality == SourceDateQualityStatus.SUSPECT ->
-        MR.strings.creator_work_published_date_pending.localized()
+    publishedDateAt != null -> MR.strings.creator_work_published_date_retained.localized(
+        Locale.getDefault(),
+        sourceDateDisplayDate(publishedDateAt),
+    )
     else -> group.firstSeenDate?.let { date ->
         MR.strings.desktop_ui_first_seen.localized(Locale.getDefault(), date)
     }
@@ -1001,14 +1003,18 @@ internal fun latestChapterDateLabel(version: SourceWorkArchiveVersion): String {
 
 private fun publishedDateLabel(version: SourceWorkArchiveVersion): String {
     val dateAt = version.publishedDateAt
+    val firstSeenDate = version.firstSeenDate
     return when {
-        version.publishedDateQuality == SourceDateQualityStatus.SUSPECT ->
-            MR.strings.creator_work_published_date_pending.localized()
         version.publishedDateQuality == SourceDateQualityStatus.TRUSTED && dateAt != null ->
             MR.strings.creator_work_published_date.localized(
                 Locale.getDefault(),
                 sourceDateDisplayDate(dateAt),
             )
+        dateAt != null -> MR.strings.creator_work_published_date_retained.localized(
+            Locale.getDefault(),
+            sourceDateDisplayDate(dateAt),
+        )
+        !firstSeenDate.isNullOrBlank() -> MR.strings.desktop_ui_first_seen.localized(Locale.getDefault(), firstSeenDate)
         else -> MR.strings.creator_work_published_date_unknown.localized()
     }
 }
@@ -1071,7 +1077,7 @@ private fun CreatorWorkSourceChooserDialog(
                                 )
                                 if (version.inLibrary) {
                                     Icon(
-                                        Icons.Default.CollectionsBookmark,
+                                        creatorFavoriteBadgeIcon(),
                                         contentDescription = MR.strings.desktop_ui_in_library.localized(),
                                         modifier = Modifier.align(Alignment.TopStart).padding(2.dp).size(16.dp),
                                     )
@@ -1258,6 +1264,8 @@ private fun unreadWorkLabel(unread: Boolean, key: String) {
     }
 }
 
+internal fun creatorFavoriteBadgeIcon() = Icons.Outlined.CollectionsBookmark
+
 @Composable
 private fun CreatorWorkCover(
     title: String,
@@ -1293,7 +1301,7 @@ private fun CreatorWorkCover(
         }
         if (favorite) {
             Icon(
-                Icons.Default.CollectionsBookmark,
+                creatorFavoriteBadgeIcon(),
                 contentDescription = MR.strings.desktop_ui_in_library.localized(),
                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.align(Alignment.TopStart).padding(5.dp).size(20.dp)

@@ -27,6 +27,7 @@ import tachiyomi.domain.creator.model.DecisionActor
 import tachiyomi.domain.creator.model.SourceWorkNaturalKey
 import tachiyomi.domain.creator.model.WorkDecisionContract
 import tachiyomi.domain.creator.model.WorkDecisionState
+import tachiyomi.domain.creator.service.WorkPresentationGroupService
 import java.nio.file.Files
 
 class CreatorCardProjectionTest {
@@ -179,6 +180,98 @@ class CreatorCardProjectionTest {
             assertFalse(secondPage.hasMore)
             assertEquals(creators.last().id, secondPage.creators.single().creator.id)
         }
+
+    @Test
+    fun `card and detail attach a pending title to any canonical member title`() = runBlocking {
+        val creator = repository.upsertCreator("Variant Title Author")
+        val canonical = repository.createCanonicalWork("Unrelated primary title", creator.id, null)
+        val first = SourceWorkNaturalKey(901L, "/canonical-first")
+        val second = SourceWorkNaturalKey(902L, "/canonical-second")
+        val pending = SourceWorkNaturalKey(903L, "/pending-variant")
+        addVerifiedWork(repository, creator.id, first.sourceId, first.stableSourceUrl, "Unrelated primary title")
+        addVerifiedWork(repository, creator.id, second.sourceId, second.stableSourceUrl, "詭譎屋")
+        addVerifiedWork(repository, creator.id, pending.sourceId, pending.stableSourceUrl, "诡谲屋")
+        listOf(first, second).forEach { key ->
+            repository.appendWorkDecision(
+                key,
+                canonical.id,
+                WorkDecisionContract(WorkDecisionState.CONFIRMED, DecisionActor.USER, explicit = true),
+                null,
+                1.0,
+                "confirmed edition",
+                100L,
+                "variant-title-${key.sourceId}",
+            )
+        }
+
+        val detailGroups = WorkPresentationGroupService.project(repository.getCreatorWorkArchive(creator.id))
+        val card = repository.getCreatorCardProjectionPage(0, 50, false).creators.single()
+
+        assertEquals(1, detailGroups.size)
+        assertEquals(3, detailGroups.single().members.size)
+        assertEquals(1, card.uniqueWorkCount)
+    }
+
+    @Test
+    fun `card matches canonical primary title when source editions have different titles`() = runBlocking {
+        val creator = repository.upsertCreator("Primary Title Author")
+        val canonical = repository.createCanonicalWork("詭譎屋", creator.id, null)
+        val edition = SourceWorkNaturalKey(911L, "/primary-edition")
+        val pending = SourceWorkNaturalKey(912L, "/primary-pending")
+        addVerifiedWork(repository, creator.id, edition.sourceId, edition.stableSourceUrl, "Another edition title")
+        addVerifiedWork(repository, creator.id, pending.sourceId, pending.stableSourceUrl, "诡谲屋")
+        repository.appendWorkDecision(
+            edition,
+            canonical.id,
+            WorkDecisionContract(WorkDecisionState.CONFIRMED, DecisionActor.USER, explicit = true),
+            null,
+            1.0,
+            "confirmed edition",
+            100L,
+            "primary-title-edition",
+        )
+
+        val detailGroups = WorkPresentationGroupService.project(repository.getCreatorWorkArchive(creator.id))
+        val card = repository.getCreatorCardProjectionPage(0, 50, false).creators.single()
+
+        assertEquals(1, detailGroups.size)
+        assertEquals(2, detailGroups.single().members.size)
+        assertEquals(1, card.uniqueWorkCount)
+    }
+
+    @Test
+    fun `card does not match pending titles through an excluded canonical source`() = runBlocking {
+        val creator = repository.upsertCreator("Excluded Title Author")
+        val canonical = repository.createCanonicalWork("Other primary", creator.id, null)
+        val included = SourceWorkNaturalKey(921L, "/included-edition")
+        val excluded = SourceWorkNaturalKey(922L, "/excluded-edition")
+        val pending = SourceWorkNaturalKey(923L, "/excluded-pending")
+        addVerifiedWork(repository, creator.id, included.sourceId, included.stableSourceUrl, "Other primary")
+        addVerifiedWork(repository, creator.id, excluded.sourceId, excluded.stableSourceUrl, "詭譎屋")
+        addVerifiedWork(repository, creator.id, pending.sourceId, pending.stableSourceUrl, "诡谲屋")
+        listOf(included, excluded).forEach { key ->
+            repository.appendWorkDecision(
+                key,
+                canonical.id,
+                WorkDecisionContract(WorkDecisionState.CONFIRMED, DecisionActor.USER, explicit = true),
+                null,
+                1.0,
+                "confirmed edition",
+                100L,
+                "excluded-title-${key.sourceId}",
+            )
+        }
+        repository.setPresentationExclusion(creator.id, excluded, excluded = true, now = 101L)
+
+        val detailGroups = WorkPresentationGroupService.project(
+            repository.getCreatorWorkArchive(creator.id),
+            repository.getPresentationExclusions(creator.id),
+        )
+        val card = repository.getCreatorCardProjectionPage(0, 50, false).creators.single()
+
+        assertEquals(3, detailGroups.size)
+        assertEquals(3, card.uniqueWorkCount)
+    }
 
     @Test
     fun `creator card search finds an alias after the first fifty indexed authors`() = runBlocking {

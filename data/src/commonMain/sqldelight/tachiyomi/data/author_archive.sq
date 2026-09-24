@@ -207,6 +207,9 @@ CREATE TABLE author_archive_source_works(
     ),
     catalog_chapter_count INTEGER NOT NULL DEFAULT 0 CHECK(catalog_chapter_count >= 0),
     latest_chapter_at INTEGER,
+    published_date_snapshot_at INTEGER CHECK(published_date_snapshot_at IS NULL OR published_date_snapshot_at > 0),
+    published_date_snapshot_basis TEXT,
+    published_date_snapshot_reason TEXT,
     legacy_candidate_id INTEGER UNIQUE,
     legacy_review_snapshot TEXT CHECK(
         legacy_review_snapshot IS NULL OR
@@ -1389,6 +1392,48 @@ deleteSourceDateQualitySamplesBefore:
 DELETE FROM author_archive_source_date_quality_samples
 WHERE observed_at < :cutoff;
 
+retainTrustedWorkPublicationDate:
+UPDATE author_archive_source_works
+SET published_date_snapshot_at = CASE
+        WHEN published_date_snapshot_at IS NULL OR :publishedDateAt < published_date_snapshot_at
+            THEN :publishedDateAt
+        ELSE published_date_snapshot_at
+    END,
+    published_date_snapshot_basis = CASE
+        WHEN published_date_snapshot_at IS NULL OR :publishedDateAt <= published_date_snapshot_at
+            THEN :basis
+        ELSE published_date_snapshot_basis
+    END,
+    published_date_snapshot_reason = CASE
+        WHEN published_date_snapshot_at IS NULL OR :publishedDateAt <= published_date_snapshot_at
+            THEN NULL
+        ELSE published_date_snapshot_reason
+    END
+WHERE source_id = :sourceId AND stable_source_url = :stableSourceUrl
+AND :publishedDateAt > 0;
+
+markRetainedWorkPublicationEvidence:
+UPDATE author_archive_source_works
+SET published_date_snapshot_reason = CASE
+        WHEN :qualityStatus = 'TRUSTED' AND published_date_snapshot_basis = :basis THEN NULL
+        WHEN published_date_snapshot_basis != :basis THEN 'extension_version_changed'
+        ELSE coalesce(:qualityReason, 'date_quality_downgraded')
+    END
+WHERE source_id = :sourceId AND published_date_snapshot_at IS NOT NULL;
+
+restoreWorkPublicationDate:
+UPDATE author_archive_source_works
+SET published_date_snapshot_at = CASE
+        WHEN published_date_snapshot_at IS NULL OR :publishedDateAt < published_date_snapshot_at
+            THEN :publishedDateAt ELSE published_date_snapshot_at END,
+    published_date_snapshot_basis = CASE
+        WHEN published_date_snapshot_at IS NULL OR :publishedDateAt <= published_date_snapshot_at
+            THEN :basis ELSE published_date_snapshot_basis END,
+    published_date_snapshot_reason = CASE
+        WHEN published_date_snapshot_at IS NULL OR :publishedDateAt <= published_date_snapshot_at
+            THEN :reason ELSE published_date_snapshot_reason END
+WHERE _id = :sourceWorkId AND :publishedDateAt > 0;
+
 getArchiveSourceWorksByManga:
 SELECT *
 FROM author_archive_source_works
@@ -1409,7 +1454,10 @@ SELECT
     SW.first_seen_zone,
     SW.catalog_chapter_count,
     SW.chapter_count_state,
-    SW.latest_chapter_at
+    SW.latest_chapter_at,
+    SW.published_date_snapshot_at,
+    SW.published_date_snapshot_basis,
+    SW.published_date_snapshot_reason
 FROM author_archive_source_works SW
 WHERE EXISTS(
     SELECT 1
@@ -3306,7 +3354,7 @@ SELECT
     SW.chapter_count_state,
     SW.catalog_chapter_count,
     SW.latest_chapter_at,
-    (
+    coalesce(SW.published_date_snapshot_at, (
         SELECT S.value_at
         FROM author_archive_source_date_quality_samples S
         JOIN author_archive_source_date_quality Q
@@ -3324,15 +3372,32 @@ SELECT
         AND S.work_natural_key = SW.stable_source_url
         AND S.value_at IS NOT NULL
         AND S.value_at > 0
-        AND S.precision != 'UNKNOWN'
+        AND S.precision = 'DAY'
         AND S.semantic_confirmed = 1
         AND S.network_failure = 0
         AND Q.status = 'TRUSTED'
         AND S.value_at <= Q.updated_at
-        ORDER BY S.observed_at DESC, S._id DESC
+        ORDER BY S.value_at ASC, S.observed_at DESC, S._id DESC
         LIMIT 1
-    ) AS published_date_at,
-    coalesce((
+    )) AS published_date_at,
+    CASE
+        WHEN SW.published_date_snapshot_at IS NOT NULL AND (
+            SELECT Q.status != 'TRUSTED' OR coalesce(SW.published_date_snapshot_basis, '') !=
+                Q.extension_package || '@' || Q.extension_version
+            FROM author_archive_source_date_quality Q
+            JOIN author_archive_source_date_quality_current CURRENT_Q
+                ON CURRENT_Q.source_id = Q.source_id
+                AND CURRENT_Q.field_kind = Q.field_kind
+                AND CURRENT_Q.extension_package = Q.extension_package
+                AND CURRENT_Q.extension_version = Q.extension_version
+            WHERE Q.source_id = SW.source_id AND Q.field_kind = 'WORK_PUBLISHED'
+            LIMIT 1
+        ) THEN 'SUSPECT'
+        WHEN SW.published_date_snapshot_at IS NOT NULL AND NOT EXISTS(
+            SELECT 1 FROM author_archive_source_date_quality_current CURRENT_Q
+            WHERE CURRENT_Q.source_id = SW.source_id AND CURRENT_Q.field_kind = 'WORK_PUBLISHED'
+        ) THEN 'SUSPECT'
+        ELSE coalesce((
         SELECT Q.status
         FROM author_archive_source_date_quality Q
         JOIN author_archive_source_date_quality_current CURRENT_Q
@@ -3343,8 +3408,9 @@ SELECT
         WHERE Q.source_id = SW.source_id
         AND Q.field_kind = 'WORK_PUBLISHED'
         LIMIT 1
-    ), 'UNKNOWN') AS published_date_quality,
-    (
+        ), 'UNKNOWN')
+    END AS published_date_quality,
+    coalesce(SW.published_date_snapshot_reason, (
         SELECT Q.last_reason
         FROM author_archive_source_date_quality Q
         JOIN author_archive_source_date_quality_current CURRENT_Q
@@ -3355,7 +3421,7 @@ SELECT
         WHERE Q.source_id = SW.source_id
         AND Q.field_kind = 'WORK_PUBLISHED'
         LIMIT 1
-    ) AS published_date_reason,
+    )) AS published_date_reason,
     coalesce((
         SELECT Q.status
         FROM author_archive_source_date_quality Q
@@ -3584,7 +3650,8 @@ WITH page_creators AS (
         SW.stable_source_url,
         SW.manga_id,
         SW.title,
-        coalesce(CW.primary_title, SW.title) AS candidate_title,
+        SW.title AS candidate_title,
+        CW.primary_title AS canonical_title,
         CASE
             WHEN CW.portable_key IS NOT NULL THEN 'canonical:' || CW.portable_key
             ELSE 'source:' || SW.source_id || ':' || SW.stable_source_url
@@ -3636,6 +3703,7 @@ WITH page_creators AS (
         RSW.stable_source_url,
         RSW.manga_id,
         RSW.candidate_title,
+        RSW.canonical_title,
         RSW.work_key,
         RSW.cover_url,
         RSW.cover_last_modified,
@@ -3686,6 +3754,7 @@ SELECT
     CAND.stable_source_url,
     CAND.manga_id,
     CAND.candidate_title,
+    CAND.canonical_title,
     CAND.work_key,
     CAND.cover_url,
     CAND.cover_last_modified,
@@ -4122,7 +4191,7 @@ INSERT INTO author_archive_discoveries(
 )
 SELECT
     W._id, SW._id, :kind, :reason, :baselineGeneration,
-    CASE WHEN EXISTS (
+    CASE WHEN :inheritSeen = 1 OR EXISTS (
         SELECT 1
         FROM author_archive_discoveries EXISTING_D
         LEFT JOIN author_archive_canonical_versions EXISTING_CV
@@ -4141,6 +4210,60 @@ JOIN author_archive_source_works SW
     ON SW.source_id = :sourceId AND SW.stable_source_url = :stableSourceUrl
 WHERE W.creator_id = :creatorId
 ON CONFLICT(watch_id, source_work_id) DO NOTHING;
+
+getArchiveDiscoveryFactsForCreator:
+SELECT SW.source_id, SW.stable_source_url, D.read_state
+FROM author_archive_discoveries D
+JOIN author_archive_watches W ON W._id = D.watch_id
+JOIN author_archive_source_works SW ON SW._id = D.source_work_id
+WHERE W.creator_id = :creatorId;
+
+getArchiveDiscoveryReadStatesForWork:
+SELECT D.read_state
+FROM author_archive_discoveries D
+LEFT JOIN author_archive_canonical_versions CV ON CV.source_work_id = D.source_work_id
+WHERE D.source_work_id = :sourceWorkId
+OR (:canonicalWorkId IS NOT NULL AND CV.work_id = :canonicalWorkId);
+
+getArchiveUnreadDiscoveryCandidates:
+SELECT D._id, W.creator_id, C.portable_key, C.display_name,
+    SW.source_id, SW.stable_source_url, SW.title, D.first_discovered_at,
+    CW.portable_key AS canonical_portable_key
+FROM author_archive_discoveries D
+JOIN author_archive_watches W ON W._id = D.watch_id
+JOIN author_archive_creators C ON C._id = W.creator_id
+JOIN author_archive_source_works SW ON SW._id = D.source_work_id
+LEFT JOIN author_archive_canonical_versions CV ON CV.source_work_id = SW._id
+LEFT JOIN author_archive_canonical_works CW ON CW._id = CV.work_id AND CW.status = 'ACTIVE'
+LEFT JOIN author_archive_presentation_exclusions PE
+    ON PE.creator_id = W.creator_id AND PE.source_work_id = SW._id
+WHERE W.enabled = 1 AND D.read_state = 'UNSEEN'
+ORDER BY D.first_discovered_at, D._id;
+
+getArchivePresentationInputsForCreators:
+SELECT SWC.creator_id, SW._id AS source_work_id, SW.source_id, SW.stable_source_url, SW.title,
+    CW._id AS canonical_work_id, CW.portable_key AS canonical_portable_key,
+    CW.primary_title AS canonical_title, WD.state AS decision_state,
+    CASE WHEN PE.source_work_id IS NULL THEN 0 ELSE 1 END AS excluded
+FROM author_archive_source_work_creators SWC
+JOIN author_archive_source_works SW ON SW._id = SWC.source_work_id
+LEFT JOIN author_archive_canonical_versions CV ON CV.source_work_id = SW._id
+LEFT JOIN author_archive_canonical_works CW ON CW._id = CV.work_id AND CW.status = 'ACTIVE'
+LEFT JOIN author_archive_work_decisions WD ON WD._id = (
+    SELECT CURRENT_WD._id
+    FROM author_archive_work_decisions CURRENT_WD
+    WHERE CURRENT_WD.source_work_id = SW._id
+    AND (CW._id IS NULL OR CURRENT_WD.work_id = CW._id)
+    ORDER BY
+        CASE CURRENT_WD.actor WHEN 'USER' THEN 3 WHEN 'RESTORE' THEN 2 ELSE 1 END DESC,
+        CASE WHEN CURRENT_WD.actor = 'RESTORE' THEN CURRENT_WD._id END ASC,
+        CASE WHEN CURRENT_WD.actor != 'RESTORE' THEN CURRENT_WD.decided_at END DESC,
+        CASE WHEN CURRENT_WD.actor != 'RESTORE' THEN CURRENT_WD._id END DESC
+    LIMIT 1
+)
+LEFT JOIN author_archive_presentation_exclusions PE
+    ON PE.creator_id = SWC.creator_id AND PE.source_work_id = SW._id
+WHERE SWC.creator_id IN :creatorIds;
 
 getArchiveCanonicalWorkIdBySourceWork:
 SELECT CV.work_id
@@ -4169,6 +4292,47 @@ WHERE source_work_id IN (
     WHERE work_id = :workId
 )
 AND read_state = 'UNSEEN';
+
+markArchivePresentationSourceDiscoveriesSeen:
+UPDATE author_archive_discoveries
+SET read_state = 'SEEN', last_modified_at = :now
+WHERE source_work_id = (
+    SELECT _id FROM author_archive_source_works
+    WHERE source_id = :sourceId AND stable_source_url = :stableSourceUrl
+)
+AND read_state = 'UNSEEN'
+AND NOT EXISTS (
+    SELECT 1 FROM author_archive_presentation_exclusions PE
+    JOIN author_archive_watches W ON W.creator_id = PE.creator_id
+    WHERE W._id = author_archive_discoveries.watch_id
+    AND PE.source_work_id = author_archive_discoveries.source_work_id
+);
+
+markArchivePresentationExcludedSourceDiscoverySeen:
+UPDATE author_archive_discoveries
+SET read_state = 'SEEN', last_modified_at = :now
+WHERE source_work_id = (
+    SELECT _id FROM author_archive_source_works
+    WHERE source_id = :sourceId AND stable_source_url = :stableSourceUrl
+)
+AND watch_id IN (
+    SELECT _id FROM author_archive_watches WHERE creator_id = :creatorId
+)
+AND read_state = 'UNSEEN';
+
+markArchivePresentationCanonicalDiscoveriesSeen:
+UPDATE author_archive_discoveries
+SET read_state = 'SEEN', last_modified_at = :now
+WHERE source_work_id IN (
+    SELECT source_work_id FROM author_archive_canonical_versions WHERE work_id = :workId
+)
+AND read_state = 'UNSEEN'
+AND NOT EXISTS (
+    SELECT 1 FROM author_archive_presentation_exclusions PE
+    JOIN author_archive_watches W ON W.creator_id = PE.creator_id
+    WHERE W._id = author_archive_discoveries.watch_id
+    AND PE.source_work_id = author_archive_discoveries.source_work_id
+);
 
 getArchiveDiscoveryByNaturalKey:
 SELECT D._id

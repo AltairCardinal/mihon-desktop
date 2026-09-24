@@ -87,6 +87,7 @@ import tachiyomi.domain.creator.model.SetCreatorDisplayNameRequest
 import tachiyomi.domain.creator.model.SourceCheckpoint
 import tachiyomi.domain.creator.model.SourceCheckpointResult
 import tachiyomi.domain.creator.model.SourceCheckpointUpdate
+import tachiyomi.domain.creator.model.SourceDateField
 import tachiyomi.domain.creator.model.SourceDateObservation
 import tachiyomi.domain.creator.model.SourceDatePrecision
 import tachiyomi.domain.creator.model.SourceDateQualityIdentity
@@ -116,6 +117,7 @@ import tachiyomi.domain.creator.service.CreatorDiscoverySchedule
 import tachiyomi.domain.creator.service.CreatorNameNormalizer
 import tachiyomi.domain.creator.service.CreatorRepresentativeWorkSelector
 import tachiyomi.domain.creator.service.CreatorSourceWorkKey
+import tachiyomi.domain.creator.service.WorkPresentationGroupService
 import tachiyomi.domain.creator.service.WorkTitleNormalizer
 import tachiyomi.domain.manga.model.Manga
 import kotlin.uuid.ExperimentalUuidApi
@@ -325,6 +327,7 @@ class CreatorRepositoryImpl(
                     stableSourceUrl,
                     mangaId,
                     candidateTitle,
+                    canonicalTitle,
                     workKey,
                     coverUrl,
                     coverLastModified,
@@ -358,6 +361,7 @@ class CreatorRepositoryImpl(
                             sourceWorkId = id,
                             naturalKey = naturalKey,
                             title = checkNotNull(candidateTitle),
+                            canonicalTitle = canonicalTitle,
                             coverRequest = CreatorCoverRequest(
                                 sourceWorkId = id,
                                 mangaId = mangaId,
@@ -406,8 +410,8 @@ class CreatorRepositoryImpl(
                 projection = CreatorCardProjection(
                     creator = first.creator,
                     followed = first.followed,
-                    uniqueWorkCount = CreatorCardPresentation.uniqueWorkCount(candidates),
-                    unreadWorkCount = CreatorCardPresentation.unreadWorkCount(candidates),
+                    uniqueWorkCount = CreatorCardPresentation.uniqueProjectedWorkCount(candidates),
+                    unreadWorkCount = CreatorCardPresentation.unreadProjectedWorkCount(candidates),
                 ),
                 candidates = candidates,
             )
@@ -522,10 +526,12 @@ class CreatorRepositoryImpl(
                 sourceWorks.sortedWith(
                     compareBy(SourceWorkNaturalKey::sourceId, SourceWorkNaturalKey::stableSourceUrl),
                 ).forEach sourceWorkLoop@{ sourceWork ->
-                    if (author_archiveQueries.getArchiveSourceWorkByKey(
-                            sourceId = sourceWork.sourceId,
-                            stableSourceUrl = sourceWork.stableSourceUrl,
-                        ).executeAsOneOrNull() == null
+                    val sourceWorkId = author_archiveQueries.getArchiveSourceWorkByKey(
+                        sourceId = sourceWork.sourceId,
+                        stableSourceUrl = sourceWork.stableSourceUrl,
+                    ).executeAsOneOrNull()?._id ?: return@sourceWorkLoop
+                    if (author_archiveQueries.getArchiveSourceWorkCreator(sourceWorkId, rootId)
+                            .executeAsOneOrNull() == null
                     ) {
                         return@sourceWorkLoop
                     }
@@ -540,13 +546,13 @@ class CreatorRepositoryImpl(
                             fingerprint = fingerprint,
                             importedAt = now,
                         )
+                        author_archiveQueries.upsertPresentationExclusion(
+                            creatorId = rootId,
+                            sourceId = sourceWork.sourceId,
+                            stableSourceUrl = sourceWork.stableSourceUrl,
+                            createdAt = now,
+                        )
                     }
-                    author_archiveQueries.upsertPresentationExclusion(
-                        creatorId = rootId,
-                        sourceId = sourceWork.sourceId,
-                        stableSourceUrl = sourceWork.stableSourceUrl,
-                        createdAt = now,
-                    )
                     imported.getOrPut(creatorId) { linkedSetOf() }.add(sourceWork)
                 }
             }
@@ -708,6 +714,32 @@ class CreatorRepositoryImpl(
                     observedAt = observation.observedAt,
                     reason = observation.reason,
                     networkFailure = observation.networkFailure,
+                )
+            }
+            if (identity.field == SourceDateField.WORK_PUBLISHED &&
+                snapshot.status == SourceDateQualityStatus.TRUSTED
+            ) {
+                retained.asSequence()
+                    .filter {
+                        it.semanticConfirmed && !it.networkFailure && (it.valueAt ?: 0L) in 1L..now
+                    }
+                    .filter { it.precision == SourceDatePrecision.DAY }
+                    .groupBy(SourceDateObservation::workNaturalKey)
+                    .forEach { (stableSourceUrl, samples) ->
+                        author_archiveQueries.retainTrustedWorkPublicationDate(
+                            publishedDateAt = samples.minOf { checkNotNull(it.valueAt) },
+                            basis = "${identity.extensionPackage}@${identity.extensionVersion}",
+                            sourceId = identity.sourceId,
+                            stableSourceUrl = stableSourceUrl,
+                        )
+                    }
+            }
+            if (identity.field == SourceDateField.WORK_PUBLISHED) {
+                author_archiveQueries.markRetainedWorkPublicationEvidence(
+                    qualityStatus = snapshot.status.name,
+                    basis = "${identity.extensionPackage}@${identity.extensionVersion}",
+                    qualityReason = snapshot.lastReason,
+                    sourceId = identity.sourceId,
                 )
             }
             author_archiveQueries.deleteSourceDateQualitySamplesBefore(
@@ -1033,7 +1065,20 @@ class CreatorRepositoryImpl(
                 )
             }
             val relation = upsertObservationCreatorRelation(work.sourceWorkId, observation)
-            val plan = if (observation.notificationsEnabled) {
+            val groupMembers = presentationGroupMembers(observation.creatorId, observation.sourceWork)
+            val archivedWithoutDiscovery = if (groupMembers.size <= 1) {
+                false
+            } else {
+                val discoveredKeys = author_archiveQueries.getArchiveDiscoveryFactsForCreator(observation.creatorId) {
+                        sourceId,
+                        stableSourceUrl,
+                        _,
+                    ->
+                    SourceWorkNaturalKey(sourceId, stableSourceUrl)
+                }.executeAsList().toSet()
+                groupMembers.any { it != observation.sourceWork && it !in discoveredKeys }
+            }
+            val plan = if (observation.notificationsEnabled && !archivedWithoutDiscovery) {
                 CreatorArchiveV2Policy.planDiscoveryCommit(
                     baselineState = observation.baselineState,
                     relationVerification = observation.verification,
@@ -1086,6 +1131,26 @@ class CreatorRepositoryImpl(
     }
 
     private fun Database.commitDiscoveryRecord(commit: DiscoveryCommit): ArchiveDiscovery {
+        val groupMembers = presentationGroupMembers(commit.creatorId, commit.sourceWork)
+        val priorFacts = author_archiveQueries.getArchiveDiscoveryFactsForCreator(commit.creatorId) {
+                sourceId,
+                stableSourceUrl,
+                readState,
+            ->
+            SourceWorkNaturalKey(sourceId, stableSourceUrl) to DiscoveryReadState.valueOf(readState)
+        }.executeAsList().filter { it.first in groupMembers }
+        val inheritSeen = priorFacts.any { it.second == DiscoveryReadState.SEEN }
+        val sourceWorkId = author_archiveQueries.getArchiveSourceWorkByKey(
+            commit.sourceWork.sourceId,
+            commit.sourceWork.stableSourceUrl.trim(),
+        ).executeAsOne()._id
+        val canonicalWorkId = author_archiveQueries.getArchiveCanonicalWorkIdBySourceWork(
+            commit.sourceWork.sourceId,
+            commit.sourceWork.stableSourceUrl.trim(),
+        ).executeAsOneOrNull()
+        val existingUnread = priorFacts.any { it.second == DiscoveryReadState.UNSEEN } ||
+            author_archiveQueries.getArchiveDiscoveryReadStatesForWork(sourceWorkId, canonicalWorkId)
+                .executeAsList().any { it == DiscoveryReadState.UNSEEN.name }
         val existingId = author_archiveQueries.getArchiveDiscoveryByNaturalKey(
             commit.creatorId,
             commit.sourceWork.sourceId,
@@ -1099,6 +1164,7 @@ class CreatorRepositoryImpl(
             sourceId = commit.sourceWork.sourceId,
             stableSourceUrl = commit.sourceWork.stableSourceUrl.trim(),
             creatorId = commit.creatorId,
+            inheritSeen = if (inheritSeen) 1L else 0L,
         )
         val discoveryId = author_archiveQueries.getArchiveDiscoveryByNaturalKey(
             commit.creatorId,
@@ -1108,7 +1174,7 @@ class CreatorRepositoryImpl(
         var discovery = author_archiveQueries
             .getArchiveDiscoveryProjectionById(discoveryId, ::mapArchiveDiscovery)
             .executeAsOne()
-        if (existingId == null && discovery.state.readState == DiscoveryReadState.UNSEEN) {
+        if (existingId == null && !existingUnread && discovery.state.readState == DiscoveryReadState.UNSEEN) {
             author_archiveQueries.insertArchiveNotificationOutbox(
                 discoveryId = discoveryId,
                 channel = commit.outboxChannel,
@@ -1127,6 +1193,23 @@ class CreatorRepositoryImpl(
         }
         return discovery
     }
+
+    private fun Database.presentationGroupMembers(
+        creatorId: Long,
+        sourceWork: SourceWorkNaturalKey,
+    ): Set<SourceWorkNaturalKey> {
+        val inputs = presentationInputsForCreators(listOf(creatorId))
+        return WorkPresentationGroupService.project(inputs.toPresentationArchive(), inputs.excludedKeys())
+            .firstOrNull { group -> group.members.any { it.naturalKey == sourceWork } }
+            ?.members?.mapTo(mutableSetOf()) { it.naturalKey }
+            ?: setOf(sourceWork)
+    }
+
+    private fun Database.presentationInputsForCreators(creatorIds: List<Long>): List<PresentationInput> =
+        creatorIds.chunked(MAX_PRESENTATION_CREATOR_BATCH).flatMap { batch ->
+            author_archiveQueries.getArchivePresentationInputsForCreators(batch, ::mapPresentationInput)
+                .executeAsList()
+        }
 
     private fun Database.appendObservationLanguageAssertion(
         observation: SourceDiscoveryObservation,
@@ -1242,16 +1325,89 @@ class CreatorRepositoryImpl(
     override suspend fun getUnreadWorkDiscoveries(limit: Long): List<ArchiveUnreadWork> {
         bootstrap.awaitReady()
         require(limit > 0) { "Unread work limit must be positive" }
-        return handler.awaitList {
-            author_archiveQueries.getArchiveUnreadWorkDiscoveries(limit, ::mapArchiveUnreadWork)
+        return handler.await(inTransaction = true) {
+            val candidates = author_archiveQueries.getArchiveUnreadDiscoveryCandidates(::mapUnreadDiscoveryCandidate)
+                .executeAsList()
+            projectUnreadWorks(candidates, limit)
         }
     }
 
     override fun observeUnreadWorkDiscoveries(limit: Long): Flow<List<ArchiveUnreadWork>> {
         require(limit > 0) { "Unread work limit must be positive" }
         return handler.subscribeToList {
-            author_archiveQueries.getArchiveUnreadWorkDiscoveries(limit, ::mapArchiveUnreadWork)
-        }.onStart { bootstrap.awaitReady() }
+            author_archiveQueries.getArchiveUnreadDiscoveryCandidates(::mapUnreadDiscoveryCandidate)
+        }.map { candidates ->
+            handler.await(inTransaction = true) { projectUnreadWorks(candidates, limit) }
+        }
+            .onStart { bootstrap.awaitReady() }
+    }
+
+    private fun Database.projectUnreadWorks(
+        candidates: List<UnreadDiscoveryCandidate>,
+        limit: Long,
+    ): List<ArchiveUnreadWork> {
+        if (candidates.isEmpty()) return emptyList()
+        val presentationKeyByCandidate = mutableMapOf<Pair<Long, SourceWorkNaturalKey>, String>()
+        presentationInputsForCreators(candidates.map(UnreadDiscoveryCandidate::creatorId).distinct())
+            .groupBy(PresentationInput::creatorId).forEach { (creatorId, inputs) ->
+                WorkPresentationGroupService.project(
+                    inputs.toPresentationArchive(),
+                    inputs.excludedKeys(),
+                ).forEach { group ->
+                    group.members.forEach { member ->
+                        presentationKeyByCandidate[creatorId to member.naturalKey] = group.groupKey
+                    }
+                }
+            }
+        val parents = IntArray(candidates.size) { it }
+        fun root(index: Int): Int {
+            var current = index
+            while (parents[current] != current) {
+                parents[current] = parents[parents[current]]
+                current = parents[current]
+            }
+            return current
+        }
+        val firstByKey = mutableMapOf<String, Int>()
+        candidates.forEachIndexed { index, candidate ->
+            val sourceKey = "source:${candidate.sourceWork.sourceId}:${candidate.sourceWork.stableSourceUrl}"
+            val globalKey = candidate.canonicalPortableKey?.let { "canonical:$it" } ?: sourceKey
+            val presentationKey = presentationKeyByCandidate[candidate.creatorId to candidate.sourceWork] ?: sourceKey
+            listOf("global:$globalKey", "creator:${candidate.creatorId}:$presentationKey").forEach { key ->
+                val previous = firstByKey.putIfAbsent(key, index)
+                if (previous != null) parents[root(index)] = root(previous)
+            }
+        }
+        return candidates.indices.groupBy(::root).values.map { indexes ->
+            val rows = indexes.map(candidates::get)
+            val representative = rows.minWith(
+                compareBy<UnreadDiscoveryCandidate> { it.firstDiscoveredAt }
+                    .thenBy { it.creatorPortableKey }
+                    .thenBy { "${it.sourceWork.sourceId}:${it.sourceWork.stableSourceUrl}" }
+                    .thenBy { it.discoveryId },
+            )
+            val presentationKey = presentationKeyByCandidate[
+                representative.creatorId to representative.sourceWork,
+            ] ?: "source:${representative.sourceWork.sourceId}:${representative.sourceWork.stableSourceUrl}"
+            val canonicalKey = rows.mapNotNull(UnreadDiscoveryCandidate::canonicalPortableKey)
+                .distinct().singleOrNull()?.let { "canonical:$it" }
+            ArchiveUnreadWork(
+                workKey = canonicalKey ?: if (presentationKey.startsWith("canonical:")) {
+                    presentationKey
+                } else {
+                    "creator:${representative.creatorId}:$presentationKey"
+                },
+                creatorId = representative.creatorId,
+                creatorIds = rows.map(UnreadDiscoveryCandidate::creatorId).distinct().sorted(),
+                representativeDiscoveryId = representative.discoveryId,
+                sourceWork = representative.sourceWork,
+                title = representative.title,
+                firstDiscoveredAt = rows.minOf(UnreadDiscoveryCandidate::firstDiscoveredAt),
+                creatorName = representative.creatorName,
+            )
+        }.sortedWith(
+            compareByDescending<ArchiveUnreadWork> { it.firstDiscoveredAt }.thenByDescending { it.workKey },
+        ).take(limit.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
     }
 
     override suspend fun markWorkSeen(sourceWork: SourceWorkNaturalKey, now: Long) {
@@ -1279,29 +1435,48 @@ class CreatorRepositoryImpl(
         }
     }
 
-    override suspend fun markPresentationGroupSeen(sourceWorks: List<SourceWorkNaturalKey>, now: Long) {
+    override suspend fun markPresentationGroupSeen(
+        creatorId: Long,
+        selectedSourceWork: SourceWorkNaturalKey,
+        now: Long,
+    ) {
         bootstrap.awaitReady()
         require(now >= 0L) { "Work read timestamp must not be negative" }
-        val members = sourceWorks.distinct()
-        if (members.isEmpty()) return
         handler.await(inTransaction = true) {
+            val rootId = author_archiveQueries.resolveArchiveCreatorRootId(creatorId).executeAsOneOrNull()
+                ?: throw IllegalStateException("This author is no longer available. Reopen the author to try again.")
+            val inputs = presentationInputsForCreators(listOf(rootId))
+            val selected = inputs.firstOrNull { it.naturalKey == selectedSourceWork }
+                ?: throw IllegalStateException("This source version moved. Reopen the author to try again.")
+            val excluded = inputs.excludedKeys()
+            if (selected.excluded) {
+                author_archiveQueries.markArchivePresentationExcludedSourceDiscoverySeen(
+                    creatorId = rootId,
+                    sourceId = selectedSourceWork.sourceId,
+                    stableSourceUrl = selectedSourceWork.stableSourceUrl.trim(),
+                    now = now,
+                )
+                return@await
+            }
+            val members = WorkPresentationGroupService.project(inputs.toPresentationArchive(), excluded)
+                .firstOrNull { group -> group.members.any { it.naturalKey == selectedSourceWork } }
+                ?.members?.map(SourceWorkArchiveVersion::naturalKey)
+                ?: throw IllegalStateException("This work changed. Reopen the author to try again.")
             members.forEach { sourceWork ->
-                val canonicalWorkId = author_archiveQueries
-                    .getArchiveCanonicalWorkIdBySourceWork(
-                        sourceId = sourceWork.sourceId,
-                        stableSourceUrl = sourceWork.stableSourceUrl.trim(),
-                    )
-                    .executeAsOneOrNull()
+                val canonicalWorkId = author_archiveQueries.getArchiveCanonicalWorkIdBySourceWork(
+                    sourceId = sourceWork.sourceId,
+                    stableSourceUrl = sourceWork.stableSourceUrl.trim(),
+                ).executeAsOneOrNull()
                 if (canonicalWorkId == null) {
-                    author_archiveQueries.markArchiveSourceWorkDiscoveriesSeen(
+                    author_archiveQueries.markArchivePresentationSourceDiscoveriesSeen(
                         sourceId = sourceWork.sourceId,
                         stableSourceUrl = sourceWork.stableSourceUrl.trim(),
                         now = now,
                     )
                 } else {
-                    author_archiveQueries.markArchiveCanonicalWorkDiscoveriesSeen(
-                        workId = canonicalWorkId,
+                    author_archiveQueries.markArchivePresentationCanonicalDiscoveriesSeen(
                         now = now,
+                        workId = canonicalWorkId,
                     )
                 }
             }
@@ -3716,6 +3891,7 @@ class CreatorRepositoryImpl(
 
     private companion object {
         const val MAX_CREATOR_CARD_PAGE_SIZE = 50
+        const val MAX_PRESENTATION_CREATOR_BATCH = 400
         const val EXACT_IDENTITY_MIGRATION = "global-exact-name-v1"
         const val DEFAULT_WATCH_PERIOD_MILLIS = 86_400_000L
         const val LEGACY_COMPAT_ALGORITHM_VERSION = "creator-archive-v2-compat-1"
@@ -3814,6 +3990,110 @@ private data class CreatorCardProjectionRow(
 private data class CreatorCardProjectionWithCandidates(
     val projection: CreatorCardProjection,
     val candidates: List<CreatorCardWorkCandidate>,
+)
+
+private data class UnreadDiscoveryCandidate(
+    val discoveryId: Long,
+    val creatorId: Long,
+    val creatorPortableKey: String,
+    val creatorName: String,
+    val sourceWork: SourceWorkNaturalKey,
+    val title: String,
+    val firstDiscoveredAt: Long,
+    val canonicalPortableKey: String?,
+)
+
+/** Only fields used by the shared presentation grouping policy. */
+private data class PresentationInput(
+    val creatorId: Long,
+    val sourceWorkId: Long,
+    val naturalKey: SourceWorkNaturalKey,
+    val title: String,
+    val canonicalWorkId: Long?,
+    val canonicalPortableKey: String?,
+    val canonicalTitle: String?,
+    val decisionState: String?,
+    val excluded: Boolean,
+)
+
+private fun mapPresentationInput(
+    creatorId: Long,
+    sourceWorkId: Long,
+    sourceId: Long,
+    stableSourceUrl: String,
+    title: String,
+    canonicalWorkId: Long?,
+    canonicalPortableKey: String?,
+    canonicalTitle: String?,
+    decisionState: String?,
+    excluded: Long,
+) = PresentationInput(
+    creatorId,
+    sourceWorkId,
+    SourceWorkNaturalKey(sourceId, stableSourceUrl),
+    title,
+    canonicalWorkId,
+    canonicalPortableKey,
+    canonicalTitle,
+    decisionState,
+    excluded != 0L,
+)
+
+private fun List<PresentationInput>.excludedKeys(): Set<SourceWorkNaturalKey> =
+    filter(PresentationInput::excluded).mapTo(mutableSetOf(), PresentationInput::naturalKey)
+
+private fun List<PresentationInput>.toPresentationArchive(): CreatorWorkArchive {
+    val unknownLanguage = LanguageProjectionContract(
+        LanguageDimension.READING,
+        "und",
+        LanguageCertainty.UNKNOWN,
+        LanguageEvidenceKind.UNKNOWN,
+    )
+    fun PresentationInput.version() = SourceWorkArchiveVersion(
+        sourceWorkId = sourceWorkId,
+        naturalKey = naturalKey,
+        mangaId = null,
+        title = title,
+        readingLanguage = unknownLanguage,
+        chapterCount = 0L,
+        inLibrary = false,
+        detailsFetchedAt = null,
+        lastSeenAt = 0L,
+        decision = null,
+    )
+    val works = filter { it.canonicalWorkId != null }.groupBy { it.canonicalWorkId }.values.map { rows ->
+        val first = rows.first()
+        CanonicalWorkArchiveGroup(
+            workId = checkNotNull(first.canonicalWorkId),
+            portableKey = checkNotNull(first.canonicalPortableKey),
+            title = checkNotNull(first.canonicalTitle),
+            versions = rows.map(PresentationInput::version),
+        )
+    }
+    val pending = filter { it.canonicalWorkId == null && it.decisionState != WorkDecisionState.REJECTED.name }
+        .map(PresentationInput::version)
+    return CreatorWorkArchive(works, pending, emptyList())
+}
+
+private fun mapUnreadDiscoveryCandidate(
+    discoveryId: Long,
+    creatorId: Long,
+    creatorPortableKey: String,
+    creatorName: String,
+    sourceId: Long,
+    stableSourceUrl: String,
+    title: String,
+    firstDiscoveredAt: Long,
+    canonicalPortableKey: String?,
+) = UnreadDiscoveryCandidate(
+    discoveryId,
+    creatorId,
+    creatorPortableKey,
+    creatorName,
+    SourceWorkNaturalKey(sourceId, stableSourceUrl),
+    title,
+    firstDiscoveredAt,
+    canonicalPortableKey,
 )
 
 private data class CreatorWorkArchiveRow(

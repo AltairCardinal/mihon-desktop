@@ -63,6 +63,7 @@ import tachiyomi.domain.creator.repository.NoopCreatorLibraryIndexWriter
 import tachiyomi.domain.creator.service.CreatorDiscoveryResult
 import tachiyomi.domain.creator.service.CreatorLibraryIndexState
 import tachiyomi.domain.creator.service.CreatorLibraryIndexer
+import tachiyomi.domain.creator.service.CreatorWorkPresentationExclusions
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import java.nio.file.Path
@@ -214,9 +215,10 @@ class AuthorsProductionWiringTest {
             ).join()
             val opened = effect.await()
             assertEquals(321L, opened.mangaId)
+            assertEquals(creator.id, opened.creatorId)
             assertTrue(repository.getUnreadWorkDiscoveries(10L).isNotEmpty())
 
-            model.markWorkSeenAfterNavigation(opened.sourceWork)
+            model.markWorkSeenAfterNavigation(opened.creatorId, opened.sourceWork)
             assertTrue(repository.getUnreadWorkDiscoveries(10L).isEmpty())
         } finally {
             model.onDispose()
@@ -1072,6 +1074,47 @@ class AuthorsProductionWiringTest {
             assertTrue(MR.strings.creator_split_unavailable.localized() in texts(scene))
             coVerify(exactly = 0) { archiveRepository.removeManualCreatorAlias(any(), any()) }
         } finally { scene.close() }
+    }
+
+    @Test
+    fun `desktop author list imports legacy exclusions before its first SQL card page`() = runBlocking {
+        val node = Preferences.userRoot().node("/mihon-tests/author-list-migration-${UUID.randomUUID()}")
+        try {
+            val preferences = LibraryPreferences(DesktopPreferenceStore(node))
+            val sourceWork = SourceWorkNaturalKey(82L, "/legacy-separated")
+            CreatorWorkPresentationExclusions(preferences.creatorWorkPresentationExclusions()).exclude(7L, sourceWork)
+            val creatorRepository = mockk<CreatorRepository> {
+                every { getCreatorsAsFlow() } returns flowOf(emptyList())
+                every { getFollowedCreatorsAsFlow() } returns flowOf(emptyList())
+            }
+            val archiveRepository = mockk<CreatorArchiveRepository> {
+                every { observeUnreadWorkDiscoveries(any()) } returns flowOf(emptyList())
+                coEvery { importPresentationExclusions(any()) } returns mapOf(7L to setOf(sourceWork))
+                coEvery { getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any()) } returns
+                    CreatorCardProjectionPage(0, 50, false, emptyList())
+            }
+            val indexer = CreatorLibraryIndexer(
+                mangaSource = object : CreatorLibraryMangaSource {
+                    override suspend fun countLibraryMangaForCreatorIndex(): Long = 0L
+                    override suspend fun getLibraryMangaForCreatorIndex(afterId: Long, limit: Long): List<Manga> = emptyList()
+                },
+                indexWriter = NoopCreatorLibraryIndexWriter,
+                extractCreators = ExtractCreatorsFromManga(),
+            )
+            val model = AuthorsRootScreenModel(
+                getCreators = GetCreators(creatorRepository),
+                creatorArchive = CreatorArchive(creatorRepository, archiveRepository),
+                indexer = indexer,
+                libraryPreferences = preferences,
+            )
+            try {
+                withTimeout(5_000) { model.state.first { !it.loading } }
+                coVerifyOrder {
+                    archiveRepository.importPresentationExclusions(mapOf(7L to setOf(sourceWork)))
+                    archiveRepository.getCreatorCardProjectionPage(any(), any(), any(), any(), any(), any())
+                }
+            } finally { model.onDispose() }
+        } finally { node.removeNode() }
     }
 
     @Test

@@ -170,6 +170,64 @@ class CreatorDiscoveryExecutorStateMachineTest {
     }
 
     @Test
+    fun `scheduler archives equivalent source discoveries but sends one reminder and suppresses late source`() {
+        runBlocking {
+            val now = MutableClock(1_000L)
+            val creatorId = seedWatch(now)
+            val port = ScriptedDiscoveryPort().apply {
+                put(10L, work("/baseline", "Baseline", "ONE"))
+            }
+            val service = service(port, now)
+            service.discoverDueWatches()
+
+            port.put(10L, work("/traditional", "詭譎屋", "ONE"))
+            port.put(10L, work("/simplified", "诡谲屋", "ONE"))
+            now.advance(86_400_000L)
+            service.discoverDueWatches()
+
+            queryLong("SELECT COUNT(*) FROM author_archive_discoveries") shouldBe 2L
+            repository.getUnreadWorkDiscoveries(10L).size shouldBe 1
+            repository.getPendingNotificationOutbox(now.value, 10L).size shouldBe 1
+            repository.markPresentationGroupSeen(
+                creatorId,
+                SourceWorkNaturalKey(10L, "/traditional"),
+                now.value,
+            )
+
+            port.put(10L, work("/late", "《詭譎屋》", "ONE"))
+            now.advance(86_400_000L)
+            service.discoverDueWatches()
+
+            queryLong("SELECT COUNT(*) FROM author_archive_discoveries") shouldBe 3L
+            repository.getUnreadWorkDiscoveries(10L) shouldBe emptyList()
+            queryLong("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 1L
+        }
+    }
+
+    @Test
+    fun `baseline work suppresses a later equivalent source as a new work`() {
+        runBlocking {
+            val now = MutableClock(1_000L)
+            seedWatch(now)
+            val port = ScriptedDiscoveryPort().apply {
+                put(10L, work("/baseline", "詭譎屋", "ONE"))
+            }
+            val service = service(port, now)
+            service.discoverDueWatches()
+            queryLong("SELECT COUNT(*) FROM author_archive_discoveries") shouldBe 0L
+
+            port.put(10L, work("/late-equivalent", "诡谲屋", "ONE"))
+            now.advance(86_400_000L)
+            service.discoverDueWatches()
+
+            queryLong("SELECT COUNT(*) FROM author_archive_source_works") shouldBe 2L
+            queryLong("SELECT COUNT(*) FROM author_archive_discoveries") shouldBe 0L
+            queryLong("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 0L
+            repository.getUnreadWorkDiscoveries(10L) shouldBe emptyList()
+        }
+    }
+
+    @Test
     fun `metadata refresh of an existing work produces no events`() {
         runBlocking {
             val now = MutableClock(1_000L)
@@ -217,7 +275,7 @@ class CreatorDiscoveryExecutorStateMachineTest {
             val unread = repository.getUnreadDiscoveries(10L)
             unread.map { it.creatorId }.toSet() shouldBe setOf(creatorA, creatorB)
             unread.map { it.sourceWork.stableSourceUrl }.toSet() shouldBe setOf("/c")
-            queryLong("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 2L
+            queryLong("SELECT COUNT(*) FROM author_archive_notification_outbox") shouldBe 1L
         }
     }
 

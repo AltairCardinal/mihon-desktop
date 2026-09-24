@@ -21,6 +21,27 @@ import tachiyomi.domain.creator.model.WorkDecisionState
 class WorkPresentationGroupServiceTest {
 
     @Test
+    fun `retained earliest date stays visible under review and follows current membership`() {
+        val retained = version(
+            10L,
+            "/retained",
+            "《同作》",
+            publishedDateAt = 100L,
+            publishedDateQuality = SourceDateQualityStatus.SUSPECT,
+        )
+        val current = version(20L, "/current", "同作", publishedDateAt = 200L)
+        val archive = CreatorWorkArchive(emptyList(), listOf(retained, current), emptyList())
+        val group = WorkPresentationGroupService.project(archive).single()
+        group.publishedDateAt shouldBe 100L
+        group.publishedDateQuality shouldBe SourceDateQualityStatus.SUSPECT
+
+        val excluded = WorkPresentationGroupService.project(archive, setOf(retained.naturalKey))
+        excluded.single { current in it.members }.publishedDateAt shouldBe 200L
+        excluded.single { current in it.members }.publishedDateQuality shouldBe SourceDateQualityStatus.TRUSTED
+        excluded.single { retained in it.members }.publishedDateAt shouldBe 100L
+    }
+
+    @Test
     fun `groups same authors unconfirmed script and typography variants into one stable projection`() {
         val traditional = version(
             sourceId = 10L,
@@ -257,6 +278,11 @@ class WorkPresentationGroupServiceTest {
         unread: Boolean = false,
         firstSeenAt: Long = 1L,
         publishedDateAt: Long? = null,
+        publishedDateQuality: SourceDateQualityStatus = if (publishedDateAt != null) {
+            SourceDateQualityStatus.TRUSTED
+        } else {
+            SourceDateQualityStatus.UNKNOWN
+        },
         latestChapterAt: Long? = null,
         decisionState: WorkDecisionState? = null,
     ): SourceWorkArchiveVersion = SourceWorkArchiveVersion(
@@ -287,13 +313,7 @@ class WorkPresentationGroupServiceTest {
         },
         firstSeenAt = firstSeenAt,
         publishedDateAt = publishedDateAt,
-        publishedDateQuality = if (publishedDateAt !=
-            null
-        ) {
-            SourceDateQualityStatus.TRUSTED
-        } else {
-            SourceDateQualityStatus.UNKNOWN
-        },
+        publishedDateQuality = publishedDateQuality,
         latestChapterAt = latestChapterAt,
         unread = unread,
     )

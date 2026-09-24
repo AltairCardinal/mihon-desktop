@@ -33,7 +33,7 @@ suspend fun verifyCreatorIdentityBackup(
         awaitIdentityReady = target::awaitIdentityReady,
     )
     val transferred = transfer(export, import)
-    check(transferred.version == 5)
+    check(transferred.version == BackupAuthorArchiveSection.CURRENT_VERSION)
     val expected = source.getIdentitySnapshot(first.id)
     val restoredId = checkNotNull(target.resolveCreatorIdByExactName("One"))
     val restored = target.getIdentitySnapshot(restoredId)

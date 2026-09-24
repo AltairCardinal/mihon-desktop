@@ -123,6 +123,7 @@ class AndroidCreatorSettingsUiTest {
             Injekt.addSingleton(preferences)
             Injekt.addSingleton(eu.kanade.domain.source.service.SourcePreferences(store))
             Injekt.addSingleton(CoverCache(activity.get()))
+            Injekt.addSingleton(LibraryPreferences(store))
             activity.get().setContent { MaterialTheme { Navigator(SettingsAuthorsScreen()) } }
             compose.onNodeWithTag("creator-settings-open").assertIsDisplayed().performClick()
             compose.onNodeWithTag("creator-frequency-monthly").performClick()
@@ -172,13 +173,20 @@ class AndroidCreatorSettingsUiTest {
             Injekt.addSingleton(CreatorDiscoveryPreferences(store))
             Injekt.addSingleton(eu.kanade.domain.source.service.SourcePreferences(store))
             Injekt.addSingleton(CoverCache(activity.get()))
+            Injekt.addSingleton(LibraryPreferences(store))
 
             activity.get().setContent { MaterialTheme { Navigator(SettingsAuthorsScreen()) } }
 
             compose.onNodeWithTag("creator-tab-following").assertIsSelected()
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithText("Followed writer").fetchSemanticsNodes().isNotEmpty()
+            }
             compose.onNodeWithText("Followed writer").assertIsDisplayed()
             compose.onNodeWithText("Another writer").assertDoesNotExist()
             compose.onNodeWithTag("creator-tab-all").performClick()
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithText("Another writer").fetchSemanticsNodes().isNotEmpty()
+            }
             compose.onNodeWithText("Followed writer").assertIsDisplayed()
             compose.onNodeWithText("Another writer").assertIsDisplayed()
         } finally {
@@ -244,6 +252,7 @@ class AndroidCreatorSettingsUiTest {
             Injekt.addSingleton(CreatorDiscoveryPreferences(store))
             Injekt.addSingleton(eu.kanade.domain.source.service.SourcePreferences(store))
             Injekt.addSingleton(CoverCache(activity.get()))
+            Injekt.addSingleton(LibraryPreferences(store))
 
             activity.get().setContent { MaterialTheme { Navigator(SettingsAuthorsScreen()) } }
 
@@ -433,12 +442,16 @@ class AndroidCreatorSettingsUiTest {
             Injekt.addSingleton(CreatorDiscoveryPreferences(store))
             Injekt.addSingleton(eu.kanade.domain.source.service.SourcePreferences(store))
             Injekt.addSingleton(CoverCache(activity.get()))
+            Injekt.addSingleton(LibraryPreferences(store))
 
             activity.get().setContent { MaterialTheme { Navigator(SettingsAuthorsScreen()) } }
 
             compose.onNodeWithTag("creator-tab-all").performClick()
             val cardTag = "creator-card-${second.id}"
-            compose.onNodeWithTag(cardTag).performScrollTo().assertIsDisplayed()
+            compose.waitUntil(5_000) {
+                compose.onAllNodesWithTag(cardTag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithTag(cardTag, useUnmergedTree = true).performScrollTo().assertIsDisplayed()
             val followedTag = "creator-card-${second.id}-followed"
             compose.onNodeWithTag(followedTag, useUnmergedTree = true).assertDoesNotExist()
             repository.followCreator(second.id)
@@ -487,6 +500,7 @@ class AndroidCreatorSettingsUiTest {
             Injekt.addSingleton(CreatorDiscoveryPreferences(store))
             Injekt.addSingleton(eu.kanade.domain.source.service.SourcePreferences(store))
             Injekt.addSingleton(CoverCache(activity.get()))
+            Injekt.addSingleton(LibraryPreferences(store))
 
             activity.get().setContent { MaterialTheme { Navigator(SettingsAuthorsScreen()) } }
 
@@ -565,6 +579,7 @@ class AndroidCreatorSettingsUiTest {
             Injekt.addSingleton(CreatorDiscoveryPreferences(store))
             Injekt.addSingleton(eu.kanade.domain.source.service.SourcePreferences(store))
             Injekt.addSingleton(CoverCache(activity.get()))
+            Injekt.addSingleton(LibraryPreferences(store))
 
             activity.get().setContent { MaterialTheme { Navigator(SettingsAuthorsScreen()) } }
 

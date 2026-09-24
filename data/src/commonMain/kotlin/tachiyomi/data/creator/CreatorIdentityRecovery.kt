@@ -137,6 +137,9 @@ internal fun Database.captureCreatorIdentityRecovery(creatorIds: List<Long>): St
                 chapter_count_state,
                 catalog_chapter_count,
                 latest_chapter_at,
+                published_date_snapshot_at,
+                published_date_snapshot_basis,
+                published_date_snapshot_reason,
                 legacy_candidate_id,
                 legacy_review_snapshot,
             ->
@@ -158,6 +161,9 @@ internal fun Database.captureCreatorIdentityRecovery(creatorIds: List<Long>): St
                 "chapter_count_state" to chapter_count_state,
                 "catalog_chapter_count" to catalog_chapter_count,
                 "latest_chapter_at" to latest_chapter_at,
+                "published_date_snapshot_at" to published_date_snapshot_at,
+                "published_date_snapshot_basis" to published_date_snapshot_basis,
+                "published_date_snapshot_reason" to published_date_snapshot_reason,
                 "legacy_candidate_id" to legacy_candidate_id,
                 "legacy_review_snapshot" to legacy_review_snapshot,
             )

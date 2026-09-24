@@ -41,8 +41,8 @@ class CreatorArchive(
 
     suspend fun markWorkSeen(sourceWork: SourceWorkNaturalKey, now: Long) = archive.markWorkSeen(sourceWork, now)
 
-    suspend fun markPresentationGroupSeen(sourceWorks: List<SourceWorkNaturalKey>, now: Long) =
-        archive.markPresentationGroupSeen(sourceWorks, now)
+    suspend fun markPresentationGroupSeen(creatorId: Long, selectedSourceWork: SourceWorkNaturalKey, now: Long) =
+        archive.markPresentationGroupSeen(creatorId, selectedSourceWork, now)
 
     suspend fun review(discoveryId: Long, disposition: ReviewDisposition, now: Long) =
         archive.setDiscoveryReview(discoveryId, disposition, now)
