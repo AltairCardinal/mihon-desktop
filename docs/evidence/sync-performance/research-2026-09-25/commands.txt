@@ -1,0 +1,29 @@
+复现基线：ebc652bed6。仅在独立、干净工作目录运行；这是实验补丁，不是生产发布。
+PowerShell预设：
+$ErrorActionPreference='Stop'
+$env:PYTHONUTF8='1'
+$env:PYTHONIOENCODING='utf-8'
+$env:PYTHONDONTWRITEBYTECODE='1'
+
+Base commit: ebc652bed6. Run from the repository root, one Gradle command at a time.
+Apply diagnostics.patch first, then prototype.patch. Both patches are experimental.
+
+git apply docs/evidence/sync-performance/research-2026-09-25/diagnostics.patch
+$env:SYNC_PERF_SAMPLES='1'
+python scripts/gradle-coordinator.py run --key research-red-replay -- .\gradlew.bat --offline :data:jvmTest --tests 'mihon.data.sync.SyncScaleAcceptanceTest.controlled warm increment with one hundred historical batches' --info
+Expected RED: verified cold tree direct children ... expected 10, actual 17 tree GETs.
+
+git apply docs/evidence/sync-performance/research-2026-09-25/prototype.patch
+$env:SYNC_PERF_SAMPLES='3'
+python scripts/gradle-coordinator.py run --key research-green-replay -- .\gradlew.bat --offline :data:jvmTest --tests 'mihon.data.sync.SyncScaleAcceptanceTest.controlled warm increment with one hundred historical batches' --info
+python scripts/gradle-coordinator.py run --key research-safety-replay -- .\gradlew.bat --offline :data:jvmTest --tests 'mihon.data.sync.SyncRuntimeWiringTest' --tests 'mihon.data.sync.SyncGitSafetyContractTest' --info
+
+The baseline3b log predates the RED assertion in diagnostics.patch; that assertion runs after timing and does not affect its measured interval. The final gated prototype's safety fix was checked with the narrower gated-check log and XML. The broader safety-cold1 run has one failure before that fix; preserve it as a failed experimental result.
+
+补充说明：
+- baseline3b是在加入期望10次tree GET断言之前采集的三样本。diagnostics.patch带该断言，因此直接运行会在首个样本计时结束后预期RED。
+- 要复现三样本基线，应用diagnostics.patch后，仅把SyncScaleAcceptanceTest中消息为“verified cold tree direct children should avoid unchanged tree GETs”的assertEquals期望值10改为17，再设SYNC_PERF_SAMPLES=3运行相同H100命令。该断言在计时区间外。测原型前改回10并应用prototype.patch。
+- 上面的research-safety-replay是后续完整安全复验建议，不是最终门控版本已经执行的证据。实际最终门控复验为以下两过滤器，同次运行，SYNC_PERF_SAMPLES=3：
+python scripts/gradle-coordinator.py run --key research-gated-replay -- .\gradlew.bat --offline :data:jvmTest --tests 'mihon.data.sync.SyncRuntimeWiringTest.production runtime reopens a validated snapshot and falls back after cache context damage' --tests 'mihon.data.sync.SyncScaleAcceptanceTest.controlled warm increment with one hundred historical batches' --info
+- 首次300单样本只在门控前集合运行，含RuntimeWiringTest、SyncGitSafetyContractTest和ScaleAcceptanceTest.controlled first import and exchange profile，集合59项/1失败；该失败后来仅定向复验。不得把最终59项完整安全写成已通过。
+- 本轮未跑全量、Android或真实网络，未测独立应用内存，也未实施多批次发布。
