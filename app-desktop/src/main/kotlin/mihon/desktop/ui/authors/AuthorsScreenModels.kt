@@ -32,7 +32,6 @@ import tachiyomi.domain.creator.model.CreatorCardProjection
 import tachiyomi.domain.creator.model.CreatorCardProjectionPage
 import tachiyomi.domain.creator.model.CreatorWorkArchive
 import tachiyomi.domain.creator.model.ArchiveLanguageSubject
-import tachiyomi.domain.creator.model.DiscoveryCandidate
 import tachiyomi.domain.creator.model.SourceCheckpoint
 import tachiyomi.domain.creator.model.LanguageDimension
 import tachiyomi.domain.creator.model.WorkDecisionState
@@ -443,7 +442,6 @@ sealed interface AuthorDetailEffect {
         val sourceWork: SourceWorkNaturalKey,
     ) : AuthorDetailEffect
     data class OpenCreator(val creatorId: Long) : AuthorDetailEffect
-    data class OpenWorkCompare(val candidateId: Long, val creatorId: Long) : AuthorDetailEffect
     data object IdentityMerged : AuthorDetailEffect
 }
 
@@ -647,10 +645,6 @@ internal class AuthorDetailScreenModel(
         }
     }
 
-
-    fun openCandidate(candidate: DiscoveryCandidate) {
-        mutableEffects.tryEmit(AuthorDetailEffect.OpenWorkCompare(candidate.id, activeCreatorId))
-    }
 
     fun searchWorks(query: String) = mutableState.update { it.copy(workFilter = it.workFilter.copy(query = query)) }
     fun filterSource(sourceId: Long?) = mutableState.update { it.copy(workFilter = it.workFilter.copy(sourceId = sourceId)) }

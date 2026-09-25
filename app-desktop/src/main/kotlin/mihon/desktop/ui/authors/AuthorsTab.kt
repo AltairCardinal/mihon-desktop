@@ -31,7 +31,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.outlined.CollectionsBookmark
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.GridView
@@ -437,7 +436,6 @@ data class AuthorDetailScreen(
         val workArchive = state.visibleWorkArchive
         val presentationCards = state.visiblePresentationCards
         val pendingPresentationVersions = state.visiblePendingVersions
-        val pendingSourceWorkIds = state.workArchive.pending.mapTo(mutableSetOf()) { it.sourceWorkId }
         val discoveryState = state.discovery
         val sourceCheckpoints = state.checkpoints
         val allCreators = state.allCreators
@@ -474,9 +472,6 @@ data class AuthorDetailScreen(
                         model.markWorkSeenAfterNavigation(effect.creatorId, effect.sourceWork)
                     }
                     is AuthorDetailEffect.OpenCreator -> navigator.replace(AuthorDetailScreen(effect.creatorId))
-                    is AuthorDetailEffect.OpenWorkCompare -> navigator.push(
-                        WorkCompareScreen(effect.candidateId, effect.creatorId),
-                    )
                     AuthorDetailEffect.IdentityMerged -> navigator.pop()
                 }
             }
@@ -513,10 +508,6 @@ data class AuthorDetailScreen(
                     error = state.workOpenError,
                     opening = state.actionRunning,
                     onOpen = model::openVersion,
-                    onCompare = { version ->
-                        showSourceChooserFor = null
-                        navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
-                    },
                     onSeparate = { version ->
                         snackbarScope.launch {
                             if (model.excludePresentationVersion(version)) {
@@ -835,12 +826,6 @@ data class AuthorDetailScreen(
                                         mode = mode,
                                         focusRequester = focusRequester,
                                         sourceNames = sourceNamesForGroup(group, desktopDependencies.sourceManager),
-                                        pendingVersion = group.members.singleOrNull()?.takeIf {
-                                            group.canonicalWorkId == null && it.sourceWorkId in pendingSourceWorkIds
-                                        },
-                                        onPendingCompare = { version ->
-                                            navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
-                                        },
                                         onClick = {
                                             showSourceChooserFor = group.groupKey
                                         },
@@ -857,9 +842,7 @@ data class AuthorDetailScreen(
                                     )
                                 }
                                 items(pendingPresentationVersions, key = { "pending-${it.sourceWorkId}" }) { version ->
-                                    ArchiveVersionListItem(version, desktopDependencies.sourceManager, onOpen = { model.openVersion(version) }) {
-                                        navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
-                                    }
+                                    ArchiveVersionListItem(version, desktopDependencies.sourceManager, onOpen = { model.openVersion(version) })
                                 }
                             }
                             if (workArchive.rejected.isNotEmpty()) {
@@ -871,9 +854,7 @@ data class AuthorDetailScreen(
                                     )
                                 }
                                 items(workArchive.rejected, key = { "rejected-${it.sourceWorkId}" }) { version ->
-                                    ArchiveVersionListItem(version, desktopDependencies.sourceManager, onOpen = { model.openVersion(version) }) {
-                                        navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
-                                    }
+                                    ArchiveVersionListItem(version, desktopDependencies.sourceManager, onOpen = { model.openVersion(version) })
                                 }
                             }
                         }
@@ -915,12 +896,6 @@ data class AuthorDetailScreen(
                                         mode = mode,
                                         focusRequester = focusRequester,
                                         sourceNames = sourceNamesForGroup(group, desktopDependencies.sourceManager),
-                                        pendingVersion = group.members.singleOrNull()?.takeIf {
-                                            group.canonicalWorkId == null && it.sourceWorkId in pendingSourceWorkIds
-                                        },
-                                        onPendingCompare = { version ->
-                                            navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
-                                        },
                                         onClick = {
                                             showSourceChooserFor = group.groupKey
                                         },
@@ -935,9 +910,7 @@ data class AuthorDetailScreen(
                                     )
                                 }
                                 items(pendingPresentationVersions, span = { GridItemSpan(maxLineSpan) }, key = { "pending-${it.sourceWorkId}" }) { version ->
-                                    ArchiveVersionListItem(version, desktopDependencies.sourceManager, onOpen = { model.openVersion(version) }) {
-                                        navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
-                                    }
+                                    ArchiveVersionListItem(version, desktopDependencies.sourceManager, onOpen = { model.openVersion(version) })
                                 }
                             }
                             if (workArchive.rejected.isNotEmpty()) {
@@ -948,9 +921,7 @@ data class AuthorDetailScreen(
                                     )
                                 }
                                 items(workArchive.rejected, span = { GridItemSpan(maxLineSpan) }, key = { "rejected-${it.sourceWorkId}" }) { version ->
-                                    ArchiveVersionListItem(version, desktopDependencies.sourceManager, onOpen = { model.openVersion(version) }) {
-                                        navigator.push(WorkCompareScreen(version.sourceWorkId, creator?.id ?: creatorId))
-                                    }
+                                    ArchiveVersionListItem(version, desktopDependencies.sourceManager, onOpen = { model.openVersion(version) })
                                 }
                             }
                         }
@@ -1047,7 +1018,6 @@ private fun CreatorWorkSourceChooserDialog(
     error: String?,
     opening: Boolean,
     onOpen: (SourceWorkArchiveVersion) -> Unit,
-    onCompare: (SourceWorkArchiveVersion) -> Unit,
     onSeparate: ((SourceWorkArchiveVersion) -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
@@ -1069,7 +1039,6 @@ private fun CreatorWorkSourceChooserDialog(
                 group.members.forEach { version ->
                     val sourceName = sourceManager.getOrStub(version.naturalKey.sourceId).name
                     val sourceMissing = sourceManager.get(version.naturalKey.sourceId) == null
-                    var showVersionMenu by remember(version.sourceWorkId) { mutableStateOf(false) }
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1119,27 +1088,6 @@ private fun CreatorWorkSourceChooserDialog(
                                 Text(latestChapterDateLabel(version), style = MaterialTheme.typography.bodySmall)
                             }
                             }
-                            Box(Modifier.align(Alignment.End)) {
-                                IconButton(
-                                    onClick = { showVersionMenu = true },
-                                    modifier = Modifier.testTag("creator-source-compare-more-${version.sourceWorkId}"),
-                                ) {
-                                    Icon(Icons.Default.MoreVert, MR.strings.label_more.localized())
-                                }
-                                DropdownMenu(
-                                    expanded = showVersionMenu,
-                                    onDismissRequest = { showVersionMenu = false },
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text(MR.strings.creator_work_correction.localized()) },
-                                        onClick = {
-                                            showVersionMenu = false
-                                            onCompare(version)
-                                        },
-                                        modifier = Modifier.testTag("creator-source-compare-${version.sourceWorkId}"),
-                                    )
-                                }
-                            }
                             if (onSeparate != null && group.canonicalWorkId == null && group.members.size > 1) {
                                 TextButton(
                                     onClick = { onSeparate(version) },
@@ -1188,8 +1136,6 @@ private fun CreatorArchiveWorkCard(
     mode: LibraryDisplayMode,
     focusRequester: FocusRequester,
     sourceNames: List<String>,
-    pendingVersion: SourceWorkArchiveVersion?,
-    onPendingCompare: (SourceWorkArchiveVersion) -> Unit,
     onClick: () -> Unit,
 ) {
     val cardModifier = Modifier
@@ -1222,7 +1168,6 @@ private fun CreatorArchiveWorkCard(
                             modifier = Modifier.testTag("creator-work-first-seen-$key"),
                         )
                     }
-                    pendingVersion?.let { CreatorPendingCompareButton(it, onPendingCompare) }
                 }
             }
         }
@@ -1246,7 +1191,6 @@ private fun CreatorArchiveWorkCard(
                                 .testTag("creator-work-first-seen-$key"),
                         )
                     }
-                    pendingVersion?.let { CreatorPendingCompareButton(it, onPendingCompare) }
                 }
             }
         }
@@ -1265,23 +1209,9 @@ private fun CreatorArchiveWorkCard(
                         )
                     }
                     unreadWorkLabel(unread, key)
-                    pendingVersion?.let { CreatorPendingCompareButton(it, onPendingCompare) }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun CreatorPendingCompareButton(
-    version: SourceWorkArchiveVersion,
-    onCompare: (SourceWorkArchiveVersion) -> Unit,
-) {
-    IconButton(
-        onClick = { onCompare(version) },
-        modifier = Modifier.testTag("creator-pending-more-${version.sourceWorkId}"),
-    ) {
-        Icon(Icons.Default.MoreVert, MR.strings.label_more.localized())
     }
 }
 
@@ -1369,7 +1299,6 @@ private fun ArchiveVersionListItem(
     version: SourceWorkArchiveVersion,
     sourceManager: SourceManager,
     onOpen: () -> Unit,
-    onClick: () -> Unit,
 ) {
     val sourceName = sourceManager.getOrStub(version.naturalKey.sourceId).name
     val availability = if (sourceManager.get(version.naturalKey.sourceId) != null) {
@@ -1380,34 +1309,27 @@ private fun ArchiveVersionListItem(
     val checkResult = version.lastCheckResult?.name?.lowercase()
         ?: MR.strings.desktop_ui_source_not_checked.localized()
     CreatorArchiveWorkRow(version.title, version.thumbnailUrl, "version-${version.sourceWorkId}") {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onOpen, modifier = Modifier.weight(1f, fill = false)
-                .testTag("creator-version-${version.sourceWorkId}")) {
-                Text(authorVersionLabel(version, sourceManager))
-            }
-            IconButton(onClick = onClick, modifier = Modifier.width(32.dp)) {
-                Icon(Icons.Default.MoreVert, MR.strings.action_edit.localized())
-            }
+        TextButton(onClick = onOpen, modifier = Modifier.testTag("creator-version-${version.sourceWorkId}")) {
+            Text(authorVersionLabel(version, sourceManager))
         }
-            Text(
-                MR.strings.desktop_ui_archive_version_evidence.localized(
-                    Locale.getDefault(),
-                    sourceName,
-                    availability,
-                    version.readingLanguage.tag.uppercase(),
-                    version.readingLanguage.certainty.name.lowercase(),
-                    chapterCountLabel(version),
-                    if (version.inLibrary) {
-                        MR.strings.desktop_ui_in_library.localized()
-                    } else {
-                        MR.strings.desktop_ui_not_in_library.localized()
-                    },
-                    checkResult,
-                    version.lastSuccessAt?.toString() ?: MR.strings.unknown.localized(),
-                ),
-            )
+        Text(
+            MR.strings.desktop_ui_archive_version_evidence.localized(
+                Locale.getDefault(),
+                sourceName,
+                availability,
+                version.readingLanguage.tag.uppercase(),
+                version.readingLanguage.certainty.name.lowercase(),
+                chapterCountLabel(version),
+                if (version.inLibrary) {
+                    MR.strings.desktop_ui_in_library.localized()
+                } else {
+                    MR.strings.desktop_ui_not_in_library.localized()
+                },
+                checkResult,
+                version.lastSuccessAt?.toString() ?: MR.strings.unknown.localized(),
+            ),
+        )
     }
-
 }
 
 internal fun shouldCollectAuthorOnOpen(

@@ -2,6 +2,8 @@
 
 日期：2026-09-25。状态：交互 DEMO 已获用户审核通过；Android/Desktop 生产实现已完成。验收证据见[实施 Roadmap](roadmap/2026-09-25-author-work-list-source-display-roadmap.md)。
 
+后续决定（2026-09-25）：用户取消 Desktop 作者详情通往 `WorkCompareScreen` 的入口。下文原批次提到“保留 Desktop 比较入口”仅记录当时的实施基线；当前 Desktop 契约以本段为准。Desktop 待处理作品卡、来源选择窗口及待定／已拒绝独立条目均不显示进入比较页的「更多」操作；点击作品仍打开来源窗口，选择具体版本仍进入相应漫画详情。比较页及归档数据保留，Android 的「更多 → 作品校正」不受此决定影响。
+
 - 审核基线：[双端交互 DEMO](prototypes/author-identity/index.html)，提交 `8fae5d0ff85aa89c9c7efb5aa69a2b7e55581f83`；[DEMO 说明](prototypes/author-identity/README.md)。
 - 历史能力与数据规则沿用[作者页体验迭代设计](2026-09-18-author-experience-iteration-design.md)及[实现审查修复计划](roadmap/2026-09-21-branch-implementation-review-fixes-roadmap.md)。本文只覆盖与本次审核交互冲突的作品卡呈现和直接审阅按钮；其他规则不变。
 - 实施计划：[本轮 Roadmap](roadmap/2026-09-25-author-work-list-source-display-roadmap.md)。
@@ -29,7 +31,7 @@
 
 ## `Needs review` 的边界
 
-作者详情的作品条目不提供直接标为 `Needs review` 的按钮；Android 待定作品列表与网格中的同名 TextButton 是本轮移除对象。当前 Android 的审阅对话框只由这个按钮打开，所以**待定独立条目**改用条目级「更多」菜单中的「作品校正」进入既有处理流程；菜单动作是高级纠错入口，不在普通作品卡或来源文字上出现。Android 已拒绝条目的操作不新增。Desktop 已有条目级 MoreVert → `WorkCompareScreen`，沿用该高级入口；普通作品卡上的逐来源动作随模式收起，不删除其比较能力。待定／拒绝事实、语言校正和对照能力仍须可达，状态名称不得作为新按钮回流。此处不改变 `PENDING`、`REJECTED`、canonical 决策、排除展示记录或通知状态。
+作者详情的作品条目不提供直接标为 `Needs review` 的按钮；Android 待定作品列表与网格中的同名 TextButton 是本轮移除对象。当前 Android 的审阅对话框只由这个按钮打开，所以**待定独立条目**改用条目级「更多」菜单中的「作品校正」进入既有处理流程；菜单动作是高级纠错入口，不在普通作品卡或来源文字上出现。Android 已拒绝条目的操作不新增。按后续用户决定，Desktop 作者详情的待处理卡片、来源选择窗口、待定／已拒绝条目不再提供进入 `WorkCompareScreen` 的「更多」操作；原比较页实现保留，但不作为作者详情的可达功能。待定／拒绝事实与语言校正数据保持原样；Android 的高级作品校正仍可达。状态名称不得作为新按钮回流。此处不改变 `PENDING`、`REJECTED`、canonical 决策、排除展示记录或通知状态。
 
 ## 失败与边界情况
 
@@ -42,5 +44,5 @@
 
 1. Android 与 Desktop 的真实挂载页面：列表单源、多源、缺源和按来源筛选时，来源名称为去重后的完整组；不是可独立点击的版本按钮，整卡打开完整来源窗口。
 2. 两种网格的真实挂载页面：卡片不含来源名称、数量及逐版本操作；整卡点击后来源窗口列出全部版本并能准确进入选定漫画。320dp、长名称和深浅主题下无横向溢出或遮挡。
-3. 待定、拒绝、自动聚合及手动分开展示样本：作者详情无直接 `Needs review` 按钮；既有高级纠错路径仍可达，状态/关系不因纯 UI 改动变化。
+3. 待定、拒绝、自动聚合及手动分开展示样本：作者详情无直接 `Needs review` 按钮；Android 的高级纠错路径仍可达，Desktop 不显示比较入口，状态/关系不因纯 UI 改动变化。
 4. 切换显示方式、筛选、取消来源窗口及导航返回后，焦点、显示偏好、收藏、新作标记、日期和作者列表计数保持原有行为。HTML 测试只证明原型，生产验收须运行 Android/Desktop 的 Compose 行为与 wiring 测试。

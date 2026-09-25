@@ -616,7 +616,7 @@ class AuthorsProductionWiringTest {
         verifyNarrowArchive(tachiyomi.domain.creator.model.WorkDecisionState.CONFIRMED)
 
     @Test
-    fun `pending and rejected versions keep cover title source hierarchy and exact navigation`() {
+    fun `pending and rejected versions open only the selected source`() {
         verifyNarrowArchive(null)
         verifyNarrowArchive(tachiyomi.domain.creator.model.WorkDecisionState.REJECTED)
     }
@@ -737,12 +737,9 @@ class AuthorsProductionWiringTest {
                             it.config.getOrElse(SemanticsProperties.ContentDescription) { emptyList() }
                                 .contains(MR.strings.action_edit.localized())
                     }
-                    if (decision != null) {
-                        assertTrue(menus.size == if (decision == WorkDecisionState.REJECTED) 3 else 0)
-                    }
+                    assertTrue(menus.isEmpty(), "Author work rows must not offer work comparison")
                     if (decision == WorkDecisionState.REJECTED) {
                         assertTrue(buttons.first().boundsInRoot.top >= title.boundsInRoot.bottom)
-                        assertTrue(menus.all { it.boundsInRoot.width >= 24 && it.boundsInRoot.left >= 0 && it.boundsInRoot.right <= 320 })
                         assertTrue(buttons.map { it.boundsInRoot.top }.distinct().size > 1)
                         assertTrue(buttons.all { it.boundsInRoot.left >= 0 && it.boundsInRoot.right <= 320 })
                     } else {
@@ -762,25 +759,10 @@ class AuthorsProductionWiringTest {
                     } finally { java.nio.file.Files.write(output, rendered) }
                     if (decision == null) {
                         val pendingVersion = checkNotNull(firstVersion)
-                        val pendingMore = nodes(scene, unmerged = true).single {
+                        assertTrue(nodes(scene, unmerged = true).none {
                             it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
                                 "creator-pending-more-${pendingVersion.sourceWorkId}"
-                        }
-                        assertTrue(pendingMore.boundsInRoot.width >= 24)
-                        assertTrue(pendingMore.boundsInRoot.left >= 0 && pendingMore.boundsInRoot.right <= 320)
-                        assertTrue(pendingMore.boundsInRoot.top >= title.boundsInRoot.bottom)
-                        pendingMore.config[SemanticsActions.OnClick].action?.invoke()
-                        val review = mountedNavigator!!.lastItem as WorkCompareScreen
-                        assertEquals(pendingVersion.sourceWorkId, review.workId)
-                        assertEquals(target.id, review.creatorId)
-                        mountedNavigator!!.pop()
-                    }
-                    if (decision == WorkDecisionState.REJECTED) {
-                        menus.first().config[SemanticsActions.OnClick].action?.invoke()
-                        val review = mountedNavigator!!.lastItem as WorkCompareScreen
-                        org.junit.jupiter.api.Assertions.assertEquals(checkNotNull(firstVersion).sourceWorkId, review.workId)
-                        org.junit.jupiter.api.Assertions.assertEquals(target.id, review.creatorId)
-                        mountedNavigator!!.pop()
+                        }, "Pending work cards must not offer work comparison")
                     }
                     val search = nodes(scene).single { it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-search" }
                     search.config[SemanticsActions.SetText].action?.invoke(AnnotatedString("ZZZ-no-match"))
@@ -820,22 +802,10 @@ class AuthorsProductionWiringTest {
                                 }
                             })
                         }
-                        nodes(scene, unmerged = true).single {
+                        assertTrue(nodes(scene, unmerged = true).none {
                             it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
                                 "creator-source-compare-more-${selected.sourceWorkId}"
-                        }.config[SemanticsActions.OnClick].action?.invoke()
-                        scene.render()
-                        nodes(scene, unmerged = true).single {
-                            it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
-                                "creator-source-compare-${selected.sourceWorkId}"
-                        }.config[SemanticsActions.OnClick].action?.invoke()
-                        assertEquals(selected.sourceWorkId, (mountedNavigator!!.lastItem as WorkCompareScreen).workId)
-                        mountedNavigator!!.pop()
-                        scene.render()
-                        nodes(scene, unmerged = true).single {
-                            it.config.getOrElse(SemanticsProperties.TestTag) { "" } == "creator-work-card-$rowKey"
-                        }.config[SemanticsActions.OnClick].action?.invoke()
-                        scene.render()
+                        }, "The source chooser must not offer work comparison")
                         nodes(scene, unmerged = true).single {
                             it.config.getOrElse(SemanticsProperties.TestTag) { "" } ==
                                 "creator-source-open-${selected.sourceWorkId}"
