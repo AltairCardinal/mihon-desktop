@@ -950,24 +950,25 @@ class LibraryPageCompositionTest {
 
     @Test
     @OptIn(ExperimentalComposeUiApi::class)
-    fun `all library layouts offer synchronized rereading with frozen navigation`() = runTest {
+    fun `all library layouts continue earliest unread chapter before old synchronized read chapter`() = runTest {
         val node = Preferences.userRoot().node("/mihon-sync-reader-test/${UUID.randomUUID()}")
         val preferences = LibraryPreferences(DesktopPreferenceStore(node))
         preferences.showContinueReadingButton().set(true)
         val manga = sampleManga(81L, "Synced reread", 42L)
         val mangas = FakeMangaRepository().apply {
             seed(manga)
-            libraryManga = listOf(sampleLibraryManga(manga).copy(totalChapters = 1, readCount = 1))
+            libraryManga = listOf(sampleLibraryManga(manga).copy(totalChapters = 2, readCount = 1))
         }
         val chapters = FakeChapterRepository().apply {
-            seed(Chapter.create().copy(id = 8101, mangaId = 81, url = "/reread", read = true))
+            seed(Chapter.create().copy(id = 8101, mangaId = 81, url = "/first", lastPageRead = 4, sourceOrder = 0))
+            seed(Chapter.create().copy(id = 8102, mangaId = 81, url = "/old-sync", read = true, sourceOrder = 1))
         }
         val snapshot = tachiyomi.domain.reader.model.ReadingSyncSnapshot()
         val progress = tachiyomi.domain.reader.interactor.RecordReadingProgress(
             object : tachiyomi.domain.reader.repository.ReadingProgressRepository {
                 override suspend fun record(event: tachiyomi.domain.reader.model.ReadingProgressEvent) = Unit
                 override suspend fun resumePosition(mangaId: Long) =
-                    tachiyomi.domain.reader.model.ReadingResumePosition(8101, 2, snapshot)
+                    tachiyomi.domain.reader.model.ReadingResumePosition(8102, 2, snapshot)
             },
         )
         val model = LibraryScreenModel(
@@ -1005,8 +1006,62 @@ class LibraryPageCompositionTest {
             render(scene)
             val reader = destination as mihon.desktop.ui.reader.DesktopReaderScreen
             assertEquals(8101L, reader.chapterId)
-            assertEquals(2, reader.initialPage)
-            assertEquals(snapshot, reader.initialContext().resumeSnapshot)
+            assertEquals(4, reader.initialPage)
+            assertEquals(null, reader.initialContext().resumeSnapshot)
+        } finally {
+            scene.close()
+            node.removeNode()
+        }
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeUiApi::class)
+    fun `all read library layouts hide ordinary continue despite synchronized resume`() = runTest {
+        val node = Preferences.userRoot().node("/mihon-sync-reader-test/${UUID.randomUUID()}")
+        val preferences = LibraryPreferences(DesktopPreferenceStore(node))
+        preferences.showContinueReadingButton().set(true)
+        val manga = sampleManga(82L, "Finished synced manga", 42L)
+        val mangas = FakeMangaRepository().apply {
+            seed(manga)
+            libraryManga = listOf(sampleLibraryManga(manga).copy(totalChapters = 1, readCount = 1))
+        }
+        val chapters = FakeChapterRepository().apply {
+            seed(Chapter.create().copy(id = 8201, mangaId = manga.id, url = "/read", read = true))
+        }
+        val progress = tachiyomi.domain.reader.interactor.RecordReadingProgress(
+            object : tachiyomi.domain.reader.repository.ReadingProgressRepository {
+                override suspend fun record(event: tachiyomi.domain.reader.model.ReadingProgressEvent) = Unit
+                override suspend fun resumePosition(mangaId: Long) =
+                    tachiyomi.domain.reader.model.ReadingResumePosition(8201, 2, tachiyomi.domain.reader.model.ReadingSyncSnapshot())
+            },
+        )
+        val model = LibraryScreenModel(
+            getLibraryManga = GetLibraryManga(mangas), getCategories = GetCategories(FakeCategoryRepository()),
+            getChaptersByMangaId = GetChaptersByMangaId(chapters), libraryPreferences = preferences,
+            readingProgress = progress,
+        )
+        val scene = ImageComposeScene(1200, 900, coroutineContext = coroutineContext) {}
+        try {
+            scene.setContent {
+                CompositionLocalProvider(
+                    LocalDesktopUiDependencies provides mockk<DesktopUiDependencies>(relaxed = true) {
+                        every { syncPanel } returns null
+                    },
+                ) {
+                    ProvideLibraryScreenModelFactory(factory = { model }) {
+                        Navigator(LibraryRootScreen()) { CurrentScreen() }
+                    }
+                }
+            }
+            for (mode in listOf(SharedLibraryDisplayMode.CompactGrid, SharedLibraryDisplayMode.ComfortableGrid,
+                SharedLibraryDisplayMode.List, SharedLibraryDisplayMode.CoverOnlyGrid)) {
+                preferences.displayMode().set(mode)
+                render(scene)
+                assertTrue(
+                    !semanticLabels(scene).contains(MR.strings.desktop_ui_continue_reading.localized()),
+                    mode.toString(),
+                )
+            }
         } finally {
             scene.close()
             node.removeNode()

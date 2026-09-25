@@ -112,14 +112,24 @@ import java.io.ByteArrayOutputStream
 open class ReaderActivity : BaseActivity() {
 
     companion object {
-        fun newIntent(context: Context, mangaId: Long?, chapterId: Long?, resume: Boolean = false): Intent {
+        fun newIntent(
+            context: Context,
+            mangaId: Long?,
+            chapterId: Long?,
+            resume: Boolean = false,
+            resumeWithinChapter: Boolean = false,
+        ): Intent {
             return Intent(context, ReaderActivity::class.java).apply {
                 putExtra("manga", mangaId)
                 putExtra("chapter", chapterId)
                 putExtra("resume", resume)
+                putExtra("resumeWithinChapter", resumeWithinChapter)
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
         }
+
+        fun newContinueIntent(context: Context, mangaId: Long, chapterId: Long): Intent =
+            newIntent(context, mangaId, chapterId, resumeWithinChapter = true)
     }
 
     private val readerPreferences = Injekt.get<ReaderPreferences>()
@@ -772,11 +782,15 @@ open class ReaderActivity : BaseActivity() {
      * bottom menu and delegates the change to the presenter.
      */
     open fun onPageSelected(page: ReaderPage) {
+        onPageSelected(page, listOf(page))
+    }
+
+    private fun onPageSelected(page: ReaderPage, visiblePages: List<ReaderPage>) {
         if (changingLayout || protectedLayoutPage === page) {
             onLayoutPageSelected(page)
         } else {
             protectedLayoutPage = null
-            viewModel.onPageSelected(page)
+            viewModel.onPageSelected(page, visiblePages)
         }
     }
 
@@ -789,9 +803,39 @@ open class ReaderActivity : BaseActivity() {
         source: eu.kanade.tachiyomi.ui.reader.viewer.Viewer,
         page: ReaderPage,
         layoutOnly: Boolean = false,
+        visiblePages: List<ReaderPage> = listOf(page),
     ) {
         if (installedViewer != null && viewModel.state.value.viewer !== source) return
-        if (layoutOnly) onLayoutPageSelected(page) else onPageSelected(page)
+        when {
+            layoutOnly -> onLayoutPageSelected(page)
+            visiblePages.size == 1 -> onPageSelected(page)
+            else -> onPageSelected(page, visiblePages)
+        }
+    }
+
+    /** Updates the visible anchor while a dual viewport is still loading or settling. */
+    internal fun onViewerPageAnchorSelected(
+        source: eu.kanade.tachiyomi.ui.reader.viewer.Viewer,
+        page: ReaderPage,
+        layoutOnly: Boolean,
+    ) {
+        if (installedViewer != null && viewModel.state.value.viewer !== source) return
+        if (layoutOnly || changingLayout || protectedLayoutPage === page) {
+            onLayoutPageSelected(page)
+        } else {
+            protectedLayoutPage = null
+            viewModel.onPageSelected(page, listOf(page), recordProgress = false)
+        }
+    }
+
+    internal fun onViewerViewportSettled(
+        source: eu.kanade.tachiyomi.ui.reader.viewer.Viewer,
+        page: ReaderPage,
+        visiblePages: List<ReaderPage>,
+    ) {
+        if (installedViewer != null && viewModel.state.value.viewer !== source) return
+        if (changingLayout || protectedLayoutPage === page) return
+        viewModel.onDualViewportSettled(page, visiblePages)
     }
 
     /**

@@ -637,7 +637,7 @@ internal fun LibraryList(
                     badges.unreadCount > 0L || badges.downloadCount > 0L || badges.isLocal ||
                     showLanguageIndicator
             val showContinueReading = showContinueReadingButton &&
-                (badges.unreadCount > 0L || item.id in syncedResumeMangaIds)
+                badges.unreadCount > 0L
             ListItem(
                 headlineContent = {
                     Text(
@@ -869,7 +869,7 @@ internal fun MangaCoverCard(
                 }
 
                 // Continue reading FAB overlay (bottom-start, visible on hover via always-visible small icon)
-                if (showContinueReadingButton && (badges.unreadCount > 0L || item.id in syncedResumeMangaIds)) {
+                if (showContinueReadingButton && badges.unreadCount > 0L) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)

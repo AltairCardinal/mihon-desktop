@@ -155,7 +155,7 @@ RA-01 开始时复核的 `d7f3ceef5…55be95dd5` 区间也没有 reader 路径�
 | adjacent portrait pairing | `CROSS_PLATFORM_PRODUCT_ENHANCEMENT` | 作为 presentation 能力保留；固定原版只拆一张宽源图 |
 | Desktop 完整下一章预取 | `DESKTOP_PRODUCT_ENHANCEMENT` | RD-02 保留显式首屏/完整 encoded-only P4 decorator，但默认 OFF；canonical anchor 保留固定原版末五页 page-list-only，不改变 Android 默认流量 |
 | cached Error 的 Retry 不再强制重抓 | `PRODUCT_GAP`（RC-02 已关闭） | RC-02 已恢复显式 Retry 强制重抓；shared executor contract 与 Android production wiring 测试共同保护 |
-| Android 双页只上报 `firstPage` | `PRODUCT_GAP` | RC-05 的 shared policy 已支持 settled 可见逻辑页集合；RP-03 已关闭 Desktop 双页 producer，Android Fork pager 仍是独立 presentation 缺口，不能作为完整集合证据 |
+| Android 双页只上报 `firstPage` | `PRODUCT_GAP`（RD-01 已关闭） | RC-05 的 shared policy 已支持 settled 可见逻辑页集合；RP-03 已关闭 Desktop 双页 producer，RD-01 又让 Android Fork pager 在当前双页组空闲且两张图片均解码成功后上报全部可见页，并由真实 SQL 进度链路验证末页完成 |
 
 相邻 portrait pairing 的 fork 起点为 `bef51fc6924c6a9de185fa0fb2a56ce76309dc19`；固定
 `6fbf6df…` 不含 `PagePairingAlgorithm`、`PairingState` 或 `DualPageViewerAdapter`。odd-width split 保留
@@ -217,8 +217,10 @@ key 与固定 Compose 容器均不使用 URL，Loading、Ready、Error 和原位
 
 Dual 使用共享 `ReaderPagePairing` 消费 cover-single、adjacent portrait、forced single、spread、edge match 与
 landscape parity options。renderer 使用完整 reader content viewport，并在其中维持两个各占一半、向书脊对齐的
-稳定物理槽；不再施加固定 4:3 比例或无独立依据的 frame inset。横图或竖图封面在 LTR/RTL 和环境 locale RTL 下
-均占绝对物理左槽且右槽为空；普通 pair 才按阅读方向交换物理顺序。pair/slot identity 不随窗口尺寸或任一页的
+稳定物理槽；不再施加固定 4:3 比例或无独立依据的 frame inset。纵向独占首页在 RTL 占左槽、LTR 占右槽；
+纵向独占末页在 RTL 占右槽、LTR 占左槽；只有一页的纵向章节占满视口。Desktop 横向封面暂沿用左槽既有呈现，
+Android 横向封面沿用全屏呈现；普通 pair 按阅读方向交换物理顺序。这些绝对物理槽不随环境 locale RTL 翻转。
+pair/slot identity 不随窗口尺寸或任一页的
 内容状态变化。默认 `FIT_SCREEN` 不裁切、不拉伸；真实 4:3 视口中由漫画自身比例造成的留白仍属诚实显示。
 宽图切片与右键保存都通过统一 `ZoomablePageBox` 的 `splitHalf/sourceBounds`，保存的是实际可见区域。
 edge matcher 只读取 `DesktopReaderPresentationImageOwner` 从唯一 pipeline 保留的 cached FULL lease，不解析
@@ -229,8 +231,9 @@ Single 只有 settled pager unit 才写回完整 `DisplayUnitId`；Webtoon 只�
 PageId 与首个可见 unit 的 offset + 测量高度。Ready 几何变化按相对位置重放，split/merge 后按同一逻辑页回退
 并服从 Lazy 边界，恢复完成前不发布错误 viewport。条漫的 side padding、crop 和覆盖 drag/fling、只在
 settled 后恢复的 auto-scroll 保持为 presentation option。Desktop 三种策略现已直接消费 canonical session
-snapshot；URL slot、`resolvedUrls` 与临时 presentation adapter 已删除。ID 43 证明三模式 production wiring，
-但仍不能把 Android Fork 双页的 `firstPage` 上报视为完整 settled visible-page 集合证据。
+snapshot；URL slot、`resolvedUrls` 与临时 presentation adapter 已删除。ID 43 证明三模式 production wiring。
+Android Fork 双页另由 RD-01 的 ViewPager 空闲、当前 holder 两图解码成功与真实进度事务测试证明完整
+settled visible-page 集合；单张 `firstPage` 仍只用于导航和预加载。
 
 parity manifest 9/43/44/45/47/49/51/53/54 的 `canonicalSessionExecutor` 已由 RD-01 收口为 `WIRED`；RG-01
 又为每项记录 `legacyReaderExecutors = REMOVED` 与 `readerArchitectureGuard = ENFORCED`。该声明必须同时由

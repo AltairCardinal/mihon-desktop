@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader
 
 import android.app.Application
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.PaddingValues
@@ -9,9 +10,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.printToString
 import cafe.adriel.voyager.core.annotation.InternalVoyagerApi
 import cafe.adriel.voyager.core.model.ScreenModelStore
+import cafe.adriel.voyager.navigator.Navigator
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.presentation.library.components.LibraryComfortableGrid
 import eu.kanade.presentation.library.components.LibraryCompactGrid
@@ -20,11 +24,15 @@ import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.ui.history.HistoryScreenModel
 import eu.kanade.tachiyomi.ui.library.LibraryScreenModel
+import eu.kanade.tachiyomi.ui.library.LibrarySettingsScreenModel
+import eu.kanade.tachiyomi.ui.library.LibraryTab
+import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -33,9 +41,14 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import mihon.data.sync.runtime.SyncPanel
+import mihon.data.sync.runtime.SyncPanelState
+import mihon.data.sync.runtime.SyncRuntime
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -43,10 +56,12 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.AndroidPreferenceStore
 import tachiyomi.core.common.preference.PreferenceStore
+import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.history.model.HistoryWithRelations
 import tachiyomi.domain.library.model.LibraryManga
@@ -100,6 +115,13 @@ class ReaderSyncEntryWiringTest {
             addSingleton(sourceManager)
             addSingleton(RecordReadingProgress(reading))
             addSingleton(BasePreferences(RuntimeEnvironment.getApplication(), preferences))
+            addSingleton(
+                mockk<SyncRuntime> {
+                    every { panel } returns mockk<SyncPanel>(relaxed = true) {
+                        every { state } returns MutableStateFlow(SyncPanelState())
+                    }
+                },
+            )
         }
     }
 
@@ -111,8 +133,24 @@ class ReaderSyncEntryWiringTest {
     }
 
     @Test
-    fun `all library layouts expose synchronized rereading and select the actual chapter`() = runBlocking {
-        val model = library()
+    fun `reader intents distinguish ordinary continuation from explicit and history entry`() {
+        val context = RuntimeEnvironment.getApplication()
+        val ordinary = ReaderActivity.newContinueIntent(context, 1, 1)
+        val history = ReaderActivity.newIntent(context, 1, 2, resume = true)
+        val explicit = ReaderActivity.newIntent(context, 1, 2)
+
+        assertTrue(ordinary.getBooleanExtra("resumeWithinChapter", false))
+        assertFalse(ordinary.getBooleanExtra("resume", false))
+        assertTrue(history.getBooleanExtra("resume", false))
+        assertFalse(history.getBooleanExtra("resumeWithinChapter", false))
+        assertFalse(explicit.getBooleanExtra("resume", false))
+        assertFalse(explicit.getBooleanExtra("resumeWithinChapter", false))
+    }
+
+    @Test
+    fun `all library layouts continue earliest unread chapter before old synchronized read chapter`() = runBlocking {
+        val first = chapters[0].copy(read = false, lastPageRead = 4)
+        val model = library(chapterCandidates = listOf(first, chapters[1]), unreadCount = 1)
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         try {
             val item = withTimeout(5_000) {
@@ -148,10 +186,68 @@ class ReaderSyncEntryWiringTest {
                     .assertIsDisplayed().performClick()
             }
             assertEquals(3, clicks)
-            assertEquals(2L, model.getNextUnreadChapter(manga)?.id)
+            assertEquals(first.id, model.getNextUnreadChapter(manga)?.id)
         } finally {
             activity.pause().stop().destroy()
         }
+    }
+
+    @Test
+    fun `library tab continue click starts unread chapter with within chapter resume`() = runBlocking {
+        val first = chapters[0].copy(read = false, lastPageRead = 4)
+        val model = library(
+            chapterCandidates = listOf(first, chapters[1]),
+            unreadCount = 1,
+            categories = listOf(Category(0, "Default", 0, 0)),
+        )
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        try {
+            val ready = withTimeoutOrNull(5_000) {
+                model.state.first {
+                    !it.isLoading && it.showMangaContinueButton && it.displayedCategories.isNotEmpty()
+                }
+            }
+            check(ready != null) { "Library state not ready: ${model.state.value}" }
+            activity.get().setContent {
+                MaterialTheme {
+                    Navigator(MangaScreen(manga.id)) {
+                        LibraryTab.ContentWithModels(model, mockk<LibrarySettingsScreenModel>(relaxed = true))
+                    }
+                }
+            }
+            try {
+                compose.onNodeWithContentDescription(activity.get().stringResource(MR.strings.action_resume))
+                    .assertIsDisplayed().performClick()
+            } catch (error: AssertionError) {
+                throw AssertionError(compose.onRoot(useUnmergedTree = true).printToString(), error)
+            }
+
+            val intent = withTimeout(5_000) {
+                var started: Intent? = null
+                while (started == null) {
+                    started = shadowOf(activity.get()).nextStartedActivity
+                    if (started == null) delay(10)
+                }
+                requireNotNull(started)
+            }
+            assertEquals(ReaderActivity::class.java.name, intent.component?.className)
+            assertEquals(manga.id, intent.getLongExtra("manga", -1))
+            assertEquals(first.id, intent.getLongExtra("chapter", -1))
+            assertFalse(intent.getBooleanExtra("resume", false))
+            assertTrue(intent.getBooleanExtra("resumeWithinChapter", false))
+        } finally {
+            activity.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    fun `all read library manga does not expose synchronized rereading as ordinary continuation`() = runBlocking {
+        val model = library()
+        val item = withTimeout(5_000) {
+            model.state.first { it.libraryData.favorites.isNotEmpty() }.libraryData.favorites.single()
+        }
+        assertFalse(item.hasSynchronizedResume)
+        assertEquals(null, model.getNextUnreadChapter(manga))
     }
 
     @Test
@@ -198,17 +294,22 @@ class ReaderSyncEntryWiringTest {
         assertEquals(null, model.getNextUnreadChapter(manga))
     }
 
-    private fun library(showContinue: Boolean = true): LibraryScreenModel {
+    private fun library(
+        showContinue: Boolean = true,
+        chapterCandidates: List<Chapter> = chapters,
+        unreadCount: Long = 0,
+        categories: List<Category> = emptyList(),
+    ): LibraryScreenModel {
         val libraryPreferences = LibraryPreferences(preferences)
         libraryPreferences.showContinueReadingButton().set(showContinue)
-        val libraryManga = LibraryManga(manga, listOf(0), 2, 2, 0, 0, 0, 1)
+        val libraryManga = LibraryManga(manga, listOf(0), 2, 2, unreadCount, 0, 0, 1)
         return ScreenModelStore.getOrPut(modelHolder, "library") {
             LibraryScreenModel(
                 getLibraryManga = mockk { every { subscribe() } returns flowOf(listOf(libraryManga)) },
-                getCategories = mockk { every { subscribe() } returns flowOf(emptyList()) },
+                getCategories = mockk { every { subscribe() } returns flowOf(categories) },
                 getTracksPerManga = mockk { every { subscribe() } returns flowOf(emptyMap()) },
                 getNextChapters = mockk(relaxed = true),
-                getChaptersByMangaId = mockk { coEvery { await(1, true) } returns chapters },
+                getChaptersByMangaId = mockk { coEvery { await(1, true) } returns chapterCandidates },
                 getBookmarkedChaptersByMangaId = mockk(relaxed = true),
                 setReadStatus = mockk(relaxed = true),
                 updateManga = mockk(relaxed = true),

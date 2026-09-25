@@ -192,12 +192,21 @@ class ReaderViewModel @JvmOverloads constructor(
     private val readerProgressSessionId = UUID.randomUUID().toString()
     private val readerProgressSettlementArbiter = ReaderViewportSettlementArbiter()
     private var readingActivation: ReadingActivation? = null
+    private var pendingDualViewport: PendingDualViewport? = null
     private var pendingResumePosition: ReadingResumePosition? = null
 
     private data class ReadingActivation(
         val chapter: ReaderChapter,
         val windowSequence: Long,
         val session: ReadingProgressSession?,
+    )
+
+    private data class PendingDualViewport(
+        val page: ReaderPage,
+        val settlementSequence: Long,
+        val selectedActivation: ReadingActivation?,
+        val activationJob: Deferred<ReadingActivation?>?,
+        var settled: Boolean = false,
     )
 
     /**
@@ -329,24 +338,28 @@ class ReaderViewModel @JvmOverloads constructor(
                     sourceManager.isInitialized.first { it }
                     mutableState.update { it.copy(manga = manga) }
                     if (chapterId == -1L) {
-                        val resume = if (savedState.get<Boolean>("resume") == true) {
-                            recordReadingProgress.resumePosition(mangaId)?.takeIf { position ->
-                                getChaptersByMangaId.await(mangaId, applyScanlatorFilter = true).any { chapter ->
-                                    chapter.id == position.chapterId && !isChapterFiltered(manga, chapter) &&
-                                        (
-                                            !basePreferences.downloadedOnly().get() || manga.isLocal() ||
-                                                downloadManager.isChapterDownloaded(
-                                                    chapter.name,
-                                                    chapter.scanlator,
-                                                    chapter.url,
-                                                    manga.title,
-                                                    manga.source,
-                                                )
-                                            )
+                        val resume = when {
+                            savedState.get<Boolean>("resumeWithinChapter") == true ->
+                                recordReadingProgress.resumePosition(mangaId)?.takeIf {
+                                    it.chapterId == initialChapterId
                                 }
-                            }
-                        } else {
-                            null
+                            savedState.get<Boolean>("resume") == true ->
+                                recordReadingProgress.resumePosition(mangaId)?.takeIf { position ->
+                                    getChaptersByMangaId.await(mangaId, applyScanlatorFilter = true).any { chapter ->
+                                        chapter.id == position.chapterId && !isChapterFiltered(manga, chapter) &&
+                                            (
+                                                !basePreferences.downloadedOnly().get() || manga.isLocal() ||
+                                                    downloadManager.isChapterDownloaded(
+                                                        chapter.name,
+                                                        chapter.scanlator,
+                                                        chapter.url,
+                                                        manga.title,
+                                                        manga.source,
+                                                    )
+                                                )
+                                    }
+                                }
+                            else -> null
                         }
                         pendingResumePosition = resume
                         chapterId = resume?.chapterId ?: initialChapterId
@@ -608,6 +621,11 @@ class ReaderViewModel @JvmOverloads constructor(
      * [page]'s chapter is different from the currently active.
      */
     fun onPageSelected(page: ReaderPage) {
+        onPageSelected(page, listOf(page))
+    }
+
+    fun onPageSelected(page: ReaderPage, visiblePages: List<ReaderPage>, recordProgress: Boolean = true) {
+        pendingDualViewport = null
         // InsertPage doesn't change page progress
         if (page is InsertPage) {
             return
@@ -620,7 +638,7 @@ class ReaderViewModel @JvmOverloads constructor(
         val pages = selectedChapter.pages ?: return
         val settlementSequence = readerProgressSettlementArbiter.nextToken()
         val selectedActivation = readingActivation?.takeIf { it.chapter === selectedChapter }
-        val recordProgress = !incognitoMode && !getIncognitoState.await(manga?.source)
+        val shouldRecordProgress = recordProgress && !incognitoMode && !getIncognitoState.await(manga?.source)
 
         val activationJob = if (selectedChapter != getCurrentChapter()) {
             logcat { "Setting ${selectedChapter.chapter.url} as active" }
@@ -628,13 +646,23 @@ class ReaderViewModel @JvmOverloads constructor(
         } else {
             null
         }
+        if (!recordProgress) {
+            pendingDualViewport = PendingDualViewport(page, settlementSequence, selectedActivation, activationJob)
+        }
 
         // Persist only after an adjacent chapter has become the canonical active chapter.
         viewModelScope.launchNonCancellable {
             val activation = if (activationJob == null) selectedActivation else activationJob.await()
             if (activation == null) return@launchNonCancellable
             readerProgressSettlementArbiter.runIfLatest(settlementSequence) {
-                updateChapterProgress(selectedChapter, page, settlementSequence, activation, recordProgress)
+                updateChapterProgress(
+                    selectedChapter,
+                    page,
+                    visiblePages,
+                    settlementSequence,
+                    activation,
+                    shouldRecordProgress,
+                )
             }
         }
 
@@ -644,6 +672,26 @@ class ReaderViewModel @JvmOverloads constructor(
         }
 
         eventChannel.trySend(Event.PageChanged)
+    }
+
+    /** Completes a selected dual viewport without replaying chapter activation or page side effects. */
+    fun onDualViewportSettled(page: ReaderPage, visiblePages: List<ReaderPage>) {
+        val pending = pendingDualViewport?.takeIf { it.page === page && !it.settled } ?: return
+        pending.settled = true
+        val shouldRecordProgress = !incognitoMode && !getIncognitoState.await(manga?.source)
+        viewModelScope.launchNonCancellable {
+            val activation = pending.activationJob?.await() ?: pending.selectedActivation ?: return@launchNonCancellable
+            readerProgressSettlementArbiter.runIfLatest(pending.settlementSequence) {
+                updateChapterProgress(
+                    page.chapter,
+                    page,
+                    visiblePages,
+                    pending.settlementSequence,
+                    activation,
+                    shouldRecordProgress,
+                )
+            }
+        }
     }
 
     private fun downloadNextChapters() {
@@ -718,6 +766,7 @@ class ReaderViewModel @JvmOverloads constructor(
     private suspend fun updateChapterProgress(
         readerChapter: ReaderChapter,
         page: Page,
+        visiblePages: List<ReaderPage>,
         settlementSequence: Long,
         activation: ReadingActivation,
         recordProgress: Boolean,
@@ -731,17 +780,22 @@ class ReaderViewModel @JvmOverloads constructor(
             return
         }
 
-        val pageIndex = page.index
         if (currentReaderPage?.chapter !== readerChapter && page is ReaderPage) onLayoutPageSelected(page)
 
         val session = activation.session
         if (recordProgress && session != null && page.status !is Page.State.Error) {
-            val totalPages = readerChapter.pages?.size ?: return
+            val chapterPages = readerChapter.pages ?: return
+            if (visiblePages.any { it.chapter !== readerChapter || it !in chapterPages }) return
+            if (visiblePages.any { it.status is Page.State.Error }) return
+            val totalPages = chapterPages.size
+            val visiblePageIds = visiblePages
+                .mapTo(linkedSetOf()) { ReaderPageId(chapterId, it.index) }
+            if (visiblePageIds.isEmpty() || visiblePageIds.any { it.sourcePageIndex !in 0 until totalPages }) return
             val progress = ReaderProgressPolicy.reduce(
                 ReaderProgressSignal.ViewportSettled(
                     activeChapterId = activeChapterId,
                     chapterId = chapterId,
-                    visiblePageIds = setOf(ReaderPageId(chapterId, pageIndex)),
+                    visiblePageIds = visiblePageIds,
                     totalPages = totalPages,
                     wasRead = readerChapter.chapter.read,
                     sessionId = readerProgressSessionId,

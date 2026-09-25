@@ -61,6 +61,7 @@ import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.source.getNameForMangaInfo
 import eu.kanade.tachiyomi.ui.manga.ChapterList
 import eu.kanade.tachiyomi.ui.manga.MangaScreenModel
+import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import tachiyomi.domain.chapter.ChapterItemClickAction
 import tachiyomi.domain.chapter.chapterItemClickAction
@@ -336,14 +337,12 @@ private fun MangaScreenSmallImpl(
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         floatingActionButton = {
-            val isFABVisible = remember(chapters, state.synchronizedResumeId, isAnySelected) {
-                (chapters.fastAny { !it.chapter.read } || state.synchronizedResumeId != null) && !isAnySelected
+            val isFABVisible = remember(chapters, isAnySelected) {
+                chapters.fastAny { !it.chapter.read } && !isAnySelected
             }
             SmallExtendedFloatingActionButton(
                 text = {
-                    val isReading = remember(state.chapters) {
-                        state.chapters.fastAny { it.chapter.read }
-                    }
+                    val isReading = remember(state) { continueActionResumes(state) }
                     Text(
                         text = stringResource(if (isReading) MR.strings.action_resume else MR.strings.action_start),
                     )
@@ -580,14 +579,12 @@ fun MangaScreenLargeImpl(
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         floatingActionButton = {
-            val isFABVisible = remember(chapters, state.synchronizedResumeId, isAnySelected) {
-                (chapters.fastAny { !it.chapter.read } || state.synchronizedResumeId != null) && !isAnySelected
+            val isFABVisible = remember(chapters, isAnySelected) {
+                chapters.fastAny { !it.chapter.read } && !isAnySelected
             }
             SmallExtendedFloatingActionButton(
                 text = {
-                    val isReading = remember(state.chapters) {
-                        state.chapters.fastAny { it.chapter.read }
-                    }
+                    val isReading = remember(state) { continueActionResumes(state) }
                     Text(
                         text = stringResource(
                             if (isReading) MR.strings.action_resume else MR.strings.action_start,
@@ -704,6 +701,13 @@ fun MangaScreenLargeImpl(
             )
         }
     }
+}
+
+private fun continueActionResumes(state: MangaScreenModel.State.Success): Boolean {
+    val target = state.chapters.getNextUnread(state.manga) ?: return false
+    return state.chapters.fastAny { it.chapter.read } ||
+        target.lastPageRead > 0 ||
+        state.synchronizedResumeId == target.id
 }
 
 @Composable

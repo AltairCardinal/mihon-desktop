@@ -45,6 +45,45 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 class ReaderSyncResumeWiringTest {
     @Test
+    fun `ordinary continuation keeps selected unread chapter and its own saved page`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        try {
+            Fixture(
+                savedState = SavedStateHandle(mapOf("resumeWithinChapter" to true)),
+                firstChapterLastPageRead = 1,
+            ).use { fixture ->
+                assertTrue(fixture.model.init(1, 1).getOrThrow())
+                val chapter = requireNotNull(fixture.model.state.value.currentChapter)
+                assertEquals(1L, chapter.chapter.id)
+                assertEquals(1, chapter.requestedPage)
+                assertEquals(1, fixture.repository.lookups)
+                fixture.model.onPageSelected(requireNotNull(chapter.pages)[1])
+                assertEquals(snapshot("current-heads"), awaitValue(fixture.repository.records).second)
+            }
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `ordinary continuation may adopt synchronized page and snapshot only within selected chapter`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        try {
+            Fixture(savedState = SavedStateHandle(mapOf("resumeWithinChapter" to true))).use { fixture ->
+                fixture.repository.candidate = ReadingResumePosition(1, 2, snapshot("matching-heads"))
+                assertTrue(fixture.model.init(1, 1).getOrThrow())
+                val chapter = requireNotNull(fixture.model.state.value.currentChapter)
+                assertEquals(1L, chapter.chapter.id)
+                assertEquals(2, chapter.requestedPage)
+                fixture.model.onPageSelected(requireNotNull(chapter.pages)[2])
+                assertEquals(snapshot("matching-heads"), awaitValue(fixture.repository.records).second)
+            }
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun `explicit selection of a read chapter starts at first page without adopting sync resume`() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         try {
@@ -184,6 +223,7 @@ class ReaderSyncResumeWiringTest {
         pageIndex: Int = 1,
         receiveDuringLoad: Boolean = false,
         savedState: SavedStateHandle = SavedStateHandle(mapOf("resume" to true)),
+        firstChapterLastPageRead: Long = 0,
     ) : AutoCloseable {
         val original = ReadingResumePosition(2, pageIndex, snapshot("adopted-heads"))
         val repository = Repository(original)
@@ -195,7 +235,7 @@ class ReaderSyncResumeWiringTest {
                 name = "Chapter $id",
                 chapterNumber = id.toDouble(),
                 read = id == 2L,
-                lastPageRead = if (id == 2L) 2 else 0,
+                lastPageRead = if (id == 2L) 2 else firstChapterLastPageRead,
             )
         }
         private val source = mockk<Source>()

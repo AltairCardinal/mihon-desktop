@@ -253,8 +253,8 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
         val linkActions = mangaUrl?.let {
             mangaLinkActions(it)
         }
-        val nextUnread = remember(chapters, manga?.chapterFlags, state.syncedResumeChapterId) {
-            chapters.find { it.id == state.syncedResumeChapterId } ?: manga?.let { nextUnreadChapter(chapters, it) }
+        val nextUnread = remember(chapters, manga?.chapterFlags) {
+            manga?.let { nextUnreadChapter(chapters, it) }
         }
 
         Scaffold(
@@ -546,7 +546,7 @@ data class MangaDetailScreen(val mangaId: Long) : Screen {
                     ExtendedFloatingActionButton(
                         text = {
                             Text(
-                                if (chapters.any { it.read }) {
+                                if (continueActionResumes(chapters, ch, state.syncedResumeChapterId)) {
                                     MR.strings.action_resume.localized()
                                 } else {
                                     MR.strings.action_start.localized()

@@ -368,10 +368,7 @@ class LibraryScreenModel(
 
     suspend fun getNextUnreadChapter(manga: Manga): Chapter? {
         val chapters = getChaptersByMangaId.await(manga.id, applyScanlatorFilter = true)
-        val synchronized = recordReadingProgress.resumePosition(manga.id)?.let { position ->
-            chapters.applyFilters(manga, downloadManager).firstOrNull { it.id == position.chapterId }
-        }
-        return synchronized ?: chapters.getNextUnread(manga, downloadManager)
+        return chapters.getNextUnread(manga, downloadManager)
     }
 
     /**

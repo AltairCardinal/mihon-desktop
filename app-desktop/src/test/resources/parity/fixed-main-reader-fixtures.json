@@ -292,7 +292,7 @@
       "classification": "DESKTOP_PRESENTATION_POLICY",
       "introductionRefs": ["c01771573034d2ed3492db3ddd109533bb631d99"],
       "behaviorEvidenceRefs": [
-        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#mounted cover keeps a full viewport two-slot frame with the page in the physical left slot",
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#mounted portrait edges keep direction aware halves independent of ambient layout",
         "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#viewport resize changes geometry without replacing display or physical slot identity"
       ],
       "description": "Desktop keeps physical left and right slot identities stable across reading direction and page-state changes.",
@@ -303,9 +303,9 @@
       "classification": "DESKTOP_PRODUCT_ENHANCEMENT",
       "introductionRefs": ["c01771573034d2ed3492db3ddd109533bb631d99"],
       "behaviorEvidenceRefs": [
-        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt#cover occupies the physical left slot for both reading directions"
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagedPresentationTest.kt#landscape cover remains whole in the physical left slot for one and many page chapters"
       ],
-      "description": "Desktop presents a cover in the physical left slot with the physical right slot empty for a stable book-opening layout.",
+      "description": "Desktop retains the physical left half-screen for a landscape cover, while portrait edge pages follow reading direction and a single portrait page fills the viewport.",
       "resolutionStatus": "ACTIVE"
     },
     {
@@ -313,7 +313,7 @@
       "classification": "DESKTOP_PRESENTATION_POLICY",
       "introductionRefs": ["c01771573034d2ed3492db3ddd109533bb631d99"],
       "behaviorEvidenceRefs": [
-        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#mounted cover keeps a full viewport two-slot frame with the page in the physical left slot",
+        "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#mounted portrait edges keep direction aware halves independent of ambient layout",
         "app-desktop/src/test/kotlin/mihon/desktop/ui/reader/presentation/DualPagePresentationIdentityTest.kt#full viewport FIT SCREEN geometry preserves wide screen height and honest four three letterboxing"
       ],
       "description": "RNC-02 removed the historical fixed 4:3 dual-page frame so Desktop uses the complete reader viewport while FIT_SCREEN retains honest aspect-ratio letterboxing.",
@@ -418,7 +418,7 @@
       "id": "DUAL_PAGE_PROGRESS_FIRST_ONLY",
       "classification": "PRODUCT_GAP",
       "evidenceRef": "9111d70a85565e20940fa4736c97eea8c1a44a0d",
-      "description": "The current Android dual-page viewer reports only DisplayPage.firstPage to ReaderViewModel; RC-05 and RP-03 must report the settled visible logical-page set so a final pair can complete on its actual last page."
+      "description": "At the evidenceRef Fork baseline, the Android dual-page viewer reported only DisplayPage.firstPage to ReaderViewModel. RD-01 later closes this gap by reporting the settled visible logical-page set after the active pair is idle and both images decode, so a final pair completes on its actual last page."
     }
   ],
   "trackedUpstreamChanges": [

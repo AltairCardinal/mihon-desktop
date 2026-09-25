@@ -146,7 +146,10 @@ Single、Webtoon 和 Dual 是 registry 中同级策略：
   parity。
 
 Pairing、双槽、封面和屏幕宽度禁止进入 `ReaderSessionCore`。双页 settled 时必须上报实际可见的全部
-`PageId`；只上报 `firstPage` 会让末页 pair 的进度不完整。
+`PageId`；`firstPage` 仅作为导航与预加载锚点，只上报它会让末页 pair 的进度不完整。Android 双页
+任一可见成员错误时拒绝整组进度；显示模式或尺寸引发的纯布局重排不触发进度提交。
+纵向独占页的物理槽由共享 `portraitSinglePageSlot` 依阅读方向及组位置决定：RTL 首页左/末页右，
+LTR 首页右/末页左；一页章节占满视口。此规则仅用于 presentation，不改变配对或持久进度。
 
 当前 RP-01～RP-03 已在同一 registry 注册 `SinglePagedPresentation`、`WebtoonPresentation` 与
 `DualPagedPresentation`。Single 将 canonical `ReaderPageSession` 映射为单页或宽页切片 `DisplayUnit`；
@@ -256,7 +259,10 @@ presentation/navigation adapter，不进入 core 文案或按钮决策。若相�
 
 `ReaderProgressPolicy` 只接受 `ViewportSettled(activeChapterId, chapterId, visiblePageIds)`；章节打开、页准备和
 非 active 章节 settled 都不产生 effect。多页可见集合取实际可见逻辑页的最大索引，因此最终双页只有确实
-包含末页时才完成。effect 携带 session、chapter、page 与 settlement sequence 组成的幂等 key，Android
+包含末页时才完成。Android 双页 viewer 在 ViewPager 空闲且当前 holder 的两张图片均触发真实解码成功回调后，
+才将 `DisplayPage.Double` 的两张源页一起提交；`firstPage` 只作导航与预加载锚点。图片仍在加载、解码失败、
+拖动中途或同一显示单元的 holder 重建都不新增进度；单页显示单元沿用原有报告链。任一可见页加载出错、
+混入旧章节或重排标记为 `layoutOnly` 时，该显示单元不写进度。effect 携带 session、chapter、page 与 settlement sequence 组成的幂等 key，Android
 `ReaderViewModel.onPageSelected` 通过 `ReaderViewportSettlementArbiter` 为每次 viewport settlement 分配单调
 token；相邻章加载完成后只有最新 token 可以提交 active window，UI/saved-page/事务写入也在同一串行仲裁中再次检查 token 与 active chapter。旧加载
 可以保留为相邻章 page-list 预取，但不能在用户返回当前章后反向激活或写进度。有效 settlement 再通过
@@ -270,7 +276,10 @@ RA-01 的 online→download route reset 只接受由同一 canonical Wait/Error 
 
 `ReaderEntryResolver` 接收已经按漫画原始排序配置排列的候选与显式方向：升序取第一个未读，降序取最后一个
 未读。Android `getNextUnread`、Desktop 详情页阅读入口和书库“继续阅读”都通过该 resolver，因此不会把 UI
-第一项误当作故事最早未完成章节；Desktop 仍保留现有 reader navigation 列表顺序。
+第一项误当作故事最早未完成章节；Desktop 仍保留现有 reader navigation 列表顺序。普通“继续阅读”先在入口
+原有筛选范围内确定目标未读章，再恢复该章 `lastPageRead`；只有同步位置指向同一目标章时才沿用同步页码和
+`resumeSnapshot`，全部已读时不回退到旧同步章。Android 普通继续入口以 `resumeWithinChapter` 锁定目标章，
+与历史或显式同步恢复的漫画级 `resume` 意图区分；显式点选章节仍按已读重开规则处理。
 
 ## 迁移门禁
 
@@ -296,6 +305,8 @@ decision family，或新增第二个 fetch/materialize/decode/cache owner，架�
 
 显式选择章节时，两端使用 `resolveReaderChapterEntryPage`：已读章节从第一页打开，未读章节恢复本地进度；
 显式同步恢复位置优先，不能被已读重开策略覆盖。此规则不改写数据库进度，也不改变“继续阅读”的选章策略。
+普通“继续阅读”的跨章目标仅来自筛选后的最早未读章；其他章节的同步位置既不改选目标，也不传给该目标的
+Reader 初始化。若没有未读目标，入口隐藏或沿用现有“没有下一章”反馈。
 
 `readerChapterBoundary` 是两端唯一的章界显示分类：无相邻章时显示终端提示；相邻章未就绪时仅保留加载、
 错误和重试反馈；就绪后直接连接页面，不受章节编号缺口或旧“总是显示过渡页”偏好影响。

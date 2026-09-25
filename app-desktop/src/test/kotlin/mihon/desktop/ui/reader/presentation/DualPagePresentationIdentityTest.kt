@@ -135,37 +135,62 @@ class DualPagePresentationIdentityTest {
     }
 
     @Test
-    fun `mounted cover keeps a full viewport two-slot frame with the page in the physical left slot`() = runTest {
+    fun `mounted portrait edges keep direction aware halves independent of ambient layout`() = runTest {
         for (ambientDirection in listOf(LayoutDirection.Ltr, LayoutDirection.Rtl)) {
             for (readerDirection in listOf(ReaderDirection.LTR, ReaderDirection.RTL)) {
-                val unit = snapshot(readerDirection, ReaderPageLoadState.Ready).displayUnits.first()
-                val scene = ImageComposeScene(1_600, 900, coroutineContext = currentCoroutineContext()) {}
-                try {
-                    scene.setContent {
-                        MaterialTheme {
-                            CompositionLocalProvider(LocalLayoutDirection provides ambientDirection) {
-                                DualPageDisplayUnitFrame(unit = unit, onRetry = {}) { _, modifier ->
-                                    Box(modifier.fillMaxSize())
+                val units = snapshot(readerDirection, ReaderPageLoadState.Ready, pageCount = 4).displayUnits
+                for ((unit, pageIndex, expectedSlot) in listOf(
+                    Triple(units.first(), 0, if (readerDirection == ReaderDirection.RTL) DualPagePhysicalSlot.LEFT else DualPagePhysicalSlot.RIGHT),
+                    Triple(units.last(), 3, if (readerDirection == ReaderDirection.RTL) DualPagePhysicalSlot.RIGHT else DualPagePhysicalSlot.LEFT),
+                )) {
+                    val scene = ImageComposeScene(1_600, 900, coroutineContext = currentCoroutineContext()) {}
+                    try {
+                        scene.setContent {
+                            MaterialTheme {
+                                CompositionLocalProvider(LocalLayoutDirection provides ambientDirection) {
+                                    DualPageDisplayUnitFrame(unit = unit, onRetry = {}) { _, modifier ->
+                                        Box(modifier.fillMaxSize())
+                                    }
                                 }
                             }
                         }
-                    }
-                    scene.render()
+                        scene.render()
 
-                    val frame = node(scene) { it.config.contains(DualPageDisplayUnitIdKey) }.boundsInRoot
-                    val left = slotNode(scene, DualPagePhysicalSlot.LEFT)
-                    val right = slotNode(scene, DualPagePhysicalSlot.RIGHT)
-                    assertCentered(frame, viewportWidth = 1_600f)
-                    assertEquals(Rect(0f, 0f, 1_600f, 900f), frame)
-                    assertEquals(frame.left, left.boundsInRoot.left)
-                    assertEquals(frame.center.x, left.boundsInRoot.right)
-                    assertEquals(frame.center.x, right.boundsInRoot.left)
-                    assertEquals(frame.right, right.boundsInRoot.right)
-                    assertEquals(pageId(0), left.config[DualPageSlotIdKey].pageId)
-                    assertEquals(null, right.config[DualPageSlotIdKey].pageId)
-                } finally {
-                    scene.close()
+                        val frame = node(scene) { it.config.contains(DualPageDisplayUnitIdKey) }.boundsInRoot
+                        val left = slotNode(scene, DualPagePhysicalSlot.LEFT)
+                        val right = slotNode(scene, DualPagePhysicalSlot.RIGHT)
+                        assertCentered(frame, viewportWidth = 1_600f)
+                        assertEquals(Rect(0f, 0f, 1_600f, 900f), frame)
+                        assertEquals(frame.left, left.boundsInRoot.left)
+                        assertEquals(frame.center.x, left.boundsInRoot.right)
+                        assertEquals(frame.center.x, right.boundsInRoot.left)
+                        assertEquals(frame.right, right.boundsInRoot.right)
+                        assertEquals(pageId(pageIndex), slotNode(scene, expectedSlot).config[DualPageSlotIdKey].pageId)
+                        val emptySlot = if (expectedSlot == DualPagePhysicalSlot.LEFT) right else left
+                        assertEquals(null, emptySlot.config[DualPageSlotIdKey].pageId)
+                    } finally {
+                        scene.close()
+                    }
                 }
+            }
+        }
+    }
+
+    @Test
+    fun `mounted one portrait page uses the whole frame`() = runTest {
+        for (direction in listOf(ReaderDirection.LTR, ReaderDirection.RTL)) {
+            val unit = snapshot(direction, ReaderPageLoadState.Ready, pageCount = 1).displayUnits.single()
+            val scene = ImageComposeScene(1_600, 900, coroutineContext = currentCoroutineContext()) {}
+            try {
+                scene.setContent {
+                    DualPageDisplayUnitFrame(unit = unit, onRetry = {}) { _, modifier -> Box(modifier.fillMaxSize()) }
+                }
+                scene.render()
+                val full = slotNode(scene, DualPagePhysicalSlot.FULL)
+                assertEquals(Rect(0f, 0f, 1_600f, 900f), full.boundsInRoot)
+                assertEquals(pageId(0), full.config[DualPageSlotIdKey].pageId)
+            } finally {
+                scene.close()
             }
         }
     }
@@ -375,10 +400,12 @@ class DualPagePresentationIdentityTest {
     private fun snapshot(
         direction: ReaderDirection,
         state: ReaderPageLoadState,
-    ): ReaderPresentationSnapshot = snapshot(direction) { state }
+        pageCount: Int = 5,
+    ): ReaderPresentationSnapshot = snapshot(direction, pageCount) { state }
 
     private fun snapshot(
         direction: ReaderDirection,
+        pageCount: Int = 5,
         stateAt: (Int) -> ReaderPageLoadState,
     ): ReaderPresentationSnapshot = DualPagedPresentation.present(
         ReaderPresentationRequest(
@@ -386,7 +413,7 @@ class DualPagePresentationIdentityTest {
                 chapterId,
                 19,
                 ReaderChapterLoadState.Loaded,
-                List(5) { index ->
+                List(pageCount) { index ->
                     val state = stateAt(index)
                     ReaderPageSession(
                         pageId(index),

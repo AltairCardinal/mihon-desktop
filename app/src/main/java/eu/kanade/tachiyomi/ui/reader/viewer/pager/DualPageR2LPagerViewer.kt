@@ -51,6 +51,8 @@ class DualPageR2LPagerViewer(
     val adapter = DualPageViewerAdapter(this, pairingStore)
 
     private var currentPage: Any? = null
+    private var layoutOnlyDisplayPage: DisplayPage? = null
+    private var reportedDisplayPage: DisplayPage? = null
     private var replacingPairing = false
     private var destroyed = false
 
@@ -76,6 +78,7 @@ class DualPageR2LPagerViewer(
                         }
                     }
                 }
+                reportSettledDualViewport()
             }
         }
 
@@ -262,20 +265,32 @@ class DualPageR2LPagerViewer(
 
     private fun onPageChange(position: Int, layoutOnly: Boolean = false) {
         val item = adapter.items.getOrNull(position)
+        // A window rebuild can keep the same selected pair while an adjacent chapter loads.
+        // Preserve that selection so its pending rendered viewport can still settle.
+        if (layoutOnly && item is DisplayPage && item != currentPage) layoutOnlyDisplayPage = item
         if (item != null && currentPage != item) {
             currentPage = item
+            reportedDisplayPage = null
+            if (!layoutOnly) layoutOnlyDisplayPage = null
             when (item) {
                 is DisplayPage -> onDisplayPageSelected(item, layoutOnly)
                 is ChapterTransition -> onTransitionSelected(item)
             }
+        } else if (item != null) {
+            currentPage = item
         }
+        reportSettledDualViewport()
     }
 
     internal fun onDisplayPageSelected(displayPage: DisplayPage, layoutOnly: Boolean = false) {
         val page = displayPage.firstPage
         val pages = page.chapter.pages ?: return
         logcat { "onDisplayPageSelected: ${page.number}/${pages.size}" }
-        activity.onViewerPageSelected(this, page, layoutOnly)
+        if (displayPage is DisplayPage.Double) {
+            activity.onViewerPageAnchorSelected(this, page, layoutOnly)
+        } else {
+            activity.onViewerPageSelected(this, page, layoutOnly, displayPage.visiblePages)
+        }
         if (layoutOnly) return
 
         // Preload next chapter when near the end
@@ -285,6 +300,22 @@ class DualPageR2LPagerViewer(
                 activity.requestPreloadChapter(target, adjacentEffect)
             }
         }
+    }
+
+    internal fun onHolderDisplayStateChanged(holder: DualPagerPageHolder) {
+        if (holder.displayPage == currentPage) reportSettledDualViewport()
+    }
+
+    private fun reportSettledDualViewport() {
+        if (destroyed || replacingPairing || !isIdle) return
+        val displayPage = adapter.items.getOrNull(pager.currentItem) as? DisplayPage.Double ?: return
+        if (displayPage != currentPage || displayPage == layoutOnlyDisplayPage) return
+        val holder = pager.children.filterIsInstance<DualPagerPageHolder>()
+            .firstOrNull { it.displayPage == displayPage } ?: return
+        if (!holder.hasRenderedVisiblePages()) return
+        if (reportedDisplayPage == displayPage) return
+        reportedDisplayPage = displayPage
+        activity.onViewerViewportSettled(this, displayPage.firstPage, displayPage.visiblePages)
     }
 
     internal fun onTransitionSelected(transition: ChapterTransition) {
