@@ -1017,6 +1017,10 @@ class SyncGitSafetyContractTest {
         fun file(branch: String, path: String): ByteArray? =
             refs[branch]?.let(commits::get)?.first?.let(trees::get)?.get(path)?.let(blobs::get)
 
+        fun files(branch: String): Map<String, ByteArray> =
+            trees.getValue(commits.getValue(refs.getValue(branch)).first)
+                .mapValues { (_, oid) -> blobs.getValue(oid).copyOf() }
+
         fun head(branch: String): String = refs.getValue(branch)
 
         fun treeSha(branch: String): String = commits.getValue(head(branch)).first
