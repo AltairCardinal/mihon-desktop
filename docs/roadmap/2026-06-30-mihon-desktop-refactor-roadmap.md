@@ -4,7 +4,7 @@
 
 正式版日期：2026-06-30
 
-- active-child-plan: none（2026-09-16 Android扩展专项按收紧范围完成；其他暂停计划不自动恢复）
+- active-child-plan: [作者页体验迭代](./2026-09-18-author-experience-iteration-roadmap.md)（2026-09-18开始；旧作者身份专项保持完成）
 
 - 此前完成专项：[Android 新版扩展系统完整兼容 Roadmap](./2026-09-12-android-extension-v2-compatibility-roadmap.md)（2026-09-16，COMPLETE）。产品提交 `b3d81b34dc`；rc9正式Android/ARM业务及Windows/macOS限定回归已验收。MangaPlus live仍未验证成功，明确限制和证据以子计划为准。
 

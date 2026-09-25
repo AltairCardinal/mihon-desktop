@@ -1,6 +1,6 @@
 # 跨插件唯一作者 · 正式实施 Roadmap
 
-- 日期：2026-09-17；状态：IN_PROGRESS；用户已明确从交接恢复执行，从第3节首个未勾选批次GA-03继续。GA-01/02的已完成证据保留，后续批次按依赖串行验收。
+- 日期：2026-09-17；状态：COMPLETED；GA-01至GA-06已完成。代码、审查、自动化与正式桌面运行证据保留；最终Android真机验收由用户自行执行并明确报告完成。
 - 类型：产品child plan；从第3节第一个未勾选批次推导进度，不再声明active-task。
 - 父路线：[主Roadmap](2026-06-30-mihon-desktop-refactor-roadmap.md)。仅登记待执行专项，不改变父路线active-child-plan，不恢复旧作者归档专项及其无关backlog。
 - 最终产品依据：[功能设计](../2026-09-17-global-author-functional-design.md)；[技术方案](../2026-09-17-creator-identity-reconciliation-proposal.md)；[已确认HTML](../prototypes/author-identity/index.html)，基线提交 `77a610534`。
@@ -40,7 +40,7 @@
 - [x] **GA-03：全局作者设置与真实发现调度**（依赖GA-02）
 - [x] **GA-04：备份恢复与设置兼容**（依赖GA-01至GA-03）
 - [x] **GA-05：现有作者关注同步兼容**（依赖GA-01、GA-02、GA-04稳定契约）
-- [ ] **GA-06：双端集成、迁移回归与正式发布验收**（依赖GA-01至GA-05）
+- [x] **GA-06：双端集成、迁移回归与正式发布验收**（依赖GA-01至GA-05）
 
 默认串行，原因是共享repository、schema、身份映射和测试fixtures存在写入冲突。Android/Desktop作为每个用户能力的共同交付面，不拆成两个语义分叉项目。每批原则上一份包含实现、测试和必要证据的提交；超过8文件/400行时说明内聚性与风险，不拆成不可独立验收的schema/模型/视图微任务。
 
@@ -194,7 +194,7 @@
 
 **完成条件**：A1–A8有证据，所有必需平台产物路径/版本/结果明确，无阻塞缺口才勾选。某平台不可访问时记录真实阻塞，不能以另一平台通过关闭。预计6–10小时，墙钟另受构建队列、macOS连接和真机/图源可用性影响。
 
-**执行记录（GA-06进行中，未完成）**：
+**历史执行记录（以下保留各阶段当时状态，最终结论见收口证据）**：
 - 前置GA-05已提交`f6e6b534df`，独立限定复审通过。延续实施/审查两角色；原实施会话不可用后按既有diff和协调器终态恢复实施者，不重做前五批。尚未运行最终全量或安装本轮产物。
 - macOS隔离仓库`/Users/altair/Github/mihon-global-author-release`基于GA-05提交，原仓库既有改动未动；x86_64、JDK21、Android36 SDK及本机代理入口已核对。正式构建待最终diff稳定，并使用独立dist/deploy路径。
 - Windows用户库只读快照保存在仓库外，SQLite完整性通过、schema25；迁移前711漫画/2922章节/13作者/13漫画作者关系/10来源作品/13来源作品角色/1关注，观察到1组ACTIVE精确同名多根。快照不纳入仓库或测试fixture；正式runtime升级后需核对收敛及数据保留。
@@ -211,8 +211,9 @@
 
 后续验证（2026-09-18）：`ga06-remaining-platforms`完整运行18分38秒，exit1。data JVM45 suites/425项，仅历史v16夹具1失败，含1万/10万事件规模用例通过；data Android24 suites/233项全绿；finalParityAudit完成且NON_TERMINAL_IDS为空。app Android99 suites/475条执行记录（含既有自动重试），三个缺偏好模块前置的DI用例各失败三次，关注用例首轮超时后重试通过，不称该全量干净通过。原始168份XML已存忽略目录归档。仅修v16历史夹具及两处Android测试的真实PreferenceModule前置，无production/迁移SQL修改；`ga06-platform-fixes` PASSED/37s，data1+Android14共15项零失败/错误/跳过/重复执行，data/app格式通过。原有正确用例与本次受影响路径复验组成平台证据，不重复已通过规模测试。`ga06-desktop-complete`按默认执行配置单独进行完整Desktop集成测试，未使用诊断阶段的类排序或并行覆盖。
 
-**当前收口证据（2026-09-18，GA-06仍待真机）**：
-- 已验证的源码、测试、正式版本与记录随本批提交保存，GA-06因用户明确后置真机而保持未勾选。产物版本后缀取构建时前置HEAD `f6e6b53`，实际包含本批已审查diff；不是该旧提交的干净构建，不为填自身提交hash另造状态提交。
+**最终收口证据（GA-06完成）**：
+- 用户在本任务中明确反馈“我进行了安卓真机验收并完成了”。据此登记用户执行的真机验收完成，关闭最终待验收项；未新增Agent真机操作、截图或逐项测量证据，不虚构用户未提供的细节。实现及测试已在`6828bfc618`提交，既有独立审查、自动化、正式产物和桌面运行证据继续适用。
+- 已验证的源码、测试、正式版本与记录在`6828bfc618`提交保存；当时后置的真机验收现已由用户报告完成。产物版本后缀取构建时前置HEAD `f6e6b53`，实际包含本批已审查diff；不是该旧提交的干净构建，不为填自身提交hash另造状态提交。
 - `ga06-desktop-complete` PASSED/4分1秒，412 suites/3117项，0失败/错误、3项条件跳过（Mac JXA、非headless Windows原生隐私、非release自定义周期），无重试；16个重名来自参数化显示名，不是重复重试。完整XML已归档忽略目录。前述平台失败定向关闭，已有通过证据复用。
 - `ga06-windows-build` PASSED/90秒，官方脚本build-only唯一递增44→45，正式扩展runtime安装验收通过。日志唯一`Final unpacked EXE:`为`D:/Shell/Github/mihon/app-desktop/artifacts/windows/Mihon-Desktop-0.11.19.45.f6e6b53-unpacked/Mihon Desktop.exe`，文件已核实。完整ZIP SHA-256 `e34d8864455b0ca764fa9b668a9c5912ba557635afd36201b7197c79a4017835`。
 - `ga06-macos-build-lf` PASSED/2分40秒，同版本45，独立app部署到`/Users/altair/Applications/Mihon-Global-Author-Acceptance.app`。初次Windows管道把CR附在mode参数导致立即失败，未分配版本；改UTF-8/LF临时启动文件后成功，未重复版本递增。用系统ditto归档并传回`app-desktop/artifacts/macos/Mihon-Desktop-0.11.19.45.f6e6b53-macos-x64.zip`，194339709字节，双端SHA-256一致：`7ead6097f2ca2bbb42b2abdf873cc9d61015c30a59afb3a4e1bcf34410e94a5a`。
@@ -220,9 +221,9 @@
 - Windows与macOS均使用上述真实发布产物和独立test-profile执行：固定旧键ADD→添加别名→切主名→daily/weekly/monthly→接收取消确认→旧ADD重放不复活→新ADD可关注→本地取消journal→重新关注→原生新备份。各自重启后状态保持，并在各自新空profile恢复为同一根/两名称/正确主名/关注true/monthly。Windows私有证据在`D:/Codex/home/tmp/mihon-ga06-20260917/`，Mac固定脱敏证据在`/Users/altair/ga06-20260918/evidence`；没有用户库传输、真实同步服务或系统桌面截图。该证据是headless production运行链，不冒充人工UI点击或Android真机。
 - Windows真实schema25隔离副本升级27：711漫画/2922章节/10来源作品保留；按最终根映射核原13条漫画关系和13条来源作品角色关系全部保留，角色与启用关注未丢；原ACTIVE姓名均唯一登记。真实漫画柜搜索返回《平行天堂》`/comic/23333/`，选择后复用既有漫画89，署名精确解析根13，重启后仍同根。升级后原生备份创建成功，原用户库未修改。
 - 额外原Android备份→Windows空profile返回PARTIAL_FAILURE。66个失败单位全部为`sourcePreferences`；Android使用`source_<ID>`，Desktop在`DesktopBackupRestorer`直接转Long，GA-04前已存在，非本任务回归。1157漫画/41338章节/699 ACTIVE作者落库且无相应失败单位，但未逐项比对源备份，不能声称完整恢复；图源偏好未恢复。记录为独立既有兼容问题，本轮未做产品修复或将该额外检查标为成功。
-- 本批超过8文件/400行，新增受限测试模式、跨模块接线验证、历史夹具修复和正式版本/证据是同一收口批次；没有拆分成无法独立验收的微提交。所有本次正式验收进程已关闭，用户数据/备份、运行脚本/日志及构建产物均不入源码提交。真机门槛仍开放，checkbox不勾选。
+- 本批超过8文件/400行，新增受限测试模式、跨模块接线验证、历史夹具修复和正式版本/证据是同一收口批次；没有拆分成无法独立验收的微提交。所有本次正式验收进程已关闭，用户数据/备份、运行脚本/日志及构建产物均不入源码提交。真机门槛由上述用户验收回执关闭，GA-06勾选完成；既有图源偏好跨平台恢复问题仍独立保留，不算本次已修复。
 
-用户最新设备安排（2026-09-18）：Android真机先拔走，安装/调试留到最后，由用户自行启动后再验收。先完成不依赖设备的Android单测与APK构建、Windows/macOS验收；不主动唤醒/操作设备，现有原生备份保留。该安排不是已通过真机验收。
+设备验收记录：用户曾将Android真机验收留到最后，现已明确报告自行验收完成。无需重新连接、唤醒、安装或重跑验证；原生备份继续保留。用户随后明确要求提交此前未提交的验收状态文档，不改写后续其他任务提交。
 
 ## 5. 实施流程、预算与失败处理
 
