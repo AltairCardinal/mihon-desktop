@@ -200,7 +200,7 @@ class SyncDatabaseExchangeHistoricalLookupTest {
         SyncRuntimeStorageContract.Storage(driver, JvmDatabaseHandler(database, driver)).use { storage ->
             val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync")
             storage.connect("receiver", repository)
-            SyncGitSafetyContractTest().GitFixture().use { git ->
+            SyncGitSafetyContractTest().GitFixture(realTreeOids = true).use { git ->
                 val transport = git.transport()
                 transport.installSnapshotManifestStore(
                     SyncSnapshotManifestStore(storage.handler),
@@ -266,7 +266,7 @@ class SyncDatabaseExchangeHistoricalLookupTest {
         SyncRuntimeStorageContract.Storage(driver, JvmDatabaseHandler(database, driver)).use { storage ->
             val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync")
             storage.connect("receiver", repository)
-            SyncGitSafetyContractTest().GitFixture().use { git ->
+            SyncGitSafetyContractTest().GitFixture(realTreeOids = true).use { git ->
                 val transport = git.transport()
                 transport.installSnapshotManifestStore(
                     SyncSnapshotManifestStore(storage.handler),
@@ -324,7 +324,7 @@ class SyncDatabaseExchangeHistoricalLookupTest {
         SyncRuntimeStorageContract.Storage(driver, JvmDatabaseHandler(database, driver)).use { storage ->
             val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync")
             storage.connect("receiver", repository)
-            SyncGitSafetyContractTest().GitFixture().use { git ->
+            SyncGitSafetyContractTest().GitFixture(realTreeOids = true).use { git ->
                 val transport = git.transport()
                 transport.installSnapshotManifestStore(
                     SyncSnapshotManifestStore(storage.handler),
@@ -369,7 +369,7 @@ class SyncDatabaseExchangeHistoricalLookupTest {
         SyncRuntimeStorageContract.Storage(driver, JvmDatabaseHandler(database, driver)).use { storage ->
             val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync")
             storage.connect("receiver", repository)
-            SyncGitSafetyContractTest().GitFixture().use { git ->
+            SyncGitSafetyContractTest().GitFixture(realTreeOids = true).use { git ->
                 val binding = SyncSnapshotManifestBinding(1, 99, "stable-revision")
                 val first = git.transport().also {
                     it.installSnapshotManifestStore(SyncSnapshotManifestStore(storage.handler), binding)

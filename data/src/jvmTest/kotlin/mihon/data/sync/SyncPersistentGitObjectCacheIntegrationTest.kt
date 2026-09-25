@@ -246,7 +246,7 @@ class SyncPersistentGitObjectCacheIntegrationTest {
             SyncRuntimeStorageContract.Storage(driver, JvmDatabaseHandler(database, driver)).use { storage ->
                 val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync")
                 storage.connect("receiver", repository)
-                SyncGitSafetyContractTest().GitFixture().use { git ->
+                SyncGitSafetyContractTest().GitFixture(realTreeOids = true).use { git ->
                     val revision = "account-9-repository-77-branch-main"
                     val binding = SyncSnapshotManifestBinding(1, 77, revision)
                     val initial = git.transport(
@@ -344,7 +344,7 @@ class SyncPersistentGitObjectCacheIntegrationTest {
                 FileSystem.SYSTEM.write(file) { write("this path is a file".encodeToByteArray()) }
                 val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync")
                 storage.connect("receiver", repository)
-                SyncGitSafetyContractTest().GitFixture().use { git ->
+                SyncGitSafetyContractTest().GitFixture(realTreeOids = true).use { git ->
                     val revision = "account-9-repository-77-branch-main"
                     val transport = git.transport(
                         persistentObjectCacheDirectory = file,
