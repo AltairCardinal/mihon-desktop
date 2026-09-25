@@ -1217,7 +1217,7 @@
         {
           "path": "app/src/main/java/eu/kanade/domain/DomainModule.kt",
           "symbol": "override fun InjektRegistrar.registerInjectables",
-          "line": 146
+          "line": 147
         }
       ],
       "SHARED_OR_ADAPTER": [
@@ -1225,7 +1225,7 @@
           "kind": "PLATFORM_ADAPTER",
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "fun initDesktopDI",
-          "line": 204
+          "line": 205
         }
       ],
       "DESKTOP_CONSUMER": [
@@ -4216,7 +4216,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "val taskNotifier = DesktopSystemNotifier(system = { false }, fallback = notificationService)",
-          "line": 1047
+          "line": 1049
         }
       ],
       "FIXTURE": [
@@ -33150,7 +33150,7 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "filterChaptersForDownload.await(manga, chapters)",
-          "line": 1090
+          "line": 1092
         }
       ],
       "FIXTURE": [
@@ -54314,12 +54314,12 @@
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.initialize",
-          "line": 233
+          "line": 234
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/di/DesktopAppModule.kt",
           "symbol": "AndroidCompat.startApp",
-          "line": 235
+          "line": 236
         },
         {
           "path": "app-desktop/src/main/kotlin/mihon/desktop/extension/DesktopExtensionInstallPort.kt",

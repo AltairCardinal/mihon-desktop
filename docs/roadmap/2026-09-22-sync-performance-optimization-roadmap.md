@@ -333,7 +333,7 @@ API26/33/35/36受影响分支按仓库支持范围覆盖，实际设备与模拟
 
 | 项目 | 实际值/命令 | 当前状态 |
 | --- | --- | --- |
-| worktree / branch / HEAD / dirty diff | `D:\Codex\worktrees\85be\mihon`；分支 `codex/sync-performance-optimization-2026-09-22`，HEAD `37e067634c`；旧版对照固定 `96dbb69d7a`；存在本轮未提交变更 | 2026-09-25 已核对；文档/诊断 checkpoint 不是完整交付提交 |
+| worktree / branch / HEAD / dirty diff | `D:\Codex\worktrees\85be\mihon`；分支 `codex/sync-performance-optimization-2026-09-22`，候选提交 `a5ae62d79047a1887f25d50c62ac76d5787f4e18`；旧版对照固定 `96dbb69d7a`；后续仅修正桌面能力证据行号并预留 BUILD 55 | 2026-09-25 已核对；文档/诊断 checkpoint 不是完整交付提交 |
 | 基线与候选构建变体 | 用户安装包来源commit未知；候选须按P10核对versionCode/schema后构建，不可据此声称覆盖升级兼容 | 待P10 |
 | schema / 支持的历史指纹 | 当前生成的 `Database.Schema.version=37`，迁移 33–36 为已有候选；旧 schema28 同步谱系与 schema29 作者谱系兼容测试存在 | 2026-09-25 已核对生成 schema 与 COMPATIBILITY_SCHEMA_VERSION=37；历史文件库 focused 证据存在，当前完整迁移验收待执行 |
 | API版本头 / Accept / 认证方式 | REST `Accept: application/vnd.github+json`、`X-GitHub-Api-Version: 2026-03-10`、Bearer token；raw blob GET另设raw media type | 源码已核对；真实网络未验 |
@@ -352,16 +352,16 @@ API26/33/35/36受影响分支按仓库支持范围覆盖，实际设备与模拟
 | 阶段 | 实现commit | 实际测试命令/退出码 | 覆盖ID | 审查结论 | 证据路径 | 状态/缺项 |
 | --- | --- | --- | --- | --- | --- | --- |
 | P0 | 未收口 | 历史只读核对；本次补核源码/日志 | 基线/作用域 | 待完整退出 | §9 | PARTIAL；待冻结全部输入及前版对照 |
-| P1 | 本次测量增量，待提交 | 旧/候选 Runtime 小样本；T70 各 7 样本通过 | T70；T77–T81 局部诊断 | 主代理核对计时边界、源码指纹及日志 | [候选基线](../evidence/sync-performance/baseline-2026-09-25.md) | PARTIAL；暖增量配对已补齐，首次多样本/规模、成本分解与目标仍待收口 |
-| P2 | 待提交 | 缓存三类 focused 共 20 项通过；T82 N=100/200 红绿；见§9 | T05–T12、T60/T82部分 | 本次增量账本由主代理独立审查通过；其余边界按实际证据核对 | [候选基线](../evidence/sync-performance/baseline-2026-09-25.md) | PARTIAL；正常命中/追加扫描放大已修复，较大规模、迁移及完整阶段仍待收口 |
-| P3 | 本轮候选提交 | `SyncGitSafetyContractTest`、`SyncSpaceTransportContractTest` / 0 | T13/T16 部分 | 待独立审查 | `docs/evidence/sync-performance/implementation-2026-09-22.md` | PARTIAL；已有分层 tree/normalized manifest/fence 候选与局部日志，缺完整安全/性能验收 |
-| P4 | 本轮候选提交 | `JvmSyncRuntimeStorageContractTest`、发布异常 focused / 0 | T21/T25/T27/T30 部分 | 待独立审查 | `docs/evidence/sync-performance/implementation-2026-09-22.md` | PARTIAL；已有确认复用、durable discovery/catch-up 候选，缺配对量化及完整恢复验收 |
-| P5 | 待提交 | panel/totals 历史红绿；本次投影批次红绿及 43 项相关契约通过；正式 300 事件 profile 的 T78–T80 通过、T77 失败 | T41/T43、T77/T78/T80/T82 部分 | 本次投影、失败回退与作者准备由主代理独立审查通过 | §9/唯一基线报告 | PARTIAL；投影提交放大已修复，导入回退、完整集成和提交仍待收口 |
-| P6 | 既有候选及本次安全修复，待提交 | HTTP/guard/historical 相关 focused 共 43 项通过 | T49–T56 部分及限流头后取消/超限 | 独立审查发现限流等待遗漏，修复后定向复验通过；完整阶段仍待验收 | §9/基线报告 | PARTIAL；头部已确认的限流先持久化，保留读取中取消；平台 Worker 验证待执行 |
-| P7 | 既有未提交候选 | 未在本次运行完整门禁 | T23–T30 待核 | 待审查 | §8.3 | PARTIAL；REST planner 已接入，GraphQL DEFERRED |
-| P8 | 既有未提交候选 | 首下载仅局部诊断 | T33–T38/T80 待核 | 待审查 | §8.3 | PARTIAL；raw 读取已有，流水线 DEFERRED |
+| P1 | `a5ae62d` | 旧/候选 Runtime 小样本；T70 各 7 样本通过 | T70；T77–T81 局部诊断 | 主代理核对计时边界、源码指纹及日志 | [候选基线](../evidence/sync-performance/baseline-2026-09-25.md) | PARTIAL；暖增量配对已补齐，首次多样本/规模、成本分解与目标仍待收口 |
+| P2 | `a5ae62d` | 缓存三类 focused 共 20 项通过；T82 N=100/200 红绿；见§9 | T05–T12、T60/T82部分 | 本次增量账本由主代理独立审查通过；其余边界按实际证据核对 | [候选基线](../evidence/sync-performance/baseline-2026-09-25.md) | PARTIAL；正常命中/追加扫描放大已修复，较大规模、迁移及完整阶段仍待收口 |
+| P3 | `a5ae62d` | `SyncGitSafetyContractTest`、`SyncSpaceTransportContractTest` / 0 | T13/T16 部分 | 待独立审查 | `docs/evidence/sync-performance/implementation-2026-09-22.md` | PARTIAL；已有分层 tree/normalized manifest/fence 候选与局部日志，缺完整安全/性能验收 |
+| P4 | `a5ae62d` | `JvmSyncRuntimeStorageContractTest`、发布异常 focused / 0 | T21/T25/T27/T30 部分 | 待独立审查 | `docs/evidence/sync-performance/implementation-2026-09-22.md` | PARTIAL；已有确认复用、durable discovery/catch-up 候选，缺配对量化及完整恢复验收 |
+| P5 | `a5ae62d` | panel/totals 历史红绿；本次投影批次红绿及 43 项相关契约通过；正式 300 事件 profile 的 T78–T80 通过、T77 失败 | T41/T43、T77/T78/T80/T82 部分 | 本次投影、失败回退与作者准备由主代理独立审查通过 | §9/唯一基线报告 | PARTIAL；投影提交放大已修复，导入回退与完整验收仍待收口 |
+| P6 | `a5ae62d` | HTTP/guard/historical 相关 focused 共 43 项通过 | T49–T56 部分及限流头后取消/超限 | 独立审查发现限流等待遗漏，修复后定向复验通过；完整阶段仍待验收 | §9/基线报告 | PARTIAL；头部已确认的限流先持久化，保留读取中取消；平台 Worker 本地 wiring 已通过，真实设备恢复待验收 |
+| P7 | `a5ae62d` | 未在本次运行完整门禁 | T23–T30 待核 | 待审查 | §8.3 | PARTIAL；REST planner 已接入，GraphQL DEFERRED |
+| P8 | `a5ae62d` | 首下载仅局部诊断 | T33–T38/T80 待核 | 待审查 | §8.3 | PARTIAL；raw 读取已有，流水线 DEFERRED |
 | P9 | 未收口 | 本次三模块完整 1,136 项有 9 失败；其中 3 项同步相关问题已定向修复，其余 6 项为 HEAD 既有失败；10k/100k Scale 完整通过，双端 DI 与根格式通过 | T77 FAIL；T75/T76/T82 大规模证据等缺项 | 本轮独立审查阻塞已修复并复验 | §9/基线报告 | PARTIAL；不能把定向通过改写为完整矩阵全绿，正式产物及剩余门禁待完成 |
-| P10 | — | — | — | — | — | NOT_STARTED |
+| P10 | Android `a5ae62d` | fork Release/R8 构建及签名校验通过；Windows 完整 3,164 项有 1 个证据行号失败，6 处修正后 34 项定向通过 | 发布部分 | 桌面重跑预算待用户答复 | 见本节后续记录及 artifacts | PARTIAL；Android 候选已交付，Windows/macOS 尚无可交付产物，真机由用户验收 |
 
 ### 8.3 默认策略与风险登记
 
@@ -419,3 +419,5 @@ T77 路径定位：一次旧/新同 profile 诊断确认新增四请求全部来
 完整模块回归已执行一次（`sync-data-domain-presentation-full-20260925`，14 分 25 秒）：data 589 项、domain 519 项、presentation-sync 28 项，共 9 项失败，不能标记全绿。同步相关失败为旧连接格式被前置账户门禁误分类为 STORAGE、schema 27 夹具未剥除本轮新字段，以及 UI 将恰好 60 秒的实际分钟显示误断言为秒。作者/扩展仓库旧测试的历史不兼容单列在基线报告，不借本任务修改无关能力。发布复核另发现仓库检查的网络/限流异常被新 failureClass 统一转成 AUTHORIZATION；需保留异常原分类与 retryAfter，仅真正非私有或权限失败按授权错误处理。所有本轮修复以对应失败及修后 focused 证据收口，整套失败历史不覆盖。
 
 本轮修复复验：目录路径预算已按设计 §5 实施，空树 DAG 的恰好上限/多一次、原文件数与深度契约通过；旧连接、schema 27 夹具及相关 HTTP/迁移/树契约通过 `sync-legacy-schema-tree-data-focused-20260925`，同步面板通过独立 `sync-ui-rate-limit-focused-20260925`。发布仓库检查的 429、500、真实断连及非私有场景在 `sync-publish-private-check-green3-20260925` 共 13 项通过；底层可重试 UNKNOWN 包装保留 NETWORK 语义，429 保留等待信息，取消继续传播。主代理独立复验上述具体修复，未发现未关闭的本轮审查阻塞。此前误把多模块 Test 过滤器只附于最后任务，已立即仅取消对应协调器任务，分成单 Test 命令复跑；取消与编译/断言失败均保留，不记作通过或第二次完整验收。
+
+发布候选记录：Android `a5ae62d` 已生成 `app/artifacts/android/0.19.4-aex.12/Mihon-Fork-0.19.4-aex.12-arm64-v8a.apk` 与 universal 包，code 30、R8 开启，沿用原证书；详细哈希与日志见同目录校验记录。Windows evidence 完整测试 3,164 项、1 失败、3 跳过，唯一失败为本次 DI 插入导致能力清单的源码行号过期；仅修正 6 个 line 数字，未改能力状态或符号，34 项定向契约已通过。macOS 在独立 worktree 启动后为避免同源失败，仅通过该协调器停止。桌面新提交预留 BUILD 55，后续 evidence 必须绑定此修复提交，不能将未产出的 BUILD 54 包称为交付物。依据用户提供的全量测试次数上限，已请求追加一次必要桌面完整复验及打包（预计 10–25 分钟），答复前不启动；此预算确认不阻塞已完成的 Android 交付，也不代表 T77/T75/T76/T82 已通过。
