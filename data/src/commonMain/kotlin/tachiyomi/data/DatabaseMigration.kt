@@ -5,7 +5,7 @@ import app.cash.sqldelight.db.SqlDriver
 
 /** Runs generated SQLDelight migrations as one atomic database change. */
 object DatabaseMigration {
-    const val COMPATIBILITY_SCHEMA_VERSION = 37L
+    const val COMPATIBILITY_SCHEMA_VERSION = 38L
 
     fun migrateAtomically(driver: SqlDriver, oldVersion: Long, newVersion: Long) {
         require(oldVersion <= newVersion) {
@@ -51,6 +51,7 @@ object DatabaseMigration {
                 "failed",
                 "uploaded",
                 "downloaded",
+                "confirmed_items",
                 "uploaded_baseline",
                 "downloaded_baseline",
                 "attempt_id",
@@ -67,6 +68,11 @@ object DatabaseMigration {
             driver,
             table = "sync_runtime_logs",
             columns = setOf("run_id", "log_key", "title", "detail", "status", "created_at"),
+        )
+        requireTable(
+            driver,
+            table = "sync_runtime_confirmations",
+            columns = setOf("run_id", "direction", "batch_id", "item_count", "status"),
         )
         requireTable(
             driver,

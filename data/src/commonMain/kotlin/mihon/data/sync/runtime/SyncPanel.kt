@@ -84,6 +84,8 @@ data class SyncPanelState(
     val importPaused: Boolean = false,
     val records: List<SyncRunRecord> = emptyList(),
     val run: SyncRunSnapshot? = null,
+    /** Volatile observations for the active run; omitted after process recovery until remeasured. */
+    val progress: SyncProgressFact? = null,
     val logs: List<SyncRunLog> = emptyList(),
     val logsHasMore: Boolean = false,
     val setupStep: SyncSetupStep = SyncSetupStep.SIGN_IN,

@@ -133,11 +133,13 @@ internal class SyncOnboardingFixture(
     fun runtime(
         metrics: SyncMetrics = NoopSyncMetrics,
         persistentObjectCacheDirectory: Path? = null,
+        progressTelemetryEnabled: Boolean = true,
     ): SyncRuntime = SyncRuntime(
         storage.handler, storage.bootstrap, storage.creators, storage.creators, { true }, secure,
         preferences, client, endpoints, clock = { now },
         persistentObjectCacheDirectory = persistentObjectCacheDirectory,
         syncMetrics = metrics,
+        progressTelemetryEnabled = progressTelemetryEnabled,
     )
 
     suspend fun authorize(token: String = "synthetic-token") {

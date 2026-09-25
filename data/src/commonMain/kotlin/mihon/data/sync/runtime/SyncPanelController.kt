@@ -119,6 +119,19 @@ class SyncPanelController(
             }
         }
         scope.launch {
+            runtime.liveProgress.collect { fact ->
+                mutableState.update { current ->
+                    if (current.visible && fact != null &&
+                        current.run?.runId?.let { fact.scope.startsWith("$it:") } == true
+                    ) {
+                        current.copy(progress = fact)
+                    } else {
+                        current
+                    }
+                }
+            }
+        }
+        scope.launch {
             val prefs = runtime.preferences
             merge(
                 prefs.startup.changes().map { Unit },
@@ -133,7 +146,8 @@ class SyncPanelController(
             state.map { it.visible }.distinctUntilChanged().collectLatest { visible ->
                 if (visible) {
                     while (true) {
-                        mutableState.update { it.copy(nowMillis = clock()) }
+                        val fact = state.value.run?.let { runtime.progressFor(it.runId) }
+                        mutableState.update { it.copy(nowMillis = clock(), progress = fact ?: it.progress) }
                         delay(1_000)
                     }
                 }
@@ -272,6 +286,7 @@ class SyncPanelController(
                 ?: runtime.runStore.latest(it.spaceId, it.generation)?.takeIf { latest ->
                     latest.state in setOf(
                         SyncRunState.SUCCEEDED,
+                        SyncRunState.PARTIAL,
                         SyncRunState.FAILED,
                         SyncRunState.BLOCKED,
                         SyncRunState.CANCELLED,
@@ -305,11 +320,57 @@ class SyncPanelController(
                 importPaused = prefs.importPaused.get(),
                 records = runtime.records().asReversed(),
                 run = run,
+                progress = run?.let { runtime.progressFor(it.runId) ?: restoredProgress(it) },
                 logs = logs,
                 logsHasMore = run != null && logLimit < 500L && logs.size.toLong() == logLimit,
                 problem = persistedProblem ?: it.problem,
             )
         }
+    }
+
+    private fun restoredProgress(run: SyncRunSnapshot): SyncProgressFact {
+        val stage = when (run.phase) {
+            SyncRunPhase.CHECKING, SyncRunPhase.IMPORTING -> SyncProgressStage.PREPARING
+            SyncRunPhase.DOWNLOADING, SyncRunPhase.UPLOADING -> SyncProgressStage.TRANSFERRING
+            SyncRunPhase.MERGING, SyncRunPhase.CONFIRMING, SyncRunPhase.COMPLETE -> SyncProgressStage.CONFIRMING
+        }
+        val direction = if (run.phase in setOf(SyncRunPhase.DOWNLOADING, SyncRunPhase.MERGING) ||
+            (run.phase == SyncRunPhase.COMPLETE && run.uploaded == 0L)
+        ) {
+            SyncProgressDirection.DOWNLOAD
+        } else {
+            SyncProgressDirection.UPLOAD
+        }
+        val succeeded = run.state == SyncRunState.SUCCEEDED
+        val completed = if (succeeded && stage == SyncProgressStage.CONFIRMING) {
+            run.uploaded + run.downloaded
+        } else {
+            0L
+        }
+        return SyncProgressFact(
+            scope = "${run.runId}:restored",
+            stage = stage,
+            direction = direction,
+            completedItems = completed,
+            totalItems = if (succeeded) completed else null,
+            effectiveBytes = 0,
+            networkBytes = 0,
+            totalBytes = null,
+            elapsedSeconds = ((clock() - run.createdAt).coerceAtLeast(0) / 1_000),
+            hold = when (run.state) {
+                SyncRunState.PAUSED_USER -> SyncProgressHold.PAUSED
+                SyncRunState.WAITING_NETWORK -> SyncProgressHold.OFFLINE
+                SyncRunState.WAITING_RETRY, SyncRunState.WAITING_SYSTEM -> SyncProgressHold.WAITING
+                SyncRunState.SUCCEEDED, SyncRunState.PARTIAL, SyncRunState.FAILED,
+                SyncRunState.BLOCKED, SyncRunState.CANCELLED,
+                ->
+                    SyncProgressHold.ACTIVE
+                else -> SyncProgressHold.RECOVERING
+            },
+            stageEtaSeconds = null,
+            wholeEtaSeconds = null,
+            confirmedThisRun = run.confirmedItems.takeIf { it > 0L || run.downloaded == 0L || succeeded },
+        )
     }
 
     private suspend fun handle(action: SyncPanelAction) {

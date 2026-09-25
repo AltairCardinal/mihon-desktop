@@ -54,6 +54,7 @@ class SyncDatabaseExchange(
     private val reconcileTotalsOnStart: Boolean = true,
     private val metrics: SyncMetrics = NoopSyncMetrics,
     private val snapshotOwner: SyncSnapshotWriteOwner? = null,
+    private val liveProgress: SyncLiveProgressSession? = null,
 ) {
     private val inboxStore = SyncInboxStore(handler)
     internal val snapshotEvidenceEvaluations: Long get() = inboxStore.remoteGuard.evidenceEvaluations
@@ -66,6 +67,19 @@ class SyncDatabaseExchange(
         var pending = 0
         var problem: SyncRunProblem? = null
         var retryAfterMillis: Long? = null
+        var downloadScope = liveProgress?.scope("download-discovery")
+        var downloadTotal: Long? = null
+        var uploadScope: String? = null
+        var uploadRound = 0
+        var uploadRoundTotal = 0L
+        var uploadRemainingExpected = 0L
+        var frozenUploadBatchIds = emptyList<String>()
+        var frozenUploadBatchIndex = 0
+        var activeUploadBatchId: String? = null
+        var uploadCount = 0L
+        var uploadTransferFinished = false
+        var hasUnconfirmedProjection = false
+        val receivedThisExchange = mutableSetOf<String>()
         try {
             val enabled = handler.await {
                 sync_journalQueries.getSpace(spaceId, generation).executeAsOneOrNull()?.let {
@@ -80,16 +94,64 @@ class SyncDatabaseExchange(
                 } ?: break
                 progress?.phase(SyncRunPhase.IMPORTING, processed = 0, total = 0)
                 progress?.log(importId, "首次合并", "正在写入已保存的数据", SyncRunLogStatus.ACTIVE)
-                baseline.process(importId)
+                liveProgress?.begin(
+                    liveProgress.scope("import:$importId"),
+                    SyncProgressStage.PREPARING,
+                    SyncProgressDirection.UPLOAD,
+                )
+                val importProgress = baseline.process(importId)
+                liveProgress?.importPage(importId, importProgress)
                 progress?.log(importId, "首次合并", "已写入已保存的数据", SyncRunLogStatus.COMPLETED)
                 yield()
             }
             val store = inboxStore
             val discovery = SyncDiscoveryStore(handler)
-            val service = SyncBatchSyncService(transport, secret, spaceMaterial = spaceMaterial)
+            val service = SyncBatchSyncService(
+                transport,
+                secret,
+                spaceMaterial = spaceMaterial,
+                onEncryptedBatchReceived = { entry ->
+                    liveProgress?.batch(
+                        SyncProgressStage.TRANSFERRING,
+                        entry.batchId,
+                        entry.lastSeq - entry.firstSeq + 1,
+                    )
+                    if (downloadScope != null) {
+                        liveProgress?.begin(
+                            requireNotNull(downloadScope),
+                            SyncProgressStage.CONFIRMING,
+                            SyncProgressDirection.DOWNLOAD,
+                            downloadTotal,
+                        )
+                    }
+                },
+            )
             val inbox = SyncInboxExchange(store, service)
-            val outbox = SyncOutboxExchange(SyncOutboxStore(handler), service)
+            val outboxStore = SyncOutboxStore(handler)
+            val outbox = SyncOutboxExchange(outboxStore, service)
             val githubTransport = transport as? GitHubSyncTransport
+            githubTransport?.onBatchObjectsUploaded { batchId ->
+                if (batchId == activeUploadBatchId) {
+                    liveProgress?.batch(SyncProgressStage.TRANSFERRING, batchId, uploadCount)
+                    uploadTransferFinished = true
+                    liveProgress?.begin(
+                        requireNotNull(uploadScope),
+                        SyncProgressStage.CONFIRMING,
+                        SyncProgressDirection.UPLOAD,
+                        uploadRoundTotal,
+                    )
+                }
+            }
+            githubTransport?.onBatchTransferResumed { batchId ->
+                if (batchId == activeUploadBatchId && uploadScope != null) {
+                    liveProgress?.begin(
+                        requireNotNull(uploadScope),
+                        SyncProgressStage.TRANSFERRING,
+                        SyncProgressDirection.UPLOAD,
+                        uploadRoundTotal,
+                    )
+                }
+            }
             githubTransport?.installSnapshotFenceProvider { candidateSpace, candidateGeneration ->
                 store.remoteGuard.captureFence(candidateSpace, candidateGeneration, snapshotOwner)
             }
@@ -118,17 +180,54 @@ class SyncDatabaseExchange(
                 progress?.totals(uploadedTotal, downloadedTotal)
             }
             projector.retryUnavailable(spaceId, generation)
+            liveProgress?.begin(
+                requireNotNull(downloadScope),
+                SyncProgressStage.TRANSFERRING,
+                SyncProgressDirection.DOWNLOAD,
+            )
             var snapshot = transport.readSnapshot(repository, spaceId, generation).getOrThrow()
             var catchUpSegments = 0
             var performedExchangeWork = false
+            var downloadRound = 0
+            var downloadHead: String? = null
             while (true) {
                 progress?.phase(SyncRunPhase.DOWNLOADING, downloadedTotal, 0, completed = downloadedTotal)
                 observeSnapshot(snapshot)
+                if (downloadRound == 0) liveProgress?.hold(SyncProgressHold.ACTIVE)
                 val discovered = discovery.pending(spaceId, generation)
+                val newDownloadRound = downloadHead != snapshot.head
+                if (newDownloadRound) {
+                    downloadHead = snapshot.head
+                    downloadScope = liveProgress?.scope("download-${downloadRound++}")
+                    // A full discovery page may hide more work; never freeze its partial total.
+                    downloadTotal = discovered.takeIf { it.size < 128 }
+                        ?.sumOf { (it.lastSeq - it.firstSeq + 1).coerceAtLeast(0) }
+                }
+                if (discovered.isNotEmpty()) {
+                    liveProgress?.begin(
+                        requireNotNull(downloadScope),
+                        SyncProgressStage.TRANSFERRING,
+                        SyncProgressDirection.DOWNLOAD,
+                        downloadTotal,
+                        additionalWork = newDownloadRound && downloadRound > 1,
+                    )
+                }
+                val acceptedBatches = mutableListOf<Pair<String, Long>>()
                 if (discovered.isNotEmpty()) performedExchangeWork = true
                 for (entry in discovered) {
+                    liveProgress?.begin(
+                        requireNotNull(downloadScope),
+                        SyncProgressStage.TRANSFERRING,
+                        SyncProgressDirection.DOWNLOAD,
+                        downloadTotal,
+                    )
+                    progress?.expectDownload(entry.batchId, entry.lastSeq - entry.firstSeq + 1)
                     val result = inbox.receive(snapshot, entry, snapshotAlreadyObserved = true)
                     if (result.accepted) {
+                        if (!result.duplicate) {
+                            acceptedBatches += entry.batchId to (entry.lastSeq - entry.firstSeq + 1)
+                            receivedThisExchange += entry.batchId
+                        }
                         if (!result.duplicate) {
                             downloaded += (entry.lastSeq - entry.firstSeq + 1).toInt()
                             downloadedTotal += (entry.lastSeq - entry.firstSeq + 1).coerceAtLeast(0)
@@ -152,6 +251,24 @@ class SyncDatabaseExchange(
                     yield()
                 }
                 while (projector.project(spaceId, generation) == 50) yield()
+                val newlyConfirmed = if (progress == null) {
+                    acceptedBatches.filter { (batchId, _) ->
+                        store.canConfirmReceivedBatch(spaceId, generation, batchId)
+                    }
+                } else {
+                    progress.confirmReceived()
+                }
+                if (newlyConfirmed.isNotEmpty()) {
+                    liveProgress?.begin(
+                        requireNotNull(downloadScope),
+                        SyncProgressStage.CONFIRMING,
+                        SyncProgressDirection.DOWNLOAD,
+                        downloadTotal,
+                    )
+                    newlyConfirmed.forEach { (batchId, count) ->
+                        liveProgress?.batch(SyncProgressStage.CONFIRMING, batchId, count)
+                    }
+                }
                 pending = store.status(spaceId, generation).pendingDecisions.toInt()
                 // Discovery is paged to keep each durable query bounded. Drain every page before
                 // reporting completion or switching to uploads so large snapshots converge fully.
@@ -160,7 +277,69 @@ class SyncDatabaseExchange(
                     continue
                 }
                 progress?.phase(SyncRunPhase.UPLOADING, uploadedTotal, 0, completed = uploadedTotal)
-                val result = outbox.uploadNext(snapshot, ::observeSnapshot)
+                if (liveProgress != null && (uploadScope == null || uploadRemainingExpected == 0L)) {
+                    val frozen = outboxStore.freezeRound(spaceId, generation)
+                    frozenUploadBatchIds = frozen.batchIds
+                    frozenUploadBatchIndex = 0
+                    if (frozen.totalItems > 0) {
+                        uploadScope = liveProgress.scope("upload-round-${uploadRound++}")
+                        uploadRoundTotal = frozen.totalItems
+                        uploadRemainingExpected = frozen.totalItems
+                    }
+                }
+                val frozenBatchId = if (liveProgress == null) {
+                    null
+                } else {
+                    frozenUploadBatchIds.getOrNull(frozenUploadBatchIndex)
+                }
+                val result = if (liveProgress != null && frozenBatchId == null) {
+                    null
+                } else {
+                    outbox.uploadNext(
+                        snapshot,
+                        ::observeSnapshot,
+                        frozenBatchId = frozenBatchId,
+                        onPreparingBatch = { batch ->
+                            activeUploadBatchId = batch.batchId
+                            uploadCount = batch.events.size.toLong()
+                            uploadTransferFinished = false
+                            if (uploadScope != null) {
+                                liveProgress?.begin(
+                                    requireNotNull(uploadScope),
+                                    SyncProgressStage.PREPARING,
+                                    SyncProgressDirection.UPLOAD,
+                                    uploadRoundTotal,
+                                    additionalWork = uploadRound > 1,
+                                )
+                            }
+                        },
+                        onPreparedBatch = { batch ->
+                            if (uploadScope != null) {
+                                liveProgress?.batch(SyncProgressStage.PREPARING, batch.batchId, uploadCount)
+                                liveProgress?.begin(
+                                    requireNotNull(uploadScope),
+                                    SyncProgressStage.TRANSFERRING,
+                                    SyncProgressDirection.UPLOAD,
+                                    uploadRoundTotal,
+                                )
+                            }
+                        },
+                        onConfirmedBatch = { batch ->
+                            if (uploadScope != null) {
+                                if (!uploadTransferFinished) {
+                                    liveProgress?.batch(SyncProgressStage.TRANSFERRING, batch.batchId, uploadCount)
+                                    liveProgress?.begin(
+                                        requireNotNull(uploadScope),
+                                        SyncProgressStage.CONFIRMING,
+                                        SyncProgressDirection.UPLOAD,
+                                        uploadRoundTotal,
+                                    )
+                                }
+                            }
+                            uploadRemainingExpected = (uploadRemainingExpected - uploadCount).coerceAtLeast(0)
+                        },
+                    )
+                }
                 if (result == null) {
                     // No-op runs stop after their initial snapshot. When this exchange moved data,
                     // probe only the ref first; parse a full snapshot only if another device advanced it.
@@ -215,9 +394,16 @@ class SyncDatabaseExchange(
                     )
                     break
                 }
+                if (liveProgress != null) frozenUploadBatchIndex++
                 val publishedCount = handler.await {
                     sync_journalQueries.getBatch(spaceId, generation, result.publish.batchId).executeAsOne().event_count
                 }.toInt()
+                progress?.confirmed(
+                    SyncProgressDirection.UPLOAD,
+                    result.publish.batchId,
+                    publishedCount.toLong(),
+                )
+                liveProgress?.batch(SyncProgressStage.CONFIRMING, result.publish.batchId, publishedCount.toLong())
                 uploaded += publishedCount
                 uploadedTotal += publishedCount
                 progress?.totals(uploadedTotal, downloadedTotal)
@@ -229,14 +415,21 @@ class SyncDatabaseExchange(
                 snapshot = result.publish.confirmedSnapshot
                     ?: transport.readSnapshot(repository, spaceId, generation).getOrThrow()
             }
+            hasUnconfirmedProjection = if (progress == null) {
+                receivedThisExchange.any { !store.canConfirmReceivedBatch(spaceId, generation, it) }
+            } else {
+                progress.hasUnconfirmedDownloads()
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
             problem = failure.syncProblem()
             retryAfterMillis = (failure as? SyncHttpException)?.retryAfterMillis
         }
+        liveProgress?.let { runCatching { it.snapshot() } }
         return SyncRunResult(
             status = when {
+                problem == null && (pending > 0 || hasUnconfirmedProjection) -> SyncRunStatus.PARTIAL
                 problem == null -> SyncRunStatus.SUCCESS
                 uploaded > 0 || downloaded > 0 -> SyncRunStatus.PARTIAL
                 else -> SyncRunStatus.FAILED

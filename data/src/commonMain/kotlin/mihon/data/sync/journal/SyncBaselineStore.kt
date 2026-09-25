@@ -20,7 +20,12 @@ import tachiyomi.data.Sync_import_entries
 import tachiyomi.domain.creator.repository.CreatorArchiveBootstrap
 import java.util.UUID
 
-data class SyncImportProgress(val total: Long, val remaining: Long)
+data class SyncImportProgress(
+    val total: Long,
+    val remaining: Long,
+    val committedCount: Long,
+    val lastCommittedEntryId: Long?,
+)
 
 /** A frozen local baseline is materialized separately from subsequent explicit user commands. */
 class SyncBaselineStore(private val handler: DatabaseHandler, private val bootstrap: CreatorArchiveBootstrap) {
@@ -65,7 +70,8 @@ class SyncBaselineStore(private val handler: DatabaseHandler, private val bootst
             // Read one look-ahead row so a full final page can still report exact completion
             // without counting the entire remaining import queue.
             val page = sync_importQueries.getImportEntries(importId, limit.toLong() + 1L).executeAsList()
-            page.take(limit).forEach { row ->
+            val committedPage = page.take(limit)
+            committedPage.forEach { row ->
                 val material = row.material()
                 val parents = material.effects.associate { effect ->
                     SyncFieldKey(effect.objectKey, effect.field) to sync_importQueries.getImportHead(
@@ -100,7 +106,7 @@ class SyncBaselineStore(private val handler: DatabaseHandler, private val bootst
             // A full chunk proves that work remains without scanning the entire queue. Only the
             // final short chunk performs the exact count needed for UI completion.
             val remaining = if (page.size > limit) 1L else 0L
-            SyncImportProgress(import.total, remaining)
+            SyncImportProgress(import.total, remaining, committedPage.size.toLong(), committedPage.lastOrNull()?.id)
         }
     }
 }

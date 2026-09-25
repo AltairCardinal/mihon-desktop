@@ -7,12 +7,17 @@ import app.cash.sqldelight.driver.jdbc.JdbcDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import jdk.jfr.Configuration
 import jdk.jfr.Recording
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.buildJsonObject
@@ -23,9 +28,18 @@ import mihon.data.sync.inbox.SyncDiscoveryStore
 import mihon.data.sync.inbox.SyncInboxExchange
 import mihon.data.sync.inbox.SyncInboxStore
 import mihon.data.sync.journal.SyncLocalJournal
+import mihon.data.sync.journal.SyncOutboxStore
 import mihon.data.sync.runtime.SyncDecisionScope
 import mihon.data.sync.runtime.SyncPanelAction
 import mihon.data.sync.runtime.SyncPanelController
+import mihon.data.sync.runtime.SyncProgressDirection
+import mihon.data.sync.runtime.SyncProgressFact
+import mihon.data.sync.runtime.SyncProgressReporter
+import mihon.data.sync.runtime.SyncProgressStage
+import mihon.data.sync.runtime.SyncRunLogStatus
+import mihon.data.sync.runtime.SyncRunPhase
+import mihon.data.sync.runtime.SyncRunState
+import mihon.data.sync.runtime.SyncRunStore
 import mihon.data.sync.runtime.SyncRuntime
 import mihon.data.sync.transport.GitHubSyncTransport
 import mihon.data.sync.transport.StoredSyncBatch
@@ -37,6 +51,7 @@ import mihon.domain.sync.SyncEffect
 import mihon.domain.sync.SyncEffectKind
 import mihon.domain.sync.SyncEffectRef
 import mihon.domain.sync.SyncEventEnvelope
+import mihon.domain.sync.SyncEventId
 import mihon.domain.sync.SyncField
 import mihon.domain.sync.SyncObjectDescriptor
 import mihon.domain.sync.SyncObjectKey
@@ -45,6 +60,7 @@ import mihon.domain.sync.SyncOrigin
 import mihon.domain.sync.SyncProtocol
 import mihon.domain.sync.auth.GitHubAccessToken
 import mihon.domain.sync.crypto.SyncBatchEncryption
+import mihon.domain.sync.crypto.SyncEncryptedBatch
 import mihon.domain.sync.crypto.SyncSecret
 import mihon.domain.sync.crypto.SyncSpaceMaterial
 import mihon.domain.sync.runtime.SyncRunResult
@@ -52,14 +68,18 @@ import mihon.domain.sync.runtime.SyncRunStatus
 import mihon.domain.sync.runtime.SyncTrigger
 import mihon.domain.sync.security.SyncSecureStore
 import mihon.domain.sync.transport.SyncBatchIndexEntry
+import mihon.domain.sync.transport.SyncPreparedUpload
+import mihon.domain.sync.transport.SyncPublishResult
 import mihon.domain.sync.transport.SyncRepository
 import mihon.domain.sync.transport.SyncSnapshot
+import mihon.domain.sync.transport.SyncTransportPort
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.RecordedRequest
 import okhttp3.OkHttpClient
 import okio.ByteString.Companion.toByteString
 import okio.Path.Companion.toPath
+import org.junit.jupiter.api.Assertions.assertAll
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
@@ -82,10 +102,12 @@ import java.lang.reflect.Proxy
 import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.sql.Connection
+import java.sql.DriverManager
 import java.time.Duration
 import java.util.Properties
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
@@ -99,6 +121,496 @@ import java.util.concurrent.atomic.AtomicLong
 class SyncScaleAcceptanceTest {
     private val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync")
     private val secret = SyncSecret.fromBytes(ByteArray(32) { (it + 1).toByte() })
+
+    @Test
+    fun `missing remote parent cannot complete or confirm a received run`() = runBlocking {
+        val observed = runMissingParent(telemetryEnabled = true)
+        assertEquals("DEPENDENCY", observed.projectionStatus)
+        assertEquals(0L, observed.pendingDecisions)
+        assertAll(
+            { assertEquals(SyncRunStatus.PARTIAL, observed.result.status) },
+            { assertEquals(0, observed.result.pending) },
+            { assertEquals(SyncRunState.PARTIAL, observed.runState) },
+            { assertEquals("projection_pending", observed.stopReason) },
+            { assertEquals(0L, observed.durableConfirmed) },
+            { assertEquals(0L, observed.liveConfirmed) },
+            { assertEquals(0L, observed.panelConfirmed) },
+        )
+    }
+
+    @Test
+    fun `missing parent remains incomplete when display telemetry is disabled`() = runBlocking {
+        val observed = runMissingParent(telemetryEnabled = false)
+        assertEquals("DEPENDENCY", observed.projectionStatus)
+        assertEquals(0L, observed.pendingDecisions)
+        assertAll(
+            { assertEquals(SyncRunStatus.PARTIAL, observed.result.status) },
+            { assertEquals(0, observed.result.pending) },
+            { assertEquals(SyncRunState.PARTIAL, observed.runState) },
+            { assertEquals("projection_pending", observed.stopReason) },
+            { assertEquals(0L, observed.durableConfirmed) },
+        )
+    }
+
+    @Test
+    fun `retry keeps an unresolved received batch in the same incomplete run`() = runBlocking {
+        val observed = runMissingParent(telemetryEnabled = true, retryTrigger = SyncTrigger.MANUAL)
+        assertAll(
+            { assertEquals(SyncRunStatus.PARTIAL, observed.firstResult?.status) },
+            { assertEquals(observed.firstRunId, observed.runId) },
+            { assertEquals(SyncRunStatus.PARTIAL, observed.result.status) },
+            { assertEquals(SyncRunState.PARTIAL, observed.runState) },
+            { assertEquals("projection_pending", observed.stopReason) },
+            { assertEquals("DEPENDENCY", observed.projectionStatus) },
+            { assertEquals(0L, observed.pendingDecisions) },
+            { assertEquals(0L, observed.durableConfirmed) },
+            { assertEquals(0L, observed.liveConfirmed) },
+            { assertEquals(0L, observed.panelConfirmed) },
+            { assertEquals(1L, observed.receivedBatches) },
+        )
+    }
+
+    @Test
+    fun `periodic sync continues an unresolved received batch without claiming success`() = runBlocking {
+        val observed = runMissingParent(telemetryEnabled = true, retryTrigger = SyncTrigger.PERIODIC)
+        assertAll(
+            { assertEquals(observed.firstRunId, observed.runId) },
+            { assertEquals(SyncRunStatus.PARTIAL, observed.result.status) },
+            { assertEquals("projection_pending", observed.stopReason) },
+            { assertEquals(0L, observed.durableConfirmed) },
+            { assertEquals(1L, observed.receivedBatches) },
+        )
+    }
+
+    private data class MissingParentObservation(
+        val result: SyncRunResult,
+        val runState: SyncRunState?,
+        val stopReason: String?,
+        val durableConfirmed: Long?,
+        val liveConfirmed: Long?,
+        val panelConfirmed: Long?,
+        val pendingDecisions: Long,
+        val projectionStatus: String?,
+        val firstResult: SyncRunResult? = null,
+        val firstRunId: String? = null,
+        val runId: String? = null,
+        val receivedBatches: Long? = null,
+    )
+
+    private suspend fun runMissingParent(
+        telemetryEnabled: Boolean,
+        retryTrigger: SyncTrigger? = null,
+    ): MissingParentObservation {
+        FileStorage().use { file ->
+            SyncOnboardingFixture(file.storage, InMemoryPreferenceStore(), OkHttpClient()).use { setup ->
+                val material = setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val transport = GitHubSyncTransport(
+                    setup.client,
+                    { "synthetic-token" },
+                    setup.git.baseUrl,
+                    spaceMaterial = material,
+                )
+                val initial = transport.readSnapshot(setup.repository, "space", 1).getOrThrow()
+                RemoteHistory(setup.git, initial, transport, setup.repository, material)
+                    .append(1, 1, "missing-parent", SyncEffectKind.REMOVE, missingParent = true) { 7 }
+                val runtime = setup.runtime(progressTelemetryEnabled = telemetryEnabled)
+                try {
+                    val panel = (runtime.panel as SyncPanelController).takeIf { telemetryEnabled }
+                    panel?.act(SyncPanelAction.Open)
+                    val firstResult = runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                    panel?.awaitIdle()
+                    val firstRun = runtime.runStore.latest("space", 1)
+                    val head = setup.git.head(setup.repository.branch)
+                    if (retryTrigger != null) {
+                        assertEquals(false, runtime.hasResumableRun())
+                        assertEquals(false, runtime.resumeIfNeeded())
+                        assertEquals(SyncRunStatus.SKIPPED, runtime.coordinator.synchronize(SyncTrigger.STARTUP).status)
+                    }
+                    val result = retryTrigger?.let { runtime.coordinator.synchronize(it) } ?: firstResult
+                    panel?.awaitIdle()
+                    assertEquals(head, setup.git.head(setup.repository.branch))
+                    val run = runtime.runStore.latest("space", 1)
+                    val key = SyncObjectKey(SyncObjectType.MANGA, sourceId = "1", originalUrl = "/scale-7")
+                    val projectionStatus = file.storage.handler.await {
+                        sync_inboxQueries.getFieldState("space", 1, key.stableKey, SyncField.FAVORITE.name)
+                            .executeAsOneOrNull()?.status
+                    }
+                    val plan = file.explainPendingRuntimeReceipt(requireNotNull(run).runId)
+                    assertTrue(plan.contains("USING INDEX sqlite_autoindex_sync_runtime_confirmations_1"), plan)
+                    val receivedBatches = file.storage.handler.await {
+                        sync_inboxQueries.countInboxBatches("space", 1).executeAsList()
+                            .singleOrNull { it.status == "RECEIVED" }?.count ?: 0L
+                    }
+                    return MissingParentObservation(
+                        result,
+                        run?.state,
+                        run?.stopReason,
+                        run?.confirmedItems,
+                        runtime.liveProgress.value?.confirmedThisRun,
+                        panel?.state?.value?.progress?.confirmedThisRun,
+                        mihon.data.sync.inbox.SyncInboxStore(file.storage.handler)
+                            .status("space", 1).pendingDecisions,
+                        projectionStatus,
+                        firstResult,
+                        firstRun?.runId,
+                        run.runId,
+                        receivedBatches,
+                    )
+                } finally {
+                    runtime.stopPanel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `frozen upload round excludes a later edit smaller than its remaining work`() = runBlocking {
+        FileStorage().use { file ->
+            file.storage.connect("sender", repository)
+            file.seedPublishedHistory(512)
+            file.storage.favorite("/old-1")
+            file.storage.favorite("/old-2")
+            file.storage.handler.await { sync_journalQueries.sealSpaceBatches("space", 1) }
+            file.storage.favorite("/old-3")
+            val outbox = SyncOutboxStore(file.storage.handler)
+
+            val frozen = outbox.freezeRound("space", 1)
+            assertEquals(3L, frozen.totalItems)
+            assertEquals(2, frozen.batchIds.size)
+            val queryPlan = file.explainPendingUploadRound()
+            assertTrue(queryPlan.contains("USING INDEX sync_pending_upload_round"), queryPlan)
+            file.storage.favorite("/new-edit") // One event is less than the three remaining old events.
+
+            val first = requireNotNull(outbox.nextBatch("space", 1))
+            assertEquals(2, first.events.size)
+            file.storage.handler.await {
+                sync_journalQueries.markBatchPublished("space", 1, first.batchId)
+            }
+            val second = requireNotNull(outbox.nextBatch("space", 1))
+            assertEquals(1, second.events.size)
+            file.storage.handler.await {
+                sync_journalQueries.markBatchPublished("space", 1, second.batchId)
+            }
+            val later = requireNotNull(outbox.nextBatch("space", 1))
+            assertEquals(1, later.events.size)
+            assertTrue(later.batchId != second.batchId)
+        }
+    }
+
+    @Test
+    fun `exchange starts a new visible round for an edit added during the first publish`() = runBlocking {
+        val client = OkHttpClient()
+        FileStorage().use { file ->
+            SyncGitSafetyContractTest().GitFixture().use { git ->
+                val transport = GitHubSyncTransport(
+                    client,
+                    { "scale-fixture-token" },
+                    git.baseUrl,
+                    indexSecret = secret,
+                )
+                transport.initialize(repository, "space", 1)
+                file.storage.connect("sender", repository)
+                file.storage.favorite("/old-1")
+                file.storage.favorite("/old-2")
+                file.storage.handler.await { sync_journalQueries.sealSpaceBatches("space", 1) }
+                file.storage.favorite("/old-3")
+                var published = 0
+                val concurrentEdit = object : SyncTransportPort by transport {
+                    override suspend fun publish(
+                        repository: SyncRepository,
+                        snapshot: SyncSnapshot,
+                        upload: SyncPreparedUpload,
+                        observeSnapshot: suspend (SyncSnapshot) -> Unit,
+                    ): SyncPublishResult {
+                        if (published++ == 0) file.storage.favorite("/new-during-publish")
+                        return transport.publish(repository, snapshot, upload, observeSnapshot)
+                    }
+                }
+                val sink = MutableStateFlow<SyncProgressFact?>(null)
+                val facts = CopyOnWriteArrayList<SyncProgressFact>()
+                val collector = launch(Dispatchers.Unconfined) { sink.filterNotNull().collect { facts += it } }
+                val clock = AtomicLong(0)
+                val progress = mihon.data.sync.runtime.SyncLiveProgressSession(
+                    "added-round",
+                    sink,
+                    millis = { clock.addAndGet(251) },
+                ).also { it.activate() }
+                try {
+                    val exchange = mihon.data.sync.runtime.SyncDatabaseExchange(
+                        file.storage.handler,
+                        file.storage.baseline,
+                        file.storage.projector,
+                        concurrentEdit,
+                        secret,
+                        liveProgress = progress,
+                    )
+                    assertExchange(exchange.exchange("space", 1, repository), uploaded = 4)
+                    val first = facts.filter {
+                        it.scope.endsWith(":upload-round-0") && it.direction == SyncProgressDirection.UPLOAD
+                    }
+                    assertTrue(first.isNotEmpty())
+                    assertTrue(first.all { it.totalItems == 3L && it.completedItems <= 3L })
+                    val second = facts.filter {
+                        it.scope.endsWith(":upload-round-1") && it.direction == SyncProgressDirection.UPLOAD
+                    }
+                    assertTrue(second.any { it.additionalWork && it.stage == SyncProgressStage.PREPARING })
+                    assertTrue(second.all { it.totalItems == 1L && it.completedItems <= 1L })
+                } finally {
+                    collector.cancel()
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `upload preparation stays visible while real artifact generation is blocked`() = runBlocking {
+        val client = OkHttpClient()
+        FileStorage().use { file ->
+            SyncGitSafetyContractTest().GitFixture().use { git ->
+                val transport = GitHubSyncTransport(
+                    client,
+                    { "scale-fixture-token" },
+                    git.baseUrl,
+                    indexSecret = secret,
+                )
+                transport.initialize(repository, "space", 1)
+                file.storage.connect("sender", repository)
+                file.storage.favorite("/slow-preparation")
+                val entered = CountDownLatch(1)
+                val release = CountDownLatch(1)
+                val blocked = object : SyncTransportPort by transport {
+                    override fun prepare(
+                        snapshot: SyncSnapshot,
+                        encryptedBatch: SyncEncryptedBatch,
+                    ): SyncPreparedUpload {
+                        entered.countDown()
+                        check(release.await(10, TimeUnit.SECONDS))
+                        return transport.prepare(snapshot, encryptedBatch)
+                    }
+                }
+                val sink = MutableStateFlow<SyncProgressFact?>(null)
+                val progress = mihon.data.sync.runtime.SyncLiveProgressSession("slow-prepare", sink)
+                    .also { it.activate() }
+                val exchange = mihon.data.sync.runtime.SyncDatabaseExchange(
+                    file.storage.handler,
+                    file.storage.baseline,
+                    file.storage.projector,
+                    blocked,
+                    secret,
+                    liveProgress = progress,
+                )
+                val running = async(Dispatchers.IO) { exchange.exchange("space", 1, repository) }
+                try {
+                    assertTrue(entered.await(10, TimeUnit.SECONDS))
+                    assertEquals(SyncProgressStage.PREPARING, sink.value?.stage)
+                    assertTrue(sink.value?.scope?.endsWith(":upload-round-0") == true)
+                    assertEquals(1L, sink.value?.totalItems)
+                    assertEquals(0L, sink.value?.completedItems)
+                    val prepared = file.storage.handler.await {
+                        sync_journalQueries.getNextUploadBatch("space", 1).executeAsOne().prepared_upload
+                    }
+                    assertNull(prepared)
+                } finally {
+                    release.countDown()
+                }
+                assertExchange(running.await(), uploaded = 1)
+            }
+        }
+    }
+
+    @Test
+    fun `slow received body exposes local eta in the production runtime panel before completion`() = runBlocking {
+        val client = OkHttpClient()
+        FileStorage().use { sender ->
+            SyncOnboardingFixture(sender.storage, InMemoryPreferenceStore(), client).use { setup ->
+                val material = setup.existing("")
+                setup.authorize()
+                setup.begin()
+                repeat(128) { sender.storage.favorite("/slow-body-$it") }
+                val sent = setup.runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                assertEquals(SyncRunStatus.SUCCESS, sent.status)
+                assertEquals(128, sent.uploaded)
+
+                FileStorage().use { receiver ->
+                    val receiverRuntime = SyncRuntime(
+                        receiver.storage.handler,
+                        receiver.storage.bootstrap,
+                        receiver.storage.creators,
+                        receiver.storage.creators,
+                        { true },
+                        MemorySyncSecureStore(),
+                        InMemoryPreferenceStore(),
+                        OkHttpClient(),
+                        setup.endpoints,
+                    )
+                    try {
+                        receiverRuntime.credentials.replace(
+                            null,
+                            GitHubAccessToken("synthetic-token", null, "bearer", emptySet(), null, null),
+                        )
+                        val space = (
+                            receiverRuntime.onboarding.discover() as mihon.data.sync.auth.SyncSpaceDiscovery.Found
+                            ).space
+                        receiverRuntime.onboarding.resume(receiverRuntime.onboarding.join(space, material))
+                        val panel = receiverRuntime.panel as SyncPanelController
+                        panel.act(SyncPanelAction.Open)
+                        val delegate = setup.git.server.dispatcher
+                        setup.git.server.dispatcher = object : Dispatcher() {
+                            override fun dispatch(request: RecordedRequest): MockResponse {
+                                val response = delegate.dispatch(request)
+                                return if (request.method == "GET" &&
+                                    request.url.encodedPath.contains("/git/blobs/")
+                                ) {
+                                    response.newBuilder().throttleBody(8_192, 1, TimeUnit.SECONDS).build()
+                                } else {
+                                    response
+                                }
+                            }
+                        }
+                        val exchange = async(Dispatchers.IO) {
+                            receiverRuntime.coordinator.synchronize(SyncTrigger.MANUAL)
+                        }
+                        val inFlight = withTimeout(15_000) {
+                            panel.state.first { it.progress?.activeBodyEtaSeconds != null }.progress
+                        }
+                        assertNotNull(inFlight)
+                        assertTrue(!exchange.isCompleted, "the body ETA must appear before transfer finishes")
+                        assertEquals(SyncProgressDirection.DOWNLOAD, inFlight?.direction)
+                        assertTrue((inFlight?.activeBodyEtaSeconds ?: 0L) > 0L)
+                        assertTrue((inFlight?.activeBodyBytes ?: 0L) < (inFlight?.activeBodyTotal ?: 0L))
+                        assertNull(inFlight?.wholeEtaSeconds)
+                        assertEquals(SyncRunStatus.SUCCESS, exchange.await().status)
+                    } finally {
+                        receiverRuntime.stopPanel()
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `one frozen remote head keeps cumulative item count across discovery pages`() = runBlocking {
+        val client = OkHttpClient()
+        FileStorage().use { file ->
+            SyncGitSafetyContractTest().GitFixture().use { git ->
+                val transport =
+                    GitHubSyncTransport(client, { "scale-fixture-token" }, git.baseUrl, indexSecret = secret)
+                transport.initialize(repository, "space", 1)
+                val history = RemoteHistory(git, transport.readSnapshot(repository, "space", 1).getOrThrow(), transport)
+                history.append(129, 129, "paged", SyncEffectKind.ADD) { it }
+                file.storage.connect("receiver", repository)
+                val sink = MutableStateFlow<mihon.data.sync.runtime.SyncProgressFact?>(null)
+                val progress = mihon.data.sync.runtime.SyncLiveProgressSession("paged-run", sink).also { it.activate() }
+                val exchange = mihon.data.sync.runtime.SyncDatabaseExchange(
+                    file.storage.handler,
+                    file.storage.baseline,
+                    file.storage.projector,
+                    transport,
+                    secret,
+                    liveProgress = progress,
+                )
+                assertExchange(exchange.exchange("space", 1, repository), downloaded = 129)
+                assertEquals(129L, sink.value?.completedItems)
+                assertNull(sink.value?.totalItems)
+            }
+        }
+    }
+
+    @Test
+    fun `received download is not confirmed until the real projector finishes`() = runBlocking {
+        val client = OkHttpClient()
+        FileStorage().use { file ->
+            SyncGitSafetyContractTest().GitFixture().use { git ->
+                val transport = GitHubSyncTransport(
+                    client,
+                    { "scale-fixture-token" },
+                    git.baseUrl,
+                    indexSecret = secret,
+                )
+                transport.initialize(repository, "space", 1)
+                val history = RemoteHistory(git, transport.readSnapshot(repository, "space", 1).getOrThrow(), transport)
+                history.append(1, 1, "received", SyncEffectKind.ADD) { it }
+                file.storage.connect("receiver", repository)
+                val runStore = SyncRunStore(file.storage.handler)
+                val run = runStore.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runStore.claim(run.runId, "receiver-owner", 1))
+                val durableReporter = runStore.reporter(run.runId, "receiver-owner")
+                val received = CompletableDeferred<Unit>()
+                val release = CompletableDeferred<Unit>()
+                val reporter = object : SyncProgressReporter by durableReporter {
+                    override suspend fun totals(uploaded: Long, downloaded: Long) {
+                        durableReporter.totals(uploaded, downloaded)
+                        if (downloaded > 0L) {
+                            received.complete(Unit)
+                            release.await()
+                        }
+                    }
+                }
+                val sink = MutableStateFlow<mihon.data.sync.runtime.SyncProgressFact?>(null)
+                val progress = mihon.data.sync.runtime.SyncLiveProgressSession("receiver-run", sink)
+                    .also { it.activate() }
+                val exchange = mihon.data.sync.runtime.SyncDatabaseExchange(
+                    file.storage.handler,
+                    file.storage.baseline,
+                    file.storage.projector,
+                    transport,
+                    secret,
+                    progress = reporter,
+                    liveProgress = progress,
+                )
+                val pending = async(Dispatchers.IO) { exchange.exchange("space", 1, repository) }
+                try {
+                    withTimeout(15_000) { received.await() }
+                    assertEquals(0L, sink.value?.confirmedThisRun)
+                } finally {
+                    release.complete(Unit)
+                }
+                assertExchange(pending.await(), downloaded = 1)
+                assertEquals(1L, sink.value?.confirmedThisRun)
+                assertEquals(1L, runStore.get(run.runId)?.confirmedItems)
+            }
+        }
+    }
+
+    @Test
+    fun `a missing durable receipt confirmation cannot be replaced by accepted download display`() = runBlocking {
+        val client = OkHttpClient()
+        FileStorage().use { file ->
+            SyncGitSafetyContractTest().GitFixture().use { git ->
+                val transport =
+                    GitHubSyncTransport(client, { "scale-fixture-token" }, git.baseUrl, indexSecret = secret)
+                transport.initialize(repository, "space", 1)
+                val history = RemoteHistory(git, transport.readSnapshot(repository, "space", 1).getOrThrow(), transport)
+                history.append(1, 1, "receipt-silent", SyncEffectKind.ADD) { it }
+                file.storage.connect("receiver", repository)
+                val runStore = SyncRunStore(file.storage.handler)
+                val run = runStore.start("space", 1, SyncTrigger.MANUAL)
+                assertTrue(runStore.claim(run.runId, "receiver-owner", 1))
+                val durableReporter = runStore.reporter(run.runId, "receiver-owner")
+                val silentReporter = object : SyncProgressReporter by durableReporter {
+                    override suspend fun confirmReceived(): List<Pair<String, Long>> = emptyList()
+                }
+                val sink = MutableStateFlow<SyncProgressFact?>(null)
+                val progress = mihon.data.sync.runtime.SyncLiveProgressSession("silent-receipt", sink)
+                    .also { it.activate() }
+                val exchange = mihon.data.sync.runtime.SyncDatabaseExchange(
+                    file.storage.handler,
+                    file.storage.baseline,
+                    file.storage.projector,
+                    transport,
+                    secret,
+                    progress = silentReporter,
+                    liveProgress = progress,
+                )
+                val result = exchange.exchange("space", 1, repository)
+                assertEquals(SyncRunStatus.PARTIAL, result.status)
+                assertEquals(0L, runStore.get(run.runId)?.confirmedItems)
+                assertEquals(0L, sink.value?.confirmedThisRun)
+            }
+        }
+    }
 
     @Test
     fun `diagnose projected fields with real inbox and file database`() = runBlocking {
@@ -287,6 +799,11 @@ class SyncScaleAcceptanceTest {
                             TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - acceptedAt)
                         }
                     }
+                    val importFact = async(Dispatchers.IO) {
+                        withTimeout(60_000) {
+                            senderRuntime.liveProgress.first { (it?.importCompletedItems ?: 0L) > 0L }
+                        }
+                    }
                     val first = measure(
                         scenario,
                         "runtime_first_import_and_upload_confirmed_total",
@@ -299,6 +816,10 @@ class SyncScaleAcceptanceTest {
                     val allConfirmedSinceConnectMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - acceptedAt)
                     val importCompleteMillis = importComplete.await()
                     val firstConfirmedMillis = firstConfirmed.await()
+                    val observedImport = requireNotNull(importFact.await())
+                    assertEquals(scenario.events.toLong(), observedImport.importTotalItems)
+                    assertNull(observedImport.totalItems)
+                    assertEquals(0L, observedImport.completedItems)
                     assertEquals(SyncRunStatus.SUCCESS, first.status, first.toString())
                     assertEquals(scenario.events, first.uploaded)
                     assertEquals(scenario.events.toLong(), sender.storage.eventCount())
@@ -780,7 +1301,17 @@ class SyncScaleAcceptanceTest {
     }
 
     private fun assertExchange(result: SyncRunResult, downloaded: Int = 0, uploaded: Int = 0, pending: Int = 0) {
-        assertEquals(SyncRunStatus.SUCCESS, result.status, result.toString())
+        assertEquals(
+            if (pending >
+                0
+            ) {
+                SyncRunStatus.PARTIAL
+            } else {
+                SyncRunStatus.SUCCESS
+            },
+            result.status,
+            result.toString(),
+        )
         assertEquals(downloaded, result.downloaded)
         assertEquals(uploaded, result.uploaded)
         assertEquals(pending, result.pending)
@@ -909,7 +1440,14 @@ class SyncScaleAcceptanceTest {
         private val immutableDigests = linkedMapOf<String, String>()
         private val sizes = mutableMapOf<String, Long>()
 
-        fun append(count: Int, actors: Int, phase: String, kind: SyncEffectKind, objectAt: (Int) -> Int) {
+        fun append(
+            count: Int,
+            actors: Int,
+            phase: String,
+            kind: SyncEffectKind,
+            missingParent: Boolean = false,
+            objectAt: (Int) -> Int,
+        ) {
             val buffers = List(actors) { mutableListOf<SyncEventEnvelope>() }
             val batches = IntArray(actors)
             fun flush(actor: Int) {
@@ -953,7 +1491,11 @@ class SyncScaleAcceptanceTest {
                             SyncObjectKey(SyncObjectType.MANGA, sourceId = "1", originalUrl = "/scale-$number"),
                             SyncField.FAVORITE,
                             kind,
-                            parents = listOfNotNull(heads[number]),
+                            parents = if (missingParent) {
+                                listOf(SyncEffectRef(SyncEventId("unseen-parent", 1, 1), "membership", "space", 1))
+                            } else {
+                                listOfNotNull(heads[number])
+                            },
                         ),
                     ),
                     SyncOrigin.USER, batchId = "$phase-$actor-${batches[actor]}",
@@ -1065,6 +1607,55 @@ class SyncScaleAcceptanceTest {
 
         fun bytes() = listOf(path, File("${path.absolutePath}-wal"), File("${path.absolutePath}-journal"))
             .sumOf { if (it.exists()) it.length() else 0L }
+
+        fun seedPublishedHistory(count: Int) {
+            DriverManager.getConnection("jdbc:sqlite:${path.absolutePath}").use { connection ->
+                connection.autoCommit = false
+                connection.prepareStatement(
+                    "INSERT INTO sync_batches(space_id, generation, batch_id, actor_id, epoch, first_seq, " +
+                        "last_seq, event_count, plaintext_bytes, status) VALUES " +
+                        "('space', 1, ?, 'sender', 1, ?, ?, 1, 1, 'PUBLISHED')",
+                ).use { statement ->
+                    repeat(count) { index ->
+                        statement.setString(1, "old-history-$index")
+                        statement.setLong(2, index.toLong() + 1)
+                        statement.setLong(3, index.toLong() + 1)
+                        statement.addBatch()
+                    }
+                    statement.executeBatch()
+                }
+                connection.commit()
+            }
+        }
+
+        fun explainPendingUploadRound(): String = DriverManager.getConnection("jdbc:sqlite:${path.absolutePath}")
+            .use { connection ->
+                connection.prepareStatement(
+                    "EXPLAIN QUERY PLAN SELECT batch_id, event_count FROM sync_batches " +
+                        "WHERE space_id = 'space' AND generation = 1 " +
+                        "AND status != 'PUBLISHED' AND event_count > 0 " +
+                        "ORDER BY actor_id, epoch, first_seq",
+                ).use { statement ->
+                    statement.executeQuery().use { rows ->
+                        buildList { while (rows.next()) add(rows.getString("detail")) }.joinToString("\n")
+                    }
+                }
+            }
+
+        fun explainPendingRuntimeReceipt(runId: String): String = DriverManager.getConnection(
+            "jdbc:sqlite:${path.absolutePath}",
+        )
+            .use { connection ->
+                connection.prepareStatement(
+                    "EXPLAIN QUERY PLAN SELECT 1 FROM sync_runtime_confirmations " +
+                        "WHERE run_id = ? AND direction = 'DOWNLOAD' AND status = 'PENDING' LIMIT 1",
+                ).use { statement ->
+                    statement.setString(1, runId)
+                    statement.executeQuery().use { rows ->
+                        buildList { while (rows.next()) add(rows.getString("detail")) }.joinToString("\n")
+                    }
+                }
+            }
 
         override fun close() {
             storage.close()

@@ -2,6 +2,8 @@ package mihon.data.sync.runtime
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -71,12 +73,20 @@ class SyncRuntime(
     private val clock: () -> Long = System::currentTimeMillis,
     internal val persistentObjectCacheDirectory: Path? = null,
     private val syncMetrics: SyncMetrics = NoopSyncMetrics,
+    private val progressTelemetryEnabled: Boolean = true,
 ) : SyncRunPort {
     val preferences = SyncPreferences(preferenceStore)
     val credentials = PersistentGitHubCredentialStore(secureStore)
     val authorization = GitHubAuthClient(productionClient, endpoints, nowMillis = clock)
     val coordinator = SyncCoordinator(this)
     val runStore = SyncRunStore(handler, clock)
+    private val mutableLiveProgress = MutableStateFlow<SyncProgressFact?>(null)
+    val liveProgress: StateFlow<SyncProgressFact?> = mutableLiveProgress
+
+    @Volatile private var liveSession: SyncLiveProgressSession? = null
+    internal fun progressFor(runId: String): SyncProgressFact? =
+        liveSession?.takeIf { liveProgress.value?.scope?.startsWith("$runId:") == true }
+            ?.let { runCatching { it.snapshot() }.getOrNull() }
     private val panelDelegate = lazy { SyncPanelController(this, handler, clock = clock) }
     val panel: SyncPanel get() = panelDelegate.value
     val baseline = SyncBaselineStore(handler, bootstrap)
@@ -241,8 +251,13 @@ class SyncRuntime(
     }
 
     suspend fun pauseSync() {
-        connection()?.let { runStore.active(it.spaceId, it.generation)?.let { runStore.pause(it.runId) } }
+        val run = connection()?.let { runStore.active(it.spaceId, it.generation) }
+        if (run != null) liveSession?.hold(SyncProgressHold.PAUSING)
         coordinator.cancelAndJoin()
+        if (run != null && runStore.get(run.runId)?.state in RESUMABLE_STATES + SyncRunState.RUNNING) {
+            runStore.pause(run.runId)
+            liveSession?.hold(SyncProgressHold.PAUSED)
+        }
     }
 
     suspend fun accessToken(): String {
@@ -310,6 +325,8 @@ class SyncRuntime(
 
     suspend fun disconnect() {
         coordinator.cancelAndJoin()
+        liveSession = null
+        mutableLiveProgress.value = null
         connectionMutex.withLock {
             connection()?.let {
                 runStore.active(it.spaceId, it.generation)?.let { run -> runStore.cancel(run.runId) }
@@ -362,6 +379,10 @@ class SyncRuntime(
         val existing = active?.takeIf {
             it.state == SyncRunState.QUEUED ||
                 (trigger in setOf(SyncTrigger.RECOVERY, SyncTrigger.PERIODIC) && it.state in RESUMABLE_STATES) ||
+                (
+                    trigger in setOf(SyncTrigger.MANUAL, SyncTrigger.PERIODIC) &&
+                        it.state == SyncRunState.PARTIAL
+                    ) ||
                 (trigger == SyncTrigger.MANUAL && it.state == SyncRunState.RUNNING)
         }
         val run = existing ?: runStore.start(connection.spaceId, connection.generation, trigger)
@@ -391,6 +412,27 @@ class SyncRuntime(
         if (exhausted) {
             runStore.finish(run.runId, SyncRunState.FAILED, "retry_exhausted", ownerSession)
             return@withLock SyncRunResult(SyncRunStatus.FAILED, problem = SyncRunProblem.NETWORK)
+        }
+        val progressSession = if (progressTelemetryEnabled) {
+            lateinit var current: SyncLiveProgressSession
+            current = SyncLiveProgressSession(
+                run.runId,
+                mutableLiveProgress,
+                canPublish = { liveSession === current },
+                confirmedBaseline = run.confirmedItems.takeUnless {
+                    existing != null && run.confirmedItems == 0L && run.downloaded > 0L
+                },
+            )
+            liveSession = current
+            runCatching { current.activate() }
+            current
+        } else {
+            liveSession = null
+            mutableLiveProgress.value = null
+            null
+        }
+        if (existing != null && existing.state != SyncRunState.QUEUED) {
+            progressSession?.hold(SyncProgressHold.RECOVERING)
         }
         val resumeProgress = runStore.get(run.runId)
         runStore.progress(
@@ -428,6 +470,7 @@ class SyncRuntime(
                     manifestBinding = stored.snapshotManifestBinding(),
                     persistentObjectCacheDirectory = persistentObjectCacheDirectory,
                     requestGate = accountHttpRequestGate(stored.accountId),
+                    bodyObserver = progressSession,
                 ),
                 spaceMaterial = material,
                 allowImport = { !preferences.importPaused.get() },
@@ -439,6 +482,7 @@ class SyncRuntime(
                 reconcileTotalsOnStart = existing != null && existing.state != SyncRunState.QUEUED,
                 metrics = syncMetrics,
                 snapshotOwner = SyncSnapshotWriteOwner(run.runId, ownerSession, attemptId),
+                liveProgress = progressSession,
             )
                 .exchange(connection.spaceId, connection.generation, connection.repository)
         } catch (cancelled: CancellationException) {
@@ -463,6 +507,14 @@ class SyncRuntime(
             val completedSnapshot = runStore.get(run.runId)
             val completedItems = (completedSnapshot?.uploaded ?: result.uploaded.toLong()) +
                 (completedSnapshot?.downloaded ?: result.downloaded.toLong())
+            if (completedItems == 0L) {
+                progressSession?.begin(
+                    progressSession.scope("empty"),
+                    SyncProgressStage.CONFIRMING,
+                    SyncProgressDirection.UPLOAD,
+                    totalItems = 0,
+                )
+            }
             runStore.progress(
                 run.runId,
                 SyncRunPhase.COMPLETE,
@@ -471,6 +523,11 @@ class SyncRuntime(
                 completed = completedItems,
                 ownerSession = ownerSession,
             )
+            if (progressSession != null) {
+                progressSession.completeConfirmed(completedSnapshot?.confirmedItems ?: 0L)
+            }
+        } else if (result.status == SyncRunStatus.PARTIAL && result.problem == null) {
+            progressSession?.completeConfirmed(runStore.get(run.runId)?.confirmedItems ?: 0L)
         } else if (retryAvailable) {
             val snapshot = runStore.get(run.runId)
             if (snapshot != null) {
@@ -500,6 +557,7 @@ class SyncRuntime(
             run.runId,
             when {
                 result.status == SyncRunStatus.SUCCESS -> SyncRunState.SUCCEEDED
+                result.status == SyncRunStatus.PARTIAL && result.problem == null -> SyncRunState.PARTIAL
                 retryAvailable ->
                     SyncRunState.WAITING_RETRY
                 result.problem == SyncRunProblem.NETWORK -> SyncRunState.FAILED
@@ -507,6 +565,8 @@ class SyncRuntime(
             },
             if (result.problem == SyncRunProblem.NETWORK && !retryAvailable) {
                 "retry_exhausted"
+            } else if (result.status == SyncRunStatus.PARTIAL && result.problem == null) {
+                if (result.pending > 0) "pending_decision" else "projection_pending"
             } else {
                 result.problem?.name
             },

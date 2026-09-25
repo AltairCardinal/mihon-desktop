@@ -813,6 +813,7 @@ abstract class SyncInboxStorageContract {
             ).forEach { s.driver.execute(null, "DROP TABLE $it", 0) }
             s.driver.execute(null, "DROP INDEX sync_event_key_index", 0)
             s.driver.execute(null, "DROP INDEX sync_unindexed_events", 0)
+            s.driver.execute(null, "DROP INDEX sync_events_by_batch_confirmation", 0)
             s.driver.execute(null, "ALTER TABLE sync_events DROP COLUMN event_key", 0)
             s.driver.execute(null, "ALTER TABLE sync_events DROP COLUMN sync_indexed", 0)
             s.driver.execute(null, "PRAGMA user_version = 22", 0)

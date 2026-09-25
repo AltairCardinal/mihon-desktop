@@ -45,6 +45,9 @@ CREATE TABLE sync_batches (
 );
 
 CREATE UNIQUE INDEX sync_one_open_batch ON sync_batches(space_id, generation, actor_id, epoch) WHERE status = 'OPEN';
+CREATE INDEX sync_pending_upload_round ON sync_batches(
+    space_id, generation, actor_id, epoch, first_seq, batch_id, event_count
+) WHERE status != 'PUBLISHED';
 
 CREATE TABLE sync_events (
     space_id TEXT NOT NULL,
@@ -78,6 +81,7 @@ CREATE TABLE sync_outbox (
 
 CREATE UNIQUE INDEX sync_event_key_index ON sync_events(space_id, generation, event_key);
 CREATE INDEX sync_unindexed_events ON sync_events(space_id, generation, sync_indexed);
+CREATE INDEX sync_events_by_batch_confirmation ON sync_events(space_id, generation, batch_id, event_key);
 
 CREATE TABLE sync_object_heads (
     space_id TEXT NOT NULL,
@@ -186,6 +190,11 @@ SELECT count(*) FROM sync_batches WHERE space_id = ? AND generation = ?;
 getNextUploadBatch:
 SELECT * FROM sync_batches WHERE space_id = ? AND generation = ? AND status != 'PUBLISHED' AND event_count > 0
 ORDER BY actor_id, epoch, first_seq LIMIT 1;
+
+getPendingUploadRoundBatches:
+SELECT batch_id, event_count FROM sync_batches
+WHERE space_id = ? AND generation = ? AND status != 'PUBLISHED' AND event_count > 0
+ORDER BY actor_id, epoch, first_seq;
 
 countPublishedEvents:
 SELECT coalesce(sum(event_count), 0) FROM sync_batches

@@ -22,6 +22,7 @@ class SyncBatchSyncService(
     private val secret: SyncSecret? = null,
     private val engine: mihon.domain.sync.crypto.SyncAeadEngine = SyncAeadEngineFactory.create(),
     private val spaceMaterial: SyncSpaceMaterial? = null,
+    private val onEncryptedBatchReceived: (SyncBatchIndexEntry) -> Unit = {},
 ) {
     /** Freeze the complete upload artifact before any network side effect. */
     fun prepare(snapshot: SyncSnapshot, batch: SyncBatch, path: String): SyncPreparedUpload =
@@ -64,6 +65,7 @@ class SyncBatchSyncService(
             if (error.isRetryableOrActionableReadFailure()) throw error
             return SyncReceiveResult(null, "sync batch could not be decoded")
         }
+        runCatching { onEncryptedBatchReceived(entry) }
         return try {
             SyncReceiveResult(SyncBatchEncryption.decrypt(engine, secret, encrypted, spaceMaterial))
         } catch (error: CancellationException) {

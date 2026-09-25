@@ -2,6 +2,7 @@ package mihon.data.sync
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.runBlocking
+import mihon.data.sync.inbox.SyncInboxStore
 import mihon.domain.sync.runtime.SyncRunStatus
 import mihon.domain.sync.transport.SyncPublishStatus
 import mihon.domain.sync.transport.SyncRepository
@@ -65,8 +66,12 @@ class JvmSyncRuntimeStorageContractTest : SyncRuntimeStorageContract() {
                 storage.close()
                 storage = open(databasePath, create = false)
                 val resumed = storage.exchange(delayedRemoteTransport, secret, repository)
-                assertEquals(SyncRunStatus.SUCCESS, resumed.status)
+                assertEquals(SyncRunStatus.PARTIAL, resumed.status)
                 assertEquals(1, resumed.downloaded)
+                assertEquals(
+                    false,
+                    SyncInboxStore(storage.handler).canConfirmReceivedBatch("space", 1, "file-late-batch-4"),
+                )
                 assertTrue(
                     storage.handler.await {
                         sync_inboxQueries.getDiscoveredBatches("space", 1, 128).executeAsList().isEmpty()

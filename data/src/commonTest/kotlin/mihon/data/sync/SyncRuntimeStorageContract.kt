@@ -3,6 +3,7 @@ package mihon.data.sync
 import app.cash.sqldelight.db.SqlDriver
 import kotlinx.coroutines.runBlocking
 import mihon.data.sync.inbox.SyncInboxProjector
+import mihon.data.sync.inbox.SyncInboxStore
 import mihon.data.sync.journal.SyncBaselineStore
 import mihon.data.sync.journal.SyncLocalJournal
 import mihon.data.sync.projection.SyncRemoteProjectionWriter
@@ -141,7 +142,15 @@ abstract class SyncRuntimeStorageContract {
 
                 val result = receiver.exchange(delayedRemoteTransport, secret, repository)
 
-                assertEquals(SyncRunStatus.SUCCESS, result.status)
+                val remoteKey = remoteBatch.events.single().effects.single().objectKey
+                val fieldStatus = receiver.handler.await {
+                    sync_inboxQueries.getFieldState("space", 1, remoteKey.stableKey, SyncField.FAVORITE.name)
+                        .executeAsOneOrNull()?.status
+                }
+                val confirmable = SyncInboxStore(receiver.handler).canConfirmReceivedBatch("space", 1, remoteBatchId)
+                assertEquals("DESCRIPTION", fieldStatus)
+                assertEquals(false, confirmable)
+                assertEquals(SyncRunStatus.PARTIAL, result.status)
                 assertEquals(1, result.uploaded)
                 assertEquals(1, result.downloaded)
                 assertEquals(2, observedReads, "one changed terminal ref and one stable terminal ref")
@@ -198,8 +207,12 @@ abstract class SyncRuntimeStorageContract {
 
                 val resumed = receiver.exchange(delayedRemoteTransport, secret, repository)
 
-                assertEquals(SyncRunStatus.SUCCESS, resumed.status)
+                assertEquals(SyncRunStatus.PARTIAL, resumed.status)
                 assertEquals(1, resumed.downloaded)
+                assertEquals(
+                    false,
+                    SyncInboxStore(receiver.handler).canConfirmReceivedBatch("space", 1, "late-batch-4"),
+                )
                 assertTrue(
                     receiver.handler.await {
                         sync_inboxQueries.getDiscoveredBatches("space", 1, 128).executeAsList().isEmpty()
@@ -264,7 +277,7 @@ abstract class SyncRuntimeStorageContract {
                     first.exchange(transport, secret, repository)
                     second.favorite("/second-local")
                     val result = second.exchange(transport, secret, repository)
-                    assertEquals(SyncRunStatus.SUCCESS, result.status, "problem=${result.problem}")
+                    assertEquals(SyncRunStatus.PARTIAL, result.status, "problem=${result.problem}")
                     assertEquals(1, result.pending)
                     assertEquals(1, result.uploaded)
                     assertEquals(2, second.manga.getLibraryManga().size)
@@ -299,7 +312,7 @@ abstract class SyncRuntimeStorageContract {
                     first.manga.update(MangaUpdate(item.id, favorite = false, syncContext = SyncMutationContext.User))
                     first.exchange(transport, secret, repository)
                     val result = second.exchange(transport, secret, repository)
-                    assertEquals(SyncRunStatus.SUCCESS, result.status, "problem=${result.problem}")
+                    assertEquals(SyncRunStatus.PARTIAL, result.status, "problem=${result.problem}")
                     assertEquals(1, result.pending)
                     assertEquals(0, result.uploaded)
                     assertEquals(localMemo, second.manga.getMangaById(received.id).memo)

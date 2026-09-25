@@ -11,7 +11,33 @@ import java.nio.file.Path
 class DatabaseMigrationCompatibilityTest {
     @Test
     fun `current schema reserves compatibility migration after published sync schema`() {
-        Database.Schema.version shouldBe 37L
+        Database.Schema.version shouldBe 38L
+    }
+
+    @Test
+    fun `schema 37 preserves confirmed downloads only for successful runs`() {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        Database.Schema.create(driver)
+        driver.execute(null, "DROP TABLE sync_runtime_confirmations", 0)
+        driver.execute(null, "ALTER TABLE sync_runtime_runs DROP COLUMN confirmed_items", 0)
+        driver.execute(null, "DROP INDEX sync_events_by_batch_confirmation", 0)
+        driver.execute(null, "DROP INDEX sync_pending_upload_round", 0)
+        listOf("SUCCEEDED", "RUNNING").forEach { state ->
+            driver.execute(
+                null,
+                "INSERT INTO sync_runtime_runs(run_id, space_id, generation, trigger, state, phase, " +
+                    "last_progress_at, created_at, updated_at, uploaded, downloaded) VALUES " +
+                    "('$state', 'space', 1, 'MANUAL', '$state', 'CONFIRMING', 1, 1, 1, 2, 3)",
+                0,
+            )
+        }
+        driver.execute(null, "PRAGMA user_version = 37", 0)
+
+        DatabaseMigration.migrateAtomically(driver, 37, Database.Schema.version)
+
+        queryLong(driver, "SELECT confirmed_items FROM sync_runtime_runs WHERE run_id = 'SUCCEEDED'") shouldBe 5L
+        queryLong(driver, "SELECT confirmed_items FROM sync_runtime_runs WHERE run_id = 'RUNNING'") shouldBe 2L
+        queryLong(driver, "PRAGMA user_version") shouldBe 38L
     }
 
     @Test
@@ -48,7 +74,7 @@ class DatabaseMigrationCompatibilityTest {
             driver,
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'sync_snapshot_manifest_entries'",
         ) shouldBe 1L
-        queryLong(driver, "PRAGMA user_version") shouldBe 37L
+        queryLong(driver, "PRAGMA user_version") shouldBe 38L
     }
 
     @Test
@@ -138,7 +164,7 @@ class DatabaseMigrationCompatibilityTest {
 
         DatabaseMigration.migrateAtomically(driver, 34, Database.Schema.version)
 
-        queryLong(driver, "PRAGMA user_version") shouldBe 37L
+        queryLong(driver, "PRAGMA user_version") shouldBe 38L
         queryLong(driver, "SELECT attempt_id FROM sync_runtime_runs WHERE run_id = 'legacy-run'") shouldBe 2L
         queryLong(driver, "SELECT network_failure_count FROM sync_runtime_runs WHERE run_id = 'legacy-run'") shouldBe 2L
         queryLong(
@@ -174,7 +200,7 @@ class DatabaseMigrationCompatibilityTest {
         queryLong(driver, "SELECT COUNT(*) FROM sync_runtime_runs") shouldBe 1L
         queryLong(driver, "SELECT COUNT(*) FROM author_archive_representative_work_cache") shouldBe 0L
         queryLong(driver, "SELECT COUNT(*) FROM author_archive_source_date_quality") shouldBe 0L
-        queryLong(driver, "PRAGMA user_version") shouldBe 37L
+        queryLong(driver, "PRAGMA user_version") shouldBe 38L
     }
 
     @Test
@@ -187,7 +213,7 @@ class DatabaseMigrationCompatibilityTest {
         queryLong(driver, "SELECT COUNT(*) FROM author_archive_creators") shouldBe 1L
         queryLong(driver, "SELECT COUNT(*) FROM sync_runtime_runs") shouldBe 0L
         queryLong(driver, "SELECT COUNT(*) FROM sync_runtime_logs") shouldBe 0L
-        queryLong(driver, "PRAGMA user_version") shouldBe 37L
+        queryLong(driver, "PRAGMA user_version") shouldBe 38L
     }
 
     @Test
@@ -382,6 +408,12 @@ class DatabaseMigrationCompatibilityTest {
     }
 
     private fun dropSnapshotManifestAdditions(driver: JdbcSqliteDriver) {
+        driver.execute(null, "DROP INDEX IF EXISTS sync_events_by_batch_confirmation", 0)
+        driver.execute(null, "DROP INDEX IF EXISTS sync_pending_upload_round", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS sync_runtime_confirmations", 0)
+        if (hasColumn(driver, "sync_runtime_runs", "confirmed_items")) {
+            driver.execute(null, "ALTER TABLE sync_runtime_runs DROP COLUMN confirmed_items", 0)
+        }
         driver.execute(null, "DROP TABLE IF EXISTS sync_snapshot_manifest_entries", 0)
         driver.execute(null, "DROP TABLE IF EXISTS sync_snapshot_manifest_batches", 0)
         if (hasColumn(driver, "sync_remote_guards", "revision")) {

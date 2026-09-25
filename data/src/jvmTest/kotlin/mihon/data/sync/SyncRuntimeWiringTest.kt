@@ -3,7 +3,9 @@ package mihon.data.sync
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import mihon.data.sync.http.InMemorySyncMetrics
 import mihon.data.sync.http.NoopSyncMetrics
 import mihon.data.sync.http.SyncMetrics
@@ -64,6 +66,98 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.prefs.Preferences
 
 class SyncRuntimeWiringTest {
+    @Test
+    fun `production upload transfers before ref and confirms after acknowledgement`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                val runtime = setup.runtime
+                fixture.storage.favorite("/progress-boundary")
+                val enteredRef = CountDownLatch(1)
+                val releaseRef = CountDownLatch(1)
+                val delegate = setup.git.server.dispatcher
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if ((request.method == "PATCH" && request.url.encodedPath.contains("/git/refs/heads/")) ||
+                            (request.method == "POST" && request.url.encodedPath.endsWith("/git/refs"))
+                        ) {
+                            enteredRef.countDown()
+                            check(releaseRef.await(10, TimeUnit.SECONDS))
+                        }
+                        return delegate.dispatch(request)
+                    }
+                }
+                val exchange = async(Dispatchers.IO) { runtime.coordinator.synchronize(SyncTrigger.MANUAL) }
+                try {
+                    assertTrue(enteredRef.await(10, TimeUnit.SECONDS))
+                    val beforeRef = requireNotNull(runtime.liveProgress.value)
+                    assertEquals(mihon.data.sync.runtime.SyncProgressStage.CONFIRMING, beforeRef.stage)
+                    assertEquals(0L, beforeRef.completedItems)
+                    assertTrue(beforeRef.effectiveBytes > 0L, beforeRef.toString())
+                    assertTrue(beforeRef.networkBytes >= beforeRef.effectiveBytes, beforeRef.toString())
+                    val panelFact = withTimeout(5_000) {
+                        setup.panel.state.first {
+                            it.progress?.stage == mihon.data.sync.runtime.SyncProgressStage.CONFIRMING &&
+                                it.progress.effectiveBytes > 0L
+                        }.progress
+                    }
+                    assertEquals(beforeRef.scope, panelFact?.scope)
+                    assertEquals(beforeRef.effectiveBytes, panelFact?.effectiveBytes)
+                    val stored = fixture.storage.handler.await {
+                        sync_journalQueries.getNextUploadBatch("space", 1).executeAsOneOrNull()
+                    }
+                    assertNotNull(stored)
+                } finally {
+                    releaseRef.countDown()
+                }
+                assertEquals(SyncRunStatus.SUCCESS, exchange.await().status)
+                val afterAck = requireNotNull(runtime.liveProgress.value)
+                assertEquals(1L, afterAck.completedItems)
+                assertEquals(
+                    null,
+                    fixture.storage.handler.await {
+                        sync_journalQueries.getNextUploadBatch("space", 1).executeAsOneOrNull()
+                    },
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `same batch ref conflict resumes transfer before retry and still confirms once`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                fixture.storage.favorite("/ref-retry-progress")
+                setup.git.competingWrites = 1
+                val observedAtRef = java.util.Collections.synchronizedList(
+                    mutableListOf<mihon.data.sync.runtime.SyncProgressFact>(),
+                )
+                val delegate = setup.git.server.dispatcher
+                setup.git.server.dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse {
+                        if (request.method == "PATCH" && request.url.encodedPath.contains("/git/refs/heads/")) {
+                            runtimeFact(setup.runtime)?.let(observedAtRef::add)
+                        }
+                        return delegate.dispatch(request)
+                    }
+                }
+                assertEquals(SyncRunStatus.SUCCESS, setup.runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                assertTrue(setup.git.conflicts.get() > 0)
+                assertTrue(observedAtRef.size >= 2, observedAtRef.toString())
+                assertTrue(observedAtRef.all { it.stage == mihon.data.sync.runtime.SyncProgressStage.CONFIRMING })
+                assertTrue(observedAtRef[1].networkBytes > observedAtRef[0].networkBytes)
+                assertEquals(1L, setup.runtime.liveProgress.value?.completedItems)
+            }
+        }
+    }
+
+    private fun runtimeFact(runtime: SyncRuntime) = runtime.liveProgress.value
+
     @Test
     fun `new exchange transport reads changed head through direct subtree objects`() = runBlocking {
         Fixture().use { fixture ->
@@ -324,7 +418,7 @@ class SyncRuntimeWiringTest {
                 )
 
                 f.storage.driver.execute(null, "DROP TRIGGER reject_snapshot_manifest", 0)
-                assertEquals(SyncRunStatus.SUCCESS, setup.runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                assertEquals(SyncRunStatus.PARTIAL, setup.runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
                 assertNotNull(
                     f.storage.handler.await {
                         sync_remote_guardQueries.getSnapshotManifest("space", 1).executeAsOneOrNull()
@@ -581,6 +675,10 @@ class SyncRuntimeWiringTest {
                 val result = runtime.coordinator.synchronize(SyncTrigger.MANUAL)
                 assertEquals(SyncRunStatus.SUCCESS, result.status)
                 assertEquals(1, result.uploaded)
+                val live = requireNotNull(runtime.liveProgress.value)
+                assertEquals(mihon.data.sync.runtime.SyncProgressStage.CONFIRMING, live.stage)
+                assertEquals(mihon.data.sync.runtime.SyncProgressDirection.UPLOAD, live.direction)
+                assertEquals(1L, live.completedItems)
                 val completedRun = requireNotNull(runtime.runStore.latest("space", 1))
                 val completedLogs = runtime.runStore.logs(completedRun.runId)
                 assertTrue(
@@ -597,6 +695,14 @@ class SyncRuntimeWiringTest {
                 assertFalse(f.preferences.getAll().toString().contains("access-secret"))
                 val reopened = setup.runtime()
                 assertEquals("access-secret", reopened.accessToken())
+                val reopenedPanel = reopened.panel as mihon.data.sync.runtime.SyncPanelController
+                reopenedPanel.dispatch(SyncPanelAction.Open)
+                reopenedPanel.awaitIdle()
+                assertEquals(mihon.data.sync.runtime.SyncProgressHold.ACTIVE, reopenedPanel.state.value.progress?.hold)
+                assertEquals(
+                    completedRun.uploaded + completedRun.downloaded,
+                    reopenedPanel.state.value.progress?.completedItems,
+                )
                 assertEquals(0, reopened.coordinator.synchronize(SyncTrigger.STARTUP).uploaded)
                 f.storage.favorite("/runtime-next")
                 assertEquals(1, reopened.coordinator.synchronize(SyncTrigger.MANUAL).uploaded)
@@ -606,6 +712,32 @@ class SyncRuntimeWiringTest {
                 assertEquals(SyncRunStatus.SKIPPED, reopened.coordinator.synchronize(SyncTrigger.MANUAL).status)
                 assertEquals(before, f.networkCalls)
                 assertNull(runtime.credentials.read())
+            }
+        }
+    }
+
+    @Test
+    fun `reopened recovery panel preserves durable confirmations without trusting downloaded receipts`() = runBlocking {
+        Fixture().use { fixture ->
+            SyncOnboardingFixture(fixture.storage, fixture.preferences, fixture.client).use { setup ->
+                setup.existing("")
+                setup.authorize()
+                setup.begin()
+                setup.now = 2_000L
+                fixture.storage.favorite("/durable-confirmed")
+                val exchange = setup.runtime.coordinator.synchronize(SyncTrigger.MANUAL)
+                assertEquals(SyncRunStatus.SUCCESS, exchange.status)
+                assertEquals(1, exchange.uploaded, exchange.toString())
+                val run = requireNotNull(setup.runtime.runStore.latest("space", 1))
+                assertEquals(1L, run.confirmedItems, run.toString())
+                setup.runtime.runStore.finish(run.runId, SyncRunState.WAITING_SYSTEM, "process_restart")
+                val reopened = setup.runtime()
+                val panel = reopened.panel as mihon.data.sync.runtime.SyncPanelController
+                panel.dispatch(SyncPanelAction.Open)
+                panel.awaitIdle()
+                assertEquals(SyncRunState.WAITING_SYSTEM, panel.state.value.run?.state)
+                assertEquals(1L, panel.state.value.progress?.confirmedThisRun)
+                assertEquals(0L, panel.state.value.progress?.completedItems)
             }
         }
     }
@@ -755,6 +887,8 @@ class SyncRuntimeWiringTest {
 
                 setup.panel.act(SyncPanelAction.Close)
                 assertEquals(SyncRunStatus.SUCCESS, runtime.coordinator.synchronize(SyncTrigger.MANUAL).status)
+                assertEquals(0L, runtime.liveProgress.value?.totalItems)
+                assertEquals(0L, runtime.liveProgress.value?.completedItems)
                 setup.panel.act(SyncPanelAction.Open)
 
                 assertEquals(SyncRunState.SUCCEEDED, setup.panel.state.value.run?.state)

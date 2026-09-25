@@ -1,7 +1,11 @@
 package mihon.data.sync.runtime
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import mihon.data.sync.http.SyncHttpBodyDirection
+import mihon.data.sync.http.SyncHttpBodyObserver
+import mihon.data.sync.journal.SyncImportProgress
 import mihon.domain.sync.runtime.SyncTrigger
 import tachiyomi.data.DatabaseHandler
 import java.util.UUID
@@ -15,6 +19,7 @@ enum class SyncRunState {
     PAUSED_USER,
     BLOCKED,
     SUCCEEDED,
+    PARTIAL,
     FAILED,
     CANCELLED,
 }
@@ -47,6 +52,7 @@ data class SyncRunSnapshot(
     val updatedAt: Long,
     val uploadedBaseline: Long = 0,
     val downloadedBaseline: Long = 0,
+    val confirmedItems: Long = 0,
 )
 
 data class SyncRunLog(
@@ -84,6 +90,164 @@ interface SyncProgressReporter {
     }
 
     suspend fun totals(uploaded: Long, downloaded: Long)
+
+    suspend fun confirmed(direction: SyncProgressDirection, batchId: String, itemCount: Long) = Unit
+
+    /** Durable intent precedes receipt; the inbox transaction decides whether it can confirm. */
+    suspend fun expectDownload(batchId: String, itemCount: Long) = Unit
+
+    suspend fun confirmReceived(): List<Pair<String, Long>> = emptyList()
+
+    suspend fun hasUnconfirmedDownloads(): Boolean = false
+}
+
+/** One claimed run owns this volatile display stream; durable run state remains in SyncRunStore. */
+class SyncLiveProgressSession(
+    private val runId: String,
+    private val mutable: MutableStateFlow<SyncProgressFact?>,
+    private val nanos: () -> Long = System::nanoTime,
+    private val millis: () -> Long = System::currentTimeMillis,
+    private val canPublish: () -> Boolean = { true },
+    private var confirmedBaseline: Long? = 0,
+) : SyncHttpBodyObserver {
+    private val timeline = SyncProgressTimeline()
+    private var stage = SyncProgressStage.PREPARING
+    private var direction = SyncProgressDirection.UPLOAD
+    private var scope = "$runId:initial"
+    private var totalItems: Long? = null
+    private var lastEmissionMillis = Long.MIN_VALUE
+
+    fun scope(part: String): String = "$runId:$part"
+
+    init {
+        timeline.begin("$runId:initial", stage, direction, null, atNanos = nanos())
+    }
+
+    @Synchronized
+    fun activate() = emit(force = true)
+
+    @Synchronized
+    fun begin(
+        scope: String,
+        stage: SyncProgressStage,
+        direction: SyncProgressDirection,
+        totalItems: Long? = null,
+        additionalWork: Boolean = false,
+    ) {
+        // Display observations must never change the result of the safe exchange.
+        try {
+            require(scope.startsWith("$runId:"))
+            val changedScope = this.scope != scope
+            val changed = changedScope || this.stage != stage || this.direction != direction ||
+                (totalItems != null && this.totalItems != totalItems)
+            timeline.begin(scope, stage, direction, totalItems, atNanos = nanos(), additionalWork = additionalWork)
+            this.scope = scope
+            this.stage = stage
+            this.direction = direction
+            if (changedScope) this.totalItems = null
+            if (totalItems != null) this.totalItems = totalItems
+            emit(force = changed)
+        } catch (_: RuntimeException) {
+            // The durable reporter and transactions remain authoritative.
+        }
+    }
+
+    @Synchronized
+    fun batch(stage: SyncProgressStage, batchKey: String, itemCount: Long) {
+        try {
+            when (stage) {
+                SyncProgressStage.PREPARING -> timeline.prepareBatch(batchKey, itemCount, nanos())
+                SyncProgressStage.TRANSFERRING -> timeline.transferBatch(batchKey, itemCount, nanos())
+                SyncProgressStage.CONFIRMING -> timeline.confirmBatch(batchKey, itemCount, nanos())
+            }
+            emit(force = false)
+        } catch (_: RuntimeException) {
+            // Progress observation cannot fail the batch.
+        }
+    }
+
+    @Synchronized
+    fun importPage(importId: String, progress: SyncImportProgress) {
+        val lastId = progress.lastCommittedEntryId ?: return
+        try {
+            timeline.importPage(importId, "$importId:$lastId", progress.total, progress.committedCount, nanos())
+            emit(force = false)
+        } catch (_: RuntimeException) {
+            // Import transactions must remain independent of display observations.
+        }
+    }
+
+    @Synchronized
+    fun hold(value: SyncProgressHold) {
+        try {
+            timeline.setHold(value, nanos())
+            emit(force = true)
+        } catch (_: RuntimeException) {
+            // A bad observation must not prevent a safe pause or retry.
+        }
+    }
+
+    @Synchronized
+    fun snapshot(): SyncProgressFact = fact().also { if (canPublish()) mutable.value = it }
+
+    @Synchronized
+    override fun onBodyBytes(direction: SyncHttpBodyDirection, requestId: Long, bytes: Long, total: Long?) {
+        onBodyWorkBytes(direction, requestId, bytes, total, null)
+    }
+
+    @Synchronized
+    override fun onBodyWorkBytes(
+        direction: SyncHttpBodyDirection,
+        requestId: Long,
+        bytes: Long,
+        total: Long?,
+        workKey: String?,
+    ) {
+        if (!canPublish()) return
+        if (stage != SyncProgressStage.TRANSFERRING) return
+        try {
+            val attemptKey = "${direction.name}:$requestId"
+            if (workKey == null) {
+                timeline.networkProgress(attemptKey, bytes, nanos(), total)
+            } else {
+                timeline.bodyProgress("${direction.name}:$workKey", attemptKey, bytes, nanos(), total)
+            }
+            emit(force = false)
+        } catch (_: RuntimeException) {
+            // HTTP body observation cannot fail the request.
+        }
+    }
+
+    @Synchronized
+    override fun onBodyComplete(direction: SyncHttpBodyDirection, requestId: Long, successful: Boolean) {
+        if (!canPublish()) return
+        try {
+            timeline.finishBody("${direction.name}:$requestId", nanos())
+            emit(force = false)
+        } catch (_: RuntimeException) {
+            // HTTP completion remains independent of display observations.
+        }
+    }
+
+    private fun emit(force: Boolean) {
+        if (!canPublish()) return
+        val now = millis()
+        if (force || lastEmissionMillis == Long.MIN_VALUE || now - lastEmissionMillis >= 250L) {
+            lastEmissionMillis = now
+            mutable.value = fact()
+        }
+    }
+
+    private fun fact(): SyncProgressFact {
+        val snapshot = timeline.snapshot(nanos())
+        return snapshot.copy(confirmedThisRun = confirmedBaseline?.plus(snapshot.confirmedThisRun ?: 0L))
+    }
+
+    @Synchronized
+    fun completeConfirmed(total: Long) {
+        confirmedBaseline = (total - (timeline.snapshot(nanos()).confirmedThisRun ?: 0L)).coerceAtLeast(0L)
+        emit(force = true)
+    }
 }
 
 private class StoreProgressReporter(
@@ -121,6 +285,20 @@ private class StoreProgressReporter(
 
     override suspend fun totals(uploaded: Long, downloaded: Long) =
         store.totals(runId, uploaded, downloaded, ownerSession)
+
+    override suspend fun confirmed(direction: SyncProgressDirection, batchId: String, itemCount: Long) {
+        store.confirmed(runId, ownerSession, direction, batchId, itemCount)
+    }
+
+    override suspend fun expectDownload(batchId: String, itemCount: Long) {
+        store.expectDownload(runId, ownerSession, batchId, itemCount)
+    }
+
+    override suspend fun confirmReceived(): List<Pair<String, Long>> =
+        store.confirmReceived(runId, ownerSession)
+
+    override suspend fun hasUnconfirmedDownloads(): Boolean =
+        store.hasUnconfirmedDownloads(runId, ownerSession)
 }
 
 class SyncRunStore(
@@ -257,6 +435,74 @@ class SyncRunStore(
                 sync_runtimeQueries.updateRuntimeTotalsOwned(uploaded, downloaded, clock(), runId, ownerSession)
             }
         }
+    }
+
+    suspend fun confirmed(
+        runId: String,
+        ownerSession: String,
+        direction: SyncProgressDirection,
+        batchId: String,
+        itemCount: Long,
+    ): Long = handler.await(inTransaction = true) {
+        require(itemCount >= 0 && batchId.isNotBlank())
+        val run = sync_runtimeQueries.getRuntimeRun(runId).executeAsOne()
+        require(run.owner_session == ownerSession) { "sync confirmation owner changed" }
+        val previous = sync_runtimeQueries.getRuntimeConfirmation(runId, direction.name, batchId).executeAsOneOrNull()
+        if (previous == null) {
+            sync_runtimeQueries.insertRuntimeConfirmation(runId, direction.name, batchId, itemCount, "CONFIRMED")
+            sync_runtimeQueries.addRuntimeConfirmedItemsOwned(itemCount, clock(), runId, ownerSession)
+        } else {
+            require(previous.item_count == itemCount) { "confirmed batch count changed" }
+            if (previous.status == "PENDING") {
+                sync_runtimeQueries.markRuntimeConfirmation(runId, direction.name, batchId)
+                sync_runtimeQueries.addRuntimeConfirmedItemsOwned(itemCount, clock(), runId, ownerSession)
+            }
+        }
+        sync_runtimeQueries.getRuntimeRun(runId).executeAsOne().confirmed_items
+    }
+
+    suspend fun expectDownload(runId: String, ownerSession: String, batchId: String, itemCount: Long) {
+        handler.await(inTransaction = true) {
+            require(itemCount > 0 && batchId.isNotBlank())
+            require(sync_runtimeQueries.getRuntimeRun(runId).executeAsOne().owner_session == ownerSession)
+            val previous = sync_runtimeQueries.getRuntimeConfirmation(
+                runId,
+                SyncProgressDirection.DOWNLOAD.name,
+                batchId,
+            ).executeAsOneOrNull()
+            if (previous == null) {
+                sync_runtimeQueries.insertRuntimeConfirmation(
+                    runId,
+                    SyncProgressDirection.DOWNLOAD.name,
+                    batchId,
+                    itemCount,
+                    "PENDING",
+                )
+            } else {
+                require(previous.item_count == itemCount)
+            }
+        }
+    }
+
+    suspend fun confirmReceived(runId: String, ownerSession: String): List<Pair<String, Long>> =
+        handler.await(inTransaction = true) {
+            val run = sync_runtimeQueries.getRuntimeRun(runId).executeAsOne()
+            require(run.owner_session == ownerSession)
+            val pending = sync_runtimeQueries.getPendingRuntimeReceipts(runId).executeAsList()
+            val received = pending.filter { receipt ->
+                sync_inboxQueries.canConfirmReceivedBatch(run.space_id, run.generation, receipt.batch_id)
+                    .executeAsOneOrNull() != null
+            }
+            received.forEach { receipt ->
+                sync_runtimeQueries.markRuntimeConfirmation(runId, receipt.direction, receipt.batch_id)
+                sync_runtimeQueries.addRuntimeConfirmedItemsOwned(receipt.item_count, clock(), runId, ownerSession)
+            }
+            received.map { it.batch_id to it.item_count }
+        }
+
+    suspend fun hasUnconfirmedDownloads(runId: String, ownerSession: String): Boolean = handler.await {
+        require(sync_runtimeQueries.getRuntimeRun(runId).executeAsOne().owner_session == ownerSession)
+        sync_runtimeQueries.hasPendingRuntimeReceipt(runId).executeAsOneOrNull() != null
     }
 
     suspend fun claim(runId: String, ownerSession: String, attemptId: Long): Boolean = handler.await(
@@ -432,6 +678,7 @@ private fun tachiyomi.data.Sync_runtime_runs.toSnapshot() = SyncRunSnapshot(
     failed = failed,
     uploaded = uploaded,
     downloaded = downloaded,
+    confirmedItems = confirmed_items,
     uploadedBaseline = uploaded_baseline,
     downloadedBaseline = downloaded_baseline,
     attemptId = attempt_id,

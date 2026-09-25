@@ -92,6 +92,10 @@ import mihon.data.sync.runtime.SyncPanelPage
 import mihon.data.sync.runtime.SyncPanelQuestion
 import mihon.data.sync.runtime.SyncPanelState
 import mihon.data.sync.runtime.SyncPasswordProblem
+import mihon.data.sync.runtime.SyncProgressDirection
+import mihon.data.sync.runtime.SyncProgressFact
+import mihon.data.sync.runtime.SyncProgressHold
+import mihon.data.sync.runtime.SyncProgressStage
 import mihon.data.sync.runtime.SyncRunPhase
 import mihon.data.sync.runtime.SyncRunSnapshot
 import mihon.data.sync.runtime.SyncRunState
@@ -310,7 +314,19 @@ private fun MainPage(
                                 Modifier.testTag("sync-notice-counts"),
                             )
                         }
-                        if (result.status == SyncRunStatus.FAILED || result.status == SyncRunStatus.PARTIAL) {
+                        if (result.status == SyncRunStatus.PARTIAL && result.pending > 0 && result.problem == null) {
+                            Text(
+                                syncString(MR.strings.sync_pending_decisions_count, result.pending),
+                                Modifier.testTag("sync-notice-pending"),
+                            )
+                        } else if (result.status == SyncRunStatus.PARTIAL && result.problem == null &&
+                            state.run?.stopReason == "projection_pending"
+                        ) {
+                            Text(
+                                syncString(MR.strings.sync_projection_pending),
+                                Modifier.testTag("sync-notice-projection"),
+                            )
+                        } else if (result.status == SyncRunStatus.FAILED || result.status == SyncRunStatus.PARTIAL) {
                             Text(
                                 problemText(result.problem ?: SyncRunProblem.UNKNOWN),
                                 Modifier.testTag("sync-notice-error"),
@@ -953,8 +969,13 @@ private fun SyncProgressCard(
             Modifier.fillMaxWidth().padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(syncString(runPhaseLabel(run.phase)), style = MaterialTheme.typography.titleMedium)
-            if (run.total > 0) {
+            val progress = state.progress?.takeIf { it.scope == run.runId || it.scope.startsWith("${run.runId}:") }
+            if (progress != null) {
+                SyncStageProgress(run, progress, state.nowMillis)
+            } else {
+                Text(syncString(runPhaseLabel(run.phase)), style = MaterialTheme.typography.titleMedium)
+            }
+            if (progress == null && run.total > 0) {
                 Text(
                     syncString(MR.strings.sync_progress, run.processed, run.total),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -976,7 +997,7 @@ private fun SyncProgressCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
-            } else {
+            } else if (progress == null) {
                 LinearProgressIndicator(Modifier.fillMaxWidth().testTag("sync-progress"))
             }
             when (run.state) {
@@ -1011,11 +1032,22 @@ private fun SyncProgressCard(
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
+                SyncRunState.PARTIAL -> Text(
+                    if (run.stopReason == "projection_pending") {
+                        syncString(MR.strings.sync_projection_pending)
+                    } else if (state.pendingTotal > 0) {
+                        syncString(MR.strings.sync_pending_decisions_count, state.pendingTotal)
+                    } else {
+                        syncString(MR.strings.sync_pending_decisions)
+                    },
+                )
                 SyncRunState.SUCCEEDED,
                 SyncRunState.CANCELLED,
                 -> Unit
-                else -> Action("sync-pause-run", MR.strings.sync_pause_run) {
-                    dispatch(SyncPanelAction.PauseSync)
+                else -> if (progress?.hold != SyncProgressHold.PAUSING) {
+                    Action("sync-pause-run", MR.strings.sync_pause_run) {
+                        dispatch(SyncPanelAction.PauseSync)
+                    }
                 }
             }
             if (state.logs.isNotEmpty()) {
@@ -1040,6 +1072,180 @@ private fun SyncProgressCard(
             }
         }
     }
+}
+
+@Composable
+private fun SyncStageProgress(run: SyncRunSnapshot, fact: SyncProgressFact, nowMillis: Long) {
+    val stageResources = listOf(
+        MR.strings.sync_stage_prepare,
+        MR.strings.sync_stage_transfer,
+        MR.strings.sync_stage_confirm,
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        stageResources.forEachIndexed { index, label ->
+            val status = when {
+                run.state == SyncRunState.SUCCEEDED || index < fact.stage.ordinal -> MR.strings.sync_stage_done
+                index > fact.stage.ordinal -> MR.strings.sync_stage_waiting
+                run.state in setOf(SyncRunState.FAILED, SyncRunState.BLOCKED, SyncRunState.CANCELLED) ->
+                    MR.strings.sync_stage_failed
+                run.state in setOf(
+                    SyncRunState.PAUSED_USER,
+                    SyncRunState.WAITING_NETWORK,
+                    SyncRunState.WAITING_RETRY,
+                    SyncRunState.WAITING_SYSTEM,
+                    SyncRunState.PARTIAL,
+                ) -> MR.strings.sync_stage_waiting
+                else -> MR.strings.sync_stage_active
+            }
+            Text(
+                "${syncString(label)} · ${syncString(status)}",
+                style = if (index ==
+                    fact.stage.ordinal
+                ) {
+                    MaterialTheme.typography.titleSmall
+                } else {
+                    MaterialTheme.typography.bodySmall
+                },
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+    if (fact.additionalWork) Text(syncString(MR.strings.sync_additional_work))
+    val action = when (fact.stage) {
+        SyncProgressStage.PREPARING -> if (run.phase == SyncRunPhase.UPLOADING) {
+            MR.strings.sync_preparing_upload
+        } else {
+            runPhaseLabel(run.phase)
+        }
+        SyncProgressStage.TRANSFERRING -> if (fact.direction == SyncProgressDirection.UPLOAD) {
+            MR.strings.sync_phase_uploading
+        } else {
+            MR.strings.sync_phase_downloading
+        }
+        SyncProgressStage.CONFIRMING -> MR.strings.sync_phase_confirming
+    }
+    Text(syncString(action), style = MaterialTheme.typography.titleMedium)
+    if (fact.stage == SyncProgressStage.PREPARING) {
+        val imported = fact.importCompletedItems
+        val importTotal = fact.importTotalItems
+        if (imported != null && importTotal != null) {
+            Text(syncString(MR.strings.sync_import_progress, imported, importTotal))
+        }
+    }
+    if (fact.hold == SyncProgressHold.RECOVERING) {
+        Text(syncString(MR.strings.sync_recovering_progress))
+    } else if (fact.hold == SyncProgressHold.PAUSING) {
+        Text(syncString(MR.strings.sync_pausing_save))
+    }
+    if (fact.totalItems == 0L && fact.completedItems == 0L && run.state == SyncRunState.SUCCEEDED) {
+        Text(syncString(MR.strings.sync_no_pending_data))
+    } else {
+        val countResource = when (fact.stage) {
+            SyncProgressStage.PREPARING -> MR.strings.sync_items_prepared
+            SyncProgressStage.TRANSFERRING -> MR.strings.sync_items_transferred
+            SyncProgressStage.CONFIRMING -> MR.strings.sync_items_confirmed
+        }
+        val unknownResource = when (fact.stage) {
+            SyncProgressStage.PREPARING -> MR.strings.sync_items_prepared_unknown
+            SyncProgressStage.TRANSFERRING -> MR.strings.sync_items_transferred_unknown
+            SyncProgressStage.CONFIRMING -> MR.strings.sync_items_confirmed_unknown
+        }
+        val totalItems = fact.totalItems
+        if (totalItems != null) {
+            Text(syncString(countResource, fact.completedItems, totalItems), Modifier.testTag("sync-stage-count"))
+        } else {
+            if (run.state == SyncRunState.RUNNING) Text(syncString(MR.strings.sync_counting_data))
+            Text(syncString(unknownResource, fact.completedItems), Modifier.testTag("sync-stage-count"))
+        }
+    }
+    val fraction = when (fact.stage) {
+        SyncProgressStage.TRANSFERRING -> fact.totalBytes?.takeIf { it > 0L }
+            ?.let { (fact.effectiveBytes.toFloat() / it).coerceIn(0f, 1f) }
+        SyncProgressStage.PREPARING -> fact.totalItems?.takeIf { it > fact.completedItems }
+            ?.let { (fact.completedItems.toFloat() / it).coerceIn(0f, 1f) }
+        SyncProgressStage.CONFIRMING -> fact.totalItems?.takeIf { it > 0L && fact.completedItems > 0L }
+            ?.let { (fact.completedItems.toFloat() / it).coerceIn(0f, 1f) }
+    }
+    val progressDescription = if (fact.stage == SyncProgressStage.TRANSFERRING && fraction != null) {
+        syncString(MR.strings.sync_transfer_percent, (fraction * 100).toInt())
+    } else {
+        syncString(stageResources[fact.stage.ordinal])
+    }
+    val progressModifier = Modifier.fillMaxWidth().testTag("sync-progress").semantics {
+        stateDescription = progressDescription
+    }
+    if (fraction == null) {
+        LinearProgressIndicator(progressModifier)
+    } else {
+        LinearProgressIndicator(progress = { fraction }, modifier = progressModifier)
+    }
+    if (fact.stage == SyncProgressStage.TRANSFERRING && fraction != null) {
+        Text(progressDescription)
+    }
+    if (fact.stage == SyncProgressStage.TRANSFERRING) {
+        val bodyFraction = fact.activeBodyTotal?.takeIf { it > 0L }?.let { total ->
+            fact.activeBodyBytes?.let { (it.toFloat() / total).coerceIn(0f, 1f) }
+        }
+        if (bodyFraction != null && fact.totalBytes == null) {
+            val bodyDescription = syncString(MR.strings.sync_active_body_percent, (bodyFraction * 100).toInt())
+            Text(bodyDescription)
+            LinearProgressIndicator(
+                progress = { bodyFraction },
+                modifier = Modifier.fillMaxWidth().testTag("sync-active-body-progress").semantics {
+                    stateDescription = bodyDescription
+                },
+            )
+        }
+    }
+    fact.confirmedThisRun?.let { confirmed ->
+        Text(syncString(MR.strings.sync_items_confirmed_this_run, confirmed))
+    }
+    val elapsedEnd = if (run.state in setOf(
+            SyncRunState.SUCCEEDED,
+            SyncRunState.PARTIAL,
+            SyncRunState.FAILED,
+            SyncRunState.BLOCKED,
+            SyncRunState.CANCELLED,
+        )
+    ) {
+        run.updatedAt
+    } else {
+        nowMillis
+    }
+    val elapsedSeconds = ((elapsedEnd - run.createdAt).coerceAtLeast(0L) / 1_000L)
+    val elapsed = "${(elapsedSeconds / 60).toString().padStart(2, '0')}:" +
+        (elapsedSeconds % 60).toString().padStart(2, '0')
+    Text(syncString(MR.strings.sync_elapsed, elapsed))
+    if (run.state == SyncRunState.RUNNING && fact.hold == SyncProgressHold.ACTIVE) {
+        val wholeEtaSeconds = fact.wholeEtaSeconds
+        val stageEtaSeconds = fact.stageEtaSeconds
+        val bodyEtaSeconds = fact.activeBodyEtaSeconds
+        when {
+            wholeEtaSeconds != null -> Text(
+                syncString(MR.strings.sync_eta_whole, syncEtaDuration(wholeEtaSeconds)),
+            )
+            stageEtaSeconds != null -> {
+                Text(syncString(MR.strings.sync_eta_stage, syncEtaDuration(stageEtaSeconds)))
+                Text(syncString(MR.strings.sync_eta_unknown_whole))
+            }
+            bodyEtaSeconds != null -> {
+                Text(syncString(MR.strings.sync_eta_body, syncEtaDuration(bodyEtaSeconds)))
+                Text(syncString(MR.strings.sync_eta_unknown_whole))
+            }
+            fact.stage == SyncProgressStage.CONFIRMING || fact.elapsedSeconds >= 10 ->
+                Text(syncString(MR.strings.sync_eta_unavailable))
+            else -> Text(syncString(MR.strings.sync_eta_unknown))
+        }
+    }
+}
+
+@Composable
+private fun syncEtaDuration(seconds: Long): String = when {
+    seconds <= 0 -> syncString(MR.strings.sync_eta_finishing)
+    seconds == 1L -> syncString(MR.strings.sync_duration_one_second)
+    seconds < 60 -> syncString(MR.strings.sync_duration_seconds, seconds)
+    seconds < 90 -> syncString(MR.strings.sync_duration_one_minute)
+    else -> syncString(MR.strings.sync_duration_minutes, (seconds + 30) / 60)
 }
 
 @Composable

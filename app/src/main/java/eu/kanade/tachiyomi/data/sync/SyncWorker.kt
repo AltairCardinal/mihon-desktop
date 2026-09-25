@@ -46,7 +46,9 @@ class SyncWorker(context: Context, parameters: WorkerParameters) : CoroutineWork
             runtime.coordinator.synchronize(SyncTrigger.PERIODIC)
         }
         return when {
-            result.status == SyncRunStatus.SUCCESS || result.status == SyncRunStatus.SKIPPED -> Result.success()
+            result.status == SyncRunStatus.SUCCESS || result.status == SyncRunStatus.SKIPPED ||
+                (result.status == SyncRunStatus.PARTIAL && result.pending > 0 && result.problem == null) ->
+                Result.success()
             // SyncRuntime persists the four-attempt business budget and schedules the
             // durable recovery wake. WorkManager must not add another retry budget.
             result.problem == SyncRunProblem.NETWORK -> Result.success()

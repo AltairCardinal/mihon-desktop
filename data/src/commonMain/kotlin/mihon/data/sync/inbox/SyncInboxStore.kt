@@ -31,6 +31,11 @@ data class SyncInboxStatus(val receivedBatches: Long, val rejectedBatches: Long,
 class SyncInboxStore(private val handler: DatabaseHandler) {
     internal val remoteGuard = SyncRemoteSnapshotGuard(handler)
 
+    suspend fun canConfirmReceivedBatch(spaceId: String, generation: Long, batchId: String): Boolean =
+        handler.await {
+            sync_inboxQueries.canConfirmReceivedBatch(spaceId, generation, batchId).executeAsOneOrNull() != null
+        }
+
     suspend fun observeSnapshot(snapshot: SyncSnapshot, discovery: SyncDiscoveryStore? = null) =
         observeSnapshot(snapshot, discovery, null)
 

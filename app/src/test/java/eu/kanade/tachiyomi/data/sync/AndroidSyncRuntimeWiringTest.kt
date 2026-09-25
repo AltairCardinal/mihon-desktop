@@ -329,6 +329,22 @@ class AndroidSyncRuntimeWiringTest {
     }
 
     @Test
+    fun `worker treats persisted manual decisions as a completed scheduling attempt`() = runBlocking {
+        runtime { SyncRunResult(SyncRunStatus.PARTIAL, uploaded = 4, pending = 3) }
+        val worker = TestListenableWorkerBuilder<SyncWorker>(context).build()
+
+        assertEquals(ListenableWorker.Result.success(), worker.doWork())
+    }
+
+    @Test
+    fun `worker does not treat unresolved projection as a completed scheduling attempt`() = runBlocking {
+        runtime { SyncRunResult(SyncRunStatus.PARTIAL, downloaded = 1, pending = 0) }
+        val worker = TestListenableWorkerBuilder<SyncWorker>(context).build()
+
+        assertEquals(ListenableWorker.Result.failure(), worker.doWork())
+    }
+
+    @Test
     fun `recovery worker does not execute the same run twice`() = runBlocking {
         var calls = 0
         val runtime = runtime {

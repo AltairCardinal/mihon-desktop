@@ -23,6 +23,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import mihon.data.sync.crypto.SyncAeadEngineFactory
+import mihon.data.sync.http.SyncHttpBodyWork
 import mihon.data.sync.http.SyncHttpClient
 import mihon.data.sync.http.SyncHttpException
 import mihon.data.sync.http.SyncHttpFailureClass
@@ -258,6 +259,7 @@ class GitHubSyncTransport(
     connectionRevision: String = "transport-instance",
     persistentObjectCacheDirectory: Path? = null,
     requestGate: SyncHttpRequestGate? = null,
+    bodyObserver: mihon.data.sync.http.SyncHttpBodyObserver? = null,
     repositoryId: Long? = null,
 ) : SyncTransportPort {
     private var connectionRevision = connectionRevision
@@ -266,6 +268,7 @@ class GitHubSyncTransport(
         productionClient,
         setOf(apiBaseUrl.hostOrNull() ?: "api.github.com"),
         requestGate = requestGate,
+        bodyObserver = bodyObserver,
     )
     private val persistentObjectCache = SyncPersistentGitObjectCache(persistentObjectCacheDirectory)
     private val blobCache = SyncBlobCache()
@@ -286,6 +289,18 @@ class GitHubSyncTransport(
     private val snapshotFenceMutex = Mutex()
     private val snapshotFences = mutableListOf<Pair<SyncSnapshot, SyncRemoteSnapshotFence>>()
     private var snapshotFenceProvider: suspend (String, Long) -> SyncRemoteSnapshotFence? = { _, _ -> null }
+    private var batchObjectsUploaded: (String) -> Unit = {}
+    private var batchTransferResumed: (String) -> Unit = {}
+
+    /** Called after all batch/index/tree/commit bodies are accepted, before ref publication. */
+    fun onBatchObjectsUploaded(observer: (String) -> Unit) {
+        batchObjectsUploaded = observer
+    }
+
+    /** A new publish attempt can transfer different tree/commit bodies after a ref conflict. */
+    fun onBatchTransferResumed(observer: (String) -> Unit) {
+        batchTransferResumed = observer
+    }
     private var snapshotManifestStore: SyncSnapshotManifestStore? = null
     private var snapshotManifestBinding: SyncSnapshotManifestBinding? = null
     private val apiOrigin: String by lazy {
@@ -537,6 +552,7 @@ class GitHubSyncTransport(
                 treeEntry.sha,
                 cache = false,
                 validationScope = "space=${snapshot.spaceId};generation=${snapshot.generation};validator=sync-v1",
+                bodyWorkKey = "download:${entry.batchId}:${treeEntry.sha}",
             ).content,
         )
         require(stored.batchId == entry.batchId) { "sync batch id does not match index" }
@@ -688,6 +704,7 @@ class GitHubSyncTransport(
                     failureClass = SyncPublishFailureClass.CONFLICT,
                 )
             }
+            if (attempt > 1) runCatching { batchTransferResumed(batch.batchId) }
             val commit = try {
                 val payloads = listOf(
                     batch.path to StoredSyncBatch.fromDomain(batch).body(),
@@ -698,7 +715,8 @@ class GitHubSyncTransport(
                     payloads,
                     baseTreeSha = current.tree.sha,
                 ).map { planned ->
-                    val sha = planned.inlineContent?.let { "" } ?: createBlob(repository, planned.bytes).sha
+                    val sha = planned.inlineContent?.let { "" }
+                        ?: createBlob(repository, planned.bytes, "${batch.batchId}:blob:${planned.path}").sha
                     SyncGitTreeEntry(
                         planned.path,
                         "100644",
@@ -708,8 +726,13 @@ class GitHubSyncTransport(
                         planned.inlineContent,
                     )
                 }.also { blobs = it }
-                val tree = createTree(repository, current.tree.sha, entries)
-                createCommit(repository, tree.sha, current.head)
+                val tree = createTree(
+                    repository,
+                    current.tree.sha,
+                    entries,
+                    "${batch.batchId}:tree:${current.tree.sha}",
+                )
+                createCommit(repository, tree.sha, current.head, "${batch.batchId}:commit:${tree.sha}:${current.head}")
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -723,8 +746,9 @@ class GitHubSyncTransport(
                 )
             }
             var refError: Exception? = null
+            runCatching { batchObjectsUploaded(batch.batchId) }
             try {
-                updateRef(repository, commit.sha)
+                updateRef(repository, commit.sha, "${batch.batchId}:ref:${commit.sha}")
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -1289,6 +1313,7 @@ class GitHubSyncTransport(
         sha: String,
         cache: Boolean = true,
         validationScope: String = "unbound",
+        bodyWorkKey: String? = null,
     ): SyncGitBlob {
         val cacheKey = SyncBlobCacheKey(
             apiOrigin = apiBaseUrl,
@@ -1311,6 +1336,7 @@ class GitHubSyncTransport(
                 "GET",
                 "/git/blobs/$sha",
                 headers = mapOf("Accept" to "application/vnd.github.raw+json"),
+                bodyWorkKey = bodyWorkKey ?: "blob:$sha",
             ).requireSuccess()
             val jsonEnvelope = runCatching { response.json() }.getOrNull()
                 ?.takeIf { it["sha"] != null && it["encoding"] != null && it["content"] != null }
@@ -1363,12 +1389,16 @@ class GitHubSyncTransport(
         )
     }
 
-    private suspend fun createBlob(repository: SyncRepository, content: ByteArray): SyncGitBlob {
+    private suspend fun createBlob(
+        repository: SyncRepository,
+        content: ByteArray,
+        bodyWorkKey: String? = null,
+    ): SyncGitBlob {
         val payload = buildJsonObject {
             put("content", JsonPrimitive(content.toByteString().base64()))
             put("encoding", JsonPrimitive("base64"))
         }
-        val json = call(repository, "POST", "/git/blobs", payload).requireSuccess().json()
+        val json = call(repository, "POST", "/git/blobs", payload, bodyWorkKey = bodyWorkKey).requireSuccess().json()
         val returnedSha = json.string("sha")
         require(gitBlobOid(content, returnedSha.length) == returnedSha) {
             "sync blob response does not match uploaded bytes"
@@ -1380,6 +1410,7 @@ class GitHubSyncTransport(
         repository: SyncRepository,
         baseTree: String?,
         entries: List<SyncGitTreeEntry>,
+        bodyWorkKey: String? = null,
     ): SyncGitTree {
         val payload = buildJsonObject {
             if (baseTree != null) put("base_tree", JsonPrimitive(baseTree))
@@ -1403,26 +1434,32 @@ class GitHubSyncTransport(
                 },
             )
         }
-        val json = call(repository, "POST", "/git/trees", payload).requireSuccess().json()
+        val json = call(repository, "POST", "/git/trees", payload, bodyWorkKey = bodyWorkKey).requireSuccess().json()
         return SyncGitTree(json.string("sha"), emptyList(), false)
     }
 
-    private suspend fun createCommit(repository: SyncRepository, tree: String, parent: String?): SyncGitCommit {
+    private suspend fun createCommit(
+        repository: SyncRepository,
+        tree: String,
+        parent: String?,
+        bodyWorkKey: String? = null,
+    ): SyncGitCommit {
         val payload = buildJsonObject {
             put("message", JsonPrimitive("mihon sync batch"))
             put("tree", JsonPrimitive(tree))
             if (parent != null) put("parents", buildJsonArray { add(JsonPrimitive(parent)) })
         }
-        val json = call(repository, "POST", "/git/commits", payload).requireSuccess().json()
+        val json = call(repository, "POST", "/git/commits", payload, bodyWorkKey = bodyWorkKey).requireSuccess().json()
         return SyncGitCommit(json.string("sha"), tree, listOfNotNull(parent))
     }
 
-    private suspend fun updateRef(repository: SyncRepository, commit: String) {
+    private suspend fun updateRef(repository: SyncRepository, commit: String, bodyWorkKey: String? = null) {
         val payload = buildJsonObject {
             put("sha", JsonPrimitive(commit))
             put("force", JsonPrimitive(false))
         }
-        call(repository, "PATCH", "/git/refs/heads/${repository.branch}", payload).requireSuccess()
+        call(repository, "PATCH", "/git/refs/heads/${repository.branch}", payload, bodyWorkKey = bodyWorkKey)
+            .requireSuccess()
     }
 
     private suspend fun createRef(repository: SyncRepository, commit: String) {
@@ -1467,22 +1504,29 @@ class GitHubSyncTransport(
         path: String,
         body: JsonObject? = null,
         headers: Map<String, String> = emptyMap(),
+        bodyWorkKey: String? = null,
     ): SyncHttpResponse {
         val token = tokenProvider().takeIf { it.isNotBlank() } ?: throw IllegalStateException("authorization required")
         val requestBody = body?.let {
             githubJson.encodeToString(JsonObject.serializer(), it).toRequestBody(jsonMediaType)
         }
+        val request = http.request(
+            "$apiBaseUrl/repos/${repository.fullName}$path",
+            method,
+            headers = mapOf(
+                "Accept" to "application/vnd.github+json",
+                "Authorization" to "Bearer $token",
+                "X-GitHub-Api-Version" to "2026-03-10",
+            ) + headers,
+            body = requestBody,
+        )
         return http.execute(
-            http.request(
-                "$apiBaseUrl/repos/${repository.fullName}$path",
-                method,
-                headers = mapOf(
-                    "Accept" to "application/vnd.github+json",
-                    "Authorization" to "Bearer $token",
-                    "X-GitHub-Api-Version" to "2026-03-10",
-                ) + headers,
-                body = requestBody,
-            ),
+            if (bodyWorkKey == null) {
+                request
+            } else {
+                request.newBuilder()
+                    .tag(SyncHttpBodyWork::class.java, SyncHttpBodyWork(bodyWorkKey)).build()
+            },
         )
     }
 

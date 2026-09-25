@@ -12,6 +12,7 @@ CREATE TABLE sync_runtime_runs (
     failed INTEGER NOT NULL DEFAULT 0,
     uploaded INTEGER NOT NULL DEFAULT 0,
     downloaded INTEGER NOT NULL DEFAULT 0,
+    confirmed_items INTEGER NOT NULL DEFAULT 0,
     uploaded_baseline INTEGER NOT NULL DEFAULT 0,
     downloaded_baseline INTEGER NOT NULL DEFAULT 0,
     attempt_id INTEGER NOT NULL DEFAULT 0,
@@ -38,6 +39,15 @@ CREATE TABLE sync_runtime_logs (
 
 CREATE INDEX sync_runtime_log_order ON sync_runtime_logs(run_id, created_at DESC);
 
+CREATE TABLE sync_runtime_confirmations (
+    run_id TEXT NOT NULL REFERENCES sync_runtime_runs(run_id) ON DELETE CASCADE,
+    direction TEXT NOT NULL,
+    batch_id TEXT NOT NULL,
+    item_count INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    PRIMARY KEY (run_id, direction, batch_id)
+);
+
 insertRuntimeRun:
 INSERT INTO sync_runtime_runs(
     run_id, space_id, generation, trigger, state, phase, uploaded_baseline, downloaded_baseline,
@@ -47,16 +57,45 @@ INSERT INTO sync_runtime_runs(
 getRuntimeRun:
 SELECT * FROM sync_runtime_runs WHERE run_id = ?;
 
+getRuntimeConfirmation:
+SELECT * FROM sync_runtime_confirmations
+WHERE run_id = ? AND direction = ? AND batch_id = ?;
+
+insertRuntimeConfirmation:
+INSERT INTO sync_runtime_confirmations(run_id, direction, batch_id, item_count, status)
+VALUES (?, ?, ?, ?, ?);
+
+getPendingRuntimeReceipts:
+SELECT * FROM sync_runtime_confirmations WHERE run_id = ? AND direction = 'DOWNLOAD' AND status = 'PENDING';
+
+hasPendingRuntimeReceipt:
+SELECT 1 FROM sync_runtime_confirmations
+WHERE run_id = ? AND direction = 'DOWNLOAD' AND status = 'PENDING' LIMIT 1;
+
+markRuntimeConfirmation:
+UPDATE sync_runtime_confirmations SET status = 'CONFIRMED'
+WHERE run_id = ? AND direction = ? AND batch_id = ? AND status = 'PENDING';
+
+addRuntimeConfirmedItemsOwned:
+UPDATE sync_runtime_runs SET confirmed_items = confirmed_items + ?, updated_at = ?
+WHERE run_id = ? AND owner_session = ?;
+
 getActiveRuntimeRun:
 SELECT * FROM sync_runtime_runs
 WHERE space_id = ? AND generation = ?
-  AND state IN ('QUEUED', 'RUNNING', 'WAITING_NETWORK', 'WAITING_RETRY', 'WAITING_SYSTEM', 'BLOCKED', 'PAUSED_USER')
-ORDER BY updated_at DESC LIMIT 1;
+  AND (
+    state IN ('QUEUED', 'RUNNING', 'WAITING_NETWORK', 'WAITING_RETRY', 'WAITING_SYSTEM', 'BLOCKED', 'PAUSED_USER')
+    OR (state = 'PARTIAL' AND EXISTS (
+      SELECT 1 FROM sync_runtime_confirmations c
+      WHERE c.run_id = sync_runtime_runs.run_id AND c.direction = 'DOWNLOAD' AND c.status = 'PENDING'
+    ))
+  )
+ORDER BY updated_at DESC, rowid DESC LIMIT 1;
 
 getLatestRuntimeRun:
 SELECT * FROM sync_runtime_runs
 WHERE space_id = ? AND generation = ?
-ORDER BY updated_at DESC LIMIT 1;
+ORDER BY updated_at DESC, rowid DESC LIMIT 1;
 
 updateRuntimeProgress:
 UPDATE sync_runtime_runs SET
@@ -74,7 +113,13 @@ claimRuntimeRun:
 UPDATE sync_runtime_runs SET
     state = 'RUNNING', attempt_id = ?, next_retry_at = 0, stop_reason = NULL, owner_session = ?, updated_at = ?
 WHERE run_id = ?
-  AND state IN ('QUEUED', 'RUNNING', 'WAITING_NETWORK', 'WAITING_RETRY', 'WAITING_SYSTEM')
+  AND (
+    state IN ('QUEUED', 'RUNNING', 'WAITING_NETWORK', 'WAITING_RETRY', 'WAITING_SYSTEM')
+    OR (state = 'PARTIAL' AND EXISTS (
+      SELECT 1 FROM sync_runtime_confirmations c
+      WHERE c.run_id = sync_runtime_runs.run_id AND c.direction = 'DOWNLOAD' AND c.status = 'PENDING'
+    ))
+  )
   AND (owner_session IS NULL OR owner_session = ?);
 
 releaseRuntimeRunForRecovery:

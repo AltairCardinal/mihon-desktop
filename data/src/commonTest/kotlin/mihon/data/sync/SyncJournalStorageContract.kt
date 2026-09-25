@@ -375,7 +375,8 @@ internal fun removeSyncJournalSchema(driver: SqlDriver) {
     listOf(
         "sync_snapshot_manifest_entries", "sync_snapshot_manifest_batches", "sync_snapshot_manifests",
         "sync_http_account_gates",
-        "sync_runtime_logs", "sync_runtime_runs", "sync_restore_units", "sync_restore_runs",
+        "sync_runtime_logs", "sync_runtime_confirmations", "sync_runtime_runs",
+        "sync_restore_units", "sync_restore_runs",
         "sync_history_watermarks", "sync_history_clears",
         "sync_private_reading", "sync_import_heads", "sync_import_entries", "sync_imports",
         "sync_remote_heads", "sync_remote_objects", "sync_remote_guards",

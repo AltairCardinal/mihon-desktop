@@ -13,6 +13,7 @@ import mihon.data.sync.auth.SyncGitHubAccount
 import mihon.data.sync.auth.SyncSpaceCreation
 import mihon.data.sync.auth.SyncSpaceDiscovery
 import mihon.data.sync.crypto.SyncSpaceCrypto
+import mihon.data.sync.http.SyncHttpBodyObserver
 import mihon.data.sync.http.SyncHttpException
 import mihon.data.sync.http.SyncHttpRequestGate
 import mihon.data.sync.transport.GitHubSyncTransport
@@ -207,6 +208,7 @@ internal class SyncOnboarding(
         manifestBinding: SyncSnapshotManifestBinding? = null,
         persistentObjectCacheDirectory: Path? = null,
         requestGate: SyncHttpRequestGate? = null,
+        bodyObserver: SyncHttpBodyObserver? = null,
     ): GitHubSyncTransport = GitHubSyncTransport(
         client,
         { token },
@@ -215,6 +217,7 @@ internal class SyncOnboarding(
         repositoryId = repositoryId,
         persistentObjectCacheDirectory = persistentObjectCacheDirectory,
         requestGate = requestGate,
+        bodyObserver = bodyObserver,
     ).also { transport ->
         if (manifestStore != null && manifestBinding != null) {
             transport.installSnapshotManifestStore(manifestStore, manifestBinding)

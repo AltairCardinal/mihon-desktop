@@ -60,6 +60,8 @@ class SyncGitCompareAcceptanceTest {
         val inputName = System.getenv("SYNC_COMPARE_INPUT")
         val outputName = System.getenv("SYNC_COMPARE_OUTPUT")
         val countName = System.getenv("SYNC_COMPARE_COUNT")
+        val progressTelemetryEnabled = System.getenv("SYNC_COMPARE_TELEMETRY")?.toBooleanStrictOrNull() ?: true
+        val skipReplay = System.getenv("SYNC_COMPARE_SKIP_REPLAY") == "1"
         assumeTrue(inputName != null && outputName != null && countName != null, "explicit local comparison only")
         val input = Path.of(requireNotNull(inputName))
         val output = Path.of(requireNotNull(outputName)).toAbsolutePath().normalize()
@@ -139,6 +141,7 @@ class SyncGitCompareAcceptanceTest {
                 writeFiles(output, "initial", initialFiles)
                 val runtime = setup.runtime(
                     persistentObjectCacheDirectory = output.resolve("l2-cache").toString().toPath(),
+                    progressTelemetryEnabled = progressTelemetryEnabled,
                 )
                 try {
                     val space = requireNotNull(
@@ -221,6 +224,36 @@ class SyncGitCompareAcceptanceTest {
                                 },
                             )
                         }
+                    }
+                    if (skipReplay) {
+                        val summary = buildJsonObject {
+                            put("inputRecords", records.size)
+                            put("inputChapters", chapterInputs.size)
+                            put("inputReadingEntries", expectedReading)
+                            put("events", result.uploaded)
+                            put("batches", artifacts.size)
+                            put("telemetryEnabled", progressTelemetryEnabled)
+                            put("populateMillisExcluded", populateMs)
+                            put("freezeMillisSinceAccepted", freezeMs)
+                            put("importGeneratedMillisSinceAccepted", importMs)
+                            put("firstConfirmedMillisSinceAccepted", firstMs)
+                            put("allConfirmedMillisSinceAccepted", totalMs)
+                            put("runtimeHttpRequests", runtimeRequests)
+                            put("runtimeRequestBodyBytes", runtimeRequestBytes)
+                            put("runtimeResponseBodyBytes", runtimeResponseBytes)
+                            put("runtimeRefUpdates", runtimeRefs)
+                            put("initialHeadLength", initialHead.length)
+                            put("finalHeadLength", finalHead.length)
+                            put("initialTreeOid", initialTreeOid)
+                            put("finalTreeOid", finalTreeOid)
+                            put("artifacts", artifactStats)
+                        }
+                        Files.writeString(output.resolve("summary.json"), summary.toString(), StandardCharsets.UTF_8)
+                        println(
+                            "SYNC_GIT_COMPARE records=${records.size} events=${result.uploaded} " +
+                                "batches=${artifacts.size} runtimeMs=$totalMs telemetry=$progressTelemetryEnabled output=$output",
+                        )
+                        return@use
                     }
                     setup.git.resetRef(setup.repository.branch, initialHead)
                     val replay = GitHubSyncTransport(

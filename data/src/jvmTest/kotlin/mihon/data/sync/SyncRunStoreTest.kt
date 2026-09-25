@@ -2,6 +2,7 @@ package mihon.data.sync
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.runBlocking
+import mihon.data.sync.runtime.SyncProgressDirection
 import mihon.data.sync.runtime.SyncRunLogEntry
 import mihon.data.sync.runtime.SyncRunLogStatus
 import mihon.data.sync.runtime.SyncRunPhase
@@ -21,6 +22,119 @@ import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
 
 class SyncRunStoreTest {
+    @Test
+    fun `latest run is the newer insertion when timestamps tie`() = runBlocking {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val database = Database(
+            driver,
+            History.Adapter(DateColumnAdapter),
+            Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+        ).also { Database.Schema.create(driver) }
+        val store = SyncRunStore(JvmDatabaseHandler(database, driver), clock = { 1_000L })
+        val first = store.start("space", 1, SyncTrigger.MANUAL)
+        val second = store.start("space", 1, SyncTrigger.MANUAL)
+
+        assertEquals(second.runId, store.latest("space", 1)?.runId)
+        assertEquals(second.runId, store.active("space", 1)?.runId)
+        assertTrue(first.runId != second.runId)
+    }
+
+    @Test
+    fun `unprojected unavailable and decision fields never confirm a received batch`() = runBlocking {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val database = Database(
+            driver,
+            History.Adapter(DateColumnAdapter),
+            Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+        ).also { Database.Schema.create(driver) }
+        val store = SyncRunStore(JvmDatabaseHandler(database, driver))
+        val run = store.start("space", 1, SyncTrigger.MANUAL)
+        assertTrue(store.claim(run.runId, "owner", 1))
+        store.expectDownload(run.runId, "owner", "batch", 1)
+        assertTrue(store.confirmReceived(run.runId, "owner").isEmpty())
+        driver.execute(
+            null,
+            "INSERT INTO sync_inbox_batches(space_id, generation, batch_id, status, body_json) " +
+                "VALUES ('space', 1, 'batch', 'RECEIVED', '{}')",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO sync_events(space_id, generation, actor_id, epoch, seq, category, origin, " +
+                "batch_id, event_json, occurred_at, event_key, sync_indexed) VALUES " +
+                "('space', 1, 'actor', 1, 1, 'FAVORITE', 'REMOTE', 'batch', '{}', 1, 'event', 1)",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO sync_event_fields(space_id, generation, event_key, object_key, field, object_json) " +
+                "VALUES ('space', 1, 'event', 'object', 'FAVORITE', '{}')",
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO sync_field_state(space_id, generation, object_key, field, object_json, status, dirty) " +
+                "VALUES ('space', 1, 'object', 'FAVORITE', '{}', 'DIRTY', 1)",
+            0,
+        )
+        assertTrue(store.confirmReceived(run.runId, "owner").isEmpty())
+        listOf("SOURCE", "DECISION").forEach { status ->
+            driver.execute(null, "UPDATE sync_field_state SET status = '$status', dirty = 0", 0)
+            assertTrue(store.confirmReceived(run.runId, "owner").isEmpty())
+        }
+        assertEquals(0L, store.get(run.runId)?.confirmedItems)
+        driver.execute(null, "UPDATE sync_field_state SET status = 'APPLIED', dirty = 0", 0)
+        assertEquals(listOf("batch" to 1L), store.confirmReceived(run.runId, "owner"))
+        assertTrue(store.confirmReceived(run.runId, "owner").isEmpty())
+        assertEquals(1L, store.get(run.runId)?.confirmedItems)
+        assertEquals(1L, store.confirmed(run.runId, "owner", SyncProgressDirection.DOWNLOAD, "batch", 1))
+    }
+
+    @Test
+    fun `partial result is durable and does not block the next run`() = runBlocking {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val database = Database(
+            driver,
+            History.Adapter(DateColumnAdapter),
+            Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+        ).also { Database.Schema.create(driver) }
+        val store = SyncRunStore(JvmDatabaseHandler(database, driver))
+        val partial = store.start("space", 1, SyncTrigger.MANUAL)
+        store.finish(partial.runId, SyncRunState.PARTIAL, "pending_decision")
+        assertEquals(SyncRunState.PARTIAL, store.latest("space", 1)?.state)
+        assertEquals(null, store.active("space", 1))
+        assertTrue(store.start("space", 1, SyncTrigger.MANUAL).runId != partial.runId)
+    }
+
+    @Test
+    fun `only projection pending partial run can be reclaimed for its receipt`() = runBlocking {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        val database = Database(
+            driver,
+            History.Adapter(DateColumnAdapter),
+            Mangas.Adapter(StringListColumnAdapter, UpdateStrategyColumnAdapter),
+        ).also { Database.Schema.create(driver) }
+        val store = SyncRunStore(JvmDatabaseHandler(database, driver))
+        val decision = store.start("other", 1, SyncTrigger.MANUAL)
+        store.finish(decision.runId, SyncRunState.PARTIAL, "pending_decision")
+        assertEquals(null, store.active("other", 1))
+        assertEquals(false, store.claim(decision.runId, "decision-owner", 1))
+        val projection = store.start("space", 1, SyncTrigger.MANUAL)
+        assertTrue(store.claim(projection.runId, "first-owner", 1))
+        store.expectDownload(projection.runId, "first-owner", "dependency-batch", 1)
+        store.finish(projection.runId, SyncRunState.PARTIAL, "projection_pending", "first-owner")
+        assertEquals(projection.runId, store.active("space", 1)?.runId)
+        assertTrue(store.claim(projection.runId, "projection-owner", 1))
+        assertEquals(SyncRunState.RUNNING, store.get(projection.runId)?.state)
+
+        val mixed = store.start("mixed", 1, SyncTrigger.MANUAL)
+        assertTrue(store.claim(mixed.runId, "mixed-first-owner", 1))
+        store.expectDownload(mixed.runId, "mixed-first-owner", "decision-batch", 1)
+        store.finish(mixed.runId, SyncRunState.PARTIAL, "pending_decision", "mixed-first-owner")
+        assertEquals(mixed.runId, store.active("mixed", 1)?.runId)
+        assertTrue(store.claim(mixed.runId, "mixed-next-owner", 2))
+    }
+
     @Test
     fun `account cooldown is durable monotonic and isolated by account`() = runBlocking {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
@@ -47,6 +161,9 @@ class SyncRunStoreTest {
         Database.Schema.create(driver)
         driver.execute(null, "DROP INDEX IF EXISTS sync_runtime_active", 0)
         driver.execute(null, "DROP INDEX IF EXISTS sync_runtime_log_order", 0)
+        driver.execute(null, "DROP INDEX IF EXISTS sync_events_by_batch_confirmation", 0)
+        driver.execute(null, "DROP INDEX IF EXISTS sync_pending_upload_round", 0)
+        driver.execute(null, "DROP TABLE IF EXISTS sync_runtime_confirmations", 0)
         driver.execute(null, "DROP TABLE IF EXISTS sync_runtime_logs", 0)
         driver.execute(null, "DROP TABLE IF EXISTS sync_runtime_runs", 0)
         driver.execute(null, "DROP TABLE IF EXISTS sync_http_account_gates", 0)

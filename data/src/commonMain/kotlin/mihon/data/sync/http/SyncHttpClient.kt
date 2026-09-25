@@ -8,11 +8,16 @@ import okhttp3.Callback
 import okhttp3.CookieJar
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.Response
 import okio.Buffer
+import okio.BufferedSink
+import okio.ForwardingSink
+import okio.buffer
 import java.io.IOException
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.min
@@ -85,6 +90,26 @@ interface SyncHttpRequestGate {
     suspend fun afterResponse(response: SyncHttpResponse)
 }
 
+enum class SyncHttpBodyDirection { UPLOAD, DOWNLOAD }
+
+/** Stable identity of a logical body across transport retries; scoped by the caller's work round. */
+data class SyncHttpBodyWork(val key: String)
+
+/** In-memory observations of application HTTP bodies, never headers or TLS traffic. */
+interface SyncHttpBodyObserver {
+    fun onBodyBytes(direction: SyncHttpBodyDirection, requestId: Long, bytes: Long, total: Long?)
+
+    fun onBodyWorkBytes(
+        direction: SyncHttpBodyDirection,
+        requestId: Long,
+        bytes: Long,
+        total: Long?,
+        workKey: String?,
+    ) = onBodyBytes(direction, requestId, bytes, total)
+
+    fun onBodyComplete(direction: SyncHttpBodyDirection, requestId: Long, successful: Boolean) = Unit
+}
+
 /**
  * A narrow wrapper around the already configured application client. Its builder clone retains
  * proxy, TLS and DNS configuration while isolating cookies and disabling redirects for sync.
@@ -95,7 +120,9 @@ class SyncHttpClient(
     private val maxBodyBytes: Long = 2L * 1024 * 1024,
     private val metrics: SyncMetrics = NoopSyncMetrics,
     private val requestGate: SyncHttpRequestGate? = null,
+    private val bodyObserver: SyncHttpBodyObserver? = null,
 ) {
+    private val nextRequestId = AtomicLong()
     private val client = productionClient.newBuilder().apply {
         // Sync credentials must never pass through source/application logging interceptors.
         // Proxy, DNS, TLS, dispatcher and connection-pool settings remain inherited.
@@ -114,7 +141,52 @@ class SyncHttpClient(
         require(url.isHttps || localHttp) { "sync endpoint must use HTTPS" }
         require(host in allowedHosts.map(String::lowercase).toSet()) { "sync endpoint host is not allowed" }
         requestGate?.beforeRequest()
-        val call = client.newCall(request.newBuilder().removeHeader("Cookie").build())
+        val requestId = nextRequestId.incrementAndGet()
+        val workKey = request.tag(SyncHttpBodyWork::class.java)?.key
+        val observedBody = request.body?.takeIf { bodyObserver != null }?.let { body ->
+            object : RequestBody() {
+                override fun contentType() = body.contentType()
+
+                override fun contentLength() = body.contentLength()
+
+                override fun isDuplex() = body.isDuplex()
+
+                override fun isOneShot() = body.isOneShot()
+
+                override fun writeTo(sink: BufferedSink) {
+                    var sent = 0L
+                    val total = body.contentLength().takeIf { it >= 0L }
+                    val observedSink = object : ForwardingSink(sink) {
+                        override fun write(source: Buffer, byteCount: Long) {
+                            super.write(source, byteCount)
+                            sent += byteCount
+                            runCatching {
+                                bodyObserver?.onBodyWorkBytes(
+                                    SyncHttpBodyDirection.UPLOAD,
+                                    requestId,
+                                    sent,
+                                    total,
+                                    workKey,
+                                )
+                            }
+                        }
+                    }.buffer()
+                    var successful = false
+                    try {
+                        body.writeTo(observedSink)
+                        observedSink.flush()
+                        successful = true
+                    } finally {
+                        runCatching {
+                            bodyObserver?.onBodyComplete(SyncHttpBodyDirection.UPLOAD, requestId, successful)
+                        }
+                    }
+                }
+            }
+        }
+        val call = client.newCall(
+            request.newBuilder().removeHeader("Cookie").method(request.method, observedBody ?: request.body).build(),
+        )
         val result = suspendCancellableCoroutine { continuation ->
             continuation.invokeOnCancellation { call.cancel() }
             call.enqueue(object : Callback {
@@ -138,7 +210,7 @@ class SyncHttpClient(
                                     requestGate?.afterResponse(SyncHttpResponse(it.code, headers, ByteArray(0)))
                                 }
                             }
-                            readResponse(it)
+                            readResponse(it, requestId, workKey)
                         }
                         metrics.recordHttp(result.body.size.toLong(), failed = result.code !in 200..299)
                         if (!continuation.isCancelled) continuation.resume(result)
@@ -167,23 +239,38 @@ class SyncHttpClient(
         return result
     }
 
-    private fun readResponse(response: Response): SyncHttpResponse {
+    private fun readResponse(response: Response, requestId: Long, workKey: String?): SyncHttpResponse {
         val length = response.body.contentLength()
         if (length > maxBodyBytes) {
             throw SyncHttpException(response.code, "sync response exceeds limit")
         }
-        val body = response.body.source().use { source ->
-            val buffer = Buffer()
-            var total = 0L
-            while (true) {
-                val read = source.read(buffer, min(8_192L, maxBodyBytes + 1 - total))
-                if (read == -1L) break
-                total += read
-                if (total > maxBodyBytes) {
-                    throw SyncHttpException(response.code, "sync response exceeds limit")
+        var successful = false
+        val body = try {
+            response.body.source().use { source ->
+                val buffer = Buffer()
+                var total = 0L
+                while (true) {
+                    val read = source.read(buffer, min(8_192L, maxBodyBytes + 1 - total))
+                    if (read == -1L) break
+                    total += read
+                    if (total > maxBodyBytes) {
+                        throw SyncHttpException(response.code, "sync response exceeds limit")
+                    }
+                    runCatching {
+                        bodyObserver?.onBodyWorkBytes(
+                            SyncHttpBodyDirection.DOWNLOAD,
+                            requestId,
+                            total,
+                            length.takeIf { it >= 0L },
+                            workKey,
+                        )
+                    }
                 }
+                successful = true
+                buffer.readByteArray()
             }
-            buffer.readByteArray()
+        } finally {
+            runCatching { bodyObserver?.onBodyComplete(SyncHttpBodyDirection.DOWNLOAD, requestId, successful) }
         }
         return SyncHttpResponse(
             code = response.code,
