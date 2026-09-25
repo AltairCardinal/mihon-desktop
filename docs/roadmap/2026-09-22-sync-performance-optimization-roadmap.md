@@ -7,11 +7,11 @@
 
 本 roadmap 面向负责实现的开发 agent。本轮已从 P0 开始推进，完成对象缓存与发布确认复用的局部实现；完整阶段仍按第一个未勾选项继续，未完成的阶段不能标记为通过。实际命令、提交和验证证据集中维护在本文件，不另建 active-task 或逐任务状态报告。
 
-本轮执行边界：不改远端事件协议、加密格式、目录或批次上限；不写真实用户同步空间，不构建或覆盖正式安装包。已实现的缓存只存在于 transport 实例内，保留 ref/commit/tree 探测及既有 guard；发布确认快照仅在当前 ref 已完整读取并与原制品匹配时复用。
+本轮执行边界：保留事件协议、加密格式、目录与批次上限；不写真实用户空间，不覆盖正式安装包。当前未提交候选已跨入持久缓存、manifest/发现和部分 API 路径，均按 PARTIAL 核验；不能再描述为“只有 transport 内缓存”。本次先补测并修订顺序，不默认扩展生产功能。
 
 ## 1. 权威与交付规则
 
-当前实现事实以[源码核查报告](../evidence/sync-performance/inputs/source-audit-report.md)为准；恢复预算、真实进度、日志、数据库谱系和授权边界继承[修复设计](../evidence/sync-performance/inputs/2026-09-21-sync-repair-design.md)。原[修复 roadmap](../evidence/sync-performance/inputs/2026-09-21-sync-repair-roadmap.md)中的 F1–F4 历史状态不能用来替代本轮验证，F5/F6 未完成事项按适用范围纳入 P10。
+历史源码基线见[源码核查报告](../evidence/sync-performance/inputs/source-audit-report.md)为准；恢复预算、真实进度、日志、数据库谱系和授权边界继承[修复设计](../evidence/sync-performance/inputs/2026-09-21-sync-repair-design.md)。原[修复 roadmap](../evidence/sync-performance/inputs/2026-09-21-sync-repair-roadmap.md)中的 F1–F4 历史状态不能用来替代本轮验证，F5/F6 未完成事项按适用范围纳入 P10。
 
 先在核定 worktree 实施和独立验收，不提前合并另一分支。不得擅自覆盖用户 APK、改用户数据库、写真实同步空间、删除远端历史或生成新的空间/actor 规避问题。设备和远端缺少授权时，继续完成可执行的源码、fixture与隔离测试，缺项如实登记，不把缺项标PASS。
 
@@ -21,13 +21,29 @@
 
 一个 P 项只有在实现完成、对应适用测试通过、必要审查完成、证据可追溯并已提交后才能勾选。没有设备只允许登记实现/fixture通过，P10继续未勾选。独立审查不可得时记录缺项，不把实现 agent 的自检改名为独立审查。
 
-GraphQL适配实现与真实启用分开：fixture通过而真实凭据验证缺失时，状态为 `IMPLEMENTED_DISABLED`，默认关闭；不会阻塞已验证的REST兼容路径。任何会影响默认生产行为的测试失败都不能通过关闭测试绕过。
+GraphQL 改为条件扩展：REST 后仍有瓶颈且收益/预算已登记才实现。未选中标 DEFERRED；已有孤立 adapter 只算未验候选，不能登记 IMPLEMENTED_DISABLED。选中且实现/fixture 通过但真实启用证据不足时，才登记 IMPLEMENTED_DISABLED。任何会影响默认生产行为的测试失败都不能通过关闭测试绕过。
 
 ### 1.2 依赖和执行方式
 
 默认一个实现 owner 连续推进共享主链路；最多另一个 agent 做独立审查和不冲突的测试工作。不并发修改同一 runtime、transport、SQLDelight schema或迁移；Gradle按仓库已有协调方式串行运行。
 
 每阶段先加入可以识别现有问题的红测试，再修改实现并跑focused tests。相关集成在接口稳定后执行；最终受影响全量和发布构建在P9/P10集中执行。计数套件不注入实际长延迟；重试采用虚拟时钟；慢速网络benchmark独立运行并有请求/时长预算。不为纯勾选状态单独提交。
+
+### 1.3 修订后执行顺序与停止条件（2026-09-25）
+
+本次审议已纳入设计 §0.2/§15.11。核心安全约束不变，P7/P8 的复杂扩展改为收益前置；不是先实现再决定值不值得。本轮先完成下面第 1 个批次，后续按退出证据推进：
+
+| 顺序 | 有界工作与复用入口 | 退出/验证；不包含 |
+| --- | --- | --- |
+| 1：P0/P1 补测 | 核对当前 dirty 候选、已有失败与日志；复用 SyncScaleAcceptanceTest、GitFixture、文件 SQLite，采 T77–T82 及暖增量 | 保存可复跑命令、输入/源码指纹、真实缺项和初步分解；补齐旧版同条件对照并冻结首次同步目标才关闭 P1。不改生产行为，不实现新 adapter |
+| 2：P2–P4/P6 安全闭环 | 对已有 cache/manifest/discovery/确认/恢复代码补缺；先以真实文件计数复现目录扫描放大，再 TDD 修复 | focused 红绿、相关集成、一次批次安全审查；保留冻结制品与原子发现，P4 留量化收益报告。不得顺带重写协议/归并器 |
+| 3：P5/P7/P8 必做路径 | 按分解选择 SQL/日志热点，验证 REST inline 与串行 raw 的完整收益 | 真实 production wiring、字节兼容/错误/恢复契约及配对耗时；不必等待可选 GraphQL/pipeline 完工 |
+| 4：条件扩展决策 | 首轮分解后比较多批次发布、GraphQL、下载流水线的预计节省、内存、恢复与维护成本 | 选择项须有启动决策、数值目标、范围和预算；未选择项 DEFERRED，不阻塞阶段 A。不是自动同时实施 |
+| 5：原生 Git 候选 | 仅当前路径仍未满足已冻结目标时，同数据/同制品比较 | 包含 Android 依赖、磁盘、取消、凭据、恢复与业务归并；不能预判最优或直接替换 |
+
+依赖解释：已有跨阶段代码可以用于候选测量，但不允许因源码存在绕过 P0/P1；完成第 1 批不代表所有基线门禁已通过。首次样本允许有界小规模定位，10k/100k 与正式双端配对仍须补齐。没有真实网络/设备授权时继续本地诊断，保留外部缺项，不制造远端写入。
+
+预算：本次 1 名实施子代理承担首批基线，主代理修订设计/roadmap 并独立检查测试与报告；focused 测量一次，失败后仅针对失败原因修复复验，不执行全量产品测试或发布构建。后续生产修复另按所选批次宣布 TDD/集成/发布成本。既有未提交改动保留；提交仅包含本次增量。
 
 ## 2. 阶段A总览
 
@@ -40,9 +56,9 @@ GraphQL适配实现与真实启用分开：fixture通过而真实凭据验证缺
 | P4 | 快照返回复用、交换与恢复闭环 | P3 | T21、T25–T27、T30–T32、T43 |
 | P5 | SQL隔离、批次复用、事实计数/日志/导入成本 | P4 | T39–T48、T62–T63 |
 | P6 | HTTP限流、四次失败预算、统一唤醒 | P2；集成依赖P4/P5 | T49–T56；运行安全独立审查 |
-| P7 | 单批REST聚合及GraphQL受控适配 | P3/P4/P6 | T23–T30、T55、T61 |
-| P8 | raw下载、有界流水线 | P3/P5/P6 | T33–T38、T61 |
-| P9 | 完整回归、规模、性能门禁、集成审查 | P0–P8 | T01–T76适用集，特别T65–T76 |
+| P7 | 单批 REST 聚合；GraphQL 条件扩展 | P3/P4/P6 | T23–T30、T55、T61 |
+| P8 | 串行 raw 下载；流水线条件扩展 | P3/P5/P6 | T33–T38、T61 |
+| P9 | 完整回归、规模、性能门禁、集成审查 | P0–P8 必做项 | T01–T82 适用集，特别首次同步与本地放大 |
 | P10 | 正式包/覆盖升级/授权真网/双端设备/用户验收 | P9 | T57–T64、T73–T74及用户验收 |
 
 - [ ] P0：实际基线与约束冻结。
@@ -53,7 +69,7 @@ GraphQL适配实现与真实启用分开：fixture通过而真实凭据验证缺
 - [ ] P5：数据库、编解码、日志、计数和导入局部优化。
 - [ ] P6：统一限流、重试和调度。
 - [ ] P7：单批发布请求聚合。
-- [ ] P8：raw下载与网络/本地处理重叠。
+- [ ] P8：串行 raw 下载验证；流水线仅在收益前置通过后实施。
 - [ ] P9：自动化、性能和独立集成审查通过。
 - [ ] P10：正式交付及用户验收通过。
 
@@ -89,15 +105,15 @@ GraphQL适配实现与真实启用分开：fixture通过而真实凭据验证缺
 
 记录phase/span、cache、HTTP call与exchange、SQL/事务/锁等待、日志/计数、业务批次分布和正文大小。测试指标本身不会每个事件开事务、更新UI或发送网络；诊断关闭时做开销对照。
 
-**测试**：T01–T04；新增T65/T66/T67/T69的红断言；T70–T74建立可运行框架但不提前登记通过。现有规模测试的历史PASS只记录为输入事实。
+**测试**：T01–T04；按设计 §15.11 补 T77–T82，记录首次导入、已验证首批确认、完整上传/下载、恢复和目录/SQL/解密成本；新增T65/T66/T67/T69的红断言；T70–T74建立可运行框架但不提前登记通过。现有规模测试的历史PASS只记录为输入事实。
 
-**退出**：基线红失败能明确指向全历史blob读取/重复快照/日志小事务；报表能区分测量与公式推导，脱敏通过。基线对大H超预算时登记ABORTED，不阻止已得到的小样本诊断。
+**退出**：首次同步基线与数值目标已按 §15.11 冻结；候选单次诊断不能关闭 P1。基线红失败能明确指向全历史blob读取/重复快照/日志小事务；报表能区分测量与公式推导，脱敏通过。基线对大H超预算时登记ABORTED，不阻止已得到的小样本诊断。
 
 ### P2：缓存与必要持久结构
 
 **范围**：`SyncObjectStore`、验证上下文、cache文件处理、必要snapshot/discovery/facts/retry字段迁移。最终表名优先复用现有实现。
 
-实现L1/L2的scope键、OID/长度/摘要检查、lease、LRU、single-flight、磁盘短写/满盘处理。cache失败仅影响可重建内容，guard/outbox/inbox/制品不得归入缓存清理。解析结果绑定密钥/路径/验证版本，不持久化秘密。
+先为 T82 建立真实 FileSystem 计数失败用例，消除命中/追加逐对象目录扫描，冷启动容量重建和淘汰单列；不删减 LRU/多实例/故障安全。实现L1/L2的scope键、OID/长度/摘要检查、lease、LRU、single-flight、磁盘短写/满盘处理。cache失败仅影响可重建内容，guard/outbox/inbox/制品不得归入缓存清理。解析结果绑定密钥/路径/验证版本，不持久化秘密。
 
 按设计§4建立可原子发布的snapshot revision结构；本阶段可以先通过旧完整读取器填充，P3再接增量。禁止为每个commit保存完整manifest副本。新迁移编号来自P0实际目录，不预占34或其他猜测值。
 
@@ -133,7 +149,7 @@ GraphQL适配实现与真实启用分开：fixture通过而真实凭据验证缺
 
 **测试**：T21、T25–T27、T30–T32、T43；T67请求数量与manifest/查询增长门禁。重点重开runtime/文件库测试“确认后ack前”“新快照提交后正文前”。
 
-**退出**：稳定纯上传的快照解析≤B+1，额外终态只需轻量ref；未完成队列可恢复；旧历史blob请求消除。此时应保存第一份可量化收益报告，不等待后续API聚合。
+**退出**：稳定纯上传的快照解析≤B+1，额外终态只需轻量ref；未完成队列可恢复；旧历史blob请求消除。此时必须保存第一份可量化收益报告及网络/历史验证/业务归并分解，不等待后续 API 聚合；同时比较多批次发布的预期收益与恢复成本。缺配对证据不得勾选 P4。
 
 <a id="p5"></a>
 ## 4. P5–P8：局部成本、限流与上传/下载吞吐
@@ -172,38 +188,38 @@ GraphQL适配实现与真实启用分开：fixture通过而真实凭据验证缺
 
 ### P7：单批发布请求聚合
 
-**范围**：现有发布器提取最小`SyncCommitWriter`，支持REST_INLINE_TREE和受控GraphQL_SINGLE_BATCH；原REST_BLOBS保留兼容路径。
+**范围**：现有发布器提取最小`SyncCommitWriter`，必做 REST_INLINE_TREE；GraphQL_SINGLE_BATCH 仅在收益前置满足后选中实施；原REST_BLOBS保留兼容路径。
 
 按最终存储字节严格UTF8往返选择inline，不按扩展名判断；二进制文件单独blob，所有路径保持base_tree和原子ref。按最终HTTP body做2MiB初始本地预算，超出在写ref前选择兼容方式。
 
-GraphQL单批适配实现HTTP200+errors、expectedHead、返回数据及未知结果处理；不把clientMutationId当幂等保证。实际凭据/分支保护未验证时默认关闭，不扩大权限。原制品可在不同传输实现间恢复，不能重新加密。
+条件扩展（未选中不要求新增实现）：GraphQL 单批适配需处理 HTTP200+errors、expectedHead、返回数据及未知结果处理；不把clientMutationId当幂等保证。实际凭据/分支保护未验证时默认关闭，不扩大权限。原制品可在不同传输实现间恢复，不能重新加密。
 
 失败回退必须先区分是否可能已发布。未知状态先对账；同身份异内容/部分不合法发布阻塞。不能通过另一API绕过权限或分支保护。
 
-**测试**：T23–T30、T55、T61；T67、T74。对全UTF8样本断言6→3次写请求；混合样本断言3+q。GraphQL fixture断言一次mutation且确认安全；真实schema/token验证放P10并控制开关。
+**测试**：T23–T30、T55、T61；T67、T74。对全UTF8样本断言6→3次写请求；混合样本断言3+q。仅选中 GraphQL 时，fixture 断言一次 mutation 且确认安全；真实schema/token验证放P10并控制开关。
 
-**退出**：REST优化默认路径正确且旧制品可恢复；GraphQL实现状态/启用状态分别登记。写请求减少必须包含完整确认和节流对照，不只统计POST数量。
+**退出**：REST优化默认路径正确且旧制品可恢复；GraphQL 的 DEFERRED/候选/实现/启用状态分别登记。写请求减少必须包含完整确认和节流对照，不只统计POST数量。
 
-### P8：raw下载与有界重叠
+### P8：串行 raw 下载与条件重叠
 
-**范围**：blob读取表示、batch下载/接收调度、队列预算、取消路径。
+**必做范围**：blob 表示兼容、串行 batch 接收与取消。流水线仅在网络等待和本地处理分解证明足够收益、冻结目标和预算后启动；队列/资源要求是选中后的约束。
 
-实现raw与JSON/Base64交付相同最终字节；保持私有API端点与认证边界，不跟随未知origin。默认单网络读取者，最多2批排队、原始缓冲合计4MiB，下载与上一批解密/校验/写库重叠。byte permit在请求前预留，释放与取消可靠。
+实现raw与JSON/Base64交付相同最终字节；保持私有API端点与认证边界，不跟随未知origin。若选中流水线，默认单网络读取者，最多2批排队、原始缓冲合计4MiB，下载与上一批解密/校验/写库重叠。byte permit在请求前预留，释放与取消可靠。
 
 保留同actor顺序和同快照dirty合并，不每个小窗口重复projector。所有错误仍走现有invalid/blocked/partial语义，网络等待不进入数据库事务。
 
 **测试**：T33–T38、T61；T68、T71、T72。加大批次、无Content-Length、慢消费者、连接中断、scope切换、内存压力与暂停，验证请求并发始终1且没有lease泄漏。
 
-**退出**：结果差分一致且队列/资源门禁通过。若配对测量显示流水线无收益或>10%退化，默认关闭pipeline，保留raw与安全优化，写明证据和原因；不能假称下载已达到指定提速。
+**退出**：串行 raw 字节与业务结果一致，完整首次下载按 T80 验收。未选中流水线标 DEFERRED，不先付出实现成本。若选中，则 T71 及队列/资源/恢复测试必须通过，且达到事先冻结的收益目标才启用；无收益保持关闭，不得只凭“退化不超过 10%”启用。
 
 <a id="p9"></a>
 ## 5. P9：集成、规模、性能与独立审查
 
-**前置**：P0–P8提交完成，scope/schema/冻结制品/发布接口稳定。重要改动后重跑相关focused测试，不用只跑旧测试名单。
+**前置**：P0–P8 必做项提交完成，可选项有明确适用性决策，scope/schema/冻结制品/发布接口稳定。重要改动后重跑相关focused测试，不用只跑旧测试名单。
 
 ### 5.1 自动化完整矩阵
 
-按设计§15执行T01–T76适用项。GraphQL未启用不免除其纯适配fixture测试，但真实启用验收可以保持未执行；pipeline关闭时仍验证串行fallback和取消正确性。测试发现设计不适用时写明原因并修订权威设计，不直接删除条目。
+按设计 §15 执行 T01–T82 适用项。未选中 GraphQL/pipeline 不要求新增实现或附加 fixture，但保留候选代码时核对不可达/默认关闭；一旦选中实现，不能以未启用为由免除其安全契约。串行 raw 与取消正确性始终必测。测试发现设计不适用时写明原因并修订权威设计，不直接删除条目。
 
 必须覆盖四种cache状态：全冷、L1/L2暖、进程重启仅持久状态暖、强制淘汰/缓存损坏。无变化、单远端增量、单本地增量、连续上传、多actor并发、跨epoch、同字段长历史分别有输入。
 
@@ -281,11 +297,11 @@ API26/33/35/36受影响分支按仓库支持范围覆盖，实际设备与模拟
 <a id="extensions-roadmap"></a>
 ## 7. 阶段B条件扩展
 
-阶段A结束后先按实际耗时占比分配工作，不同时启动所有扩展。每项都有独立启用结论和格式/迁移风险审查；未启动标`DEFERRED`，不得标完成。
+首轮耗时分解后即可比较 B1，不等待阶段 A 可选项；其他扩展按各自条件。先按实际耗时占比分配工作，不同时启动所有扩展。每项都有独立启用结论和格式/迁移风险审查；未启动标`DEFERRED`，不得标完成。
 
 | 扩展 | 启动证据 | 实施/测试要求 | 默认状态 |
 | --- | --- | --- | --- |
-| B1 多批次一次发布 | 固定发布/确认成本仍主要限制大量上传 | 按设计§17.1建立group冻结/原子确认/未知结果状态机；B-G矩阵与旧parser互通；禁止不明状态自动拆组 | DEFERRED |
+| B1 多批次一次发布 | 首轮分解即可比较；固定发布/确认仍为主要成本且收益/恢复/预算决策成立后实施 | 按设计§17.1建立group冻结/原子确认/未知结果状态机；B-G矩阵与旧parser互通；禁止不明状态自动拆组 | DEFERRED |
 | B2 压缩新格式 | 正文传输占比高，样本压缩收益大于CPU/内存成本 | 明确格式升级与旧客户端策略；认证codec/长度；B-C炸弹/混合格式/旧制品/真机对照 | DEFERRED |
 | B3 导入与交换交错 | 生成全部baseline主导首次等待 | 先证明parents/frontier等价；禁止每50条封存；B-I并发用户操作/远端操作/恢复语义 | DEFERRED |
 | B4 目录分片、检查点或原生Git | 单层目录/容量或首次冷同步仍不达标 | 单独格式与迁移方案；长期离线设备与安全证据；B-H损坏/回退/互通/资源测试 | DEFERRED |
@@ -323,30 +339,30 @@ API26/33/35/36受影响分支按仓库支持范围覆盖，实际设备与模拟
 
 | 阶段 | 实现commit | 实际测试命令/退出码 | 覆盖ID | 审查结论 | 证据路径 | 状态/缺项 |
 | --- | --- | --- | --- | --- | --- | --- |
-| P0 | — | — | — | — | — | NOT_STARTED |
-| P1 | — | — | — | — | — | NOT_STARTED |
-| P2 | 本轮候选提交 | `:data:jvmTest` focused / 0 | T05/T06 部分 | 待独立审查 | `docs/evidence/sync-performance/implementation-2026-09-22.md` | PARTIAL；未做迁移/L2/crash 验证 |
-| P3 | 本轮候选提交 | `SyncGitSafetyContractTest`、`SyncSpaceTransportContractTest` / 0 | T13/T16 部分 | 待独立审查 | `docs/evidence/sync-performance/implementation-2026-09-22.md` | PARTIAL；未做分层 tree/manifest/delta |
-| P4 | 本轮候选提交 | `JvmSyncRuntimeStorageContractTest`、发布异常 focused / 0 | T21/T25/T27/T30 部分 | 待独立审查 | `docs/evidence/sync-performance/implementation-2026-09-22.md` | PARTIAL；仅确认快照复用，未完成 durable discovery |
+| P0 | 未收口 | 历史只读核对；本次补核源码/日志 | 基线/作用域 | 待完整退出 | §9 | PARTIAL；待冻结全部输入及前版对照 |
+| P1 | 本次测量增量 | candidate focused，结果见报告 | T77/T79/T80/T81 局部诊断 | 主代理检查测试边界，非产品验收 | [候选基线](../evidence/sync-performance/baseline-2026-09-25.md) | PARTIAL；未有前版配对、完整 wiring/首确认/成本分解，目标未冻结 |
+| P2 | 本轮候选提交 | `:data:jvmTest` focused / 0 | T05/T06 部分 | 待独立审查 | `docs/evidence/sync-performance/implementation-2026-09-22.md` | PARTIAL；已有迁移/L2 候选及局部测试，完整安全审查与性能门禁未闭环 |
+| P3 | 本轮候选提交 | `SyncGitSafetyContractTest`、`SyncSpaceTransportContractTest` / 0 | T13/T16 部分 | 待独立审查 | `docs/evidence/sync-performance/implementation-2026-09-22.md` | PARTIAL；已有分层 tree/normalized manifest/fence 候选与局部日志，缺完整安全/性能验收 |
+| P4 | 本轮候选提交 | `JvmSyncRuntimeStorageContractTest`、发布异常 focused / 0 | T21/T25/T27/T30 部分 | 待独立审查 | `docs/evidence/sync-performance/implementation-2026-09-22.md` | PARTIAL；已有确认复用、durable discovery/catch-up 候选，缺配对量化及完整恢复验收 |
 | P5 | — | — | — | — | — | NOT_STARTED |
-| P6 | — | — | — | — | — | NOT_STARTED |
-| P7 | — | — | — | — | — | NOT_STARTED |
-| P8 | — | — | — | — | — | NOT_STARTED |
-| P9 | — | — | — | — | — | NOT_STARTED |
+| P6 | 既有未提交候选 | 未在本次重跑 | T49–T56 待核 | 待审查 | §9/源码 | PARTIAL；已有 request gate/runtime/Worker 改动，不能登记未开始 |
+| P7 | 既有未提交候选 | 未在本次运行完整门禁 | T23–T30 待核 | 待审查 | §8.3 | PARTIAL；REST planner 已接入，GraphQL DEFERRED |
+| P8 | 既有未提交候选 | 首下载仅局部诊断 | T33–T38/T80 待核 | 待审查 | §8.3 | PARTIAL；raw 读取已有，流水线 DEFERRED |
+| P9 | 未收口 | 历史全 data 307 项有 4 失败，本次未重跑 | 全量/性能缺项 | 未通过 | 历史报告 | PARTIAL；历史失败当前状态未确认，不因局部绿测关闭 |
 | P10 | — | — | — | — | — | NOT_STARTED |
 
 ### 8.3 默认策略与风险登记
 
 | 策略 | 设计默认 | 实际默认/证据 |
 | --- | --- | --- |
-| L1/L2缓存、快照复用、delta发现 | 对应安全门禁通过后启用 | L1 blob cache 与确认快照复用已实现；L2、delta 未实施 |
-| 分层tree及容量保护 | 启用；不改变现有总预算语义 | 未实施 |
-| REST_INLINE_TREE | 通过字节/确认门禁后启用；二进制按文件fallback | 未实施 |
-| GRAPHQL_SINGLE_BATCH | 实际凭据/API证据齐全前关闭 | 未实施 |
-| raw blob | 表示兼容门禁通过后启用 | 未实施 |
-| 下载pipeline | 正确性/资源通过且无>10%耗时退化才启用 | 未实施 |
+| L1/L2缓存、快照复用、delta发现 | 对应安全门禁通过后启用 | 候选已含 L2、normalized manifest、owner/guard fence、durable discovery；PARTIAL，缓存扫描放大与完整验收未闭环 |
+| 分层tree及容量保护 | 安全门禁通过后启用；保留总预算语义 | 当前候选有代码和部分 focused 日志，PARTIAL，未验整体收益 |
+| REST_INLINE_TREE | 通过字节/确认及完整收益门禁；二进制按文件 fallback | 当前 GitHubGitDatabaseClient 调用 planner，PARTIAL，非“未实施” |
+| GRAPHQL_SINGLE_BATCH | 收益前置满足才实现；启用须 API/凭据证据 | DEFERRED；候选有未接入默认链路的 adapter，未验，不算实现完成 |
+| raw blob | 表示兼容与完整首次下载验收 | 当前候选已有 raw Accept 读取，PARTIAL |
+| 下载pipeline | 先证明重叠收益再实现；达到冻结收益目标才启用 | DEFERRED；不以无退化作为启用充分条件 |
 | 多HTTP并发下载 | 关闭 | 未实施 |
-| 多批次group/压缩/导入交错 | 阶段B，关闭 | 未启动 |
+| 多批次group/压缩/导入交错 | 条件扩展；group 提前比较 | 未启动；不预判最优 |
 
 ### 8.4 设计变更记录
 
@@ -355,3 +371,7 @@ API26/33/35/36受影响分支按仓库支持范围覆盖，实际设备与模拟
 ## 9. 当前记录
 
 2026-09-22：完成 P0 定向核对。实现并测试 transport 内 16 MiB 有界 Git blob L1 缓存、Git blob SHA-1/SHA-256 内容校验，以及 `SyncPublishResult.confirmedSnapshot` 驱动的交换循环复用；完整 ref/commit/tree 与 guard 路径保留。focused JVM/契约测试通过，独立审查为 `PASS_WITH_ADVISORY`；P2/P3/P4 仍为局部状态，P5–P10 未启动，阶段 B 保持 DEFERRED。
+
+2026-09-25 审议落地：必做范围保留缓存/确认/发现/恢复、REST inline、raw 与已测热点；GraphQL/pipeline 改为收益前置条件扩展；B1 首轮分解后即可比较。新增 T77–T82，首次同步目标须先采同条件基线再冻结，暖增量 50% 不是整轮成功依据。当前源码已跨多阶段，§8.3 已更正；§8.2 的旧执行记录不能覆盖后续候选事实。P0/P1 尚未闭环，未勾选任何阶段。
+
+本次定向核对了 `SyncPersistentGitObjectCache.touchAccess/evictForWrite`：命中仍进入目录枚举/metadata 统计，复杂度风险存在，尚未测得设备耗时。`SyncSnapshotManifestStore` 已有 normalized 行存储与 admission 校验；`p3-fence-manifest-incremental-forced-green-20260924.log` 和 `p4-terminal-ref-valid-work-green1-20260925.log` 末尾为 BUILD SUCCESSFUL，仅作为对应历史 focused 证据，不作为当前全部 dirty diff 通过或全量失败已关闭的证据。旧报告中“缺 normalized/fence”等描述以本次核对更新，不改写历史输入。首批测量与剩余缺项见 [候选基线报告](../evidence/sync-performance/baseline-2026-09-25.md)。

@@ -75,6 +75,83 @@ class SyncScaleAcceptanceTest {
     private val repository = SyncRepository("fixture-owner", "private-sync", "mihon-sync")
     private val secret = SyncSecret.fromBytes(ByteArray(32) { (it + 1).toByte() })
 
+    /** Candidate-only loopback measurement; fixture preparation is never counted as synchronization. */
+    @Test
+    fun `candidate baseline first import upload download warm exchange and recovery`() = runBlocking {
+        val scenario = Scenario(1_000, 1, 0)
+        val client = OkHttpClient()
+        val memory = HeapSampler()
+        val sender = FileStorage()
+        val receiver = FileStorage()
+        try {
+            SyncGitSafetyContractTest().GitFixture().use { git ->
+                fun transport() = GitHubSyncTransport(
+                    client,
+                    { "scale-fixture-token" },
+                    git.baseUrl,
+                    indexSecret = secret,
+                )
+                val upload = transport()
+                upload.initialize(repository, "space", 1)
+                measure(scenario, "candidate_fixture_local_library", git, sender, memory) {
+                    repeat(scenario.events) { sender.storage.favorite("/candidate-$it") }
+                }
+                measure(scenario, "candidate_first_import", git, sender, memory) {
+                    val importId = sender.storage.connect("candidate-sender", repository)
+                    while (sender.storage.baseline.process(importId).remaining > 0) Unit
+                }
+                assertEquals(scenario.events.toLong(), sender.storage.eventCount())
+                val first = measure(scenario, "candidate_first_upload_total", git, sender, memory) {
+                    sender.storage.exchange(upload, secret, repository)
+                }
+                assertExchange(first, uploaded = scenario.events)
+                assertTrue(SyncLocalJournal(sender.storage.handler).pendingEvents("space", 1).isEmpty())
+
+                receiver.storage.connect("candidate-receiver", repository)
+                val download = transport()
+                val received = measure(scenario, "candidate_first_download_total", git, receiver, memory) {
+                    receiver.storage.exchange(download, secret, repository)
+                }
+                assertExchange(received, downloaded = scenario.events)
+                assertEquals(scenario.events.toLong(), receiver.storage.eventCount())
+                assertEquals(scenario.events.toLong(), receiver.storage.manga.countLibraryMangaForCreatorIndex())
+
+                sender.storage.favorite("/candidate-warm")
+                val warm = measure(scenario, "candidate_warm_upload_one", git, sender, memory) {
+                    sender.storage.exchange(upload, secret, repository)
+                }
+                assertExchange(warm, uploaded = 1)
+
+                sender.storage.favorite("/candidate-recovery")
+                git.nextRefResponse = mockwebserver3.MockResponse(code = 500)
+                git.failReadAfterPatch = true
+                val interrupted = measure(scenario, "candidate_lost_publish_and_read_failure", git, sender, memory) {
+                    sender.storage.exchange(upload, secret, repository)
+                }
+                assertTrue(interrupted.status != SyncRunStatus.SUCCESS, interrupted.toString())
+                val publishedHead = git.head(repository.branch)
+                val publications = git.forceFlags.size
+                // New transport removes process-local caches; the file-backed safety records survive.
+                val resumed = measure(scenario, "candidate_recovery_fresh_transport", git, sender, memory) {
+                    sender.storage.exchange(transport(), secret, repository)
+                }
+                assertEquals(SyncRunStatus.SUCCESS, resumed.status, resumed.toString())
+                assertEquals(publishedHead, git.head(repository.branch))
+                assertEquals(publications, git.forceFlags.size, "Recovery must not publish the same batch twice")
+                assertTrue(SyncLocalJournal(sender.storage.handler).pendingEvents("space", 1).isEmpty())
+                assertExchange(receiver.storage.exchange(download, secret, repository), downloaded = 2)
+                assertEquals(scenario.events + 2L, receiver.storage.eventCount())
+                assertEquals(scenario.events + 2L, receiver.storage.manga.countLibraryMangaForCreatorIndex())
+            }
+        } finally {
+            receiver.close()
+            sender.close()
+            memory.close()
+            client.connectionPool.evictAll()
+            client.dispatcher.executorService.shutdown()
+        }
+    }
+
     @Test
     fun `complete histories and frozen decisions remain correct at ten and hundred thousand events`() = runBlocking {
         for (scenario in listOf(Scenario(10_000, 3, 120), Scenario(100_000, 10, 10_000))) {
@@ -297,6 +374,9 @@ class SyncScaleAcceptanceTest {
         action: suspend () -> T,
     ): T {
         val requests = git.server.requestCount
+        val blobReads = git.blobReads
+        val treeReads = git.treeRequests
+        val publications = git.forceFlags.size
         val started = System.nanoTime()
         try {
             return action()
@@ -308,6 +388,9 @@ class SyncScaleAcceptanceTest {
                 file.bytes(),
                 memory.peak.get(),
                 "elapsedMillis" to TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started),
+                "blobReads" to (git.blobReads - blobReads).toLong(),
+                "treeReads" to (git.treeRequests - treeReads).toLong(),
+                "refUpdates" to (git.forceFlags.size - publications).toLong(),
             )
         }
     }
