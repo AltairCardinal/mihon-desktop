@@ -1,5 +1,7 @@
 # 同步进度、条目日志与待机恢复设计
 
+2026-09-26 需求补充：[三阶段进度与实时剩余时间需求](2026-09-26-sync-progress-eta-requirements.md)。准备／传输／确认的显示、数据条目计数和 ETA 以新需求为准；该文档尚未实施，不改变本文的恢复与持久化安全约束。
+
 日期：2026-09-19；2026-09-21 修订状态：实现审查不通过，R2–R4 重新打开。原有平台运行证据仅证明当时测试范围，不能证明覆盖升级、首次合并进度或自动恢复闭环已完成。当前修复规则以[修复设计](2026-09-21-sync-repair-design.md)及[修复 roadmap](roadmap/2026-09-21-sync-repair-roadmap.md)为准；本文保留原始需求和历史实现说明，不能作为当前实现已达标的证据。
 
 实施入口：[本轮 Roadmap](roadmap/2026-09-19-sync-progress-resume-roadmap.md)。交互参考：[双端 DEMO](prototypes/multi-device-sync/index.html)及[说明](prototypes/multi-device-sync/README.md)。既有架构：[多设备同步技术方案](2026-09-13-multi-device-sync-technical-proposal.md)。
